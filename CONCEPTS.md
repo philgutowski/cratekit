@@ -993,6 +993,20 @@ The sync scope rule: take the newest N items the source listed, then drop any
 identity the library already holds. That is how a second run processes only what
 is new, without reading the sync watermark.
 
+### Offer window
+How many of a favourite label's newest releases one sweep keeps in review,
+`labels.offer_per_sweep` in the configuration, ten by default, or the label's
+own `--offer` in the registry (R-790). A release already in the label-release
+queue, in any state, takes a place and is not filed again; a release filed now
+takes a place; an owned or tombstoned one takes none. So a first sweep files
+the window and a later one files only what has appeared above it. What the
+window never reached is counted as `beyond` per label and per run, read with
+`crate review list --queue label-release --group-by label` or `--group-by run`.
+Each filed item carries the run that filed it as `sweep_run`.
+
+*Avoid:* reading it as a date floor, or as an acceptance. It decides what a
+person is asked about, never what is downloaded.
+
 ### Composer
 A verb that queues no work of its own and queues other verbs' work through
 THEIR queueing paths, under THEIR handler keys. `crate sync all` is the one

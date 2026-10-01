@@ -2758,6 +2758,34 @@ class ProviderConfig:
     cooldown_s: int = DEFAULT_PROVIDER_COOLDOWN_S
 
 
+#: How many releases one sweep of one favourite label may offer for review,
+#: counting the ones already in the queue (R-790). Ten, because the first sweep
+#: of 32 labels at the old cap of four hundred filed 2,832 items nobody could
+#: answer in a sitting. Named here as well as on the field for the reason the
+#: intake ages give: ``slots=True`` hides a field default from the validator.
+DEFAULT_LABEL_OFFER = 10
+
+
+@dataclass(frozen=True, slots=True)
+class LabelsConfig:
+    """How much of a favourite label's catalogue one sweep offers (R-790).
+
+    ``offer_per_sweep`` IS A WINDOW OVER THE NEWEST RELEASES, NEVER A DATE.
+    A sweep walks the catalogue newest first and fills this many places with
+    releases the queue already holds and releases it files now, so a first
+    sweep files this many and a later one files only what has appeared above
+    them. The walk still reads the whole catalogue, which is what lets an owned
+    release be skipped without taking a place (R-137), and what the window did
+    not reach is counted rather than dropped. A label's own registry entry may
+    raise or lower it for that label alone.
+
+    No value switches it off. A person who wants a label's back catalogue
+    raises the number for that label and decides what it files.
+    """
+
+    offer_per_sweep: int = DEFAULT_LABEL_OFFER
+
+
 @dataclass(frozen=True, slots=True)
 class Config:
     """The whole validated configuration, frozen.
@@ -2788,6 +2816,7 @@ class Config:
     outbound: OutboundConfig = field(default_factory=OutboundConfig)
     recognition: RecognitionConfig = field(default_factory=RecognitionConfig)
     provider: ProviderConfig = field(default_factory=ProviderConfig)
+    labels: LabelsConfig = field(default_factory=LabelsConfig)
 
     # -- derived views -----------------------------------------------------
 
@@ -3114,8 +3143,29 @@ def validate(data: Mapping) -> list[str]:
     problems += _validate_export_staleness(data)
     problems += _validate_recognition(data)
     problems += _validate_provider(data)
+    problems += _validate_labels(data)
 
     return problems
+
+
+def _validate_labels(data: Mapping) -> list[str]:
+    """The per sweep offer of a favourite label (R-790).
+
+    Zero is refused rather than read as "offer nothing": a sweep that filed
+    nothing on purpose looks exactly like a label with nothing new, and the
+    person would never learn which it was.
+    """
+    key = "labels.offer_per_sweep"
+    offer = _dig(data, key)
+    if offer is not None and (
+        not isinstance(offer, int) or isinstance(offer, bool) or offer < 1
+    ):
+        return [
+            f"{key} must be a positive whole number of releases one sweep of a "
+            f"label may offer for review, found {offer!r}. A label's own "
+            f"registry entry can raise it for that label alone."
+        ]
+    return []
 
 
 def _validate_provider(data: Mapping) -> list[str]:
@@ -3584,6 +3634,7 @@ def from_dict(data: Mapping, *, path: Path | None = None) -> Config:
         outbound=_build(OutboundConfig, data.get("outbound") or {}),
         recognition=_build(RecognitionConfig, data.get("recognition") or {}),
         provider=_build(ProviderConfig, data.get("provider") or {}),
+        labels=_build(LabelsConfig, data.get("labels") or {}),
     )
 
 

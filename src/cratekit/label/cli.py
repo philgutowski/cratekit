@@ -64,6 +64,14 @@ def positive_limit(text: str) -> int:
     return value
 
 
+def positive_offer(text: str) -> int:
+    """Parse ``--offer``, refusing zero and negatives at the parser, as the limit does."""
+    value = int(text)
+    if value < 1:
+        raise ValueError(f"{text!r} is not a positive offer")
+    return value
+
+
 def build_registry(parser, entry) -> None:
     parser.add_argument(
         "action",
@@ -93,6 +101,17 @@ def build_registry(parser, entry) -> None:
         default=None,
         metavar="VALUE",
         help="seed artist, a name or id:<digits>; repeat for more, replaces the held list",
+    )
+    parser.add_argument(
+        "--offer",
+        dest="offer",
+        type=positive_offer,
+        default=None,
+        metavar="N",
+        help=(
+            "how many of this label's newest releases one sweep keeps in review, "
+            "counting those already there; overrides labels.offer_per_sweep"
+        ),
     )
     parser.set_defaults(_handler=registry_cmd)
 
@@ -149,6 +168,8 @@ def _detail(entry: labels.LabelEntry) -> str:
         parts.append(f"match {entry.match!r}")
     if entry.track_limit is not None:
         parts.append(f"track limit {entry.track_limit}")
+    if entry.offer is not None:
+        parts.append(f"offer {entry.offer}")
     if entry.seed_artists:
         parts.append("seeds " + " | ".join(entry.seed_artists))
     return ", ".join(parts)
@@ -187,13 +208,14 @@ def registry_cmd(ctx) -> Envelope:
     action = ctx.args.action
     seeds = ctx.args.seeds
     track_limit = ctx.args.track_limit
-    fields_given = (seeds, track_limit, ctx.args.match)
+    offer = ctx.args.offer
+    fields_given = (seeds, track_limit, ctx.args.match, offer)
     if action not in ("add", "set") and any(given is not None for given in fields_given):
         raise refuse(
             "label-name-invalid",
-            f"label registry {action} does not set --seed, --track-limit or "
-            f"--match, and ignoring them would report a change that was never "
-            f"written",
+            f"label registry {action} does not set --seed, --track-limit, "
+            f"--offer or --match, and ignoring them would report a change that "
+            f"was never written",
             steps=("use label registry set, or add, to change those fields",),
             origin=("label.cli",),
         )
@@ -221,6 +243,7 @@ def registry_cmd(ctx) -> Envelope:
             match=ctx.args.match,
             seed_artists=tuple(seeds or ()),
             track_limit=track_limit,
+            offer=offer,
         )
         held = store.load()
         return ctx.envelope(
@@ -230,12 +253,12 @@ def registry_cmd(ctx) -> Envelope:
             }
         )
     if action == "set":
-        if ctx.args.match is None and seeds is None and track_limit is None:
+        if ctx.args.match is None and seeds is None and track_limit is None and offer is None:
             raise refuse(
                 "label-name-invalid",
                 "label registry set needs a field to change, and a set that "
                 "changed nothing would report an edit that never happened",
-                steps=("pass --track-limit, --seed, or --match",),
+                steps=("pass --track-limit, --offer, --seed, or --match",),
                 origin=("label.cli",),
             )
         edited = store.edit(
@@ -243,6 +266,7 @@ def registry_cmd(ctx) -> Envelope:
             match=ctx.args.match,
             seed_artists=seeds,
             track_limit=track_limit,
+            offer=offer,
         )
         held = store.load()
         return ctx.envelope(
@@ -1168,6 +1192,7 @@ def handle(job, item, cfg) -> jobs.Produced | None:
             store=store,
             owned=owned,
         )
+        run_id = str(payload.get("run_id") or job.job_id)
         result = run_increment(
             cfg,
             source,
@@ -1178,8 +1203,25 @@ def handle(job, item, cfg) -> jobs.Produced | None:
             # two sources queued by one sync share an intake run, and an id
             # invented per item would split what a person imports into as many
             # files as the job has labels.
-            run_id=str(payload.get("run_id") or job.job_id),
+            run_id=run_id,
         )
+        # WHAT THE WINDOW DID NOT REACH IS RECORDED, NEVER DROPPED (R-790). The
+        # job's envelope is ``job_state/1`` and carries no per label count, and
+        # this worker runs in a detached child, so the count goes where the
+        # person deciding the label's releases reads: ``crate review list
+        # --queue label-release --group-by label``. NOT RECORDED OVER A PARTIAL
+        # CRAWL, which refuses below, because a count of part of a catalogue
+        # stated as the rest of it is a clean report over state nobody read.
+        if not source.unread:
+            for swept, listing in source.listings:
+                review.record_round(
+                    store,
+                    queue=review.Queue.LABEL_RELEASE,
+                    run_id=run_id,
+                    group=swept.label_id,
+                    name=swept.name,
+                    beyond=listing.beyond,
+                )
     if result.errors:
         raise refuse(
             "label-sweep-incomplete",
