@@ -155,15 +155,18 @@ DEFAULT_MODE: Mode = Mode.XML
 def cutover_trees(declared: Taxonomy) -> frozenset[str]:
     """The trees a cutover may record, by stable identifier (R-787).
 
-    THE ONE OWNER OF THE ANSWER. ``crate tree cutover`` accepts exactly these
-    and ``crate doctor`` passes a native record for exactly these, and both ask
-    here. They were two spellings once: #224 widened the verb to the intake
-    tree and left doctor's list at the routing tree alone, so every doctor run
+    THE ONE OWNER OF THE ANSWER. The cutover verb accepts exactly these and the
+    health report passes a native record for exactly these, and both ask here.
+    They were two spellings once: #224 widened the verb to the intake tree and
+    left the health report's list at the routing tree alone, so every report
     after a recorded inbox cutover failed and named a revert that refuses once
     a native landing exists.
 
-    The routing tree and the intake tree, because the declared taxonomy
-    reproduces both from what is on disk (R-746). The catalogue tree is declared
+    The routing tree and the intake tree, both of which the cutover records
+    with the taxonomy as their derivation source (R-746). MEMBERSHIP HERE IS
+    THAT SOURCE: the verb names every tree in this set ``TAXONOMY``, so a tree
+    whose membership comes from anywhere else is added by giving it a source
+    of its own first, never by adding it here. The catalogue tree is declared
     and is not here: a catalogue crawl is not rebuildable, so R39 keeps it on
     the bridge.
     """

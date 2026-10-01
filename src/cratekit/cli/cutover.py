@@ -210,7 +210,7 @@ def derivation_source(
             f"{', '.join(repr(t) for t in named)}",
         ),
         origin=("cli.cutover",),
-        detail={"tree_id": tree_id, "routing_tree": declared.tree.id, "cutover_trees": named},
+        detail={"tree_id": tree_id, "cutover_trees": named},
     )
 
 

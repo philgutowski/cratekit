@@ -2771,9 +2771,12 @@ def _check_tree_registry(inputs: _Inputs) -> Finding:
     A NATIVE RECORD THE PRODUCT WOULD REFUSE TO CREATE IS NOT GREEN. The cutover
     verb records the routing tree and the intake tree and nothing else, so a
     native record for the catalogue tree or a tree nobody declares arrived by a
-    hand edit or by a template that changed after the cutover. It is a FAIL,
-    since it routes a writer today. A native intake tree is a record the verb
-    makes and reads ok, in the same sentence as the routing tree. The sentence
+    hand edit or by a template that changed after the cutover. So did a native
+    record for either of those two that names a source no rebuild reproduces,
+    since ``assert_rebuildable`` refuses that before anything is recorded. It
+    is a FAIL, since it routes a writer today. A native intake tree from a
+    rebuildable source is a record the verb makes and reads ok, in the same
+    sentence as the routing tree. The sentence
     names the act, because no remedy token means "revert this tree" and this is
     the layer that may name a verb.
 
@@ -2806,7 +2809,9 @@ def _check_tree_registry(inputs: _Inputs) -> Finding:
             f"{tree_id} is database native, anchored to root {record.root_id} "
             f"since {record.cutover_on}, rebuilt from {record.source}"
         )
-        if undeclared_reason is None and tree_id not in may_cut_over:
+        if undeclared_reason is None and (
+            tree_id not in may_cut_over or record.source not in tree_registry.REBUILDABLE
+        ):
             refused.append(tree_id)
     detail = "; ".join(described) if described else "no tree is declared or recorded"
     if undeclared_reason is not None:
@@ -2821,11 +2826,12 @@ def _check_tree_registry(inputs: _Inputs) -> Finding:
             title=title,
             status=Status.FAIL,
             detail=(
-                f"{where}: {detail}. {', '.join(refused)} is recorded database "
-                f"native and is not a tree a cutover records, only "
-                f"{', '.join(sorted(may_cut_over))} are, so a writer is being "
-                f"routed by a record this product would refuse to create. Run "
-                f"`crate tree revert <tree>` for each, which refuses if the "
+                f"{where}: {detail}. The database native record for "
+                f"{', '.join(refused)} is one a cutover never makes, since a "
+                f"cutover records only {', '.join(sorted(may_cut_over))} and "
+                f"only from a source a rebuild can reproduce, so a writer is "
+                f"being routed by a record this product would refuse to create. "
+                f"Run `crate tree revert <tree>` for each, which refuses if the "
                 f"tree has taken a native write"
             ),
         )

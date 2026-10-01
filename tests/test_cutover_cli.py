@@ -414,7 +414,6 @@ def test_a_tree_the_taxonomy_does_not_declare_is_refused(ready):
     code, refused = drive(_cutover(export, tree="no_such_tree"))
     assert code == int(ExitCode.PRECONDITION), refused
     assert refused["cause"]["reason"] == "cutover-tree-undeclared"
-    assert refused["cause"]["detail"]["routing_tree"] == TREE
     named = sorted({TREE, DECLARED.intake.id})
     assert refused["cause"]["detail"]["cutover_trees"] == named
     (step,) = refused["cause"]["remediation"]["steps"]
@@ -817,10 +816,22 @@ def test_doctor_fails_on_a_native_record_the_cutover_would_refuse_to_create(mach
     finding = _tree_finding(machine)
 
     assert finding.status is doctor.Status.FAIL
-    assert f"{DECLARED.catalog.id} is recorded database native" in finding.detail
+    assert f"The database native record for {DECLARED.catalog.id} is one" in finding.detail
     assert "crate tree revert" in finding.detail
-    assert f"only {', '.join(sorted({TREE, DECLARED.intake.id}))} are" in finding.detail
+    assert f"records only {', '.join(sorted({TREE, DECLARED.intake.id}))}" in finding.detail
     assert f"{TREE} is on the XML bridge" in finding.detail
+
+
+def test_doctor_fails_a_native_inbox_whose_source_no_rebuild_reproduces(machine):
+    """A tree the verb may record, with a source the verb would have refused."""
+    _native(
+        machine, DECLARED.intake.id, "root-7", tree_registry.DerivationSource.CATALOGUE_CRAWL
+    )
+    finding = _tree_finding(machine)
+
+    assert finding.status is doctor.Status.FAIL, finding.detail
+    assert f"The database native record for {DECLARED.intake.id} is one" in finding.detail
+    assert "crate tree revert" in finding.detail
 
 
 def test_doctor_and_the_verb_read_one_set_of_cutover_trees(machine, monkeypatch):
