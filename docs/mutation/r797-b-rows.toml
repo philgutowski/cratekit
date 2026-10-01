@@ -1,0 +1,93 @@
+name = "r797-b"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_found_in_the_holding_folder"
+description = "named_place: look for a former place in the declaring bucket's folder, where the old playlist never was"
+file = "src/cratekit/adopt/placements.py"
+surface = "user"
+tests = ["tests/test_adopt_former_place.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py"]
+old = '''    return declared.bucket(former.bucket).display, former.display'''
+new = '''    return declared.bucket(bucket_id).display, former.display'''
+
+[[rows]]
+id = "M2_recorded_under_the_old_sub"
+description = "recorded_under: ask for a former place's node under the bucket that now declares it, so a renamed old playlist reads as absent"
+file = "src/cratekit/adopt/placements.py"
+surface = "user"
+tests = ["tests/test_adopt_former_place.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py"]
+old = '''    return former.bucket, former.sub'''
+new = '''    return bucket_id, sub_id'''
+
+[[rows]]
+id = "M3_an_entry_never_targets_a_former_place"
+description = "standing: drop the refusal of an entry whose sub is a former place, so a hand built entry plans a move into one"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_former_place.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py"]
+old = '''    if routing.former_place(declared, entry.bucket, entry.sub) is not None:
+        return None
+'''
+new = ""
+
+[[rows]]
+id = "M4_the_writer_never_files_into_one"
+description = "membership_moves: resolve the target the way a place left is resolved, so a frozen row naming a former place as its target is written"
+file = "src/cratekit/adopt/move_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_former_place.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py"]
+old = '''            target = destination(declared, move.bucket, move.target)'''
+new = '''            target = placements.named_place(declared, move.bucket, move.target)'''
+
+[[rows]]
+id = "M5_the_writer_can_leave_one"
+description = "membership_moves: resolve a place left through destination, which knows no former place, so every move out of the old playlist refuses"
+file = "src/cratekit/adopt/move_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_former_place.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py"]
+old = '''                placements.named_place(declared, move.bucket, sub) for sub in move.remove'''
+new = '''                destination(declared, move.bucket, sub) for sub in move.remove'''
+
+[[rows]]
+id = "M6_listed_once_and_not_beside_its_move"
+description = "_standing_in_tree: list a track under the declaring bucket although the holding bucket's entry moves it"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_former_place.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py"]
+old = '''        if claims_the_holder(entry, bucket, declared, held):
+            return None
+'''
+new = ""
+
+[[rows]]
+id = "M7_a_track_still_there_is_listed"
+description = "buckets_asked: never ask a bucket about a track that holds nothing there but a former place, so the old playlist reads as empty while it holds tracks"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_former_place.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py"]
+old = '''        if bucket.formerly and in_former_place_only('''
+new = '''        if False and in_former_place_only('''
+
+[[rows]]
+id = "M8_an_unread_file_is_no_reading"
+description = "_left_in_former_place: say a file the census could not read is left because its genre names another bucket"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_former_place.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py"]
+old = '''    elif routing.resolve_bucket(declared, entry.genre).bucket_id in named_by_genre:'''
+new = '''    elif False:'''
+
+[[dropped]]
+id = "M9_the_verdict_reason"
+description = "_left_in_former_place: list a track a verdict withheld under the genre reason"
+reason = "ranked below the cap: a label on a row that is listed either way, and test_a_track_a_verdict_withheld_is_listed_under_the_verdict names it"
+
+[[dropped]]
+id = "M10_only_a_former_place"
+description = "in_former_place_only: answer yes for a track holding a band beside the former place"
+reason = "ranked below the cap: the claimed path owns that track and three tests assert its move, add empty and the old place removed"
+
+[[dropped]]
+id = "M11_listed_in_the_tree_path"
+description = "_standing_in_tree: answer nothing for a track only in a former place"
+reason = "ranked below the cap: the same guard family as M7, which removes the question one step earlier"

@@ -1,0 +1,100 @@
+name = "r797-a"
+pass_kind = "light"
+
+[[rows]]
+id = "T1_version_states_a_former_place"
+description = "_check_former_places: stop refusing a former place under schema version 1, so an older build is handed a file it loads while ignoring the declaration"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_adopt_former_place.py", "tests/test_adopt_placements.py", "tests/test_routing_parity.py"]
+old = '''        if bucket.formerly and version < FORMER_PLACE_SCHEMA_VERSION:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "T2_shape_is_checked_before_a_row_is_read"
+description = "_build_buckets: drop the shape check on formerly, so one pair of brackets in a hand edit raises out of the loader"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_adopt_former_place.py", "tests/test_adopt_placements.py", "tests/test_routing_parity.py"]
+old = '''        if not isinstance(formerly_raw, list) or not all(
+            isinstance(row, Mapping) for row in formerly_raw
+        ):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "T3_a_sub_still_declared_is_not_a_former_place"
+description = "_check_former_places: accept a former place whose sub identifier its bucket still declares, so a move would leave a live sub"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_adopt_former_place.py", "tests/test_adopt_placements.py", "tests/test_routing_parity.py"]
+old = '''            if former.sub in live_ids:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "T4_a_live_name_is_not_a_former_place"
+description = "_check_former_places: accept a former place carrying the name of a playlist its folder still holds, so a move would remove tracks from a playlist that is theirs"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_adopt_former_place.py", "tests/test_adopt_placements.py", "tests/test_routing_parity.py"]
+old = '''            if former.display in live_displays:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "T5_the_id_is_free_in_the_holding_bucket"
+description = "_check_former_places: accept a former place whose own identifier is a sub of the bucket that holds it, where it competes as well"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_adopt_former_place.py", "tests/test_adopt_placements.py", "tests/test_routing_parity.py"]
+old = '''            if former.id in live_ids:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "T6_one_playlist_is_left_by_one_bucket"
+description = "_check_former_places: accept one playlist as the former place of two buckets"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_adopt_former_place.py", "tests/test_adopt_placements.py", "tests/test_routing_parity.py"]
+old = '''                if other is not None:'''
+new = '''                if False:'''
+
+[[rows]]
+id = "T7_competes_in_a_style_bucket"
+description = "competing_subs: leave former places out of a bucket split by style, so the folder holding the old playlist no longer sees it"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_adopt_former_place.py", "tests/test_adopt_placements.py", "tests/test_routing_parity.py"]
+old = '''        return Competing.STYLE, frozenset((found | former) - classes)'''
+new = '''        return Competing.STYLE, frozenset(found - classes)'''
+
+[[rows]]
+id = "T8_competes_in_a_band_bucket"
+description = "competing_subs: leave former places out of a bucket split by energy, so adoption files a band beside the old playlist"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_adopt_former_place.py", "tests/test_adopt_placements.py", "tests/test_routing_parity.py"]
+old = '''    return Competing.BAND, frozenset((found | former) - classes)'''
+new = '''    return Competing.BAND, frozenset(found - classes)'''
+
+[[rows]]
+id = "T9_competes_where_it_sits_as_well"
+description = "former_places: answer for the declaring bucket alone, the first build's shape, which double filed a track whose genre names another style of the old folder"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_adopt_former_place.py", "tests/test_adopt_placements.py", "tests/test_routing_parity.py"]
+old = '''        if bucket_id in (declarer.id, place.bucket)'''
+new = '''        if bucket_id == declarer.id'''
+
+[[dropped]]
+id = "T10_own_id_free_in_the_declaring_bucket"
+description = "accept a former place whose identifier is a band of the bucket that declares it"
+reason = "ranked below the cap: the same guard family as T5, which is measured, and test_a_former_place_whose_own_id_is_a_band_is_refused names it"
+
+[[dropped]]
+id = "T11_a_band_is_live_only_where_bands_are"
+description = "_live_places: count band names as live in every bucket, or in none"
+reason = "ranked below the cap: both directions have a named test, the band of an energy bucket refused and a band name accepted in a bucket that does not split by energy"
+
+[[dropped]]
+id = "T12_one_identifier_one_former_place"
+description = "accept two buckets declaring one former place identifier"
+reason = "ranked below the cap: test_two_buckets_cannot_declare_one_former_place_id names it, and the shipped template declares one former place"
