@@ -299,10 +299,44 @@ class GateRule:
     keep: bool = False
 
 
+#: The label kind that passes every release and asks the catalogue nothing.
+#: Reserved: no published rule may name it, or a word could be "of any kind".
+ANY_KIND = "any"
+
+#: What a followed label is taken to be when its entry names no kind, and no
+#: ``default_kind`` is declared.
+DEFAULT_LABEL_KIND = "dance"
+
+
+@dataclass(frozen=True)
+class PublishedRule:
+    """One ordered rule saying what KIND of music a general catalogue's word is.
+
+    The matchers are :class:`GateRule`'s, held lowercase. The vocabulary is not:
+    these read the words a general catalogue publishes for an album, where
+    :class:`GateRule` reads the record shops' (R-798).
+    """
+
+    kind: str
+    all_of: tuple[str, ...] = ()
+    any_of: tuple[str, ...] = ()
+    equals: tuple[str, ...] = ()
+
+
 @dataclass(frozen=True)
 class LabelGate:
     rules: tuple[GateRule, ...] = ()
     out_of_place_share: float = 0.10
+    #: The rules over the general catalogue's words, in declared order. Empty
+    #: in a copy written before R-798, and then the gate judges no release.
+    published: tuple[PublishedRule, ...] = ()
+    #: The kind a followed label is when its registry entry names none.
+    default_kind: str = DEFAULT_LABEL_KIND
+
+    @property
+    def kinds(self) -> tuple[str, ...]:
+        """Every kind a published rule names, in first declared order."""
+        return tuple(dict.fromkeys(rule.kind for rule in self.published))
 
 
 @dataclass(frozen=True)
@@ -1359,7 +1393,81 @@ def _build_gate(raw: Mapping[str, Any]) -> tuple[LabelGate, list[str]]:
                 f"[[label_gate.rule]] {index}: declare exactly one of keep or family"
             )
         rules.append(rule)
-    return LabelGate(tuple(rules), share), problems
+    published, published_problems = _build_published(raw.get("published"))
+    problems += published_problems
+    default_kind = raw.get("default_kind", DEFAULT_LABEL_KIND)
+    kinds = {rule.kind for rule in published}
+    if not isinstance(default_kind, str) or not default_kind.strip():
+        problems.append("[label_gate] default_kind must be a kind's name")
+        default_kind = DEFAULT_LABEL_KIND
+    default_kind = default_kind.strip().lower()
+    # CHECKED ONLY WHEN SOMETHING IS DECLARED. A copy with no published rule
+    # judges nothing, so its default names nothing that could be wrong.
+    if published and default_kind != ANY_KIND and default_kind not in kinds:
+        problems.append(
+            f"[label_gate] default_kind {default_kind!r} is not a kind any "
+            f"[[label_gate.published]] rule names ({', '.join(sorted(kinds))}), so "
+            f"every label left at the default would hold every release it was asked about"
+        )
+    return LabelGate(tuple(rules), share, published, default_kind), problems
+
+
+def _needles(entry: Mapping[str, Any], key: str) -> tuple[tuple[str, ...], bool]:
+    """One matcher list, folded to lowercase, and whether it was a list of words.
+
+    FOLDED HERE AND NOT AT EACH MATCH. A word is matched lowercase, and a needle
+    typed with a capital would never match and would say nothing about it.
+    """
+    raw = entry.get(key)
+    if raw is None:
+        return (), True
+    if not isinstance(raw, list) or not all(isinstance(one, str) and one.strip() for one in raw):
+        return (), False
+    return tuple(one.strip().lower() for one in raw), True
+
+
+def _build_published(raw: Any) -> tuple[tuple[PublishedRule, ...], list[str]]:
+    """The ``[[label_gate.published]]`` rules, and what is wrong with them.
+
+    A RULE THAT COULD NEVER MATCH, OR THAT NAMES NO KIND, IS A PROBLEM AND NOT A
+    SKIP. These rules decide what a sweep holds back, and one dropped silently
+    would leave its words unknown, which the gate reads as not judged: the
+    music the rule was written to hold would be filed with nothing said.
+    """
+    problems: list[str] = []
+    if raw is None:
+        return (), problems
+    if not isinstance(raw, list):
+        return (), [
+            "[[label_gate.published]] must be a list of rules, written with two "
+            "pairs of brackets"
+        ]
+    rules: list[PublishedRule] = []
+    for index, entry in enumerate(raw):
+        where = f"[[label_gate.published]] {index}"
+        if not isinstance(entry, Mapping):
+            problems.append(f"{where}: is not a table")
+            continue
+        matchers: dict[str, tuple[str, ...]] = {}
+        for key in ("all_of", "any_of", "equals"):
+            matchers[key], readable = _needles(entry, key)
+            if not readable:
+                problems.append(f"{where}: {key} must be a list of words")
+        if not any(matchers.values()):
+            problems.append(f"{where}: needs all_of, any_of, or equals")
+        kind = entry.get("kind")
+        if not isinstance(kind, str) or not kind.strip():
+            problems.append(f"{where}: needs a kind")
+            continue
+        kind = kind.strip().lower()
+        if kind == ANY_KIND:
+            problems.append(
+                f"{where}: {ANY_KIND!r} is the kind of a label that passes everything "
+                f"and cannot be the kind of a word"
+            )
+            continue
+        rules.append(PublishedRule(kind=kind, **matchers))
+    return tuple(rules), problems
 
 
 def _build_family(

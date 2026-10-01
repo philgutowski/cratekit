@@ -35,7 +35,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Sequence
 
-from cratekit.core.taxonomy import BpmPrior, Bucket, FormerPlace, Sub, Taxonomy
+from cratekit.core.taxonomy import ANY_KIND, BpmPrior, Bucket, FormerPlace, Sub, Taxonomy
 
 
 class Match(str, Enum):
@@ -64,6 +64,30 @@ class Decline(str, Enum):
 class GateVerdict(str, Enum):
     KEEP = "keep"
     DROP = "drop"
+
+
+class KindVerdict(str, Enum):
+    """What the label gate says about one release's published words (R-798)."""
+
+    PASS = "passed"
+    HOLD = "held"
+    NOT_JUDGED = "not-judged"
+
+
+@dataclass(frozen=True)
+class KindJudgment:
+    """One release judged against the kind its label is followed as.
+
+    ``kind`` is the label's kind as it was judged, the default filled in.
+    ``placed`` is every published word a rule knew, with the kind it named, in
+    the catalogue's order. ``reason`` is the sentence a person reads, for every
+    verdict.
+    """
+
+    verdict: KindVerdict
+    kind: str
+    placed: tuple[tuple[str, str], ...]
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -668,6 +692,135 @@ def gate_decisions(
     return [
         GateVerdict.DROP if (f and f in out_of_place) else GateVerdict.KEEP for f in families
     ]
+
+
+# ---------------------------------------------------------------------------
+# The same gate, asked about KIND, over a general catalogue's vocabulary
+# ---------------------------------------------------------------------------
+
+
+def published_kind(taxonomy: Taxonomy, word: str | None) -> str | None:
+    """The kind of music a general catalogue's word is, or None when no rule knows it.
+
+    The first rule that matches wins, so the template's order is the
+    precedence. None is "no rule knows this word" and is never a kind: a word
+    nothing knows neither passes nor holds a release (R-798).
+    """
+    value = (word or "").strip().lower()
+    if not value:
+        return None
+    for rule in taxonomy.label_gate.published:
+        if (
+            (rule.equals and value in rule.equals)
+            or (rule.all_of and all(needle in value for needle in rule.all_of))
+            or (rule.any_of and any(needle in value for needle in rule.any_of))
+        ):
+            return rule.kind
+    return None
+
+
+def label_kind(taxonomy: Taxonomy, kind: str | None) -> str:
+    """The kind a label is judged as: its own when it names one, else the default."""
+    named = (kind or "").strip().lower()
+    return named or taxonomy.label_gate.default_kind
+
+
+def kind_settled(taxonomy: Taxonomy, kind: str | None) -> KindJudgment | None:
+    """The judgment no published word could change, or None when the words decide.
+
+    Three labels are settled before anything is read, and a caller that would
+    have to ask a catalogue for the words asks this first: a label followed for
+    ``any`` kind passes, and a taxonomy with no rule for this vocabulary, or a
+    label marked with a kind the taxonomy does not name, is not judged.
+    """
+    gate = taxonomy.label_gate
+    judged_as = label_kind(taxonomy, kind)
+    if judged_as == ANY_KIND:
+        return KindJudgment(
+            KindVerdict.PASS, judged_as, (), "its label is followed for any kind of music"
+        )
+    if not gate.published:
+        return KindJudgment(
+            KindVerdict.NOT_JUDGED,
+            judged_as,
+            (),
+            "the library's taxonomy declares no rule for the general catalogue's "
+            "genre words, so the gate has nothing to judge with",
+        )
+    if judged_as not in gate.kinds:
+        return KindJudgment(
+            KindVerdict.NOT_JUDGED,
+            judged_as,
+            (),
+            f"its label is marked as kind {judged_as!r}, which the library's taxonomy "
+            f"does not name (it names {', '.join(gate.kinds)}, or {ANY_KIND})",
+        )
+    return None
+
+
+def kind_verdict(
+    taxonomy: Taxonomy, kind: str | None, genres: Sequence[str]
+) -> KindJudgment:
+    """Pass, hold or decline to judge one release, by what kind of music it is.
+
+    ``genres`` is every word the general catalogue publishes for the release,
+    in its order. ``kind`` is the label's, or None for the default.
+
+    NOT THE SHARE RULE ABOVE, AND NOT A REPLACEMENT FOR IT. :func:`gate_decisions`
+    asks whether a family is a small minority of what a label puts out, which
+    cannot hold the failure R-798 measured: two labels sharing a name put the
+    wrong music at a large share of what the crawl lists. This asks about one
+    release alone, against what its label is followed for.
+
+    ONE WORD OF THE LABEL'S KIND PASSES THE RELEASE, so an album the catalogue
+    files under a dance word and a pop one passes a dance label. HELD NEEDS A
+    KNOWN WORD OF ANOTHER KIND and none of the label's own. Everything else is
+    NOT JUDGED, and each case says which it is: a label of a kind the taxonomy
+    does not name, a taxonomy with no rule for this vocabulary, a release with
+    no published word, and words no rule knows. Absence of a verdict is never
+    a hold, because a hold on a guess is music a person never sees.
+
+    A LABEL OF KIND ``any`` PASSES WITHOUT A WORD BEING READ. Its author said
+    every kind belongs to it. See :func:`kind_settled`.
+    """
+    settled = kind_settled(taxonomy, kind)
+    if settled is not None:
+        return settled
+    judged_as = label_kind(taxonomy, kind)
+    words = tuple(word.strip() for word in genres if isinstance(word, str) and word.strip())
+    if not words:
+        return KindJudgment(
+            KindVerdict.NOT_JUDGED, judged_as, (), "the general catalogue publishes no genre for it"
+        )
+    placed = tuple(
+        (word, found)
+        for word in words
+        if (found := published_kind(taxonomy, word)) is not None
+    )
+    said = ", ".join(words)
+    if any(found == judged_as for _word, found in placed):
+        return KindJudgment(
+            KindVerdict.PASS,
+            judged_as,
+            placed,
+            f"the general catalogue calls it {said}, and its label is followed as {judged_as}",
+        )
+    if placed:
+        others = ", ".join(dict.fromkeys(found for _word, found in placed))
+        return KindJudgment(
+            KindVerdict.HOLD,
+            judged_as,
+            placed,
+            f"the general catalogue calls it {said}, which is {others} and not "
+            f"{judged_as}, the kind its label is followed as",
+        )
+    return KindJudgment(
+        KindVerdict.NOT_JUDGED,
+        judged_as,
+        (),
+        f"the general catalogue calls it {said}, and no rule of the gate knows "
+        f"what kind of music that is",
+    )
 
 
 def _sub_by_id(bucket: Bucket, sub_id: str) -> Sub | None:
