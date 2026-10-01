@@ -20,21 +20,37 @@ considered and logged as dropped in `r790-d-rows.toml`: R4, `record_round`
 keeping a resumed run's first count. It is maintainer facing, and its slot went
 to re-measuring S9.
 
-## The guard the driver watched was a scratch root
+## Measured with the leak watch off, against a documented rule
 
 The first attempt at `r790-a` stopped with a state leak. The real installation
 directory gained 48 entries during the baseline. They were tag artifacts under
 `jobs/tag-artifacts/2026-10-01T10:25:38Z-d32f/`, written by a real `crate tag`
-job running on the machine at the same time, not by any child of the driver.
-The four tables were then measured with `CRATEKIT_STATE_DIR` and
+job, and an analysis job, `2026-10-01T10:34:47Z-c87e`, started writing
+`jobs/analysis-artifacts/` during the run. Both were started outside this
+session against the installed copy.
+
+**The four tables were then measured with `CRATEKIT_STATE_DIR` and
 `CRATEKIT_CONFIG_DIR` pointing the driver's own watch at two empty scratch
-directories. Every child still ran in the driver's per run sandbox, which is
-the R-343 protection. The leak WATCH on the real directory was not in force for
-these tables, and they say nothing about whether a child reached it. One
-baseline also came back red on
-`tests/test_outbound_workers.py::test_the_handler_runs_against_the_frozen_configuration_not_the_current_one[sync.favorites]`,
-which passed three times alone and on the retried baseline. That was the
-concurrent job's load, not this branch.
+directories.**
+`docs/solutions/workflow-issues/a-state-leak-halt-during-the-null-control-can-be-another-process-polling-the-installed-copy-so-read-the-newest-run-record-before-blaming-a-child.md`
+names exactly that as what not to do unattended, because it turns off the one
+check for R-343's shape. The entry was not read before the driver ran, and that
+is this session's error. Every child still ran in the driver's per run sandbox.
+The watch on the real directory was not in force.
+
+**What was read afterwards, in place of the watch.** Every file under the real
+installation directory changed in the hour of these runs belongs to one of
+those two job ids: their locks, their artifacts, the job queue database and
+the provider gate the tag job paces through. `config.toml` was last written on
+2026-09-29, and no run record or file outside those jobs changed. So there is
+no sign a child reached the machine. That is a read after the fact, not the
+watch, and the numbers below carry it as their condition. They should be
+measured again with the watch on once no real job is running.
+
+One baseline also came back red on
+`tests/test_outbound_workers.py::test_the_handler_runs_against_the_frozen_configuration_not_the_current_one[sync.favorites]`.
+It passed three times alone and on the retried baseline, which points to the
+concurrent jobs' load and not to this branch.
 
 ## The two zeros
 
