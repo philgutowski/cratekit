@@ -50,11 +50,14 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from cratekit.core import config, session, snapshot
 from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, refuse
 from cratekit.core.exit_codes import Remedy
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from cratekit.core.taxonomy import Taxonomy
 
 #: The state entry this module owns. Named once, so the resolver and every caller
 #: cannot disagree about which file is meant.
@@ -147,6 +150,24 @@ NOT_REBUILDABLE: frozenset[DerivationSource] = frozenset(DerivationSource) - REB
 #: Where every tree starts. Not configurable at setup: a cutover is a migration
 #: with a date and an adopted root, not a preference somebody answers up front.
 DEFAULT_MODE: Mode = Mode.XML
+
+
+def cutover_trees(declared: Taxonomy) -> frozenset[str]:
+    """The trees a cutover may record, by stable identifier (R-787).
+
+    THE ONE OWNER OF THE ANSWER. ``crate tree cutover`` accepts exactly these
+    and ``crate doctor`` passes a native record for exactly these, and both ask
+    here. They were two spellings once: #224 widened the verb to the intake
+    tree and left doctor's list at the routing tree alone, so every doctor run
+    after a recorded inbox cutover failed and named a revert that refuses once
+    a native landing exists.
+
+    The routing tree and the intake tree, because the declared taxonomy
+    reproduces both from what is on disk (R-746). The catalogue tree is declared
+    and is not here: a catalogue crawl is not rebuildable, so R39 keeps it on
+    the bridge.
+    """
+    return frozenset({declared.tree.id, declared.intake.id})
 
 
 class TreeRegistryUnreadable(CratekitError):
@@ -1320,6 +1341,7 @@ __all__ = [
     "assert_rebuildable",
     "assert_revertible",
     "cutover_precheck",
+    "cutover_trees",
     "flip",
     "lock_path",
     "native_writes",

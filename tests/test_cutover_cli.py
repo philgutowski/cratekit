@@ -24,6 +24,7 @@ import pytest
 from cratekit.adopt import collection
 from cratekit.cli import cutover, doctor
 from cratekit.core import config, preflight, rb_writer, session, snapshot, taxonomy, tree_registry
+from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from tests import adopt_fixtures, cutover_fixtures
 from tests.cli_drive import approve_and_queue, drive
@@ -414,6 +415,10 @@ def test_a_tree_the_taxonomy_does_not_declare_is_refused(ready):
     assert code == int(ExitCode.PRECONDITION), refused
     assert refused["cause"]["reason"] == "cutover-tree-undeclared"
     assert refused["cause"]["detail"]["routing_tree"] == TREE
+    named = sorted({TREE, DECLARED.intake.id})
+    assert refused["cause"]["detail"]["cutover_trees"] == named
+    (step,) = refused["cause"]["remediation"]["steps"]
+    assert all(repr(tree_id) in step for tree_id in named), step
     assert not tree_registry.path_for(cfg).exists()
 
 
@@ -756,23 +761,91 @@ def test_two_cutovers_offered_before_either_was_approved_record_one(ready):
     assert tree_registry.read(cfg).record(TREE).root_id == root_id
 
 
-def test_doctor_fails_on_a_native_record_the_cutover_would_refuse_to_create(machine):
-    registry = tree_registry.EMPTY.with_record(
-        tree_registry.TreeRecord(
-            tree_id=DECLARED.intake.id,
-            mode=tree_registry.Mode.DATABASE,
-            cutover_on=TODAY,
-            root_id="root-7",
-            source=tree_registry.DerivationSource.TAXONOMY,
-        )
+def _native(cfg: config.Config, tree_id: str, root_id: str, source) -> None:
+    """Write one database native record, the way a hand edit or the verb would."""
+    tree_registry.write(
+        cfg,
+        tree_registry.EMPTY.with_record(
+            tree_registry.TreeRecord(
+                tree_id=tree_id,
+                mode=tree_registry.Mode.DATABASE,
+                cutover_on=TODAY,
+                root_id=root_id,
+                source=source,
+            )
+        ),
     )
-    tree_registry.write(machine, registry)
+
+
+def test_doctor_reads_a_native_inbox_record_as_ok(machine):
+    """R-787. The verb records the intake tree since #224, so doctor failing it
+    sent the person to a revert that refuses once a native landing exists."""
+    _native(machine, DECLARED.intake.id, "root-7", tree_registry.DerivationSource.TAXONOMY)
+    finding = _tree_finding(machine)
+
+    assert finding.status is doctor.Status.OK, finding.detail
+    assert (
+        f"{DECLARED.intake.id} is database native, anchored to root root-7 "
+        f"since {TODAY.isoformat()}, rebuilt from taxonomy"
+    ) in finding.detail
+    assert "crate tree revert" not in finding.detail
+    assert f"{TREE} is on the XML bridge" in finding.detail
+
+
+def test_doctor_reads_an_inbox_the_verb_cut_over_as_ok(ready):
+    """The record the verb itself writes, not one authored beside the fix."""
+    cfg, export, _routing_root = ready
+    intake_root = _add_folder(cfg, DECLARED.intake.display)
+    code, acted, _refused = _two_acts(
+        _cutover(export, tree=DECLARED.intake.id), CUTOVER_GATE, "approve"
+    )
+    assert code == int(ExitCode.OK), acted
+    finding = _tree_finding(cfg)
+
+    assert finding.status is doctor.Status.OK, finding.detail
+    assert (
+        f"{DECLARED.intake.id} is database native, anchored to root {intake_root}"
+    ) in finding.detail
+
+
+def test_doctor_fails_on_a_native_record_the_cutover_would_refuse_to_create(machine):
+    """The catalogue tree is declared and no verb records it (R39)."""
+    assert DECLARED.catalog is not None
+    _native(
+        machine, DECLARED.catalog.id, "root-7", tree_registry.DerivationSource.CATALOGUE_CRAWL
+    )
     finding = _tree_finding(machine)
 
     assert finding.status is doctor.Status.FAIL
-    assert f"{DECLARED.intake.id} is recorded database native" in finding.detail
+    assert f"{DECLARED.catalog.id} is recorded database native" in finding.detail
     assert "crate tree revert" in finding.detail
+    assert f"only {', '.join(sorted({TREE, DECLARED.intake.id}))} are" in finding.detail
     assert f"{TREE} is on the XML bridge" in finding.detail
+
+
+def test_doctor_and_the_verb_read_one_set_of_cutover_trees(machine, monkeypatch):
+    """R-787. One function names the trees a cutover may record and both ask it.
+
+    Unpatched, the two answers are the one function's answer. Patched to a
+    sentinel, doctor hands back the sentinel itself and the verb's acceptance
+    moves with it, so neither can be holding a list of its own.
+    """
+    assert DECLARED.catalog is not None
+    expected = frozenset({TREE, DECLARED.intake.id})
+    _declared, may_cut_over, _reason = doctor._declared_trees(machine)
+    assert may_cut_over == tree_registry.cutover_trees(DECLARED) == expected
+
+    sentinel = frozenset({DECLARED.catalog.id})
+    monkeypatch.setattr(tree_registry, "cutover_trees", lambda declared: sentinel)
+    _declared, may_cut_over, _reason = doctor._declared_trees(machine)
+    assert may_cut_over is sentinel
+    assert (
+        cutover.derivation_source(DECLARED, DECLARED.catalog.id)
+        is tree_registry.DerivationSource.TAXONOMY
+    )
+    with pytest.raises(CratekitError) as refused:
+        cutover.derivation_source(DECLARED, DECLARED.intake.id)
+    assert refused.value.cause.reason == "cutover-tree-undeclared"
 
 
 def test_the_catalogue_tree_is_refused_as_not_rebuildable(ready):
@@ -785,6 +858,7 @@ def test_the_catalogue_tree_is_refused_as_not_rebuildable(ready):
     assert code != int(ExitCode.OK), refused
     assert refused["cause"]["reason"] == "tree-unconverged"
     assert refused["cause"]["detail"]["tree_id"] == DECLARED.catalog.id
+    assert refused["cause"]["detail"]["cutover_trees"] == sorted({TREE, DECLARED.intake.id})
     assert not tree_registry.path_for(cfg).exists()
 
 

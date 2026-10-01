@@ -186,22 +186,31 @@ def derivation_source(
     native the landing adds rows to the collection through the database and
     no splice is owed the bridge.
 
+    WHICH TREES ANSWER TAXONOMY IS ``tree_registry.cutover_trees``'S, never a
+    list here, because doctor judges a native record by the same set and a
+    second spelling is how the two disagreed (R-787).
+
     A TREE THE TAXONOMY DOES NOT DECLARE IS REFUSED rather than called curated.
     An identifier nobody declared is far more often a misspelling than a
     playlist a person keeps by hand, and both end in a refusal, so the refusal
     names the identifiers that would have been accepted.
     """
-    if tree_id in (declared.tree.id, declared.intake.id):
+    accepted = tree_registry.cutover_trees(declared)
+    if tree_id in accepted:
         return tree_registry.DerivationSource.TAXONOMY
     if declared.catalog is not None and tree_id == declared.catalog.id:
         return tree_registry.DerivationSource.CATALOGUE_CRAWL
+    named = sorted(accepted)
     raise refuse(
         "cutover-tree-undeclared",
         f"this library's taxonomy declares no tree {tree_id!r}, so nothing can "
         f"say where its membership would be rebuilt from and it cannot cut over",
-        steps=(f"name the routing tree, which this library declares as {declared.tree.id!r}",),
+        steps=(
+            f"name a tree a cutover records, which this library declares as "
+            f"{', '.join(repr(t) for t in named)}",
+        ),
         origin=("cli.cutover",),
-        detail={"tree_id": tree_id, "routing_tree": declared.tree.id},
+        detail={"tree_id": tree_id, "routing_tree": declared.tree.id, "cutover_trees": named},
     )
 
 
@@ -331,7 +340,23 @@ def cutover(ctx: "Context") -> Envelope:
     export = Path(ctx.args.export).expanduser().resolve()
 
     source = derivation_source(declared, tree_id)
-    tree_registry.assert_rebuildable(tree_id, source)
+    try:
+        tree_registry.assert_rebuildable(tree_id, source)
+    except tree_registry.TreeModeRefused as exc:
+        # The registry's own refusal, carrying the set a cutover does accept,
+        # so a person told "not this tree" is also told which trees.
+        cause = exc.cause
+        raise rebuilt(
+            exc,
+            replace(
+                cause,
+                origin=(*cause.origin, "cli.cutover"),
+                detail={
+                    **cause.detail,
+                    "cutover_trees": sorted(tree_registry.cutover_trees(declared)),
+                },
+            ),
+        ) from exc
 
     standing = tree_registry.read(cfg).record(tree_id)
     if standing is not None and standing.mode == tree_registry.Mode.DATABASE:
