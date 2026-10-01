@@ -31414,6 +31414,21 @@ merge that carries this entry.
 cutover verb's, read from one place, and a test holds the two to agreeing;
 a native inbox record reads as ok.
 
+**Closed 2026-09-30 on `relay/233`, issue #233, in the code.**
+`tree_registry.cutover_trees` names the routing tree and the intake tree,
+`cutover.derivation_source` asks it which trees answer taxonomy, and
+doctor's `_declared_trees` returns it as the set a native record must
+belong to. A native inbox reads ok in `tree.registry` in the routing tree's
+sentence, on a fixture record and on the record the verb itself writes. A
+native catalogue tree still fails with the revert remedy, and so does a
+native routing or intake record whose source no rebuild reproduces, which
+the review raised and the verb refuses before writing. A test patches the
+one function to a sentinel and shows doctor hands back the sentinel itself
+and the verb's acceptance moves with it. Both cutover refusals for a tree
+outside the set carry the set in their detail. **Owed to an attended
+sitting:** the issue's closing line, doctor read on the author's library
+after a live inbox cutover, recorded in `docs/cutover.md`.
+
 ## R-788. Twelve vox tracks sit in a bucket without its with vox sub, and no verb files them
 
 **Found:** at sitting 23, 2026-09-30, reading the live database for line 7
@@ -31444,3 +31459,30 @@ was discarded too.
 into its bucket's `with vox` sub, and the twelve are in theirs.
 
 **Not on the board bar.** Twelve rows, all visible in their bucket.
+
+## R-789. A rebuild of a native intake tree derives the routing tree's placements
+
+**Found:** on `relay/233`, 2026-09-30, by the built in review of R-787's
+fix, read from the source and not driven.
+
+**The mechanism.** The cutover verb records the intake tree with the
+taxonomy as its derivation source since R-746. `write/rebuild.py`
+`declared_membership` takes the source and never the tree: the taxonomy
+derivation places tracks into BY GENRE + ENERGY buckets, which is the
+routing tree's membership. `crate rebuild` with no tree named rebuilds
+every native tree, so after an inbox cutover a rebuild would compare and
+plan genre placements under the INBOX root rather than reproduce the
+intake batches.
+
+**Measured cost.** Unmeasured. No rebuild was driven against a native
+intake tree. `assert_addressable` is expected to refuse when the declared
+destinations do not resolve under the anchored root, which would make the
+cost a refused rebuild rather than written rows, and that expectation is
+also unmeasured.
+
+**Closes when:** a rebuild of a native intake tree is driven on a copy and
+either reproduces the intake batches, or refuses with a sentence that names
+the intake tree as one a rebuild cannot reproduce.
+
+**Not on the board bar yet.** The reachability is unmeasured. It earns an
+issue once a driven rebuild shows rows written or a false report.

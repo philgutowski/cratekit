@@ -4,6 +4,26 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**Last built: R-787, issue #233, `relay/233`, 2026-09-30, unattended.**
+`crate doctor` reads a native inbox record as ok. The trees a cutover may
+record are one value, `tree_registry.cutover_trees`, the routing tree and
+the intake tree; the cutover verb's `derivation_source` and doctor's
+`_declared_trees` both ask it, and a test patches it to a sentinel and
+shows both follow. A native catalogue tree still fails `tree.registry` with
+the revert remedy, and so, from the review, does a native record for either
+tree whose source no rebuild reproduces. Both cutover refusals for a tree
+outside the set carry the set in their detail. Nothing the cutover writes
+changed. The review also found R-789, a rebuild of a native intake tree
+deriving the routing tree's placements, recorded with its reachability
+unmeasured and no issue. One mutation table, 7 rows, 7 killed, measured
+after an attended `sync mark` job writing the real installation state
+tripped the driver's leak guard twice and then ended. Battery on the
+committed tree: ruff clean, **11,062 passed and 1 skipped** in 99 seconds,
+scan clean, `board.py closing --since main` exit 0. **Main's highest
+residual number is R-789 once this merges.** Owed to an attended sitting:
+doctor on the author's library after a live inbox cutover, recorded in
+`docs/cutover.md`, which is the issue's closing line.
+
 **Sitting 23, 2026-09-30, afternoon to 20:54, no code.** The remaining
 lines of #178 driven on the author's word with no questions after the
 hearts gate. Line 4: `sync all` listed (635 calls a listing), 109 hearts
@@ -5502,6 +5522,12 @@ tree, which is the whole of what the entry now says.
     git status --porcelain                      # empty
     .venv/bin/pytest --tb=no                    # run it; do not trust a count here
     .venv/bin/python scripts/board.py audit     # exit 1 on the In review card, R-265
+
+**Main's highest residual is R-789 once `relay/233` merges**, R-787 and
+R-788 being sitting 23's and R-789 being the review's of R-787, with R-787
+closed in place, no duplicate heading and no heading moved. Its battery on
+the committed tree was ruff clean, **11,062 passed and 1 skipped** in 99
+seconds, scan clean. The four new tests are in `tests/test_cutover_cli.py`.
 
 **Main's highest residual is R-786 once `relay/232` merges**, R-784 to R-786
 being R-744's, with R-744 closed in place, no duplicate heading and no
