@@ -1812,6 +1812,9 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         "export.collection": lambda: [
             str(library / "exports" / f"collection-{uuid.uuid4().hex}.xml")
         ],
+        # R-797. No argument: the threshold is the author's number and the
+        # database is the configured one.
+        "report.genres": [],
     }[entry.name]
     return sample() if callable(sample) else sample
 
