@@ -60,8 +60,27 @@ ALIASED = {v for v in POPULATION if TAXONOMY.tagging_alias(v.lower().strip()) is
 SWEEP_PARITY_POPULATION = [
     v for v in POPULATION if v.lower().strip() not in REFUSED and v not in ALIASED
 ]
+
+# THE ONE BUCKET THE OLD CODE NEVER HAD (R-797). The author moved R&B out of the
+# source routed folder to a folder of its own on 2026-10-01, so the strings that
+# filed in the playlist it left now route to the new bucket, and the tagger
+# writes the new bucket's name where it wrote the old playlist's. Both sets are
+# derived, the first from the engine and the second from the frozen code, and
+# their own tests below hold them equal to what the old code filed there.
+PROMOTED_BUCKET = next(bucket for bucket in TAXONOMY.buckets if bucket.formerly)
+(FORMER_PLACE,) = PROMOTED_BUCKET.formerly
+PROMOTED = {
+    v for v in POPULATION if routing.resolve_bucket(TAXONOMY, v).bucket_id == PROMOTED_BUCKET.id
+}
+RETAGGED = {
+    k for k in legacy.GENRE_NORMALIZE if legacy.normalize_genre(k) == FORMER_PLACE.display
+}
+
+ROUTING_PARITY_POPULATION = [v for v in POPULATION if v not in PROMOTED]
 TAGGER_PARITY_POPULATION = [
-    k for k in sorted(legacy.GENRE_NORMALIZE) if k.lower().strip() not in REFUSED
+    k
+    for k in sorted(legacy.GENRE_NORMALIZE)
+    if k.lower().strip() not in REFUSED and k not in RETAGGED
 ]
 
 
@@ -83,9 +102,47 @@ def test_the_corpus_actually_exercises_the_tiers_that_drift():
     assert matches.count(routing.Match.PASSTHROUGH) >= 1
 
 
-@pytest.mark.parametrize("value", POPULATION)
+@pytest.mark.parametrize("value", ROUTING_PARITY_POPULATION)
 def test_routing_resolves_every_source_string_identically(value):
     assert resolved_display(value) == legacy.resolve_genre(value)[0]
+
+
+def test_the_promoted_bucket_takes_exactly_what_the_old_code_filed_in_the_playlist_it_left():
+    """R-797, and the only routing difference from the old code.
+
+    The old code filed these strings in one playlist of the source routed
+    folder. The author gave that playlist's genre a folder of its own, so they
+    route there now. The set is asked of the FROZEN code, by the playlist name
+    it answers with, so a string added to the new bucket that the old code filed
+    anywhere else fails here, and so does one the old code filed there that the
+    new bucket forgot.
+    """
+    holder = TAXONOMY.bucket(FORMER_PLACE.bucket)
+    filed_there_by_the_old_code = {
+        value
+        for value in POPULATION
+        if legacy.resolve_genre(value)[0] == holder.display
+        and legacy.energy_to_sub(5, holder.display, value) == FORMER_PLACE.display
+    }
+    assert filed_there_by_the_old_code, "the frozen code no longer files anything there"
+    assert PROMOTED == filed_there_by_the_old_code
+    assert PROMOTED == set(PROMOTED_BUCKET.aliases)
+    for value in PROMOTED:
+        assert routing.resolve_bucket(TAXONOMY, value).match is routing.Match.EXACT
+
+
+def test_the_keyword_rules_were_not_repointed_by_the_promotion():
+    """A partial match on the promoted genre's words lands where it always did.
+
+    Decided with the promotion and recorded as a residual: repointing the two
+    keyword rules would route such a track to the new bucket while it sits in
+    the old folder's default sub, which no verb settles. These are in the
+    parity population above, so this names what that population is holding.
+    """
+    partial = [v for v in ROUTING_PARITY_POPULATION if v.lower() in {"soul", "r&b", "soul / r&b"}]
+    assert partial, "the corpus no longer carries a partial match to hold this"
+    for value in partial:
+        assert routing.resolve_bucket(TAXONOMY, value).bucket_id == FORMER_PLACE.bucket
 
 
 def test_routing_never_raises_and_always_lands():
@@ -135,7 +192,8 @@ def test_the_source_routed_bucket_matches_for_every_source_string():
     """The one bucket that ignores energy and routes by the source genre,
     including the landing place for anything unmapped."""
     bucket = next(b for b in TAXONOMY.buckets if b.sub_by_source is not None)
-    for value in POPULATION:
+    # The strings R-797 moved to a bucket of their own never reach this one.
+    for value in ROUTING_PARITY_POPULATION:
         sub = routing.energy_sub(TAXONOMY, bucket.id, 5, source_genre=value)
         assert sub is not None
         assert sub.display == legacy.energy_to_sub(5, bucket.display, value), value
@@ -380,6 +438,20 @@ def test_tagging_matches_the_old_tagger_except_on_a_declared_refusal(value):
     assert routing.suggest_tag(TAXONOMY, value).tag == legacy.normalize_genre(value)
 
 
+def test_the_tagger_writes_the_promoted_buckets_name_where_it_wrote_the_old_playlists():
+    """R-797. The old tagger answered these with the name of the playlist the
+    promotion left. The answer is the new folder's name now, a bucket and no
+    sub, and a file still carrying the old name routes to the same folder."""
+    assert RETAGGED, "the frozen tagger no longer answers with the old playlist's name"
+    for value in sorted(RETAGGED):
+        suggestion = routing.suggest_tag(TAXONOMY, value)
+        assert (suggestion.bucket_id, suggestion.sub_id, suggestion.tag) == (
+            PROMOTED_BUCKET.id, None, PROMOTED_BUCKET.display
+        ), value
+    for name in (FORMER_PLACE.display, PROMOTED_BUCKET.display):
+        assert routing.resolve_bucket(TAXONOMY, name).bucket_id == PROMOTED_BUCKET.id
+
+
 def test_the_sweep_gains_the_alias_table_it_never_had():
     """The single largest deliberate change, and the reason the sweep-parity
     population above excludes anything with an alias.
@@ -580,11 +652,13 @@ def test_the_three_strings_the_two_old_tables_flatly_contradicted():
 def test_a_sub_playlist_name_can_be_the_tag_a_bucket_alias_is_not():
     """Nine of the old tagger's answers were sub-playlist names rather than
     folder names, and the round trip only worked because the routing table
-    happened to contain all nine as keys. Declared explicitly now."""
-    suggestion = routing.suggest_tag(TAXONOMY, "R&B")
+    happened to contain all nine as keys. Declared explicitly now. Eight are
+    left since R-797 gave one of the nine a folder of its own, so the example
+    is one that is still a sub."""
+    suggestion = routing.suggest_tag(TAXONOMY, "Hip-Hop")
     assert suggestion.sub_id is not None
-    assert suggestion.tag == legacy.normalize_genre("R&B")
-    assert routing.resolve_bucket(TAXONOMY, "R&B").bucket_id == suggestion.bucket_id
+    assert suggestion.tag == legacy.normalize_genre("Hip-Hop")
+    assert routing.resolve_bucket(TAXONOMY, "Hip-Hop").bucket_id == suggestion.bucket_id
 
 
 def test_the_two_coarse_source_strings_are_declared_unusable_as_a_final_tag():

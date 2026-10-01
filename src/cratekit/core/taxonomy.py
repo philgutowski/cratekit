@@ -192,6 +192,35 @@ class SubBySource:
 
 
 @dataclass(frozen=True)
+class FormerPlace:
+    """A playlist a bucket's tracks were filed in before the bucket had its folder.
+
+    WHY IT IS DECLARED (R-797). A genre promoted from a sub of one folder to a
+    folder of its own leaves its tracks sitting in the old playlist, and every
+    reader of the tree asks the taxonomy what a place is. A playlist the
+    taxonomy stopped declaring is no place at all, so nothing would withhold a
+    second filing over it and nothing could plan leaving it. Declaring it on
+    the bucket that took its tracks over makes it one of that bucket's
+    competing subs, which is the single question the adoption plan, the
+    placement reader and the move already ask.
+
+    ``id`` is the identifier it competes under in the bucket that declares it.
+    ``bucket`` is the declared bucket whose folder holds the playlist, ``sub``
+    the identifier the playlist had there, which is what a previous write
+    recorded its node under, and ``display`` the name it carries.
+
+    A FORMER PLACE IS ONLY EVER LEFT. No resolver answers with one, so nothing
+    is filed into it, and the loader refuses one that names a place the
+    taxonomy still declares.
+    """
+
+    id: str
+    bucket: str
+    sub: str
+    display: str
+
+
+@dataclass(frozen=True)
 class Bucket:
     """One folder in the tree, with everything that varies about it declared."""
 
@@ -206,6 +235,7 @@ class Bucket:
     single_sub: Sub | None = None
     sub_by_source: SubBySource | None = None
     rates: bool = True
+    formerly: tuple[FormerPlace, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -724,6 +754,8 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
     sub_classes, sub_class_problems = _build_sub_classes(data.get("sub_class") or [])
     problems += sub_class_problems
 
+    problems += _check_former_places(buckets, energy, sub_classes)
+
     fuzzy, fuzzy_problems = _build_fuzzy(data.get("fuzzy") or [], by_id)
     problems += fuzzy_problems
 
@@ -960,6 +992,16 @@ def _build_buckets(
                 f"splits by energy or has one sub, never both"
             )
 
+        formerly = tuple(
+            FormerPlace(
+                id=str(row.get("id", "")),
+                bucket=str(row.get("bucket", "")),
+                sub=str(row.get("sub", "")),
+                display=str(row.get("display", "")),
+            )
+            for row in entry.get("formerly") or []
+        )
+
         buckets.append(
             Bucket(
                 id=bucket_id,
@@ -973,12 +1015,112 @@ def _build_buckets(
                 single_sub=single,
                 sub_by_source=sub_by_source,
                 rates=bool(entry.get("rates", True)),
+                formerly=formerly,
             )
         )
 
     if not buckets:
         problems.append("no [[bucket]] declared; a taxonomy with no buckets routes nothing")
     return tuple(buckets), problems
+
+
+def _live_places(
+    bucket: Bucket, energy: Energy, sub_classes: Sequence[SubClass]
+) -> tuple[set[str], set[str]]:
+    """The identifiers and the names of every sub one bucket's folder can hold.
+
+    The declared subs and the single sub, the bands under the bucket's own
+    labels and the no reading sub when the bucket splits by energy, and every
+    sub class. This is what a former place must not be.
+    """
+    ids = {sub.id for sub in bucket.subs}
+    displays = {sub.display for sub in bucket.subs}
+    if bucket.single_sub is not None:
+        ids.add(bucket.single_sub.id)
+        displays.add(bucket.single_sub.display)
+    if bucket.sub_by_source is None and energy.enabled and bucket.energy.enabled:
+        for band in energy.bands:
+            ids.add(band.id)
+            displays.add(bucket.energy.band_display.get(band.id, band.display))
+        if energy.no_energy_sub is not None:
+            ids.add(energy.no_energy_sub.id)
+            displays.add(energy.no_energy_sub.display)
+    for entry in sub_classes:
+        ids.add(entry.id)
+        displays.add(entry.display)
+    return ids, displays
+
+
+def _check_former_places(
+    buckets: Sequence[Bucket], energy: Energy, sub_classes: Sequence[SubClass]
+) -> list[str]:
+    """Refuse a former place that is still a place (R-797).
+
+    A FORMER PLACE IS REMOVED FROM, so every way of naming a live playlist
+    through one is refused here, before any plan is built. Its bucket has to be
+    declared, since the folder is found by that bucket's name. The sub
+    identifier and the name it carries must not be ones that bucket still
+    holds, or a move would leave a playlist tracks are still filed into. Its
+    own identifier must not be one the declaring bucket already competes on,
+    or what a track holds there would be ambiguous. And one playlist cannot be
+    the former place of two buckets, since a track leaving it would be claimed
+    twice.
+    """
+    problems: list[str] = []
+    by_id = {bucket.id: bucket for bucket in buckets}
+    claimed_subs: dict[tuple[str, str], str] = {}
+    claimed_displays: dict[tuple[str, str], str] = {}
+    for bucket in buckets:
+        own_ids, _own_displays = _live_places(bucket, energy, sub_classes)
+        seen: set[str] = set()
+        for former in bucket.formerly:
+            where = f"[[bucket]] {bucket.id} formerly {former.id or former.display!r}"
+            if not _ID.match(former.id):
+                problems.append(f"{where}: id {former.id!r} must match {_ID.pattern}")
+            if former.id in own_ids:
+                problems.append(
+                    f"{where}: id {former.id!r} is already a sub of this bucket; a former "
+                    f"place competes under an identifier of its own"
+                )
+            if former.id in seen:
+                problems.append(f"{where}: duplicate former place id")
+            seen.add(former.id)
+            if not _ID.match(former.sub):
+                problems.append(f"{where}: sub {former.sub!r} must match {_ID.pattern}")
+            if not former.display:
+                problems.append(f"{where}: display must be a non-empty string")
+            holder = by_id.get(former.bucket)
+            if holder is None:
+                problems.append(
+                    f"{where}: names bucket {former.bucket!r}, which is not declared; the "
+                    f"folder a former place sits in is found by its bucket"
+                )
+                continue
+            live_ids, live_displays = _live_places(holder, energy, sub_classes)
+            if former.sub in live_ids:
+                problems.append(
+                    f"{where}: {former.bucket!r} still declares the sub {former.sub!r}; a "
+                    f"former place is one the taxonomy no longer files into"
+                )
+            if former.display in live_displays:
+                problems.append(
+                    f"{where}: {former.bucket!r} still holds a sub named "
+                    f"{former.display!r}; leaving a former place would remove tracks "
+                    f"from a playlist that is still theirs"
+                )
+            for claimed, key in (
+                (claimed_subs, (former.bucket, former.sub)),
+                (claimed_displays, (former.bucket, former.display)),
+            ):
+                other = claimed.get(key)
+                if other is not None:
+                    problems.append(
+                        f"{where}: {key[1]!r} under {former.bucket!r} is already the "
+                        f"former place of {other!r}; one playlist is left by one bucket"
+                    )
+                else:
+                    claimed[key] = bucket.id
+    return problems
 
 
 def _build_fallback(

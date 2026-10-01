@@ -623,3 +623,139 @@ def test_a_renamed_bucket_keeps_its_aliases_and_its_tempo_window(default_raw):
     assert renamed.aliases == original.aliases
     assert renamed.bpm == original.bpm
     assert renamed.family == original.family
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# A former place (R-797): the loader refuses one that is still a place
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _promoted(data: dict) -> dict:
+    """The bucket of the shipped template that declares a former place."""
+    return next(bucket for bucket in data["bucket"] if bucket.get("formerly"))
+
+
+def _holder(data: dict) -> dict:
+    """The bucket whose folder holds that former place."""
+    former = _promoted(data)["formerly"][0]
+    return next(bucket for bucket in data["bucket"] if bucket["id"] == former["bucket"])
+
+
+def test_the_shipped_template_declares_one_former_place_and_it_loads(default, default_raw):
+    declared = [place for bucket in default.buckets for place in bucket.formerly]
+    assert len(declared) == 1
+    (former,) = declared
+    raw = _promoted(default_raw)["formerly"][0]
+    assert (former.id, former.bucket, former.sub, former.display) == (
+        raw["id"], raw["bucket"], raw["sub"], raw["display"]
+    )
+
+
+def test_a_former_place_in_a_bucket_nobody_declares_is_refused(default_raw):
+    def mutate(data):
+        _promoted(data)["formerly"][0]["bucket"] = "no_such_bucket"
+
+    assert any("is not declared" in p for p in problems_from(default_raw, mutate))
+
+
+def test_a_former_place_naming_a_sub_its_bucket_still_declares_is_refused(default_raw):
+    """The guard that stops a mistyped line planning removals from a live sub."""
+
+    def mutate(data):
+        live = _holder(data)["sub"][0]
+        _promoted(data)["formerly"][0]["sub"] = live["id"]
+
+    assert any("still declares the sub" in p for p in problems_from(default_raw, mutate))
+
+
+def test_a_former_place_carrying_the_name_of_a_live_sub_is_refused(default_raw):
+    def mutate(data):
+        live = _holder(data)["sub"][0]
+        _promoted(data)["formerly"][0]["display"] = live["display"]
+
+    assert any("still holds a sub named" in p for p in problems_from(default_raw, mutate))
+
+
+def test_a_former_place_named_for_a_band_of_an_energy_bucket_is_refused(default_raw):
+    """A band is a live place of a bucket that splits by energy, under the
+    bucket's own label for it."""
+
+    def mutate(data):
+        holder = next(
+            bucket
+            for bucket in data["bucket"]
+            if (bucket.get("energy") or {}).get("band_display")
+        )
+        former = _promoted(data)["formerly"][0]
+        former["bucket"] = holder["id"]
+        former["display"] = next(iter(holder["energy"]["band_display"].values()))
+
+    assert any("still holds a sub named" in p for p in problems_from(default_raw, mutate))
+
+
+def test_a_band_name_is_no_live_place_in_a_bucket_that_does_not_split_by_energy(default_raw):
+    """The other side of the rule above: the check asks what THAT bucket holds."""
+
+    def mutate(data):
+        _promoted(data)["formerly"][0]["display"] = data["energy"]["bands"][0]["display"]
+
+    assert build_taxonomy(mutated(default_raw, mutate)).buckets
+
+
+def test_a_former_place_named_for_a_sub_class_is_refused(default_raw):
+    def mutate(data):
+        _promoted(data)["formerly"][0]["display"] = data["sub_class"][0]["display"]
+
+    assert any("still holds a sub named" in p for p in problems_from(default_raw, mutate))
+
+
+def test_a_former_place_whose_own_id_is_a_band_is_refused(default_raw):
+    def mutate(data):
+        _promoted(data)["formerly"][0]["id"] = data["energy"]["bands"][0]["id"]
+
+    assert any("already a sub of this bucket" in p for p in problems_from(default_raw, mutate))
+
+
+def test_a_former_place_declared_twice_in_one_bucket_is_refused(default_raw):
+    def mutate(data):
+        promoted = _promoted(data)
+        promoted["formerly"].append(dict(promoted["formerly"][0]))
+
+    found = problems_from(default_raw, mutate)
+    assert any("duplicate former place id" in p for p in found)
+    assert any("already the former place of" in p for p in found)
+
+
+def test_one_playlist_cannot_be_the_former_place_of_two_buckets(default_raw):
+    def mutate(data):
+        other = next(
+            bucket
+            for bucket in data["bucket"]
+            if not bucket.get("formerly") and bucket["id"] != _holder(data)["id"]
+        )
+        other["formerly"] = [dict(_promoted(data)["formerly"][0], id="another_id")]
+
+    assert any("already the former place of" in p for p in problems_from(default_raw, mutate))
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("id", "Not An Id", "must match"),
+        ("sub", "", "must match"),
+        ("display", "", "display must be a non-empty string"),
+    ],
+)
+def test_a_former_place_short_of_a_field_is_refused(default_raw, field, value, message):
+    def mutate(data):
+        _promoted(data)["formerly"][0][field] = value
+
+    assert any("formerly" in p and message in p for p in problems_from(default_raw, mutate))
+
+
+def test_a_template_with_no_former_place_loads_as_it_always_did(default_raw):
+    def mutate(data):
+        del _promoted(data)["formerly"]
+
+    loaded = build_taxonomy(mutated(default_raw, mutate))
+    assert all(bucket.formerly == () for bucket in loaded.buckets)
