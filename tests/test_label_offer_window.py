@@ -204,7 +204,7 @@ def test_an_item_filed_before_runs_were_recorded_groups_as_an_unrecorded_run(ins
             ),
         )
     (row,) = grouped("run")
-    assert row == {"run": None, "items": 1, "labels": 1, "beyond": None}
+    assert row == {"run": None, "items": 1, "labels": 1, "beyond": None, "held": 0}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
