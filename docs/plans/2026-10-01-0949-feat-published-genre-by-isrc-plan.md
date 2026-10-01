@@ -128,8 +128,8 @@ This plan covers three pieces that share the ISRC lookup. The breakdown is the c
 **Deferred to Planning**
 
 - When the catalogue lists several genres for one album, which one is used. The default to test against the 79 measured answers: the first that maps to a folder. **Resolved on R-796, 2026-10-01:** the first that maps to a folder, in the order the catalogue lists them. KTD3 below.
-- Whether a sweep can judge a release from what its listing already carries, or needs one catalogue call per release, and how those calls are paced.
-- What kinds a label can be marked with: the taxonomy's families, a named folder, or any.
+- Whether a sweep can judge a release from what its listing already carries, or needs one catalogue call per release, and how those calls are paced. **Resolved on R-798, 2026-10-01:** a listing carries no ISRC and no genre, so the sweep reads the release's tracks once, a read it shares with the ownership question, and asks R-796's lookup, which paces every request itself. KTD44 below.
+- What kinds a label can be marked with: the taxonomy's families, a named folder, or any. **Resolved on R-798, 2026-10-01:** the kinds the active taxonomy's gate names for the general catalogue's words, or `any`. Not a folder and not a set building family, since most of the catalogue's words name neither. KTD42 below.
 - Where the folder suggestion report appears, and whether it reads the declared and unused `genre_gaps.json` count. **Resolved on R-797, 2026-10-01:** a read only verb of its own, `crate report genres`, counted from the collection each time. It does not read `genre_gaps.json`. KTD29 and KTD31 below.
 - Whether MusicBrainz or iTunes add anything as a second general catalogue. On the same 79 tracks MusicBrainz had no genre for any, and iTunes found none of the 30 playlist tracks. **Resolved on R-796, 2026-10-01:** neither is asked. One general catalogue, Deezer, on that measurement. KTD1 below.
 
@@ -244,6 +244,51 @@ Not measured: how many of the live folder's 39 tracks carry an energy reading, a
 - The built in review, a mutation table under `docs/mutation/`, and the battery.
 - Owed to an attended sitting: the active copy's edit, `crate adopt move` rehearsed and applied on an equal digest, and `crate report genres` read, recorded in `docs/cutover.md`.
 
+### R-798, R11 to R18
+
+Written by the session that took R-798 on `relay/238`, 2026-10-01, before any code. It covers R11 to R18 only. KTD and unit numbers continue from R-797's.
+
+#### Measured before planning
+
+Read off the tree on 2026-10-01. Nothing here was measured on the live library or against the live catalogue, which this card does not touch.
+
+- The gate in `label approved` is a share rule. `routing.gate_decisions` drops a family only when it is under 10% of the label's releases accepted and read in that run, and its rules read the record shops' vocabulary. It cannot hold the measured failure: two labels sharing a name put the wrong music at a large share of what the crawl lists.
+- A release in a label's listing carries an identifier, a year, an artist and a title. It carries no ISRC and no genre. `Catalogue.release_tracks` reads the release's rows, two provider reads, and those rows carry an ISRC each.
+- The sweep already reads those rows once for every confirmed release, to ask whether the library owns it (`OwnedReleases`).
+- R-796's lookup paces every request itself, one to one and a half seconds apart, and makes at most two for an ISRC. It is one per process and remembers a refusal for the rest of the run.
+- The sweep's worker has no warning channel. Its job envelope is `job_state/1`, it runs detached, and R-790 put the per label count where the person deciding reads, `crate review list --queue label-release --group-by label`, from an additive table in the review database.
+- The registry of followed labels is installation scoped. The taxonomy is the library's.
+- Run through the shipped rules: none of the catalogue's 27 measured top level words is classed as non dance today. `Rap/Hip Hop` and `R&B` reach the `hip_hop_rnb` family by a substring, as a share candidate, and every other word is claimed by no rule.
+
+Not measured: the words the catalogue lists below its top level, how often an album lists a dance word beside a non dance one, and the catalogue's behaviour at the volume of a full sweep. The rules for words below the top level are written from the catalogue's published genre names and say so in the template.
+
+#### Key technical decisions
+
+- **KTD41. At sweep time the gate asks about kind, not share.** A release is held when the general catalogue's words for it are another kind of music than its label is followed for. The share rule is kept exactly as it is, over the genre a provider's own row reports, which no shipped catalogue does. Feeding it the general catalogue's words would misfire: `Techno/House` there would be the techno family on a house label.
+- **KTD42. Kinds are declared by rules over the general catalogue's words.** `[[label_gate.published]]`, in order, each naming the `kind` a word is, with the matchers the gate's rules already use. A table of their own, because the two vocabularies differ. A label's kind is any kind those rules name, or `any`, which passes everything and asks nothing. `default_kind` is `dance`. The loader refuses a rule with no matcher or no kind, a rule naming `any`, and a default no rule names.
+- **KTD43. One published word of the label's kind passes the release. Held needs a known word of another kind and none of the label's own.** No word at all, or only words no rule knows, is not judged. So an unknown word never holds a release and never saves one a known word places elsewhere, and a crossover album listing a dance word beside a pop one passes.
+- **KTD44. The sweep asks once per release it is about to file.** After the tombstone, the queue, verification and ownership, so nothing is asked about a release that would not be filed. The release's rows come from the same read the ownership question makes, remembered for the item, so the gate adds no provider call. The tracks are asked in order until one answers with a genre, three at most, and an answer that could not be read stops the asking. Every request goes through `published.for_lookup()` and its pacer.
+- **KTD45. A held release takes a place in the offer window of R-790.** Otherwise a label whose newest releases are all another label's would be read to the end of its catalogue on the first sweep, three calls a release, which is the bulk reading the provider rate limited at sitting 11. The cost is that such a label offers less until its window is raised. Recorded as a residual with the other option, for the author.
+- **KTD46. A hold is a row in the review database and not a review item.** An additive table, `held_offers`, on the precedent of R-790's rounds, so the schema version does not move. It carries what would have been filed, the words, the kind and the reason. Nothing is written to the tombstone store.
+- **KTD47. A standing hold is judged again on every sweep that reaches it, from the words it recorded.** No network. When it no longer holds, because the label's kind or the rules changed, it is filed and the row is removed. That is R15's release. It is asked before verification, as a queued release is, and counts with the queued ones for the canary R-790 keeps for a dead verifier.
+- **KTD48. `crate label held return RELEASE_ID` files a held release for review and marks the hold returned.** A returned release is never held again. The sweep finds it in the queue, and `label approved` reads the mark and passes it without judging, since the author's answer outranks the catalogue's.
+- **KTD49. A filed release carries the gate's answer.** `genre_gate` is `passed`, `not-judged` or `returned`, with the reason and the catalogue's words beside it. AE7's mark.
+- **KTD50. The counts are read where R-790's are.** `review list --group-by label` and `--group-by run` gain `held`. `crate label held` lists every held release with its reason, counts them per label, and reads the newest sweep of each label off the items it filed: how many the gate was asked about, how many it could not judge, and a failing line when the catalogue was unread on every one.
+- **KTD51. `label approved` judges kind with the same words.** The ones the sweep recorded on the item when it has them, else the lookup, asked with the ISRCs of the rows the verb already read. Out of kind is held and named, not listed and not offered. Not judged is listed, and joins the failing `ungated` line only when the share rule did not judge the release either.
+- **KTD52. The registry carries `kind` per label, set with `label registry add` and `set --kind`.** It is checked against the active taxonomy at the verb, because the registry is the installation's and the taxonomy is the library's. A kind the taxonomy has since stopped naming is not judged and never held.
+- **KTD53. An active copy with no published rules judges nothing and asks nothing.** The live library's copy takes the new section by hand at the attended sitting, and until then every release is filed as before, marked not judged with that reason. No schema version moves: a build older than this unit ignores the keys and has no sweep gate to misread them with.
+- **KTD54. A catalogue that could not be read holds nothing.** Blocked, unreachable and unparsable answers file the release as not judged and count it unread. The lookup's memory of a refusal is R-796's, unchanged, so one refusal ends the asking for the run, and a release filed unjudged is judged at `label approved` when it is accepted.
+
+#### Verification
+
+- The loader's refusals for a published rule and a default kind, each driven.
+- `routing.kind_verdict` over the 27 measured words: every one classed, the dance words pass a dance label, the rest hold, and a word no rule knows is not judged.
+- AE5, AE6 and AE7 through the sweep's worker, with a fake provider and a fake lookup.
+- A held release returned to review is filed and not held again, at the sweep and at `label approved`. A label's kind changed after a hold releases what now fits, with no request. A catalogue unread on every release holds nothing and says so. A sweep that holds some releases files no more than the window.
+- `label approved` holds an accepted release of another kind, lists one that was not judged, and every existing share rule test is unchanged.
+- The built in review, a mutation table under `docs/mutation/`, and the battery.
+- Owed to an attended sitting: the active copy's edit, then a sweep over the labels of sitting 25 filing none of the 36 and counting them held, recorded in `docs/cutover.md`.
+
 ## Implementation Units
 
 ### U1. The lookup: a published genre for an ISRC
@@ -281,3 +326,39 @@ The placement reader resolves a former place to its folder and playlist and to t
 **Files:** `src/cratekit/adopt/genres.py` (new), `src/cratekit/adopt/genres_cli.py` (new), `src/cratekit/core/routing.py`, `src/cratekit/cli/registry.py`, `tests/test_report_genres.py` (new), `tests/test_cli_contract.py`, `tests/test_reserved_causes.py` (two counts).
 
 `routing.folder_of` answers what a genre has in the tree. `genres.count` turns the collection's rows into the counted genres and the named ones (KTD32, KTD33). The verb is a diagnostic that opens the database to read and writes nothing (KTD34). Its shell is in the adoption package and not in `cli/reports.py`, as first planned: that module's verbs read an export through a package that admits no database import, and this one reads the database.
+
+### U7. The gate's rules for the general catalogue's words
+
+**Files:** `src/cratekit/templates/taxonomy.default.toml`, `src/cratekit/core/taxonomy.py`, `src/cratekit/core/routing.py`, `tests/test_label_genre_gate.py` (new).
+
+`LabelGate` gains `published`, a tuple of `PublishedRule`, and `default_kind`, parsed and guarded by the loader (KTD42). `routing.published_kind` answers the kind a word is. `routing.kind_verdict` answers pass, hold or not judged for a release's words and a label's kind, with the sentence a person reads (KTD43).
+
+### U8. A label's kind
+
+**Files:** `src/cratekit/label/registry.py`, `src/cratekit/label/cli.py`, `tests/test_label_genre_gate.py`.
+
+`LabelEntry.kind`, kept across `add`, `edit` and `rename`, and `--kind` on `label registry add` and `set`, checked against the active taxonomy (KTD52).
+
+### U9. The hold record
+
+**Files:** `src/cratekit/core/review.py`, `tests/test_label_genre_gate.py`.
+
+The `held_offers` table and `hold`, `find_hold`, `holds`, `release_hold` and `return_hold` (KTD46). `grouped` counts held rows per label and per run (KTD50).
+
+### U10. The sweep judges before it files
+
+**Files:** `src/cratekit/label/gate.py` (new), `src/cratekit/label/sweep.py`, `src/cratekit/label/cli.py`, `tests/test_label_genre_gate.py`.
+
+`gate.published_words` asks the lookup for a release's rows (KTD44). `gate.SweepGate` judges a release and judges a standing hold again (KTD47). `list_for_label` takes the gate and the standing holds, holds a release inside the window (KTD45), and `LabelSource` records the holds and removes one it filed. The worker builds the gate from the active taxonomy, before the provider is resolved.
+
+### U11. `label approved` judges kind with the same words
+
+**Files:** `src/cratekit/label/approved_cli.py`, `tests/test_label_approved.py`, `tests/test_label_genre_gate.py`.
+
+Each read release is judged by kind before the share rule (KTD51), and a returned release passes (KTD48).
+
+### U12. `crate label held`
+
+**Files:** `src/cratekit/label/held_cli.py` (new), `src/cratekit/cli/registry.py`, `tests/test_label_genre_gate.py`, `tests/test_cli_contract.py`, `tests/test_reserved_causes.py` (the counts), `CONCEPTS.md`.
+
+A diagnostic that lists and counts (KTD50), and `return` (KTD48).
