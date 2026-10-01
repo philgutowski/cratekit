@@ -1,0 +1,65 @@
+name = "r787"
+pass_kind = "light"
+
+[[rows]]
+id = "S1_set_drops_intake"
+description = "cutover_trees returns the routing tree alone, the list doctor held before R-787"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+old = '''    return frozenset({declared.tree.id, declared.intake.id})'''
+new = '''    return frozenset({declared.tree.id})'''
+
+[[rows]]
+id = "D1_doctor_own_list"
+description = "doctor's _declared_trees keeps a list of its own, the routing tree alone, instead of asking cutover_trees"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''    return tuple(named), tree_registry.cutover_trees(declared), None'''
+new = '''    return tuple(named), frozenset({declared.tree.id}), None'''
+
+[[rows]]
+id = "D2_set_guard_removed"
+description = "doctor stops judging a native record by the set, so a native catalogue tree reads ok"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''            tree_id not in may_cut_over or record.source not in tree_registry.REBUILDABLE'''
+new = '''            record.source not in tree_registry.REBUILDABLE'''
+
+[[rows]]
+id = "D3_source_guard_removed"
+description = "doctor stops judging a native record by its source, so a native inbox from a catalogue crawl reads ok"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''            tree_id not in may_cut_over or record.source not in tree_registry.REBUILDABLE'''
+new = '''            tree_id not in may_cut_over'''
+
+[[rows]]
+id = "V1_verb_own_list"
+description = "derivation_source keeps a list of its own, the routing tree and intake tree spelled inline, instead of asking cutover_trees"
+file = "src/cratekit/cli/cutover.py"
+surface = "user"
+old = '''    if tree_id in accepted:
+        return tree_registry.DerivationSource.TAXONOMY'''
+new = '''    if tree_id in (declared.tree.id, declared.intake.id):
+        return tree_registry.DerivationSource.TAXONOMY'''
+
+[[rows]]
+id = "V2_undeclared_step_routing_only"
+description = "the undeclared refusal's step names the routing tree alone rather than the set"
+file = "src/cratekit/cli/cutover.py"
+surface = "user"
+old = '''            f"name a tree a cutover records, which this library declares as "
+            f"{', '.join(repr(t) for t in named)}",'''
+new = '''            f"name a tree a cutover records, which this library declares as "
+            f"{declared.tree.id!r}",'''
+
+[[rows]]
+id = "V3_catalogue_refusal_loses_set"
+description = "the catalogue refusal carries the registry's detail alone, without the set a cutover accepts"
+file = "src/cratekit/cli/cutover.py"
+surface = "user"
+old = '''                detail={
+                    **cause.detail,
+                    "cutover_trees": sorted(tree_registry.cutover_trees(declared)),
+                },'''
+new = '''                detail={**cause.detail},'''
