@@ -37,6 +37,20 @@ browser, because this is a public API and not a page, and a client that
 disguised itself to one would be the first step of the thing this module never
 does.
 
+A REFUSAL IS REMEMBERED FOR THE REST OF THE RUN. Once the catalogue has
+answered BLOCKED, the lookup asks it nothing further and answers BLOCKED for
+every later ISRC, saying so. A worker builds its seam per file, and without the
+memory a rate limited sweep would spend the whole backoff on every file and
+keep sending requests to a catalogue that had said stop. So the worker's lookup
+is one per process, :func:`for_lookup`, and the next run asks again.
+
+NO PICTURE IS READ OFF THIS CATALOGUE. Pictures stay the record shops' rows.
+A first draft took the album cover and the review found two faults in one
+sitting, a placeholder image for an album with no artwork and a fetch that
+went out under the browser identity, so the cover was dropped rather than
+patched. A picture a record shop's row already named is kept and says whose
+it is.
+
 AN ERROR THIS READER DOES NOT KNOW IS A PARSE BREAK, NOT A MISS. The catalogue
 answers errors inside a 200, so the status says nothing, and reading an unknown
 error as "no such track" would report a catalogue that changed its rules as a
@@ -73,6 +87,7 @@ Layer: modules.
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
@@ -86,12 +101,10 @@ from cratekit.tagging import searchers
 from cratekit.tagging.searchers import Answer, Fetch, Pacer
 from cratekit.tagging.tag import NO_ISRC, PublishedGenre, SearchHit, SourceAnswer
 
-DEEZER = "deezer"
-
-#: The general catalogue a file's record names. One, on the measurement the
-#: plan records: of the two others tried, one published no genre for any of 79
-#: tracks and the other found none of 30.
-SOURCE = DEEZER
+#: The general catalogue, as a file's record names it. One, on the measurement
+#: the plan records: of the two others tried, one published no genre for any of
+#: 79 tracks and the other found none of 30.
+SOURCE = "deezer"
 
 TRACK_BY_ISRC = "https://api.deezer.com/track/isrc:"
 ALBUM = "https://api.deezer.com/album/"
@@ -103,13 +116,8 @@ HEADERS = {
     "Accept": "application/json",
 }
 
-#: The answers that leave the question open: the catalogue was asked and what
-#: it said tells nothing about the track.
-UNREAD: tuple[str, ...] = (
-    Answer.BLOCKED.value,
-    Answer.UNREACHABLE.value,
-    Answer.PARSE_BREAK.value,
-)
+#: The answers that leave the question open, the searchers' own tuple.
+UNREAD: tuple[str, ...] = searchers.UNREAD_ANSWERS
 
 #: Every word a file's record may carry for the general catalogue. A closed set,
 #: so a summary can zero fill it.
@@ -143,15 +151,12 @@ class Published:
     every genre the catalogue lists for the track's album, in its own order and
     its own words, and is empty for every answer but a match. A match with no
     genres is a track the catalogue knows and publishes no genre for.
-
-    ``art_url`` is the album's cover off the same answer, or empty.
     """
 
     source: str
     answer: str
     genres: tuple[str, ...] = ()
     note: str = ""
-    art_url: str = ""
 
 
 #: Given an ISRC as some row or tag spelled it, what the catalogue published.
@@ -200,12 +205,8 @@ def _error(payload: dict[str, Any]) -> Published | None:
     )
 
 
-def _read(
-    url: str, *, fetch: Fetch, pacer: Pacer
-) -> tuple[dict[str, Any] | None, Published | None]:
+def _read(url: str, *, fetch: Fetch, pacer: Pacer) -> dict[str, Any] | Published:
     """One paced touch: the JSON object it answered, or the answer its absence is.
-
-    Exactly one of the pair is set.
 
     The refusal check is the fallbacks' own, so a block is recognised here on
     exactly the evidence it is recognised on there, and is never answered.
@@ -214,16 +215,16 @@ def _read(
     page = fetch(url)
     refused = searchers.unread_outcome(SOURCE, page)
     if refused is not None:
-        return None, _said(refused.answer, refused.note)
+        return _said(refused.answer, refused.note)
     try:
         payload = json.loads(page.text or "")
     except ValueError:
         payload = None
     if not isinstance(payload, dict):
-        return None, _said(
+        return _said(
             Answer.PARSE_BREAK, "the catalogue's answer is not the JSON object this reader knows"
         )
-    return payload, None
+    return payload
 
 
 def _genre_names(listing: dict[str, Any]) -> tuple[str, ...] | None:
@@ -251,11 +252,19 @@ def _genre_names(listing: dict[str, Any]) -> tuple[str, ...] | None:
     return names
 
 
-def _ask(isrc: str, *, fetch: Fetch, pacer: Pacer) -> Published:
-    """Ask the catalogue about one well formed ISRC. Two touches at most."""
-    track, unread = _read(f"{TRACK_BY_ISRC}{isrc}", fetch=fetch, pacer=pacer)
-    if unread is not None or track is None:
-        return unread or _said(Answer.PARSE_BREAK)
+def _ask(
+    isrc: str, *, fetch: Fetch, pacer: Pacer, albums: dict[int, tuple[str, ...]]
+) -> Published:
+    """Ask the catalogue about one well formed ISRC. Two touches at most.
+
+    ``albums`` is the lookup's memory of the genre lists it has already read,
+    by album identifier. A release's tracks share an album, so the second track
+    asks for the track alone. Only a list that was READ is remembered: a
+    refusal or an unreadable album is asked about again by the next track.
+    """
+    track = _read(f"{TRACK_BY_ISRC}{isrc}", fetch=fetch, pacer=pacer)
+    if isinstance(track, Published):
+        return track
     refused = _error(track)
     if refused is not None:
         return refused
@@ -272,36 +281,60 @@ def _ask(isrc: str, *, fetch: Fetch, pacer: Pacer) -> Published:
             Answer.PARSE_BREAK,
             "the track's answer names no album, and the genre is published on the album",
         )
-    art_url = searchers.web_url(album.get("cover_xl"))
 
-    listing, unread = _read(f"{ALBUM}{album_id}", fetch=fetch, pacer=pacer)
-    if unread is not None or listing is None:
-        return unread or _said(Answer.PARSE_BREAK)
-    refused = _error(listing)
-    if refused is not None:
-        if refused.answer != Answer.MISS.value:
-            return refused
-        # THE TRACK IS KNOWN AND ITS ALBUM IS NOT LISTED. Not a miss, which
-        # would say the catalogue does not know the track it just named.
-        return Published(
-            SOURCE,
-            Answer.MATCHED.value,
-            note="the catalogue knows the track and lists no album for it, so no genre "
-            "is published",
-            art_url=art_url,
-        )
-    names = _genre_names(listing)
+    names = albums.get(album_id)
     if names is None:
-        return _said(
-            Answer.PARSE_BREAK, "the album's answer carries no genre list this reader knows"
-        )
+        listing = _read(f"{ALBUM}{album_id}", fetch=fetch, pacer=pacer)
+        if isinstance(listing, Published):
+            return listing
+        refused = _error(listing)
+        if refused is not None:
+            if refused.answer != Answer.MISS.value:
+                return refused
+            # THE TRACK IS KNOWN AND ITS ALBUM IS NOT LISTED. Not a miss, which
+            # would say the catalogue does not know the track it just named.
+            return Published(
+                SOURCE,
+                Answer.MATCHED.value,
+                note="the catalogue knows the track and lists no album for it, so no "
+                "genre is published",
+            )
+        names = _genre_names(listing)
+        if names is None:
+            return _said(
+                Answer.PARSE_BREAK, "the album's answer carries no genre list this reader knows"
+            )
+        albums[album_id] = names
     return Published(
         SOURCE,
         Answer.MATCHED.value,
         genres=names,
         note="" if names else "the catalogue knows the track and publishes no genre for its album",
-        art_url=art_url,
     )
+
+
+#: What separates two values in one ISRC field. An ID3 text frame holding two
+#: values reads back joined by a null, and people type the rest.
+_ISRC_SEPARATORS = re.compile(r"[\x00;,/|]")
+
+
+def _first_isrc(value: object) -> str:
+    """The folded ISRC a value holds, the first when it holds several, or empty.
+
+    The whole value is tried first, through the one fold the rest of the product
+    matches ISRCs with. A field carrying two is read as its first that reads as
+    an ISRC, because driven on 2026-10-01 an ID3 frame written with two values
+    came back as one string joined by a null, which folds to nothing, and the
+    file would have been reported as carrying no ISRC while it carried two.
+    """
+    whole = isrc_token(value)
+    if whole:
+        return whole
+    for part in _ISRC_SEPARATORS.split(str(value or "")):
+        token = isrc_token(part)
+        if token:
+            return token
+    return ""
 
 
 def genre_lookup(
@@ -317,16 +350,26 @@ def genre_lookup(
     paced, the first included, at the searchers' interval, which is far inside
     the catalogue's published limit.
 
-    THE ISRC IS FOLDED AND CHECKED BEFORE IT BECOMES A URL, by the one fold the
-    rest of the product matches ISRCs with. A tag is text somebody else wrote,
-    and one that does not read as an ISRC is ``no-isrc`` and never a request.
+    THE ISRC IS FOLDED AND CHECKED BEFORE IT BECOMES A URL. A tag is text
+    somebody else wrote, and one that does not read as an ISRC is ``no-isrc``
+    and never a request.
+
+    ONE LOOKUP REMEMBERS TWO THINGS, both for its own lifetime. The genre lists
+    it has read, by album, so a release is asked about once. And the first
+    BLOCKED answer: from then on nothing is asked and every ISRC is answered
+    BLOCKED, with a note saying it was not asked and why. Waiting out a rate
+    limit on every file is the nearest this module could come to arguing with
+    one, so it does not. An unreachable answer is not remembered: that is a
+    network, and the next file may find it back.
     """
     naps = time.sleep if sleep is None else sleep
     pacer = Pacer(sleep=naps) if pacing is None else pacing
     touch = searchers.default_fetch(sleep=naps, headers=HEADERS) if fetch is None else fetch
+    albums: dict[int, tuple[str, ...]] = {}
+    refusals: list[Published] = []
 
     def lookup(isrc: object) -> Published:
-        token = isrc_token(isrc)
+        token = _first_isrc(isrc)
         if not token:
             given = str(isrc or "").strip()
             return Published(
@@ -334,7 +377,16 @@ def genre_lookup(
                 NO_ISRC,
                 note=f"{given!r} does not read as an ISRC" if given else "no ISRC was given",
             )
-        return _ask(token, fetch=touch, pacer=pacer)
+        if refusals:
+            return _said(
+                Answer.BLOCKED,
+                f"not asked: the catalogue refused this client earlier in this run and "
+                f"is not asked again in it. Then, {refusals[0].note}",
+            )
+        said = _ask(token, fetch=touch, pacer=pacer, albums=albums)
+        if said.answer == Answer.BLOCKED.value:
+            refusals.append(said)
+        return said
 
     return lookup
 
@@ -357,6 +409,11 @@ def choose(declared: Taxonomy, genres: Sequence[str]) -> tuple[str, str] | None:
     IN THE CATALOGUE'S ORDER, because that order is the only ranking it
     publishes, and a chooser that preferred the narrowest or the rarest word
     would be this module forming an opinion about music.
+
+    THE TAG IS THE RESOLVER'S ANSWER AND NOTHING HERE ADJUSTS IT. The alias
+    table was written against the record shops' vocabulary and this catalogue's
+    broad words inherit it as it stands, which is recorded as a residual with
+    the words measured rather than corrected by a second table in this module.
     """
     for word in genres:
         suggestion = routing.suggest_tag(declared, word)
@@ -372,20 +429,6 @@ def choose(declared: Taxonomy, genres: Sequence[str]) -> tuple[str, str] | None:
 # ---------------------------------------------------------------------------
 # The tagger's use of it
 # ---------------------------------------------------------------------------
-
-
-def _pictured(hit: SearchHit, said: Published, source: str) -> dict[str, str]:
-    """The picture fields of a hit whose source is about to be ``source``.
-
-    A picture an earlier row already named is kept, and says where it came
-    from when that is no longer the hit's source. Otherwise the album cover
-    that came with the general catalogue's answer is the picture.
-    """
-    if hit.art_url:
-        url, by = hit.art_url, hit.art_source or hit.source
-    else:
-        url, by = said.art_url, SOURCE if said.art_url else ""
-    return {"art_url": url, "art_source": "" if by == source else by}
 
 
 def second_opinion(declared: Taxonomy, *, lookup: Lookup | None = None) -> PublishedGenre:
@@ -411,6 +454,17 @@ def second_opinion(declared: Taxonomy, *, lookup: Lookup | None = None) -> Publi
     track by a catch-all and this catalogue calling it by another are both in
     the answers, and the file's own ``source_genre`` stays the first, since the
     alias a person would add is against the catalogue that sells the record.
+
+    A DECLINED WORD OF THIS CATALOGUE'S OWN BECOMES THE FILE'S, and the file is
+    then ``unmapped-genre`` even beside fallbacks that could not be read. That
+    is the engine's existing precedence, a declined word outranks an unread
+    source, and it is kept on purpose: the word is what a person can act on,
+    it reaches the summary's unresolved list, and the unread fallbacks are
+    still in the file's record and in the warning that names a catalogue
+    refused throughout.
+
+    THE PICTURE STAYS THE RECORD SHOP'S. When this catalogue supplies the genre
+    for a hit whose picture a shop's row named, ``art_source`` says whose it is.
     """
     ask = genre_lookup() if lookup is None else lookup
 
@@ -443,21 +497,21 @@ def second_opinion(declared: Taxonomy, *, lookup: Lookup | None = None) -> Publi
         if len(said.genres) > 1:
             note = f"the album lists {', '.join(said.genres)}"
         picked = choose(declared, said.genres)
-        if picked is not None:
-            word, tag = picked
-            return recorded(
-                SourceAnswer(SOURCE, said.answer, source_genre=word, note=note),
-                genre=tag,
-                source=SOURCE,
-                source_genre=word,
-                off_taxonomy=False,
-                **_pictured(hit, said, SOURCE),
-            )
-        word = said.genres[0] if said.genres else ""
+        word = picked[0] if picked else (said.genres[0] if said.genres else "")
         entry = SourceAnswer(SOURCE, said.answer, source_genre=word, note=note)
-        if hit.source_genre:
-            return recorded(entry, **_pictured(hit, said, hit.source))
-        return recorded(entry, source=SOURCE, source_genre=word, **_pictured(hit, said, SOURCE))
+        if picked is None and hit.source_genre:
+            return recorded(entry)
+        # THIS CATALOGUE BECOMES THE HIT'S SOURCE, for a genre to write or for a
+        # declined word of its own. A picture already on the hit came off a
+        # record shop's row and keeps that shop's name.
+        return recorded(
+            entry,
+            genre=picked[1] if picked else None,
+            source=SOURCE,
+            source_genre=word,
+            off_taxonomy=False,
+            art_source=(hit.art_source or hit.source) if hit.art_url else "",
+        )
 
     return decide
 
@@ -465,6 +519,9 @@ def second_opinion(declared: Taxonomy, *, lookup: Lookup | None = None) -> Publi
 # ---------------------------------------------------------------------------
 # The binders, looked up at call time
 # ---------------------------------------------------------------------------
+
+#: The one lookup this process asks the catalogue through, built on first use.
+_shared: list[Lookup] = []
 
 
 def for_lookup() -> Lookup:
@@ -475,8 +532,15 @@ def for_lookup() -> Lookup:
     attribute on this module, and a caller that built its own lookup inline
     would leave it nowhere to hand a fake in. Building one touches no network.
     This is the entry the label genre gate calls for a release's ISRC.
+
+    ONE PER PROCESS, unlike the searcher's binder. A worker asks for its seam
+    once per file, and the lookup's memory of a refusal and of the albums it
+    has read is only worth having if the next file meets the same lookup. A job
+    is driven in one process, so the memory lasts the run and no longer.
     """
-    return genre_lookup()
+    if not _shared:
+        _shared.append(genre_lookup())
+    return _shared[0]
 
 
 def for_taxonomy(declared: Taxonomy) -> PublishedGenre:
@@ -492,7 +556,6 @@ def for_taxonomy(declared: Taxonomy) -> PublishedGenre:
 __all__ = [
     "ALBUM",
     "ANSWERS",
-    "DEEZER",
     "HEADERS",
     "SOURCE",
     "TRACK_BY_ISRC",

@@ -69,9 +69,10 @@ SOURCES_UNREAD = "tag-folder-sources-unread"
 SOURCE_BLOCKED = "tag-folder-source-blocked"
 
 #: The warning that names the general catalogue when it could not be read on
-#: any file it was asked about, blocked, unreachable or unparsable (R-796). One
-#: code for all three because the consequence is one: no file in the run got a
-#: published genre, and every decline in it was made without that catalogue.
+#: files it was asked about, blocked, unreachable or unparsable (R-796). One
+#: code for all three because the consequence is one: those files got no
+#: published genre, and their declines were made without that catalogue. It
+#: says whether that was every file asked about or some of them.
 PUBLISHED_UNREAD = "tag-folder-published-unread"
 
 #: The warning that counts the files the general catalogue could not be asked
@@ -249,24 +250,25 @@ def _unread_warnings(summary: dict) -> tuple[dict[str, str], ...]:
     three unread answers send a person to three places. A parse break is said to
     be a defect a rerun will not move, so it is never filed under the promise
     that the next run asks again and left there.
+
+    THE GENERAL CATALOGUE IS IN THAT COUNT AND NOWHERE ELSE HERE (R-796). It is
+    one of the catalogues a file can be left unread by, so the sentence about
+    the files names it. Its parse break sentence and its refusal belong to
+    :func:`_published_warnings`, so each is said once.
     """
     warnings: list[dict[str, str]] = []
     answers = summary.get("answers") or {}
     unread = (summary.get("skipped") or {}).get(tag_engine.SOURCES_UNREAD, 0)
     if unread:
-        unread_words = (
-            searchers.Answer.BLOCKED.value,
-            searchers.Answer.UNREACHABLE.value,
-            searchers.Answer.PARSE_BREAK.value,
-        )
         seen = "; ".join(
             f"{source} {word} on {counted[word]}"
             for source, counted in answers.items()
-            for word in unread_words
+            for word in searchers.UNREAD_ANSWERS
             if counted.get(word)
         )
         broken = any(
-            counted.get(searchers.Answer.PARSE_BREAK.value) for counted in answers.values()
+            (answers.get(source) or {}).get(searchers.Answer.PARSE_BREAK.value)
+            for source in searchers.SOURCES
         )
         warnings.append(
             {
@@ -287,9 +289,9 @@ def _unread_warnings(summary: dict) -> tuple[dict[str, str], ...]:
                 ),
             }
         )
-    # THE THREE RECORD SHOPS ONLY. The general catalogue has a warning of its
-    # own, over every unread answer rather than only this one, and naming it
-    # here as well would say one fact twice in two wordings.
+    # THE THREE RECORD SHOPS ONLY. The general catalogue's refusal is said by
+    # its own warning, over every unread answer rather than only this one, and
+    # naming it under this code as well would say one fact in two wordings.
     for source in searchers.SOURCES:
         counted = answers.get(source) or {}
         asked = sum(count for word, count in counted.items() if word != searchers.NOT_ASKED)
@@ -316,15 +318,23 @@ def _files(count: int) -> str:
 
 
 def _published_warnings(summary: dict) -> tuple[dict[str, str], ...]:
-    """Say when the general catalogue gave the run nothing, and count the no ISRC files.
+    """Say when the general catalogue went unread, and count the no ISRC files.
 
-    UNREAD ON EVERY FILE IT WAS ASKED ABOUT, and at least one, is named. Asked
-    means it answered something about the track or failed to: a match, a miss,
-    or one of the three unread answers. ``not-asked`` and ``no-isrc`` are files
-    it was never sent, so a run where Beatport settled most of the folder cannot
-    hide a catalogue that was refused on the rest. One warning for a block, an
-    outage and a parse break, with the count of each, because the person's first
-    question is the same for all three: did the run have this catalogue at all.
+    ANY FILE IT WAS ASKED ABOUT AND COULD NOT BE READ FOR is said, with how many
+    of the files it was asked about that is. Asked means it answered something
+    about the track or failed to: a match, a miss, or one of the three unread
+    answers. ``not-asked`` and ``no-isrc`` are files it was never sent, so a run
+    where Beatport settled most of the folder cannot hide a catalogue that was
+    refused on the rest. One warning for a block, an outage and a parse break,
+    with the count of each, because the person's first question is the same for
+    all three: did these files have this catalogue at all. Unread on EVERY file
+    it was asked about is said in those words, since then no file in the run
+    got a published genre.
+
+    NOT ONLY WHEN SOME FILE IS ``sources-unread``. A file a record shop gave a
+    catch-all for is ``unmapped-genre`` whatever this catalogue did, so a block
+    on exactly those files would otherwise show in the counts and in no
+    sentence.
 
     THE NO ISRC COUNT IS ITS OWN WARNING, whatever skip reason those files
     carry. On a machine whose fallbacks are blocked every such file is
@@ -334,23 +344,29 @@ def _published_warnings(summary: dict) -> tuple[dict[str, str], ...]:
     counted = (summary.get("answers") or {}).get(published.SOURCE) or {}
     warnings: list[dict[str, str]] = []
     unread = {word: counted.get(word, 0) for word in published.UNREAD}
-    answered = sum(
+    failed = sum(unread.values())
+    asked = failed + sum(
         counted.get(word, 0)
         for word in (searchers.Answer.MATCHED.value, searchers.Answer.MISS.value)
     )
-    failed = sum(unread.values())
-    if failed and not answered:
+    if failed:
         seen = "; ".join(f"{word} on {count}" for word, count in unread.items() if count)
+        if failed == asked:
+            reach = f"any of the {asked} files it was asked about"
+            cost = "no file in this run got a published genre from it"
+        else:
+            reach = f"{failed} of the {asked} files it was asked about"
+            cost = "those files got no published genre from it"
         warnings.append(
             {
                 "code": PUBLISHED_UNREAD,
                 "message": (
                     f"{published.SOURCE}, the general catalogue asked by ISRC, "
-                    f"could not be read on any of the {failed} files it was asked "
-                    f"about ({seen}), so no file in this run got a published genre "
-                    f"from it and every decline here was made without it. This "
-                    f"tool does not try to get past a block or a rate limit; run "
-                    f"the folder again once the catalogue answers this machine"
+                    f"could not be read on {reach} ({seen}), so {cost} and "
+                    f"their declines were made without it. This tool does not "
+                    f"try to get past a block or a rate limit, and once refused "
+                    f"it asks nothing more in the same run; run the folder again "
+                    f"once the catalogue answers this machine"
                     + (
                         ". A parse break is a defect in this software that "
                         "another run will not move; report it"

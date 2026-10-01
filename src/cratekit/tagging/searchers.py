@@ -248,6 +248,16 @@ class Answer(Enum):
     PARSE_BREAK = "parse-break"
 
 
+#: The answers that leave the question open: the catalogue was asked and what
+#: came back says nothing about the track. One tuple, read by the verb's
+#: warnings and by the general catalogue, so the three words are spelled once.
+UNREAD_ANSWERS: tuple[str, ...] = (
+    Answer.BLOCKED.value,
+    Answer.UNREACHABLE.value,
+    Answer.PARSE_BREAK.value,
+)
+
+
 @dataclass(frozen=True, slots=True)
 class SourceOutcome:
     """One catalogue's answer, with the source that gave it and what it said.
@@ -547,7 +557,7 @@ _BEATPORT_IMAGE_SIZE = re.compile(r"image_size/\d+x\d+/")
 BEATPORT_IMAGE_EDGE = 1400
 
 
-def web_url(value: object) -> str:
+def _web_url(value: object) -> str:
     """``value`` when it is an http or https URL, else empty.
 
     A payload field is text somebody else chose, and this one becomes a GET.
@@ -564,7 +574,7 @@ def _beatport_art(track: dict[str, Any]) -> str:
     the payload this module parses still carries it is owed to an attended run.
     """
     release = track.get("release")
-    uri = web_url(release.get("release_image_uri") if isinstance(release, dict) else "")
+    uri = _web_url(release.get("release_image_uri") if isinstance(release, dict) else "")
     edge = BEATPORT_IMAGE_EDGE
     return _BEATPORT_IMAGE_SIZE.sub(f"image_size/{edge}x{edge}/", uri)
 
@@ -788,7 +798,7 @@ def _bandcamp_art(found: re.Match[str] | None) -> str:
     """
     if found is None:
         return ""
-    return _BC_IMAGE_SIZE.sub("_10.jpg", web_url(found.group(1)))
+    return _BC_IMAGE_SIZE.sub("_10.jpg", _web_url(found.group(1)))
 
 
 def _bandcamp_credited(entry: str) -> str:
@@ -1123,6 +1133,7 @@ __all__ = [
     "TRAXSOURCE",
     "TRAXSOURCE_SEARCH",
     "UNREACHABLE_REASON",
+    "UNREAD_ANSWERS",
     "Answer",
     "Fetch",
     "Fetched",
@@ -1134,5 +1145,4 @@ __all__ = [
     "for_images",
     "for_taxonomy",
     "unread_outcome",
-    "web_url",
 ]

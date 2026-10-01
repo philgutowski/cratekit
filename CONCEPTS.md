@@ -146,9 +146,12 @@ report a clean sweep over answers it never got. A decline is a question the
 next run asks again; a refusal fails that one item and leaves the job
 resumable.
 
-A decline is `no-hit` only when every source asked answered miss. A miss
+A decline is `no-hit` only when every source asked answered miss, or the
+general catalogue knew the track and published no genre for it. A miss
 beside a source that could not be read is `sources-unread`, which names the
-unread sources, because the unread one may carry the track (R-791). Every
+unread sources, because the unread one may carry the track (R-791). A word a
+catalogue answered and the taxonomy declined outranks both: that file is
+`unmapped-genre`, and its record still names what went unread. Every
 file's record carries all three answers, `not-asked` for a source the walk
 never reached because an earlier one matched, and a fourth for the general
 catalogue below.
@@ -178,8 +181,10 @@ inferred, and is never off taxonomy.
 Its answer per file is one of the searcher's five or `no-isrc`, a file whose
 ISRC tag is empty or does not read as one. That file is never `no-hit`: its own
 skip reason is `no-isrc` when nothing else explains it. A block, a rate limit
-or the catalogue's quota error is `blocked` and is never got past. The lookup
-knows no taxonomy, so the label genre gate can call it for a release.
+or the catalogue's quota error is `blocked` and is never got past, and after
+the first one the lookup asks nothing more in that run. No picture is read off
+it. The lookup knows no taxonomy, so the label genre gate can call it for a
+release.
 
 ### Provider gate
 The one seam every call to the streaming provider passes, `core/provider_gate`,

@@ -175,14 +175,20 @@ Not measured: the quota error, a 429, a 403 and any challenge page from Deezer. 
 - **KTD8. A file with no ISRC is never `no-hit`.** New skip reason `no-isrc`, taken when nothing else explains the file: no declined word, no unread source. `sources-unread` keeps its R-791 meaning and wins over it, and a warning counts no ISRC files whichever reason they carry (AE4).
 - **KTD9. A general catalogue failure never fails an item.** The lookup answers and does not raise. The searcher's two refusals, raised when none of the three could be read, are unchanged and still come first.
 - **KTD10. The seam is a parameter of `tag_one`, beside `fetch_image`,** and the searcher's `(artist, title)` signature does not change. A hit that carries no per source answers, which is every fake in the suite and any searcher that predates R-791, is passed through untouched, because whether Beatport answered cannot be known from it.
-- **KTD11. The album cover rides the genre's row,** as it does for the other catalogues: a file with no picture takes the catalogue's album cover when no earlier row named one.
+- **KTD11. No picture is read off the general catalogue.** Reversed on the built in review, 2026-10-01. The first build took the album cover on the rule that a picture rides the genre's row. The review found an album with no artwork answers a placeholder image that would be embedded for good, and that the image fetch goes out under the browser identity, against KTD7. Nobody asked for the cover, so it was dropped rather than patched. A picture a record shop's row named is kept and the record says whose it is.
 - **KTD12. Two tag aliases join the shipped template:** `rap/hip hop` on the Hip-Hop sub and `soul & funk` on the Soul / R&B sub. Both are words measured from the catalogue with an existing folder. Soul & Funk goes to Soul / R&B on the template's own precedent, a combined source name files under its first word. Every other unmapped word is declined and named in the summary, so the author adds an alias when he wants one. The library's active copy needs the same two lines before the attended run.
 - **KTD13. `crate tag retag` is not changed.** It corrects a coarse dance tag, which the plan defers.
+- **KTD14. A refusal is remembered for the rest of the run.** Added on the built in review. After the first `blocked` answer the lookup asks nothing more and answers `blocked` for every later ISRC, with a note saying it was not asked. The worker's lookup is one per process so the memory spans files. Without it a rate limited sweep spent the whole backoff on every file and kept asking a catalogue that had said stop. An unreachable answer is not remembered.
+- **KTD15. An album's genres are read once per run,** remembered by album identifier in the same lookup. Only a list that was read is remembered. A cache that outlives the run is not built here: when a miss or a declined answer should be asked again is a decision of its own, recorded as a residual.
+- **KTD16. A field holding several ISRCs is read as its first.** Driven on the review: an ID3 frame written with two values reads back joined by a null, which as a whole is not an ISRC.
+- **KTD17. A declined word of the general catalogue's makes the file `unmapped-genre`,** even beside fallbacks that could not be read. That is the engine's existing precedence and it is kept: the word reaches the summary's unresolved list, where a person can act on it, and the unread fallbacks stay in the file's record. The files measured as `sources-unread` at sitting 25 whose album the catalogue calls Dance or Electro therefore read `unmapped-genre` after this unit.
+- **KTD18. The general catalogue's warning says any unread file, not only a run unread throughout,** with how many of the files it was asked about. A block on files a record shop already declined would otherwise show in the counts and in no sentence.
 
 ### Verification
 
 - AE1 to AE4 through `tag_one` and through the verb, with every page synthetic and the HTTP getter detonated.
 - Several genres, a 429, the quota error, an empty and a malformed ISRC, an answer about another recording, and a job where the catalogue was unread on every file.
+- A refusal on one file leaving the next file unasked, an album read once for two tracks, and a field holding two ISRCs read off a real ID3 container.
 - The built in review, a mutation table under `docs/mutation/`, and the battery.
 - Owed to an attended sitting: `crate tag folder` over the 62 untagged playlist tracks, at least nine in ten written, recorded in `docs/cutover.md`.
 
@@ -192,7 +198,7 @@ Not measured: the quota error, a 429, a 403 and any challenge page from Deezer. 
 
 **Files:** `src/cratekit/tagging/published.py` (new), `src/cratekit/tagging/searchers.py` (a `headers` parameter on the fetch seam, and the refusal check under a public name), `tests/test_published_genre.py` (new).
 
-`genre_lookup()` builds a function from a raw ISRC value to a `Published`: the answer, the genre words, a note and the album cover. `for_lookup()` is the binder a caller looks up at call time, which is what R-798 uses.
+`genre_lookup()` builds a function from a raw ISRC value to a `Published`: the answer, the genre words and a note. `for_lookup()` is the binder a caller looks up at call time, one lookup per process, which is what R-798 uses.
 
 ### U2. The tagger asks it when Beatport gave nothing usable
 
@@ -204,4 +210,4 @@ Not measured: the quota error, a 429, a 403 and any challenge page from Deezer. 
 
 **Files:** `src/cratekit/tagging/cli.py`, `tests/test_tag_workers.py`, `tests/test_reserved_causes.py` (the literal count).
 
-The worker binds the seam. The summary's `answers` gains the general catalogue, zero filled over its own answers, `tagged_by` counts written files per source, and two warnings join: the catalogue unread on every file it was asked about, and files that carry no ISRC.
+The worker binds the seam. The summary's `answers` gains the general catalogue, zero filled over its own answers, `tagged_by` counts written files per source, and two warnings join: the catalogue unread on files it was asked about, and files that carry no ISRC.
