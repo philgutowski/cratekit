@@ -109,9 +109,9 @@ def placements_from(
     taxonomy declares no bucket for: none of them is read, because none of
     them can compete.
 
-    A FORMER PLACE IS READ UNDER THE BUCKET THAT DECLARES IT (R-797), and it
-    sits in another bucket's folder. A track in it holds that competing sub of
-    the declaring bucket, found by the old folder's name and the old
+    A FORMER PLACE IS READ UNDER BOTH BUCKETS IT COMPETES IN (R-797), the one
+    that declares it and the one whose folder holds it. A track in it holds
+    that competing sub of each, found by the old folder's name and the old
     playlist's, or by the node recorded while the playlist was still a sub.
 
     A PLAYLIST REKORDBOX REMOVED IS NOT A PLACE EITHER (R-758). It shows no

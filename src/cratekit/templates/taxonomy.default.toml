@@ -1,4 +1,4 @@
-# Cratekit taxonomy template, schema 1.
+# Cratekit taxonomy template, schema 2.
 #
 # This file is PACKAGED DATA: it ships read-only inside the wheel and is the
 # starting point a setup run copies into the library's own state root, where it
@@ -42,7 +42,11 @@
 # chained. It is recorded here because the two tables it came from held these
 # three apart with no way to see it. Each is one `tag_aliases` line to change.
 
-schema_version = 1
+# 2 SINCE R-797, the version a template states before it may declare a former
+# place, see the R&B bucket below. A build that knows only version 1 refuses
+# this file by name, where it would otherwise ignore the declaration and file
+# tracks twice. A template with no former place may stay at 1.
+schema_version = 2
 
 # KTD14 pins the tree at three levels: a child of ROOT, a folder, a sub-playlist.
 # The XML bridge's indentation constants encode exactly that, so a template
@@ -394,6 +398,11 @@ tag_aliases = [
 # the non electronic bucket's, unchanged. The keyword rules for "r&b" and
 # "soul" further down still send a partial match to the non electronic bucket's
 # default sub, as they always did; that is a separate decision.
+#
+# `rates = false` IS CARRIED OVER TOO. These tracks got no star rating written
+# while they sat in the non electronic bucket, and the author decided bands,
+# not ratings. Delete the line to have a rating derived from energy here as it
+# is in every other bucket that has bands.
 [[bucket]]
 id = "rnb"
 display = "R&B"
@@ -413,6 +422,7 @@ tag_aliases = [
   "rnb",
   "soul & funk",
 ]
+rates = false
 
 # THE PLAYLIST THIS BUCKET'S TRACKS SAT IN BEFORE IT HAD A FOLDER. A former
 # place is a competing sub of the bucket that declares it: adoption will not

@@ -15,9 +15,11 @@ dragged into a playlist its genre does not name.
 WHAT A GENRE IS HERE is :func:`cratekit.core.routing.folder_of`'s answer. A
 source string filed in a style sub is counted under that SUB, so the four
 strings that file under one sub are one genre with one count and the row lists
-them. A string that lands in a default sub, or that nothing declared claims at
-all, is counted under its own word, folded on case, because the default is a
-place to put it and not what it is.
+them, and so is another spelling of one of those strings or of the sub's own
+name, wherever routing happens to file it. Any other string that lands in a
+default sub, or that nothing declared claims at all, is counted under its own
+word, folded on case, because the default is a place to put it and not what it
+is.
 
 IT SUGGESTS AND NEVER CREATES. Nothing here writes, and a folder is added by a
 person editing the taxonomy.
@@ -79,11 +81,29 @@ class GenreReport:
         return tuple(genre for genre in self.genres if genre.tracks >= self.threshold)
 
 
-def _sub_display(bucket: taxonomy.Bucket, sub_id: str) -> str:
-    for sub in bucket.subs:
-        if sub.id == sub_id:
-            return sub.display
-    return sub_id
+def _style_subs_by_word(declared: taxonomy.Taxonomy) -> dict[str, tuple[str, str]]:
+    """Every word that names a style sub, folded on case, to its bucket and sub.
+
+    The source strings of each map and each sub's own name. Routing matches a
+    source string exactly, so `rock` beside `Rock` lands in the default sub or
+    nowhere while being the same genre by name, and counted apart the two
+    would each fall short of a threshold the genre has passed. Found by the
+    review, with 45 and 10 tracks. A source string wins over a sub's name, and
+    the first declared wins among equals, so the answer does not depend on
+    iteration order.
+    """
+    found: dict[str, tuple[str, str]] = {}
+    for bucket in declared.buckets:
+        if bucket.sub_by_source is None:
+            continue
+        for source, sub_id in bucket.sub_by_source.map.items():
+            found.setdefault(source.casefold(), (bucket.id, sub_id))
+    for bucket in declared.buckets:
+        if bucket.sub_by_source is None:
+            continue
+        for sub in bucket.subs:
+            found.setdefault(sub.display.casefold(), (bucket.id, sub.id))
+    return found
 
 
 def count(
@@ -106,6 +126,8 @@ def count(
     tracks = 0
     with_folder = 0
     no_genre = 0
+    style_subs = _style_subs_by_word(declared)
+    sub_kind = str(routing.Folder.SUB.value)
     spellings: dict[tuple[str, str, str, str], Counter[str]] = {}
     for row in rows:
         if row.deleted:
@@ -120,7 +142,11 @@ def count(
             with_folder += 1
             continue
         if folder.kind is routing.Folder.SUB:
-            key = (str(folder.kind.value), folder.bucket_id, folder.sub_id or "", "")
+            key = (sub_kind, folder.bucket_id, folder.sub_id or "", "")
+        elif value.casefold() in style_subs:
+            # ANOTHER SPELLING OF A STYLE SUB'S OWN GENRE. Where routing files
+            # it is not what it is, and it is counted with the genre it names.
+            key = (sub_kind, *style_subs[value.casefold()], "")
         else:
             # ITS OWN WORD, folded on case. Where it lands is carried on the
             # row and is not part of what it is counted as, except that a word
@@ -135,11 +161,11 @@ def count(
         if kind == routing.Folder.NONE.value:
             name, filed_under, bucket_id = sources[0][0], None, ""
         elif kind == routing.Folder.SUB.value:
-            name = _sub_display(bucket, sub_id)
+            name = routing.display_of(declared, (bucket_id, sub_id))
             filed_under = (bucket.display, name)
         else:
             name = sources[0][0]
-            filed_under = (bucket.display, _sub_display(bucket, sub_id))
+            filed_under = (bucket.display, routing.display_of(declared, (bucket_id, sub_id)))
         genres.append(
             GenreCount(
                 name=name,

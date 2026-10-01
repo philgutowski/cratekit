@@ -190,6 +190,44 @@ def test_a_word_in_a_default_sub_is_counted_apart_from_that_subs_own_genre():
     assert defaulted.filed_under == (STYLE.display, DEFAULT_SUB.display)
 
 
+def test_another_spelling_of_a_style_subs_own_name_is_counted_with_it():
+    """Found by the review, with these numbers. Routing matches a source
+    string exactly, so the lowercase spelling lands in a default sub or
+    nowhere, and counted apart neither row reached a threshold the genre had
+    passed."""
+    lowered = SHARED_SUB.display.lower()
+    assert lowered != SHARED_SUB.display
+    assert routing.folder_of(DECLARED, lowered).kind is not routing.Folder.SUB
+    report = adopt_genres.count(_rows((SHARED_SUB.display, 45), (lowered, 10)), DECLARED)
+    (found,) = report.named
+    assert (found.name, found.tracks, found.kind) == (
+        SHARED_SUB.display, 55, routing.Folder.SUB.value
+    )
+    assert found.sources == ((SHARED_SUB.display, 45), (lowered, 10))
+    assert len(report.genres) == 1
+
+
+def test_another_spelling_of_a_source_string_is_counted_with_its_sub():
+    source = next(s for s in SHARED_SOURCES if s != SHARED_SUB.display)
+    report = adopt_genres.count(_rows((source, 30), (source.upper(), 20)), DECLARED)
+    (found,) = report.named
+    assert (found.name, found.tracks) == (SHARED_SUB.display, 50)
+
+
+def test_a_style_sub_nothing_routes_a_lowercase_spelling_to_is_still_its_genre():
+    """A sub whose lowercase name no keyword rule claims falls to the fallback,
+    and is the sub's genre all the same."""
+    unrouted = next(
+        sub
+        for sub in STYLE.subs
+        if routing.folder_of(DECLARED, sub.display.lower()).kind is routing.Folder.NONE
+    )
+    (found,) = adopt_genres.count(_rows((unrouted.display.lower(), 50)), DECLARED).named
+    assert (found.name, found.kind, found.filed_under) == (
+        unrouted.display, routing.Folder.SUB.value, (STYLE.display, unrouted.display)
+    )
+
+
 def test_two_spellings_of_one_unclaimed_word_are_one_genre():
     (found,) = adopt_genres.count(
         _rows((UNCLAIMED, 30), (UNCLAIMED.lower(), 25)), DECLARED

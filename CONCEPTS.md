@@ -1160,16 +1160,18 @@ Since R-797, the playlist a bucket's tracks were filed in before the bucket had
 a folder of its own, declared on that bucket as `[[bucket.formerly]]`. R&B was a
 style sub of the non electronic folder and became a top level folder split by
 energy, and its former place is the old `Soul / R&B` playlist. It is one of the
-competing subs of the bucket that declares it and of no other, so adoption
-withholds a track still sitting there and `crate adopt move` adds the band and
-then leaves the playlist. It is only ever left. No resolver answers with one,
-`destination` refuses one, and the loader refuses one that names a sub its
-folder still holds.
+competing subs of two buckets and no other: the one that declares it, so
+adoption withholds a track still sitting there and `crate adopt move` adds the
+band and then leaves the playlist, and the one whose folder holds it, so a
+track there whose genre names another style of that folder moves to that
+style as it did before the promotion. It is only ever left. No resolver
+answers with one, `destination` refuses one, and the loader refuses one that
+names a sub its folder still holds, or that is declared under schema version
+1, which an older build reads while ignoring the declaration.
 
-*Avoid:* reading it as a sub of the folder it sits in. That folder's bucket no
-longer declares it, and a track there holds nothing in that bucket. Also avoid
-reading it as the outbound ledger's `formerly`, which is the display paths a
-remote playlist moved from.
+*Avoid:* reading it as a declared sub of the folder it sits in. Nothing is
+filed into it, from either bucket. Also avoid reading it as the outbound
+ledger's `formerly`, which is the display paths a remote playlist moved from.
 
 ### Held elsewhere
 An adoption plan entry withheld because its track already holds a competing
@@ -1198,8 +1200,9 @@ reading picks one of the subs held and the rest go, or names none of them and
 the track is Left. Adding a sub in such a bucket is adoption's decision.
 
 Since R-797 a move may leave a Former place, which sits in another bucket's
-folder. That is still one bucket's move: the band added and the place left
-are both competing subs of the bucket that declares the former place.
+folder. That is still one bucket's move: the sub added and the place left
+are both competing subs of the bucket the move names, the one that declares
+the former place or the one whose folder holds it.
 
 *Avoid:* reading it as a move between buckets or as `route resort`, which is
 additive. A move stays inside one bucket's competing subs. A track with no
@@ -1213,9 +1216,9 @@ bucket the genre does not name, `withheld-by-verdict`, or
 `one-sub-held-by-two-rows` for a band sub rekordbox holds twice (R-781),
 which is listed beside whatever else is said of the track, except a move, and
 is not moved, or `former-place-not-named-by-genre` for a track sitting only in
-a Former place whose genre does not send it to the bucket that took the place
-over (R-797). It is listed on the move's gate in full and covered by its
-digest.
+a Former place whose genre names neither the bucket that took the place over
+nor the one whose folder holds it (R-797). It is listed on the move's gate in
+full and covered by its digest.
 
 *Avoid:* reading it as Held back or Withheld. Those are a provider's and a
 plan's. This one is the move's own.

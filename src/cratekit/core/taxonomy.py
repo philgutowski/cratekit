@@ -56,7 +56,17 @@ from cratekit.core import config
 # next rename (R19).
 _ID = re.compile(r"^[a-z][a-z0-9_]*$")
 
-SUPPORTED_SCHEMA_VERSIONS = frozenset({1})
+SUPPORTED_SCHEMA_VERSIONS = frozenset({1, 2})
+
+# The schema version a template has to state before it may declare a former
+# place (R-797). A former place changes what competes, and a loader ignores a
+# key it does not know. So a build older than this unit, handed a library's
+# copy that declares one, would load it cleanly, see no competing place for the
+# old playlist, and file every track into a band while it still sat there. The
+# version is what such a build refuses by name, so the declaration is tied to
+# it: version 1 with a former place is refused here, and version 2 is refused
+# there.
+FORMER_PLACE_SCHEMA_VERSION = 2
 
 # How many levels a declared routing tree may nest: a root child, a folder, and a
 # sub-playlist (KTD14). Named here rather than written as a literal in the check
@@ -754,7 +764,7 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
     sub_classes, sub_class_problems = _build_sub_classes(data.get("sub_class") or [])
     problems += sub_class_problems
 
-    problems += _check_former_places(buckets, energy, sub_classes)
+    problems += _check_former_places(buckets, energy, sub_classes, int(version))
 
     fuzzy, fuzzy_problems = _build_fuzzy(data.get("fuzzy") or [], by_id)
     problems += fuzzy_problems
@@ -992,6 +1002,20 @@ def _build_buckets(
                 f"splits by energy or has one sub, never both"
             )
 
+        # THE SHAPE IS CHECKED BEFORE A ROW IS READ. A person edits a library's
+        # copy by hand, and `[bucket.formerly]` with one pair of brackets is
+        # valid TOML that arrives here as a table, not a list of them. Read as
+        # rows it raised an attribute error out of the loader, which every verb
+        # then reported as a defect in this product instead of a line to fix.
+        formerly_raw = entry.get("formerly") or []
+        if not isinstance(formerly_raw, list) or not all(
+            isinstance(row, Mapping) for row in formerly_raw
+        ):
+            problems.append(
+                f"{where}: formerly must be an array of tables, written "
+                f"[[bucket.formerly]] with an id, a bucket, a sub and a display"
+            )
+            formerly_raw = []
         formerly = tuple(
             FormerPlace(
                 id=str(row.get("id", "")),
@@ -999,7 +1023,7 @@ def _build_buckets(
                 sub=str(row.get("sub", "")),
                 display=str(row.get("display", "")),
             )
-            for row in entry.get("formerly") or []
+            for row in formerly_raw
         )
 
         buckets.append(
@@ -1052,7 +1076,10 @@ def _live_places(
 
 
 def _check_former_places(
-    buckets: Sequence[Bucket], energy: Energy, sub_classes: Sequence[SubClass]
+    buckets: Sequence[Bucket],
+    energy: Energy,
+    sub_classes: Sequence[SubClass],
+    version: int,
 ) -> list[str]:
     """Refuse a former place that is still a place (R-797).
 
@@ -1061,18 +1088,28 @@ def _check_former_places(
     declared, since the folder is found by that bucket's name. The sub
     identifier and the name it carries must not be ones that bucket still
     holds, or a move would leave a playlist tracks are still filed into. Its
-    own identifier must not be one the declaring bucket already competes on,
-    or what a track holds there would be ambiguous. And one playlist cannot be
-    the former place of two buckets, since a track leaving it would be claimed
-    twice.
+    own identifier must not be one the declaring bucket or the holding bucket
+    already competes on, since it competes in both, and no two former places
+    share one. And one playlist cannot be the former place of two buckets,
+    since a track leaving it would be claimed twice.
+
+    THE TEMPLATE HAS TO STATE THE VERSION THAT KNOWS ONE. See
+    :data:`FORMER_PLACE_SCHEMA_VERSION`.
     """
     problems: list[str] = []
     by_id = {bucket.id: bucket for bucket in buckets}
     claimed_subs: dict[tuple[str, str], str] = {}
     claimed_displays: dict[tuple[str, str], str] = {}
+    seen: dict[str, str] = {}
     for bucket in buckets:
         own_ids, _own_displays = _live_places(bucket, energy, sub_classes)
-        seen: set[str] = set()
+        if bucket.formerly and version < FORMER_PLACE_SCHEMA_VERSION:
+            problems.append(
+                f"[[bucket]] {bucket.id}: declares a former place under schema_version "
+                f"{version}; write schema_version = {FORMER_PLACE_SCHEMA_VERSION}, since a "
+                f"build that reads version {version} ignores the declaration and files a "
+                f"track into its new place while it still sits in the old one"
+            )
         for former in bucket.formerly:
             where = f"[[bucket]] {bucket.id} formerly {former.id or former.display!r}"
             if not _ID.match(former.id):
@@ -1083,8 +1120,11 @@ def _check_former_places(
                     f"place competes under an identifier of its own"
                 )
             if former.id in seen:
-                problems.append(f"{where}: duplicate former place id")
-            seen.add(former.id)
+                problems.append(
+                    f"{where}: duplicate former place id, already declared by "
+                    f"{seen[former.id]!r}"
+                )
+            seen.setdefault(former.id, bucket.id)
             if not _ID.match(former.sub):
                 problems.append(f"{where}: sub {former.sub!r} must match {_ID.pattern}")
             if not former.display:
@@ -1097,6 +1137,11 @@ def _check_former_places(
                 )
                 continue
             live_ids, live_displays = _live_places(holder, energy, sub_classes)
+            if former.id in live_ids:
+                problems.append(
+                    f"{where}: id {former.id!r} is a sub of {former.bucket!r}, where a "
+                    f"former place competes as well; give it an identifier of its own"
+                )
             if former.sub in live_ids:
                 problems.append(
                     f"{where}: {former.bucket!r} still declares the sub {former.sub!r}; a "

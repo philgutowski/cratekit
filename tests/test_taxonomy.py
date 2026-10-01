@@ -70,7 +70,9 @@ def problems_from(raw: dict, mutate) -> tuple[str, ...]:
 
 
 def test_the_shipped_default_loads(default):
-    assert default.schema_version == 1
+    # 2 since R-797: the shipped template declares a former place, and a
+    # template has to state the version that knows one.
+    assert default.schema_version == 2
     assert default.buckets
     assert default.fallback.bucket in default.bucket_ids()
 
@@ -726,16 +728,37 @@ def test_a_former_place_declared_twice_in_one_bucket_is_refused(default_raw):
     assert any("already the former place of" in p for p in found)
 
 
+def _another_bucket(data: dict) -> dict:
+    return next(
+        bucket
+        for bucket in data["bucket"]
+        if not bucket.get("formerly") and bucket["id"] != _holder(data)["id"]
+    )
+
+
 def test_one_playlist_cannot_be_the_former_place_of_two_buckets(default_raw):
     def mutate(data):
-        other = next(
-            bucket
-            for bucket in data["bucket"]
-            if not bucket.get("formerly") and bucket["id"] != _holder(data)["id"]
-        )
-        other["formerly"] = [dict(_promoted(data)["formerly"][0], id="another_id")]
+        _another_bucket(data)["formerly"] = [
+            dict(_promoted(data)["formerly"][0], id="another_id")
+        ]
 
-    assert any("already the former place of" in p for p in problems_from(default_raw, mutate))
+    found = problems_from(default_raw, mutate)
+    assert any("already the former place of" in p for p in found)
+    assert not any("duplicate former place id" in p for p in found)
+
+
+def test_two_buckets_cannot_declare_one_former_place_id(default_raw):
+    """Both compete in the folder that holds them, under their identifiers."""
+
+    def mutate(data):
+        first = _promoted(data)["formerly"][0]
+        _another_bucket(data)["formerly"] = [
+            dict(first, sub="another_sub", display="Another playlist")
+        ]
+
+    found = problems_from(default_raw, mutate)
+    assert any("duplicate former place id" in p for p in found)
+    assert not any("already the former place of" in p for p in found)
 
 
 @pytest.mark.parametrize(
@@ -759,3 +782,57 @@ def test_a_template_with_no_former_place_loads_as_it_always_did(default_raw):
 
     loaded = build_taxonomy(mutated(default_raw, mutate))
     assert all(bucket.formerly == () for bucket in loaded.buckets)
+
+
+def test_a_former_place_under_schema_version_1_is_refused(default_raw):
+    """An older build reads version 1, ignores the declaration, and files a
+    track into its new place while it sits in the old one. Version 2 is what
+    such a build refuses by name, so the declaration has to state it."""
+
+    def mutate(data):
+        data["schema_version"] = 1
+
+    assert any(
+        "declares a former place under schema_version 1" in p
+        for p in problems_from(default_raw, mutate)
+    )
+
+
+def test_a_version_1_template_with_no_former_place_still_loads(default_raw, second):
+    def mutate(data):
+        data["schema_version"] = 1
+        del _promoted(data)["formerly"]
+
+    assert build_taxonomy(mutated(default_raw, mutate)).schema_version == 1
+    assert second.schema_version == 1
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        {"id": "x", "bucket": "y", "sub": "z", "display": "One table, single brackets"},
+        ["a bare name"],
+        "a bare name",
+    ],
+    ids=["one-table", "list-of-strings", "string"],
+)
+def test_a_former_place_in_the_wrong_shape_is_a_problem_and_not_a_crash(default_raw, shape):
+    """A person edits a library's copy by hand, and one pair of brackets is
+    valid TOML. It raised an attribute error out of the loader, which every
+    verb reported as a defect in this product."""
+
+    def mutate(data):
+        _promoted(data)["formerly"] = shape
+
+    assert any(
+        "formerly must be an array of tables" in p for p in problems_from(default_raw, mutate)
+    )
+
+
+def test_a_former_place_whose_id_is_a_sub_of_the_bucket_that_holds_it_is_refused(default_raw):
+    """It competes in that bucket too, so the identifier has to be free there."""
+
+    def mutate(data):
+        _promoted(data)["formerly"][0]["id"] = _holder(data)["sub"][0]["id"]
+
+    assert any("where a former place competes as well" in p for p in problems_from(default_raw, mutate))
