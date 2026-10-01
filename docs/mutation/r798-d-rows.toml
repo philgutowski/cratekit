@@ -1,0 +1,36 @@
+name = "r798-d"
+pass_kind = "light"
+
+[[rows]]
+id = "H7_again_an_owned_release_is_not_asked_about"
+description = "label approved: ask the general catalogue about a release the library holds in full. H7 measured again, against the line as the second review left it, where ownership is read off the one resolution of each release"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_label_approved.py"]
+old = '''        elif owned(release):'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "K1_again_the_first_rule_that_matches_wins"
+description = "published_kind: read the published rules last first. K1 measured again, now that the loop's body is the matcher both rule tables share"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_taxonomy.py", "tests/test_routing_parity.py"]
+old = '''    for rule in taxonomy.label_gate.published:'''
+new = '''    for rule in reversed(taxonomy.label_gate.published):'''
+
+[[rows]]
+id = "K11_the_shared_matcher_reads_a_substring_needle"
+description = "_rule_matches: drop the any_of arm of the matcher the second review made one function of, so no rule of either table that names a substring claims a word"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_taxonomy.py", "tests/test_routing_parity.py"]
+old = '''        or (rule.any_of and any(needle in value for needle in rule.any_of))
+    )
+
+
+def gate_decisions('''
+new = '''    )
+
+
+def gate_decisions('''
