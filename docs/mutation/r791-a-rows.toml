@@ -1,0 +1,133 @@
+name = "r791-a"
+pass_kind = "light"
+
+[[rows]]
+id = "S1_403_blocks"
+description = "_BLOCK_STATUSES: drop 403, so Traxsource's Cloudflare 403 reads as unreachable again"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''_BLOCK_STATUSES = frozenset({403, 429})'''
+new = '''_BLOCK_STATUSES = frozenset({429})'''
+
+[[rows]]
+id = "S2_429_blocks"
+description = "_BLOCK_STATUSES: drop 429, so a spent rate limit on a fallback reads as unreachable"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''_BLOCK_STATUSES = frozenset({403, 429})'''
+new = '''_BLOCK_STATUSES = frozenset({403})'''
+
+[[rows]]
+id = "S3_client_challenge_title"
+description = "_CHALLENGE_TITLE: forget Bandcamp's Client Challenge title, the measured 200 that read as a miss"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''|client challenge|attention required!)",'''
+new = '''|attention required!)",'''
+
+[[rows]]
+id = "S4_ellipsis_character"
+description = "_CHALLENGE_TITLE: match only three dots, not the single ellipsis character"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''just a moment(?:\.\.\.|\u2026)'''
+new = '''just a moment\.\.\.'''
+
+[[rows]]
+id = "S5_challenge_body"
+description = "_unread: never read Cloudflare's challenge script in the body"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    if _CHALLENGE_BODY.search(page.text):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "S6_traxsource_checks"
+description = "_search_traxsource: skip the refusal check and go straight to parsing, as before R-791"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    refused = _unread(TRAXSOURCE, page)'''
+new = '''    refused = None if page.text is not None else _unread(TRAXSOURCE, page)'''
+
+[[rows]]
+id = "S7_bandcamp_checks"
+description = "_search_bandcamp: skip the refusal check on the search page, as before R-791"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    refused = _unread(BANDCAMP, page)'''
+new = '''    refused = None if page.text is not None else _unread(BANDCAMP, page)'''
+
+[[rows]]
+id = "S8_blocked_track_page_stops"
+description = "_search_bandcamp: keep fetching track pages after one came back blocked"
+file = "src/cratekit/tagging/searchers.py"
+surface = "maintainer"
+tests = ["tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''                track_unread = unread
+                break'''
+new = '''                track_unread = unread'''
+
+[[rows]]
+id = "S9_gone_track_page"
+description = "_GONE_STATUSES: empty, so a dead listing's 404 leaves the file unreachable for ever"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''_GONE_STATUSES = frozenset({404, 410})'''
+new = '''_GONE_STATUSES = frozenset()'''
+
+[[rows]]
+id = "S10_track_unread_returned"
+description = "_search_bandcamp: drop the unread track page and answer MISS, the pre R-791 fall through"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    if track_unread is not None:
+        return track_unread'''
+new = '''    if False:
+        return track_unread'''
+
+[[rows]]
+id = "S11_decline_names_unread"
+description = "_decide: a decline carries no unread sources, which is R-791's clean no-hit"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        return SearchHit(answers=_answers(outcomes), unread=_unread_sources(outcomes))'''
+new = '''        return SearchHit(answers=_answers(outcomes))'''
+
+[[rows]]
+id = "S12_match_names_unread"
+description = "catalogue_searcher: a match carries no unread sources even after an unreachable one"
+file = "src/cratekit/tagging/searchers.py"
+surface = "maintainer"
+tests = ["tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''                    unread=_unread_sources(outcomes),'''
+new = '''                    unread=(),'''
+
+[[rows]]
+id = "S13_not_asked"
+description = "_answers: record a source the walk never reached as miss instead of not-asked"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        else SourceAnswer(source=source, answer=NOT_ASKED)'''
+new = '''        else SourceAnswer(source=source, answer="miss")'''
+
+[[rows]]
+id = "S14_blocked_step"
+description = "_decide: the unreachable refusal never says a fallback was blocked"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    if blocked:
+        steps.append('''
+new = '''    if False:
+        steps.append('''

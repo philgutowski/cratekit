@@ -1,0 +1,11 @@
+name = "r791-c"
+pass_kind = "light"
+
+[[rows]]
+id = "C5_blocked_needs_asked"
+description = "_unread_warnings: name a source blocked on zero of zero searches, one never asked; measured again after the test C5's zero in r791-b bought"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''        if asked and counted.get(searchers.Answer.BLOCKED.value, 0) == asked:'''
+new = '''        if counted.get(searchers.Answer.BLOCKED.value, 0) == asked:'''

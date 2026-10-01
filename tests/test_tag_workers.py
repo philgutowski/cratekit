@@ -46,6 +46,8 @@ from cratekit.tagging import cli as tag_cli
 from cratekit.tagging.tag import SearchHit
 from tests._containers import synth_container
 from tests.cli_drive import approve_and_queue, drive, drive_human
+from tests.test_catalogue_searcher import _beatport_page as beatport_page
+from tests.test_catalogue_searcher import _beatport_track as beatport_track
 from tests.test_config import valid_data
 from tests.test_handlers import _drive_calls
 
@@ -750,7 +752,12 @@ def test_the_skip_reason_reaches_the_report_and_not_only_the_artifact(
     assert tagging["skipped"][tag.HAS_GENRE] == 1
     assert tagging["skipped"][tag.NO_HIT] == 1
     assert tagging["tagged"] == 0
-    assert set(tagging["skipped"]) == {tag.HAS_GENRE, tag.NO_HIT, tag.UNMAPPED_GENRE}, (
+    assert set(tagging["skipped"]) == {
+        tag.HAS_GENRE,
+        tag.NO_HIT,
+        tag.UNMAPPED_GENRE,
+        tag.SOURCES_UNREAD,
+    }, (
         "a summary listing only the reasons it saw cannot tell 'none of those "
         "here' from 'this build does not count them'"
     )
@@ -856,6 +863,230 @@ def test_the_report_names_each_off_taxonomy_genre_and_the_sweep_warns(
     assert "bubblegum bass, gqom" in message
     assert "Deep House" not in message
     assert "Techno" not in message, "a decline is the other map's, and nothing was written"
+
+
+def _catalogues(per_title: dict[str, dict[str, searchers.Fetched]]):
+    """The SHIPPED searcher, over a fetch that answers per title and per source.
+
+    The shipped one rather than a fake hit, because what R-791 is about is what
+    the searcher reports for each catalogue, and a fake would only report what
+    this test told it to. ``Fetched`` is the seam's own contract, status
+    included, so a 403 here is the shape ``default_fetch`` hands a fallback.
+    """
+    bases = {
+        searchers.BEATPORT: searchers.BEATPORT_SEARCH,
+        searchers.TRAXSOURCE: searchers.TRAXSOURCE_SEARCH,
+        searchers.BANDCAMP: searchers.BANDCAMP_SEARCH,
+    }
+
+    def fetch(url: str) -> searchers.Fetched:
+        for title, sources in per_title.items():
+            if f"+{title}" not in url and f"={title}" not in url:
+                continue
+            for source, page in sources.items():
+                if url.startswith(bases[source]):
+                    return page
+        return searchers.Fetched(note=f"no route for {url}")
+
+    return searchers.catalogue_searcher(TAXONOMY, fetch=fetch, sleep=lambda _s: None)
+
+
+EMPTY_BEATPORT = searchers.Fetched(text=beatport_page([]), status=200)
+EMPTY_TRAXSOURCE = searchers.Fetched(text="<html></html>", status=200)
+EMPTY_BANDCAMP = searchers.Fetched(text="<html><ul></ul></html>", status=200)
+TRAXSOURCE_403 = searchers.Fetched(note="HTTP 403", status=403)
+BANDCAMP_CHALLENGE = searchers.Fetched(
+    text="<html><head><title>Client Challenge</title></head></html>", status=200
+)
+
+
+def test_blocked_fallbacks_reach_every_artifact_and_the_summary_and_never_read_as_no_hit(
+    cfg, folder, silence, monkeypatch
+):
+    """R-791 end to end, through the verb.
+
+    Beatport misses and both fallbacks refuse this machine, which is the state
+    measured on 2026-10-01. Before, both files were ``no-hit`` and nothing on
+    disk said two catalogues had never been read.
+    """
+    for name in ("a", "b"):
+        place(folder, silence, name)
+    refused = {
+        searchers.BEATPORT: EMPTY_BEATPORT,
+        searchers.TRAXSOURCE: TRAXSOURCE_403,
+        searchers.BANDCAMP: BANDCAMP_CHALLENGE,
+    }
+    bound(monkeypatch, _catalogues({"a": refused, "b": refused}))
+
+    drive(["tag", "folder", str(folder)])
+    job = tag_job()
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+
+    for report in artifacts.committed(cfg, job.job_id):
+        assert report["skipped"] == tag.SOURCES_UNREAD
+        assert [(said["source"], said["answer"]) for said in report["answers"]] == [
+            (searchers.BEATPORT, "miss"),
+            (searchers.TRAXSOURCE, "blocked"),
+            (searchers.BANDCAMP, "blocked"),
+        ]
+        assert report["unread"] == {
+            searchers.TRAXSOURCE: "blocked",
+            searchers.BANDCAMP: "blocked",
+        }
+    assert tags.read_genre_from_file(folder / "a.flac") is None
+
+    tagging = resumed["data"]["progress"]["tagging"]
+    assert tagging["skipped"][tag.SOURCES_UNREAD] == 2
+    assert tagging["skipped"][tag.NO_HIT] == 0
+    assert tagging["answers"][searchers.BANDCAMP]["blocked"] == 2
+    assert tagging["answers"][searchers.TRAXSOURCE]["blocked"] == 2
+    assert tagging["answers"][searchers.BEATPORT]["miss"] == 2
+    assert tagging["answers"][searchers.BEATPORT]["blocked"] == 0, "zero filled"
+
+    warnings = {warning["code"]: warning["message"] for warning in resumed["warnings"]}
+    assert tag_cli.SOURCES_UNREAD == "tag-folder-sources-unread"
+    assert tag_cli.SOURCE_BLOCKED == "tag-folder-source-blocked"
+    unread = warnings[tag_cli.SOURCES_UNREAD]
+    assert "2 files were left untagged" in unread
+    assert "Across the sweep: traxsource blocked on 2; bandcamp blocked on 2" in unread
+    assert "parse break" not in unread
+    blocked = [w["message"] for w in resumed["warnings"] if w["code"] == tag_cli.SOURCE_BLOCKED]
+    assert len(blocked) == 2
+    assert blocked[0].startswith("traxsource refused every one of the 2 searches")
+    assert blocked[1].startswith("bandcamp refused every one of the 2 searches")
+
+
+def test_a_fallback_blocked_on_every_file_it_was_asked_about_is_named_by_the_warning(
+    cfg, folder, silence, monkeypatch
+):
+    """Bandcamp blocked on every file it was SENT. One file ended at a Beatport
+    match and never asked it, and that file must not hide the refusal on the
+    other; Traxsource answered, so it is not named."""
+    for name in ("a", "b"):
+        place(folder, silence, name)
+    assert tags.write_tags(folder / "a.flac", {"artist": "Somebody"})
+    matched = searchers.Fetched(
+        text=beatport_page([beatport_track("Somebody", "a", SPECIFIC)]), status=200
+    )
+    bound(
+        monkeypatch,
+        _catalogues(
+            {
+                "a": {searchers.BEATPORT: matched},
+                "b": {
+                    searchers.BEATPORT: EMPTY_BEATPORT,
+                    searchers.TRAXSOURCE: EMPTY_TRAXSOURCE,
+                    searchers.BANDCAMP: BANDCAMP_CHALLENGE,
+                },
+            }
+        ),
+    )
+
+    drive(["tag", "folder", str(folder)])
+    job = tag_job()
+    _code, resumed = drive(resume_argv(job.job_id))
+
+    reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
+    assert reports["a.flac"]["genre_written"] == SPECIFIC
+    assert [said["answer"] for said in reports["a.flac"]["answers"]] == [
+        "matched",
+        searchers.NOT_ASKED,
+        searchers.NOT_ASKED,
+    ]
+    assert reports["b.flac"]["skipped"] == tag.SOURCES_UNREAD
+
+    tagging = resumed["data"]["progress"]["tagging"]
+    assert tagging["answers"][searchers.BANDCAMP][searchers.NOT_ASKED] == 1
+    blocked = [w["message"] for w in resumed["warnings"] if w["code"] == tag_cli.SOURCE_BLOCKED]
+    assert len(blocked) == 1
+    assert "bandcamp refused every one of the 1 searches" in blocked[0]
+
+
+def test_one_unread_file_beside_a_parse_break_is_counted_and_the_defect_is_said(
+    cfg, folder, silence, monkeypatch
+):
+    """A parse break beside a MISS leaves the file undecided like a block does,
+    and the warning must not leave it under the promise that a rerun settles
+    it. One file, so the sentence reads as one."""
+    place(folder, silence, "a")
+    broken = searchers.Fetched(
+        text='<div data-trid="1" class="trk-row"><span>moved</span></div>', status=200
+    )
+    bound(
+        monkeypatch,
+        _catalogues(
+            {
+                "a": {
+                    searchers.BEATPORT: EMPTY_BEATPORT,
+                    searchers.TRAXSOURCE: broken,
+                    searchers.BANDCAMP: EMPTY_BANDCAMP,
+                }
+            }
+        ),
+    )
+
+    drive(["tag", "folder", str(folder)])
+    job = tag_job()
+    _code, resumed = drive(resume_argv(job.job_id))
+
+    (report,) = artifacts.committed(cfg, job.job_id)
+    assert report["unread"] == {searchers.TRAXSOURCE: "parse-break"}
+    warnings = {warning["code"]: warning["message"] for warning in resumed["warnings"]}
+    message = warnings[tag_cli.SOURCES_UNREAD]
+    assert message.startswith("1 file was left untagged")
+    assert "traxsource parse-break on 1" in message
+    assert "defect in this software that another run will not move" in message
+    assert tag_cli.SOURCE_BLOCKED not in warnings
+
+
+def test_a_sweep_beatport_matched_whole_names_no_fallback_as_blocked(
+    cfg, folder, silence, monkeypatch
+):
+    """A fallback never asked was blocked on zero of zero searches, which is not
+    a refusal. Bought by row C5 of ``r791-b``, a zero: without the guard this
+    sweep, the commonest clean one, warned that both fallbacks refused it."""
+    place(folder, silence, "a")
+    assert tags.write_tags(folder / "a.flac", {"artist": "Somebody"})
+    matched = searchers.Fetched(
+        text=beatport_page([beatport_track("Somebody", "a", SPECIFIC)]), status=200
+    )
+    bound(monkeypatch, _catalogues({"a": {searchers.BEATPORT: matched}}))
+
+    drive(["tag", "folder", str(folder)])
+    job = tag_job()
+    _code, resumed = drive(resume_argv(job.job_id))
+
+    tagging = resumed["data"]["progress"]["tagging"]
+    assert tagging["tagged"] == 1
+    assert tagging["answers"][searchers.BANDCAMP][searchers.NOT_ASKED] == 1
+    codes = [warning["code"] for warning in resumed["warnings"]]
+    assert tag_cli.SOURCE_BLOCKED not in codes
+    assert tag_cli.SOURCES_UNREAD not in codes
+
+
+def test_three_real_misses_are_no_hit_and_carry_no_unread_warning(
+    cfg, folder, silence, monkeypatch
+):
+    place(folder, silence, "a")
+    missed = {
+        searchers.BEATPORT: EMPTY_BEATPORT,
+        searchers.TRAXSOURCE: EMPTY_TRAXSOURCE,
+        searchers.BANDCAMP: EMPTY_BANDCAMP,
+    }
+    bound(monkeypatch, _catalogues({"a": missed}))
+
+    drive(["tag", "folder", str(folder)])
+    job = tag_job()
+    _code, resumed = drive(resume_argv(job.job_id))
+
+    (report,) = artifacts.committed(cfg, job.job_id)
+    assert report["skipped"] == tag.NO_HIT
+    assert [said["answer"] for said in report["answers"]] == ["miss"] * 3
+    assert report["unread"] == {}
+    codes = [warning["code"] for warning in resumed["warnings"]]
+    assert tag_cli.SOURCES_UNREAD not in codes
+    assert tag_cli.SOURCE_BLOCKED not in codes
 
 
 def test_a_sweep_with_nothing_off_taxonomy_carries_no_such_warning(

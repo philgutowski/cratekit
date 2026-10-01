@@ -1,0 +1,73 @@
+{
+  "name": "r791-c",
+  "pass_kind": "light",
+  "branch": "relay/235",
+  "head": "f99d35d",
+  "when": "2026-10-01 12:09 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 11123,
+  "baseline_exit": 0,
+  "pytest_runs": 4,
+  "state_guarded": "~/Library/Application Support/cratekit (126921 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/tagging/cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/tagging/cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "8a99a959ae6967c9",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 11123,
+    "baseline_collected": 11123,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C5_blocked_needs_asked",
+      "description": "_unread_warnings: name a source blocked on zero of zero searches, one never asked; measured again after the test C5's zero in r791-b bought",
+      "file": "src/cratekit/tagging/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "639ce039539e9e4a",
+      "subset": [
+        "tests/test_tag_workers.py",
+        "tests/test_tagging_engine.py",
+        "tests/test_catalogue_searcher.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 210,
+      "baseline_collected": 210,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_workers.py::test_a_sweep_beatport_matched_whole_names_no_fallback_as_blocked"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if asked and counted.get(searchers.Answer.BLOCKED.value, 0) == asked:",
+      "new": "        if counted.get(searchers.Answer.BLOCKED.value, 0) == asked:"
+    }
+  ],
+  "dropped": []
+}

@@ -75,6 +75,22 @@ FetchImage = Callable[[str], "bytes | None"]
 
 
 @dataclass(frozen=True, slots=True)
+class SourceAnswer:
+    """What one catalogue said about one track, as the item's record keeps it.
+
+    ``answer`` is a string rather than the searcher's enum because this module
+    sits below the searcher and only carries the word: one of
+    ``cratekit.tagging.searchers.Answer``'s values, or ``not-asked`` for a
+    catalogue the walk never reached.
+    """
+
+    source: str
+    answer: str
+    source_genre: str = ""
+    note: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class SearchHit:
     """What a catalogue search is willing to write, and what it was answering.
 
@@ -97,6 +113,13 @@ class SearchHit:
     worked out here, because the only place that can tell it apart from a
     declared tag with no bucket is the tier that answered (R-650).
 
+    ``answers`` is every catalogue's answer, so the item's record can say what
+    each one said rather than only the disposition they added up to. ``unread``
+    names the catalogues asked whose answer left the question open, blocked,
+    unreachable or unparsable. On a decline it is what keeps the file from
+    reading as ``no-hit`` (R-791); on a match it only keeps the record's two
+    fields agreeing.
+
     All of them default to empty so a caller that predates them, and a fake
     searcher in a suite, keep working unchanged.
     """
@@ -106,6 +129,8 @@ class SearchHit:
     source_genre: str = ""
     art_url: str = ""
     off_taxonomy: bool = False
+    answers: tuple[SourceAnswer, ...] = ()
+    unread: tuple[str, ...] = ()
 
 
 #: Why a file was passed over. ``HAS_GENRE`` is the fill-if-empty policy this
@@ -118,9 +143,17 @@ class SearchHit:
 #: know whether the catalogues have never heard of these tracks or whether
 #: their own taxonomy is missing an alias, because only one of those is theirs
 #: to fix.
+#:
+#: ``SOURCES_UNREAD`` IS NOT A KIND OF ``NO_HIT`` EITHER (R-791). Some catalogue
+#: answered MISS and another could not be read, so whether any catalogue
+#: carries the track is unknown. Reporting it ``no-hit`` told a person three
+#: catalogues were searched when one was, and they tagged by hand on that
+#: belief. The file stays untagged and the next run asks again.
 HAS_GENRE = "has-genre"
 NO_HIT = "no-hit"
 UNMAPPED_GENRE = "unmapped-genre"
+SOURCES_UNREAD = "sources-unread"
+SKIP_REASONS: tuple[str, ...] = (HAS_GENRE, NO_HIT, UNMAPPED_GENRE, SOURCES_UNREAD)
 
 #: What happened about a picture for a file that had none, or why nothing was
 #: asked. ``PRESENT`` is the never re-download rule holding: the file carries a
@@ -173,8 +206,12 @@ class TagResult:
     the declared table. It is a separate field precisely because the closed set
     above is about files this engine passed over, and folding a write into it
     would make a count of what was tagged disagree with what is on disk (R-650).
-    It can only be true on a write: the three skips leave it False, because a
-    file this engine did not tag has no tag of this engine's to qualify.
+    It can only be true on a write: the skips leave it False, because a file
+    this engine did not tag has no tag of this engine's to qualify.
+
+    ``answers`` and ``unread`` are carried off the hit as they came, so the
+    record says what every catalogue answered. Both are empty for a file nothing
+    was asked about.
     """
 
     path: Path
@@ -183,6 +220,8 @@ class TagResult:
     source: str = ""
     source_genre: str = ""
     off_taxonomy: bool = False
+    answers: tuple[SourceAnswer, ...] = ()
+    unread: tuple[str, ...] = ()
     art_repair: str = art.REPAIR_UNCHECKED
     art_repair_detail: str = ""
     art_fetch: str = ART_UNCHECKED
@@ -275,8 +314,14 @@ def _art_embedded(path: Path, hit: SearchHit | None, fetch_image: FetchImage | N
     def result(status: str, detail: str = "") -> dict[str, str]:
         return {"art_fetch": status, "art_fetch_detail": detail}
 
-    if hit is None:
-        return result(ART_UNAVAILABLE, "no catalogue carried the track, so no picture was named")
+    if hit is None or (not hit.art_url and not hit.source):
+        # A DECLINE: no catalogue matched, so none named a picture. Which kind of
+        # decline it was decides the sentence, never whether there is one.
+        unread = hit.unread if hit is not None else ()
+        named = f"{', '.join(unread)} could not be read and no other catalogue" if unread else (
+            "no catalogue"
+        )
+        return result(ART_UNAVAILABLE, f"{named} carried the track, so no picture was named")
     if not hit.art_url:
         return result(
             ART_UNAVAILABLE, f"{hit.source or 'the catalogue'} named no picture for the track"
@@ -378,8 +423,14 @@ def tag_one(
     elif not hit.genre:
         # THE SOURCE GENRE IS WHAT SEPARATES THE TWO REASONS. A hit carrying one
         # means a catalogue answered and the taxonomy could not map its word; a
-        # hit carrying none means nothing was found to map.
-        skipped = UNMAPPED_GENRE if hit.source_genre else NO_HIT
+        # hit carrying none means nothing was found to map, and that is a
+        # no-hit only when no catalogue went unread (R-791).
+        if hit.source_genre:
+            skipped = UNMAPPED_GENRE
+        elif hit.unread:
+            skipped = SOURCES_UNREAD
+        else:
+            skipped = NO_HIT
     else:
         skipped = None
         tags.write_genre(path, hit.genre)
@@ -393,7 +444,16 @@ def tag_one(
     # sees is the one carrying its art, whatever the genre write does to the
     # rest of the tag block.
     pictured = settled if settled is not None else _art_embedded(path, hit, fetch_image)
-    found = {"source": hit.source, "source_genre": hit.source_genre} if hit else {}
+    found = (
+        {
+            "source": hit.source,
+            "source_genre": hit.source_genre,
+            "answers": hit.answers,
+            "unread": hit.unread,
+        }
+        if hit
+        else {}
+    )
     return TagResult(
         path=path,
         genre_written=written,
@@ -428,11 +488,14 @@ __all__ = [
     "ART_UNCHECKED",
     "HAS_GENRE",
     "SKIPPED_DIRNAMES",
+    "SKIP_REASONS",
     "NO_HIT",
+    "SOURCES_UNREAD",
     "UNMAPPED_GENRE",
     "FetchImage",
     "SearchHit",
     "Searcher",
+    "SourceAnswer",
     "TagResult",
     "audio_files",
     "tag_folder",

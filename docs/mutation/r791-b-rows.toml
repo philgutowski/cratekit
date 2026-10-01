@@ -1,0 +1,107 @@
+name = "r791-b"
+pass_kind = "light"
+
+[[rows]]
+id = "T1_sources_unread_disposition"
+description = "tag_one: a decline naming unread sources is reported no-hit"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_catalogue_searcher.py"]
+old = '''        elif hit.unread:'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "T2_art_names_unread"
+description = "_art_embedded: the picture decline never names the unread sources"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_catalogue_searcher.py"]
+old = '''        unread = hit.unread if hit is not None else ()'''
+new = '''        unread = ()'''
+
+[[rows]]
+id = "C1_artifact_answers"
+description = "handle: the artifact records only the first source's answer"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''                for said in result.answers
+            ],'''
+new = '''                for said in result.answers[:1]
+            ],'''
+
+[[rows]]
+id = "C2_artifact_unread"
+description = "handle: the artifact's unread map is always empty"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''                if said.source in result.unread'''
+new = '''                if False'''
+
+[[rows]]
+id = "C3_summary_counts_answers"
+description = "_summary: count no answers"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''                counted[word] += 1'''
+new = '''                counted[word] += 0'''
+
+[[rows]]
+id = "C4_unread_warning"
+description = "_unread_warnings: never warn about files left undecided"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''    if unread:
+        unread_words = ('''
+new = '''    if False:
+        unread_words = ('''
+
+[[rows]]
+id = "C5_blocked_needs_asked"
+description = "_unread_warnings: name a source blocked on zero of zero searches, one never asked"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''        if asked and counted.get(searchers.Answer.BLOCKED.value, 0) == asked:'''
+new = '''        if counted.get(searchers.Answer.BLOCKED.value, 0) == asked:'''
+
+[[rows]]
+id = "C6_not_asked_excluded"
+description = "_unread_warnings: count not-asked as asked, so a Beatport match hides a blocked fallback"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''        asked = sum(count for word, count in counted.items() if word != searchers.NOT_ASKED)'''
+new = '''        asked = sum(count for word, count in counted.items())'''
+
+[[rows]]
+id = "C7_parse_break_said"
+description = "_unread_warnings: never say a parse break is a defect a rerun will not move"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''                        if broken
+                        else ""'''
+new = '''                        if False
+                        else ""'''
+
+[[rows]]
+id = "C8_one_file"
+description = "_files: say 1 files were"
+file = "src/cratekit/tagging/cli.py"
+surface = "maintainer"
+tests = ["tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''    return "1 file was" if count == 1 else f"{count} files were"'''
+new = '''    return f"{count} files were"'''
+
+[[rows]]
+id = "C9_unread_skip_zero_filled"
+description = "_summary: count only the three skip reasons that predate R-791"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''    skipped = dict.fromkeys(tag_engine.SKIP_REASONS, 0)'''
+new = '''    skipped = dict.fromkeys(tag_engine.SKIP_REASONS[:3], 0)'''

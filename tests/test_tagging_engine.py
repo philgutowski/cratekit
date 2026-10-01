@@ -422,6 +422,44 @@ def test_a_hit_with_no_genre_and_no_source_genre_is_a_plain_miss(folder, silence
     assert result.skipped == tag.NO_HIT
 
 
+def test_a_decline_beside_an_unread_catalogue_is_sources_unread_and_not_no_hit(
+    folder, silence
+):
+    """R-791. One MISS beside a catalogue that could not be read is not an
+    absence, so the file is not reported as one no catalogue carries. It stays
+    untagged, and the result carries every answer and the unread names, so the
+    record can say which catalogue went unread and how.
+    """
+    path = place(folder, silence, "track")
+    answers = (
+        tag.SourceAnswer("beatport", "miss"),
+        tag.SourceAnswer("traxsource", "blocked", note="HTTP 403"),
+        tag.SourceAnswer("bandcamp", "blocked"),
+    )
+    hit = SearchHit(answers=answers, unread=("traxsource", "bandcamp"))
+
+    result = tag.tag_one(path, searcher=answering({"track": hit}))
+
+    assert result.skipped == tag.SOURCES_UNREAD
+    assert result.genre_written is None
+    assert result.answers == answers
+    assert result.unread == ("traxsource", "bandcamp")
+    assert tags.read_genre_from_file(path) is None
+    assert result.art_fetch == tag.ART_UNAVAILABLE
+    assert "traxsource, bandcamp could not be read" in result.art_fetch_detail
+
+
+def test_a_decline_with_every_answer_a_miss_is_still_no_hit(folder, silence):
+    path = place(folder, silence, "track")
+    answers = tuple(tag.SourceAnswer(source, "miss") for source in ("a", "b", "c"))
+
+    result = tag.tag_one(path, searcher=answering({"track": SearchHit(answers=answers)}))
+
+    assert result.skipped == tag.NO_HIT
+    assert result.answers == answers
+    assert result.art_fetch_detail == "no catalogue carried the track, so no picture was named"
+
+
 def test_the_written_result_carries_which_catalogue_answered(folder, silence):
     """The artifact says where the value came from, not only what it was."""
     path = place(folder, silence, "track")

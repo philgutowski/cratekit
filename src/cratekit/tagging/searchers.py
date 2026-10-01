@@ -7,8 +7,23 @@ nothing, and a source that answered and did not carry the track returns nothing,
 so a folder swept during an outage completes clean and every file in it is
 recorded as a track the catalogues do not know. Absence read as evidence of
 absence is the first failure pattern METHOD names, and this module is where it
-would enter the tagging verbs. So each source answers MATCHED, MISS, UNREACHABLE
-or PARSE_BREAK, and only MISS is permitted to contribute to a decline.
+would enter the tagging verbs. So each source answers MATCHED, MISS, UNREACHABLE,
+BLOCKED or PARSE_BREAK, and only MISS is permitted to contribute to a decline.
+
+A BOT CHALLENGE IS AN ANSWER OF ITS OWN, AND RECOGNISING IT IS THE WHOLE REMEDY
+(R-791). Measured from the author's machine on 2026-10-01 with these headers,
+Traxsource answered 403 with Cloudflare's "Just a moment..." page and Bandcamp
+answered 200 with a "Client Challenge" page carrying no rows. The second read as
+a MISS, so a Beatport miss turned every such file into a clean ``no-hit`` and
+the two fallbacks vanished from the record. A fallback page recognised as a
+challenge or a block is BLOCKED, and nothing here tries to get past one: no
+header trick, no browser, no solver. Beatport is read exactly as it was.
+
+``no-hit`` NEEDS EVERY SOURCE ASKED TO HAVE SAID MISS. One MISS beside a source
+that could not be read is not an absence, because the unread one may carry the
+track, so the hit says which sources went unread and the file stays untagged
+and askable. Every source's answer rides the hit either way, so a later reader
+can tell what each catalogue said.
 
 WHY A PARSE BREAK IS NOT AN UNREACHABLE. Splitting them costs one enum value and
 buys the difference between "your network is down, try later" and "our scraper is
@@ -104,7 +119,7 @@ import re
 import time
 import unicodedata
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Any
 from urllib.parse import quote_plus
@@ -113,7 +128,7 @@ from cratekit.core import routing
 from cratekit.core.cause import Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.taxonomy import Taxonomy
-from cratekit.tagging.tag import FetchImage, Searcher, SearchHit
+from cratekit.tagging.tag import FetchImage, Searcher, SearchHit, SourceAnswer
 
 log = logging.getLogger(__name__)
 
@@ -181,6 +196,36 @@ PARSE_BREAK_REASON = "catalogue-parse-broken"
 #: judgement to make, not this module's.
 _TAG_NOISE = frozenset({"edit", "edits", "remix", "remixes", "extended mix"})
 
+#: The statuses a fallback reads as a refusal of this client rather than as a
+#: server that could not answer. Cloudflare serves its interstitial with a 403,
+#: and a 429 that outlasted the backoff is the catalogue declining to talk to
+#: this machine for now.
+_BLOCK_STATUSES = frozenset({403, 429})
+
+#: The statuses a Bandcamp track page answers when the listing that named it is
+#: dead. No answer about the track, and not an outage either.
+_GONE_STATUSES = frozenset({404, 410})
+
+#: The page titles of the two challenge pages measured on 2026-10-01, matched on
+#: the TITLE so a track that happens to be called "Just a moment" cannot read as
+#: one. Cloudflare's block page, "Attention Required!", is the same refusal in
+#: another dress, and its interstitial is written with three dots or with the
+#: single ellipsis character depending on the build that served it.
+_CHALLENGE_TITLE = re.compile(
+    r"<title[^>]*>\s*(just a moment(?:\.\.\.|\u2026)|client challenge|attention required!)",
+    re.IGNORECASE,
+)
+
+#: Cloudflare's own challenge machinery, present in the body of the interstitial
+#: measured on 2026-10-01 whatever its title says. Script paths and a global this
+#: product's catalogues never put on a results page.
+_CHALLENGE_BODY = re.compile(r"/cdn-cgi/challenge-platform/|window\._cf_chl_opt")
+
+#: What the per source record says about a catalogue the walk never reached,
+#: because an earlier one matched. Not an :class:`Answer`, which is what a
+#: catalogue did when it WAS asked.
+NOT_ASKED = "not-asked"
+
 
 # ---------------------------------------------------------------------------
 # The per source outcome, which is this module's core type
@@ -191,13 +236,15 @@ class Answer(Enum):
     """What one catalogue did when it was asked.
 
     MISS is the only value that means "this catalogue does not carry the track".
-    The other three mean, in order, that it does, that we could not ask, and that
-    we asked and could not read the reply.
+    The other four mean, in order, that it does, that we could not ask, that it
+    answered with a bot challenge or a block instead of a result, and that we
+    asked and could not read the reply.
     """
 
     MATCHED = "matched"
     MISS = "miss"
     UNREACHABLE = "unreachable"
+    BLOCKED = "blocked"
     PARSE_BREAK = "parse-break"
 
 
@@ -224,10 +271,15 @@ class Fetched:
     not return a :class:`SourceOutcome`, because a fetch is given a URL and knows
     no source name; the caller that knew which catalogue it was asking attaches
     that.
+
+    ``status`` is the HTTP status of the last answer, or None when there was no
+    answer at all. It is what lets a fallback tell a 403 block from a server that
+    fell over, which the note alone would make a string match.
     """
 
     text: str | None = None
     note: str = ""
+    status: int | None = None
 
 
 #: The one seam every network touch goes through. Given a URL, it answers with
@@ -299,18 +351,21 @@ def default_fetch(
     getter = _requests_get if get is None else get
 
     def fetch(url: str) -> Fetched:
-        response, note = _answered(getter, sleep, url)
+        response, note, status = _answered(getter, sleep, url)
         if response is None:
-            return Fetched(note=note)
-        return Fetched(text=response.text)
+            return Fetched(note=note, status=status)
+        return Fetched(text=response.text, status=status)
 
     return fetch
 
 
 def _answered(
     getter: Callable[..., Any], sleep: Callable[[float], None], url: str
-) -> tuple[Any, str]:
+) -> tuple[Any, str, int | None]:
     """One GET under the rate limit policy: the 200 response, or None and why.
+
+    The last status rides along, None when the transport itself failed, so a
+    caller can tell a block from an outage without reading the note.
 
     Shared by the page fetch and the image fetch, so a picture is asked for on
     exactly the terms a search page is, one timeout, one backoff, one cap.
@@ -323,17 +378,21 @@ def _answered(
         # the exception classes of whatever getter a caller injected would
         # bind this seam to one client library and let the next one through.
         except Exception as exc:  # noqa: BLE001
-            return None, f"transport failure: {exc}"
+            return None, f"transport failure: {exc}", None
         status = getattr(response, "status_code", None)
         if status == 429:
             if attempt + 1 < RATE_LIMIT_ATTEMPTS:
                 sleep(RATE_LIMIT_BASE_WAIT_S * (attempt + 1))
                 continue
-            return None, f"rate limited, {RATE_LIMIT_ATTEMPTS} attempts spent without an answer"
+            return (
+                None,
+                f"rate limited, {RATE_LIMIT_ATTEMPTS} attempts spent without an answer",
+                status,
+            )
         if status != 200:
-            return None, f"HTTP {status}"
-        return response, ""
-    return None, "rate limited, attempts spent"
+            return None, f"HTTP {status}", status
+        return response, "", status
+    return None, "rate limited, attempts spent", 429
 
 
 def default_image_fetch(
@@ -355,7 +414,7 @@ def default_image_fetch(
 
     def fetch_image(url: str) -> bytes | None:
         pacer.wait()
-        response, note = _answered(getter, sleep, url)
+        response, note, _status = _answered(getter, sleep, url)
         if response is None:
             log.debug("picture fetch failed for %s: %s", url, note)
             return None
@@ -582,6 +641,50 @@ def _search_beatport(
 
 
 # ---------------------------------------------------------------------------
+# The fallbacks' refusal check, shared by the two of them
+# ---------------------------------------------------------------------------
+
+
+def _unread(source: str, page: Fetched) -> SourceOutcome | None:
+    """The outcome for a fallback page nobody can read a result off, or None.
+
+    BLOCKED for a page this client was refused, a 403 or a spent 429, or a 200
+    whose title is a known challenge. UNREACHABLE for every other page with no
+    text. None for a page that is worth parsing.
+
+    THE FALLBACKS ONLY. Beatport's read is unchanged by R-791 and still treats
+    every non 200 as unreachable; widening this to it would change a source the
+    finding measured as answering.
+
+    RECOGNISED AND SAID, NEVER ANSWERED. Nothing here retries a challenge, alters
+    a header or solves anything. The note names what was seen so a person reading
+    the artifact knows it was a refusal of this machine and not an outage.
+    """
+    if page.status in _BLOCK_STATUSES:
+        return SourceOutcome(
+            source,
+            Answer.BLOCKED,
+            note=f"the catalogue refused this client, {page.note or f'HTTP {page.status}'}",
+        )
+    if page.text is None:
+        return SourceOutcome(source, Answer.UNREACHABLE, note=page.note)
+    challenge = _CHALLENGE_TITLE.search(page.text)
+    if challenge:
+        return SourceOutcome(
+            source,
+            Answer.BLOCKED,
+            note=f"the catalogue answered with a bot check page, {challenge.group(1)!r}",
+        )
+    if _CHALLENGE_BODY.search(page.text):
+        return SourceOutcome(
+            source,
+            Answer.BLOCKED,
+            note="the catalogue answered with Cloudflare's challenge page",
+        )
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Traxsource
 # ---------------------------------------------------------------------------
 
@@ -610,10 +713,12 @@ def _search_traxsource(
 ) -> SourceOutcome:
     pacer.wait()
     page = fetch(f"{TRAXSOURCE_SEARCH}?term={_query(artist, title)}&page=1")
-    if page.text is None:
-        return SourceOutcome(TRAXSOURCE, Answer.UNREACHABLE, note=page.note)
+    refused = _unread(TRAXSOURCE, page)
+    if refused is not None:
+        return refused
 
-    rows = _traxsource_rows(page.text)
+    # ``_unread`` answered for every page with no text, so this is the page.
+    rows = _traxsource_rows(page.text or "")
     titles_read = 0
     for row in rows:
         found_title = _TRAX_TITLE.search(row)
@@ -716,11 +821,23 @@ def _search_bandcamp(
 ) -> SourceOutcome:
     pacer.wait()
     page = fetch(f"{BANDCAMP_SEARCH}?q={_query(artist, title)}&item_type=t")
-    if page.text is None:
-        return SourceOutcome(BANDCAMP, Answer.UNREACHABLE, note=page.note)
+    refused = _unread(BANDCAMP, page)
+    if refused is not None:
+        return refused
 
-    entries = _BC_RESULT.findall(page.text)
+    # ``_unread`` answered for every page with no text, so this is the page.
+    entries = _BC_RESULT.findall(page.text or "")
     headings_read = 0
+    # A LISTING THAT MATCHED AND WHOSE TRACK PAGE COULD NOT BE READ is not a
+    # miss either: the catalogue named the track and the refusal hid its genre.
+    # Kept rather than returned while unreachable, because a later listing may
+    # still answer. A BLOCK ends the walk over listings: every further track page
+    # is a paced request to a catalogue that has just refused this client.
+    # A track page that is GONE, 404 or 410, is a dead listing and no answer
+    # about the track, so it is passed over the way the loop always did; holding
+    # it as unreachable would leave the file undecidable for as long as the dead
+    # link stays listed.
+    track_unread: SourceOutcome | None = None
     for entry in entries:
         heading = _BC_HEADING.search(entry)
         if not heading:
@@ -743,9 +860,16 @@ def _search_bandcamp(
             # own answer wins where it gave one.
             pacer.wait()
             track_page = fetch(track_url)
-            if track_page.text is not None:
-                genre = genre or _bandcamp_tag(_BC_TAG.findall(track_page.text), declared)
-                art_url = art_url or _bandcamp_art(_BC_OG_IMAGE.search(track_page.text))
+            unread = _unread(BANDCAMP, track_page)
+            if unread is None:
+                text = track_page.text or ""
+                genre = genre or _bandcamp_tag(_BC_TAG.findall(text), declared)
+                art_url = art_url or _bandcamp_art(_BC_OG_IMAGE.search(text))
+            elif not genre and unread.answer is Answer.BLOCKED:
+                track_unread = unread
+                break
+            elif not genre and track_page.status not in _GONE_STATUSES:
+                track_unread = track_unread or unread
         if genre:
             return SourceOutcome(
                 BANDCAMP, Answer.MATCHED, source_genre=genre, art_url=art_url
@@ -757,6 +881,8 @@ def _search_bandcamp(
             Answer.PARSE_BREAK,
             note="search results are present and none of them parsed",
         )
+    if track_unread is not None:
+        return track_unread
     return SourceOutcome(BANDCAMP, Answer.MISS)
 
 
@@ -765,6 +891,41 @@ def _search_bandcamp(
 # ---------------------------------------------------------------------------
 
 _SEARCHES = (_search_beatport, _search_traxsource, _search_bandcamp)
+
+
+def _answers(outcomes: Sequence[SourceOutcome]) -> tuple[SourceAnswer, ...]:
+    """Every source's answer, in :data:`SOURCES` order, ``not-asked`` for the rest.
+
+    ALL THREE, ALWAYS, so a reader of one file's record never has to work out
+    from a missing entry whether a catalogue was skipped or forgotten. A source
+    the walk never reached because an earlier one matched says so.
+    """
+    said = {outcome.source: outcome for outcome in outcomes}
+    return tuple(
+        SourceAnswer(
+            source=source,
+            answer=said[source].answer.value,
+            source_genre=said[source].source_genre,
+            note=said[source].note,
+        )
+        if source in said
+        else SourceAnswer(source=source, answer=NOT_ASKED)
+        for source in SOURCES
+    )
+
+
+def _unread_sources(outcomes: Sequence[SourceOutcome]) -> tuple[str, ...]:
+    """The sources asked whose answer said nothing about the track.
+
+    On a match too, not only on a decline, so a record whose answers show an
+    unreachable Beatport before a Traxsource match says so in ``unread`` as
+    well, and the two fields of one record cannot disagree.
+    """
+    return tuple(
+        outcome.source
+        for outcome in outcomes
+        if outcome.answer not in (Answer.MISS, Answer.MATCHED)
+    )
 
 
 def _resolved(declared: Taxonomy, outcome: SourceOutcome) -> SearchHit:
@@ -791,17 +952,24 @@ def _resolved(declared: Taxonomy, outcome: SourceOutcome) -> SearchHit:
     )
 
 
-def _decide(outcomes: Sequence[SourceOutcome], artist: str, title: str) -> None:
-    """Refuse, or return None to decline, once every source has been asked.
+def _decide(outcomes: Sequence[SourceOutcome], artist: str, title: str) -> SearchHit:
+    """Refuse, or return the decline, once every source has been asked.
 
-    The precedence is the point of the whole module. One source that ANSWERED,
-    even to say it does not carry the track, is enough to make this a genuine
-    absence and to make declining honest. Only when nobody answered does the
-    question become which refusal, and a parse break beats an unreachable there
-    because a broken parser is actionable today and a network is not.
+    The precedence is the point of the whole module. A decline needs at least
+    one source that ANSWERED, and it is a genuine absence, ``no-hit``, only when
+    EVERY source asked answered MISS. When some of them were blocked, unreachable
+    or unparsable beside a MISS, the decline names them in ``unread`` and the
+    file is not reported as one no catalogue carries (R-791). Only when nobody
+    answered at all does the question become which refusal, and a parse break
+    beats an unreachable there because a broken parser is actionable today and a
+    network is not. A blocked source is not an answer about the track, so three
+    refusals of this client raise the unreachable refusal and say so.
+
+    The decline is a :class:`SearchHit` with no genre rather than None, because
+    None cannot carry the three answers the item's record owes.
     """
     if any(outcome.answer is Answer.MISS for outcome in outcomes):
-        return None
+        return SearchHit(answers=_answers(outcomes), unread=_unread_sources(outcomes))
 
     broken = [outcome for outcome in outcomes if outcome.answer is Answer.PARSE_BREAK]
     if broken:
@@ -826,21 +994,31 @@ def _decide(outcomes: Sequence[SourceOutcome], artist: str, title: str) -> None:
             },
         )
 
+    blocked = [outcome.source for outcome in outcomes if outcome.answer is Answer.BLOCKED]
+    steps = [
+        "check this machine's network connection and run the tagging job again; "
+        "the job resumes at the item it stopped on",
+    ]
+    if blocked:
+        steps.append(
+            f"{', '.join(blocked)} refused this client, with a bot check, a block "
+            f"page or a rate limit that outlasted the backoff, rather than a "
+            f"result; this tool does not try to get past one, so those catalogues "
+            f"stay unread until they answer this machine again"
+        )
     raise refuse(
         UNREACHABLE_REASON,
         f"none of {', '.join(SOURCES)} could be read, so nothing is known about "
         f"{artist!r} {title!r}. This is not the same as the catalogues not "
         f"carrying it, and it is not recorded as one",
         remedy=Remedy.RETRY_LATER,
-        steps=(
-            "check this machine's network connection and run the tagging job again; "
-            "the job resumes at the item it stopped on",
-        ),
+        steps=tuple(steps),
         scope=Scope.RUN,
         retryable=True,
         origin=("tagging", "searchers"),
         detail={
             "sources": [outcome.source for outcome in outcomes],
+            "answers": [outcome.answer.value for outcome in outcomes],
             "notes": [outcome.note for outcome in outcomes],
         },
     )
@@ -874,7 +1052,11 @@ def catalogue_searcher(
             outcome = ask(artist, title, fetch=touch, pacer=pacer, declared=declared)
             outcomes.append(outcome)
             if outcome.answer is Answer.MATCHED:
-                return _resolved(declared, outcome)
+                return replace(
+                    _resolved(declared, outcome),
+                    answers=_answers(outcomes),
+                    unread=_unread_sources(outcomes),
+                )
         return _decide(outcomes, artist, title)
 
     return search
@@ -920,6 +1102,7 @@ __all__ = [
     "HEADERS",
     "JITTER_FRACTION",
     "MIN_INTERVAL_S",
+    "NOT_ASKED",
     "PARSE_BREAK_REASON",
     "RATE_LIMIT_ATTEMPTS",
     "RATE_LIMIT_BASE_WAIT_S",
