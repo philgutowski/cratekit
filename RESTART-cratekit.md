@@ -38,8 +38,8 @@ built in review ran twice, ten findings each time: eighteen changed the
 code, R-809 and R-810 filed from it, R-811 to R-814 from the decisions.
 Mutation tables `r798-a` to `r798-c`, 25 rows, 25 killed, and `r798-d`,
 three rows after the second round moved a measured line. Battery on the
-committed tree: ruff clean, **11,511 passed and 1 skipped** in 79 seconds,
-scan clean, `board.py closing --since main` exit 0. **Main's highest
+committed tree, run twice: ruff clean, **11,511 passed and 1 skipped** in 79
+and 88 seconds, scan clean, `board.py closing --since main` exit 0. **Main's highest
 residual number is R-814 once this merges.** **This card did not touch the
 live library, the provider or the live catalogue.** Owed to an attended
 sitting, in the order R-798's ledger entry gives: the build in use is this
