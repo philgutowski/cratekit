@@ -1,0 +1,85 @@
+name = "r796-b"
+pass_kind = "light"
+
+[[rows]]
+id = "O1_a_word_with_no_bucket_is_passed_over"
+description = "choose: accept a word the resolver gives no bucket for, so the pass through tier's word is written"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''        if suggestion.declined or suggestion.bucket_id is None or not tag:'''
+new = '''        if suggestion.declined or not tag:'''
+
+[[rows]]
+id = "O2_too_coarse_is_passed_over"
+description = "choose: accept a name the taxonomy lists as too coarse, so the fallback bucket's name is written"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''        if declared.is_too_coarse_as_source(tag):
+            continue'''
+new = '''        if False:
+            continue'''
+
+[[rows]]
+id = "O3_a_usable_answer_is_never_replaced"
+description = "second_opinion: ask the general catalogue about a hit that already has a genre (R4)"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''        if hit.genre or isrc is None:'''
+new = '''        if isrc is None:'''
+
+[[rows]]
+id = "O4_beatport_must_have_answered"
+description = "second_opinion: ask whenever the hit names a Beatport answer, whatever it was"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''        if first is None or first.answer not in _BEATPORT_ANSWERED:'''
+new = '''        if first is None:'''
+
+[[rows]]
+id = "O5_a_declined_beatport_match_is_asked_about"
+description = "_BEATPORT_ANSWERED: count only a miss, so a track Beatport calls by a catch-all is never asked about (R1, AE2)"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''_BEATPORT_ANSWERED = (Answer.MATCHED.value, Answer.MISS.value)'''
+new = '''_BEATPORT_ANSWERED = (Answer.MISS.value,)'''
+
+[[rows]]
+id = "O6_unread_joins_the_unread_names"
+description = "second_opinion: leave the general catalogue out of the hit's unread names when it could not be read"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''            unread = (*hit.unread, SOURCE) if said.answer in UNREAD else hit.unread'''
+new = '''            unread = hit.unread'''
+
+[[rows]]
+id = "O7_a_decline_keeps_the_shops_word"
+description = "second_opinion: let the general catalogue's declined word replace Beatport's on the file's own record"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''        if picked is None and hit.source_genre:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "O8_a_tagged_file_is_not_asked_about"
+description = "tag_one: hand the seam the ISRC of a file that already has a genre, so it is asked about"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''        hit = published(hit, None if existing else (tags.read_tag(path, "isrc") or ""))'''
+new = '''        hit = published(hit, tags.read_tag(path, "isrc") or "")'''
+
+[[rows]]
+id = "O9_no_isrc_is_not_no_hit"
+description = "tag_one: drop the no-isrc skip reason, so a file the general catalogue could not be asked about is no-hit (AE4)"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''        elif any(said.answer == NO_ISRC for said in hit.answers):'''
+new = '''        elif False:'''

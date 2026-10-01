@@ -146,15 +146,46 @@ report a clean sweep over answers it never got. A decline is a question the
 next run asks again; a refusal fails that one item and leaves the job
 resumable.
 
-A decline is `no-hit` only when every source asked answered miss. A miss
+A decline is `no-hit` only when every source asked answered miss, or the
+general catalogue knew the track and published no genre for it. A miss
 beside a source that could not be read is `sources-unread`, which names the
-unread sources, because the unread one may carry the track (R-791). Every
+unread sources, because the unread one may carry the track (R-791). A word a
+catalogue answered and the taxonomy declined outranks both: that file is
+`unmapped-genre`, and its record still names what went unread. Every
 file's record carries all three answers, `not-asked` for a source the walk
-never reached because an earlier one matched.
+never reached because an earlier one matched, and a fourth for the general
+catalogue below.
 
 A match also carries the cover URL off the same catalogue row as its genre,
 never off another row, because the artist and title gate that picks the genre
 is the only thing that says the picture belongs to this track.
+
+### General catalogue
+The source `crate tag folder` asks after the searcher, for music the record
+shops do not sell (R-796). It is asked by the file's ISRC and never by a text
+search, so its answer is a published fact about that recording and not a guess.
+The one asked is Deezer, with no key, through `tagging/published.py`.
+
+It is asked only for a file that needs a genre, whose searcher gave none, and
+only when Beatport itself answered, with a match that was not usable or with a
+miss. A usable answer from a record shop is never replaced, and an unread
+Beatport is never pre-empted, because a genre is written once.
+
+A **published genre** is the catalogue's own word for the track's ALBUM. It is
+written only when it maps to a folder: the resolver answers with a bucket, or
+the word is a bucket's own name, and the name is not one the taxonomy lists as
+too coarse. An album with several
+genres uses the first that maps. Anything else is a decline that records what
+was answered. A written one carries no inferred mark, since nothing was
+inferred, and is never off taxonomy.
+
+Its answer per file is one of the searcher's five or `no-isrc`, a file whose
+ISRC tag is empty or does not read as one. That file is never `no-hit`: its own
+skip reason is `no-isrc` when nothing else explains it. A block, a rate limit
+or the catalogue's quota error is `blocked` and is never got past, and after
+the first one the lookup asks nothing more in that run. No picture is read off
+it. The lookup knows no taxonomy, so the label genre gate can call it for a
+release.
 
 ### Provider gate
 The one seam every call to the streaming provider passes, `core/provider_gate`,

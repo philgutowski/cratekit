@@ -441,6 +441,10 @@ tag_aliases = [
 id = "pop"
 display = "Pop"
 
+# "soul & funk" is the general catalogue's own word (R-796), one genre there
+# covering both. It files here on this table's own precedent, a combined source
+# name goes under its first word, as "hip-hop / r&b" does below. One line to
+# move to the funk sub if that is where these belong.
 [[bucket.sub]]
 id = "soul_rnb"
 display = "Soul / R&B"
@@ -448,18 +452,21 @@ tag_aliases = [
   "r&b",
   "rnb",
   "soul",
+  "soul & funk",
   "soul / r&b",
 ]
 
 [[bucket.sub]]
 id = "hip_hop"
 display = "Hip-Hop"
+# "rap/hip hop" is the general catalogue's own word for this genre (R-796).
 tag_aliases = [
   "hip hop",
   "hip-hop",
   "hip-hop / r&b",
   "rap",
   "rap fr",
+  "rap/hip hop",
   "trap",
   "trap / wave",
 ]

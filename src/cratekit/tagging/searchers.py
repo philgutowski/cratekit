@@ -248,6 +248,16 @@ class Answer(Enum):
     PARSE_BREAK = "parse-break"
 
 
+#: The answers that leave the question open: the catalogue was asked and what
+#: came back says nothing about the track. One tuple, read by the verb's
+#: warnings and by the general catalogue, so the three words are spelled once.
+UNREAD_ANSWERS: tuple[str, ...] = (
+    Answer.BLOCKED.value,
+    Answer.UNREACHABLE.value,
+    Answer.PARSE_BREAK.value,
+)
+
+
 @dataclass(frozen=True, slots=True)
 class SourceOutcome:
     """One catalogue's answer, with the source that gave it and what it said.
@@ -336,8 +346,14 @@ def default_fetch(
     *,
     get: Callable[..., Any] | None = None,
     sleep: Callable[[float], None] = time.sleep,
+    headers: dict[str, str] | None = None,
 ) -> Fetch:
     """The shipped fetch seam: one GET, one timeout, one rate limit policy.
+
+    ``headers`` is what the request says about itself, :data:`HEADERS` unless a
+    caller names its own. The three record catalogues are asked as a browser
+    because they serve pages; :mod:`cratekit.tagging.published` asks a public
+    API and says what it is.
 
     R22's classification lives here and nowhere else, so there is one answer to
     "was that source unreachable" rather than three that drift. A transport
@@ -349,9 +365,10 @@ def default_fetch(
     attempt is time spent on a request nobody is going to make.
     """
     getter = _requests_get if get is None else get
+    sent = HEADERS if headers is None else headers
 
     def fetch(url: str) -> Fetched:
-        response, note, status = _answered(getter, sleep, url)
+        response, note, status = _answered(getter, sleep, url, sent)
         if response is None:
             return Fetched(note=note, status=status)
         return Fetched(text=response.text, status=status)
@@ -360,7 +377,10 @@ def default_fetch(
 
 
 def _answered(
-    getter: Callable[..., Any], sleep: Callable[[float], None], url: str
+    getter: Callable[..., Any],
+    sleep: Callable[[float], None],
+    url: str,
+    headers: dict[str, str] = HEADERS,
 ) -> tuple[Any, str, int | None]:
     """One GET under the rate limit policy: the 200 response, or None and why.
 
@@ -372,7 +392,7 @@ def _answered(
     """
     for attempt in range(RATE_LIMIT_ATTEMPTS):
         try:
-            response = getter(url, headers=HEADERS, timeout=REQUEST_TIMEOUT_S)
+            response = getter(url, headers=headers, timeout=REQUEST_TIMEOUT_S)
         # A bare except, on purpose. This IS the transport layer, and every
         # way it can fail is one fact: the source could not be read. Naming
         # the exception classes of whatever getter a caller injected would
@@ -645,16 +665,18 @@ def _search_beatport(
 # ---------------------------------------------------------------------------
 
 
-def _unread(source: str, page: Fetched) -> SourceOutcome | None:
-    """The outcome for a fallback page nobody can read a result off, or None.
+def unread_outcome(source: str, page: Fetched) -> SourceOutcome | None:
+    """The outcome for a page nobody can read a result off, or None.
 
     BLOCKED for a page this client was refused, a 403 or a spent 429, or a 200
     whose title is a known challenge. UNREACHABLE for every other page with no
     text. None for a page that is worth parsing.
 
-    THE FALLBACKS ONLY. Beatport's read is unchanged by R-791 and still treats
-    every non 200 as unreachable; widening this to it would change a source the
-    finding measured as answering.
+    THE FALLBACKS AND THE GENERAL CATALOGUE, NEVER BEATPORT. Beatport's read is
+    unchanged by R-791 and still treats every non 200 as unreachable; widening
+    this to it would change a source the finding measured as answering. The
+    general catalogue in :mod:`cratekit.tagging.published` reads its refusals
+    through this one check (R-796), which is why the name is public.
 
     RECOGNISED AND SAID, NEVER ANSWERED. Nothing here retries a challenge, alters
     a header or solves anything. The note names what was seen so a person reading
@@ -713,11 +735,11 @@ def _search_traxsource(
 ) -> SourceOutcome:
     pacer.wait()
     page = fetch(f"{TRAXSOURCE_SEARCH}?term={_query(artist, title)}&page=1")
-    refused = _unread(TRAXSOURCE, page)
+    refused = unread_outcome(TRAXSOURCE, page)
     if refused is not None:
         return refused
 
-    # ``_unread`` answered for every page with no text, so this is the page.
+    # ``unread_outcome`` answered for every page with no text, so this is the page.
     rows = _traxsource_rows(page.text or "")
     titles_read = 0
     for row in rows:
@@ -821,11 +843,11 @@ def _search_bandcamp(
 ) -> SourceOutcome:
     pacer.wait()
     page = fetch(f"{BANDCAMP_SEARCH}?q={_query(artist, title)}&item_type=t")
-    refused = _unread(BANDCAMP, page)
+    refused = unread_outcome(BANDCAMP, page)
     if refused is not None:
         return refused
 
-    # ``_unread`` answered for every page with no text, so this is the page.
+    # ``unread_outcome`` answered for every page with no text, so this is the page.
     entries = _BC_RESULT.findall(page.text or "")
     headings_read = 0
     # A LISTING THAT MATCHED AND WHOSE TRACK PAGE COULD NOT BE READ is not a
@@ -860,7 +882,7 @@ def _search_bandcamp(
             # own answer wins where it gave one.
             pacer.wait()
             track_page = fetch(track_url)
-            unread = _unread(BANDCAMP, track_page)
+            unread = unread_outcome(BANDCAMP, track_page)
             if unread is None:
                 text = track_page.text or ""
                 genre = genre or _bandcamp_tag(_BC_TAG.findall(text), declared)
@@ -1111,6 +1133,7 @@ __all__ = [
     "TRAXSOURCE",
     "TRAXSOURCE_SEARCH",
     "UNREACHABLE_REASON",
+    "UNREAD_ANSWERS",
     "Answer",
     "Fetch",
     "Fetched",
@@ -1121,4 +1144,5 @@ __all__ = [
     "default_image_fetch",
     "for_images",
     "for_taxonomy",
+    "unread_outcome",
 ]

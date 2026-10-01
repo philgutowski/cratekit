@@ -23,6 +23,13 @@ mostly files that were tagged long ago.
 A searcher that returns nothing is a decline, not a failure. The file
 stays untagged and the next run asks again.
 
+A SECOND, GENERAL CATALOGUE IS A SEAM OF ITS OWN (R-796). The searcher asks the
+record shops by artist and title and knows dance music; a file they gave no
+usable genre for is offered to :data:`PublishedGenre`, which asks a general
+catalogue by the file's ISRC. It is a parameter beside the image fetch rather
+than a change to the searcher's signature, so the searcher is asked exactly as
+it was, and what is read here is only the ISRC tag the seam needs.
+
 THE FOLDER WALK AND THE PER FILE WORK ARE TWO FUNCTIONS, and the split is
 what makes this engine drivable as a job. :func:`audio_files` is what a
 verb queues one item per, and :func:`tag_one` is what its worker runs for
@@ -46,6 +53,14 @@ from cratekit.core.cause import CratekitError
 from cratekit.core.naming import AUDIO_EXTS
 
 Searcher = Callable[[str, str], "SearchHit | None"]
+
+#: The general catalogue's seam. Given the searcher's hit and the file's ISRC
+#: tag, the hit to act on. The ISRC is None for a file that needs no genre, so
+#: nothing is asked for it and its record still says so; it is the tag's text,
+#: possibly empty, for a file that does. The shipped one is
+#: :func:`cratekit.tagging.published.second_opinion`. It answers and does not
+#: raise: a general catalogue that could not be read is recorded on the hit.
+PublishedGenre = Callable[["SearchHit", "str | None"], "SearchHit"]
 
 #: Directory names :func:`audio_files` does not descend into: this product's own
 #: per item staging trees, whose contents belong to an attempt rather than to the
@@ -113,6 +128,13 @@ class SearchHit:
     worked out here, because the only place that can tell it apart from a
     declared tag with no bucket is the tier that answered (R-650).
 
+    ``art_source`` names the catalogue whose row the picture question belongs
+    to when that is not ``source``. None, the default, means the two are one
+    catalogue. The general catalogue supplies a genre and is never asked for a
+    picture (R-796), so a hit it became the source of carries the record shop
+    whose row matched, or the empty string when no shop's did, and the report
+    about the picture is then written about the shops and not about it.
+
     ``answers`` is every catalogue's answer, so the item's record can say what
     each one said rather than only the disposition they added up to. ``unread``
     names the catalogues asked whose answer left the question open, blocked,
@@ -131,6 +153,7 @@ class SearchHit:
     off_taxonomy: bool = False
     answers: tuple[SourceAnswer, ...] = ()
     unread: tuple[str, ...] = ()
+    art_source: str | None = None
 
 
 #: Why a file was passed over. ``HAS_GENRE`` is the fill-if-empty policy this
@@ -149,11 +172,19 @@ class SearchHit:
 #: carries the track is unknown. Reporting it ``no-hit`` told a person three
 #: catalogues were searched when one was, and they tagged by hand on that
 #: belief. The file stays untagged and the next run asks again.
+#:
+#: ``NO_ISRC`` IS NOT A KIND OF ``NO_HIT`` EITHER (R-796). The record shops did
+#: not carry the track and the general catalogue, which is asked by ISRC, could
+#: not be asked because the file carries none. Whether that catalogue knows the
+#: track is unknown, so the file is not reported as one no catalogue carries.
+#: It is also the WORD the general catalogue's entry in a file's answers
+#: carries for that case, one string for one fact.
 HAS_GENRE = "has-genre"
 NO_HIT = "no-hit"
 UNMAPPED_GENRE = "unmapped-genre"
 SOURCES_UNREAD = "sources-unread"
-SKIP_REASONS: tuple[str, ...] = (HAS_GENRE, NO_HIT, UNMAPPED_GENRE, SOURCES_UNREAD)
+NO_ISRC = "no-isrc"
+SKIP_REASONS: tuple[str, ...] = (HAS_GENRE, NO_HIT, UNMAPPED_GENRE, SOURCES_UNREAD, NO_ISRC)
 
 #: What happened about a picture for a file that had none, or why nothing was
 #: asked. ``PRESENT`` is the never re-download rule holding: the file carries a
@@ -314,17 +345,33 @@ def _art_embedded(path: Path, hit: SearchHit | None, fetch_image: FetchImage | N
     def result(status: str, detail: str = "") -> dict[str, str]:
         return {"art_fetch": status, "art_fetch_detail": detail}
 
-    if hit is None or (not hit.art_url and not hit.source):
-        # A DECLINE: no catalogue matched, so none named a picture. Which kind of
-        # decline it was decides the sentence, never whether there is one.
+    # WHOSE ROW THE PICTURE QUESTION BELONGS TO. The hit's source, unless the hit
+    # says otherwise: a genre from the general catalogue leaves the picture with
+    # the record shop that matched, or with nobody.
+    pictured_by = "" if hit is None else (
+        hit.source if hit.art_source is None else hit.art_source
+    )
+    if hit is None or (not hit.art_url and not pictured_by):
+        # A DECLINE: no catalogue that names pictures matched, so none named
+        # one. Which kind of decline it was decides the sentence, never whether
+        # there is one.
         unread = hit.unread if hit is not None else ()
         named = f"{', '.join(unread)} could not be read and no other catalogue" if unread else (
             "no catalogue"
         )
+        if hit is not None and hit.source:
+            # THE GENRE'S SOURCE IS NOT A PICTURE'S. Saying no catalogue carried
+            # the track would be false of the one that just answered about it.
+            return result(
+                ART_UNAVAILABLE,
+                f"{named} that is asked for pictures carried the track, so no "
+                f"picture was named; {hit.source} answered about the genre and is "
+                f"not asked for one",
+            )
         return result(ART_UNAVAILABLE, f"{named} carried the track, so no picture was named")
     if not hit.art_url:
         return result(
-            ART_UNAVAILABLE, f"{hit.source or 'the catalogue'} named no picture for the track"
+            ART_UNAVAILABLE, f"{pictured_by or 'the catalogue'} named no picture for the track"
         )
     if fetch_image is None:
         return result(ART_UNAVAILABLE, "no image fetch was supplied, so the picture was not asked for")
@@ -347,11 +394,15 @@ def _art_embedded(path: Path, hit: SearchHit | None, fetch_image: FetchImage | N
         return result(ART_ERROR, f"the picture could not be written: {exc}")
     if not written:
         return result(ART_ERROR, "the picture could not be written to the file")
-    return result(ART_EMBEDDED, f"{cdj.width} by {cdj.height} from {hit.source or url}")
+    return result(ART_EMBEDDED, f"{cdj.width} by {cdj.height} from {pictured_by or url}")
 
 
 def tag_one(
-    path: Path, *, searcher: Searcher, fetch_image: FetchImage | None = None
+    path: Path,
+    *,
+    searcher: Searcher,
+    fetch_image: FetchImage | None = None,
+    published: PublishedGenre | None = None,
 ) -> TagResult:
     """Tag ONE file, or report why it was passed over. The per item work.
 
@@ -388,6 +439,18 @@ def tag_one(
     would fail every such file in an outage, and on a parse break, which is not
     retryable, fail it on every run.
 
+    THE GENERAL CATALOGUE IS ASKED AFTER THE SEARCHER AND NEVER INSTEAD OF IT
+    (R-796). ``published`` is handed whatever hit the searcher returned, with
+    the file's ISRC tag when the file needs a genre and None when it does not,
+    and answers with the hit to act on. It is optional so a caller that
+    predates it keeps working. A searcher that RAISED is not offered to it: no
+    record shop was read, and the general catalogue's album level answer is not
+    to stand in for a Beatport nobody could ask.
+
+    A FILE THE GENERAL CATALOGUE COULD NOT BE ASKED ABOUT IS NOT A NO-HIT. When
+    nothing else explains the file, no declined word and no unread source, and
+    the general catalogue's answer is ``no-isrc``, that is the skip reason.
+
     THE ART REPAIR RUNS FIRST, before the genre check can return. A file that
     already carries a genre is exactly the file the source system repaired, so a
     repair placed after that return would never reach it. The repair never
@@ -414,6 +477,14 @@ def tag_one(
             "art_fetch_detail": f"{exc.cause.reason}: {exc.cause.message}",
         }
         return TagResult(path=path, genre_written=None, skipped=HAS_GENRE, **repaired, **unread)
+    if published is not None and hit is not None:
+        # THE ISRC TAG IS READ ONLY FOR A FILE THE SEAM COULD BE ASKED ABOUT, one
+        # that needs a genre and whose searcher gave none. None tells the seam
+        # nothing is to be asked, which is a different fact from a tag that is
+        # there and empty, and it spares the open on every file a record shop
+        # already settled.
+        wanted = not existing and not hit.genre
+        hit = published(hit, (tags.read_tag(path, "isrc") or "") if wanted else None)
     written: str | None = None
     off_taxonomy = False
     if existing:
@@ -429,6 +500,8 @@ def tag_one(
             skipped = UNMAPPED_GENRE
         elif hit.unread:
             skipped = SOURCES_UNREAD
+        elif any(said.answer == NO_ISRC for said in hit.answers):
+            skipped = NO_ISRC
         else:
             skipped = NO_HIT
     else:
@@ -466,7 +539,11 @@ def tag_one(
 
 
 def tag_folder(
-    root: Path, *, searcher: Searcher, fetch_image: FetchImage | None = None
+    root: Path,
+    *,
+    searcher: Searcher,
+    fetch_image: FetchImage | None = None,
+    published: PublishedGenre | None = None,
 ) -> list[TagResult]:
     """Tag every audio file under ``root``. ``searcher`` is required.
 
@@ -474,7 +551,8 @@ def tag_folder(
     decision lives one function down, where the job worker reaches it too.
     """
     return [
-        tag_one(path, searcher=searcher, fetch_image=fetch_image) for path in audio_files(root)
+        tag_one(path, searcher=searcher, fetch_image=fetch_image, published=published)
+        for path in audio_files(root)
     ]
 
 
@@ -490,9 +568,11 @@ __all__ = [
     "SKIPPED_DIRNAMES",
     "SKIP_REASONS",
     "NO_HIT",
+    "NO_ISRC",
     "SOURCES_UNREAD",
     "UNMAPPED_GENRE",
     "FetchImage",
+    "PublishedGenre",
     "SearchHit",
     "Searcher",
     "SourceAnswer",

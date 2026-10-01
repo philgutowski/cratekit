@@ -5888,7 +5888,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # string, not-asked, the per source record's word for a catalogue the walk
     # never reached, was already in the tree and does not move the count. The
     # searcher's refusals are the ones it had.
-    assert (len(literals), len(literals - set(causes))) == (544, 358), (
+    # Re-pinned on the residual finding "The tagger has no source for non dance
+    # music, so every such track waits in INBOX for a genre by hand",
+    # 2026-10-01: 544 to 547 distinct, non-keys 358 to 361. THREE joined and
+    # nothing left, each checked against `main`'s own `src` by git grep, and
+    # none is a key. no-isrc is a SKIP REASON on one file's tagging result and
+    # the general catalogue's answer for a file it could not be asked about,
+    # one literal for both. tag-folder-published-unread and tag-folder-no-isrc
+    # are WARNING codes `tagging/cli.py` gives on a sweep whose general
+    # catalogue was unread throughout or whose files carry no ISRC. The new
+    # lookup, `tagging/published.py`, raises nothing and adds no reason.
+    assert (len(literals), len(literals - set(causes))) == (547, 361), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
