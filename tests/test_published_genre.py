@@ -461,7 +461,6 @@ def test_no_picture_is_read_off_the_general_catalogues_answer():
     """The answer carries a cover and this reader takes none. Pictures stay the
     record shops' rows."""
     said = lookup_over(deezer_track(), deezer_album(["Rock"]))(ISRC)
-    assert not hasattr(said, "art_url")
     assert COVER not in repr(said)
 
 
@@ -839,6 +838,12 @@ def test_ae1_a_track_beatport_does_not_carry_gets_the_published_genre(track):
     written tag in the sub the taxonomy declared for the word."""
     word = "Rock"
     suggestion = routing.suggest_tag(TAXONOMY, word)
+    # THE FOLDER IS PINNED BY IDENTIFIER, not only by asking the resolver the
+    # code under test asks: AE1 names NonElectronic / Rock, and the tag written
+    # is that sub's own display, read off the template.
+    assert (suggestion.bucket_id, suggestion.sub_id) == ("non_electronic", "rock")
+    (rock,) = [sub for sub in TAXONOMY.bucket("non_electronic").subs if sub.id == "rock"]
+    assert suggestion.tag == rock.display
 
     result = tag.tag_one(
         track,

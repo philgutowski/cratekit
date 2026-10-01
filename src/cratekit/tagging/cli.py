@@ -78,8 +78,9 @@ PUBLISHED_UNREAD = "tag-folder-published-unread"
 #: The warning that counts the files the general catalogue could not be asked
 #: about because they carry no ISRC (R-796). Apart from the unread count
 #: because another run will not move it: the file needs its ISRC, or a genre by
-#: hand.
-NO_ISRC = "tag-folder-no-isrc"
+#: hand. Named apart from the engine's ``NO_ISRC``, which is the skip reason
+#: and the answer word, so one name does not mean two strings in two modules.
+NO_ISRC_FILES = "tag-folder-no-isrc"
 
 
 def _load() -> config.Config:
@@ -380,7 +381,7 @@ def _published_warnings(summary: dict) -> tuple[dict[str, str], ...]:
     if bare:
         warnings.append(
             {
-                "code": NO_ISRC,
+                "code": NO_ISRC_FILES,
                 "message": (
                     f"{_files(bare)} not asked about at {published.SOURCE} because "
                     f"the file carries no ISRC, or a value that does not read as "

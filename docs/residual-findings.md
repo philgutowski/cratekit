@@ -31711,6 +31711,54 @@ so an unrecognised page is a parse break rather than an absence.
 
 ## R-796. The tagger has no source for non dance music, so every such track waits in INBOX for a genre by hand
 
+**Closed in the code 2026-10-01 on `relay/236`, issue #236. The run on the
+author's library is owed to an attended sitting.** `tagging/published.py`
+asks Deezer for a track by its ISRC, with no key and a user agent naming
+this tool, and reads the genres published on the track's album. `tag_one`
+offers the searcher's hit to it through a new seam, for a file that needs a
+genre, whose record shops gave none, and only when Beatport itself answered
+with a match that was not usable or with a miss. The first published genre
+that maps to a folder is written with no inferred mark. A word that maps to
+none, or to a name the taxonomy lists as too coarse, is declined and
+recorded. Traxsource and Bandcamp are asked exactly as before, first.
+
+The general catalogue's answer per file is `matched`, `miss`, `blocked`,
+`unreachable`, `parse-break`, `no-isrc`, or `not-asked`, and joins the three
+in each item artifact's `answers`. `no-isrc` is also a new skip reason, so a
+file that could not be asked about is never `no-hit`. A 403, a spent 429, a
+challenge page and Deezer's quota error are `blocked`, the quota error is
+not retried, and after the first `blocked` the lookup asks nothing more in
+that run. The summary counts files by its answer, counts written files per
+source in `tagged_by`, and warns with `tag-folder-published-unread` and
+`tag-folder-no-isrc`. The lookup knows no taxonomy and is one per process,
+`published.for_lookup()`, which is what R-798 calls.
+
+Two tag aliases joined the shipped template, `rap/hip hop` and
+`soul & funk`. **The library's active copy needs the same two lines before
+the owed run**, or those two words are declined there.
+
+The built in review raised ten findings. Six changed the code: the refusal
+memory, an album's genres read once per run, a field of several ISRCs read
+as its first, the warning for a catalogue unread on some files, the parse
+break sentence said once, and the album cover, which the first build read
+and this one does not. Four are recorded: R-799, R-800, R-801, and one that
+is a choice, a track the catalogue knows with no genre published reads
+`no-hit`, which `CONCEPTS.md` now says. R-802 came from the hunt after the
+fixes.
+
+Mutation tables `r796-a` to `r796-c`, 25 rows, 25 killed, the author's and
+not independent.
+
+Not measured from Deezer: its quota error, a 429, a 403 and a challenge
+page. Their handling follows its published error table and R-791's rules,
+and every test of them is synthetic. Its behaviour at the volume of a full
+sweep is unmeasured as well.
+
+Owed to an attended sitting: the two alias lines in the active taxonomy,
+then `crate tag folder` over the 62 untagged playlist tracks, at least nine
+in ten written, recorded in `docs/cutover.md`, with what Deezer answered
+for a rate limit if it gave one.
+
 **Found:** at sitting 25, 2026-10-01, and measured in the brainstorm of the
 same day, recorded in
 `docs/plans/2026-10-01-0949-feat-published-genre-by-isrc-plan.md`. The
@@ -31773,3 +31821,103 @@ recorded in `docs/cutover.md`.
 
 **On the board bar.** The author asked for it on 2026-10-01. Waits on R-796,
 which builds the lookup.
+
+## R-799. The general catalogue's broad words are filed by aliases written for the record shops' vocabulary
+
+**Found:** on `relay/236`, 2026-10-01, by the built in review of R-796, and
+driven through the shipped resolver the same day. `published.choose` writes
+whatever tag `suggest_tag` answers for a published word, and the alias
+table was written against Beatport's words. Three things follow.
+
+- **Pop is tagged Dance / Pop.** Deezer's Pop is every kind of pop, and the
+  template aliases the word to the dance bucket. The Pop sub under
+  NonElectronic has no tag alias and is never reached.
+- **Alternative and Country are tagged with the bucket's bare name,
+  NonElectronic.** They are bucket level aliases, so the tag loses the
+  word, and routing then files the bare name under the default sub, Rock.
+  For Country the template's own map names another sub.
+- **A track Beatport calls by a catch-all is asked about, as R1 and AE2
+  require,** so a dance track on an album Deezer calls Rock or Alternative
+  is written as that. The plan accepts the album level limit for a Beatport
+  miss and its text does not separate the two cases.
+
+Soul & Funk was aliased to Soul / R&B by this unit on the template's
+precedent, a combined name files under its first word. That is the same
+kind of call and is one line to move.
+
+**Measured cost.** None on the library yet: the 62 track run is owed. On the
+resolver, of Deezer's 27 top level words, 11 map to a folder, and Pop,
+Alternative and Country are three of the 11. A genre is written once, fill if empty, so a word filed wrong
+stays until it is corrected by hand.
+
+**Options.** (a) Leave it: the template is the author's statement of where
+Pop goes. (b) Give the NonElectronic subs tag aliases for the general
+catalogue's words, which changes what Bandcamp's tags resolve to as well.
+(c) Let the taxonomy declare aliases per source vocabulary. (d) Ask the
+general catalogue only on a Beatport miss, which is a change to the
+Product Contract's R1.
+
+**Closes when:** the author has read where the 62 tracks landed and chosen,
+and the template says so.
+
+**Not on the board bar.** A taxonomy decision, and it closes at an attended
+sitting.
+
+## R-800. Nothing remembers a general catalogue answer past the run, and the cache declared for it is unused
+
+**Found:** on `relay/236`, 2026-10-01, by the built in review of R-796. The
+lookup remembers an album's genres and a refusal for the life of one
+process. A file left untagged, declined, a miss or no genre published, is
+asked about again by every later sweep, two paced requests each. The state
+file `genre_lookup_cache` is declared in `core/config.py` for third party
+catalogue lookups keyed by track, and nothing reads or writes it.
+
+**Measured cost.** By construction and not timed: two requests and two to
+three seconds a file a sweep. Over the 111 untagged tracks of sitting 25
+that is under six minutes a rerun. No correctness cost.
+
+**Closes when:** answers are kept across runs under a stated rule for when
+a miss, a decline and a match are asked again, or the declared state file
+is removed. R-798 asks the same lookup once a release and should decide
+this with its pacing.
+
+**Not on the board bar.** Time, and no false report.
+
+## R-801. An ISRC tag that could not be read is reported as a file with no ISRC
+
+**Found:** on `relay/236`, 2026-10-01, by the built in review of R-796.
+`tag_one` reads the ISRC with `tags.read_tag`, which folds a stored value
+that could not be decoded into absent. The file's answer is then `no-isrc`
+with the note that none was given, and the `tag-folder-no-isrc` warning
+says another run will not change it. `tags.read_tags_checked` tells the two
+apart and is not used here.
+
+**Measured cost.** None. No producer of an undecodable ISRC field on a file
+whose genre and pictures read was driven or seen, so the reachability is
+unmeasured.
+
+**Closes when:** the seam is told a failed read apart from an absent tag,
+and the file's record says the tag could not be read.
+
+**Not on the board bar.** Its input has not been observed.
+
+## R-802. The library index reads a tag holding two ISRCs as holding none
+
+**Found:** on `relay/236`, 2026-10-01, hunting the class after R-796's
+lookup was taught to read the first of several ISRCs. Driven with
+`tags.write_tag_values`: an ID3 frame carrying two ISRCs reads back as one
+string joined by a null, on MP3, AIFF and WAV, and `isrc_token` folds that
+to empty. FLAC and M4A read back the first value. `acquire/match.py` builds
+the owned index with `isrc_token` on the raw tag, so such a file is indexed
+under no ISRC, and the rule that owns a track by its ISRC cannot find it.
+
+**Measured cost.** None on the library. The two value frame was written by
+the test, no downloader was seen to write one, so the reachability is
+unmeasured. If one exists, a track already owned is offered or downloaded
+again.
+
+**Closes when:** the fold that reads an ISRC off a file's tag takes the
+first value that reads as one, in one place both callers use, with a test
+over a real ID3 container.
+
+**Not on the board bar.** Its input has not been observed.

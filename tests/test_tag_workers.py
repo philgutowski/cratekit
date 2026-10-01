@@ -1139,7 +1139,7 @@ def test_four_real_misses_are_no_hit_and_carry_no_unread_warning(
     assert tag_cli.SOURCES_UNREAD not in codes
     assert tag_cli.SOURCE_BLOCKED not in codes
     assert tag_cli.PUBLISHED_UNREAD not in codes
-    assert tag_cli.NO_ISRC not in codes
+    assert tag_cli.NO_ISRC_FILES not in codes
 
 
 # ---------------------------------------------------------------------------
@@ -1195,7 +1195,7 @@ def test_a_published_genre_reaches_the_file_the_artifact_and_the_summary(
     codes = [warning["code"] for warning in resumed["warnings"]]
     assert tag_cli.OFF_TAXONOMY not in codes
     assert tag_cli.PUBLISHED_UNREAD not in codes
-    assert tag_cli.NO_ISRC not in codes
+    assert tag_cli.NO_ISRC_FILES not in codes
 
 
 def test_a_general_catalogue_unread_on_every_file_is_named_in_the_summary(
@@ -1357,8 +1357,8 @@ def test_files_with_no_isrc_are_counted_and_warned_about_whatever_their_skip_rea
     assert tagging["skipped"][tag.NO_HIT] == 0
     assert tagging["answers"][published.SOURCE][tag.NO_ISRC] == 2
 
-    assert tag_cli.NO_ISRC == "tag-folder-no-isrc"
-    (bare,) = [w["message"] for w in resumed["warnings"] if w["code"] == tag_cli.NO_ISRC]
+    assert tag_cli.NO_ISRC_FILES == "tag-folder-no-isrc"
+    (bare,) = [w["message"] for w in resumed["warnings"] if w["code"] == tag_cli.NO_ISRC_FILES]
     assert bare.startswith("2 files were not asked about at deezer")
     assert "not reported as tracks no catalogue carries" in bare
     codes = [warning["code"] for warning in resumed["warnings"]]
