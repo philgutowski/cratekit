@@ -187,6 +187,42 @@ the first one the lookup asks nothing more in that run. No picture is read off
 it. The lookup knows no taxonomy, so the label genre gate can call it for a
 release.
 
+### Label kind
+The kind of music a followed label is followed for, which decides what the
+label genre gate passes (R-798). A kind is one of the names the active
+taxonomy's `[[label_gate.published]]` rules give the general catalogue's
+words, or `any`, which passes everything and asks nothing. A label with no
+kind is the taxonomy's `default_kind`, dance. It is set with
+`crate label registry set NAME --kind KIND`.
+
+A kind is not a folder and not a set building family. The rules that name it
+read a general catalogue's vocabulary, where most words name no folder, and
+they are a table of their own beside the share rules, which read the record
+shops' words.
+
+The gate's verdict for a release is one of three. **Passed**: one of the
+catalogue's words for it is the label's kind. **Held**: a rule knows at least
+one of its words and none is the label's kind. **Not judged**: the catalogue
+published no word, could not be read, or published only words no rule knows.
+A release that is not judged is filed for review and says why.
+
+### Held release
+A label release the genre gate kept out of review at sweep time, because it
+is not the kind of music its label is followed for (R-798). It is a row in the
+review database's `held_offers`, not a review item and not a tombstone: it is
+never offered for a decision, never rejected, and nothing about it is
+remembered as a deletion.
+
+A held release takes a place in the label's offer window, so a sweep reads
+nothing past it. It is judged again on every sweep that reaches it, from the
+catalogue's words its hold recorded, so a label whose kind changes files what
+now fits with no request. `crate label held` lists them with the reason and
+`crate label held return RELEASE_ID` files one for review, after which
+neither a sweep nor `label approved` holds it again.
+
+Not **held** in the offer window's sense, which is a release already in the
+queue. The listing calls the gate's ones `gated` to keep the two apart.
+
 ### Provider gate
 The one seam every call to the streaming provider passes, `core/provider_gate`,
 attached to the transport of each client the product builds so nothing above
