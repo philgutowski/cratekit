@@ -1733,6 +1733,8 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # empty review queue the verb reports nothing accepted and stops
         # before the catalogue is resolved.
         "label.approved": [],
+        # R-798. No argument lists what the genre gate holds.
+        "label.held": [],
         # U27. The four report verbs each take a collection export, and each is
         # handed a path under the CONFIGURED library that is deliberately absent,
         # for the same reason the file verbs above are: a literal here would be a

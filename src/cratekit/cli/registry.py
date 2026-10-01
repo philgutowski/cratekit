@@ -1741,6 +1741,30 @@ ENTRIES: tuple[Entry, ...] = (
         doctor_checks=("library.mounted", "credential.provider"),
     ),
     Entry(
+        name="label.held",
+        summary=(
+            "list the releases the label genre gate is holding back, or return "
+            "one to review"
+        ),
+        module="cratekit.label.held_cli",
+        builder="build_held",
+        handler_key="label.held",
+        feature_rows=(21,),
+        module_id="labels",
+        # ``diagnostic/1``, for the reason ``label.approved`` gives: what a
+        # person needs is each held release, its reason, and the command that
+        # returns it, and the default renderer shows checks (R-798).
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
+        # ``return`` FILES a held release into the label-release queue, under
+        # the sweep's own key, so the item is the one the sweep would have filed.
+        adjudicates=True,
+        # NO WRITE SURFACE, and not destructive: the review database is this
+        # product's own record, and a return adds one open item and changes one
+        # hold's state. Nothing is downloaded and no tombstone is written.
+        doctor_checks=("library.mounted",),
+    ),
+    Entry(
         name="label.harvest",
         summary="harvest the labels behind a playlist's tracks; imports nothing",
         module="cratekit.label.cli",
