@@ -947,11 +947,14 @@ def test_blocked_fallbacks_reach_every_artifact_and_the_summary_and_never_read_a
     warnings = {warning["code"]: warning["message"] for warning in resumed["warnings"]}
     assert tag_cli.SOURCES_UNREAD == "tag-folder-sources-unread"
     assert tag_cli.SOURCE_BLOCKED == "tag-folder-source-blocked"
-    assert "2 files were left untagged" in warnings[tag_cli.SOURCES_UNREAD]
+    unread = warnings[tag_cli.SOURCES_UNREAD]
+    assert "2 files were left untagged" in unread
+    assert "Across the sweep: traxsource blocked on 2; bandcamp blocked on 2" in unread
+    assert "parse break" not in unread
     blocked = [w["message"] for w in resumed["warnings"] if w["code"] == tag_cli.SOURCE_BLOCKED]
     assert len(blocked) == 2
-    assert blocked[0].startswith("traxsource answered every one of the 2 searches")
-    assert blocked[1].startswith("bandcamp answered every one of the 2 searches")
+    assert blocked[0].startswith("traxsource refused every one of the 2 searches")
+    assert blocked[1].startswith("bandcamp refused every one of the 2 searches")
 
 
 def test_a_fallback_blocked_on_every_file_it_was_asked_about_is_named_by_the_warning(
@@ -997,7 +1000,44 @@ def test_a_fallback_blocked_on_every_file_it_was_asked_about_is_named_by_the_war
     assert tagging["answers"][searchers.BANDCAMP][searchers.NOT_ASKED] == 1
     blocked = [w["message"] for w in resumed["warnings"] if w["code"] == tag_cli.SOURCE_BLOCKED]
     assert len(blocked) == 1
-    assert "bandcamp answered every one of the 1 searches" in blocked[0]
+    assert "bandcamp refused every one of the 1 searches" in blocked[0]
+
+
+def test_one_unread_file_beside_a_parse_break_is_counted_and_the_defect_is_said(
+    cfg, folder, silence, monkeypatch
+):
+    """A parse break beside a MISS leaves the file undecided like a block does,
+    and the warning must not leave it under the promise that a rerun settles
+    it. One file, so the sentence reads as one."""
+    place(folder, silence, "a")
+    broken = searchers.Fetched(
+        text='<div data-trid="1" class="trk-row"><span>moved</span></div>', status=200
+    )
+    bound(
+        monkeypatch,
+        _catalogues(
+            {
+                "a": {
+                    searchers.BEATPORT: EMPTY_BEATPORT,
+                    searchers.TRAXSOURCE: broken,
+                    searchers.BANDCAMP: EMPTY_BANDCAMP,
+                }
+            }
+        ),
+    )
+
+    drive(["tag", "folder", str(folder)])
+    job = tag_job()
+    _code, resumed = drive(resume_argv(job.job_id))
+
+    (report,) = artifacts.committed(cfg, job.job_id)
+    assert report["unread"] == {searchers.TRAXSOURCE: "parse-break"}
+    warnings = {warning["code"]: warning["message"] for warning in resumed["warnings"]}
+    message = warnings[tag_cli.SOURCES_UNREAD]
+    assert message.startswith("1 file was left untagged")
+    assert "traxsource parse-break on 1" in message
+    assert "defect in this software that another run will not move" in message
+    assert tag_cli.SOURCE_BLOCKED not in warnings
 
 
 def test_three_real_misses_are_no_hit_and_carry_no_unread_warning(

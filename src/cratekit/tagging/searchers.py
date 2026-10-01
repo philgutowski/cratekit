@@ -202,14 +202,24 @@ _TAG_NOISE = frozenset({"edit", "edits", "remix", "remixes", "extended mix"})
 #: this machine for now.
 _BLOCK_STATUSES = frozenset({403, 429})
 
+#: The statuses a Bandcamp track page answers when the listing that named it is
+#: dead. No answer about the track, and not an outage either.
+_GONE_STATUSES = frozenset({404, 410})
+
 #: The page titles of the two challenge pages measured on 2026-10-01, matched on
 #: the TITLE so a track that happens to be called "Just a moment" cannot read as
 #: one. Cloudflare's block page, "Attention Required!", is the same refusal in
-#: another dress.
+#: another dress, and its interstitial is written with three dots or with the
+#: single ellipsis character depending on the build that served it.
 _CHALLENGE_TITLE = re.compile(
-    r"<title[^>]*>\s*(just a moment\.\.\.|client challenge|attention required!)",
+    r"<title[^>]*>\s*(just a moment(?:\.\.\.|…)|client challenge|attention required!)",
     re.IGNORECASE,
 )
+
+#: Cloudflare's own challenge machinery, present in the body of the interstitial
+#: measured on 2026-10-01 whatever its title says. Script paths and a global this
+#: product's catalogues never put on a results page.
+_CHALLENGE_BODY = re.compile(r"/cdn-cgi/challenge-platform/|window\._cf_chl_opt")
 
 #: What the per source record says about a catalogue the walk never reached,
 #: because an earlier one matched. Not an :class:`Answer`, which is what a
@@ -665,6 +675,12 @@ def _unread(source: str, page: Fetched) -> SourceOutcome | None:
             Answer.BLOCKED,
             note=f"the catalogue answered with a bot check page, {challenge.group(1)!r}",
         )
+    if _CHALLENGE_BODY.search(page.text):
+        return SourceOutcome(
+            source,
+            Answer.BLOCKED,
+            note="the catalogue answered with Cloudflare's challenge page",
+        )
     return None
 
 
@@ -814,7 +830,13 @@ def _search_bandcamp(
     headings_read = 0
     # A LISTING THAT MATCHED AND WHOSE TRACK PAGE COULD NOT BE READ is not a
     # miss either: the catalogue named the track and the refusal hid its genre.
-    # Kept rather than returned, because a later listing may still answer.
+    # Kept rather than returned while unreachable, because a later listing may
+    # still answer. A BLOCK ends the walk over listings: every further track page
+    # is a paced request to a catalogue that has just refused this client.
+    # A track page that is GONE, 404 or 410, is a dead listing and no answer
+    # about the track, so it is passed over the way the loop always did; holding
+    # it as unreachable would leave the file undecidable for as long as the dead
+    # link stays listed.
     track_unread: SourceOutcome | None = None
     for entry in entries:
         heading = _BC_HEADING.search(entry)
@@ -843,7 +865,10 @@ def _search_bandcamp(
                 text = track_page.text or ""
                 genre = genre or _bandcamp_tag(_BC_TAG.findall(text), declared)
                 art_url = art_url or _bandcamp_art(_BC_OG_IMAGE.search(text))
-            elif not genre:
+            elif not genre and unread.answer is Answer.BLOCKED:
+                track_unread = unread
+                break
+            elif not genre and track_page.status not in _GONE_STATUSES:
                 track_unread = track_unread or unread
         if genre:
             return SourceOutcome(
@@ -889,6 +914,20 @@ def _answers(outcomes: Sequence[SourceOutcome]) -> tuple[SourceAnswer, ...]:
     )
 
 
+def _unread_sources(outcomes: Sequence[SourceOutcome]) -> tuple[str, ...]:
+    """The sources asked whose answer said nothing about the track.
+
+    On a match too, not only on a decline, so a record whose answers show an
+    unreachable Beatport before a Traxsource match says so in ``unread`` as
+    well, and the two fields of one record cannot disagree.
+    """
+    return tuple(
+        outcome.source
+        for outcome in outcomes
+        if outcome.answer not in (Answer.MISS, Answer.MATCHED)
+    )
+
+
 def _resolved(declared: Taxonomy, outcome: SourceOutcome) -> SearchHit:
     """Turn one catalogue's raw genre into the tag to write, or into a decline.
 
@@ -930,12 +969,7 @@ def _decide(outcomes: Sequence[SourceOutcome], artist: str, title: str) -> Searc
     None cannot carry the three answers the item's record owes.
     """
     if any(outcome.answer is Answer.MISS for outcome in outcomes):
-        return SearchHit(
-            answers=_answers(outcomes),
-            unread=tuple(
-                outcome.source for outcome in outcomes if outcome.answer is not Answer.MISS
-            ),
-        )
+        return SearchHit(answers=_answers(outcomes), unread=_unread_sources(outcomes))
 
     broken = [outcome for outcome in outcomes if outcome.answer is Answer.PARSE_BREAK]
     if broken:
@@ -967,9 +1001,10 @@ def _decide(outcomes: Sequence[SourceOutcome], artist: str, title: str) -> Searc
     ]
     if blocked:
         steps.append(
-            f"{', '.join(blocked)} answered with a bot check or a block page rather "
-            f"than a result; this tool does not try to get past one, so those "
-            f"catalogues stay unread until they answer this machine again"
+            f"{', '.join(blocked)} refused this client, with a bot check, a block "
+            f"page or a rate limit that outlasted the backoff, rather than a "
+            f"result; this tool does not try to get past one, so those catalogues "
+            f"stay unread until they answer this machine again"
         )
     raise refuse(
         UNREACHABLE_REASON,
@@ -1017,7 +1052,11 @@ def catalogue_searcher(
             outcome = ask(artist, title, fetch=touch, pacer=pacer, declared=declared)
             outcomes.append(outcome)
             if outcome.answer is Answer.MATCHED:
-                return replace(_resolved(declared, outcome), answers=_answers(outcomes))
+                return replace(
+                    _resolved(declared, outcome),
+                    answers=_answers(outcomes),
+                    unread=_unread_sources(outcomes),
+                )
         return _decide(outcomes, artist, title)
 
     return search

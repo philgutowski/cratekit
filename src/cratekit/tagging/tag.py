@@ -115,9 +115,10 @@ class SearchHit:
 
     ``answers`` is every catalogue's answer, so the item's record can say what
     each one said rather than only the disposition they added up to. ``unread``
-    names the catalogues whose answer left the question open, blocked,
-    unreachable or unparsable, on a decline where another one answered MISS. It
-    is what keeps that decline from reading as ``no-hit`` (R-791).
+    names the catalogues asked whose answer left the question open, blocked,
+    unreachable or unparsable. On a decline it is what keeps the file from
+    reading as ``no-hit`` (R-791); on a match it only keeps the record's two
+    fields agreeing.
 
     All of them default to empty so a caller that predates them, and a fake
     searcher in a suite, keep working unchanged.
@@ -313,14 +314,14 @@ def _art_embedded(path: Path, hit: SearchHit | None, fetch_image: FetchImage | N
     def result(status: str, detail: str = "") -> dict[str, str]:
         return {"art_fetch": status, "art_fetch_detail": detail}
 
-    if hit is None or (not hit.art_url and not hit.source and not hit.unread):
-        return result(ART_UNAVAILABLE, "no catalogue carried the track, so no picture was named")
-    if not hit.art_url and not hit.source:
-        return result(
-            ART_UNAVAILABLE,
-            f"{', '.join(hit.unread)} could not be read and no other catalogue "
-            f"carried the track, so no picture was named",
+    if hit is None or (not hit.art_url and not hit.source):
+        # A DECLINE: no catalogue matched, so none named a picture. Which kind of
+        # decline it was decides the sentence, never whether there is one.
+        unread = hit.unread if hit is not None else ()
+        named = f"{', '.join(unread)} could not be read and no other catalogue" if unread else (
+            "no catalogue"
         )
+        return result(ART_UNAVAILABLE, f"{named} carried the track, so no picture was named")
     if not hit.art_url:
         return result(
             ART_UNAVAILABLE, f"{hit.source or 'the catalogue'} named no picture for the track"

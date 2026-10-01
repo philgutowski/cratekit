@@ -216,38 +216,71 @@ def _unread_warnings(summary: dict) -> tuple[dict[str, str], ...]:
     file in the folder; counting the others would let a run where Beatport
     matched half the folder hide a fallback that was refused on the other half.
     In the walk's own source order, so two runs over one folder warn alike.
+
+    THE COUNT NAMES WHAT WENT UNREAD, per source and per answer, because the
+    three unread answers send a person to three places. A parse break is said to
+    be a defect a rerun will not move, so it is never filed under the promise
+    that the next run asks again and left there.
     """
     warnings: list[dict[str, str]] = []
+    answers = summary.get("answers") or {}
     unread = (summary.get("skipped") or {}).get(tag_engine.SOURCES_UNREAD, 0)
     if unread:
+        unread_words = (
+            searchers.Answer.BLOCKED.value,
+            searchers.Answer.UNREACHABLE.value,
+            searchers.Answer.PARSE_BREAK.value,
+        )
+        seen = "; ".join(
+            f"{source} {word} on {counted[word]}"
+            for source, counted in answers.items()
+            for word in unread_words
+            if counted.get(word)
+        )
+        broken = any(
+            counted.get(searchers.Answer.PARSE_BREAK.value) for counted in answers.values()
+        )
         warnings.append(
             {
                 "code": SOURCES_UNREAD,
                 "message": (
-                    f"{unread} files were left untagged because at least one "
+                    f"{_files(unread)} left untagged because at least one "
                     f"catalogue could not be read for them, so whether any "
                     f"catalogue carries them is unknown. They are not reported as "
                     f"no-hit, and the next run over this folder asks again; each "
-                    f"file's record says what every catalogue answered"
+                    f"file's record says what every catalogue answered. Across "
+                    f"the sweep: {seen}"
+                    + (
+                        ". A parse break is a defect in this software that "
+                        "another run will not move; report it"
+                        if broken
+                        else ""
+                    )
                 ),
             }
         )
-    for source, counted in (summary.get("answers") or {}).items():
+    for source, counted in answers.items():
         asked = sum(count for word, count in counted.items() if word != searchers.NOT_ASKED)
         if asked and counted.get(searchers.Answer.BLOCKED.value, 0) == asked:
             warnings.append(
                 {
                     "code": SOURCE_BLOCKED,
                     "message": (
-                        f"{source} answered every one of the {asked} searches it "
-                        f"was sent with a bot check or a block page rather than a "
-                        f"result, so it contributed nothing to this run. This "
-                        f"tool does not try to get past one; {source} stays "
-                        f"unread until it answers this machine again"
+                        f"{source} refused every one of the {asked} searches it "
+                        f"was sent, with a bot check, a block page or a rate "
+                        f"limit that outlasted the backoff, rather than a result, "
+                        f"so it contributed nothing to this run. This tool does "
+                        f"not try to get past one; {source} stays unread until "
+                        f"it answers this machine again"
                     ),
                 }
             )
     return tuple(warnings)
+
+
+def _files(count: int) -> str:
+    """``1 file was`` or ``N files were``, the head of a sentence about files."""
+    return "1 file was" if count == 1 else f"{count} files were"
 
 
 def _off_taxonomy_warning(summary: dict) -> tuple[dict[str, str], ...]:

@@ -1212,7 +1212,7 @@ def test_three_refusals_raise_unreachable_and_say_the_fallbacks_were_blocked():
     assert cause.reason == searchers.UNREACHABLE_REASON
     assert cause.detail["answers"] == ["unreachable", "blocked", "blocked"]
     steps = " ".join(cause.remediation.steps)
-    assert "traxsource, bandcamp answered with a bot check" in steps
+    assert "traxsource, bandcamp refused this client" in steps
 
 
 def test_a_bandcamp_track_page_behind_a_challenge_is_blocked_rather_than_a_miss():
@@ -1262,6 +1262,91 @@ def test_a_track_called_just_a_moment_in_a_real_listing_is_not_a_challenge():
     )(ARTIST, title)
 
     assert hit.source == searchers.TRAXSOURCE and hit.genre == BUCKET_GENRE
+
+
+def test_cloudflare_challenge_machinery_in_the_body_blocks_whatever_the_title_says():
+    """The title is one dress; the interstitial's own script path is the
+    measured marker that does not change with the wording."""
+    page = CLOUDFLARE_INTERSTITIAL.replace("Just a moment...", "Verifying you are human")
+    hit = _over_the_wire(
+        {
+            searchers.BEATPORT_SEARCH: _Response(200, _beatport_page([])),
+            searchers.TRAXSOURCE_SEARCH: _Response(200, page),
+            searchers.BANDCAMP_SEARCH: _Response(200, _bandcamp_search_page([])),
+        }
+    )(ARTIST, TITLE)
+
+    assert _said(hit)[1] == (searchers.TRAXSOURCE, "blocked")
+
+
+def test_the_interstitial_title_written_with_one_ellipsis_character_is_blocked():
+    page = "<html><head><title>Just a moment\u2026</title></head></html>"
+    hit = _over_the_wire(
+        {
+            searchers.BEATPORT_SEARCH: _Response(200, _beatport_page([])),
+            searchers.TRAXSOURCE_SEARCH: _Response(200, _traxsource_page([])),
+            searchers.BANDCAMP_SEARCH: _Response(200, page),
+        }
+    )(ARTIST, TITLE)
+
+    assert _said(hit)[2] == (searchers.BANDCAMP, "blocked")
+
+
+def test_a_bandcamp_track_page_that_is_gone_is_a_dead_listing_and_still_a_miss():
+    """A 404 on the track page is a listing whose record was removed, which is
+    no answer about the track; holding it as unreachable would leave the file
+    undecidable for as long as the dead link stays listed."""
+    hit = _over_the_wire(
+        {
+            "/track/": _Response(404),
+            searchers.BEATPORT_SEARCH: _Response(200, _beatport_page([])),
+            searchers.TRAXSOURCE_SEARCH: _Response(200, _traxsource_page([])),
+            searchers.BANDCAMP_SEARCH: _Response(
+                200, _bandcamp_search_page([(BANDCAMP_TRACK_URL, TITLE, ARTIST, "")])
+            ),
+        }
+    )(ARTIST, TITLE)
+
+    assert _no_hit(hit)
+
+
+def test_a_blocked_bandcamp_track_page_stops_the_walk_over_further_listings():
+    """Every further track page is a paced request to a catalogue that has just
+    refused this client."""
+    seen: list[str] = []
+    second = "https://other.bandcamp.com/track/sunrise-mood"
+    _over_the_wire(
+        {
+            "/track/": _Response(200, BANDCAMP_CLIENT_CHALLENGE),
+            searchers.BEATPORT_SEARCH: _Response(200, _beatport_page([])),
+            searchers.TRAXSOURCE_SEARCH: _Response(200, _traxsource_page([])),
+            searchers.BANDCAMP_SEARCH: _Response(
+                200,
+                _bandcamp_search_page(
+                    [(BANDCAMP_TRACK_URL, TITLE, ARTIST, ""), (second, TITLE, ARTIST, "")]
+                ),
+            ),
+        },
+        seen,
+    )(ARTIST, TITLE)
+
+    assert [url for url in seen if "/track/" in url] == [BANDCAMP_TRACK_URL]
+
+
+def test_a_match_after_an_unreachable_source_names_it_in_unread_too():
+    """The record's two fields agree: answers shows Beatport unreachable, so
+    unread says so, though the match decides the disposition."""
+    hit = _over_the_wire(
+        {
+            searchers.BEATPORT_SEARCH: _Response(503),
+            searchers.TRAXSOURCE_SEARCH: _Response(
+                200, _traxsource_page([(ARTIST, TITLE, BUCKET_GENRE)])
+            ),
+        }
+    )(ARTIST, TITLE)
+
+    assert hit.source == searchers.TRAXSOURCE
+    assert hit.unread == (searchers.BEATPORT,)
 
 
 class _Response:
