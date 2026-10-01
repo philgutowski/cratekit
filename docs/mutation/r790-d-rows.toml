@@ -1,0 +1,47 @@
+name = "r790-d"
+pass_kind = "light"
+
+[[rows]]
+id = "R1_grouping_kinds"
+description = "grouped: count every kind in the queue, harvested label names included"
+file = "src/cratekit/core/review.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/test_review_queue.py"]
+old = '''    kinds = kinds or GROUPED_KINDS.get(declared)'''
+new = '''    kinds = kinds'''
+
+[[rows]]
+id = "R2_label_beyond"
+description = "grouped by label: report no recorded beyond"
+file = "src/cratekit/core/review.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/test_review_queue.py"]
+old = '''                "beyond": latest[key].beyond if key in latest else None,'''
+new = '''                "beyond": None,'''
+
+[[rows]]
+id = "R3_run_beyond_summed"
+description = "grouped by run: keep the last label's beyond instead of the sum over the run's labels"
+file = "src/cratekit/core/review.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/test_review_queue.py"]
+old = '''        beyond_per_run[found.run_id] = beyond_per_run.get(found.run_id, 0) + found.beyond'''
+new = '''        beyond_per_run[found.run_id] = found.beyond'''
+
+[[rows]]
+id = "R4_round_replaced"
+description = "record_round: add a second row for a resumed run rather than replacing the first"
+file = "src/cratekit/core/review.py"
+surface = "maintainer"
+tests = ["tests/test_label_offer_window.py", "tests/test_review_queue.py"]
+old = '''            "INSERT OR REPLACE INTO offer_rounds "'''
+new = '''            "INSERT OR IGNORE INTO offer_rounds "'''
+
+[[rows]]
+id = "V1_group_page_refusal"
+description = "_list_grouped: accept --after and --limit and ignore them"
+file = "src/cratekit/cli/review.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/test_review_queue.py"]
+old = '''    if not ctx.args.queue or ctx.args.after is not None or ctx.args.limit is not None:'''
+new = '''    if not ctx.args.queue:'''

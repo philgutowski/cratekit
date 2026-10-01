@@ -1,0 +1,68 @@
+name = "r790-b"
+pass_kind = "light"
+
+[[rows]]
+id = "S7_first_run_kept"
+description = "offer_release: stamp the latest run over the one that filed the item"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_label_registry_verbs.py"]
+old = '''        payload[SWEEP_RUN] = held_run or run_id'''
+new = '''        payload[SWEEP_RUN] = run_id'''
+
+[[rows]]
+id = "S8_run_reaches_the_offer"
+description = "LabelSource.process: offer through the worker's store without the run id, so no item records the sweep that filed it"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_label_registry_verbs.py"]
+old = '''            offer_release(opened, candidate, run_id=run_id)'''
+new = '''            offer_release(opened, candidate)'''
+
+[[rows]]
+id = "S9_queue_is_asked"
+description = "QueuedReleases: answer that no release is in the queue"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_label_registry_verbs.py"]
+old = '''        return review.find(self.store, item_id) is not None'''
+new = '''        return False'''
+
+[[rows]]
+id = "L1_guard_counts_held"
+description = "_refuse_unfinished: leave held releases out of the confirmed-none count, so a dead verifier reads as nothing new"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_label_registry_verbs.py"]
+old = '''    unconfirmed = len(source.dropped) + source.held_unconfirmed'''
+new = '''    unconfirmed = len(source.dropped)'''
+
+[[rows]]
+id = "L2_round_records_beyond"
+description = "handle: record every round as nothing beyond"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_label_registry_verbs.py"]
+old = '''                beyond=listing.beyond,'''
+new = '''                beyond=0,'''
+
+[[rows]]
+id = "L3_set_passes_offer"
+description = "registry_cmd set: drop --offer on the way to the store, so set reports an edit it never wrote"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_label_registry_verbs.py"]
+old = '''            seed_artists=seeds,
+            track_limit=track_limit,
+            offer=offer,'''
+new = '''            seed_artists=seeds,
+            track_limit=track_limit,'''
+
+[[rows]]
+id = "L4_bound_is_said"
+description = "_detail: stop saying the track limit bounds an offer"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_label_registry_verbs.py"]
+old = '''            + (f", bounded by the track limit to {bound}" if entry.offer > bound else "")'''
+new = '''            + ""'''

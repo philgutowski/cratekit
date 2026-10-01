@@ -1,0 +1,60 @@
+name = "r790-a"
+pass_kind = "light"
+
+[[rows]]
+id = "S1_held_takes_a_place"
+description = "list_for_label: a held release no longer counts toward the window, so a later sweep files the next slice of back catalogue"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_label_registry_verbs.py"]
+old = '''        if held + len(candidates) >= cap:'''
+new = '''        if len(candidates) >= cap:'''
+
+[[rows]]
+id = "S2_held_is_not_refiled"
+description = "list_for_label: drop the held check, so a release already in the queue is verified and filed again"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_label_registry_verbs.py"]
+old = '''        if identity in offered_ids:
+            held += 1'''
+new = '''        if False:
+            held += 1'''
+
+[[rows]]
+id = "S3_beyond_counted"
+description = "list_for_label: report nothing beyond the window, so the rest of the catalogue is silently dropped"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_label_registry_verbs.py"]
+old = '''        beyond=len(listed) - examined,'''
+new = '''        beyond=0,'''
+
+[[rows]]
+id = "S4_default_is_the_offer"
+description = "list_for_label: default the window to the track limit again, the four hundred R-790 is about"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_label_registry_verbs.py"]
+old = '''        else registry.effective_offer(entry, cfg.labels.offer_per_sweep)'''
+new = '''        else registry.effective_limit(entry)'''
+
+[[rows]]
+id = "S5_canary_answer"
+description = "list_for_label: a held release that fails re-verification counts nothing unconfirmed"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_label_registry_verbs.py"]
+old = '''            held_unconfirmed = held
+'''
+new = '''            held_unconfirmed = 0
+'''
+
+[[rows]]
+id = "S6_canary_asked"
+description = "list_for_label: re-verify a held release on every sweep that held one, a provider call per sweep instead of only on the refusal path"
+file = "src/cratekit/label/sweep.py"
+surface = "maintainer"
+tests = ["tests/test_label_offer_window.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_label_registry_verbs.py"]
+old = '''    if first_held is not None and dropped and not candidates:'''
+new = '''    if first_held is not None:'''
