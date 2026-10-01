@@ -23,8 +23,9 @@ ten findings: eight changed the code, R-794 and R-795 filed, the correction
 verb left as it deliberately is. Mutation tables `r791-a` to `r791-c`, 25
 rows, 24 killed, the one zero bought a test and was killed on a second
 measure, with the leak watch on after two real analysis jobs were waited
-out. Battery on the committed tree is in the commit that carries this
-paragraph. **Main's highest residual number is R-795 once this merges.**
+out. Battery on the committed tree: ruff clean, **11,122 passed and 1
+skipped** in 90 seconds, scan clean, `board.py closing --since main` exit
+0. **Main's highest residual number is R-795 once this merges.**
 Owed to an attended sitting: a `crate tag folder` run on the author's
 library reading each fallback's real answer, recorded in
 `docs/cutover.md`.
