@@ -772,3 +772,8 @@ decide the label releases in review and run `label approved`.
 
 Owed by the author: a genre on the INBOX rows that carry none; the label
 releases in review.
+
+Owed for R-790, issue #234: follow a new label, sweep it once, and record
+here that it filed `labels.offer_per_sweep` releases, ten unless set, and
+that `crate review list --queue label-release --group-by label` counts the
+rest as `beyond`.

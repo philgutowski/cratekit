@@ -8,27 +8,27 @@ file is part of the commit it would be naming.
 synced rows, rehearsed on a copy and run live on an equal digest
 `22984f3e4523493f`: 4 memberships added, 19,385, every BPM unchanged. **62 of
 the 66 carry no genre and wait in INBOX**, which is the genre owed by the
-author. Nothing filed. **Main's highest residual number is R-789.**
+author. Nothing filed.
 
-**Last built: R-787, issue #233, `relay/233`, 2026-09-30, unattended.**
-`crate doctor` reads a native inbox record as ok. The trees a cutover may
-record are one value, `tree_registry.cutover_trees`, the routing tree and
-the intake tree; the cutover verb's `derivation_source` and doctor's
-`_declared_trees` both ask it, and a test patches it to a sentinel and
-shows both follow. A native catalogue tree still fails `tree.registry` with
-the revert remedy, and so, from the review, does a native record for either
-tree whose source no rebuild reproduces. Both cutover refusals for a tree
-outside the set carry the set in their detail. Nothing the cutover writes
-changed. The review also found R-789, a rebuild of a native intake tree
-deriving the routing tree's placements, recorded with its reachability
-unmeasured and no issue. One mutation table, 7 rows, 7 killed, measured
-after an attended `sync mark` job writing the real installation state
-tripped the driver's leak guard twice and then ended. Battery on the
-committed tree: ruff clean, **11,062 passed and 1 skipped** in 99 seconds,
-scan clean, `board.py closing --since main` exit 0. **Main's highest
-residual number is R-789 once this merges.** Owed to an attended sitting:
-doctor on the author's library after a live inbox cutover, recorded in
-`docs/cutover.md`, which is the issue's closing line.
+**Last built: R-790, issue #234, `relay/234`, 2026-10-01, unattended.**
+A label sweep keeps an offer window of each label's newest releases in
+review, `labels.offer_per_sweep`, ten by default, or a label's own
+`crate label registry set <label> --offer N`, bounded by its track limit.
+A release already in the queue holds its place and is not filed or verified
+again, so a later sweep files only what is new, and no watermark is read.
+What the window never reached is counted per label and per run in the review
+store's new `offer_rounds` table. Each filed item carries `sweep_run`, read
+with `crate review list --queue label-release --group-by label` or
+`--group-by run`. Nothing accepts a release, and the 2,832 pending are
+untouched. The review's two code findings were fixed: a dead verifier is
+caught by re-verifying one held release, and a round is recorded only after
+the refusals pass. Mutation tables `r790-a` to `r790-d`, 25 rows, 23 killed,
+two zeros that each bought a test, **measured with the driver's leak watch
+off while two real jobs wrote to the installation state, which is R-793**.
+Battery on the committed tree is in the commit that carries this paragraph.
+**Main's highest residual number is R-793 once this merges.** Owed to an
+attended sitting: a first sweep of a newly followed label on the author's
+library, recorded in `docs/cutover.md`.
 
 **Sitting 23, 2026-09-30, afternoon to 20:54, no code.** The remaining
 lines of #178 driven on the author's word with no questions after the

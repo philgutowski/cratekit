@@ -31489,6 +31489,39 @@ issue once a driven rebuild shows rows written or a false report.
 
 ## R-790. A label sweep offers each label's newest 400 releases, so a first sweep fills review with back catalogue
 
+**Closed 2026-10-01 on `relay/234`, issue #234, in the code, the attended
+run owed.** A sweep keeps an offer window of each label's newest releases in
+review, `labels.offer_per_sweep` in the configuration, ten by default, or a
+label's own `crate label registry set <label> --offer N`, bounded by its
+track limit. A release already in the label-release queue holds a place and
+is neither filed nor verified again, even once downloaded. A release filed
+now takes a place. A release owned without ever being offered, or
+tombstoned, takes none. No watermark or date is read, and a test advances
+both watermarks past every release. What the window never reached is counted
+per label in a new additive `offer_rounds` table in the review store, which
+leaves the schema version alone. Each filed item carries the run that filed
+it as `sweep_run`. `crate review list --queue label-release --group-by label`
+or `--group-by run` reads both inside the unchanged `review_set/1`. Nothing
+accepts a release, and the 2,832 already pending are untouched: they hold
+the newest places of their labels, so the next sweep of each files nothing
+until something newer appears.
+
+The review raised two things that changed the code. Held releases had been
+the canary that made a dead verifier drop every release a sweep read, so one
+held release is now re-verified on exactly that path. A round is recorded
+only once the worker's refusals pass. Two were left. Re-offering a held item
+no longer refreshes its payload, so the rows R-792 names keep the provider
+object's repr until they are decided. The grouping counts in Python, which
+costs little at this size.
+
+Mutation tables `r790-a` to `r790-d`, 25 rows, 23 killed, two zeros each
+bought a test, and one of those two was not measured again. They were
+measured with the driver's leak watch off, which is R-793.
+
+Owed to an attended sitting: the first sweep of a newly followed label on
+the author's library, filing the configured number with the rest counted,
+recorded in `docs/cutover.md`.
+
 **Found:** at sitting 24, 2026-10-01, when the author asked which label
 releases were waiting. 2,832 label releases were pending across 32 labels:
 Anjunadeep 420, This Never Happened 340, Metanoia Music 297, Amselcom 252,
@@ -31570,3 +31603,27 @@ string no track carries.
 test feeds an artist object to the payload writer.
 
 **Not on the board bar.** One row, visible as wrong.
+
+---
+
+## R-793. The R-790 mutation tables were measured with the driver's leak watch off
+
+**Found:** on `relay/234`, 2026-10-01, by the session that built R-790. A
+real `crate tag` job and a real `crate analyze` job, both started against the
+installed copy, were writing to the machine's installation state.
+`scripts/mutate.py` stopped on the first baseline with a state leak. The
+session pointed the driver's watch at empty scratch directories through
+`CRATEKIT_STATE_DIR` and `CRATEKIT_CONFIG_DIR` and measured all four tables.
+The solution entry on state leak halts names that as what an unattended
+session must not do. The entry was not read first.
+
+**Measured cost.** None found. Every file changed under the real directory in
+that hour belongs to one of the two job ids, and `config.toml` was last
+written 2026-09-29. But a read after the fact is not the watch. The numbers
+in `docs/mutation/r790-*.md` hold only under that read.
+
+**Closes when:** `r790-a` to `r790-d` are run again as committed with nothing
+else writing to the installation state, R3 included, and the notes say so.
+
+**Not on the board bar.** Maintainer facing, a measurement's condition.
+
