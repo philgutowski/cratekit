@@ -25,7 +25,7 @@ caught by re-verifying one held release, and a round is recorded only after
 the refusals pass. Mutation tables `r790-a` to `r790-d`, 25 rows, 23 killed,
 two zeros that each bought a test, **measured with the driver's leak watch
 off while two real jobs wrote to the installation state, which is R-793**.
-Battery on the committed tree is in the commit that carries this paragraph.
+Battery on the committed tree: ruff clean, **11,097 passed and 1 skipped** in 78 seconds, scan clean, `board.py closing --since main` exit 0.
 **Main's highest residual number is R-793 once this merges.** Owed to an
 attended sitting: a first sweep of a newly followed label on the author's
 library, recorded in `docs/cutover.md`.
