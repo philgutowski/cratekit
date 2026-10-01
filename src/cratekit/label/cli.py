@@ -1113,6 +1113,95 @@ def _refuse_unread(
     )
 
 
+def _refuse_unfinished(entry, result: run.IncrementResult, source: sweep.LabelSource) -> None:
+    """Refuse a sweep that did not finish, before anything records it as one.
+
+    Lifted out of :func:`handle` so the worker can ask it while the item's one
+    review store is still open, and record the label's round only once it has
+    passed (R-790).
+    """
+    if result.errors:
+        raise refuse(
+            "label-sweep-incomplete",
+            f"the sweep of {entry.name!r} could not offer "
+            f"{len(result.errors)} of the releases it listed "
+            f"({'; '.join(result.errors)}); the offers it did make are already in "
+            f"the review queue and this label was not swept in full",
+            # THE RAISE SITE OWNS THE REMEDY. ``core/cause.py``'s ``REASONS`` maps
+            # a slug to an exit code and carries no remedy at all, and the answer
+            # here is another attempt at this job rather than the class default:
+            # the round was partial, the successful offers are durable, and a
+            # resume redoes only the items that failed.
+            remedy=Remedy.RESUME_JOB,
+            origin=("label.cli",),
+            detail={
+                "label_id": entry.label_id,
+                "offered": len(result.processed),
+                "failed": len(result.errors),
+            },
+        )
+    if source.unread:
+        _refuse_unread(entry, source.unread, offered=len(result.processed))
+    # A CATALOGUE THAT CONFIRMS NOTHING IS NOT A LABEL WITH NOTHING NEW, and
+    # before this branch it was reported as one. ``list_for_label`` drops every
+    # release a degraded, rate limited, or distributor-crediting verification
+    # endpoint will not confirm, so the increment is handed no candidate at all;
+    # it then sees no processed item and no error and answers
+    # ``shortfall="empty"``. Measured on 2026-09-02 through the real dispatcher,
+    # queue and driver: forty releases read, forty discarded, exit 0, job
+    # SUCCEEDED, no cause and no warning. ``sweep._verifier``'s own docstring
+    # names this exact scenario as its reason for existing and then guards only
+    # the case where no verifier OBJECT exists, which is METHOD's defect pattern
+    # three, a fix on the performing path with the checking path left open.
+    #
+    # KEYED ON EVERY RELEASE READ HAVING BEEN DROPPED, and never on the dropped
+    # population being non-empty or on an empty candidate list. A label whose
+    # every release is tombstoned, and one whose crawl is genuinely exhausted,
+    # also offer nothing, and both are honest no ops a person asked for. So is
+    # the MIXED listing: some releases tombstoned and the rest dropped, which a
+    # guard keyed on "anything was dropped" refused as a catalogue nobody could
+    # verify a line of, with ``confirmed: 0``, over a release the person had
+    # confirmed and then deleted on purpose. Only "releases were read and every
+    # one of them was discarded as unconfirmed" reaches here, and that is the
+    # one case where the success would be a claim about a catalogue nobody
+    # managed to verify a line of.
+    #
+    # THE SENTENCE SEPARATES TWO PROBLEMS WITH TWO REMEDIES. A sweep that could
+    # not REACH the provider already refuses ``sync-source-lookups-failed`` from
+    # the increment, and a person meeting that one waits for the network. This
+    # one reached the provider and could not confirm anything it found, which is
+    # usually a release credited to a distributor rather than to the imprint, and
+    # is repaired by the registry's ``--match`` needle rather than by waiting.
+    #
+    # A HELD RELEASE COUNTS WITH THE DROPPED ONES WHEN IT COULD NOT BE CONFIRMED
+    # AGAIN (R-790). Held releases are no longer verified on every sweep, and
+    # they were what made a dead endpoint drop every release read; the sweep
+    # re-verifies one of them on exactly this path, and its answer stands for
+    # all of them.
+    unconfirmed = len(source.dropped) + source.held_unconfirmed
+    if result.shortfall == "empty" and source.dropped and unconfirmed == source.read:
+        raise refuse(
+            "label-sweep-incomplete",
+            f"the sweep of {entry.name!r} read {unconfirmed} releases "
+            f"from the catalogue and could not confirm a single one of them, so "
+            f"it offered nothing and this is not a label with nothing new. The "
+            f"provider answered: what failed is verification rather than reach",
+            steps=(
+                f"check what the catalogue credits these releases to, then set "
+                f"the needle with: crate label registry add {entry.name} --match "
+                f"<credited name>",
+                "or resume this job once the verification endpoint is answering",
+            ),
+            origin=("label.cli",),
+            detail={
+                "label_id": entry.label_id,
+                "read": unconfirmed,
+                "confirmed": 0,
+                "reasons": sorted({drop.reason for drop in source.dropped}),
+            },
+        )
+
+
 def handle(job, item, cfg) -> jobs.Produced | None:
     """Sweep one queued favourite label. The per item worker behind BOTH keys.
 
@@ -1209,95 +1298,16 @@ def handle(job, item, cfg) -> jobs.Produced | None:
             # files as the job has labels.
             run_id=run_id,
         )
-    if result.errors:
-        raise refuse(
-            "label-sweep-incomplete",
-            f"the sweep of {entry.name!r} could not offer "
-            f"{len(result.errors)} of the releases it listed "
-            f"({'; '.join(result.errors)}); the offers it did make are already in "
-            f"the review queue and this label was not swept in full",
-            # THE RAISE SITE OWNS THE REMEDY. ``core/cause.py``'s ``REASONS`` maps
-            # a slug to an exit code and carries no remedy at all, and the answer
-            # here is another attempt at this job rather than the class default:
-            # the round was partial, the successful offers are durable, and a
-            # resume redoes only the items that failed.
-            remedy=Remedy.RESUME_JOB,
-            origin=("label.cli",),
-            detail={
-                "label_id": entry.label_id,
-                "offered": len(result.processed),
-                "failed": len(result.errors),
-            },
-        )
-    if source.unread:
-        _refuse_unread(entry, source.unread, offered=len(result.processed))
-    # A CATALOGUE THAT CONFIRMS NOTHING IS NOT A LABEL WITH NOTHING NEW, and
-    # before this branch it was reported as one. ``list_for_label`` drops every
-    # release a degraded, rate limited, or distributor-crediting verification
-    # endpoint will not confirm, so the increment is handed no candidate at all;
-    # it then sees no processed item and no error and answers
-    # ``shortfall="empty"``. Measured on 2026-09-02 through the real dispatcher,
-    # queue and driver: forty releases read, forty discarded, exit 0, job
-    # SUCCEEDED, no cause and no warning. ``sweep._verifier``'s own docstring
-    # names this exact scenario as its reason for existing and then guards only
-    # the case where no verifier OBJECT exists, which is METHOD's defect pattern
-    # three, a fix on the performing path with the checking path left open.
-    #
-    # KEYED ON EVERY RELEASE READ HAVING BEEN DROPPED, and never on the dropped
-    # population being non-empty or on an empty candidate list. A label whose
-    # every release is tombstoned, and one whose crawl is genuinely exhausted,
-    # also offer nothing, and both are honest no ops a person asked for. So is
-    # the MIXED listing: some releases tombstoned and the rest dropped, which a
-    # guard keyed on "anything was dropped" refused as a catalogue nobody could
-    # verify a line of, with ``confirmed: 0``, over a release the person had
-    # confirmed and then deleted on purpose. Only "releases were read and every
-    # one of them was discarded as unconfirmed" reaches here, and that is the
-    # one case where the success would be a claim about a catalogue nobody
-    # managed to verify a line of.
-    #
-    # THE SENTENCE SEPARATES TWO PROBLEMS WITH TWO REMEDIES. A sweep that could
-    # not REACH the provider already refuses ``sync-source-lookups-failed`` from
-    # the increment, and a person meeting that one waits for the network. This
-    # one reached the provider and could not confirm anything it found, which is
-    # usually a release credited to a distributor rather than to the imprint, and
-    # is repaired by the registry's ``--match`` needle rather than by waiting.
-    #
-    # A HELD RELEASE COUNTS WITH THE DROPPED ONES WHEN IT COULD NOT BE CONFIRMED
-    # AGAIN (R-790). Held releases are no longer verified on every sweep, and
-    # they were what made a dead endpoint drop every release read; the sweep
-    # re-verifies one of them on exactly this path, and its answer stands for
-    # all of them.
-    unconfirmed = len(source.dropped) + source.held_unconfirmed
-    if result.shortfall == "empty" and source.dropped and unconfirmed == source.read:
-        raise refuse(
-            "label-sweep-incomplete",
-            f"the sweep of {entry.name!r} read {unconfirmed} releases "
-            f"from the catalogue and could not confirm a single one of them, so "
-            f"it offered nothing and this is not a label with nothing new. The "
-            f"provider answered: what failed is verification rather than reach",
-            steps=(
-                f"check what the catalogue credits these releases to, then set "
-                f"the needle with: crate label registry add {entry.name} --match "
-                f"<credited name>",
-                "or resume this job once the verification endpoint is answering",
-            ),
-            origin=("label.cli",),
-            detail={
-                "label_id": entry.label_id,
-                "read": unconfirmed,
-                "confirmed": 0,
-                "reasons": sorted({drop.reason for drop in source.dropped}),
-            },
-        )
-    # WHAT THE WINDOW DID NOT REACH IS RECORDED, NEVER DROPPED (R-790). The
-    # job's envelope is ``job_state/1`` and carries no per label count, and this
-    # worker runs in a detached child, so the count goes where the person
-    # deciding the label's releases reads: ``crate review list --queue
-    # label-release --group-by label``. RECORDED LAST, after every refusal above
-    # has passed: a sweep refused as partial, or as having confirmed nothing,
-    # must not leave a count that reads as an answer about the catalogue, which
-    # is the clean report over state nobody read that each refusal exists for.
-    with review.open_store(cfg) as store:
+        _refuse_unfinished(entry, result, source)
+        # WHAT THE WINDOW DID NOT REACH IS RECORDED, NEVER DROPPED (R-790).
+        # The job's envelope is ``job_state/1`` and carries no per label count,
+        # and this worker runs in a detached child, so the count goes where the
+        # person deciding the label's releases reads: ``crate review list
+        # --queue label-release --group-by label``. RECORDED ONLY ONCE
+        # ``_refuse_unfinished`` HAS PASSED, in the same store: a sweep refused
+        # as partial, or as having confirmed nothing, must not leave a count
+        # that reads as an answer about the catalogue, which is the clean
+        # report over state nobody read that each refusal exists for.
         for swept, listing in source.listings:
             review.record_round(
                 store,
