@@ -31887,6 +31887,40 @@ the report, recorded in `docs/cutover.md`.
 
 ## R-798. The label genre gate has no genre to judge, so a sweep offers and downloads music the label was never followed for
 
+**Closed in the code 2026-10-01 on `relay/238`, issue #238. The sweep over
+the labels of sitting 25 is owed to an attended sitting.** The gate judges a
+release by KIND, with what the general catalogue of R-796 publishes for its
+tracks, when a sweep is about to file it. A followed label is a dance label
+unless its registry entry names another kind, set with
+`crate label registry set NAME --kind KIND`. A release whose published words
+are all another kind is held: recorded in the review database's
+`held_offers`, not filed, not rejected, and no tombstone written. It takes a
+place in the offer window. `crate label held` lists the held releases with
+the reason, counted per label, and `crate label held return RELEASE_ID` files
+one for review, after which nothing holds it again.
+`review list --group-by label` counts them. A release the catalogue has no
+word for, or could not be read for, is filed and marked not judged.
+`label approved` judges an accepted release by the same rule on the same
+words, and the share rule there is unchanged. The decisions are KTD41 to
+KTD63 in the plan's Planning Contract.
+
+What the attended sitting owes, in this order, each step recorded in
+`docs/cutover.md`:
+
+1. The build in use is this one.
+2. A dated backup, then the library's active taxonomy copy takes the
+   `default_kind` line and the `[[label_gate.published]]` rules from the
+   shipped template. Until it does the gate judges nothing there and every
+   release is filed as before, marked not judged.
+3. Any followed label that is not a dance label is marked with its kind.
+4. A sweep over the labels of sitting 25, then `crate label held` read. It
+   closes this entry when none of the 36 is filed for review and they are
+   counted as held. The 36 already in the library are the author's to decide
+   and are not this entry's.
+5. `crate label approved` run once over the queue as it stands, and its held
+   lines read: the releases accepted before the gate existed are judged
+   there, and R-809 is what that run costs.
+
 **Found:** at sitting 25, 2026-10-01, and measured in the brainstorm of the
 same day, recorded in
 `docs/plans/2026-10-01-0949-feat-published-genre-by-isrc-plan.md`. The gate
@@ -32178,3 +32212,137 @@ the verb, or the playlist is empty.
 
 **Not on the board bar.** Listed and named, not silent, and its input has
 not been observed.
+
+## R-809. `label approved` asks the general catalogue again on every run about a release still owed that carries no recorded words
+
+**Found:** on `relay/238`, 2026-10-01, by both passes of the built in review
+of R-798. The verb reads every accepted release on every run. A release
+filed before the sweep had a gate, or filed unjudged, carries no published
+words, so the kind rule asks the lookup for it, up to three tracks, each
+request paced at a second or more. The first fix round stopped the asking
+for a release the library holds in full, which is most of the accepted set
+once it is downloaded. What is left is a release with a track still missing,
+tombstoned or held in another version: it is asked about on every run until
+it is owned, and nothing writes the answer down, because a decided item's
+payload is never rewritten.
+
+**Measured cost.** Not measured on the live queue. By the code, two to four
+paced requests for each such release on each run, and the first run after
+this merges does that for every accepted release still owed. One refusal
+part way ends the asking for the run, R-803, and the rest are listed
+unjudged.
+
+**Fix shape.** The cache R-800 names, kept past the run and keyed by ISRC,
+answers this and that entry together. The other shape is a record beside the
+item of what the gate was told, which the hold table could carry.
+
+**Closes when:** a second run of `label approved` over an unchanged queue
+makes no catalogue request.
+
+**Not on the board bar.** Slower, not wrong: every release is judged or says
+it was not.
+
+## R-810. A release returned while it was already in review is marked in the hold record alone, and a queue export carries no holds
+
+**Found:** on `relay/238`, 2026-10-01, by the second built in review of
+R-798. `crate label held return` on a release a sweep held files it with the
+word `returned` on its payload and marks its hold. On a release already in
+review, which is how one held at `label approved` is brought back, it writes
+only the hold, since the item is decided and a decided payload is not
+rewritten. `review export` carries items and not `held_offers`.
+
+**Measured cost.** None on one machine. A queue exported and imported
+elsewhere loses the mark for such a release, and `label approved` there holds
+it again. No producer of that was driven, so the reachability is unmeasured.
+Returning it again there restores it.
+
+**Related.** A release held at `label approved` is named by that verb's held
+line on each run and is not listed by `crate label held`, which lists what a
+sweep held.
+
+**Closes when:** the export carries the returned marks, or the author says
+the queue is never moved between machines.
+
+**Not on the board bar.** One machine holds the only queue today.
+
+## R-811. A held release takes a place in the offer window, so a label whose newest releases are another label's music offers less until its window is raised
+
+**Found:** on `relay/238`, 2026-10-01, in planning R-798, KTD45. The offer
+window of R-790 counts the releases a sweep files and the ones already in
+review. A release the genre gate holds counts too. The alternative reads on
+past a held release until the window is full of ones that pass.
+
+**The decision, and why it was made this way unattended.** Reading on costs
+a verification, a read of the release's tracks and the catalogue's requests
+for every release walked, and a label whose listing is mostly a same named
+label's catalogue would be walked to its end on the first sweep. That is the
+bulk reading the provider rate limited at sitting 11. Taking a place bounds
+every sweep at the window, whatever the label holds.
+
+**Measured cost.** Not measured on the live library. A label whose newest
+ten releases are all held files nothing, and says so: its row in
+`review list --group-by label` shows the held count beside what is beyond
+the window, and `crate label registry set NAME --offer N` reaches further.
+
+**Options for the author.** Leave it. Or let a held release take no place
+and bound the walk another way, a count of releases examined per sweep.
+
+**Not on the board bar.** A decision recorded, with the count shown.
+
+## R-812. A hold nobody will judge again stands until a person returns it
+
+**Found:** on `relay/238`, 2026-10-01, by the first built in review of
+R-798, in two shapes its fix left open on purpose.
+
+- **A label removed from the registry.** A hold is judged again only by a
+  sweep of its label. Remove the label and its holds stand. `crate label
+  held` says so on each such line. The registry is the installation's and
+  the holds are a library's, so removing a label cannot reach them.
+- **A held release the library came to own.** Ownership is asked of a hold
+  only when it is being released, because the answer is a provider read and
+  a sweep that asked it of every standing hold would read every held release
+  on every sweep. So a release held, then acquired another way, keeps its
+  hold and its place in the window.
+
+**Measured cost.** None observed. Each is a held count one higher than it
+should be, on a line that names the release.
+
+**Closes when:** a verb drops a hold without filing it, or the author says
+the two shapes do not occur.
+
+**Not on the board bar.** Listed and named, and `return` settles either.
+
+## R-813. The gate's rules for words below the general catalogue's top level were written from its published names and never measured
+
+**Found:** on `relay/238`, 2026-10-01, writing the published rules. The 27
+top level words were measured on R-796 and every one is claimed by a rule
+and pinned by a test. The catalogue also lists narrower words on an album,
+and the needles that claim those, `techno`, `house`, `gospel`, `dancehall`
+and the rest, were written from its published genre names, not from answers.
+
+**Measured cost.** Not measured. A narrower word no rule claims is not
+judged, the timid direction, and the release is filed saying which word. A
+compound word is claimed by whichever rule comes first: `Country Blues` is
+jazz, not folk, and `Electro Pop/Electro Rock` is dance. The first review
+drove `Rhythm & Blues` reading as jazz, which is fixed.
+
+**Closes when:** the words a full sweep's releases carry are counted from
+the items it filed, `published_genres` on each, and the rules are read
+against that list.
+
+**Not on the board bar.** It closes at an attended sitting.
+
+## R-814. A label has one kind, so a label that puts out two kinds of music is marked `any` and is not gated at all
+
+**Found:** on `relay/238`, 2026-10-01, in planning R-798, KTD42. A label's
+kind is one name. A label followed for house and for R&B both has no kind
+that passes both, so it is marked `any`, which asks the catalogue nothing
+and holds nothing, the same named Christian label included.
+
+**Measured cost.** None today: every followed label is a dance label.
+
+**Options for the author.** Leave it until a label needs it. Or let a
+registry entry name several kinds, which the rule already supports, since it
+passes a release on one word of the label's kind.
+
+**Not on the board bar.** No label needs it yet.

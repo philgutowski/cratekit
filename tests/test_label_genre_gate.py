@@ -608,9 +608,12 @@ def test_three_releases_unread_in_a_row_end_the_asking_and_an_answer_resets_it()
 
 
 def test_the_gate_names_the_review_kind_the_sweep_files_under():
-    assert genre_gate.RELEASE_KIND == sweep.KIND
+    # The literal, not one module's name for it against the other's: the two
+    # are one object since the review, and X equals X would hold for any word.
+    assert sweep.KIND == "label-release"
+    assert genre_gate.RELEASE_KIND == "label-release"
     assert genre_gate.release_item_id("r1") == review.item_id_for(
-        Queue.LABEL_RELEASE, sweep.KIND, {"release_id": "r1"}
+        "label-release", "label-release", {"release_id": "r1"}
     )
 
 

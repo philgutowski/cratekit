@@ -195,6 +195,11 @@ words, or `any`, which passes everything and asks nothing. A label with no
 kind is the taxonomy's `default_kind`, dance. It is set with
 `crate label registry set NAME --kind KIND`.
 
+Not the review store's **kind**, which is the type of a review item,
+`label-release` for a release. The two words meet in the label package: a
+`kind` on a registry entry or a published rule is this one, and `sweep.KIND`
+is the review store's.
+
 A kind is not a folder and not a set building family. The rules that name it
 read a general catalogue's vocabulary, where most words name no folder, and
 they are a table of their own beside the share rules, which read the record
