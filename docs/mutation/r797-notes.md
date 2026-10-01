@@ -49,5 +49,33 @@ filed in the old playlist and holds the new bucket's aliases equal to that
 set, and the loader's refusals, which fire on the shipped file if a line of
 the former place is wrong.
 
-The second review round's changes came after these tables. They are named in
-the record with the tests that hold them.
+## The second review round, and what `r797-d` is
+
+The first three tables were measured after the first fix round. The second
+round then moved the line three rows mutate: T9, a former place competing
+where it sits as well, now a line of the index the loader builds, M6, a track
+listed once and not beside its move, whose guard was replaced by the rule that
+a place is settled in one bucket, and M8, the reason a file the census could
+not read is listed under. `r797-d` is the same three guards against the lines
+as they stand, each row naming the one it measures again: 3 rows, 3 killed,
+null control 0 of 11,367 collected against 11,367. The other 22 rows' lines
+did not move.
+
+The guards the second round ADDED are past the cap and were not measured.
+Each has a test that names it:
+
+- a track with no reading leaving a former place for the no reading sub, and
+  still left when it holds a stale band, four tests in
+  `tests/test_adopt_former_place.py` beginning `test_a_track_with_no_reading`
+  and `test_a_stale_band_with_no_reading`;
+- the fallback tier not read as a genre naming a bucket,
+  `test_a_genre_only_the_fallback_tier_lands_is_not_read_as_naming_the_bucket`;
+- a verdict on the holding bucket,
+  `test_a_verdict_on_the_holding_bucket_is_the_reason_a_track_there_is_left`;
+- a former place held twice not listed beside the move that leaves it,
+  `test_a_former_place_held_twice_is_not_listed_beside_the_move_that_leaves_it`;
+- a too coarse word counted apart, and the spellings routing does not file
+  under a sub named on its row, two tests in `tests/test_report_genres.py`;
+- what decided a move with no reading, asserted in the first of the tests
+  above. That one came from the author's own read after the review and not
+  from a finding.

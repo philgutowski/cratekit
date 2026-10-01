@@ -259,6 +259,7 @@ def test_a_track_in_the_old_playlist_is_added_to_its_band_and_leaves_the_playlis
     assert (move.bucket, move.target, move.add, move.remove) == (
         PROMOTED.id, HIGH, HIGH, (FORMER.id,)
     )
+    assert (move.kind, move.decided_by) == ("band", adopt_move.DECIDED_BY_ENERGY)
     assert plan.left == ()
     assert plan.counts()["memberships_added"] == plan.counts()["memberships_removed"] == 1
 
@@ -284,6 +285,8 @@ def test_a_track_with_no_reading_leaves_the_old_playlist_for_the_no_reading_sub(
     assert (move.bucket, move.target, move.add, move.remove, move.energy) == (
         PROMOTED.id, SINK, SINK, (FORMER.id,), None
     )
+    # Its genre sent it here, and no reading was taken to decide anything.
+    assert (move.kind, move.decided_by) == ("band", adopt_move.DECIDED_BY_GENRE)
     assert plan.left == ()
 
 

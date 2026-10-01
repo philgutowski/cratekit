@@ -135,7 +135,16 @@ class Move:
 
     @property
     def decided_by(self) -> str:
-        return DECIDED_BY_ENERGY if self.kind == routing.Competing.BAND.value else DECIDED_BY_GENRE
+        """What decided the move, as the gate names it.
+
+        A MOVE WITH NO READING WAS NOT DECIDED BY ENERGY (R-797). The one move
+        made without a reading leaves a former place for the no reading sub,
+        and what sends the track to that bucket is its genre. Saying energy
+        beside a reading of nothing would name a decision nobody took.
+        """
+        if self.kind == routing.Competing.BAND.value and self.energy is not None:
+            return DECIDED_BY_ENERGY
+        return DECIDED_BY_GENRE
 
 
 @dataclass(frozen=True, slots=True)
