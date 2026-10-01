@@ -1,0 +1,73 @@
+name = "r796-c"
+pass_kind = "light"
+
+[[rows]]
+id = "V1_the_worker_hands_the_seam_over"
+description = "handle: stop passing the general catalogue's seam to tag_one, so the verb never asks it"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''        published=published.for_taxonomy(declared),'''
+new = '''        published=None,'''
+
+[[rows]]
+id = "V2_blocked_warning_is_the_shops_only"
+description = "_unread_warnings: name every source blocked throughout, the general catalogue included, so one refusal is said under two codes"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''    for source in searchers.SOURCES:
+        counted = answers.get(source) or {}'''
+new = '''    for source in answers:
+        counted = answers.get(source) or {}'''
+
+[[rows]]
+id = "V3_some_unread_is_said"
+description = "_published_warnings: warn only when the catalogue was unread on every file asked about, so a partial block is counts and no sentence"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''    if failed:
+        seen = "; ".join(f"{word} on {count}" for word, count in unread.items() if count)'''
+new = '''    if failed and failed == asked:
+        seen = "; ".join(f"{word} on {count}" for word, count in unread.items() if count)'''
+
+[[rows]]
+id = "V4_no_isrc_is_warned_about"
+description = "_published_warnings: never warn about files with no ISRC"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''    if bare:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "V5_parse_break_sentence_said_once"
+description = "_unread_warnings: read the general catalogue's parse break into the shops' sentence too"
+file = "src/cratekit/tagging/cli.py"
+surface = "maintainer"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''            for source in searchers.SOURCES
+        )'''
+new = '''            for source in answers
+        )'''
+
+[[rows]]
+id = "V6_one_lookup_per_process"
+description = "for_lookup: build a fresh lookup per call, so a refusal on one file is forgotten by the next file's seam"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''    if not _shared:
+        _shared.append(genre_lookup())
+    return _shared[0]'''
+new = '''    return genre_lookup()'''
+
+[[rows]]
+id = "V7_the_request_names_this_tool"
+description = "genre_lookup: build the default fetch without this module's headers, so the API is asked under the browser identity"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''    touch = searchers.default_fetch(sleep=naps, headers=HEADERS) if fetch is None else fetch'''
+new = '''    touch = searchers.default_fetch(sleep=naps) if fetch is None else fetch'''
