@@ -138,6 +138,27 @@ def check_offer(offer: int) -> int:
     return offer
 
 
+_KIND = re.compile(r"[a-z0-9][a-z0-9_-]*")
+
+
+def check_kind(kind: str) -> str:
+    """A label's kind, folded, or a refusal for a value that could never be one.
+
+    THE SHAPE ONLY. Which kinds exist is the library's taxonomy's to say, and
+    this registry is the installation's, so the verb that sets a kind checks it
+    against the taxonomy and this store keeps a word no taxonomy could name
+    out of the file (R-798).
+    """
+    folded = kind.strip().lower() if isinstance(kind, str) else ""
+    if not _KIND.fullmatch(folded):
+        raise _field_invalid(
+            f"a label's kind is a single word such as dance or rnb, not {kind!r}",
+            "pass --kind with one of the kinds the library's taxonomy names, or any",
+            {"kind": kind},
+        )
+    return folded
+
+
 def _checked_seeds(seed_artists: Sequence[str]) -> tuple[str, ...]:
     return tuple(check_seed(seed) for seed in seed_artists)
 
@@ -194,6 +215,11 @@ class LabelEntry:
     #: This label's own window of releases per sweep, or None for the
     #: configuration's ``labels.offer_per_sweep``. See :func:`effective_offer`.
     offer: int | None = None
+    #: The kind of music this label is followed for, or None for the taxonomy's
+    #: ``label_gate.default_kind``. It decides which releases the genre gate
+    #: passes (R-798). Folded lowercase, and checked against the taxonomy by
+    #: the verb that sets it, never here.
+    kind: str | None = None
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -203,6 +229,7 @@ class LabelEntry:
             "seed_artists": list(self.seed_artists),
             "track_limit": self.track_limit,
             "offer": self.offer,
+            "kind": self.kind,
         }
 
 
@@ -258,6 +285,7 @@ def _entry_from(label_id: str, raw: Mapping[str, Any]) -> LabelEntry:
     seed_list = tuple(str(item) for item in seeds) if isinstance(seeds, list) else ()
     name = str(raw.get("name") or label_id)
     match = raw.get("match")
+    kind = raw.get("kind")
     return LabelEntry(
         label_id=str(raw.get("label_id") or label_id),
         name=name,
@@ -265,6 +293,7 @@ def _entry_from(label_id: str, raw: Mapping[str, Any]) -> LabelEntry:
         seed_artists=seed_list,
         track_limit=_coerce_int(raw.get("track_limit")),
         offer=_coerce_int(raw.get("offer")),
+        kind=kind.strip().lower() or None if isinstance(kind, str) else None,
     )
 
 
@@ -466,6 +495,7 @@ class RegistryStore:
         seed_artists: tuple[str, ...] | list[str] = (),
         track_limit: int | None = None,
         offer: int | None = None,
+        kind: str | None = None,
     ) -> str:
         """Add or update by identifier. Re-adding keeps the same ``label_id``.
 
@@ -478,6 +508,8 @@ class RegistryStore:
             check_track_limit(track_limit)
         if offer is not None:
             check_offer(offer)
+        if kind is not None:
+            kind = check_kind(kind)
         written: list[str] = []
 
         def mutate(current: dict[str, LabelEntry]) -> None:
@@ -504,6 +536,7 @@ class RegistryStore:
                     existing.track_limit if existing else None
                 ),
                 offer=offer if offer is not None else (existing.offer if existing else None),
+                kind=kind if kind is not None else (existing.kind if existing else None),
             )
 
         self.update(mutate)
@@ -568,6 +601,7 @@ class RegistryStore:
         seed_artists: Sequence[str] | None = None,
         track_limit: int | None = None,
         offer: int | None = None,
+        kind: str | None = None,
     ) -> LabelEntry:
         """Change the given fields of a held entry and keep every other one.
 
@@ -582,6 +616,8 @@ class RegistryStore:
             check_track_limit(track_limit)
         if offer is not None:
             check_offer(offer)
+        if kind is not None:
+            kind = check_kind(kind)
         edited: list[LabelEntry] = []
 
         def mutate(current: dict[str, LabelEntry]) -> None:
@@ -601,6 +637,7 @@ class RegistryStore:
                 seed_artists=seeds if seeds is not None else existing.seed_artists,
                 track_limit=track_limit if track_limit is not None else existing.track_limit,
                 offer=offer if offer is not None else existing.offer,
+                kind=kind if kind is not None else existing.kind,
             )
             current[existing.label_id] = entry
             edited.append(entry)

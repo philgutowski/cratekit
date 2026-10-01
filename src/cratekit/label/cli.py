@@ -13,10 +13,11 @@ from pathlib import Path
 
 from cratekit.acquire import match_cli
 from cratekit.cli.output import Envelope
-from cratekit.core import config, jobs, review
+from cratekit.core import active_taxonomy, config, jobs, review, taxonomy
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.label import catalogue, harvest, sweep
+from cratekit.label import gate as genre_gate
 from cratekit.label import registry as labels
 from cratekit.sync import artifacts, run, watermarks
 
@@ -113,6 +114,17 @@ def build_registry(parser, entry) -> None:
             "counting those already there; overrides labels.offer_per_sweep"
         ),
     )
+    parser.add_argument(
+        "--kind",
+        dest="kind",
+        default=None,
+        metavar="KIND",
+        help=(
+            "the kind of music this label is followed for, one the library's "
+            "taxonomy names under label_gate, or any; it decides which releases "
+            "the genre gate passes, and a label with none is the default kind"
+        ),
+    )
     parser.set_defaults(_handler=registry_cmd)
 
 
@@ -174,6 +186,8 @@ def _detail(entry: labels.LabelEntry) -> str:
             f"offer {entry.offer}"
             + (f", bounded by the track limit to {bound}" if entry.offer > bound else "")
         )
+    if entry.kind is not None:
+        parts.append(f"kind {entry.kind}")
     if entry.seed_artists:
         parts.append("seeds " + " | ".join(entry.seed_artists))
     return ", ".join(parts)
@@ -207,19 +221,48 @@ def _labels_json(held: labels.Registry) -> list[dict]:
     return [entry.to_json() for entry in held.labels.values()]
 
 
+def _declared_kind(kind: str) -> str:
+    """``--kind`` as the library's taxonomy names it, or a refusal naming what it does.
+
+    CHECKED HERE AND NOT IN THE STORE (R-798). The registry is the
+    installation's and the taxonomy is the library's, so only a verb, which has
+    a configuration, can ask whether a kind exists. A kind nothing names would
+    be stored without complaint and then never judged, which reads at the next
+    sweep exactly like a catalogue that had nothing to say.
+    """
+    wanted = labels.check_kind(kind)
+    named = active_taxonomy.load(_load()).label_gate.kinds
+    if wanted == taxonomy.ANY_KIND or wanted in named:
+        return wanted
+    raise refuse(
+        "label-name-invalid",
+        f"{wanted!r} is not a kind the library's taxonomy names"
+        + (
+            f"; it names {', '.join(named)}, and {taxonomy.ANY_KIND} passes everything"
+            if named
+            else f"; it declares no kinds at all, so only {taxonomy.ANY_KIND} can be "
+            f"set until its label_gate section gains the published rules"
+        ),
+        steps=("pass --kind with one of those, or add a rule for it to the taxonomy",),
+        origin=("label.cli",),
+        detail={"kind": wanted, "kinds": [*named, taxonomy.ANY_KIND]},
+    )
+
+
 def registry_cmd(ctx) -> Envelope:
     store = labels.RegistryStore()
     action = ctx.args.action
     seeds = ctx.args.seeds
     track_limit = ctx.args.track_limit
     offer = ctx.args.offer
-    fields_given = (seeds, track_limit, ctx.args.match, offer)
+    kind = ctx.args.kind
+    fields_given = (seeds, track_limit, ctx.args.match, offer, kind)
     if action not in ("add", "set") and any(given is not None for given in fields_given):
         raise refuse(
             "label-name-invalid",
             f"label registry {action} does not set --seed, --track-limit, "
-            f"--offer or --match, and ignoring them would report a change that "
-            f"was never written",
+            f"--offer, --kind or --match, and ignoring them would report a change "
+            f"that was never written",
             steps=("use label registry set, or add, to change those fields",),
             origin=("label.cli",),
         )
@@ -241,6 +284,8 @@ def registry_cmd(ctx) -> Envelope:
             steps=("pass the label name after the action",),
             origin=("label.cli",),
         )
+    if kind is not None:
+        kind = _declared_kind(kind)
     if action == "add":
         label_id = store.add(
             name,
@@ -248,6 +293,7 @@ def registry_cmd(ctx) -> Envelope:
             seed_artists=tuple(seeds or ()),
             track_limit=track_limit,
             offer=offer,
+            kind=kind,
         )
         held = store.load()
         return ctx.envelope(
@@ -257,12 +303,12 @@ def registry_cmd(ctx) -> Envelope:
             }
         )
     if action == "set":
-        if ctx.args.match is None and seeds is None and track_limit is None and offer is None:
+        if all(given is None for given in fields_given):
             raise refuse(
                 "label-name-invalid",
                 "label registry set needs a field to change, and a set that "
                 "changed nothing would report an edit that never happened",
-                steps=("pass --track-limit, --offer, --seed, or --match",),
+                steps=("pass --track-limit, --offer, --kind, --seed, or --match",),
                 origin=("label.cli",),
             )
         edited = store.edit(
@@ -271,6 +317,7 @@ def registry_cmd(ctx) -> Envelope:
             seed_artists=seeds,
             track_limit=track_limit,
             offer=offer,
+            kind=kind,
         )
         held = store.load()
         return ctx.envelope(
@@ -1276,16 +1323,31 @@ def handle(job, item, cfg) -> jobs.Produced | None:
     # whole of R17 on this path, and it is opened before the catalogue is
     # resolved so an unbound build's refusal costs nothing it did not already.
     with review.open_store(cfg) as store:
+        # THE DECLARATION BEFORE THE FIRST LOGIN, as ``label approved`` reads it
+        # (R-685). The genre gate judges by the library's own rules, and an
+        # active copy that cannot be read refuses here, not after a label was
+        # listed and its releases filed unjudged.
+        declared = active_taxonomy.load(cfg)
         found = catalogue.resolve(cfg)
-        owned = sweep.OwnedReleases(cfg, found, library=_job_library(job, cfg))
+        # ONE READER FOR BOTH QUESTIONS (R-798). Ownership and the genre gate
+        # read the same rows of the same release, so the second gets the
+        # first one's answer and the gate adds no provider call.
+        tracks = sweep.ReleaseTracks(found)
+        owned = sweep.OwnedReleases(cfg, tracks, library=_job_library(job, cfg))
+        run_id = str(payload.get("run_id") or job.job_id)
         source = sweep.LabelSource(
             cfg,
             registry=labels.Registry(labels={entry.label_id: entry}),
             catalogue=found,
             store=store,
             owned=owned,
+            gate=genre_gate.SweepGate(
+                declared,
+                tracks=tracks.release_tracks,
+                standing=genre_gate.standing_in(store),
+            ),
+            run_id=run_id,
         )
-        run_id = str(payload.get("run_id") or job.job_id)
         result = run_increment(
             cfg,
             source,

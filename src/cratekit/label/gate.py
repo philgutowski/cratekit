@@ -1,0 +1,377 @@
+"""The label genre gate, asked when a sweep lists a release (R-798).
+
+WHAT IT IS FOR. At sitting 25, 36 of 186 tracks downloaded from followed labels
+were not dance music, among them Christian music from another label with the
+same name as a followed one. The gate in ``label approved`` had never held a
+release, because no catalogue it read reported a genre, and it ran only after a
+release was accepted, so the review queue carried everything.
+
+WHAT IT ASKS. The general catalogue R-796 built, by the ISRC of the release's
+own tracks, through :func:`cratekit.tagging.published.for_lookup`. The answer is
+the album's genre words, and :func:`cratekit.core.routing.kind_verdict` says
+whether they are the kind of music the label is followed for. This module owns
+the asking and the sentence a person reads about it. It owns no rule: those are
+the taxonomy's.
+
+THE LOOKUP IS THE ONLY THING THAT TOUCHES THE CATALOGUE, and it paces every
+request itself and remembers a refusal for the rest of the run. Nothing here
+retries, waits out, or tries to get past an answer it did not like. A catalogue
+that could not be read holds nothing: the release is filed for review as not
+judged, and says the catalogue was unread.
+
+A HOLD IS NOT A REJECTION. The release is recorded in the review database's
+``held_offers`` with the words it was held on, is judged again from those words
+on every sweep that reaches it, and can be returned to review by a person. No
+tombstone is written.
+
+Layer: modules.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from typing import Any
+
+from cratekit.core import review, routing
+from cratekit.core.cause import CratekitError
+from cratekit.core.review import Queue
+from cratekit.core.routing import KindVerdict
+from cratekit.core.taxonomy import Taxonomy
+from cratekit.label import registry
+from cratekit.label.catalogue import ReleaseUnresolvable
+from cratekit.tagging import published
+from cratekit.tagging.searchers import NOT_ASKED, Answer
+from cratekit.tagging.tag import NO_ISRC
+
+#: The review kind a label release is filed under. ``label.sweep`` names the
+#: same word as ``KIND``; spelled here as well because that module imports this
+#: one, and a test pins the two equal.
+RELEASE_KIND = "label-release"
+
+#: How many of a release's tracks are asked about before the catalogue is taken
+#: not to publish a genre for it. The genre is the album's, so one answer
+#: settles it, and a second or third track is asked only when the one before is
+#: a recording the catalogue does not list. Three, on the reasoning the sweep's
+#: other bounds give: one is a bad row, two a coincidence.
+TRACKS_ASKED = 3
+
+#: How many reads of a release's tracks may fail in a row before the gate stops
+#: asking the provider for the rest of the label. The ownership question keeps
+#: the same number and usually trips first, since it reads the same rows.
+OUTAGE_AFTER = 3
+
+#: The payload fields a filed release carries about the gate. ``GATE_FIELD`` is
+#: a :class:`~cratekit.core.routing.KindVerdict` value or :data:`RETURNED`.
+GATE_FIELD = "genre_gate"
+GATE_NOTE_FIELD = "genre_gate_note"
+#: The general catalogue's answer word for the release, or ``not-asked``.
+GATE_ANSWER_FIELD = "genre_gate_answer"
+#: The words the catalogue published, in its order. Read back by
+#: ``label approved`` so an accepted release is judged on the same words.
+GENRES_FIELD = "published_genres"
+
+#: What :data:`GATE_FIELD` says of a release a person returned to review.
+RETURNED = "returned"
+
+
+def release_item_id(release_id: str) -> str:
+    """The review item a release is, or would be, in the label-release queue."""
+    return review.item_id_for(Queue.LABEL_RELEASE, RELEASE_KIND, {"release_id": release_id})
+
+
+@dataclass(frozen=True, slots=True)
+class Words:
+    """What the general catalogue published for one release's tracks.
+
+    ``answer`` is the lookup's own word, :data:`NOT_ASKED` when nothing was
+    asked. ``genres`` is non empty only for a match that published some.
+    """
+
+    genres: tuple[str, ...]
+    answer: str
+    note: str = ""
+
+    @property
+    def unread(self) -> bool:
+        """Whether the catalogue could not be read, as opposed to having no answer."""
+        return self.answer in published.UNREAD
+
+    @property
+    def why_none(self) -> str:
+        """The sentence for a release with no published word, by what was answered."""
+        if self.genres:
+            return ""
+        if self.unread:
+            return (
+                f"the general catalogue could not be read ({self.answer})"
+                + (f": {self.note}" if self.note else "")
+            )
+        if self.answer == NO_ISRC:
+            return "none of its tracks carries an ISRC to ask the general catalogue with"
+        if self.answer == Answer.MISS.value:
+            return "the general catalogue does not know its tracks"
+        if self.answer == Answer.MATCHED.value:
+            return "the general catalogue knows it and publishes no genre for it"
+        return self.note or "the general catalogue was not asked about it"
+
+
+def _isrcs(rows: Sequence[Any]) -> tuple[str, ...]:
+    """Each row's ISRC value as the provider spelled it, in order, once each."""
+    found: dict[str, None] = {}
+    for row in rows:
+        value = row.get("isrc") if isinstance(row, Mapping) else getattr(row, "isrc", None)
+        if isinstance(value, str) and value.strip():
+            found.setdefault(value.strip(), None)
+    return tuple(found)
+
+
+def published_words(rows: Sequence[Any], lookup: published.Lookup) -> Words:
+    """Ask the general catalogue about one release, by its tracks' ISRCs.
+
+    IN ORDER, UNTIL ONE ANSWERS WITH A GENRE, :data:`TRACKS_ASKED` AT MOST. The
+    genre is published on the album, so the first track that reaches it is the
+    release's answer.
+
+    AN ANSWER THAT COULD NOT BE READ STOPS THE ASKING. A refusal, an outage and
+    an answer in a shape nobody knows are not "this track is unknown", and
+    trying the next track against a catalogue that just refused would be the
+    start of arguing with it.
+
+    NO ISRC ON ANY ROW ASKS NOTHING, and says so as its own answer, since a
+    release nobody could ask about is not a release the catalogue does not know.
+    """
+    isrcs = _isrcs(rows)
+    if not isrcs:
+        return Words((), NO_ISRC)
+    said = published.Published(published.SOURCE, NO_ISRC)
+    for value in isrcs[:TRACKS_ASKED]:
+        said = lookup(value)
+        if said.answer in published.UNREAD:
+            return Words((), said.answer, said.note)
+        if said.answer == Answer.MATCHED.value and said.genres:
+            return Words(tuple(said.genres), said.answer)
+    return Words((), said.answer, said.note)
+
+
+@dataclass(frozen=True, slots=True)
+class Judged:
+    """One release judged at sweep time: the verdict and what it was judged on."""
+
+    verdict: KindVerdict
+    kind: str
+    genres: tuple[str, ...]
+    reason: str
+    answer: str = NOT_ASKED
+    placed: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def held(self) -> bool:
+        return self.verdict is KindVerdict.HOLD
+
+    def stamp(self) -> dict[str, Any]:
+        """What a filed release's payload says about the gate."""
+        said: dict[str, Any] = {
+            GATE_FIELD: self.verdict.value,
+            GATE_NOTE_FIELD: self.reason,
+            GATE_ANSWER_FIELD: self.answer,
+        }
+        if self.genres:
+            said[GENRES_FIELD] = list(self.genres)
+        return said
+
+    def detail(self) -> dict[str, Any]:
+        """What a hold records, so the release can be judged again with no request."""
+        return {
+            "genres": list(self.genres),
+            "kind": self.kind,
+            "placed": [list(pair) for pair in self.placed],
+        }
+
+
+def returned_stamp() -> dict[str, Any]:
+    """The gate fields of a release a person returned to review."""
+    return {
+        GATE_FIELD: RETURNED,
+        GATE_NOTE_FIELD: "returned to review by hand after the genre gate held it",
+        GATE_ANSWER_FIELD: NOT_ASKED,
+    }
+
+
+def recorded_genres(source: Mapping[str, Any], field: str) -> tuple[str, ...] | None:
+    """The published words a hold or a payload recorded, or None when it holds none.
+
+    None for a field that is absent, empty or not a list of words. A caller
+    reads None as "nothing was recorded", never as "the release has no genre".
+    """
+    held = source.get(field)
+    if not isinstance(held, list):
+        return None
+    words = tuple(word.strip() for word in held if isinstance(word, str) and word.strip())
+    return words or None
+
+
+def _of(judgment: routing.KindJudgment, words: Words | None = None) -> Judged:
+    return Judged(
+        verdict=judgment.verdict,
+        kind=judgment.kind,
+        genres=words.genres if words is not None else (),
+        reason=judgment.reason,
+        answer=words.answer if words is not None else NOT_ASKED,
+        placed=judgment.placed,
+    )
+
+
+def judge_words(declared: Taxonomy, kind: str | None, words: Words) -> Judged:
+    """The verdict for one release whose published words have been asked for.
+
+    A release with no word is NOT JUDGED, with the sentence that says which
+    kind of nothing it was, an unread catalogue or a track nobody lists.
+    """
+    settled = routing.kind_settled(declared, kind)
+    if settled is not None:
+        return _of(settled, words)
+    if not words.genres:
+        return Judged(
+            KindVerdict.NOT_JUDGED,
+            routing.label_kind(declared, kind),
+            (),
+            words.why_none,
+            words.answer,
+        )
+    return _of(routing.kind_verdict(declared, kind, words.genres), words)
+
+
+#: Reads one release's rows and its year. ``Catalogue.release_tracks``' shape.
+TrackReader = Callable[[str], tuple[tuple[Any, ...], int | None]]
+
+
+class SweepGate:
+    """The gate one sweep item asks, release by release.
+
+    ``tracks`` reads a release's rows. The worker hands the same remembered
+    reader the ownership question uses, so the gate adds no provider call for
+    a release that question already read. ``standing`` answers the hold a
+    release already has, in force or returned, from the review database.
+
+    THE LOOKUP IS LOOKED UP AT CALL TIME, off :mod:`cratekit.tagging.published`,
+    which is the contract that module states and what lets a suite hand in a
+    fake. It is one per process, so its pacing and its memory of a refusal span
+    every label of a sweep.
+    """
+
+    def __init__(
+        self,
+        declared: Taxonomy,
+        *,
+        tracks: TrackReader,
+        standing: Callable[[str], review.Hold | None] | None = None,
+        lookup: published.Lookup | None = None,
+    ) -> None:
+        self.declared = declared
+        self._tracks = tracks
+        self._standing = standing
+        self._lookup = lookup
+        self._failed_in_a_row = 0
+
+    def standing(self, release_id: str) -> review.Hold | None:
+        """The hold this release already has, in any state, or None."""
+        return self._standing(release_id) if self._standing is not None else None
+
+    def judge(self, entry: registry.LabelEntry, release_id: str) -> Judged:
+        """Judge one release the sweep is about to file.
+
+        NOTHING IS READ WHEN THE WORDS COULD NOT CHANGE THE VERDICT: a label
+        followed for any kind, a taxonomy with no rule for this vocabulary, and
+        a label marked with a kind the taxonomy does not name.
+
+        A RELEASE WHOSE TRACKS COULD NOT BE READ IS NOT JUDGED, and after
+        :data:`OUTAGE_AFTER` such failures in a row the provider is not asked
+        again for this label. A ``CratekitError`` passes through unchanged, as
+        at every other seam boundary of the sweep: an expired session names an
+        act that is the person's to take.
+        """
+        settled = routing.kind_settled(self.declared, entry.kind)
+        if settled is not None:
+            return _of(settled)
+        kind = routing.label_kind(self.declared, entry.kind)
+
+        def unjudged(why: str) -> Judged:
+            return Judged(KindVerdict.NOT_JUDGED, kind, (), why)
+
+        if self._failed_in_a_row >= OUTAGE_AFTER:
+            return unjudged(
+                f"its tracks were not read: the provider failed {OUTAGE_AFTER} "
+                f"releases in a row, so the rest were not asked for"
+            )
+        try:
+            rows, _year = self._tracks(release_id)
+        except CratekitError:
+            raise
+        except ReleaseUnresolvable:
+            # THE PROVIDER ANSWERED, so the run of failures is broken.
+            self._failed_in_a_row = 0
+            return unjudged("the provider no longer has the release, so its tracks were not read")
+        except Exception as exc:  # noqa: BLE001 - not judged, and the release is filed
+            self._failed_in_a_row += 1
+            return unjudged(
+                f"its tracks could not be read from the provider ({type(exc).__name__}: {exc})"
+            )
+        self._failed_in_a_row = 0
+        lookup = self._lookup if self._lookup is not None else published.for_lookup()
+        return judge_words(self.declared, entry.kind, published_words(rows, lookup))
+
+    def rejudge(self, entry: registry.LabelEntry, held: review.Hold) -> Judged:
+        """Judge a standing hold again, from the words it recorded. No request.
+
+        This is how a change to the label's kind, or to the taxonomy's rules,
+        releases a hold: the same words are put to the rules as they stand now.
+
+        A HOLD WHOSE WORDS CANNOT BE READ BACK STAYS HELD, with the reason it
+        was held on. Releasing it would file a release the gate once placed
+        elsewhere on the strength of a row nobody could read, and a person can
+        still return it by hand.
+        """
+        genres = recorded_genres(held.detail, "genres")
+        if genres is None:
+            return Judged(
+                KindVerdict.HOLD,
+                routing.label_kind(self.declared, entry.kind),
+                (),
+                held.reason,
+            )
+        words = Words(genres, Answer.MATCHED.value)
+        return _of(routing.kind_verdict(self.declared, entry.kind, genres), words)
+
+
+def standing_in(store: review.ReviewStore) -> Callable[[str], review.Hold | None]:
+    """The standing hold reader for an open review store, one release at a time."""
+
+    def standing(release_id: str) -> review.Hold | None:
+        return review.find_hold(
+            store, queue=Queue.LABEL_RELEASE, item_id=release_item_id(release_id)
+        )
+
+    return standing
+
+
+__all__ = [
+    "GATE_ANSWER_FIELD",
+    "GATE_FIELD",
+    "GATE_NOTE_FIELD",
+    "GENRES_FIELD",
+    "OUTAGE_AFTER",
+    "RELEASE_KIND",
+    "RETURNED",
+    "TRACKS_ASKED",
+    "Judged",
+    "SweepGate",
+    "TrackReader",
+    "Words",
+    "judge_words",
+    "published_words",
+    "recorded_genres",
+    "release_item_id",
+    "returned_stamp",
+    "standing_in",
+]
