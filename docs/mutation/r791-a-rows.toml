@@ -34,8 +34,8 @@ description = "_CHALLENGE_TITLE: match only three dots, not the single ellipsis 
 file = "src/cratekit/tagging/searchers.py"
 surface = "user"
 tests = ["tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
-old = '''just a moment(?:\\.\\.\\.|\\u2026)'''
-new = '''just a moment\\.\\.\\.'''
+old = '''just a moment(?:\.\.\.|\u2026)'''
+new = '''just a moment\.\.\.'''
 
 [[rows]]
 id = "S5_challenge_body"

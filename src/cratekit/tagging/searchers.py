@@ -212,7 +212,7 @@ _GONE_STATUSES = frozenset({404, 410})
 #: another dress, and its interstitial is written with three dots or with the
 #: single ellipsis character depending on the build that served it.
 _CHALLENGE_TITLE = re.compile(
-    r"<title[^>]*>\s*(just a moment(?:\.\.\.|…)|client challenge|attention required!)",
+    r"<title[^>]*>\s*(just a moment(?:\.\.\.|\u2026)|client challenge|attention required!)",
     re.IGNORECASE,
 )
 
