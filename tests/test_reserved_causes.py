@@ -5876,7 +5876,19 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # `adopt/move.py` lists a track as left where it is, shown on the gate
     # beside each: reading-names-neither-held, withheld-by-verdict and
     # one-sub-held-by-two-rows. The verb's refusals are the ones it had.
-    assert (len(literals), len(literals - set(causes))) == (541, 355), (
+    # Re-pinned on the residual finding "Bandcamp's bot challenge reads as a
+    # miss and Traxsource's as unreachable, and a Beatport miss hides both
+    # behind a clean no-hit", 2026-10-01: 541 to 544 distinct, non-keys 355 to
+    # 358. THREE joined and nothing left, each checked against `main`'s own
+    # `src` by git grep, and none is a key. sources-unread is a SKIP REASON on
+    # one file's tagging result, beside no-hit. tag-folder-sources-unread and
+    # tag-folder-source-blocked are WARNING codes `tagging/cli.py` gives on a
+    # sweep that left files undecided or had a catalogue refuse every search,
+    # the same kind of literal as tag-folder-off-taxonomy. The fourth new
+    # string, not-asked, the per source record's word for a catalogue the walk
+    # never reached, was already in the tree and does not move the count. The
+    # searcher's refusals are the ones it had.
+    assert (len(literals), len(literals - set(causes))) == (544, 358), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

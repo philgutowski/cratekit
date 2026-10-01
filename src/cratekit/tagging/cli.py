@@ -56,6 +56,18 @@ from cratekit.tagging import tag as tag_engine
 #: fact about the template rather than a reason anything did not happen.
 OFF_TAXONOMY = "tag-folder-off-taxonomy"
 
+#: The warning a sweep carries when some files were left untagged because a
+#: catalogue could not be read for them, rather than because none carried them
+#: (R-791). A warning and not a cause, on the same rule: the sweep did what it
+#: could and the files are askable again on the next run.
+SOURCES_UNREAD = "tag-folder-sources-unread"
+
+#: The warning that names a catalogue which refused this machine with a bot
+#: check or a block page on every file it was asked about. Apart from the count
+#: above because the next move differs: a whole catalogue contributed nothing to
+#: the run, which a person needs to know before they trust any decline in it.
+SOURCE_BLOCKED = "tag-folder-source-blocked"
+
 
 def _load() -> config.Config:
     """Read config, turning a configuration failure into a typed cause.
@@ -141,11 +153,16 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
     none of them, since which status it would have had is not known.
     ``art_fetch`` is the same rule over new art, so ``unavailable`` stands next
     to ``embedded`` as a count a person can see was zero.
+
+    ``answers`` COUNTS FILES BY WHAT EACH CATALOGUE ANSWERED, zero filled over
+    every source and every answer, so "Bandcamp was blocked on all 66" and
+    "Bandcamp matched none of 66" are two different lines rather than one silence
+    (R-791). A report committed before the answers were recorded counts under
+    none of them, for the art repair's reason.
     """
-    skipped = {
-        reason: 0
-        for reason in (tag_engine.HAS_GENRE, tag_engine.NO_HIT, tag_engine.UNMAPPED_GENRE)
-    }
+    skipped = dict.fromkeys(tag_engine.SKIP_REASONS, 0)
+    answer_values = (*(answer.value for answer in searchers.Answer), searchers.NOT_ASKED)
+    answers = {source: dict.fromkeys(answer_values, 0) for source in searchers.SOURCES}
     art_repair = dict.fromkeys(art.REPAIR_STATUSES, 0)
     art_fetch = dict.fromkeys(tag_engine.ART_FETCH_STATUSES, 0)
     unresolved: dict[str, int] = {}
@@ -168,14 +185,69 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
         fetched = str(report.get("art_fetch") or "")
         if fetched in art_fetch:
             art_fetch[fetched] += 1
+        for said in report.get("answers") or ():
+            if not isinstance(said, dict):
+                continue
+            counted = answers.get(str(said.get("source") or ""))
+            word = str(said.get("answer") or "")
+            if counted is not None and word in counted:
+                counted[word] += 1
     return {
         "tagged": tagged,
         "skipped": skipped,
         "unresolved": unresolved,
         "off_taxonomy": off_taxonomy,
+        "answers": answers,
         "art_repair": art_repair,
         "art_fetch": art_fetch,
     }
+
+
+def _unread_warnings(summary: dict) -> tuple[dict[str, str], ...]:
+    """Say how many files no catalogue answer settled, and which catalogue refused all.
+
+    THE COUNT IS THE FIX FOR THE CLEAN NO-HIT (R-791). Without it a sweep whose
+    fallbacks were all refused reads, on the surface a person reads, exactly as
+    one whose fallbacks were all asked and had nothing.
+
+    A CATALOGUE IS NAMED WHEN IT WAS BLOCKED ON EVERY FILE IT WAS ASKED ABOUT,
+    and at least one. A file whose search ended at a Beatport match never asked
+    the fallbacks, so "every file" is every file the catalogue was sent, not every
+    file in the folder; counting the others would let a run where Beatport
+    matched half the folder hide a fallback that was refused on the other half.
+    In the walk's own source order, so two runs over one folder warn alike.
+    """
+    warnings: list[dict[str, str]] = []
+    unread = (summary.get("skipped") or {}).get(tag_engine.SOURCES_UNREAD, 0)
+    if unread:
+        warnings.append(
+            {
+                "code": SOURCES_UNREAD,
+                "message": (
+                    f"{unread} files were left untagged because at least one "
+                    f"catalogue could not be read for them, so whether any "
+                    f"catalogue carries them is unknown. They are not reported as "
+                    f"no-hit, and the next run over this folder asks again; each "
+                    f"file's record says what every catalogue answered"
+                ),
+            }
+        )
+    for source, counted in (summary.get("answers") or {}).items():
+        asked = sum(count for word, count in counted.items() if word != searchers.NOT_ASKED)
+        if asked and counted.get(searchers.Answer.BLOCKED.value, 0) == asked:
+            warnings.append(
+                {
+                    "code": SOURCE_BLOCKED,
+                    "message": (
+                        f"{source} answered every one of the {asked} searches it "
+                        f"was sent with a bot check or a block page rather than a "
+                        f"result, so it contributed nothing to this run. This "
+                        f"tool does not try to get past one; {source} stays "
+                        f"unread until it answers this machine again"
+                    ),
+                }
+            )
+    return tuple(warnings)
 
 
 def _off_taxonomy_warning(summary: dict) -> tuple[dict[str, str], ...]:
@@ -336,7 +408,9 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
         summary = _summary(cfg, job.job_id)
         return ctx.envelope(
             data=shell.reported(store, job, {"tagging": summary}),
-            warnings=tuple(warnings) + _off_taxonomy_warning(summary),
+            warnings=tuple(warnings)
+            + _off_taxonomy_warning(summary)
+            + _unread_warnings(summary),
         )
 
 
@@ -403,6 +477,22 @@ def handle(job, item, cfg) -> jobs.Produced:
             "source": result.source,
             "source_genre": result.source_genre,
             "off_taxonomy": result.off_taxonomy,
+            # EVERY CATALOGUE'S ANSWER, so a later reader can tell what each one
+            # said rather than only the disposition they added up to (R-791).
+            "answers": [
+                {
+                    "source": said.source,
+                    "answer": said.answer,
+                    "source_genre": said.source_genre,
+                    "note": said.note,
+                }
+                for said in result.answers
+            ],
+            "unread": {
+                said.source: said.answer
+                for said in result.answers
+                if said.source in result.unread
+            },
             "art_repair": result.art_repair,
             "art_repair_detail": result.art_repair_detail,
             "art_fetch": result.art_fetch,

@@ -224,6 +224,22 @@ def _all_three(
     return _routed(routes, seen)
 
 
+def _no_hit(hit) -> bool:
+    """True for the decline every source asked earned, by answering MISS.
+
+    A DECLINE IS A HIT WITH NO GENRE AND NOT None since R-791, because None
+    cannot carry the three answers the item's record owes. A decline beside an
+    unread source names it in ``unread`` and is not this.
+    """
+    return (
+        hit is not None
+        and hit.genre is None
+        and hit.source == ""
+        and hit.unread == ()
+        and len(hit.answers) == len(searchers.SOURCES)
+    )
+
+
 def _searcher(fetch, *, naps: list[float] | None = None, pacing=None):
     return searchers.catalogue_searcher(
         TAXONOMY,
@@ -355,7 +371,9 @@ def test_three_sources_that_all_answered_with_no_match_decline():
         traxsource=_traxsource_page([]),
         bandcamp=_bandcamp_search_page([]),
     )
-    assert _searcher(fetch)(ARTIST, TITLE) is None
+    hit = _searcher(fetch)(ARTIST, TITLE)
+    assert _no_hit(hit)
+    assert [said.answer for said in hit.answers] == ["miss"] * 3
 
 
 def test_a_source_that_never_answered_raises_rather_than_declining():
@@ -373,16 +391,22 @@ def test_a_source_that_never_answered_raises_rather_than_declining():
 
 
 def test_one_source_that_answered_holds_back_the_refusal():
-    """Two silences and one absence is still an absence, because a catalogue did
-    answer. Raising here would turn an ordinary bootleg into a failed job every
-    time one of three sites was down.
+    """Two silences and one absence holds back the refusal, because a catalogue
+    did answer. Raising here would turn an ordinary bootleg into a failed job
+    every time one of three sites was down.
+
+    IT IS NOT A NO-HIT, corrected by R-791. The two silences may carry the
+    track, so the decline names them and the file is not reported as one no
+    catalogue carries.
     """
     fetch = _all_three(
         beatport=UNREACHABLE,
         traxsource=UNREACHABLE,
         bandcamp=_bandcamp_search_page([]),
     )
-    assert _searcher(fetch)(ARTIST, TITLE) is None
+    hit = _searcher(fetch)(ARTIST, TITLE)
+    assert hit is not None and hit.genre is None and hit.source == ""
+    assert hit.unread == (searchers.BEATPORT, searchers.TRAXSOURCE)
 
 
 def test_a_page_that_parsed_to_nothing_recognizable_raises_its_own_refusal():
@@ -430,7 +454,9 @@ def test_a_traxsource_page_with_no_rows_at_all_is_a_miss_rather_than_a_parse_bre
         traxsource=_traxsource_page([]),
         bandcamp=UNREACHABLE,
     )
-    assert _searcher(fetch)(ARTIST, TITLE) is None
+    hit = _searcher(fetch)(ARTIST, TITLE)
+    assert hit is not None and hit.genre is None
+    assert [said.answer for said in hit.answers] == ["unreachable", "miss", "unreachable"]
 
 
 # ---------------------------------------------------------------------------
@@ -859,7 +885,9 @@ def test_a_row_whose_artist_does_not_match_lends_neither_genre_nor_picture():
         bandcamp=_bandcamp_search_page([]),
     )
 
-    assert _searcher(fetch)(ARTIST, TITLE) is None
+    hit = _searcher(fetch)(ARTIST, TITLE)
+    assert _no_hit(hit)
+    assert hit.art_url == ""
 
 
 @pytest.mark.parametrize("uri", ["", "file:///etc/passwd", "javascript:alert(1)", 7])
@@ -976,6 +1004,264 @@ def test_the_image_binder_hands_back_a_fetch_without_touching_the_network(monkey
 
     monkeypatch.setattr(searchers, "_requests_get", detonate)
     assert callable(searchers.for_images())
+
+
+# ---------------------------------------------------------------------------
+# R-791. A bot challenge is its own answer, and no-hit needs every source's MISS
+# ---------------------------------------------------------------------------
+#
+# THE PAGES BELOW ARE THE TWO MEASURED ON 2026-10-01 from the author's machine
+# with this module's own headers, reduced to the part the check reads: Traxsource
+# answered 403 with Cloudflare's interstitial, Bandcamp answered 200 with a page
+# titled "Client Challenge" and no rows. They go through the shipped
+# ``default_fetch`` with a fake getter, so the status a fallback reads is the one
+# the transport layer really hands it, not one a test typed into ``Fetched``.
+
+CLOUDFLARE_INTERSTITIAL = (
+    '<!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title>'
+    '<meta http-equiv="refresh" content="390"></head><body>'
+    "<script>window._cf_chl_opt={}</script>"
+    '<script src="/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1"></script>'
+    "</body></html>"
+)
+BANDCAMP_CLIENT_CHALLENGE = (
+    "<!DOCTYPE html><html><head><title>Client Challenge</title></head>"
+    '<body><div id="loading-error" hidden>A required part of this site '
+    "couldn't load.</div><script src=\"/challenge.js\"></script></body></html>"
+)
+
+
+def _over_the_wire(routes: dict[str, _Response], seen: list[str] | None = None):
+    """The shipped searcher over the shipped fetch, with a getter answering by URL."""
+
+    def get(url, headers, timeout):
+        if seen is not None:
+            seen.append(url)
+        for marker, reply in routes.items():
+            if url.startswith(marker) or marker in url:
+                return reply
+        raise OSError(f"no route for {url}")
+
+    fetch = searchers.default_fetch(get=get, sleep=lambda _s: None)
+    return _searcher(fetch)
+
+
+def _said(hit) -> list[tuple[str, str]]:
+    return [(said.source, said.answer) for said in hit.answers]
+
+
+def test_a_bandcamp_client_challenge_page_is_blocked_rather_than_a_miss():
+    """The finding's own shape: a 200 with no rows is not an empty result set
+    when its title is a bot check, and reading it as one is what made Bandcamp
+    report MISS on every file it was sent."""
+    hit = _over_the_wire(
+        {
+            searchers.BEATPORT_SEARCH: _Response(200, _beatport_page([])),
+            searchers.TRAXSOURCE_SEARCH: _Response(200, _traxsource_page([])),
+            searchers.BANDCAMP_SEARCH: _Response(200, BANDCAMP_CLIENT_CHALLENGE),
+        }
+    )(ARTIST, TITLE)
+
+    assert hit.genre is None and hit.source == ""
+    assert _said(hit) == [
+        (searchers.BEATPORT, "miss"),
+        (searchers.TRAXSOURCE, "miss"),
+        (searchers.BANDCAMP, "blocked"),
+    ]
+    assert hit.unread == (searchers.BANDCAMP,)
+    assert "Client Challenge" in hit.answers[2].note
+
+
+def test_a_traxsource_403_interstitial_is_blocked_rather_than_unreachable():
+    hit = _over_the_wire(
+        {
+            searchers.BEATPORT_SEARCH: _Response(200, _beatport_page([])),
+            searchers.TRAXSOURCE_SEARCH: _Response(403, CLOUDFLARE_INTERSTITIAL),
+            searchers.BANDCAMP_SEARCH: _Response(200, _bandcamp_search_page([])),
+        }
+    )(ARTIST, TITLE)
+
+    assert _said(hit)[1] == (searchers.TRAXSOURCE, "blocked")
+    assert "403" in hit.answers[1].note
+    assert hit.unread == (searchers.TRAXSOURCE,)
+
+
+def test_the_challenge_title_alone_blocks_a_fallback_even_on_a_200():
+    """Cloudflare does not always send its interstitial with a 403, so the title
+    is checked on a page that arrived as a success too."""
+    hit = _over_the_wire(
+        {
+            searchers.BEATPORT_SEARCH: _Response(200, _beatport_page([])),
+            searchers.TRAXSOURCE_SEARCH: _Response(200, CLOUDFLARE_INTERSTITIAL),
+            searchers.BANDCAMP_SEARCH: _Response(200, _bandcamp_search_page([])),
+        }
+    )(ARTIST, TITLE)
+
+    assert _said(hit)[1] == (searchers.TRAXSOURCE, "blocked")
+
+
+def test_a_beatport_miss_beside_two_blocked_fallbacks_is_not_a_no_hit():
+    """The cost R-791 names: this file was reported as one no catalogue carries
+    when two of the three were never read. The decline names both."""
+    hit = _over_the_wire(
+        {
+            searchers.BEATPORT_SEARCH: _Response(200, _beatport_page([])),
+            searchers.TRAXSOURCE_SEARCH: _Response(403, CLOUDFLARE_INTERSTITIAL),
+            searchers.BANDCAMP_SEARCH: _Response(200, BANDCAMP_CLIENT_CHALLENGE),
+        }
+    )(ARTIST, TITLE)
+
+    assert not _no_hit(hit)
+    assert hit.genre is None
+    assert hit.unread == (searchers.TRAXSOURCE, searchers.BANDCAMP)
+    assert [answer for _source, answer in _said(hit)] == ["miss", "blocked", "blocked"]
+
+
+def test_three_misses_on_real_empty_listings_are_still_a_no_hit():
+    hit = _over_the_wire(
+        {
+            searchers.BEATPORT_SEARCH: _Response(200, _beatport_page([])),
+            searchers.TRAXSOURCE_SEARCH: _Response(200, _traxsource_page([])),
+            searchers.BANDCAMP_SEARCH: _Response(200, _bandcamp_search_page([])),
+        }
+    )(ARTIST, TITLE)
+
+    assert _no_hit(hit)
+    assert [answer for _source, answer in _said(hit)] == ["miss", "miss", "miss"]
+
+
+def test_a_match_records_the_sources_it_never_reached_as_not_asked():
+    """Every record lists three answers, so a match names the two the walk
+    stopped before rather than leaving a reader to guess what an absent entry
+    meant."""
+    hit = _over_the_wire(
+        {
+            searchers.BEATPORT_SEARCH: _Response(
+                200, _beatport_page([_beatport_track(ARTIST, TITLE, BUCKET_GENRE)])
+            ),
+        }
+    )(ARTIST, TITLE)
+
+    assert hit.genre == BUCKET_GENRE
+    assert _said(hit) == [
+        (searchers.BEATPORT, "matched"),
+        (searchers.TRAXSOURCE, searchers.NOT_ASKED),
+        (searchers.BANDCAMP, searchers.NOT_ASKED),
+    ]
+    assert hit.answers[0].source_genre == BUCKET_GENRE
+    assert hit.unread == ()
+
+
+def test_a_fallback_that_spends_its_attempts_on_429_is_blocked():
+    """The brief names a 429 among the refusals a fallback reads as blocked."""
+    hit = _over_the_wire(
+        {
+            searchers.BEATPORT_SEARCH: _Response(200, _beatport_page([])),
+            searchers.TRAXSOURCE_SEARCH: _Response(429),
+            searchers.BANDCAMP_SEARCH: _Response(200, _bandcamp_search_page([])),
+        }
+    )(ARTIST, TITLE)
+
+    assert _said(hit)[1] == (searchers.TRAXSOURCE, "blocked")
+
+
+def test_a_fallback_answering_503_is_still_unreachable_rather_than_blocked():
+    """A server that fell over is an outage, not a refusal of this client, and
+    the two send a person to different places."""
+    hit = _over_the_wire(
+        {
+            searchers.BEATPORT_SEARCH: _Response(200, _beatport_page([])),
+            searchers.TRAXSOURCE_SEARCH: _Response(503),
+            searchers.BANDCAMP_SEARCH: _Response(200, _bandcamp_search_page([])),
+        }
+    )(ARTIST, TITLE)
+
+    assert _said(hit)[1] == (searchers.TRAXSOURCE, "unreachable")
+    assert hit.unread == (searchers.TRAXSOURCE,)
+
+
+def test_beatport_answering_403_is_unreachable_as_it_always_was():
+    """Beatport's read is unchanged by R-791, and a block check that reached it
+    would change a source the finding measured as answering."""
+    with pytest.raises(CratekitError) as raised:
+        _over_the_wire(
+            {
+                searchers.BEATPORT_SEARCH: _Response(403, CLOUDFLARE_INTERSTITIAL),
+                searchers.TRAXSOURCE_SEARCH: _Response(503),
+                searchers.BANDCAMP_SEARCH: _Response(503),
+            }
+        )(ARTIST, TITLE)
+
+    assert raised.value.cause.detail["answers"] == ["unreachable"] * 3
+
+
+def test_three_refusals_raise_unreachable_and_say_the_fallbacks_were_blocked():
+    """A blocked catalogue is not an answer about the track, so a file nobody
+    answered MISS for is still refused rather than declined, and the step tells
+    the person a network check will not move a bot check."""
+    with pytest.raises(CratekitError) as raised:
+        _over_the_wire(
+            {
+                searchers.BEATPORT_SEARCH: _Response(503),
+                searchers.TRAXSOURCE_SEARCH: _Response(403, CLOUDFLARE_INTERSTITIAL),
+                searchers.BANDCAMP_SEARCH: _Response(200, BANDCAMP_CLIENT_CHALLENGE),
+            }
+        )(ARTIST, TITLE)
+
+    cause = raised.value.cause
+    assert cause.reason == searchers.UNREACHABLE_REASON
+    assert cause.detail["answers"] == ["unreachable", "blocked", "blocked"]
+    steps = " ".join(cause.remediation.steps)
+    assert "traxsource, bandcamp answered with a bot check" in steps
+
+
+def test_a_bandcamp_track_page_behind_a_challenge_is_blocked_rather_than_a_miss():
+    """The second touch, one function over: the listing named the track and the
+    challenge hid its genre, which is not the catalogue lacking it."""
+    hit = _over_the_wire(
+        {
+            "/track/": _Response(200, BANDCAMP_CLIENT_CHALLENGE),
+            searchers.BEATPORT_SEARCH: _Response(200, _beatport_page([])),
+            searchers.TRAXSOURCE_SEARCH: _Response(200, _traxsource_page([])),
+            searchers.BANDCAMP_SEARCH: _Response(
+                200, _bandcamp_search_page([(BANDCAMP_TRACK_URL, TITLE, ARTIST, "")])
+            ),
+        }
+    )(ARTIST, TITLE)
+
+    assert _said(hit)[2] == (searchers.BANDCAMP, "blocked")
+    assert hit.unread == (searchers.BANDCAMP,)
+
+
+def test_a_bandcamp_track_page_that_cannot_be_reached_is_unreachable_rather_than_a_miss():
+    hit = _over_the_wire(
+        {
+            "/track/": _Response(503),
+            searchers.BEATPORT_SEARCH: _Response(200, _beatport_page([])),
+            searchers.TRAXSOURCE_SEARCH: _Response(200, _traxsource_page([])),
+            searchers.BANDCAMP_SEARCH: _Response(
+                200, _bandcamp_search_page([(BANDCAMP_TRACK_URL, TITLE, ARTIST, "")])
+            ),
+        }
+    )(ARTIST, TITLE)
+
+    assert _said(hit)[2] == (searchers.BANDCAMP, "unreachable")
+
+
+def test_a_track_called_just_a_moment_in_a_real_listing_is_not_a_challenge():
+    """The check reads the page TITLE, so a result row carrying the phrase is a
+    result and not a refusal."""
+    title = "Just a moment..."
+    hit = _over_the_wire(
+        {
+            searchers.BEATPORT_SEARCH: _Response(200, _beatport_page([])),
+            searchers.TRAXSOURCE_SEARCH: _Response(
+                200, _traxsource_page([(ARTIST, title, BUCKET_GENRE)])
+            ),
+        }
+    )(ARTIST, title)
+
+    assert hit.source == searchers.TRAXSOURCE and hit.genre == BUCKET_GENRE
 
 
 class _Response:
