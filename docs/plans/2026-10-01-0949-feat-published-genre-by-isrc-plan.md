@@ -127,11 +127,11 @@ This plan covers three pieces that share the ISRC lookup. The breakdown is the c
 
 **Deferred to Planning**
 
-- When the catalogue lists several genres for one album, which one is used. The default to test against the 79 measured answers: the first that maps to a folder.
+- When the catalogue lists several genres for one album, which one is used. The default to test against the 79 measured answers: the first that maps to a folder. **Resolved on R-796, 2026-10-01:** the first that maps to a folder, in the order the catalogue lists them. KTD3 below.
 - Whether a sweep can judge a release from what its listing already carries, or needs one catalogue call per release, and how those calls are paced.
 - What kinds a label can be marked with: the taxonomy's families, a named folder, or any.
 - Where the folder suggestion report appears, and whether it reads the declared and unused `genre_gaps.json` count.
-- Whether MusicBrainz or iTunes add anything as a second general catalogue. On the same 79 tracks MusicBrainz had no genre for any, and iTunes found none of the 30 playlist tracks.
+- Whether MusicBrainz or iTunes add anything as a second general catalogue. On the same 79 tracks MusicBrainz had no genre for any, and iTunes found none of the 30 playlist tracks. **Resolved on R-796, 2026-10-01:** neither is asked. One general catalogue, Deezer, on that measurement. KTD1 below.
 
 ### Sources / Research
 
@@ -143,3 +143,65 @@ This plan covers three pieces that share the ISRC lookup. The breakdown is the c
 - `src/cratekit/label/registry.py`: a label entry has no field for the kind of music it releases.
 - `src/cratekit/templates/taxonomy.default.toml`: the `non_electronic` bucket, energy disabled, with `soul_rnb` as a sub.
 - Measured on the live library on 2026-10-01: the author's own label history gives a confident genre for 12 of the 49 untagged label tracks, so it is not used as a source here.
+
+---
+
+## Planning Contract
+
+Written by the session that took R-796 on `relay/236`, 2026-10-01, before any code. It covers R1 to R6 only. R7 to R10 are R-797's to plan and R11 to R18 are R-798's.
+
+### Measured before planning
+
+Five read only requests to Deezer's public API on 2026-10-01, with no key and a user agent naming this tool:
+
+- `track/isrc:<ISRC>` answers a JSON object carrying `isrc` and `album.id`, and no genre.
+- `album/<id>` answers `genres.data`, a list of objects with a `name`. Genres are the album's.
+- An ISRC it does not know answers HTTP 200 with `{"error": {"type": "DataException", "message": "no data", "code": 800}}`.
+- Its top level genre words are Pop, Rap/Hip Hop, Reggaeton, Rock, Dance, R&B, Alternative, Christian, Electro, Folk, Reggae, Jazz, Country, Salsa, Traditional Mexicano, Classical, Films/Games, Metal, Soul & Funk, African Music, Asian Music, Blues, Brazilian Music, Cumbia, Indian Music, Kids, Latin Music.
+
+Run through the shipped resolver the same day: Rock, R&B, Folk, Reggae, Jazz, Classical, Pop, Alternative and Country map to a folder. Electro resolves to the fallback bucket's name, which the taxonomy lists as too coarse. Dance, Rap/Hip Hop and Soul & Funk match nothing declared.
+
+Not measured: the quota error, a 429, a 403 and any challenge page from Deezer. Their handling is built from Deezer's published error table and R-791's rules, and the tests for them are synthetic.
+
+### Key technical decisions
+
+- **KTD1. One general catalogue, Deezer, asked by ISRC with no key.** Two paced requests a file: the track by ISRC, then its album. MusicBrainz and iTunes are not asked, on the plan's own measurement.
+- **KTD2. The lookup knows no taxonomy.** `cratekit.tagging.published` answers the catalogue's own genre words for an ISRC, and a second function chooses among them for a declared taxonomy. R-798 calls the first and judges with its own rules.
+- **KTD3. Several genres: the first that maps to a folder wins,** in the catalogue's order. "Maps to a folder" is the shipped resolver answering with a bucket, not declining, and not a name the taxonomy lists as too coarse. The resolver's pass through tier, which writes a word nothing declared, is a decline here (R3), where for Beatport it is a write.
+- **KTD4. The general catalogue is asked only when Beatport answered.** Matched with nothing usable, or miss. When Beatport was unreachable or unparsable the general catalogue is recorded as not asked and the file stays askable, because a genre is written once and an album level answer written during an outage would stand in for a Beatport answer for good. That is R4 held against a pre-emption as well as a replacement.
+- **KTD5. Traxsource and Bandcamp are asked exactly as today, before the general catalogue.** A usable answer from either is kept. Blocked or unread fallbacks do not hold the general catalogue back, since they refuse this machine on every search.
+- **KTD6. Six answers, each recorded per file:** `matched`, `miss` for a track the catalogue does not know, `blocked`, `unreachable`, `parse-break`, and `no-isrc` for a tag that is empty or does not read as an ISRC. `not-asked` covers a file Beatport settled. The last three of the first five are "unread" (R5).
+- **KTD7. Nothing tries to get past a refusal.** A 403, a 429 that outlasted the shared backoff, a challenge page and the catalogue's quota error are `blocked`. The quota error is not retried at all. No header is altered to look like a browser: the request names this tool.
+- **KTD8. A file with no ISRC is never `no-hit`.** New skip reason `no-isrc`, taken when nothing else explains the file: no declined word, no unread source. `sources-unread` keeps its R-791 meaning and wins over it, and a warning counts no ISRC files whichever reason they carry (AE4).
+- **KTD9. A general catalogue failure never fails an item.** The lookup answers and does not raise. The searcher's two refusals, raised when none of the three could be read, are unchanged and still come first.
+- **KTD10. The seam is a parameter of `tag_one`, beside `fetch_image`,** and the searcher's `(artist, title)` signature does not change. A hit that carries no per source answers, which is every fake in the suite and any searcher that predates R-791, is passed through untouched, because whether Beatport answered cannot be known from it.
+- **KTD11. The album cover rides the genre's row,** as it does for the other catalogues: a file with no picture takes the catalogue's album cover when no earlier row named one.
+- **KTD12. Two tag aliases join the shipped template:** `rap/hip hop` on the Hip-Hop sub and `soul & funk` on the Soul / R&B sub. Both are words measured from the catalogue with an existing folder. Soul & Funk goes to Soul / R&B on the template's own precedent, a combined source name files under its first word. Every other unmapped word is declined and named in the summary, so the author adds an alias when he wants one. The library's active copy needs the same two lines before the attended run.
+- **KTD13. `crate tag retag` is not changed.** It corrects a coarse dance tag, which the plan defers.
+
+### Verification
+
+- AE1 to AE4 through `tag_one` and through the verb, with every page synthetic and the HTTP getter detonated.
+- Several genres, a 429, the quota error, an empty and a malformed ISRC, an answer about another recording, and a job where the catalogue was unread on every file.
+- The built in review, a mutation table under `docs/mutation/`, and the battery.
+- Owed to an attended sitting: `crate tag folder` over the 62 untagged playlist tracks, at least nine in ten written, recorded in `docs/cutover.md`.
+
+## Implementation Units
+
+### U1. The lookup: a published genre for an ISRC
+
+**Files:** `src/cratekit/tagging/published.py` (new), `src/cratekit/tagging/searchers.py` (a `headers` parameter on the fetch seam, and the refusal check under a public name), `tests/test_published_genre.py` (new).
+
+`genre_lookup()` builds a function from a raw ISRC value to a `Published`: the answer, the genre words, a note and the album cover. `for_lookup()` is the binder a caller looks up at call time, which is what R-798 uses.
+
+### U2. The tagger asks it when Beatport gave nothing usable
+
+**Files:** `src/cratekit/tagging/tag.py`, `src/cratekit/tagging/published.py`, `src/cratekit/templates/taxonomy.default.toml`, `tests/test_tagging_engine.py`, `tests/test_published_genre.py`.
+
+`tag_one` takes `published`, called with the searcher's hit and the file's ISRC tag. `second_opinion(declared)` is the shipped one: it applies KTD3, KTD4 and KTD8 and returns the hit to act on, with the general catalogue's answer appended to the record.
+
+### U3. The record and the summary say what the general catalogue answered
+
+**Files:** `src/cratekit/tagging/cli.py`, `tests/test_tag_workers.py`, `tests/test_reserved_causes.py` (the literal count).
+
+The worker binds the seam. The summary's `answers` gains the general catalogue, zero filled over its own answers, `tagged_by` counts written files per source, and two warnings join: the catalogue unread on every file it was asked about, and files that carry no ISRC.
