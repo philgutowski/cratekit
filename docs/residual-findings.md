@@ -31518,3 +31518,55 @@ back catalogue.
 its newest releases, later sweeps offer what is new, the queue shows which
 sweep filed each item, and the existing 2,832 are handled by a decision the
 author makes, not by this unit.
+
+## R-791. Bandcamp's bot challenge reads as a miss and Traxsource's as unreachable, and a Beatport miss hides both behind a clean no-hit
+
+**Found:** at sitting 24, 2026-10-01, while the author asked why 62 of 66
+synced files came back from `crate tag folder` with no genre. A subagent
+read the six tag jobs' artifacts: Traxsource and Bandcamp produced 0 matches
+in 148 files, every tagged file came from Beatport. The session then ran one
+read only lookup per source from this machine with the searcher's own
+headers. **Traxsource answered 403 with Cloudflare's "Just a moment..."
+page**, which the searcher reports as `unreachable`. **Bandcamp answered 200
+with a "Client Challenge" page**, no result rows, which the searcher reports
+as `miss`, the one answer that means the catalogue does not carry the track.
+
+**The mechanism.** `tagging/searchers.py` `_search_bandcamp` parses the
+search listing and returns MISS when it finds no rows, so a challenge page
+that returns 200 is read as an answer. `_decide` treats any MISS as enough
+to decline honestly, so when Beatport also misses, the file is `no-hit` and
+the unreachable Traxsource and the unread Bandcamp vanish. The item artifact
+records the final disposition and not each source's answer, so nothing
+after the job can tell.
+
+**Measured cost.** Every file Beatport does not carry is reported as absent
+from all three catalogues, and the person tags it by hand believing the
+tool looked. On the 2026-09-30 batch that is 61 files. The 50 the subagent
+judged not stocked anywhere were judged on that same evidence, so how many
+the fallbacks would have tagged is unmeasured.
+
+**On the board bar, (b):** a clean report over state the tool could not
+read. Getting past either challenge is not the remedy and is not to be
+attempted; recognising it and saying so is.
+
+**Closes when:** a challenge or block page from any source is its own answer
+and is never a miss, each file's artifact records every source's answer, a
+`no-hit` is reported only when every source that was asked answered miss,
+and the job's summary counts files no fallback could read.
+
+## R-792. A label release's artist is stored as the repr of a provider object
+
+**Found:** at sitting 24, 2026-10-01, picking the newest releases for the
+author's test download. Review item for Defected's "Welcome to 2018" carries
+`artist: "<tidalapi.artist.Artist obje..."`, the Python repr of the
+provider's artist object, where every other item carries a name. The
+session excluded it from the download. One item of 2,832 measured.
+
+**Measured cost.** One release shown in review with no readable artist, and
+the version match and owned dedup that read that field compare against a
+string no track carries.
+
+**Closes when:** the sweep writes the artist's name on every item, and a
+test feeds an artist object to the payload writer.
+
+**Not on the board bar.** One row, visible as wrong.
