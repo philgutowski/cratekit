@@ -453,12 +453,22 @@ def membership_moves(
     A DESTINATION THE TAXONOMY DOES NOT DECLARE REFUSES, and is not skipped
     the way ``adopt apply`` skips one. There a skipped entry is a track not
     added. Here it would be a removal made with its addition dropped.
+
+    THE TARGET AND THE PLACES LEFT ARE RESOLVED BY TWO FUNCTIONS, ON PURPOSE
+    (R-797). A place a track leaves may be a former place, the playlist its
+    bucket's tracks sat in before the bucket had a folder, which sits in
+    another bucket's folder and is found by :func:`placements.named_place`.
+    The target is asked of ``destination``, which knows no former place and
+    refuses one, so a track is never filed into a playlist the taxonomy
+    stopped declaring, whatever a frozen row says.
     """
     out: list[trees.MembershipMove] = []
     for move in moves:
         try:
             target = destination(declared, move.bucket, move.target)
-            leaving = tuple(destination(declared, move.bucket, sub) for sub in move.remove)
+            leaving = tuple(
+                placements.named_place(declared, move.bucket, sub) for sub in move.remove
+            )
         except KeyError as exc:
             raise refuse(
                 "decision-stale",

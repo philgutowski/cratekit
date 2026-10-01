@@ -1,0 +1,91 @@
+name = "r797-c"
+pass_kind = "light"
+
+[[rows]]
+id = "G1_the_threshold_is_fifty"
+description = "FOLDER_WORTH: 51, a realistic nearby value, so a genre at 50 is not named"
+file = "src/cratekit/adopt/genres.py"
+surface = "user"
+tests = ["tests/test_report_genres.py"]
+old = '''FOLDER_WORTH = 50'''
+new = '''FOLDER_WORTH = 51'''
+
+[[rows]]
+id = "G2_at_the_threshold_is_named"
+description = "named: over the threshold and not at it"
+file = "src/cratekit/adopt/genres.py"
+surface = "user"
+tests = ["tests/test_report_genres.py"]
+old = '''genre.tracks >= self.threshold'''
+new = '''genre.tracks > self.threshold'''
+
+[[rows]]
+id = "G3_a_removed_row_is_not_counted"
+description = "count: count a row rekordbox marked removed, so a folder is suggested for what a person deleted"
+file = "src/cratekit/adopt/genres.py"
+surface = "user"
+tests = ["tests/test_report_genres.py"]
+old = '''        if row.deleted:
+            continue
+'''
+new = ""
+
+[[rows]]
+id = "G4_no_genre_is_not_a_genre"
+description = "count: resolve an empty genre like any other, so the tagging backlog is counted as a genre or as having a folder"
+file = "src/cratekit/adopt/genres.py"
+surface = "user"
+tests = ["tests/test_report_genres.py"]
+old = '''        if not value:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "G5_another_spelling_is_the_same_genre"
+description = "count: stop folding another spelling of a style sub's name onto the sub, the review's 45 and 10"
+file = "src/cratekit/adopt/genres.py"
+surface = "user"
+tests = ["tests/test_report_genres.py"]
+old = '''        elif value.casefold() in style_subs:'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "G6_the_fallback_is_no_folder"
+description = "folder_of: read the fallback tier as a folder, so a genre nothing claims is never counted"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+tests = ["tests/test_report_genres.py"]
+old = '''    if resolution.match is Match.FALLBACK:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "G7_a_folders_own_name_has_that_folder"
+description = "folder_of: count a track tagged with the source routed folder's own name as a word in its default sub"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+tests = ["tests/test_report_genres.py"]
+old = '''    if by_source is None or resolution.match is Match.PASSTHROUGH:'''
+new = '''    if by_source is None:'''
+
+[[rows]]
+id = "G8_a_map_row_is_a_style_sub"
+description = "folder_of: read every source string of a source routed folder as landing in its default"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+tests = ["tests/test_report_genres.py"]
+old = '''    if value in by_source.map:'''
+new = '''    if False:'''
+
+[[dropped]]
+id = "G9_words_fold_on_case"
+description = "count: key an unclaimed word on its spelling and not its case fold"
+reason = "ranked below the cap: test_two_spellings_of_one_unclaimed_word_are_one_genre names it, and G5 measures the fold a threshold was missed on"
+
+[[dropped]]
+id = "G10_only_the_named_are_rows"
+description = "report_genres: make a check row of every counted genre and not only the named"
+reason = "ranked below the cap: the verb's two driven tests unpack exactly one check row over a library holding two counted genres"
+
+[[dropped]]
+id = "G11_the_new_bucket_writes_no_rating"
+description = "the template's rates = false on the promoted bucket"
+reason = "ranked below the cap and not a Python target: test_the_promoted_bucket_writes_no_rating_as_the_folder_it_left_wrote_none names it"

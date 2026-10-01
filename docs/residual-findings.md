@@ -31793,6 +31793,79 @@ recorded in `docs/cutover.md`.
 
 ## R-797. R&B is a flat folder under NonElectronic, and nothing says when a genre has outgrown having no folder of its own
 
+**Closed in the code 2026-10-01 on `relay/237`, issue #237. The move on the
+author's library and the first read of the report are owed to an attended
+sitting.** The shipped taxonomy has a bucket `rnb`, displayed `R&B`, split by
+the shared energy bands, holding the four source strings the old sub held,
+`R&B`, `Soul`, `Soul / R&B` and `MPB`, and the tagger's words for them. The
+`soul_rnb` sub is gone from the non electronic bucket. The tempo window, the
+family and `rates = false` are carried over unchanged. The template is
+schema version 2.
+
+The old playlist is declared as the new bucket's former place,
+`[[bucket.formerly]]`. It is a competing sub of the bucket that declares it
+and of the bucket whose folder holds it, so adoption withholds a track
+sitting there and files it nowhere a second time, and `crate adopt move`
+plans the band to add and the old playlist to leave on the plan, digest,
+gate and read back it already had. A track with no energy reading leaves for
+the no reading sub. A track whose genre names another NonElectronic style
+moves to that style. A track neither bucket claims is listed once under
+`former-place-not-named-by-genre` and stays. Nothing is filed into a former
+place: no resolver answers with one, `destination` refuses one, and the
+loader refuses one that names a sub its folder still holds or that is
+declared under schema version 1.
+
+`crate report genres` counts the live collection by genre and names every
+genre holding 50 or more tracks with no top level folder of its own. It
+opens the database to read and writes nothing: no tree node, no state file,
+no job. It does not read `genre_gaps.json`, which stays declared with no
+writer.
+
+Driven through the dispatcher on a disposable database: a library filed
+under the old shape moves six tracks and leaves none in two places, a second
+approved run plans nothing and writes nothing, and a library whose own
+taxonomy copy still has the sub moves no track of that sub.
+
+The built in review ran twice, nine findings and then ten, which is both fix
+rounds. The first round changed the code for six: the former place competing
+in the holding bucket as well, a declaration in the wrong shape named and
+not raised, schema version 2, `rates = false`, another spelling of a style
+sub counted with it, and the move plan asking only a bucket that declares a
+former place. The second changed it for seven: a track with no reading
+leaving the old playlist, a place settled in one of its two buckets, the
+reason a listed track carries, a style sub's row saying what routing does
+not file there, a too coarse word counted apart, the index the loader
+builds, and the help text's threshold held to the constant. Recorded: R-804
+to R-808.
+
+Mutation tables `r797-a` to `r797-c`, 25 rows, 25 killed, and `r797-d`, the
+three rows whose guarded line the second round moved, measured again and
+killed. The author's and not independent. The guards the second round added
+are past the cap and unmeasured, each named with its test in
+`docs/mutation/r797-notes.md`. No row mutates the template, which is not a
+Python target; the parity suite holds its lines against the frozen legacy
+tables.
+
+Not measured, since this card does not touch the live library: how many of
+the 39 tracks carry an energy reading, whether any sits in the old playlist
+under another genre, and what the report names on the real collection.
+
+Owed to an attended sitting, in this order, recorded in `docs/cutover.md`:
+
+1. The build in use is this one or later. An older build refuses a schema
+   version 2 taxonomy by name, which is the guard and not a fault.
+2. A dated backup of the library's active taxonomy, then the same edit the
+   shipped template took: `schema_version = 2`, the `rnb` bucket with its
+   `[[bucket.formerly]]` table inserted before the non electronic bucket,
+   and from that bucket the four aliases, the `soul_rnb` sub and its four
+   map rows removed. The two tag aliases R-796 owes go in with it,
+   `rap/hip hop` on the Hip-Hop sub and `soul & funk` on the new bucket.
+3. `crate adopt move` rehearsed on a copy with state redirected, its plan
+   read: the moves, and every track listed as left with its reason.
+4. The same verb on the live library, approved on an equal digest, then
+   read back.
+5. `crate report genres` read, with what it names and the count for Rock.
+
 **Found:** in the brainstorm of 2026-10-01, recorded in
 `docs/plans/2026-10-01-0949-feat-published-genre-by-isrc-plan.md`. The
 author is growing an R&B collection and wants to pull from it by energy.
@@ -31971,3 +32044,137 @@ measured if one has been seen by then.
 
 **Not on the board bar.** Nothing false is reported and the files stay
 askable.
+
+## R-804. A genre that only contains the word soul or r&b still files under NonElectronic's default sub
+
+**Found:** on `relay/237`, 2026-10-01, while planning R-797, and kept as it
+was on purpose. The promotion moved the four exact source strings the old
+Soul / R&B sub held. The two keyword rules, `r&b` and `soul`, were not
+repointed, so a partial match such as `Neo Soul`, `Contemporary R&B`,
+`Soulful House` or lowercase `soul` still routes to the non electronic
+bucket, has no row in its source map, and lands in the default sub, Rock,
+as it did before R-797.
+
+**Measured cost.** Run through the shipped resolver: each of those four
+strings resolves to `non_electronic` by a keyword and to the `rock` sub.
+How many live tracks carry such a genre is unmeasured, since the card does
+not touch the live library. `crate report genres` counts each such word
+under itself, as landing in a default sub, so the first attended read of
+that report measures it. A track with such a genre sitting in the old
+playlist is withheld by adoption and listed by the move under
+`genre-names-no-style`, not moved to Rock.
+
+**Options.** (a) Leave it: the tagger rewrites the catalogues' words to
+`R&B`, so new files do not arrive this way. (b) Repoint both keyword rules
+to the new bucket. Cost: `Soulful House` files as R&B, and a track already
+in Rock on such a word is added to an R&B band and stays in Rock, which no
+verb settles, since Rock is not a former place. (c) Add the words wanted as
+exact aliases of the new bucket, one line each, which moves only what is
+named and has the same double filing for tracks already in Rock.
+
+**Closes when:** the author chooses, with the report's count of such words
+on the real collection in hand.
+
+**Not on the board bar.** Nothing changed for these tracks, and nothing
+false is reported.
+
+## R-805. The R&B folder has energy bands and writes no star rating
+
+**Found:** on `relay/237`, 2026-10-01, by the first built in review of
+R-797. A bucket that omits `rates` gets a star rating derived from energy,
+and the first build of the new bucket omitted it, while the folder its
+tracks came from declares `rates = false`. The author decided bands and not
+ratings, on an energy measure the plan calls unproven for R&B, so the flag
+was carried over.
+
+**Measured cost.** None. `routing.rates` answers False for the new bucket,
+as it did for these tracks before, and a test holds it. The other side of
+the choice is that R&B is now the one bucket with bands and no rating.
+
+**Options.** (a) Leave it until the bands have been looked at on real
+tracks. (b) Delete the one line, and every unrated R&B track with a reading
+is rated by the route pass like any dance track.
+
+**Closes when:** the author chooses, after the bands hold tracks.
+
+**Not on the board bar.** A decision, with nothing written either way.
+
+## R-806. Rebuild and converge name the old Soul / R&B playlist's recorded node as undeclared
+
+**Found:** on `relay/237`, 2026-10-01, by the first built in review of
+R-797 and driven. `rebuild.undeclared_destinations` asks whether each node
+a previous write recorded is still a declared destination. For a node
+recorded under `non_electronic` and `soul_rnb` it answers
+`non_electronic/soul_rnb`, undeclared, while the taxonomy declares that
+playlist as the R&B bucket's former place and `crate adopt move` plans
+leaving it. The playlist's contents are read as foreign, which is not a
+difference, so the tree still reads converged.
+
+**Measured cost.** One row in the `undeclared` list, driven on the shipped
+taxonomy with a hand built record. Whether the live library's convergence
+record holds that node is unmeasured. Nothing is written or removed on this
+reading, and it is true that nothing is filed there any more. The cost is
+two registers describing one playlist in different words.
+
+**Fix shape.** The report says a former place by that name, through
+`routing.former_place`, or R-807's single resolver answers for both.
+
+**Closes when:** the report names a former place as one, or the place is
+gone from the template because the playlist is empty and deleted.
+
+**Not on the board bar.** A wording on a read only report, with no write
+behind it.
+
+## R-807. What a bucket's places are is enumerated three times, and a former place is wrappers around one of them
+
+**Found:** on `relay/237`, 2026-10-01, by both built in reviews of R-797.
+`routing_pass.destination` resolves the five shapes a sub identifier can
+take, `routing.competing_subs` enumerates which of them compete, and the
+loader's `_live_places` enumerates them a third time to refuse a former
+place that is still one. The former place itself is two wrappers in the
+placement reader, `named_place` and `recorded_under`, and four helpers in
+the move plan. Each has to be kept in step by hand. The second review's
+duplicate row finding was one of them already out of step.
+
+**Measured cost.** None in behaviour: the suite is green and 25 mutation
+rows over these guards were killed. The cost is the next change to what a
+place is, which has six sites to visit. `competing_subs` is also still
+asked once per track and per bucket where one map per plan would do.
+
+**Fix shape.** One table per bucket, built at load: identifier to folder
+name, playlist name, the key a write recorded it under, whether it
+competes, and whether it may be filed into. The loader, the placement
+reader, the writers and the move read that table.
+
+**Closes when:** that table exists and the wrappers are gone, or a second
+promotion shows the six sites are cheap enough to keep.
+
+**Not on the board bar.** Maintainer facing.
+
+## R-808. A track in the old playlist and in a band, with no energy reading, is listed and stays in both
+
+**Found:** on `relay/237`, 2026-10-01, in the fix for the second built in
+review of R-797. A track with no reading leaves a former place for the no
+reading sub, since nothing has to be read to know the old playlist is not
+its place. When the track also holds a band of the R&B folder, which of the
+band and the no reading sub is right is the question a reading answers, so
+the move leaves it whole and lists it under `no-reading`. It then sits in
+the old playlist and in the band.
+
+**Measured cost.** None observed. The shape needs a track somebody filed in
+an R&B band by hand, or whose energy tag was removed after it was filed,
+while it still sat in the old playlist. No producer was driven that makes
+one, so the reachability is unmeasured. It is listed on the gate with both
+places named, and analysing the file gives it a reading the next plan moves
+on.
+
+**Fix shape.** Remove the former place and leave the band, a move that
+only removes. It needs the plan to carry a move with no target sub, which
+the writer's proof that a track sits in its target before a removal does
+not admit today.
+
+**Closes when:** such a track is seen and the author wants it settled by
+the verb, or the playlist is empty.
+
+**Not on the board bar.** Listed and named, not silent, and its input has
+not been observed.

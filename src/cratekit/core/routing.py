@@ -35,7 +35,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Sequence
 
-from cratekit.core.taxonomy import BpmPrior, Bucket, Sub, Taxonomy
+from cratekit.core.taxonomy import BpmPrior, Bucket, FormerPlace, Sub, Taxonomy
 
 
 class Match(str, Enum):
@@ -205,7 +205,7 @@ def suggest_tag(
     hit = taxonomy.tagging_alias(lowered)
     if hit is not None:
         bucket_id, sub_id = hit
-        return Suggestion(bucket_id=bucket_id, sub_id=sub_id, tag=_display_of(taxonomy, hit))
+        return Suggestion(bucket_id=bucket_id, sub_id=sub_id, tag=display_of(taxonomy, hit))
 
     for rule in taxonomy.suggest:
         if rule.equals or rule.split:
@@ -241,7 +241,8 @@ def _rule_matches(rule, lowered: str) -> bool:
     return bool(rule.any_of) and any(needle in lowered for needle in rule.any_of)
 
 
-def _display_of(taxonomy: Taxonomy, hit: tuple[str, str | None]) -> str:
+def display_of(taxonomy: Taxonomy, hit: tuple[str, str | None]) -> str:
+    """The name a bucket and sub pair carries: the sub's, or the bucket's own."""
     bucket_id, sub_id = hit
     bucket = taxonomy.bucket(bucket_id)
     if sub_id is None:
@@ -374,9 +375,22 @@ def competing_subs(taxonomy: Taxonomy, bucket_id: str) -> tuple[Competing, froze
 
     Identifiers, never display names (R19, D5). A bucket that labels its bands
     differently still competes on the band's identifier.
+
+    A FORMER PLACE COMPETES TOO (R-797), in two buckets and in no other. In
+    the bucket that DECLARES it, because it is the playlist that bucket's
+    tracks were filed in before the bucket had a folder of its own, so a track
+    sitting there and in a band is in two places. And in the bucket whose
+    folder HOLDS it, because it competed there until the promotion and a track
+    in it whose genre names another style of that folder is still in the wrong
+    one of that folder's playlists. Found by the review: competing in the
+    declaring bucket alone, such a track was added to its style and left in
+    the old playlist, with nothing able to settle it. It does not change the
+    kind: the kind says what a reading decides among, and no reading ever
+    names a former place.
     """
     bucket = taxonomy.bucket(bucket_id)
     classes = {entry.id for entry in taxonomy.sub_classes}
+    former = {place.id for _declarer, place in former_places(taxonomy, bucket_id)}
 
     if (
         bucket.sub_by_source is not None
@@ -386,12 +400,91 @@ def competing_subs(taxonomy: Taxonomy, bucket_id: str) -> tuple[Competing, froze
         found = {sub.id for sub in bucket.subs}
         if bucket.single_sub is not None:
             found.add(bucket.single_sub.id)
-        return Competing.STYLE, frozenset(found - classes)
+        return Competing.STYLE, frozenset((found | former) - classes)
 
     found = {band.id for band in taxonomy.energy.bands}
     if taxonomy.energy.no_energy_sub is not None:
         found.add(taxonomy.energy.no_energy_sub.id)
-    return Competing.BAND, frozenset(found - classes)
+    return Competing.BAND, frozenset((found | former) - classes)
+
+
+def former_places(taxonomy: Taxonomy, bucket_id: str) -> tuple[tuple[str, FormerPlace], ...]:
+    """Every former place that competes in one bucket, with the bucket declaring it.
+
+    The ones the bucket declares and the ones its folder holds for another
+    bucket. Declared order, so two plans over one taxonomy agree. Read off the
+    index the loader built, since this is asked per track and per bucket.
+    """
+    return taxonomy.former_places(bucket_id)
+
+
+def former_place(taxonomy: Taxonomy, bucket_id: str, sub_id: str) -> FormerPlace | None:
+    """The former place one of a bucket's competing subs is, or None.
+
+    None for a band, a style sub, the no reading sub and anything else a
+    resolver can answer with. A caller that is about to FILE a track asks this
+    to refuse; a caller that is about to read or leave a place asks it to find
+    the playlist. Asked of the declaring bucket or of the holding one, the
+    answer is the same place.
+    """
+    for _declarer, place in former_places(taxonomy, bucket_id):
+        if place.id == sub_id:
+            return place
+    return None
+
+
+class Folder(str, Enum):
+    """What a genre has in the tree, which is what a folder suggestion asks."""
+
+    #: A top level folder answers for it: a bucket that files by energy or
+    #: holds one sub, reached by an alias, a keyword or the bucket's own name.
+    OWN = "own"
+
+    #: It is a style sub under a folder that routes by source genre.
+    SUB = "sub"
+
+    #: It lands in such a folder's default sub, with no row of its own.
+    DEFAULT = "default"
+
+    #: Nothing declared claims it, and routing fell back.
+    NONE = "none"
+
+
+@dataclass(frozen=True, slots=True)
+class GenreFolder:
+    """Where one genre is filed and whether that is a folder of its own."""
+
+    kind: Folder
+    bucket_id: str
+    sub_id: str | None = None
+
+
+def folder_of(taxonomy: Taxonomy, raw_genre: str | None) -> GenreFolder:
+    """What one genre string has in the tree (R-797).
+
+    THROUGH :func:`resolve_bucket` AND NOTHING ELSE, so the answer is where
+    routing files the track and no second opinion on that can grow here.
+
+    THE FALLBACK TIER IS NO FOLDER. Routing lands there so that it never
+    raises, and a genre that got there was claimed by nothing declared.
+
+    A BUCKET THAT ROUTES BY SOURCE GENRE HOLDS GENRES THAT HAVE NO FOLDER OF
+    THEIR OWN. Each row of its map names the style sub a source string files
+    in, and a string with no row lands in the declared default, which is a
+    place to put it and not a statement about what it is. The bucket's own
+    name is the exception: a track tagged with it has that folder by name.
+    """
+    value = raw_genre or ""
+    resolution = resolve_bucket(taxonomy, value)
+    if resolution.match is Match.FALLBACK:
+        return GenreFolder(Folder.NONE, resolution.bucket_id)
+    bucket = taxonomy.bucket(resolution.bucket_id)
+    by_source = bucket.sub_by_source
+    if by_source is None or resolution.match is Match.PASSTHROUGH:
+        return GenreFolder(Folder.OWN, bucket.id)
+    if value in by_source.map:
+        return GenreFolder(Folder.SUB, bucket.id, by_source.map[value])
+    return GenreFolder(Folder.DEFAULT, bucket.id, by_source.default)
 
 
 def energy_rating(taxonomy: Taxonomy, level: int | None) -> int | None:

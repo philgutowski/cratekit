@@ -4,7 +4,42 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
-**Last built: R-796, issue #236, `relay/236`, 2026-10-01, unattended.**
+**Last built: R-797, issue #237, `relay/237`, 2026-10-01, unattended.**
+R&B is a top level bucket in the shipped taxonomy, `rnb`, split by the
+shared energy bands, holding the four source strings the old
+`NonElectronic / Soul / R&B` sub held. The old playlist is declared as its
+former place, `[[bucket.formerly]]`, which competes in the bucket that
+declares it and in the bucket whose folder holds it. Adoption withholds a
+track sitting there. `crate adopt move` adds the band and then leaves the
+old playlist, on its existing plan, digest, gate and read back; a track
+with no reading leaves for the no reading sub, a track whose genre names
+another NonElectronic style moves to that style, and a track neither bucket
+claims is listed under `former-place-not-named-by-genre` and stays. Nothing
+is filed into a former place. The template is schema version 2, which a
+template declaring a former place must state and an older build refuses by
+name. `rates = false` is carried over. The keyword rules for soul and r&b
+are not repointed, R-804. `crate report genres` is new and read only: it
+counts the live collection by genre and names every genre at 50 tracks or
+more with no top level folder of its own. It does not read
+`genre_gaps.json`. The decisions are KTD23 to KTD40 in the Planning
+Contract of `docs/plans/2026-10-01-0949-feat-published-genre-by-isrc-plan.md`,
+and `docs/solutions/workflow-issues/a-sub-promoted-to-a-bucket-stops-competing-where-it-sat-unless-the-taxonomy-says-where-it-was.md`
+is what to read before promoting another sub. The built in review ran
+twice, nine findings and then ten: thirteen changed the code, R-804 to
+R-808 filed. Mutation tables `r797-a` to `r797-c`, 25 rows, 25 killed, and
+`r797-d`, three of them measured again after the second round moved their
+lines. Battery on the committed tree, run twice: ruff clean, **11,366
+passed and 1 skipped** in 96 and 107 seconds, scan clean,
+`board.py closing --since main` exit 0. **Main's highest residual number is R-808 once this merges.** **This
+card did not touch the live library.** Owed to an attended sitting, in the
+order R-797's ledger entry gives: the build in use is this one, the active
+taxonomy copy takes the same edit after a dated backup, `crate adopt move`
+is rehearsed on a copy and approved live on an equal digest, and
+`crate report genres` is read, all recorded in `docs/cutover.md`. Until
+the copy is edited the library behaves as before. R-798 is next on this
+plan.
+
+**Built before it: R-796, issue #236, `relay/236`, 2026-10-01, unattended.**
 `crate tag folder` asks a general catalogue, Deezer, by a file's ISRC when
 the record shops gave no usable genre and Beatport itself answered. The
 lookup is `tagging/published.py`, with no key and a user agent naming this

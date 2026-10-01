@@ -1,0 +1,311 @@
+{
+  "name": "r797-c",
+  "pass_kind": "light",
+  "branch": "relay/237",
+  "head": "78f94d4",
+  "when": "2026-10-01 16:31 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 11356,
+  "baseline_exit": 0,
+  "pytest_runs": 11,
+  "state_guarded": "~/Library/Application Support/cratekit (147583 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/adopt/genres.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/adopt/genres.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "b8f162d461f7e0bf",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 11356,
+    "baseline_collected": 11356,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "G1_the_threshold_is_fifty",
+      "description": "FOLDER_WORTH: 51, a realistic nearby value, so a genre at 50 is not named",
+      "file": "src/cratekit/adopt/genres.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ac85ca7a45af822f",
+      "subset": [
+        "tests/test_report_genres.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 27,
+      "baseline_collected": 27,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_report_genres.py::test_a_genre_at_49_is_counted_and_not_named_and_one_at_50_is_named",
+        "tests/test_report_genres.py::test_a_style_sub_nothing_routes_a_lowercase_spelling_to_is_still_its_genre",
+        "tests/test_report_genres.py::test_ae8_the_verb_names_the_genre_with_its_count_and_the_library_is_unchanged",
+        "tests/test_report_genres.py::test_another_spelling_of_a_source_string_is_counted_with_its_sub",
+        "tests/test_report_genres.py::test_the_boundary_is_the_same_on_both_sides_of_one_genre",
+        "tests/test_report_genres.py::test_with_nothing_at_the_threshold_the_report_says_so_in_a_row"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "FOLDER_WORTH = 50",
+      "new": "FOLDER_WORTH = 51"
+    },
+    {
+      "id": "G2_at_the_threshold_is_named",
+      "description": "named: over the threshold and not at it",
+      "file": "src/cratekit/adopt/genres.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b92abfbd1ebe78fa",
+      "subset": [
+        "tests/test_report_genres.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 27,
+      "baseline_collected": 27,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_report_genres.py::test_a_genre_at_49_is_counted_and_not_named_and_one_at_50_is_named",
+        "tests/test_report_genres.py::test_a_style_sub_nothing_routes_a_lowercase_spelling_to_is_still_its_genre",
+        "tests/test_report_genres.py::test_another_spelling_of_a_source_string_is_counted_with_its_sub",
+        "tests/test_report_genres.py::test_the_boundary_is_the_same_on_both_sides_of_one_genre"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "genre.tracks >= self.threshold",
+      "new": "genre.tracks > self.threshold"
+    },
+    {
+      "id": "G3_a_removed_row_is_not_counted",
+      "description": "count: count a row rekordbox marked removed, so a folder is suggested for what a person deleted",
+      "file": "src/cratekit/adopt/genres.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "117c20b89369098b",
+      "subset": [
+        "tests/test_report_genres.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 27,
+      "baseline_collected": 27,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_report_genres.py::test_a_removed_row_is_not_counted"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if row.deleted:\n            continue\n",
+      "new": ""
+    },
+    {
+      "id": "G4_no_genre_is_not_a_genre",
+      "description": "count: resolve an empty genre like any other, so the tagging backlog is counted as a genre or as having a folder",
+      "file": "src/cratekit/adopt/genres.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e1eecb7e9e05567d",
+      "subset": [
+        "tests/test_report_genres.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 27,
+      "baseline_collected": 27,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_report_genres.py::test_ae8_the_verb_names_the_genre_with_its_count_and_the_library_is_unchanged",
+        "tests/test_report_genres.py::test_tracks_with_no_genre_are_counted_apart_and_never_named",
+        "tests/test_report_genres.py::test_with_nothing_at_the_threshold_the_report_says_so_in_a_row"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not value:",
+      "new": "        if False:"
+    },
+    {
+      "id": "G5_another_spelling_is_the_same_genre",
+      "description": "count: stop folding another spelling of a style sub's name onto the sub, the review's 45 and 10",
+      "file": "src/cratekit/adopt/genres.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e29eda96256993bd",
+      "subset": [
+        "tests/test_report_genres.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 27,
+      "baseline_collected": 27,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_report_genres.py::test_a_style_sub_nothing_routes_a_lowercase_spelling_to_is_still_its_genre",
+        "tests/test_report_genres.py::test_another_spelling_of_a_source_string_is_counted_with_its_sub",
+        "tests/test_report_genres.py::test_another_spelling_of_a_style_subs_own_name_is_counted_with_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        elif value.casefold() in style_subs:",
+      "new": "        elif False:"
+    },
+    {
+      "id": "G6_the_fallback_is_no_folder",
+      "description": "folder_of: read the fallback tier as a folder, so a genre nothing claims is never counted",
+      "file": "src/cratekit/core/routing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "34455008d1b2da69",
+      "subset": [
+        "tests/test_report_genres.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 10,
+      "collected": 27,
+      "baseline_collected": 27,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_report_genres.py::test_a_genre_at_49_is_counted_and_not_named_and_one_at_50_is_named",
+        "tests/test_report_genres.py::test_a_genre_no_folder_claims_at_all_is_counted_under_its_own_word",
+        "tests/test_report_genres.py::test_a_style_sub_nothing_routes_a_lowercase_spelling_to_is_still_its_genre",
+        "tests/test_report_genres.py::test_a_word_nothing_declared_claims_has_no_folder_at_all",
+        "tests/test_report_genres.py::test_ae8_the_verb_names_the_genre_with_its_count_and_the_library_is_unchanged",
+        "tests/test_report_genres.py::test_another_spelling_of_a_source_string_is_counted_with_its_sub",
+        "tests/test_report_genres.py::test_the_boundary_is_the_same_on_both_sides_of_one_genre",
+        "tests/test_report_genres.py::test_the_order_is_largest_first_then_by_name",
+        "tests/test_report_genres.py::test_two_spellings_of_one_unclaimed_word_are_one_genre",
+        "tests/test_report_genres.py::test_with_nothing_at_the_threshold_the_report_says_so_in_a_row"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if resolution.match is Match.FALLBACK:",
+      "new": "    if False:"
+    },
+    {
+      "id": "G7_a_folders_own_name_has_that_folder",
+      "description": "folder_of: count a track tagged with the source routed folder's own name as a word in its default sub",
+      "file": "src/cratekit/core/routing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "136c56679eaddee1",
+      "subset": [
+        "tests/test_report_genres.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 27,
+      "baseline_collected": 27,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_report_genres.py::test_the_source_routed_folders_own_name_has_that_folder"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if by_source is None or resolution.match is Match.PASSTHROUGH:",
+      "new": "    if by_source is None:"
+    },
+    {
+      "id": "G8_a_map_row_is_a_style_sub",
+      "description": "folder_of: read every source string of a source routed folder as landing in its default",
+      "file": "src/cratekit/core/routing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "421fb0a5b425ca59",
+      "subset": [
+        "tests/test_report_genres.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 27,
+      "baseline_collected": 27,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_report_genres.py::test_a_source_string_filed_in_a_style_sub_has_no_folder_of_its_own"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if value in by_source.map:",
+      "new": "    if False:"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "G9_words_fold_on_case",
+      "description": "count: key an unclaimed word on its spelling and not its case fold",
+      "reason": "ranked below the cap: test_two_spellings_of_one_unclaimed_word_are_one_genre names it, and G5 measures the fold a threshold was missed on"
+    },
+    {
+      "id": "G10_only_the_named_are_rows",
+      "description": "report_genres: make a check row of every counted genre and not only the named",
+      "reason": "ranked below the cap: the verb's two driven tests unpack exactly one check row over a library holding two counted genres"
+    },
+    {
+      "id": "G11_the_new_bucket_writes_no_rating",
+      "description": "the template's rates = false on the promoted bucket",
+      "reason": "ranked below the cap and not a Python target: test_the_promoted_bucket_writes_no_rating_as_the_folder_it_left_wrote_none names it"
+    }
+  ]
+}

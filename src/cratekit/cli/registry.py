@@ -2269,6 +2269,36 @@ ENTRIES: tuple[Entry, ...] = (
         writes=frozenset({"xml"}),
         doctor_checks=("library.mounted", "rekordbox.closed", "library.paths_resolved"),
     ),
+    # ── The folder suggestion (R-797) ───────────────────────────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives.
+    Entry(
+        name="report.genres",
+        summary="name every genre holding 50 or more tracks with no top level "
+        "folder of its own; creates nothing",
+        module="cratekit.adopt.genres_cli",
+        builder="build",
+        handler_key="report.genres",
+        # NO FEATURE ROW, for the reason ``export.collection`` gives: the source
+        # system never counted this, and no inventory row asks for it.
+        #
+        # THE ADOPTION MODULE AND NOT THE REPORTS MODULE, although it sits in
+        # the report group. Its siblings read an export through a package that
+        # admits no database module. This one reads the database, through the
+        # collection reader adoption uses, so it is switched with that reader,
+        # which is always available.
+        module_id="adoption",
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
+        # THE DATABASE IS ONLY READ, as ``route.unplaced`` argues for itself:
+        # no surface is declared, the verb is not destructive, and it asks
+        # nothing. The pins stay because the binding pin is checked on a read.
+        taxonomy_terms=("genre_energy",),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.pins",
+        ),
+    ),
 )
 
 #: The verb names, as data. ``tests/test_layering.py`` reads this to enforce that

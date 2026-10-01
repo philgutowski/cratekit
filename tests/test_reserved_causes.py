@@ -5898,7 +5898,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # are WARNING codes `tagging/cli.py` gives on a sweep whose general
     # catalogue was unread throughout or whose files carry no ISRC. The new
     # lookup, `tagging/published.py`, raises nothing and adds no reason.
-    assert (len(literals), len(literals - set(causes))) == (547, 361), (
+    # Re-pinned on the residual finding "R&B is a flat folder under
+    # NonElectronic, and nothing says when a genre has outgrown having no
+    # folder of its own", 2026-10-01: 547 to 548 distinct, non-keys 361 to
+    # 362. ONE joined and nothing left, checked against `main`'s own `src` by
+    # git grep, and it is not a key. former-place-not-named-by-genre is a
+    # reason `adopt/move.py` lists a track as left where it is, beside the
+    # six it had. The new report verb refuses on config-unusable, which the
+    # tree already carried, and the move's new refusal is decision-stale.
+    assert (len(literals), len(literals - set(causes))) == (548, 362), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6528,7 +6536,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # which was a holder already, so the literal population did not move.
     # Measured by this pair moving by one on the holders side and by nothing
     # on the other.
-    assert (len(literal_holders), len(literal_both)) == (112, 26), (
+    # Re-pinned on the residual finding "R&B is a flat folder under
+    # NonElectronic, and nothing says when a genre has outgrown having no
+    # folder of its own", 2026-10-01: holders move 112 to 113, and the
+    # also-holds-an-integer half is UNCHANGED at 26. ONE module joined and none
+    # left, and it is a new file. adopt/genres_cli.py, the report verb's shell,
+    # refuses with config-unusable and holds no integer. adopt/genres.py holds
+    # no cause, and adopt/move.py, adopt/move_cli.py and adopt/placements.py
+    # were holders or held none before and are unchanged in that. Measured by
+    # this pair moving by one on the holders side and by nothing on the other.
+    assert (len(literal_holders), len(literal_both)) == (113, 26), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
