@@ -388,3 +388,119 @@ def test_a_queue_with_no_grouping_refuses_rather_than_listing_nothing(installed)
     code, envelope = drive(["review", "list", "--queue", "path-repair", "--group-by", "label"])
     assert code != int(ExitCode.OK)
     assert envelope["cause"]["reason"] == "review-selection-invalid"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 4. What the review of this unit found
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def item_causes(job_id: str) -> dict[str, str | None]:
+    from cratekit.core import jobs
+
+    with jobs.open_store() as store:
+        return {
+            item.item_id: (item.cause.reason if item.cause is not None else None)
+            for item in jobs.items(store, job_id)
+        }
+
+
+def sweep_expecting_refusal() -> str:
+    code, queued = drive(["sync", "labels"])
+    assert code == int(ExitCode.OK), queued
+    job_id = queued["data"]["job_id"]
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+    assert code != int(ExitCode.OK), resumed
+    return job_id
+
+
+def test_a_dead_verifier_on_a_later_sweep_refuses_rather_than_reporting_nothing_new(
+    installed, monkeypatch
+):
+    """Held releases are no longer re-verified, and they were what made a dead
+    endpoint drop every release a sweep read. One is re-verified on this path.
+    """
+    register()
+    releases = catalogue_of(5)
+    bind(monkeypatch, releases)
+    sweep_once()
+    fake = FakeCatalogue(
+        artists={SLUG: FakePagedArtist([FakeRelease("r2028", year="2028"), *releases])},
+        confirmed=set(),
+    )
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
+    job_id = sweep_expecting_refusal()
+    assert item_causes(job_id) == {SLUG: "label-sweep-incomplete"}
+    assert len(filed(installed)) == 5
+    # A refused sweep records no round, so the label's latest answer is still
+    # the first sweep's rather than a count from a sweep that verified nothing.
+    assert [row["items"] for row in grouped("run")] == [5]
+
+
+def test_held_releases_that_still_confirm_let_a_label_of_unconfirmed_releases_succeed(
+    installed, monkeypatch
+):
+    """The distributor credited shape: a few releases are the label's and the
+    rest never confirm. Its later sweeps file nothing and must not refuse.
+    """
+    register()
+    releases = catalogue_of(7)
+    fake = FakeCatalogue(
+        artists={SLUG: FakePagedArtist(releases)}, confirmed={"r2026", "r2025", "r2024"}
+    )
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
+    sweep_once()
+    sweep_once()
+    assert len(filed(installed)) == 3
+    assert [row["items"] for row in grouped("run")] == [3, 0]
+
+
+def test_a_held_release_since_downloaded_keeps_its_place(installed, entry):
+    verify, _ = counting_confirm()
+    found = sweep.list_for_label(
+        installed,
+        entry,
+        artist=FakePagedArtist(catalogue_of(6)),
+        verify=verify,
+        offered={"r2026"},
+        owned={"r2026"},
+        limit=2,
+    )
+    assert found.held == 1
+    assert [c.identity for c in found.candidates] == ["r2025"]
+
+
+def test_a_harvested_label_name_is_not_counted_as_a_label_release(installed):
+    with review.open_store(installed) as store:
+        review.offer(
+            store,
+            queue=Queue.LABEL_RELEASE,
+            kind="harvested-label",
+            identity={"name": "Somebody"},
+            payload={"name": "Somebody", "source": "harvest"},
+        )
+        sweep.offer_release(
+            store,
+            run.Candidate(identity="r1", recency="2026", payload={"label_id": SLUG}),
+            run_id="run-one",
+        )
+    assert [row["items"] for row in grouped("label")] == [1]
+    assert [row["run"] for row in grouped("run")] == ["run-one"]
+
+
+def test_a_page_limit_with_a_grouping_refuses_rather_than_being_ignored(installed):
+    del installed
+    code, envelope = drive(
+        ["review", "list", "--queue", "label-release", "--group-by", "label", "--limit", "5"]
+    )
+    assert code != int(ExitCode.OK)
+    assert envelope["cause"]["reason"] == "review-selection-invalid"
+
+
+def test_the_registry_says_when_the_track_limit_bounds_an_offer(installed):
+    del installed
+    register("--offer", "50", "--track-limit", "20")
+    code, envelope = drive(["label", "registry", "list"])
+    assert code == int(ExitCode.OK), envelope
+    (check,) = [c for c in envelope["data"]["checks"] if c["key"] == f"labels.{SLUG}"]
+    assert "offer 50, bounded by the track limit to 20" in check["detail"]

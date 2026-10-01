@@ -997,8 +997,9 @@ is new, without reading the sync watermark.
 How many of a favourite label's newest releases one sweep keeps in review,
 `labels.offer_per_sweep` in the configuration, ten by default, or the label's
 own `--offer` in the registry (R-790). A release already in the label-release
-queue, in any state, takes a place and is not filed again; a release filed now
-takes a place; an owned or tombstoned one takes none. So a first sweep files
+queue, in any state, takes a place and is not filed again, even once it has
+been downloaded; a release filed now takes a place; a release owned without
+ever being offered, or tombstoned, takes none. So a first sweep files
 the window and a later one files only what has appeared above it. What the
 window never reached is counted as `beyond` per label and per run, read with
 `crate review list --queue label-release --group-by label` or `--group-by run`.

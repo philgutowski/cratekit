@@ -73,6 +73,13 @@ class LabelListing:
     #: those questions costs a provider call. It is the most the label could
     #: still offer, and the number a person raises the window against.
     beyond: int = 0
+    #: ``held`` when the sweep confirmed nothing new and the one held release
+    #: it then re-verified did not confirm either, else zero. The worker's
+    #: "confirmed none of what it read" refusal counts these with ``dropped``,
+    #: because before R-790 every held release was verified again and a dead
+    #: endpoint dropped them too; without this, a label with anything in the
+    #: queue would report "nothing new" over a verifier that answers nothing.
+    held_unconfirmed: int = 0
 
 
 def _year_of(release: Any) -> str:
@@ -458,11 +465,13 @@ def list_for_label(
     THE OFFER IS A WINDOW OVER THE NEWEST RELEASES, AND NEVER A DATE (R-790,
     KTD11). ``limit``, or the label's :func:`registry.effective_offer`, is how
     many places the window has. A release already in the queue, ``offered``,
-    takes a place and is not filed again; a release filed now takes a place; an
-    owned or tombstoned one takes none. So a first sweep files the window, and
-    a later one files only what has appeared above the releases it already
-    holds, whatever any watermark says. What the window never reached is
-    counted in ``beyond`` rather than dropped.
+    takes a place and is not filed again, EVEN ONCE IT IS OWNED, because a
+    release accepted and downloaded must not hand its place to the next slice
+    of back catalogue; a release filed now takes a place; a release owned
+    without ever being offered, or tombstoned, takes none. So a first sweep
+    files the window, and a later one files only what has appeared above the
+    releases it already holds, whatever any watermark says. What the window
+    never reached is counted in ``beyond`` rather than dropped.
     """
     del last_pulled
     claimed = entry.match or entry.name
@@ -506,6 +515,7 @@ def list_for_label(
     # in the window, which is what keeps a later sweep from filing the next
     # slice of back catalogue every time (R-790).
     held = 0
+    first_held: Any = None
     examined = 0
     for release in listed:
         if held + len(candidates) >= cap:
@@ -517,6 +527,7 @@ def list_for_label(
             continue
         if identity in offered_ids:
             held += 1
+            first_held = first_held if first_held is not None else release
             continue
         verdict = label_verify.verify_release(claimed, release, search=verify)
         status = str(verdict.get("verdict") or "unconfirmed")
@@ -532,6 +543,17 @@ def list_for_label(
         if identity in owned_ids:
             continue
         candidates.append(_candidate(entry, release))
+    # ONE HELD RELEASE IS RE-VERIFIED, AND ONLY WHEN THE SWEEP CONFIRMED NOTHING
+    # IT ASKED ABOUT. It was confirmed when it was filed, so it is the one
+    # release whose answer is known: confirmed again means the endpoint is up
+    # and what failed really is unconfirmed, and unconfirmed means nothing this
+    # sweep asked could have been confirmed. One provider call, on the path
+    # where the worker is deciding whether to refuse.
+    held_unconfirmed = 0
+    if first_held is not None and dropped and not candidates:
+        canary = label_verify.verify_release(claimed, first_held, search=verify)
+        if str(canary.get("verdict") or "unconfirmed") != "confirmed":
+            held_unconfirmed = held
     return LabelListing(
         candidates=tuple(candidates),
         dropped=tuple(dropped),
@@ -540,6 +562,7 @@ def list_for_label(
         unread=unread,
         held=held,
         beyond=len(listed) - examined,
+        held_unconfirmed=held_unconfirmed,
     )
 
 
@@ -670,6 +693,9 @@ class LabelSource:
         #: ``beyond`` from here, since the increment's result carries only
         #: identities (R-790).
         self.listings: tuple[tuple[registry.LabelEntry, LabelListing], ...] = ()
+        #: HELD RELEASES THE LAST PASS COULD NOT CONFIRM AGAIN, summed over its
+        #: labels. See :attr:`LabelListing.held_unconfirmed`.
+        self.held_unconfirmed = 0
 
     def _artist_for(self, entry: registry.LabelEntry) -> Any:
         """The provider artist object for one favourite label, or a refusal.
@@ -838,6 +864,7 @@ class LabelSource:
         self.dropped = tuple(discarded)
         self.unread = tuple(unread)
         self.listings = tuple(listings)
+        self.held_unconfirmed = sum(listing.held_unconfirmed for _, listing in listings)
         self.read = read
         found.sort(key=lambda item: item.recency, reverse=True)
         return found[:n] if n >= 0 else found

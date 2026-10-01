@@ -2774,9 +2774,9 @@ class LabelsConfig:
     A sweep walks the catalogue newest first and fills this many places with
     releases the queue already holds and releases it files now, so a first
     sweep files this many and a later one files only what has appeared above
-    them. The walk still reads the whole catalogue, which is what lets an owned
-    release be skipped without taking a place (R-137), and what the window did
-    not reach is counted rather than dropped. A label's own registry entry may
+    them. The walk still reads the whole catalogue, which is what lets a
+    release owned without ever being offered be skipped without taking a place
+    (R-137), and what the window did not reach is counted rather than dropped. A label's own registry entry may
     raise or lower it for that label alone.
 
     No value switches it off. A person who wants a label's back catalogue

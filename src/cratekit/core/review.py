@@ -1349,6 +1349,12 @@ GROUPINGS: Mapping[str, Mapping[str, tuple[str, str | None]]] = {
     "label-release": {"label": ("label_id", "label_name"), "run": (RUN_FIELD, None)},
 }
 
+#: The kinds a grouping counts when the caller names none. The label-release
+#: queue also holds the label NAMES harvest files, ``harvested-label``, which
+#: carry neither a label identifier nor a run and would collapse into one
+#: nameless group beside the releases a person is counting.
+GROUPED_KINDS: Mapping[str, tuple[str, ...]] = {"label-release": ("label-release",)}
+
 
 def grouped(
     store: ReviewStore,
@@ -1383,6 +1389,7 @@ def grouped(
             detail={"queue": declared, "group_by": by},
         )
     key_field, name_field = fields
+    kinds = kinds or GROUPED_KINDS.get(declared)
     counts: dict[Any, int] = {}
     names: dict[Any, str] = {}
     labels_per_run: dict[Any, set[str]] = {}
@@ -2519,6 +2526,7 @@ __all__ = [
     "rounds",
     "grouped",
     "GROUPINGS",
+    "GROUPED_KINDS",
     "RUN_FIELD",
     "store_dir",
     "unresolved_cause",

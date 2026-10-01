@@ -169,7 +169,11 @@ def _detail(entry: labels.LabelEntry) -> str:
     if entry.track_limit is not None:
         parts.append(f"track limit {entry.track_limit}")
     if entry.offer is not None:
-        parts.append(f"offer {entry.offer}")
+        bound = labels.effective_limit(entry)
+        parts.append(
+            f"offer {entry.offer}"
+            + (f", bounded by the track limit to {bound}" if entry.offer > bound else "")
+        )
     if entry.seed_artists:
         parts.append("seeds " + " | ".join(entry.seed_artists))
     return ", ".join(parts)
@@ -1205,23 +1209,6 @@ def handle(job, item, cfg) -> jobs.Produced | None:
             # files as the job has labels.
             run_id=run_id,
         )
-        # WHAT THE WINDOW DID NOT REACH IS RECORDED, NEVER DROPPED (R-790). The
-        # job's envelope is ``job_state/1`` and carries no per label count, and
-        # this worker runs in a detached child, so the count goes where the
-        # person deciding the label's releases reads: ``crate review list
-        # --queue label-release --group-by label``. NOT RECORDED OVER A PARTIAL
-        # CRAWL, which refuses below, because a count of part of a catalogue
-        # stated as the rest of it is a clean report over state nobody read.
-        if not source.unread:
-            for swept, listing in source.listings:
-                review.record_round(
-                    store,
-                    queue=review.Queue.LABEL_RELEASE,
-                    run_id=run_id,
-                    group=swept.label_id,
-                    name=swept.name,
-                    beyond=listing.beyond,
-                )
     if result.errors:
         raise refuse(
             "label-sweep-incomplete",
@@ -1274,10 +1261,17 @@ def handle(job, item, cfg) -> jobs.Produced | None:
     # one reached the provider and could not confirm anything it found, which is
     # usually a release credited to a distributor rather than to the imprint, and
     # is repaired by the registry's ``--match`` needle rather than by waiting.
-    if result.shortfall == "empty" and source.dropped and len(source.dropped) == source.read:
+    #
+    # A HELD RELEASE COUNTS WITH THE DROPPED ONES WHEN IT COULD NOT BE CONFIRMED
+    # AGAIN (R-790). Held releases are no longer verified on every sweep, and
+    # they were what made a dead endpoint drop every release read; the sweep
+    # re-verifies one of them on exactly this path, and its answer stands for
+    # all of them.
+    unconfirmed = len(source.dropped) + source.held_unconfirmed
+    if result.shortfall == "empty" and source.dropped and unconfirmed == source.read:
         raise refuse(
             "label-sweep-incomplete",
-            f"the sweep of {entry.name!r} read {len(source.dropped)} releases "
+            f"the sweep of {entry.name!r} read {unconfirmed} releases "
             f"from the catalogue and could not confirm a single one of them, so "
             f"it offered nothing and this is not a label with nothing new. The "
             f"provider answered: what failed is verification rather than reach",
@@ -1290,11 +1284,29 @@ def handle(job, item, cfg) -> jobs.Produced | None:
             origin=("label.cli",),
             detail={
                 "label_id": entry.label_id,
-                "read": len(source.dropped),
+                "read": unconfirmed,
                 "confirmed": 0,
                 "reasons": sorted({drop.reason for drop in source.dropped}),
             },
         )
+    # WHAT THE WINDOW DID NOT REACH IS RECORDED, NEVER DROPPED (R-790). The
+    # job's envelope is ``job_state/1`` and carries no per label count, and this
+    # worker runs in a detached child, so the count goes where the person
+    # deciding the label's releases reads: ``crate review list --queue
+    # label-release --group-by label``. RECORDED LAST, after every refusal above
+    # has passed: a sweep refused as partial, or as having confirmed nothing,
+    # must not leave a count that reads as an answer about the catalogue, which
+    # is the clean report over state nobody read that each refusal exists for.
+    with review.open_store(cfg) as store:
+        for swept, listing in source.listings:
+            review.record_round(
+                store,
+                queue=review.Queue.LABEL_RELEASE,
+                run_id=run_id,
+                group=swept.label_id,
+                name=swept.name,
+                beyond=listing.beyond,
+            )
     return None
 
 

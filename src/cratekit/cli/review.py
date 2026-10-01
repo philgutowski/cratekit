@@ -216,8 +216,8 @@ def build_list(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
     parser.add_argument(
         "--limit",
         type=int,
-        default=review.DEFAULT_PAGE,
-        help="how many items this page holds; at least one",
+        default=None,
+        help=f"how many items this page holds; at least one, {review.DEFAULT_PAGE} if omitted",
     )
     parser.add_argument(
         "--after",
@@ -249,7 +249,9 @@ def list_items(ctx: "Context") -> Envelope:
             kinds=tuple(ctx.args.kind) or None,
             include_resolved=ctx.args.all,
             include_suppressed=ctx.args.suppressed,
-            limit=ctx.args.limit,
+            # NONE IS THE PAGE DEFAULT HERE, never "every item": the parser
+            # leaves it unset so ``--group-by`` can tell a typed limit apart.
+            limit=ctx.args.limit if ctx.args.limit is not None else review.DEFAULT_PAGE,
             after=ctx.args.after,
         )
         data = _payload(
@@ -265,19 +267,25 @@ def _list_grouped(ctx: "Context", cfg: config.Config, group_by: str) -> Envelope
     version of the schema, and a grouping row is a row; a fourth field would
     be a schema bump for every consumer of every review set.
 
-    A QUEUE IS REQUIRED, and ``--after`` is refused, because a grouping is a
-    count over a whole selection and neither a page of one nor a mixture of
-    queues whose groups mean different things.
+    A QUEUE IS REQUIRED, and ``--after`` and ``--limit`` are refused, because
+    a grouping is a count over a whole selection and neither a page of one nor
+    a mixture of queues whose groups mean different things. A page flag
+    silently ignored would read as a count of the page.
     """
-    if not ctx.args.queue or ctx.args.after is not None:
+    if not ctx.args.queue or ctx.args.after is not None or ctx.args.limit is not None:
         raise refuse(
             "review-selection-invalid",
             "--group-by counts one queue's whole selection by group, so it needs "
-            "--queue, and --after would be a cursor into pages it does not have",
-            steps=("pass --queue label-release with --group-by, and drop --after",),
+            "--queue, and --after and --limit would page a count that has no pages",
+            steps=("pass --queue label-release with --group-by, and drop --after and --limit",),
             scope=Scope.RUN,
             origin=("cli.review",),
-            detail={"group_by": group_by, "queue": ctx.args.queue, "after": ctx.args.after},
+            detail={
+                "group_by": group_by,
+                "queue": ctx.args.queue,
+                "after": ctx.args.after,
+                "limit": ctx.args.limit,
+            },
         )
     with review.open_store(cfg) as store:
         rows = review.grouped(
