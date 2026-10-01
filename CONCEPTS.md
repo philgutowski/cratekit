@@ -1164,7 +1164,8 @@ competing subs of two buckets and no other: the one that declares it, so
 adoption withholds a track still sitting there and `crate adopt move` adds the
 band and then leaves the playlist, and the one whose folder holds it, so a
 track there whose genre names another style of that folder moves to that
-style as it did before the promotion. It is only ever left. No resolver
+style as it did before the promotion. A track with no reading leaves it for
+the no reading sub. It is only ever left. No resolver
 answers with one, `destination` refuses one, and the loader refuses one that
 names a sub its folder still holds, or that is declared under schema version
 1, which an older build reads while ignoring the declaration.

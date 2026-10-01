@@ -406,6 +406,18 @@ class Taxonomy:
     _tagging_alias: Mapping[str, tuple[str, str | None]] = field(
         repr=False, default_factory=dict
     )
+    _former_places: Mapping[str, tuple[tuple[str, "FormerPlace"], ...]] = field(
+        repr=False, default_factory=dict
+    )
+
+    def former_places(self, bucket_id: str) -> tuple[tuple[str, "FormerPlace"], ...]:
+        """Every former place that competes in one bucket, with its declarer.
+
+        The ones the bucket declares and the ones its folder holds for another
+        bucket, in declared order. Built once at load, since what competes is
+        asked per track and per bucket.
+        """
+        return self._former_places.get(bucket_id, ())
 
     def bucket(self, bucket_id: str) -> Bucket:
         try:
@@ -803,7 +815,20 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
         _by_display={b.display: b.id for b in buckets},
         _routing_alias=routing_alias,
         _tagging_alias=tagging_alias,
+        _former_places=_index_former_places(buckets),
     )
+
+
+def _index_former_places(
+    buckets: Sequence[Bucket],
+) -> dict[str, tuple[tuple[str, FormerPlace], ...]]:
+    """Each bucket's former places, its own and the ones its folder holds."""
+    found: dict[str, list[tuple[str, FormerPlace]]] = {}
+    for declarer in buckets:
+        for place in declarer.formerly:
+            for bucket_id in dict.fromkeys((declarer.id, place.bucket)):
+                found.setdefault(bucket_id, []).append((declarer.id, place))
+    return {bucket_id: tuple(places) for bucket_id, places in found.items()}
 
 
 # ---------------------------------------------------------------------------

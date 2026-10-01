@@ -205,6 +205,22 @@ def test_another_spelling_of_a_style_subs_own_name_is_counted_with_it():
     )
     assert found.sources == ((SHARED_SUB.display, 45), (lowered, 10))
     assert len(report.genres) == 1
+    # THE ROW DOES NOT SAY ROUTING FILES THE OTHER SPELLING THERE. Found by
+    # the second review: it said so, and a person looking found none of them.
+    assert (found.strays, found.not_filed_there) == ((lowered,), 10)
+    assert "except 10 under another spelling" in adopt_genres.where(found)
+    row = adopt_genres.row_json(found)
+    assert row["not_filed_there"] == 10
+    assert [(s["genre"], s["filed_there"]) for s in row["sources"]] == [
+        (SHARED_SUB.display, True),
+        (lowered, False),
+    ]
+
+
+def test_a_genre_filed_whole_in_its_sub_names_no_other_spelling():
+    (found,) = adopt_genres.count(_rows((SHARED_SUB.display, 50)), DECLARED).named
+    assert (found.strays, found.not_filed_there) == ((), 0)
+    assert "except" not in adopt_genres.where(found)
 
 
 def test_another_spelling_of_a_source_string_is_counted_with_its_sub():
@@ -246,6 +262,16 @@ def test_tracks_with_no_genre_are_counted_apart_and_never_named():
     assert (report.no_genre, report.genres, report.named) == (75, (), ())
 
 
+def test_a_word_the_taxonomy_calls_too_coarse_is_counted_apart_as_adoption_reads_it():
+    """Found by the second review. Routing sends such a word to the catch all
+    bucket by an alias, and adoption files none of those tracks."""
+    coarse = next(word for word in DECLARED.fallback.too_coarse_as_source if word)
+    assert routing.folder_of(DECLARED, coarse).kind is routing.Folder.OWN
+    assert adopt_scan.classify_genre(DECLARED, coarse)[0] is adopt_scan.Disposition.NEEDS_GENRE
+    report = adopt_genres.count(_rows((coarse, 200), (OWN.display, 3)), DECLARED)
+    assert (report.too_coarse, report.with_folder, report.genres) == (200, 3, ())
+
+
 def test_a_removed_row_is_not_counted():
     report = adopt_genres.count(
         _rows((UNCLAIMED, 49), deleted=(UNCLAIMED, 10)), DECLARED
@@ -254,11 +280,15 @@ def test_a_removed_row_is_not_counted():
 
 
 def test_every_live_track_is_counted_exactly_once():
+    coarse = next(word for word in DECLARED.fallback.too_coarse_as_source if word)
     report = adopt_genres.count(
-        _rows((OWN.display, 7), (SHARED_SOURCES[0], 5), (UNCLAIMED, 3), ("", 2)), DECLARED
+        _rows((OWN.display, 7), (SHARED_SOURCES[0], 5), (UNCLAIMED, 3), ("", 2), (coarse, 4)),
+        DECLARED,
     )
-    assert report.tracks == 17
-    assert report.with_folder + report.without_folder + report.no_genre == report.tracks
+    assert report.tracks == 21
+    assert (report.with_folder, report.without_folder, report.no_genre, report.too_coarse) == (
+        7, 8, 2, 4
+    )
 
 
 def test_the_order_is_largest_first_then_by_name():
@@ -327,6 +357,7 @@ def test_ae8_the_verb_names_the_genre_with_its_count_and_the_library_is_unchange
         163 + len(adopt_fixtures.BASELINE_CONTENT_IDS), 3, 158
     )
     assert summary["no_genre"] == 2 + len(adopt_fixtures.BASELINE_CONTENT_IDS)
+    assert summary["too_coarse"] == 0
     (check,) = envelope["data"]["checks"]
     assert (check["title"], check["status"], check["remedy"]) == (
         SHARED_SUB.display, "info", None
@@ -367,3 +398,10 @@ def test_the_verb_declares_no_write_and_no_gate():
     assert entry.writes == frozenset() and entry.gates == ()
     assert not entry.destructive and not entry.long_running
     assert entry.emits == frozenset({"diagnostic"})
+
+
+def test_the_summary_a_person_reads_in_help_states_the_threshold_the_code_uses():
+    """The registry cannot import the engine's constant, so the two are held
+    together here."""
+    summary = registry.entry("report.genres").summary
+    assert f"{adopt_genres.FOLDER_WORTH} or more tracks" in summary

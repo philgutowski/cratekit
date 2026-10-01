@@ -47,9 +47,17 @@ class GenreCount:
     """One genre with no top level folder of its own, and what carries it.
 
     ``name`` is the style sub's display name, or the genre word itself in its
-    commonest spelling. ``bucket`` and ``sub`` are where routing files it
-    today, both empty when nothing declared claims it. ``sources`` is every
-    genre string counted under it with its own count, largest first.
+    commonest spelling. ``bucket`` and ``sub`` are the style sub the genre is,
+    or where routing lands the word, both empty when nothing declared claims
+    it. ``sources`` is every genre string counted under it with its own count,
+    largest first.
+
+    ``strays`` IS THE PART OF A STYLE SUB'S COUNT ROUTING DOES NOT FILE THERE.
+    Another spelling of the sub's name is the same genre and is counted with
+    it, and routing, which matches a source string exactly, lands it in a
+    default sub or nowhere. Found by the second review: the row said such
+    tracks were filed under the sub, and a person looking in that playlist
+    found none of them. So the spellings are named and the sentence says so.
     """
 
     name: str
@@ -59,16 +67,24 @@ class GenreCount:
     sub: str
     filed_under: tuple[str, str] | None
     sources: tuple[tuple[str, int], ...]
+    strays: tuple[str, ...] = ()
+
+    @property
+    def not_filed_there(self) -> int:
+        """How many of the tracks routing does not file under ``filed_under``."""
+        return sum(tracks for word, tracks in self.sources if word in self.strays)
 
 
 @dataclass(frozen=True, slots=True)
 class GenreReport:
-    """Every live track counted once: with a folder, without one, or no genre."""
+    """Every live track counted once: with a folder, without one, with no
+    genre, or with a word the taxonomy calls too coarse to be one."""
 
     threshold: int
     tracks: int
     with_folder: int
     no_genre: int
+    too_coarse: int
     genres: tuple[GenreCount, ...]
 
     @property
@@ -120,15 +136,23 @@ def count(
     A TRACK WITH NO GENRE IS COUNTED APART and is never a genre. "No genre" at
     fifty tracks is a tagging backlog and not a folder anybody is missing.
 
+    SO IS A WORD THE TAXONOMY CALLS TOO COARSE, asked of the taxonomy the way
+    adoption's census asks it. Routing resolves such a word to the catch all
+    bucket by an alias, and adoption files none of those tracks, so counting
+    them as having a folder said a folder answers for tracks no folder will
+    receive. Found by the second review.
+
     THE ORDER IS LARGEST FIRST, THEN BY NAME, so two runs over one collection
     list the same rows in the same order.
     """
     tracks = 0
     with_folder = 0
     no_genre = 0
+    too_coarse = 0
     style_subs = _style_subs_by_word(declared)
     sub_kind = str(routing.Folder.SUB.value)
     spellings: dict[tuple[str, str, str, str], Counter[str]] = {}
+    strays: dict[tuple[str, str, str, str], set[str]] = {}
     for row in rows:
         if row.deleted:
             continue
@@ -136,6 +160,9 @@ def count(
         value = (row.genre or "").strip()
         if not value:
             no_genre += 1
+            continue
+        if declared.is_too_coarse_as_source(value):
+            too_coarse += 1
             continue
         folder = routing.folder_of(declared, value)
         if folder.kind is routing.Folder.OWN:
@@ -147,6 +174,7 @@ def count(
             # ANOTHER SPELLING OF A STYLE SUB'S OWN GENRE. Where routing files
             # it is not what it is, and it is counted with the genre it names.
             key = (sub_kind, *style_subs[value.casefold()], "")
+            strays.setdefault(key, set()).add(value)
         else:
             # ITS OWN WORD, folded on case. Where it lands is carried on the
             # row and is not part of what it is counted as, except that a word
@@ -155,7 +183,8 @@ def count(
         spellings.setdefault(key, Counter())[value] += 1
 
     genres: list[GenreCount] = []
-    for (kind, bucket_id, sub_id, _word), seen in spellings.items():
+    for key, seen in spellings.items():
+        kind, bucket_id, sub_id, _word = key
         sources = tuple(sorted(seen.items(), key=lambda item: (-item[1], item[0])))
         bucket = declared.bucket(bucket_id)
         if kind == routing.Folder.NONE.value:
@@ -175,6 +204,7 @@ def count(
                 sub=sub_id,
                 filed_under=filed_under,
                 sources=sources,
+                strays=tuple(sorted(strays.get(key, ()))),
             )
         )
     genres.sort(key=lambda genre: (-genre.tracks, genre.name, genre.kind, genre.bucket))
@@ -183,6 +213,7 @@ def count(
         tracks=tracks,
         with_folder=with_folder,
         no_genre=no_genre,
+        too_coarse=too_coarse,
         genres=tuple(genres),
     )
 
@@ -196,7 +227,11 @@ def row_json(genre: GenreCount) -> dict[str, Any]:
         "bucket": genre.bucket or None,
         "sub": genre.sub or None,
         "filed_under": None if genre.filed_under is None else list(genre.filed_under),
-        "sources": [{"genre": word, "tracks": tracks} for word, tracks in genre.sources],
+        "not_filed_there": genre.not_filed_there,
+        "sources": [
+            {"genre": word, "tracks": tracks, "filed_there": word not in genre.strays}
+            for word, tracks in genre.sources
+        ],
     }
 
 
@@ -207,6 +242,11 @@ def where(genre: GenreCount) -> str:
     folder, sub = genre.filed_under
     if genre.kind == routing.Folder.DEFAULT.value:
         return f"filed under {folder} / {sub}, that folder's default, with no sub of its own"
+    if genre.not_filed_there:
+        return (
+            f"filed under {folder} / {sub}, except {genre.not_filed_there} under another "
+            f"spelling ({', '.join(genre.strays)}), which routing does not file there"
+        )
     return f"filed under {folder} / {sub}"
 
 

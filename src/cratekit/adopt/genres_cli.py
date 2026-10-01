@@ -106,6 +106,7 @@ def report_genres(ctx) -> Envelope:
             "with_folder": report.with_folder,
             "without_folder": report.without_folder,
             "no_genre": report.no_genre,
+            "too_coarse": report.too_coarse,
             "named": len(report.named),
             "genres": [genres_engine.row_json(genre) for genre in report.genres],
             "library": str(cfg.library.root),

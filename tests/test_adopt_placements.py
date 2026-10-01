@@ -101,7 +101,13 @@ def test_the_style_subs_compete_where_a_bucket_has_no_energy_dimension():
     assert kind is routing.Competing.STYLE
     # R-797: a playlist this folder still holds for a bucket that left it
     # competes here too. Its own tests are in test_adopt_former_place.py.
-    former = {place.id for _declarer, place in routing.former_places(DECLARED, bucket.id)}
+    # Read off the declarations and not through the function under test.
+    former = {
+        place.id
+        for declarer in DECLARED.buckets
+        for place in declarer.formerly
+        if bucket.id in (declarer.id, place.bucket)
+    }
     assert subs == {sub.id for sub in bucket.subs} | former
     assert not subs & {band.id for band in DECLARED.energy.bands}
 

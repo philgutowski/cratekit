@@ -412,14 +412,10 @@ def former_places(taxonomy: Taxonomy, bucket_id: str) -> tuple[tuple[str, Former
     """Every former place that competes in one bucket, with the bucket declaring it.
 
     The ones the bucket declares and the ones its folder holds for another
-    bucket. Declared order, so two plans over one taxonomy agree.
+    bucket. Declared order, so two plans over one taxonomy agree. Read off the
+    index the loader built, since this is asked per track and per bucket.
     """
-    return tuple(
-        (declarer.id, place)
-        for declarer in taxonomy.buckets
-        for place in declarer.formerly
-        if bucket_id in (declarer.id, place.bucket)
-    )
+    return taxonomy.former_places(bucket_id)
 
 
 def former_place(taxonomy: Taxonomy, bucket_id: str, sub_id: str) -> FormerPlace | None:

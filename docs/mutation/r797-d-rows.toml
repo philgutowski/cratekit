@@ -1,0 +1,29 @@
+name = "r797-d"
+pass_kind = "light"
+
+[[rows]]
+id = "T9_again_competes_where_it_sits_as_well"
+description = "T9 measured again after the second review moved its line into the loader's index: index a former place under the declaring bucket alone, the first build's shape"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_adopt_former_place.py", "tests/test_adopt_placements.py", "tests/test_routing_parity.py"]
+old = '''            for bucket_id in dict.fromkeys((declarer.id, place.bucket)):'''
+new = '''            for bucket_id in (declarer.id,):'''
+
+[[rows]]
+id = "M6_again_settled_in_one_bucket"
+description = "M6 measured again after the second review replaced its guard: read a former place the entry's own bucket settles as still held in the other, so one membership is planned twice or a track is listed beside its move"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_former_place.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py"]
+old = '''        sorted((set(placements.holds(bucket, entry.content_id)) & competing) - settled)'''
+new = '''        sorted(set(placements.holds(bucket, entry.content_id)) & competing)'''
+
+[[rows]]
+id = "M8_again_an_unread_file_is_no_reading"
+description = "M8 measured again after the second review moved its condition: say a file the census could not read is left because its genre names another bucket"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_former_place.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py"]
+old = '''    elif genre_names_it:'''
+new = '''    elif False:'''
