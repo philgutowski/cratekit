@@ -4,6 +4,20 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**Sitting 23, 2026-09-30, afternoon to 20:54, no code.** The remaining
+lines of #178 driven on the author's word with no questions after the
+hearts gate. Line 4: `sync all` listed (635 calls a listing), 109 hearts
+written on an equal digest, favourites in 208 owned and 2 missing, the
+labels sweep still running at the stop after 978 releases filed for
+review, the playlists, download and landing owed behind it. Line 7: the
+Otsu fit says 16.0 again, the hand cut 5.0 stands, 12 vox tracks sit in a
+bucket without its sub (R-788). #224's screenless half proven on a copy,
+three rows with every analysis column NULL, and `doctor` then wrongly
+orders a revert (R-787, on the board bar, issue owed). R-757's close ran:
+fast backup 1,183 s over 91,236 files, full 3,103 s over 91,418, R-766
+closed. #231 and #232 carded and landed by Relay. **Main's highest
+residual number is R-788 once this merges.**
+
 **Last built: R-744, issue #232, `relay/232`, 2026-09-30, unattended.** The
 tempo a head names is chosen inside a named window, `analysis.tempo_floor`
 and `analysis.tempo_ceiling`, 80 to 160 by default, both ends included,
