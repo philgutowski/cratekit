@@ -1,0 +1,307 @@
+{
+  "name": "r798-a",
+  "pass_kind": "light",
+  "branch": "relay/238",
+  "head": "08ae75a",
+  "when": "2026-10-01 18:03 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 11505,
+  "baseline_exit": 0,
+  "pytest_runs": 11,
+  "state_guarded": "~/Library/Application Support/cratekit (147583 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/routing.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/routing.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "5eb16899df3f9018",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 11505,
+    "baseline_collected": 11505,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "K1_the_first_rule_that_matches_wins",
+      "description": "published_kind: read the published rules last first, so a word two rules could claim is given the later one's kind",
+      "file": "src/cratekit/core/routing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "aa9a75139a449ccd",
+      "subset": [
+        "tests/test_label_genre_gate.py",
+        "tests/test_taxonomy.py",
+        "tests/test_routing_parity.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 1070,
+      "baseline_collected": 1070,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_genre_gate.py::test_every_measured_word_of_the_general_catalogue_is_a_kind",
+        "tests/test_label_genre_gate.py::test_the_first_rule_that_matches_wins",
+        "tests/test_label_genre_gate.py::test_the_long_spelling_of_rnb_is_rnb_and_not_the_blues_it_contains"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    for rule in taxonomy.label_gate.published:",
+      "new": "    for rule in reversed(taxonomy.label_gate.published):"
+    },
+    {
+      "id": "K2_one_word_of_the_labels_kind_passes",
+      "description": "kind_verdict: pass only when every known word is the label's kind, so a crossover album listing a dance word beside a pop one is held",
+      "file": "src/cratekit/core/routing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1231307e42d723bf",
+      "subset": [
+        "tests/test_label_genre_gate.py",
+        "tests/test_taxonomy.py",
+        "tests/test_routing_parity.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 1070,
+      "baseline_collected": 1070,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_genre_gate.py::test_a_filed_release_says_the_gate_passed_it_and_on_which_words",
+        "tests/test_label_genre_gate.py::test_a_release_that_would_be_held_is_asked_about_again_before_it_is",
+        "tests/test_label_genre_gate.py::test_one_word_of_the_labels_kind_passes_a_release_listing_another_kind_too"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if any(found == judged_as for _word, found in placed):",
+      "new": "    if placed and all(found == judged_as for _word, found in placed):"
+    },
+    {
+      "id": "K3_a_hold_needs_a_known_word",
+      "description": "kind_verdict: hold a release on words no rule knows, so absence of a verdict becomes a hold",
+      "file": "src/cratekit/core/routing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cd822a27dedcd2d5",
+      "subset": [
+        "tests/test_label_genre_gate.py",
+        "tests/test_taxonomy.py",
+        "tests/test_routing_parity.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1070,
+      "baseline_collected": 1070,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_genre_gate.py::test_a_word_no_rule_knows_is_not_judged_and_never_held"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if placed:\n        others = \", \".join(dict.fromkeys(found for _word, found in placed))",
+      "new": "    if words:\n        others = \", \".join(dict.fromkeys(found for _word, found in placed))"
+    },
+    {
+      "id": "K4_a_label_of_any_kind_passes",
+      "description": "kind_settled: stop passing a label followed for any kind, so it is judged as a kind no rule names",
+      "file": "src/cratekit/core/routing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4ecf39094da997fd",
+      "subset": [
+        "tests/test_label_genre_gate.py",
+        "tests/test_taxonomy.py",
+        "tests/test_routing_parity.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 1070,
+      "baseline_collected": 1070,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_genre_gate.py::test_a_label_followed_for_any_kind_files_everything_and_asks_nothing",
+        "tests/test_label_genre_gate.py::test_a_label_followed_for_any_kind_passes_without_a_word",
+        "tests/test_label_genre_gate.py::test_a_label_of_any_kind_reads_no_track_and_asks_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if judged_as == ANY_KIND:\n        return KindJudgment(",
+      "new": "    if False:\n        return KindJudgment("
+    },
+    {
+      "id": "K5_a_kind_nothing_names_is_not_judged",
+      "description": "kind_settled: judge a label marked with a kind the taxonomy does not name, so every release of it with a known word is held",
+      "file": "src/cratekit/core/routing.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4ee32dce8c9547e9",
+      "subset": [
+        "tests/test_label_genre_gate.py",
+        "tests/test_taxonomy.py",
+        "tests/test_routing_parity.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1070,
+      "baseline_collected": 1070,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_genre_gate.py::test_a_kind_the_taxonomy_does_not_name_is_not_judged_and_says_which"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if judged_as not in gate.kinds:",
+      "new": "    if False:"
+    },
+    {
+      "id": "K6_the_default_kind_is_one_a_rule_names",
+      "description": "_build_gate: accept a default kind no published rule names, so every label left at the default is never judged",
+      "file": "src/cratekit/core/taxonomy.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b52a145348eae663",
+      "subset": [
+        "tests/test_label_genre_gate.py",
+        "tests/test_taxonomy.py",
+        "tests/test_routing_parity.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1070,
+      "baseline_collected": 1070,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_genre_gate.py::test_a_default_kind_no_rule_names_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if published and default_kind != ANY_KIND and default_kind not in kinds:",
+      "new": "    if False:"
+    },
+    {
+      "id": "K7_a_needle_is_folded_when_loaded",
+      "description": "_needles: keep a needle as it was typed, so one with a capital never matches a word that is matched lowercase",
+      "file": "src/cratekit/core/taxonomy.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5aaeecfbf91a08f1",
+      "subset": [
+        "tests/test_label_genre_gate.py",
+        "tests/test_taxonomy.py",
+        "tests/test_routing_parity.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1070,
+      "baseline_collected": 1070,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_genre_gate.py::test_a_needle_typed_with_a_capital_still_matches"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return tuple(one.strip().lower() for one in raw), True",
+      "new": "    return tuple(one.strip() for one in raw), True"
+    },
+    {
+      "id": "K8_a_kind_is_one_word",
+      "description": "_build_published: accept a rule naming a kind in a shape the registry refuses, so the taxonomy declares a kind no label can be given",
+      "file": "src/cratekit/core/taxonomy.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a9fa6e972a9bc30e",
+      "subset": [
+        "tests/test_label_genre_gate.py",
+        "tests/test_taxonomy.py",
+        "tests/test_routing_parity.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1070,
+      "baseline_collected": 1070,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_genre_gate.py::test_a_kind_no_label_could_be_marked_with_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not KIND_NAME.fullmatch(kind):",
+      "new": "        if False:"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "K9_no_published_rules_judges_nothing",
+      "description": "kind_settled: drop the branch for a taxonomy with no published rule",
+      "reason": "ranked below the cap: with it gone the next branch still answers not judged, so the cost is the sentence and not the verdict, and test_a_copy_written_before_the_gate_had_published_rules_loads_and_judges_nothing names the sentence"
+    },
+    {
+      "id": "K10_any_is_not_the_kind_of_a_word",
+      "description": "_build_published: accept a rule naming the reserved kind any",
+      "reason": "ranked below the cap: the same guard family as K8, which is measured, and test_a_published_rule_naming_the_reserved_kind_is_refused names it"
+    }
+  ]
+}

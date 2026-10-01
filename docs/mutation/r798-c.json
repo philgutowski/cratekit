@@ -1,0 +1,308 @@
+{
+  "name": "r798-c",
+  "pass_kind": "light",
+  "branch": "relay/238",
+  "head": "08ae75a",
+  "when": "2026-10-01 18:15 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 11505,
+  "baseline_exit": 0,
+  "pytest_runs": 13,
+  "state_guarded": "~/Library/Application Support/cratekit (147583 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/review.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/review.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "59f3be5f3b186315",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 11505,
+    "baseline_collected": 11505,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "H1_a_returned_hold_is_never_refreshed",
+      "description": "review.hold: refresh a hold whatever its state, so a later round rewrites a hold a person returned",
+      "file": "src/cratekit/core/review.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "34eff0e459ad9749",
+      "subset": [
+        "tests/test_label_genre_gate.py",
+        "tests/test_review_queue.py",
+        "tests/test_label_offer_window.py",
+        "tests/test_label_approved.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 385,
+      "baseline_collected": 385,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_genre_gate.py::test_a_returned_hold_is_never_held_again"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        elif row[\"state\"] == HOLD_HELD:\n            conn.execute(\n                \"UPDATE held_offers SET payload = ?, group_key = ?, group_name = ?, \"",
+      "new": "        else:\n            conn.execute(\n                \"UPDATE held_offers SET payload = ?, group_key = ?, group_name = ?, \""
+    },
+    {
+      "id": "H2_only_a_hold_in_force_is_dropped",
+      "description": "review.release_hold: drop a hold in any state, so the record that a person returned a release is lost and it can be held again",
+      "file": "src/cratekit/core/review.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b4944e3dbf36de6b",
+      "subset": [
+        "tests/test_label_genre_gate.py",
+        "tests/test_review_queue.py",
+        "tests/test_label_offer_window.py",
+        "tests/test_label_approved.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 385,
+      "baseline_collected": 385,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_genre_gate.py::test_releasing_drops_a_hold_in_force_and_keeps_a_returned_one"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"DELETE FROM held_offers WHERE queue = ? AND item_id = ? AND state = ?\",\n            (_assert_declared_queue(queue), item_id, HOLD_HELD),",
+      "new": "            \"DELETE FROM held_offers WHERE queue = ? AND item_id = ?\",\n            (_assert_declared_queue(queue), item_id),"
+    },
+    {
+      "id": "H3_every_name_is_resolved_before_any_is_filed",
+      "description": "label held return: skip a name nothing holds and file the rest, so a mistyped identifier leaves a half done run reported as a refusal of nothing",
+      "file": "src/cratekit/label/held_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2bf9f44718083ec9",
+      "subset": [
+        "tests/test_label_genre_gate.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 804,
+      "baseline_collected": 804,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_genre_gate.py::test_returning_a_release_nothing_holds_refuses_and_files_none_of_the_others"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if unknown:\n            raise refuse(\n                \"review-item-unknown\",",
+      "new": "        if False:\n            raise refuse(\n                \"review-item-unknown\","
+    },
+    {
+      "id": "H4_a_release_with_no_isrc_was_not_asked_about",
+      "description": "label held: count a release with no ISRC as one the catalogue was asked about, so it hides a sweep whose every question went unread",
+      "file": "src/cratekit/label/held_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7c77176ee3677ed6",
+      "subset": [
+        "tests/test_label_genre_gate.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 804,
+      "baseline_collected": 804,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_genre_gate.py::test_a_release_with_no_isrc_does_not_hide_a_sweep_the_catalogue_refused_throughout"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if answer is not None and answer not in (searchers.NOT_ASKED, NO_ISRC):",
+      "new": "            if answer is not None and answer != searchers.NOT_ASKED:"
+    },
+    {
+      "id": "H5_a_returned_hold_is_marked",
+      "description": "label held return: file the release and leave its hold in force, so it is listed as held while it waits in review",
+      "file": "src/cratekit/label/held_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "330cade2fa7aed06",
+      "subset": [
+        "tests/test_label_genre_gate.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 804,
+      "baseline_collected": 804,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_genre_gate.py::test_a_held_release_returned_to_review_is_filed_and_not_held_again",
+        "tests/test_label_genre_gate.py::test_returning_twice_changes_nothing_the_second_time"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            review.return_hold(store, queue=queue, item_id=one.item_id)",
+      "new": "            pass"
+    },
+    {
+      "id": "H6_a_returned_release_passes_at_approval",
+      "description": "label approved: judge a release a person returned, so it is held a second time when it is accepted",
+      "file": "src/cratekit/label/approved_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c7202e7b28735cc3",
+      "subset": [
+        "tests/test_label_genre_gate.py",
+        "tests/test_label_approved.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 188,
+      "baseline_collected": 188,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_genre_gate.py::test_a_release_held_at_approval_is_returned_by_name_and_listed_the_next_time",
+        "tests/test_label_genre_gate.py::test_a_returned_mark_on_the_payload_alone_is_believed",
+        "tests/test_label_genre_gate.py::test_a_returned_release_is_listed_at_approval_and_not_judged_again"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if release.returned:\n            continue",
+      "new": "        if False:\n            continue"
+    },
+    {
+      "id": "H7_an_owned_release_is_not_asked_about",
+      "description": "label approved: ask the general catalogue about a release the library holds in full, on every run",
+      "file": "src/cratekit/label/approved_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "480e513beb778063",
+      "subset": [
+        "tests/test_label_genre_gate.py",
+        "tests/test_label_approved.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 188,
+      "baseline_collected": 188,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_genre_gate.py::test_the_catalogue_is_not_asked_about_a_release_the_library_already_holds"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        elif owned(outcome):",
+      "new": "        elif False:"
+    },
+    {
+      "id": "H8_the_recorded_words_are_the_words",
+      "description": "label approved: ignore the words the sweep recorded and ask the catalogue again for every accepted release",
+      "file": "src/cratekit/label/approved_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b4ff3b3fd6298ced",
+      "subset": [
+        "tests/test_label_genre_gate.py",
+        "tests/test_label_approved.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 188,
+      "baseline_collected": 188,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_genre_gate.py::test_a_release_on_a_label_the_registry_no_longer_holds_is_the_default_kind",
+        "tests/test_label_genre_gate.py::test_an_accepted_release_of_another_kind_is_held_at_approval_on_the_recorded_words",
+        "tests/test_label_genre_gate.py::test_an_owned_release_is_still_judged_on_words_the_sweep_recorded",
+        "tests/test_label_genre_gate.py::test_approval_judges_by_the_kind_the_label_has_now"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if release.genres is not None:",
+      "new": "        if False:"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "H9_a_grouping_counts_holds_in_force",
+      "description": "review.grouped: count returned holds as held",
+      "reason": "ranked below the cap: test_a_label_with_holds_and_no_items_still_has_its_row holds a returned hold beside three in force and asserts three"
+    },
+    {
+      "id": "H10_a_kind_is_checked_against_the_taxonomy",
+      "description": "label registry: store a kind the taxonomy does not name",
+      "reason": "ranked below the cap: test_a_kind_the_taxonomy_does_not_name_is_refused_and_nothing_is_written compares the registry file byte for byte across the refusal"
+    },
+    {
+      "id": "H11_unjudged_needs_both_rules",
+      "description": "label approved: report a release the kind rule passed as unjudged because its rows report no genre",
+      "reason": "ranked below the cap: a wrong failing line over a release that is still listed, and test_a_release_the_kind_rule_passed_is_judged_though_its_rows_report_no_genre names it"
+    }
+  ]
+}
