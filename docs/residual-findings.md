@@ -31708,3 +31708,68 @@ search page carries before it may answer MISS, taken from a live capture,
 so an unrecognised page is a parse break rather than an absence.
 
 **Not on the board bar.** Its input has not been observed.
+
+## R-796. The tagger has no source for non dance music, so every such track waits in INBOX for a genre by hand
+
+**Found:** at sitting 25, 2026-10-01, and measured in the brainstorm of the
+same day, recorded in
+`docs/plans/2026-10-01-0949-feat-published-genre-by-isrc-plan.md`. The
+tagger asks Beatport, Traxsource and Bandcamp by artist and title. Beatport
+does not carry funk, rock or soul, and the two fallbacks refuse this machine
+with bot checks (R-791). The taxonomy already has NonElectronic folders for
+those genres, and nothing fills them.
+
+**Measured cost.** 98 of the 111 untagged tracks in INBOX are non dance: 62
+from the author's playlists and 36 from the label test. A general catalogue
+asked by ISRC, Deezer, answered 79 of 79 sampled with no key and no bot
+check, and 29 of the 30 playlist tracks sampled got an answer that maps to a
+folder.
+
+**Closes when:** the plan's R1 to R6 hold, and a `crate tag folder` run over
+the 62 untagged playlist tracks writes a genre on at least nine in ten,
+recorded in `docs/cutover.md`.
+
+**On the board bar.** The author asked for it on 2026-10-01.
+
+## R-797. R&B is a flat folder under NonElectronic, and nothing says when a genre has outgrown having no folder of its own
+
+**Found:** in the brainstorm of 2026-10-01, recorded in
+`docs/plans/2026-10-01-0949-feat-published-genre-by-isrc-plan.md`. The
+author is growing an R&B collection and wants to pull from it by energy.
+`NonElectronic / Soul / R&B` holds 39 tracks as one list with energy
+disabled. Rock holds 109 under the same bucket, and no report names a genre
+that has reached a size worth a folder. A count store for genres with no
+folder, `genre_gaps.json`, is declared in the config and nothing writes or
+reads it.
+
+**Measured cost.** None in time. The author decided the shape: R&B at the
+top level with Low, Med and High bands, Soul moving with it, and new folders
+suggested at 50 tracks and never created without his word.
+
+**Closes when:** the plan's R7 to R10 hold in the code and the taxonomy, and
+an attended sitting has moved the live tracks on a rehearsed digest and read
+the report, recorded in `docs/cutover.md`.
+
+**On the board bar.** The author asked for it on 2026-10-01.
+
+## R-798. The label genre gate has no genre to judge, so a sweep offers and downloads music the label was never followed for
+
+**Found:** at sitting 25, 2026-10-01, and measured in the brainstorm of the
+same day, recorded in
+`docs/plans/2026-10-01-0949-feat-published-genre-by-isrc-plan.md`. The gate
+in `label approved` holds a release whose genre family does not fit, and no
+catalogue it reads reports a genre, so every release passes as not judged.
+It also runs only after a release is accepted, so the review queue carries
+everything. A label entry has no field for the kind of music it releases.
+
+**Measured cost.** 36 of the 186 tracks downloaded in the label test are not
+dance music: Christian music from another label with the same name as a
+followed one, pop, and Brazilian jazz. Each was offered, accepted on a count,
+downloaded, analysed and imported.
+
+**Closes when:** the plan's R11 to R18 hold, and a sweep over the labels of
+sitting 25 files none of those 36 for review and counts them as held,
+recorded in `docs/cutover.md`.
+
+**On the board bar.** The author asked for it on 2026-10-01. Waits on R-796,
+which builds the lookup.
