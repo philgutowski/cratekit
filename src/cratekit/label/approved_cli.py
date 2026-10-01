@@ -115,7 +115,7 @@ from cratekit.label import catalogue, sweep
 from cratekit.label import cli as label_cli
 from cratekit.label import gate as genre_gate
 from cratekit.label import registry as labels
-from cratekit.tagging import published, searchers
+from cratekit.tagging import searchers
 
 #: What the provenance sidecar says a listed row came from. ``intake land``
 #: reads exactly this word to find the rows it files under the labels tree.
@@ -352,7 +352,7 @@ def _judged_by_kind(
     declared: taxonomy.Taxonomy,
     read: list[tuple[_Release, _Read]],
     followed: labels.Registry,
-    owned: Callable[[_Read], bool],
+    owned: Callable[[_Release], bool],
 ) -> tuple[dict[str, _OutOfKind], dict[str, str]]:
     """Every read release held as another kind of music, and every one not judged.
 
@@ -378,6 +378,9 @@ def _judged_by_kind(
     """
     held: dict[str, _OutOfKind] = {}
     unjudged: dict[str, str] = {}
+    # ONE ASKING FOR THE RUN, so a catalogue that cannot be reached is given up
+    # on after a few releases and not paid for on every one.
+    asking = genre_gate.Asking()
     for release, outcome in read:
         if release.returned:
             continue
@@ -393,16 +396,14 @@ def _judged_by_kind(
             judged = genre_gate.judge_words(
                 declared, kind, genre_gate.Words((), searchers.NOT_ASKED)
             )
-        elif owned(outcome):
+        elif owned(release):
             unjudged[release.item_id] = (
                 "every track of it is already in the library, so the general "
                 "catalogue was not asked about it"
             )
             continue
         else:
-            judged = genre_gate.judge_rows(
-                declared, kind, outcome.rows, published.for_lookup()
-            )
+            judged = genre_gate.judge_rows(declared, kind, outcome.rows, asking)
         if judged.held:
             held[release.item_id] = _OutOfKind(release, judged)
         elif judged.verdict is routing.KindVerdict.NOT_JUDGED:
@@ -421,10 +422,13 @@ def _release_of(items: review.ReviewStore, item: review.Item) -> _Release:
     """
     identity = review.identity_of(items, item.item_id) or {}
     release_id = _text(identity.get("release_id")) or _text(item.payload.get("identity")) or ""
-    # RETURNED BY EITHER RECORD. The hold is the record of a return, and the
-    # payload carries the same word, which is what survives a queue exported
-    # to another machine. Believing either is the safe direction: a returned
-    # release held a second time is music a person asked for and never gets.
+    # RETURNED BY EITHER RECORD. The hold is the record of a return. A release
+    # the gate held at a SWEEP also carries the word on its payload, written
+    # when it was filed, and that copy is what survives a queue exported to
+    # another machine. A release returned while it was already in review has
+    # the hold alone, since a decided item's payload is never rewritten.
+    # Believing either is the safe direction: a returned release held a second
+    # time is music a person asked for and never gets.
     standing = review.find_hold(items, queue=str(Queue.LABEL_RELEASE), item_id=item.item_id)
     returned = (
         standing is not None and standing.state == review.HOLD_RETURNED
@@ -632,6 +636,12 @@ def label_approved(ctx) -> Envelope:
     # THE DECLARATION BEFORE THE FIRST LOGIN (R-685). An active copy that cannot
     # be read refuses here, not after every accepted release was fetched.
     declared = active_taxonomy.load(cfg)
+    # THE REGISTRY BEFORE THE FIRST LOGIN TOO, for the same reason (R-798). A
+    # label's kind decides what the gate holds, and judging every label as the
+    # default because the registry could not be read would hold an R&B label's
+    # own releases. So an unreadable registry refuses here, with its own
+    # remedy, and not after every accepted release was fetched.
+    followed = labels.RegistryStore().load()
     # LOOKED UP ON THE MODULE AT CALL TIME, the contract ``catalogue`` states,
     # which is what lets a suite substitute the seam.
     found = catalogue.resolve(cfg)
@@ -677,23 +687,27 @@ def label_approved(ctx) -> Envelope:
     # KIND AS WELL, and a release of another kind is held whatever its share
     # (R-798). A release is UNJUDGED only when neither rule judged it, and the
     # line says what each was missing.
-    def fully_owned(outcome: _Read) -> bool:
+    # EACH RELEASE IS RESOLVED AGAINST THE LIBRARY ONCE, HERE, before either
+    # rule runs. Resolution is a read and writes nothing, the offer into the
+    # match queue stays below, after the gate. The kind rule asks it whether
+    # the library already holds a release in full, and the listing loop reads
+    # the same answer.
+    resolutions = {
+        release.item_id: tuple(
+            match.resolve_one(one, index, suppresses=suppresses, suppression_id=identify)
+            for one in outcome.wanted
+        )
+        for release, outcome in answered
+    }
+    rows_unread = {release.item_id for release, _why in unreadable}
+
+    def fully_owned(release: _Release) -> bool:
         """Every row read, and every one already in the library. At least one."""
-        return (
-            bool(outcome.wanted)
-            and not outcome.unreadable
-            and all(
-                match.resolve_one(
-                    one, index, suppresses=suppresses, suppression_id=identify
-                ).state
-                is match.MatchState.MATCHED
-                for one in outcome.wanted
-            )
+        return release.item_id not in rows_unread and sweep.every_track_owned(
+            resolutions[release.item_id]
         )
 
-    by_kind, kind_unjudged = _judged_by_kind(
-        declared, answered, labels.RegistryStore().load(), fully_owned
-    )
+    by_kind, kind_unjudged = _judged_by_kind(declared, answered, followed, fully_owned)
     held: dict[str, _Held | _OutOfKind] = {**by_share, **by_kind}
     ungated = [
         (release, f"{unjudged[release.item_id]}, and {kind_unjudged[release.item_id]}")
@@ -703,15 +717,10 @@ def label_approved(ctx) -> Envelope:
     for release, outcome in answered:
         if release.item_id in held:
             continue
-        wanted, year = outcome.wanted, outcome.year
+        year = outcome.year
         if year is None:
             undated.append(release)
-        resolved = match.MatchResult(
-            matches=tuple(
-                match.resolve_one(one, index, suppresses=suppresses, suppression_id=identify)
-                for one in wanted
-            )
-        )
+        resolved = match.MatchResult(matches=resolutions[release.item_id])
         if any(match_cli.touches_the_queue(one) for one in resolved.matches):
             # THE REVIEW STORE IS OPENED ONLY WHEN A ROW TOUCHES IT, a question
             # or a row a rule owns, as the intake worker opens it, and the

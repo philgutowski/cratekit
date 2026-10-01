@@ -35,7 +35,16 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Sequence
 
-from cratekit.core.taxonomy import ANY_KIND, BpmPrior, Bucket, FormerPlace, Sub, Taxonomy
+from cratekit.core.taxonomy import (
+    ANY_KIND,
+    BpmPrior,
+    Bucket,
+    FormerPlace,
+    GateRule,
+    PublishedRule,
+    Sub,
+    Taxonomy,
+)
 
 
 class Match(str, Enum):
@@ -651,15 +660,24 @@ def gate_family(taxonomy: Taxonomy, source_genre: str | None) -> str | None:
     if not value:
         return None
     for rule in taxonomy.label_gate.rules:
-        matched = (
-            (rule.equals and value in {e.lower() for e in rule.equals})
-            or (rule.all_of and all(needle in value for needle in rule.all_of))
-            or (rule.any_of and any(needle in value for needle in rule.any_of))
-        )
-        if not matched:
+        if not _rule_matches(rule, value):
             continue
         return None if rule.keep else rule.family
     return None
+
+
+def _rule_matches(rule: GateRule | PublishedRule, value: str) -> bool:
+    """Whether one gate rule claims a lowercase word. The matcher of both tables.
+
+    ONE SPELLING, for the share rules and the published ones, so a fix to how a
+    word is matched cannot reach one table and miss the other. Every needle is
+    folded lowercase by the loader, for both, so nothing is folded here.
+    """
+    return bool(
+        (rule.equals and value in rule.equals)
+        or (rule.all_of and all(needle in value for needle in rule.all_of))
+        or (rule.any_of and any(needle in value for needle in rule.any_of))
+    )
 
 
 def gate_decisions(
@@ -710,11 +728,7 @@ def published_kind(taxonomy: Taxonomy, word: str | None) -> str | None:
     if not value:
         return None
     for rule in taxonomy.label_gate.published:
-        if (
-            (rule.equals and value in rule.equals)
-            or (rule.all_of and all(needle in value for needle in rule.all_of))
-            or (rule.any_of and any(needle in value for needle in rule.any_of))
-        ):
+        if _rule_matches(rule, value):
             return rule.kind
     return None
 

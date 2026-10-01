@@ -394,6 +394,23 @@ def test_a_default_kind_that_is_not_a_word_is_refused(default_raw):
     assert any("default_kind must be" in p for p in problems_from(default_raw, mutate))
 
 
+def test_the_word_that_clears_a_kind_cannot_be_the_kind_of_a_word(default_raw):
+    def mutate(data):
+        data["label_gate"]["published"].append({"any_of": ["polka"], "kind": "default"})
+
+    assert any("clears a label's kind" in p for p in problems_from(default_raw, mutate))
+
+
+def test_a_share_rule_needle_typed_with_a_capital_matches_too(default_raw):
+    """Both rule tables are folded when loaded and matched by one function."""
+    data = copy.deepcopy(default_raw)
+    data["label_gate"]["rule"].append({"any_of": ["Gqom"], "family": "gqom"})
+    data["label_gate"]["rule"].append({"equals": ["Kwaito"], "family": "kwaito"})
+    built = build_taxonomy(data)
+    assert routing.gate_family(built, "gqom") == "gqom"
+    assert routing.gate_family(built, "KWAITO") == "kwaito"
+
+
 def test_a_kind_no_label_could_be_marked_with_is_refused(default_raw):
     """The registry stores a kind as one word, so a rule may name no other shape."""
 
@@ -530,7 +547,7 @@ def test_a_release_that_would_be_held_is_asked_about_again_before_it_is():
     """One track's ISRC can sit on a compilation of another kind."""
     lookup = Lookup({isrc(1): ("Pop",), isrc(2): ("Dance",), isrc(3): ("Christian",)})
     rows = [Track(str(n), "A", f"T{n}", isrc(n)) for n in (1, 2, 3)]
-    judged = genre_gate.judge_rows(TAXONOMY, None, rows, lookup)
+    judged = genre_gate.judge_rows(TAXONOMY, None, rows, genre_gate.Asking(lookup))
     assert judged.verdict is KindVerdict.PASS
     assert judged.genres == ("Pop", "Dance")
     assert lookup.asked == [isrc(1), isrc(2)]
@@ -539,7 +556,7 @@ def test_a_release_that_would_be_held_is_asked_about_again_before_it_is():
 def test_a_release_whose_first_track_passes_asks_about_no_other():
     lookup = Lookup({isrc(1): ("Dance",), isrc(2): ("Christian",)})
     rows = [Track(str(n), "A", f"T{n}", isrc(n)) for n in (1, 2)]
-    judged = genre_gate.judge_rows(TAXONOMY, None, rows, lookup)
+    judged = genre_gate.judge_rows(TAXONOMY, None, rows, genre_gate.Asking(lookup))
     assert judged.verdict is KindVerdict.PASS
     assert lookup.asked == [isrc(1)]
 
@@ -547,7 +564,7 @@ def test_a_release_whose_first_track_passes_asks_about_no_other():
 def test_a_release_is_held_only_when_every_track_asked_agrees():
     lookup = Lookup({isrc(n): ("Christian",) for n in (1, 2, 3, 4)})
     rows = [Track(str(n), "A", f"T{n}", isrc(n)) for n in (1, 2, 3, 4)]
-    judged = genre_gate.judge_rows(TAXONOMY, None, rows, lookup)
+    judged = genre_gate.judge_rows(TAXONOMY, None, rows, genre_gate.Asking(lookup))
     assert judged.verdict is KindVerdict.HOLD
     assert judged.genres == ("Christian",)
     assert lookup.asked == [isrc(1), isrc(2), isrc(3)]
@@ -556,11 +573,38 @@ def test_a_release_is_held_only_when_every_track_asked_agrees():
 def test_a_catalogue_that_refuses_after_a_would_be_hold_holds_nothing():
     lookup = Lookup({isrc(1): ("Christian",), isrc(2): "blocked"})
     rows = [Track(str(n), "A", f"T{n}", isrc(n)) for n in (1, 2, 3)]
-    judged = genre_gate.judge_rows(TAXONOMY, None, rows, lookup)
+    judged = genre_gate.judge_rows(TAXONOMY, None, rows, genre_gate.Asking(lookup))
     assert judged.verdict is KindVerdict.NOT_JUDGED
     assert judged.answer == "blocked"
     assert judged.genres == ()
     assert lookup.asked == [isrc(1), isrc(2)]
+
+
+def test_three_releases_unread_in_a_row_end_the_asking_and_an_answer_resets_it():
+    """An unreachable catalogue is not remembered by the lookup, so without this
+    every release of every label pays a transport timeout."""
+    table = {isrc(n): "unreachable" for n in (1, 2, 4, 5, 6)}
+    table[isrc(3)] = ("Dance",)
+    lookup = Lookup(table)
+    asking = genre_gate.Asking(lookup)
+
+    def ask(n: int | None) -> genre_gate.Words:
+        return asking.words([Track("t", "A", "T", isrc(n) if n else "")])
+
+    assert [ask(n).answer for n in (1, 2)] == ["unreachable", "unreachable"]
+    assert ask(None).answer == "no-isrc"  # asked nothing: neither ends the run nor extends it
+    assert ask(3).genres == ("Dance",)  # an answer ends the run of two
+    assert [ask(n).answer for n in (4, 5, 6)] == ["unreachable"] * 3
+    asked = list(lookup.asked)
+    unasked = ask(7)
+    assert lookup.asked == asked
+    assert unasked.answer == "not-asked"
+    assert not unasked.unread
+    assert unasked.why_none == (
+        "the general catalogue could not be read for 3 releases in a row, so the "
+        "rest were not asked about"
+    )
+    assert genre_gate.UNREAD_IN_A_ROW == 3
 
 
 def test_the_gate_names_the_review_kind_the_sweep_files_under():
@@ -1197,6 +1241,39 @@ def test_a_dead_verifier_over_a_window_of_standing_holds_refuses(installed, monk
     assert sorted(held_ids(installed)) == ["r-1", "r-2"]
 
 
+def test_an_unreachable_catalogue_is_given_up_on_once_for_the_whole_sweep(
+    installed, monkeypatch
+):
+    """One job, two labels. The outage is counted across them, not per label."""
+    register()
+    register(name="Salt Flats")
+    fake = Provider(
+        artists={
+            SLUG: FakePagedArtist([FakeRelease("a-1", year="2026"), FakeRelease("a-2", year="2025")]),
+            "salt-flats": FakePagedArtist(
+                [FakeRelease("b-1", year="2026"), FakeRelease("b-2", year="2025")]
+            ),
+        },
+        releases={
+            rid: ([Track(f"t-{rid}", "Label Act", f"Release {rid}", isrc(n))], 2026)
+            for n, rid in enumerate(("a-1", "a-2", "b-1", "b-2"), start=1)
+        },
+    )
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
+    lookup = Lookup({isrc(n): "unreachable" for n in (1, 2, 3, 4)})
+    bind_lookup(monkeypatch, lookup)
+
+    sweep_once()
+
+    assert lookup.asked == [isrc(1), isrc(2), isrc(3)]
+    assert sorted(filed(installed)) == ["a-1", "a-2", "b-1", "b-2"]
+    last = filed(installed)["b-2"].payload
+    assert last["genre_gate"] == "not-judged"
+    assert last["genre_gate_answer"] == "not-asked"
+    assert "3 releases in a row" in last["genre_gate_note"]
+    assert held_ids(installed) == []
+
+
 def test_a_release_with_no_isrc_does_not_hide_a_sweep_the_catalogue_refused_throughout(
     installed, monkeypatch
 ):
@@ -1291,6 +1368,22 @@ def listing(cfg, entry, releases, *, gate, offered=None, limit=None, owned=None)
         limit=limit,
         gate=gate,
     )
+
+
+def test_a_hold_in_force_on_a_release_already_in_the_queue_is_dropped(installed):
+    """A process that dies between filing a release and dropping its hold leaves both."""
+    with review.open_store(installed) as store:
+        hold_one(store, "r1")
+        gate = genre_gate.SweepGate(
+            TAXONOMY,
+            tracks=FailingReader(set()),
+            standing=genre_gate.StandingHolds(store),
+            lookup=never_asked,
+        )
+        found = listing(installed, ENTRY, [FakeRelease("r1")], gate=gate, offered={"r1"})
+    assert found.held == 1
+    assert (found.candidates, found.gated) == ((), ())
+    assert found.stale == ("r1",)
 
 
 def test_a_released_hold_the_library_came_to_own_is_dropped_and_not_filed(installed):
@@ -1440,6 +1533,21 @@ def test_a_kind_the_taxonomy_does_not_name_is_refused_and_nothing_is_written(ins
     code, envelope = drive(["label", "registry", "add", "New Label", "--kind", "polka"])
     assert code == int(ExitCode.PRECONDITION), envelope
     assert labels.RegistryStore().load().by_name("New Label") is None
+
+
+def test_the_word_default_clears_a_kind_back_to_none(installed):
+    """So the label follows the taxonomy's default again, whatever that becomes."""
+    register("--kind", "rnb")
+    code, envelope = drive(["label", "registry", "set", LABEL, "--kind", "default"])
+    assert code == int(ExitCode.OK), envelope
+    assert labels.RegistryStore().load().by_id(SLUG).kind is None
+    register("--kind", "rnb")
+    register("--kind", "default")
+    assert labels.RegistryStore().load().by_id(SLUG).kind is None
+    # A kind of None still means "keep what is held", as for every field.
+    register("--kind", "rnb")
+    labels.RegistryStore().edit(SLUG, track_limit=5)
+    assert labels.RegistryStore().load().by_id(SLUG).kind == "rnb"
 
 
 def test_a_kind_alone_is_a_field_set_can_change(installed):
@@ -1733,6 +1841,23 @@ def test_an_owned_release_is_still_judged_on_words_the_sweep_recorded(installed,
     bind_lookup(monkeypatch, never_asked)
     _code, envelope = drive(["label", "approved"])
     assert [one["release_id"] for one in envelope["data"]["summary"]["held"]] == ["r-own"]
+
+
+def test_an_unreadable_registry_refuses_approval_before_the_provider_is_resolved(
+    installed, monkeypatch
+):
+    """A label's kind decides what is held, so the registry is read first."""
+    register()
+    accept(installed, "r-1")
+    labels.RegistryStore().path.write_text("{ not json", encoding="utf-8")
+
+    def never(_cfg):
+        raise AssertionError("the provider was resolved")
+
+    monkeypatch.setattr(catalogue, "resolve", never)
+    code, envelope = drive(["label", "approved"])
+    assert code != int(ExitCode.OK), envelope
+    assert "label" in envelope["cause"]["reason"]
 
 
 def test_a_catalogue_that_refuses_at_approval_holds_nothing_and_lists_the_release(

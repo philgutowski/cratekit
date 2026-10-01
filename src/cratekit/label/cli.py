@@ -122,7 +122,8 @@ def build_registry(parser, entry) -> None:
         help=(
             "the kind of music this label is followed for, one the library's "
             "taxonomy names under label_gate, or any; it decides which releases "
-            "the genre gate passes, and a label with none is the default kind"
+            "the genre gate passes. A label with none is the taxonomy's default "
+            "kind, and --kind default clears a kind back to none"
         ),
     )
     parser.set_defaults(_handler=registry_cmd)
@@ -231,6 +232,9 @@ def _declared_kind(kind: str) -> str:
     sweep exactly like a catalogue that had nothing to say.
     """
     wanted = labels.check_kind(kind)
+    if wanted == taxonomy.NO_KIND:
+        # CLEARS THE KIND, and needs no taxonomy to say so.
+        return wanted
     named = active_taxonomy.load(_load()).label_gate.kinds
     if wanted == taxonomy.ANY_KIND or wanted in named:
         return wanted
@@ -286,6 +290,11 @@ def registry_cmd(ctx) -> Envelope:
         )
     if kind is not None:
         kind = _declared_kind(kind)
+    # ``--kind default`` CLEARS IT. The store keeps None for a label that
+    # follows the taxonomy's default, so a later change of that default
+    # reaches it, which a stored copy of today's default would not.
+    clear_kind = kind == taxonomy.NO_KIND
+    kind = None if clear_kind else kind
     if action == "add":
         label_id = store.add(
             name,
@@ -294,6 +303,7 @@ def registry_cmd(ctx) -> Envelope:
             track_limit=track_limit,
             offer=offer,
             kind=kind,
+            clear_kind=clear_kind,
         )
         held = store.load()
         return ctx.envelope(
@@ -318,6 +328,7 @@ def registry_cmd(ctx) -> Envelope:
             track_limit=track_limit,
             offer=offer,
             kind=kind,
+            clear_kind=clear_kind,
         )
         held = store.load()
         return ctx.envelope(
@@ -1108,6 +1119,23 @@ def run_increment(
 _JOB_LIBRARY: dict[tuple[str, str], sweep.LibraryView] = {}
 
 
+#: How the general catalogue is asked for the one job being driven, keyed by
+#: the job, on the reasoning ``_JOB_LIBRARY`` gives. One sweep job carries one
+#: item per label, and an asking per item would give an unreachable catalogue
+#: three transport timeouts for every label before it was given up on (R-798).
+_JOB_ASKING: dict[str, genre_gate.Asking] = {}
+
+
+def _job_asking(job) -> genre_gate.Asking:
+    """The asking for ``job``, made on first use and kept for that job alone."""
+    key = str(job.job_id)
+    held = _JOB_ASKING.get(key)
+    if held is None:
+        _JOB_ASKING.clear()
+        held = _JOB_ASKING[key] = genre_gate.Asking()
+    return held
+
+
 def _job_library(job, cfg: config.Config) -> Callable[[], sweep.LibraryView]:
     """The library view for ``job``, walked on first use and once per job."""
     key = (str(job.job_id), str(cfg.library.root / cfg.library.music_dir))
@@ -1345,6 +1373,7 @@ def handle(job, item, cfg) -> jobs.Produced | None:
                 declared,
                 tracks=tracks.release_tracks,
                 standing=genre_gate.StandingHolds(store),
+                asking=_job_asking(job),
             ),
             run_id=run_id,
         )

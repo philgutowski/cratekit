@@ -13,7 +13,7 @@ R-135 is what happens when those two answers share a shape.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Container, Iterator, Mapping
+from collections.abc import Callable, Container, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
@@ -28,9 +28,9 @@ from cratekit.label import crawl, registry
 from cratekit.label import gate as genre_gate
 from cratekit.label import verify as label_verify
 from cratekit.label.catalogue import (
+    READS_FAILED_IN_A_ROW,
     Catalogue,
     ReleaseTracks,
-    ReleaseUnresolvable,
     Unread,
     missing_listing,
 )
@@ -368,7 +368,21 @@ LibraryView = tuple[match.LibraryIndex, Callable[..., bool], Callable[..., str]]
 #: releases are not asked. Three, on ``label.approved_cli.OUTAGE_AFTER``'s
 #: reasoning: one is a bad release, two a coincidence, and each has already
 #: spent a full retry ladder by the time it is counted.
-OUTAGE_AFTER = 3
+#: THE SAME NUMBER AS THE SHARED READER'S, by being it. The rule itself lives
+#: in :class:`~cratekit.label.catalogue.ReleaseTracks` since R-798, and this
+#: name is kept for the callers and the docstrings that cite it.
+OUTAGE_AFTER = READS_FAILED_IN_A_ROW
+
+
+def every_track_owned(resolved: Iterable[match.Match]) -> bool:
+    """Whether a release's resolved tracks say the library holds it in full.
+
+    EVERY TRACK, AND AT LEAST ONE. ``all`` over nothing would say owned. One
+    spelling, for the sweep's ownership question and for ``label approved``,
+    which asks it to decide whether a release still needs judging (R-798).
+    """
+    states = [one.state for one in resolved]
+    return bool(states) and all(state is match.MatchState.MATCHED for state in states)
 
 
 class OwnedReleases:
@@ -419,13 +433,18 @@ class OwnedReleases:
         library: Callable[[], LibraryView] | None = None,
     ) -> None:
         self.cfg = cfg
-        #: Asked for ``release_tracks`` and nothing else, so the worker hands a
-        #: :class:`ReleaseTracks` and the genre gate shares its reads.
-        self.catalogue = catalogue
+        #: ALWAYS A :class:`ReleaseTracks`, the worker's when it hands one, so
+        #: the genre gate shares its reads, else one of this object's own. The
+        #: outage rule is that reader's and is counted nowhere else (R-798):
+        #: this class kept a counter of its own until the second review, two
+        #: counters on one read path that could come to disagree about when
+        #: the provider is down.
+        self.catalogue = (
+            catalogue if isinstance(catalogue, ReleaseTracks) else ReleaseTracks(catalogue)
+        )
         self._library_of = library
         self._view: LibraryView | None = None
         self._answers: dict[str, bool] = {}
-        self._failed_in_a_row = 0
 
     def __contains__(self, identity: object) -> bool:
         if not isinstance(identity, str) or not identity:
@@ -443,20 +462,15 @@ class OwnedReleases:
         return self._view
 
     def _holds(self, release_id: str) -> bool:
-        if self._failed_in_a_row >= OUTAGE_AFTER:
-            return False
         try:
             rows, _year = self.catalogue.release_tracks(release_id)
         except CratekitError:
             raise
-        except ReleaseUnresolvable:
-            # THE PROVIDER ANSWERED, so the run of failures is broken.
-            self._failed_in_a_row = 0
-            return False
         except Exception:  # noqa: BLE001 - not owned, and the release is offered
-            self._failed_in_a_row += 1
+            # A release that is gone, one the provider failed on, and one the
+            # reader did not ask for because the provider is failing: each is
+            # not owned, and the reader keeps the count.
             return False
-        self._failed_in_a_row = 0
         if not rows:
             return False
         try:
@@ -464,9 +478,8 @@ class OwnedReleases:
         except match.UnreadableList:
             return False
         index, suppresses, identify = self._library()
-        return all(
-            match.resolve_one(one, index, suppresses=suppresses, suppression_id=identify).state
-            is match.MatchState.MATCHED
+        return every_track_owned(
+            match.resolve_one(one, index, suppresses=suppresses, suppression_id=identify)
             for one in wanted
         )
 
@@ -608,11 +621,17 @@ def list_for_label(
             if was is not None and was.state == review.HOLD_HELD:
                 stale.append(identity)
             continue
+        standing = gate.standing(identity) if gate is not None else None
         if identity in offered_ids:
             held += 1
             first_held = first_held if first_held is not None else release
+            # IN THE QUEUE AND STILL HELD is a state two writes can leave when
+            # a process dies between them, and one a queue brought in from
+            # another machine can make. The queue is the truth: the release is
+            # in review, so its hold goes.
+            if standing is not None and standing.state == review.HOLD_HELD:
+                stale.append(identity)
             continue
-        standing = gate.standing(identity) if gate is not None else None
         if standing is not None and standing.state == review.HOLD_RETURNED:
             # A PERSON RETURNED IT AND THE QUEUE DOES NOT HOLD IT, which a
             # queue moved between machines can produce. Filed, and never

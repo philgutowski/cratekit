@@ -494,6 +494,7 @@ class RegistryStore:
         track_limit: int | None = None,
         offer: int | None = None,
         kind: str | None = None,
+        clear_kind: bool = False,
     ) -> str:
         """Add or update by identifier. Re-adding keeps the same ``label_id``.
 
@@ -534,7 +535,9 @@ class RegistryStore:
                     existing.track_limit if existing else None
                 ),
                 offer=offer if offer is not None else (existing.offer if existing else None),
-                kind=kind if kind is not None else (existing.kind if existing else None),
+                kind=None
+                if clear_kind
+                else (kind if kind is not None else (existing.kind if existing else None)),
             )
 
         self.update(mutate)
@@ -600,6 +603,7 @@ class RegistryStore:
         track_limit: int | None = None,
         offer: int | None = None,
         kind: str | None = None,
+        clear_kind: bool = False,
     ) -> LabelEntry:
         """Change the given fields of a held entry and keep every other one.
 
@@ -635,7 +639,9 @@ class RegistryStore:
                 seed_artists=seeds if seeds is not None else existing.seed_artists,
                 track_limit=track_limit if track_limit is not None else existing.track_limit,
                 offer=offer if offer is not None else existing.offer,
-                kind=kind if kind is not None else existing.kind,
+                # ``clear_kind`` IS THE ONLY WAY BACK TO NONE. A kind of None
+                # means "keep what is held", as it does for every field here.
+                kind=None if clear_kind else (kind if kind is not None else existing.kind),
             )
             current[existing.label_id] = entry
             edited.append(entry)

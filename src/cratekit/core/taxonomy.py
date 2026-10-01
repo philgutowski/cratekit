@@ -307,6 +307,11 @@ ANY_KIND = "any"
 #: ``default_kind`` is declared.
 DEFAULT_LABEL_KIND = "dance"
 
+#: The word that CLEARS a label's kind, so it follows ``default_kind`` again.
+#: Reserved like :data:`ANY_KIND`: a rule naming it would declare a kind no
+#: label could be marked with, since marking with it means "none".
+NO_KIND = "default"
+
 #: The shape of a kind's name, once folded: one word. ONE PATTERN FOR THE
 #: TAXONOMY AND THE REGISTRY. A person types a kind on a command line to mark a
 #: label with it, so a rule naming a kind in a shape the registry refuses would
@@ -1386,10 +1391,12 @@ def _build_gate(raw: Mapping[str, Any]) -> tuple[LabelGate, list[str]]:
         problems.append(f"[label_gate] out_of_place_share {share} must be between 0 and 1")
     rules: list[GateRule] = []
     for index, entry in enumerate(raw.get("rule") or []):
+        # FOLDED LOWERCASE HERE, as the published rules' needles are, because a
+        # word is matched lowercase and ``routing._rule_matches`` folds nothing.
         rule = GateRule(
-            all_of=tuple(entry.get("all_of") or ()),
-            any_of=tuple(entry.get("any_of") or ()),
-            equals=tuple(entry.get("equals") or ()),
+            all_of=tuple(str(one).lower() for one in entry.get("all_of") or ()),
+            any_of=tuple(str(one).lower() for one in entry.get("any_of") or ()),
+            equals=tuple(str(one).lower() for one in entry.get("equals") or ()),
             family=entry.get("family"),
             keep=bool(entry.get("keep", False)),
         )
@@ -1418,7 +1425,8 @@ def _build_gate(raw: Mapping[str, Any]) -> tuple[LabelGate, list[str]]:
         problems.append(
             f"[label_gate] default_kind {default_kind!r} is not a kind any "
             f"[[label_gate.published]] rule names ({', '.join(sorted(kinds))}), so "
-            f"every label left at the default would hold every release it was asked about"
+            f"no release of a label left at the default would ever be judged; set "
+            f"default_kind to one of those, or to {ANY_KIND!r}"
         )
     return LabelGate(tuple(rules), share, published, default_kind), problems
 
@@ -1481,6 +1489,12 @@ def _build_published(raw: Any) -> tuple[tuple[PublishedRule, ...], list[str]]:
             problems.append(
                 f"{where}: {ANY_KIND!r} is the kind of a label that passes everything "
                 f"and cannot be the kind of a word"
+            )
+            continue
+        if kind == NO_KIND:
+            problems.append(
+                f"{where}: {NO_KIND!r} is the word that clears a label's kind and "
+                f"cannot be the kind of a word"
             )
             continue
         rules.append(PublishedRule(kind=kind, **matchers))

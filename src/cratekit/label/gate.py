@@ -59,6 +59,13 @@ RELEASE_KIND = "label-release"
 #: sweep's other bounds give: one is a bad row, two a coincidence.
 TRACKS_ASKED = 3
 
+#: How many releases IN A ROW may come back unread before the general catalogue
+#: is not asked about the rest. Three, as the provider side's bound is. The
+#: lookup itself remembers a refusal and stops, and does not remember an
+#: outage, so without this a catalogue that is unreachable costs a transport
+#: timeout for every release of every label in the sweep.
+UNREAD_IN_A_ROW = 3
+
 #: The payload fields a filed release carries about the gate. ``GATE_FIELD`` is
 #: a :class:`~cratekit.core.routing.KindVerdict` value or :data:`RETURNED`.
 GATE_FIELD = "genre_gate"
@@ -281,8 +288,51 @@ def judge_words(declared: Taxonomy, kind: str | None, words: Words) -> Judged:
     return _of(routing.kind_verdict(declared, kind, words.genres), words)
 
 
+class Asking:
+    """The general catalogue as the gate asks it, release after release.
+
+    One per run of whatever is asking: the worker keeps one for a whole sweep
+    job, across its labels, and ``label approved`` makes one per invocation.
+
+    AFTER :data:`UNREAD_IN_A_ROW` RELEASES IN A ROW THAT COULD NOT BE READ, THE
+    REST ARE NOT ASKED ABOUT, and each says so. The count is of releases, not
+    requests, and a release that was answered ends the run, whatever the
+    answer. A release with no ISRC asked nothing, so it neither ends a run nor
+    extends one.
+
+    THE LOOKUP IS LOOKED UP AT CALL TIME when none was handed in, off
+    :mod:`cratekit.tagging.published`, which is the contract that module states
+    and what lets a suite hand in a fake.
+    """
+
+    def __init__(self, lookup: published.Lookup | None = None) -> None:
+        self._lookup = lookup
+        self._unread_in_a_row = 0
+
+    def words(
+        self,
+        rows: Sequence[Any],
+        *,
+        enough: Callable[[tuple[str, ...]], bool] | None = None,
+    ) -> Words:
+        if self._unread_in_a_row >= UNREAD_IN_A_ROW:
+            return Words(
+                (),
+                NOT_ASKED,
+                f"the general catalogue could not be read for {UNREAD_IN_A_ROW} "
+                f"releases in a row, so the rest were not asked about",
+            )
+        lookup = self._lookup if self._lookup is not None else published.for_lookup()
+        words = published_words(rows, lookup, enough=enough)
+        if words.unread:
+            self._unread_in_a_row += 1
+        elif words.answer != NO_ISRC:
+            self._unread_in_a_row = 0
+        return words
+
+
 def judge_rows(
-    declared: Taxonomy, kind: str | None, rows: Sequence[Any], lookup: published.Lookup
+    declared: Taxonomy, kind: str | None, rows: Sequence[Any], asking: Asking
 ) -> Judged:
     """Ask the general catalogue about a release's rows, and judge what it says.
 
@@ -294,7 +344,7 @@ def judge_rows(
     def passes(genres: tuple[str, ...]) -> bool:
         return routing.kind_verdict(declared, kind, genres).verdict is KindVerdict.PASS
 
-    return judge_words(declared, kind, published_words(rows, lookup, enough=passes))
+    return judge_words(declared, kind, asking.words(rows, enough=passes))
 
 
 #: Reads one release's rows and its year. ``Catalogue.release_tracks``' shape.
@@ -328,10 +378,10 @@ class SweepGate:
     one outage rule covers both askers. ``standing`` answers the holds the
     review database already carries.
 
-    THE LOOKUP IS LOOKED UP AT CALL TIME, off :mod:`cratekit.tagging.published`,
-    which is the contract that module states and what lets a suite hand in a
-    fake. It is one per process, so its pacing and its memory of a refusal span
-    every label of a sweep.
+    ``asking`` is how the general catalogue is asked. The worker hands one that
+    lasts the sweep job, so an unreachable catalogue is given up on once and
+    not once per label. ``lookup`` is for a caller with a lookup and no
+    ``Asking``, and builds one for this gate alone.
     """
 
     def __init__(
@@ -341,11 +391,12 @@ class SweepGate:
         tracks: TrackReader,
         standing: StandingHolds | None = None,
         lookup: published.Lookup | None = None,
+        asking: Asking | None = None,
     ) -> None:
         self.declared = declared
         self._tracks = tracks
         self._standing = standing
-        self._lookup = lookup
+        self._asking = asking if asking is not None else Asking(lookup)
 
     def standing(self, release_id: str) -> review.Hold | None:
         """The hold this release already has, in any state, or None."""
@@ -391,8 +442,7 @@ class SweepGate:
             return unjudged(
                 f"its tracks could not be read from the provider ({type(exc).__name__}: {exc})"
             )
-        lookup = self._lookup if self._lookup is not None else published.for_lookup()
-        return judge_rows(self.declared, entry.kind, rows, lookup)
+        return judge_rows(self.declared, entry.kind, rows, self._asking)
 
     def rejudge(self, entry: registry.LabelEntry, held: review.Hold) -> Judged:
         """Judge a standing hold again, from the words it recorded. No request.
@@ -425,6 +475,8 @@ __all__ = [
     "RELEASE_KIND",
     "RETURNED",
     "TRACKS_ASKED",
+    "UNREAD_IN_A_ROW",
+    "Asking",
     "Judged",
     "StandingHolds",
     "SweepGate",
