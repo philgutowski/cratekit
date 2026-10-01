@@ -1005,8 +1005,9 @@ kind = "dance"
 any_of = ["hip hop", "hip-hop"]
 kind = "hip_hop"
 
+# Before jazz, whose "blues" would claim the long spelling of R&B.
 [[label_gate.published]]
-any_of = ["r&b", "soul"]
+any_of = ["r&b", "soul", "rhythm & blues", "rhythm and blues"]
 kind = "rnb"
 
 [[label_gate.published]]

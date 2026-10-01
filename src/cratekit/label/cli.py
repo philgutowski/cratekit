@@ -1332,7 +1332,7 @@ def handle(job, item, cfg) -> jobs.Produced | None:
         # ONE READER FOR BOTH QUESTIONS (R-798). Ownership and the genre gate
         # read the same rows of the same release, so the second gets the
         # first one's answer and the gate adds no provider call.
-        tracks = sweep.ReleaseTracks(found)
+        tracks = catalogue.ReleaseTracks(found)
         owned = sweep.OwnedReleases(cfg, tracks, library=_job_library(job, cfg))
         run_id = str(payload.get("run_id") or job.job_id)
         source = sweep.LabelSource(
@@ -1344,7 +1344,7 @@ def handle(job, item, cfg) -> jobs.Produced | None:
             gate=genre_gate.SweepGate(
                 declared,
                 tracks=tracks.release_tracks,
-                standing=genre_gate.standing_in(store),
+                standing=genre_gate.StandingHolds(store),
             ),
             run_id=run_id,
         )

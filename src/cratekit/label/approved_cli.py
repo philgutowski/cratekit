@@ -75,11 +75,19 @@ publishes for its tracks: the words the sweep recorded on the item when it
 filed it, else the lookup, asked with the ISRCs of the rows this verb already
 read, so no provider call is added. A release of another kind than its label
 is followed as is HELD, named with the words and the kind, and neither listed
-nor offered. A release a person returned to review after a hold is passed
-without being judged. A release the catalogue has no word for is listed, and
-it joins the failing ``ungated`` line only when the share rule did not judge
-it either. This is what judges a release filed before the sweep had a gate, or
-filed unjudged because the catalogue could not be read that day.
+nor offered. A release a person returned to review is passed without being
+judged, and the held line names the command that returns one,
+``crate label held return``, which works on a release already in review. A
+release the catalogue has no word for is listed, and it joins the failing
+``ungated`` line only when the share rule did not judge it either. This is
+what judges a release filed before the sweep had a gate, or filed unjudged
+because the catalogue could not be read that day.
+
+THE CATALOGUE IS NOT ASKED ABOUT A RELEASE THE LIBRARY ALREADY HOLDS IN FULL.
+This verb reads every accepted release on every run, the downloaded ones
+included, and a hold can only keep a release out of the list and out of the
+match queue. A release with every track owned reaches neither, so asking about
+it would spend paced requests on every run for an answer that changes nothing.
 
 Not a confirm gate and not destructive: it writes two new files and the
 emitter refuses rather than replaces. Nothing here composes
@@ -92,7 +100,7 @@ import dataclasses
 import hashlib
 import json
 import shlex
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -344,6 +352,7 @@ def _judged_by_kind(
     declared: taxonomy.Taxonomy,
     read: list[tuple[_Release, _Read]],
     followed: labels.Registry,
+    owned: Callable[[_Read], bool],
 ) -> tuple[dict[str, _OutOfKind], dict[str, str]]:
     """Every read release held as another kind of music, and every one not judged.
 
@@ -362,6 +371,10 @@ def _judged_by_kind(
 
     A LABEL THE REGISTRY NO LONGER HOLDS IS THE DEFAULT KIND, which is what it
     would be judged as were it followed with no kind set.
+
+    A RELEASE THE LIBRARY HOLDS IN FULL IS NOT ASKED ABOUT, ``owned`` says
+    which, and says so as its reason. See the module docstring. Words the
+    sweep recorded are still judged, since that costs no request.
     """
     held: dict[str, _OutOfKind] = {}
     unjudged: dict[str, str] = {}
@@ -372,14 +385,24 @@ def _judged_by_kind(
         kind = entry.kind if entry is not None else None
         if release.genres is not None:
             words = genre_gate.Words(release.genres, searchers.Answer.MATCHED.value)
+            judged = genre_gate.judge_words(declared, kind, words)
         elif routing.kind_settled(declared, kind) is not None:
             # NOT THIS MODULE'S ``NOT_ASKED``, which is a release the PROVIDER
             # was not asked for. The two words are spelled alike and mean
             # different catalogues.
-            words = genre_gate.Words((), searchers.NOT_ASKED)
+            judged = genre_gate.judge_words(
+                declared, kind, genre_gate.Words((), searchers.NOT_ASKED)
+            )
+        elif owned(outcome):
+            unjudged[release.item_id] = (
+                "every track of it is already in the library, so the general "
+                "catalogue was not asked about it"
+            )
+            continue
         else:
-            words = genre_gate.published_words(outcome.rows, published.for_lookup())
-        judged = genre_gate.judge_words(declared, kind, words)
+            judged = genre_gate.judge_rows(
+                declared, kind, outcome.rows, published.for_lookup()
+            )
         if judged.held:
             held[release.item_id] = _OutOfKind(release, judged)
         elif judged.verdict is routing.KindVerdict.NOT_JUDGED:
@@ -566,8 +589,9 @@ def _held_check(held: _Held | _OutOfKind) -> dict[str, Any]:
             f"held.{release.release_id or release.item_id}",
             "info",
             f"{_named(release)} is HELD by the genre gate and none of it is in the "
-            f"list: {held.judged.reason}; to list it anyway, mark its label with the "
-            f"kind it is, or any, with: crate label registry set LABEL --kind KIND",
+            f"list: {held.judged.reason}; to list this one anyway: crate label held "
+            f"return {release.release_id}; to pass its kind for the whole label: "
+            f"crate label registry set LABEL --kind KIND",
         )
     label = release.label_name or release.label_id or "no named label"
     detail = (
@@ -653,8 +677,22 @@ def label_approved(ctx) -> Envelope:
     # KIND AS WELL, and a release of another kind is held whatever its share
     # (R-798). A release is UNJUDGED only when neither rule judged it, and the
     # line says what each was missing.
+    def fully_owned(outcome: _Read) -> bool:
+        """Every row read, and every one already in the library. At least one."""
+        return (
+            bool(outcome.wanted)
+            and not outcome.unreadable
+            and all(
+                match.resolve_one(
+                    one, index, suppresses=suppresses, suppression_id=identify
+                ).state
+                is match.MatchState.MATCHED
+                for one in outcome.wanted
+            )
+        )
+
     by_kind, kind_unjudged = _judged_by_kind(
-        declared, answered, labels.RegistryStore().load()
+        declared, answered, labels.RegistryStore().load(), fully_owned
     )
     held: dict[str, _Held | _OutOfKind] = {**by_share, **by_kind}
     ungated = [

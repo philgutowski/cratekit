@@ -27,10 +27,18 @@ from cratekit.core.review import DecisionStore, Queue
 from cratekit.label import crawl, registry
 from cratekit.label import gate as genre_gate
 from cratekit.label import verify as label_verify
-from cratekit.label.catalogue import Catalogue, ReleaseUnresolvable, Unread, missing_listing
+from cratekit.label.catalogue import (
+    Catalogue,
+    ReleaseTracks,
+    ReleaseUnresolvable,
+    Unread,
+    missing_listing,
+)
 from cratekit.sync import run
 
-KIND = "label-release"
+#: The review kind a release is filed under. The gate module declares the
+#: word, since this module imports that one, and this is the same object.
+KIND = genre_gate.RELEASE_KIND
 HANDLER_KEY = "sync.labels"
 
 
@@ -107,6 +115,13 @@ class LabelListing:
     #: longer holds them. Each is in ``candidates``, and its hold is dropped
     #: once it is filed.
     released: tuple[str, ...] = ()
+    #: The identities of holds in force that are HOLDS NO LONGER and will not be
+    #: filed by this pass: the release was deleted on purpose, the library came
+    #: to own it, or the window does not reach it and the gate would now pass
+    #: it. Each hold is dropped, so the held count is of releases the gate is
+    #: actually keeping out. One the window does not reach becomes what any
+    #: release past the window is, unexamined, and is judged when it is reached.
+    stale: tuple[str, ...] = ()
 
 
 def _year_of(release: Any) -> str:
@@ -356,45 +371,6 @@ LibraryView = tuple[match.LibraryIndex, Callable[..., bool], Callable[..., str]]
 OUTAGE_AFTER = 3
 
 
-class ReleaseTracks:
-    """One sweep item's reads of release tracks, each release read once (R-798).
-
-    Two questions read the same rows, whether the library owns the release and
-    what the general catalogue publishes for it, and each read is two provider
-    calls on a full retry ladder. The worker hands this to both, so the second
-    asker gets the first one's answer.
-
-    A FAILURE IS REMEMBERED TOO, and raised again as it was. The second asker
-    would otherwise climb the ladder a second time for a release the provider
-    just failed on. A ``CratekitError`` is not remembered: it stops the item,
-    so nobody asks twice.
-
-    FOR ONE ITEM AND NO LONGER. The worker builds one per label, so a remembered
-    failure never outlives the sweep that met it.
-    """
-
-    def __init__(self, catalogue: Catalogue) -> None:
-        self.catalogue = catalogue
-        self._read: dict[str, tuple[tuple[Any, ...], int | None] | Exception] = {}
-
-    def release_tracks(self, release_id: str) -> tuple[tuple[Any, ...], int | None]:
-        held = self._read.get(release_id)
-        if isinstance(held, Exception):
-            raise held
-        if held is not None:
-            return held
-        try:
-            answer = self.catalogue.release_tracks(release_id)
-        except CratekitError:
-            raise
-        except Exception as exc:
-            self._read[release_id] = exc
-            raise
-        rows, year = answer
-        self._read[release_id] = (tuple(rows), year)
-        return self._read[release_id]  # type: ignore[return-value]
-
-
 class OwnedReleases:
     """The release identities the library already holds, asked one at a time.
 
@@ -511,8 +487,7 @@ class QueuedReleases:
     def __contains__(self, identity: object) -> bool:
         if not isinstance(identity, str) or not identity:
             return False
-        item_id = review.item_id_for(Queue.LABEL_RELEASE, KIND, {"release_id": identity})
-        return review.find(self.store, item_id) is not None
+        return review.find(self.store, genre_gate.release_item_id(identity)) is not None
 
 
 def list_for_label(
@@ -562,6 +537,14 @@ def list_for_label(
     queued one is and for the same reason: its answer is local. It is judged
     again from the words its hold recorded, so a label whose kind changed
     files what now fits with no request made.
+
+    EVERY HOLD IN FORCE ON THE LABEL IS JUDGED AGAIN, NOT ONLY THE ONES THE
+    WINDOW REACHES. Newer releases push a held one past the window, and a hold
+    nothing looks at again would stay counted as held under a reason that
+    stopped being true when the label's kind changed. One the window does not
+    reach and the gate would now pass is reported in ``stale`` and its hold is
+    dropped. So is a hold on a release deleted on purpose since, and one on a
+    release the library has come to own.
     """
     del last_pulled
     claimed = entry.match or entry.name
@@ -609,13 +592,21 @@ def list_for_label(
     examined = 0
     gated: list[Gated] = []
     released: list[str] = []
+    stale: list[str] = []
+    reached: set[str] = set()
     for release in listed:
         if held + len(gated) + len(candidates) >= cap:
             break
         examined += 1
         identity = str(getattr(release, "id", "") or "")
+        reached.add(identity)
         if tombstoned(release):
             suppressed.append(_candidate(entry, release))
+            # DELETED ON PURPOSE OUTRANKS HELD. The release is not one the gate
+            # is keeping out of review any more, so its hold goes.
+            was = gate.standing(identity) if gate is not None else None
+            if was is not None and was.state == review.HOLD_HELD:
+                stale.append(identity)
             continue
         if identity in offered_ids:
             held += 1
@@ -633,6 +624,12 @@ def list_for_label(
             if again.held:
                 gated.append(Gated(_candidate(entry, release), again, standing=True))
                 first_held = first_held if first_held is not None else release
+            elif identity in owned_ids:
+                # THE LIBRARY CAME TO OWN IT WHILE IT WAS HELD. Nothing to file
+                # and nothing to hold, and like any owned release it takes no
+                # place. Asked only of a hold being released, since the answer
+                # is a provider read and a hold that stands does not need it.
+                stale.append(identity)
             else:
                 candidates.append(_candidate(entry, release, again.stamp()))
                 released.append(identity)
@@ -669,6 +666,11 @@ def list_for_label(
         canary = label_verify.verify_release(claimed, first_held, search=verify)
         if str(canary.get("verdict") or "unconfirmed") != "confirmed":
             held_unconfirmed = held + sum(1 for one in gated if one.standing)
+    if gate is not None:
+        for standing in gate.in_force(entry.label_id):
+            beyond_id = str(standing.identity.get("release_id") or "")
+            if beyond_id and beyond_id not in reached and not gate.rejudge(entry, standing).held:
+                stale.append(beyond_id)
     return LabelListing(
         candidates=tuple(candidates),
         dropped=tuple(dropped),
@@ -680,6 +682,7 @@ def list_for_label(
         held_unconfirmed=held_unconfirmed,
         gated=tuple(gated),
         released=tuple(released),
+        stale=tuple(stale),
     )
 
 
@@ -706,10 +709,7 @@ def offer_release(
     payload = dict(candidate.payload or {})
     payload.setdefault("identity", candidate.identity)
     if run_id:
-        existing = review.find(
-            store,
-            review.item_id_for(Queue.LABEL_RELEASE, KIND, {"release_id": candidate.identity}),
-        )
+        existing = review.find(store, genre_gate.release_item_id(candidate.identity))
         held_run = existing.payload.get(SWEEP_RUN) if existing is not None else None
         payload[SWEEP_RUN] = held_run or run_id
     return review.offer(
@@ -1012,8 +1012,13 @@ class LabelSource:
         judgment of one release and is true whatever happens to the rest of the
         sweep, the way an offer already made stays in the queue when a later
         one fails. A standing hold is written again too, which refreshes its
-        reason and keeps the run that first held it.
+        reason and keeps the run that first held it. A hold the listing found
+        stale is dropped here, for the same reason it is recorded here.
         """
+        for identity in listing.stale:
+            review.release_hold(
+                store, queue=Queue.LABEL_RELEASE, item_id=genre_gate.release_item_id(identity)
+            )
         for one in listing.gated:
             payload = dict(one.candidate.payload or {})
             payload.setdefault("identity", one.candidate.identity)

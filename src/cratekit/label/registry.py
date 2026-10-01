@@ -17,6 +17,7 @@ from typing import Any
 
 from cratekit.core import config
 from cratekit.core.cause import CratekitError, Scope, refuse
+from cratekit.core.taxonomy import KIND_NAME
 
 REGISTRY_VERSION = 1
 DEFAULT_TRACK_LIMIT = 400
@@ -138,9 +139,6 @@ def check_offer(offer: int) -> int:
     return offer
 
 
-_KIND = re.compile(r"[a-z0-9][a-z0-9_-]*")
-
-
 def check_kind(kind: str) -> str:
     """A label's kind, folded, or a refusal for a value that could never be one.
 
@@ -150,7 +148,7 @@ def check_kind(kind: str) -> str:
     out of the file (R-798).
     """
     folded = kind.strip().lower() if isinstance(kind, str) else ""
-    if not _KIND.fullmatch(folded):
+    if not KIND_NAME.fullmatch(folded):
         raise _field_invalid(
             f"a label's kind is a single word such as dance or rnb, not {kind!r}",
             "pass --kind with one of the kinds the library's taxonomy names, or any",

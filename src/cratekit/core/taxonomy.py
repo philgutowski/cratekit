@@ -307,6 +307,13 @@ ANY_KIND = "any"
 #: ``default_kind`` is declared.
 DEFAULT_LABEL_KIND = "dance"
 
+#: The shape of a kind's name, once folded: one word. ONE PATTERN FOR THE
+#: TAXONOMY AND THE REGISTRY. A person types a kind on a command line to mark a
+#: label with it, so a rule naming a kind in a shape the registry refuses would
+#: declare a kind no label could ever be given: it could hold releases and
+#: never pass one.
+KIND_NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
+
 
 @dataclass(frozen=True)
 class PublishedRule:
@@ -1397,8 +1404,12 @@ def _build_gate(raw: Mapping[str, Any]) -> tuple[LabelGate, list[str]]:
     problems += published_problems
     default_kind = raw.get("default_kind", DEFAULT_LABEL_KIND)
     kinds = {rule.kind for rule in published}
-    if not isinstance(default_kind, str) or not default_kind.strip():
-        problems.append("[label_gate] default_kind must be a kind's name")
+    if not isinstance(default_kind, str) or not KIND_NAME.fullmatch(
+        default_kind.strip().lower()
+    ):
+        problems.append(
+            f"[label_gate] default_kind must be a kind's name, one word, not {default_kind!r}"
+        )
         default_kind = DEFAULT_LABEL_KIND
     default_kind = default_kind.strip().lower()
     # CHECKED ONLY WHEN SOMETHING IS DECLARED. A copy with no published rule
@@ -1460,6 +1471,12 @@ def _build_published(raw: Any) -> tuple[tuple[PublishedRule, ...], list[str]]:
             problems.append(f"{where}: needs a kind")
             continue
         kind = kind.strip().lower()
+        if not KIND_NAME.fullmatch(kind):
+            problems.append(
+                f"{where}: kind {kind!r} is not one word, and a label is marked "
+                f"with a kind by typing it, so no label could be given this one"
+            )
+            continue
         if kind == ANY_KIND:
             problems.append(
                 f"{where}: {ANY_KIND!r} is the kind of a label that passes everything "

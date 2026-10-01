@@ -19,6 +19,13 @@ the sweep would have filed, marked as returned, and its hold is kept and marked
 too, so neither a later sweep nor ``label approved`` holds it again. Nothing is
 downloaded: the release waits in review like any other.
 
+A RELEASE ALREADY IN REVIEW CAN BE RETURNED TOO. ``label approved`` judges an
+accepted release by the same rule and holds one of another kind, and that
+release was never held by a sweep: it was filed before the gate existed, or
+filed unjudged. Returning it records the same mark, so the next
+``label approved`` lists it. Without this the only way back was to change the
+kind of its whole label.
+
 Not a confirm gate and not destructive. ``list`` writes nothing. ``return``
 files one review item per release named and changes one hold's state.
 """
@@ -30,13 +37,15 @@ from typing import Any
 
 from cratekit.cli.output import Envelope
 from cratekit.core import review, routing
-from cratekit.core.cause import Outcome, refuse
+from cratekit.core.cause import CratekitError, Outcome, refuse
 from cratekit.core.review import Queue
 from cratekit.label import cli as label_cli
 from cratekit.label import gate as genre_gate
+from cratekit.label import registry as labels
 from cratekit.label import sweep
 from cratekit.sync import run
 from cratekit.tagging import published, searchers
+from cratekit.tagging.tag import NO_ISRC
 
 LIST = "list"
 RETURN = "return"
@@ -146,7 +155,10 @@ def _sweep_rows(store: review.ReviewStore) -> list[dict[str, Any]]:
                 continue
             row["filed"] += 1
             answer = item.payload.get(genre_gate.GATE_ANSWER_FIELD)
-            if answer is not None and answer != searchers.NOT_ASKED:
+            # A RELEASE WITH NO ISRC WAS NOT ASKED ABOUT. Counting it would let
+            # one such release hide a sweep whose every real question went
+            # unread, since unread would no longer equal asked.
+            if answer is not None and answer not in (searchers.NOT_ASKED, NO_ISRC):
                 row["asked"] += 1
             if answer in published.UNREAD:
                 row["unread"] += 1
@@ -192,17 +204,33 @@ def _sweep_check(row: dict[str, Any]) -> dict[str, Any] | None:
     )
 
 
+def _unfollowed(held: Sequence[review.Hold]) -> frozenset[str]:
+    """The labels with a hold in force that the registry no longer holds.
+
+    A hold is judged again only by a sweep of its label, so one on a label
+    nobody follows any more stands until a person returns it, and its line
+    says so. AN UNREADABLE REGISTRY NAMES NONE: this is a note on a listing,
+    and the registry's own verbs are where that refusal belongs.
+    """
+    try:
+        followed = labels.RegistryStore().load()
+    except CratekitError:
+        return frozenset()
+    return frozenset(one.group for one in held if followed.by_id(one.group) is None)
+
+
 def _listed(ctx) -> Envelope:
     cfg = label_cli._load()
     with review.open_store(cfg) as store:
         held = review.holds(store, queue=str(Queue.LABEL_RELEASE))
         sweeps = _sweep_rows(store)
-    labels = _label_rows(held)
+    unfollowed = _unfollowed(held)
+    by_label = _label_rows(held)
     checks = [
         _check(
             "held",
             "info" if held else "ok",
-            f"{len(held)} release(s) held by the genre gate across {len(labels)} "
+            f"{len(held)} release(s) held by the genre gate across {len(by_label)} "
             f"label(s); none of them is in review and none is rejected"
             if held
             else "no release is held by the genre gate",
@@ -217,14 +245,19 @@ def _listed(ctx) -> Envelope:
                     for words, count in row["called"].items()
                 ),
             )
-            for row in labels
+            for row in by_label
         ),
         *(
             _check(
                 f"release.{_release_id(one) or one.item_id}",
                 "info",
                 f"{_named(one)} is held: {one.reason}; file it for review with: "
-                f"crate label held return {_release_id(one) or 'RELEASE_ID'}",
+                f"crate label held return {_release_id(one) or 'RELEASE_ID'}"
+                + (
+                    "; its label is no longer followed, so no sweep will judge it again"
+                    if one.group in unfollowed
+                    else ""
+                ),
             )
             for one in held
         ),
@@ -235,7 +268,7 @@ def _listed(ctx) -> Envelope:
             "checks": checks,
             "summary": {
                 "held": len(held),
-                "labels": labels,
+                "labels": by_label,
                 "releases": [
                     {
                         "release_id": _release_id(one),
@@ -269,67 +302,100 @@ def _returned(ctx) -> Envelope:
             origin=("label.held",),
         )
     cfg = label_cli._load()
+    queue = str(Queue.LABEL_RELEASE)
     checks: list[dict[str, Any]] = []
     filed: list[str] = []
+    marked: list[str] = []
     already: list[str] = []
     with review.open_store(cfg) as store:
         # EVERY NAME IS RESOLVED BEFORE ANYTHING IS FILED, so one mistyped
         # identifier refuses the run with nothing changed, not after the
-        # releases named before it were already returned.
-        found = {
-            release_id: review.find_hold(
-                store,
-                queue=str(Queue.LABEL_RELEASE),
-                item_id=genre_gate.release_item_id(release_id),
-            )
-            for release_id in dict.fromkeys(wanted)
-        }
-        unknown = [release_id for release_id, held in found.items() if held is None]
+        # releases named before it were already returned. A name is a hold, or
+        # failing that a release already in review.
+        found: dict[str, review.Hold | review.Item | None] = {}
+        for release_id in dict.fromkeys(wanted):
+            item_id = genre_gate.release_item_id(release_id)
+            found[release_id] = review.find_hold(
+                store, queue=queue, item_id=item_id
+            ) or review.find(store, item_id)
+        unknown = [release_id for release_id, one in found.items() if one is None]
         if unknown:
             raise refuse(
                 "review-item-unknown",
-                f"the genre gate is not holding a release named "
-                f"{', '.join(repr(one) for one in unknown)}, so there is nothing to "
+                f"no release named {', '.join(repr(one) for one in unknown)} is held "
+                f"by the genre gate or waiting in review, so there is nothing to "
                 f"return; nothing was filed",
-                steps=("take the identifier from: crate label held",),
+                steps=(
+                    "take the identifier from: crate label held",
+                    "or from the held line of: crate label approved",
+                ),
                 origin=("label.held",),
                 detail={"unknown": unknown},
             )
-        for release_id, held in found.items():
-            if held is None:
+        for release_id, one in found.items():
+            if isinstance(one, review.Item):
+                # IN REVIEW AND NEVER HELD BY A SWEEP. Nothing to file: the
+                # mark is made, already returned, in one write.
+                made = review.hold(
+                    store,
+                    queue=queue,
+                    kind=sweep.KIND,
+                    identity={"release_id": release_id},
+                    payload=dict(one.payload),
+                    group=str(one.payload.get("label_id") or ""),
+                    name=str(one.payload.get("label_name") or ""),
+                    reason="returned by hand while it was in review",
+                    detail={},
+                    run_id=str(one.payload.get(sweep.SWEEP_RUN) or ""),
+                    returned=True,
+                )
+                marked.append(release_id)
+                checks.append(
+                    _check(
+                        f"release.{release_id}",
+                        "ok",
+                        f"{_named(made)} is already in review as {one.item_id}; it is "
+                        f"marked returned, so crate label approved will not hold it",
+                    )
+                )
                 continue
-            if held.state == review.HOLD_RETURNED:
+            if one is None:
+                continue
+            if one.state == review.HOLD_RETURNED:
                 already.append(release_id)
                 checks.append(
                     _check(
                         f"release.{release_id}",
                         "ok",
-                        f"{_named(held)} was already returned to review; nothing changed",
+                        f"{_named(one)} was already returned to review; nothing changed",
                     )
                 )
                 continue
             # THE OFFER FIRST, THEN THE MARK. A hold marked returned whose item
             # was never filed is a release nothing holds and nothing offers.
-            payload = {**held.payload, **genre_gate.returned_stamp()}
+            payload = {**one.payload, **genre_gate.returned_stamp()}
             item = sweep.offer_release(
                 store,
                 run.Candidate(identity=release_id, recency="", payload=payload),
-                run_id=held.run_id or None,
+                run_id=one.run_id or None,
             )
-            review.return_hold(store, queue=str(Queue.LABEL_RELEASE), item_id=held.item_id)
+            review.return_hold(store, queue=queue, item_id=one.item_id)
             filed.append(release_id)
             checks.append(
                 _check(
                     f"release.{release_id}",
                     "ok",
-                    f"{_named(held)} is filed for review as {item.item_id} and will "
+                    f"{_named(one)} is filed for review as {item.item_id} and will "
                     f"not be held again; decide it with: crate review list --queue "
                     f"{Queue.LABEL_RELEASE}",
                 )
             )
     return ctx.envelope(
-        data={"checks": checks, "summary": {"returned": filed, "already_returned": already}},
-        outcome=Outcome.OK if filed else Outcome.NO_OP,
+        data={
+            "checks": checks,
+            "summary": {"returned": filed, "marked": marked, "already_returned": already},
+        },
+        outcome=Outcome.OK if filed or marked else Outcome.NO_OP,
     )
 
 

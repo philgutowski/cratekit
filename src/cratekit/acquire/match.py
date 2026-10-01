@@ -1473,6 +1473,19 @@ def _field(row: object, name: str, default: Any = None) -> Any:
     return default if value is None else value
 
 
+def row_isrc(row: object) -> Any:
+    """The ISRC a provider row carries, as the row spelled it, or None.
+
+    From the row itself, else from its ``external_ids``, which is where a
+    public playlist row keeps it. PUBLIC, because the label genre gate asks a
+    general catalogue by this value and must find it wherever this module's
+    own reader would: a second reader that knew one of the two places
+    would call a release unaskable while its rows carried the identifier.
+    """
+    external = _field(row, "external_ids", {})
+    return _field(row, "isrc") or (_field(external, "isrc") if external else None)
+
+
 def _first_named(entries: object) -> str:
     """The first non-empty name in a list of artists, whatever they are made of.
 
@@ -1681,8 +1694,7 @@ def _from_row(row: object, *, origin: str, position: int) -> Wanted:
     raw_title = str(_field(row, "title", "") or _field(row, "name", "")).strip()
     declared = str(_field(row, "version", "")).strip()
     title, embedded = split_title(raw_title)
-    external = _field(row, "external_ids", {})
-    isrc = _field(row, "isrc") or (_field(external, "isrc") if external else None)
+    isrc = row_isrc(row)
     artist = _artist_of(row)
     if not artist or not title:
         absent = "artist" if title else "title"
@@ -2854,6 +2866,7 @@ __all__ = [
     "read_text_lines",
     "read_text_rows",
     "read_tidal_tracks",
+    "row_isrc",
     "recording_token",
     "resolve_all",
     "resolve_one",

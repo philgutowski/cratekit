@@ -1616,8 +1616,14 @@ def hold(
     reason: str,
     detail: Mapping[str, Any],
     run_id: str,
+    returned: bool = False,
 ) -> Hold:
     """Withhold one candidate from ``queue``, or refresh the hold already there.
+
+    ``returned`` RECORDS A PERSON'S ANSWER WHERE NO HOLD EXISTS YET: the row is
+    made already returned, in one write, for a candidate that is in the queue
+    and that a later judgment must not hold. It changes nothing about a row
+    that is already there.
 
     A HOLD A PERSON RETURNED IS NEVER HELD AGAIN. Its row is handed back as it
     stands, state and all, so the producer that asked can see its hold did not
@@ -1655,7 +1661,7 @@ def hold(
                     name,
                     encoded[2],
                     encoded[3],
-                    HOLD_HELD,
+                    HOLD_RETURNED if returned else HOLD_HELD,
                     run_id,
                     now,
                     now,
@@ -1677,15 +1683,23 @@ def find_hold(store: ReviewStore, *, queue: str, item_id: str) -> Hold | None:
 
 
 def holds(
-    store: ReviewStore, *, queue: str, states: Sequence[str] = (HOLD_HELD,)
+    store: ReviewStore,
+    *,
+    queue: str,
+    states: Sequence[str] = (HOLD_HELD,),
+    group: str | None = None,
 ) -> tuple[Hold, ...]:
-    """Every hold on ``queue`` in one of ``states``, oldest first."""
+    """Every hold on ``queue`` in one of ``states``, oldest first.
+
+    ``group`` narrows it to one group's, a label's for the label-release queue.
+    """
     wanted = tuple(states)
     marks = ", ".join("?" for _ in wanted)
+    narrowed = " AND group_key = ?" if group is not None else ""
     rows = store.conn.execute(
-        f"SELECT * FROM held_offers WHERE queue = ? AND state IN ({marks}) "
+        f"SELECT * FROM held_offers WHERE queue = ? AND state IN ({marks}){narrowed} "
         f"ORDER BY created, item_id",
-        (_assert_declared_queue(queue), *wanted),
+        (_assert_declared_queue(queue), *wanted, *((group,) if group is not None else ())),
     ).fetchall()
     return tuple(_hold_of(row) for row in rows)
 
