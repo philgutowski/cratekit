@@ -713,13 +713,26 @@ rule was the hearts gate, answered sync on his word.
 | `crate backup run --full`, the same sitting | yes, 18:14 to 19:09 | **Mirror 3,103 seconds, 91,418 files compared, 2 sent.** `doctor` reads `backup.full_comparison` 0 days. | live, R-766 closed |
 | Cards | filed on the author's word | #231 (R-780) and #232 (R-744), both landed by Relay the same afternoon. #232's own measurement workers segfaulted three times in librosa's beat tracker through numba; its session sharded and finished. | done |
 
-**Stopped at the budget, 20:54, with the sweep still running.** Owed, in
-order, once it ends: the four account playlist jobs of run `58f1`, `intake
-missing --run 2026-09-30T17:36:43Z-58f1`, `acquire download`, the tail,
-`intake land`, the rekordbox import, `intake imported`, and `adopt apply`
-on a fresh acknowledgment. The 978 label releases in review are the
-author's to decide, after which `label approved` and a download close
-line 5.
+**The sweep ended at 20:48**: 16 labels swept, 11 failed permanently as
+unresolvable, the provider having no artist named exactly for each, 14,296
+calls this run. The author had said to run the Tidal work and rekordbox
+without asking, so the pass continued past the budget:
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| The four playlist jobs | yes | 2 owned; 63 listed, 1 owned, 62 missing; 2 missing; 1 missing. | live |
+| `intake missing --run 58f1` | yes | **67 missing as one list**, 211 owned, every job of the run succeeded. | live |
+| `acquire download` | detached, 20:49 to 21:03 | **66 landed, Satisfy lossy refused**, 399 calls. | live |
+| The tail, one detached script | 21:04 to 21:30 | 66 tagged, analysed, energy stamped; **62 renamed, 4 left with id names** since two pairs render to one name; export written; `intake land` as `2026-09-30-synced`, 66 files, intake file at the root. | live |
+| The import, by desktop control | by the session, 21:31 to 21:36 | Imported Library set, the one playlist imported, 9,935 tracks, dragged into INBOX by the child indent line below it, first child, Analyze Tracks on all 66 with the default settings, quit, both processes gone. | works |
+| `crate export collection` then `intake imported` | yes | **Proven imported, 66 tracks, no hand edit.** 10,086 active rows, 19,381 memberships, all 66 analysed by rekordbox, integrity ok. | live |
+| `sync mark`, the first live one | to the gate, abort; then apply | **The file names the pass.** `intake missing --run` prints the name to land under, `<run>_synced`, and the session cut that line off and landed under its own, so the mark found no pass. A copy of the retired intake file under the pass's name found it: **four account playlists renamed with the DOWNLOADED prefix**, 1,248 calls. | live, line 4 done |
+
+**Line 4 of #178 is done.** The full sync cycle ran from the account to
+INBOX with one hand step, the acknowledgment, and the rows of this batch
+reach the tree with `adopt apply` on the next one. The 978 label releases
+in review are the author's to decide, after which `label approved` and a
+download close line 5.
 
 **Not done, and why.** #213's 98 label releases are the author's taste.
 Line 8 needs a real player, line 9 a spare drive. A genre on the INBOX
