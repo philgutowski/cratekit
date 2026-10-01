@@ -4,6 +4,39 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**Last built: R-796, issue #236, `relay/236`, 2026-10-01, unattended.**
+`crate tag folder` asks a general catalogue, Deezer, by a file's ISRC when
+the record shops gave no usable genre and Beatport itself answered. The
+lookup is `tagging/published.py`, with no key and a user agent naming this
+tool. The first published genre that maps to a folder is written with no
+inferred mark; a word that maps to none, or is too coarse, is declined and
+recorded. Each item artifact's `answers` carries a fourth entry, one of
+`matched`, `miss`, `blocked`, `unreachable`, `parse-break`, `no-isrc` or
+`not-asked`, and `no-isrc` is a new skip reason, never `no-hit`. A block, a
+spent 429 or the quota error is `blocked`, nothing tries to get past one,
+and after the first the lookup asks nothing more in that run. No picture is
+read off it. The summary counts files by the general catalogue's answer,
+adds `tagged_by`, and warns with `tag-folder-published-unread` and
+`tag-folder-no-isrc`. The shipped template gained two tag aliases,
+`rap/hip hop` and `soul & funk`. `published.for_lookup()` is the taxonomy
+free entry R-798 calls, one lookup per process. The Planning Contract in
+`docs/plans/2026-10-01-0949-feat-published-genre-by-isrc-plan.md` holds the
+decisions, KTD1 to KTD22. The built in review ran twice, ten findings each
+time: fourteen changed the code, R-799 to R-801 and R-803 filed, R-802 from
+the hunt. An autouse fixture in `tests/conftest.py` keeps every test off
+the live catalogue. Mutation tables `r796-a` to `r796-c`, 25 rows, 25
+killed, and `r796-d`, four of them measured again after the second round
+moved their lines, leak watch on. Battery on the committed tree: ruff
+clean, **11,269 passed and 1 skipped** in 99 seconds, scan clean,
+`board.py closing --since main` exit 0. **Main's highest residual number
+is R-803 once this merges.** Owed to an attended sitting: the two alias
+lines added to the library's active taxonomy, then `crate tag folder` over
+the 62 untagged playlist tracks, at least nine in ten written, recorded in
+`docs/cutover.md`, and a read of where Pop, Alternative and Country landed,
+which is R-799. Files Beatport missed whose album Deezer calls Dance or
+Electro now read `unmapped-genre` where sitting 25 measured
+`sources-unread`. R-797 and R-798 are next on this plan.
+
 **Sitting 25, 2026-10-01, no code.** The newest 1% of each label, 47
 releases accepted on the author's instruction, 186 tracks, run end to end:
 tagged (137 genres, 74%), analysed, named, landed, imported through
@@ -20,7 +53,7 @@ synced rows, rehearsed on a copy and run live on an equal digest
 the 66 carry no genre and wait in INBOX**, which is the genre owed by the
 author. Nothing filed.
 
-**Last built: R-791, issue #235, `relay/235`, 2026-10-01, unattended.**
+**Built before it: R-791, issue #235, `relay/235`, 2026-10-01, unattended.**
 `crate tag folder` no longer reports a file `no-hit` when a fallback could
 not be read. Traxsource and Bandcamp answer `blocked` for a 403, a spent
 429 or a recognised challenge page, and nothing tries to get past one.
