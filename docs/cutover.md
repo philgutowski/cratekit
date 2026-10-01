@@ -693,6 +693,39 @@ disposable copy and, with `--analyse N`, the detector's own rate. The run's
 answer carries the record under `head_agreement` with `applies_to_window`.
 Nothing writes a grid, a tempo, an average tempo or a key anywhere.
 
+## Sitting 23, 2026-09-30, afternoon into the evening, the remaining lines driven
+
+The author asked for every remaining line to be driven in order, with no
+questions once the feeder drained and rekordbox used as needed. Relay ran
+#231 and #232 alongside, both landed. The one question asked before that
+rule was the hearts gate, answered sync on his word.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| Line 4, `sync all`, the listing | yes, run `58f1` | **635 provider calls per listing**, the label registry sweep inside it, and the session listed twice by mistake to read a gate it had cut off. No rate limit. Sources queued: favourites out, favourites in, labels, four account playlists. The 9 withheld hearts surface on the inbound line as FAIL while its job queues anyway. | measured |
+| The hearts, `sync favorites` | approved on the author's word, run `bd52` | **109 tracks hearted**, digest `27568912b4a103e5`, 297 calls, five tracks the provider no longer serves. The verb writes nothing locally. | live |
+| Favourites in, job `76ed` | yes | 210 listed, 208 owned, 2 missing, 0 offered. | live |
+| `sync labels`, job `2d20` | yes, three launches | Killed twice at the harness's 30 minute background cap, resumed each time from its queue with nothing repeated, the third launch detached. About one provider call a second, paced by the gate, no rate limit. **Still running at the stop, 20:41: 25,662 lifetime calls on the gate, 978 label releases filed into the review queue since 14:00**, left to finish on its own. | live |
+| Line 7, `analyze calibrate --recursive`, on a copy | yes, 32 minutes | The vocal cut fitted at **16.0 by Otsu over 9,945 scored tracks, 386 above it**, the same 16.5 the author rejected by ear on 2026-09-17 for 5.0. The energy refit over 500 tracks gave an onset floor of 1.055 against the carried 0.921, validated 59 of 59. **Both fits discarded, the hand cut and the carried calibration stand.** | measured, decided against |
+| Line 7, the filing gap | read from the database | 1,141 vox tagged tracks, 1,140 in a bucket, **12 in a bucket without its `with vox` sub**. `adopt apply` has no vocal logic; only `route inbox` files a vocal sub, per batch. | R-788 filed |
+| #224's verification, the screenless half, on a copy | yes | `tree cutover inbox` approved on the copy, digest `7621ba1ce3c0eeb0`. `intake land` on a native intake tree, three files from download staging: **3 rows added, every one of the ten analysis columns NULL, no cue, mixer or file rows**, the playlist under INBOX in order, the device chosen by master id, paths under the base drive. A second approved run a no op. A folder inside the library but outside staging is refused as already owned. **`doctor` then fails `tree.registry` and tells the person to revert the record the verb just made.** | proven on the copy, R-787 filed |
+| R-757's close, `crate backup run` timed | yes, 17:50 to 18:13 | **Mirror 1,183 seconds, 91,236 files compared, 200 sent.** | live |
+| `crate backup run --full`, the same sitting | yes, 18:14 to 19:09 | **Mirror 3,103 seconds, 91,418 files compared, 2 sent.** `doctor` reads `backup.full_comparison` 0 days. | live, R-766 closed |
+| Cards | filed on the author's word | #231 (R-780) and #232 (R-744), both landed by Relay the same afternoon. #232's own measurement workers segfaulted three times in librosa's beat tracker through numba; its session sharded and finished. | done |
+
+**Stopped at the budget, 20:54, with the sweep still running.** Owed, in
+order, once it ends: the four account playlist jobs of run `58f1`, `intake
+missing --run 2026-09-30T17:36:43Z-58f1`, `acquire download`, the tail,
+`intake land`, the rekordbox import, `intake imported`, and `adopt apply`
+on a fresh acknowledgment. The 978 label releases in review are the
+author's to decide, after which `label approved` and a download close
+line 5.
+
+**Not done, and why.** #213's 98 label releases are the author's taste.
+Line 8 needs a real player, line 9 a spare drive. A genre on the INBOX
+rows without one is a judgment the tagger could not make from a provider
+and the session did not make by ear.
+
 ## What blocks a full sync cycle, stated plainly
 
 **Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
@@ -704,9 +737,10 @@ cycle, is next and is attended.
 
 ## Next sitting
 
-Owed by the author: a genre on the INBOX rows that carry none.
+Finish line 4 from where sitting 23 stopped: the four playlist jobs, the
+missing list, the download, the landing, the import through desktop
+control, `intake imported`, `adopt apply` on a fresh acknowledgment. Then
+decide the label releases in review and run `label approved`.
 
-Also owed, unchanged: a second `sync labels` for the 20 labels the rate limit
-stopped, run with no download beside it, after which #213 closes; the 1,799
-label rows reviewed for line 5; the vocal calibration and filing pass for
-line 7.
+Owed by the author: a genre on the INBOX rows that carry none; the label
+releases in review.

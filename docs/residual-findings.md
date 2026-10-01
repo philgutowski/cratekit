@@ -31384,3 +31384,63 @@ unanalysable terminal, and a test drives it on a half second file.
 **Not on the board bar.** Reachable only through a file no DJ plays as a
 track, and the head is presented with its measured rate. The judgment is
 the author's.
+
+## R-787. doctor tells the person to revert the inbox cutover the product just recorded
+
+**Found:** at sitting 23, 2026-09-30, on a disposable copy with library state
+redirected, running #224's verification. `crate tree cutover inbox` reached
+its gate, was approved and recorded inbox as database native, anchored to
+the INBOX row. `crate doctor` then failed `tree.registry`: "inbox is
+recorded database native and is not a tree a cutover records, only the
+routing tree is, so a writer is being routed by a record this product would
+refuse to create. Run `crate tree revert <tree>`".
+
+**The mechanism.** `cli/doctor.py` `_declared_trees` returns the trees a
+cutover may record as the routing tree alone, and its docstring says the
+intake tree stays on the bridge. `cli/cutover.py` records the intake tree
+since #224, and `intake land` reads that record to choose its medium. The
+two rules were one until #224 widened the verb and not the check.
+
+**Measured cost.** One doctor run on a copy. On a live library that cuts the
+intake tree over, every `doctor` afterwards fails with a remedy that undoes
+the cutover, and `revert` refuses once a native landing has been written,
+so the person is sent to a door that will not open.
+
+**On the board bar, (b):** the product says something false about a record
+it made, and names a remedy it will refuse. The issue is owed after the
+merge that carries this entry.
+
+**Closes when:** doctor's set of trees a cutover may record equals the
+cutover verb's, read from one place, and a test holds the two to agreeing;
+a native inbox record reads as ok.
+
+## R-788. Twelve vox tracks sit in a bucket without its with vox sub, and no verb files them
+
+**Found:** at sitting 23, 2026-09-30, reading the live database for line 7
+of #178. 1,141 tracks carry the vox My Tag. 1,140 sit in a bucket of BY
+GENRE + ENERGY. 12 of those sit in a bucket that has no membership for them
+in that bucket's `with vox` sub: House / Funky House / Disco 3, Afro House
+3, Tech House 2, Deep House, NonElectronic, Melodic House, Organic House
+and Minimal / Deep Tech one each. The subs are otherwise filled, 1,136
+tracks across 18.
+
+**The mechanism.** The `with vox` subs are filled by `route inbox` for a
+batch as it is routed, and by the source system's back catalogue pass
+before the cutover. `adopt apply`, which places the back catalogue on the
+database path, has no vocal logic, so a track that reaches a bucket
+through adoption, or through a genre change and `route resort`, is never
+filed as vocal.
+
+**Measured cost.** Twelve tracks a DJ browsing `with vox` does not find.
+
+**Also measured, and decided against:** a fresh `analyze calibrate` over
+9,945 scored tracks fits the vocal cut at 16.0 by Otsu, the same 16.5 the
+author rejected by ear on 2026-09-17 in favour of 5.0. The hand cut stands
+and the fitted file was discarded. The energy refit over 500 tracks gave an
+onset floor of 1.055 against the carried 0.921, validated on 59 of 59, and
+was discarded too.
+
+**Closes when:** adoption, or a verb of its own, files a vox tagged track
+into its bucket's `with vox` sub, and the twelve are in theirs.
+
+**Not on the board bar.** Twelve rows, all visible in their bucket.
