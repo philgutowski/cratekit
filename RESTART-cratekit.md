@@ -28,9 +28,9 @@ is what to read before promoting another sub. The built in review ran
 twice, nine findings and then ten: thirteen changed the code, R-804 to
 R-808 filed. Mutation tables `r797-a` to `r797-c`, 25 rows, 25 killed, and
 `r797-d`, three of them measured again after the second round moved their
-lines. Battery on the committed tree: ruff clean, **11,366 passed and 1
-skipped** in 107 seconds, scan clean, `board.py closing --since main` exit
-0. **Main's highest residual number is R-808 once this merges.** **This
+lines. Battery on the committed tree, run twice: ruff clean, **11,366
+passed and 1 skipped** in 96 and 107 seconds, scan clean,
+`board.py closing --since main` exit 0. **Main's highest residual number is R-808 once this merges.** **This
 card did not touch the live library.** Owed to an attended sitting, in the
 order R-797's ledger entry gives: the build in use is this one, the active
 taxonomy copy takes the same edit after a dated backup, `crate adopt move`
