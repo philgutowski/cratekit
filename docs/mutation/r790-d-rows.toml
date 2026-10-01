@@ -29,13 +29,13 @@ old = '''        beyond_per_run[found.run_id] = beyond_per_run.get(found.run_id,
 new = '''        beyond_per_run[found.run_id] = found.beyond'''
 
 [[rows]]
-id = "R4_round_replaced"
-description = "record_round: add a second row for a resumed run rather than replacing the first"
-file = "src/cratekit/core/review.py"
-surface = "maintainer"
-tests = ["tests/test_label_offer_window.py", "tests/test_review_queue.py"]
-old = '''            "INSERT OR REPLACE INTO offer_rounds "'''
-new = '''            "INSERT OR IGNORE INTO offer_rounds "'''
+id = "S9_queue_is_asked_again"
+description = "QueuedReleases: answer that no release is in the queue, measured again after the test S9's zero bought in r790-b"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_label_registry_verbs.py"]
+old = '''        return review.find(self.store, item_id) is not None'''
+new = '''        return False'''
 
 [[rows]]
 id = "V1_group_page_refusal"
@@ -45,3 +45,8 @@ surface = "user"
 tests = ["tests/test_label_offer_window.py", "tests/test_review_queue.py"]
 old = '''    if not ctx.args.queue or ctx.args.after is not None or ctx.args.limit is not None:'''
 new = '''    if not ctx.args.queue:'''
+
+[[dropped]]
+id = "R4_round_replaced"
+description = "record_round: INSERT OR IGNORE instead of REPLACE, so a resumed run keeps its first count"
+reason = "ranked below the cap: maintainer facing, a resumed item's second count is of the same catalogue, and the slot went to re-measuring S9's user facing zero"

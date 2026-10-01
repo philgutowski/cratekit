@@ -504,3 +504,35 @@ def test_the_registry_says_when_the_track_limit_bounds_an_offer(installed):
     assert code == int(ExitCode.OK), envelope
     (check,) = [c for c in envelope["data"]["checks"] if c["key"] == f"labels.{SLUG}"]
     assert "offer 50, bounded by the track limit to 20" in check["detail"]
+
+
+class CountingCatalogue(FakeCatalogue):
+    """The fake catalogue, recording which releases verification was asked about."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.verified: list[str] = []
+
+    def search_release(self, claimed, release):
+        self.verified.append(str(release.id))
+        return super().search_release(claimed, release)
+
+
+def test_a_later_sweep_asks_the_provider_nothing_about_releases_it_already_holds(
+    installed, monkeypatch
+):
+    """Held releases are read off the queue the worker has open, not verified
+    again. ``review.offer`` would quietly absorb a second filing of each, so the
+    only place a sweep that forgot its queue shows is the provider calls it
+    spends, one per held release per sweep, against a rate limited account.
+    """
+    register()
+    releases = catalogue_of(50)
+    bind(monkeypatch, releases)
+    sweep_once()
+    fake = CountingCatalogue(
+        artists={SLUG: FakePagedArtist([FakeRelease("r2027", year="2027"), *releases])}
+    )
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
+    sweep_once()
+    assert fake.verified == ["r2027"]
