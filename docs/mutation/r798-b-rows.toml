@@ -1,0 +1,106 @@
+name = "r798-b"
+pass_kind = "light"
+
+[[rows]]
+id = "G1_an_unread_answer_holds_nothing"
+description = "published_words: read on past an answer that could not be read, so words read before a refusal still hold the release"
+file = "src/cratekit/label/gate.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_label_approved.py", "tests/test_label_offer_window.py", "tests/test_label_workers.py"]
+old = '''        if said.answer in published.UNREAD:
+            return Words((), said.answer, said.note)'''
+new = '''        if False:
+            return Words((), said.answer, said.note)'''
+
+[[rows]]
+id = "G2_a_would_be_hold_is_asked_about_again"
+description = "published_words: stop at the first track that publishes a genre whatever the caller needs, so a hold rests on one track's album"
+file = "src/cratekit/label/gate.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_label_approved.py", "tests/test_label_offer_window.py", "tests/test_label_workers.py"]
+old = '''    settled = enough if enough is not None else bool'''
+new = '''    settled = bool'''
+
+[[rows]]
+id = "G3_a_held_release_takes_a_place"
+description = "list_for_label: stop counting a held release toward the offer window, so a label of another label's music is read to the end of its catalogue"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_label_approved.py", "tests/test_label_offer_window.py", "tests/test_label_workers.py"]
+old = '''        if held + len(gated) + len(candidates) >= cap:'''
+new = '''        if held + len(candidates) >= cap:'''
+
+[[rows]]
+id = "G4_a_returned_hold_is_never_judged"
+description = "list_for_label: judge a hold a person returned like any standing hold, so a release they asked for is held again"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_label_approved.py", "tests/test_label_offer_window.py", "tests/test_label_workers.py"]
+old = '''        if standing is not None and standing.state == review.HOLD_RETURNED:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "G5_deleted_on_purpose_outranks_held"
+description = "list_for_label: keep the hold on a release tombstoned since, so it stays counted as held"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_label_approved.py", "tests/test_label_offer_window.py", "tests/test_label_workers.py"]
+old = '''            if was is not None and was.state == review.HOLD_HELD:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "G6_a_released_hold_the_library_owns_is_dropped"
+description = "list_for_label: file a released hold without asking whether the library came to own it"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_label_approved.py", "tests/test_label_offer_window.py", "tests/test_label_workers.py"]
+old = '''            elif identity in owned_ids:'''
+new = '''            elif False:'''
+
+[[rows]]
+id = "G7_a_hold_past_the_window_is_judged_again"
+description = "list_for_label: judge again only the holds the window reaches, so one pushed past it stays held under a reason that stopped being true"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_label_approved.py", "tests/test_label_offer_window.py", "tests/test_label_workers.py"]
+old = '''            if beyond_id and beyond_id not in reached and not gate.rejudge(entry, standing).held:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "G8_a_standing_hold_counts_for_the_canary"
+description = "list_for_label: leave standing holds out of the releases a dead verifier could not confirm again, so a window of holds hides one"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_label_approved.py", "tests/test_label_offer_window.py", "tests/test_label_workers.py"]
+old = '''            held_unconfirmed = held + sum(1 for one in gated if one.standing)'''
+new = '''            held_unconfirmed = held'''
+
+[[rows]]
+id = "G9_a_successful_read_ends_a_run_of_failures"
+description = "ReleaseTracks.release_tracks: stop resetting the failure count on a read that succeeded, so three failures that were not in a row end the asking"
+file = "src/cratekit/label/catalogue.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_label_approved.py", "tests/test_label_offer_window.py", "tests/test_label_workers.py"]
+old = '''        self._failed_in_a_row = 0
+        answer = (tuple(rows), year)'''
+new = '''        answer = (tuple(rows), year)'''
+
+[[dropped]]
+id = "G10_three_tracks_at_most"
+description = "published_words: ask about every track of a release"
+reason = "ranked below the cap: the cost is requests and not a verdict, and test_no_more_than_three_tracks_are_asked_about and test_a_release_is_held_only_when_every_track_asked_agrees both pin the bound"
+
+[[dropped]]
+id = "G11_a_hold_nobody_can_read_back_stays_held"
+description = "SweepGate.rejudge: judge a hold whose recorded words cannot be read"
+reason = "ranked below the cap: with it gone the rule is handed no words and raises, so the sweep fails loudly, and test_a_hold_whose_words_cannot_be_read_back_stays_held names it"
+
+[[dropped]]
+id = "G12_the_reader_stops_asking"
+description = "ReleaseTracks.release_tracks: keep asking the provider after three failures in a row"
+reason = "ranked below the cap: the same rule as G9, which is measured, and test_the_reader_does_not_ask_the_provider_once_it_is_failing names it"
+
+[[dropped]]
+id = "G13_a_filed_hold_is_dropped"
+description = "LabelSource._file: keep the hold of a release the sweep released and filed"
+reason = "ranked below the cap: test_a_labels_kind_changed_after_a_hold_releases_what_now_fits asserts the hold is gone after the release is filed"

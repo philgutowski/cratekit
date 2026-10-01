@@ -1,0 +1,101 @@
+name = "r798-c"
+pass_kind = "light"
+
+[[rows]]
+id = "H1_a_returned_hold_is_never_refreshed"
+description = "review.hold: refresh a hold whatever its state, so a later round rewrites a hold a person returned"
+file = "src/cratekit/core/review.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_review_queue.py", "tests/test_label_offer_window.py", "tests/test_label_approved.py"]
+old = '''        elif row["state"] == HOLD_HELD:
+            conn.execute(
+                "UPDATE held_offers SET payload = ?, group_key = ?, group_name = ?, "'''
+new = '''        else:
+            conn.execute(
+                "UPDATE held_offers SET payload = ?, group_key = ?, group_name = ?, "'''
+
+[[rows]]
+id = "H2_only_a_hold_in_force_is_dropped"
+description = "review.release_hold: drop a hold in any state, so the record that a person returned a release is lost and it can be held again"
+file = "src/cratekit/core/review.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_review_queue.py", "tests/test_label_offer_window.py", "tests/test_label_approved.py"]
+old = '''            "DELETE FROM held_offers WHERE queue = ? AND item_id = ? AND state = ?",
+            (_assert_declared_queue(queue), item_id, HOLD_HELD),'''
+new = '''            "DELETE FROM held_offers WHERE queue = ? AND item_id = ?",
+            (_assert_declared_queue(queue), item_id),'''
+
+[[rows]]
+id = "H3_every_name_is_resolved_before_any_is_filed"
+description = "label held return: skip a name nothing holds and file the rest, so a mistyped identifier leaves a half done run reported as a refusal of nothing"
+file = "src/cratekit/label/held_cli.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_cli_contract.py"]
+old = '''        if unknown:
+            raise refuse(
+                "review-item-unknown",'''
+new = '''        if False:
+            raise refuse(
+                "review-item-unknown",'''
+
+[[rows]]
+id = "H4_a_release_with_no_isrc_was_not_asked_about"
+description = "label held: count a release with no ISRC as one the catalogue was asked about, so it hides a sweep whose every question went unread"
+file = "src/cratekit/label/held_cli.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_cli_contract.py"]
+old = '''            if answer is not None and answer not in (searchers.NOT_ASKED, NO_ISRC):'''
+new = '''            if answer is not None and answer != searchers.NOT_ASKED:'''
+
+[[rows]]
+id = "H5_a_returned_hold_is_marked"
+description = "label held return: file the release and leave its hold in force, so it is listed as held while it waits in review"
+file = "src/cratekit/label/held_cli.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_cli_contract.py"]
+old = '''            review.return_hold(store, queue=queue, item_id=one.item_id)'''
+new = '''            pass'''
+
+[[rows]]
+id = "H6_a_returned_release_passes_at_approval"
+description = "label approved: judge a release a person returned, so it is held a second time when it is accepted"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_label_approved.py"]
+old = '''        if release.returned:
+            continue'''
+new = '''        if False:
+            continue'''
+
+[[rows]]
+id = "H7_an_owned_release_is_not_asked_about"
+description = "label approved: ask the general catalogue about a release the library holds in full, on every run"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_label_approved.py"]
+old = '''        elif owned(outcome):'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "H8_the_recorded_words_are_the_words"
+description = "label approved: ignore the words the sweep recorded and ask the catalogue again for every accepted release"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_label_approved.py"]
+old = '''        if release.genres is not None:'''
+new = '''        if False:'''
+
+[[dropped]]
+id = "H9_a_grouping_counts_holds_in_force"
+description = "review.grouped: count returned holds as held"
+reason = "ranked below the cap: test_a_label_with_holds_and_no_items_still_has_its_row holds a returned hold beside three in force and asserts three"
+
+[[dropped]]
+id = "H10_a_kind_is_checked_against_the_taxonomy"
+description = "label registry: store a kind the taxonomy does not name"
+reason = "ranked below the cap: test_a_kind_the_taxonomy_does_not_name_is_refused_and_nothing_is_written compares the registry file byte for byte across the refusal"
+
+[[dropped]]
+id = "H11_unjudged_needs_both_rules"
+description = "label approved: report a release the kind rule passed as unjudged because its rows report no genre"
+reason = "ranked below the cap: a wrong failing line over a release that is still listed, and test_a_release_the_kind_rule_passed_is_judged_though_its_rows_report_no_genre names it"
