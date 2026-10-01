@@ -31554,8 +31554,8 @@ author makes, not by this unit.
 
 ## R-791. Bandcamp's bot challenge reads as a miss and Traxsource's as unreachable, and a Beatport miss hides both behind a clean no-hit
 
-**Closed 2026-10-01 on `relay/235`, issue #235, in the code, the attended
-run owed.** The searcher's answers gain `blocked`, given by the two
+**Closed 2026-10-01 on `relay/235`, issue #235, in the code, and proven
+on the author's library at sitting 25 in `docs/cutover.md`.** The searcher's answers gain `blocked`, given by the two
 fallbacks for a 403, a 429 that outlasted the backoff, a page titled as
 Cloudflare's interstitial, its block page or Bandcamp's "Client Challenge",
 or a body carrying Cloudflare's challenge script. Nothing tries to get past

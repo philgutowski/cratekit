@@ -754,6 +754,28 @@ the provider does not tag), and adoption routes from the genre on the
 database row, so they wait in INBOX. This is the genre owed by the author on
 the INBOX rows, now 62 larger.
 
+## Sitting 25, 2026-10-01, the newest 1% of each label, end to end
+
+The author asked for the newest 1% of each label as a test, the rest another
+day, and the session accepted it in review on that instruction, asking
+nothing after that. Relay landed #235 alongside, and rekordbox opened only once it had.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `label approved` | 47 releases accepted by the author's rule, newest by album id per label | **186 tracks downloaded, 1,116 calls, no rate limit.** 12 already owned, 20 held as other versions for review. | live |
+| `tag folder` on the 186, the code before #235 | yes | **137 genres written, 74%.** 38 no hit, 11 declined as Electronica, 6 written as Indie Tech, which the taxonomy has no place for. | live |
+| `analyze run`, `analyze restamp`, `name apply`, `intake land` | yes, one detached chain | 186 analysed and stamped, 186 renamed with no collision, landed in their own folder with the label manifest. `tag retag` found 0 to correct, which is right: the 49 without a genre carry none, and retag replaces only a coarse genre already on a file. | live |
+| Import through desktop control | yes | Collection 9,935 to 10,121. The playlist went into INBOX on a box outline over the expanded folder, as its last child. rekordbox analysed all 186 in about eight minutes. Both processes gone after quit. | live |
+| `intake imported` | over a `crate export collection` | 186 proven, intake file retired, no hand edit. | live |
+| `adopt apply` | rehearsed on a copy, live on an equal digest `22cdf5a16e947dd4` | **131 memberships added, 0 removed, no new duplicate**, every one a track with no place in the tree before. Route 7,925, needs-genre 2,176 (up 55: the 49 without a genre and the 6 Indie Tech). Live read back equal to the copy. | live |
+| R-791's verification, `tag folder` after #235 | on copies of the 49 untagged files, outside the library | **Beatport 11 matched (all Electronica, declined as unmapped) and 38 miss. Traxsource and Bandcamp blocked on all 38 they were asked**, a 403 and a "Client Challenge" page. 38 files reported `sources-unread`, none `no-hit`, and `tag-folder-source-blocked` named both fallbacks. | proven, R-791 closes |
+
+**What the tagger can do for a label download, measured.** On electronic
+label releases Beatport alone finds about four in five. The fallbacks add
+nothing from this machine because both refuse the client, and the tool will
+not try to get past either. What is left needs a genre by hand or a new
+catalogue, which is a card for the author to decide, not a fix.
+
 ## What blocks a full sync cycle, stated plainly
 
 **Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
@@ -765,21 +787,17 @@ cycle, is next and is attended.
 
 ## Next sitting
 
-Finish line 4 from where sitting 23 stopped: the four playlist jobs, the
-missing list, the download, the landing, the import through desktop
-control, `intake imported`, `adopt apply` on a fresh acknowledgment. Then
-decide the label releases in review and run `label approved`.
+Line 4 is done, and the label test of sitting 25 ran the same tail end to
+end. Next, on the author's word only, the rest of the label releases in
+review, a label at a time: `label approved`, then the tail as sitting 25
+ran it.
 
-Owed by the author: a genre on the INBOX rows that carry none; the label
-releases in review.
+Owed by the author: a genre on the INBOX rows that carry none, now 62 synced
+and 55 from the label test; the rest of the label releases in review; the 20
+label tracks held as other versions.
 
 Owed for R-790, issue #234: follow a new label, sweep it once, and record
 here that it filed `labels.offer_per_sweep` releases, ten unless set, and
 that `crate review list --queue label-release --group-by label` counts the
 rest as `beyond`.
 
-Owed for R-791, issue #235: run `crate tag folder` over a folder of new
-files on the author's library, and record here what each fallback answered
-as the job summary's `answers` counts it, whether `tag-folder-source-blocked`
-named either fallback, and how many files came back `sources-unread` rather
-than `no-hit`.

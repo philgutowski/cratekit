@@ -4,6 +4,16 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**Sitting 25, 2026-10-01, no code.** The newest 1% of each label, 47
+releases accepted on the author's instruction, 186 tracks, run end to end:
+tagged (137 genres, 74%), analysed, named, landed, imported through
+desktop control, proven, and `adopt apply` live on an equal digest
+`22cdf5a16e947dd4`, 131 memberships added, 55 more rows needing a genre.
+R-791's owed run done on copies of the 49 untagged files: Beatport 11
+matched (Electronica) and 38 miss, Traxsource and Bandcamp blocked on all
+38, every one `sources-unread`. Nothing filed. The rest of the label
+releases wait on the author.
+
 **Sitting 24, attended, 2026-10-01, no code.** `adopt apply` for the 66
 synced rows, rehearsed on a copy and run live on an equal digest
 `22984f3e4523493f`: 4 memberships added, 19,385, every BPM unchanged. **62 of
