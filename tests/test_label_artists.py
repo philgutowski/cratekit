@@ -275,7 +275,7 @@ def test_the_provider_is_asked_once_for_each_repaired_item_and_never_for_the_oth
     assert fake.releases_asked_for == []
     summary = envelope["data"]["summary"]
     assert counts(summary) == zeroes(repaired=2, already_fine=1)
-    assert (summary["addresses"], summary["provider_reads"]) == (2, 2)
+    assert (summary["addresses"], summary["asked"]) == (2, 2)
     assert stored(cfg, first).payload["artist"] == "Harbour Act"
     assert stored(cfg, second).payload["artist"] == "Quay Act"
     assert stored(cfg, named).payload["artist"] == "Label Act"
@@ -346,7 +346,16 @@ def test_a_release_the_provider_names_no_artist_for_is_left_reading_what_it_read
     assert "names no artist" in check(envelope, "release.r-1")["detail"]
 
 
-def test_a_release_the_provider_could_not_answer_for_is_a_failing_line_and_is_left(
+def unread_refusal() -> dict:
+    """The refusal a run ends on when the provider failed a read. Its cause."""
+    code, envelope = artists()
+    assert code == int(ExitCode.UPSTREAM_UNAVAILABLE), envelope
+    assert envelope["cause"]["reason"] == "unavailable-transient"
+    assert envelope["cause"]["remediation"]["remedy"] == Remedy.RETRY_LATER.value
+    return envelope["cause"]
+
+
+def test_a_release_the_provider_could_not_answer_for_is_left_and_the_run_refuses(
     cfg, monkeypatch
 ):
     item_id = offered(cfg, "r-1")
@@ -354,15 +363,20 @@ def test_a_release_the_provider_could_not_answer_for_is_a_failing_line_and_is_le
     fake = UnreadableCatalogue()
     bind(monkeypatch, fake)
 
-    envelope = repaired_ok()
+    cause = unread_refusal()
 
     assert stored(cfg, item_id) == before
     assert fake.artists_asked_for == ["r-1"]
-    assert counts(envelope["data"]["summary"]) == zeroes(unread=1)
-    line = check(envelope, "release.r-1")
-    assert line["status"] == "fail"
-    assert "RuntimeError" in line["detail"]
-    assert check(envelope, "addresses")["status"] == "info"
+    assert "could not answer about 1 of the 1 release(s)" in cause["message"]
+    assert counts(cause["detail"]["artists"]) == zeroes(unread=1)
+    assert cause["detail"]["artists"]["asked"] == 1
+    assert cause["detail"]["left"] == 0
+    [release] = cause["detail"]["artists"]["releases"]
+    assert (release["release_id"], release["outcome"], release["artist"]) == (
+        "r-1",
+        "unread",
+        None,
+    )
 
 
 class Parsing(StrictCatalogue):
@@ -379,9 +393,9 @@ def test_a_lookup_error_that_is_not_the_seams_own_is_unread_and_never_not_served
     offered(cfg, "r-1")
     bind(monkeypatch, Parsing())
 
-    envelope = repaired_ok()
+    cause = unread_refusal()
 
-    assert counts(envelope["data"]["summary"]) == zeroes(unread=1)
+    assert counts(cause["detail"]["artists"]) == zeroes(unread=1)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -395,16 +409,27 @@ def test_three_reads_failing_in_a_row_stop_the_run_and_say_what_was_left(cfg, mo
     fake = UnreadableCatalogue()
     bind(monkeypatch, fake)
 
-    code, envelope = artists()
+    cause = unread_refusal()
 
-    assert code == int(ExitCode.UPSTREAM_UNAVAILABLE), envelope
-    cause = envelope["cause"]
-    assert cause["reason"] == "unavailable-transient"
-    assert "3 release reads in a row" in cause["message"]
+    assert "3 release reads in a row, so the run stopped reading" in cause["message"]
     assert fake.artists_asked_for == ["r-1", "r-2", "r-3"]
     assert cause["detail"]["left"] == 2
     assert counts(cause["detail"]["artists"]) == zeroes(unread=3)
     assert "run crate label artists again" in cause["remediation"]["steps"][-1]
+
+
+def test_an_outage_over_the_last_releases_of_a_run_is_the_same_refusal(cfg, monkeypatch):
+    """Three items and three failures: no fourth read is there to stop before."""
+    for rid in ("r-1", "r-2", "r-3"):
+        offered(cfg, rid)
+    fake = UnreadableCatalogue()
+    bind(monkeypatch, fake)
+
+    cause = unread_refusal()
+
+    assert "3 release reads in a row" in cause["message"]
+    assert fake.artists_asked_for == ["r-1", "r-2", "r-3"]
+    assert cause["detail"]["left"] == 0
 
 
 class Flaky(StrictCatalogue):
@@ -429,10 +454,20 @@ def test_an_answer_between_failures_keeps_the_run_going(cfg, monkeypatch):
     )
     bind(monkeypatch, fake)
 
-    envelope = repaired_ok()
+    cause = unread_refusal()
 
     assert fake.artists_asked_for == ["r-1", "r-2", "r-3", "r-4", "r-5"]
-    assert counts(envelope["data"]["summary"]) == zeroes(repaired=1, unread=4)
+    assert "could not answer about 4 of the 5 release(s)" in cause["message"]
+    assert counts(cause["detail"]["artists"]) == zeroes(repaired=1, unread=4)
+    assert cause["detail"]["left"] == 0
+    assert cause["remediation"]["steps"][-1].startswith("1 release(s) were given their artist")
+    with review.open_store(cfg) as items:
+        repaired = [
+            item.payload["identity"]
+            for item in review.list_items(items, queue=QUEUE, limit=None).items
+            if item.payload["artist"] == "Harbour Act"
+        ]
+    assert repaired == ["r-3"], "a repair made before the refusal did not stay made"
 
 
 def test_a_release_that_is_gone_does_not_count_towards_an_outage(cfg, monkeypatch):
@@ -441,10 +476,10 @@ def test_a_release_that_is_gone_does_not_count_towards_an_outage(cfg, monkeypatc
     fake = Flaky(release_artists={}, failing=("r-1", "r-2", "r-4", "r-5"))
     bind(monkeypatch, fake)
 
-    envelope = repaired_ok()
+    cause = unread_refusal()
 
     assert fake.artists_asked_for == ["r-1", "r-2", "r-gone", "r-4", "r-5"]
-    assert counts(envelope["data"]["summary"]) == zeroes(not_served=1, unread=4)
+    assert counts(cause["detail"]["artists"]) == zeroes(not_served=1, unread=4)
 
 
 class ExpiresAfter(StrictCatalogue):
@@ -483,6 +518,7 @@ def test_the_seams_own_refusal_stops_the_run_and_carries_what_was_repaired(cfg, 
     assert cause["remediation"]["remedy"] == Remedy.REAUTHENTICATE_PROVIDER.value
     assert fake.artists_asked_for == ["r-1", "r-2"]
     assert counts(cause["detail"]["artists"]) == zeroes(repaired=1)
+    assert cause["detail"]["artists"]["asked"] == 1, "a refused read was counted as asked"
     assert cause["detail"]["left"] == 2
     assert cause["remediation"]["steps"][-1].startswith("1 release(s) were given their artist")
     assert stored(cfg, first).payload["artist"] == "Harbour Act"
@@ -606,7 +642,91 @@ def test_an_artist_put_right_meanwhile_is_not_overwritten(cfg, monkeypatch):
     envelope = repaired_ok()
 
     assert stored(cfg, item_id).payload["artist"] == "Typed By Hand"
-    assert counts(envelope["data"]["summary"]) == zeroes(decided=1)
+    assert counts(envelope["data"]["summary"]) == zeroes(already_fine=1)
+    assert envelope["outcome"] == "no_op"
+    assert "stopped reading an address" in check(envelope, "release.r-1")["detail"]
+    assert "0 open label release(s) do not read an address" in check(envelope, "fine")["detail"]
+
+
+def test_a_stamp_landing_between_the_read_and_the_write_is_kept(cfg, monkeypatch):
+    """The write is a compare and set: a payload that moved is read again."""
+    item_id = offered(cfg, "r-1")
+    real_find = review.find
+    reads: list[str] = []
+
+    def find_then_stamp(store, wanted):
+        found = real_find(store, wanted)
+        reads.append(wanted)
+        if len(reads) == 1:
+            # Another writer's stamp, landing after this read and before the write.
+            review.redescribe(store, wanted, {**found.payload, genre_gate.GATE_FIELD: "pass"})
+        return found
+
+    monkeypatch.setattr(review, "find", find_then_stamp)
+    bind(monkeypatch, StrictCatalogue(release_artists={"r-1": "Harbour Act"}))
+
+    envelope = repaired_ok()
+
+    after = stored(cfg, item_id)
+    assert after.payload["artist"] == "Harbour Act"
+    assert after.payload[genre_gate.GATE_FIELD] == "pass", "the write took the stamp back"
+    assert reads == [item_id, item_id], "the item was not read again after the write was refused"
+    assert counts(envelope["data"]["summary"]) == zeroes(repaired=1)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6b. The store: a rewrite that expects the payload it read
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_rewrite_expecting_the_payload_the_item_carries_is_written(cfg):
+    item_id = offered(cfg, "r-1")
+    with review.open_store(cfg) as items:
+        before = review.get(items, item_id)
+
+        after = review.redescribe(
+            items, item_id, {**before.payload, "artist": "Harbour Act"}, expecting=before.payload
+        )
+
+        assert after is not None and after.payload["artist"] == "Harbour Act"
+        assert review.get(items, item_id).payload == {**before.payload, "artist": "Harbour Act"}
+
+
+def test_a_rewrite_expecting_a_payload_the_item_no_longer_carries_writes_nothing(cfg):
+    item_id = offered(cfg, "r-1")
+    with review.open_store(cfg) as items:
+        stale = review.get(items, item_id).payload
+        moved = review.redescribe(items, item_id, {**stale, genre_gate.GATE_FIELD: "pass"})
+
+        assert (
+            review.redescribe(items, item_id, {**stale, "artist": "Harbour Act"}, expecting=stale)
+            is None
+        )
+
+        assert review.get(items, item_id) == moved
+
+
+@pytest.mark.parametrize("verdict", [review.Verdict.ACCEPTED, review.Verdict.REJECTED])
+def test_a_rewrite_expecting_the_payload_of_a_decided_item_writes_nothing(cfg, verdict):
+    item_id = offered(cfg, "r-1")
+    decided(cfg, item_id, verdict)
+    with review.open_store(cfg) as items:
+        before = review.get(items, item_id)
+
+        assert (
+            review.redescribe(
+                items, item_id, {**before.payload, "artist": "X"}, expecting=before.payload
+            )
+            is None
+        )
+
+        assert review.get(items, item_id) == before
+
+
+def test_a_rewrite_expecting_anything_of_an_item_that_is_gone_files_nothing(cfg):
+    with review.open_store(cfg) as items:
+        assert review.redescribe(items, "rv_nothing", {"artist": "X"}, expecting={}) is None
+        assert review.count_unresolved(items) == 0
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -654,7 +774,7 @@ def test_an_item_that_names_no_release_is_left_and_nothing_is_read(cfg, monkeypa
     assert fake.artists_asked_for == []
     assert stored(cfg, item_id).payload["artist"] == ADDRESS
     assert counts(envelope["data"]["summary"]) == zeroes(unaddressed=1)
-    assert check(envelope, f"release.{item_id}")["status"] == "info"
+    assert check(envelope, f"item.{item_id}")["status"] == "info"
 
 
 def test_an_item_naming_another_items_release_is_not_given_that_releases_artist(
@@ -672,6 +792,24 @@ def test_an_item_naming_another_items_release_is_not_given_that_releases_artist(
     assert counts(envelope["data"]["summary"]) == zeroes(unaddressed=1)
 
 
+def test_two_items_naming_one_release_are_two_lines_under_two_keys(cfg, monkeypatch):
+    stray = offered(cfg, "r-1")
+    unidentified(cfg, stray, {"artist": ADDRESS, "title": "Stray", "identity": "r-2"})
+    own = offered(cfg, "r-2")
+    fake = StrictCatalogue(release_artists={"r-2": "Quay Act"})
+    bind(monkeypatch, fake)
+
+    envelope = repaired_ok()
+
+    assert fake.artists_asked_for == ["r-2"]
+    assert check(envelope, f"item.{stray}")["status"] == "info"
+    assert check(envelope, "release.r-2")["status"] == "ok"
+    keys = [one["key"] for one in envelope["data"]["checks"]]
+    assert len(keys) == len(set(keys)), keys
+    assert stored(cfg, own).payload["artist"] == "Quay Act"
+    assert stored(cfg, stray).payload["artist"] == ADDRESS
+
+
 def test_an_imported_item_is_read_by_the_identifier_its_payload_carries(cfg, monkeypatch):
     item_id = offered(cfg, "r-1")
     unidentified(cfg, item_id, {"artist": ADDRESS, "title": "Release r-1", "identity": "r-1"})
@@ -682,6 +820,48 @@ def test_an_imported_item_is_read_by_the_identifier_its_payload_carries(cfg, mon
 
     assert fake.artists_asked_for == ["r-1"]
     assert stored(cfg, item_id).payload["artist"] == "Harbour Act"
+
+
+def test_an_item_with_no_artist_at_all_is_not_an_address_and_is_not_said_to_have_one(
+    cfg, monkeypatch
+):
+    offered(cfg, "r-1", artist="")
+    fake = StrictCatalogue(release_artists={"r-1": "Harbour Act"})
+    bind(monkeypatch, fake)
+
+    envelope = repaired_ok()
+
+    assert fake.artists_asked_for == []
+    assert counts(envelope["data"]["summary"]) == zeroes(already_fine=1)
+    said = check(envelope, "fine")["detail"]
+    assert "1 open label release(s) do not read an address" in said
+    assert "already read an artist" not in said
+
+
+def test_a_release_held_out_of_review_is_not_an_open_item_and_is_not_read(cfg, monkeypatch):
+    """The scope the verb states. A hold keeps the address until it is returned."""
+    item_id = offered(cfg, "r-1")
+    with review.open_store(cfg) as items:
+        hold = review.withhold(
+            items,
+            item_id,
+            group="tide-works",
+            name="Tide Works",
+            reason="another kind",
+            detail={},
+            run_id="judge-1",
+        )
+    assert hold is not None and hold.payload["artist"] == ADDRESS
+    fake = StrictCatalogue(release_artists={"r-1": "Harbour Act"})
+    bind(monkeypatch, fake)
+
+    envelope = repaired_ok()
+
+    assert fake.artists_asked_for == []
+    assert counts(envelope["data"]["summary"]) == zeroes()
+    with review.open_store(cfg) as items:
+        kept = review.find_hold(items, queue=QUEUE, item_id=item_id)
+    assert kept is not None and kept.payload["artist"] == ADDRESS
 
 
 def test_another_queues_item_reading_an_address_is_not_this_verbs(cfg, monkeypatch):

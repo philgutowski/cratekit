@@ -1347,7 +1347,13 @@ def offer(
     return get(store, item_id)
 
 
-def redescribe(store: ReviewStore, item_id: str, payload: Mapping[str, Any]) -> Item | None:
+def redescribe(
+    store: ReviewStore,
+    item_id: str,
+    payload: Mapping[str, Any],
+    *,
+    expecting: Mapping[str, Any] | None = None,
+) -> Item | None:
     """Replace the payload of an item that is STILL OPEN, or None when it is not.
 
     R-815. For a producer that learned something about a candidate it filed
@@ -1360,8 +1366,28 @@ def redescribe(store: ReviewStore, item_id: str, payload: Mapping[str, Any]) -> 
     :func:`supersede` states. A decided item keeps the payload it was decided
     on, an item carrying a verdict this build cannot read keeps its own, and an
     identifier nothing answers to creates nothing. Each is None.
+
+    ``expecting`` MAKES IT A COMPARE AND SET (R-840). A caller that built
+    ``payload`` from a payload it read earlier hands that one back, and the
+    write happens only if the item still carries exactly it, checked under the
+    write lock. None otherwise, with nothing written, so a caller changing one
+    field cannot take back what another writer put on the item between its
+    read and its write. It reads again and decides again.
     """
     with store.immediate() as conn:
+        if expecting is not None:
+            held = conn.execute(
+                "SELECT payload FROM review_items WHERE item_id = ? AND verdict IS NULL",
+                (item_id,),
+            ).fetchone()
+            if held is None:
+                return None
+            try:
+                current = json.loads(held["payload"])
+            except ValueError:
+                current = {}
+            if current != dict(expecting):
+                return None
         changed = conn.execute(
             "UPDATE review_items SET payload = ?, updated = ? "
             "WHERE item_id = ? AND verdict IS NULL",

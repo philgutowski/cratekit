@@ -1952,7 +1952,15 @@ def test_a_release_with_no_artist_attribute_names_none():
 def test_the_sweep_files_the_name_the_artist_read_returns():
     """One reader: what a repair writes is what a sweep would file today."""
     album = ProviderAlbum("r-1", album_tracks(1), artist=Addressed("Harbour Act"))
-    assert sweep._artist_of(album) == catalogue.artist_name(album) == "Harbour Act"
+    album.title = "Harbour Lights EP"
+    entry = labels.LabelEntry(label_id="tide-works", name="Tide Works")
+
+    filed = sweep._candidate(entry, album)
+
+    assert filed.payload["artist"] == "Harbour Act"
+    assert tidal_catalogue.TidalCatalogue(AlbumClient(album)).release_artist("r-1") == (
+        filed.payload["artist"]
+    )
 
 
 def test_a_gone_release_has_no_artist_to_read_and_is_asked_about_once(pauses):

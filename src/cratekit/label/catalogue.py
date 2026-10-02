@@ -190,8 +190,10 @@ def artist_name(release: Any) -> str:
 
     ``album.artist`` on this provider is an Artist object, and ``str`` of that
     object is a memory address, which is what R-379 found in 98 live review
-    rows. A plain string is already the name. Anything else is read off the
-    object's ``name``, and an object with no name to give is the empty string.
+    rows. A plain string is already the name, and that is what the suite's
+    stand-ins had always used, which is why the address survived every green
+    battery. Anything else is read off the object's ``name``, and an object
+    with no name to give is the empty string.
 
     ONE READER, ON THE SEAM, for the sweep that files a release and for the
     repair that reads an artist again (R-840), so a repaired item carries
