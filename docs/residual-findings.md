@@ -33188,18 +33188,29 @@ no job behind it.
 
 What it counts, zeroes included: `repaired`, `not_served`, `already_fine`,
 `unread`, `unnamed`, `unaddressed` and `decided`, with `addresses` and
-`asked`. A decided item is never listed. An address is never replaced by
-nothing. The write is a compare and set over the payload read a moment
-before it, `redescribe`'s new `expecting`, so a stamp another writer lands
-in between is kept. A read the provider failed ends the run on
-`unavailable-transient` with the counts, after the walk, and three in a row
-end it early. The catalogue is not opened when nothing reads an address.
+`asked`. `addresses` is every outcome but `already_fine`. A decided item is
+never listed. An address is never replaced by nothing. A read the provider
+failed ends the run on `unavailable-transient` with the counts and each
+release's own sentence, after the walk, and three in a row end it early.
+The catalogue is not opened when nothing reads an address.
+
+`review.redescribe` now takes a function as well as a payload. It is handed
+the open item's payload under the write lock and returns what to write, or
+None to write nothing. The verb changes the artist that way, so what
+another writer put on the item since it was listed is kept. `label judge`
+makes its stamp that way too, where it used to write over the payload it
+had read before the catalogue was asked, seconds earlier: a repair made
+while a release is being judged is kept, driven by
+`test_an_artist_put_right_while_a_release_was_being_judged_is_kept_by_the_stamp`.
+The second pass of the review found that one, and it was fixed here and
+not filed.
 
 **Owed, attended, then #213 closes:** `crate label artists` on the live
 store. It should report 29 addresses, all Last Night On Earth, and 29
-provider reads. Read `not_served` and `unnamed` before calling it done, a
-release counted there still reads its address. R-847 is what it does not
-reach.
+asked. Read `not_served` and `unnamed` before calling it done: a release
+counted there still reads its address, nothing marks it, and every later
+run asks about it again until the author decides it. R-847 is what the
+verb does not reach.
 
 ---
 
@@ -33376,36 +33387,10 @@ that carries its ledger entry. Title it with this heading exactly.
 
 ---
 
-## R-848. A judging job's stamp is written over the payload it read before it asked
+## R-848. Three label verbs each carry their own builder of a diagnostic check
 
-**Found:** on `relay/244`, 2026-10-02, looking for the shape R-840's review
-found one file over. Read from the source and not driven.
-
-**The mechanism.** `label.judge_cli._stamp` writes `{**kept, **said}` built
-from the item as it was read before the provider and the general catalogue
-were asked, which is seconds per release. `review.redescribe` replaces the
-whole payload. So a field another writer put on the item in that time is
-taken back. R-840 found this shape in its own write and closed it there
-with `redescribe`'s `expecting`. The judging job does not pass it. The one
-other writer of an open label release's payload today is `crate label
-artists`, so the cost is a repaired artist reading its address again.
-
-**Measured cost.** Unmeasured. It needs the two verbs running at once on
-one item, and the provider gate lets one call through at a time and does
-not keep the two processes apart. Nothing is lost for good: the next run of
-`label artists` repairs the item again.
-
-**Closes when:** `_stamp` reads the item again and writes with `expecting`,
-as `label.artists_cli._write` does.
-
-**Not on the board bar.** The reachability is unmeasured.
-
----
-
-## R-849. Three label verbs each carry their own builder of a diagnostic check
-
-**Found:** on `relay/244`, 2026-10-02, by the built in review of R-840, and
-not applied.
+**Found:** on `relay/244`, 2026-10-02, by both passes of the built in review
+of R-840, and not applied.
 
 `label/approved_cli.py`, `label/held_cli.py` and `label/artists_cli.py` each
 define `_check`, the same six lines apart from the key's prefix, and

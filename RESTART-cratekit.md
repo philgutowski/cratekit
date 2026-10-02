@@ -14,20 +14,23 @@ step of `label judge`: no gate is consulted, so no gate decision changes,
 and a second run asks only about what the first left. It counts `repaired`,
 `not_served`, `already_fine`, `unread`, `unnamed`, `unaddressed` and
 `decided`. A decided item is never listed, and an address is never replaced
-by nothing. `review.redescribe` gained `expecting`, a compare and set, so
-the write keeps a stamp another writer lands between its read and itself. A
-read the provider failed ends the run on `unavailable-transient` with the
+by nothing. **`review.redescribe` takes a function now**, handed the open
+item's payload under the write lock, and both the verb and `label judge`'s
+stamp write that way, so neither takes back what the other put on an item.
+A read the provider failed ends the run on `unavailable-transient` with the
 counts, and three in a row end it early. Battery on the branch: ruff clean,
-12,195 passed and 1 skipped, the scan clean. 25 mutation rows in three
-tables, 25 killed, none at zero, the author's and not independent. One pass
-of the built in review, ten findings, eight applied, one filed, one
-declined to the ledger. **Owed, attended, then #213 closes:** `crate label
-artists` on the live store, which should report 29 addresses, all Last
-Night On Earth, and 29 provider reads. Main's highest residual number was
-R-845 at branch time, **and the attended worktree holds R-846 on a commit
-that is not on `main` yet**, so this unit files R-847 to R-849: a held
-release keeps its address, a judging job's stamp can take a repair back,
-and three copies of one check builder. **R-847 meets the board bar and its
+12,201 passed and 1 skipped, the scan clean. 25 mutation rows in three
+tables, 25 killed, none at zero, the author's and not independent, measured
+after the second fix round. Two passes of the built in review, twenty
+findings, sixteen applied, one filed as R-847, the copied check builder
+declined twice and filed as R-848, and one left as the brief has it: a
+release the provider no longer serves is asked about again on every run.
+**Owed, attended, then #213 closes:** `crate label artists` on the live
+store, which should report 29 addresses, all Last Night On Earth, and 29
+asked. Main's highest residual number was R-845 at branch time, **and the
+attended worktree holds R-846 on a commit that is not on `main` yet**, so
+this unit files R-847 and R-848: a held release keeps its address, and
+three copies of one check builder. **R-847 meets the board bar and its
 issue is owed**, to be created once this merge is on `main`, titled with
 the ledger heading exactly. A learning is filed under `docs/solutions/`: a
 stop checked before the next read never fires when the last reads are the
