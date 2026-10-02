@@ -31476,6 +31476,9 @@ into its bucket's `with vox` sub, and the twelve are in theirs.
 
 **Not on the board bar.** Twelve rows, all visible in their bucket.
 
+**Put on the board on 2026-10-02.** The author asked for line 7 of #178 to be
+code complete, and this is the code line 7 still lacks.
+
 ## R-789. A rebuild of a native intake tree derives the routing tree's placements
 
 **Found:** on `relay/233`, 2026-09-30, by the built in review of R-787's
@@ -32974,3 +32977,152 @@ read the installation's queue or the library's files.
 counts and its time.
 
 **Not on the board bar.** It closes at an attended sitting.
+
+---
+
+## R-834. A playlist the product creates on the streaming account is never made private
+
+**Found:** 2026-10-02, sitting 29, by a read only audit of the source system's
+writes to the streaming account against this product's, run on the author's
+word: he wants the account kept organized the way the source system keeps it.
+`TidalAccount.create_playlist` in `modules/outbound/tidal_account.py` passes
+an empty description and never sets the playlist private. The source system
+makes every playlist it creates private. Whether the provider's default is
+public was not read.
+
+**Measured cost.** Every `export playlist` run leaves a playlist whose
+visibility nobody chose. The label folders of R-835 and the set playlists of
+R-837 would inherit it.
+
+**Closes when:** every playlist the product creates on the account is private,
+held by a test on the adapter, and the visibility of one created playlist is
+read back from the account at an attended sitting.
+
+**On the board bar, (b).** The author asked for it on 2026-10-02.
+
+---
+
+## R-835. A followed label cannot become a folder of year playlists on the streaming account
+
+**Found:** 2026-10-02, sitting 29, the same audit. The source system builds,
+for a label, one `<Label>` folder on the account holding one private
+`<Label> <year>` playlist per release year, added in chunks, and moves each
+playlist into the folder. After a label batch lands it prefixes those year
+playlists `DOWNLOADED `. Feature row 23, "label to streaming playlist
+folders", is `defer` in `cli/registry.py`, and
+`docs/ideation/2026-09-18-code-complete.md` names it an explicit
+non-replacement. **The author reversed that on 2026-10-02.** The account
+protocol, `service.RemoteAccount`, declares no folder call.
+
+**Measured cost.** The account's main structure, a folder per label, is no
+longer kept once the source system retires.
+
+**Closes when:** a verb plans, for a followed label, the folder and its year
+playlists from the label's catalogue already crawled, shows the plan at a
+digest gate, and on approval creates the folder and the private playlists,
+adds the tracks and moves each playlist into the folder, idempotent on a
+second run, add only; a landed label batch can prefix its year playlists
+`DOWNLOADED `; feature row 23 is no longer `defer`; and one label is built on
+the author's account at an attended sitting.
+
+**On the board bar, (c).** The author asked for it on 2026-10-02.
+
+---
+
+## R-836. A track the genre gate dropped stays in its label year playlist, since the account protocol has no remove
+
+**Found:** 2026-10-02, sitting 29, the same audit. The source system prunes
+from a label's year playlists the tracks its genre gate dropped. This
+product's account protocol is add only by design (R-144), so neither a
+label folder (R-835) nor an exported playlist can ever lose a track.
+
+**Measured cost.** A year playlist keeps the releases a DJ was told were
+filtered out, and a re-exported playlist keeps every track ever removed from
+its library playlist.
+
+**Closes when:** the protocol declares a remove from a playlist the product
+itself created, only those, behind a digest gate that lists every track it
+removes, with a test that a playlist the product did not create is refused;
+and a prune of one label's year playlists is run at an attended sitting.
+
+**On the board bar, (c).** The author asked for it on 2026-10-02.
+
+---
+
+## R-837. An identified set cannot become a playlist on the streaming account, and a downloaded set playlist is not archived
+
+**Found:** 2026-10-02, sitting 29, the same audit. The source system turns
+an identified set or a typed tracklist into a private playlist on the
+account, and after its download prefixes that playlist `DOWNLOADED ` and
+moves it into a `<YYYY>` folder. `intake identify` here stops at the list,
+and nothing files a processed set playlist anywhere.
+
+**Measured cost.** A set a DJ identified has no home on the account, and
+the account's set playlists pile up at its root.
+
+**Closes when:** an identified set or tracklist can be written as a private
+playlist on the account through a digest gate, a swept set playlist can be
+marked and moved into its year folder, and both are run once at an attended
+sitting.
+
+**On the board bar, (c).** The author asked for it on 2026-10-02.
+
+---
+
+## R-838. A `DOWNLOADED ` mark written by mistake cannot be undone
+
+**Found:** 2026-10-02, sitting 29, the same audit. The source system strips
+the prefix again when a run is abandoned. `sync mark` here renames and
+nothing renames back, so a wrong mark is fixed by hand on the account.
+
+**Measured cost.** A playlist marked by a pass that did not land reads as
+swept, and the next `sync all` skips it.
+
+**Closes when:** a verb removes the prefix from playlists a named pass
+marked, through a digest gate, idempotent, and refuses a playlist the pass
+did not mark.
+
+**On the board bar, (b).** The author asked for it on 2026-10-02.
+
+---
+
+## R-839. Nothing triages the account's unprefixed playlists, and nothing deletes one
+
+**Found:** 2026-10-02, sitting 29, the same audit. The source system's
+onboarding walks every unprefixed playlist on the account and, per
+playlist, prefixes it, deletes it, or skips it. This product has no such
+verb and no delete.
+
+**Measured cost.** Dead playlists on the account are swept by every
+`sync all` as intake (R-361) until somebody removes them by hand.
+
+**Closes when:** the author decides whether the product may delete a
+playlist on his account at all. Deleting is not undone by any call the
+provider offers, so this is his call before it is anybody's code. Filed
+attended for that reason.
+
+**Attended.** The author asked for the parity on 2026-10-02; the delete is
+his to decide.
+
+---
+
+## R-840. An open label release whose artist reads as a provider object address is never corrected
+
+**Found:** 2026-10-02, sitting 29, measuring #213 on a copy of the review
+store. 29 open `label-release` items, all Last Night On Earth, filed at
+sitting 4 before R-379, still carry `<tidalapi.artist.Artist object at
+0x...>` as the artist (R-389). `review.file` refreshes the payload of an
+open item on a re-offer, but a sweep does not re-offer a release already
+holding a place in its label's window, so the sweep of 2026-10-01 left all
+29 as they were, and `label judge` rewrites the gate fields and not the
+artist.
+
+**Measured cost.** The person reviewing the label queue reads 29 addresses
+where artists belong.
+
+**Closes when:** a verb, or `label judge`, reads the artist again by release
+id for every open item whose artist is an address, rewrites only that field
+through `review.redescribe`, leaves decided items alone, and the 29 read an
+artist name on the live store.
+
+**On the board bar, (b).** The product shows the person something false.
