@@ -496,15 +496,15 @@ class TidalAccount:
         now the create plus this step rather than the create alone. R-849
         records that too.
 
-        A client with no such call is passed over rather than refused, for the
-        same reason; a guard in the suite pins the call on the client library,
-        so an upgrade that renames it fails there instead of here.
+        A client with no such call fails the step like any refusal and is
+        passed over for the same reason; a guard in the suite pins the call on
+        the client library, so an upgrade that renames it fails there instead.
         """
-        private = getattr(created, "set_playlist_private", None)
-        if not callable(private):
-            return
         try:
-            self._call(f"make the playlist {identifier} private", private)
+            self._call(
+                f"make the playlist {identifier} private",
+                lambda: created.set_playlist_private(),
+            )
         except CratekitError:
             return
 
