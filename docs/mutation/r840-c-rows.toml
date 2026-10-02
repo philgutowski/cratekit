@@ -1,0 +1,58 @@
+name = "r840-c"
+pass_kind = "light"
+
+[[rows]]
+id = "C1_expecting_is_compared"
+description = "review.redescribe: drop the comparison, so a rewrite expecting a payload the item no longer carries is written over it"
+file = "src/cratekit/core/review.py"
+surface = "user"
+tests = ["tests/test_label_artists.py", "tests/test_label_judge.py"]
+old = '''            if current != dict(expecting):
+                return None
+'''
+new = ""
+
+[[rows]]
+id = "C2_expecting_reads_an_unparseable_payload_as_empty"
+description = "review.redescribe: let text that is not JSON raise, where every reader of an item shows it as the empty payload"
+file = "src/cratekit/core/review.py"
+tests = ["tests/test_label_artists.py", "tests/test_label_judge.py"]
+old = '''            try:
+                current = json.loads(held["payload"])
+            except ValueError:
+                current = {}
+            if current != dict(expecting):'''
+new = '''            current = json.loads(held["payload"])
+            if current != dict(expecting):'''
+
+[[rows]]
+id = "C3_the_adapter_reads_a_name"
+description = "TidalCatalogue.release_artist: answer with the text of the album's artist object, which is its address, the defect R-379 named"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''        return artist_name(self._album(release_id))'''
+new = '''        return str(getattr(self._album(release_id), "artist", "") or "")'''
+
+[[rows]]
+id = "C4_no_name_is_the_empty_string"
+description = "artist_name: answer with the text of whatever the artist's name attribute holds, so an object with no name reads None"
+file = "src/cratekit/label/catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/modules/test_labels.py"]
+old = '''    return name if isinstance(name, str) else ""'''
+new = '''    return str(name)'''
+
+[[rows]]
+id = "C5_the_sweep_files_a_name"
+description = "sweep._candidate: file the text of the release's artist object, which is its address, where the seam's reader is called"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''            "artist": artist_name(release),'''
+new = '''            "artist": str(getattr(release, "artist", "") or ""),'''
+
+[[dropped]]
+id = "C6_a_release_the_client_returns_nothing_for"
+description = "TidalCatalogue._album: read None from the client as a release and not as one that is gone"
+reason = "moved, not changed: the guard is U75's, measured in that unit's table, and this unit only lifted it into the read the two methods share"
