@@ -5967,7 +5967,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # path under when it is not beneath the library's root, and
     # remap-outside-library is the WARNING code `tagging/remap_cli.py` gives
     # for it.
-    assert (len(literals), len(literals - set(causes))) == (582, 395), (
+    # Re-pinned on the residual finding "Twelve vox tracks sit in a bucket
+    # without its with vox sub, and no verb files them", 2026-10-02: 582 to
+    # 585 distinct, non-keys 395 to 398. THREE joined and nothing left, each
+    # checked against `main`'s own `src` by git grep, and none is a key.
+    # under-another-name and no-sub are two of the states `adopt/plan.py`
+    # counts a vox tagged track under, and no-tag is the state that module's
+    # plan document gives a library that has no vox tag. The refusal the new
+    # read raises is soft-delete-marker-unreadable, which the tree already
+    # carried.
+    assert (len(literals), len(literals - set(causes))) == (585, 398), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
