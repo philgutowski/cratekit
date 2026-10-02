@@ -824,6 +824,17 @@ still carry none, 2 from the playlists and 31 from the label test, of which
 Progressive / Melodic, 630 tracks, and Rock, 132, get folders of their own;
 the 20 label tracks held as other versions.
 
+Owed for R-799, issue #241, built unattended on 2026-10-02 and not yet run
+here: a dated backup of the active taxonomy copy, then the shipped
+template's edit, the `[vocabulary.deezer]` table together with the
+`NonElectronic / Pop` alias and map row it needs; `crate tag remap` read at
+its gate, expected 16 writes of 78 files, `Dance / Pop` to
+`NonElectronic / Pop` on 10 and `NonElectronic` to `Rock` on 6; `crate tag
+rows` for the rows, after one of the ten is given its genre in rekordbox so
+the lookup row exists; `adopt apply`, and the ten taken out of their Dance /
+Pop bands by hand. Record here the plan's counts and time, and the ten read
+under NonElectronic / Pop. The order is in R-799's ledger entry.
+
 Owed for R-790, issue #234: follow a new label, sweep it once, and record
 here that it filed `labels.offer_per_sweep` releases, ten unless set, and
 that `crate review list --queue label-release --group-by label` counts the

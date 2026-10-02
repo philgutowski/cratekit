@@ -217,7 +217,8 @@ bucket.
 answers to from any source. A vocabulary row says what one source's word is
 written as, and where it files follows from routing. Also avoid reading a
 declared table as a closed list: a word with no row is not declined for
-having none.
+having none. The word is also used across the code in its ordinary sense, the
+exit code vocabulary, a source's vocabulary. This entry is the declared table.
 
 ### Remap
 Since R-799, the correction of genres an older mapping wrote, `crate tag
@@ -237,6 +238,9 @@ A rewrite's record carries a **generation**, one past the record that
 explained the file. Only the general catalogue's records of the highest
 generation on a file are in force, so a genre a person puts back by hand after
 a rewrite matches nothing in force and is left as `changed-since`.
+
+Not the worker pool's generation in `core/pool.py`, which is one batch of
+child processes.
 
 Not `crate tag retag`, which selects a genre the taxonomy calls too coarse and
 asks a catalogue what it should be.
