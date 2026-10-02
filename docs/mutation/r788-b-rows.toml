@@ -1,0 +1,71 @@
+name = "r788-b"
+pass_kind = "light"
+
+[[rows]]
+id = "P9_unplaced_entry_gains"
+description = "vocal_place: only an empty bucket is no bucket, so an entry the plan does not place gains a vocal sub when a caller hands its bucket in"
+file = "src/cratekit/adopt/plan.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''    if not bucket or disposition not in (Disposition.ROUTE, Disposition.WITHHELD):
+        return VOCAL_NO_BUCKET, ""'''
+new = '''    if not bucket:
+        return VOCAL_NO_BUCKET, ""'''
+
+[[rows]]
+id = "P10_manual_class_is_vocal"
+description = "vocal_sub: a class of the vocal identifier that is not additive is filed under"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''        if not entry.additive or entry.id != VOX_SUB_CLASS:'''
+new = '''        if entry.id != VOX_SUB_CLASS:'''
+
+[[rows]]
+id = "P12_name_clash_files_into_a_style"
+description = "vocal_sub: a bucket whose own sub or band label carries the vocal sub's display name still has a vocal sub, so vocal tracks are filed into that style"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''        if entry.id in ids or entry.display in displays:'''
+new = '''        if entry.id in ids:'''
+
+[[rows]]
+id = "P14_digest_drops_vocal"
+description = "digest: no vocal membership is covered, so a plan that gained vocal additions after the approval is applied under it"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''                "vocal": [vocal_id(entry) for entry in self.vocal_memberships()],'''
+new = '''                "vocal": [],'''
+
+[[rows]]
+id = "P16_digest_moves_under_its_own_apply"
+description = "digest: cover the additions only, so the apply's own write moves the digest and a stopped run refuses its own work"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''                "vocal": [vocal_id(entry) for entry in self.vocal_memberships()],'''
+new = '''                "vocal": [vocal_id(entry) for entry in self.vocal_additions()],'''
+
+[[rows]]
+id = "P17_withheld_presence_is_planned"
+description = "PlanEntry.vocal_planned: drop applicable, so a withheld track's vocal membership is one an apply may write"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''        return self.applicable and self.vocal in VOCAL_PLANNED'''
+new = '''        return self.vocal in VOCAL_PLANNED'''
+
+[[rows]]
+id = "P19_answered_genre_files_nothing"
+description = "with_verdicts: an answered genre is asked of no vocals, so a tagged track given a bucket is never filed under its vocal sub"
+file = "src/cratekit/adopt/plan.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''            plan.vocals,
+            disposition=disposition,
+            bucket=chosen,'''
+new = '''            NO_VOCALS,
+            disposition=disposition,
+            bucket=chosen,'''

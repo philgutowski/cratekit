@@ -1,0 +1,46 @@
+name = "r788-d"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_census_before_the_calibration"
+description = "current_plan: the census runs before the standing is asked, so an unreadable calibration refuses only after a library walk"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''    standing = placements.vocal_standing(cfg, declared) if vocals else False
+    scanned = census(cfg, declared)
+'''
+new = '''    scanned = census(cfg, declared)
+    standing = placements.vocal_standing(cfg, declared) if vocals else False
+'''
+
+[[rows]]
+id = "A2_vocal_rows_never_written"
+description = "planned_memberships: the vocal additions are left out of the write, so the gate lists memberships the apply never performs"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''    for key, rows in vocal_locations(plan, declared).items():'''
+new = '''    for key, rows in ():'''
+
+[[rows]]
+id = "A3_present_rows_handed_over"
+description = "vocal_locations: every planned membership is handed to the writer, the present ones too"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''    return _locations(plan.vocal_additions(), declared, lambda entry: entry.vocal_sub)'''
+new = '''    return _locations(plan.vocal_memberships(), declared, lambda entry: entry.vocal_sub)'''
+
+[[rows]]
+id = "A5_move_worker_reads_vocals"
+description = "move worker: the plan it checks against is built with the vocal reads, so a refusal about a tag row or a calibration stops a move"
+file = "src/cratekit/adopt/move_cli.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_move.py", "tests/test_adopt_workers.py"]
+old = '''    todo, gone = remaining(
+        approved, apply_cli.current_plan(cfg, declared, vocals=False), declared
+    )'''
+new = '''    todo, gone = remaining(
+        approved, apply_cli.current_plan(cfg, declared, vocals=True), declared
+    )'''
