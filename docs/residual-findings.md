@@ -31522,6 +31522,23 @@ why it leaves any. Left open here are the four limits below, filed under
 their own titles: what decides, the withheld track, the tag writer's find,
 and the band renamed in rekordbox.
 
+**Run live at sitting 30, 2026-10-02, and closed.** On main at the merge of
+#245 through the installed build. Rehearsed on a copy with library state
+redirected, then live on an equal digest `70e700cf69b129ca`. The plan read
+`vocals: read`, `vocal` add 33, present 912, no-bucket 196, withheld 0,
+under-another-name 0, no-sub 0. **33 memberships added, none removed**, 27
+to R&B / with vox, 3 to Afro House, one each to NonElectronic, Melodic House
+and House / Funky House / Disco. The twelve of sitting 23 had become 33
+because sitting 26 moved 39 tracks into the top level R&B bands, which had
+no vocal sub; the apply made `R&B / with vox`, the sub the taxonomy declares,
+beside High, Low, Med and Unsorted. Memberships 19,726 to 19,759, playlists
+578 to 579, no content row changed, integrity ok, live read back equal to the
+copy. After it, **every vox tagged track that adoption routes is in its
+bucket's vocal sub.** Six tagged tracks still sit in a bucket without that
+bucket's sub, and none of them is one adoption routes there: two carry no
+genre on the row, and four sit in a stale second bucket beside the one their
+genre names, in whose vocal sub they already are. They are R-846.
+
 ## R-789. A rebuild of a native intake tree derives the routing tree's placements
 
 **Found:** on `relay/233`, 2026-09-30, by the built in review of R-787's
@@ -33363,6 +33380,33 @@ only under another name, as the vocal reader now does, and the plan
 withholds a routed entry into one.
 
 **Not on the board bar.** The reachability is unmeasured.
+
+## R-846. A vox tagged track sitting in a bucket adoption does not route it to gains no vocal sub there
+
+**Found:** at sitting 30, 2026-10-02, reading the live database after R-788's
+apply.
+
+**The mechanism.** Adoption plans a vocal membership for a routed entry
+only, in the bucket it routes to. A track that sits in a bucket by an older
+placement and is not routed there gains nothing in that bucket's vocal sub.
+Two shapes on the library: a track whose row carries no genre, which
+adoption counts as needs-genre and routes nowhere, and a track whose genre
+changed, which sits in its old bucket beside the new one because adoption
+only adds.
+
+**Measured cost.** Six tracks, seven memberships. No genre on the row: Bob
+Marley & The Wailers "Could You Be Loved (with LP Giobbi)" in Deep House,
+Gorillaz "Feel Good Inc. (Stanton Warriors Remix)" in Tech House. A stale
+second bucket, each already in its routed bucket's vocal sub: "Ain't Nobody"
+in Tech House, "Around (Acoustic Version Long)" in Minimal / Deep Tech and
+Organic House, "LUNCH" and "Sunlight" in House / Funky House / Disco.
+
+**Closes when:** the two carry a genre and are routed, and the stale
+memberships are settled by the removal verb the withheld tracks also wait on,
+or a person files them by hand.
+
+**Not on the board bar.** Six rows, all visible in their buckets, and both
+shapes are gaps already counted elsewhere, needs-genre and the stale band.
 
 ---
 

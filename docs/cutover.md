@@ -865,6 +865,22 @@ NonElectronic / Pop, and FANCY, whose row still says Dance / Pop, is one of
 the four the author removes. Magnus Ferrell's "Asleep Talking" stays in
 Dance / Pop: its file says Dance / Pop and the remap agrees.
 
+## Sitting 30, 2026-10-02, afternoon into the night, unattended, the run of 2026-10-02
+
+The author set the terms and left: land the run's cards through the feeder,
+prove each live, read every live write in rekordbox and on the streaming
+account. The feeder's stop file went down at 15:15 so the cycle building
+#245, #244 and #242 ends with the feeder leaving, and the rekordbox reads
+wait for that gap, since rekordbox and a Relay build never run together. The
+author waived a fresh backup for the run; both backups were 0 days old at
+its start. The build in use is the installed copy, reinstalled at each
+landing.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `adopt scan` then `adopt apply`, R-788, #245 | rehearsed on a copy, live on an equal digest `70e700cf69b129ca` | Route 8,767, needs-genre 1,289, withheld 13, no collisions. `vocals: read`, `vocal` add 33, present 912, no-bucket 196, withheld 0. **33 vocal memberships added, none removed**: R&B / with vox 27, made by the apply as the taxonomy declares, Afro House 3, NonElectronic, Melodic House and House / Funky House / Disco one each. Memberships 19,726 to 19,759, playlists 578 to 579, no content row changed, integrity ok, live equal to the copy. | live, **R-788 closes** |
+| The vocal subs read from the database | after the apply | Every vox tagged track adoption routes sits in its bucket's vocal sub. Six do not, none routed there: two with no genre on the row and four in a stale second bucket. R-846 filed. | read |
+
 ## What blocks a full sync cycle, stated plainly
 
 **Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
