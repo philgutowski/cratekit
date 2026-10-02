@@ -136,14 +136,18 @@ def library_row_warning(folder: str) -> dict[str, str]:
     write, so the message states that and then names the act.
 
     AND IT IS NOT A PENDING HUMAN ACTION, which is the conservative call here
-    rather than an oversight. That field is mandatory-verified by construction,
-    ``verify_verb`` names a registered verb that proves the act was done, and
-    nothing in this build can read the row back to prove a reload landed: a
-    corrected file is never selected again, so a second retag over the folder
-    reports the same clean zero whether the person reloaded or not. A pending
-    action nobody can verify is the printed instruction that field exists to
-    replace. Recorded as R-567 rather than faked with a verb that would answer
-    the question wrong.
+    rather than an oversight. That field is mandatory-verified by construction:
+    ``verify_verb`` names a registered verb that proves the act was done. When
+    the act was a reload nothing could prove it, which is R-567. The act is now
+    the row verb, whose own plan shows no write once the rows agree, so a
+    verifier exists that did not. Making this a pending action is still not
+    done here: that plan is over the whole collection and not this folder, and
+    it answers at an explicit gate, which is not the shape a verify verb has.
+    R-567 stays open with that as what is left of it.
+
+    ``with_reload_step`` KEEPS ITS NAME from when the step was a reload. It is
+    named in two other modules' docstrings for the type it carries through,
+    and the step it appends is this message whatever the act is called.
     """
     return {
         "code": LIBRARY_ROW_STALE,
@@ -153,7 +157,8 @@ def library_row_warning(folder: str) -> dict[str, str]:
             f"value, because this verb writes the file half only; run `crate tag "
             f"rows` so the rows catch up, which writes each row's genre from its "
             f"file and no other column, where a reload in rekordbox overwrites "
-            f"every tag field"
+            f"every tag field; it leaves a genre the library has never held and "
+            f"says what to do about it"
         ),
     }
 

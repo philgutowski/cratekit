@@ -5917,18 +5917,20 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # all three of which the tree already carried.
     # Re-pinned on the residual finding "A row's genre lags its file's on 773
     # tracks, and adoption and the genre report read the row", 2026-10-01: 549
-    # to 559 distinct, non-keys 363 to 373. TEN joined and nothing left, each
-    # checked against `main`'s own `src` by git grep, and none is a key. Six
-    # are the outcomes `tagging/rows.py` counts a row under that the tree did
-    # not already spell: file-too-coarse, file-blank, file-unreadable,
-    # file-missing, path-unmapped and no-path. genre-unknown is a seventh
-    # outcome and the tree carried it. tag-rows is the name that module's
-    # session record carries. rows-file-not-read, rows-nothing-to-write and
-    # rows-genre-written are WARNING codes `tagging/rows_cli.py` gives. The
-    # refusals the new verb raises are internal-error, whitelist-violation,
-    # decision-stale and config-unusable, all of which the tree already
+    # to 564 distinct, non-keys 363 to 378. FIFTEEN joined and nothing left,
+    # each checked against `main`'s own `src` by git grep, and none is a key.
+    # Nine are the outcomes `tagging/rows.py` counts a row under that the tree
+    # did not already spell: held-out, file-too-coarse, file-multi-valued,
+    # file-blank, file-unreadable, file-online-only, file-missing,
+    # path-unmapped and no-path. genre-unknown is a tenth outcome and the tree
+    # carried it. tag-rows is the name that module's session record carries.
+    # rows-file-not-read, rows-nothing-to-write, rows-genre-written,
+    # rows-left-alone and rows-leave-unmatched are WARNING codes
+    # `tagging/rows_cli.py` gives. The refusals the new verb raises are
+    # internal-error, whitelist-violation, decision-stale, config-unusable and
+    # library-paths-majority-unresolved, all of which the tree already
     # carried.
-    assert (len(literals), len(literals - set(causes))) == (559, 373), (
+    assert (len(literals), len(literals - set(causes))) == (564, 378), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

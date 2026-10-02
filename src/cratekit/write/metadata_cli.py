@@ -298,8 +298,19 @@ def resolution_totals(cfg: config.Config, db: Any) -> ResolutionTotals:
     return _survey(cfg, db).totals
 
 
-def majority_unmapped_cause(cfg: config.Config, totals: ResolutionTotals) -> Cause:
+#: What the majority refusal says cannot be done, for the verb it was written for.
+_VOCALS_BLOCKED = "nothing about its vocals can be reported or written"
+
+
+def majority_unmapped_cause(
+    cfg: config.Config, totals: ResolutionTotals, *, blocked: str = _VOCALS_BLOCKED
+) -> Cause:
     """The refusal every surface raises when most rows record an unmapped path.
+
+    ``blocked`` is the clause saying what cannot be done until the rule exists.
+    It is the one part of the sentence that belongs to the verb raising it, so
+    a second verb that plans over the collection's files says its own and
+    shares the slug, the counts, the steps and the detail.
 
     Built through ``refuse`` so the slug is checked against the registry and the
     remedy is the reserved one. ``RUN_SETUP`` rather than ``RUN_DOCTOR``: doctor
@@ -320,8 +331,7 @@ def majority_unmapped_cause(cfg: config.Config, totals: ResolutionTotals) -> Cau
         (
             f"{totals.unmapped} of {totals.active} active rows record a path "
             f"under no library.location_prefix_map rule ({listed}), so this "
-            f"library cannot be read from here and nothing about its vocals can "
-            f"be reported or written until the rule exists"
+            f"library cannot be read from here and {blocked} until the rule exists"
         ),
         remedy=Remedy.RUN_SETUP,
         steps=(

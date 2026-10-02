@@ -24,6 +24,13 @@ A GENRE LOOKUP ROW IS LINKED AND NEVER CREATED. A file word the library has no
 active lookup row for is left alone and counted, for the reason
 :func:`cratekit.write.metadata.resolve_genre_id` gives.
 
+EVERY DISAGREEMENT IS READ AS THE ROW LAGGING ITS FILE, EXCEPT WHERE SOMETHING
+SAYS OTHERWISE, and four things can: a person holding the row out by name,
+because they set its genre by hand; a file word the taxonomy calls too coarse
+against a specific word on the row; a file holding more than one genre; and a
+word the library has no lookup row for. Each such row is listed in the plan
+with its reason and left.
+
 EVERY LIVE ROW LANDS IN EXACTLY ONE OUTCOME, :data:`OUTCOMES`, and the counts
 are zero filled, so "none of those here" and "this build does not count that"
 are never the same output. A file that could not be read is counted apart from
@@ -47,6 +54,7 @@ from types import MappingProxyType
 from typing import Any
 
 from cratekit.adopt import collection
+from cratekit.adopt import scan as adopt_scan
 from cratekit.cli.output import digest_of
 from cratekit.core import (
     config,
@@ -74,10 +82,13 @@ CHANGE_KEY = "content.genre"
 #: The outcomes, in the order a summary lists them.
 AGREE = "agree"
 WRITE = "write"
+HELD_OUT = "held-out"
 FILE_TOO_COARSE = "file-too-coarse"
+FILE_MULTI_VALUED = "file-multi-valued"
 GENRE_UNKNOWN = "genre-unknown"
 FILE_BLANK = "file-blank"
 FILE_UNREADABLE = "file-unreadable"
+FILE_ONLINE_ONLY = "file-online-only"
 FILE_MISSING = "file-missing"
 PATH_UNMAPPED = "path-unmapped"
 NO_PATH = "no-path"
@@ -85,18 +96,42 @@ NO_PATH = "no-path"
 OUTCOMES: tuple[str, ...] = (
     AGREE,
     WRITE,
+    HELD_OUT,
     FILE_TOO_COARSE,
+    FILE_MULTI_VALUED,
     GENRE_UNKNOWN,
     FILE_BLANK,
     FILE_UNREADABLE,
+    FILE_ONLINE_ONLY,
     FILE_MISSING,
     PATH_UNMAPPED,
     NO_PATH,
 )
 
+#: The outcomes of a row that differs from its file and is left alone. Each is
+#: listed in the plan as an item, with the outcome as its reason.
+LEFT: tuple[str, ...] = (HELD_OUT, FILE_TOO_COARSE, FILE_MULTI_VALUED, GENRE_UNKNOWN)
+
 #: The outcomes in which the file's genre was never learned. A summary names
 #: these apart, because a clean answer over rows nobody could read is not one.
-UNREAD: tuple[str, ...] = (FILE_UNREADABLE, FILE_MISSING, PATH_UNMAPPED, NO_PATH)
+UNREAD: tuple[str, ...] = (
+    FILE_UNREADABLE,
+    FILE_ONLINE_ONLY,
+    FILE_MISSING,
+    PATH_UNMAPPED,
+    NO_PATH,
+)
+
+#: What the readability probe's answers are counted as here. Anything it adds
+#: later reads as unreadable until it is given a name of its own.
+_PROBED: Mapping[adopt_scan.Readability, str] = MappingProxyType(
+    {
+        adopt_scan.Readability.MISSING: FILE_MISSING,
+        adopt_scan.Readability.UNREADABLE: FILE_UNREADABLE,
+        adopt_scan.Readability.ONLINE_ONLY: FILE_ONLINE_ONLY,
+        adopt_scan.Readability.NOT_A_PATH: NO_PATH,
+    }
+)
 
 #: What an item whose row is not written says it does.
 LEAVE = "leave"
@@ -151,6 +186,13 @@ class RowsPlan:
     items: tuple[Item, ...]
     counts: Mapping[str, int]
     changes: metadata.Plan
+    #: Identifiers a person asked to leave that name no row differing from its
+    #: file. Shown at the gate and covered by the digest, because a mistyped
+    #: identifier is a row the person meant to hold and the plan writes.
+    leave_unmatched: tuple[str, ...] = ()
+    #: The unmapped rows grouped by their recorded prefix, for the refusal that
+    #: names the drive. Display only, and not part of the digest.
+    unmapped_prefixes: Mapping[str, int] = MappingProxyType({})
 
     @property
     def writes(self) -> tuple[Item, ...]:
@@ -167,6 +209,21 @@ class RowsPlan:
         return sum(self.counts[name] for name in UNREAD)
 
     @property
+    def majority_unmapped(self) -> bool:
+        """More than half of the live rows record a path under no prefix rule.
+
+        The rule ``cratekit.write.metadata_cli.ResolutionTotals`` states, read
+        off this walk's own counts: strictly more than half, never over an
+        empty collection.
+        """
+        return self.rows > 0 and self.counts[PATH_UNMAPPED] * 2 > self.rows
+
+    def unknown_words(self) -> list[tuple[str, int]]:
+        """The file words with no lookup row, each with its rows, largest first."""
+        seen = Counter(item.file for item in self.items if item.reason == GENRE_UNKNOWN)
+        return sorted(seen.items(), key=lambda entry: (-entry[1], entry[0]))
+
+    @property
     def digest(self) -> str:
         """The fingerprint an approval is bound to.
 
@@ -180,6 +237,7 @@ class RowsPlan:
                 "kind": WORKFLOW,
                 "items": [item.digested() for item in self.items],
                 "counts": dict(self.counts),
+                "leave_unmatched": list(self.leave_unmatched),
             }
         )
 
@@ -212,14 +270,24 @@ class Written:
 # ---------------------------------------------------------------------------
 
 
-def _prefix_rules(cfg: config.Config) -> list[locations.PrefixRule]:
-    return [locations.PrefixRule(source, target) for source, target in cfg.resolved_prefix_map()]
-
-
 def _file_of(
     recorded: str, *, root: Path, prefix_map: Sequence[locations.PrefixRule]
-) -> tuple[Path | None, str]:
+) -> tuple[Path | None, str, str]:
     """The file a recorded path names on this machine, or why there is none.
+
+    Answers (path, outcome, prefix). The prefix is the recorded path's leading
+    part when no rule maps it, else empty.
+
+    TOTAL, BECAUSE THE WALK IS ONE LOOP. Anything raising here does not fail
+    one row, it ends the plan with every later row uncounted. The file is asked
+    about through :func:`cratekit.adopt.scan.probe_readability`, which is total
+    by construction: a directory with no execute bit, a name the filesystem
+    refuses and an input error on the volume all come back as a named category.
+
+    WHETHER THE BYTES ARE HERE IS ASKED BEFORE THEY ARE READ, by the same
+    probe. A file a synchroniser evicted is counted ``file-online-only`` and is
+    never opened, because opening it is a download, once per file on the plan
+    and again on the apply.
 
     A VOLUME THAT IS NOT MOUNTED IS ``file-missing`` AND NEVER A FAILURE. Its
     rows resolve to a path nothing is at, exactly as a deleted file's do, and
@@ -227,16 +295,18 @@ def _file_of(
     """
     try:
         _, resolved = trees.located(recorded, root=root, prefix_map=prefix_map)
-    except locations.LocationDecodeError:
-        return None, NO_PATH
+    except ValueError:
+        # A location naming another host, or a string that is not a path.
+        return None, NO_PATH, ""
     if resolved.resolution is locations.Resolution.UNMAPPED:
-        return None, PATH_UNMAPPED
+        return None, PATH_UNMAPPED, resolved.prefix or "?"
     if resolved.path is None:
-        return None, NO_PATH
+        return None, NO_PATH, ""
     path = Path(resolved.path)
-    if not path.is_file():
-        return None, FILE_MISSING
-    return path, ""
+    probed = adopt_scan.probe_readability(path)
+    if probed is not adopt_scan.Readability.READABLE:
+        return None, _PROBED.get(probed, FILE_UNREADABLE), ""
+    return path, "", ""
 
 
 def _file_word(path: Path) -> tuple[str, str]:
@@ -246,6 +316,22 @@ def _file_word(path: Path) -> tuple[str, str]:
     except tags.TagReadFailed:
         return "", FILE_UNREADABLE
     return word, ("" if word else FILE_BLANK)
+
+
+def _file_words(path: Path) -> tuple[str, ...]:
+    """Every genre value the file holds, when it holds more than one, else empty.
+
+    THE CHECKED READER ANSWERS ONE VALUE. On a container that stores a list it
+    is the first, and on ID3 it is the values joined on a null byte. Either way
+    a row written from it would carry part of what the file says, or a word no
+    lookup row will ever match. So a row about to be written has its file asked
+    again for every value, and a file holding more than one is left alone.
+    Asked only of a differing row, so the second open is paid a few hundred
+    times and not once per track.
+    """
+    values = tags.read_tag_values(path, "genre") or ()
+    words = tuple(word for word in (value.strip() for value in values) if word)
+    return words if len(words) > 1 else ()
 
 
 def _protected(declared: taxonomy.Taxonomy, row_word: str, file_word: str) -> bool:
@@ -262,11 +348,30 @@ def _protected(declared: taxonomy.Taxonomy, row_word: str, file_word: str) -> bo
     )
 
 
-def plan_rows(cfg: config.Config, db: Any, declared: taxonomy.Taxonomy) -> RowsPlan:
+def plan_rows(
+    cfg: config.Config,
+    db: Any,
+    declared: taxonomy.Taxonomy,
+    *,
+    leave: Iterable[str] = (),
+) -> RowsPlan:
     """Walk the collection once and sort every live row into one outcome.
 
     A TOMBSTONE IS SKIPPED AND NOT COUNTED, as the genre report skips it: a row
     the person removed is not a row whose genre anybody reads.
+
+    ``leave`` NAMES ROWS A PERSON HOLDS OUT, by content identifier. Every
+    disagreement is otherwise read as the row lagging its file, and that is
+    false of a genre somebody set on the row by hand in rekordbox: the gate is
+    apply or abort over the whole plan, so without this one hand set row would
+    cost the rest of the plan or be overwritten with it. A held row that
+    differs is listed and left. An identifier that names no differing row is
+    carried on the plan, shown and digested, never dropped.
+
+    A DIFFERING ROW IS ASKED FOUR QUESTIONS IN ORDER: whether a person held it
+    out, whether its file's word is too coarse to replace a specific one,
+    whether its file holds more than one genre, and whether the library has a
+    lookup row for the word. The first to say leave names the reason.
 
     THE ITEMS ARE ORDERED BY CONTENT IDENTIFIER, so two walks of one library
     digest the same whatever order the database returned its rows in.
@@ -277,20 +382,24 @@ def plan_rows(cfg: config.Config, db: Any, declared: taxonomy.Taxonomy) -> RowsP
     that is closed before the gate is asked.
     """
     root = Path(cfg.library.root)
-    prefix_map = _prefix_rules(cfg)
+    prefix_map = collection.prefix_rules(cfg)
+    held_out = frozenset(str(content_id) for content_id in leave)
     counts = dict.fromkeys(OUTCOMES, 0)
+    prefixes: Counter[str] = Counter()
     differing: dict[str, tuple[Any, str, str, str]] = {}
-    held: dict[str, tuple[str, str, str]] = {}
+    items: list[Item] = []
 
     for row in db.get_content():
         if trees.soft_delete_marker(row):
             continue
         content_id = str(row.ID)
-        path, outcome = _file_of(
+        path, outcome, prefix = _file_of(
             str(getattr(row, "FolderPath", "") or ""), root=root, prefix_map=prefix_map
         )
         if path is None:
             counts[outcome] += 1
+            if prefix:
+                prefixes[prefix] += 1
             continue
         file_word, outcome = _file_word(path)
         if outcome:
@@ -300,9 +409,18 @@ def plan_rows(cfg: config.Config, db: Any, declared: taxonomy.Taxonomy) -> RowsP
         if row_word == file_word:
             counts[AGREE] += 1
             continue
-        if _protected(declared, row_word, file_word):
-            counts[FILE_TOO_COARSE] += 1
-            held[content_id] = (str(path), row_word, file_word)
+        reason = ""
+        if content_id in held_out:
+            reason = HELD_OUT
+        elif _protected(declared, row_word, file_word):
+            reason = FILE_TOO_COARSE
+        else:
+            several = _file_words(path)
+            if several:
+                reason, file_word = FILE_MULTI_VALUED, "; ".join(several)
+        if reason:
+            counts[reason] += 1
+            items.append(Item(content_id, str(path), row_word, file_word, LEAVE, reason=reason))
             continue
         differing[content_id] = (row, str(path), row_word, file_word)
 
@@ -313,10 +431,6 @@ def plan_rows(cfg: config.Config, db: Any, declared: taxonomy.Taxonomy) -> RowsP
     )
     linked = {change.content_id: str(change.new) for change in changes.changes}
 
-    items: list[Item] = [
-        Item(content_id, path, row_word, file_word, LEAVE, reason=FILE_TOO_COARSE)
-        for content_id, (path, row_word, file_word) in held.items()
-    ]
     for content_id, (_row, path, row_word, file_word) in differing.items():
         genre_id = linked.get(content_id)
         if genre_id is None:
@@ -326,7 +440,14 @@ def plan_rows(cfg: config.Config, db: Any, declared: taxonomy.Taxonomy) -> RowsP
         counts[WRITE] += 1
         items.append(Item(content_id, path, row_word, file_word, WRITE, genre_id=genre_id))
     items.sort(key=lambda item: item.content_id)
-    return RowsPlan(items=tuple(items), counts=MappingProxyType(counts), changes=changes)
+    listed = {item.content_id for item in items}
+    return RowsPlan(
+        items=tuple(items),
+        counts=MappingProxyType(counts),
+        changes=changes,
+        leave_unmatched=tuple(sorted(held_out - listed)),
+        unmapped_prefixes=MappingProxyType(dict(prefixes.most_common())),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -482,9 +603,9 @@ def apply_rows(
     happens behind, the analysis watch over the roots named, the commit
     witness, and the guarded commit.
 
-    THE ROWS ARE CHECKED AGAINST THE PLAN BEFORE THE CAPTURE IS TAKEN, by
-    :func:`assert_rows_as_planned`, so a stale plan refuses with no capture and
-    nothing pending.
+    THE ROWS ARE CHECKED AGAINST THE PLAN BEFORE THE SESSION IS ENTERED, by
+    :func:`assert_rows_as_planned`, as the native landing checks its plan. A
+    stale plan refuses with no session record, no capture and nothing pending.
 
     THE MAPPED ROWS AND THE SNAPSHOT ARE READ BEFORE THE FIRST FIELD IS SET,
     and nothing is read between the first set and the commit. A query there
@@ -508,6 +629,8 @@ def apply_rows(
         )
     writes = plan.writes
     content_ids = [item.content_id for item in writes]
+    mapped = _mapped(db, content_ids)
+    assert_rows_as_planned(plan, mapped)
     with (
         session.assert_gates(
             cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
@@ -515,9 +638,6 @@ def apply_rows(
         rb_writer.commit_witness(db) as witness,
     ):
         record = gates.record
-        mapped = _mapped(db, content_ids)
-        assert_rows_as_planned(plan, mapped)
-
         capture = snapshot.capture(cfg, db=db)
         session.attach_capture(record, capture.root, cfg)
         snapshot.assert_verified(capture)
@@ -595,10 +715,14 @@ __all__ = [
     "CHANGE_KEY",
     "FILE_BLANK",
     "FILE_MISSING",
+    "FILE_MULTI_VALUED",
+    "FILE_ONLINE_ONLY",
     "FILE_TOO_COARSE",
     "FILE_UNREADABLE",
     "GENRE_UNKNOWN",
+    "HELD_OUT",
     "LEAVE",
+    "LEFT",
     "NAMED_PAIRS",
     "NO_PATH",
     "OUTCOMES",

@@ -373,15 +373,22 @@ def plan_genre_retag(
     structurally as well: ``djmdGenre`` is absent from
     ``rb_writer.PERMITTED_ROW_TABLES``, so even a caller that tried would be
     rolled back at the commit. Belt and braces, deliberately.
+
+    EACH DISTINCT NAME IS RESOLVED ONCE. A sweep names a handful of genres over
+    hundreds of rows, and a lookup per row asked the same question of the
+    database hundreds of times.
     """
     changes: list[Change] = []
     skipped: list[Skipped] = []
+    resolved: dict[str, Any | None] = {}
     for row in rows:
         content_id = str(getattr(row, "ID", "") or "")
         wanted = genres.get(content_id)
         if not wanted:
             continue
-        genre_id = resolve_genre_id(db, wanted)
+        if wanted not in resolved:
+            resolved[wanted] = resolve_genre_id(db, wanted)
+        genre_id = resolved[wanted]
         if genre_id is None:
             skipped.append(Skipped(content_id, "genre-unknown", wanted))
             continue
