@@ -51,6 +51,11 @@ account. A refusal the account raised keeps its reason, anything else is this
 build's own defect and says so, and either way the message and detail carry the
 playlists already renamed, which stay renamed.
 
+EVERY RENAME THAT LANDS IS RECORDED (R-838), under the pass, with the title
+before and the title written, on the failure path as well. That record is what
+``sync unmark`` reads to put a mistaken mark back, and the only thing it trusts
+to say which pass wrote a prefix.
+
 Layer: modules. The builder's parameters are unannotated so this file does not
 import the CLI registry (KTD23).
 """
@@ -68,7 +73,7 @@ from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
 from cratekit.intake import cli as intake_cli
 from cratekit.intake import land_cli, missing_cli
 from cratekit.sync import cli as sync_cli
-from cratekit.sync import marks, playlists, sources
+from cratekit.sync import mark_record, marks, playlists, sources
 from cratekit.write import rbxml
 
 _ORIGIN = ("sync.mark",)
@@ -424,6 +429,37 @@ def _failed_part_way(
     )
 
 
+def _remember(cfg: config.Config, name: str, landed: list[str], names: dict[str, str]) -> None:
+    """Record every rename that landed, under the pass, for ``sync unmark`` (R-838).
+
+    ON THE FAILURE PATH TOO, since what landed before a refusal is on the
+    account and is exactly what a person may want put back. A record that
+    cannot be written refuses NAMING what was renamed, because those renames
+    stand whether or not the record took them.
+    """
+    try:
+        mark_record.MarkRecord(cfg).record_marked(
+            name,
+            {
+                identity: (names[identity], playlists.SWEPT_PREFIX + names[identity])
+                for identity in landed
+            },
+        )
+    except CratekitError as exc:
+        cause = exc.cause
+        renamed = ", ".join(names.get(identity, identity) for identity in landed)
+        raise refuse(
+            cause.reason,
+            f"{len(landed)} playlist(s) were renamed and stay renamed, {renamed}, and "
+            f"the record crate sync unmark reads could not take them. {cause.message}",
+            steps=cause.remediation.steps,
+            scope=cause.scope,
+            origin=_ORIGIN,
+            detail={**dict(cause.detail), "marked": list(landed)},
+            inner=cause,
+        ) from exc
+
+
 def sync_mark(ctx) -> Envelope:
     cfg = sync_cli._load()
     xml = Path(ctx.args.xml)
@@ -481,7 +517,9 @@ def sync_mark(ctx) -> Envelope:
             only=frozenset(planned),
         )
     except Exception as exc:
+        _remember(cfg, name, landed, sweep.names())
         raise _failed_part_way(exc, landed, sweep.names(), planned) from exc
+    _remember(cfg, name, landed, sweep.names())
 
     items: list[dict[str, Any]] = []
     warnings: list[dict[str, str]] = []
