@@ -1,0 +1,179 @@
+{
+  "name": "r816-c",
+  "pass_kind": "light",
+  "branch": "relay/239",
+  "head": "8b90d27",
+  "when": "2026-10-02 02:59 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 11591,
+  "baseline_exit": 0,
+  "pytest_runs": 7,
+  "state_guarded": "~/Library/Application Support/cratekit (189230 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/tagging/rows.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/tagging/rows.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "ab590ad631af4bd5",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 11591,
+    "baseline_collected": 11591,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "B6_bookkeeping_exempt",
+      "description": "judge: stop exempting the binding's bookkeeping columns, so every clean write reads as moved",
+      "file": "src/cratekit/tagging/rows.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0c1098213bc96d2a",
+      "subset": [
+        "tests/test_tag_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 10,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_a_file_on_a_volume_that_is_not_mounted_is_counted_and_the_run_does_not_fail",
+        "tests/test_tag_rows.py::test_a_held_row_survives_the_write_and_the_apply_must_name_it_again",
+        "tests/test_tag_rows.py::test_a_mistyped_identifier_is_shown_at_the_gate_and_warned_about",
+        "tests/test_tag_rows.py::test_a_person_reads_the_counts_and_the_pairs_at_the_gate_and_after_the_write",
+        "tests/test_tag_rows.py::test_a_second_run_after_a_clean_one_asks_and_is_a_no_op",
+        "tests/test_tag_rows.py::test_a_word_the_library_has_no_row_for_names_the_act_on_a_run_that_wrote",
+        "tests/test_tag_rows.py::test_planned_written_and_read_back_through_the_two_acts",
+        "tests/test_tag_rows.py::test_the_apply_writes_the_genre_and_no_other_column_of_any_row",
+        "tests/test_tag_rows.py::test_the_genre_report_stops_naming_the_old_word_after_the_run",
+        "tests/test_tag_rows.py::test_the_read_back_passes_a_row_whose_genre_and_bookkeeping_alone_moved"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            and column not in rb_writer.BOOKKEEPING_COLUMNS\n",
+      "new": ""
+    },
+    {
+      "id": "B7_read_back_word",
+      "description": "judge: stop comparing the genre read back with the file's word",
+      "file": "src/cratekit/tagging/rows.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b4219ee7e2bde789",
+      "subset": [
+        "tests/test_tag_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_the_read_back_names_a_row_that_does_not_carry_its_files_word",
+        "tests/test_tag_rows.py::test_the_read_back_names_a_row_whose_genre_points_at_no_lookup_row"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if word != item.file:",
+      "new": "        if False:"
+    },
+    {
+      "id": "B8_read_back_columns",
+      "description": "judge: stop reporting another column that moved",
+      "file": "src/cratekit/tagging/rows.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4222d0b50f62d941",
+      "subset": [
+        "tests/test_tag_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_the_read_back_names_every_other_column_that_moved"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if changed:",
+      "new": "        if False:"
+    },
+    {
+      "id": "B9_cache_reset",
+      "description": "apply_rows: leave the collection cache holding the words as they were",
+      "file": "src/cratekit/tagging/rows.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cae90a049c57080b",
+      "subset": [
+        "tests/test_tag_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_the_genre_report_stops_naming_the_old_word_after_the_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    collection.reset_cache()\n",
+      "new": ""
+    }
+  ],
+  "dropped": [
+    {
+      "id": "B12_read_back_refusal",
+      "description": "assert_read_back: never refuse",
+      "reason": "ranked below the cap: B7 and B8 measure what it judges"
+    },
+    {
+      "id": "B13_barren_watch",
+      "description": "apply_rows: accept an empty analysis root list",
+      "reason": "ranked below the cap: a copy of the membership writer's guard, measured there"
+    }
+  ]
+}
