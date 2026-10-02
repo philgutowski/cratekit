@@ -1439,3 +1439,241 @@ def test_a_track_in_the_planned_sub_under_another_name_is_withheld_not_doubled(p
     after = _filed(placed)
     assert after["p-same"] == before["p-same"]
     assert after["p-med-reads-high"] == before["p-med-reads-high"]
+
+
+# ── R-788: a vox tagged track is filed under its bucket's vocal sub ─────────
+
+VOX = "with_vox"
+
+#: Who carries the tag in the placed library, and what the plan does about
+#: each. ``p-candy-only`` and the rest carry none.
+_VOX_ADDED = {"p-nowhere", "p-same"}
+_VOX_PRESENT = {"p-vox-only"}
+_VOX_WITHHELD = {"p-med-reads-high"}
+_VOX_TAGGED = _VOX_ADDED | _VOX_PRESENT | _VOX_WITHHELD
+
+
+def _tag_vox(cfg: config.Config, *content_ids: str) -> None:
+    """Give these tracks the vox My Tag, as rows, the way the vocals verb leaves them.
+
+    Rows rather than the verb, because the verb decides from a file's score
+    and what is under test is what adoption does with the tag once it is
+    there, whoever put it there. The category and the value are made once.
+    """
+    from pyrekordbox.db6 import tables
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from cratekit.write import metadata_cli
+    from tests.test_rb_writer_db import _row
+
+    engine = create_engine(f"sqlite:///{rb_writer.live_db_path(cfg)}")
+    with Session(engine) as db_session:
+        if db_session.get(tables.DjmdMyTag, "9000") is None:
+            db_session.add(
+                _row(
+                    tables.DjmdMyTag,
+                    ID="9000",
+                    Name=metadata_cli.CATEGORY,
+                    Attribute=0,
+                    ParentID="0",
+                    Seq=0,
+                    UUID="vocals-category",
+                    rb_local_deleted=0,
+                )
+            )
+            db_session.add(
+                _row(
+                    tables.DjmdMyTag,
+                    ID="9001",
+                    Name=metadata_cli.VALUE_VOX,
+                    Attribute=0,
+                    ParentID="9000",
+                    Seq=0,
+                    UUID="vox-value",
+                    rb_local_deleted=0,
+                )
+            )
+        for content_id in content_ids:
+            db_session.add(
+                _row(
+                    tables.DjmdSongMyTag,
+                    ID=f"vox-{content_id}",
+                    MyTagID="9001",
+                    ContentID=content_id,
+                    TrackNo=0,
+                    UUID=f"vox-{content_id}",
+                    rb_local_deleted=0,
+                )
+            )
+        db_session.commit()
+    engine.dispose()
+
+
+@pytest.fixture
+def voxed(placed):
+    """The placed library with four of its tracks carrying the vox tag."""
+    _tag_vox(placed, *sorted(_VOX_TAGGED))
+    return placed
+
+
+def _vocal_place() -> tuple[str, str]:
+    return destination_names(_energy_bucket().id, VOX)
+
+
+def test_the_plan_reads_the_tag_and_the_vocal_subs_off_the_census_database(voxed):
+    plan = apply_cli.current_plan(voxed, DECLARED)
+    bucket = _energy_bucket().id
+
+    assert plan.vocals.state == "read"
+    assert plan.vocals.tagged == _VOX_TAGGED
+    assert plan.vocals.filed == {bucket: {"p-vox-only"}}
+    assert {entry.content_id for entry in plan.vocal_additions()} == _VOX_ADDED
+    assert {entry.vocal_sub for entry in plan.vocal_additions()} == {VOX}
+
+
+def test_the_gate_names_the_vocal_count_and_lists_every_addition(voxed):
+    shown = _shown(["adopt", "apply"])
+
+    assert shown["vocals"] == "read"
+    assert shown["vocal"] == {
+        "add": len(_VOX_ADDED),
+        "present": len(_VOX_PRESENT),
+        "under-another-name": 0,
+        "no-sub": 0,
+        "withheld": len(_VOX_WITHHELD),
+    }
+    listed = {row["content_id"]: row for row in shown["vocal_additions"]}
+    assert set(listed) == _VOX_ADDED
+    assert (listed["p-nowhere"]["bucket"], listed["p-nowhere"]["sub"]) == (
+        _energy_bucket().id,
+        VOX,
+    )
+    assert listed["p-nowhere"]["location"].endswith("p-nowhere.flac")
+    # The entries an apply places are what they were. The vocal sub is beside.
+    assert {item["content_id"] for item in shown["items"]} == _ADDED | {"p-same"}
+
+
+def test_a_library_with_no_vox_tag_says_so_and_plans_no_vocal_membership(placed):
+    shown = _shown(["adopt", "apply"])
+
+    assert shown["vocals"] == "no-tag"
+    assert set(shown["vocal"].values()) == {0}
+    assert shown["vocal_additions"] == []
+
+
+def test_an_uncut_library_reads_no_vocals_either(machine):
+    _tag_vox(machine, "a1")
+    plan = apply_cli.current_plan(machine, DECLARED)
+
+    assert plan.vocals.read is False
+    assert plan.vocal_additions() == ()
+    assert _shown(["adopt", "apply"])["vocals"] == "unread"
+
+
+def test_an_approved_apply_files_the_tagged_tracks_and_touches_nothing_else(voxed):
+    before = _filed(voxed)
+    vocal = _vocal_place()
+    first_shown = _shown(["adopt", "apply"])
+    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+    code, resumed = drive(_resume(job_id))
+    assert code == int(ExitCode.OK), resumed
+    after = _filed(voxed)
+
+    # THE VOCAL SUB IS GAINED BESIDE THE BAND, and the band is the one the
+    # plan named without the tag.
+    band = {content_id: planned for content_id, _tag, _held, planned in _PLACED_ENERGY}
+    for content_id in _VOX_ADDED:
+        gained = after[content_id] - before.get(content_id, set())
+        expected = {vocal}
+        if content_id in _ADDED:
+            expected.add(destination_names(_energy_bucket().id, _sub_id(band[content_id])))
+        assert gained == expected, content_id
+    # ALREADY THERE: no second row, and its band is added as it always was.
+    assert vocal in before["p-vox-only"] and vocal in after["p-vox-only"]
+    # WITHHELD STAYS WITHHELD, vocal sub included.
+    assert after["p-med-reads-high"] == before["p-med-reads-high"]
+    assert vocal not in after["p-med-reads-high"]
+    # A TRACK WITHOUT THE TAG IS NEVER ADDED.
+    for content_id in after:
+        if content_id not in _VOX_TAGGED:
+            assert vocal not in after[content_id], content_id
+    # NOTHING IS REMOVED, from any playlist.
+    for content_id, places in before.items():
+        assert places <= after[content_id], content_id
+
+    report = artifacts.committed(voxed, job_id)[-1]
+    assert (report["added"], report["already_present"]) == (
+        len(_ADDED) + len(_VOX_ADDED),
+        1,
+    )
+    assert "/".join(vocal) in report["playlists"]
+
+    # THE PLAN IT APPROVED IS THE PLAN IT REBUILDS TO. The additions are now
+    # present and the digest has not moved, so a stopped run could resume.
+    collection.reset_cache()
+    second_shown = _shown(["adopt", "apply"])
+    assert second_shown["vocal"]["add"] == 0
+    assert second_shown["vocal"]["present"] == len(_VOX_ADDED) + len(_VOX_PRESENT)
+    assert second_shown["vocal_additions"] == []
+    assert second_shown["digest"] == first_shown["digest"]
+
+    _run_id, second_job = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+    code, resumed = drive(_resume(second_job))
+    assert code == int(ExitCode.OK), resumed
+    assert artifacts.committed(voxed, second_job)[-1]["added"] == 0
+    assert _filed(voxed) == after
+
+
+def test_an_untagged_membership_of_a_vocal_sub_is_never_removed(placed):
+    """``p-vox-only`` sits in the vocal sub and carries no tag. The tag exists
+    in the library, on another track, so the dimension was read."""
+    _tag_vox(placed, "p-nowhere")
+    vocal = _vocal_place()
+    assert vocal in _filed(placed)["p-vox-only"]
+
+    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+    code, resumed = drive(_resume(job_id))
+    assert code == int(ExitCode.OK), resumed
+
+    after = _filed(placed)
+    assert vocal in after["p-vox-only"]
+    assert vocal in after["p-nowhere"]
+
+
+def test_a_track_tagged_after_the_approval_is_a_stale_decision(voxed):
+    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+    _tag_vox(voxed, "p-candy-only")
+    before = _filed(voxed)
+
+    handler = handlers.resolve(registry.entry("adopt.apply").handler_key)
+    with jobs.open_store() as store:
+        job = jobs.get(store, job_id)
+        item = jobs.items(store, job_id)[0]
+    with pytest.raises(Exception) as raised:
+        handler(job, item, jobs.frozen_config(job))
+    assert raised.value.cause.reason == "decision-stale"
+    assert _filed(voxed) == before
+
+
+def test_a_renamed_vocal_playlist_gains_no_second_one_beside_it(voxed):
+    """The writer finds a playlist by its declared name. With the bucket's
+    vocal sub renamed in rekordbox it would make a second one for the tracks
+    the plan adds, so the plan adds none there and says why."""
+    bucket = _energy_bucket().id
+    _rename_recorded(voxed, bucket, VOX, "Singers")
+    vocal = _vocal_place()
+
+    shown = _shown(["adopt", "apply"])
+    assert shown["vocal"]["add"] == 0
+    # Every tagged track of the bucket, the one in the renamed playlist and
+    # the ones that are not: none of them can be handed to the writer.
+    assert shown["vocal"]["under-another-name"] == len(_VOX_TAGGED)
+    assert shown["vocal_additions"] == []
+
+    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+    code, resumed = drive(_resume(job_id))
+    assert code == int(ExitCode.OK), resumed
+    after = _filed(voxed)
+    assert all(vocal not in places for places in after.values())
+    assert (vocal[0], "Singers") in after["p-vox-only"]

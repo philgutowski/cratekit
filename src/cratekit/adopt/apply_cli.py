@@ -188,13 +188,19 @@ def current_plan(cfg: config.Config, declared: taxonomy.Taxonomy) -> plan_engine
     bucket is withheld and listed rather than added beside it. The census goes
     first, so a library that cannot be read at all refuses the way it always
     did.
+
+    THE VOX TAG AND THE VOCAL SUBS ARE READ IN THAT SAME READ (R-788), so a
+    track carrying the tag is planned into its bucket's vocal sub against the
+    tree the placements describe and no other.
     """
     scanned = census(cfg, declared)
+    held, vocals = placements.read_holdings(cfg, declared)
     return plan_engine.build_adoption_plan(
         scanned,
         declared,
         tree=declared.tree.id,
-        placements=placements.read_placements(cfg, declared),
+        placements=held,
+        vocals=vocals,
     )
 
 
@@ -273,6 +279,52 @@ def membership_locations(
             continue
         grouped.setdefault((folder, sub), []).append(entry.path)
     return grouped
+
+
+def vocal_locations(
+    plan: plan_engine.AdoptionPlan, declared: taxonomy.Taxonomy
+) -> dict[tuple[str, str], list[str]]:
+    """The vocal memberships this plan adds, in the mapping the tree writer takes.
+
+    ONLY THE ADDITIONS, never a track the tree already files there. The plan
+    read the tree to tell the two apart, and one of the ways a track is
+    already there is through a playlist the writer cannot find by name, where
+    handing the row over again would file it a second time.
+
+    NAMED THROUGH :func:`cratekit.write.routing_pass.destination`, the
+    resolver the routing pass names a vocal placement through, with the two
+    skips :func:`membership_locations` makes and for its reasons.
+
+    DERIVED FROM THE PLAN AND NOT FROM THE RUN, as that mapping is. A run
+    stopped after its memberships landed rebuilds a plan that reads those
+    tracks as present, so there is nothing to write twice and nothing owed.
+    """
+    grouped: dict[tuple[str, str], list[str]] = {}
+    for entry in plan.vocal_additions():
+        if not entry.path:
+            continue
+        try:
+            folder, sub = destination(declared, entry.bucket, entry.vocal_sub)
+        except KeyError:
+            continue
+        grouped.setdefault((folder, sub), []).append(entry.path)
+    return grouped
+
+
+def planned_memberships(
+    plan: plan_engine.AdoptionPlan, declared: taxonomy.Taxonomy
+) -> dict[tuple[str, str], list[str]]:
+    """Every membership one apply hands the tree writer: the entries, then the vocal subs.
+
+    ONE MAPPING AND ONE WRITE, so a vocal membership lands in the session, and
+    behind the capture, that the entry beside it does. A vocal sub and a band
+    never share a key: the taxonomy loader refuses a sub class named as one of
+    a bucket's own subs.
+    """
+    wanted = membership_locations(plan.applicable(), declared)
+    for key, rows in vocal_locations(plan, declared).items():
+        wanted.setdefault(key, []).extend(rows)
+    return wanted
 
 
 def apply_outstanding(
@@ -440,6 +492,11 @@ def _digested(plan: plan_engine.AdoptionPlan) -> tuple[dict, dict]:
     left as a number either: each is a track whose tag and whose placement
     disagree, and the list is what a person settles that from. The digest
     is taken over the rows as they are shown here, every field.
+
+    THE VOCAL MEMBERSHIPS AN APPLY ADDS ARE LISTED IN FULL TOO (R-788), under
+    their own name, beside the count of every vox tagged track by what the
+    plan does about it. They are rows this apply writes, so a person is shown
+    each one before answering.
     """
     document = plan_engine.to_json(plan)
     listed = {entry.entry_id for entry in plan.applicable()}
@@ -456,6 +513,9 @@ def _digested(plan: plan_engine.AdoptionPlan) -> tuple[dict, dict]:
             "placements": document["placements"],
             "withheld_by_placement": document["withheld_by_placement"],
             "held_elsewhere": document["held_elsewhere"],
+            "vocals": document["vocals"],
+            "vocal": document["vocal"],
+            "vocal_additions": document["vocal_additions"],
         },
     )
 
@@ -486,7 +546,8 @@ def apply_adoption(ctx) -> Envelope:
     ``snapshot.capture`` per track, because ``write_tree_membership`` runs one
     inside its own session. So the item is the plan digest and the zero item rule
     is enforced HERE, by refusing to create a job at all when the plan has
-    nothing applicable.
+    nothing applicable. A vocal addition is always an applicable entry's, so
+    a plan with nothing applicable adds no vocal membership either.
 
     THE APPROVING ACTOR IS FROZEN. The worker gets ``(job, item, cfg)`` and no
     run, and ``approval.grant`` refuses an empty actor, so the person who
@@ -844,7 +905,7 @@ def _write_memberships(
             handle,
             tree_id=plan.tree,
             registry=tree_registry.read(cfg),
-            plan=membership_locations(plan.applicable(), declared),
+            plan=planned_memberships(plan, declared),
             rows=collection.read_collection(cfg),
             root_exists=lambda root_id: root_id in known,
             # THE LIBRARY ROOT and the analysis share, never empty. The watch it
@@ -933,4 +994,6 @@ __all__ = [
     "current_plan",
     "handle",
     "membership_locations",
+    "planned_memberships",
+    "vocal_locations",
 ]
