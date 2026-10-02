@@ -776,6 +776,30 @@ nothing from this machine because both refuse the client, and the tool will
 not try to get past either. What is left needs a genre by hand or a new
 catalogue, which is a card for the author to decide, not a fix.
 
+## Sitting 26, 2026-10-01, afternoon, the attended steps of R-796, R-797 and R-798
+
+The author asked the session to run the three cards' attended steps
+itself. The build in use is main at the merge of #238, installed fresh.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| The active taxonomy takes the new template | by the author, one command | The session's own write to the active copy was refused by its permission check, so the author ran the dated backup and the copy. The active copy equalled the old shipped template in content, read as parsed tables, so the new template whole is the same edit. `doctor` reads 19 buckets. | live |
+| `adopt move`, R-797 | rehearsed on a copy with the new taxonomy, live on an equal digest `fc9f6031b9304ce5` | 41 moves: **39 tracks left `NonElectronic / Soul / R&B` for the top level R&B bands, 25 Low, 9 Med, 3 High, 2 Unsorted**, and two tracks holding two bands in a dance bucket lost one. Memberships 19,702 to 19,700, playlists 573 to 578, every BPM unchanged, integrity ok, live read back equal to the copy. | live, R-797 closes |
+| `tag folder`, R-796, the 62 untagged playlist tracks | yes, in place | **60 of 62 written, 97%.** The general catalogue matched all 62 by ISRC: Rock 44, R&B 10, NonElectronic 4, Dance / Pop 2. Declined: one Singer & Songwriter, one Electro beside Beatport's Electronica. Traxsource and Bandcamp blocked on all 61 they were asked, named in the summary. | live, R-796 closes |
+| `tag folder`, the label test folder | yes, in place | Of the 49 without a genre, the general catalogue matched 49 and **18 were written**: Dance / Pop 8, Hip-Hop 4, Rock 2, NonElectronic 2, House / Funky House / Disco 1, R&B 1. 31 declined as unmapped: Christian 10, Electro beside Electronica 10, Brazilian Music 8, Electro 2, African Music 1. | live |
+| Reload Tags through desktop control | both batches | The genres reached the rows. Every BPM unchanged. A reload takes the key from the file, so a row rekordbox had analysed to another key now reads the key in its name. Both processes gone after quit. | live |
+| `adopt apply` | rehearsed on a copy, live on an equal digest `e931e312685575b4` | **78 memberships added, none removed**, each a track with no place before: Rock 52, Dance / Pop 10, R&B 11, Hip-Hop 4, House / Funky House / Disco 1. Route 8,003, needs-genre 2,098. R&B holds 50. Live read back equal to the copy. | live |
+| R-799, where the broad words landed | read from the database | **Pop is written as Dance / Pop and filed in the Dance / Pop bands**: 7 pop tracks by Torr, one each by Theo Katzman, CR and Magnus Ferrell now sit beside Le Youth. Alternative is written as NonElectronic and filed under Rock, 6 tracks. | measured, R-799 stands |
+| `crate report genres` | yes | Two genres at 50 or more with no top level folder: **Progressive / Melodic, 630 tracks, claimed by no folder and falling to the fallback**, and Rock, 132, under NonElectronic. | read |
+| `sync labels`, R-798's check | yes, detached, 15:59 to 20:41 | **30 labels swept, 0 releases filed, 0 held, 16,796 provider calls, no rate limit.** Every label's offer window was already full of the releases the sweep of sitting 23 left in review, 2,755 pending, so nothing new reached the gate and the gate was never asked. 17 items failed permanently, the labels the provider cannot resolve. The 36 of sitting 25 are owned now and are not asked about either. | run, **R-798's check still owed** |
+
+**The gate cannot be shown by a sweep while the queue is full, R-815.** A
+release already in review takes a place in its label's window and is not
+judged again, so the 2,755 filed before the gate existed sit there
+unjudged. `label approved` judges an accepted release by kind, which is the
+only place the gate can act on them today. No label was marked with a kind:
+which followed label is not a dance label is the author's to say.
+
 ## What blocks a full sync cycle, stated plainly
 
 **Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
@@ -787,17 +811,20 @@ cycle, is next and is attended.
 
 ## Next sitting
 
-Line 4 is done, and the label test of sitting 25 ran the same tail end to
-end. Next, on the author's word only, the rest of the label releases in
-review, a label at a time: `label approved`, then the tail as sitting 25
-ran it.
+The three cards of the genre plan are built and R-796 and R-797 are proven
+on the library. R-798's check waits on the review queue: either the author
+decides releases for a label and `label approved` shows the gate holding the
+misfits among those accepted, or a card judges the pending queue in place
+(R-815).
 
-Owed by the author: a genre on the INBOX rows that carry none, now 62 synced
-and 55 from the label test; the rest of the label releases in review; the 20
-label tracks held as other versions.
+Owed by the author: the 2,755 label releases in review; a kind for any
+followed label that is not a dance label; a genre on the INBOX rows that
+still carry none, 2 from the playlists and 31 from the label test, of which
+18 are Christian or Brazilian music from a label of the same name; whether
+Progressive / Melodic, 630 tracks, and Rock, 132, get folders of their own;
+the 20 label tracks held as other versions.
 
 Owed for R-790, issue #234: follow a new label, sweep it once, and record
 here that it filed `labels.offer_per_sweep` releases, ten unless set, and
 that `crate review list --queue label-release --group-by label` counts the
 rest as `beyond`.
-

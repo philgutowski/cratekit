@@ -31711,8 +31711,8 @@ so an unrecognised page is a parse break rather than an absence.
 
 ## R-796. The tagger has no source for non dance music, so every such track waits in INBOX for a genre by hand
 
-**Closed in the code 2026-10-01 on `relay/236`, issue #236. The run on the
-author's library is owed to an attended sitting.** `tagging/published.py`
+**Closed 2026-10-01 on `relay/236`, issue #236, and proven on the author's
+library at sitting 26 in `docs/cutover.md`, 60 of 62 written.** `tagging/published.py`
 asks Deezer for a track by its ISRC, with no key and a user agent naming
 this tool, and reads the genres published on the track's album. `tag_one`
 offers the searcher's hit to it through a new seam, for a file that needs a
@@ -31793,9 +31793,9 @@ recorded in `docs/cutover.md`.
 
 ## R-797. R&B is a flat folder under NonElectronic, and nothing says when a genre has outgrown having no folder of its own
 
-**Closed in the code 2026-10-01 on `relay/237`, issue #237. The move on the
-author's library and the first read of the report are owed to an attended
-sitting.** The shipped taxonomy has a bucket `rnb`, displayed `R&B`, split by
+**Closed 2026-10-01 on `relay/237`, issue #237, and done on the author's
+library at sitting 26 in `docs/cutover.md`, the move on an equal digest and
+the report read.** The shipped taxonomy has a bucket `rnb`, displayed `R&B`, split by
 the shared energy bands, holding the four source strings the old sub held,
 `R&B`, `Soul`, `Soul / R&B` and `MPB`, and the tagger's words for them. The
 `soul_rnb` sub is gone from the non electronic bucket. The tempo window, the
@@ -31887,8 +31887,9 @@ the report, recorded in `docs/cutover.md`.
 
 ## R-798. The label genre gate has no genre to judge, so a sweep offers and downloads music the label was never followed for
 
-**Closed in the code 2026-10-01 on `relay/238`, issue #238. The sweep over
-the labels of sitting 25 is owed to an attended sitting.** The gate judges a
+**Closed in the code 2026-10-01 on `relay/238`, issue #238. The check on the
+author's library is still owed: the sweep of sitting 26 filed nothing and
+asked the gate nothing, R-815.** The gate judges a
 release by KIND, with what the general catalogue of R-796 publishes for its
 tracks, when a sweep is about to file it. A followed label is a dance label
 unless its registry entry names another kind, set with
@@ -32346,3 +32347,26 @@ registry entry name several kinds, which the rule already supports, since it
 passes a release on one word of the label's kind.
 
 **Not on the board bar.** No label needs it yet.
+
+## R-815. The genre gate judges only what a sweep is about to file, so the releases already in review are never judged
+
+**Found:** at sitting 26, 2026-10-01, running R-798's attended check. A
+release already in the review queue takes a place in its label's offer
+window and is skipped before the gate is asked. The sweep of sitting 23
+left each label's newest releases in review, 2,755 pending, before the gate
+had a genre to read. So a sweep now files nothing, holds nothing, and the
+queue keeps every release the gate would hold. `label approved` judges an
+accepted release by kind, which is the only place the gate acts on them.
+
+**Measured cost.** One sweep of 4 hours 42 minutes and 16,796 provider
+calls over 30 labels: 0 filed, 0 held. R-798's closing check cannot be shown
+by a sweep until the queue is worked down, and the author's queue stays
+padded with what he chose to have held back.
+
+**Closes when:** a verb judges the pending label releases by their label's
+kind without a sweep, moves the misfits to held where `crate label held`
+lists them and one can be returned, and a run on the author's library is
+recorded in `docs/cutover.md`.
+
+**Not on the board bar until the author says.** Recommended to him at
+sitting 26.
