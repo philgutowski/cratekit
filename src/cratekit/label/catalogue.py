@@ -231,13 +231,22 @@ class ReleaseTracks:
         self._read: dict[str, tuple[tuple[Any, ...], int | None] | Exception] = {}
         self._failed_in_a_row = 0
 
+    @property
+    def given_up(self) -> bool:
+        """Whether the outage rule has ended the asking for a release not yet read.
+
+        For a caller that would rather stop its run than record every later
+        release as unasked (R-815).
+        """
+        return self._failed_in_a_row >= READS_FAILED_IN_A_ROW
+
     def release_tracks(self, release_id: str) -> tuple[tuple[Any, ...], int | None]:
         held = self._read.get(release_id)
         if isinstance(held, Exception):
             raise held
         if held is not None:
             return held
-        if self._failed_in_a_row >= READS_FAILED_IN_A_ROW:
+        if self.given_up:
             raise ReleasesUnasked(
                 f"the provider failed {READS_FAILED_IN_A_ROW} releases in a row, so "
                 f"the rest were not asked for"

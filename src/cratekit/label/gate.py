@@ -76,6 +76,12 @@ GATE_ANSWER_FIELD = "genre_gate_answer"
 #: ``label approved`` so an accepted release is judged on the same words.
 GENRES_FIELD = "published_genres"
 
+#: The job that wrote the stamp, when it was not the sweep that filed the
+#: release (R-815). ``crate label judge`` judges a release already in review
+#: and says so here, so a reader counting what a SWEEP's gate did can leave its
+#: answers out. A release stamped by the sweep that filed it carries none.
+GATE_RUN_FIELD = "genre_gate_run"
+
 #: What :data:`GATE_FIELD` says of a release a person returned to review.
 RETURNED = "returned"
 
@@ -309,13 +315,22 @@ class Asking:
         self._lookup = lookup
         self._unread_in_a_row = 0
 
+    @property
+    def given_up(self) -> bool:
+        """Whether the bound was reached, so the next release would not be asked about.
+
+        For a caller that pays to ask, R-815's, which reads a release's rows
+        from the provider first: it stops before the read, not after it.
+        """
+        return self._unread_in_a_row >= UNREAD_IN_A_ROW
+
     def words(
         self,
         rows: Sequence[Any],
         *,
         enough: Callable[[tuple[str, ...]], bool] | None = None,
     ) -> Words:
-        if self._unread_in_a_row >= UNREAD_IN_A_ROW:
+        if self.given_up:
             return Words(
                 (),
                 NOT_ASKED,
@@ -407,7 +422,17 @@ class SweepGate:
         return self._standing.in_force(label_id) if self._standing is not None else ()
 
     def judge(self, entry: registry.LabelEntry, release_id: str) -> Judged:
-        """Judge one release the sweep is about to file.
+        """Judge one release the sweep is about to file, by its label's kind."""
+        return self.judge_as(entry.kind, release_id)
+
+    def judge_as(self, label_kind: str | None, release_id: str) -> Judged:
+        """Judge one release against the kind its label is followed as.
+
+        ``label_kind`` is the registry entry's, or None for the default. Apart
+        from :meth:`judge` because a release ALREADY IN REVIEW can be on a
+        label the registry no longer holds, which has no entry to hand over
+        and is judged as the default kind (R-815). One body, so the sweep and
+        the verb that judges the queue cannot come to ask differently.
 
         NOTHING IS READ WHEN THE WORDS COULD NOT CHANGE THE VERDICT: a label
         followed for any kind, a taxonomy with no rule for this vocabulary, and
@@ -422,10 +447,10 @@ class SweepGate:
         A RELEASE THAT WOULD BE HELD IS ASKED ABOUT AGAIN, by its next tracks,
         before it is. See :data:`TRACKS_ASKED`.
         """
-        settled = routing.kind_settled(self.declared, entry.kind)
+        settled = routing.kind_settled(self.declared, label_kind)
         if settled is not None:
             return _of(settled)
-        kind = routing.label_kind(self.declared, entry.kind)
+        kind = routing.label_kind(self.declared, label_kind)
 
         def unjudged(why: str) -> Judged:
             return Judged(KindVerdict.NOT_JUDGED, kind, (), why)
@@ -442,7 +467,7 @@ class SweepGate:
             return unjudged(
                 f"its tracks could not be read from the provider ({type(exc).__name__}: {exc})"
             )
-        return judge_rows(self.declared, entry.kind, rows, self._asking)
+        return judge_rows(self.declared, label_kind, rows, self._asking)
 
     def rejudge(self, entry: registry.LabelEntry, held: review.Hold) -> Judged:
         """Judge a standing hold again, from the words it recorded. No request.
@@ -471,6 +496,7 @@ __all__ = [
     "GATE_ANSWER_FIELD",
     "GATE_FIELD",
     "GATE_NOTE_FIELD",
+    "GATE_RUN_FIELD",
     "GENRES_FIELD",
     "RELEASE_KIND",
     "RETURNED",
