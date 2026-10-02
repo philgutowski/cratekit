@@ -1322,6 +1322,21 @@ the verb that settles one, see Move.
 All three leave something out and share nothing else. A plan entry says
 which through `withheld_by`.
 
+### Vocal membership
+Since R-788, a track's place in its bucket's vocal sub as the adoption plan
+holds it. A routed entry whose track carries the `vox` My Tag has one, beside
+its band and never instead of it. The plan says of each tagged track which
+of six things is true: `add`, `present`, `under-another-name`, `no-sub`,
+`no-bucket` or `withheld`. Only `add` is written. `add` and `present`
+together are what the digest covers and what the gate lists, because the
+apply's own write turns the first into the second.
+
+*Avoid:* reading it as what the routing derivation places. That reads the
+file's score against the cut and this reads the tag, and the two can
+disagree about one track. Also avoid reading `no-sub` on a track, a bucket
+whose own sub takes the vocal sub's name, as `no-sub` on the plan, a
+taxonomy with no vocal sub at all.
+
 ### Move
 Since R-758, one track leaving the competing subs its file's reading does not
 name for the one it does. It carries a target, the sub to add, which is empty

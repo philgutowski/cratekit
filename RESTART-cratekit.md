@@ -4,6 +4,30 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**R-788 built, 2026-10-02, on `relay/245`, issue #245. The live run is owed.**
+`crate adopt apply` files a track carrying the `vox` My Tag under its
+bucket's `with vox` sub, add only, in the one membership write its entries
+go through. The gate gained three facts: `vocals`, the state of the read,
+one of `read`, `no-tag`, `uncalibrated`, `no-sub` and `unread`; `vocal`, a
+count of every tagged track under `add`, `present`, `under-another-name`,
+`no-sub`, `no-bucket` and `withheld`; and `vocal_memberships`, every
+membership an apply may write with whether the tree holds it. The tag
+decides and no score is read. A library with no cut on record files none.
+A withheld track gains none. `adopt move` reads neither the tag nor the
+calibration. **Every adoption approval given before this build is stale
+once**, the digest gained two keys. Battery on the branch: ruff clean,
+12,119 passed and 1 skipped, the scan clean. 25 mutation rows in four
+tables, 25 killed, none at zero, the author's and not independent. Two
+passes of the built in review, nineteen findings, fourteen applied.
+**Owed, attended, line 7 of #178:** the apply rehearsed on a copy with
+library state redirected, applied live on an equal digest, the twelve read
+in their subs. Read `vocal` on the live plan first: `add` should be twelve,
+and anything under `withheld` or `under-another-name` is a track this build
+leaves. Main's highest residual number was R-840 at branch time. This unit
+files R-841 to R-845: which signal owns the vocal sub, the withheld track,
+the tag writer's find, `present_in`, and a band renamed in rekordbox. None
+meets the board bar.
+
 **Sitting 29, 2026-10-02, no code.** The session drove rekordbox itself.
 **All 36 non dance tracks are out of the collection**, the label test folder
 186 to 150, the collection 10,236 rows. The permission check refused the
