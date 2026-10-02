@@ -4,6 +4,35 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**R-840 built, 2026-10-02, on `relay/244`, issue #244. The live run is owed.**
+`crate label artists` gives an open `label-release` item whose artist reads
+as a provider object address the artist's name. It reads the release again
+by its identifier, one provider read each through a tenth member of the
+catalogue seam, `release_artist`, paced by the provider gate, and rewrites
+the artist alone through `review.redescribe`. A verb of its own and not a
+step of `label judge`: no gate is consulted, so no gate decision changes,
+and a second run asks only about what the first left. It counts `repaired`,
+`not_served`, `already_fine`, `unread`, `unnamed`, `unaddressed` and
+`decided`. A decided item is never listed, and an address is never replaced
+by nothing. `review.redescribe` gained `expecting`, a compare and set, so
+the write keeps a stamp another writer lands between its read and itself. A
+read the provider failed ends the run on `unavailable-transient` with the
+counts, and three in a row end it early. Battery on the branch: ruff clean,
+12,195 passed and 1 skipped, the scan clean. 25 mutation rows in three
+tables, 25 killed, none at zero, the author's and not independent. One pass
+of the built in review, ten findings, eight applied, one filed, one
+declined to the ledger. **Owed, attended, then #213 closes:** `crate label
+artists` on the live store, which should report 29 addresses, all Last
+Night On Earth, and 29 provider reads. Main's highest residual number was
+R-845 at branch time, **and the attended worktree holds R-846 on a commit
+that is not on `main` yet**, so this unit files R-847 to R-849: a held
+release keeps its address, a judging job's stamp can take a repair back,
+and three copies of one check builder. **R-847 meets the board bar and its
+issue is owed**, to be created once this merge is on `main`, titled with
+the ledger heading exactly. A learning is filed under `docs/solutions/`: a
+stop checked before the next read never fires when the last reads are the
+ones that failed.
+
 **R-788 built, 2026-10-02, on `relay/245`, issue #245. The live run is owed.**
 `crate adopt apply` files a track carrying the `vox` My Tag under its
 bucket's `with vox` sub, add only, in the one membership write its entries

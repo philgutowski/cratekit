@@ -33170,6 +33170,37 @@ artist name on the live store.
 
 **On the board bar, (b).** The product shows the person something false.
 
+**Built 2026-10-02 on `relay/244`, and still open on the live run.** `crate
+label artists` walks the open `label-release` items, and for each whose
+artist reads as an object address reads the release again by its identifier
+and rewrites the artist alone through `review.redescribe`. One provider read
+per release, the album and none of its tracks, through a tenth member of the
+catalogue seam, `release_artist`, paced by the provider gate the catalogue is
+opened with. The name is read by `catalogue.artist_name`, the reader the
+sweep files with, so a repaired item carries what a sweep would file today.
+
+A verb of its own and not a step of `label judge`. Judging gives a verdict
+on every pending release and can move one into a hold, and here no gate is
+consulted, so no gate decision can change. Most of a judging pass costs no
+provider call and this would have added one. And a repaired item no longer
+reads an address, so a second run asks only about what the first left, with
+no job behind it.
+
+What it counts, zeroes included: `repaired`, `not_served`, `already_fine`,
+`unread`, `unnamed`, `unaddressed` and `decided`, with `addresses` and
+`asked`. A decided item is never listed. An address is never replaced by
+nothing. The write is a compare and set over the payload read a moment
+before it, `redescribe`'s new `expecting`, so a stamp another writer lands
+in between is kept. A read the provider failed ends the run on
+`unavailable-transient` with the counts, after the walk, and three in a row
+end it early. The catalogue is not opened when nothing reads an address.
+
+**Owed, attended, then #213 closes:** `crate label artists` on the live
+store. It should report 29 addresses, all Last Night On Earth, and 29
+provider reads. Read `not_served` and `unnamed` before calling it done, a
+release counted there still reads its address. R-847 is what it does not
+reach.
+
 ---
 
 ## R-841. Adoption files a vocal sub from the vox tag and the routing derivation files it from the file's score
@@ -33306,3 +33337,84 @@ only under another name, as the vocal reader now does, and the plan
 withholds a routed entry into one.
 
 **Not on the board bar.** The reachability is unmeasured.
+
+---
+
+## R-847. A label release held out of review keeps the object address its item carried
+
+**Found:** on `relay/244`, 2026-10-02, building R-840, and raised by the
+built in review. Outside that unit's brief, which names open items.
+
+**The mechanism.** `review.withhold` moves an open item into a hold and the
+hold carries the item's payload as it stood. An item filed before R-379
+carries `<tidalapi.artist.Artist object at 0x...>` as its artist, so a hold
+made from one carries it too. `crate label artists` walks open items and
+never reads a hold. `crate label held` prints the hold's artist in its line
+for the release, and `label held return` files the payload back as it was,
+address included, after which a second run of `label artists` repairs it.
+
+**Driven.** `test_a_release_held_out_of_review_is_not_an_open_item_and_is_not_read`
+in `tests/test_label_artists.py`: an item reading an address is withheld,
+the hold's payload reads the address, the verb asks about nothing and the
+hold still reads it afterwards.
+
+**Measured cost.** Unmeasured on the live store, which is not a session's
+to read. `docs/cutover.md` records a judging pass over the whole queue that
+held 18 of Last Night On Earth's 84 releases, the one label R-840's 29
+belong to, so some holds very likely carry an address. `crate label held`
+on the live store answers it in one read.
+
+**Closes when:** `crate label artists` also reads the holds in force whose
+artist is an address and rewrites that field on the hold, or `label held`
+and `label held return` read the name some other way, and a held release
+reads its artist on the live store.
+
+**On the board bar, (b).** The product shows the person something false.
+**The issue is owed and was not created.** This unit ran under Relay, which
+merges after the session exits, and an issue is created after the merge
+that carries its ledger entry. Title it with this heading exactly.
+
+---
+
+## R-848. A judging job's stamp is written over the payload it read before it asked
+
+**Found:** on `relay/244`, 2026-10-02, looking for the shape R-840's review
+found one file over. Read from the source and not driven.
+
+**The mechanism.** `label.judge_cli._stamp` writes `{**kept, **said}` built
+from the item as it was read before the provider and the general catalogue
+were asked, which is seconds per release. `review.redescribe` replaces the
+whole payload. So a field another writer put on the item in that time is
+taken back. R-840 found this shape in its own write and closed it there
+with `redescribe`'s `expecting`. The judging job does not pass it. The one
+other writer of an open label release's payload today is `crate label
+artists`, so the cost is a repaired artist reading its address again.
+
+**Measured cost.** Unmeasured. It needs the two verbs running at once on
+one item, and the provider gate lets one call through at a time and does
+not keep the two processes apart. Nothing is lost for good: the next run of
+`label artists` repairs the item again.
+
+**Closes when:** `_stamp` reads the item again and writes with `expecting`,
+as `label.artists_cli._write` does.
+
+**Not on the board bar.** The reachability is unmeasured.
+
+---
+
+## R-849. Three label verbs each carry their own builder of a diagnostic check
+
+**Found:** on `relay/244`, 2026-10-02, by the built in review of R-840, and
+not applied.
+
+`label/approved_cli.py`, `label/held_cli.py` and `label/artists_cli.py` each
+define `_check`, the same six lines apart from the key's prefix, and
+`artists_cli` has its own `_text` beside `judge_cli`'s. A change to the
+shape of a `diagnostic/1` check is three edits. Sharing one means editing
+two shipped verbs R-840 had no reason to touch, so the third copy was
+written the way the two beside it were.
+
+**Closes when:** one builder in `label/cli.py` takes the prefix and the
+three verbs call it.
+
+**Not on the board bar.** Maintainer facing.
