@@ -826,6 +826,21 @@ acknowledgment before it plans, the author's expired at 21:09Z on
 2026-10-01, and only he mints one. R-799's run needs the active taxonomy
 edited, which the session's permission check also refuses.
 
+## Sitting 28, 2026-10-02, morning, the rows brought to their files
+
+The author ran the taxonomy edit and minted the acknowledgment from his
+Terminal that morning. The session's attempt to record it on his word was
+refused by its permission check, which is the rule as written.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| The active taxonomy takes R-799's template | by the author, after a dated backup | `doctor` reads 19 buckets and the copy carries `[vocabulary.deezer]`. | live |
+| `crate tag remap`, R-799 | read at its gate, applied by the session | 78 files recorded from the general catalogue, 62 agree, **16 written and read back**: Dance / Pop to NonElectronic / Pop on 10, NonElectronic to Rock on 5, NonElectronic to Folk on 1. Digest `ec826897c78a99c4`. Files only. | live |
+| `crate tag rows`, R-816 | rehearsed on a copy, live on an equal digest `3dbf848be3ab3619` | 10,272 rows: 8,660 agree, **797 written**, 637 file blank, 153 path unmapped, 14 no path, 1 file too coarse, 10 genre unknown. Progressive / Melodic to Melodic House 440 and to Progressive House 183, blank to Melodic House 136, Electronica to a specific word 23, six of the old word to other folders, three blank rows, the 6 remapped rows. On the copy every other column of every row read equal to live, memberships 19,778 and the genre table 106 rows unchanged, integrity ok; live read back equal to the copy. No pair replaced one specific word with another, so nothing needed `--leave`. | live, **R-816 closes** |
+| The ten Pop rows | left by the verb | The library has no genre row named NonElectronic / Pop and the verb makes none, so the ten keep Dance / Pop on the row. Eight of the ten are among the 36 the author is removing. | owed, below |
+| `crate report genres` | yes | **Progressive / Melodic is no longer named.** Rock, 138, is the one genre at 50 or more with no top level folder, and the author keeps it flat. | read |
+| `adopt apply` | rehearsed on a copy, live on an equal digest `d1bb164795c8cb17` | Route 8,783, needs-genre 1,308, down 790. **One membership added**, a Steve Reich recording to Classical; the rest already sat where their genre names. 14 withheld, ten of them tracks in one band whose energy now plans another, left where they are. | live |
+
 ## What blocks a full sync cycle, stated plainly
 
 **Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
@@ -837,33 +852,21 @@ cycle, is next and is attended.
 
 ## Next sitting
 
-The genre plan's three cards and R-815 are proven on the library. Three
-things wait on the author, each one act of his: a fresh backup
-acknowledgment, the active taxonomy copy taking the shipped template again,
-and the 36 non dance tracks removed from the collection in rekordbox, then
-`crate delete review`. With those, the session runs R-816, `crate tag rows`
-rehearsed on a copy and applied on an equal digest, and R-799 in the order
-below.
+Two things are left of the genre work, both behind one act of the author's:
+the 36 non dance tracks of the label test removed from the collection in
+rekordbox, which the session's permission check does not let it confirm,
+then `crate delete review`.
+
+After that, for R-799, issue #241: the two Pop tracks that remain, Sabrina
+Carpenter and Theo Katzman, are given the genre NonElectronic / Pop in
+rekordbox so the genre row exists and taken out of their Dance / Pop bands
+by hand, then `adopt apply` files them under NonElectronic / Pop. Record
+that here and R-799 closes.
 
 Owed by the author: the 2,416 label releases in review and a look at the
-339 held; a genre on the INBOX rows that still carry none; the 20 label
-tracks held as other versions.
-
-Owed for R-816, issue #239: a rehearsal of `crate tag rows` past its gate
-on a disposable copy, the seven rows of other words read there and any hand
-set one held with `--leave`, the live plan approved on an equal digest, and
-`crate report genres` no longer naming Progressive / Melodic.
-
-Owed for R-799, issue #241, built unattended on 2026-10-02 and not yet run
-here: a dated backup of the active taxonomy copy, then the shipped
-template's edit, the `[vocabulary.deezer]` table together with the
-`NonElectronic / Pop` alias and map row it needs; `crate tag remap` read at
-its gate, expected 16 writes of 78 files, `Dance / Pop` to
-`NonElectronic / Pop` on 10 and `NonElectronic` to `Rock` on 6; `crate tag
-rows` for the rows, after one of the ten is given its genre in rekordbox so
-the lookup row exists; `adopt apply`, and the ten taken out of their Dance /
-Pop bands by hand. Record here the plan's counts and time, and the ten read
-under NonElectronic / Pop. The order is in R-799's ledger entry.
+339 held; a genre on the rows that still carry none, 1,308 by adoption's
+count, 637 of them with no genre on the file either; the 20 label tracks
+held as other versions.
 
 Owed for R-790, issue #234: follow a new label, sweep it once, and record
 here that it filed `labels.offer_per_sweep` releases, ten unless set, and

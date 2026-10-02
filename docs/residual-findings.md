@@ -32531,8 +32531,10 @@ Progressive / Melodic.
 
 **On the board bar.** The author asked for it on 2026-10-01.
 
-**Built 2026-10-01 on `relay/239`, issue #239, in the code. The run on the
-author's library is still owed, so this stays open.** `crate tag rows` plans
+**Built 2026-10-01 on `relay/239`, issue #239, and run on the author's
+library at sitting 28 in `docs/cutover.md`: 797 rows written on an equal
+digest, the genre and no other column, and the report no longer names
+Progressive / Melodic. Closed.** `crate tag rows` plans
 every live row against its file through adoption's census and writes
 `GenreID` alone under the RETAG_GENRE policy, through
 `metadata.plan_genre_retag` and `retag.apply_library`, which had no caller.
