@@ -35,12 +35,15 @@ the guarded writer and is answered wherever that refusal is raised, and this ver
 opens no database, so it could never raise it. The rule outlives the neighbour,
 because the next verb to gain a second gate finds the handler already correct.
 
-THE RUN ENDS BY NAMING THE RELOAD. The file carries the corrected genre and the
-library row does not, because the database half of this verb has no caller
-(R-185). The registry no longer claims that surface (R-246), so the declaration
-and the code agree, and the envelope carries
+THE RUN ENDS BY NAMING THE VERB THAT WRITES THE ROW. The file carries the
+corrected genre and the library row does not, because this verb writes the file
+half only (R-185). The registry no longer claims that surface (R-246), so the
+declaration and the code agree, and the envelope carries
 :func:`library_row_warning`, which names the one act that makes the row agree
-with the file. The queueing envelope carries it unconditionally and a successful
+with the file. That act was a reload in rekordbox until the residual on stale
+row genres gave the row a verb of its own, ``tag.rows``. A reload overwrites
+every tag field, and at one sitting it changed keys, so it is no longer what
+this verb sends a person to do. The queueing envelope carries it unconditionally and a successful
 resume carries it only when a file was actually corrected; each of those two
 functions says why at the line that attaches it.
 
@@ -110,10 +113,12 @@ def library_row_warning(folder: str) -> dict[str, str]:
 
     THE ACT IS NAMED, NOT THE DEFECT. The file now carries the specific genre
     and the library row still carries the value the taxonomy called too coarse,
-    because the database half of this verb has no caller (R-185). A person who
-    is told only that the two disagree cannot act on it; reloading the folder's
-    tags in rekordbox is the act that makes the row agree with the file, and it
-    is the one thing this build can put in front of them.
+    because this verb writes the file half only (R-185). A person who is told
+    only that the two disagree cannot act on it. The act is the row's own verb,
+    which writes the genre from the file and no other column. It was a reload
+    of the folder's tags in rekordbox before that verb existed, and a reload
+    overwrites every tag field, so the message names the verb and says why not
+    the reload.
 
     IT NAMES THE FOLDER. A resume is a detached child whose envelope a person
     reads later, next to other runs, so a warning that said "the folder" would
@@ -144,8 +149,10 @@ def library_row_warning(folder: str) -> dict[str, str]:
         "message": (
             f"this correction writes the genre onto the files under {folder} and "
             f"does not update the library rows, which go on carrying the old "
-            f"value, because this build writes the file half only; select that "
-            f"folder in rekordbox and reload its tags so the rows catch up"
+            f"value, because this verb writes the file half only; run `crate tag "
+            f"rows` so the rows catch up, which writes each row's genre from its "
+            f"file and no other column, where a reload in rekordbox overwrites "
+            f"every tag field"
         ),
     }
 

@@ -2410,9 +2410,11 @@ def test_an_interrupted_retag_leaves_a_library_row_stale_and_the_artifact_recove
     """R-185 DRIVEN AND MEASURED, not repaired. The measurement is the point.
 
     The file half of this verb writes the genre onto the file. The database half
-    is deferred, so ``retag.plan_library`` and ``retag.apply_library`` still have
-    no caller anywhere in ``src`` after this unit, and the library row keeps the
-    catch-all the file no longer carries.
+    is deferred, so this verb reaches neither ``retag.plan_library`` nor
+    ``retag.apply_library``, and the library row keeps the catch-all the file no
+    longer carries. ``plan_library`` has no caller anywhere in ``src``.
+    ``apply_library`` has one since the residual on stale row genres, the row
+    verb's engine, which walks the rows and is a separate run from this one.
 
     THE POPULATION CANNOT BE RE-DERIVED LATER FROM THE FOLDER. A corrected file
     stops being selectable the moment it is written, so a second full run sees
@@ -2431,17 +2433,19 @@ def test_an_interrupted_retag_leaves_a_library_row_stale_and_the_artifact_recove
     drive(resume_argv(job_id))
 
     assert tags.read_genre_from_file(folder / "a.flac") == SPECIFIC
-    callers = {
-        relative
-        for relative, source in (
-            (path.relative_to(SRC_ROOT), path.read_text(encoding="utf-8"))
-            for path in SRC_ROOT.rglob("*.py")
-        )
-        if "plan_library(" in source or "apply_library(" in source
+    sources = {
+        path.relative_to(SRC_ROOT): path.read_text(encoding="utf-8")
+        for path in SRC_ROOT.rglob("*.py")
     }
-    assert callers == {Path("cratekit/tagging/retag.py")}, (
-        f"the database half gained a caller in {callers}, so R-185's measurement "
+    planners = {relative for relative, source in sources.items() if "plan_library(" in source}
+    appliers = {relative for relative, source in sources.items() if "apply_library(" in source}
+    assert planners == {Path("cratekit/tagging/retag.py")}, (
+        f"the file to row plan gained a caller in {planners}, so R-185's measurement "
         f"is out of date and this case is asserting about a deferral that ended"
+    )
+    assert appliers == {Path("cratekit/tagging/retag.py"), Path("cratekit/tagging/rows.py")}, (
+        f"the database half is applied from {appliers}; the row verb is its one "
+        f"caller, and the retag verb gaining one ends the deferral this case measures"
     )
     assert selected(folder) == [folder / "b.flac"], (
         "the corrected file is still selectable, so this case cannot see why the "
@@ -2483,12 +2487,13 @@ def test_a_corrected_retag_ends_by_naming_the_reload_the_stale_row_needs(
     correction, the envelope reported a clean sweep, and rekordbox went on showing
     the genre the taxonomy calls too coarse for ever.
 
-    THE WARNING NAMES THE ACT AND NOT THE DEFECT. Reloading the folder's tags in
-    rekordbox is what makes the row agree with the file, and it is the only thing
-    this build can put in front of them, so the assertion is on the instruction
+    THE WARNING NAMES THE ACT AND NOT THE DEFECT. The row's own verb is what
+    makes the row agree with the file, so the assertion is on the instruction
     rather than on the code alone: a warning that announced a disagreement and
     stopped there would satisfy a code-only check while leaving a person with
-    nothing to do.
+    nothing to do. The act was a reload of the folder's tags in rekordbox until
+    the residual on stale row genres, and a reload overwrites every tag field,
+    so the case holds the verb's name and not that word.
 
     THE FOLDER IS IN THE TEXT. A resume is a detached child whose envelope is read
     later beside other runs, so an instruction that said "the folder" would not
@@ -2510,7 +2515,7 @@ def test_a_corrected_retag_ends_by_naming_the_reload_the_stale_row_needs(
         if warning["code"] == retag_cli.LIBRARY_ROW_STALE
     )
     assert str(folder) in told["message"], told
-    assert "reload" in told["message"], (
+    assert "`crate tag rows`" in told["message"], (
         f"the run named a disagreement and no act to settle it: {told['message']!r}"
     )
 

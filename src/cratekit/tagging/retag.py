@@ -44,15 +44,20 @@ not optional and not a convenience: an unregistered operation decides
 ``SKIP_UNOWNED`` for every change, which writes nothing and reports success, and
 a sweep that silently wrote nothing looks exactly like a sweep with nothing to do.
 
-AND NOTHING CALLS EITHER OF THEM, WHICH THE REGISTRY NOW SAYS. Both functions are
-named by this module and by no other file under ``src``, so the shipped verb
+THIS VERB CALLS NEITHER OF THEM, WHICH THE REGISTRY SAYS. The shipped retag
 corrects the file and leaves the row. That deferral is R-185 and is still open.
 What is no longer true is the claim about it: the ``tag.retag`` entry declared
 ``db_metadata`` among its write surfaces and now declares ``files`` alone
-(R-246), and ``cratekit.tagging.retag_cli`` ends the run by naming the reload a
-person performs in rekordbox to bring the rows back into agreement. Binding a
-caller here is the fix these two entries are waiting for; narrowing the
-declaration was not it, and was never meant to read as it.
+(R-246), and ``cratekit.tagging.retag_cli`` ends the run by naming the verb
+that brings the rows back into agreement.
+
+:func:`apply_library` HAS ONE CALLER, ``cratekit.tagging.rows``, since the
+residual on stale row genres. That module plans every row against its own file
+through ``metadata.plan_genre_retag`` and applies the plan here, so registering
+the policy before applying it still has one home. :func:`plan_library` has no
+caller: it matches the files one retag wrote back to rows, and the row verb
+walks the rows instead, which covers a retagged file and every other stale row
+alike.
 
 LAYER: modules.
 """
@@ -549,7 +554,7 @@ def apply_library(library_plan: LibraryPlan, mapped: Mapping[str, Any]) -> metad
     REGISTERING IS NOT A CONVENIENCE. ``metadata_decision`` answers ``SKIP_UNOWNED``
     for an operation nobody registered, so an unregistered sweep writes nothing,
     raises nothing, and reports a clean run over a library it did not touch. This
-    is the first caller of that layer in ``src``, so the registration and the
+    is the one caller of that layer in ``src``, so the registration and the
     refusal that catches its absence are both this function's rather than every
     future caller's to remember.
 
