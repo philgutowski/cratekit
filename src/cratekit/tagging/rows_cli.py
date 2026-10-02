@@ -22,9 +22,10 @@ THE ORDER IS ``adopt move``'S, and the plan is made on a read handle:
   so that is where a running rekordbox or its agent refuses, and the engine
   checks each row is still as the plan read it before the session is entered.
 
-A LIBRARY IT CANNOT READ REFUSES BEFORE THE GATE (R-372). When most rows record
-a path under no prefix rule the plan is empty for a reason a prefix rule fixes,
-and the verb says so under the slug its sibling and doctor use.
+A LIBRARY IT CANNOT READ REFUSES BEFORE THE PLAN AND THE GATE (R-372). When
+most rows record a path under no prefix rule the plan is empty for a reason a
+prefix rule fixes, and the verb says so from the sibling verb's own path
+survey, under the slug that verb and doctor use, before a file is opened.
 
 ``--leave`` HOLDS A ROW OUT. Every disagreement is read as the row lagging its
 file, which is false of a genre set by hand in rekordbox, and the gate is apply
@@ -264,37 +265,30 @@ def _written(plan: rows.RowsPlan, written: rows.Written) -> dict[str, str]:
     }
 
 
-def _refuse_a_library_it_cannot_read(cfg: config.Config, plan: rows.RowsPlan) -> None:
-    """Refuse when most rows record a path under no prefix rule (R-372).
-
-    THE SLUG, THE STEPS AND THE DETAIL ARE THE SIBLING VERB'S,
-    :func:`cratekit.write.metadata_cli.majority_unmapped_cause`, so plan, apply
-    and doctor's ``library.paths_resolved`` keep saying one thing. Without it a
-    drive renamed with no rule plans nothing over thousands of rows, asks its
-    gate over that, and ends as a no op a person had to approve to read.
-    """
-    if not plan.majority_unmapped:
-        return
-    totals = metadata_cli.ResolutionTotals(
-        active=plan.rows,
-        unresolved=plan.unread,
-        unmapped=plan.counts[rows.PATH_UNMAPPED],
-        prefixes=dict(plan.unmapped_prefixes),
-    )
-    raise CratekitError(metadata_cli.majority_unmapped_cause(cfg, totals, blocked=_BLOCKED))
-
-
 def _plan(cfg: config.Config, declared, leave: list[str]) -> rows.RowsPlan:
     """The plan over the library as it stands, through a handle opened to read.
 
     ``require_closed`` is the opener's write intent flag and it is left False,
     as the collection reader leaves it, so the plan can be read with rekordbox
     open. The handle is closed before this returns.
+
+    A LIBRARY IT CANNOT READ REFUSES BEFORE ANY FILE IS OPENED (R-372). The
+    path survey is the sibling verb's own,
+    :func:`cratekit.write.metadata_cli.resolution_totals`, so the rule, the
+    counts, the slug, the steps and the detail are the ones the vocal tag verb
+    and doctor's ``library.paths_resolved`` give for the same library. It
+    resolves paths and stats files and reads no tag, so a drive renamed with
+    no prefix rule is refused without opening the files that did resolve.
     """
     db = rb_writer.open_db(
         rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
     )
     try:
+        totals = metadata_cli.resolution_totals(cfg, db)
+        if totals.majority_unmapped:
+            raise CratekitError(
+                metadata_cli.majority_unmapped_cause(cfg, totals, blocked=_BLOCKED)
+            )
         return rows.plan_rows(cfg, db, declared, leave=leave)
     finally:
         rb_writer.close_db(db)
@@ -318,7 +312,6 @@ def tag_rows(ctx) -> Envelope:
     session.assert_backup_acknowledged(cfg)
 
     plan = _plan(cfg, declared, list(getattr(ctx.args, "leave", None) or ()))
-    _refuse_a_library_it_cannot_read(cfg, plan)
     data = _payload(plan)
     if ctx.gate.require(spec, plan=data, context=_facts(plan)) != "apply":
         return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=_advisories(plan))

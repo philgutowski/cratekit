@@ -157,8 +157,9 @@ def library_row_warning(folder: str) -> dict[str, str]:
             f"value, because this verb writes the file half only; run `crate tag "
             f"rows` so the rows catch up, which writes each row's genre from its "
             f"file and no other column, where a reload in rekordbox overwrites "
-            f"every tag field; it leaves a genre the library has never held and "
-            f"says what to do about it"
+            f"every tag field; that verb plans over the whole collection and not "
+            f"this folder, lists every row it would write before it asks, and "
+            f"leaves a genre the library has never held, saying what to do about it"
         ),
     }
 

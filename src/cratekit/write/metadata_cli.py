@@ -278,7 +278,7 @@ def _survey(cfg: config.Config, db: Any) -> _Survey:
             unmapped += 1
             prefixes[outcome.prefix or "?"] += 1
         path = Path(outcome.path) if outcome.path is not None else None
-        if path is None or not path.is_file():
+        if path is None or not _is_a_file(path):
             unresolved += 1
             continue
         resolved.append((row, path))
@@ -291,6 +291,22 @@ def _survey(cfg: config.Config, db: Any) -> _Survey:
         ),
         tuple(resolved),
     )
+
+
+def _is_a_file(path: Path) -> bool:
+    """Whether a file is there, with a refusal to answer read as no.
+
+    ``Path.is_file`` swallows a missing file and raises on the rest: a
+    directory this account cannot enter, a name the filesystem refuses, an
+    input error on the volume, a null byte in the recorded name. Raised out of
+    the one walk, any of them ended the survey for the plan, the apply and the
+    doctor check together. A row whose file cannot be asked about is a row
+    this machine cannot read a file for, which is what unresolved counts.
+    """
+    try:
+        return path.is_file()
+    except (OSError, ValueError):
+        return False
 
 
 def resolution_totals(cfg: config.Config, db: Any) -> ResolutionTotals:

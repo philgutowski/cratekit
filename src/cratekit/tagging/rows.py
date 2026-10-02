@@ -47,7 +47,7 @@ Layer: modules. It opens no database of its own and names no verb.
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
@@ -65,6 +65,7 @@ from cratekit.core import (
     snapshot,
     tags,
     taxonomy,
+    tree_registry,
 )
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import Remedy
@@ -122,10 +123,11 @@ UNREAD: tuple[str, ...] = (
     NO_PATH,
 )
 
-#: What the readability probe's answers are counted as here. Anything it adds
-#: later reads as unreadable until it is given a name of its own.
+#: What the census's answers about a row's file are counted as here. Anything
+#: it adds later reads as unreadable until it is given a name of its own.
 _PROBED: Mapping[adopt_scan.Readability, str] = MappingProxyType(
     {
+        adopt_scan.Readability.UNMAPPED: PATH_UNMAPPED,
         adopt_scan.Readability.MISSING: FILE_MISSING,
         adopt_scan.Readability.UNREADABLE: FILE_UNREADABLE,
         adopt_scan.Readability.ONLINE_ONLY: FILE_ONLINE_ONLY,
@@ -138,6 +140,9 @@ LEAVE = "leave"
 
 #: How many word pairs a summary names.
 NAMED_PAIRS = 5
+
+#: How many offending rows a refusal's sentence names. The detail carries all.
+_NAMED_ROWS = 5
 
 #: How many identifiers one SQL statement names. Under every SQLite build's
 #: bound parameter limit, the oldest of which is 999.
@@ -190,9 +195,6 @@ class RowsPlan:
     #: file. Shown at the gate and covered by the digest, because a mistyped
     #: identifier is a row the person meant to hold and the plan writes.
     leave_unmatched: tuple[str, ...] = ()
-    #: The unmapped rows grouped by their recorded prefix, for the refusal that
-    #: names the drive. Display only, and not part of the digest.
-    unmapped_prefixes: Mapping[str, int] = MappingProxyType({})
 
     @property
     def writes(self) -> tuple[Item, ...]:
@@ -207,16 +209,6 @@ class RowsPlan:
     def unread(self) -> int:
         """Rows whose file's genre was never learned."""
         return sum(self.counts[name] for name in UNREAD)
-
-    @property
-    def majority_unmapped(self) -> bool:
-        """More than half of the live rows record a path under no prefix rule.
-
-        The rule ``cratekit.write.metadata_cli.ResolutionTotals`` states, read
-        off this walk's own counts: strictly more than half, never over an
-        empty collection.
-        """
-        return self.rows > 0 and self.counts[PATH_UNMAPPED] * 2 > self.rows
 
     def unknown_words(self) -> list[tuple[str, int]]:
         """The file words with no lookup row, each with its rows, largest first."""
@@ -270,62 +262,39 @@ class Written:
 # ---------------------------------------------------------------------------
 
 
-def _file_of(
-    recorded: str, *, root: Path, prefix_map: Sequence[locations.PrefixRule]
-) -> tuple[Path | None, str, str]:
-    """The file a recorded path names on this machine, or why there is none.
-
-    Answers (path, outcome, prefix). The prefix is the recorded path's leading
-    part when no rule maps it, else empty.
-
-    TOTAL, BECAUSE THE WALK IS ONE LOOP. Anything raising here does not fail
-    one row, it ends the plan with every later row uncounted. The file is asked
-    about through :func:`cratekit.adopt.scan.probe_readability`, which is total
-    by construction: a directory with no execute bit, a name the filesystem
-    refuses and an input error on the volume all come back as a named category.
-
-    WHETHER THE BYTES ARE HERE IS ASKED BEFORE THEY ARE READ, by the same
-    probe. A file a synchroniser evicted is counted ``file-online-only`` and is
-    never opened, because opening it is a download, once per file on the plan
-    and again on the apply.
-
-    A VOLUME THAT IS NOT MOUNTED IS ``file-missing`` AND NEVER A FAILURE. Its
-    rows resolve to a path nothing is at, exactly as a deleted file's do, and
-    the walk cannot tell the two apart, so it counts them together and goes on.
-    """
-    try:
-        _, resolved = trees.located(recorded, root=root, prefix_map=prefix_map)
-    except ValueError:
-        # A location naming another host, or a string that is not a path.
-        return None, NO_PATH, ""
-    if resolved.resolution is locations.Resolution.UNMAPPED:
-        return None, PATH_UNMAPPED, resolved.prefix or "?"
-    if resolved.path is None:
-        return None, NO_PATH, ""
-    path = Path(resolved.path)
-    probed = adopt_scan.probe_readability(path)
-    if probed is not adopt_scan.Readability.READABLE:
-        return None, _PROBED.get(probed, FILE_UNREADABLE), ""
-    return path, "", ""
+def _no_energy(path: Path) -> int | None:
+    """The census reads an energy tag off every adoptable file. This walk does
+    not route, so it hands the census a reader that opens nothing."""
+    del path
+    return None
 
 
 def _file_word(path: Path) -> tuple[str, str]:
-    """The file's genre, or why it has none to give. Answers (word, outcome)."""
+    """The file's genre, or why it has none to give. Answers (word, outcome).
+
+    THE FIRST VALUE, ON EVERY CONTAINER. The checked reader answers the first
+    value of a list on the containers that store one, and on ID3 the frame's
+    values joined on a null byte. Compared as it came, an ID3 file holding two
+    genres never agreed with a row a FLAC holding the same two agreed with, and
+    one holding a single genre and an empty second value read as a word no
+    lookup row matches. So the joined text is split and its first non empty
+    value is the word, which is what the other containers already answer.
+    """
     try:
-        word = (tags.read_tags_checked(path, ("genre",))["genre"] or "").strip()
+        text = tags.read_tags_checked(path, ("genre",))["genre"] or ""
     except tags.TagReadFailed:
         return "", FILE_UNREADABLE
+    word = next((part.strip() for part in text.split("\x00") if part.strip()), "")
     return word, ("" if word else FILE_BLANK)
 
 
 def _file_words(path: Path) -> tuple[str, ...]:
     """Every genre value the file holds, when it holds more than one, else empty.
 
-    THE CHECKED READER ANSWERS ONE VALUE. On a container that stores a list it
-    is the first, and on ID3 it is the values joined on a null byte. Either way
-    a row written from it would carry part of what the file says, or a word no
-    lookup row will ever match. So a row about to be written has its file asked
-    again for every value, and a file holding more than one is left alone.
+    :func:`_file_word` ANSWERS THE FIRST VALUE, so a row written from it would
+    carry part of what a file holding two genres says. So a row about to be
+    written has its file asked again for every value, and a file holding more
+    than one is left alone.
     Asked only of a differing row, so the second open is paid a few hundred
     times and not once per track.
     """
@@ -354,11 +323,27 @@ def plan_rows(
     declared: taxonomy.Taxonomy,
     *,
     leave: Iterable[str] = (),
+    probe: Callable[[Path], adopt_scan.Readability] = adopt_scan.probe_readability,
 ) -> RowsPlan:
     """Walk the collection once and sort every live row into one outcome.
 
+    THE WALK IS ADOPTION'S CENSUS, :func:`cratekit.adopt.scan.scan_rows`, and
+    not a third decode, resolve and classify of a recorded path. The census
+    skips a tombstone, decodes and resolves the location, and asks its probe
+    what is there, which is total by construction and answers whether a file's
+    bytes are here without reading them. So a directory this account cannot
+    enter is counted and does not end the walk, a file a synchroniser evicted
+    is counted ``file-online-only`` and never opened, and the row's word is
+    the one adoption reads because it is adoption that read it.
+
     A TOMBSTONE IS SKIPPED AND NOT COUNTED, as the genre report skips it: a row
     the person removed is not a row whose genre anybody reads.
+
+    A VOLUME THAT IS NOT MOUNTED IS ``file-missing`` AND NEVER A FAILURE. Its
+    rows resolve to a path nothing is at, exactly as a deleted file's do.
+
+    ``probe`` is the census's own parameter, handed through. The census does
+    not trust an injected one to be total and names what it raises.
 
     ``leave`` NAMES ROWS A PERSON HOLDS OUT, by content identifier. Every
     disagreement is otherwise read as the row lagging its file, and that is
@@ -381,31 +366,31 @@ def plan_rows(
     nothing, and what it returns is values, so the handle may be a read one
     that is closed before the gate is asked.
     """
-    root = Path(cfg.library.root)
-    prefix_map = collection.prefix_rules(cfg)
     held_out = frozenset(str(content_id) for content_id in leave)
     counts = dict.fromkeys(OUTCOMES, 0)
-    prefixes: Counter[str] = Counter()
+    mapped = {str(row.ID): row for row in db.get_content()}
     differing: dict[str, tuple[Any, str, str, str]] = {}
     items: list[Item] = []
 
-    for row in db.get_content():
-        if trees.soft_delete_marker(row):
+    census = adopt_scan.scan_rows(
+        collection.collection_rows(mapped.values()),
+        declared,
+        root=Path(cfg.library.root),
+        prefix_map=locations.prefix_rules(cfg.resolved_prefix_map()),
+        probe=probe,
+        energy_reader=_no_energy,
+    )
+    for track in census:
+        content_id = track.content_id
+        if track.readability is not adopt_scan.Readability.READABLE or track.path is None:
+            counts[_PROBED.get(track.readability, FILE_UNREADABLE)] += 1
             continue
-        content_id = str(row.ID)
-        path, outcome, prefix = _file_of(
-            str(getattr(row, "FolderPath", "") or ""), root=root, prefix_map=prefix_map
-        )
-        if path is None:
-            counts[outcome] += 1
-            if prefix:
-                prefixes[prefix] += 1
-            continue
+        path = Path(track.path)
         file_word, outcome = _file_word(path)
         if outcome:
             counts[outcome] += 1
             continue
-        row_word = collection.genre_of(row).strip()
+        row_word = track.genre.strip()
         if row_word == file_word:
             counts[AGREE] += 1
             continue
@@ -422,7 +407,7 @@ def plan_rows(
             counts[reason] += 1
             items.append(Item(content_id, str(path), row_word, file_word, LEAVE, reason=reason))
             continue
-        differing[content_id] = (row, str(path), row_word, file_word)
+        differing[content_id] = (mapped[content_id], str(path), row_word, file_word)
 
     changes = metadata.plan_genre_retag(
         [entry[0] for entry in differing.values()],
@@ -446,7 +431,6 @@ def plan_rows(
         counts=MappingProxyType(counts),
         changes=changes,
         leave_unmatched=tuple(sorted(held_out - listed)),
-        unmapped_prefixes=MappingProxyType(dict(prefixes.most_common())),
     )
 
 
@@ -535,6 +519,17 @@ def judge(
     return tuple(wrong), tuple(moved)
 
 
+def _named(offenders: Sequence[str]) -> str:
+    """The first few offenders as a sentence, and how many more there are.
+
+    A plan of hundreds of rows that all moved would otherwise put hundreds of
+    clauses on the screen. The refusal's detail carries every one.
+    """
+    shown = "; ".join(offenders[:_NAMED_ROWS])
+    more = len(offenders) - _NAMED_ROWS
+    return shown + (f"; and {more} more, all in the detail" if more > 0 else "")
+
+
 def _empty(value: Any) -> bool:
     return value in rb_writer.FIELD_EMPTIES["GenreID"]
 
@@ -565,7 +560,7 @@ def assert_rows_as_planned(plan: RowsPlan, mapped: Mapping[str, Any]) -> None:
         raise refuse(
             "decision-stale",
             f"{len(moved)} of {len(plan.changes.changes)} row(s) to be written are "
-            f"not as the plan read them, so nothing was written: " + "; ".join(moved),
+            f"not as the plan read them, so nothing was written: " + _named(moved),
             steps=("run the verb again and approve the plan as it is now",),
             origin=_ORIGIN,
             detail={"moved": moved},
@@ -607,6 +602,10 @@ def apply_rows(
     :func:`assert_rows_as_planned`, as the native landing checks its plan. A
     stale plan refuses with no session record, no capture and nothing pending.
 
+    AN OUT OF BAND RESTORE IS LOOKED FOR BEFORE THE WRITE, because this write
+    records a fingerprint after its commit and every other caller that records
+    one runs the detection first.
+
     THE MAPPED ROWS AND THE SNAPSHOT ARE READ BEFORE THE FIRST FIELD IS SET,
     and nothing is read between the first set and the commit. A query there
     would flush the pending work before the whitelist has judged it.
@@ -631,6 +630,13 @@ def apply_rows(
     content_ids = [item.content_id for item in writes]
     mapped = _mapped(db, content_ids)
     assert_rows_as_planned(plan, mapped)
+    # THE EVIDENCE IS READ BEFORE IT IS REPLACED. The fingerprint recorded after
+    # the commit is what the next tree write compares against, and recording it
+    # over a database recovered out of band would bless the recovered reading
+    # and leave every native tree the restore emptied unmarked for good. The
+    # detection marks them and never refuses: a genre write is as true of a
+    # restored database as of any other, and it is no tree's membership.
+    convergence.detect_out_of_band_restore(cfg, db, tree_registry.read(cfg))
     with (
         session.assert_gates(
             cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
@@ -693,7 +699,7 @@ def assert_read_back(written: Written) -> None:
             "whitelist-violation",
             "a row written for its genre has another column changed after the "
             "commit, which the guard should have refused before it: "
-            + "; ".join(written.moved),
+            + _named(written.moved),
             remedy=Remedy.REPORT_DEFECT,
             steps=undo,
             origin=_ORIGIN,
@@ -702,7 +708,7 @@ def assert_read_back(written: Written) -> None:
     raise refuse(
         "internal-error",
         f"{len(written.wrong)} of {written.written} row(s) written do not read "
-        f"back as their file's genre: " + "; ".join(written.wrong),
+        f"back as their file's genre: " + _named(written.wrong),
         remedy=Remedy.REPORT_DEFECT,
         steps=undo,
         origin=_ORIGIN,

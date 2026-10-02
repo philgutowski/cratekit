@@ -21,7 +21,8 @@ import hashlib
 import os
 import shutil
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -34,12 +35,14 @@ from cratekit.core import (
     active_taxonomy,
     analysis_store,
     config,
+    convergence,
     locations,
     preflight,
     rb_writer,
     session,
     tags,
     taxonomy,
+    tree_registry,
 )
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
@@ -272,10 +275,10 @@ def _files(cfg: config.Config) -> dict[str, str]:
     }
 
 
-def _planned(cfg: config.Config, leave: tuple[str, ...] = ()) -> rows.RowsPlan:
+def _planned(cfg: config.Config, leave: tuple[str, ...] = (), **kwargs) -> rows.RowsPlan:
     db = rb_writer.open_db(cfg.library.db_path, unlock=False, cfg=cfg)
     try:
-        return rows.plan_rows(cfg, db, active_taxonomy.load(cfg), leave=leave)
+        return rows.plan_rows(cfg, db, active_taxonomy.load(cfg), leave=leave, **kwargs)
     finally:
         rb_writer.close_db(db)
 
@@ -459,12 +462,12 @@ def test_a_file_whose_bytes_are_not_here_is_counted_and_never_opened(
     """Opening an evicted file is a download. The probe answers without one."""
     build(machine, silence, Track("30", OLD, MELODIC), Track("31", OLD, MELODIC))
     evicted = _file(machine, "31")
-    real_probe = adopt_scan.probe_readability
-    monkeypatch.setattr(
-        adopt_scan,
-        "probe_readability",
-        lambda path: adopt_scan.Readability.ONLINE_ONLY if path == evicted else real_probe(path),
-    )
+
+    def probe(path):
+        if path == evicted:
+            return adopt_scan.Readability.ONLINE_ONLY
+        return adopt_scan.probe_readability(path)
+
     real_read = tags.read_tags_checked
     opened: list[Path] = []
 
@@ -473,7 +476,7 @@ def test_a_file_whose_bytes_are_not_here_is_counted_and_never_opened(
         return real_read(path, fields)
 
     monkeypatch.setattr(tags, "read_tags_checked", reading)
-    plan = _planned(machine)
+    plan = _planned(machine, probe=probe)
     assert [item.content_id for item in plan.items] == ["30"]
     _counts(plan, write=1, file_online_only=1, no_path=BASELINE)
     assert opened == [_file(machine, "30")]
@@ -502,10 +505,78 @@ def test_a_file_under_a_directory_this_account_cannot_enter_does_not_end_the_wal
     _counts(plan, write=1, file_unreadable=1, no_path=BASELINE)
 
 
-def test_an_answer_the_probe_gains_later_is_counted_unreadable(machine, silence, monkeypatch):
+def test_an_answer_the_probe_gains_later_is_counted_unreadable(machine, silence):
     build(machine, silence, Track("30", OLD, MELODIC))
-    monkeypatch.setattr(adopt_scan, "probe_readability", lambda path: "something-new")
-    _counts(_planned(machine), file_unreadable=1, no_path=BASELINE)
+    plan = _planned(machine, probe=lambda path: "something-new")
+    _counts(plan, file_unreadable=1, no_path=BASELINE)
+
+
+def test_a_probe_that_raises_is_named_and_the_walk_goes_on(machine, silence):
+    build(machine, silence, Track("30", OLD, MELODIC), Track("31", OLD, MELODIC))
+
+    def probe(path):
+        if path == _file(machine, "30"):
+            raise PermissionError("no")
+        return adopt_scan.probe_readability(path)
+
+    plan = _planned(machine, probe=probe)
+    assert [item.content_id for item in plan.items] == ["31"]
+    _counts(plan, write=1, file_unreadable=1, no_path=BASELINE)
+
+
+@pytest.fixture(scope="module")
+def id3_silence(tmp_path_factory) -> Path:
+    """One container whose tags are ID3, where a frame holds a list of values."""
+    return synth_container(tmp_path_factory.mktemp("id3"), ".aiff")
+
+
+def _id3_track(cfg: config.Config, id3_silence: Path, content_id: str, values: list[str]) -> Track:
+    """A row to seed whose file is an ID3 container holding ``values`` as its genre."""
+    path = _music(cfg) / f"track-{content_id}.aiff"
+    shutil.copyfile(id3_silence, path)
+    assert tags.write_tag_values(path, "genre", values)
+    assert tags.read_tag_values(path, "genre") == tuple(values)
+    return Track(content_id, "", ABSENT, recorded=locations.location_url(path))
+
+
+def test_two_genres_in_an_id3_frame_read_as_they_do_in_a_list_container(
+    machine, silence, id3_silence
+):
+    """The checked reader joins an ID3 frame's values on a null byte. Compared
+    as it came, the row that agrees on FLAC differed on ID3 on every run."""
+    agreeing = _id3_track(machine, id3_silence, "30", [DEEP, MELODIC])
+    differing = _id3_track(machine, id3_silence, "31", [MELODIC, PROGRESSIVE])
+    build(
+        machine,
+        silence,
+        Track("30", DEEP, ABSENT, recorded=agreeing.recorded),
+        Track("31", OLD, ABSENT, recorded=differing.recorded),
+    )
+    assert "\x00" in tags.read_tags_checked(_music(machine) / "track-30.aiff", ("genre",))["genre"]
+    plan = _planned(machine)
+    (item,) = plan.items
+    assert (item.content_id, item.reason) == ("31", rows.FILE_MULTI_VALUED)
+    assert item.file == f"{MELODIC}; {PROGRESSIVE}"
+    _counts(plan, agree=1, file_multi_valued=1, no_path=BASELINE)
+
+
+def test_an_empty_second_value_is_not_a_second_genre_and_not_an_unknown_word(
+    machine, silence, monkeypatch
+):
+    """A frame parsed as one genre and an empty value read as a word ending in
+    a null byte, which no lookup row matches, so the run told a person to make
+    a genre row for a row that already agreed."""
+    build(machine, silence, Track("30", DEEP, DEEP), Track("31", OLD, MELODIC))
+    real = tags.read_tags_checked
+    monkeypatch.setattr(
+        tags,
+        "read_tags_checked",
+        lambda path, fields: {"genre": (real(path, fields)["genre"] or "") + "\x00"},
+    )
+    plan = _planned(machine)
+    (item,) = plan.items
+    assert (item.content_id, item.file, item.action) == ("31", MELODIC, rows.WRITE)
+    _counts(plan, agree=1, write=1, no_path=BASELINE)
 
 
 def test_a_file_holding_two_genres_is_left_alone_and_both_are_shown(machine, silence):
@@ -547,21 +618,6 @@ def test_an_identifier_held_out_that_names_no_differing_row_is_carried_and_diges
     assert [item.digested() for item in plan.items] == [item.digested() for item in free.items]
     assert dict(plan.counts) == dict(free.counts)
     assert plan.digest != free.digest
-
-
-def test_a_majority_under_no_prefix_rule_is_read_off_the_walk(machine, silence, tmp_path):
-    away = tmp_path / "another-volume" / "Music"
-    build(
-        machine,
-        silence,
-        Track("30", OLD, MELODIC),
-        *(Track(str(40 + n), OLD, ABSENT, recorded=str(away / f"{n}.flac")) for n in range(3)),
-    )
-    plan = _planned(machine)
-    # Three of six: exactly half is not a majority.
-    assert (plan.rows, plan.counts[rows.PATH_UNMAPPED]) == (6, 3)
-    assert not plan.majority_unmapped
-    assert sum(plan.unmapped_prefixes.values()) == 3
 
 
 def test_each_distinct_file_word_is_resolved_once(machine, silence, monkeypatch):
@@ -826,6 +882,74 @@ def test_a_blank_row_is_as_planned_however_the_database_spells_blank(held):
     with pytest.raises(CratekitError) as unreadable:
         rows.assert_rows_as_planned(plan, mapped(held))
     assert unreadable.value.cause.reason == "soft-delete-marker-unreadable"
+
+
+def test_a_restore_out_of_band_is_marked_before_this_write_replaces_the_evidence(
+    acknowledged, silence
+):
+    """The write records a fingerprint after its commit. Recorded over a
+    database recovered out of band and never compared, it blessed the recovered
+    reading, and the native tree the restore emptied went unmarked for good."""
+    cfg = acknowledged
+    build(cfg, silence, Track("30", OLD, MELODIC))
+    tree_id = DECLARED.intake.id
+    tree_registry.write(
+        cfg,
+        tree_registry.Registry().with_record(
+            tree_registry.TreeRecord(
+                tree_id=tree_id,
+                mode=tree_registry.Mode.DATABASE,
+                cutover_on=date(2026, 9, 29),
+                root_id="900",
+                source=tree_registry.DerivationSource.TAXONOMY,
+            )
+        ),
+    )
+    db = rb_writer.open_db(cfg.library.db_path, unlock=False, cfg=cfg)
+    try:
+        now = convergence.probe(db)
+    finally:
+        rb_writer.close_db(db)
+    ahead = replace(now, local_usn=now.local_usn + 1000)
+    convergence.write(cfg, convergence.read(cfg).with_fingerprint(ahead))
+
+    _plan, written = _apply(cfg)
+
+    assert written.written == 1 and _genre_of(cfg, "30") == MELODIC
+    state = convergence.read(cfg)
+    marked = state.tree(tree_id)
+    assert marked is not None and marked.unconverged, state
+    assert state.fingerprint.local_usn < ahead.local_usn
+
+
+def test_with_no_regression_the_write_marks_nothing_and_records_where_it_left_off(
+    acknowledged, silence
+):
+    cfg = acknowledged
+    build(cfg, silence, Track("30", OLD, MELODIC))
+    _apply(cfg)
+    state = convergence.read(cfg)
+    assert state.trees == () and state.fingerprint is not None
+
+
+def test_a_refusal_over_many_rows_names_a_few_and_carries_them_all():
+    changes = tuple(
+        metadata.Change(str(n), metadata.RETAG_GENRE, "GenreID", "100", "101") for n in range(8)
+    )
+    plan = rows.RowsPlan(items=(), counts={}, changes=metadata.Plan(metadata.RETAG_GENRE, changes))
+    with pytest.raises(CratekitError) as refused:
+        rows.assert_rows_as_planned(plan, {})
+    cause = refused.value.cause
+    assert "8 of 8" in cause.message and "and 3 more, all in the detail" in cause.message
+    assert "4: no longer a live row" in cause.message
+    assert "5: no longer a live row" not in cause.message
+    assert len(cause.detail["moved"]) == 8
+
+    wrong = tuple(f"{n}: reads wrong" for n in range(6))
+    with pytest.raises(CratekitError) as refused:
+        rows.assert_read_back(rows.Written("s", 6, 0, wrong=wrong))
+    assert "and 1 more" in refused.value.cause.message
+    assert len(refused.value.cause.detail["wrong"]) == 6
 
 
 # ── the read back's judgement, with no database ────────────────────────────
@@ -1128,7 +1252,7 @@ def test_a_person_reads_the_counts_and_the_pairs_at_the_gate_and_after_the_write
 
 
 def test_a_library_most_of_whose_rows_are_unmapped_refuses_before_the_gate(
-    acknowledged, silence, tmp_path
+    acknowledged, silence, tmp_path, monkeypatch
 ):
     """R-372's shape: the plan is empty for a reason a prefix rule fixes."""
     cfg = acknowledged
@@ -1138,6 +1262,11 @@ def test_a_library_most_of_whose_rows_are_unmapped_refuses_before_the_gate(
         silence,
         Track("30", OLD, MELODIC),
         *(Track(str(40 + n), OLD, ABSENT, recorded=str(away / f"{n}.flac")) for n in range(4)),
+    )
+    monkeypatch.setattr(
+        tags,
+        "read_tags_checked",
+        lambda *args: pytest.fail("a file was opened for a library about to be refused"),
     )
     code, envelope = drive(VERB)
     cause = envelope["cause"]
@@ -1150,6 +1279,51 @@ def test_a_library_most_of_whose_rows_are_unmapped_refuses_before_the_gate(
     assert (cause["detail"]["active"], cause["detail"]["unmapped"]) == (7, 4)
     assert sum(cause["detail"]["prefixes"].values()) == 4
     assert _genre_of(cfg, "30") == OLD
+    # THE COUNTS ARE THE ONES DOCTOR AND THE VOCAL TAG VERB GIVE, because the
+    # survey is theirs: one rule and one reading of one library.
+    db = rb_writer.open_db(cfg.library.db_path, unlock=False, cfg=cfg)
+    try:
+        assert cause["detail"]["unresolved"] == metadata_cli.resolution_totals(cfg, db).unresolved
+    finally:
+        rb_writer.close_db(db)
+
+
+def test_exactly_half_unmapped_is_not_a_majority_and_the_verb_plans(
+    acknowledged, silence, tmp_path
+):
+    cfg = acknowledged
+    away = tmp_path / "another-volume" / "Music"
+    build(
+        cfg,
+        silence,
+        Track("30", OLD, MELODIC),
+        *(Track(str(40 + n), OLD, ABSENT, recorded=str(away / f"{n}.flac")) for n in range(3)),
+    )
+    code, refused = drive(VERB)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["detail"]["shown"]["outcomes"]["path-unmapped"] == 3
+
+
+def test_the_verb_survives_a_directory_this_account_cannot_enter(acknowledged, silence):
+    """The survey asked ``Path.is_file`` too, and raised with it."""
+    cfg = acknowledged
+    locked = _music(cfg) / "locked"
+    locked.mkdir()
+    shutil.copyfile(silence, locked / "track.flac")
+    build(
+        cfg,
+        silence,
+        Track("30", OLD, ABSENT, recorded=locations.location_url(locked / "track.flac")),
+        Track("31", OLD, MELODIC),
+    )
+    os.chmod(locked, 0)
+    try:
+        code, refused = drive(VERB)
+    finally:
+        os.chmod(locked, 0o700)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    outcomes = refused["cause"]["detail"]["shown"]["outcomes"]
+    assert (outcomes["write"], outcomes["file-unreadable"]) == (1, 1)
 
 
 def test_the_sibling_verbs_refusal_still_speaks_of_vocals(acknowledged):
