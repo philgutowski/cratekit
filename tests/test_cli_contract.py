@@ -1824,6 +1824,9 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # The residual on stale row genres. No argument: it reads the whole
         # collection of the configured database.
         "tag.rows": [],
+        # R-799. No argument: it reads every tagging record this installation
+        # committed, which on the fixture's machine is none.
+        "tag.remap": [],
     }[entry.name]
     return sample() if callable(sample) else sample
 

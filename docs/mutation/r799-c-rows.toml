@@ -1,0 +1,82 @@
+name = "r799-c"
+pass_kind = "light"
+
+[[rows]]
+id = "W4_a_rewrite_is_recorded"
+description = "apply: commit no record of a rewrite, so the verb's own write reads as a hand edit"
+file = "src/cratekit/tagging/remap.py"
+surface = "user"
+tests = ["tests/test_tag_remap.py"]
+old = '''        if not _record(cfg, name, ordinal, item):
+            unrecorded.append(item.path)'''
+new = ""
+
+[[rows]]
+id = "W5_a_rewrites_record_is_one_generation_on"
+description = "apply: record a rewrite at the generation of the record it replaced"
+file = "src/cratekit/tagging/remap.py"
+surface = "user"
+tests = ["tests/test_tag_remap.py"]
+old = '''                "generation": item.generation + 1,'''
+new = '''                "generation": item.generation,'''
+
+[[rows]]
+id = "P11_blank_is_not_agreement"
+description = "plan: read a blank file whose word is given nothing as agreeing"
+file = "src/cratekit/tagging/remap.py"
+surface = "user"
+tests = ["tests/test_tag_remap.py"]
+old = '''        if any(current and current == _wanted(declared, record.word) for record in mine):'''
+new = '''        if any(current == _wanted(declared, record.word) for record in mine):'''
+
+[[rows]]
+id = "V1_the_gate_is_asked_before_the_write"
+description = "verb: apply the plan whatever the gate answers"
+file = "src/cratekit/tagging/remap_cli.py"
+surface = "user"
+tests = ["tests/test_tag_remap.py"]
+old = '''    if ctx.gate.require(spec, plan=data, context=_facts(plan)) != "apply":
+        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=_advisories(plan))'''
+new = ""
+
+[[rows]]
+id = "V2_a_file_that_did_not_take_refuses"
+description = "verb: answer a clean run over a file that did not take its genre"
+file = "src/cratekit/tagging/remap_cli.py"
+surface = "user"
+tests = ["tests/test_tag_remap.py"]
+old = '''    if written.clean:
+        return
+    parts = []'''
+new = '''    if True:
+        return
+    parts = []'''
+
+[[rows]]
+id = "V3_an_unrecorded_rewrite_is_not_clean"
+description = "verb: call a run clean whose rewrite could not be recorded"
+file = "src/cratekit/tagging/remap.py"
+surface = "user"
+tests = ["tests/test_tag_remap.py"]
+old = '''        return not (self.wrong or self.moved or self.failed or self.unrecorded)'''
+new = '''        return not (self.wrong or self.moved or self.failed)'''
+
+[[dropped]]
+id = "V4_the_refusal_names_the_row_verb"
+description = "verb: drop the row verb from a refusal that rewrote some files"
+reason = "ranked below the cap: a step's text, with one test that it is there and one that it is absent when nothing was rewritten"
+
+[[dropped]]
+id = "V5_the_warning_over_a_copy_with_no_table"
+description = "verb: say nothing over a taxonomy that declares no table"
+reason = "ranked below the cap: a warning, driven through the dispatcher by two tests"
+
+[[dropped]]
+id = "V6_the_gate_is_explicit"
+description = "registry: let the correction's gate take an inline answer"
+reason = "ranked below the cap: the conformance suite holds every explicit gate to refusing an inline answer, and one test here drives this verb's"
+
+[[dropped]]
+id = "V7_the_refusal_carries_the_rewritten_files"
+description = "verb: drop the rewritten files from the refusal's detail"
+reason = "ranked below the cap: a detail field asserted whole by one test"

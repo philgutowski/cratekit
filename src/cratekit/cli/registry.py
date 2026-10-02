@@ -2399,6 +2399,45 @@ ENTRIES: tuple[Entry, ...] = (
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
+    # ── The genres an older mapping wrote, corrected on the file (R-799) ────
+    #
+    # Appended, for the reason the deferred routing block above gives.
+    Entry(
+        name="tag.remap",
+        summary="rewrite the genre on files a tag job filed by a mapping the "
+        "taxonomy has since changed, from what the job recorded; writes no row",
+        module="cratekit.tagging.remap_cli",
+        builder="build",
+        handler_key="tag.remap",
+        # NO FEATURE ROW AND NO SOURCE SCRIPT. The source system had no general
+        # catalogue and so no word of one to file again.
+        #
+        # GATED BY ``repair``, as ``tag.retag`` and ``tag.rows`` are: a
+        # corrective pass over metadata the library already holds.
+        module_id="repair",
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: THE FILE AND ONLY THE FILE. The row follows by ``tag.rows``, which
+        #: the run names, so no database is opened here and the cloud sync
+        #: decision, which binds to write intent on the guarded writer, is not
+        #: one this verb can reach.
+        writes=frozenset({"files"}),
+        destructive=True,
+        taxonomy_terms=("genre_energy",),
+        doctor_checks=("library.mounted",),
+        gates=(
+            GateSpec(
+                name="tag.remap.confirm",
+                options=("apply", "abort"),
+                prompt="Rewrite the genre on these files?",
+                #: EXPLICIT (R34). A genre is written once and stays, so the
+                #: rewrite of one is answered by a separate recorded act with
+                #: an actor, over a plan a person has read.
+                explicit=True,
+                digest_source="plan",
+            ),
+        ),
+    ),
 )
 
 #: The verb names, as data. ``tests/test_layering.py`` reads this to enforce that

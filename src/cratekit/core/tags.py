@@ -638,20 +638,45 @@ def read_tag_values(path: Path, field: str) -> tuple[str, ...] | None:
     Shares :func:`read_tag`'s asymmetry with the writers: an unsupported
     container reads as None rather than raising, because reading damages nothing.
     """
+    return _read_tag_values(path, field, strict=False)
+
+
+def read_tag_values_checked(path: Path, field: str) -> tuple[str, ...] | None:
+    """:func:`read_tag_values` with a failed read kept apart from an absent field.
+
+    ONE BODY WITH IT, for the reason :func:`read_tags_checked` gives. None
+    still means the field is not there. :class:`TagReadFailed` means the
+    container is one this module does not read, or the tag library could not
+    open it, did not recognise it or could not decode what it holds. A caller
+    about to decide whether a file still carries what somebody wrote needs
+    every value AND needs to know the read happened, and two opens to learn
+    both is a second chance for the answers to disagree.
+    """
+    return _read_tag_values(path, field, strict=True)
+
+
+def _read_tag_values(path: Path, field: str, *, strict: bool) -> tuple[str, ...] | None:
+    """The body of both exact readers. Not strict, every failure reads as absent."""
     spec = FIELDS.get(field)
     if spec is None:
         raise ValueError(f"unknown tag field: {field!r}; known fields are {sorted(FIELDS)}")
 
     try:
         dialect = dialect_of(path.suffix.lower())
-    except UnsupportedContainer:
+    except UnsupportedContainer as exc:
+        if strict:
+            raise TagReadFailed(str(exc)) from exc
         return None
     key = spec.key_for(dialect)
     try:
         import mutagen
 
         handle = mutagen.File(path)
-        if handle is None or handle.tags is None:
+        if handle is None:
+            if strict:
+                raise TagReadFailed("not a container the tag library recognises")
+            return None
+        if handle.tags is None:
             return None
         tags = handle.tags
         if key not in tags:
@@ -669,7 +694,11 @@ def read_tag_values(path: Path, field: str) -> tuple[str, ...] | None:
         if not isinstance(raw, list):
             raw = [raw]
         return tuple(_as_text(value) for value in raw)
+    except TagReadFailed:
+        raise
     except Exception as exc:  # noqa: BLE001 - see the note above read_tag
+        if strict:
+            raise TagReadFailed(f"{key}: {type(exc).__name__}: {exc}") from exc
         log.debug("exact tag read failed for %s: %s", path, exc)
         return None
 

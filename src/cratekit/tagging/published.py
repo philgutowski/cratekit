@@ -87,6 +87,13 @@ every track it calls by a broad name under a word no folder holds. So an answer
 is written only when it maps to a folder, and the first of an album's genres
 that does is the one used.
 
+THIS CATALOGUE'S WORDS HAVE A TABLE OF THEIR OWN IN THE TAXONOMY (R-799), under
+:data:`SOURCE`. The buckets' aliases were written for the record shops, where
+Pop is a dance genre, and read through them this catalogue's Pop was written as
+the dance bucket's name and its Alternative as a bucket's bare name. Where the
+table is declared it is asked first. A word with no row goes on to the
+aliases, and what they answer is written only when it names a folder.
+
 Layer: modules.
 """
 
@@ -444,19 +451,31 @@ def choose(declared: Taxonomy, genres: Sequence[str]) -> tuple[str, str] | None:
     publishes, and a chooser that preferred the narrowest or the rarest word
     would be this module forming an opinion about music.
 
-    THE TAG IS THE RESOLVER'S ANSWER AND NOTHING HERE ADJUSTS IT. The alias
-    table was written against the record shops' vocabulary and this catalogue's
-    broad words inherit it as it stands, which is recorded as a residual with
-    the words measured rather than corrected by a second table in this module.
+    THE WORD IS RESOLVED AS THIS CATALOGUE'S (R-799). The resolver is told
+    whose word it is, and a taxonomy that declares a vocabulary for this
+    catalogue answers from that table first, so its Pop is not filed by an
+    alias written for a record shop's Pop. The tag is still the resolver's
+    answer and nothing here adjusts it.
+
+    ON A COPY THAT DECLARES THE TABLE, A WRITTEN GENRE NAMES A FOLDER. A word
+    with no row is answered by the buckets' aliases, and those can answer with
+    the bare name of a bucket that files by source genre, which lands in that
+    bucket's default sub with the word lost. That is how this catalogue's
+    Alternative was filed. So such an answer is passed over, by the test the
+    loader holds a row's tag to. A copy that declares no table has not taken
+    the rule and answers exactly as it did before that unit.
     """
+    names_a_folder = declared.vocabulary(SOURCE) is not None
     for word in genres:
-        suggestion = routing.suggest_tag(declared, word)
+        suggestion = routing.suggest_tag(declared, word, source=SOURCE)
         tag = suggestion.tag
         if suggestion.declined or not tag:
             continue
         if suggestion.bucket_id is None and declared.bucket_for_display(tag) is None:
             continue
         if declared.is_too_coarse_as_source(tag):
+            continue
+        if names_a_folder and declared.named_folder(tag) is None:
             continue
         return word, tag
     return None

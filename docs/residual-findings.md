@@ -32008,6 +32008,66 @@ mapping are corrected, and a run on the author's library is recorded in
 
 **On the board bar.** The author asked for it on 2026-10-01.
 
+**Built 2026-10-02 on `relay/241`, issue #241, in the code. The run on the
+author's library is still owed, so this stays open.** The taxonomy declares
+a vocabulary per source, `[vocabulary.deezer]`, a list of rows, each a word
+of the general catalogue's and the genre written for it. The table is asked
+first. A word with no row goes on to the buckets' aliases as before, and on
+a copy that declares the table what they answer is written only when it
+names a folder, so the bare name of a bucket that files by source genre is
+never written. The loader holds a row's tag to the same rule and refuses a
+table under any name but the general catalogue's. The shipped rows are Pop,
+Alternative, Rock, Country, Folk, R&B, Soul & Funk, Rap/Hip Hop, Jazz,
+Classical and Reggae. Pop is written as `NonElectronic / Pop`, a word of its
+own with one routing alias and one map row, because a file whose genre is
+`Pop` routes to the dance bucket and the Pop sub was never reachable, here
+or in the source system (R-828). Alternative is written as Rock. Electro and
+Dance stay declined. Beatport's Pop is pinned through the shipped searcher.
+A copy with no table behaves exactly as before. `crate tag remap` is new: it
+reads every committed tagging record, takes the files whose genre came from
+the general catalogue, resolves the recorded word again, and plans the
+rewrite of a file only while it still carries what a record in force says
+was written. Eight outcomes, counted zero filled. An explicit gate over a
+digest, an empty plan still asks, each file read again before its write and
+read back after it, each rewrite recorded with a generation so a later run
+can correct it again and a hand correction is left. Files only, no
+database. The built in review ran twice, ten findings each time:
+seventeen changed the code, nine and then eight, and the first of them
+reversed this card's own first decision, that a declared table is the whole
+answer. The second fix commit's message says seven applied and three
+declined where the count is eight and two. A hunt after the reviews found
+one more, a directory the account cannot enter ending the plan, fixed with
+a test. Mutation tables
+`r799-a` to `r799-c`, 25 rows, 25 killed, none at zero, by the author. R-828
+to R-833 filed.
+
+**The rows follow by `crate tag rows`, R-816's verb, and not by a reload.**
+A reload takes every tag field from the file and changed keys at sitting 26.
+`NonElectronic / Pop` is a genre the library has never held, so that verb
+names R-818's hand step for it first.
+
+**Owed to an attended sitting, in this order.** The build in use is this
+one. A dated backup of the active taxonomy copy is taken, and the copy takes
+the shipped template's edit: the `[vocabulary.deezer]` table, the
+`NonElectronic / Pop` alias on the non electronic bucket and its map row.
+The table alone does not load. Where the copy still equals the template it
+was last swapped for, the new template whole is the same edit, as at sitting
+26. The word for Pop is the author's to rename before any file carries it,
+in those three places (R-828). `crate doctor` reads the taxonomy. `crate tag
+remap` is brought to its gate and read: by sitting 26's counts it plans 16
+writes of 78 files, `Dance / Pop` to `NonElectronic / Pop` on 10 and
+`NonElectronic` to `Rock` on 6, and any other outcome it lists is read
+before the answer. The author answers the gate. One of the ten is given its
+genre in rekordbox so the lookup row exists, rekordbox is quit and both
+processes are gone, and `crate tag rows` is rehearsed on a copy and approved
+on an equal digest, which is R-816's owed run as well, since that verb plans
+the whole collection. `crate adopt apply`, rehearsed and approved the same
+way, adds the ten to NonElectronic / Pop, and the ten are taken out of their
+Dance / Pop bands by hand, since no verb moves a track between top level
+folders (R-829). `crate tag remap` is run again and must plan nothing. The
+ten are read under NonElectronic / Pop and the six under Rock with the genre
+Rock, and the run is recorded in `docs/cutover.md`.
+
 ## R-800. Nothing remembers a general catalogue answer past the run, and the cache declared for it is unused
 
 **Found:** on `relay/236`, 2026-10-01, by the built in review of R-796. The
@@ -32749,5 +32809,162 @@ runs a fake provider and a fake catalogue, in one process.
 
 **Closes when:** the attended run of R-815 is recorded with its time and its
 provider call count.
+
+**Not on the board bar.** It closes at an attended sitting.
+
+## R-828. The general catalogue's Pop is written as `NonElectronic / Pop`, a word the session chose, and the shared resolver answers that word with the bucket's bare name
+
+**Found:** on `relay/241`, 2026-10-02, planning R-799. A file whose genre is
+`Pop` routes to the Dance / Pop bucket by that bucket's exact routing alias,
+and the map row that sends `Pop` to the Pop sub of NonElectronic is never
+reached, in the shipped template or in the source system's own table. So no
+word a file could carry filed under NonElectronic / Pop, and the sub's own
+name cannot be the word. The session chose `NonElectronic / Pop`, the
+folder's path as the card spells it, with nobody to ask.
+
+It is a bucket alias, so `suggest_tag` given that word with no source
+answers `NonElectronic`, the bare name. Found by the built in review.
+
+**Measured cost.** None yet: no file carries the word until the attended
+run, where it goes onto 10. The resolver's three callers were driven and
+none hands it a file's own genre or this word: the two record shop call
+sites read a catalogue's page and the chooser reads the general catalogue's
+list. Reachability from a fourth caller is unmeasured because there is none.
+
+**Options for the author.** (a) Keep it. (b) Another word, changed in three
+places before the run: the alias, the map row and the table's row. After the
+run the same change is one more `crate tag remap`, which follows its own
+rewrites. (c) Move the `Pop` routing alias from the dance bucket to the non
+electronic one and write `Pop`, which changes where every file already
+tagged `Pop` is filed and breaks parity with the source system's table. (d)
+Let a sub declare the word written for it, so its tag alias can answer with
+that word.
+
+**Not on the board bar.** A decision, shown at the gate before any file is
+written.
+
+## R-829. A corrected track stays in the folder its old genre named, and no verb moves a track between top level folders
+
+**Found:** on `relay/241`, 2026-10-02, planning R-799, read off the tree.
+Adoption withholds a track only for a competing place in the bucket its
+genre names, and `crate adopt move` plans inside one bucket. So once the ten
+Pop tracks carry their new genre on file and row, `adopt apply` adds each to
+NonElectronic / Pop and nothing removes it from the Dance / Pop band it was
+filed in at sitting 26. R-797's planning measured the same gap and filed
+nothing for it.
+
+**Measured cost.** Ten tracks, taken out of their bands by hand at the
+attended sitting. The six Alternative tracks already sit under Rock and only
+their word changes. How many tracks any other genre correction leaves in a
+second top level folder is unmeasured: `tag retag` and `tag rows` change a
+genre too, and nothing counts a track sitting in two.
+
+**Closes when:** a verb plans leaving a top level folder a track's genre no
+longer names, behind the gate and the read back the move has, or the author
+decides the hand step is the product.
+
+**Not on the board bar.** The workflow finishes by a hand step the owed
+steps name.
+
+## R-830. `tag remap` follows a file only where it was tagged, and the acquisition tail tags before it lands
+
+**Found:** on `relay/241`, 2026-10-02, by the built in review. The verb
+finds a file by the path its tagging record carries. The acquisition tail
+tags a batch in its staging folder, then renames and lands it, and nothing
+in the tagging record says where a file went. Such a file reads
+`outside-library` or `file-missing`, is never opened, and the landed file
+keeps the genre the older mapping wrote. The run says how many it could not
+follow, in a warning, and lists each one under the library that is gone.
+
+**Measured cost.** None on the 16 this card is about: the jobs of sitting 26
+ran in place over landed files. How many of the library's files took a
+genre from the general catalogue in a staging folder is unmeasured, and is
+none before sitting 26, since R-796 landed that day.
+
+**Options for the author.** Tie a tagged path to a landed one through the
+landing's own record. Select by the row's file and a record of the source
+kept on the file or the row. Or tag after landing where the general
+catalogue is asked.
+
+**Not on the board bar.** No file is out of reach today. It meets (c) the
+day a row of the table changes after a batch was tagged before it landed,
+and is the author's to queue then or now.
+
+## R-831. The general catalogue's words below its top level are still filed by the record shops' aliases, and the ones they answer with a bare bucket name are declined
+
+**Found:** on `relay/241`, 2026-10-02, by the built in review, twice. The
+first build declined every word with no row and the review drove what that
+cost, so a word with no row is resolved by the aliases as before. Two
+things follow.
+
+- **R-799's own fault stands for a word nobody measured.** `Synth-Pop` is
+  written as `Dance / Pop`, and the substring rules, progressive, afro,
+  melodic and minimal, can claim a catalogue word that contains one.
+- **A word the aliases answer with the non electronic bucket's bare name is
+  declined**, Indie Rock, Punk, Latin, Bollywood, World Music among them,
+  although each is an exact alias with a row in that bucket's map, so the
+  word itself would name its folder.
+
+**Measured cost.** One file on the library took a genre from a word below
+the top level, the House / Funky House / Disco of sitting 26, and it is
+filed as it was. Which other such words reach the tagger is unmeasured,
+R-813's neighbour. A decline is listed in the summary and the file stays
+askable.
+
+**Options for the author.** Add a row as a run's summary names a word. Write
+a word that itself names a folder where the aliases answer with a bare
+name. Or make the table the whole answer and have the chooser stop at a
+word it does not know, so nothing is written past one.
+
+**Not on the board bar.** Its input has been observed once, and that file is
+filed as before.
+
+## R-832. Only the general catalogue can have a vocabulary, and a table for a record shop is refused
+
+**Found:** on `relay/241`, 2026-10-02, by the built in review.
+`[vocabulary.beatport]`, or a misspelled name, loaded clean and changed
+nothing, because only the general catalogue's chooser tells the resolver
+whose word it is. The loader now refuses a table under any other name. The
+two record shop call sites in `tagging/searchers.py` still name no source,
+which a test pins, since the card holds the shops to resolving exactly as
+before.
+
+**Measured cost.** None. No library declares such a table.
+
+**Closes when:** the record shops are read through a table of their own
+where one is declared, with every existing shop test unchanged, or the
+author decides one source is enough.
+
+**Not on the board bar.** A refusal with its reason, and nothing written.
+
+## R-833. `tag remap` was built against records this suite wrote, and its plan on the real queue is unmeasured
+
+**Found:** on `relay/241`, 2026-10-02, at the record. This card did not
+read the installation's queue or the library's files.
+
+- **The counts.** 16 writes of 78 files is arithmetic from sitting 26's
+  table. The 6 written as `NonElectronic` are taken to be Alternative, on
+  the ledger's word. One written from Country would be planned as Folk, and
+  one from any word with no row would be listed `word-declined` and left.
+- **A tagging job's write after a rewrite.** A rewrite retires every record
+  of the general catalogue's below its generation, and a tagging job's
+  record is generation zero whenever it was written. A file blanked after a
+  rewrite and filled again by `tag folder` agrees while the table stands
+  and reads `changed-since` after the next change of its word. Listed and
+  left, never a wrong write.
+- **No way to hold a file out.** The gate is apply or abort over the whole
+  plan, as R-817 says of `tag rows`. A genre a person puts back by hand is
+  left. One a person wants kept as the older mapping wrote it, and never
+  touched since, is planned on every run.
+- **No folder scope**, R-819's neighbour.
+- **The time.** One open per file a record names under the library, twice
+  per approved run, on an external volume. Not timed.
+- **The mutation tables.** `r799-a` to `r799-c`, 25 rows, 25 killed, are the
+  author's, with no independent pass. Thirteen more rows were written down
+  and not measured, and the guard the hunt added after the tables has a
+  test and no row. Two rows die only on a volume that folds case.
+
+**Closes when:** the attended run of R-799 is recorded with its plan's
+counts and its time.
 
 **Not on the board bar.** It closes at an attended sitting.

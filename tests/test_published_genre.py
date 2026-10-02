@@ -29,6 +29,8 @@ from __future__ import annotations
 import ast
 import json
 import shutil
+import tomllib
+from importlib import resources
 from pathlib import Path
 
 import pytest
@@ -36,6 +38,7 @@ import pytest
 from cratekit.core import routing, tags
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import Remedy
+from cratekit.core.taxonomy import Taxonomy, build_taxonomy
 from cratekit.tagging import published, searchers, tag
 from cratekit.tagging.searchers import Answer, Fetched
 from cratekit.tagging.tag import SearchHit, SourceAnswer
@@ -84,6 +87,23 @@ def _tag_with_no_bucket() -> str:
 
 
 TAG_ONLY = _tag_with_no_bucket()
+
+
+def _with_no_vocabulary() -> Taxonomy:
+    """The shipped template as a copy written before R-799 holds it.
+
+    No table of the general catalogue's own, so its words are resolved by the
+    buckets' aliases, the way every library's active copy does until it takes
+    the edit. Section B drives the chooser's own tests on that path, since a
+    declared table answers before any of them is reached.
+    """
+    source = resources.files("cratekit") / "templates" / "taxonomy.default.toml"
+    raw = tomllib.loads(source.read_text(encoding="utf-8"))
+    del raw["vocabulary"]
+    return build_taxonomy(raw)
+
+
+NO_TABLE = _with_no_vocabulary()
 
 
 def test_the_fixture_words_are_what_the_tests_below_take_them_for():
@@ -592,9 +612,9 @@ def test_the_answer_set_is_the_searchers_and_the_two_words_of_its_own():
 
 
 def test_the_first_genre_that_maps_to_a_folder_is_chosen():
-    expected = routing.suggest_tag(TAXONOMY, SUB_GENRE).tag
-    assert published.choose(TAXONOMY, [SUB_GENRE, BUCKET_GENRE]) == (SUB_GENRE, expected)
-    assert published.choose(TAXONOMY, [BUCKET_GENRE, SUB_GENRE])[0] == BUCKET_GENRE
+    expected = routing.suggest_tag(NO_TABLE, SUB_GENRE).tag
+    assert published.choose(NO_TABLE, [SUB_GENRE, BUCKET_GENRE]) == (SUB_GENRE, expected)
+    assert published.choose(NO_TABLE, [BUCKET_GENRE, SUB_GENRE])[0] == BUCKET_GENRE
 
 
 @pytest.mark.parametrize("passed_over", [UNDECLARED, FALLBACK_GENRE, TAG_ONLY, REFUSED[0], ""])
@@ -602,8 +622,8 @@ def test_a_word_that_maps_to_no_folder_is_passed_over_for_the_next(passed_over):
     """Each way a word fails to map: nothing declares it, it resolves to a name
     too coarse to be a tag, a rule gives it a tag with no bucket, the taxonomy
     refuses it outright, or it is empty."""
-    assert published.choose(TAXONOMY, [passed_over]) is None
-    chosen = published.choose(TAXONOMY, [passed_over, SUB_GENRE])
+    assert published.choose(NO_TABLE, [passed_over]) is None
+    chosen = published.choose(NO_TABLE, [passed_over, SUB_GENRE])
     assert chosen is not None and chosen[0] == SUB_GENRE
 
 
@@ -630,8 +650,8 @@ def test_a_word_that_is_a_buckets_own_name_maps_to_that_folder():
     """The review drove this: a folder exists, routing files the word in it by
     display, and asking only for a bucket identifier declined it."""
     word = _bucket_named_by_no_alias()
-    assert published.choose(TAXONOMY, [word]) == (word, word)
-    assert routing.resolve_bucket(TAXONOMY, word).match is routing.Match.PASSTHROUGH
+    assert published.choose(NO_TABLE, [word]) == (word, word)
+    assert routing.resolve_bucket(NO_TABLE, word).match is routing.Match.PASSTHROUGH
 
 
 def test_no_genres_chooses_nothing():

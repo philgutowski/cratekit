@@ -1,0 +1,357 @@
+{
+  "name": "r799-b",
+  "pass_kind": "light",
+  "branch": "relay/241",
+  "head": "9ec7665",
+  "when": "2026-10-02 05:49 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 12053,
+  "baseline_exit": 0,
+  "pytest_runs": 12,
+  "state_guarded": "~/Library/Application Support/cratekit (189230 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/tagging/remap.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/tagging/remap.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "3abc1f7d2e2a13cd",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 12053,
+    "baseline_collected": 12053,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "P1_a_file_is_planned_only_while_it_carries_what_a_record_wrote",
+      "description": "plan: take every record in force as explaining the file, whatever the file carries",
+      "file": "src/cratekit/tagging/remap.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fbb29fa4a142fe07",
+      "subset": [
+        "tests/test_tag_remap.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 15,
+      "collected": 92,
+      "baseline_collected": 92,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_remap.py::test_a_blank_file_whose_word_is_now_declined_is_not_read_as_agreeing",
+        "tests/test_tag_remap.py::test_a_file_holding_a_second_genre_is_left_alone_and_both_are_shown",
+        "tests/test_tag_remap.py::test_a_file_whose_genre_was_cleared_is_left_alone_and_not_read_as_agreeing",
+        "tests/test_tag_remap.py::test_a_genre_a_record_shop_wrote_later_on_a_path_the_catalogue_once_wrote_agrees",
+        "tests/test_tag_remap.py::test_a_genre_frame_holding_two_values_is_two_values_on_an_id3_container",
+        "tests/test_tag_remap.py::test_a_genre_nobody_recorded_writing_is_left_alone_and_listed[Deep House]",
+        "tests/test_tag_remap.py::test_a_genre_nobody_recorded_writing_is_left_alone_and_listed[Pop]",
+        "tests/test_tag_remap.py::test_a_genre_nobody_recorded_writing_is_left_alone_and_listed[dance / pop]",
+        "tests/test_tag_remap.py::test_a_genre_put_back_by_hand_after_a_rewrite_is_left_alone",
+        "tests/test_tag_remap.py::test_a_record_shops_genre_is_never_resolved_as_the_catalogues_word",
+        "tests/test_tag_remap.py::test_a_run_that_leaves_a_file_says_how_many_and_why_on_every_path",
+        "tests/test_tag_remap.py::test_a_run_that_wrote_still_says_what_it_left",
+        "tests/test_tag_remap.py::test_every_file_is_counted_once_and_the_items_are_in_path_order",
+        "tests/test_tag_remap.py::test_only_a_planned_write_is_written",
+        "tests/test_tag_remap.py::test_the_apply_writes_the_planned_genre_and_no_other_file"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    explaining = [record for record in in_force if values == (record.written,)]",
+      "new": "    explaining = list(in_force)"
+    },
+    {
+      "id": "P2_two_explanations_are_ambiguous",
+      "description": "plan: settle a genre two records explain differently by the first of them",
+      "file": "src/cratekit/tagging/remap.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e9c5acb647969f7a",
+      "subset": [
+        "tests/test_tag_remap.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 92,
+      "baseline_collected": 92,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_remap.py::test_a_file_reached_through_a_link_is_the_file",
+        "tests/test_tag_remap.py::test_a_genre_two_records_explain_with_different_sources_is_left",
+        "tests/test_tag_remap.py::test_a_genre_two_records_explain_with_different_words_is_left",
+        "tests/test_tag_remap.py::test_one_file_recorded_under_two_spellings_is_one_file",
+        "tests/test_tag_remap.py::test_two_cases_of_one_file_are_one_file_where_the_volume_folds_case"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if len({(record.source, record.word) for record in explaining}) > 1:",
+      "new": "    if False:"
+    },
+    {
+      "id": "P3_a_shops_genre_is_the_shops",
+      "description": "plan: resolve a record shop's word as the general catalogue's",
+      "file": "src/cratekit/tagging/remap.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8434327694c49b3b",
+      "subset": [
+        "tests/test_tag_remap.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 92,
+      "baseline_collected": 92,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_remap.py::test_a_record_shops_genre_is_never_resolved_as_the_catalogues_word"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if wrote.source != SOURCE:",
+      "new": "    if False:"
+    },
+    {
+      "id": "P4_a_rewrite_retires_the_record_it_replaced",
+      "description": "plan: keep every record of the source in force, whatever its generation",
+      "file": "src/cratekit/tagging/remap.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7d3eb4d63898f4ef",
+      "subset": [
+        "tests/test_tag_remap.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 92,
+      "baseline_collected": 92,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_remap.py::test_a_genre_put_back_by_hand_after_a_rewrite_is_left_alone",
+        "tests/test_tag_remap.py::test_a_word_given_its_first_genre_back_is_still_followed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if record.source == SOURCE and record.generation == newest\n    ]",
+      "new": "        if record.source == SOURCE\n    ]"
+    },
+    {
+      "id": "P5_only_a_file_under_the_library_is_opened",
+      "description": "plan: settle a recorded path wherever it is",
+      "file": "src/cratekit/tagging/remap.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8d066fd060ada93a",
+      "subset": [
+        "tests/test_tag_remap.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 92,
+      "baseline_collected": 92,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_remap.py::test_a_file_outside_the_library_is_said_and_not_listed",
+        "tests/test_tag_remap.py::test_a_file_outside_this_librarys_root_is_counted_and_never_opened",
+        "tests/test_tag_remap.py::test_a_path_that_climbs_out_of_the_library_is_outside_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if resolved is None or not _inside(resolved, library):",
+      "new": "        if resolved is None:"
+    },
+    {
+      "id": "P6_one_file_is_one_group",
+      "description": "plan: key a file under the library by its resolved name and not by the file itself",
+      "file": "src/cratekit/tagging/remap.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "300890be8fc9167b",
+      "subset": [
+        "tests/test_tag_remap.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 92,
+      "baseline_collected": 92,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_remap.py::test_two_cases_of_one_file_are_one_file_where_the_volume_folds_case"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    try:\n        stat = resolved.stat()\n    except OSError:\n        return (\"name\", str(resolved))\n    return (\"file\", stat.st_dev, stat.st_ino)",
+      "new": "    return (\"name\", str(resolved))"
+    },
+    {
+      "id": "W1_a_file_is_read_again_before_it_is_written",
+      "description": "apply: write over whatever the file carries by now",
+      "file": "src/cratekit/tagging/remap.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c7092533a39863bb",
+      "subset": [
+        "tests/test_tag_remap.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 92,
+      "baseline_collected": 92,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_remap.py::test_a_file_that_moved_since_the_plan_is_named_and_not_written"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if _file_genres(target) != (item.current,):\n            moved.append(item.path)\n            continue",
+      "new": ""
+    },
+    {
+      "id": "W2_the_writers_answer_is_kept",
+      "description": "apply: count a file the writer could not write as written",
+      "file": "src/cratekit/tagging/remap.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ced0f160faa2f785",
+      "subset": [
+        "tests/test_tag_remap.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 92,
+      "baseline_collected": 92,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_remap.py::test_a_file_the_writer_could_not_write_is_named_as_untouched_and_the_rest_are_written",
+        "tests/test_tag_remap.py::test_a_refusal_that_rewrote_nothing_does_not_send_a_person_to_the_row_verb",
+        "tests/test_tag_remap.py::test_a_write_that_does_not_take_refuses_after_the_rest_were_written"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not tags.write_genre(target, item.wanted):\n            failed.append(item.path)\n            continue",
+      "new": "        tags.write_genre(target, item.wanted)"
+    },
+    {
+      "id": "W3_a_write_is_read_back",
+      "description": "apply: take the writer's word that the genre is on the file",
+      "file": "src/cratekit/tagging/remap.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d249b691658630fb",
+      "subset": [
+        "tests/test_tag_remap.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 92,
+      "baseline_collected": 92,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_remap.py::test_a_file_written_that_does_not_read_back_is_named_as_wrong"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if _file_genres(target) != (item.wanted,):\n            wrong.append(item.path)\n            continue",
+      "new": ""
+    }
+  ],
+  "dropped": [
+    {
+      "id": "P7_the_case_folding_volume",
+      "description": "plan: drop the directory comparison, so a folder typed in another case is outside the library",
+      "reason": "ranked below the cap: it can only die on a volume that folds case, so its count is a fact about the machine it ran on. Driven by a test that asserts on both kinds of volume"
+    },
+    {
+      "id": "P8_a_file_nobody_could_read",
+      "description": "plan: read a failed tag read as a blank genre",
+      "reason": "ranked below the cap: one outcome among eight, with a direct test, and never a write either way"
+    },
+    {
+      "id": "P9_a_record_with_no_genre_written",
+      "description": "plan: read a record that wrote nothing",
+      "reason": "ranked below the cap: removing the check raises on a missing value and takes the run down, which measures a crash and not a guard"
+    },
+    {
+      "id": "P10_the_digest_covers_the_counts_and_the_unread",
+      "description": "plan: digest the items alone",
+      "reason": "ranked below the cap: two tests assert the digest moves on a count and on an unread record, the same family R-816's table measured"
+    },
+    {
+      "id": "A1_reports_in_item_order_as_numbers",
+      "description": "artifacts: sort a job's reports by filename text",
+      "reason": "ranked below the cap: maintainer facing, order is display for this verb since no record is taken for the latest"
+    },
+    {
+      "id": "A2_an_unreadable_report_is_counted",
+      "description": "artifacts: drop the count of reports that could not be parsed",
+      "reason": "ranked below the cap: a warning's count, with a direct test at the reader and one at the verb"
+    }
+  ]
+}

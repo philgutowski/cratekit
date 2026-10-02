@@ -417,7 +417,9 @@ aliases = [
 # "soul & funk" is the general catalogue's own word (R-796), one genre there
 # covering both. It files here on this table's own precedent, a combined source
 # name goes under its first word, as "hip-hop / r&b" does below. One line to
-# move to the funk sub if that is where these belong.
+# move to the funk sub if that is where these belong. Since R-799 that
+# catalogue has a table of its own at the end of this file, and this alias is
+# read for it only by a copy that declares no such table.
 tag_aliases = [
   "rnb",
   "soul & funk",
@@ -457,6 +459,7 @@ aliases = [
   "Indie Rock",
   "Jazz",
   "Latin",
+  "NonElectronic / Pop",
   "Punk",
   "Rock",
   "Tango",
@@ -491,6 +494,14 @@ tag_aliases = [
   "rock",
 ]
 
+# THE WORD THAT FILES HERE IS "NonElectronic / Pop", NOT "Pop" (R-799). A file
+# whose genre is "Pop" routes to the Dance / Pop bucket, by that bucket's own
+# alias, so the row for "Pop" in the map below is never reached and this sub's
+# name cannot be the genre written for it. It carries no tag alias for the
+# same reason: an alias here would answer with the sub's name. The general
+# catalogue's table at the end of this file writes the word that does file
+# here. To call it something else, change the alias above, the map row below
+# and that table's row together.
 [[bucket.sub]]
 id = "pop"
 display = "Pop"
@@ -503,6 +514,8 @@ display = "Pop"
 id = "hip_hop"
 display = "Hip-Hop"
 # "rap/hip hop" is the general catalogue's own word for this genre (R-796).
+# Since R-799 that catalogue has a table of its own at the end of this file,
+# and this alias is read for it only by a copy that declares no such table.
 tag_aliases = [
   "hip hop",
   "hip-hop",
@@ -568,6 +581,7 @@ map = [
   { source = "Indie Rock", sub = "rock" },
   { source = "Jazz", sub = "jazz" },
   { source = "Latin", sub = "caribbean" },
+  { source = "NonElectronic / Pop", sub = "pop" },
   { source = "Pop", sub = "pop" },
   { source = "Punk", sub = "rock" },
   { source = "Rock", sub = "rock" },
@@ -1054,3 +1068,58 @@ kind = "soundtrack"
 [[label_gate.published]]
 equals = ["kids"]
 kind = "kids"
+
+
+# A SOURCE'S OWN VOCABULARY (R-799).
+#
+# The alias lists on the buckets above were written against the record shops'
+# words, where Pop is a dance genre. A general catalogue says Pop of every
+# kind of pop, and read through those aliases its Pop was written as
+# Dance / Pop and its Alternative as the non electronic bucket's bare name. So
+# a source can have a table of its own, named as a file's record names the
+# source, the name the tag summary counts under.
+#
+# Each row is one of that source's words and the `tag` written onto the file
+# for it. A word is matched whole, whatever its case. Where the tag files is
+# not declared here: it is filed the way any file carrying that genre is.
+#
+# THE TAG MUST NAME A FOLDER, and a template is refused when one does not. It
+# has to be an exact routing alias or a bucket's own name. In a bucket that
+# files by source genre it has to have a row of its own in that bucket's map,
+# so the bucket's bare name can never be written.
+#
+# THE TABLE IS ASKED FIRST. A word with no row goes on to the aliases above,
+# as it did before this table existed, so a specific word they already file
+# correctly, Disco or Trance, still is. One thing changes for such a word on a
+# copy that declares this table: what the aliases answer must name a folder by
+# the rule above, so the bare name of the non electronic bucket is never
+# written and the word is declined instead. A declined word leaves the file
+# with no genre and askable, and is named in the run's summary, which is where
+# to read what to add a row for.
+#
+# ONLY THE GENERAL CATALOGUE HAS ONE. The record shops' words are resolved by
+# the aliases above, which were written for them, and a table under any other
+# name is refused, since nothing would read it. Delete this table and the
+# general catalogue's words are filed by the aliases too, as before R-799.
+#
+# MEASURED on 2026-10-01: the general catalogue's 27 top level words. The 11
+# below have a folder. Electro and Dance are too coarse for a dance track and
+# have no row on purpose: the aliases decline both. Reggaeton, Christian,
+# Salsa, Traditional Mexicano, Films/Games, Metal, African Music, Asian Music,
+# Blues, Brazilian Music, Cumbia, Indian Music, Kids and Latin Music have no
+# folder that names them. NOT MEASURED: the words it lists below that level.
+# None has a row, so each is filed as it was before, less the bare name.
+[vocabulary.deezer]
+words = [
+  { word = "Pop", tag = "NonElectronic / Pop" },
+  { word = "Alternative", tag = "Rock" },
+  { word = "Rock", tag = "Rock" },
+  { word = "Country", tag = "Folk" },
+  { word = "Folk", tag = "Folk" },
+  { word = "R&B", tag = "R&B" },
+  { word = "Soul & Funk", tag = "R&B" },
+  { word = "Rap/Hip Hop", tag = "Hip-Hop" },
+  { word = "Jazz", tag = "Jazz" },
+  { word = "Classical", tag = "Classical" },
+  { word = "Reggae", tag = "Caribbean" },
+]

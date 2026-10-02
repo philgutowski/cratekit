@@ -187,6 +187,64 @@ the first one the lookup asks nothing more in that run. No picture is read off
 it. The lookup knows no taxonomy, so the label genre gate can call it for a
 release.
 
+### Vocabulary
+Since R-799, one source's own table in the taxonomy: each of that source's
+words and the genre written for it, declared as `[vocabulary.NAME]` with
+`words`, a list of `{ word, tag }` rows. `NAME` is the name a file's record
+gives the source, `deezer` for the general catalogue. It exists because the
+alias lists on the buckets were written for the record shops, where Pop is a
+dance genre, and read through them the general catalogue's Pop was written as
+`Dance / Pop` and its Alternative as a bucket's bare name.
+
+The table is asked FIRST and is not the whole answer. A word with no row goes
+on to the buckets' aliases, so a specific word they already file correctly,
+Disco or Trance, still is. Only the general catalogue has a table: the record
+shops resolve through the aliases, and the loader refuses a table under any
+other name, since nothing would read it.
+
+A written genre **names a folder** when routing files it by an exact
+declaration, a routing alias or a bucket's own name, it is not too coarse, and
+in a bucket that files by source genre it has a row of its own in that
+bucket's map. The loader refuses a row whose tag does not, and on a copy that
+declares the table the chooser passes over an alias's answer that does not, so
+a bare bucket name is never written from the general catalogue. A copy that
+declares no table has not taken the rule and files that catalogue's words
+exactly as before. The general catalogue's Pop is written as
+`NonElectronic / Pop`, because a file whose genre is `Pop` routes to the dance
+bucket.
+
+*Avoid:* reading it as a tagging alias. An alias says what a bucket or a sub
+answers to from any source. A vocabulary row says what one source's word is
+written as, and where it files follows from routing. Also avoid reading a
+declared table as a closed list: a word with no row is not declined for
+having none. The word is also used across the code in its ordinary sense, the
+exit code vocabulary, a source's vocabulary. This entry is the declared table.
+
+### Remap
+Since R-799, the correction of genres an older mapping wrote, `crate tag
+remap`. It reads every committed tagging record, takes the files whose genre
+came from the general catalogue, resolves the recorded word again under the
+taxonomy as it stands, and rewrites a file only when it still carries what a
+record says was written. Every file lands in one outcome: `agree`, `write`,
+`changed-since`, `word-declined`, `ambiguous-record`, `file-missing`,
+`file-unreadable` or `outside-library`, a recorded path not under this
+library's root, which is counted and never opened. A file is followed only
+where it was tagged, and is one file however many spellings its records give
+its path. It writes files behind an explicit gate, commits a tagging record of
+each rewrite so a later run can correct it again, and opens no database. The
+rows follow by `crate tag rows`.
+
+A rewrite's record carries a **generation**, one past the record that
+explained the file. Only the general catalogue's records of the highest
+generation on a file are in force, so a genre a person puts back by hand after
+a rewrite matches nothing in force and is left as `changed-since`.
+
+Not the worker pool's generation in `core/pool.py`, which is one batch of
+child processes.
+
+Not `crate tag retag`, which selects a genre the taxonomy calls too coarse and
+asks a catalogue what it should be.
+
 ### Label kind
 The kind of music a followed label is followed for, which decides what the
 label genre gate passes (R-798). A kind is one of the names the active
