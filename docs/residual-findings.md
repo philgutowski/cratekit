@@ -18543,6 +18543,13 @@ are clean. The person reviewing the existing queue still sees addresses.
 **Closes when:** those rows are discarded or rewritten with the artist name,
 on the live store, and a later offer of the same releases records the name.
 
+**Closed at sitting 30, 2026-10-02.** The rows were rewritten, not
+discarded, by `crate label artists` (R-840) on the live store: 29 open
+releases were still carrying an address and each now reads its artist's
+name. Read straight from the store afterwards, none of its 2,618 review
+items and none of its 339 holds carries an address. Offers since R-379 record
+the name. #213 is done.
+
 ---
 
 ## R-390. `crate job resume` re-arms failed items without reading retryable
@@ -33244,6 +33251,14 @@ counted there still reads its address, nothing marks it, and every later
 run asks about it again until the author decides it. R-847 is what the
 verb does not reach.
 
+**Run live at sitting 30, 2026-10-02, and closed.** `crate label artists` on
+the live store through the installed build at the merge of #244: **29 open
+releases read an address and 29 were given the artist's name**, 2,383 left
+as they were, 33 provider calls, no rate limit. They were not all Last Night
+On Earth: Anjunadeep 20, Amselcom 6, Last Night On Earth 2, Defected 1. None
+counted `not_served` or `unnamed`. A second run reports no open release
+reading an address. #213's code half is done.
+
 ---
 
 ## R-841. Adoption files a vocal sub from the vox tag and the routing derivation files it from the file's score
@@ -33443,6 +33458,16 @@ reads its artist on the live store.
 **The issue is owed and was not created.** This unit ran under Relay, which
 merges after the session exits, and an issue is created after the merge
 that carries its ledger entry. Title it with this heading exactly.
+
+**Measured at sitting 30, 2026-10-02, and closed without an issue.** `crate
+label held` on the live store before R-840's run: 339 holds across 14
+labels, **none reads an address**, Last Night On Earth's 18 included; each
+prints its artist's name. After R-840's run no open item reads one either,
+and the producer was fixed by R-379, so no later hold can be made from an
+item carrying one. The cost the entry named is zero on the library and
+cannot recur, so it no longer meets the board bar, and the issue it said was
+owed was not created. The code gap stays true of the verb and is recorded
+here rather than queued.
 
 ---
 

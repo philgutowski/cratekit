@@ -880,6 +880,8 @@ landing.
 |---|---|---|---|
 | `adopt scan` then `adopt apply`, R-788, #245 | rehearsed on a copy, live on an equal digest `70e700cf69b129ca` | Route 8,767, needs-genre 1,289, withheld 13, no collisions. `vocals: read`, `vocal` add 33, present 912, no-bucket 196, withheld 0. **33 vocal memberships added, none removed**: R&B / with vox 27, made by the apply as the taxonomy declares, Afro House 3, NonElectronic, Melodic House and House / Funky House / Disco one each. Memberships 19,726 to 19,759, playlists 578 to 579, no content row changed, integrity ok, live equal to the copy. | live, **R-788 closes** |
 | The vocal subs read from the database | after the apply | Every vox tagged track adoption routes sits in its bucket's vocal sub. Six do not, none routed there: two with no genre on the row and four in a stale second bucket. R-846 filed. | read |
+| `crate label artists`, R-840, #244 | live on the review store, no database | 29 open label releases read a provider object address and **29 were given the artist's name**: Anjunadeep 20, Amselcom 6, Last Night On Earth 2, Defected 1. 2,383 already fine, 33 provider calls, no rate limit. A second run reports none. | live, **R-840 closes** |
+| The review store read for addresses | read only, before and after | Before: `crate label held`, 339 holds over 14 labels, none reads an address. After: 2,618 review items and 339 holds read straight from the store, none carries one. | read, **R-389 and R-847 close, #213 done** |
 
 ## What blocks a full sync cycle, stated plainly
 
