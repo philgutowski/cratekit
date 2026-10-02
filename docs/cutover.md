@@ -892,6 +892,11 @@ a count under `withheld` or `under-another-name` is a tagged track the
 build leaves, with R-842 saying why for the first. After the apply, read the
 twelve in their `with vox` subs and tick line 7 only then.
 
+Owed for R-834, issue #242: read back the visibility of one playlist
+`crate export playlist` created after the build of 2026-10-02 on `relay/242`,
+at the provider, and record here that it reads private. R-834 closes on that
+line and not before.
+
 Owed for R-790, issue #234: follow a new label, sweep it once, and record
 here that it filed `labels.offer_per_sweep` releases, ten unless set, and
 that `crate review list --queue label-release --group-by label` counts the
