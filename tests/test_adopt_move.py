@@ -1176,6 +1176,23 @@ def test_after_the_move_adoption_withholds_none_of_the_moved_tracks(moved):
     assert "m-no-genre" not in applicable
 
 
+def test_an_approved_move_reads_no_vocals_in_its_gate_or_in_its_worker(moved, monkeypatch):
+    """R-788 put a tag read and a calibration read in adoption's plan, and the
+    move builds on that plan twice, once for the gate and once in the worker.
+    A move asks nothing about vocals, so neither read may be able to stop one."""
+    from cratekit.adopt import placements as adopt_placements
+    from cratekit.write import metadata_cli
+
+    def never(*_args, **_kwargs):
+        raise AssertionError("the move verb read the vocals")
+
+    monkeypatch.setattr(adopt_placements, "vox_tagged", never)
+    monkeypatch.setattr(metadata_cli, "load_vocal_threshold", never)
+
+    _job_id, code, resumed = _approve_and_run()
+    assert code == int(ExitCode.OK), resumed
+
+
 def test_a_second_approved_run_plans_nothing_and_writes_nothing(moved):
     _job_id, code, resumed = _approve_and_run()
     assert code == int(ExitCode.OK), resumed

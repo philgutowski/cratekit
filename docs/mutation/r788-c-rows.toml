@@ -1,0 +1,70 @@
+name = "r788-c"
+pass_kind = "light"
+
+[[rows]]
+id = "L1_any_vox_value_is_the_tag"
+description = "vox_tagged: a value named vox under any category is the tag"
+file = "src/cratekit/adopt/placements.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''        if str(getattr(tag, "ParentID", "") or "") in categories
+        and not _removed(tag, "My Tag")'''
+new = '''        if not _removed(tag, "My Tag")'''
+
+[[rows]]
+id = "L2_removed_tag_files"
+description = "vox_tagged: an association rekordbox removed is read as a tag, so a track a person untagged is filed"
+file = "src/cratekit/adopt/placements.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''        if not _removed(song, "My Tag association")'''
+new = '''        if True'''
+
+[[rows]]
+id = "L4_renamed_membership_unseen"
+description = "vocals_from: nobody is held under another name only, so a track in a renamed vocal playlist with a named one beside it is added to the named one too"
+file = "src/cratekit/adopt/placements.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''        if under_another:
+            unnamed[bucket.id] = frozenset(under_another)'''
+new = '''        if False:
+            unnamed[bucket.id] = frozenset(under_another)'''
+
+[[rows]]
+id = "L5_renamed_bucket_unseen"
+description = "vocals_from: no bucket is named as having its vocal sub under another name only"
+file = "src/cratekit/adopt/placements.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''        if answering and not by_display.get(names):
+            renamed.add(bucket.id)'''
+new = '''        if False:
+            renamed.add(bucket.id)'''
+
+[[rows]]
+id = "L6_removed_node_is_a_place"
+description = "_indexed: a playlist rekordbox removed is indexed with the live ones, for both readers. The existing guard this unit moved into a shared body"
+file = "src/cratekit/adopt/placements.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''    live = [node for node in nodes if not node.removed]'''
+new = '''    live = list(nodes)'''
+
+[[rows]]
+id = "L7_tag_read_when_it_cannot_file"
+description = "read_holdings: the tag tables are opened whatever the standing, so a row in them can stop an adoption that files nothing vocal"
+file = "src/cratekit/adopt/placements.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''    found = _read_tree(cfg, declared, tags=standing)'''
+new = '''    found = _read_tree(cfg, declared, tags=True)'''
+
+[[rows]]
+id = "L9_every_library_is_calibrated"
+description = "vocal_standing: any library with a vocal sub stands, so an uncalibrated one files from its tags"
+file = "src/cratekit/adopt/placements.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''    return metadata_cli.load_vocal_threshold(cfg) is not None'''
+new = '''    return True'''

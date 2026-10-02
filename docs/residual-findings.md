@@ -30631,6 +30631,13 @@ does with a removed node.
 one tree `adopt apply` and the routing pass write, and is not there. It
 joins the bar the day a removed node is found inside a governed tree.
 
+**Also reached, 2026-10-02, on `relay/245`.** The vocal memberships R-788
+adds go through the same `write_tree_membership`, so a removed `with vox`
+playlist of the declared name under a live folder is where an addition may
+land. The plan reads no removed node as a place, so it plans the addition
+again on every run. Raised by the built in review of that unit, read and not
+driven, and no narrower than this entry already says.
+
 ---
 
 ## R-763. Conformance acknowledges a backup for the one verb that reads the acknowledgment first
@@ -31478,6 +31485,42 @@ into its bucket's `with vox` sub, and the twelve are in theirs.
 
 **Put on the board on 2026-10-02.** The author asked for line 7 of #178 to be
 code complete, and this is the code line 7 still lacks.
+
+**Built 2026-10-02 on `relay/245`, and still open on the live run.** `crate
+adopt apply` files a vox tagged track under its bucket's vocal sub. The plan
+takes a second supplied value beside the placements, which tracks carry the
+vox My Tag and which vocal subs already hold them, read from the same open of
+the same database, and a routed entry whose track carries the tag gains the
+membership in the one write the entries go through. Add only. The gate shows
+`vocals`, the state of the read, `vocal`, a count of every tagged track by
+what the plan does about it, and `vocal_memberships`, every membership an
+apply may write, each saying whether the tree holds it already.
+
+What decides is the tag, found by the names `metadata mytags-vocals` writes
+it under, with a removed row skipped. No score is read. What an apply does
+not write, each counted: `present`, `under-another-name` for a track or a
+bucket whose vocal sub answers only through a renamed playlist, `no-sub` for
+a bucket whose own sub or band label takes the vocal sub's name, `no-bucket`,
+and `withheld`. A taxonomy with no vocal sub and a library with no cut on
+record plan nothing and say `no-sub` or `uncalibrated`, and then neither the
+calibration nor the tag tables stop the apply. `adopt move` reads neither.
+
+The digest covers the identifier of every vocal membership an apply may
+write, present or not, and the state of the read. It does not tell an
+addition from a presence, because the apply's own write turns one into the
+other, and the gate lists both for that reason. **An approval given before
+this build is stale under it**, once, because the digest gained two keys.
+
+25 mutation rows across four tables, 25 killed, none at zero,
+`docs/mutation/r788-notes.md`. Two passes of the built in review, nineteen
+findings, fourteen applied.
+
+**Still owed, attended:** the run on a copy with library state redirected,
+the live apply on an equal digest, and the twelve read in their subs. The
+plan's `vocal` counts say before the apply how many of the twelve it adds and
+why it leaves any. Left open here are the four limits below, filed under
+their own titles: what decides, the withheld track, the tag writer's find,
+and the band renamed in rekordbox.
 
 ## R-789. A rebuild of a native intake tree derives the routing tree's placements
 
@@ -33126,3 +33169,140 @@ through `review.redescribe`, leaves decided items alone, and the 29 read an
 artist name on the live store.
 
 **On the board bar, (b).** The product shows the person something false.
+
+---
+
+## R-841. Adoption files a vocal sub from the vox tag and the routing derivation files it from the file's score
+
+**Found:** on `relay/245`, 2026-10-02, building R-788, and raised by both
+passes of the built in review. A decision of that unit and not an oversight.
+
+**The mechanism.** `route inbox`, `tree rebuild`, `route resort` and the
+convergence check place a track under the vocal sub when its file's
+`voxlevel` clears the calibrated cut. R-788's brief asks for the track
+carrying the `vox` My Tag, which is how its twelve were counted, so adoption
+reads the tag row and no score. The tag is written from the same reading and
+the same cut, and the writer only adds, so the two agree on a track tagged
+at the current cut and disagree on three kinds: a tag put on by hand, a tag
+written under an earlier and lower cut or from the default cut before any
+was recorded, and a tag on a file that carries no `voxlevel` today. Adoption
+files all three. The convergence check derives no such placement and reads
+the row as one the declaration does not name. In reverse, a file that clears
+the cut with no tag is placed by the derivation and never by adoption, and a
+tagged track whose bucket declares no place for its reading is placed by
+the derivation and counted `no-bucket` by adoption.
+
+**Measured.** R-373 counted 43 Vocals associations on files with no
+`voxlevel`, 24 of them `vox`. How many of the 24 sit in a bucket, and how
+many of R-788's twelve are among them, was not measured: the live database
+is not a session's to read.
+
+**The options.** Leave it, the tag is what a person sees in rekordbox and
+filters by. Or file only where both agree, and count the rest for review. Or
+make the derivation read the tag too, which changes every routing pass.
+
+**Closes when:** the author says which signal owns the vocal sub, after the
+live run shows how many tracks the two disagree on.
+
+**Not on the board bar.** It closes at an attended sitting.
+
+---
+
+## R-842. A withheld vox tagged track gains no vocal sub from adoption
+
+**Found:** on `relay/245`, 2026-10-02, building R-788. The conservative
+reading of the brief's "withheld tracks stay withheld".
+
+**The mechanism.** A vocal membership is planned for a routed entry only. A
+track withheld over another band of its bucket does sit in that bucket, and
+the vocal sub is additive and competes with nothing, so adding it there
+would be safe by the taxonomy's own rule. It is not added, because a
+withheld entry is one a person has still to settle and the brief did not
+say to write beside it. A track withheld by a collision verdict is refused
+on purpose and is not this finding.
+
+**Measured cost.** Unmeasured on the library. The gate counts them as
+`vocal.withheld`, so the number is on the screen before any approval.
+
+**The options.** File a withheld track's vocal sub when it holds, under its
+declared name, a live sub of the bucket's own folder. Or leave it until
+`adopt move` settles the track, after which the next apply files it.
+
+**Closes when:** the author picks one, or `vocal.withheld` reads zero on the
+live plan.
+
+**Not on the board bar.** Visible on the gate, and it closes at a sitting.
+
+---
+
+## R-843. The vocals verb finds its tag category with no soft delete read, so it can tag under one rekordbox removed
+
+**Found:** on `relay/245`, 2026-10-02, by the built in review of R-788, read
+from the source and not driven.
+
+**The mechanism.** `rb_writer.ensure_my_tag_value` takes the first My Tag
+row named for the category and the first value under it, through the
+binding's lookup, which filters nothing (R-758). With a removed `Vocals`
+category still in the table, `metadata mytags-vocals --apply` would write
+its associations under a row nobody can see and report them written.
+R-788's reader skips a removed category, value and association, so the plan
+would say `no-tag` over that library and file nothing, which is the
+direction that writes nothing.
+
+**Measured cost.** Unmeasured. Whether rekordbox soft deletes a My Tag
+category or deletes the row was not observed, and no candidate was driven.
+
+**Closes when:** the find or create reads the marker, as R-762 asks of the
+playlist one, or a read of a real database shows rekordbox never leaves a
+removed My Tag row.
+
+**Not on the board bar.** The reachability is unmeasured.
+
+---
+
+## R-844. `present_in` on a sub class is read by nothing
+
+**Found:** on `relay/245`, 2026-10-02. R-788's first draft read it and the
+built in review showed that made adoption the only reader, so it was taken
+out again.
+
+**The mechanism.** The taxonomy loader stores `present_in` as any string.
+`destination`, `add_vox_playlists` and `derive_from_taxonomy` put an
+additive class under every bucket whatever it says, and nothing asks it of
+a manual class either. The shipped template declares `Candy` as
+`energy_buckets`.
+
+**Measured cost.** A person who writes `energy_buckets` on the vocal class
+still gets a vocal playlist in every folder. No row is lost.
+
+**Closes when:** the loader refuses a value it does not define and one
+function in `core.routing` answers which buckets a class is in, read by
+every caller, or the field is removed from the template.
+
+**Not on the board bar.** Maintainer facing.
+
+---
+
+## R-845. A track routed into a band whose playlist was renamed gains a second playlist of the declared name
+
+**Found:** on `relay/245`, 2026-10-02, looking for the shape R-788's review
+found one file over. Read from the source and not driven.
+
+**The mechanism.** R-731 withholds a track that HOLDS a competing sub
+through a renamed playlist. A track that holds no competing sub at all is
+routed, and `write_tree_membership` finds its band by the declared name, so
+with that band's playlist renamed in rekordbox it would make a second
+playlist of the declared name beside the renamed one and file the track
+there. R-788 guards exactly this for the vocal sub, where it had to, since
+its additions are by definition tracks not yet in the sub. The routing pass
+has `assert_destinations_are_not_renamed`. Adoption's band entries have
+neither.
+
+**Measured cost.** Unmeasured. One candidate was read, none was driven, and
+no renamed playlist is known in the live tree.
+
+**Closes when:** the placement reader names a bucket's subs that answer
+only under another name, as the vocal reader now does, and the plan
+withholds a routed entry into one.
+
+**Not on the board bar.** The reachability is unmeasured.

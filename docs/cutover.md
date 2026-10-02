@@ -885,6 +885,13 @@ Owed by the author: the 2,416 label releases in review and a look at the
 count, 637 of them with no genre on the file either; the 20 label tracks
 held as other versions.
 
+Owed for R-788, issue #245, line 7 of #178: `crate adopt apply` rehearsed
+on a copy with library state redirected, then live on an equal digest.
+Before approving, read `vocal` on the gate: `add` should be the twelve, and
+a count under `withheld` or `under-another-name` is a tagged track the
+build leaves, with R-842 saying why for the first. After the apply, read the
+twelve in their `with vox` subs and tick line 7 only then.
+
 Owed for R-790, issue #234: follow a new label, sweep it once, and record
 here that it filed `labels.offer_per_sweep` releases, ten unless set, and
 that `crate review list --queue label-release --group-by label` counts the

@@ -1,0 +1,73 @@
+name = "r788-a"
+pass_kind = "light"
+
+[[rows]]
+id = "P1_untagged_is_added"
+description = "vocal_place: drop the tag check, so every routed track of a calibrated library is filed under the vocal sub"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''    if not vocals.filing or not vocals.carries(content_id):'''
+new = '''    if not vocals.filing:'''
+
+[[rows]]
+id = "P2_blind_plan_files"
+description = "vocal_place: drop the filing check, so a tree nobody read, a taxonomy with no vocal sub and an uncalibrated library all file from the tag"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''    if not vocals.filing or not vocals.carries(content_id):'''
+new = '''    if not vocals.carries(content_id):'''
+
+[[rows]]
+id = "P3_uncalibrated_files"
+description = "Vocals.filing: drop the calibration, so tags written from the default cut file a back catalogue"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''        return self.read and self.has_sub and self.calibrated'''
+new = '''        return self.read and self.has_sub'''
+
+[[rows]]
+id = "P5_withheld_gains"
+description = "vocal_place: a withheld track is added to its vocal sub"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''    if disposition is Disposition.WITHHELD:
+        return VOCAL_WITHHELD, sub'''
+new = '''    if False:
+        return VOCAL_WITHHELD, sub'''
+
+[[rows]]
+id = "P6_present_is_added"
+description = "vocal_place: a track already in the sub is planned as an addition and handed to the writer"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''    if vocals.sits(bucket, content_id):
+        return VOCAL_PRESENT, sub'''
+new = '''    if False:
+        return VOCAL_PRESENT, sub'''
+
+[[rows]]
+id = "P7_renamed_track_reads_present"
+description = "vocal_place: a track in the sub under another name only reads present, so it joins the digest as a membership the writer may be handed"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''    if vocals.sits_unnamed(bucket, content_id):
+        return VOCAL_RENAMED, sub'''
+new = '''    if False:
+        return VOCAL_RENAMED, sub'''
+
+[[rows]]
+id = "P8_renamed_bucket_doubles"
+description = "vocal_place: a bucket whose vocal sub answers under another name only is added to, so the writer makes a second playlist beside it"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''    if bucket in vocals.renamed:
+        return VOCAL_RENAMED, sub'''
+new = '''    if False:
+        return VOCAL_RENAMED, sub'''
