@@ -327,17 +327,24 @@ def test_a_folder_named_in_another_case_on_a_volume_that_folds_case_is_inside(
     machine, silence
 ):
     """A tag job keeps the folder as it was typed. Where the volume folds case
-    that is the same directory, and its files are this library's."""
+    that is the same directory, and its files are this library's. Where it
+    keeps two cases apart the other case is another folder, outside the
+    library. Both are asserted, each on the volume that shows it, so this
+    never passes by not running."""
     path = tagged(machine, silence, "a record", OLD_POP, "Pop")
     typed = Path(str(machine.library.root).upper()) / "Music" / "a record.flac"
-    if not typed.exists():
-        pytest.skip("this volume keeps two cases apart, so the other case is another folder")
+    assert str(typed) != str(path)
     directory = jobs.store_dir(machine) / artifacts.ARTIFACTS_DIRNAME / "job-a"
     for report in directory.glob("*.json"):
         report.unlink()
     record(machine, typed, OLD_POP, word="Pop")
     plan = planned(machine)
-    counts(plan, write=1)
+    if typed.exists():
+        counts(plan, write=1)
+        assert [item.current for item in plan.items] == [OLD_POP]
+    else:
+        counts(plan, outside_library=1)
+        assert plan.items == ()
     assert genre_of(path) == OLD_POP
 
 
