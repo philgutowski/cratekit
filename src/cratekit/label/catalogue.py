@@ -185,6 +185,27 @@ class ReleaseUnresolvable(LookupError):
     """
 
 
+def artist_name(release: Any) -> str:
+    """The name of a release's artist, never a provider object's repr.
+
+    ``album.artist`` on this provider is an Artist object, and ``str`` of that
+    object is a memory address, which is what R-379 found in 98 live review
+    rows. A plain string is already the name. Anything else is read off the
+    object's ``name``, and an object with no name to give is the empty string.
+
+    ONE READER, ON THE SEAM, for the sweep that files a release and for the
+    repair that reads an artist again (R-840), so a repaired item carries
+    exactly what a sweep would file for the same release today.
+    """
+    artist = getattr(release, "artist", None)
+    if artist is None:
+        return ""
+    if isinstance(artist, str):
+        return artist
+    name = getattr(artist, "name", None)
+    return name if isinstance(name, str) else ""
+
+
 #: How many reads of release tracks IN A ROW may fail before
 #: :class:`ReleaseTracks` stops asking the provider. Three, on the reasoning the
 #: sweep's and the approval's own bounds give: one is a bad release, two a
@@ -326,7 +347,7 @@ class HeartsShortfall(Exception):
 class Catalogue(Protocol):
     """Every provider read the product makes through this seam, and nothing more.
 
-    NINE MEMBERS BECAUSE THERE ARE NINE CALL SITES, and the protocol is the list
+    TEN MEMBERS BECAUSE THERE ARE TEN CALL SITES, and the protocol is the list
     rather than a description of a provider. A method nobody calls is a method an
     adapter has to implement for no reason, and it is the shape by which a seam
     stops being a seam and becomes a client library.
@@ -435,6 +456,22 @@ class Catalogue(Protocol):
         never that nobody could ask. The year is ``None`` when the provider dates
         the release with nothing this seam can read as a year, which is unknown
         and is carried as unknown rather than guessed.
+        """
+
+    def release_artist(self, release_id: str) -> str:
+        """The name of the artist one release is filed under, read by identifier.
+
+        Consumed by ``label.artists_cli``, which gives an open review item whose
+        recorded artist is a provider object address the name it should have
+        carried (R-840). ONE PROVIDER READ, the release itself and none of its
+        tracks, which is why this is not :meth:`release_tracks`: that reads the
+        tracks too, and a track's artist is not the release's on a compilation.
+        The name is read by :func:`artist_name`, the sweep's own reader.
+
+        RAISES :class:`ReleaseUnresolvable` for a release the provider has
+        nothing for, and whatever the provider raised for one it could not
+        answer about. The empty string means the provider answered and names no
+        artist for the release, never that nobody could ask.
         """
 
     def tracks_for_isrc(self, isrc: str) -> tuple[Any, ...]:
@@ -587,6 +624,7 @@ __all__ = [
     "ReleasesUnasked",
     "TRACK_SEARCH_PAGE",
     "Unread",
+    "artist_name",
     "bound",
     "missing_listing",
     "playlist_id",

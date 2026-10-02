@@ -32,6 +32,7 @@ from cratekit.label.catalogue import (
     Catalogue,
     ReleaseTracks,
     Unread,
+    artist_name,
     missing_listing,
 )
 from cratekit.sync import run
@@ -139,15 +140,10 @@ def _artist_of(release: Any) -> str:
     object is a memory address, which is what 98 live review rows already
     carry. A plain string is already the name, and that is what the suite's
     stand-ins have always used, which is why the address survived every green
-    battery.
+    battery. The reading itself is the seam's, shared with the repair of the
+    rows already written (R-840).
     """
-    artist = getattr(release, "artist", None)
-    if artist is None:
-        return ""
-    if isinstance(artist, str):
-        return artist
-    name = getattr(artist, "name", None)
-    return name if isinstance(name, str) else ""
+    return artist_name(release)
 
 
 def _title_of(release: Any) -> str:
