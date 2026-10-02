@@ -7,17 +7,20 @@ and every declared gate has to fire, so a database gate asked in one mode only
 is a gate the registry cannot state, which is the reason ``adopt move`` gives
 for itself.
 
-THE ORDER IS THE NATIVE LANDING'S, :func:`cratekit.intake.land_cli.ask_then_write`:
+THE ORDER IS ``adopt move``'S, and the plan is made on a read handle:
 
-* the database is opened with write intent before the plan, so a running
-  rekordbox or its agent refuses before anything is shown, and the plan is made
-  against the database the write will be made to;
-* A PLAN THAT WRITES NOTHING IS NOT ASKED. A second run after a clean one finds
-  every row agreeing, and an explicit gate, which takes a separate recorded act,
-  is the price of a write and not of learning there is nothing to do;
-* the backup acknowledgment is read before the gate (R-733);
-* the gate is asked over the digested plan, and only ``apply`` writes;
-* the handle is closed whatever happened.
+* the backup acknowledgment is read before the plan is built and before the
+  gate (R-733), so a person with none is refused before a walk of the whole
+  collection and before they read a plan;
+* the plan is made on a handle opened to read and closed before the gate, and
+  what it returns is values;
+* the gate is asked over the digested plan, AND AN EMPTY PLAN STILL ASKS, for
+  the reason ``tag retag`` gives: every declared gate has to fire, and a gate
+  the verb sometimes skips is a decision the product promises and does not
+  always ask. A plan that writes nothing is then a no op;
+* only ``apply`` over a plan that writes opens the database with write intent,
+  so that is where a running rekordbox or its agent refuses, and the engine
+  checks each row is still as the plan read it before anything is captured.
 
 THE SECOND INVOCATION REBUILDS THE PLAN from the database and the files, and
 the gate compares its digest with the one the answer was recorded against. A
@@ -181,31 +184,51 @@ def _written(plan: rows.RowsPlan, written: rows.Written) -> dict[str, str]:
     }
 
 
+def _plan(cfg: config.Config, declared) -> rows.RowsPlan:
+    """The plan over the library as it stands, through a handle opened to read.
+
+    ``require_closed`` is the opener's write intent flag and it is left False,
+    as the collection reader leaves it, so the plan can be read with rekordbox
+    open. The handle is closed before this returns.
+    """
+    db = rb_writer.open_db(
+        rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
+    )
+    try:
+        return rows.plan_rows(cfg, db, declared)
+    finally:
+        rb_writer.close_db(db)
+
+
+def _write(cfg: config.Config, plan: rows.RowsPlan) -> rows.Written:
+    """Apply the plan through a handle of this function's own, opened to write."""
+    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
+    try:
+        return rows.apply_rows(cfg, db, plan, analysis_roots=analysis_store.watch_roots(cfg))
+    finally:
+        rb_writer.close_db(db)
+
+
 def tag_rows(ctx) -> Envelope:
     """Plan every row against its file, ask, then write the genre and read it back."""
     cfg = _load()
     declared = active_taxonomy.load(cfg)
     spec = _confirm_gate(ctx.entry)
-    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
-    try:
-        plan = rows.plan_rows(cfg, db, declared)
-        data = _payload(plan)
-        if not plan.writes:
-            return ctx.envelope(
-                data=data,
-                outcome=Outcome.NO_OP,
-                warnings=[_nothing(plan), *_not_read(plan)],
-            )
-        # BEFORE THE GATE (R-733): an approval is the one way door.
-        session.assert_backup_acknowledged(cfg)
-        if ctx.gate.require(spec, plan=data, context=_facts(plan)) != "apply":
-            return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=_not_read(plan))
-        written = rows.apply_rows(
-            cfg, db, plan, analysis_roots=analysis_store.watch_roots(cfg)
-        )
-    finally:
-        rb_writer.close_db(db)
+    # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
+    session.assert_backup_acknowledged(cfg)
 
+    plan = _plan(cfg, declared)
+    data = _payload(plan)
+    if ctx.gate.require(spec, plan=data, context=_facts(plan)) != "apply":
+        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=_not_read(plan))
+    if not plan.writes:
+        return ctx.envelope(
+            data=data,
+            outcome=Outcome.NO_OP,
+            warnings=[_nothing(plan), *_not_read(plan)],
+        )
+
+    written = _write(cfg, plan)
     rows.assert_read_back(written)
     data["totals"] = {
         **data["totals"],

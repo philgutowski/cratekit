@@ -111,14 +111,30 @@ House. 7 are other words.
   files on every run. A rehearsal that goes past the gate on a copy writes a
   session record, a capture and a fingerprint, all under the redirected state
   directory, and nothing a live run reads as done.
-- **Synchronous, on the order `intake land` keeps for a native write.** The
-  database is opened with write intent before the plan, so a running rekordbox
-  refuses before anything is shown. An empty plan asks nothing and is a no op.
-  The backup acknowledgment is read before the gate (R-733). The gate is
-  explicit, answered by a separate recorded act (R34), and bound to the plan's
-  digest. The second invocation rebuilds the plan from the database and the
-  files, and the gate refuses `decision-stale` when the digest moved. That is
-  how one file changing between plan and apply refuses the apply.
+- **Synchronous, on the order `adopt move` keeps, with the plan on a read
+  handle.** The backup acknowledgment is read before the plan is built and
+  before the gate (R-733). The plan is made on a handle opened to read and
+  closed before the gate. The gate is explicit, answered by a separate
+  recorded act (R34), and bound to the plan's digest. An empty plan still
+  asks, and a plan that writes nothing is then a no op. Only `apply` over a
+  plan that writes opens the database with write intent, which is where a
+  running rekordbox refuses. The second invocation rebuilds the plan from the
+  database and the files, and the gate refuses `decision-stale` when the
+  digest moved. That is how one file changing between plan and apply refuses
+  the apply.
+
+  *Changed while building.* The first draft kept `intake land`'s order: the
+  database opened with write intent before the plan, and an empty plan asking
+  nothing. The conformance suite holds every declared gate to firing, its
+  fixture carries no pin a write open would accept and no stale row, and the
+  set of gates exempt from that rule is pinned with the words "a fourth one is
+  a decision, not a diff". So the verb follows the three siblings that ask on
+  an empty plan, and its gate is reached by the conformance drive with no
+  exemption.
+- **The write handle checks each row is still as the plan read it.** The plan
+  and the write are on two handles, so before the capture is taken the engine
+  reads each row to be written and refuses `decision-stale` when its genre
+  moved or it stopped being a live row. Nothing is written for any of them.
 - **The session spine is called, not rebuilt.** `session.assert_gates` with a
   kept record and the analysis watch over `analysis_store.watch_roots`, a
   verified capture attached to the record, the commit witness, and
@@ -169,9 +185,10 @@ not counted written. A commit that raises records no commit.
 Tests through the real dispatcher: the two acts then the write, a declined
 gate writes nothing, no acknowledgment refuses before the gate, a file changed
 between plan and apply refuses `decision-stale` with nothing written, a second
-run after a clean one is a no op, a row on a volume that is not mounted is
-counted and the run does not fail, and after the run `report genres` no longer
-names the old word.
+run after a clean one asks and is a no op, an empty plan never opens the
+database to write, the plan is read with rekordbox open and the write refuses,
+a row on a volume that is not mounted is counted and the run does not fail,
+and after the run `report genres` no longer names the old word.
 
 ### U4. `tag retag` stops sending a person to a reload
 

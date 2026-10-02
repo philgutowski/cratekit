@@ -616,6 +616,69 @@ def test_an_unregistered_policy_would_write_nothing_and_the_apply_registers_it(
     assert _genre_of(cfg, "30") == MELODIC
 
 
+def _plan_then(cfg: config.Config, sql: str, *params) -> rows.RowsPlan:
+    """A plan, then one statement run against the database behind its back."""
+    plan = _planned(cfg)
+    connection = sqlite3.connect(cfg.library.db_path)
+    try:
+        connection.execute(sql, params)
+        connection.commit()
+    finally:
+        connection.close()
+    return plan
+
+
+def _apply_plan(cfg: config.Config, plan: rows.RowsPlan) -> rows.Written:
+    db = rb_writer.open_db(cfg.library.db_path, require_closed=True, unlock=False, cfg=cfg)
+    try:
+        return rows.apply_rows(cfg, db, plan, analysis_roots=analysis_store.watch_roots(cfg))
+    finally:
+        rb_writer.close_db(db)
+
+
+def test_a_row_whose_genre_moved_since_the_plan_refuses_and_nothing_is_written(
+    acknowledged, silence
+):
+    cfg = acknowledged
+    build(cfg, silence, Track("30", OLD, MELODIC), Track("31", OLD, MELODIC))
+    plan = _plan_then(
+        cfg, "UPDATE djmdContent SET GenreID = ? WHERE ID = '31'", _genre_ids()[DEEP]
+    )
+    with pytest.raises(CratekitError) as refused:
+        _apply_plan(cfg, plan)
+    cause = refused.value.cause
+    assert cause.reason == "decision-stale" and "1 of 2" in cause.message
+    assert cause.detail["moved"] == ["31: its genre changed since the plan"]
+    assert [_genre_of(cfg, cid) for cid in ("30", "31")] == [OLD, DEEP]
+    # Refused before the capture: an abandoned record with no undo to offer.
+    (record,) = session.records(cfg)
+    assert record.sources == {} and record.state is not session.SessionState.CLOSED
+
+
+def test_a_row_removed_since_the_plan_refuses_and_nothing_is_written(acknowledged, silence):
+    cfg = acknowledged
+    build(cfg, silence, Track("30", OLD, MELODIC))
+    plan = _plan_then(cfg, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = '30'")
+    with pytest.raises(CratekitError) as refused:
+        _apply_plan(cfg, plan)
+    assert refused.value.cause.reason == "decision-stale"
+    assert refused.value.cause.detail["moved"] == ["30: no longer a live row"]
+    assert _genre_of(cfg, "30") == OLD
+
+
+@pytest.mark.parametrize("held", [None, "", 0, "0"])
+def test_a_blank_row_is_as_planned_however_the_database_spells_blank(held):
+    change = metadata.Change("30", metadata.RETAG_GENRE, "GenreID", None, "101")
+    plan = rows.RowsPlan(
+        items=(), counts={}, changes=metadata.Plan(metadata.RETAG_GENRE, (change,))
+    )
+    rows.assert_rows_as_planned(plan, {"30": {"GenreID": held, "rb_local_deleted": 0}})
+    with pytest.raises(CratekitError):
+        rows.assert_rows_as_planned(plan, {"30": {"GenreID": "100", "rb_local_deleted": 0}})
+    with pytest.raises(CratekitError):
+        rows.assert_rows_as_planned(plan, {})
+
+
 # ── the read back's judgement, with no database ────────────────────────────
 
 
@@ -790,18 +853,20 @@ def test_a_file_changed_between_plan_and_apply_refuses_the_apply(acknowledged, s
     assert _content(cfg) == before and session.records(cfg) == ()
 
 
-def test_a_second_run_after_a_clean_one_is_a_no_op_that_asks_nothing(acknowledged, silence):
+def test_a_second_run_after_a_clean_one_asks_and_is_a_no_op(acknowledged, silence):
     cfg = acknowledged
     build(cfg, silence, Track("30", OLD, MELODIC), Track("31", DEEP, COARSE))
     code, acted, _ = _two_acts()
     assert code == int(ExitCode.OK), acted
     settled = _content(cfg)
 
-    code, again = drive(VERB)
+    code, again, shown = _two_acts()
     assert code == int(ExitCode.OK), again
+    assert shown["cause"]["detail"]["shown"]["outcomes"]["write"] == 0
     assert again["outcome"] == "no_op"
     assert again["data"]["totals"]["outcomes"]["write"] == 0
     assert again["data"]["totals"]["outcomes"]["agree"] == 1
+    assert again["data"]["totals"]["written"] == 0
     # The row left alone is still listed, and still left.
     assert [(item["content_id"], item["action"]) for item in again["data"]["items"]] == [
         ("31", rows.LEAVE)
@@ -811,12 +876,41 @@ def test_a_second_run_after_a_clean_one_is_a_no_op_that_asks_nothing(acknowledge
     assert len(session.records(cfg)) == 1
 
 
-def test_an_empty_plan_needs_no_acknowledgment(machine, silence):
-    """Learning there is nothing to do is not a write."""
-    build(machine, silence, Track("30", DEEP, DEEP))
-    code, envelope = drive(VERB)
-    assert code == int(ExitCode.OK), envelope
-    assert envelope["outcome"] == "no_op"
+def test_an_empty_plan_still_asks_and_opens_nothing_to_write(acknowledged, silence, monkeypatch):
+    """Every declared gate fires, and a plan that writes nothing never reaches
+    the write handle: an opener asked for write intent fails this case."""
+    cfg = acknowledged
+    build(cfg, silence, Track("30", DEEP, DEEP))
+    real_open = rb_writer.open_db
+
+    def read_only(path, *args, require_closed=False, **kwargs):
+        assert not require_closed, "an empty plan opened the database to write"
+        return real_open(path, *args, require_closed=require_closed, **kwargs)
+
+    monkeypatch.setattr(rb_writer, "open_db", read_only)
+    code, acted, refused = _two_acts()
+    assert refused["cause"]["detail"]["shown"]["count"] == 0
+    assert code == int(ExitCode.OK), acted
+    assert acted["outcome"] == "no_op" and session.records(cfg) == ()
+
+
+def test_the_plan_is_read_with_rekordbox_open_and_the_write_refuses(
+    acknowledged, silence, monkeypatch
+):
+    cfg = acknowledged
+    build(cfg, silence, Track("30", OLD, MELODIC))
+    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
+
+    code, refused = drive(VERB)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    decided, envelope = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
+    assert decided == int(ExitCode.OK), envelope
+
+    code, running = drive(["--run", run_id, *VERB])
+    assert code != int(ExitCode.OK), running
+    assert running["cause"]["reason"] == "rekordbox-running", running
+    assert _genre_of(cfg, "30") == OLD and session.records(cfg) == ()
 
 
 def test_a_file_on_a_volume_that_is_not_mounted_is_counted_and_the_run_does_not_fail(

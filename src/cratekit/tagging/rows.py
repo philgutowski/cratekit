@@ -271,8 +271,10 @@ def plan_rows(cfg: config.Config, db: Any, declared: taxonomy.Taxonomy) -> RowsP
     THE ITEMS ARE ORDERED BY CONTENT IDENTIFIER, so two walks of one library
     digest the same whatever order the database returned its rows in.
 
-    NOTHING IS PENDING ON THE HANDLE WHEN THIS RETURNS. It reads rows and
-    resolves lookup rows and sets nothing.
+    NOTHING IS PENDING ON THE HANDLE WHEN THIS RETURNS, AND NO MAPPED ROW
+    LEAVES WITH THE PLAN. It reads rows and resolves lookup rows and sets
+    nothing, and what it returns is values, so the handle may be a read one
+    that is closed before the gate is asked.
     """
     root = Path(cfg.library.root)
     prefix_map = _prefix_rules(cfg)
@@ -412,6 +414,39 @@ def judge(
     return tuple(wrong), tuple(moved)
 
 
+def _empty(value: Any) -> bool:
+    return value in rb_writer.FIELD_EMPTIES["GenreID"]
+
+
+def assert_rows_as_planned(plan: RowsPlan, now: Mapping[str, Mapping[str, Any]]) -> None:
+    """Refuse when a row to be written is not the row the plan read.
+
+    THE PLAN IS MADE ON A READ HANDLE AND THE WRITE ON ANOTHER, so the one thing
+    the apply asks the database again is whether each row still carries the
+    genre the plan saw it carrying, and is still a live row. A row that moved
+    is a row nobody was shown, and nothing is written for any of them.
+    """
+    moved: list[str] = []
+    for change in plan.changes.changes:
+        row = now.get(change.content_id)
+        if row is None or row.get(rb_writer.SOFT_DELETE_COLUMN):
+            moved.append(f"{change.content_id}: no longer a live row")
+            continue
+        held, planned = row.get("GenreID"), change.current
+        if (_empty(held) and _empty(planned)) or str(held) == str(planned):
+            continue
+        moved.append(f"{change.content_id}: its genre changed since the plan")
+    if moved:
+        raise refuse(
+            "decision-stale",
+            f"{len(moved)} of {len(plan.changes.changes)} row(s) to be written are "
+            f"not as the plan read them, so nothing was written: " + "; ".join(moved),
+            steps=("run the verb again and approve the plan as it is now",),
+            origin=_ORIGIN,
+            detail={"moved": moved},
+        )
+
+
 def _record_commit(record: session.SessionRecord, written: int, cfg: config.Config) -> None:
     """Record this write's commit on its session record, when it wrote anything.
 
@@ -443,6 +478,10 @@ def apply_rows(
     happens behind, the analysis watch over the roots named, the commit
     witness, and the guarded commit.
 
+    THE ROWS ARE CHECKED AGAINST THE PLAN BEFORE THE CAPTURE IS TAKEN, by
+    :func:`assert_rows_as_planned`, so a stale plan refuses with no capture and
+    nothing pending.
+
     THE MAPPED ROWS AND THE SNAPSHOT ARE READ BEFORE THE FIRST FIELD IS SET,
     and nothing is read between the first set and the commit. A query there
     would flush the pending work before the whitelist has judged it.
@@ -472,11 +511,13 @@ def apply_rows(
         rb_writer.commit_witness(db) as witness,
     ):
         record = gates.record
+        before = _columns(db, content_ids)
+        assert_rows_as_planned(plan, before)
+
         capture = snapshot.capture(cfg, db=db)
         session.attach_capture(record, capture.root, cfg)
         snapshot.assert_verified(capture)
 
-        before = _columns(db, content_ids)
         mapped = _mapped(db, content_ids)
         written = 0
         try:
@@ -566,6 +607,7 @@ __all__ = [
     "Written",
     "apply_rows",
     "assert_read_back",
+    "assert_rows_as_planned",
     "judge",
     "plan_rows",
 ]

@@ -1817,6 +1817,9 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # R-797. No argument: the threshold is the author's number and the
         # database is the configured one.
         "report.genres": [],
+        # The residual on stale row genres. No argument: it reads the whole
+        # collection of the configured database.
+        "tag.rows": [],
     }[entry.name]
     return sample() if callable(sample) else sample
 
@@ -2004,6 +2007,10 @@ def _assert_gate_reach(entry: registry.Entry, reached: list[str]) -> None:
 ACKNOWLEDGED_BEFORE_THE_GATE = {
     "adopt.move": (
         "tests/test_adopt_move.py::"
+        "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
+    ),
+    "tag.rows": (
+        "tests/test_tag_rows.py::"
         "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
     ),
 }

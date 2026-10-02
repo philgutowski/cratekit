@@ -43,9 +43,10 @@ declaration and the code agree, and the envelope carries
 with the file. That act was a reload in rekordbox until the residual on stale
 row genres gave the row a verb of its own, ``tag.rows``. A reload overwrites
 every tag field, and at one sitting it changed keys, so it is no longer what
-this verb sends a person to do. The queueing envelope carries it unconditionally and a successful
-resume carries it only when a file was actually corrected; each of those two
-functions says why at the line that attaches it.
+this verb sends a person to do. The queueing envelope carries the warning
+unconditionally and a successful resume carries it only when a file was
+actually corrected; each of those two functions says why at the line that
+attaches it.
 
 AN EMPTY SELECTION STILL ASKS, AND STILL QUEUES NOTHING (R12). The first draft
 of this unit skipped the gate when the plan was empty, on the argument that a
