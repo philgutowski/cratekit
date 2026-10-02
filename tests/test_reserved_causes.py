@@ -6640,7 +6640,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # label/held_cli.py, core/review.py and cli/render.py are unchanged in
     # whether they hold one. Measured by this pair moving by one on the holders
     # side and by nothing on the other.
-    assert (len(literal_holders), len(literal_both)) == (117, 26), (
+    # Re-pinned on the residual finding "The general catalogue's broad words
+    # are filed by aliases written for the record shops' vocabulary",
+    # 2026-10-02: holders move 117 to 118, and the also-holds-an-integer half
+    # is UNCHANGED at 26. ONE module joined and none left, and it is a new
+    # file. tagging/remap_cli.py, the correction verb's shell, refuses with
+    # config-unusable, internal-error and tag-remap-unwritten and holds no
+    # in-range integer. tagging/remap.py holds no cause, and
+    # tagging/artifacts.py, tagging/published.py, core/taxonomy.py and
+    # core/routing.py are unchanged in whether they hold one. Measured by this
+    # pair moving by one on the holders side and by nothing on the other.
+    assert (len(literal_holders), len(literal_both)) == (118, 26), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
