@@ -18,6 +18,23 @@ bar, with an issue.** Guided label sync was brainstormed with the author,
 `docs/ideation/2026-10-02-guided-label-sync.md`, cut into U107 to U109,
 issues #246 to #248. Main's highest residual number is R-850.
 
+**R-838 built, 2026-10-02, on `relay/243`, issue #243. The live unmark
+is owed.** `crate sync unmark --pass NAME` puts back the titles a pass's
+`sync mark` wrote, from a new library state record, `sync_marks.json`,
+NEVER_RESTORED, that `sync mark` now reads before its gate and writes as each
+rename lands. Only a title still exactly what the mark wrote is put back; one
+retitled since, unlisted, already put back or marked later by another pass
+is left and said; a `--playlist` the pass did not mark is refused. Explicit
+gate `sync.unmark.confirm`, a recheck against a second listing, each rename
+stamped as it lands, so a second run plans nothing. Battery on the branch
+below. Twenty seven mutation rows over four batches, the author's and not
+independent: three zeros, each closed by a new test and measured again as
+killed, `docs/mutation/r838-notes.md`. One pass of the built in review, ten
+findings: seven applied in code or tests, three recorded as R-853 and R-854.
+Main's highest residual number was R-850 at branch time; this unit files
+R-851 to R-854, none on the board bar. **Owed, attended, then R-838 closes:**
+one live unmark of a playlist marked for the purpose, `docs/cutover.md`.
+
 **R-834 built, 2026-10-02, on `relay/242`, issue #242. The live read back
 is owed, and was done at sitting 30.** A playlist `TidalAccount.create_playlist` makes is set private
 through the client's own `UserPlaylist.set_playlist_private` on the object
