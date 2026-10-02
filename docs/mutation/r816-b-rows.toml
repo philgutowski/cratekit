@@ -1,0 +1,63 @@
+name = "r816-b"
+pass_kind = "light"
+
+[[rows]]
+id = "B1_stale_check"
+description = "apply_rows: write without asking whether each row is still as the plan read it"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''    assert_rows_as_planned(plan, mapped)
+'''
+new = ''''''
+
+[[rows]]
+id = "B2_stale_tombstone"
+description = "assert_rows_as_planned: write a row removed since the plan"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''        if row is None or trees.soft_delete_marker(row):'''
+new = '''        if row is None:'''
+
+[[rows]]
+id = "B3_blank_spellings"
+description = "assert_rows_as_planned: read two spellings of a blank genre as a change"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''        if (_empty(held) and _empty(planned)) or str(held) == str(planned):'''
+new = '''        if str(held) == str(planned):'''
+
+[[rows]]
+id = "B4_restore_detection"
+description = "apply_rows: record a fingerprint without first looking for an out of band restore"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''    convergence.detect_out_of_band_restore(cfg, db, tree_registry.read(cfg))
+'''
+new = ''''''
+
+[[rows]]
+id = "B5_commit_recorded"
+description = "apply_rows: leave the landed commit off the session record"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''        # RECORDED THE INSTANT THE COMMIT RETURNS.
+        _record_commit(record, written, cfg)
+'''
+new = '''        # RECORDED THE INSTANT THE COMMIT RETURNS.
+'''
+
+[[dropped]]
+id = "B10_fingerprint_recorded"
+description = "apply_rows: record no fingerprint after the commit"
+reason = "ranked below the cap: B4 measures the detection, which is the half that was missing"
+
+[[dropped]]
+id = "B11_zero_commit"
+description = "_record_commit: claim a commit for a run that wrote nothing"
+reason = "ranked below the cap: maintainer facing, the verb never applies a plan with no write"
+

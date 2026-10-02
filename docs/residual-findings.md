@@ -10752,6 +10752,14 @@ is the durable record a person can see, and the row is derived from it.
 database half reads, so an interrupted run can finish the second act without
 re-running the first.
 
+**Changed 2026-10-01 on `relay/239`, issue #239, and left open.** The row has
+a verb of its own, `crate tag rows`, which walks every live row and writes its
+genre from its file. It needs no ledger from the retag: a row a retag left
+stale is found by reading the file. So "the rows stay wrong until somebody
+re-runs a routing pass" is now "until somebody runs `crate tag rows`", and the
+retag ends by naming that verb. The close condition above names a ledger
+nothing built, and whether the row verb answers it is the author's to say.
+
 **Driven on U56, 2026-09-03, and this entry stays OPEN.** The unit that gave this
 verb a worker is what made the shape reachable, so it was measured rather than
 argued. A three file retag was interrupted after one file was corrected: the file
@@ -24282,6 +24290,14 @@ retry, and neither distinguishes the states.
 the database half of R-185 needs, or the pending action gains a kind whose proof
 is a person's own acknowledgement rather than a verb.
 
+**Changed 2026-10-01 on `relay/239`, issue #239, and left open.** The retag
+names `crate tag rows` and no longer a reload. A verb can now read the row's
+genre back: that verb's plan shows no write for a row that agrees with its
+file. It is still a warning and not a pending action, for two reasons that are
+what is left of this entry. The plan is over the whole collection and not the
+folder the retag swept (R-819), and it answers at an explicit gate, which is
+not the shape a `verify_verb` has.
+
 ---
 
 ## R-568. The retag declares two database preconditions while opening no database
@@ -32408,3 +32424,154 @@ recorded in `docs/cutover.md` with `report genres` no longer naming
 Progressive / Melodic.
 
 **On the board bar.** The author asked for it on 2026-10-01.
+
+**Built 2026-10-01 on `relay/239`, issue #239, in the code. The run on the
+author's library is still owed, so this stays open.** `crate tag rows` plans
+every live row against its file through adoption's census and writes
+`GenreID` alone under the RETAG_GENRE policy, through
+`metadata.plan_genre_retag` and `retag.apply_library`, which had no caller.
+Each row lands in one of twelve outcomes, counted zero filled: `agree`,
+`write`, four in which a differing row is listed and left (`held-out`,
+`file-too-coarse`, `file-multi-valued`, `genre-unknown`), `file-blank`, and
+five in which the file's genre was never learned (`file-unreadable`,
+`file-online-only`, `file-missing`, `path-unmapped`, `no-path`). The gate is
+explicit and bound to a digest over the items and the counts, with nothing
+that names a copy. The acknowledgment is read before the plan, the plan is
+made on a read handle, an empty plan still asks, and only `apply` over a plan
+that writes opens the database to write. The write checks each row is still
+as the plan read it, looks for an out of band restore, takes a capture,
+commits behind the guard, and reads every written row back from SQL: the
+genre must be the file's word and no column but the genre and the binding's
+ten bookkeeping columns may differ from a snapshot taken before. Nothing is
+written to any file, held on the syntax tree and on the bytes. `--leave`
+holds a row out by content identifier. `tag retag` ends by naming this verb
+and not a reload. The built in review ran twice, ten findings and then eight,
+and seventeen changed the code. Mutation tables `r816-a` to `r816-e`, 25
+rows, 25 killed, none at zero, by the author. R-817 to R-821 filed.
+
+**Owed to an attended sitting, in this order.** The build in use is this
+one. `crate doctor` reads both backup ages under a day and rekordbox and its
+agent are gone. On a disposable copy of the database, with
+`library.state_dirname` on a scratch name and the acknowledgment copied in,
+`crate tag rows` is driven past its gate and the digest, the counts and the
+read back are read. The seven rows the measurement called other words are
+read at that gate, and any whose genre was set by hand is named with
+`--leave` on every run from there (R-817). The live plan is then brought to
+its gate with the same `--leave` rows: on an equal digest it is approved, and
+on any difference the session stops. `crate report genres` is run and must
+not name Progressive / Melodic. The run is recorded in `docs/cutover.md`.
+
+## R-817. `tag rows` reads every disagreement as the row lagging its file, so a genre set by hand on a row is written over unless the row is named on every run
+
+**Found:** on `relay/239`, 2026-10-01, by both passes of the built in review.
+The verb's premise is the card's: the file is the authority. That is true of
+the 766 rows the source system left behind and false of a row whose genre a
+person set in rekordbox, which does not write the tag back to the file.
+Nothing on a row says which it is. `--leave CONTENT_ID` holds a row out, the
+held rows are in the plan and its digest, and the gate lists every row with
+the row's word and the file's. But the person has to know the identifiers,
+and has to give them again on the run that applies and on every later run,
+because nothing remembers a held row.
+
+**Measured cost.** Unmeasured on the library, and the producer is recorded:
+`docs/cutover.md` has genres set by hand on seven rows at the sitting that
+landed 18 files, and R-816 counts 7 stale rows that are neither of its two
+patterns. Whether those are the same seven was not read, since this card did
+not open the live database. A row written over is restored only by restoring
+the whole session's capture.
+
+**Options for the author.** Leave it, and read the seven at the gate. Or
+remember held rows in library state so a row held once stays held. Or write
+the row's word onto the file for a held row, which needs a tag write this
+verb was told never to make.
+
+**Not on the board bar.** The gate lists every row before anything is
+written, and the holdout exists. It closes at an attended sitting.
+
+## R-818. `tag rows` links a genre lookup row and never makes one, so a genre the library has never held stays off its rows until a hand step in rekordbox
+
+**Found:** on `relay/239`, 2026-10-01, by the built in review.
+`metadata.resolve_genre_id` resolves an existing active `djmdGenre` row and
+`djmdGenre` is absent from the guarded writer's permitted tables, on purpose.
+A file word with no lookup row is counted `genre-unknown`, listed and left,
+and the run names the act: give one track that genre in rekordbox, which
+makes the row, then run again. `tag retag` can write such a word onto files
+and now sends a person to this verb.
+
+**Measured cost.** None measured. On the author's library both words the 766
+rows need already have lookup rows, by the ledger's own counts of rows that
+agree. The case needs a genre no track in the collection has ever carried.
+
+**Closes when:** an attended probe settles whether rekordbox tolerates a
+genre lookup row written from outside, the way A4 settled it for `djmdKey`,
+and the table joins the whitelist with the rule that a row is made and linked
+in one session, or the author decides the hand step is the product.
+
+**Not on the board bar.** The workflow finishes by a hand step the run names.
+
+## R-819. `tag rows` has no folder scope, so the catch up after a one folder retag is a plan over the whole collection
+
+**Found:** on `relay/239`, 2026-10-01, by the second pass of the built in
+review. `tag retag` takes a folder and ends by naming `crate tag rows`, which
+takes none and plans every live row. After the first clean run that plan is
+small. Before it, a person who retagged twelve files is shown every stale row
+in the library at one gate that is apply or abort. The retag's message says
+so. This is also what keeps R-567 open: a plan over the collection cannot
+verify one folder.
+
+**Measured cost.** One walk of the collection per run, twice per write, and
+on the author's library a first gate of about 773 items. Not timed, R-820.
+
+**Closes when:** the verb takes a folder or a playlist and plans the rows
+whose files sit there, with the scope in the digest.
+
+**Not on the board bar.** Nothing is lost and nothing false is said.
+
+## R-820. `tag rows` was built against a synthetic database, and its time and its read back on a real one are unmeasured
+
+**Found:** on `relay/239`, 2026-10-01, by the author of the unit. Every test
+drives a database built from the binding's own schema, with file URLs for
+locations and unencrypted. This card did not open the live database or a copy
+of it. Three things follow that no test here can see. The walk opens each
+resolved file twice on a plan, the probe's one byte and the tag read, after a
+survey that stats each, and the run that applies walks again: not timed on
+10,272 rows on an external volume. The read back compares every column of the
+content table as SQL returns it, and whether rekordbox's own triggers or the
+binding move a column outside the ten bookkeeping ones on a real database is
+not known: if one does, every write refuses AFTER its commit as a guard
+defect, with the capture as the undo. And the row's word is read through the
+binding's genre proxy, one lazy load per row.
+
+**Measured cost.** None, and that is the finding. METHOD's fourth pattern
+asks of every justifying number whether it was taken on the tree or on a
+fixture, and every number here was taken on a fixture.
+
+**Closes when:** the rehearsal on a copy at the attended sitting R-816 is
+owed reports the plan's time, the write's time and a clean read back, and
+those are recorded in `docs/cutover.md`.
+
+**Not on the board bar.** It closes only at an attended sitting.
+
+## R-821. METHOD tells a session to run the mutation driver as a background job and a Relay session may not, and one 25 row table in the foreground sits at the ceiling
+
+**Found:** on `relay/239`, 2026-10-01, running this unit's tables. METHOD's
+driver rules say a foreground run is killed at the 600 second ceiling and to
+run `mutate.py` as a tracked background job. A Relay session is told to run
+everything in the foreground and that a background job dies with the turn.
+So under Relay the driver runs in the foreground and the table has to be
+sized to the ceiling.
+
+**Measured cost.** Five tables on this branch, 11 cores, suite at 11,590
+tests: 359 seconds for 8 rows, 325 for 5, 319 for 4, 323 for 5, 337 for 3.
+That is about 280 seconds fixed per invocation and about 10 per row killed on
+its subset. One table of 25 would be near 530 seconds with no row at zero,
+and each zero is promoted to a full suite run of about 90 more, so one zero
+passes the ceiling and leaves a mutation in the source. Splitting into five
+cost four extra baselines, about 19 minutes. Two tables of 12 and 13 would
+have cost one.
+
+**Options for the author.** Say in METHOD that under Relay a table is at
+most 12 rows per invocation. Or give the driver a flag that reuses a baseline
+taken by an earlier invocation on the same commit.
+
+**Not on the board bar.** Maintainer facing.

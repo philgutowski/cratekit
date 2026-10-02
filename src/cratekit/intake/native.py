@@ -40,6 +40,10 @@ person approves that digest. The apply takes the plan as approved and writes
 it, and asks the database again only for what the plan could not know, which
 is whether a row appeared between the two.
 
+``plan_rows`` AND ``apply_rows`` MEAN SOMETHING ELSE IN ``cratekit.tagging.rows``,
+where a row is one that exists and whose genre is written from its file. Here
+a row is a content row this engine adds. The two are not interchangeable.
+
 Layer: modules. It reads configuration through the objects it is handed and
 opens no database of its own.
 """

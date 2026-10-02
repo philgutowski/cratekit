@@ -1152,15 +1152,15 @@ ENTRIES: tuple[Entry, ...] = (
         #: ONE SURFACE, THE FILE, AND THE NARROWING IS THE FIX FOR R-246. This
         #: entry declared ``db_metadata`` as well, after the row's ``GenreID``
         #: relink that ``write.metadata.plan_genre_retag`` performs under the
-        #: ``RETAG_GENRE`` policy. Nothing in ``src`` calls it:
-        #: ``tagging.retag.plan_library`` and ``tagging.retag.apply_library``
-        #: are named by their own module and by nothing else, which
+        #: ``RETAG_GENRE`` policy. This verb does not call it:
+        #: ``tagging.retag.plan_library`` has no caller and
+        #: ``tagging.retag.apply_library`` is called by ``tag.rows`` alone, which
         #: ``tests/test_tag_workers.py`` pins by walking the tree. So the verb
         #: rewrites the genre through ``core.tags.write_genre`` and stops, and a
         #: person who read the declaration was promised a write that never
         #: happened. The deferral itself is R-185 and is still open; what closes
-        #: with this line is the claim about it. The verb now ends by naming the
-        #: reload that brings the row back into agreement, see
+        #: with this line is the claim about it. The verb now ends by naming
+        #: ``tag.rows``, which brings the row back into agreement, see
         #: ``tagging.retag_cli.library_row_warning``.
         #:
         #: NO CLOUD SYNC DECISION EITHER, and that follows rather than being a
@@ -2321,6 +2321,56 @@ ENTRIES: tuple[Entry, ...] = (
         doctor_checks=(
             "library.mounted",
             "rekordbox.pins",
+        ),
+    ),
+    # ── A row's genre from its file (R-816) ─────────────────────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives.
+    Entry(
+        name="tag.rows",
+        summary="write each library row's genre from its file where the two "
+        "disagree, the genre and nothing else; writes no file",
+        module="cratekit.tagging.rows_cli",
+        builder="build",
+        handler_key="tag.rows",
+        # NO FEATURE ROW AND NO SOURCE SCRIPT. The source system patched the
+        # genre attribute of an export and never wrote a database row, so no
+        # inventory row asks for this and no script is replaced by it.
+        #
+        # GATED BY ``repair``, as ``tag.retag`` is and for its reason: a
+        # corrective pass over metadata the library already holds.
+        module_id="repair",
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: THE ROW AND ONLY THE ROW. ``files`` is absent because nothing here
+        #: writes one: the file is the authority in this direction and the
+        #: engine calls no tag writer. This is the ``GenreID`` relink
+        #: ``tag.retag`` declared and never performed (R-246), performed here
+        #: for every row whose file disagrees and not only for a retagged one.
+        writes=frozenset({"db_metadata"}),
+        destructive=True,
+        taxonomy_terms=("genre_energy",),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+            # The plan counts a row under no prefix rule and leaves it alone,
+            # so a collection most of whose rows are unmapped plans nothing.
+            # The check reads the ratio that makes that plan empty.
+            "library.paths_resolved",
+        ),
+        gates=(
+            GateSpec(
+                name="tag.rows.confirm",
+                options=("apply", "abort"),
+                prompt="Write the genre on these rows from their files?",
+                #: EXPLICIT (R34). A write to rows of a live library is answered
+                #: by a separate recorded act with an actor, never by a flag on
+                #: the command that discovered the gate.
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
 )

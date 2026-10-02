@@ -1,0 +1,205 @@
+{
+  "name": "r816-b",
+  "pass_kind": "light",
+  "branch": "relay/239",
+  "head": "6dc016e",
+  "when": "2026-10-02 02:53 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 11591,
+  "baseline_exit": 0,
+  "pytest_runs": 8,
+  "state_guarded": "~/Library/Application Support/cratekit (189230 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/tagging/rows.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/tagging/rows.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "ab590ad631af4bd5",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 11591,
+    "baseline_collected": 11591,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "B1_stale_check",
+      "description": "apply_rows: write without asking whether each row is still as the plan read it",
+      "file": "src/cratekit/tagging/rows.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1733d31440c959b7",
+      "subset": [
+        "tests/test_tag_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_a_row_removed_since_the_plan_refuses_and_nothing_is_written",
+        "tests/test_tag_rows.py::test_a_row_whose_genre_moved_since_the_plan_refuses_and_nothing_is_written"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    assert_rows_as_planned(plan, mapped)\n",
+      "new": ""
+    },
+    {
+      "id": "B2_stale_tombstone",
+      "description": "assert_rows_as_planned: write a row removed since the plan",
+      "file": "src/cratekit/tagging/rows.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5edab6d5035fd472",
+      "subset": [
+        "tests/test_tag_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_a_blank_row_is_as_planned_however_the_database_spells_blank[0_0]",
+        "tests/test_tag_rows.py::test_a_blank_row_is_as_planned_however_the_database_spells_blank[0_1]",
+        "tests/test_tag_rows.py::test_a_blank_row_is_as_planned_however_the_database_spells_blank[None]",
+        "tests/test_tag_rows.py::test_a_blank_row_is_as_planned_however_the_database_spells_blank[]",
+        "tests/test_tag_rows.py::test_a_row_removed_since_the_plan_refuses_and_nothing_is_written"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if row is None or trees.soft_delete_marker(row):",
+      "new": "        if row is None:"
+    },
+    {
+      "id": "B3_blank_spellings",
+      "description": "assert_rows_as_planned: read two spellings of a blank genre as a change",
+      "file": "src/cratekit/tagging/rows.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b4846c95ff21f9f3",
+      "subset": [
+        "tests/test_tag_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_a_blank_row_is_as_planned_however_the_database_spells_blank[0_0]",
+        "tests/test_tag_rows.py::test_a_blank_row_is_as_planned_however_the_database_spells_blank[0_1]",
+        "tests/test_tag_rows.py::test_a_blank_row_is_as_planned_however_the_database_spells_blank[]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if (_empty(held) and _empty(planned)) or str(held) == str(planned):",
+      "new": "        if str(held) == str(planned):"
+    },
+    {
+      "id": "B4_restore_detection",
+      "description": "apply_rows: record a fingerprint without first looking for an out of band restore",
+      "file": "src/cratekit/tagging/rows.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d7dbc593ae2fd1fe",
+      "subset": [
+        "tests/test_tag_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_a_restore_out_of_band_is_marked_before_this_write_replaces_the_evidence"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    convergence.detect_out_of_band_restore(cfg, db, tree_registry.read(cfg))\n",
+      "new": ""
+    },
+    {
+      "id": "B5_commit_recorded",
+      "description": "apply_rows: leave the landed commit off the session record",
+      "file": "src/cratekit/tagging/rows.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ae60998efd8f10c3",
+      "subset": [
+        "tests/test_tag_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_the_apply_is_a_recorded_session_a_restore_can_undo"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        # RECORDED THE INSTANT THE COMMIT RETURNS.\n        _record_commit(record, written, cfg)\n",
+      "new": "        # RECORDED THE INSTANT THE COMMIT RETURNS.\n"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "B10_fingerprint_recorded",
+      "description": "apply_rows: record no fingerprint after the commit",
+      "reason": "ranked below the cap: B4 measures the detection, which is the half that was missing"
+    },
+    {
+      "id": "B11_zero_commit",
+      "description": "_record_commit: claim a commit for a run that wrote nothing",
+      "reason": "ranked below the cap: maintainer facing, the verb never applies a plan with no write"
+    }
+  ]
+}

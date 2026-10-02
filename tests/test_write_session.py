@@ -2615,6 +2615,9 @@ def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recor
         # R-746. The native landing: content rows and one playlist behind one
         # capture, recorded under the intake tree and the content table.
         "intake/native.py::apply_rows",
+        # R-816. A row's genre written from its file, recorded under the
+        # content genre key as rows updated.
+        "tagging/rows.py::apply_rows",
         "write/metadata_cli.py::mytags_vocals",
         # R-758. One capture before two commits, and both are recorded.
         "write/trees.py::move_tree_membership",

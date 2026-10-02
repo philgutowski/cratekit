@@ -35,14 +35,18 @@ the guarded writer and is answered wherever that refusal is raised, and this ver
 opens no database, so it could never raise it. The rule outlives the neighbour,
 because the next verb to gain a second gate finds the handler already correct.
 
-THE RUN ENDS BY NAMING THE RELOAD. The file carries the corrected genre and the
-library row does not, because the database half of this verb has no caller
-(R-185). The registry no longer claims that surface (R-246), so the declaration
-and the code agree, and the envelope carries
+THE RUN ENDS BY NAMING THE VERB THAT WRITES THE ROW. The file carries the
+corrected genre and the library row does not, because this verb writes the file
+half only (R-185). The registry no longer claims that surface (R-246), so the
+declaration and the code agree, and the envelope carries
 :func:`library_row_warning`, which names the one act that makes the row agree
-with the file. The queueing envelope carries it unconditionally and a successful
-resume carries it only when a file was actually corrected; each of those two
-functions says why at the line that attaches it.
+with the file. That act was a reload in rekordbox until the residual on stale
+row genres gave the row a verb of its own, ``tag.rows``. A reload overwrites
+every tag field, and at one sitting it changed keys, so it is no longer what
+this verb sends a person to do. The queueing envelope carries the warning
+unconditionally and a successful resume carries it only when a file was
+actually corrected; each of those two functions says why at the line that
+attaches it.
 
 AN EMPTY SELECTION STILL ASKS, AND STILL QUEUES NOTHING (R12). The first draft
 of this unit skipped the gate when the plan was empty, on the argument that a
@@ -110,10 +114,12 @@ def library_row_warning(folder: str) -> dict[str, str]:
 
     THE ACT IS NAMED, NOT THE DEFECT. The file now carries the specific genre
     and the library row still carries the value the taxonomy called too coarse,
-    because the database half of this verb has no caller (R-185). A person who
-    is told only that the two disagree cannot act on it; reloading the folder's
-    tags in rekordbox is the act that makes the row agree with the file, and it
-    is the one thing this build can put in front of them.
+    because this verb writes the file half only (R-185). A person who is told
+    only that the two disagree cannot act on it. The act is the row's own verb,
+    which writes the genre from the file and no other column. It was a reload
+    of the folder's tags in rekordbox before that verb existed, and a reload
+    overwrites every tag field, so the message names the verb and says why not
+    the reload.
 
     IT NAMES THE FOLDER. A resume is a detached child whose envelope a person
     reads later, next to other runs, so a warning that said "the folder" would
@@ -130,22 +136,30 @@ def library_row_warning(folder: str) -> dict[str, str]:
     write, so the message states that and then names the act.
 
     AND IT IS NOT A PENDING HUMAN ACTION, which is the conservative call here
-    rather than an oversight. That field is mandatory-verified by construction,
-    ``verify_verb`` names a registered verb that proves the act was done, and
-    nothing in this build can read the row back to prove a reload landed: a
-    corrected file is never selected again, so a second retag over the folder
-    reports the same clean zero whether the person reloaded or not. A pending
-    action nobody can verify is the printed instruction that field exists to
-    replace. Recorded as R-567 rather than faked with a verb that would answer
-    the question wrong.
+    rather than an oversight. That field is mandatory-verified by construction:
+    ``verify_verb`` names a registered verb that proves the act was done. When
+    the act was a reload nothing could prove it, which is R-567. The act is now
+    the row verb, whose own plan shows no write once the rows agree, so a
+    verifier exists that did not. Making this a pending action is still not
+    done here: that plan is over the whole collection and not this folder, and
+    it answers at an explicit gate, which is not the shape a verify verb has.
+    R-567 stays open with that as what is left of it.
+
+    ``with_reload_step`` KEEPS ITS NAME from when the step was a reload. It is
+    named in two other modules' docstrings for the type it carries through,
+    and the step it appends is this message whatever the act is called.
     """
     return {
         "code": LIBRARY_ROW_STALE,
         "message": (
             f"this correction writes the genre onto the files under {folder} and "
             f"does not update the library rows, which go on carrying the old "
-            f"value, because this build writes the file half only; select that "
-            f"folder in rekordbox and reload its tags so the rows catch up"
+            f"value, because this verb writes the file half only; run `crate tag "
+            f"rows` so the rows catch up, which writes each row's genre from its "
+            f"file and no other column, where a reload in rekordbox overwrites "
+            f"every tag field; that verb plans over the whole collection and not "
+            f"this folder, lists every row it would write before it asks, and "
+            f"leaves a genre the library has never held, saying what to do about it"
         ),
     }
 

@@ -278,7 +278,7 @@ def _survey(cfg: config.Config, db: Any) -> _Survey:
             unmapped += 1
             prefixes[outcome.prefix or "?"] += 1
         path = Path(outcome.path) if outcome.path is not None else None
-        if path is None or not path.is_file():
+        if path is None or not _is_a_file(path):
             unresolved += 1
             continue
         resolved.append((row, path))
@@ -293,13 +293,40 @@ def _survey(cfg: config.Config, db: Any) -> _Survey:
     )
 
 
+def _is_a_file(path: Path) -> bool:
+    """Whether a file is there, with a refusal to answer read as no.
+
+    ``Path.is_file`` swallows a missing file and raises on the rest: a
+    directory this account cannot enter, a name the filesystem refuses, an
+    input error on the volume, a null byte in the recorded name. Raised out of
+    the one walk, any of them ended the survey for the plan, the apply and the
+    doctor check together. A row whose file cannot be asked about is a row
+    this machine cannot read a file for, which is what unresolved counts.
+    """
+    try:
+        return path.is_file()
+    except (OSError, ValueError):
+        return False
+
+
 def resolution_totals(cfg: config.Config, db: Any) -> ResolutionTotals:
     """How the collection resolves, for doctor's ``library.paths_resolved``."""
     return _survey(cfg, db).totals
 
 
-def majority_unmapped_cause(cfg: config.Config, totals: ResolutionTotals) -> Cause:
+#: What the majority refusal says cannot be done, for the verb it was written for.
+_VOCALS_BLOCKED = "nothing about its vocals can be reported or written"
+
+
+def majority_unmapped_cause(
+    cfg: config.Config, totals: ResolutionTotals, *, blocked: str = _VOCALS_BLOCKED
+) -> Cause:
     """The refusal every surface raises when most rows record an unmapped path.
+
+    ``blocked`` is the clause saying what cannot be done until the rule exists.
+    It is the one part of the sentence that belongs to the verb raising it, so
+    a second verb that plans over the collection's files says its own and
+    shares the slug, the counts, the steps and the detail.
 
     Built through ``refuse`` so the slug is checked against the registry and the
     remedy is the reserved one. ``RUN_SETUP`` rather than ``RUN_DOCTOR``: doctor
@@ -320,8 +347,7 @@ def majority_unmapped_cause(cfg: config.Config, totals: ResolutionTotals) -> Cau
         (
             f"{totals.unmapped} of {totals.active} active rows record a path "
             f"under no library.location_prefix_map rule ({listed}), so this "
-            f"library cannot be read from here and nothing about its vocals can "
-            f"be reported or written until the rule exists"
+            f"library cannot be read from here and {blocked} until the rule exists"
         ),
         remedy=Remedy.RUN_SETUP,
         steps=(

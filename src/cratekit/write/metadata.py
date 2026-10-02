@@ -86,7 +86,13 @@ OPERATIONS: Mapping[str, rb_writer.FieldPolicy] = MappingProxyType(
             fields=MappingProxyType({"Title": rb_writer.Ownership.OWNED}),
         ),
         #: A genre retag is owned because the operation only runs over rows a
-        #: person reviewed. It links an existing lookup row and never mints one.
+        #: person reviewed, and its one caller, the row verb, is what makes that
+        #: true: every row it would write is listed with the row's word and the
+        #: file's at an explicit gate, and nothing is written without that
+        #: answer. Owned still means a word a person set on the row by hand is
+        #: replaced when they approve a plan that lists it, which is why that
+        #: verb lets a row be held out by name. It links an existing lookup row
+        #: and never mints one.
         RETAG_GENRE: rb_writer.FieldPolicy(
             owner=RETAG_GENRE,
             fields=MappingProxyType({"GenreID": rb_writer.Ownership.OWNED}),
@@ -373,15 +379,22 @@ def plan_genre_retag(
     structurally as well: ``djmdGenre`` is absent from
     ``rb_writer.PERMITTED_ROW_TABLES``, so even a caller that tried would be
     rolled back at the commit. Belt and braces, deliberately.
+
+    EACH DISTINCT NAME IS RESOLVED ONCE. A sweep names a handful of genres over
+    hundreds of rows, and a lookup per row asked the same question of the
+    database hundreds of times.
     """
     changes: list[Change] = []
     skipped: list[Skipped] = []
+    resolved: dict[str, Any | None] = {}
     for row in rows:
         content_id = str(getattr(row, "ID", "") or "")
         wanted = genres.get(content_id)
         if not wanted:
             continue
-        genre_id = resolve_genre_id(db, wanted)
+        if wanted not in resolved:
+            resolved[wanted] = resolve_genre_id(db, wanted)
+        genre_id = resolved[wanted]
         if genre_id is None:
             skipped.append(Skipped(content_id, "genre-unknown", wanted))
             continue

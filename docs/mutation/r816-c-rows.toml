@@ -1,0 +1,50 @@
+name = "r816-c"
+pass_kind = "light"
+
+[[rows]]
+id = "B6_bookkeeping_exempt"
+description = "judge: stop exempting the binding's bookkeeping columns, so every clean write reads as moved"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''            and column not in rb_writer.BOOKKEEPING_COLUMNS
+'''
+new = ''''''
+
+[[rows]]
+id = "B7_read_back_word"
+description = "judge: stop comparing the genre read back with the file's word"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''        if word != item.file:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "B8_read_back_columns"
+description = "judge: stop reporting another column that moved"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''        if changed:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "B9_cache_reset"
+description = "apply_rows: leave the collection cache holding the words as they were"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''    collection.reset_cache()
+'''
+new = ''''''
+
+[[dropped]]
+id = "B12_read_back_refusal"
+description = "assert_read_back: never refuse"
+reason = "ranked below the cap: B7 and B8 measure what it judges"
+
+[[dropped]]
+id = "B13_barren_watch"
+description = "apply_rows: accept an empty analysis root list"
+reason = "ranked below the cap: a copy of the membership writer's guard, measured there"

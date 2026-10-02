@@ -18,7 +18,52 @@ label's window is full of the 2,755 releases already in review, R-815
 filed. Pop from the general catalogue lands in Dance / Pop, R-799 measured.
 Main's highest residual number is R-815.
 
-**Last built: R-798, issue #238, `relay/238`, 2026-10-01, unattended.**
+**Last built: R-816, issue #239, `relay/239`, 2026-10-01, unattended. The
+residual stays OPEN: it closes on a run on the author's library.**
+`crate tag rows` is new. It writes a library row's genre from its file where
+the two disagree, `GenreID` and no other column, and writes no file. The
+walk is adoption's census, so a tombstone is skipped, the probe is total and
+a file whose bytes are not here is never opened. Each live row lands in one
+of twelve outcomes, counted zero filled: `agree`, `write`, four in which a
+differing row is listed and left (`held-out`, `file-too-coarse`,
+`file-multi-valued`, `genre-unknown`), `file-blank`, and five in which the
+file's genre was never learned (`file-unreadable`, `file-online-only`,
+`file-missing`, `path-unmapped`, `no-path`). The write is the RETAG_GENRE
+policy through `metadata.plan_genre_retag` and `retag.apply_library`, which
+had no caller: an existing genre lookup row is linked and none is made. The
+order is `adopt move`'s: the backup acknowledgment before the plan, the plan
+on a read handle, an explicit gate `tag.rows.confirm` over a digest of the
+items and the counts with nothing that names a copy, an empty plan still
+asked, and only `apply` over a plan that writes opening the database to
+write. A library most of whose rows are under no prefix rule refuses before
+any file is opened, from the vocal tag verb's own survey. The write checks
+each row is still as the plan read it, looks for an out of band restore
+before it records a fingerprint, takes a capture on a kept session record
+under `content.genre`, commits behind the guard, and reads every written row
+back from SQL: its genre must be the file's word, and no column but the
+genre and the ten bookkeeping columns may differ from a snapshot taken
+before. `--leave CONTENT_ID` holds a row out for a genre set by hand, and
+the run that applies names the same rows. `tag retag` ends by naming this
+verb and not a reload. The plan is
+`docs/plans/2026-10-01-2158-fix-row-genre-from-file-plan.md`, and
+`docs/solutions/workflow-issues/a-new-gated-write-verb-has-to-reach-its-gate-on-the-conformance-fixture.md`
+is what to read before ordering the next gated write verb. The built in
+review ran twice, ten findings and then eight: seventeen changed the code,
+and R-817 is what the eighteenth left. R-817 to R-821 filed, none on the
+board bar. `CONCEPTS.md` gained stale row and held row. Mutation tables
+`r816-a` to `r816-e`, 25 rows, 25 killed, none at zero, by the author.
+Battery on the committed tree: ruff clean, **11,590 passed and 1 skipped**,
+scan clean, `board.py closing --since main` exit 0. **Main's highest
+residual number is R-821 once this merges.** **This card did not open the
+live database, a copy of it, or rekordbox**, and every number in it was
+taken on a synthetic database, R-820. Owed to an attended sitting, in the
+order R-816's ledger entry gives: this build in use, a rehearsal past the
+gate on a disposable copy with library state redirected, the seven rows of
+other words read at that gate and any hand set one held with `--leave`, the
+live plan approved on an equal digest, `crate report genres` no longer
+naming Progressive / Melodic, and the run recorded in `docs/cutover.md`.
+
+**Built before it: R-798, issue #238, `relay/238`, 2026-10-01, unattended.**
 The label genre gate judges a release by KIND when a sweep is about to file
 it. The taxonomy's `[label_gate]` gained `default_kind`, dance, and
 `[[label_gate.published]]` rules naming the kind each of the general

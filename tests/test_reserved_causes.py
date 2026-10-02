@@ -5915,7 +5915,22 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # release's payload carries. The two new verbs refuse on
     # label-name-invalid, review-item-unknown and review-selection-invalid,
     # all three of which the tree already carried.
-    assert (len(literals), len(literals - set(causes))) == (549, 363), (
+    # Re-pinned on the residual finding "A row's genre lags its file's on 773
+    # tracks, and adoption and the genre report read the row", 2026-10-01: 549
+    # to 564 distinct, non-keys 363 to 378. FIFTEEN joined and nothing left,
+    # each checked against `main`'s own `src` by git grep, and none is a key.
+    # Nine are the outcomes `tagging/rows.py` counts a row under that the tree
+    # did not already spell: held-out, file-too-coarse, file-multi-valued,
+    # file-blank, file-unreadable, file-online-only, file-missing,
+    # path-unmapped and no-path. genre-unknown is a tenth outcome and the tree
+    # carried it. tag-rows is the name that module's session record carries.
+    # rows-file-not-read, rows-nothing-to-write, rows-genre-written,
+    # rows-left-alone and rows-leave-unmatched are WARNING codes
+    # `tagging/rows_cli.py` gives. The refusals the new verb raises are
+    # internal-error, whitelist-violation, decision-stale, config-unusable and
+    # library-paths-majority-unresolved, all of which the tree already
+    # carried.
+    assert (len(literals), len(literals - set(causes))) == (564, 378), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6573,7 +6588,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # cause, and label/cli.py, label/registry.py, label/approved_cli.py and
     # core/review.py were holders before and are unchanged in that. Measured by
     # this pair moving by one on the holders side and by nothing on the other.
-    assert (len(literal_holders), len(literal_both)) == (114, 26), (
+    # Re-pinned on the residual finding "A row's genre lags its file's on 773
+    # tracks, and adoption and the genre report read the row", 2026-10-01:
+    # holders move 114 to 116, and the also-holds-an-integer half is UNCHANGED
+    # at 26. TWO modules joined and none left, and both are new files.
+    # tagging/rows.py, the engine, refuses with decision-stale,
+    # whitelist-violation and internal-error. tagging/rows_cli.py, the verb's
+    # shell, refuses with config-unusable and internal-error. Neither holds an
+    # integer. tagging/retag.py and tagging/retag_cli.py were holders before
+    # and are unchanged in that. Measured by this pair moving by two on the
+    # holders side and by nothing on the other.
+    assert (len(literal_holders), len(literal_both)) == (116, 26), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

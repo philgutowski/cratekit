@@ -1,0 +1,316 @@
+{
+  "name": "r816-a",
+  "pass_kind": "light",
+  "branch": "relay/239",
+  "head": "ff888cf",
+  "when": "2026-10-02 02:47 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 11591,
+  "baseline_exit": 0,
+  "pytest_runs": 11,
+  "state_guarded": "~/Library/Application Support/cratekit (189230 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/tagging/rows.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/tagging/rows.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "ab590ad631af4bd5",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 11591,
+    "baseline_collected": 11591,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "A1_too_coarse_protection",
+      "description": "plan_rows: drop the rule that a too coarse file word does not replace a specific row word",
+      "file": "src/cratekit/tagging/rows.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "101743ae460595a3",
+      "subset": [
+        "tests/test_tag_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_a_second_run_after_a_clean_one_asks_and_is_a_no_op",
+        "tests/test_tag_rows.py::test_a_too_coarse_file_does_not_replace_a_specific_row",
+        "tests/test_tag_rows.py::test_every_live_row_is_counted_exactly_once_and_items_are_in_identifier_order",
+        "tests/test_tag_rows.py::test_planned_written_and_read_back_through_the_two_acts",
+        "tests/test_tag_rows.py::test_the_apply_writes_the_genre_and_no_other_column_of_any_row",
+        "tests/test_tag_rows.py::test_the_pairs_are_the_writes_counted_largest_first"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        elif _protected(declared, row_word, file_word):",
+      "new": "        elif False:"
+    },
+    {
+      "id": "A2_held_out",
+      "description": "plan_rows: ignore the rows a person held out, so a hand set genre is planned as a write",
+      "file": "src/cratekit/tagging/rows.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3f271a9ffeef0602",
+      "subset": [
+        "tests/test_tag_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_a_held_row_survives_the_write_and_the_apply_must_name_it_again",
+        "tests/test_tag_rows.py::test_a_row_a_person_holds_out_is_listed_and_left"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if content_id in held_out:",
+      "new": "        if False:"
+    },
+    {
+      "id": "A3_multi_valued",
+      "description": "plan_rows: write a row from a file holding more than one genre",
+      "file": "src/cratekit/tagging/rows.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "541b2bbbb3ff4001",
+      "subset": [
+        "tests/test_tag_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_a_file_holding_two_genres_is_left_alone_and_both_are_shown",
+        "tests/test_tag_rows.py::test_two_genres_in_an_id3_frame_read_as_they_do_in_a_list_container"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if several:",
+      "new": "            if False:"
+    },
+    {
+      "id": "A4_agreement",
+      "description": "plan_rows: stop reading equal words as agreement, so every row with a file genre is a write",
+      "file": "src/cratekit/tagging/rows.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8e05403c1069db53",
+      "subset": [
+        "tests/test_tag_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 12,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_a_file_holding_two_genres_is_left_alone_and_both_are_shown",
+        "tests/test_tag_rows.py::test_a_row_and_file_that_agree_are_not_in_the_plan",
+        "tests/test_tag_rows.py::test_a_second_apply_plans_nothing_and_writes_nothing",
+        "tests/test_tag_rows.py::test_a_second_run_after_a_clean_one_asks_and_is_a_no_op",
+        "tests/test_tag_rows.py::test_an_empty_plan_still_asks_and_opens_nothing_to_write",
+        "tests/test_tag_rows.py::test_an_empty_second_value_is_not_a_second_genre_and_not_an_unknown_word",
+        "tests/test_tag_rows.py::test_an_identifier_held_out_that_names_no_differing_row_is_carried_and_digested",
+        "tests/test_tag_rows.py::test_every_live_row_is_counted_exactly_once_and_items_are_in_identifier_order",
+        "tests/test_tag_rows.py::test_planned_written_and_read_back_through_the_two_acts",
+        "tests/test_tag_rows.py::test_the_apply_writes_the_genre_and_no_other_column_of_any_row",
+        "tests/test_tag_rows.py::test_the_digest_moves_when_only_a_count_moves",
+        "tests/test_tag_rows.py::test_two_genres_in_an_id3_frame_read_as_they_do_in_a_list_container"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if row_word == file_word:",
+      "new": "        if False:"
+    },
+    {
+      "id": "A5_unreadable_is_blank",
+      "description": "_file_word: count a file whose tags would not open as a file with no genre",
+      "file": "src/cratekit/tagging/rows.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a96311e11bfedd61",
+      "subset": [
+        "tests/test_tag_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_a_file_no_tag_library_opens_is_unreadable_and_not_blank",
+        "tests/test_tag_rows.py::test_every_live_row_is_counted_exactly_once_and_items_are_in_identifier_order"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return \"\", FILE_UNREADABLE",
+      "new": "        return \"\", FILE_BLANK"
+    },
+    {
+      "id": "A6_first_value",
+      "description": "_file_word: compare the checked reader's text as it came, null bytes and all",
+      "file": "src/cratekit/tagging/rows.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3ae91d6a073441a9",
+      "subset": [
+        "tests/test_tag_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_an_empty_second_value_is_not_a_second_genre_and_not_an_unknown_word",
+        "tests/test_tag_rows.py::test_two_genres_in_an_id3_frame_read_as_they_do_in_a_list_container"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    word = next((part.strip() for part in text.split(\"\\x00\") if part.strip()), \"\")",
+      "new": "    word = text.strip()"
+    },
+    {
+      "id": "A7_digest_counts",
+      "description": "RowsPlan.digest: leave the outcome counts out of the digest",
+      "file": "src/cratekit/tagging/rows.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "15060b74f978cef6",
+      "subset": [
+        "tests/test_tag_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_the_digest_moves_when_only_a_count_moves"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                \"counts\": dict(self.counts),\n",
+      "new": ""
+    },
+    {
+      "id": "A8_leave_unmatched",
+      "description": "plan_rows: drop the identifiers held out that name no differing row",
+      "file": "src/cratekit/tagging/rows.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7528b8cb7dfb05d9",
+      "subset": [
+        "tests/test_tag_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_a_mistyped_identifier_is_shown_at_the_gate_and_warned_about",
+        "tests/test_tag_rows.py::test_an_identifier_held_out_that_names_no_differing_row_is_carried_and_digested"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        leave_unmatched=tuple(sorted(held_out - listed)),",
+      "new": "        leave_unmatched=(),"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "A9_blank_row_takes_coarse",
+      "description": "_protected: protect a blank row from a too coarse file word",
+      "reason": "ranked below the cap: the same predicate A1 measures, one clause in"
+    },
+    {
+      "id": "A10_probe_fallback",
+      "description": "plan_rows: count an answer the census gains later as agreement",
+      "reason": "ranked below the cap: maintainer facing, no producer today"
+    },
+    {
+      "id": "A11_item_order",
+      "description": "plan_rows: leave the items in walk order",
+      "reason": "ranked below the cap: digest determinism, held by one ordering assertion"
+    },
+    {
+      "id": "A12_digest_leave_unmatched",
+      "description": "RowsPlan.digest: leave the unmatched identifiers out of the digest",
+      "reason": "ranked below the cap: A7 and A8 measure the two neighbours"
+    }
+  ]
+}
