@@ -1,0 +1,149 @@
+name = "r815-c"
+pass_kind = "light"
+
+[[rows]]
+id = "J5_a_recorded_no_word_answer_is_not_asked_again"
+description = "_judged: ask about a release the catalogue already had no word for"
+file = "src/cratekit/label/judge_cli.py"
+surface = "user"
+tests = ["tests/test_label_judge.py"]
+old = '''    if recorded is None and isinstance(said, str) and said in genre_gate.NO_WORD_ANSWERS:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "J6_a_decided_item_is_not_judged"
+description = "_judge_one: judge an item a person has decided"
+file = "src/cratekit/label/judge_cli.py"
+surface = "user"
+tests = ["tests/test_label_judge.py"]
+old = '''        if found.stored_verdict is not None:
+            return _report('''
+new = '''        if False:
+            return _report('''
+
+[[rows]]
+id = "J7_a_returned_release_is_not_judged"
+description = "_judge_one: judge a release a person returned"
+file = "src/cratekit/label/judge_cli.py"
+surface = "user"
+tests = ["tests/test_label_judge.py"]
+old = '''        if genre_gate.returned_by(standing, found.payload):
+            return _report('''
+new = '''        if False:
+            return _report('''
+
+[[rows]]
+id = "J8_a_refusal_parks_and_fails_no_item"
+description = "handle: let a refusal fail the item"
+file = "src/cratekit/label/judge_cli.py"
+surface = "user"
+tests = ["tests/test_label_judge.py"]
+old = '''    except CratekitError as exc:
+        raise _parked(job, exc) from exc
+    return artifacts.produced(ARTIFACTS, cfg, job, item, report)'''
+new = '''    except CratekitError:
+        raise
+    return artifacts.produced(ARTIFACTS, cfg, job, item, report)'''
+
+[[rows]]
+id = "J9_a_park_drops_the_jobs_tools"
+description = "_parked: keep the job's tools across a park"
+file = "src/cratekit/label/judge_cli.py"
+surface = "user"
+tests = ["tests/test_label_judge.py"]
+old = '''    _JOB_TOOLS.pop(str(job.job_id), None)
+    if isinstance(error, jobs.Parked):'''
+new = '''    if isinstance(error, jobs.Parked):'''
+
+[[rows]]
+id = "J10_the_stamp_is_replaced_whole"
+description = "_stamp: merge the new stamp over the old payload"
+file = "src/cratekit/label/judge_cli.py"
+surface = "user"
+tests = ["tests/test_label_judge.py"]
+old = '''    kept = {field: value for field, value in item.payload.items() if field not in _STAMP_FIELDS}'''
+new = '''    kept = dict(item.payload)'''
+
+[[rows]]
+id = "J11_the_scope_reads_the_registry"
+description = "_Scope.holds: compare the identifier as text"
+file = "src/cratekit/label/judge_cli.py"
+surface = "user"
+tests = ["tests/test_label_judge.py"]
+old = '''        return entry is not None and entry.label_id in self.label_ids'''
+new = '''        return label_id in self.label_ids'''
+
+[[rows]]
+id = "J12_a_release_held_and_gone_is_counted_held"
+description = "_left_review: report gone whatever holds the release"
+file = "src/cratekit/label/judge_cli.py"
+surface = "user"
+tests = ["tests/test_label_judge.py"]
+old = '''    if standing is not None and standing.state == review.HOLD_HELD:
+        return _report(item_id, HELD, _held_already(standing), reason=standing.reason)'''
+new = '''    if False:
+        return _report(item_id, HELD, _held_already(standing), reason=standing.reason)'''
+
+[[rows]]
+id = "J13_the_refusal_carries_the_counts"
+description = "_resume: let the refusal leave without the summary"
+file = "src/cratekit/label/judge_cli.py"
+surface = "user"
+tests = ["tests/test_label_judge.py"]
+old = '''            raise _with_summary(failed, cfg, store, queued.job_id) from failed'''
+new = '''            raise'''
+
+[[dropped]]
+id = "D1_delete_guard"
+description = "withhold: delete the row whatever its verdict column says"
+reason = "ranked below the cap: the transaction read the verdict two statements earlier and holds the write lock, so no input reaches it. Maintainer facing"
+
+[[dropped]]
+id = "D2_refresh_keeps_the_run"
+description = "_CARRIED_ACROSS_A_REFRESH: drop the filing run and carry the withheld word"
+reason = "ranked below the cap: the sibling of W5, pinned by the refresh test and the sweep test"
+
+[[dropped]]
+id = "D3_withhold_writes_the_word"
+description = "withhold: write no withheld word"
+reason = "ranked below the cap: S1 and W5 measure the same word at its two readers"
+
+[[dropped]]
+id = "D4_a_stale_hold_is_dropped"
+description = "_judge_one: leave a hold in force beside a release the gate passes"
+reason = "ranked below the cap: a state an earlier build left, pinned by one test"
+
+[[dropped]]
+id = "D5_the_hold_is_the_labels"
+description = "_subject: hold under the identifier the item carries"
+reason = "ranked below the cap: the sibling of J11, pinned by the same test"
+
+[[dropped]]
+id = "D6_judged_is_held_plus_passed"
+description = "summary: count held alone as judged"
+reason = "ranked below the cap: asserted by every count in the file"
+
+[[dropped]]
+id = "D7_the_verb_drives_its_own_job"
+description = "_resume: drive any job"
+reason = "ranked below the cap: the check label/cli.py makes on its own resume, pinned here by one test"
+
+[[dropped]]
+id = "D8_an_item_is_judged_on_its_own_release"
+description = "_judged: read the release an item names whatever it addresses"
+reason = "ranked below the cap: an imported item with a wrong payload, pinned by one test"
+
+[[dropped]]
+id = "D9_nothing_pending_queues_nothing"
+description = "label_judge: queue a job with no items"
+reason = "ranked below the cap: pinned by two tests"
+
+[[dropped]]
+id = "D10_the_taxonomy_is_read_before_queueing"
+description = "label_judge: queue without reading the taxonomy"
+reason = "ranked below the cap: the worker parks on the same refusal"
+
+[[dropped]]
+id = "D11_render_lines"
+description = "_judging_lines: print nothing"
+reason = "ranked below the cap: a display over the payload the other rows measure"

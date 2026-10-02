@@ -799,6 +799,8 @@ _SCHEMA = (
     # never decided. It is not a suppression either: nothing here keeps a
     # release out for good, and a person can return one to the queue. The row
     # carries what would have been filed, so returning it needs no producer.
+    # A candidate already filed and still open can be taken back into one
+    # (R-815): its item row is deleted in the transaction that writes the hold.
     # ADDITIVE, on the reasoning ``offer_rounds`` gives, so ``SCHEMA_VERSION``
     # does not move.
     """
@@ -819,6 +821,28 @@ _SCHEMA = (
         PRIMARY KEY (queue, item_id)
     )
     """,
+    # THE HIGHEST ORDINAL A DELETED ITEM EVER HELD (R-815). Until an item could
+    # be taken back into a hold no row was ever deleted, and the next ordinal
+    # was one past the highest in the table. Deleting the newest item would
+    # hand its ordinal to the next one filed, and a reader holding a cursor at
+    # the old highest, ``review list --after``, would never be shown it. One
+    # row, raised and never lowered. ADDITIVE, on the reasoning ``offer_rounds``
+    # gives. A build that predates it allocates from the items alone, which is
+    # the old behaviour and no worse than it was.
+    """
+    CREATE TABLE IF NOT EXISTS ordinal_floor (
+        id      INTEGER PRIMARY KEY CHECK (id = 1),
+        ordinal INTEGER NOT NULL
+    )
+    """,
+)
+
+#: The next ordinal, as a scalar subquery: one past the highest any item holds
+#: or ever held. Spelled once, because the two writers that insert an item must
+#: not come to allocate differently.
+_NEXT_ORDINAL = (
+    "(SELECT MAX(COALESCE((SELECT MAX(ordinal) FROM review_items), 0), "
+    "COALESCE((SELECT MAX(ordinal) FROM ordinal_floor), 0)) + 1)"
 )
 
 
@@ -1279,7 +1303,7 @@ def offer(
                 "INSERT INTO review_items (item_id, queue, kind, identity, payload, options, "
                 "handler_key, ordinal, verdict, option, actor, created, updated, decided) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, "
-                "(SELECT COALESCE(MAX(ordinal), 0) + 1 FROM review_items), "
+                f"{_NEXT_ORDINAL}, "
                 "NULL, NULL, NULL, ?, ?, NULL)",
                 (
                     item_id,
@@ -1321,6 +1345,29 @@ def offer(
                     (encoded_identity, encoded_payload, encoded_options, handler_key, now, item_id),
                 )
     return get(store, item_id)
+
+
+def redescribe(store: ReviewStore, item_id: str, payload: Mapping[str, Any]) -> Item | None:
+    """Replace the payload of an item that is STILL OPEN, or None when it is not.
+
+    R-815. For a producer that learned something about a candidate it filed
+    earlier and is not offering it again. :func:`offer` does the same rewrite,
+    and it INSERTS when the row is gone, which is right for a producer that is
+    filing and wrong for one that is only describing: a candidate taken back
+    into a hold a moment ago would be filed again beside its own hold.
+
+    ONLY OVER AN EMPTY VERDICT COLUMN, inside the write, on the rule
+    :func:`supersede` states. A decided item keeps the payload it was decided
+    on, an item carrying a verdict this build cannot read keeps its own, and an
+    identifier nothing answers to creates nothing. Each is None.
+    """
+    with store.immediate() as conn:
+        changed = conn.execute(
+            "UPDATE review_items SET payload = ?, updated = ? "
+            "WHERE item_id = ? AND verdict IS NULL",
+            (json.dumps(dict(payload), sort_keys=True), timestamp(), item_id),
+        ).rowcount
+    return get(store, item_id) if changed else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1604,6 +1651,92 @@ def _held_row(store: ReviewStore, queue: str, item_id: str) -> sqlite3.Row | Non
     ).fetchone()
 
 
+#: The payload field a hold carries when its candidate was TAKEN BACK OUT OF THE
+#: QUEUE by :func:`withhold`, where a hold a producer made on a candidate it
+#: never filed carries none (R-815). The difference matters to whoever would
+#: drop a hold: a candidate never filed goes back to being unexamined, and one
+#: that was in front of a person must not vanish from both places.
+WITHHELD_FIELD = "withheld_from_review"
+
+#: The payload fields a refresh carries over from the hold it replaces, when
+#: the new payload does not name them. Both are facts about the candidate's
+#: history that the producer refreshing a hold does not know: it describes
+#: every hold as a candidate it never filed.
+_CARRIED_ACROSS_A_REFRESH: tuple[str, ...] = (RUN_FIELD, WITHHELD_FIELD)
+
+
+def _put_hold(
+    store: ReviewStore,
+    conn: sqlite3.Connection,
+    *,
+    queue: str,
+    item_id: str,
+    kind: str,
+    identity: str,
+    payload: Mapping[str, Any],
+    group: str,
+    name: str,
+    reason: str,
+    detail: Mapping[str, Any],
+    run_id: str,
+    state: str,
+) -> None:
+    """Write one hold row inside the caller's transaction. THE ONE WRITER.
+
+    :func:`hold` and :func:`withhold` both make a hold, and two spellings of
+    one row are how the two come to disagree about a column.
+
+    No row yet: it is inserted in ``state``. A hold IN FORCE is refreshed: what
+    the producer knows now replaces the payload, the reason and what it judged
+    on, and the run and the time it was first made are kept. A hold a person
+    RETURNED is left exactly as it is.
+    """
+    now = timestamp()
+    encoded_detail = json.dumps(dict(detail), sort_keys=True)
+    row = _held_row(store, queue, item_id)
+    if row is None:
+        conn.execute(
+            "INSERT INTO held_offers (queue, item_id, kind, identity, payload, "
+            "group_key, group_name, reason, detail, state, run_id, created, updated) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                queue,
+                item_id,
+                kind,
+                identity,
+                json.dumps(dict(payload), sort_keys=True),
+                group,
+                name,
+                reason,
+                encoded_detail,
+                state,
+                run_id,
+                now,
+                now,
+            ),
+        )
+    elif row["state"] == HOLD_HELD:
+        refreshed = dict(payload)
+        replaced = _hold_of(row).payload
+        for carried in _CARRIED_ACROSS_A_REFRESH:
+            if replaced.get(carried) and not refreshed.get(carried):
+                refreshed[carried] = replaced[carried]
+        conn.execute(
+            "UPDATE held_offers SET payload = ?, group_key = ?, group_name = ?, "
+            "reason = ?, detail = ?, updated = ? WHERE queue = ? AND item_id = ?",
+            (
+                json.dumps(refreshed, sort_keys=True),
+                group,
+                name,
+                reason,
+                encoded_detail,
+                now,
+                queue,
+                item_id,
+            ),
+        )
+
+
 def hold(
     store: ReviewStore,
     *,
@@ -1634,46 +1767,123 @@ def hold(
     producer knows now, the payload, the reason and what it judged on, and
     keeps the run and the time the hold was first made, so a count of what one
     round held does not move when a later round looks at the same release.
+
+    A REFRESH KEEPS WHAT THE REPLACED PAYLOAD SAID OF THE CANDIDATE'S HISTORY,
+    when the new payload does not say it (R-815): the run it was filed under,
+    and that it was taken back out of the queue. A candidate :func:`withhold`
+    took back carries both, and the producer that refreshes its hold describes
+    it as a candidate never filed. Dropped, a return would file it under the
+    round that held it, which filed nothing, and nothing could tell it from a
+    candidate no person was ever shown.
     """
     declared = _assert_declared_queue(queue)
     item_id = item_id_for(declared, kind, identity)
-    now = timestamp()
-    encoded = (
-        canonical_json(normalize_identity(identity)),
-        json.dumps(dict(payload), sort_keys=True),
-        reason,
-        json.dumps(dict(detail), sort_keys=True),
-    )
     with store.immediate() as conn:
-        row = _held_row(store, declared, item_id)
-        if row is None:
-            conn.execute(
-                "INSERT INTO held_offers (queue, item_id, kind, identity, payload, "
-                "group_key, group_name, reason, detail, state, run_id, created, updated) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    declared,
-                    item_id,
-                    normalize_kind(kind),
-                    encoded[0],
-                    encoded[1],
-                    group,
-                    name,
-                    encoded[2],
-                    encoded[3],
-                    HOLD_RETURNED if returned else HOLD_HELD,
-                    run_id,
-                    now,
-                    now,
-                ),
-            )
-        elif row["state"] == HOLD_HELD:
-            conn.execute(
-                "UPDATE held_offers SET payload = ?, group_key = ?, group_name = ?, "
-                "reason = ?, detail = ?, updated = ? WHERE queue = ? AND item_id = ?",
-                (encoded[1], group, name, encoded[2], encoded[3], now, declared, item_id),
-            )
+        _put_hold(
+            store,
+            conn,
+            queue=declared,
+            item_id=item_id,
+            kind=normalize_kind(kind),
+            identity=canonical_json(normalize_identity(identity)),
+            payload=payload,
+            group=group,
+            name=name,
+            reason=reason,
+            detail=detail,
+            run_id=run_id,
+            state=HOLD_RETURNED if returned else HOLD_HELD,
+        )
     return _hold_of(_held_row(store, declared, item_id))
+
+
+def withhold(
+    store: ReviewStore,
+    item_id: str,
+    *,
+    group: str,
+    name: str,
+    reason: str,
+    detail: Mapping[str, Any],
+    run_id: str,
+) -> Hold | None:
+    """Move one OPEN item out of its queue and into a hold, or None when it may not.
+
+    R-815. A producer that judges a candidate ALREADY FILED, and finds it would
+    not have filed it, takes it back: the item's row is deleted and a hold is
+    written carrying what the item carried, so returning it files the same
+    thing. Not a verdict. A superseded item would still be an item, and the
+    producer that reads "is there an item" to decide whether a candidate was
+    offered would read this one as offered and drop its hold.
+
+    ONE TRANSACTION, BOTH WRITES. A hold written beside an item still in the
+    queue is a candidate a person can decide while a listing says it is held,
+    and an item deleted with no hold written is a candidate nothing offers and
+    nothing holds.
+
+    ONLY OVER AN EMPTY VERDICT COLUMN, on the rule :func:`supersede` states. An
+    accepted, a rejected and a superseded item stand, and so does one carrying
+    a verdict this build cannot read: on a queue two builds share, that is a
+    decision somebody made. The check is inside the transaction, so an item a
+    person decides while a producer is judging it is theirs.
+
+    A HOLD A PERSON RETURNED IS NEVER HELD AGAIN, the rule :func:`hold` keeps.
+    The item stays where it is and None is the answer.
+
+    None for an identifier nothing answers to, too. Each None means the same
+    thing to a caller: nothing was moved.
+
+    THE HOLD SAYS IT WAS TAKEN BACK, under :data:`WITHHELD_FIELD` on its
+    payload, and a refresh keeps the word. A hold beside an open item, the
+    state two writes of an earlier build can leave, is refreshed and keeps the
+    run that first held it.
+
+    AN ITEM THAT ARRIVED BY IMPORT CARRIES NO IDENTITY, and its hold then
+    carries an empty one. The hold is still found by the item's identifier,
+    which is all a return asks, and its payload still names the candidate.
+    """
+    with store.immediate() as conn:
+        row = conn.execute(
+            "SELECT queue, kind, identity, payload, verdict, ordinal FROM review_items "
+            "WHERE item_id = ?",
+            (item_id,),
+        ).fetchone()
+        if row is None or row["verdict"] is not None:
+            return None
+        queue = row["queue"]
+        standing = _held_row(store, queue, item_id)
+        if standing is not None and standing["state"] == HOLD_RETURNED:
+            return None
+        try:
+            carried = json.loads(row["payload"])
+        except ValueError:
+            carried = {}
+        _put_hold(
+            store,
+            conn,
+            queue=queue,
+            item_id=item_id,
+            kind=row["kind"],
+            identity=row["identity"] if row["identity"] is not None else "{}",
+            payload={**(carried if isinstance(carried, dict) else {}), WITHHELD_FIELD: True},
+            group=group,
+            name=name,
+            reason=reason,
+            detail=detail,
+            run_id=run_id,
+            state=HOLD_HELD,
+        )
+        # THE FLOOR BEFORE THE DELETE, so the ordinal this row held is never
+        # handed to a later item. See ``ordinal_floor`` in the schema.
+        conn.execute(
+            "INSERT INTO ordinal_floor (id, ordinal) VALUES (1, ?) "
+            "ON CONFLICT(id) DO UPDATE SET ordinal = MAX(ordinal, excluded.ordinal)",
+            (int(row["ordinal"]),),
+        )
+        conn.execute(
+            "DELETE FROM review_items WHERE item_id = ? AND verdict IS NULL", (item_id,)
+        )
+    return _hold_of(_held_row(store, queue, item_id))
 
 
 def find_hold(store: ReviewStore, *, queue: str, item_id: str) -> Hold | None:
@@ -2251,7 +2461,7 @@ def _insert_imported(store: ReviewStore, raw: Mapping[str, Any]) -> None:
             "INSERT INTO review_items (item_id, queue, kind, payload, options, "
             "handler_key, ordinal, verdict, option, actor, created, updated, decided) "
             "VALUES (?, ?, ?, ?, ?, ?, "
-            "(SELECT COALESCE(MAX(ordinal), 0) + 1 FROM review_items), "
+            f"{_NEXT_ORDINAL}, "
             "NULL, NULL, NULL, ?, ?, NULL)",
             (
                 str(raw["id"]),
@@ -2800,6 +3010,7 @@ __all__ = [
     "open_store",
     "queue_path",
     "record_round",
+    "redescribe",
     "release_hold",
     "resolve",
     "return_hold",
@@ -2809,6 +3020,8 @@ __all__ = [
     "GROUPINGS",
     "GROUPED_KINDS",
     "RUN_FIELD",
+    "WITHHELD_FIELD",
     "store_dir",
     "unresolved_cause",
+    "withhold",
 ]

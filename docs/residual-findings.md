@@ -32375,6 +32375,51 @@ passes a release on one word of the label's kind.
 
 ## R-815. The genre gate judges only what a sweep is about to file, so the releases already in review are never judged
 
+**Closed in the code 2026-10-02 on `relay/240`, issue #240. The run on the
+author's library is still owed, and it is R-798's owed check too.**
+`crate label judge` judges the pending label releases with no sweep. It
+queues one job item per pending release, `--job` drives and resumes it, and
+`--label NAME` narrows it to the followed labels named. Each release is
+judged by the sweep's own rule, `SweepGate.judge_as`, against the kind its
+label is followed as now, and a label the registry no longer holds is the
+default kind. A release the gate would not have filed is taken out of review
+and into `held_offers` in one transaction, `review.withhold`: `crate label
+held` lists it with its reason, `crate label held return RELEASE_ID` files
+it again, and no tombstone is written. A release the gate passes or cannot
+judge stays, and its item says what the gate said. An item a person has
+decided, and a release a person returned, are never touched. The decisions
+are KTD64 to KTD90 in the plan's Planning Contract.
+
+What one release costs. Nothing for a returned release, a label that is
+settled before a word is read, recorded words that pass, and a recorded
+answer that the catalogue had no word. Otherwise two provider reads and at
+most three tracks at two paced catalogue requests each. The 2,755 carry no
+record, so the first run is 5,510 provider reads at most.
+
+When it stops. One refusal from the general catalogue, three releases in a
+row unread, three provider reads in a row failed, or any refusal of the
+provider's: the run parks with the next release unread and back in pending,
+and the refusal carries the per label counts and how many were left. Nothing
+retries, waits out or goes round an answer.
+
+What the attended sitting owes, in this order, each step recorded in
+`docs/cutover.md`:
+
+1. The build in use is this one.
+2. A dated backup of the review database, since this is the first verb that
+   deletes a review item.
+3. `crate label judge --label NAME` for the three labels of sitting 25 that
+   carried the 36, then `crate label held` read. That is the rehearsal.
+4. `crate label judge` over the whole queue, driven with `--job`, and its
+   envelope read with `--output json`: the per label counts of judged, held,
+   passed and not judged are `data.progress.judging.labels`. A parked run is
+   resumed by hand, and never sooner than the catalogue's refusal warrants.
+5. The counts written into `docs/cutover.md`. That closes this entry, and
+   closes R-798 when none of the 36 is left in review.
+
+**This card did not open the live review database, the live provider or the
+live catalogue.** Every number in its tests is from a fake of each.
+
 **Found:** at sitting 26, 2026-10-01, running R-798's attended check. A
 release already in the review queue takes a place in its label's offer
 window and is skipped before the gate is asked. The sweep of sitting 23
@@ -32575,3 +32620,134 @@ most 12 rows per invocation. Or give the driver a flag that reuses a baseline
 taken by an earlier invocation on the same commit.
 
 **Not on the board bar.** Maintainer facing.
+
+## R-822. `label approved` holds an accepted release on the words its item recorded, and a record can be one track's album
+
+**Found:** on `relay/240`, 2026-10-02, by both passes of the built in review
+of R-815. A sweep stops asking at the first track whose album is the label's
+kind and records the words read so far, so a release filed as passed can
+carry one track's words. `label approved` judges an accepted release on
+recorded words and asks nobody, R-798's KTD51. When the label's kind or the
+published rules change after the release was filed, those words can now
+hold it, and the hold rests on the one track where KTD55 asks up to three.
+`label judge` asks the catalogue before it holds on such a record, KTD76.
+The two verbs read the record through one function,
+`gate.judge_recorded`, and differ in what they do with a verdict of held.
+
+**Measured cost.** None observed, and the producer was not driven at
+approval: it needs a label whose kind changed after a sweep recorded a one
+track pass. The release is named on the held line and `crate label held
+return` brings it back.
+
+**Options for the author.** Leave it. Or have `label approved` ask about a
+release its record would hold, with the rows it has already read, which
+costs catalogue requests and no provider read, and changes the tests that
+pin KTD51.
+
+**Not on the board bar.** The release is named and returnable.
+
+## R-823. A release `label judge` withheld stays held past its label's window after the label's kind changes
+
+**Found:** on `relay/240`, 2026-10-02, by the second built in review of
+R-815, which drove the first build losing the release. A sweep drops a hold
+its window does not reach once the gate would pass it, KTD57, which is right
+for a release never filed. A withheld release was in review, so its hold is
+left standing, KTD83. It then reads held under a reason the label's new
+kind made untrue, until a person returns it. This is R-812's shape with a
+third way in.
+
+**Related.** Inside the window the hold is released and the sweep files the
+release, under that sweep's run and not the one that first filed it, so it
+reads as new in a grouping by run.
+
+**Measured cost.** One held count too high per such release, on a line that
+names it, driven in `tests/test_label_judge.py`.
+
+**Options for the author.** Leave it. Or have the sweep file a withheld
+release whose hold stops holding, past the window too, which is a change to
+what a sweep files.
+
+**Not on the board bar.** Listed and named, and `return` settles it.
+
+## R-824. Nothing refuses a second judging job over releases a first one is still working through
+
+**Found:** on `relay/240`, 2026-10-02, by the first built in review of
+R-815. `crate label judge` queues a job whenever a release is pending, and
+each job has its own driver lock. Two jobs over the same releases cannot
+corrupt the queue: the move into a hold and the stamp are each one guarded
+write, and a release one job held is reported held by the other. They do
+ask the provider and the catalogue twice.
+
+**Measured cost.** Not measured. By the code, two provider reads and up to
+six catalogue requests wasted for each release both jobs reach before
+either finishes it.
+
+**Closes when:** queueing refuses, or warns, while an open judging job holds
+the same releases.
+
+**Not on the board bar.** Slower, not wrong.
+
+## R-825. A release the general catalogue had no word for is never asked about again
+
+**Found:** on `relay/240`, 2026-10-02, in planning R-815, KTD66. A release
+whose item records a miss, a match with no genre, or no ISRC stays not
+judged from that record on every later run, because asking costs two
+provider reads to hear the same thing. A catalogue that learns the release
+later is never asked.
+
+**Related.** A release answered unread is asked about again, but only by
+another run of the verb: inside one job it is done. So each resume against
+a catalogue still refusing marks one more release not judged, three on an
+outage, and reads it from the provider first.
+
+**Measured cost.** Not measured. How many of the 2,755 the catalogue does
+not know is the attended run's to count.
+
+**Options for the author.** Leave it. Or a flag that asks about every
+release not judged, whatever its record says.
+
+**Not on the board bar.** Each such release says why it was not judged.
+
+## R-826. `label held` reads what a sweep's gate asked from stamps a judge run may since have replaced
+
+**Found:** on `relay/240`, 2026-10-02, by the second built in review of
+R-815. The verb says what the newest sweep of each label could not judge by
+reading the gate's answer off the items that sweep filed. `label judge`
+writes a new stamp over a release it asks about, and such a stamp is left
+out of the sweep's asked and unread counts, KTD70. So after a judge run the
+sweep's line counts only the releases the run did not restamp: a sweep that
+asked about ten and read none, three of them restamped since, reads as
+seven asked and seven unread.
+
+**Measured cost.** A count in an advisory line lower than the sweep's own,
+by the releases a later judge run restamped. Not driven on a real queue.
+
+**Closes when:** a sweep records what its gate asked where a later stamp
+cannot replace it, on its round as `beyond` is, or the line is dropped once
+a judge run has touched the label.
+
+**Not on the board bar.** A count in an advisory line.
+
+## R-827. `label judge` was built against fakes, and its time, its calls and its ordinal floor on a shared queue are unmeasured
+
+**Found:** on `relay/240`, 2026-10-02, at the record. Every test of the verb
+runs a fake provider and a fake catalogue, in one process.
+
+- **Time and calls.** 5,510 provider reads at most for the 2,755 is
+  arithmetic from the code. What the provider gate's pacing makes of it, and
+  what the catalogue answers at that volume, were not measured.
+- **The store opened per release.** 0.35 ms an open, measured over 500 opens
+  of a database in a temporary directory and not on the library volume.
+- **The ordinal floor on a queue two builds share.** `ordinal_floor` is an
+  additive table. A build older than this one inserts items one past the
+  highest row and never reads it, so on a shared queue that build can still
+  hand out an ordinal a withheld item held. One machine holds the only
+  queue today.
+- **The mutation tables.** `r815-a` to `r815-c`, 25 rows, 25 killed, are the
+  author's, with no independent pass. Eleven more rows were written down
+  and not measured.
+
+**Closes when:** the attended run of R-815 is recorded with its time and its
+provider call count.
+
+**Not on the board bar.** It closes at an attended sitting.

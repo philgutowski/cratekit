@@ -218,6 +218,13 @@ review database's `held_offers`, not a review item and not a tombstone: it is
 never offered for a decision, never rejected, and nothing about it is
 remembered as a deletion.
 
+A release already in review can become one too (R-815). `crate label judge`
+judges the pending releases by the same rule, and one the gate would not have
+filed is **withheld**: its review item is deleted and its hold written in one
+transaction, carrying what the item carried. A release cannot be an item and a
+hold at once, because a sweep reads any item as already queued and drops a
+hold on it. An item a person has decided is never withheld.
+
 A held release takes a place in the label's offer window, so a sweep reads
 nothing past it. It is judged again on every sweep that reaches it, from the
 catalogue's words its hold recorded, so a label whose kind changes files what
@@ -430,6 +437,11 @@ reports "N declared, M listed, K withheld by the provider" rather than passing
 the short listing off as the account. Which tracks were withheld is never
 known and never guessed. A playlist's listing has the same shape and does not
 compare yet, which is R-515.
+
+Not the review store's **withhold**, which is a producer taking a candidate
+back out of a queue into a hold, see **Held release**. The provider withholds
+a track from a listing and nobody is told which. The review store withholds a
+release from review and `crate label held` names it.
 
 ### Recognition cache
 What the identification service already answered about a recording, since

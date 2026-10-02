@@ -1735,6 +1735,10 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         "label.approved": [],
         # R-798. No argument lists what the genre gate holds.
         "label.held": [],
+        # R-815. No argument judges every pending label release, and over an
+        # empty review queue that is nothing: the verb queues no job and says
+        # which zero it is, before any provider is resolved.
+        "label.judge": [],
         # U27. The four report verbs each take a collection export, and each is
         # handed a path under the CONFIGURED library that is deliberately absent,
         # for the same reason the file verbs above are: a literal here would be a

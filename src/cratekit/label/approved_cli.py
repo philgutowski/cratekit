@@ -115,7 +115,6 @@ from cratekit.label import catalogue, sweep
 from cratekit.label import cli as label_cli
 from cratekit.label import gate as genre_gate
 from cratekit.label import registry as labels
-from cratekit.tagging import searchers
 
 #: What the provenance sidecar says a listed row came from. ``intake land``
 #: reads exactly this word to find the rows it files under the labels tree.
@@ -386,16 +385,14 @@ def _judged_by_kind(
             continue
         entry = followed.by_id(release.label_id) if release.label_id else None
         kind = entry.kind if entry is not None else None
-        if release.genres is not None:
-            words = genre_gate.Words(release.genres, searchers.Answer.MATCHED.value)
-            judged = genre_gate.judge_words(declared, kind, words)
-        elif routing.kind_settled(declared, kind) is not None:
-            # NOT THIS MODULE'S ``NOT_ASKED``, which is a release the PROVIDER
-            # was not asked for. The two words are spelled alike and mean
-            # different catalogues.
-            judged = genre_gate.judge_words(
-                declared, kind, genre_gate.Words((), searchers.NOT_ASKED)
-            )
+        # WHAT THE RELEASE'S OWN RECORD SETTLES COMES FIRST, through the one
+        # reader ``label judge`` uses too. Its ``not-asked`` is the general
+        # catalogue's and NOT THIS MODULE'S ``NOT_ASKED``, which is a release
+        # the PROVIDER was not asked for. The two words are spelled alike and
+        # mean different catalogues.
+        recorded = genre_gate.judge_recorded(declared, kind, release.genres)
+        if recorded is not None:
+            judged = recorded
         elif owned(release):
             unjudged[release.item_id] = (
                 "every track of it is already in the library, so the general "
@@ -420,22 +417,13 @@ def _release_of(items: review.ReviewStore, item: review.Item) -> _Release:
     identifier is all there is. An item naming no release at all is kept, with
     an empty identifier, so it is reported as a failure rather than skipped.
     """
-    identity = review.identity_of(items, item.item_id) or {}
-    release_id = _text(identity.get("release_id")) or _text(item.payload.get("identity")) or ""
-    # RETURNED BY EITHER RECORD. The hold is the record of a return. A release
-    # the gate held at a SWEEP also carries the word on its payload, written
-    # when it was filed, and that copy is what survives a queue exported to
-    # another machine. A release returned while it was already in review has
-    # the hold alone, since a decided item's payload is never rewritten.
-    # Believing either is the safe direction: a returned release held a second
-    # time is music a person asked for and never gets.
+    # RETURNED BY EITHER RECORD, the hold or the payload's own word. See
+    # :func:`cratekit.label.gate.returned_by`.
     standing = review.find_hold(items, queue=str(Queue.LABEL_RELEASE), item_id=item.item_id)
-    returned = (
-        standing is not None and standing.state == review.HOLD_RETURNED
-    ) or item.payload.get(genre_gate.GATE_FIELD) == genre_gate.RETURNED
+    returned = genre_gate.returned_by(standing, item.payload)
     return _Release(
         item_id=item.item_id,
-        release_id=release_id,
+        release_id=genre_gate.release_id_of(items, item),
         title=_text(item.payload.get("title")) or "",
         label_id=_text(item.payload.get("label_id")),
         label_name=_text(item.payload.get("label_name")),

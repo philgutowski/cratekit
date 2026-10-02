@@ -1,0 +1,377 @@
+{
+  "name": "r815-c",
+  "pass_kind": "light",
+  "branch": "relay/240",
+  "head": "74b6cd8",
+  "when": "2026-10-02 04:29 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 11679,
+  "baseline_exit": 0,
+  "pytest_runs": 12,
+  "state_guarded": "~/Library/Application Support/cratekit (189230 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/label/judge_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/label/judge_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "5ca12b3a5737866a",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 11679,
+    "baseline_collected": 11679,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "J5_a_recorded_no_word_answer_is_not_asked_again",
+      "description": "_judged: ask about a release the catalogue already had no word for",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f554d3bbb0f4a11a",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 75,
+      "baseline_collected": 75,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_a_fresh_answer_with_no_word_takes_the_old_words_off_the_item",
+        "tests/test_label_judge.py::test_a_release_the_catalogue_already_had_no_word_for_is_not_asked_about_again[matched]",
+        "tests/test_label_judge.py::test_a_release_the_catalogue_already_had_no_word_for_is_not_asked_about_again[miss]",
+        "tests/test_label_judge.py::test_a_release_the_catalogue_already_had_no_word_for_is_not_asked_about_again[no-isrc]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if recorded is None and isinstance(said, str) and said in genre_gate.NO_WORD_ANSWERS:",
+      "new": "    if False:"
+    },
+    {
+      "id": "J6_a_decided_item_is_not_judged",
+      "description": "_judge_one: judge an item a person has decided",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a6add238f62ecdc0",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 75,
+      "baseline_collected": 75,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_an_item_decided_after_the_job_was_queued_is_untouched[accepted]",
+        "tests/test_label_judge.py::test_an_item_decided_after_the_job_was_queued_is_untouched[rejected]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if found.stored_verdict is not None:\n            return _report(",
+      "new": "        if False:\n            return _report("
+    },
+    {
+      "id": "J7_a_returned_release_is_not_judged",
+      "description": "_judge_one: judge a release a person returned",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f3c18426186d2cf2",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 75,
+      "baseline_collected": 75,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_a_returned_release_is_not_judged_again_and_nobody_is_asked"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if genre_gate.returned_by(standing, found.payload):\n            return _report(",
+      "new": "        if False:\n            return _report("
+    },
+    {
+      "id": "J8_a_refusal_parks_and_fails_no_item",
+      "description": "handle: let a refusal fail the item",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8fe0f8abb7e1959a",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 75,
+      "baseline_collected": 75,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_a_catalogue_that_refuses_stops_the_run_at_once_and_says_how_many_were_left",
+        "tests/test_label_judge.py::test_a_catalogue_unread_three_times_in_a_row_stops_the_run_and_says_how_many_were_left",
+        "tests/test_label_judge.py::test_a_refusal_from_the_provider_parks_the_run_on_that_refusal",
+        "tests/test_label_judge.py::test_a_taxonomy_that_stops_being_readable_parks_the_run_and_fails_no_release",
+        "tests/test_label_judge.py::test_three_provider_reads_failing_in_a_row_stop_the_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except CratekitError as exc:\n        raise _parked(job, exc) from exc\n    return artifacts.produced(ARTIFACTS, cfg, job, item, report)",
+      "new": "    except CratekitError:\n        raise\n    return artifacts.produced(ARTIFACTS, cfg, job, item, report)"
+    },
+    {
+      "id": "J9_a_park_drops_the_jobs_tools",
+      "description": "_parked: keep the job's tools across a park",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "116fc43940446be4",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 75,
+      "baseline_collected": 75,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_a_catalogue_that_refuses_stops_the_run_at_once_and_says_how_many_were_left",
+        "tests/test_label_judge.py::test_a_catalogue_unread_three_times_in_a_row_stops_the_run_and_says_how_many_were_left",
+        "tests/test_label_judge.py::test_three_provider_reads_failing_in_a_row_stop_the_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    _JOB_TOOLS.pop(str(job.job_id), None)\n    if isinstance(error, jobs.Parked):",
+      "new": "    if isinstance(error, jobs.Parked):"
+    },
+    {
+      "id": "J10_the_stamp_is_replaced_whole",
+      "description": "_stamp: merge the new stamp over the old payload",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9fe7f3b007938745",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 75,
+      "baseline_collected": 75,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_a_fresh_answer_with_no_word_takes_the_old_words_off_the_item"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    kept = {field: value for field, value in item.payload.items() if field not in _STAMP_FIELDS}",
+      "new": "    kept = dict(item.payload)"
+    },
+    {
+      "id": "J11_the_scope_reads_the_registry",
+      "description": "_Scope.holds: compare the identifier as text",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3221b1c21e99fc9d",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 75,
+      "baseline_collected": 75,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_a_release_filed_under_a_labels_old_identifier_is_in_a_run_scoped_to_the_label"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return entry is not None and entry.label_id in self.label_ids",
+      "new": "        return label_id in self.label_ids"
+    },
+    {
+      "id": "J12_a_release_held_and_gone_is_counted_held",
+      "description": "_left_review: report gone whatever holds the release",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "32636938a4198d30",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 75,
+      "baseline_collected": 75,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_a_release_another_job_held_while_this_one_was_asking_is_counted_held",
+        "tests/test_label_judge.py::test_a_release_held_under_an_earlier_holds_run_is_counted_held_when_it_is_redone",
+        "tests/test_label_judge.py::test_a_run_stopped_part_way_and_resumed_judges_none_twice_and_skips_none[stopped-on-a-held-release]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if standing is not None and standing.state == review.HOLD_HELD:\n        return _report(item_id, HELD, _held_already(standing), reason=standing.reason)",
+      "new": "    if False:\n        return _report(item_id, HELD, _held_already(standing), reason=standing.reason)"
+    },
+    {
+      "id": "J13_the_refusal_carries_the_counts",
+      "description": "_resume: let the refusal leave without the summary",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e668ab92011b66f8",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 7,
+      "collected": 75,
+      "baseline_collected": 75,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_a_catalogue_that_refuses_stops_the_run_at_once_and_says_how_many_were_left",
+        "tests/test_label_judge.py::test_a_catalogue_unread_three_times_in_a_row_stops_the_run_and_says_how_many_were_left",
+        "tests/test_label_judge.py::test_a_refusal_from_the_provider_parks_the_run_on_that_refusal",
+        "tests/test_label_judge.py::test_a_run_stopped_part_way_and_resumed_judges_none_twice_and_skips_none[stopped-on-a-held-release]",
+        "tests/test_label_judge.py::test_a_run_stopped_part_way_and_resumed_judges_none_twice_and_skips_none[stopped-on-a-passed-release]",
+        "tests/test_label_judge.py::test_a_taxonomy_that_stops_being_readable_parks_the_run_and_fails_no_release",
+        "tests/test_label_judge.py::test_three_provider_reads_failing_in_a_row_stop_the_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            raise _with_summary(failed, cfg, store, queued.job_id) from failed",
+      "new": "            raise"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "D1_delete_guard",
+      "description": "withhold: delete the row whatever its verdict column says",
+      "reason": "ranked below the cap: the transaction read the verdict two statements earlier and holds the write lock, so no input reaches it. Maintainer facing"
+    },
+    {
+      "id": "D2_refresh_keeps_the_run",
+      "description": "_CARRIED_ACROSS_A_REFRESH: drop the filing run and carry the withheld word",
+      "reason": "ranked below the cap: the sibling of W5, pinned by the refresh test and the sweep test"
+    },
+    {
+      "id": "D3_withhold_writes_the_word",
+      "description": "withhold: write no withheld word",
+      "reason": "ranked below the cap: S1 and W5 measure the same word at its two readers"
+    },
+    {
+      "id": "D4_a_stale_hold_is_dropped",
+      "description": "_judge_one: leave a hold in force beside a release the gate passes",
+      "reason": "ranked below the cap: a state an earlier build left, pinned by one test"
+    },
+    {
+      "id": "D5_the_hold_is_the_labels",
+      "description": "_subject: hold under the identifier the item carries",
+      "reason": "ranked below the cap: the sibling of J11, pinned by the same test"
+    },
+    {
+      "id": "D6_judged_is_held_plus_passed",
+      "description": "summary: count held alone as judged",
+      "reason": "ranked below the cap: asserted by every count in the file"
+    },
+    {
+      "id": "D7_the_verb_drives_its_own_job",
+      "description": "_resume: drive any job",
+      "reason": "ranked below the cap: the check label/cli.py makes on its own resume, pinned here by one test"
+    },
+    {
+      "id": "D8_an_item_is_judged_on_its_own_release",
+      "description": "_judged: read the release an item names whatever it addresses",
+      "reason": "ranked below the cap: an imported item with a wrong payload, pinned by one test"
+    },
+    {
+      "id": "D9_nothing_pending_queues_nothing",
+      "description": "label_judge: queue a job with no items",
+      "reason": "ranked below the cap: pinned by two tests"
+    },
+    {
+      "id": "D10_the_taxonomy_is_read_before_queueing",
+      "description": "label_judge: queue without reading the taxonomy",
+      "reason": "ranked below the cap: the worker parks on the same refusal"
+    },
+    {
+      "id": "D11_render_lines",
+      "description": "_judging_lines: print nothing",
+      "reason": "ranked below the cap: a display over the payload the other rows measure"
+    }
+  ]
+}

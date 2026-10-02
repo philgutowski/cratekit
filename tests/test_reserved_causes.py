@@ -5930,7 +5930,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # internal-error, whitelist-violation, decision-stale, config-unusable and
     # library-paths-majority-unresolved, all of which the tree already
     # carried.
-    assert (len(literals), len(literals - set(causes))) == (564, 378), (
+    # Re-pinned on the residual finding "The genre gate judges only what a
+    # sweep is about to file, so the releases already in review are never
+    # judged", 2026-10-01: 564 to 569 distinct, non-keys 378 to 383. FIVE
+    # joined and nothing left, each checked against `main`'s own `src` by git
+    # grep, and none is a key. label-judge-artifacts and label-judge-staging
+    # are the two directory names `label/judge_cli.py` keeps its item reports
+    # under. label-judge-not-judged, label-judge-catalogue-unread and
+    # label-judge-nothing-pending are WARNING codes that module gives. The
+    # refusals the new verb raises are label-unknown, job-unknown,
+    # catalogue-unreachable and unavailable-transient, all four of which the
+    # tree already carried.
+    assert (len(literals), len(literals - set(causes))) == (569, 383), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6598,7 +6609,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # integer. tagging/retag.py and tagging/retag_cli.py were holders before
     # and are unchanged in that. Measured by this pair moving by two on the
     # holders side and by nothing on the other.
-    assert (len(literal_holders), len(literal_both)) == (116, 26), (
+    # Re-pinned on the residual finding "The genre gate judges only what a
+    # sweep is about to file, so the releases already in review are never
+    # judged", 2026-10-01: holders move 116 to 117, and the
+    # also-holds-an-integer half is UNCHANGED at 26. ONE module joined and none
+    # left, and it is a new file. label/judge_cli.py, the shell and the worker
+    # of the verb that judges the queue, refuses with label-unknown,
+    # job-unknown, catalogue-unreachable and unavailable-transient and holds no
+    # integer. label/gate.py and label/catalogue.py hold no cause, and
+    # label/held_cli.py, core/review.py and cli/render.py are unchanged in
+    # whether they hold one. Measured by this pair moving by one on the holders
+    # side and by nothing on the other.
+    assert (len(literal_holders), len(literal_both)) == (117, 26), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

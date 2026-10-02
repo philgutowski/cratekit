@@ -76,6 +76,12 @@ GATE_ANSWER_FIELD = "genre_gate_answer"
 #: ``label approved`` so an accepted release is judged on the same words.
 GENRES_FIELD = "published_genres"
 
+#: The job that wrote the stamp, when it was not the sweep that filed the
+#: release (R-815). ``crate label judge`` judges a release already in review
+#: and says so here, so a reader counting what a SWEEP's gate did can leave its
+#: answers out. A release stamped by the sweep that filed it carries none.
+GATE_RUN_FIELD = "genre_gate_run"
+
 #: What :data:`GATE_FIELD` says of a release a person returned to review.
 RETURNED = "returned"
 
@@ -136,10 +142,16 @@ def _isrcs(rows: Sequence[Any]) -> tuple[str, ...]:
     return tuple(found)
 
 
-#: Which answer says the most about a release none of whose tracks gave a
-#: genre, most telling first. A track the catalogue KNOWS outranks one it does
-#: not, and either outranks a value that was never an ISRC.
-_TELLING = (Answer.MATCHED.value, Answer.MISS.value, NO_ISRC)
+#: The answers that say the general catalogue WAS ASKED AND HAD NO WORD for a
+#: release, most telling first. A track the catalogue KNOWS outranks one it
+#: does not, and either outranks a value that was never an ISRC, which is the
+#: order :func:`published_words` picks a wordless release's answer in.
+#:
+#: Public since R-815, which reads the same three off a filed release's stamp
+#: to know the catalogue has already said all it has to say about it. An
+#: answer that could not be read is not here, and neither is ``not-asked``:
+#: nobody was told anything, so asking is still owed.
+NO_WORD_ANSWERS: tuple[str, ...] = (Answer.MATCHED.value, Answer.MISS.value, NO_ISRC)
 
 
 def published_words(
@@ -193,7 +205,7 @@ def published_words(
             empty.setdefault(said.answer, said)
     if genres:
         return Words(tuple(genres), Answer.MATCHED.value)
-    for answer in _TELLING:
+    for answer in NO_WORD_ANSWERS:
         if answer in empty:
             return Words((), answer, empty[answer].note)
     said = next(iter(empty.values()))
@@ -257,6 +269,47 @@ def recorded_genres(source: Mapping[str, Any], field: str) -> tuple[str, ...] | 
     return words or None
 
 
+def release_id_of(store: review.ReviewStore, item: review.Item) -> str:
+    """The release a review item names, from its IDENTITY before its payload.
+
+    The identity is what the item is addressed by and is what the sweep keyed
+    on. An item that arrived through ``review import`` carries none, because
+    the export format does not, and then the payload's own copy of the
+    identifier is all there is. Empty for an item naming no release at all.
+    One reader, for ``label approved`` and ``label judge``.
+    """
+    identity = review.identity_of(store, item.item_id) or {}
+    for value in (identity.get("release_id"), item.payload.get("identity")):
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def hold_release_id(held: review.Hold) -> str:
+    """The release a hold names, from its identity before its payload.
+
+    A release taken back out of review from an item that arrived by import
+    carries an empty identity, and its payload's own copy is all there is.
+    """
+    return str(held.identity.get("release_id") or held.payload.get("identity") or "")
+
+
+def returned_by(standing: review.Hold | None, payload: Mapping[str, Any]) -> bool:
+    """Whether a person returned this release to review, by either record.
+
+    The hold is the record of a return. A release the gate held at a SWEEP also
+    carries the word on its payload, written when it was filed, and that copy
+    is what survives a queue exported to another machine. A release returned
+    while it was already in review has the hold alone, since a decided item's
+    payload is never rewritten. Believing either is the safe direction: a
+    returned release held a second time is music a person asked for and never
+    gets.
+    """
+    return (standing is not None and standing.state == review.HOLD_RETURNED) or (
+        payload.get(GATE_FIELD) == RETURNED
+    )
+
+
 def _of(judgment: routing.KindJudgment, words: Words | None = None) -> Judged:
     return Judged(
         verdict=judgment.verdict,
@@ -288,6 +341,33 @@ def judge_words(declared: Taxonomy, kind: str | None, words: Words) -> Judged:
     return _of(routing.kind_verdict(declared, kind, words.genres), words)
 
 
+def judge_recorded(
+    declared: Taxonomy, kind: str | None, genres: tuple[str, ...] | None
+) -> Judged | None:
+    """The verdict a filed release's own record settles, or None when it settles none.
+
+    ``genres`` is what :func:`recorded_genres` read off the release. Two
+    releases need nobody asked: one whose published words were recorded when
+    it was filed, judged on them against the label's kind as it is now, and
+    one on a label no word could change the verdict for. None means the
+    catalogue is still owed a question. One spelling, for ``label approved``
+    and ``label judge``.
+
+    WHAT A CALLER DOES WITH A VERDICT OF HELD IS THE CALLER'S. A sweep stops
+    asking at the first passing track, so a recorded pass can be one track's
+    album, and a hold drawn from it against a kind the label was given since
+    rests on that one track. ``label judge`` asks the catalogue before it
+    holds on such a record. ``label approved`` holds on it, as R-798 decided,
+    and names the release so it can be returned. The difference is recorded
+    as a residual and not hidden in this function.
+    """
+    if genres is not None:
+        return judge_words(declared, kind, Words(genres, Answer.MATCHED.value))
+    if routing.kind_settled(declared, kind) is not None:
+        return judge_words(declared, kind, Words((), NOT_ASKED))
+    return None
+
+
 class Asking:
     """The general catalogue as the gate asks it, release after release.
 
@@ -309,13 +389,22 @@ class Asking:
         self._lookup = lookup
         self._unread_in_a_row = 0
 
+    @property
+    def given_up(self) -> bool:
+        """Whether the bound was reached, so the next release would not be asked about.
+
+        For a caller that pays to ask, R-815's, which reads a release's rows
+        from the provider first: it stops before the read, not after it.
+        """
+        return self._unread_in_a_row >= UNREAD_IN_A_ROW
+
     def words(
         self,
         rows: Sequence[Any],
         *,
         enough: Callable[[tuple[str, ...]], bool] | None = None,
     ) -> Words:
-        if self._unread_in_a_row >= UNREAD_IN_A_ROW:
+        if self.given_up:
             return Words(
                 (),
                 NOT_ASKED,
@@ -407,7 +496,17 @@ class SweepGate:
         return self._standing.in_force(label_id) if self._standing is not None else ()
 
     def judge(self, entry: registry.LabelEntry, release_id: str) -> Judged:
-        """Judge one release the sweep is about to file.
+        """Judge one release the sweep is about to file, by its label's kind."""
+        return self.judge_as(entry.kind, release_id)
+
+    def judge_as(self, label_kind: str | None, release_id: str) -> Judged:
+        """Judge one release against the kind its label is followed as.
+
+        ``label_kind`` is the registry entry's, or None for the default. Apart
+        from :meth:`judge` because a release ALREADY IN REVIEW can be on a
+        label the registry no longer holds, which has no entry to hand over
+        and is judged as the default kind (R-815). One body, so the sweep and
+        the verb that judges the queue cannot come to ask differently.
 
         NOTHING IS READ WHEN THE WORDS COULD NOT CHANGE THE VERDICT: a label
         followed for any kind, a taxonomy with no rule for this vocabulary, and
@@ -422,10 +521,10 @@ class SweepGate:
         A RELEASE THAT WOULD BE HELD IS ASKED ABOUT AGAIN, by its next tracks,
         before it is. See :data:`TRACKS_ASKED`.
         """
-        settled = routing.kind_settled(self.declared, entry.kind)
+        settled = routing.kind_settled(self.declared, label_kind)
         if settled is not None:
             return _of(settled)
-        kind = routing.label_kind(self.declared, entry.kind)
+        kind = routing.label_kind(self.declared, label_kind)
 
         def unjudged(why: str) -> Judged:
             return Judged(KindVerdict.NOT_JUDGED, kind, (), why)
@@ -442,7 +541,7 @@ class SweepGate:
             return unjudged(
                 f"its tracks could not be read from the provider ({type(exc).__name__}: {exc})"
             )
-        return judge_rows(self.declared, entry.kind, rows, self._asking)
+        return judge_rows(self.declared, label_kind, rows, self._asking)
 
     def rejudge(self, entry: registry.LabelEntry, held: review.Hold) -> Judged:
         """Judge a standing hold again, from the words it recorded. No request.
@@ -471,7 +570,9 @@ __all__ = [
     "GATE_ANSWER_FIELD",
     "GATE_FIELD",
     "GATE_NOTE_FIELD",
+    "GATE_RUN_FIELD",
     "GENRES_FIELD",
+    "NO_WORD_ANSWERS",
     "RELEASE_KIND",
     "RETURNED",
     "TRACKS_ASKED",
@@ -481,11 +582,15 @@ __all__ = [
     "StandingHolds",
     "SweepGate",
     "TrackReader",
+    "hold_release_id",
     "Words",
+    "judge_recorded",
     "judge_rows",
     "judge_words",
     "published_words",
     "recorded_genres",
+    "release_id_of",
     "release_item_id",
+    "returned_by",
     "returned_stamp",
 ]

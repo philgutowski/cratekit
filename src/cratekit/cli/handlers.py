@@ -97,6 +97,9 @@ HANDLERS: Mapping[str, str] = {
     # queue and in nothing about how one is swept, and the worker takes its label
     # from the item either way.
     "label.import": "cratekit.label.cli:handle",
+    # ONE RELEASE ALREADY IN REVIEW PER ITEM, and a worker of its own: it reads
+    # the review queue where the pair around it list a catalogue (R-815).
+    "label.judge": "cratekit.label.judge_cli:handle",
     "master": "cratekit.master.cli:handle",
     # ONE ENGINE UNDER TWO KEYS, and unlike the pairs above these two are not one
     # worker: they are two workers over one engine, in two modules that cannot
