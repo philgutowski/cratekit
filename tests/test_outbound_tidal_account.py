@@ -113,6 +113,11 @@ class Playlist:
         self.edits: list[tuple[str | None, str | None]] = []
         self.edit_fail: list[Exception] = []
         self.edit_answer = True
+        # ``None`` until the client is asked, so a test can tell a playlist
+        # made private from one whose visibility nobody touched.
+        self.public: bool | None = None
+        self.privates = 0
+        self.private_fail: list[Exception] = []
 
     def tracks(self, limit: int | None = None, offset: int = 0) -> list[Track]:
         size = 100 if limit is None else limit
@@ -134,6 +139,14 @@ class Playlist:
             return False
         if title:
             self.name = title
+        return True
+
+    def set_playlist_private(self) -> bool:
+        """The client's own shape: a raise on refusal, else the response's ``ok``."""
+        self.privates += 1
+        if self.private_fail:
+            raise self.private_fail.pop(0)
+        self.public = False
         return True
 
 
@@ -180,6 +193,8 @@ class User:
         self.favorites = Favorites(hearts)
         self.created: list[str] = []
         self.create_fail: Exception | None = None
+        #: Refusals the next created playlist's private step raises, in order.
+        self.private_fail: list[Exception] = []
 
     def create_playlist(self, title: str, description: str) -> Playlist:
         del description
@@ -187,6 +202,10 @@ class User:
         if self.create_fail is not None:
             raise self.create_fail
         playlist = Playlist(f"00000000-0000-4000-8000-{len(self.created):012d}")
+        # The queued refusals belong to this playlist alone, so a test that
+        # creates two cannot have the first one's leftovers reach the second.
+        playlist.private_fail = self.private_fail[:]
+        self.private_fail.clear()
         self._client.playlists[playlist.id] = playlist
         return playlist
 
@@ -743,6 +762,58 @@ def test_a_created_playlist_returns_the_identifier_the_provider_assigned():
     assert remote.playlist_tracks(created) == ()
 
 
+# ── visibility, R-834 ───────────────────────────────────────────────────────
+
+
+def test_a_created_playlist_is_made_private_once():
+    client = FakeClient()
+
+    created = adapter(client).create_playlist("Crate")
+
+    playlist = client.playlists[created]
+    assert playlist.public is False
+    assert playlist.privates == 1
+
+
+def test_a_private_step_refused_once_is_retried_once_and_lands():
+    client = FakeClient()
+    client.user.private_fail.append(TimeoutError("timed out"))
+
+    created = adapter(client).create_playlist("Crate")
+
+    playlist = client.playlists[created]
+    assert playlist.privates == 2
+    assert playlist.public is False
+    assert client.user.created == ["Crate"]
+
+
+def test_a_private_step_refused_twice_still_hands_back_the_one_playlist():
+    """Raising here would leave the playlist unrecorded and the next item would
+    create another; the refusal costs the visibility instead (R-849)."""
+    client = FakeClient()
+    client.user.private_fail.extend([TimeoutError("one"), TimeoutError("two")])
+    remote = adapter(client)
+
+    created = remote.create_playlist("Crate")
+
+    assert created == "00000000-0000-4000-8000-000000000001"
+    assert client.user.created == ["Crate"]
+    assert client.playlists[created].privates == 2
+    assert client.playlists[created].public is None
+    assert remote.playlist_tracks(created) == ()
+
+
+def test_a_created_playlist_the_client_offers_no_private_call_for_is_still_returned():
+    client = FakeClient()
+
+    class Bare:
+        id = "00000000-0000-4000-8000-0000000000aa"
+
+    client.user.create_playlist = lambda title, description: Bare()
+
+    assert adapter(client).create_playlist("Crate") == Bare.id
+
+
 # ── the retitle, R-358 ──────────────────────────────────────────────────────
 
 
@@ -1100,6 +1171,9 @@ def test_a_playlist_export_runs_to_done_and_the_ledger_records_every_add(
     assert code == int(ExitCode.OK), resumed
     assert client.user.created == [outbound_fakes.CRATE]
     (playlist,) = client.playlists.values()
+    # Items two and three find the first item's record, so neither creates and
+    # neither touches the visibility the first one set (R-834).
+    assert playlist.privates == 1 and playlist.public is False
     assert playlist.members == ["701", "702", "703"]
     assert playlist.adds == [["701"], ["702"], ["703"]]
     assert ledger.playlist_remote_id(installed, outbound_fakes.CRATE) == playlist.id
@@ -1108,6 +1182,34 @@ def test_a_playlist_export_runs_to_done_and_the_ledger_records_every_add(
     )
     reports = artifacts.committed(installed, job_id)
     assert [report["remote_id"] for report in reports] == [playlist.id] * 3
+
+
+def test_a_second_export_finds_its_playlist_and_neither_creates_nor_sets_visibility(
+    installed, monkeypatch
+):
+    """The check before write is the ledger's, and the private step is part of
+    the create behind it, so a run that finds the playlist recorded never asks."""
+    exported = outbound_fakes.write_export(installed.library.root / "outbound")
+    client = use_client(
+        monkeypatch,
+        FakeClient(isrcs={isrc_for(str(row)): [str(700 + row)] for row in (1, 2, 3)}),
+    )
+    record_session()
+    give_rows_an_isrc(monkeypatch)
+    _run, first = approve_and_queue(export_verb(exported), "export.playlist.confirm")
+    assert _resume(first)[0] == int(ExitCode.OK)
+    (playlist,) = client.playlists.values()
+    # Somebody made it public at the provider since; that is theirs to keep.
+    playlist.public = True
+    account.forget()
+
+    _run, second = approve_and_queue(export_verb(exported), "export.playlist.confirm")
+    code, resumed = _resume(second)
+
+    assert code == int(ExitCode.OK), resumed
+    assert client.user.created == [outbound_fakes.CRATE]
+    assert list(client.playlists) == [playlist.id]
+    assert playlist.privates == 1 and playlist.public is True
 
 
 def test_a_provider_failure_on_one_heart_fails_that_item_and_no_other(
@@ -1409,6 +1511,16 @@ def test_the_adapter_names_no_remove_on_the_client():
         }
     )
     assert named == [], named
+
+
+def test_the_client_library_still_offers_the_private_call_a_create_relies_on():
+    """``_make_private`` passes over a client with no such call rather than
+    orphan the playlist, so a rename upstream would turn R-834 off with a green
+    suite. This is the guard that turns it red instead."""
+    import tidalapi.playlist
+
+    assert callable(getattr(tidalapi.playlist.UserPlaylist, "set_playlist_private", None))
+    assert "set_playlist_private" in ADAPTER_SOURCE.read_text(encoding="utf-8")
 
 
 def test_the_adapter_satisfies_the_protocol_it_is_handed_out_as():

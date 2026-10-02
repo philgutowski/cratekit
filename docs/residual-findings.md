@@ -33043,6 +33043,21 @@ read back from the account at an attended sitting.
 
 **On the board bar, (b).** The author asked for it on 2026-10-02.
 
+**Built 2026-10-02 on `relay/242`, and still open on the live read back.**
+The vendored client, `tidalapi` 0.8.11, takes no visibility on
+`User.create_playlist`, which sends a name, a description and a folder and
+nothing else. It does offer `UserPlaylist.set_playlist_private`, a PUT to the
+playlist's `set-private` address followed by a read of it, and that is the call
+the source system makes after every create. `TidalAccount.create_playlist`
+now makes it on the object the create returned, retried once like any write,
+since it names the playlist and asks for one fixed state. The create itself
+is still never retried. A resumed item that finds its playlist recorded never
+reaches the create, so it never touches visibility, and a playlist the
+product did not create is never asked. A guard pins the call on the client
+library. A private step still refused after its retry is passed over, not
+raised, which is R-849. Closes once one created playlist reads private on the
+account at an attended sitting, recorded in `docs/cutover.md`.
+
 ---
 
 ## R-835. A followed label cannot become a folder of year playlists on the streaming account
@@ -33403,3 +33418,42 @@ written the way the two beside it were.
 three verbs call it.
 
 **Not on the board bar.** Maintainer facing.
+
+---
+
+## R-849. A created playlist whose private step the provider refuses stays public and the export reports it clean
+
+**Found:** 2026-10-02, building R-834 on `relay/242`. `TidalAccount.create_playlist`
+creates the playlist and then asks the client to make it private, and the
+second call can fail after the first succeeded. The private step is retried
+once and a refusal after that is passed over, a park from the provider gate
+included. Raising instead would keep the playlist's identifier out of the
+ledger, because `ledger.reserve_playlist` records what the create returns,
+and under the per item shape the next item would create another, the orphan
+shape driven on 2026-09-02 as three playlists from one three track export.
+The built in review raised the cost from two more sides: the step runs inside
+the ledger's lock, so the window in which a kill leaves an unrecorded
+playlist is now the create plus up to two private calls and a backoff, and
+nothing retries the step later, since a resume finds the record and never
+reaches the create.
+
+**Measured cost.** On that refusal path, one playlist left at whatever
+visibility the provider gives a new one, which is what every playlist had
+before R-834, under an export that reports success. The producer, a provider
+that accepts a create and refuses `set-private` twice, was not driven: the
+suite drives the adapter against a fake, and the live account is not the
+session's to drive. Reachability is unmeasured.
+
+**Closes when:** the person chooses one of three, each with a test. Visibility
+as its own recorded step after the reserve in `export.apply`, a ledger mark
+that a resume retries when it is missing, which the R-834 brief ruled out as
+a new kind of write and which is the author's to rule back in. Or a create
+that carries the visibility itself, which the vendored client does not offer
+and would have to be read off the provider before anything is written. Or
+the refusal surfaced on the export's report, which needs a channel the
+protocol does not have.
+
+**Not on the board bar.** Reachability is unmeasured, the cost is the state
+before R-834 rather than a new one, and the product makes no claim about
+visibility to the person. Revisit if R-835 or R-837 lands, since both would
+create many playlists through this member.

@@ -60,7 +60,7 @@ import tidalapi  # noqa: F401
 from cratekit.acquire import listing, match, provider_session
 from cratekit.acquire.adapter import TrackOutcome, classify_unavailable
 from cratekit.core import provider_gate
-from cratekit.core.cause import Scope, refuse
+from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.modules.outbound import account
 
 #: How many times a write or a single lookup is retried after its first attempt.
@@ -442,6 +442,18 @@ class TidalAccount:
         return self._members[playlist_id]
 
     def create_playlist(self, name: str) -> str:
+        """Create one playlist on the account, private, and return its identifier.
+
+        PRIVATE BECAUSE THE SOURCE SYSTEM MAKES EVERY PLAYLIST IT CREATES
+        PRIVATE (R-834). The client takes no visibility on the create itself, so
+        it is set on the object the create returned, through the client's own
+        ``set_playlist_private``. A playlist this account did not create is never
+        asked: the ledger's check before write means a resumed item that finds
+        its playlist recorded never reaches this member at all.
+
+        THE IDENTIFIER IS RETURNED EVEN WHEN THE PRIVATE STEP IS REFUSED, see
+        :meth:`_make_private`.
+        """
         created = self._call(
             f"create the playlist {name!r}",
             lambda: self._session.user.create_playlist(name, ""),
@@ -453,8 +465,48 @@ class TidalAccount:
                 LookupError("the provider assigned the new playlist no identifier"),
                 f"create the playlist {name!r}",
             )
+        self._make_private(created, identifier)
         self._members[identifier] = []
         return identifier
+
+    def _make_private(self, created: Any, identifier: str) -> None:
+        """Set a playlist this account just created private.
+
+        RETRIED LIKE A WRITE, NOT LIKE A CREATE, on ``rename_playlist``'s
+        argument: the call names the playlist it changes and asks for one fixed
+        state, so a retry asks for what the first attempt asked for.
+
+        A REFUSAL IS NOT RAISED, AND THAT IS THE WHOLE POINT OF ITS SHAPE. The
+        playlist already exists by the time this runs. Raising would keep its
+        identifier out of the ledger, and the next item of the same export would
+        read no record and create another, one public playlist per track: the
+        orphan shape ``ledger.reserve_playlist`` was rebuilt to end, driven on
+        2026-09-02 as three playlists from one three track export. So the one
+        playlist is recorded and the refusal costs its visibility instead, which
+        is R-849.
+
+        THAT INCLUDES A PARK FROM THE PROVIDER GATE, deliberately. A park raised
+        here would leave the same unrecorded playlist, and swallowing it does
+        not let the run go on: a cooldown is written to the shared gate file,
+        so the next gated call refuses at once, and a held lock is waited on
+        again by the next call.
+
+        IT RUNS INSIDE THE LEDGER'S LOCK, since the reserve resolves the create
+        under it, so the window in which a kill leaves an unrecorded playlist is
+        now the create plus this step rather than the create alone. R-849
+        records that too.
+
+        A client with no such call fails the step like any refusal and is
+        passed over for the same reason; a guard in the suite pins the call on
+        the client library, so an upgrade that renames it fails there instead.
+        """
+        try:
+            self._call(
+                f"make the playlist {identifier} private",
+                lambda: created.set_playlist_private(),
+            )
+        except CratekitError:
+            return
 
     def add_to_playlist(self, playlist_id: str, remote_id: str) -> None:
         identifier = str(remote_id)

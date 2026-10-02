@@ -52,7 +52,13 @@ class RemoteAccount(Protocol):
         """Whether the account already hearts this remote track."""
 
     def create_playlist(self, name: str) -> str:
-        """Create one remote playlist and return its stable remote identifier."""
+        """Create one remote playlist, private, and return its stable remote identifier.
+
+        Private because the source system makes every playlist it creates
+        private (R-834). The identifier is returned even when the provider
+        refuses the private step after the create, because a create that raised
+        would go unrecorded and the next item would make a second playlist.
+        """
 
     def add_to_playlist(self, playlist_id: str, remote_id: str) -> None:
         """Add one remote track to a playlist. Idempotent if already a member."""

@@ -4,6 +4,28 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**R-834 built, 2026-10-02, on `relay/242`, issue #242. The live read back
+is owed.** A playlist `TidalAccount.create_playlist` makes is set private
+through the client's own `UserPlaylist.set_playlist_private` on the object
+the create returned, since `tidalapi` 0.8.11 takes no visibility on the
+create. Retried once like a write; the create itself is still never retried.
+A resumed item that finds its playlist in the ledger never reaches the
+create, so visibility is never touched on one already made. A refusal that
+outlasts the retry is passed over and not raised, so the playlist is still
+recorded and the next item cannot make a second one; that path leaves it
+public and is R-849, not on the board bar, with three ways to close it for
+the author to choose. Battery on the branch: ruff clean, 12,207 passed and 1
+skipped, the scan clean. Six mutation rows, five killed, one zero whose
+guard was dead code and was removed, the author's and not independent. One
+pass of the built in review, ten findings: two applied in code, the pinned
+client call and the fake's leaking refusals; three recorded as R-849's
+options; the gate park and the lock window documented in the adapter and
+folded into R-849; one declined, since the client raises rather than
+answering false; two covered by the record. **Owed, attended, then R-834 closes:** read back one
+created playlist's visibility at the provider and record it in
+`docs/cutover.md`. Main's highest residual number was R-848 at branch time;
+this unit files R-849.
+
 **R-840 built, 2026-10-02, on `relay/244`, issue #244. The live run is owed.**
 `crate label artists` gives an open `label-release` item whose artist reads
 as a provider object address the artist's name. It reads the release again
