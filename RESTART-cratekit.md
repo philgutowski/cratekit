@@ -4,8 +4,22 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**Sitting 30, 2026-10-02, no code, the three cards of feeder cycle 39 proven
+live.** R-788: `adopt apply` rehearsed on a copy and live on an equal digest
+`70e700cf69b129ca`, 33 vocal memberships added, `R&B / with vox` made and
+read in rekordbox at 27; closed, the six left are R-846. R-840: `crate label
+artists` named 29 open releases, none of the store's 2,618 items or 339
+holds reads an address; R-840, R-389 and R-847 closed, #213 done, R-847's
+issue not created because its cost measured zero and cannot recur. R-834:
+`export playlist` made Dancefloor Rescue on the account and it reads
+private at the provider and in the web player; closed. Four of its eight
+tracks did not match and the verb said only ok: **R-850, on the board
+bar, with an issue.** Guided label sync was brainstormed with the author,
+`docs/ideation/2026-10-02-guided-label-sync.md`, cut into U107 to U109,
+issues #246 to #248. Main's highest residual number is R-850.
+
 **R-834 built, 2026-10-02, on `relay/242`, issue #242. The live read back
-is owed.** A playlist `TidalAccount.create_playlist` makes is set private
+is owed, and was done at sitting 30.** A playlist `TidalAccount.create_playlist` makes is set private
 through the client's own `UserPlaylist.set_playlist_private` on the object
 the create returned, since `tidalapi` 0.8.11 takes no visibility on the
 create. Retried once like a write; the create itself is still never retried.
