@@ -370,6 +370,7 @@ def _shown(payload: dict[str, Any], *, xml: Path) -> dict[str, Any]:
         "intake file": str(xml),
         "renamed on the account": [
             f"{item['name']} -> {item['to']}"
+            + (f" (sync unmark put this title back {item['put_back']})" if "put_back" in item else "")
             for item in payload["items"]
             if item["action"] == MARK
         ],
@@ -385,7 +386,11 @@ def _shown(payload: dict[str, Any], *, xml: Path) -> dict[str, Any]:
 
 
 def _failed_part_way(
-    exc: Exception, landed: list[str], names: dict[str, str], planned: list[str]
+    exc: Exception,
+    landed: list[str],
+    names: dict[str, str],
+    planned: list[str],
+    unrecorded: CratekitError | None = None,
 ) -> CratekitError:
     """The failure, with what was already marked named in it.
 
@@ -393,6 +398,10 @@ def _failed_part_way(
     turns its provider's failures into causes itself, so anything else arriving
     here is this build's own defect, and calling that a provider outage would
     send a person to retry against a bug.
+
+    ``unrecorded`` is the mark record's own refusal when it could not take what
+    landed. It is SAID beside the account's failure and never replaces it, so
+    the reason, the remedy and what is still unmarked all survive.
     """
     marked = [names.get(identity, identity) for identity in landed]
     said = (
@@ -401,9 +410,15 @@ def _failed_part_way(
         if marked
         else "no playlist was marked before this failed"
     )
+    if unrecorded is not None:
+        said += (
+            f". The record crate sync unmark reads could not take them "
+            f"({unrecorded.cause.message})"
+        )
     detail = {
         "marked": list(landed),
         "unmarked": [identity for identity in planned if identity not in landed],
+        "unrecorded": unrecorded is not None,
     }
     again = "run crate sync mark again; a marked playlist is skipped by its name"
     if isinstance(exc, CratekitError):
@@ -429,12 +444,15 @@ def _failed_part_way(
     )
 
 
-def _remember(cfg: config.Config, name: str, landed: list[str], names: dict[str, str]) -> None:
+def _remember(
+    cfg: config.Config, name: str, landed: list[str], names: dict[str, str]
+) -> CratekitError | None:
     """Record every rename that landed, under the pass, for ``sync unmark`` (R-838).
 
     ON THE FAILURE PATH TOO, since what landed before a refusal is on the
-    account and is exactly what a person may want put back. A record that
-    cannot be written refuses NAMING what was renamed, because those renames
+    account and is exactly what a person may want put back. RETURNS the refusal
+    rather than raising it, so a caller already holding the account's failure
+    can say both. The refusal names what was renamed, because those renames
     stand whether or not the record took them.
     """
     try:
@@ -445,19 +463,22 @@ def _remember(cfg: config.Config, name: str, landed: list[str], names: dict[str,
                 for identity in landed
             },
         )
-    except CratekitError as exc:
-        cause = exc.cause
+    except (CratekitError, OSError) as exc:
+        message = exc.cause.message if isinstance(exc, CratekitError) else str(exc)
         renamed = ", ".join(names.get(identity, identity) for identity in landed)
-        raise refuse(
-            cause.reason,
+        failure = refuse(
+            "sync-mark-record-unusable",
             f"{len(landed)} playlist(s) were renamed and stay renamed, {renamed}, and "
-            f"the record crate sync unmark reads could not take them. {cause.message}",
-            steps=cause.remediation.steps,
-            scope=cause.scope,
+            f"the record crate sync unmark reads could not take them ({message})",
+            steps=("repair the mark record; sync unmark cannot put these back until then",),
+            scope=Scope.RUN,
             origin=_ORIGIN,
-            detail={**dict(cause.detail), "marked": list(landed)},
-            inner=cause,
-        ) from exc
+            detail={"marked": list(landed)},
+            inner=exc.cause if isinstance(exc, CratekitError) else None,
+        )
+        failure.__cause__ = exc
+        return failure
+    return None
 
 
 def sync_mark(ctx) -> Envelope:
@@ -495,7 +516,19 @@ def sync_mark(ctx) -> Envelope:
         decided = _decided(store, sweep, found)
     _settle(decided, named, cfg)
 
+    # THE RECORD BEFORE THE GATE (R-838). One that cannot be read or locked
+    # refuses now, while nothing is on the account, and not after renames it
+    # then could not take. A playlist this pass marked and ``sync unmark`` put
+    # back is planned again like any other, and the screen says so.
+    put_back = {
+        entry.playlist_id: entry.unmarked
+        for entry in mark_record.MarkRecord(cfg).ready()
+        if entry.pass_name == name and entry.unmarked
+    }
     payload = _payload(decided, xml=xml, seen=seen)
+    for item in payload["items"]:
+        if item["action"] == MARK and item["id"] in put_back:
+            item["put_back"] = put_back[item["id"]]
     option = ctx.gate.require(
         ctx.entry.gates[0], digest=payload["digest"], context=_shown(payload, xml=xml)
     )
@@ -517,9 +550,11 @@ def sync_mark(ctx) -> Envelope:
             only=frozenset(planned),
         )
     except Exception as exc:
-        _remember(cfg, name, landed, sweep.names())
-        raise _failed_part_way(exc, landed, sweep.names(), planned) from exc
-    _remember(cfg, name, landed, sweep.names())
+        unrecorded = _remember(cfg, name, landed, sweep.names())
+        raise _failed_part_way(exc, landed, sweep.names(), planned, unrecorded) from exc
+    unrecorded = _remember(cfg, name, landed, sweep.names())
+    if unrecorded is not None:
+        raise unrecorded
 
     items: list[dict[str, Any]] = []
     warnings: list[dict[str, str]] = []

@@ -164,13 +164,22 @@ class MarkRecord:
             self.path,
         )
 
+    def ready(self) -> tuple[Marked, ...]:
+        """Every entry, read UNDER THE LOCK, or the refusal a write would raise.
+
+        Asked before a gate that leads to a rename, so a record that cannot be
+        read or locked refuses while nothing is on the account yet, rather than
+        after a rename it then cannot take.
+        """
+        with self._locked():
+            return tuple(self._load())
+
+    def all(self) -> tuple[Marked, ...]:
+        return tuple(self._load())
+
     def of_pass(self, pass_name: str) -> tuple[Marked, ...]:
         """Every playlist ``pass_name`` marked, in the order the marks landed."""
         return tuple(entry for entry in self._load() if entry.pass_name == pass_name)
-
-    def passes(self) -> tuple[str, ...]:
-        """Every pass the record holds a mark for, each once, oldest first."""
-        return tuple(dict.fromkeys(entry.pass_name for entry in self._load()))
 
     def record_marked(
         self, pass_name: str, renamed: Mapping[str, tuple[str, str]], *, now: str | None = None

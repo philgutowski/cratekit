@@ -12,7 +12,6 @@ what the account would list after it.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
@@ -226,13 +225,17 @@ def test_a_pass_the_record_holds_nothing_for_is_a_gated_plan_of_nothing(slim, mo
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_the_intake_file_names_the_pass_retired_or_not(slim, monkeypatch):
+@pytest.mark.parametrize(
+    "tail", ["", land_cli.RETIRED_SUFFIX, f"{land_cli.RETIRED_SUFFIX}-2"]
+)
+def test_the_intake_file_names_the_pass_retired_or_not(slim, monkeypatch, tail):
+    """The file need not be there: the name is all that is read."""
     _fake, account, name, xml = _marked(slim, monkeypatch)
-    retired = xml.with_name(f"{name}{land_cli.INTAKE_SUFFIX}")
-    code, done = _answered(str(retired))
+    given = xml.with_name(f"{name}{land_cli.INTAKE_SUFFIX}{tail}")
+    xml.unlink()
+    code, done = _answered(str(given))
     assert code == int(ExitCode.OK), done
     assert len(account.renamed) == 3
-    assert Path(xml).name == f"{name}{land_cli.INTAKE_SUFFIX}"
 
 
 def test_playlist_narrows_to_the_marks_named(slim, monkeypatch):
@@ -343,3 +346,115 @@ def test_an_unreadable_record_refuses_rather_than_reading_as_empty(slim, monkeyp
     code, refused = _unmark("any-pass_synced")
     assert code == int(ExitCode.PRECONDITION), refused
     assert refused["cause"]["reason"] == "sync-mark-record-unusable"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 5. The review's findings, driven
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_title_already_put_back_is_skipped_without_a_stamp(slim, monkeypatch):
+    """An unmark whose stamp did not land, or a person who typed the old title
+    back: either way the title is what this verb would write."""
+    fake, account, name, _xml = _marked(slim, monkeypatch)
+    fake.account = [_playlist("pl-a", "Warmup"), *fake.account[1:]]
+    code, done = _answered(name)
+    assert code == int(ExitCode.OK), done
+    assert account.renamed == [("pl-b", "Peak"), ("pl-c", "Closing")]
+    skipped = _by_id(done)["pl-a"]
+    assert (skipped["action"], skipped["reason"]) == ("skip", "already-unmarked")
+
+
+def test_a_later_mark_by_another_pass_owns_the_prefix(slim, monkeypatch):
+    _fake, account, name, _xml = _marked(slim, monkeypatch)
+    mark_record.MarkRecord(slim).record_marked(
+        "later_synced", {"pl-a": ("Warmup", "DOWNLOADED Warmup")}
+    )
+    code, done = _answered(name)
+    assert code == int(ExitCode.OK), done
+    assert ("pl-a", "Warmup") not in account.renamed
+    skipped = _by_id(done)["pl-a"]
+    assert (skipped["action"], skipped["reason"]) == ("skip", "marked-again")
+    assert "later_synced" in skipped["why"]
+
+    code, theirs = _answered("later_synced")
+    assert code == int(ExitCode.OK), theirs
+    assert account.renamed[-1] == ("pl-a", "Warmup")
+
+
+def test_an_unlockable_record_refuses_the_unmark_before_any_rename(slim, monkeypatch):
+    _fake, account, name, _xml = _marked(slim, monkeypatch)
+    code, refused = _unmark(name)
+    run_id = refused["run_id"]
+    code, _ = drive(["run", "decide", run_id, CONFIRM, "apply", "--actor", "a-person"])
+    assert code == int(ExitCode.OK)
+
+    def unlockable(self):
+        raise self._unusable("it could not be locked")
+
+    monkeypatch.setattr(mark_record.MarkRecord, "ready", unlockable)
+    code, failed = drive(["--run", run_id, "sync", "unmark", "--pass", name])
+    assert code == int(ExitCode.PRECONDITION), failed
+    assert failed["cause"]["reason"] == "sync-mark-record-unusable"
+    assert account.renamed == []
+
+
+def test_an_unreadable_record_refuses_the_mark_before_its_gate(slim, monkeypatch):
+    _fake, name = _swept_pass(monkeypatch, *THREE)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    xml = _land(slim, name, "101", "102", "201", "301")
+    record = mark_record.MarkRecord(slim)
+    record.path.parent.mkdir(parents=True, exist_ok=True)
+    record.path.write_text("not json", encoding="utf-8")
+    code, refused = drive(["sync", "mark", "--xml", str(xml)])
+    assert code == int(ExitCode.PRECONDITION), refused
+    assert refused["cause"]["reason"] == "sync-mark-record-unusable"
+    assert account.renamed == []
+
+
+def test_a_record_that_fails_after_a_failed_mark_keeps_the_accounts_failure(slim, monkeypatch):
+    _fake, name = _swept_pass(monkeypatch, *THREE)
+    account = outbound_fakes.FakeAccount(fail_on={"pl-b"})
+    bind_account(monkeypatch, account)
+    xml = _land(slim, name, "101", "102", "201", "301")
+
+    def full(self, *args, **kwargs):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(mark_record.MarkRecord, "record_marked", full)
+    code, failed = _mark_answered(xml)
+    assert code == int(ExitCode.INTERNAL), failed
+    assert failed["cause"]["reason"] == "internal-error"
+    detail = failed["cause"]["detail"]
+    assert detail["marked"] == ["pl-a"] and detail["unmarked"] == ["pl-b", "pl-c"]
+    assert detail["unrecorded"] is True
+    assert "could not take them" in failed["cause"]["message"]
+
+
+def test_a_record_that_fails_after_a_whole_mark_names_what_was_renamed(slim, monkeypatch):
+    _fake, name = _swept_pass(monkeypatch, *THREE)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    xml = _land(slim, name, "101", "102", "201", "301")
+
+    def full(self, *args, **kwargs):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(mark_record.MarkRecord, "record_marked", full)
+    code, failed = _mark_answered(xml)
+    assert code == int(ExitCode.PRECONDITION), failed
+    assert failed["cause"]["reason"] == "sync-mark-record-unusable"
+    assert failed["cause"]["detail"]["marked"] == ["pl-a", "pl-b", "pl-c"]
+    assert len(account.renamed) == 3
+
+
+def test_the_mark_screen_says_a_playlist_was_put_back(slim, monkeypatch):
+    fake, _account, name, xml = _marked(slim, monkeypatch)
+    code, done = _answered(name, "--playlist", "pl-a")
+    assert code == int(ExitCode.OK), done
+    fake.account = [_playlist("pl-a", "Warmup"), *fake.account[1:]]
+    code, refused = drive(["sync", "mark", "--xml", str(xml)])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    said = [line for line in json.dumps(refused).split('"') if "sync unmark put" in line]
+    assert len(said) == 1 and said[0].startswith("Warmup -> DOWNLOADED Warmup"), said

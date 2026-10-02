@@ -56,6 +56,9 @@ SKIP = mark_cli.SKIP
 ALREADY_UNMARKED = "already-unmarked"
 NOT_LISTED = mark_cli.NOT_LISTED
 RENAMED_SINCE = "renamed-since-mark"
+#: Another pass marked the playlist after this one did, so the prefix it
+#: carries now is that pass's, and only that pass's unmark takes it off.
+MARKED_AGAIN = "marked-again"
 #: Why a planned playlist was not renamed after all: the recheck.
 CHANGED_SINCE = mark_cli.CHANGED_SINCE
 
@@ -134,11 +137,31 @@ def _narrowed(
     return tuple(entry for entry in found if entry.playlist_id in set(named))
 
 
-def _item(entry: mark_record.Marked, listed: dict[str, str] | None) -> dict[str, Any]:
+def _later(entry: mark_record.Marked, every: tuple[mark_record.Marked, ...]) -> str:
+    """The pass that marked the same playlist after ``entry``'s did, or ``""``.
+
+    Timestamps are the record's own, written in one zone by one clock, so they
+    order as text.
+    """
+    later = [
+        other.pass_name
+        for other in every
+        if other.playlist_id == entry.playlist_id
+        and other.pass_name != entry.pass_name
+        and other.marked > entry.marked
+    ]
+    return later[-1] if later else ""
+
+
+def _item(
+    entry: mark_record.Marked,
+    listed: dict[str, str] | None,
+    every: tuple[mark_record.Marked, ...],
+) -> dict[str, Any]:
     """One playlist the pass marked, decided against the account's titles now.
 
     ``listed`` is ``None`` when nothing asked for a listing, which is only ever
-    a pass whose every mark has already been put back.
+    a pass whose every mark has already been put back or superseded.
     """
     current = None if listed is None else listed.get(entry.playlist_id)
     base: dict[str, Any] = {
@@ -154,12 +177,32 @@ def _item(entry: mark_record.Marked, listed: dict[str, str] | None) -> dict[str,
             "reason": ALREADY_UNMARKED,
             "why": f"an unmark already put its title back, {entry.unmarked}",
         }
+    later = _later(entry, every)
+    if later:
+        return {
+            **base,
+            "action": SKIP,
+            "reason": MARKED_AGAIN,
+            "why": (
+                f"pass {later} marked it again after this one did, so the prefix "
+                f"is that pass's to take off"
+            ),
+        }
     if current is None:
         return {
             **base,
             "action": SKIP,
             "reason": NOT_LISTED,
             "why": "the account no longer lists it, so there is no title to put back",
+        }
+    if current == entry.name:
+        # PUT BACK ALREADY, by hand or by an unmark whose stamp did not land.
+        # The title is the one this verb would write, so there is nothing to do.
+        return {
+            **base,
+            "action": SKIP,
+            "reason": ALREADY_UNMARKED,
+            "why": "its title is already the one it had before the mark",
         }
     if current != entry.to:
         how = (
@@ -249,7 +292,7 @@ def _failed_part_way(
             f"{said}. {cause.message}",
             remedy=cause.remediation.remedy,
             steps=(*cause.remediation.steps, again),
-            scope=cause.scope,
+            scope=Scope.SOURCE,
             retryable=cause.retryable,
             origin=_ORIGIN,
             detail={**dict(cause.detail), **detail},
@@ -271,8 +314,13 @@ def sync_unmark(ctx) -> Envelope:
     record = mark_record.MarkRecord(cfg)
     # THE RECORD FIRST, before the account is listed or a credential is asked
     # for. Neither can change which playlists the pass marked.
-    found = _narrowed(record.of_pass(name), list(ctx.args.playlist or ()), name)
-    standing = [entry for entry in found if not entry.unmarked]
+    every = record.all()
+    found = _narrowed(
+        tuple(entry for entry in every if entry.pass_name == name),
+        list(ctx.args.playlist or ()),
+        name,
+    )
+    standing = [entry for entry in found if not entry.unmarked and not _later(entry, every)]
     catalogue_found = None
     listed: dict[str, str] | None = None
     if standing:
@@ -281,12 +329,16 @@ def sync_unmark(ctx) -> Envelope:
         catalogue_found = catalogue.resolve(cfg)
         listed = playlists.account_names(catalogue_found)
 
-    items = [_item(entry, listed) for entry in found]
+    items = [_item(entry, listed, every) for entry in found]
     payload = _payload(items, name=name)
     option = ctx.gate.require(
         ctx.entry.gates[0],
         digest=payload["digest"],
-        context=_shown(payload, name=name, passes=() if found else record.passes()),
+        context=_shown(
+            payload,
+            name=name,
+            passes=() if found else tuple(dict.fromkeys(e.pass_name for e in every)),
+        ),
     )
     if not found:
         return ctx.envelope(
@@ -296,11 +348,14 @@ def sync_unmark(ctx) -> Envelope:
         )
     by_id = {entry.playlist_id: entry for entry in found}
     planned = [item["id"] for item in items if item["action"] == UNMARK]
-    if option != "apply" or not planned or catalogue_found is None:
+    if option != "apply" or not planned:
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
 
     from cratekit.modules.outbound import account
 
+    # THE RECORD IS LOCKABLE BEFORE THE FIRST RENAME, so a stamp that cannot
+    # land refuses while every title is still the mark's.
+    record.ready()
     remote = account.resolve(cfg)
     titles = {identity: by_id[identity].to for identity in planned}
     landed: list[str] = []

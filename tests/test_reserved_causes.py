@@ -5983,14 +5983,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # The refusals the new read raises are soft-delete-marker-unreadable and
     # vocal-calibration-unreadable, both of which the tree already carried.
     # Re-pinned on the residual finding "A `DOWNLOADED ` mark written by
-    # mistake cannot be undone", 2026-10-02: 586 to 592 distinct, non-keys 399
-    # to 404. SIX joined and nothing left, each checked against `main`'s own
+    # mistake cannot be undone", 2026-10-02: 586 to 593 distinct, non-keys 399
+    # to 405. SEVEN joined and nothing left, each checked against `main`'s own
     # `src` by git grep. sync-mark-record-unusable is the one key, the record's
     # refusal. sync-unmark is the plan KIND the unmark's digest is taken
-    # under, already-unmarked and renamed-since-mark are two REASONS a
-    # playlist the pass marked is left out of its plan, and
+    # under, already-unmarked, renamed-since-mark and marked-again are three
+    # REASONS a playlist the pass marked is left out of its plan, and
     # sync-unmark-no-mark and sync-unmark-changed-since-plan are WARNING codes.
-    assert (len(literals), len(literals - set(causes))) == (592, 404), (
+    assert (len(literals), len(literals - set(causes))) == (593, 405), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
