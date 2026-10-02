@@ -1510,9 +1510,19 @@ def _tag_vox(cfg: config.Config, *content_ids: str) -> None:
     engine.dispose()
 
 
+def _calibrate(cfg: config.Config) -> None:
+    """Record a with vox cut for this library, the way a calibration leaves one."""
+    from cratekit.write import metadata_cli
+
+    path = config.state_path(metadata_cli.STATE_KEY_VOCAL_CALIBRATION, cfg)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"threshold": 5.0}), encoding="utf-8")
+
+
 @pytest.fixture
 def voxed(placed):
-    """The placed library with four of its tracks carrying the vox tag."""
+    """The placed library, calibrated, with four of its tracks carrying the vox tag."""
+    _calibrate(placed)
     _tag_vox(placed, *sorted(_VOX_TAGGED))
     return placed
 
@@ -1526,13 +1536,14 @@ def test_the_plan_reads_the_tag_and_the_vocal_subs_off_the_census_database(voxed
     bucket = _energy_bucket().id
 
     assert plan.vocals.state == "read"
+    assert plan.vocals.calibrated is True
     assert plan.vocals.tagged == _VOX_TAGGED
     assert plan.vocals.filed == {bucket: {"p-vox-only"}}
     assert {entry.content_id for entry in plan.vocal_additions()} == _VOX_ADDED
     assert {entry.vocal_sub for entry in plan.vocal_additions()} == {VOX}
 
 
-def test_the_gate_names_the_vocal_count_and_lists_every_addition(voxed):
+def test_the_gate_names_the_vocal_count_and_lists_every_membership(voxed):
     shown = _shown(["adopt", "apply"])
 
     assert shown["vocals"] == "read"
@@ -1541,10 +1552,12 @@ def test_the_gate_names_the_vocal_count_and_lists_every_addition(voxed):
         "present": len(_VOX_PRESENT),
         "under-another-name": 0,
         "no-sub": 0,
+        "no-bucket": 0,
         "withheld": len(_VOX_WITHHELD),
     }
-    listed = {row["content_id"]: row for row in shown["vocal_additions"]}
-    assert set(listed) == _VOX_ADDED
+    listed = {row["content_id"]: row for row in shown["vocal_memberships"]}
+    assert set(listed) == _VOX_ADDED | _VOX_PRESENT
+    assert {cid for cid, row in listed.items() if not row["present"]} == _VOX_ADDED
     assert (listed["p-nowhere"]["bucket"], listed["p-nowhere"]["sub"]) == (
         _energy_bucket().id,
         VOX,
@@ -1555,14 +1568,65 @@ def test_the_gate_names_the_vocal_count_and_lists_every_addition(voxed):
 
 
 def test_a_library_with_no_vox_tag_says_so_and_plans_no_vocal_membership(placed):
+    _calibrate(placed)
     shown = _shown(["adopt", "apply"])
 
     assert shown["vocals"] == "no-tag"
     assert set(shown["vocal"].values()) == {0}
-    assert shown["vocal_additions"] == []
+    assert shown["vocal_memberships"] == []
+
+
+def test_an_uncalibrated_library_files_no_vocal_sub_from_its_tags(placed):
+    """The routing pass files nothing under the vocal sub without a cut, and a
+    tag written from the default cut is not the person's answer."""
+    _tag_vox(placed, *sorted(_VOX_TAGGED))
+    vocal = _vocal_place()
+    shown = _shown(["adopt", "apply"])
+
+    assert shown["vocals"] == "uncalibrated"
+    assert set(shown["vocal"].values()) == {0}
+    assert shown["vocal_memberships"] == []
+
+    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+    code, resumed = drive(_resume(job_id))
+    assert code == int(ExitCode.OK), resumed
+    after = _filed(placed)
+    assert {cid for cid, places in after.items() if vocal in places} == {"p-vox-only"}
+
+
+def test_a_calibration_that_cannot_be_read_refuses_the_plan(voxed):
+    from cratekit.write import metadata_cli
+
+    path = config.state_path(metadata_cli.STATE_KEY_VOCAL_CALIBRATION, voxed)
+    path.write_text('{"threshold": 5.', encoding="utf-8")
+    with pytest.raises(Exception) as raised:
+        apply_cli.current_plan(voxed, DECLARED)
+    assert raised.value.cause.reason == "vocal-calibration-unreadable"
+
+
+def test_the_move_verb_reads_neither_the_tag_nor_the_calibration(voxed, monkeypatch):
+    """A move asks nothing about vocals, so a refusal about either cannot stop
+    one, through the plan it shows and the plan its worker checks against."""
+    from cratekit.adopt import move_cli
+    from cratekit.adopt import placements as adopt_placements
+    from cratekit.write import metadata_cli
+
+    def never(*_args, **_kwargs):
+        raise AssertionError("the move verb read the vocals")
+
+    monkeypatch.setattr(adopt_placements, "vox_tagged", never)
+    monkeypatch.setattr(metadata_cli, "load_vocal_threshold", never)
+
+    assert move_cli.current_plan(voxed, DECLARED) is not None
+    plain = apply_cli.current_plan(voxed, DECLARED, vocals=False)
+    assert plain.vocals.read is False
+    assert plain.vocal_memberships() == ()
+    with pytest.raises(AssertionError):
+        apply_cli.current_plan(voxed, DECLARED)
 
 
 def test_an_uncut_library_reads_no_vocals_either(machine):
+    _calibrate(machine)
     _tag_vox(machine, "a1")
     plan = apply_cli.current_plan(machine, DECLARED)
 
@@ -1615,7 +1679,10 @@ def test_an_approved_apply_files_the_tagged_tracks_and_touches_nothing_else(voxe
     second_shown = _shown(["adopt", "apply"])
     assert second_shown["vocal"]["add"] == 0
     assert second_shown["vocal"]["present"] == len(_VOX_ADDED) + len(_VOX_PRESENT)
-    assert second_shown["vocal_additions"] == []
+    assert [row["id"] for row in second_shown["vocal_memberships"]] == [
+        row["id"] for row in first_shown["vocal_memberships"]
+    ]
+    assert all(row["present"] for row in second_shown["vocal_memberships"])
     assert second_shown["digest"] == first_shown["digest"]
 
     _run_id, second_job = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
@@ -1628,6 +1695,7 @@ def test_an_approved_apply_files_the_tagged_tracks_and_touches_nothing_else(voxe
 def test_an_untagged_membership_of_a_vocal_sub_is_never_removed(placed):
     """``p-vox-only`` sits in the vocal sub and carries no tag. The tag exists
     in the library, on another track, so the dimension was read."""
+    _calibrate(placed)
     _tag_vox(placed, "p-nowhere")
     vocal = _vocal_place()
     assert vocal in _filed(placed)["p-vox-only"]
@@ -1669,7 +1737,7 @@ def test_a_renamed_vocal_playlist_gains_no_second_one_beside_it(voxed):
     # Every tagged track of the bucket, the one in the renamed playlist and
     # the ones that are not: none of them can be handed to the writer.
     assert shown["vocal"]["under-another-name"] == len(_VOX_TAGGED)
-    assert shown["vocal_additions"] == []
+    assert shown["vocal_memberships"] == []
 
     _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
     code, resumed = drive(_resume(job_id))

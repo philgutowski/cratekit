@@ -26,7 +26,7 @@ from cratekit.adopt import apply_cli
 from cratekit.adopt import placements as adopt_placements
 from cratekit.adopt import plan as adopt_plan
 from cratekit.adopt import scan as adopt_scan
-from cratekit.core import convergence, rb_writer, routing, taxonomy
+from cratekit.core import convergence, rb_writer, taxonomy
 from cratekit.core.cause import CratekitError
 from cratekit.write import metadata_cli, rebuild, trees
 from cratekit.write.routing_pass import destination
@@ -87,6 +87,7 @@ def _scanned(content_id: str, bucket: str = BUCKET, *, energy: int | None = 5):
 def _vocals(*tagged: str, filed=(), unnamed=(), bucket: str = BUCKET) -> adopt_plan.Vocals:
     return adopt_plan.Vocals(
         read=True,
+        calibrated=True,
         tag_found=True,
         tagged=frozenset(tagged),
         filed={bucket: frozenset({*filed, *unnamed})} if (filed or unnamed) else {},
@@ -100,36 +101,54 @@ def _plan(tracks, vocals=adopt_plan.NO_VOCALS, *, placements=adopt_plan.UNREAD, 
     )
 
 
+def _held(**tracks: tuple[str, ...]) -> adopt_plan.Placements:
+    return adopt_plan.Placements(read=True, held={BUCKET: dict(tracks)})
+
+
 def _only(plan: adopt_plan.AdoptionPlan) -> adopt_plan.PlanEntry:
     (entry,) = plan.entries
     return entry
 
 
-# ── which buckets declare the vocal sub ────────────────────────────────────
+# ── which buckets have the vocal sub ───────────────────────────────────────
 
 
-def test_the_shipped_template_declares_the_vocal_sub_in_every_bucket():
+def _with_bucket(bucket: taxonomy.Bucket) -> taxonomy.Taxonomy:
+    """The shipped template with one bucket replaced, its index rebuilt."""
+    buckets = tuple(bucket if b.id == bucket.id else b for b in DECLARED.buckets)
+    return replace(DECLARED, buckets=buckets, _by_id={b.id: b for b in buckets})
+
+
+def _style_named_as_the_vocal_sub() -> taxonomy.Taxonomy:
+    """A style bucket whose first sub carries the vocal sub's display name."""
+    style = _style_bucket()
+    taken = replace(style.subs[0], display=DECLARED.sub_class(VOX).display)
+    return _with_bucket(replace(style, subs=(taken, *style.subs[1:])))
+
+
+def test_the_shipped_template_has_the_vocal_sub_in_every_bucket():
     assert DECLARED.sub_class(VOX).additive is True
     for bucket in DECLARED.buckets:
         assert adopt_plan.vocal_sub(DECLARED, bucket.id) == VOX, bucket.id
 
 
-def test_a_class_declared_for_the_energy_buckets_is_in_those_and_in_no_other():
-    declared = _with_vocal_class(present_in=adopt_plan.PRESENT_IN_ENERGY)
-    for bucket in declared.buckets:
-        kind, _subs = routing.competing_subs(declared, bucket.id)
-        expected = VOX if kind is routing.Competing.BAND else None
-        assert adopt_plan.vocal_sub(declared, bucket.id) == expected, bucket.id
-    assert adopt_plan.vocal_sub(declared, _energy_bucket().id) == VOX
-    assert adopt_plan.vocal_sub(declared, _style_bucket().id) is None
+def test_the_vocal_sub_is_where_the_routing_pass_files_whatever_present_in_says():
+    """Nothing reads ``present_in``. The routing pass files a vocal track under
+    every bucket, so adoption does, and the two cannot disagree about one."""
+    declared = _with_vocal_class(present_in="energy_buckets")
+    truth = [
+        rebuild.Truth(location=f"/m/{bucket.id}.flac", genre=bucket.display, voxlevel=90)
+        for bucket in declared.buckets
+    ]
+    placements, _gaps = rebuild.derive_from_taxonomy(declared, truth, vocal_threshold=5.0)
+    routed = {placement.bucket for placement in placements if placement.sub == VOX}
+
+    assert routed
+    assert {b.id for b in declared.buckets if adopt_plan.vocal_sub(declared, b.id)} >= routed
+    assert adopt_plan.vocal_sub(declared, _style_bucket().id) == VOX
 
 
-def test_a_present_in_nobody_defined_is_no_bucket():
-    declared = _with_vocal_class(present_in="some_buckets")
-    assert {adopt_plan.vocal_sub(declared, bucket.id) for bucket in declared.buckets} == {None}
-
-
-def test_a_taxonomy_with_no_additive_class_declares_no_vocal_sub():
+def test_a_taxonomy_with_no_additive_class_has_no_vocal_sub():
     declared = replace(
         DECLARED, sub_classes=tuple(e for e in DECLARED.sub_classes if not e.additive)
     )
@@ -144,6 +163,39 @@ def test_an_additive_class_of_another_identifier_is_not_the_vocal_sub():
     """The derivation knows the signal for one additive class. Filing the tag
     under any other would be answering for a dimension nobody defined."""
     assert adopt_plan.vocal_sub(_with_vocal_class(id="instrumental"), BUCKET) is None
+
+
+def test_a_bucket_whose_own_sub_carries_the_vocal_name_has_no_vocal_sub():
+    """The loader accepts it. In that folder the two are one playlist, so the
+    reader and the writer could not tell a style from the vocal sub."""
+    declared = _style_named_as_the_vocal_sub()
+    style = _style_bucket().id
+
+    assert destination(declared, style, VOX) == destination(
+        declared, style, declared.bucket(style).subs[0].id
+    )
+    assert adopt_plan.vocal_sub(declared, style) is None
+    assert adopt_plan.vocal_sub(declared, BUCKET) == VOX
+
+
+def test_a_bucket_whose_band_is_labelled_with_the_vocal_name_has_no_vocal_sub():
+    energy = _energy_bucket()
+    labelled = replace(
+        energy,
+        energy=replace(energy.energy, band_display={MED: DECLARED.sub_class(VOX).display}),
+    )
+    declared = _with_bucket(labelled)
+
+    assert destination(declared, energy.id, VOX) == destination(declared, energy.id, MED)
+    assert adopt_plan.vocal_sub(declared, energy.id) is None
+
+
+def test_a_bucket_declaring_a_sub_of_the_vocal_identifier_has_no_vocal_sub():
+    style = _style_bucket()
+    clash = replace(style.subs[0], id=VOX)
+    declared = _with_bucket(replace(style, subs=(clash, *style.subs[1:])))
+
+    assert adopt_plan.vocal_sub(declared, style.id) is None
 
 
 # ── what the plan does with a track that carries the tag ───────────────────
@@ -171,12 +223,14 @@ def test_a_track_already_in_the_sub_is_counted_present_and_not_added():
         adopt_plan.VOCAL_PRESENT: 1,
         adopt_plan.VOCAL_RENAMED: 0,
         adopt_plan.VOCAL_NO_SUB: 0,
+        adopt_plan.VOCAL_NO_BUCKET: 0,
         adopt_plan.VOCAL_WITHHELD: 0,
     }
+    assert [entry.content_id for entry in plan.vocal_memberships()] == ["t", "u"]
 
 
 def test_a_bucket_with_no_vocal_sub_plans_nothing_for_its_tagged_tracks():
-    declared = _with_vocal_class(present_in=adopt_plan.PRESENT_IN_ENERGY)
+    declared = _style_named_as_the_vocal_sub()
     style = _style_bucket()
     track = replace(
         _scanned("s", style.id), genre=next(iter(style.sub_by_source.map))
@@ -189,6 +243,18 @@ def test_a_bucket_with_no_vocal_sub_plans_nothing_for_its_tagged_tracks():
     assert states["t"] == (adopt_plan.VOCAL_ADD, VOX)
     assert [entry.content_id for entry in plan.vocal_additions()] == ["t"]
     assert plan.vocal_counts()[adopt_plan.VOCAL_NO_SUB] == 1
+    # And the writer is handed nothing for that folder under the shared name.
+    assert set(apply_cli.vocal_locations(plan, declared)) == {destination(declared, BUCKET, VOX)}
+
+
+def test_a_taxonomy_with_no_vocal_class_plans_nothing_for_any_tagged_track():
+    declared = replace(
+        DECLARED, sub_classes=tuple(e for e in DECLARED.sub_classes if not e.additive)
+    )
+    plan = _plan([_scanned("t")], _vocals("t"), declared=declared)
+
+    assert _only(plan).vocal == adopt_plan.VOCAL_NO_SUB
+    assert plan.vocal_memberships() == ()
 
 
 def test_a_track_without_the_tag_is_never_added():
@@ -204,7 +270,11 @@ def test_an_untagged_track_sitting_in_a_vocal_sub_is_left_out_of_the_plan_entire
     """Nothing here removes. A membership whose tag is absent is not a state
     the plan has, so no writer is ever handed it."""
     vocals = adopt_plan.Vocals(
-        read=True, tag_found=True, tagged=frozenset(), filed={BUCKET: frozenset({"t"})}
+        read=True,
+        calibrated=True,
+        tag_found=True,
+        tagged=frozenset(),
+        filed={BUCKET: frozenset({"t"})},
     )
     plan = _plan([_scanned("t")], vocals)
 
@@ -234,14 +304,30 @@ def test_a_track_whose_bucket_has_its_vocal_sub_under_another_name_only_is_not_a
 
 
 def test_a_tree_nobody_read_plans_no_vocal_membership():
-    blind = adopt_plan.Vocals(read=False, tag_found=True, tagged=frozenset({"t"}))
+    blind = adopt_plan.Vocals(
+        read=False, calibrated=True, tag_found=True, tagged=frozenset({"t"})
+    )
     plan = _plan([_scanned("t")], blind)
 
     assert _only(plan).vocal == ""
     assert plan.vocals.state == adopt_plan.VOCALS_UNREAD
 
 
-def test_an_entry_with_no_bucket_has_no_vocal_question():
+def test_a_library_with_no_calibrated_cut_plans_no_vocal_membership():
+    """The routing pass files nothing under the vocal sub without a cut. A tag
+    written from the default cut is the product's answer, so adoption files
+    nothing from it either, and says why."""
+    uncalibrated = replace(_vocals("t"), calibrated=False)
+    plan = _plan([_scanned("t")], uncalibrated)
+
+    assert _only(plan).vocal == ""
+    assert plan.vocal_memberships() == ()
+    assert sum(plan.vocal_counts().values()) == 0
+    assert plan.vocals.state == adopt_plan.VOCALS_UNCALIBRATED
+    assert adopt_plan.to_json(plan)["vocals"] == "uncalibrated"
+
+
+def test_a_tagged_track_with_no_bucket_is_counted_as_one_and_not_passed_over():
     needs_genre = replace(
         _scanned("t"), disposition=adopt_scan.Disposition.NEEDS_GENRE, bucket=""
     )
@@ -250,16 +336,37 @@ def test_an_entry_with_no_bucket_has_no_vocal_question():
         disposition=adopt_scan.Disposition.EXCLUDED,
         readability=adopt_scan.Readability.UNREADABLE,
     )
-    plan = _plan([needs_genre, excluded], _vocals("t", "u"))
+    undeclared = replace(_scanned("v"), disposition=adopt_scan.Disposition.UNDECLARED)
+    plan = _plan([needs_genre, excluded, undeclared, _scanned("w")], _vocals("t", "u", "v"))
+    states = {entry.content_id: (entry.vocal, entry.vocal_sub) for entry in plan.entries}
 
-    assert {entry.vocal for entry in plan.entries} == {""}
+    assert states["t"] == states["u"] == states["v"] == (adopt_plan.VOCAL_NO_BUCKET, "")
+    assert states["w"] == adopt_plan.NO_VOCAL_PLACE
+    assert plan.vocal_counts()[adopt_plan.VOCAL_NO_BUCKET] == 3
+    assert plan.vocal_memberships() == ()
+
+
+def test_the_counts_add_up_to_the_tagged_tracks_of_the_census():
+    tracks = [
+        _scanned("add"),
+        _scanned("there"),
+        _scanned("held", energy=9),
+        replace(_scanned("asked"), disposition=adopt_scan.Disposition.NEEDS_GENRE, bucket=""),
+        _scanned("plain"),
+    ]
+    vocals = _vocals("add", "there", "held", "asked", filed=("there",))
+    plan = _plan(tracks, vocals, placements=_held(held=(MED,)))
+
+    assert sum(plan.vocal_counts().values()) == len(vocals.tagged)
+    assert {state for state, count in plan.vocal_counts().items() if count} == {
+        adopt_plan.VOCAL_ADD,
+        adopt_plan.VOCAL_PRESENT,
+        adopt_plan.VOCAL_WITHHELD,
+        adopt_plan.VOCAL_NO_BUCKET,
+    }
 
 
 # ── a withheld track gains nothing ─────────────────────────────────────────
-
-
-def _held(**tracks: tuple[str, ...]) -> adopt_plan.Placements:
-    return adopt_plan.Placements(read=True, held={BUCKET: dict(tracks)})
 
 
 def test_a_track_withheld_over_another_band_stays_withheld_and_gains_no_vocal_sub():
@@ -313,9 +420,9 @@ def test_an_answered_genre_is_filed_under_the_vocal_sub_of_the_bucket_it_was_giv
         _scanned("t"), disposition=adopt_scan.Disposition.NEEDS_GENRE, bucket="", genre=""
     )
     plan = _plan([asked], _vocals("t"))
-    assert _only(plan).vocal == ""
 
     answered = _only(adopt_plan.with_verdicts(plan, {"t": BUCKET}, DECLARED))
+    assert _only(plan).vocal == adopt_plan.VOCAL_NO_BUCKET
     assert answered.disposition is adopt_scan.Disposition.ROUTE
     assert (answered.bucket, answered.vocal, answered.vocal_sub) == (
         BUCKET,
@@ -351,15 +458,18 @@ def test_the_digest_does_not_move_when_the_membership_it_approved_lands():
 def test_the_digest_says_whether_the_tag_and_the_tree_were_read():
     tracks = [_scanned("t")]
     unread = _plan(tracks)
-    no_tag = _plan(tracks, adopt_plan.Vocals(read=True, tag_found=False))
+    uncalibrated = _plan(tracks, adopt_plan.Vocals(read=True, tag_found=True))
+    no_tag = _plan(tracks, adopt_plan.Vocals(read=True, calibrated=True))
     read = _plan(tracks, _vocals())
+    plans = (unread, uncalibrated, no_tag, read)
 
-    assert [plan.vocals.state for plan in (unread, no_tag, read)] == [
+    assert [plan.vocals.state for plan in plans] == [
         adopt_plan.VOCALS_UNREAD,
+        adopt_plan.VOCALS_UNCALIBRATED,
         adopt_plan.VOCALS_NO_TAG,
         adopt_plan.VOCALS_READ,
     ]
-    assert len({unread.digest(), no_tag.digest(), read.digest()}) == 3
+    assert len({plan.digest() for plan in plans}) == 4
 
 
 def test_a_vocal_membership_has_an_identifier_of_its_own():
@@ -372,7 +482,7 @@ def test_a_vocal_membership_has_an_identifier_of_its_own():
 # ── the plan document ──────────────────────────────────────────────────────
 
 
-def test_the_document_names_the_count_and_lists_every_addition():
+def test_the_document_names_the_count_and_lists_every_membership_it_may_write():
     plan = _plan(
         [_scanned("t"), _scanned("u"), _scanned("v")], _vocals("t", "u", filed=("u",))
     )
@@ -382,14 +492,16 @@ def test_the_document_names_the_count_and_lists_every_addition():
     assert tuple(document["vocal"]) == adopt_plan.VOCAL_STATES
     assert document["vocal"][adopt_plan.VOCAL_ADD] == 1
     assert document["vocal"][adopt_plan.VOCAL_PRESENT] == 1
-    assert document["vocal_additions"] == [
+    assert document["vocal_memberships"] == [
         {
-            "id": adopt_plan.entry_id_for(TREE_ID, "t", BUCKET, VOX),
-            "content_id": "t",
-            "location": "/library/Music/t.flac",
+            "id": adopt_plan.entry_id_for(TREE_ID, content_id, BUCKET, VOX),
+            "content_id": content_id,
+            "location": f"/library/Music/{content_id}.flac",
             "bucket": BUCKET,
             "sub": VOX,
+            "present": present,
         }
+        for content_id, present in (("t", False), ("u", True))
     ]
     assert {row["content_id"]: row["vocal"] for row in document["entries"]} == {
         "t": adopt_plan.VOCAL_ADD,
@@ -404,9 +516,22 @@ def test_the_gate_shows_what_the_document_says_about_vocals():
     document = adopt_plan.to_json(plan)
 
     assert digested["digest"] == plan.digest()
-    for key in ("vocals", "vocal", "vocal_additions"):
+    for key in ("vocals", "vocal", "vocal_memberships"):
         assert facts[key] == document[key], key
-    assert [row["content_id"] for row in facts["vocal_additions"]] == ["t"]
+    assert [row["content_id"] for row in facts["vocal_memberships"]] == ["t"]
+
+
+def test_every_row_the_writer_may_be_handed_is_on_the_gate_whatever_the_tree_holds_now():
+    """A row present when the person answered and missing when the worker runs
+    is written back under the same digest, so it has to have been shown."""
+    tracks = [_scanned("t"), _scanned("u")]
+    answered = _plan(tracks, _vocals("t", "u", filed=("u",)))
+    later = _plan(tracks, _vocals("t", "u"))
+    _digested, facts = apply_cli._digested(answered)
+
+    assert later.digest() == answered.digest()
+    shown = {row["id"] for row in facts["vocal_memberships"]}
+    assert {adopt_plan.vocal_id(entry) for entry in later.vocal_additions()} <= shown
 
 
 # ── the mapping the tree writer is handed ──────────────────────────────────
@@ -471,11 +596,23 @@ def _record(bucket_id: str, node: rebuild.TreeNode) -> convergence.TreeConvergen
     )
 
 
+def _vocals_from(declared, nodes, record) -> adopt_plan.Vocals:
+    return adopt_placements.vocals_from(declared, nodes, record, frozenset(), calibrated=True)
+
+
+def test_whether_the_library_is_calibrated_is_carried_and_not_assumed():
+    found = adopt_placements.vocals_from(DECLARED, [], None, frozenset({"t"}), calibrated=False)
+    assert (found.read, found.calibrated, found.filing) == (True, False, False)
+    assert found.state == adopt_plan.VOCALS_UNCALIBRATED
+
+
 def test_a_vocal_playlist_under_the_declared_names_files_its_tracks():
     nodes = [_node(BUCKET, VOX, "t", "u"), _node(BUCKET, MED, "t", "w")]
-    found = adopt_placements.vocals_from(DECLARED, nodes, None, frozenset({"t"}))
+    found = adopt_placements.vocals_from(
+        DECLARED, nodes, None, frozenset({"t"}), calibrated=True
+    )
 
-    assert (found.read, found.tag_found) == (True, True)
+    assert (found.read, found.calibrated, found.tag_found) == (True, True, True)
     assert found.tagged == {"t"}
     assert found.filed == {BUCKET: {"t", "u"}}
     assert found.unnamed == {}
@@ -485,11 +622,9 @@ def test_a_vocal_playlist_under_the_declared_names_files_its_tracks():
 
 def test_a_renamed_vocal_playlist_is_found_through_its_recorded_node_and_says_so():
     renamed = _node(BUCKET, VOX, "t", playlist_display="Singers")
-    assert adopt_placements.vocals_from(DECLARED, [renamed], None, frozenset()).filed == {}
+    assert _vocals_from(DECLARED, [renamed], None).filed == {}
 
-    found = adopt_placements.vocals_from(
-        DECLARED, [renamed], _record(BUCKET, renamed), frozenset()
-    )
+    found = _vocals_from(DECLARED, [renamed], _record(BUCKET, renamed))
     assert found.filed == {BUCKET: {"t"}}
     assert found.unnamed == {BUCKET: {"t"}}
     assert found.sits_unnamed(BUCKET, "t")
@@ -499,9 +634,7 @@ def test_a_renamed_vocal_playlist_is_found_through_its_recorded_node_and_says_so
 def test_a_track_held_under_both_names_is_not_held_under_another_name_only():
     renamed = _node(BUCKET, VOX, "t", "u", playlist_display="Singers", playlist_id="p-old")
     named = _node(BUCKET, VOX, "t")
-    found = adopt_placements.vocals_from(
-        DECLARED, [renamed, named], _record(BUCKET, renamed), frozenset()
-    )
+    found = _vocals_from(DECLARED, [renamed, named], _record(BUCKET, renamed))
 
     assert found.filed == {BUCKET: {"t", "u"}}
     assert found.unnamed == {BUCKET: {"u"}}
@@ -512,7 +645,7 @@ def test_a_track_held_under_both_names_is_not_held_under_another_name_only():
 
 def test_a_removed_vocal_playlist_is_not_a_place():
     gone = _node(BUCKET, VOX, "t", removed=True)
-    found = adopt_placements.vocals_from(DECLARED, [gone], _record(BUCKET, gone), frozenset())
+    found = _vocals_from(DECLARED, [gone], _record(BUCKET, gone))
     assert found.filed == {}
     assert found.renamed == frozenset()
 
@@ -521,24 +654,26 @@ def test_an_empty_renamed_vocal_playlist_still_names_its_bucket():
     """Nobody sits in it, so nothing is filed, and the next tagged track must
     still not be handed to a writer that would make a second playlist."""
     empty = _node(BUCKET, VOX, playlist_display="Singers")
-    found = adopt_placements.vocals_from(DECLARED, [empty], _record(BUCKET, empty), frozenset())
+    found = _vocals_from(DECLARED, [empty], _record(BUCKET, empty))
 
     assert found.filed == {}
     assert found.renamed == {BUCKET}
 
 
-def test_a_bucket_that_declares_no_vocal_sub_is_not_read_for_one():
-    declared = _with_vocal_class(present_in=adopt_plan.PRESENT_IN_ENERGY)
+def test_a_bucket_that_has_no_vocal_sub_is_not_read_for_one():
+    """The playlist of the vocal name in that folder is the bucket's own style
+    sub, and its tracks are not vocal tracks already filed."""
+    declared = _style_named_as_the_vocal_sub()
     style = _style_bucket().id
     nodes = [_node(style, VOX, "s"), _node(BUCKET, VOX, "t")]
-    found = adopt_placements.vocals_from(declared, nodes, None, frozenset())
+    found = _vocals_from(declared, nodes, None)
 
     assert found.filed == {BUCKET: {"t"}}
 
 
 def test_a_library_with_no_such_tag_is_not_a_library_with_nobody_tagged():
-    absent = adopt_placements.vocals_from(DECLARED, [], None, None)
-    empty = adopt_placements.vocals_from(DECLARED, [], None, frozenset())
+    absent = adopt_placements.vocals_from(DECLARED, [], None, None, calibrated=True)
+    empty = adopt_placements.vocals_from(DECLARED, [], None, frozenset(), calibrated=True)
 
     assert (absent.tag_found, absent.state) == (False, adopt_plan.VOCALS_NO_TAG)
     assert (empty.tag_found, empty.state) == (True, adopt_plan.VOCALS_READ)

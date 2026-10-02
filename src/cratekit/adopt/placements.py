@@ -39,8 +39,9 @@ belongs in one. Adoption files a vox tagged track under its bucket's vocal
 sub, so the plan needs which tracks carry the tag and which vocal subs
 already hold them, from the same open of the same database. The tag is the
 My Tag value the vocals verb writes, found by the names that verb writes it
-under, :data:`cratekit.write.metadata_cli.CATEGORY` and ``VALUE_VOX``, so the
-reader and the writer of the tag cannot come to mean two different rows.
+under, :data:`cratekit.write.metadata_cli.CATEGORY` and ``VALUE_VOX``, spelled
+once there. Whether the library has a calibrated cut is read through that
+module's one reader of the calibration, as every routing pass reads it.
 
 Layer: modules. It reads configuration and the database and names no verb.
 """
@@ -129,11 +130,7 @@ def placements_from(
     ones, so a sub held only through a removed playlist would be planned for a
     removal nothing could perform.
     """
-    nodes = [node for node in nodes if not node.removed]
-    by_ids = {(node.folder_id, node.playlist_id): node for node in nodes}
-    by_display: dict[tuple[str, str], list[rebuild.TreeNode]] = {}
-    for node in nodes:
-        by_display.setdefault((node.folder_display, node.playlist_display), []).append(node)
+    by_ids, by_display = _indexed(nodes)
 
     held: dict[str, dict[str, set[str]]] = {}
     unnamed: dict[str, dict[str, set[str]]] = {}
@@ -162,6 +159,26 @@ def placements_from(
     return Placements(
         read=True, held=_frozen(held), unnamed=_frozen(unnamed), doubled=_frozen(doubled)
     )
+
+
+def _indexed(
+    nodes: Sequence[rebuild.TreeNode],
+) -> tuple[
+    dict[tuple[str, str], rebuild.TreeNode],
+    dict[tuple[str, str], list[rebuild.TreeNode]],
+]:
+    """The live nodes of a tree, by their identifiers and by their names.
+
+    A PLAYLIST REKORDBOX REMOVED IS IN NEITHER (R-758), for the reason
+    :func:`placements_from` gives. ONE BODY for both readers, so which nodes
+    count and how one is keyed is decided once.
+    """
+    live = [node for node in nodes if not node.removed]
+    by_ids = {(node.folder_id, node.playlist_id): node for node in live}
+    by_display: dict[tuple[str, str], list[rebuild.TreeNode]] = {}
+    for node in live:
+        by_display.setdefault((node.folder_display, node.playlist_display), []).append(node)
+    return by_ids, by_display
 
 
 def _answering(
@@ -195,16 +212,20 @@ def vocals_from(
     nodes: Sequence[rebuild.TreeNode],
     record: convergence.TreeConvergence | None,
     tagged: frozenset[str] | None,
+    *,
+    calibrated: bool,
 ) -> Vocals:
     """Who carries the vox tag and which vocal subs hold them, as a value. No input.
 
     ``tagged`` is what :func:`vox_tagged` answered: the tracks carrying the
-    tag, or None when the library has no such tag at all.
+    tag, or None when the library has no such tag at all. ``calibrated`` is
+    whether the library has a fitted cut, and has no default, because the
+    permissive answer would file a library nobody calibrated.
 
-    ONLY A BUCKET THAT DECLARES THE VOCAL SUB IS READ, asked of
+    ONLY A BUCKET THAT HAS THE VOCAL SUB IS READ, asked of
     :func:`cratekit.adopt.plan.vocal_sub`, which is the question the plan asks
-    before it files. A playlist of the vocal name in a folder whose bucket
-    declares none is a playlist a person made, and is not a place.
+    before it files. A playlist of the vocal name in a folder where that name
+    is one of the bucket's own subs is that sub, and is not a vocal place.
 
     EVERY NODE THAT ANSWERS COUNTS AND WHICH NAME IT ANSWERS UNDER IS KEPT,
     for the two reasons :func:`placements_from` gives, through the one body
@@ -214,11 +235,7 @@ def vocals_from(
     the plan adds a track that is NOT in the sub, which the competing subs
     never do, and the writer would make the declared playlist to hold it.
     """
-    nodes = [node for node in nodes if not node.removed]
-    by_ids = {(node.folder_id, node.playlist_id): node for node in nodes}
-    by_display: dict[tuple[str, str], list[rebuild.TreeNode]] = {}
-    for node in nodes:
-        by_display.setdefault((node.folder_display, node.playlist_display), []).append(node)
+    by_ids, by_display = _indexed(nodes)
 
     filed: dict[str, frozenset[str]] = {}
     unnamed: dict[str, frozenset[str]] = {}
@@ -243,6 +260,7 @@ def vocals_from(
 
     return Vocals(
         read=True,
+        calibrated=calibrated,
         tag_found=tagged is not None,
         tagged=frozenset() if tagged is None else tagged,
         filed=filed,
@@ -269,9 +287,16 @@ def vox_tagged(db: Any) -> frozenset[str] | None:
     """Every track carrying the vox My Tag, or None when the library has no such tag.
 
     FOUND BY THE NAMES THE VOCALS VERB WRITES IT UNDER, a value of that name
-    inside a category of that name, which is how
-    :func:`cratekit.core.rb_writer.ensure_my_tag_value` finds the row it adds
-    to. A value of the same name under some other category is another tag.
+    inside a category of that name. A value of the same name under some other
+    category is another tag.
+
+    THIS IS NOT THE WRITER'S OWN FIND, AND THE DIFFERENCE IS THE MARKER.
+    :func:`cratekit.core.rb_writer.ensure_my_tag_value` takes the first
+    category of the name and reads no soft delete marker, so over a category
+    rekordbox removed it would write under a row nobody can see while this
+    answers that the library has no such tag. That is the direction that
+    files nothing, and the writer's half is recorded as a residual rather
+    than copied here.
 
     NONE IS NOT THE EMPTY SET. A library with the tag and nothing carrying it
     answers the empty set, and the plan document tells the two apart.
@@ -317,8 +342,9 @@ def _read_tree(
 
     Returns the tree's nodes, the node record a previous write left, and, when
     ``tags`` is asked for, what :func:`vox_tagged` answered over the same
-    handle. ``tags`` is a parameter so the move verb, which asks nothing about
-    vocals, opens no table it does not need and meets no refusal about one.
+    handle. ``tags`` is a parameter so a caller that asks nothing about
+    vocals, the move verb through every one of its reads, opens no table it
+    does not need and meets no refusal about one.
 
     THE TWO REFUSALS ``anchored_root`` RAISES ANSWER NONE and nothing else
     does. A database that is missing, a pin that fails, a convergence record
@@ -382,13 +408,20 @@ def read_holdings(
     A TREE THAT CANNOT BE READ ANSWERS UNREAD FOR BOTH, and the tag is then
     not read either: with no tree nothing can say which tracks are already
     filed, so the plan files none.
+
+    WHETHER THE LIBRARY IS CALIBRATED IS READ HERE, through
+    :func:`cratekit.write.metadata_cli.load_vocal_threshold`, the one reader
+    every routing pass comes through. A calibration that cannot be read
+    refuses as it does there. It is read before the database is opened, so
+    that refusal costs nothing.
     """
+    calibrated = metadata_cli.load_vocal_threshold(cfg) is not None
     found = _read_tree(cfg, declared, tags=True)
     if found is None:
         return UNREAD, NO_VOCALS
     nodes, record, tagged = found
     return placements_from(declared, nodes, record), vocals_from(
-        declared, nodes, record, tagged
+        declared, nodes, record, tagged, calibrated=calibrated
     )
 
 

@@ -169,7 +169,9 @@ def census(cfg: config.Config, declared: taxonomy.Taxonomy) -> tuple:
     )
 
 
-def current_plan(cfg: config.Config, declared: taxonomy.Taxonomy) -> plan_engine.AdoptionPlan:
+def current_plan(
+    cfg: config.Config, declared: taxonomy.Taxonomy, *, vocals: bool = True
+) -> plan_engine.AdoptionPlan:
     """Rebuild the plan this run is approving, from the census rather than a file.
 
     THE PLAN IS NOT A FILE, and that is R26's decision rather than an omission
@@ -192,15 +194,27 @@ def current_plan(cfg: config.Config, declared: taxonomy.Taxonomy) -> plan_engine
     THE VOX TAG AND THE VOCAL SUBS ARE READ IN THAT SAME READ (R-788), so a
     track carrying the tag is planned into its bucket's vocal sub against the
     tree the placements describe and no other.
+
+    ``vocals`` IS FALSE FOR THE MOVE VERB, which builds its plan from this
+    one and asks nothing about vocals. It then reads neither the tag tables
+    nor the calibration, so a refusal about either cannot stop a move, and
+    the plan it gets back plans no vocal membership.
     """
     scanned = census(cfg, declared)
-    held, vocals = placements.read_holdings(cfg, declared)
+    if not vocals:
+        return plan_engine.build_adoption_plan(
+            scanned,
+            declared,
+            tree=declared.tree.id,
+            placements=placements.read_placements(cfg, declared),
+        )
+    held, sung = placements.read_holdings(cfg, declared)
     return plan_engine.build_adoption_plan(
         scanned,
         declared,
         tree=declared.tree.id,
         placements=held,
-        vocals=vocals,
+        vocals=sung,
     )
 
 
@@ -317,9 +331,11 @@ def planned_memberships(
     """Every membership one apply hands the tree writer: the entries, then the vocal subs.
 
     ONE MAPPING AND ONE WRITE, so a vocal membership lands in the session, and
-    behind the capture, that the entry beside it does. A vocal sub and a band
-    never share a key: the taxonomy loader refuses a sub class named as one of
-    a bucket's own subs.
+    behind the capture, that the entry beside it does. A VOCAL SUB AND A
+    BUCKET'S OWN SUB NEVER SHARE A KEY, and the loader is not what holds
+    that: it accepts a bucket whose sub carries the vocal sub's name. The
+    plan does, through :func:`cratekit.adopt.plan.vocal_sub`, which answers
+    that such a bucket has no vocal sub, so no vocal addition names it.
     """
     wanted = membership_locations(plan.applicable(), declared)
     for key, rows in vocal_locations(plan, declared).items():
@@ -493,10 +509,13 @@ def _digested(plan: plan_engine.AdoptionPlan) -> tuple[dict, dict]:
     disagree, and the list is what a person settles that from. The digest
     is taken over the rows as they are shown here, every field.
 
-    THE VOCAL MEMBERSHIPS AN APPLY ADDS ARE LISTED IN FULL TOO (R-788), under
-    their own name, beside the count of every vox tagged track by what the
-    plan does about it. They are rows this apply writes, so a person is shown
-    each one before answering.
+    EVERY VOCAL MEMBERSHIP AN APPLY MAY WRITE IS LISTED TOO (R-788), under
+    its own name, beside the count of every vox tagged track by what the plan
+    does about it. The ones the tree already holds are in the list with the
+    ones to add, each saying which it is, because the digest covers both and
+    a row that goes missing after the answer is written back on the strength
+    of it. So no vocal row is written that the person answering was not
+    shown.
     """
     document = plan_engine.to_json(plan)
     listed = {entry.entry_id for entry in plan.applicable()}
@@ -515,7 +534,7 @@ def _digested(plan: plan_engine.AdoptionPlan) -> tuple[dict, dict]:
             "held_elsewhere": document["held_elsewhere"],
             "vocals": document["vocals"],
             "vocal": document["vocal"],
-            "vocal_additions": document["vocal_additions"],
+            "vocal_memberships": document["vocal_memberships"],
         },
     )
 

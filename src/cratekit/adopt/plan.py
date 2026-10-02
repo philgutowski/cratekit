@@ -44,9 +44,12 @@ logic at all, so a track carrying the vox tag sat in its bucket and not in
 that bucket's vocal sub. :class:`Vocals` is which tracks carry the tag and
 which vocal subs already hold them, handed in as data the way
 :class:`Placements` is. A routed entry whose track carries the tag gains the
-membership, add only, listed on the plan and covered by its digest. No cut is
-consulted here: the tag is the recorded outcome of the one rule that decides
+membership, add only, listed on the plan and covered by its digest. No score
+is read here: the tag is the recorded outcome of the one rule that decides
 what is vocal, and reading a score a second time would be a second opinion.
+A library with no calibrated cut files nothing, as the routing pass files
+nothing there, because a tag written from the default cut is the product's
+answer and not the person's.
 
 THE IDENTITY OF A COLLISION IS THE NODE, NEVER ITS NAME. This is the shape U19
 shipped as a blocking defect and it is worth stating twice. Its membership dedup
@@ -175,26 +178,35 @@ VOCAL_PRESENT = "present"
 #: one the bucket's vocal sub has. Nothing is added: the writer finds a
 #: playlist by its declared name and would make a second one beside it.
 VOCAL_RENAMED = "under-another-name"
-#: The track's bucket declares no vocal sub, so there is nowhere to file it.
+#: The track's bucket has no vocal sub, so there is nowhere to file it.
 VOCAL_NO_SUB = "no-sub"
+#: The track has no bucket: its genre is unanswered, its file is not
+#: adoptable, or its bucket declares no place for its reading.
+VOCAL_NO_BUCKET = "no-bucket"
 #: The track is not in the sub and its entry is withheld, so nothing is added.
 VOCAL_WITHHELD = "withheld"
 
-#: Every state, in the order the summary lists them.
-VOCAL_STATES = (VOCAL_ADD, VOCAL_PRESENT, VOCAL_RENAMED, VOCAL_NO_SUB, VOCAL_WITHHELD)
+#: Every state, in the order the summary lists them. Every vox tagged track
+#: the census holds is in exactly one, so the counts add up to the tagged
+#: tracks of the plan and none is left out without a reason beside it.
+VOCAL_STATES = (
+    VOCAL_ADD,
+    VOCAL_PRESENT,
+    VOCAL_RENAMED,
+    VOCAL_NO_SUB,
+    VOCAL_NO_BUCKET,
+    VOCAL_WITHHELD,
+)
 
 #: The states whose membership an apply may write. See :meth:`AdoptionPlan.digest`
 #: for why ``present`` is one of them.
 VOCAL_PLANNED = frozenset({VOCAL_ADD, VOCAL_PRESENT})
 
-#: The three states of :attr:`Vocals.state`, as the plan document spells them.
+#: The four states of :attr:`Vocals.state`, as the plan document spells them.
 VOCALS_READ = "read"
 VOCALS_UNREAD = "unread"
+VOCALS_UNCALIBRATED = "uncalibrated"
 VOCALS_NO_TAG = "no-tag"
-
-#: The sub class values ``present_in`` may carry and what each means here.
-PRESENT_IN_ALL = "all_buckets"
-PRESENT_IN_ENERGY = "energy_buckets"
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,6 +220,13 @@ class Vocals:
     plans no vocal membership at all, because without the tree nothing can say
     which tracks are already filed, and an add planned blind is a second row
     wherever the first one was.
+
+    ``calibrated`` IS WHETHER THE LIBRARY HAS A FITTED WITH VOX CUT, which is
+    the condition the routing pass files a vocal sub under (R-276). Without
+    one the vocals verb tags from the default cut, which nobody fitted to
+    this library, and filing a back catalogue from those tags would be the
+    product answering for the person by another road. So an uncalibrated
+    library plans no vocal membership and the plan document says why.
 
     ``tag_found`` IS NOT THE EMPTINESS OF ``tagged``. A library that has the
     tag and no track carrying it, and a library that has no such tag, both
@@ -226,6 +245,7 @@ class Vocals:
     """
 
     read: bool = False
+    calibrated: bool = False
     tag_found: bool = False
     tagged: frozenset[str] = frozenset()
     filed: Mapping[str, frozenset[str]] = field(default_factory=dict)
@@ -245,9 +265,16 @@ class Vocals:
         return content_id in self.unnamed.get(bucket, ())
 
     @property
+    def filing(self) -> bool:
+        """Whether a vocal membership may be planned from this at all."""
+        return self.read and self.calibrated
+
+    @property
     def state(self) -> str:
         if not self.read:
             return VOCALS_UNREAD
+        if not self.calibrated:
+            return VOCALS_UNCALIBRATED
         return VOCALS_READ if self.tag_found else VOCALS_NO_TAG
 
 
@@ -345,7 +372,7 @@ class PlanEntry:
     withheld_by: str = ""
     #: What the plan does about this track's vocal sub, one of
     #: :data:`VOCAL_STATES`. Empty when the track does not carry the vox tag,
-    #: has no bucket, or the tree was not read.
+    #: the tree was not read, or the library has no calibrated cut.
     vocal: str = ""
     #: The identifier of the vocal sub the bucket declares. Empty when
     #: ``vocal`` is, and when the bucket declares none.
@@ -484,9 +511,11 @@ class AdoptionPlan:
 
         DERIVED over :data:`VOCAL_STATES`, so a state with nothing in it reads
         zero rather than being absent. ``add`` is the number of memberships an
-        apply writes. The other four are what it does not write and why: the
-        track is already there, it is there under a name the writer cannot
-        find, its bucket declares no vocal sub, or its entry is withheld.
+        apply writes. The others are what it does not write and why: the track
+        is already there, its sub answers under a name the writer cannot find,
+        its bucket has no vocal sub, it has no bucket, or its entry is
+        withheld. EVERY TAGGED TRACK OF THE CENSUS IS IN ONE, so the counts
+        add up and a tagged track nothing is done about is not a silence.
         """
         found = {state: 0 for state in VOCAL_STATES}
         for entry in self.entries:
@@ -494,15 +523,23 @@ class AdoptionPlan:
                 found[entry.vocal] += 1
         return found
 
-    def vocal_additions(self) -> tuple[PlanEntry, ...]:
-        """Every entry whose track an apply adds to a vocal sub, in plan order.
+    def vocal_memberships(self) -> tuple[PlanEntry, ...]:
+        """Every entry whose vocal membership an apply may write, in plan order.
 
-        THE WHOLE LIST, for the reason :meth:`held_elsewhere` gives. Applicable
-        entries only: a withheld track gains nothing, its vocal sub included.
+        THE WHOLE LIST, for the reason :meth:`held_elsewhere` gives, the ones
+        already present beside the ones to add. These are what the digest
+        covers and what the gate lists, so no row is written that the person
+        answering was not shown.
         """
-        return tuple(
-            entry for entry in self.entries if entry.applicable and entry.vocal == VOCAL_ADD
-        )
+        return tuple(entry for entry in self.entries if entry.vocal_planned)
+
+    def vocal_additions(self) -> tuple[PlanEntry, ...]:
+        """The part of :meth:`vocal_memberships` the tree does not hold yet.
+
+        What the writer is handed. Applicable entries only: a withheld track
+        gains nothing, its vocal sub included.
+        """
+        return tuple(entry for entry in self.vocal_memberships() if entry.vocal == VOCAL_ADD)
 
     def digest(self) -> str:
         """What an approval is recorded AGAINST, so a stale one is detectable.
@@ -537,16 +574,16 @@ class AdoptionPlan:
         decision. That is the shape the move verb paid for. It is also what a
         band entry has always been: listed and digested whether or not the
         track is already in the sub, with the writer reporting the row
-        present.
+        present. THE GATE THEREFORE LISTS EVERY ONE OF THEM, present or not,
+        so a row that was present when the person answered and is missing
+        when the worker runs is still a row the person was shown.
         """
         return digest_of(
             {
                 "tree": self.tree,
                 "entries": [entry.entry_id for entry in self.applicable()],
                 "vocals": self.vocals.state,
-                "vocal": [
-                    vocal_id(entry) for entry in self.entries if entry.vocal_planned
-                ],
+                "vocal": [vocal_id(entry) for entry in self.vocal_memberships()],
                 "counts": self.counts(),
                 "energy": self.energy_readings(),
                 "placements": self.placements.state,
@@ -614,31 +651,39 @@ def review_row(entry: PlanEntry) -> dict[str, Any]:
 
 
 def vocal_sub(declared: taxonomy.Taxonomy, bucket_id: str) -> str | None:
-    """The identifier of the vocal sub one bucket declares, or None.
+    """The identifier of the vocal sub one bucket has, or None.
 
     THE SUB IS THE ONE THE ROUTING PASS FILES A VOCAL TRACK UNDER, the
     additive sub class of the identifier
     :data:`cratekit.write.trees.VOX_SUB_CLASS`, found the way
-    ``route inbox`` finds it before it makes the playlists. A taxonomy that
-    declares no such class has no vocal sub in any bucket.
+    ``route inbox`` finds it before it makes the playlists. It sits under
+    every bucket, which is what
+    :func:`cratekit.write.routing_pass.destination` says of an additive class
+    and where the routing pass files, so adoption and routing agree about
+    where a vocal track goes. A taxonomy that declares no such class has no
+    vocal sub in any bucket.
 
-    ``present_in`` IS READ, and this is the first reader of it. A class
-    declared for every bucket is in every bucket. A class declared for the
-    energy buckets is in the buckets whose bands compete, asked of
-    :func:`cratekit.core.routing.competing_subs` so the two cannot disagree
-    about which buckets those are. ANY OTHER VALUE IS NO BUCKET, because the
-    loader accepts any string there and filing under a word nobody defined
-    would be this module answering for the person who wrote it.
+    A BUCKET WHOSE OWN PLACES TAKE THE VOCAL SUB'S NAME HAS NONE. The loader
+    lets a bucket declare a sub, or label a band, with the identifier or the
+    display name of a sub class. In that folder the vocal sub and the
+    bucket's own playlist are one playlist: the reader would count every
+    track of that style as already filed vocal, and the writer would file
+    vocal tracks into the style. Neither can tell them apart, so nothing is
+    planned there. Driven by the review, which loaded all three shapes.
     """
     for entry in declared.sub_classes:
         if not entry.additive or entry.id != VOX_SUB_CLASS:
             continue
-        if entry.present_in == PRESENT_IN_ALL:
-            return entry.id
-        if entry.present_in == PRESENT_IN_ENERGY:
-            kind, _subs = routing.competing_subs(declared, bucket_id)
-            return entry.id if kind is routing.Competing.BAND else None
-        return None
+        others = tuple(other for other in declared.sub_classes if other is not entry)
+        # THE LOADER'S OWN LIST of what a bucket's folder can hold, asked
+        # without the vocal class, rather than a second walk of the five
+        # shapes a sub can take.
+        ids, displays = taxonomy._live_places(
+            declared.bucket(bucket_id), declared.energy, others
+        )
+        if entry.id in ids or entry.display in displays:
+            return None
+        return entry.id
     return None
 
 
@@ -657,12 +702,16 @@ def vocal_place(
     """What the plan does about one track's vocal sub, and which sub that is.
 
     Returns one of :data:`VOCAL_STATES` and the sub's identifier, or
-    :data:`NO_VOCAL_PLACE` for a track that does not carry the tag, an entry
-    that has no bucket, and a tree nobody read.
+    :data:`NO_VOCAL_PLACE` for a track that does not carry the tag, a tree
+    nobody read, and a library with no calibrated cut.
 
     THE TAG DECIDES AND NOTHING ELSE DOES. A track without it is never added,
     whatever its file scores, and a track sitting in a vocal sub without it is
     left exactly where it is: nothing here removes.
+
+    A TAGGED TRACK WITH NO BUCKET IS NAMED AS ONE, not passed over. Its genre
+    is unanswered or its file is not adoptable, so there is nowhere to file
+    it, and the count says so.
 
     WHAT IS ALREADY THERE IS ASKED BEFORE WHAT IS WITHHELD, so a withheld
     track that sits in its vocal sub reads ``present`` and not as something
@@ -678,10 +727,10 @@ def vocal_place(
     not the track is in it, because that second playlist is exactly what the
     writer would make to hold it.
     """
-    if not vocals.read or not bucket or not vocals.carries(content_id):
+    if not vocals.filing or not vocals.carries(content_id):
         return NO_VOCAL_PLACE
-    if disposition not in (Disposition.ROUTE, Disposition.WITHHELD):
-        return NO_VOCAL_PLACE
+    if not bucket or disposition not in (Disposition.ROUTE, Disposition.WITHHELD):
+        return VOCAL_NO_BUCKET, ""
     sub = vocal_sub(declared, bucket)
     if sub is None:
         return VOCAL_NO_SUB, ""
@@ -707,13 +756,19 @@ def vocal_id(entry: PlanEntry) -> str:
 
 
 def vocal_row(entry: PlanEntry) -> dict[str, Any]:
-    """One vocal membership an apply adds, as the plan document lists it."""
+    """One vocal membership an apply may write, as the plan document lists it.
+
+    ``present`` says whether the tree already holds it, read when the plan
+    was built. It is shown and it is not digested, for the reason
+    :meth:`AdoptionPlan.digest` gives.
+    """
     return {
         "id": vocal_id(entry),
         "content_id": entry.content_id,
         "location": entry.recorded,
         "bucket": entry.bucket,
         "sub": entry.vocal_sub,
+        "present": entry.vocal == VOCAL_PRESENT,
     }
 
 
@@ -1162,8 +1217,8 @@ def to_json(plan: AdoptionPlan) -> dict[str, Any]:
         "held_elsewhere": [review_row(entry) for entry in plan.held_elsewhere()],
         "vocals": plan.vocals.state,
         "vocal": plan.vocal_counts(),
-        # EVERY ONE OF THEM TOO: these are rows an apply writes.
-        "vocal_additions": [vocal_row(entry) for entry in plan.vocal_additions()],
+        # EVERY ONE OF THEM TOO: these are the rows an apply may write.
+        "vocal_memberships": [vocal_row(entry) for entry in plan.vocal_memberships()],
         "entries": [
             {
                 "id": entry.entry_id,
@@ -1206,13 +1261,13 @@ __all__ = [
     "NO_VOCAL_PLACE",
     "PLACEMENTS_READ",
     "PLACEMENTS_UNREAD",
-    "PRESENT_IN_ALL",
-    "PRESENT_IN_ENERGY",
     "UNREAD",
     "VOCALS_NO_TAG",
     "VOCALS_READ",
+    "VOCALS_UNCALIBRATED",
     "VOCALS_UNREAD",
     "VOCAL_ADD",
+    "VOCAL_NO_BUCKET",
     "VOCAL_NO_SUB",
     "VOCAL_PLANNED",
     "VOCAL_PRESENT",

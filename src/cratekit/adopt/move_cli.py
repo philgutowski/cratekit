@@ -98,7 +98,9 @@ def _load() -> config.Config:
 
 def current_plan(cfg: config.Config, declared: taxonomy.Taxonomy) -> move_engine.MovePlan:
     """The move plan over the library as it stands, from adoption's own plan."""
-    return move_engine.build_move_plan(apply_cli.current_plan(cfg, declared), declared)
+    return move_engine.build_move_plan(
+        apply_cli.current_plan(cfg, declared, vocals=False), declared
+    )
 
 
 def build(parser, entry) -> None:
@@ -558,7 +560,9 @@ def handle(job, item, cfg) -> jobs.Produced:
         )
 
     approved = move_engine.from_rows(document["moves"])
-    todo, gone = remaining(approved, apply_cli.current_plan(cfg, declared), declared)
+    todo, gone = remaining(
+        approved, apply_cli.current_plan(cfg, declared, vocals=False), declared
+    )
 
     written: trees.MoveReport | None = None
     interrupted: BaseException | None = None
