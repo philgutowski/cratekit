@@ -70,7 +70,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field, replace
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from cratekit.adopt.scan import Disposition, Readability, ScannedTrack
 from cratekit.cli.output import canonical_json, digest_of
@@ -202,11 +202,13 @@ VOCAL_STATES = (
 #: for why ``present`` is one of them.
 VOCAL_PLANNED = frozenset({VOCAL_ADD, VOCAL_PRESENT})
 
-#: The four states of :attr:`Vocals.state`, as the plan document spells them.
-VOCALS_READ = "read"
+#: The five states of :attr:`Vocals.state`, as the plan document spells them.
+#: The first four each say why no vocal membership is planned at all.
 VOCALS_UNREAD = "unread"
+VOCALS_NO_SUB = VOCAL_NO_SUB
 VOCALS_UNCALIBRATED = "uncalibrated"
 VOCALS_NO_TAG = "no-tag"
+VOCALS_READ = "read"
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,12 +223,20 @@ class Vocals:
     which tracks are already filed, and an add planned blind is a second row
     wherever the first one was.
 
-    ``calibrated`` IS WHETHER THE LIBRARY HAS A FITTED WITH VOX CUT, which is
-    the condition the routing pass files a vocal sub under (R-276). Without
-    one the vocals verb tags from the default cut, which nobody fitted to
-    this library, and filing a back catalogue from those tags would be the
-    product answering for the person by another road. So an uncalibrated
-    library plans no vocal membership and the plan document says why.
+    ``has_sub`` IS WHETHER ANY BUCKET HAS A VOCAL SUB. A taxonomy that
+    declares none has nowhere to file a vocal track, so neither the
+    calibration nor the tag is read for it, and no refusal about either can
+    stop an adoption that could file nothing vocal anyway.
+
+    ``calibrated`` IS WHETHER THE LIBRARY HAS A WITH VOX CUT ON RECORD, which
+    is the condition the routing pass files a vocal sub under (R-276). With
+    none recorded the vocals verb tags from the default cut, which nobody
+    fitted to this library, so an uncalibrated library plans no vocal
+    membership and the plan document says why. IT IS A CONDITION ON THE
+    LIBRARY AND NOT ON THE TAGS. The tag writer only adds, so a tag written
+    before the cut was recorded, or under an earlier cut, is still a tag and
+    is filed once a cut exists. What decides is the tag, as the module
+    docstring says, and that limit is recorded as a residual.
 
     ``tag_found`` IS NOT THE EMPTINESS OF ``tagged``. A library that has the
     tag and no track carrying it, and a library that has no such tag, both
@@ -245,6 +255,7 @@ class Vocals:
     """
 
     read: bool = False
+    has_sub: bool = False
     calibrated: bool = False
     tag_found: bool = False
     tagged: frozenset[str] = frozenset()
@@ -267,12 +278,14 @@ class Vocals:
     @property
     def filing(self) -> bool:
         """Whether a vocal membership may be planned from this at all."""
-        return self.read and self.calibrated
+        return self.read and self.has_sub and self.calibrated
 
     @property
     def state(self) -> str:
         if not self.read:
             return VOCALS_UNREAD
+        if not self.has_sub:
+            return VOCALS_NO_SUB
         if not self.calibrated:
             return VOCALS_UNCALIBRATED
         return VOCALS_READ if self.tag_found else VOCALS_NO_TAG
@@ -678,7 +691,7 @@ def vocal_sub(declared: taxonomy.Taxonomy, bucket_id: str) -> str | None:
         # THE LOADER'S OWN LIST of what a bucket's folder can hold, asked
         # without the vocal class, rather than a second walk of the five
         # shapes a sub can take.
-        ids, displays = taxonomy._live_places(
+        ids, displays = taxonomy.live_places(
             declared.bucket(bucket_id), declared.energy, others
         )
         if entry.id in ids or entry.display in displays:
@@ -687,31 +700,51 @@ def vocal_sub(declared: taxonomy.Taxonomy, bucket_id: str) -> str | None:
     return None
 
 
+def _vocal_subs(declared: taxonomy.Taxonomy) -> Callable[[str], str | None]:
+    """:func:`vocal_sub` for one taxonomy, asked once per bucket and remembered."""
+    found: dict[str, str | None] = {}
+
+    def sub_of(bucket_id: str) -> str | None:
+        if bucket_id not in found:
+            found[bucket_id] = vocal_sub(declared, bucket_id)
+        return found[bucket_id]
+
+    return sub_of
+
+
 #: What :func:`vocal_place` answers for an entry with no vocal question.
 NO_VOCAL_PLACE: tuple[str, str] = ("", "")
 
 
 def vocal_place(
-    declared: taxonomy.Taxonomy,
     vocals: Vocals,
     *,
     disposition: Disposition,
     bucket: str,
     content_id: str,
+    sub_of: Callable[[str], str | None],
 ) -> tuple[str, str]:
     """What the plan does about one track's vocal sub, and which sub that is.
 
     Returns one of :data:`VOCAL_STATES` and the sub's identifier, or
     :data:`NO_VOCAL_PLACE` for a track that does not carry the tag, a tree
-    nobody read, and a library with no calibrated cut.
+    nobody read, a taxonomy with no vocal sub, and a library with no cut on
+    record.
+
+    ``sub_of`` answers :func:`vocal_sub` for a bucket. It is handed in so a
+    plan over a whole census asks the taxonomy once per bucket and not once
+    per tagged track.
 
     THE TAG DECIDES AND NOTHING ELSE DOES. A track without it is never added,
     whatever its file scores, and a track sitting in a vocal sub without it is
     left exactly where it is: nothing here removes.
 
     A TAGGED TRACK WITH NO BUCKET IS NAMED AS ONE, not passed over. Its genre
-    is unanswered or its file is not adoptable, so there is nowhere to file
-    it, and the count says so.
+    is unanswered, its file is not adoptable, or its bucket declares no place
+    for its reading, so the plan places it nowhere and files no vocal sub for
+    it, and the count says so. The last of those is narrower than the routing
+    derivation, which files a vocal sub whether or not a band was found, and
+    that difference is recorded with the residual on what decides.
 
     WHAT IS ALREADY THERE IS ASKED BEFORE WHAT IS WITHHELD, so a withheld
     track that sits in its vocal sub reads ``present`` and not as something
@@ -731,7 +764,7 @@ def vocal_place(
         return NO_VOCAL_PLACE
     if not bucket or disposition not in (Disposition.ROUTE, Disposition.WITHHELD):
         return VOCAL_NO_BUCKET, ""
-    sub = vocal_sub(declared, bucket)
+    sub = sub_of(bucket)
     if sub is None:
         return VOCAL_NO_SUB, ""
     if vocals.sits_unnamed(bucket, content_id):
@@ -846,6 +879,7 @@ def build_adoption_plan(
 
     ``vocals`` DEFAULTS TO THE SAME, and plans no vocal membership.
     """
+    sub_of = _vocal_subs(declared)
     entries: list[PlanEntry] = []
     for ordinal, track in enumerate(scanned, start=1):
         disposition = track.disposition
@@ -878,11 +912,11 @@ def build_adoption_plan(
         if disposition not in (Disposition.ROUTE, Disposition.WITHHELD):
             bucket = ""
         vocal, vocal_in = vocal_place(
-            declared,
             vocals,
             disposition=disposition,
             bucket=bucket,
             content_id=track.content_id,
+            sub_of=sub_of,
         )
         entries.append(
             PlanEntry(
@@ -1087,6 +1121,7 @@ def with_verdicts(
     refuses one layer down.
     """
     declared_ids = set(declared.bucket_ids())
+    sub_of = _vocal_subs(declared)
     updated: list[PlanEntry] = []
     for entry in plan.entries:
         chosen = answers.get(entry.content_id)
@@ -1115,11 +1150,11 @@ def with_verdicts(
         disposition = Disposition.WITHHELD if withheld_by else Disposition.ROUTE
         # AND ITS VOCAL SUB IS ASKED OF THE BUCKET IT WAS JUST GIVEN.
         vocal, vocal_in = vocal_place(
-            declared,
             plan.vocals,
             disposition=disposition,
             bucket=chosen,
             content_id=entry.content_id,
+            sub_of=sub_of,
         )
         updated.append(
             replace(
@@ -1262,6 +1297,7 @@ __all__ = [
     "PLACEMENTS_READ",
     "PLACEMENTS_UNREAD",
     "UNREAD",
+    "VOCALS_NO_SUB",
     "VOCALS_NO_TAG",
     "VOCALS_READ",
     "VOCALS_UNCALIBRATED",

@@ -199,16 +199,17 @@ def current_plan(
     one and asks nothing about vocals. It then reads neither the tag tables
     nor the calibration, so a refusal about either cannot stop a move, and
     the plan it gets back plans no vocal membership.
+
+    WHETHER THE LIBRARY CAN BE FILED VOCALLY IS ASKED BEFORE THE CENSUS, so a
+    calibration that cannot be read refuses before a library is walked.
     """
+    standing = placements.vocal_standing(cfg, declared) if vocals else False
     scanned = census(cfg, declared)
-    if not vocals:
-        return plan_engine.build_adoption_plan(
-            scanned,
-            declared,
-            tree=declared.tree.id,
-            placements=placements.read_placements(cfg, declared),
-        )
-    held, sung = placements.read_holdings(cfg, declared)
+    held, sung = (
+        placements.read_holdings(cfg, declared, standing=standing)
+        if vocals
+        else (placements.read_placements(cfg, declared), plan_engine.NO_VOCALS)
+    )
     return plan_engine.build_adoption_plan(
         scanned,
         declared,
@@ -283,12 +284,25 @@ def membership_locations(
     reach ``match_indexed_rows`` as the four character string ``"None"`` and be
     reported as an unresolved location rather than as a bug.
     """
+    return _locations(entries, declared, lambda entry: entry.sub)
+
+
+def _locations(
+    entries: Sequence[plan_engine.PlanEntry],
+    declared: taxonomy.Taxonomy,
+    sub_of: Callable[[plan_engine.PlanEntry], str],
+) -> dict[tuple[str, str], list[str]]:
+    """Group each entry's path under the folder and playlist one of its subs names.
+
+    ONE BODY for an entry's own sub and for its vocal sub, so the two skips
+    :func:`membership_locations` argues are made the same way for both.
+    """
     grouped: dict[tuple[str, str], list[str]] = {}
     for entry in entries:
         if not entry.path:
             continue
         try:
-            folder, sub = destination(declared, entry.bucket, entry.sub)
+            folder, sub = destination(declared, entry.bucket, sub_of(entry))
         except KeyError:
             continue
         grouped.setdefault((folder, sub), []).append(entry.path)
@@ -313,16 +327,7 @@ def vocal_locations(
     stopped after its memberships landed rebuilds a plan that reads those
     tracks as present, so there is nothing to write twice and nothing owed.
     """
-    grouped: dict[tuple[str, str], list[str]] = {}
-    for entry in plan.vocal_additions():
-        if not entry.path:
-            continue
-        try:
-            folder, sub = destination(declared, entry.bucket, entry.vocal_sub)
-        except KeyError:
-            continue
-        grouped.setdefault((folder, sub), []).append(entry.path)
-    return grouped
+    return _locations(plan.vocal_additions(), declared, lambda entry: entry.vocal_sub)
 
 
 def planned_memberships(

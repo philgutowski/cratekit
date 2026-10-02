@@ -1594,14 +1594,61 @@ def test_an_uncalibrated_library_files_no_vocal_sub_from_its_tags(placed):
     assert {cid for cid, places in after.items() if vocal in places} == {"p-vox-only"}
 
 
-def test_a_calibration_that_cannot_be_read_refuses_the_plan(voxed):
+def _corrupt_calibration(cfg: config.Config) -> None:
     from cratekit.write import metadata_cli
 
-    path = config.state_path(metadata_cli.STATE_KEY_VOCAL_CALIBRATION, voxed)
+    path = config.state_path(metadata_cli.STATE_KEY_VOCAL_CALIBRATION, cfg)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text('{"threshold": 5.', encoding="utf-8")
+
+
+def test_a_calibration_that_cannot_be_read_refuses_before_the_library_is_walked(
+    voxed, monkeypatch
+):
+    _corrupt_calibration(voxed)
+
+    def never(*_args, **_kwargs):
+        raise AssertionError("the census ran before the calibration was read")
+
+    monkeypatch.setattr(apply_cli, "census", never)
     with pytest.raises(Exception) as raised:
         apply_cli.current_plan(voxed, DECLARED)
     assert raised.value.cause.reason == "vocal-calibration-unreadable"
+
+
+def test_a_taxonomy_with_no_vocal_sub_reads_neither_the_calibration_nor_the_tag(
+    voxed, monkeypatch
+):
+    """Nothing vocal can be filed there, so a calibration that cannot be read
+    and a tag row that cannot be read are not this run's to refuse over."""
+    from cratekit.adopt import placements as adopt_placements
+
+    _corrupt_calibration(voxed)
+
+    def never(*_args, **_kwargs):
+        raise AssertionError("the tag tables were read with nowhere to file")
+
+    monkeypatch.setattr(adopt_placements, "vox_tagged", never)
+    declared = replace(
+        DECLARED, sub_classes=tuple(e for e in DECLARED.sub_classes if not e.additive)
+    )
+    plan = apply_cli.current_plan(voxed, declared)
+
+    assert plan.vocals.state == "no-sub"
+    assert plan.vocal_memberships() == ()
+    assert plan.placements.read is True
+
+
+def test_an_uncalibrated_library_does_not_open_the_tag_tables(placed, monkeypatch):
+    from cratekit.adopt import placements as adopt_placements
+
+    _tag_vox(placed, "p-nowhere")
+
+    def never(*_args, **_kwargs):
+        raise AssertionError("the tag tables were read with no cut on record")
+
+    monkeypatch.setattr(adopt_placements, "vox_tagged", never)
+    assert apply_cli.current_plan(placed, DECLARED).vocals.state == "uncalibrated"
 
 
 def test_the_move_verb_reads_neither_the_tag_nor_the_calibration(voxed, monkeypatch):

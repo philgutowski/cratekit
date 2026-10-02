@@ -87,6 +87,7 @@ def _scanned(content_id: str, bucket: str = BUCKET, *, energy: int | None = 5):
 def _vocals(*tagged: str, filed=(), unnamed=(), bucket: str = BUCKET) -> adopt_plan.Vocals:
     return adopt_plan.Vocals(
         read=True,
+        has_sub=True,
         calibrated=True,
         tag_found=True,
         tagged=frozenset(tagged),
@@ -269,13 +270,7 @@ def test_a_track_without_the_tag_is_never_added():
 def test_an_untagged_track_sitting_in_a_vocal_sub_is_left_out_of_the_plan_entirely():
     """Nothing here removes. A membership whose tag is absent is not a state
     the plan has, so no writer is ever handed it."""
-    vocals = adopt_plan.Vocals(
-        read=True,
-        calibrated=True,
-        tag_found=True,
-        tagged=frozenset(),
-        filed={BUCKET: frozenset({"t"})},
-    )
+    vocals = replace(_vocals(), filed={BUCKET: frozenset({"t"})})
     plan = _plan([_scanned("t")], vocals)
 
     assert _only(plan).vocal == ""
@@ -304,9 +299,7 @@ def test_a_track_whose_bucket_has_its_vocal_sub_under_another_name_only_is_not_a
 
 
 def test_a_tree_nobody_read_plans_no_vocal_membership():
-    blind = adopt_plan.Vocals(
-        read=False, calibrated=True, tag_found=True, tagged=frozenset({"t"})
-    )
+    blind = replace(_vocals("t"), read=False)
     plan = _plan([_scanned("t")], blind)
 
     assert _only(plan).vocal == ""
@@ -458,18 +451,28 @@ def test_the_digest_does_not_move_when_the_membership_it_approved_lands():
 def test_the_digest_says_whether_the_tag_and_the_tree_were_read():
     tracks = [_scanned("t")]
     unread = _plan(tracks)
-    uncalibrated = _plan(tracks, adopt_plan.Vocals(read=True, tag_found=True))
-    no_tag = _plan(tracks, adopt_plan.Vocals(read=True, calibrated=True))
+    no_sub = _plan(tracks, replace(_vocals(), has_sub=False))
+    uncalibrated = _plan(tracks, replace(_vocals(), calibrated=False))
+    no_tag = _plan(tracks, replace(_vocals(), tag_found=False))
     read = _plan(tracks, _vocals())
-    plans = (unread, uncalibrated, no_tag, read)
+    plans = (unread, no_sub, uncalibrated, no_tag, read)
 
     assert [plan.vocals.state for plan in plans] == [
         adopt_plan.VOCALS_UNREAD,
+        adopt_plan.VOCALS_NO_SUB,
         adopt_plan.VOCALS_UNCALIBRATED,
         adopt_plan.VOCALS_NO_TAG,
         adopt_plan.VOCALS_READ,
     ]
-    assert len({plan.digest() for plan in plans}) == 4
+    assert len({plan.digest() for plan in plans}) == 5
+    assert [plan.vocals.filing for plan in plans] == [False, False, False, True, True]
+
+
+def test_each_reason_nothing_can_be_filed_plans_nothing_for_a_tagged_track():
+    for change in ({"read": False}, {"has_sub": False}, {"calibrated": False}):
+        plan = _plan([_scanned("t")], replace(_vocals("t"), **change))
+        assert _only(plan).vocal == "", change
+        assert plan.vocal_memberships() == (), change
 
 
 def test_a_vocal_membership_has_an_identifier_of_its_own():
@@ -606,13 +609,33 @@ def test_whether_the_library_is_calibrated_is_carried_and_not_assumed():
     assert found.state == adopt_plan.VOCALS_UNCALIBRATED
 
 
+def test_a_taxonomy_with_no_vocal_sub_says_so_whatever_else_is_true():
+    declared = replace(
+        DECLARED, sub_classes=tuple(e for e in DECLARED.sub_classes if not e.additive)
+    )
+    assert adopt_placements.has_vocal_sub(DECLARED) is True
+    assert adopt_placements.has_vocal_sub(declared) is False
+
+    found = adopt_placements.vocals_from(declared, [], None, frozenset({"t"}), calibrated=True)
+    assert (found.has_sub, found.filing, found.state) == (False, False, adopt_plan.VOCALS_NO_SUB)
+
+
+def test_one_bucket_without_the_vocal_sub_does_not_make_a_taxonomy_without_one():
+    assert adopt_placements.has_vocal_sub(_style_named_as_the_vocal_sub()) is True
+
+
 def test_a_vocal_playlist_under_the_declared_names_files_its_tracks():
     nodes = [_node(BUCKET, VOX, "t", "u"), _node(BUCKET, MED, "t", "w")]
     found = adopt_placements.vocals_from(
         DECLARED, nodes, None, frozenset({"t"}), calibrated=True
     )
 
-    assert (found.read, found.calibrated, found.tag_found) == (True, True, True)
+    assert (found.read, found.has_sub, found.calibrated, found.tag_found) == (
+        True,
+        True,
+        True,
+        True,
+    )
     assert found.tagged == {"t"}
     assert found.filed == {BUCKET: {"t", "u"}}
     assert found.unnamed == {}

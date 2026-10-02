@@ -260,6 +260,7 @@ def vocals_from(
 
     return Vocals(
         read=True,
+        has_sub=has_vocal_sub(declared),
         calibrated=calibrated,
         tag_found=tagged is not None,
         tagged=frozenset() if tagged is None else tagged,
@@ -267,6 +268,29 @@ def vocals_from(
         unnamed=unnamed,
         renamed=frozenset(renamed),
     )
+
+
+def has_vocal_sub(declared: taxonomy.Taxonomy) -> bool:
+    """Whether any bucket of this taxonomy has a vocal sub to file under."""
+    return any(vocal_sub(declared, bucket.id) is not None for bucket in declared.buckets)
+
+
+def vocal_standing(cfg: config.Config, declared: taxonomy.Taxonomy) -> bool:
+    """Whether this library can be filed vocally at all: a sub to file under and a cut on record.
+
+    ASKED BEFORE ANYTHING EXPENSIVE, which is why it is a function of its own.
+    It reads the taxonomy and one small state file, so a calibration that
+    cannot be read refuses before the census has walked a library.
+
+    THE CALIBRATION IS READ ONLY WHEN A BUCKET HAS A VOCAL SUB, through
+    :func:`cratekit.write.metadata_cli.load_vocal_threshold`, the one reader
+    every routing pass comes through, and it refuses an unreadable one as it
+    does there. A taxonomy with no vocal sub files nothing vocal whatever the
+    file says, so its state is not this run's to refuse over.
+    """
+    if not has_vocal_sub(declared):
+        return False
+    return metadata_cli.load_vocal_threshold(cfg) is not None
 
 
 def _removed(row: Any, what: str) -> bool:
@@ -295,8 +319,8 @@ def vox_tagged(db: Any) -> frozenset[str] | None:
     category of the name and reads no soft delete marker, so over a category
     rekordbox removed it would write under a row nobody can see while this
     answers that the library has no such tag. That is the direction that
-    files nothing, and the writer's half is recorded as a residual rather
-    than copied here.
+    files nothing, and the writer's half is in the ledger as a residual of
+    this unit rather than copied here.
 
     NONE IS NOT THE EMPTY SET. A library with the tag and nothing carrying it
     answers the empty set, and the plan document tells the two apart.
@@ -396,7 +420,7 @@ def read_placements(cfg: config.Config, declared: taxonomy.Taxonomy) -> Placemen
 
 
 def read_holdings(
-    cfg: config.Config, declared: taxonomy.Taxonomy
+    cfg: config.Config, declared: taxonomy.Taxonomy, *, standing: bool | None = None
 ) -> tuple[Placements, Vocals]:
     """What each track holds and what the vocal subs hold, from ONE read of the tree.
 
@@ -409,28 +433,34 @@ def read_holdings(
     not read either: with no tree nothing can say which tracks are already
     filed, so the plan files none.
 
-    WHETHER THE LIBRARY IS CALIBRATED IS READ HERE, through
-    :func:`cratekit.write.metadata_cli.load_vocal_threshold`, the one reader
-    every routing pass comes through. A calibration that cannot be read
-    refuses as it does there. It is read before the database is opened, so
-    that refusal costs nothing.
+    ``standing`` is what :func:`vocal_standing` answered, for a caller that
+    asked it before its own expensive work. Left out, it is asked here.
+
+    THE TAG IS READ ONLY WHEN IT COULD FILE SOMETHING. With no vocal sub in
+    the taxonomy, or no cut on record, no vocal membership is planned
+    whatever the tag tables hold, so they are not opened and a row in them
+    that cannot be read stops nothing. The vocals then say which of the two
+    it was.
     """
-    calibrated = metadata_cli.load_vocal_threshold(cfg) is not None
-    found = _read_tree(cfg, declared, tags=True)
+    if standing is None:
+        standing = vocal_standing(cfg, declared)
+    found = _read_tree(cfg, declared, tags=standing)
     if found is None:
         return UNREAD, NO_VOCALS
     nodes, record, tagged = found
     return placements_from(declared, nodes, record), vocals_from(
-        declared, nodes, record, tagged, calibrated=calibrated
+        declared, nodes, record, tagged, calibrated=standing
     )
 
 
 __all__ = [
     "named_place",
+    "has_vocal_sub",
     "placements_from",
     "read_holdings",
     "read_placements",
     "recorded_under",
+    "vocal_standing",
     "vocals_from",
     "vox_tagged",
 ]

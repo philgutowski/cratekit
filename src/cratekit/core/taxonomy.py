@@ -1219,7 +1219,7 @@ def _build_buckets(
     return tuple(buckets), problems
 
 
-def _live_places(
+def live_places(
     bucket: Bucket, energy: Energy, sub_classes: Sequence[SubClass]
 ) -> tuple[set[str], set[str]]:
     """The identifiers and the names of every sub one bucket's folder can hold.
@@ -1227,6 +1227,11 @@ def _live_places(
     The declared subs and the single sub, the bands under the bucket's own
     labels and the no reading sub when the bucket splits by energy, and every
     sub class. This is what a former place must not be.
+
+    PUBLIC, because the adoption plan asks it too (R-788): handed the sub
+    classes without the vocal one, it answers whether a bucket's own places
+    take the vocal sub's name. One list of what a folder can hold, so a shape
+    added here is a shape both askers see.
     """
     ids = {sub.id for sub in bucket.subs}
     displays = {sub.display for sub in bucket.subs}
@@ -1273,7 +1278,7 @@ def _check_former_places(
     claimed_displays: dict[tuple[str, str], str] = {}
     seen: dict[str, str] = {}
     for bucket in buckets:
-        own_ids, _own_displays = _live_places(bucket, energy, sub_classes)
+        own_ids, _own_displays = live_places(bucket, energy, sub_classes)
         if bucket.formerly and version < FORMER_PLACE_SCHEMA_VERSION:
             problems.append(
                 f"[[bucket]] {bucket.id}: declares a former place under schema_version "
@@ -1307,7 +1312,7 @@ def _check_former_places(
                     f"folder a former place sits in is found by its bucket"
                 )
                 continue
-            live_ids, live_displays = _live_places(holder, energy, sub_classes)
+            live_ids, live_displays = live_places(holder, energy, sub_classes)
             if former.id in live_ids:
                 problems.append(
                     f"{where}: id {former.id!r} is a sub of {former.bucket!r}, where a "
