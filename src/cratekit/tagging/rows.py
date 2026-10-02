@@ -418,21 +418,25 @@ def _empty(value: Any) -> bool:
     return value in rb_writer.FIELD_EMPTIES["GenreID"]
 
 
-def assert_rows_as_planned(plan: RowsPlan, now: Mapping[str, Mapping[str, Any]]) -> None:
+def assert_rows_as_planned(plan: RowsPlan, mapped: Mapping[str, Any]) -> None:
     """Refuse when a row to be written is not the row the plan read.
 
     THE PLAN IS MADE ON A READ HANDLE AND THE WRITE ON ANOTHER, so the one thing
     the apply asks the database again is whether each row still carries the
     genre the plan saw it carrying, and is still a live row. A row that moved
     is a row nobody was shown, and nothing is written for any of them.
+
+    ``mapped`` is the write handle's own rows, so the tombstone is read through
+    :func:`cratekit.write.trees.soft_delete_marker`, the one reader of that
+    column, which refuses a row that cannot say.
     """
     moved: list[str] = []
     for change in plan.changes.changes:
-        row = now.get(change.content_id)
-        if row is None or row.get(rb_writer.SOFT_DELETE_COLUMN):
+        row = mapped.get(change.content_id)
+        if row is None or trees.soft_delete_marker(row):
             moved.append(f"{change.content_id}: no longer a live row")
             continue
-        held, planned = row.get("GenreID"), change.current
+        held, planned = getattr(row, "GenreID", None), change.current
         if (_empty(held) and _empty(planned)) or str(held) == str(planned):
             continue
         moved.append(f"{change.content_id}: its genre changed since the plan")
@@ -511,14 +515,14 @@ def apply_rows(
         rb_writer.commit_witness(db) as witness,
     ):
         record = gates.record
-        before = _columns(db, content_ids)
-        assert_rows_as_planned(plan, before)
+        mapped = _mapped(db, content_ids)
+        assert_rows_as_planned(plan, mapped)
 
         capture = snapshot.capture(cfg, db=db)
         session.attach_capture(record, capture.root, cfg)
         snapshot.assert_verified(capture)
 
-        mapped = _mapped(db, content_ids)
+        before = _columns(db, content_ids)
         written = 0
         try:
             report = retag.apply_library(retag.LibraryPlan(plan=plan.changes), mapped)

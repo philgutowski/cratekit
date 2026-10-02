@@ -22,6 +22,7 @@ import shutil
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -672,11 +673,19 @@ def test_a_blank_row_is_as_planned_however_the_database_spells_blank(held):
     plan = rows.RowsPlan(
         items=(), counts={}, changes=metadata.Plan(metadata.RETAG_GENRE, (change,))
     )
-    rows.assert_rows_as_planned(plan, {"30": {"GenreID": held, "rb_local_deleted": 0}})
+    def mapped(genre_id, **marker):
+        return {"30": SimpleNamespace(ID="30", GenreID=genre_id, **marker)}
+
+    rows.assert_rows_as_planned(plan, mapped(held, rb_local_deleted=0))
     with pytest.raises(CratekitError):
-        rows.assert_rows_as_planned(plan, {"30": {"GenreID": "100", "rb_local_deleted": 0}})
+        rows.assert_rows_as_planned(plan, mapped("100", rb_local_deleted=0))
     with pytest.raises(CratekitError):
         rows.assert_rows_as_planned(plan, {})
+    # A row that cannot say whether it is a tombstone refuses in the reader's
+    # own words and is never read as live.
+    with pytest.raises(CratekitError) as unreadable:
+        rows.assert_rows_as_planned(plan, mapped(held))
+    assert unreadable.value.cause.reason == "soft-delete-marker-unreadable"
 
 
 # ── the read back's judgement, with no database ────────────────────────────
