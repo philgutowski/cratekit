@@ -1,0 +1,273 @@
+{
+  "name": "r838-a",
+  "pass_kind": "light",
+  "branch": "relay/243",
+  "head": "773e9ac",
+  "when": "2026-10-02 23:10 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 12246,
+  "baseline_exit": 0,
+  "pytest_runs": 12,
+  "state_guarded": "~/Library/Application Support/cratekit (256883 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/sync/unmark_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/sync/unmark_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "4ef6fd71c3d72102",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 12246,
+    "baseline_collected": 12246,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "U1_refuse_stranger",
+      "description": "unmark._narrowed: drop the refusal, so a playlist the pass never marked is silently passed over rather than refused",
+      "file": "src/cratekit/sync/unmark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8a6b93b2200f777c",
+      "subset": [
+        "tests/test_sync_unmark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 31,
+      "baseline_collected": 31,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_unmark.py::test_a_playlist_the_pass_never_marked_is_refused_whatever_its_title"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if strangers:\n        raise _blocked(",
+      "new": "    if False:\n        raise _blocked("
+    },
+    {
+      "id": "U2_narrow_widens",
+      "description": "unmark._narrowed: return every mark of the pass whatever --playlist named, so the narrowing widens",
+      "file": "src/cratekit/sync/unmark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "76ffea6c836a39ff",
+      "subset": [
+        "tests/test_sync_unmark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 31,
+      "baseline_collected": 31,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_unmark.py::test_playlist_narrows_to_the_marks_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return tuple(entry for entry in found if entry.playlist_id in set(named))",
+      "new": "    return found"
+    },
+    {
+      "id": "U3_pass_filter",
+      "description": "unmark: take every pass's marks as the named pass's, so a playlist the pass never marked is planned",
+      "file": "src/cratekit/sync/unmark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9a87f980e665f406",
+      "subset": [
+        "tests/test_sync_unmark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 31,
+      "baseline_collected": 31,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_unmark.py::test_a_later_mark_by_another_pass_owns_the_prefix",
+        "tests/test_sync_unmark.py::test_a_pass_the_record_holds_nothing_for_is_a_gated_plan_of_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        tuple(entry for entry in every if entry.pass_name == name),",
+      "new": "        tuple(entry for entry in every),"
+    },
+    {
+      "id": "U4_already_unmarked_stamp",
+      "description": "unmark._item: ignore the unmarked stamp, so a second run is decided by the title alone",
+      "file": "src/cratekit/sync/unmark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3c442e53e8c7ca5b",
+      "subset": [
+        "tests/test_sync_unmark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 31,
+      "baseline_collected": 31,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_unmark.py::test_a_second_run_plans_nothing_and_still_asks"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if entry.unmarked:\n        return {",
+      "new": "    if False:\n        return {"
+    },
+    {
+      "id": "U5_marked_again",
+      "description": "unmark._item: ignore a later mark by another pass, so this pass's unmark takes off that pass's prefix",
+      "file": "src/cratekit/sync/unmark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "066c63efb9fead49",
+      "subset": [
+        "tests/test_sync_unmark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 31,
+      "baseline_collected": 31,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_unmark.py::test_a_later_mark_by_another_pass_owns_the_prefix"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    later = _later(entry, every)\n    if later:",
+      "new": "    later = _later(entry, every)\n    if False:"
+    },
+    {
+      "id": "U6_later_order",
+      "description": "unmark._later: an EARLIER mark by another pass also supersedes, so the latest pass's own unmark is refused",
+      "file": "src/cratekit/sync/unmark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2b54c2f05eb19af9",
+      "subset": [
+        "tests/test_sync_unmark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 31,
+      "baseline_collected": 31,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_unmark.py::test_a_later_mark_by_another_pass_owns_the_prefix"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        and other.marked > entry.marked",
+      "new": "        and other.marked != entry.marked"
+    },
+    {
+      "id": "U7_not_listed",
+      "description": "unmark._item: no NOT_LISTED branch, so a playlist the account dropped falls through to the title comparison",
+      "file": "src/cratekit/sync/unmark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "56e02389c1b7ded6",
+      "subset": [
+        "tests/test_sync_unmark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 12246,
+      "baseline_collected": 12246,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "    if current is None:\n        return {\n            **base,\n            \"action\": SKIP,\n            \"reason\": NOT_LISTED,",
+      "new": "    if current is None and False:\n        return {\n            **base,\n            \"action\": SKIP,\n            \"reason\": NOT_LISTED,"
+    },
+    {
+      "id": "U8_title_already_back",
+      "description": "unmark._item: no already-put-back branch, so a title already restored is reported as retitled by hand",
+      "file": "src/cratekit/sync/unmark_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "79eab6dc6b5e5075",
+      "subset": [
+        "tests/test_sync_unmark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 31,
+      "baseline_collected": 31,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_unmark.py::test_a_title_already_put_back_is_skipped_without_a_stamp"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if current == entry.name:",
+      "new": "    if False:"
+    }
+  ],
+  "dropped": []
+}

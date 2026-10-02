@@ -2272,9 +2272,12 @@ ENTRIES: tuple[Entry, ...] = (
         output_schema="plan/1",
         #: One surface, the account. The only write is ``rename_playlist``, a
         #: retitle keyed by identifier that changes no membership. The cursor
-        #: is READ and never written here, no file is written and no database
-        #: is opened. ``destructive`` because a retitle lands on a playlist the
-        #: product did not make and nothing here puts the old title back.
+        #: is READ and never written here, no file on the library is written
+        #: and no database is opened. Each rename that lands is recorded in
+        #: this product's own state, the mark record, which is not a declared
+        #: surface. ``destructive`` because a retitle lands on a playlist the
+        #: product did not make, and only ``sync unmark``, a separate gated
+        #: act, puts the old title back (R-838).
         writes=frozenset({"remote"}),
         destructive=True,
         doctor_checks=("credential.provider",),
@@ -2287,6 +2290,37 @@ ENTRIES: tuple[Entry, ...] = (
                 # is. A retitle of a playlist the product did not make is
                 # answered by a separate recorded act, never by one more flag
                 # on the run that found the question (R34).
+                explicit=True,
+                digest_source="plan",
+            ),
+        ),
+    ),
+    # ── The mark, undone (R-838) ────────────────────────────────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives.
+    Entry(
+        name="sync.unmark",
+        summary="put back the account playlist titles a sync pass's mark wrote",
+        module="cratekit.sync.unmark_cli",
+        builder="build_unmark",
+        handler_key="sync.unmark",
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: One surface, the account, and the one write is ``rename_playlist``,
+        #: a retitle back to the title the mark record says the playlist had.
+        #: The record is this product's own state and is stamped as each rename
+        #: lands; no file on the library is written and no database is opened.
+        #: ``destructive`` for ``sync.mark``'s reason: the retitle lands on a
+        #: playlist the product did not make.
+        writes=frozenset({"remote"}),
+        destructive=True,
+        doctor_checks=("credential.provider",),
+        gates=(
+            GateSpec(
+                name="sync.unmark.confirm",
+                options=("apply", "abort"),
+                prompt="Put these playlist titles back on the streaming account?",
+                # EXPLICIT, as sync.mark's is, for the same reason (R34).
                 explicit=True,
                 digest_source="plan",
             ),

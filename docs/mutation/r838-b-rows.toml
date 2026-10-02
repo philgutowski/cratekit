@@ -1,0 +1,81 @@
+name = "r838-b"
+pass_kind = "light"
+
+[[rows]]
+id = "U9_renamed_since"
+description = "unmark._item: plan any title carrying the prefix, so a playlist retitled by hand with the prefix kept is renamed"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''    if current != entry.to:
+        how ='''
+new = '''    if not playlists.is_swept_name(current):
+        how ='''
+
+[[rows]]
+id = "U10_digest_names"
+description = "unmark._payload: the digest omits the planned renames, so an answer to one plan carries out another"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''            (item["id"], item["marked_as"], item["to"])
+            for item in items
+            if item["action"] == UNMARK'''
+new = '''            (item["id"], item["marked_as"], item["to"])
+            for item in items
+            if False'''
+
+[[rows]]
+id = "U11_abort_applies"
+description = "unmark: carry out the plan whatever the answer, so an abort renames"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''    if option != "apply" or not planned:'''
+new = '''    if not planned:'''
+
+[[rows]]
+id = "U12_preflight_unmark"
+description = "unmark: drop the record check before the first rename, so an unlockable record is met after a title changed"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''    record.ready()
+    remote = account.resolve(cfg)'''
+new = '''    remote = account.resolve(cfg)'''
+
+[[rows]]
+id = "U13_recheck"
+description = "unmark: no recheck against the second listing, so a title changed after the answer is renamed anyway"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''            if now.get(identity) != entry.to:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "U14_stamp"
+description = "unmark: never stamp the record, so a second run plans the same renames again from the record"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''            record.record_unmarked(name, identity)'''
+new = '''            pass'''
+
+[[rows]]
+id = "U15_rename_target"
+description = "unmark: rename to the title the mark wrote rather than the one before it"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''            remote.rename_playlist(identity, entry.name)'''
+new = '''            remote.rename_playlist(identity, entry.to)'''
+
+[[rows]]
+id = "U16_part_way_names"
+description = "unmark._failed_part_way: report nothing put back, so a partial failure loses what landed"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''        "unmarked": list(landed),'''
+new = '''        "unmarked": [],'''

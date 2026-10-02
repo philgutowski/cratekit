@@ -1186,6 +1186,10 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # The artifact registry is present and cannot be understood. Treating it
         # as empty would make crash debris look like next-run intake.
         "sync-artifacts-unusable": ExitCode.PRECONDITION,
+        # R-838. The record of what sync mark renamed is present and cannot be
+        # understood. Read as empty, it would refuse every mark it holds, so
+        # the one verb that can take a mark off could take none off.
+        "sync-mark-record-unusable": ExitCode.PRECONDITION,
         # ── U20's refusals, appended for the reason given above ─────────────
         #
         # A tree cannot flip while a run is still open, while an intake XML is

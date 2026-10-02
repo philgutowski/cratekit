@@ -1149,6 +1149,17 @@ not that any was acquired (R-359). `crate sync all` says so, as `swept_means`,
 
 *Avoid:* reading swept as downloaded, or deciding it from a title.
 
+### Mark record
+The library's record of every account playlist a sync pass renamed with the
+swept prefix, keyed by pass and playlist id, with the title before the mark and
+the title written, stamped when `sync unmark` puts the title back. It is the
+only thing that says a pass wrote a prefix, since the title cannot: the source
+system writes the same prefix and a person can type it. Never restored, because
+the renames it records do not roll back.
+
+*Avoid:* deciding from a title which pass marked a playlist, or reading it as
+the playlists cursor, which records what was resolved and not what was renamed.
+
 ### Label debris
 An account playlist the source system's label batch built for one run and left
 behind, named `<label> LIBRARY`. The playlists source excludes any name ending

@@ -1,0 +1,100 @@
+{
+  "name": "r838-d",
+  "pass_kind": "light",
+  "branch": "relay/243",
+  "head": "b9b28d1",
+  "when": "2026-10-02 23:45 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 12248,
+  "baseline_exit": 0,
+  "pytest_runs": 5,
+  "state_guarded": "~/Library/Application Support/cratekit (256883 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/sync/mark_record.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/sync/mark_record.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "a488ab32da12f066",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 12248,
+    "baseline_collected": 12248,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "R3b_stamp_target",
+      "description": "mark_record.record_unmarked: stamp the playlist's mark under any pass, so another pass's mark reads as put back",
+      "file": "src/cratekit/sync/mark_record.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0ce08e2b6fae98a9",
+      "subset": [
+        "tests/test_sync_unmark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_unmark.py::test_a_later_mark_by_another_pass_owns_the_prefix"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                if (entry.pass_name, entry.playlist_id) == (pass_name, playlist_id):\n                    entries[index] = replace(entry, unmarked=when)",
+      "new": "                if entry.playlist_id == playlist_id:\n                    entries[index] = replace(entry, unmarked=when)"
+    },
+    {
+      "id": "R4b_field_types",
+      "description": "mark_record._recognize: accept an entry missing its title fields",
+      "file": "src/cratekit/sync/mark_record.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f4c6c4da6053eaf2",
+      "subset": [
+        "tests/test_sync_unmark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_unmark.py::test_an_unreadable_record_refuses_rather_than_reading_as_empty[LIBRARY:{\"version\": 1, \"marks\": [{\"pass\": \"p\", \"playlist_id\": \"x\", \"name\": \"n\", \"to\": \"DOWNLOADED n\", \"marked\": \"t\", \"unmarked\": 7}]}]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if not all(isinstance(value, str) for value in fields.values()):",
+      "new": "            if False:"
+    }
+  ],
+  "dropped": []
+}

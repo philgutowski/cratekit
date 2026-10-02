@@ -1673,6 +1673,37 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="sync_mark_record",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="sync_marks.json",
+        why=(
+            "R-838. Which account playlists each sync pass renamed with the swept "
+            "prefix, the title before and the title written, so ``sync unmark`` "
+            "can put a mistaken mark back and refuse a prefix no pass of this "
+            "product wrote. The title alone cannot say who wrote it."
+            " NEVER_RESTORED for the undo logs' reason: the renames it records "
+            "are on somebody else's server and a database restore does not undo "
+            "them, so rolling the record back forgets a mark that is still there "
+            "and leaves the one verb that can remove it refusing to."
+        ),
+    ),
+    StateFile(
+        key="sync_mark_record_lock",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="sync_marks.lock",
+        why=(
+            "The sibling lock for the mark record, which is a read then a write "
+            "over one document. Two marks landing at once would both read the "
+            "same record and the second rename would discard the first one's "
+            "entries while reporting success. NEVER_RESTORED for the inode reason "
+            "every lock here shares."
+        ),
+    ),
+    StateFile(
         key="sync_artifacts",
         snapshot=SnapshotRole.COUPLED,
         rollback_effects=(RollbackEffect.DOWNLOADED_FILE,),

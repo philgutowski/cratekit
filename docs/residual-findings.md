@@ -33174,6 +33174,23 @@ did not mark.
 
 **On the board bar, (b).** The author asked for it on 2026-10-02.
 
+**Built 2026-10-02 on `relay/243`, and still open on the live unmark.**
+`sync mark` kept no record of what it renamed, and a title cannot say who
+put the prefix on it, so the unit adds one: `sync_marks.json` in the
+library's state, declared NEVER_RESTORED for the undo logs' reason, one entry
+per playlist a pass renamed with the title before and the title written.
+`sync mark` reads it under its lock before its gate and writes every rename
+that landed, on the failure path too. `crate sync unmark --pass NAME`, the
+pass's name or the intake file it was marked from, retired or not, reads that
+record and nothing else, plans the title back for each playlist whose title
+is still exactly what the mark wrote, lists and leaves one retitled since, one
+the account no longer lists, one already put back and one another pass marked
+later, refuses a `--playlist` the pass did not mark, asks at the explicit
+`sync.unmark.confirm`, rechecks against a second listing, and stamps each
+rename in the record as it lands, so a second run plans nothing and lists
+nothing. Closes once one playlist marked for the purpose is unmarked live at
+an attended sitting, recorded in `docs/cutover.md`.
+
 ---
 
 ## R-839. Nothing triages the account's unprefixed playlists, and nothing deletes one
@@ -33563,3 +33580,102 @@ unmatched track and reads it in the answer.
 
 **On the board bar, (b).** The product prints a clean report over a declared
 write it did not perform for half the playlist.
+
+---
+
+## R-851. `sync unmark` takes the prefix off and the next `sync all` still does not offer the playlist
+
+**Found:** 2026-10-02, building R-838 on `relay/243`.
+
+**The mechanism.** A playlist is skipped by the next pass for either of two
+reasons, its title carries the prefix or the playlists cursor records its id
+(`Excluded.RECORDED`). `reconcile` records every playlist whose intake job
+SUCCEEDED, at the top of every pass, whether or not anything was ever marked.
+`sync unmark` puts the title back and leaves the cursor alone, and a cursor
+entry dropped by hand would be added again by the next `reconcile` from the
+same succeeded job.
+
+**Driven.** Not driven end to end. Read from `playlists.plan`,
+`playlists.reconcile` and `playlists.exclusion`; the guide says so in the
+section on `sync unmark`.
+
+**Measured cost.** R-838's own measured cost, a playlist marked by a pass that
+did not land is skipped by the next `sync all`, is not closed by the prefix
+alone in this product, because the cursor skips it too. The source system,
+which reads only the prefix, does offer it again.
+
+**Closes when:** the author decides whether undoing a mark should also make
+the playlist new again to this product, which means retiring its succeeded
+job from the cursor's reading, not only the cursor's entry.
+
+**Not on the board bar.** It closes on the author's decision first.
+
+---
+
+## R-852. A mark made before the mark record existed cannot be taken off by `sync unmark`
+
+**Found:** 2026-10-02, building R-838 on `relay/243`.
+
+**The mechanism.** `sync unmark` trusts the mark record and nothing else, by
+design, so a playlist renamed by `sync mark` before this build has no entry
+and is refused like a prefix somebody else wrote. The live account carries
+at least the four the first live `sync mark` renamed, recorded in the sync
+table of `docs/cutover.md`, and whatever sittings since marked.
+
+**Measured cost.** A mistaken mark from before this build is still fixed by
+hand on the account.
+
+**Closes when:** the author decides whether old marks may be adopted into
+the record from a pass's succeeded jobs and the titles the account lists, or
+are left to be fixed by hand.
+
+**Not on the board bar.** Historical, one time, and the author's decision.
+
+---
+
+## R-853. Renames that land while the mark record cannot be written are never recorded afterwards
+
+**Found:** 2026-10-02, the built in review of R-838's branch.
+
+**The mechanism.** `sync mark` reads the record under its lock before its
+gate, so an unreadable or unlockable record refuses before any rename. A
+write that fails after the renames, a full disk or a permission change in
+between, refuses naming every playlist renamed, and keeps the account's own
+failure beside it when there is one. Those renames stay unrecorded: a rerun
+sees each title already prefixed, skips it as `already-marked`, and records
+nothing, so `sync unmark` refuses them as R-852 refuses an old mark.
+
+**Driven.** `test_a_record_that_fails_after_a_whole_mark_names_what_was_renamed`
+and the failure path beside it, with the write made to raise.
+
+**Measured cost.** Narrow: the window is a write failing after a locked read
+succeeded in the same run. What is lost is the undo, not a title.
+
+**Closes when:** a rerun of `sync mark` records an `already-marked` playlist
+of its own pass whose title is exactly the prefix on the title the pass's
+listing had, or the author accepts the window.
+
+**Not on the board bar.** The refusal says what was renamed, so nothing is
+reported clean.
+
+---
+
+## R-854. The mark record rewrites itself per rename and grows for ever, and the unmark copies the mark's failure wording
+
+**Found:** 2026-10-02, the built in review of R-838's branch.
+
+**The mechanism.** `MarkRecord.record_unmarked` takes the lock, reads, checks
+and rewrites the whole document once per playlist put back, and no entry is
+ever pruned, so a long lived library rewrites a growing document per rename.
+`unmark_cli._failed_part_way`, `_payload` and `_shown` are close copies of
+`mark_cli`'s, and `MarkRecord._locked` copies `WatermarkStore._locked`.
+
+**Measured cost.** Maintainer facing. A pass marks tens of playlists, so the
+cost is not measured on any library today, and the copies are two places to
+change one wording.
+
+**Closes when:** the stamps are written once per run, and the shared failure
+wording has one home.
+
+**Not on the board bar.** Maintainer facing.
+

@@ -357,6 +357,15 @@ def _listed_or_refuse(found: Catalogue) -> tuple[AccountPlaylist, ...]:
         ) from exc
 
 
+def account_names(found: Catalogue) -> dict[str, str]:
+    """Every playlist the account lists, identifier to name, or the refusal.
+
+    The listing ``sync unmark`` plans and rechecks against (R-838), through the
+    same refusal an unread listing gets everywhere else here.
+    """
+    return {playlist.playlist_id: playlist.name for playlist in _listed_or_refuse(found)}
+
+
 def plan(
     store,
     cfg: config.Config,
@@ -619,6 +628,7 @@ __all__ = [
     "SWEPT_PREFIX",
     "Excluded",
     "Sweep",
+    "account_names",
     "completed",
     "exclusion",
     "is_library_debris",
