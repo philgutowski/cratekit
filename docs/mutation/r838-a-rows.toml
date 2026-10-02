@@ -1,0 +1,88 @@
+name = "r838-a"
+pass_kind = "light"
+
+[[rows]]
+id = "U1_refuse_stranger"
+description = "unmark._narrowed: drop the refusal, so a playlist the pass never marked is silently passed over rather than refused"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''    if strangers:
+        raise _blocked('''
+new = '''    if False:
+        raise _blocked('''
+
+[[rows]]
+id = "U2_narrow_widens"
+description = "unmark._narrowed: return every mark of the pass whatever --playlist named, so the narrowing widens"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''    return tuple(entry for entry in found if entry.playlist_id in set(named))'''
+new = '''    return found'''
+
+[[rows]]
+id = "U3_pass_filter"
+description = "unmark: take every pass's marks as the named pass's, so a playlist the pass never marked is planned"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''        tuple(entry for entry in every if entry.pass_name == name),'''
+new = '''        tuple(entry for entry in every),'''
+
+[[rows]]
+id = "U4_already_unmarked_stamp"
+description = "unmark._item: ignore the unmarked stamp, so a second run is decided by the title alone"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''    if entry.unmarked:
+        return {'''
+new = '''    if False:
+        return {'''
+
+[[rows]]
+id = "U5_marked_again"
+description = "unmark._item: ignore a later mark by another pass, so this pass's unmark takes off that pass's prefix"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''    later = _later(entry, every)
+    if later:'''
+new = '''    later = _later(entry, every)
+    if False:'''
+
+[[rows]]
+id = "U6_later_order"
+description = "unmark._later: an EARLIER mark by another pass also supersedes, so the latest pass's own unmark is refused"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''        and other.marked > entry.marked'''
+new = '''        and other.marked != entry.marked'''
+
+[[rows]]
+id = "U7_not_listed"
+description = "unmark._item: no NOT_LISTED branch, so a playlist the account dropped falls through to the title comparison"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''    if current is None:
+        return {
+            **base,
+            "action": SKIP,
+            "reason": NOT_LISTED,'''
+new = '''    if current is None and False:
+        return {
+            **base,
+            "action": SKIP,
+            "reason": NOT_LISTED,'''
+
+[[rows]]
+id = "U8_title_already_back"
+description = "unmark._item: no already-put-back branch, so a title already restored is reported as retitled by hand"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''    if current == entry.name:'''
+new = '''    if False:'''
