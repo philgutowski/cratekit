@@ -1,0 +1,312 @@
+{
+  "name": "r840-a",
+  "pass_kind": "light",
+  "branch": "relay/244",
+  "head": "5fbf8ec",
+  "when": "2026-10-02 21:31 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 12202,
+  "baseline_exit": 0,
+  "pytest_runs": 12,
+  "state_guarded": "~/Library/Application Support/cratekit (256854 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/label/artists_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/label/artists_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "856940c84c77dbf0",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 12202,
+    "baseline_collected": 12202,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "A1_address_is_the_whole_field",
+      "description": "is_address: search for the address shape anywhere in the field, so a name that merely contains one is asked about and overwritten",
+      "file": "src/cratekit/label/artists_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "96f4ac7bc1e03d1a",
+      "subset": [
+        "tests/test_label_artists.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 61,
+      "baseline_collected": 61,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_artists.py::test_a_name_is_never_read_as_an_address[<provider.artist.Artist object at 0x10b77ec00> (remix)]",
+        "tests/test_label_artists.py::test_a_name_is_never_read_as_an_address[Label Act <provider.artist.Artist object at 0x10b77ec00>]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "ADDRESS.fullmatch(value.strip()) is not None",
+      "new": "ADDRESS.search(value.strip()) is not None"
+    },
+    {
+      "id": "A2_a_name_is_not_asked_about",
+      "description": "_listed: drop the address check, so every open label release is read from the provider and rewritten",
+      "file": "src/cratekit/label/artists_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "860e25137d40a532",
+      "subset": [
+        "tests/test_label_artists.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 61,
+      "baseline_collected": 61,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_artists.py::test_a_queue_with_no_address_opens_no_catalogue",
+        "tests/test_label_artists.py::test_a_second_run_asks_about_nothing_the_first_repaired",
+        "tests/test_label_artists.py::test_an_item_whose_artist_is_a_name_is_not_asked_about",
+        "tests/test_label_artists.py::test_an_item_with_no_artist_at_all_is_not_an_address_and_is_not_said_to_have_one",
+        "tests/test_label_artists.py::test_the_counts_always_sum_to_the_addresses_and_the_items_left_alone",
+        "tests/test_label_artists.py::test_the_provider_is_asked_once_for_each_repaired_item_and_never_for_the_others"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not is_address(item.payload.get(\"artist\")):\n            done.counts[ALREADY_FINE] += 1\n            continue\n        if item.stored_verdict",
+      "new": "        if item.stored_verdict"
+    },
+    {
+      "id": "A3_unreadable_verdict_is_decided",
+      "description": "_listed: drop the stored verdict check, so an item carrying a verdict this build cannot read is asked about",
+      "file": "src/cratekit/label/artists_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "15c772e49e75481e",
+      "subset": [
+        "tests/test_label_artists.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 61,
+      "baseline_collected": 61,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_artists.py::test_an_item_carrying_a_verdict_this_build_cannot_read_is_left_and_not_asked_about"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if item.stored_verdict is not None:\n            done.counts[DECIDED] += 1\n            continue\n",
+      "new": ""
+    },
+    {
+      "id": "A4_only_label_releases",
+      "description": "_listed: drop the kind from the selection, so another producer's item in the same queue is read as a release",
+      "file": "src/cratekit/label/artists_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "812c56d92b4d9cdc",
+      "subset": [
+        "tests/test_label_artists.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 61,
+      "baseline_collected": 61,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_artists.py::test_another_queues_item_reading_an_address_is_not_this_verbs"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "review.Predicate(queue=str(Queue.LABEL_RELEASE), kind=genre_gate.RELEASE_KIND)",
+      "new": "review.Predicate(queue=str(Queue.LABEL_RELEASE))"
+    },
+    {
+      "id": "A5_no_identifier_is_not_read",
+      "description": "_walk: drop the empty identifier half of the unaddressed check, so an item filed under an empty identifier is asked for and reported as no longer served",
+      "file": "src/cratekit/label/artists_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0fe064aff168848d",
+      "subset": [
+        "tests/test_label_artists.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 61,
+      "baseline_collected": 61,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_artists.py::test_an_item_filed_under_an_empty_identifier_is_not_asked_about"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if (\n            not subject.release_id\n            or genre_gate.release_item_id(subject.release_id) != subject.item_id\n        ):",
+      "new": "        if (\n            genre_gate.release_item_id(subject.release_id) != subject.item_id\n        ):"
+    },
+    {
+      "id": "A6_another_items_release_is_not_read",
+      "description": "_walk: drop the addressing half of the unaddressed check, so an item naming another item's release is given that release's artist",
+      "file": "src/cratekit/label/artists_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6e4937e752534ecf",
+      "subset": [
+        "tests/test_label_artists.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 61,
+      "baseline_collected": 61,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_artists.py::test_an_item_naming_another_items_release_is_not_given_that_releases_artist",
+        "tests/test_label_artists.py::test_two_items_naming_one_release_are_two_lines_under_two_keys"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if (\n            not subject.release_id\n            or genre_gate.release_item_id(subject.release_id) != subject.item_id\n        ):",
+      "new": "        if (\n            not subject.release_id\n        ):"
+    },
+    {
+      "id": "A7_catalogue_opened_on_demand",
+      "description": "_walk: open the catalogue before the walk, so a queue with no address in it logs in and can refuse on the credential",
+      "file": "src/cratekit/label/artists_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cd0d9c35941ffb72",
+      "subset": [
+        "tests/test_label_artists.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 61,
+      "baseline_collected": 61,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_artists.py::test_a_queue_with_no_address_opens_no_catalogue",
+        "tests/test_label_artists.py::test_an_empty_queue_is_a_no_op_that_opens_no_catalogue"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    found: catalogue.Catalogue | None = None\n    failed_in_a_row = 0",
+      "new": "    found: catalogue.Catalogue | None = catalogue.resolve(cfg)\n    failed_in_a_row = 0"
+    },
+    {
+      "id": "A8_outage_bound",
+      "description": "_walk: stop after four reads failing in a row and not three",
+      "file": "src/cratekit/label/artists_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1729f2f356943c88",
+      "subset": [
+        "tests/test_label_artists.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 61,
+      "baseline_collected": 61,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_artists.py::test_three_reads_failing_in_a_row_stop_the_run_and_say_what_was_left"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if failed_in_a_row >= catalogue.READS_FAILED_IN_A_ROW:\n            # THE RUN STOPS",
+      "new": "        if failed_in_a_row > catalogue.READS_FAILED_IN_A_ROW:\n            # THE RUN STOPS"
+    },
+    {
+      "id": "A9_an_answer_resets_the_count",
+      "description": "_walk: never reset the count of failed reads, so three scattered failures stop the run as an outage",
+      "file": "src/cratekit/label/artists_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3c73f5c3f544840c",
+      "subset": [
+        "tests/test_label_artists.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 61,
+      "baseline_collected": 61,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_artists.py::test_a_release_that_is_gone_does_not_count_towards_an_outage",
+        "tests/test_label_artists.py::test_an_answer_between_failures_keeps_the_run_going"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "failed_in_a_row = failed_in_a_row + 1 if failed else 0",
+      "new": "failed_in_a_row = failed_in_a_row + (1 if failed else 0)"
+    }
+  ],
+  "dropped": []
+}
