@@ -4,6 +4,20 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**Sitting 29, 2026-10-02, no code.** The session drove rekordbox itself.
+32 of the 36 non dance tracks are out of the collection, the label test
+folder 186 to 154, the collection 10,240 rows; on the fifth removal the
+session's permission check refused the click, so **James Savage "Better",
+Nerv "journey", CR "Tal Para Cual" and CR "FANCY" are the author's to
+remove**, then `crate delete review` over all 36. Espresso and Pop Song
+carry `NonElectronic / Pop` on their rows and left their Dance / Pop bands
+by hand. `adopt apply` live on an equal digest `367761445f6c62c9`: two
+memberships added, both to NonElectronic / Pop, nothing else changed.
+`tag remap` plans nothing, 78 agree. **R-799 is proven and closed.** The
+Cratekit feeder is stopped by its stop file until the author's rekordbox
+step is done. Main's highest residual number is R-833, the sitting filed
+none.
+
 **Sitting 28, 2026-10-02, no code.** The author edited the taxonomy and
 minted the acknowledgment. `crate tag remap` wrote 16 files. `crate tag
 rows` live on an equal digest `3dbf848be3ab3619`: **797 rows now carry

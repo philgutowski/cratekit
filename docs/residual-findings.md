@@ -32008,8 +32008,11 @@ mapping are corrected, and a run on the author's library is recorded in
 
 **On the board bar.** The author asked for it on 2026-10-01.
 
-**Built 2026-10-02 on `relay/241`, issue #241, in the code. The run on the
-author's library is still owed, so this stays open.** The taxonomy declares
+**Built 2026-10-02 on `relay/241`, issue #241, and run on the author's
+library at sittings 28 and 29 in `docs/cutover.md`: 16 files rewritten, the
+two Pop tracks left in the collection filed under NonElectronic / Pop on an
+equal digest, every Rock row under Rock, and `tag remap` planning nothing.
+Closed.** The taxonomy declares
 a vocabulary per source, `[vocabulary.deezer]`, a list of rows, each a word
 of the general catalogue's and the genre written for it. The table is asked
 first. A word with no row goes on to the buckets' aliases as before, and on
