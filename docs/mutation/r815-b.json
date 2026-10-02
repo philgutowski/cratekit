@@ -1,0 +1,281 @@
+{
+  "name": "r815-b",
+  "pass_kind": "light",
+  "branch": "relay/240",
+  "head": "d417acc",
+  "when": "2026-10-02 04:24 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 11679,
+  "baseline_exit": 0,
+  "pytest_runs": 12,
+  "state_guarded": "~/Library/Application Support/cratekit (189230 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/label/sweep.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/label/sweep.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "1a549e1228e8c5de",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 11679,
+    "baseline_collected": 11679,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "S1_a_sweep_keeps_a_withheld_hold",
+      "description": "list_for_label: drop a withheld hold the window does not reach, as any other",
+      "file": "src/cratekit/label/sweep.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e554fe0df3374d25",
+      "subset": [
+        "tests/test_label_judge.py",
+        "tests/test_label_genre_gate.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 213,
+      "baseline_collected": 213,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_a_withheld_release_the_window_does_not_reach_is_not_dropped_when_its_kind_changes"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if standing.payload.get(review.WITHHELD_FIELD):\n                continue",
+      "new": "            if False:\n                continue"
+    },
+    {
+      "id": "H1_a_withheld_release_returns_under_no_invented_run",
+      "description": "label held return: fall back to the hold's own run for a withheld release",
+      "file": "src/cratekit/label/held_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "714436c39f04fa97",
+      "subset": [
+        "tests/test_label_judge.py",
+        "tests/test_label_genre_gate.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 213,
+      "baseline_collected": 213,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_a_withheld_release_filed_before_runs_were_recorded_is_returned_under_no_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                or (None if taken_back else one.run_id or None),",
+      "new": "                or (one.run_id or None),"
+    },
+    {
+      "id": "H2_the_withheld_word_stays_with_the_hold",
+      "description": "label held return: file the hold's payload whole",
+      "file": "src/cratekit/label/held_cli.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "1361ee6474bb82e3",
+      "subset": [
+        "tests/test_label_judge.py",
+        "tests/test_label_genre_gate.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 213,
+      "baseline_collected": 213,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_a_queued_release_of_another_kind_is_held_listed_and_returned",
+        "tests/test_label_judge.py::test_a_withheld_release_filed_before_runs_were_recorded_is_returned_under_no_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                **{k: v for k, v in one.payload.items() if k != review.WITHHELD_FIELD},",
+      "new": "                **one.payload,"
+    },
+    {
+      "id": "H3_a_judge_runs_answer_is_not_the_sweeps",
+      "description": "_sweep_rows: count a judging job's answer as the sweep's",
+      "file": "src/cratekit/label/held_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "92bc46be6eb16e5c",
+      "subset": [
+        "tests/test_label_judge.py",
+        "tests/test_label_genre_gate.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 213,
+      "baseline_collected": 213,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_label_held_does_not_say_a_sweep_was_refused_over_what_a_judge_run_met"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if item.payload.get(genre_gate.GATE_RUN_FIELD):\n                continue",
+      "new": "            if False:\n                continue"
+    },
+    {
+      "id": "J1_one_refusal_ends_the_asking",
+      "description": "_asked: remember no refusal",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6c2c1a8d51588075",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 75,
+      "baseline_collected": 75,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_a_catalogue_that_refuses_stops_the_run_at_once_and_says_how_many_were_left"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if judged.answer == searchers.Answer.BLOCKED.value:\n        tools.refused = judged.reason",
+      "new": "    if False:\n        tools.refused = judged.reason"
+    },
+    {
+      "id": "J2_an_unread_catalogue_ends_the_run",
+      "description": "_asked: never stop on the gate's bound of unread releases",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1d9a5f36c2682144",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 75,
+      "baseline_collected": 75,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_a_catalogue_unread_three_times_in_a_row_stops_the_run_and_says_how_many_were_left"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if tools.asking.given_up:\n        raise refuse(",
+      "new": "    if False:\n        raise refuse("
+    },
+    {
+      "id": "J3_a_failing_provider_ends_the_run",
+      "description": "_asked: never stop on the reader's bound of failed reads",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f8467ed145b35d7d",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 75,
+      "baseline_collected": 75,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_three_provider_reads_failing_in_a_row_stop_the_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if tools.reader.given_up:\n        raise refuse(",
+      "new": "    if False:\n        raise refuse("
+    },
+    {
+      "id": "J4_a_record_never_holds_on_its_own",
+      "description": "_judged: take a hold from recorded words without asking",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "44794c8a72b533d0",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 75,
+      "baseline_collected": 75,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_a_fresh_answer_with_no_word_takes_the_old_words_off_the_item",
+        "tests/test_label_judge.py::test_a_record_of_one_tracks_album_does_not_hold_a_release_its_next_track_passes",
+        "tests/test_label_judge.py::test_recorded_words_that_would_hold_are_asked_about_before_the_release_is_held"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if recorded is not None and not recorded.held:\n        return recorded, False",
+      "new": "    if recorded is not None:\n        return recorded, False"
+    }
+  ],
+  "dropped": []
+}
