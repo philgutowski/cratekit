@@ -484,6 +484,21 @@ class TidalAccount:
         2026-09-02 as three playlists from one three track export. So the one
         playlist is recorded and the refusal costs its visibility instead, which
         is R-849.
+
+        THAT INCLUDES A PARK FROM THE PROVIDER GATE, deliberately. A park raised
+        here would leave the same unrecorded playlist, and swallowing it does
+        not let the run go on: a cooldown is written to the shared gate file,
+        so the next gated call refuses at once, and a held lock is waited on
+        again by the next call.
+
+        IT RUNS INSIDE THE LEDGER'S LOCK, since the reserve resolves the create
+        under it, so the window in which a kill leaves an unrecorded playlist is
+        now the create plus this step rather than the create alone. R-849
+        records that too.
+
+        A client with no such call is passed over rather than refused, for the
+        same reason; a guard in the suite pins the call on the client library,
+        so an upgrade that renames it fails there instead of here.
         """
         private = getattr(created, "set_playlist_private", None)
         if not callable(private):

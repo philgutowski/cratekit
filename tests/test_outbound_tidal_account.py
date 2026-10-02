@@ -202,7 +202,10 @@ class User:
         if self.create_fail is not None:
             raise self.create_fail
         playlist = Playlist(f"00000000-0000-4000-8000-{len(self.created):012d}")
-        playlist.private_fail = self.private_fail
+        # The queued refusals belong to this playlist alone, so a test that
+        # creates two cannot have the first one's leftovers reach the second.
+        playlist.private_fail = self.private_fail[:]
+        self.private_fail.clear()
         self._client.playlists[playlist.id] = playlist
         return playlist
 
@@ -1508,6 +1511,16 @@ def test_the_adapter_names_no_remove_on_the_client():
         }
     )
     assert named == [], named
+
+
+def test_the_client_library_still_offers_the_private_call_a_create_relies_on():
+    """``_make_private`` passes over a client with no such call rather than
+    orphan the playlist, so a rename upstream would turn R-834 off with a green
+    suite. This is the guard that turns it red instead."""
+    import tidalapi.playlist
+
+    assert callable(getattr(tidalapi.playlist.UserPlaylist, "set_playlist_private", None))
+    assert "set_playlist_private" in ADAPTER_SOURCE.read_text(encoding="utf-8")
 
 
 def test_the_adapter_satisfies_the_protocol_it_is_handed_out_as():
