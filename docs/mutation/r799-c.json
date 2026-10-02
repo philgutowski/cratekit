@@ -1,0 +1,265 @@
+{
+  "name": "r799-c",
+  "pass_kind": "light",
+  "branch": "relay/241",
+  "head": "d35cdc0",
+  "when": "2026-10-02 05:54 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 12053,
+  "baseline_exit": 0,
+  "pytest_runs": 9,
+  "state_guarded": "~/Library/Application Support/cratekit (189230 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/tagging/remap.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/tagging/remap.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "3abc1f7d2e2a13cd",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 12053,
+    "baseline_collected": 12053,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "W4_a_rewrite_is_recorded",
+      "description": "apply: commit no record of a rewrite, so the verb's own write reads as a hand edit",
+      "file": "src/cratekit/tagging/remap.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bade1d5c6d2c8cfc",
+      "subset": [
+        "tests/test_tag_remap.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 92,
+      "baseline_collected": 92,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_remap.py::test_a_file_this_verb_rewrote_is_corrected_again_when_the_word_moves_again",
+        "tests/test_tag_remap.py::test_a_genre_put_back_by_hand_after_a_rewrite_is_left_alone",
+        "tests/test_tag_remap.py::test_a_record_that_cannot_be_committed_is_named_and_the_file_stays_rewritten",
+        "tests/test_tag_remap.py::test_a_rewrite_is_recorded_as_a_tagging_record_of_its_own",
+        "tests/test_tag_remap.py::test_a_word_given_its_first_genre_back_is_still_followed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not _record(cfg, name, ordinal, item):\n            unrecorded.append(item.path)",
+      "new": ""
+    },
+    {
+      "id": "W5_a_rewrites_record_is_one_generation_on",
+      "description": "apply: record a rewrite at the generation of the record it replaced",
+      "file": "src/cratekit/tagging/remap.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c154612faf52fcd6",
+      "subset": [
+        "tests/test_tag_remap.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 92,
+      "baseline_collected": 92,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_remap.py::test_a_file_this_verb_rewrote_is_corrected_again_when_the_word_moves_again",
+        "tests/test_tag_remap.py::test_a_genre_put_back_by_hand_after_a_rewrite_is_left_alone",
+        "tests/test_tag_remap.py::test_a_rewrite_is_recorded_as_a_tagging_record_of_its_own",
+        "tests/test_tag_remap.py::test_a_word_given_its_first_genre_back_is_still_followed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                \"generation\": item.generation + 1,",
+      "new": "                \"generation\": item.generation,"
+    },
+    {
+      "id": "P11_blank_is_not_agreement",
+      "description": "plan: read a blank file whose word is given nothing as agreeing",
+      "file": "src/cratekit/tagging/remap.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6e21c9d1c084b8df",
+      "subset": [
+        "tests/test_tag_remap.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 92,
+      "baseline_collected": 92,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_remap.py::test_a_blank_file_whose_word_is_now_declined_is_not_read_as_agreeing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if any(current and current == _wanted(declared, record.word) for record in mine):",
+      "new": "        if any(current == _wanted(declared, record.word) for record in mine):"
+    },
+    {
+      "id": "V1_the_gate_is_asked_before_the_write",
+      "description": "verb: apply the plan whatever the gate answers",
+      "file": "src/cratekit/tagging/remap_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "118e653708083479",
+      "subset": [
+        "tests/test_tag_remap.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 15,
+      "collected": 92,
+      "baseline_collected": 92,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_remap.py::test_a_file_changed_after_the_answer_makes_the_decision_stale",
+        "tests/test_tag_remap.py::test_a_file_outside_the_library_is_said_and_not_listed",
+        "tests/test_tag_remap.py::test_a_person_reads_the_counts_and_the_pairs_at_the_gate",
+        "tests/test_tag_remap.py::test_a_record_that_could_not_be_parsed_is_said",
+        "tests/test_tag_remap.py::test_a_refusal_that_rewrote_nothing_does_not_send_a_person_to_the_row_verb",
+        "tests/test_tag_remap.py::test_a_run_that_leaves_a_file_says_how_many_and_why_on_every_path",
+        "tests/test_tag_remap.py::test_a_run_that_wrote_still_says_what_it_left",
+        "tests/test_tag_remap.py::test_a_write_that_does_not_take_refuses_after_the_rest_were_written",
+        "tests/test_tag_remap.py::test_an_abort_writes_nothing",
+        "tests/test_tag_remap.py::test_an_active_taxonomy_with_no_table_says_so_and_plans_nothing",
+        "tests/test_tag_remap.py::test_an_approved_plan_is_written_and_the_run_names_the_verb_the_rows_follow_by",
+        "tests/test_tag_remap.py::test_an_empty_plan_still_asks_and_then_writes_nothing",
+        "tests/test_tag_remap.py::test_the_gate_takes_no_inline_answer",
+        "tests/test_tag_remap.py::test_the_shipped_template_declares_the_table_so_the_warning_is_not_given",
+        "tests/test_tag_remap.py::test_the_verb_asks_before_it_writes_and_the_gate_shows_the_plan"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if ctx.gate.require(spec, plan=data, context=_facts(plan)) != \"apply\":\n        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=_advisories(plan))",
+      "new": ""
+    },
+    {
+      "id": "V2_a_file_that_did_not_take_refuses",
+      "description": "verb: answer a clean run over a file that did not take its genre",
+      "file": "src/cratekit/tagging/remap_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "97b471bdd5009ff0",
+      "subset": [
+        "tests/test_tag_remap.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 7,
+      "collected": 92,
+      "baseline_collected": 92,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_remap.py::test_a_refusal_that_rewrote_nothing_does_not_send_a_person_to_the_row_verb",
+        "tests/test_tag_remap.py::test_a_write_that_does_not_take_refuses_after_the_rest_were_written",
+        "tests/test_tag_remap.py::test_each_way_a_file_did_not_take_its_genre_refuses_and_says_which[failed-could not be written and are untouched]",
+        "tests/test_tag_remap.py::test_each_way_a_file_did_not_take_its_genre_refuses_and_says_which[moved-carried something else]",
+        "tests/test_tag_remap.py::test_each_way_a_file_did_not_take_its_genre_refuses_and_says_which[unrecorded-no record of the rewrite could be committed]",
+        "tests/test_tag_remap.py::test_each_way_a_file_did_not_take_its_genre_refuses_and_says_which[wrong-do not read back]",
+        "tests/test_tag_remap.py::test_the_refusal_names_a_few_files_and_carries_them_all"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if written.clean:\n        return\n    parts = []",
+      "new": "    if True:\n        return\n    parts = []"
+    },
+    {
+      "id": "V3_an_unrecorded_rewrite_is_not_clean",
+      "description": "verb: call a run clean whose rewrite could not be recorded",
+      "file": "src/cratekit/tagging/remap.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e74167d5ced7fd64",
+      "subset": [
+        "tests/test_tag_remap.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 92,
+      "baseline_collected": 92,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_remap.py::test_a_record_that_cannot_be_committed_is_named_and_the_file_stays_rewritten",
+        "tests/test_tag_remap.py::test_each_way_a_file_did_not_take_its_genre_refuses_and_says_which[unrecorded-no record of the rewrite could be committed]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return not (self.wrong or self.moved or self.failed or self.unrecorded)",
+      "new": "        return not (self.wrong or self.moved or self.failed)"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "V4_the_refusal_names_the_row_verb",
+      "description": "verb: drop the row verb from a refusal that rewrote some files",
+      "reason": "ranked below the cap: a step's text, with one test that it is there and one that it is absent when nothing was rewritten"
+    },
+    {
+      "id": "V5_the_warning_over_a_copy_with_no_table",
+      "description": "verb: say nothing over a taxonomy that declares no table",
+      "reason": "ranked below the cap: a warning, driven through the dispatcher by two tests"
+    },
+    {
+      "id": "V6_the_gate_is_explicit",
+      "description": "registry: let the correction's gate take an inline answer",
+      "reason": "ranked below the cap: the conformance suite holds every explicit gate to refusing an inline answer, and one test here drives this verb's"
+    },
+    {
+      "id": "V7_the_refusal_carries_the_rewritten_files",
+      "description": "verb: drop the rewritten files from the refusal's detail",
+      "reason": "ranked below the cap: a detail field asserted whole by one test"
+    }
+  ]
+}
