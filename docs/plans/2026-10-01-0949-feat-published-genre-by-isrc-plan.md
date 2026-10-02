@@ -355,6 +355,53 @@ Not measured: what a run over 2,755 releases costs in time and in provider calls
 - The built in review, a mutation table under `docs/mutation/`, and the battery.
 - Owed to an attended sitting: the run over the author's queue, recorded in `docs/cutover.md` with the per label counts, which is also R-798's owed check.
 
+### R-799, the general catalogue's own vocabulary
+
+Written by the session that took R-799 on `relay/241`, 2026-10-02, before any code. It changes how R2 and R3 choose the word that is written and changes no requirement above. KTD and unit numbers continue from R-815's.
+
+#### Measured before planning
+
+Read off the tree and run through the shipped resolver on 2026-10-02. Nothing here was measured on the live library or against the live catalogue, which this card does not touch.
+
+- Of the catalogue's 27 top level words, 11 are written today: Rock, Folk, Jazz and Classical as themselves, Rap/Hip Hop as Hip-Hop, Reggae as Caribbean, R&B and Soul & Funk as R&B, Pop as Dance / Pop, and Alternative and Country as NonElectronic, the bucket's bare name. Electro resolves to the fallback bucket's name and is passed over as too coarse. The other 15 are claimed by nothing and are declined.
+- A file whose genre is `Pop` routes to Dance / Pop, by an exact routing alias the source system's own table carries. The map row that sends `Pop` to the Pop sub of NonElectronic is never reached, there or here, so no word a file can carry files under NonElectronic / Pop today.
+- A file whose genre is `NonElectronic` routes to that bucket by its name and lands in its default sub, Rock. `Country` on a file routes to the Caribbean sub by the map.
+- A sub's tagging alias answers with the sub's name. So an alias on the Pop sub would write `Pop`, which routes to Dance / Pop.
+- A tag job's item record carries the file's path, the genre written, the source that supplied it and that source's word. It does not carry the album's whole list, which is only in a note.
+- The tag jobs of sitting 26 ran in place over landed files, so their records name the files where they are now.
+- `crate tag rows` links a genre lookup row and never makes one (R-818), so a word the library has never held stays off its rows until one track is given that genre in rekordbox.
+- No verb moves a track between top level folders. Adoption withholds a track only for a competing place in the bucket its genre names.
+
+Not measured: which of the catalogue's words below its top level reach the tagger, and how many files on the author's library took a genre from one. The run of sitting 26 wrote one House / Funky House / Disco from the general catalogue, from a word the record does not name here.
+
+#### Key technical decisions
+
+- **KTD91. A vocabulary is declared per source, under the name a file's record gives that source.** `[vocabulary.deezer]`, with `words`, a list of rows. The name is the one the tag summary counts under, so a person reading `tagged_by` finds the table. A source name is a lowercase identifier, so a capital in it is refused and not read as another source.
+- **KTD92. A row is a word and the genre written for it,** `{ word = "Alternative", tag = "Rock" }`. The folder is not declared a second time: it follows from the tag by routing, as it does for every file, and the loader records the place it resolved. A word is matched whole and without regard to case.
+- **KTD93. The loader refuses a tag that does not name a folder.** The tag must be filed by an exact declaration, a routing alias or a bucket's own name, and never by a keyword rule or the fallback. It must not be a word the taxonomy calls too coarse. In a bucket that files by source genre it must have a row of its own in that bucket's map, so the bucket's bare name and a word that would land in the default sub are both refused. This is the guard for "the bucket's bare name is never written", and it is built before the code it governs. Two rows for one word are refused, and so is a table in the wrong shape, as a named problem.
+- **KTD94. Where a table is declared for a source it is the whole answer.** A word with no row is declined, the file is left askable, and the word reaches the summary's unresolved list. The card says the table is asked first, and its scenario says a word with no entry is declined. Falling through to the record shops' aliases for a missing row would file the catalogue's unmeasured words by the table this finding is about, and a genre is written once. A decline can be answered later by one row. With no table declared the shared resolver answers exactly as today.
+- **KTD95. Pop is written as `NonElectronic / Pop`.** `Pop` cannot be the word, because routing sends it to Dance / Pop, and moving that alias would change where files already tagged `Pop` are filed and what Beatport's Pop resolves to. So NonElectronic gains one routing alias and one map row for a word of its own, and nothing that routes today moves. The word is the folder's path as the card spells it. It is one line in three places to change, and the choice is recorded as a residual with the options.
+- **KTD96. The shipped rows are the card's list and no more.** Pop; Alternative and Rock to Rock; Country and Folk to Folk; R&B and Soul & Funk to R&B; Rap/Hip Hop to Hip-Hop; Jazz, Classical; Reggae to Caribbean, the sub its own alias already names. Electro, Dance and the other 14 top level words have no row and are declined. No row is written for a word below the top level, since none was measured.
+- **KTD97. R-796's two tag aliases stay.** `rap/hip hop` and `soul & funk` sit in the record shops' table. A copy with no vocabulary still reads them, and removing them would change what a record shop's string resolves to.
+- **KTD98. No schema version moves.** A build older than this unit ignores the table and files the catalogue's words as it did before, which is the behaviour the library has today and not a new fault. The new alias and map row are ordinary declarations every build reads.
+- **KTD99. `suggest_tag` takes the source.** One optional argument. `published.choose` passes the catalogue's name, and every other caller passes none and is unchanged. A test pins Beatport's Pop.
+- **KTD100. The correction is a verb of its own, `crate tag remap`.** `tag retag` selects a genre the taxonomy calls too coarse and asks a catalogue. This selects by what a tag job recorded and asks nobody. It runs in one process, plan, explicit gate over a digest, write, read back, the shape of `crate tag rows`, since it makes no request and a job would add a detached child to rewrite a few tags. It writes files and opens no database.
+- **KTD101. It reads every committed tag job record, and not the job queue.** A record with a genre written whose source is the general catalogue names a file to look at. Reading the records directly means a job dropped from the queue cannot hide its files.
+- **KTD102. A file is rewritten only when it still carries what the job wrote.** Each path lands in one outcome, counted zero filled: `agree`, `write`, `changed-since` for a genre nobody recorded writing, `word-declined` when the taxonomy now has no folder for the word, `ambiguous-record` when two records explain the file's genre with different words or sources, `file-missing` and `file-unreadable`. Only `write` is written. Every other differing file is listed with its reason and left.
+- **KTD103. The recorded word is resolved alone.** The album's whole list is not in the record. The word the tagger picked then is the word resolved now, which is right for every word the old table mapped, since the new table maps no word the old one declined.
+- **KTD104. The rows follow by `crate tag rows`, not a reload.** A reload takes every tag field from the file and changed keys at sitting 26. The run names the verb, and names R-818's hand step for a word the library has never held, which `NonElectronic / Pop` is.
+- **KTD105. The tree is not this verb's.** After the rows catch up, adoption adds a corrected Pop track to NonElectronic / Pop and nothing removes it from the Dance / Pop band it sits in. That removal is by hand at the sitting, ten tracks, and is recorded as a residual.
+- **KTD106. The live library is changed at an attended sitting and not here.** The shipped template changes. The library's active copy takes the same edit by hand, after a dated backup, then `crate tag remap` is read at its gate. Until the copy is edited the library behaves exactly as before, and the verb says when the active taxonomy declares no table for the catalogue.
+
+#### Verification
+
+- The loader's refusals for a vocabulary, each driven: the wrong shape, a source name with a capital, a row with no word or no tag, a word declared twice, a tag nothing routes exactly, a too coarse tag, a by source bucket's bare name, and a tag that would land in the default sub.
+- The card's scenarios: the general catalogue's Pop is written as a word that files under NonElectronic / Pop; Beatport's Pop is unchanged; Alternative files under Rock and the genre written is Rock; a word with no entry is declined and recorded; a taxonomy with no table behaves as today.
+- Every shipped row routes to the place the loader recorded for it, through `resolve_bucket` and `energy_sub`, and Electro and Dance are declined.
+- The correction: a file tagged Dance / Pop from the general catalogue is planned and one tagged Dance / Pop by Beatport is not; a file changed since is left; a second run after the write agrees; the verb through the dispatcher asks its gate on an empty plan and writes nothing without an answer.
+- The built in review, a mutation table under `docs/mutation/`, and the battery.
+- Owed to an attended sitting: the active copy's edit, `crate tag remap` applied, `crate tag rows`, and the 16 tracks read in their folders, recorded in `docs/cutover.md`.
+
 ## Implementation Units
 
 ### U1. The lookup: a published genre for an ISRC
@@ -452,3 +499,27 @@ The verb queues one item per pending release (KTD64). The worker judges one rele
 **Files:** `src/cratekit/label/held_cli.py`, `tests/test_label_judge.py`.
 
 `return` files under the run the payload names (KTD68). The sweep rows leave a judge run's stamp out of what a sweep's gate did (KTD70).
+
+### U17. The taxonomy declares a vocabulary per source
+
+**Files:** `src/cratekit/core/taxonomy.py`, `src/cratekit/templates/taxonomy.default.toml`, `tests/test_vocabulary.py` (new), `tests/test_routing_parity.py`.
+
+`Taxonomy` gains `vocabularies`, a tuple of `Vocabulary`, each a source and its `VocabularyWord` rows, parsed and guarded by the loader (KTD91 to KTD93), and `vocabulary(source)` answers one or None. The template gains the table and NonElectronic's word for its Pop sub (KTD95, KTD96).
+
+### U18. The resolver and the chooser read it
+
+**Files:** `src/cratekit/core/routing.py`, `src/cratekit/tagging/published.py`, `tests/test_vocabulary.py`, `tests/test_published_genre.py`.
+
+`suggest_tag` takes `source` and answers from that source's table when one is declared (KTD94, KTD99). `published.choose` passes the catalogue's name.
+
+### U19. The correction's engine
+
+**Files:** `src/cratekit/tagging/remap.py` (new), `src/cratekit/tagging/artifacts.py`, `tests/test_tag_remap.py` (new).
+
+`artifacts.every_committed` reads every job's committed records (KTD101). `remap.plan` turns them and the files into the outcomes and the items to write (KTD102, KTD103), and `remap.apply` writes the genre and reads it back.
+
+### U20. `crate tag remap`
+
+**Files:** `src/cratekit/tagging/remap_cli.py` (new), `src/cratekit/cli/registry.py`, `src/cratekit/core/cause.py`, `tests/test_tag_remap.py`, `tests/test_cli_contract.py`, `tests/test_reserved_causes.py` (the counts), `CONCEPTS.md`.
+
+The verb plans, asks its explicit gate over the digest, writes, and names the verb the rows follow by (KTD100, KTD104, KTD106).
