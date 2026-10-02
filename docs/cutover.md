@@ -850,7 +850,7 @@ build in use is main at the merge of #241, as at sitting 28.
 
 | Workflow | Ran | Observed | State |
 |---|---|---|---|
-| Removing the 36 from the collection | through desktop control | Torr 10, Metanoia 10, Deodato 8, Robsoul 2, Bautista 1 and Flaco 1 removed, **32 of 36**, the playlist 186 to 154 and the collection 10,272 rows to 10,240. On the fifth removal, James Savage, **the session's permission check refused the click** and the session stopped there. Left: James Savage "Better", Nerv "journey", CR "Tal Para Cual" and CR "FANCY". | **32 done, 4 the author's** |
+| Removing the 36 from the collection | through desktop control | Torr 10, Metanoia 10, Deodato 8, Robsoul 2, Bautista 1 and Flaco 1 removed, **32 of 36**, the playlist 186 to 154 and the collection 10,272 rows to 10,240. On the fifth removal, James Savage, **the session's permission check refused the click** and the session stopped there. The author then allowed desktop control in the project's permission rules, and the session removed the last four one at a time: James Savage "Better", Nerv "journey", CR "Tal Para Cual" and CR "FANCY". **The playlist reads 150, the collection 10,236 rows**, integrity ok, both processes gone after quit. | **36 done** |
 | The genre row, R-818's hand step | in rekordbox's track information | Espresso and Pop Song given `NonElectronic / Pop`. The library now has that genre row. Return in the field reverts it and Tab commits it. BPM 104 and 98 unchanged. | live |
 | The two out of their Dance / Pop bands | Remove from Playlist | Espresso out of High, 188 to 187; Pop Song out of Low, 154 to 153. Neither sits in Med, Candy, Unsorted or with vox. | live |
 | Quit | menu | Both processes gone after quit. | live |
@@ -876,13 +876,9 @@ cycle, is next and is attended.
 
 ## Next sitting
 
-One thing is left of the genre work, and it is the author's: four of the 36
-non dance tracks of the label test are still in the collection, James
-Savage "Better", Nerv "journey", CR "Tal Para Cual" and CR "FANCY". In
-rekordbox, INBOX, playlist `2026-10-01-labels-1pct_inboxed`, search each
-and Remove from Collection, then quit and run `crate delete review` over
-all 36. The folder then reads 150. The feeder stays stopped until both
-rekordbox processes are gone.
+One thing is left of the genre work, and it is the author's: `crate delete
+review` over the 36 tracks removed from the collection at sitting 29, run
+from his Terminal, since the session's permission check refuses that verb.
 
 Owed by the author: the 2,416 label releases in review and a look at the
 339 held; a genre on the rows that still carry none, 1,308 by adoption's
