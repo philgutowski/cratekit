@@ -339,6 +339,25 @@ def test_a_tagged_track_with_no_bucket_is_counted_as_one_and_not_passed_over():
     assert plan.vocal_memberships() == ()
 
 
+def test_an_entry_the_plan_does_not_place_has_no_bucket_whatever_bucket_it_is_handed():
+    """The function's own contract, asked directly. The plan blanks the bucket
+    of an entry it does not place before it asks, and a caller that did not
+    must get the same answer and not an addition."""
+    for disposition in adopt_scan.Disposition:
+        placed = disposition in (
+            adopt_scan.Disposition.ROUTE,
+            adopt_scan.Disposition.WITHHELD,
+        )
+        state, _sub = adopt_plan.vocal_place(
+            _vocals("t"),
+            disposition=disposition,
+            bucket=BUCKET,
+            content_id="t",
+            sub_of=lambda bucket: adopt_plan.vocal_sub(DECLARED, bucket),
+        )
+        assert (state == adopt_plan.VOCAL_NO_BUCKET) is (not placed), disposition
+
+
 def test_the_counts_add_up_to_the_tagged_tracks_of_the_census():
     tracks = [
         _scanned("add"),
