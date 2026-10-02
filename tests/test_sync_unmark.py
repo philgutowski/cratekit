@@ -458,3 +458,15 @@ def test_the_mark_screen_says_a_playlist_was_put_back(slim, monkeypatch):
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     said = [line for line in json.dumps(refused).split('"') if "sync unmark put" in line]
     assert len(said) == 1 and said[0].startswith("Warmup -> DOWNLOADED Warmup"), said
+
+
+def test_a_playlist_the_account_no_longer_lists_is_said_and_left(slim, monkeypatch):
+    """Closes the zero row U7 in docs/mutation/r838-a.md."""
+    fake, account, name, _xml = _marked(slim, monkeypatch)
+    fake.account = list(fake.account[:2])
+    code, done = _answered(name)
+    assert code == int(ExitCode.OK), done
+    assert account.renamed == [("pl-a", "Warmup"), ("pl-b", "Peak")]
+    gone = _by_id(done)["pl-c"]
+    assert (gone["action"], gone["reason"]) == ("skip", "not-listed")
+    assert not {e.playlist_id: e.unmarked for e in mark_record.MarkRecord(slim).of_pass(name)}["pl-c"]

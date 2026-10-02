@@ -84,3 +84,20 @@ surface = "user"
 tests = ["tests/test_sync_unmark.py"]
 old = '''            if not all(isinstance(value, str) for value in fields.values()):'''
 new = '''            if False:'''
+
+[[rows]]
+id = "U7b_not_listed_rerun"
+description = "U7 measured again after the not-listed test was added: no NOT_LISTED branch, so a playlist the account dropped falls through to the title comparison"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''    if current is None:
+        return {
+            **base,
+            "action": SKIP,
+            "reason": NOT_LISTED,'''
+new = '''    if current is None and False:
+        return {
+            **base,
+            "action": SKIP,
+            "reason": NOT_LISTED,'''
