@@ -354,6 +354,33 @@ def test_two_files_that_are_gone_are_two_files(machine):
     counts(planned(machine), file_missing=2)
 
 
+def test_a_record_shops_genre_is_never_resolved_as_the_catalogues_word(machine, silence):
+    """The shop's word here is one the general catalogue's table writes
+    differently. Resolved as the catalogue's, the shop's Dance / Pop would be
+    planned as a pop record. It is the shop's, and it agrees."""
+    path = tagged(machine, silence, "a record", OLD_ALTERNATIVE, "Alternative", now=OLD_POP)
+    record(machine, path, OLD_POP, source=SHOP, word="Pop", job="job-b")
+    plan = planned(machine)
+    counts(plan, agree=1)
+    assert plan.items == ()
+    assert did(remap.apply(machine, plan)) == remap.Written(written=0, read_back=0)
+    assert genre_of(path) == OLD_POP
+
+
+def test_two_cases_of_one_file_are_one_file_where_the_volume_folds_case(machine, silence):
+    """Resolving a path folds neither case, so the file itself is the key. Both
+    kinds of volume are asserted, so this never passes by not running."""
+    path = tagged(machine, silence, "a record", OLD_POP, "Pop", job="job-a")
+    typed = Path(str(machine.library.root).upper()) / "Music" / "a record.flac"
+    record(machine, typed, OLD_POP, source=SHOP, word="Pop", job="job-b")
+    plan = planned(machine)
+    if typed.exists():
+        counts(plan, ambiguous_record=1)
+    else:
+        counts(plan, write=1)
+    assert len(plan.items) == 1 and genre_of(path) == OLD_POP
+
+
 def test_a_file_that_is_gone_is_counted_missing_and_listed(machine, silence):
     gone = music(machine) / "moved since.flac"
     record(machine, gone, OLD_POP, word="Pop")
