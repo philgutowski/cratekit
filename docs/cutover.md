@@ -800,6 +800,32 @@ unjudged. `label approved` judges an accepted release by kind, which is the
 only place the gate can act on them today. No label was marked with a kind:
 which followed label is not a dance label is the author's to say.
 
+## Sitting 27, 2026-10-02, overnight, the queue judged and what the session could not do
+
+The author answered four questions on 2026-10-01: Rock stays flat,
+Torromusic Recordings is unfollowed, the 36 non dance tracks of the label
+test are removed, and Cratekit's key is the one a track keeps. Relay landed
+#239, #240 and #241 first. The build in use is main at the merge of #241.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `label registry remove` | Torromusic Recordings | Gone from the followed labels. | live |
+| `crate backup run` | yes, 02:11 to 03:12 | Mirror 3,293 seconds, 91,534 files compared, 2,094 sent, then the database folder. `doctor` reads both ages 0 days. | live |
+| Removing the 36 from the collection | attempted through desktop control | The playlist filter showed the ten Torr tracks, the remove dialog opened, and **the session's permission check refused the confirming click**. The session cancelled the dialog. 186 rows in the folder before and after, 10,272 in the collection. | **not done, the author's** |
+| rekordbox's KEY analysis | unticked in Preferences, Analysis | rekordbox no longer computes a key beside the one the file carries. Both processes gone after quit. | live |
+| `crate label judge`, three labels, R-815 and R-798's check | after a copy of the review database off the volume | 406 items, 816 provider calls, 29 minutes. **379 judged, 149 held, 230 passed, 27 not judged.** Crew Love 98 held, rap and Latin releases by an artist of a similar name. Metanoia Music 51 held, rock and metal from the other label of that name, and 224 passed on Dance and Electro. Nite Grooves had nothing queued. | live, **R-798 proven** |
+| `crate label judge`, the whole queue | yes, 03:46 to 06:23 | 2,602 items, 4,693 provider calls, no rate limit. **2,553 judged, 190 held, 2,363 passed, 49 not judged**, the catalogue unread for 2. Be One Records 89 held of 97, Nervous Records 33 of 51, Torromusic Recordings 19 of 23, Last Night On Earth 18 of 84, Multinotes 10 of 10, Amselcom 8, ALiVE Recordings 5, six others 8 between them. Anjunadeep 410, This Never Happened 330 and Stil vor Talent 194 passed whole. | live, **R-815 closes** |
+
+**The queue now holds 2,416 releases and 339 are held, none rejected.**
+`crate label held` lists each with the words the catalogue gave. Last Night
+On Earth's 18 are worth the author's eye: 9 are called Pop, 4 Classical and
+4 film scores, which may be the label's own releases under a broad word.
+
+**`crate tag rows` was not rehearsed.** The verb asks for a backup
+acknowledgment before it plans, the author's expired at 21:09Z on
+2026-10-01, and only he mints one. R-799's run needs the active taxonomy
+edited, which the session's permission check also refuses.
+
 ## What blocks a full sync cycle, stated plainly
 
 **Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
@@ -811,18 +837,22 @@ cycle, is next and is attended.
 
 ## Next sitting
 
-The three cards of the genre plan are built and R-796 and R-797 are proven
-on the library. R-798's check waits on the review queue: either the author
-decides releases for a label and `label approved` shows the gate holding the
-misfits among those accepted, or a card judges the pending queue in place
-(R-815).
+The genre plan's three cards and R-815 are proven on the library. Three
+things wait on the author, each one act of his: a fresh backup
+acknowledgment, the active taxonomy copy taking the shipped template again,
+and the 36 non dance tracks removed from the collection in rekordbox, then
+`crate delete review`. With those, the session runs R-816, `crate tag rows`
+rehearsed on a copy and applied on an equal digest, and R-799 in the order
+below.
 
-Owed by the author: the 2,755 label releases in review; a kind for any
-followed label that is not a dance label; a genre on the INBOX rows that
-still carry none, 2 from the playlists and 31 from the label test, of which
-18 are Christian or Brazilian music from a label of the same name; whether
-Progressive / Melodic, 630 tracks, and Rock, 132, get folders of their own;
-the 20 label tracks held as other versions.
+Owed by the author: the 2,416 label releases in review and a look at the
+339 held; a genre on the INBOX rows that still carry none; the 20 label
+tracks held as other versions.
+
+Owed for R-816, issue #239: a rehearsal of `crate tag rows` past its gate
+on a disposable copy, the seven rows of other words read there and any hand
+set one held with `--leave`, the live plan approved on an equal digest, and
+`crate report genres` no longer naming Progressive / Melodic.
 
 Owed for R-799, issue #241, built unattended on 2026-10-02 and not yet run
 here: a dated backup of the active taxonomy copy, then the shipped

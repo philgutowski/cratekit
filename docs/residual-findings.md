@@ -31903,9 +31903,9 @@ the report, recorded in `docs/cutover.md`.
 
 ## R-798. The label genre gate has no genre to judge, so a sweep offers and downloads music the label was never followed for
 
-**Closed in the code 2026-10-01 on `relay/238`, issue #238. The check on the
-author's library is still owed: the sweep of sitting 26 filed nothing and
-asked the gate nothing, R-815.** The gate judges a
+**Closed 2026-10-01 on `relay/238`, issue #238, and proven on the author's
+library at sitting 27 in `docs/cutover.md` through R-815's verb: 339
+releases held across the queue, none of them dance.** The gate judges a
 release by KIND, with what the general catalogue of R-796 publishes for its
 tracks, when a sweep is about to file it. A followed label is a dance label
 unless its registry entry names another kind, set with
@@ -32435,8 +32435,9 @@ passes a release on one word of the label's kind.
 
 ## R-815. The genre gate judges only what a sweep is about to file, so the releases already in review are never judged
 
-**Closed in the code 2026-10-02 on `relay/240`, issue #240. The run on the
-author's library is still owed, and it is R-798's owed check too.**
+**Closed 2026-10-02 on `relay/240`, issue #240, and run on the author's
+library at sitting 27 in `docs/cutover.md`: 2,932 judged over two runs, 339
+held, 2,593 passed, 5,509 provider calls and no rate limit.**
 `crate label judge` judges the pending label releases with no sweep. It
 queues one job item per pending release, `--job` drives and resumes it, and
 `--label NAME` narrows it to the followed labels named. Each release is
