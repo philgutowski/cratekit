@@ -1,0 +1,200 @@
+{
+  "name": "r816-d",
+  "pass_kind": "light",
+  "branch": "relay/239",
+  "head": "5036ae9",
+  "when": "2026-10-02 03:04 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 11591,
+  "baseline_exit": 0,
+  "pytest_runs": 8,
+  "state_guarded": "~/Library/Application Support/cratekit (189230 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/tagging/rows_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/tagging/rows_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "2acc6d4ec332fcde",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 11591,
+    "baseline_collected": 11591,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C1_acknowledgment",
+      "description": "tag_rows: ask the gate without reading the backup acknowledgment first",
+      "file": "src/cratekit/tagging/rows_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c27825b46f55cf51",
+      "subset": [
+        "tests/test_tag_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    session.assert_backup_acknowledged(cfg)\n",
+      "new": ""
+    },
+    {
+      "id": "C2_empty_plan",
+      "description": "tag_rows: open the database to write for a plan that writes nothing",
+      "file": "src/cratekit/tagging/rows_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0044d0e8c6d8bb2d",
+      "subset": [
+        "tests/test_tag_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_a_second_run_after_a_clean_one_asks_and_is_a_no_op",
+        "tests/test_tag_rows.py::test_an_empty_plan_still_asks_and_opens_nothing_to_write"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not plan.writes:",
+      "new": "    if False:"
+    },
+    {
+      "id": "C3_majority_unmapped",
+      "description": "_plan: plan over a library most of whose rows are under no prefix rule",
+      "file": "src/cratekit/tagging/rows_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "74f17cfa24881678",
+      "subset": [
+        "tests/test_tag_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_a_library_most_of_whose_rows_are_unmapped_refuses_before_the_gate"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if totals.majority_unmapped:",
+      "new": "        if False:"
+    },
+    {
+      "id": "C4_only_apply_writes",
+      "description": "tag_rows: write on any answer",
+      "file": "src/cratekit/tagging/rows_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2da9ae6dfc0e002b",
+      "subset": [
+        "tests/test_tag_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_the_plan_refusal_writes_nothing_and_a_declined_gate_writes_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if ctx.gate.require(spec, plan=data, context=_facts(plan)) != \"apply\":",
+      "new": "    if ctx.gate.require(spec, plan=data, context=_facts(plan)) == \"never\":"
+    },
+    {
+      "id": "C5_leave_reaches_the_plan",
+      "description": "_plan: drop the rows held out on the command line",
+      "file": "src/cratekit/tagging/rows_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "30d1bbdf4b336c84",
+      "subset": [
+        "tests/test_tag_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_a_held_row_survives_the_write_and_the_apply_must_name_it_again",
+        "tests/test_tag_rows.py::test_a_mistyped_identifier_is_shown_at_the_gate_and_warned_about"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return rows.plan_rows(cfg, db, declared, leave=leave)",
+      "new": "        return rows.plan_rows(cfg, db, declared, leave=())"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "C6_left_warning",
+      "description": "_advisories: say nothing of the rows left alone",
+      "reason": "ranked below the cap: a warning line, and three cases assert its text"
+    },
+    {
+      "id": "C7_unmatched_fact",
+      "description": "_facts: leave the unmatched identifiers off the gate screen",
+      "reason": "ranked below the cap: C5 measures the flag reaching the plan"
+    }
+  ]
+}
