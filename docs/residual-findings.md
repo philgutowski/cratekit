@@ -31977,11 +31977,20 @@ catalogue's words, which changes what Bandcamp's tags resolve to as well.
 general catalogue only on a Beatport miss, which is a change to the
 Product Contract's R1.
 
-**Closes when:** the author has read where the 62 tracks landed and chosen,
-and the template says so.
+**Measured on the library at sitting 26, 2026-10-01.** Pop was written as
+Dance / Pop on 10 tracks and filed in the Dance / Pop bands; Alternative was
+written as NonElectronic on 6 and filed under Rock.
 
-**Not on the board bar.** A taxonomy decision, and it closes at an attended
-sitting.
+**The author chose (c) on 2026-10-01:** the general catalogue's words get a
+mapping of their own, and the record shops' words resolve as they do today.
+
+**Closes when:** the taxonomy declares where each of the general
+catalogue's words goes, apart from the record shops' aliases, Pop from it is
+filed under NonElectronic / Pop, the tracks already written under the old
+mapping are corrected, and a run on the author's library is recorded in
+`docs/cutover.md`.
+
+**On the board bar.** The author asked for it on 2026-10-01.
 
 ## R-800. Nothing remembers a general catalogue answer past the run, and the cache declared for it is unused
 
@@ -32368,5 +32377,34 @@ kind without a sweep, moves the misfits to held where `crate label held`
 lists them and one can be returned, and a run on the author's library is
 recorded in `docs/cutover.md`.
 
-**Not on the board bar until the author says.** Recommended to him at
-sitting 26.
+**On the board bar.** The author asked for it on 2026-10-01.
+
+## R-816. A row's genre lags its file's on 773 tracks, and adoption and the genre report read the row
+
+**Found:** 2026-10-01, when `crate report genres` named Progressive /
+Melodic, 630 tracks, as a genre with no folder and the author said the
+source system had fixed that. It had. Its research pass of July wrote the
+specific genre onto each file and moved the track in the playlist tree,
+reading the live tag on disk by design, and left the old word claimed by no
+folder on purpose. The database rows were never reloaded. Cratekit's
+adoption and its genre report read the row, so they see a word the files no
+longer carry. No verb writes a row's genre from its file: `tag retag`
+corrects the file and names a reload in rekordbox for the row, and a reload
+overwrites every tag field, which at sitting 26 changed keys.
+
+**Measured cost.** Across 10,272 rows on 2026-10-01: 8,099 agree with their
+file, **773 are stale against it**, 1,233 carry a genre the file does not,
+167 files were not readable. Of the 773, 630 say Progressive / Melodic where
+the file says Melodic House, 440, or Progressive House, 183; 136 are blank
+where the file says Melodic House, and adoption counts those as needing a
+genre; 7 are other words. Every one of the 630 already sits in the folder
+its file names.
+
+**Closes when:** a verb plans, for every row whose genre differs from a non
+blank genre on its file, a write of the genre alone, behind a gate with a
+digest the session can rehearse on a copy, a row whose file is blank or
+unreadable is left alone and counted, and a run on the author's library is
+recorded in `docs/cutover.md` with `report genres` no longer naming
+Progressive / Melodic.
+
+**On the board bar.** The author asked for it on 2026-10-01.
