@@ -1651,6 +1651,92 @@ def _held_row(store: ReviewStore, queue: str, item_id: str) -> sqlite3.Row | Non
     ).fetchone()
 
 
+#: The payload field a hold carries when its candidate was TAKEN BACK OUT OF THE
+#: QUEUE by :func:`withhold`, where a hold a producer made on a candidate it
+#: never filed carries none (R-815). The difference matters to whoever would
+#: drop a hold: a candidate never filed goes back to being unexamined, and one
+#: that was in front of a person must not vanish from both places.
+WITHHELD_FIELD = "withheld_from_review"
+
+#: The payload fields a refresh carries over from the hold it replaces, when
+#: the new payload does not name them. Both are facts about the candidate's
+#: history that the producer refreshing a hold does not know: it describes
+#: every hold as a candidate it never filed.
+_CARRIED_ACROSS_A_REFRESH: tuple[str, ...] = (RUN_FIELD, WITHHELD_FIELD)
+
+
+def _put_hold(
+    store: ReviewStore,
+    conn: sqlite3.Connection,
+    *,
+    queue: str,
+    item_id: str,
+    kind: str,
+    identity: str,
+    payload: Mapping[str, Any],
+    group: str,
+    name: str,
+    reason: str,
+    detail: Mapping[str, Any],
+    run_id: str,
+    state: str,
+) -> None:
+    """Write one hold row inside the caller's transaction. THE ONE WRITER.
+
+    :func:`hold` and :func:`withhold` both make a hold, and two spellings of
+    one row are how the two come to disagree about a column.
+
+    No row yet: it is inserted in ``state``. A hold IN FORCE is refreshed: what
+    the producer knows now replaces the payload, the reason and what it judged
+    on, and the run and the time it was first made are kept. A hold a person
+    RETURNED is left exactly as it is.
+    """
+    now = timestamp()
+    encoded_detail = json.dumps(dict(detail), sort_keys=True)
+    row = _held_row(store, queue, item_id)
+    if row is None:
+        conn.execute(
+            "INSERT INTO held_offers (queue, item_id, kind, identity, payload, "
+            "group_key, group_name, reason, detail, state, run_id, created, updated) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                queue,
+                item_id,
+                kind,
+                identity,
+                json.dumps(dict(payload), sort_keys=True),
+                group,
+                name,
+                reason,
+                encoded_detail,
+                state,
+                run_id,
+                now,
+                now,
+            ),
+        )
+    elif row["state"] == HOLD_HELD:
+        refreshed = dict(payload)
+        replaced = _hold_of(row).payload
+        for carried in _CARRIED_ACROSS_A_REFRESH:
+            if replaced.get(carried) and not refreshed.get(carried):
+                refreshed[carried] = replaced[carried]
+        conn.execute(
+            "UPDATE held_offers SET payload = ?, group_key = ?, group_name = ?, "
+            "reason = ?, detail = ?, updated = ? WHERE queue = ? AND item_id = ?",
+            (
+                json.dumps(refreshed, sort_keys=True),
+                group,
+                name,
+                reason,
+                encoded_detail,
+                now,
+                queue,
+                item_id,
+            ),
+        )
+
+
 def hold(
     store: ReviewStore,
     *,
@@ -1682,64 +1768,32 @@ def hold(
     keeps the run and the time the hold was first made, so a count of what one
     round held does not move when a later round looks at the same release.
 
-    A REFRESH KEEPS THE RUN THE CANDIDATE WAS FILED UNDER, when the payload it
-    replaces names one and the new payload does not (R-815). A candidate taken
-    back out of the queue by :func:`withhold` carries the round that first
-    filed it, and the producer that refreshes its hold describes it as a
-    candidate never filed, with no run. Dropped, a return would file it under
-    the round that held it, which filed nothing.
+    A REFRESH KEEPS WHAT THE REPLACED PAYLOAD SAID OF THE CANDIDATE'S HISTORY,
+    when the new payload does not say it (R-815): the run it was filed under,
+    and that it was taken back out of the queue. A candidate :func:`withhold`
+    took back carries both, and the producer that refreshes its hold describes
+    it as a candidate never filed. Dropped, a return would file it under the
+    round that held it, which filed nothing, and nothing could tell it from a
+    candidate no person was ever shown.
     """
     declared = _assert_declared_queue(queue)
     item_id = item_id_for(declared, kind, identity)
-    now = timestamp()
-    encoded = (
-        canonical_json(normalize_identity(identity)),
-        json.dumps(dict(payload), sort_keys=True),
-        reason,
-        json.dumps(dict(detail), sort_keys=True),
-    )
     with store.immediate() as conn:
-        row = _held_row(store, declared, item_id)
-        if row is None:
-            conn.execute(
-                "INSERT INTO held_offers (queue, item_id, kind, identity, payload, "
-                "group_key, group_name, reason, detail, state, run_id, created, updated) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    declared,
-                    item_id,
-                    normalize_kind(kind),
-                    encoded[0],
-                    encoded[1],
-                    group,
-                    name,
-                    encoded[2],
-                    encoded[3],
-                    HOLD_RETURNED if returned else HOLD_HELD,
-                    run_id,
-                    now,
-                    now,
-                ),
-            )
-        elif row["state"] == HOLD_HELD:
-            refreshed = dict(payload)
-            filed_under = _hold_of(row).payload.get(RUN_FIELD)
-            if filed_under and not refreshed.get(RUN_FIELD):
-                refreshed[RUN_FIELD] = filed_under
-            conn.execute(
-                "UPDATE held_offers SET payload = ?, group_key = ?, group_name = ?, "
-                "reason = ?, detail = ?, updated = ? WHERE queue = ? AND item_id = ?",
-                (
-                    json.dumps(refreshed, sort_keys=True),
-                    group,
-                    name,
-                    encoded[2],
-                    encoded[3],
-                    now,
-                    declared,
-                    item_id,
-                ),
-            )
+        _put_hold(
+            store,
+            conn,
+            queue=declared,
+            item_id=item_id,
+            kind=normalize_kind(kind),
+            identity=canonical_json(normalize_identity(identity)),
+            payload=payload,
+            group=group,
+            name=name,
+            reason=reason,
+            detail=detail,
+            run_id=run_id,
+            state=HOLD_RETURNED if returned else HOLD_HELD,
+        )
     return _hold_of(_held_row(store, declared, item_id))
 
 
@@ -1779,11 +1833,15 @@ def withhold(
     None for an identifier nothing answers to, too. Each None means the same
     thing to a caller: nothing was moved.
 
+    THE HOLD SAYS IT WAS TAKEN BACK, under :data:`WITHHELD_FIELD` on its
+    payload, and a refresh keeps the word. A hold beside an open item, the
+    state two writes of an earlier build can leave, is refreshed and keeps the
+    run that first held it.
+
     AN ITEM THAT ARRIVED BY IMPORT CARRIES NO IDENTITY, and its hold then
     carries an empty one. The hold is still found by the item's identifier,
     which is all a return asks, and its payload still names the candidate.
     """
-    now = timestamp()
     with store.immediate() as conn:
         row = conn.execute(
             "SELECT queue, kind, identity, payload, verdict, ordinal FROM review_items "
@@ -1796,37 +1854,25 @@ def withhold(
         standing = _held_row(store, queue, item_id)
         if standing is not None and standing["state"] == HOLD_RETURNED:
             return None
-        encoded_detail = json.dumps(dict(detail), sort_keys=True)
-        if standing is None:
-            conn.execute(
-                "INSERT INTO held_offers (queue, item_id, kind, identity, payload, "
-                "group_key, group_name, reason, detail, state, run_id, created, updated) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    queue,
-                    item_id,
-                    row["kind"],
-                    row["identity"] if row["identity"] is not None else "{}",
-                    row["payload"],
-                    group,
-                    name,
-                    reason,
-                    encoded_detail,
-                    HOLD_HELD,
-                    run_id,
-                    now,
-                    now,
-                ),
-            )
-        else:
-            # A HOLD IN FORCE BESIDE AN OPEN ITEM, the state two writes of an
-            # earlier build can leave. Refreshed as :func:`hold` refreshes one,
-            # keeping the run that first held it.
-            conn.execute(
-                "UPDATE held_offers SET payload = ?, group_key = ?, group_name = ?, "
-                "reason = ?, detail = ?, updated = ? WHERE queue = ? AND item_id = ?",
-                (row["payload"], group, name, reason, encoded_detail, now, queue, item_id),
-            )
+        try:
+            carried = json.loads(row["payload"])
+        except ValueError:
+            carried = {}
+        _put_hold(
+            store,
+            conn,
+            queue=queue,
+            item_id=item_id,
+            kind=row["kind"],
+            identity=row["identity"] if row["identity"] is not None else "{}",
+            payload={**(carried if isinstance(carried, dict) else {}), WITHHELD_FIELD: True},
+            group=group,
+            name=name,
+            reason=reason,
+            detail=detail,
+            run_id=run_id,
+            state=HOLD_HELD,
+        )
         # THE FLOOR BEFORE THE DELETE, so the ordinal this row held is never
         # handed to a later item. See ``ordinal_floor`` in the schema.
         conn.execute(
@@ -2974,6 +3020,7 @@ __all__ = [
     "GROUPINGS",
     "GROUPED_KINDS",
     "RUN_FIELD",
+    "WITHHELD_FIELD",
     "store_dir",
     "unresolved_cause",
     "withhold",

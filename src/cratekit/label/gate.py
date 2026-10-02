@@ -285,6 +285,15 @@ def release_id_of(store: review.ReviewStore, item: review.Item) -> str:
     return ""
 
 
+def hold_release_id(held: review.Hold) -> str:
+    """The release a hold names, from its identity before its payload.
+
+    A release taken back out of review from an item that arrived by import
+    carries an empty identity, and its payload's own copy is all there is.
+    """
+    return str(held.identity.get("release_id") or held.payload.get("identity") or "")
+
+
 def returned_by(standing: review.Hold | None, payload: Mapping[str, Any]) -> bool:
     """Whether a person returned this release to review, by either record.
 
@@ -343,6 +352,14 @@ def judge_recorded(
     one on a label no word could change the verdict for. None means the
     catalogue is still owed a question. One spelling, for ``label approved``
     and ``label judge``.
+
+    WHAT A CALLER DOES WITH A VERDICT OF HELD IS THE CALLER'S. A sweep stops
+    asking at the first passing track, so a recorded pass can be one track's
+    album, and a hold drawn from it against a kind the label was given since
+    rests on that one track. ``label judge`` asks the catalogue before it
+    holds on such a record. ``label approved`` holds on it, as R-798 decided,
+    and names the release so it can be returned. The difference is recorded
+    as a residual and not hidden in this function.
     """
     if genres is not None:
         return judge_words(declared, kind, Words(genres, Answer.MATCHED.value))
@@ -565,6 +582,7 @@ __all__ = [
     "StandingHolds",
     "SweepGate",
     "TrackReader",
+    "hold_release_id",
     "Words",
     "judge_recorded",
     "judge_rows",

@@ -34,6 +34,7 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.core.review import DecisionStore, Queue
 from cratekit.label import catalogue, judge_cli, sweep
 from cratekit.label import gate as genre_gate
+from cratekit.label import registry as labels
 from cratekit.sync import run
 from cratekit.tagging import published
 from tests.cli_drive import drive
@@ -81,6 +82,7 @@ def queue_release(
     *,
     label_id: str = SLUG,
     label_name: str = LABEL,
+    filed_by: str | None = FILED_BY,
     **stamp,
 ) -> str:
     """One release pending in review, as a sweep before the gate filed it."""
@@ -99,7 +101,7 @@ def queue_release(
                     **stamp,
                 },
             ),
-            run_id=FILED_BY,
+            run_id=filed_by,
         )
     return item.item_id
 
@@ -185,7 +187,8 @@ def test_an_open_item_leaves_the_queue_and_becomes_a_hold_carrying_what_it_carri
     assert hold == standing
     assert (hold.item_id, hold.kind, hold.state) == (item_id, sweep.KIND, review.HOLD_HELD)
     assert hold.identity == {"release_id": "r-1"}
-    assert hold.payload == dict(before.payload)
+    # What the item carried, and the word that says it was taken back.
+    assert hold.payload == {**before.payload, review.WITHHELD_FIELD: True}
     assert (hold.group, hold.name, hold.reason, hold.run_id) == (
         SLUG,
         LABEL,
@@ -405,16 +408,17 @@ def test_a_refreshed_hold_keeps_the_run_its_release_was_filed_under(installed):
                 run_id="sweep-2",
             )
 
-        # A producer that describes it as never filed does not lose the run.
+        # A producer that describes it as never filed loses neither the run
+        # it was filed under nor the word that it was taken back.
         assert refresh({"identity": "r-1", "title": "T"}).payload == {
             "identity": "r-1",
             "title": "T",
             sweep.SWEEP_RUN: FILED_BY,
+            review.WITHHELD_FIELD: True,
         }
         # One that names a run of its own is believed.
-        assert refresh({"identity": "r-1", sweep.SWEEP_RUN: "sweep-7"}).payload[
-            sweep.SWEEP_RUN
-        ] == "sweep-7"
+        again = refresh({"identity": "r-1", sweep.SWEEP_RUN: "sweep-7"}).payload
+        assert (again[sweep.SWEEP_RUN], again[review.WITHHELD_FIELD]) == ("sweep-7", True)
 
 
 def test_a_refreshed_hold_that_never_named_a_run_gains_none(installed):
@@ -478,6 +482,8 @@ def test_a_queued_release_of_another_kind_is_held_listed_and_returned(installed,
     assert back.payload[genre_gate.GATE_FIELD] == genre_gate.RETURNED
     # Filed under the sweep that first filed it, not under the judging job.
     assert back.payload[sweep.SWEEP_RUN] == FILED_BY
+    # The word that it was taken back was the hold's, and stayed with it.
+    assert review.WITHHELD_FIELD not in back.payload
     assert held_ids(installed) == []
 
 
@@ -793,6 +799,35 @@ def test_a_release_nobody_was_told_anything_about_is_asked_about(installed, monk
     assert lookup.asked == [isrc(1)]
     assert held_ids(installed) == ["r-christian"]
     assert judging(envelope)["asked"] == 1
+
+
+def test_a_fresh_answer_with_no_word_takes_the_old_words_off_the_item(installed, monkeypatch):
+    """The stamp is one statement. Old words beside a new verdict would be asked about for ever."""
+    register()
+    queue_release(
+        installed,
+        "r-1",
+        genre_gate="passed",
+        genre_gate_note="filed when the label was followed for christian music",
+        genre_gate_answer="matched",
+        published_genres=["Christian"],
+    )
+    provider = provider_of(monkeypatch, {"r-1": isrc(1)})
+    bind_lookup(monkeypatch, Lookup({}))
+
+    judge_once()
+
+    stays = item_of(installed, "r-1").payload
+    assert stays[genre_gate.GATE_FIELD] == "not-judged"
+    assert stays[genre_gate.GATE_ANSWER_FIELD] == "miss"
+    assert genre_gate.GENRES_FIELD not in stays
+    assert stays["title"] == "Release r-1"
+    assert held_ids(installed) == []
+
+    # And so the next run reads the record and asks nobody.
+    bind_lookup(monkeypatch, never_asked)
+    judge_once()
+    assert provider.releases_asked_for == ["r-1"]
 
 
 def test_an_item_that_names_no_release_is_not_judged_and_nothing_is_read(installed, monkeypatch):
@@ -1357,6 +1392,64 @@ def test_a_release_another_job_withheld_meanwhile_is_not_filed_again(installed, 
     assert reports(installed, job_id)["r-1"]["outcome"] == "not-judged"
 
 
+def test_a_release_another_job_held_while_this_one_was_asking_is_counted_held(
+    installed, monkeypatch
+):
+    """Reported as what it is now. Not as gone, and not as decided by a person."""
+    register()
+    item_id = queue_release(installed, "r-1")
+    provider_of(monkeypatch, {"r-1": isrc(1)})
+
+    def withheld_meanwhile(value):
+        with review.open_store(installed) as store:
+            withhold(store, item_id, run_id="another-job", reason="the other job's reason")
+        return published.Published(published.SOURCE, "matched", genres=("Christian",))
+
+    bind_lookup(monkeypatch, withheld_meanwhile)
+
+    job_id, envelope = judge_once()
+
+    report = reports(installed, job_id)["r-1"]
+    assert (report["outcome"], report["reason"], report["asked"]) == (
+        "held",
+        "the other job's reason",
+        True,
+    )
+    assert counts(judging(envelope)) == {"judged": 1, "held": 1, "passed": 0, "not-judged": 0}
+    assert judging(envelope)["gone"] == 0
+    assert held_ids(installed) == ["r-1"]
+
+
+def moved_registry(monkeypatch, old_id: str) -> None:
+    """The registry as it reads after a label's identifier moved from ``old_id``."""
+    real = labels.RegistryStore.load
+
+    def load(self):
+        held = real(self)
+        return labels.Registry(labels=dict(held.labels), renamed={old_id: SLUG})
+
+    monkeypatch.setattr(labels.RegistryStore, "load", load)
+
+
+def test_a_release_filed_under_a_labels_old_identifier_is_in_a_run_scoped_to_the_label(
+    installed, monkeypatch
+):
+    """The scope reads the registry the way the worker does, and the hold is the label's."""
+    register()
+    queue_release(installed, "r-1", label_id="tide-works-old")
+    moved_registry(monkeypatch, "tide-works-old")
+    provider_of(monkeypatch, {"r-1": isrc(1)})
+    bind_lookup(monkeypatch, Lookup({isrc(1): ("Christian",)}))
+
+    _, envelope = judge_once("--label", LABEL)
+
+    assert [row["label_id"] for row in judging(envelope)["labels"]] == [SLUG]
+    with review.open_store(installed) as store:
+        # Under the identifier the label has now, which is where a sweep looks.
+        [hold] = review.holds(store, queue=QUEUE, group=SLUG)
+    assert hold.identity == {"release_id": "r-1"}
+
+
 def test_a_release_held_under_an_earlier_holds_run_is_counted_held_when_it_is_redone(
     installed, monkeypatch
 ):
@@ -1504,8 +1597,13 @@ def test_label_held_does_not_say_a_sweep_was_refused_over_what_a_judge_run_met(
 
     assert code == int(ExitCode.OK), listing
     [swept] = listing["data"]["summary"]["sweeps"]
-    assert (swept["filed"], swept["asked"], swept["unread"], swept["not_judged"]) == (1, 0, 0, 0)
-    assert [one["key"] for one in listing["data"]["checks"]] == ["label.held.held"]
+    # Still not judged, which is a fact about the release as it stands. Not
+    # asked and not unread by the SWEEP, which asked nobody about it.
+    assert (swept["filed"], swept["asked"], swept["unread"], swept["not_judged"]) == (1, 0, 0, 1)
+    line = check(listing, f"label.held.sweep.{SLUG}")
+    assert line["status"] == "info"
+    assert "the genre gate could not judge 1 of them" in line["detail"]
+    assert "because the general catalogue could not be read" not in line["detail"]
 
 
 def test_a_release_a_sweep_held_is_still_returned_under_that_sweep(installed, monkeypatch):
@@ -1529,6 +1627,88 @@ def test_a_release_a_sweep_held_is_still_returned_under_that_sweep(installed, mo
 
     assert code == int(ExitCode.OK), returned
     assert item_of(installed, "r-swept").payload[sweep.SWEEP_RUN] == "sweep-9"
+
+
+def test_a_withheld_release_the_window_does_not_reach_is_not_dropped_when_its_kind_changes(
+    installed, monkeypatch
+):
+    """It was in front of a person. Dropped past the window, it would be in neither place."""
+    register("--offer", "1")
+    queue_release(installed, "r-new")
+    queue_release(installed, "r-old")
+    fake = FakeCatalogue(
+        artists={
+            SLUG: FakePagedArtist(
+                [FakeRelease("r-new", year="2026"), FakeRelease("r-old", year="2020")]
+            )
+        },
+        releases={
+            "r-new": ([Track("t-new", "Label Act", "New", isrc(1))], 2026),
+            "r-old": ([Track("t-old", "Label Act", "Old", isrc(2))], 2020),
+        },
+    )
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
+    bind_lookup(monkeypatch, Lookup({isrc(1): ("Dance",), isrc(2): ("Christian",)}))
+    judge_once()
+    assert held_ids(installed) == ["r-old"]
+    assert drive(["label", "registry", "set", LABEL, "--kind", "any"])[0] == int(ExitCode.OK)
+    bind_lookup(monkeypatch, never_asked)
+
+    sweep_once()
+
+    assert held_ids(installed) == ["r-old"]
+    assert sorted(filed(installed)) == ["r-new"]
+    code, listing = held_verb()
+    assert code == int(ExitCode.OK), listing
+    assert "release r-old" in check(listing, "label.held.release.r-old")["detail"]
+    assert held_verb("return", "r-old")[0] == int(ExitCode.OK)
+    assert sorted(filed(installed)) == ["r-new", "r-old"]
+
+
+def test_a_withheld_release_filed_before_runs_were_recorded_is_returned_under_no_run(
+    installed, monkeypatch
+):
+    """Never under the judging job, which filed nothing."""
+    register()
+    queue_release(installed, "r-legacy", filed_by=None)
+    assert sweep.SWEEP_RUN not in item_of(installed, "r-legacy").payload
+    provider_of(monkeypatch, {"r-legacy": isrc(1)})
+    bind_lookup(monkeypatch, Lookup({isrc(1): ("Christian",)}))
+    judge_once()
+
+    code, returned = held_verb("return", "r-legacy")
+
+    assert code == int(ExitCode.OK), returned
+    back = item_of(installed, "r-legacy").payload
+    assert sweep.SWEEP_RUN not in back
+    assert review.WITHHELD_FIELD not in back
+
+
+def test_a_stale_hold_beside_a_release_the_gate_passes_is_dropped(installed, monkeypatch):
+    """In review and still held. The queue is the truth, as the sweep reads it."""
+    register()
+    item_id = queue_release(installed, "r-dance")
+    with review.open_store(installed) as store:
+        review.hold(
+            store,
+            queue=QUEUE,
+            kind=sweep.KIND,
+            identity={"release_id": "r-dance"},
+            payload={"identity": "r-dance"},
+            group=SLUG,
+            name=LABEL,
+            reason="an older reason",
+            detail={},
+            run_id="sweep-0",
+        )
+    provider_of(monkeypatch, {"r-dance": isrc(2)})
+    bind_lookup(monkeypatch, Lookup({isrc(2): ("Dance",)}))
+
+    judge_once()
+
+    assert held_ids(installed) == []
+    assert item_of(installed, "r-dance").item_id == item_id
+    assert item_of(installed, "r-dance").payload[genre_gate.GATE_FIELD] == "passed"
 
 
 # ═══════════════════════════════════════════════════════════════════════════

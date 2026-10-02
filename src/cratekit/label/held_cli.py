@@ -77,7 +77,7 @@ def _check(key: str, status: str, detail: str) -> dict[str, Any]:
 
 
 def _release_id(held: review.Hold) -> str:
-    return str(held.identity.get("release_id") or held.payload.get("identity") or "")
+    return genre_gate.hold_release_id(held)
 
 
 def _named(held: review.Hold) -> str:
@@ -154,11 +154,15 @@ def _sweep_rows(store: review.ReviewStore) -> list[dict[str, Any]]:
             if row is None or item.payload.get(sweep.SWEEP_RUN) != row["run"]:
                 continue
             row["filed"] += 1
-            # WHAT ``label judge`` SAID LATER IS NOT WHAT THIS SWEEP'S GATE DID.
+            # NOT JUDGED IS A FACT ABOUT THE RELEASE AS IT STANDS, whoever
+            # stamped it, so it is counted first and for every item.
+            if item.payload.get(genre_gate.GATE_FIELD) == routing.KindVerdict.NOT_JUDGED.value:
+                row["not_judged"] += 1
+            # WHAT ``label judge`` WAS TOLD LATER IS NOT WHAT THIS SWEEP ASKED.
             # A stamp naming a judging job was written after the sweep, over a
-            # release the sweep may never have asked about, and counting it
-            # here would put that job's unread catalogue in a sentence about
-            # the sweep (R-815).
+            # release the sweep may never have asked about, and counting its
+            # answer here would put that job's unread catalogue in a sentence
+            # about the sweep (R-815).
             if item.payload.get(genre_gate.GATE_RUN_FIELD):
                 continue
             answer = item.payload.get(genre_gate.GATE_ANSWER_FIELD)
@@ -169,8 +173,6 @@ def _sweep_rows(store: review.ReviewStore) -> list[dict[str, Any]]:
                 row["asked"] += 1
             if answer in published.UNREAD:
                 row["unread"] += 1
-            if item.payload.get(genre_gate.GATE_FIELD) == routing.KindVerdict.NOT_JUDGED.value:
-                row["not_judged"] += 1
         if page.next_cursor is None:
             break
         cursor = page.next_cursor
@@ -380,16 +382,23 @@ def _returned(ctx) -> Envelope:
                 continue
             # THE OFFER FIRST, THEN THE MARK. A hold marked returned whose item
             # was never filed is a release nothing holds and nothing offers.
-            payload = {**one.payload, **genre_gate.returned_stamp()}
-            # UNDER THE RUN THE PAYLOAD NAMES, when it names one. A release
-            # ``label judge`` took back out of review carries the sweep that
-            # first filed it, and the hold's own run is the judging job, which
-            # filed nothing. A release a sweep held was never filed, carries no
-            # run, and takes the sweep that held it (R-815).
+            # A RELEASE TAKEN BACK OUT OF REVIEW GOES BACK AS IT WAS FILED
+            # (R-815): under the run its payload names, and under none when it
+            # names none, as an item filed before runs were recorded reads.
+            # Never under the hold's own run, which is the judging job and
+            # filed nothing. A release a sweep held was never filed, and takes
+            # the sweep that held it. The word that says it was taken back is
+            # the hold's, and does not travel onto the item.
+            taken_back = bool(one.payload.get(review.WITHHELD_FIELD))
+            payload = {
+                **{k: v for k, v in one.payload.items() if k != review.WITHHELD_FIELD},
+                **genre_gate.returned_stamp(),
+            }
             item = sweep.offer_release(
                 store,
                 run.Candidate(identity=release_id, recency="", payload=payload),
-                run_id=str(payload.get(sweep.SWEEP_RUN) or "") or one.run_id or None,
+                run_id=str(payload.get(sweep.SWEEP_RUN) or "")
+                or (None if taken_back else one.run_id or None),
             )
             review.return_hold(store, queue=queue, item_id=one.item_id)
             filed.append(release_id)

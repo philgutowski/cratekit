@@ -114,8 +114,27 @@ def label_judge_argv(job) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _scope(names: Sequence[str] | None) -> tuple[str, ...] | None:
-    """The label identifiers ``--label`` names, or None when it names none.
+@dataclass(frozen=True, slots=True)
+class _Scope:
+    """The followed labels a run is narrowed to, and the registry that names them."""
+
+    label_ids: tuple[str, ...]
+    followed: labels.Registry
+
+    def holds(self, label_id: str) -> bool:
+        """Whether a release filed under ``label_id`` is one of the labels named.
+
+        THROUGH THE REGISTRY, not by comparing the text. An item filed before
+        a label's identifier moved carries the old one, and the worker reads
+        it through ``by_id``, which follows the move. Compared as text, the
+        label's own releases would be left out of a run scoped to it.
+        """
+        entry = self.followed.by_id(label_id) if label_id else None
+        return entry is not None and entry.label_id in self.label_ids
+
+
+def _scope(names: Sequence[str] | None) -> _Scope | None:
+    """The followed labels ``--label`` names, or None when it names none.
 
     EVERY NAME IS RESOLVED BEFORE ANYTHING IS QUEUED, so a mistyped label
     refuses the run and is not read as "that label has nothing pending".
@@ -141,10 +160,10 @@ def _scope(names: Sequence[str] | None) -> tuple[str, ...] | None:
             origin=ORIGIN,
             detail={"unknown": unknown},
         )
-    return tuple(found)
+    return _Scope(tuple(found), followed)
 
 
-def pending(store: review.ReviewStore, scope: Sequence[str] | None = None) -> tuple[str, ...]:
+def pending(store: review.ReviewStore, scope: _Scope | None = None) -> tuple[str, ...]:
     """The review items a judging job is made of: every open label release.
 
     READ OFF THE REVIEW QUEUE AND NOTHING ELSE. No provider is asked, so
@@ -154,11 +173,10 @@ def pending(store: review.ReviewStore, scope: Sequence[str] | None = None) -> tu
     page = review.list_items(
         store, queue=str(Queue.LABEL_RELEASE), kinds=(sweep.KIND,), limit=None
     )
-    wanted = frozenset(scope) if scope is not None else None
     return tuple(
         item.item_id
         for item in page.items
-        if wanted is None or str(item.payload.get("label_id") or "") in wanted
+        if scope is None or scope.holds(str(item.payload.get("label_id") or ""))
     )
 
 
@@ -195,7 +213,7 @@ def label_judge(ctx) -> Envelope:
         job = jobs.enqueue(
             store,
             handler_key=ctx.entry.handler_key,
-            payload={"labels": list(scope) if scope is not None else []},
+            payload={"labels": list(scope.label_ids) if scope is not None else []},
             item_ids=items,
             cfg=cfg,
         )
@@ -431,15 +449,23 @@ def _text(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-def _subject(store: review.ReviewStore, item: review.Item) -> _Subject:
-    """The release an item names, from its IDENTITY before its payload.
+def _subject(
+    store: review.ReviewStore, item: review.Item, entry: labels.LabelEntry | None
+) -> _Subject:
+    """The release an item names, and the label it is counted and held under.
 
-    Through the one reader ``label approved`` reads an item by.
+    The release through the one reader ``label approved`` reads an item by.
+
+    THE LABEL IS THE REGISTRY'S WHEN THE REGISTRY HOLDS IT. An item filed
+    before a label's identifier moved carries the old one, and a hold written
+    under that would be one no sweep of the label ever looks at, since a sweep
+    asks for the holds under the identifier the label has now. A label nobody
+    follows any more keeps what the item says.
     """
     return _Subject(
         release_id=genre_gate.release_id_of(store, item),
-        label_id=_text(item.payload.get("label_id")),
-        label_name=_text(item.payload.get("label_name")),
+        label_id=entry.label_id if entry is not None else _text(item.payload.get("label_id")),
+        label_name=entry.name if entry is not None else _text(item.payload.get("label_name")),
         title=_text(item.payload.get("title")),
         artist=_text(item.payload.get("artist")),
     )
@@ -591,6 +617,15 @@ def _judged(
     return _asked(job, cfg, declared, kind, subject.release_id), True
 
 
+#: The payload fields that together are the gate's statement about a release.
+_STAMP_FIELDS: tuple[str, ...] = (
+    genre_gate.GATE_FIELD,
+    genre_gate.GATE_NOTE_FIELD,
+    genre_gate.GATE_ANSWER_FIELD,
+    genre_gate.GENRES_FIELD,
+)
+
+
 def _stamp(
     store: review.ReviewStore, item: review.Item, judged: genre_gate.Judged, run_id: str
 ) -> None:
@@ -606,12 +641,20 @@ def _stamp(
     NOT WRITTEN WHEN NOTHING CHANGED. A release judged from its own record
     usually gets the verdict it already carries, and rewriting it would only
     move the stamp's judging job onto a release this job learned nothing about.
+
+    THE STAMP IS ONE STATEMENT AND IS REPLACED WHOLE. A verdict with no words
+    takes the old words off the item with it. Merged over them, a release
+    whose record would have held it, asked about and answered with nothing,
+    read not judged beside the very words the gate had just declined to hold
+    it on: every later run asked about it again, and ``label approved`` held
+    it on them.
     """
     said = judged.stamp()
-    if all(item.payload.get(field) == value for field, value in said.items()):
+    if all(item.payload.get(field) == said.get(field) for field in _STAMP_FIELDS):
         return
+    kept = {field: value for field, value in item.payload.items() if field not in _STAMP_FIELDS}
     review.redescribe(
-        store, item.item_id, {**item.payload, **said, genre_gate.GATE_RUN_FIELD: run_id}
+        store, item.item_id, {**kept, **said, genre_gate.GATE_RUN_FIELD: run_id}
     )
 
 
@@ -642,7 +685,7 @@ def _report(
 
 def _held_already(hold: review.Hold) -> _Subject:
     return _Subject(
-        release_id=_text(hold.identity.get("release_id")) or _text(hold.payload.get("identity")),
+        release_id=genre_gate.hold_release_id(hold),
         label_id=hold.group,
         label_name=hold.name,
         title=_text(hold.payload.get("title")),
@@ -653,24 +696,25 @@ def _held_already(hold: review.Hold) -> _Subject:
 def _judge_one(job, item_id: str, cfg: config.Config) -> dict[str, Any]:
     run_id = str(job.job_id)
     queue = str(Queue.LABEL_RELEASE)
+    # WHAT THE JOB SHARES IS READ BEFORE THE ITEM IS, so a taxonomy or a
+    # registry that cannot be read stops the run on its first release whatever
+    # that release turns out to be.
+    tools = _tools(job)
+    if tools.declared is None:
+        tools.declared = active_taxonomy.load(cfg)
+    if tools.followed is None:
+        tools.followed = labels.RegistryStore().load()
+    declared = tools.declared
     with review.open_store(cfg) as store:
         found = review.find(store, item_id)
         standing = review.find_hold(store, queue=queue, item_id=item_id)
         if found is None:
-            # THE ITEM THIS JOB WAS QUEUED FOR IS NOT IN REVIEW. When a hold is
-            # in force on it, the release is held, and it is counted held: the
-            # usual way here is this job's own hold, made by a run that died
-            # before the item was marked done and is being redone. NOT KEYED ON
-            # THE HOLD'S RUN, which is the run that FIRST held the release and
-            # is an earlier one's when a hold already stood beside the item.
-            # Otherwise the release left review some other way.
-            if standing is not None and standing.state == review.HOLD_HELD:
-                return _report(item_id, HELD, _held_already(standing), reason=standing.reason)
-            gone = _held_already(standing) if standing is not None else _Subject("", "", "", "", "")
-            return _report(
-                item_id, GONE, gone, reason="it was no longer in review when its turn came"
-            )
-        subject = _subject(store, found)
+            return _left_review(item_id, standing)
+        # A LABEL THE REGISTRY NO LONGER HOLDS IS THE DEFAULT KIND, which is
+        # what ``label approved`` judges it as.
+        entry = tools.followed.by_id(_text(found.payload.get("label_id")))
+        kind = entry.kind if entry is not None else None
+        subject = _subject(store, found, entry)
         if found.stored_verdict is not None:
             return _report(
                 item_id, DECIDED, subject, reason="a person has decided it, so it was not judged"
@@ -682,19 +726,16 @@ def _judge_one(job, item_id: str, cfg: config.Config) -> dict[str, Any]:
                 subject,
                 reason="a person returned it to review, so it was not judged again",
             )
-        tools = _tools(job)
-        if tools.declared is None:
-            tools.declared = active_taxonomy.load(cfg)
-        if tools.followed is None:
-            tools.followed = labels.RegistryStore().load()
-        declared = tools.declared
-        # A LABEL THE REGISTRY NO LONGER HOLDS IS THE DEFAULT KIND, which is
-        # what ``label approved`` judges it as.
-        entry = tools.followed.by_id(subject.label_id) if subject.label_id else None
-        kind = entry.kind if entry is not None else None
         judged, asked = _judged(job, cfg, declared, kind, found, subject)
         if not judged.held:
             _stamp(store, found, judged, run_id)
+            # IN REVIEW AND STILL HELD is a state two writes of an earlier
+            # build can leave. The queue is the truth, as the sweep reads it:
+            # the release is in review and the gate does not hold it, so the
+            # hold goes, and ``label held`` stops listing a release a person
+            # can already decide.
+            if standing is not None and standing.state == review.HOLD_HELD:
+                review.release_hold(store, queue=queue, item_id=item_id)
             return _report(
                 item_id, judged.verdict.value, subject, reason=judged.reason, judged=judged, asked=asked
             )
@@ -709,24 +750,47 @@ def _judge_one(job, item_id: str, cfg: config.Config) -> dict[str, Any]:
         )
         if hold is not None:
             return _report(item_id, HELD, subject, reason=judged.reason, judged=judged, asked=asked)
-        # NOTHING WAS MOVED. A person decided the release, or returned it, in
-        # the time it took to judge it, and their answer stands.
-        again = review.find_hold(store, queue=queue, item_id=item_id)
-        if again is not None and again.state == review.HOLD_RETURNED:
-            return _report(
+        # NOTHING WAS MOVED, because the release changed while it was being
+        # judged. It is reported as what it is NOW, read again, and never as
+        # what this run meant to make of it.
+        again = review.find(store, item_id)
+        if again is None:
+            report = _left_review(
+                item_id, review.find_hold(store, queue=queue, item_id=item_id)
+            )
+        elif again.stored_verdict is not None:
+            report = _report(
+                item_id,
+                DECIDED,
+                subject,
+                reason="a person decided it while it was being judged, so it was not held",
+            )
+        else:
+            report = _report(
                 item_id,
                 RETURNED,
                 subject,
                 reason="a person returned it to review while it was being judged",
-                asked=asked,
             )
-        return _report(
-            item_id,
-            DECIDED if review.find(store, item_id) is not None else GONE,
-            subject,
-            reason="a person decided it while it was being judged, so it was not held",
-            asked=asked,
-        )
+        return {**report, "asked": asked}
+
+
+def _left_review(item_id: str, standing: review.Hold | None) -> dict[str, Any]:
+    """The report for a release that is not in review when it is looked for.
+
+    HELD WHEN A HOLD IS IN FORCE ON IT, whoever made the hold. The usual way
+    here is this job's own, made by a run that died before the item was marked
+    done and is being redone. Another judging job's hold reads the same, and
+    so does one made in the moment this job was asking about the release. NOT
+    KEYED ON THE HOLD'S RUN, which is the run that FIRST held the release and
+    is an earlier one's when a hold already stood beside the item.
+
+    GONE otherwise: the release left review some other way.
+    """
+    if standing is not None and standing.state == review.HOLD_HELD:
+        return _report(item_id, HELD, _held_already(standing), reason=standing.reason)
+    gone = _held_already(standing) if standing is not None else _Subject("", "", "", "", "")
+    return _report(item_id, GONE, gone, reason="it was no longer in review when its turn came")
 
 
 def handle(job, item, cfg) -> jobs.Produced:

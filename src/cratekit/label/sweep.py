@@ -558,6 +558,13 @@ def list_for_label(
     reach and the gate would now pass is reported in ``stale`` and its hold is
     dropped. So is a hold on a release deleted on purpose since, and one on a
     release the library has come to own.
+
+    EXCEPT A RELEASE THAT WAS TAKEN BACK OUT OF REVIEW (R-815). Dropping a
+    hold past the window is safe for a release never filed: it becomes what
+    any release past the window is, unexamined, and is judged when it is
+    reached. A release ``label judge`` withheld WAS in front of a person, and
+    dropped it would be in neither place with nothing said. Its hold stands,
+    ``crate label held`` lists it, and ``return`` files it.
     """
     del last_pulled
     claimed = entry.match or entry.name
@@ -688,7 +695,11 @@ def list_for_label(
     if gate is not None:
         for standing in gate.in_force(entry.label_id):
             beyond_id = str(standing.identity.get("release_id") or "")
-            if beyond_id and beyond_id not in reached and not gate.rejudge(entry, standing).held:
+            if not beyond_id or beyond_id in reached:
+                continue
+            if standing.payload.get(review.WITHHELD_FIELD):
+                continue
+            if not gate.rejudge(entry, standing).held:
                 stale.append(beyond_id)
     return LabelListing(
         candidates=tuple(candidates),
