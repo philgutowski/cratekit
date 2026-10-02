@@ -228,6 +228,31 @@ neither a sweep nor `label approved` holds it again.
 Not **held** in the offer window's sense, which is a release already in the
 queue. The listing calls the gate's ones `gated` to keep the two apart.
 
+### Stale row
+A library row whose genre differs from a non blank genre on its file (R-816).
+The file is the authority in that direction only: `crate tag rows` writes the
+row's genre from the file, the genre and no other column, and nothing writes a
+file from a row. The row's word is the one adoption's collection reader
+returns, and the file's is the first value its genre tag holds.
+
+Not every row that differs is written. A row is listed and left when a person
+held it out, when the file's word is one the taxonomy calls too coarse and the
+row's is specific, when the file holds more than one genre, and when the
+library has no genre lookup row for the file's word. A row whose file is blank
+is not stale: it carries a genre its file does not, which is the other
+direction and no verb's.
+
+### Held row
+A stale row a person names with `crate tag rows --leave CONTENT_ID`, so its
+genre is left as it is whatever its file says (R-817). It is for a genre set
+by hand in rekordbox, which the file never received. A held row is in the plan
+and in its digest, so the run that applies names the same rows or refuses as
+stale. Nothing remembers it between runs.
+
+Not a **held release**, which is a label release the genre gate keeps out of
+review, and not **withheld**, which is adoption's word for a track it will not
+file over a place it already holds.
+
 ### Provider gate
 The one seam every call to the streaming provider passes, `core/provider_gate`,
 attached to the transport of each client the product builds so nothing above
