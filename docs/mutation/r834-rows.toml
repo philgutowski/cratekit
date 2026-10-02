@@ -1,0 +1,64 @@
+name = "r834"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_a_create_makes_the_playlist_private"
+description = "TidalAccount.create_playlist: drop the private step, so a created playlist keeps whatever visibility the provider defaults to, the defect R-834 named"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''        self._make_private(created, identifier)
+'''
+new = '''
+'''
+
+[[rows]]
+id = "M2_the_private_step_is_retried_once"
+description = "_make_private: send the private call once with no retry, so one transient refusal leaves the playlist public"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''            self._call(f"make the playlist {identifier} private", private)'''
+new = '''            self._call(f"make the playlist {identifier} private", private, retries=0)'''
+
+[[rows]]
+id = "M3_a_refused_private_step_does_not_lose_the_playlist"
+description = "_make_private: raise the refusal instead of passing over it, so the create fails after the playlist exists and the ledger never records it"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''        except CratekitError:
+            return'''
+new = '''        except CratekitError:
+            raise'''
+
+[[rows]]
+id = "M4_a_client_with_no_private_call_does_not_lose_the_playlist"
+description = "_make_private: call the attribute without asking whether it exists, so a client without it fails the create after the playlist exists"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''        if not callable(private):
+            return
+'''
+new = '''
+'''
+
+[[rows]]
+id = "M5_a_create_is_never_retried"
+description = "create_playlist: retry the create like a write, so a create that reached the provider and timed out is retried into a second playlist (an existing guard, sampled)"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''            lambda: self._session.user.create_playlist(name, ""),
+            retries=0,'''
+new = '''            lambda: self._session.user.create_playlist(name, ""),'''
+
+[[rows]]
+id = "M6_the_private_step_runs_after_the_identifier_is_known"
+description = "create_playlist: make the playlist private on the provider's playlist named by the session rather than the object the create returned, which a fake or a client handing back a fresh object would not see"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''        private = getattr(created, "set_playlist_private", None)'''
+new = '''        private = getattr(object(), "set_playlist_private", None)'''
