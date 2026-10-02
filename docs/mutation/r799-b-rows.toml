@@ -1,0 +1,125 @@
+name = "r799-b"
+pass_kind = "light"
+
+[[rows]]
+id = "P1_a_file_is_planned_only_while_it_carries_what_a_record_wrote"
+description = "plan: take every record in force as explaining the file, whatever the file carries"
+file = "src/cratekit/tagging/remap.py"
+surface = "user"
+tests = ["tests/test_tag_remap.py"]
+old = '''    explaining = [record for record in in_force if values == (record.written,)]'''
+new = '''    explaining = list(in_force)'''
+
+[[rows]]
+id = "P2_two_explanations_are_ambiguous"
+description = "plan: settle a genre two records explain differently by the first of them"
+file = "src/cratekit/tagging/remap.py"
+surface = "user"
+tests = ["tests/test_tag_remap.py"]
+old = '''    if len({(record.source, record.word) for record in explaining}) > 1:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "P3_a_shops_genre_is_the_shops"
+description = "plan: resolve a record shop's word as the general catalogue's"
+file = "src/cratekit/tagging/remap.py"
+surface = "user"
+tests = ["tests/test_tag_remap.py"]
+old = '''    if wrote.source != SOURCE:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "P4_a_rewrite_retires_the_record_it_replaced"
+description = "plan: keep every record of the source in force, whatever its generation"
+file = "src/cratekit/tagging/remap.py"
+surface = "user"
+tests = ["tests/test_tag_remap.py"]
+old = '''        if record.source == SOURCE and record.generation == newest
+    ]'''
+new = '''        if record.source == SOURCE
+    ]'''
+
+[[rows]]
+id = "P5_only_a_file_under_the_library_is_opened"
+description = "plan: settle a recorded path wherever it is"
+file = "src/cratekit/tagging/remap.py"
+surface = "user"
+tests = ["tests/test_tag_remap.py"]
+old = '''        if resolved is None or not _inside(resolved, library):'''
+new = '''        if resolved is None:'''
+
+[[rows]]
+id = "P6_one_file_is_one_group"
+description = "plan: key a file under the library by its resolved name and not by the file itself"
+file = "src/cratekit/tagging/remap.py"
+surface = "user"
+tests = ["tests/test_tag_remap.py"]
+old = '''    try:
+        stat = resolved.stat()
+    except OSError:
+        return ("name", str(resolved))
+    return ("file", stat.st_dev, stat.st_ino)'''
+new = '''    return ("name", str(resolved))'''
+
+[[rows]]
+id = "W1_a_file_is_read_again_before_it_is_written"
+description = "apply: write over whatever the file carries by now"
+file = "src/cratekit/tagging/remap.py"
+surface = "user"
+tests = ["tests/test_tag_remap.py"]
+old = '''        if _file_genres(target) != (item.current,):
+            moved.append(item.path)
+            continue'''
+new = ""
+
+[[rows]]
+id = "W2_the_writers_answer_is_kept"
+description = "apply: count a file the writer could not write as written"
+file = "src/cratekit/tagging/remap.py"
+surface = "user"
+tests = ["tests/test_tag_remap.py"]
+old = '''        if not tags.write_genre(target, item.wanted):
+            failed.append(item.path)
+            continue'''
+new = '''        tags.write_genre(target, item.wanted)'''
+
+[[rows]]
+id = "W3_a_write_is_read_back"
+description = "apply: take the writer's word that the genre is on the file"
+file = "src/cratekit/tagging/remap.py"
+surface = "user"
+tests = ["tests/test_tag_remap.py"]
+old = '''        if _file_genres(target) != (item.wanted,):
+            wrong.append(item.path)
+            continue'''
+new = ""
+
+[[dropped]]
+id = "P7_the_case_folding_volume"
+description = "plan: drop the directory comparison, so a folder typed in another case is outside the library"
+reason = "ranked below the cap: it can only die on a volume that folds case, so its count is a fact about the machine it ran on. Driven by a test that asserts on both kinds of volume"
+
+[[dropped]]
+id = "P8_a_file_nobody_could_read"
+description = "plan: read a failed tag read as a blank genre"
+reason = "ranked below the cap: one outcome among eight, with a direct test, and never a write either way"
+
+[[dropped]]
+id = "P9_a_record_with_no_genre_written"
+description = "plan: read a record that wrote nothing"
+reason = "ranked below the cap: removing the check raises on a missing value and takes the run down, which measures a crash and not a guard"
+
+[[dropped]]
+id = "P10_the_digest_covers_the_counts_and_the_unread"
+description = "plan: digest the items alone"
+reason = "ranked below the cap: two tests assert the digest moves on a count and on an unread record, the same family R-816's table measured"
+
+[[dropped]]
+id = "A1_reports_in_item_order_as_numbers"
+description = "artifacts: sort a job's reports by filename text"
+reason = "ranked below the cap: maintainer facing, order is display for this verb since no record is taken for the latest"
+
+[[dropped]]
+id = "A2_an_unreadable_report_is_counted"
+description = "artifacts: drop the count of reports that could not be parsed"
+reason = "ranked below the cap: a warning's count, with a direct test at the reader and one at the verb"
