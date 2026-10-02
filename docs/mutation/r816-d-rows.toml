@@ -1,0 +1,59 @@
+name = "r816-d"
+pass_kind = "light"
+
+[[rows]]
+id = "C1_acknowledgment"
+description = "tag_rows: ask the gate without reading the backup acknowledgment first"
+file = "src/cratekit/tagging/rows_cli.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''    session.assert_backup_acknowledged(cfg)
+'''
+new = ''''''
+
+[[rows]]
+id = "C2_empty_plan"
+description = "tag_rows: open the database to write for a plan that writes nothing"
+file = "src/cratekit/tagging/rows_cli.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''    if not plan.writes:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "C3_majority_unmapped"
+description = "_plan: plan over a library most of whose rows are under no prefix rule"
+file = "src/cratekit/tagging/rows_cli.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''        if totals.majority_unmapped:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "C4_only_apply_writes"
+description = "tag_rows: write on any answer"
+file = "src/cratekit/tagging/rows_cli.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''    if ctx.gate.require(spec, plan=data, context=_facts(plan)) != "apply":'''
+new = '''    if ctx.gate.require(spec, plan=data, context=_facts(plan)) == "never":'''
+
+[[rows]]
+id = "C5_leave_reaches_the_plan"
+description = "_plan: drop the rows held out on the command line"
+file = "src/cratekit/tagging/rows_cli.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''        return rows.plan_rows(cfg, db, declared, leave=leave)'''
+new = '''        return rows.plan_rows(cfg, db, declared, leave=())'''
+
+[[dropped]]
+id = "C6_left_warning"
+description = "_advisories: say nothing of the rows left alone"
+reason = "ranked below the cap: a warning line, and three cases assert its text"
+
+[[dropped]]
+id = "C7_unmatched_fact"
+description = "_facts: leave the unmatched identifiers off the gate screen"
+reason = "ranked below the cap: C5 measures the flag reaching the plan"
+

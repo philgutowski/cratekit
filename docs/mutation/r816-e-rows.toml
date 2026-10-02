@@ -1,0 +1,39 @@
+name = "r816-e"
+pass_kind = "light"
+
+[[rows]]
+id = "D1_resolve_once"
+description = "plan_genre_retag: ask the database for the lookup row once per row"
+file = "src/cratekit/write/metadata.py"
+surface = "maintainer"
+tests = ["tests/test_tag_rows.py", "tests/test_metadata_policy.py", "tests/test_genre_retag.py"]
+old = '''        if wanted not in resolved:'''
+new = '''        if True:'''
+
+[[rows]]
+id = "D2_survey_total"
+description = "_is_a_file: let a refusal to answer raise out of the survey"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py", "tests/test_metadata_cli.py", "tests/test_paths_resolved.py"]
+old = '''    try:
+        return path.is_file()
+    except (OSError, ValueError):
+        return False'''
+new = '''    return path.is_file()'''
+
+[[rows]]
+id = "E1_retag_names_the_verb"
+description = "library_row_warning: name no verb, reworded"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '''because this verb writes the file half only; run `crate tag "
+            f"rows` so the rows catch up'''
+new = '''because this verb writes the file half only; run the row "
+            f"verb so the rows catch up'''
+
+[[dropped]]
+id = "D3_blocked_clause"
+description = "majority_unmapped_cause: say vocals for every verb"
+reason = "ranked below the cap: wording, held by one assertion in each direction"
