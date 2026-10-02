@@ -5107,7 +5107,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # four the precheck already had and none is in the reserved table.
     # Population 183 to 187, non-reserved 155 to 159, reserved half UNCHANGED
     # at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (187, 159, 28)
+    # Re-pinned on the residual finding "The general catalogue's broad words
+    # are filed by aliases written for the record shops' vocabulary",
+    # 2026-10-02. ONE slug: tag-remap-unwritten, which the correction verb
+    # refuses with when a file did not take the genre its approved plan gave
+    # it. It is in cause.REASONS and not in the reserved table. Population 187
+    # to 188, non-reserved 159 to 160, reserved half UNCHANGED at 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (188, 160, 28)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5941,7 +5947,21 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # refusals the new verb raises are label-unknown, job-unknown,
     # catalogue-unreachable and unavailable-transient, all four of which the
     # tree already carried.
-    assert (len(literals), len(literals - set(causes))) == (569, 383), (
+    # Re-pinned on the residual finding "The general catalogue's broad words
+    # are filed by aliases written for the record shops' vocabulary",
+    # 2026-10-02: 569 to 580 distinct, non-keys 383 to 393. ELEVEN joined and
+    # nothing left, each checked against `main`'s own `src` by git grep. One
+    # is a key, tag-remap-unwritten, pinned above. Three are the outcomes
+    # `tagging/remap.py` counts a file under that the tree did not already
+    # spell: changed-since, word-declined and ambiguous-record. file-missing
+    # and file-unreadable are two more outcomes and the tree carried both.
+    # tag-remap is the name that module's plan digests under.
+    # remap-nothing-to-write, remap-genre-written, remap-left-alone,
+    # remap-file-not-read, remap-no-vocabulary and remap-records-unread are
+    # WARNING codes `tagging/remap_cli.py` gives. The other refusals the new
+    # verb raises are internal-error, decision-stale and config-unusable, all
+    # of which the tree already carried.
+    assert (len(literals), len(literals - set(causes))) == (580, 393), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

@@ -143,10 +143,47 @@ def committed(cfg: config.Config, job_id: str) -> tuple[dict[str, Any], ...]:
     return tuple(found)
 
 
+def every_committed(cfg: config.Config) -> tuple[tuple[tuple[str, dict[str, Any]], ...], int]:
+    """Every committed report of every job, with its job, and how many were unread.
+
+    OFF THE DIRECTORY AND NOT OFF THE QUEUE (R-799). A reader that asks what
+    tagging jobs ever wrote onto a file must not lose a job the queue no longer
+    lists, since a job it cannot see is a file it never looks at and reports
+    nothing about. Both tagging verbs commit here, and a reader tells their
+    reports apart by what each carries.
+
+    THE UNREAD ARE COUNTED, where :func:`committed` skips them. That function
+    is a display over one job's work. This one is read to decide which files a
+    correction looks at, so a report that cannot be parsed is a file that
+    might have needed one, and the caller has to be able to say how many.
+
+    Jobs in name order and reports in item order, so two reads of one
+    unchanged queue agree and a digest over the result is stable.
+    """
+    root = jobs.store_dir(cfg) / ARTIFACTS_DIRNAME
+    if not root.is_dir():
+        return (), 0
+    found: list[tuple[str, dict[str, Any]]] = []
+    unread = 0
+    for directory in sorted(entry for entry in root.iterdir() if entry.is_dir()):
+        for path in sorted(directory.glob("*.json"), key=lambda item: item.name):
+            try:
+                parsed = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                unread += 1
+                continue
+            if not isinstance(parsed, dict):
+                unread += 1
+                continue
+            found.append((directory.name, parsed))
+    return tuple(found), unread
+
+
 __all__ = [
     "ARTIFACTS_DIRNAME",
     "STAGING_DIRNAME",
     "committed",
+    "every_committed",
     "final_path",
     "produced",
     "staged_path",

@@ -1708,6 +1708,15 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # replaced, because the second record would move the anchor or the day
         # under a tree that may have taken writes under the first.
         "cutover-already-recorded": ExitCode.PRECONDITION,
+        # ── R-799's refusal, appended for the reason every block above gives ───
+        #
+        # The correction of genres an older mapping wrote was approved and a file
+        # did not take it: it carried something else by the time the write
+        # reached it, or the write failed, or it does not read back as written.
+        # PRECONDITION because the cure is the file's, which is named, and a
+        # second run plans what is left. Raised after the other files were
+        # written, so the message says how many were.
+        "tag-remap-unwritten": ExitCode.PRECONDITION,
     }
 )
 
