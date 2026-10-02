@@ -1,0 +1,139 @@
+{
+  "name": "r816-e",
+  "pass_kind": "light",
+  "branch": "relay/239",
+  "head": "07d3064",
+  "when": "2026-10-02 03:09 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 11591,
+  "baseline_exit": 0,
+  "pytest_runs": 8,
+  "state_guarded": "~/Library/Application Support/cratekit (189230 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/write/metadata.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/write/metadata.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "c6e67cd79a53b5f9",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 11591,
+    "baseline_collected": 11591,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "D1_resolve_once",
+      "description": "plan_genre_retag: ask the database for the lookup row once per row",
+      "file": "src/cratekit/write/metadata.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "0835249765722767",
+      "subset": [
+        "tests/test_tag_rows.py",
+        "tests/test_metadata_policy.py",
+        "tests/test_genre_retag.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 166,
+      "baseline_collected": 166,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_each_distinct_file_word_is_resolved_once"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if wanted not in resolved:",
+      "new": "        if True:"
+    },
+    {
+      "id": "D2_survey_total",
+      "description": "_is_a_file: let a refusal to answer raise out of the survey",
+      "file": "src/cratekit/write/metadata_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f8357c6f1d3c3e9b",
+      "subset": [
+        "tests/test_tag_rows.py",
+        "tests/test_metadata_cli.py",
+        "tests/test_paths_resolved.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 147,
+      "baseline_collected": 147,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_the_verb_survives_a_directory_this_account_cannot_enter"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    try:\n        return path.is_file()\n    except (OSError, ValueError):\n        return False",
+      "new": "    return path.is_file()"
+    },
+    {
+      "id": "E1_retag_names_the_verb",
+      "description": "library_row_warning: name no verb, reworded",
+      "file": "src/cratekit/tagging/retag_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "23d2b1d4721fd6cc",
+      "subset": [
+        "tests/test_tag_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 79,
+      "baseline_collected": 79,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_workers.py::test_a_corrected_retag_ends_by_naming_the_reload_the_stale_row_needs"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "because this verb writes the file half only; run `crate tag \"\n            f\"rows` so the rows catch up",
+      "new": "because this verb writes the file half only; run the row \"\n            f\"verb so the rows catch up"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "D3_blocked_clause",
+      "description": "majority_unmapped_cause: say vocals for every verb",
+      "reason": "ranked below the cap: wording, held by one assertion in each direction"
+    }
+  ]
+}
