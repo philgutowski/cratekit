@@ -1,0 +1,120 @@
+name = "r840-b"
+pass_kind = "light"
+
+[[rows]]
+id = "B1_only_the_seams_exception_is_not_served"
+description = "_repair_one: catch LookupError where the seam's own exception is caught, so a client that could not parse a payload is reported as a release that is gone"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '''    except catalogue.ReleaseUnresolvable as exc:'''
+new = '''    except LookupError as exc:'''
+
+[[rows]]
+id = "B2_a_refusal_stops_the_run"
+description = "_repair_one: drop the CratekitError passthrough, so an expired session is recorded as one unread release and the walk goes on asking"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '''        name = found.release_artist(subject.release_id)
+    except CratekitError:
+        raise
+    except catalogue'''
+new = '''        name = found.release_artist(subject.release_id)
+    except catalogue'''
+
+[[rows]]
+id = "B3_no_name_never_blanks"
+description = "_repair_one: write whatever the provider answered unless it is None, so a release it names no artist for has its address replaced by nothing"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '''    name = _text(name)
+    if not name:'''
+new = '''    name = _text(name)
+    if name is None:'''
+
+[[rows]]
+id = "B4_an_unread_release_refuses"
+description = "_walk: refuse only when the outage bound was reached, so a run that left one or two releases unread exits clean"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '''    if done.counts[UNREAD]:
+        # AFTER THE WALK'''
+new = '''    if done.counts[UNREAD] >= catalogue.READS_FAILED_IN_A_ROW:
+        # AFTER THE WALK'''
+
+[[rows]]
+id = "B5_decided_meanwhile_is_not_fine"
+description = "_write: answer already fine whenever nothing was written, so an item decided during the read is said to have stopped reading an address"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '''    return ALREADY_FINE if seen else DECIDED'''
+new = '''    return ALREADY_FINE'''
+
+[[rows]]
+id = "B6_put_right_meanwhile_is_kept"
+description = "_write: drop the address check on the payload as it stands, so an artist somebody typed during the read is overwritten by the provider's"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '''        if not is_address(current.get("artist")):
+            return None
+        return {**current, "artist": name}'''
+new = '''        return {**current, "artist": name}'''
+
+[[rows]]
+id = "B7_addresses_are_what_still_read_one"
+description = "_Run.addresses: count every outcome, so an item that stopped reading an address, and every item that never did, is counted as one"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '''        return sum(n for outcome, n in self.counts.items() if outcome != ALREADY_FINE)'''
+new = '''        return sum(self.counts.values())'''
+
+[[rows]]
+id = "B8_only_the_artist_is_rewritten"
+description = "_write: write a payload holding the artist alone, so every other field of the item is lost"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '''        return {**current, "artist": name}'''
+new = '''        return {"artist": name}'''
+
+[[rows]]
+id = "B9_a_refusal_carries_why_each_read_failed"
+description = "_Run.record: leave the sentence off the release's row, so a refusal, which carries no check line, says a read failed and not why"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '''                "artist": artist,
+                "said": said,
+'''
+new = '''                "artist": artist,
+'''
+
+[[rows]]
+id = "B10_unaddressed_is_keyed_by_item"
+description = "_Run.record: key a line by its item only when it names no release, so an item naming another item's release shares that release's key"
+file = "src/cratekit/label/artists_cli.py"
+surface = "user"
+tests = ["tests/test_label_artists.py"]
+old = '''            if outcome == UNADDRESSED
+            else'''
+new = '''            if not subject.release_id
+            else'''
+
+[[rows]]
+id = "B11_left_counts_what_was_not_reached"
+description = "_with_counts: count left against every address and not against the items the run set out to read"
+file = "src/cratekit/label/artists_cli.py"
+tests = ["tests/test_label_artists.py"]
+old = '''    left = listed - len(done.releases)'''
+new = '''    left = done.addresses - done.counts[REPAIRED]'''
+
+[[dropped]]
+id = "B12_a_refused_read_is_not_asked"
+description = "_repair_one: count a read the catalogue or the gate refused as asked"
+reason = "ranked below the cap: a maintainer facing count, and its one assertion is in the suite beside B2's"

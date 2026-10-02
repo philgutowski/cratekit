@@ -613,6 +613,30 @@ def test_a_release_decided_while_it_was_being_judged_is_not_held(installed, monk
     assert judging(envelope)["held"] == 0
 
 
+def test_an_artist_put_right_while_a_release_was_being_judged_is_kept_by_the_stamp(
+    installed, monkeypatch
+):
+    """R-840. The stamp is made on the payload as it stands, not as it was read."""
+    register()
+    item_id = queue_release(installed, "r-dance")
+    provider_of(monkeypatch, {"r-dance": isrc(1)})
+
+    def repaired_meanwhile(value):
+        with review.open_store(installed) as store:
+            current = review.get(store, item_id)
+            review.redescribe(store, item_id, {**current.payload, "artist": "Harbour Act"})
+        return published.Published(published.SOURCE, "matched", genres=("Dance",))
+
+    bind_lookup(monkeypatch, repaired_meanwhile)
+
+    job_id, _envelope = judge_once()
+
+    after = item_of(installed, "r-dance")
+    assert reports(installed, job_id)["r-dance"]["outcome"] == judge_cli.PASSED
+    assert after.payload[genre_gate.GATE_FIELD] == "passed"
+    assert after.payload["artist"] == "Harbour Act", "the stamp took the repair back"
+
+
 def test_a_label_marked_any_has_nothing_held_and_nobody_is_asked(installed, monkeypatch):
     register("--kind", "any")
     queue_release(installed, "r-christian")

@@ -6665,7 +6665,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # tagging/artifacts.py, tagging/published.py, core/taxonomy.py and
     # core/routing.py are unchanged in whether they hold one. Measured by this
     # pair moving by one on the holders side and by nothing on the other.
-    assert (len(literal_holders), len(literal_both)) == (118, 26), (
+    # Re-pinned on the residual finding "An open label release whose artist
+    # reads as a provider object address is never corrected", 2026-10-02:
+    # holders move 118 to 119, and the also-holds-an-integer half is UNCHANGED
+    # at 26. ONE module joined and none left, and it is a new file.
+    # label/artists_cli.py, the verb that reads an artist again, refuses with
+    # unavailable-transient, which the tree already carried, and holds no
+    # in-range integer. label/catalogue.py, label/tidal_catalogue.py and
+    # label/sweep.py are unchanged in whether they hold one. The kebab-literal
+    # population above did not move: the new module spells no other literal of
+    # that shape. Measured by this pair moving by one on the holders side and
+    # by nothing on the other.
+    assert (len(literal_holders), len(literal_both)) == (119, 26), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

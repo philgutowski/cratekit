@@ -1739,6 +1739,10 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # empty review queue that is nothing: the verb queues no job and says
         # which zero it is, before any provider is resolved.
         "label.judge": [],
+        # R-840. No argument repairs every open label release whose artist
+        # reads an address, and over an empty review queue that is none: the
+        # verb says so before any provider is resolved.
+        "label.artists": [],
         # U27. The four report verbs each take a collection export, and each is
         # handed a path under the CONFIGURED library that is deliberately absent,
         # for the same reason the file verbs above are: a literal here would be a

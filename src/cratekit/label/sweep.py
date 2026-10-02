@@ -32,6 +32,7 @@ from cratekit.label.catalogue import (
     Catalogue,
     ReleaseTracks,
     Unread,
+    artist_name,
     missing_listing,
 )
 from cratekit.sync import run
@@ -132,24 +133,6 @@ def _year_of(release: Any) -> str:
     return text[:4] if len(text) >= 4 and text[:4].isdigit() else text
 
 
-def _artist_of(release: Any) -> str:
-    """The artist's name, never a provider object's repr.
-
-    ``album.artist`` on this provider is an Artist object. ``str`` of that
-    object is a memory address, which is what 98 live review rows already
-    carry. A plain string is already the name, and that is what the suite's
-    stand-ins have always used, which is why the address survived every green
-    battery.
-    """
-    artist = getattr(release, "artist", None)
-    if artist is None:
-        return ""
-    if isinstance(artist, str):
-        return artist
-    name = getattr(artist, "name", None)
-    return name if isinstance(name, str) else ""
-
-
 def _title_of(release: Any) -> str:
     return str(getattr(release, "title", "") or getattr(release, "name", "") or "")
 
@@ -192,7 +175,7 @@ def _suppression_reader(cfg: config.Config) -> Callable[[Any], bool]:
 
     def tombstoned(release: Any) -> bool:
         nonlocal snapshot
-        artist = _artist_of(release)
+        artist = artist_name(release)
         title = _title_of(release)
         if not artist and not title:
             return False
@@ -223,7 +206,9 @@ def _candidate(
         identity=identity,
         recency=_year_of(release),
         payload={
-            "artist": _artist_of(release),
+            # The seam's reader, never ``str``: the provider's artist is an
+            # object and its text is a memory address (R-379).
+            "artist": artist_name(release),
             "title": _title_of(release),
             "label_id": entry.label_id,
             "label_name": entry.name,

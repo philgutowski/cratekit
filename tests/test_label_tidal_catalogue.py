@@ -1903,6 +1903,109 @@ def test_the_adapter_raises_the_seams_own_exception():
     assert tidal_catalogue.ReleaseUnresolvable is catalogue.ReleaseUnresolvable
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# R-840: one release's artist read again by identifier
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class Addressed:
+    """A provider object whose ``str`` is its address, as the client's are."""
+
+    def __init__(self, name: Any) -> None:
+        self.name = name
+
+
+def test_a_releases_artist_is_its_name_and_never_the_objects_address(pauses):
+    act = Addressed("Harbour Act")
+    album = ProviderAlbum("r-1", album_tracks(3), year=2021, artist=act)
+    client = AlbumClient(album)
+
+    name = tidal_catalogue.TidalCatalogue(client).release_artist("r-1")
+
+    assert name == "Harbour Act"
+    assert " object at 0x" in str(act), "the stand-in stopped reading as an address"
+    assert client.album_reads == ["r-1"]
+    assert album.served == [], "the artist read paged the release's tracks"
+    assert pauses == []
+
+
+@pytest.mark.parametrize(
+    "held, name",
+    [
+        ("Harbour Act", "Harbour Act"),
+        (None, ""),
+        (Addressed(None), ""),
+        (Addressed(17), ""),
+    ],
+)
+def test_an_artist_that_is_already_text_or_has_no_name_is_read_as_what_it_is(held, name):
+    album = ProviderAlbum("r-1", album_tracks(1), artist=held)
+    assert tidal_catalogue.TidalCatalogue(AlbumClient(album)).release_artist("r-1") == name
+    assert catalogue.artist_name(album) == name
+
+
+def test_a_release_with_no_artist_attribute_names_none():
+    album = ProviderAlbum("r-1", album_tracks(1))
+    assert tidal_catalogue.TidalCatalogue(AlbumClient(album)).release_artist("r-1") == ""
+
+
+def test_the_sweep_files_the_name_the_artist_read_returns():
+    """One reader: what a repair writes is what a sweep would file today."""
+    album = ProviderAlbum("r-1", album_tracks(1), artist=Addressed("Harbour Act"))
+    album.title = "Harbour Lights EP"
+    entry = labels.LabelEntry(label_id="tide-works", name="Tide Works")
+
+    filed = sweep._candidate(entry, album)
+
+    assert filed.payload["artist"] == "Harbour Act"
+    assert tidal_catalogue.TidalCatalogue(AlbumClient(album)).release_artist("r-1") == (
+        filed.payload["artist"]
+    )
+
+
+def test_a_gone_release_has_no_artist_to_read_and_is_asked_about_once(pauses):
+    client = AlbumClient(ObjectNotFound("album r-gone"))
+
+    with pytest.raises(tidal_catalogue.ReleaseUnresolvable) as excinfo:
+        tidal_catalogue.TidalCatalogue(client).release_artist("r-gone")
+
+    assert "'r-gone'" in str(excinfo.value)
+    assert client.album_reads == ["r-gone"]
+    assert pauses == []
+
+
+def test_an_artist_read_the_client_returns_nothing_for_raises_too(pauses):
+    with pytest.raises(tidal_catalogue.ReleaseUnresolvable):
+        tidal_catalogue.TidalCatalogue(AlbumClient(None)).release_artist("r-1")
+
+
+def test_a_rate_limited_artist_read_waits_and_is_asked_again(pauses):
+    album = ProviderAlbum("r-1", album_tracks(1), artist=Addressed("Harbour Act"))
+    client = AlbumClient(RuntimeError("429 too many requests"), album)
+
+    assert tidal_catalogue.TidalCatalogue(client).release_artist("r-1") == "Harbour Act"
+
+    assert client.album_reads == ["r-1", "r-1"]
+    assert pauses == [1.0]
+
+
+def test_an_artist_read_through_an_outage_is_re_raised_once_the_ladder_is_spent(pauses):
+    client = AlbumClient(ConnectionError("the provider timed out"))
+
+    with pytest.raises(ConnectionError):
+        tidal_catalogue.TidalCatalogue(client).release_artist("r-1")
+
+    assert len(client.album_reads) == 6
+
+
+@pytest.mark.parametrize("blank", ["", "   ", None])
+def test_an_artist_read_with_no_identifier_never_asks_the_provider(blank, pauses):
+    client = AlbumClient(ProviderAlbum("r-1", album_tracks(1), artist="Harbour Act"))
+    with pytest.raises(tidal_catalogue.ReleaseUnresolvable):
+        tidal_catalogue.TidalCatalogue(client).release_artist(blank)
+    assert client.album_reads == []
+
+
 def test_the_adapter_and_the_verb_meet_over_a_gone_release(cfg, monkeypatch, pauses):
     """The seam's ``LookupError`` contract, driven from the live adapter's side."""
     from cratekit.label import approved_cli

@@ -50,6 +50,7 @@ from cratekit.label.catalogue import (
     PlaylistReferenceInvalid,
     ReleaseUnresolvable,
     Unread,
+    artist_name,
     missing_listing,
     playlist_id,
 )
@@ -560,6 +561,17 @@ class TidalCatalogue:
         Every other failure is re-raised as the provider raised it once the
         ladder is spent, and the caller names the release it belongs to.
         """
+        album = self._album(release_id)
+        tracks = listing.playlist_tracks(album, shape="release_tracks", sleep=_pause)
+        return tuple(tracks), _year(album)
+
+    def _album(self, release_id: str) -> Any:
+        """One release read by identifier, on the one retry ladder. Never ``None``.
+
+        The read :meth:`release_tracks` and :meth:`release_artist` share, so a
+        release that is gone is the same answer to both and a rate limit climbs
+        the same ladder for both.
+        """
         identity = str(release_id or "").strip()
         if not identity:
             raise ReleaseUnresolvable("no release identifier was given to read")
@@ -579,8 +591,16 @@ class TidalCatalogue:
                 f"the provider has no release {identity!r}; it was withdrawn or "
                 f"the identifier was never a release"
             )
-        tracks = listing.playlist_tracks(album, shape="release_tracks", sleep=_pause)
-        return tuple(tracks), _year(album)
+        return album
+
+    def release_artist(self, release_id: str) -> str:
+        """The name of the artist one release is filed under. ONE PROVIDER READ.
+
+        The album and nothing else: the client fills ``artist`` from the album's
+        own payload, so the name costs no second call. A release that is gone
+        is answered once, as :meth:`release_tracks` answers it.
+        """
+        return artist_name(self._album(release_id))
 
     def tracks_for_isrc(self, isrc: str) -> tuple[Any, ...]:
         """The provider's tracks for one ISRC, on the one retry ladder.

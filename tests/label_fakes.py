@@ -10,7 +10,7 @@ consumers arrive here in one branch. One copy means a method the real
 place rather than absent in three.
 
 **IT REFUSES ANYTHING OUTSIDE THE PROTOCOL, AND THAT IS A GUARD RATHER THAN
-TIDINESS.** ``label.catalogue.Catalogue`` declares eight reads and no write at
+TIDINESS.** ``label.catalogue.Catalogue`` declares ten reads and no write at
 all: no playlist create, no heart, no follow. :class:`StrictCatalogue` raises on
 any other attribute, so a worker that reached for one fails the suite instead of
 failing silently against a fake permissive enough to answer.
@@ -42,6 +42,7 @@ PROTOCOL_METHODS = frozenset(
         "account_playlists",
         "favourite_tracks",
         "release_tracks",
+        "release_artist",
         "tracks_for_isrc",
         "search_tracks",
     }
@@ -201,6 +202,7 @@ class FakeCatalogue:
         account: list[Any] | None = None,
         hearts: list[Any] | None = None,
         releases: dict[str, tuple[list[Any], int | None]] | None = None,
+        release_artists: dict[str, str] | None = None,
         isrcs: dict[str, list[Any]] | None = None,
         searches: dict[tuple[str, str], list[Any]] | None = None,
     ) -> None:
@@ -219,6 +221,11 @@ class FakeCatalogue:
         #: which is the only thing the seam is handed about a release.
         self.releases = dict(releases or {})
         self.releases_asked_for: list[str] = []
+        #: The name each release's artist reads, keyed by the release
+        #: identifier. A release absent here is one the provider has nothing
+        #: for, and the empty string is a release it names no artist for.
+        self.release_artists = dict(release_artists or {})
+        self.artists_asked_for: list[str] = []
         #: The provider tracks filed under each ISRC. An ISRC absent here is one
         #: the provider answers with no track, which is an answer and not a
         #: failure; :class:`UnreadableCatalogue` is the failure.
@@ -282,6 +289,14 @@ class FakeCatalogue:
             # release the provider has nothing for, and never an empty listing.
             raise ReleaseUnresolvable(f"no catalogue release {release_id!r}") from exc
         return tuple(tracks), year
+
+    def release_artist(self, release_id: str) -> str:
+        self.artists_asked_for.append(release_id)
+        try:
+            return self.release_artists[release_id]
+        except KeyError as exc:
+            # The seam's own exception, as ``release_tracks`` raises it.
+            raise ReleaseUnresolvable(f"no catalogue release {release_id!r}") from exc
 
     def tracks_for_isrc(self, isrc: str) -> tuple[Any, ...]:
         self.isrcs_asked_for.append(isrc)
@@ -348,6 +363,10 @@ class UnreadableCatalogue(FakeCatalogue):
 
     def release_tracks(self, release_id: str) -> tuple[tuple[Any, ...], int | None]:
         self.releases_asked_for.append(release_id)
+        raise RuntimeError(f"the catalogue could not read the release {release_id!r}")
+
+    def release_artist(self, release_id: str) -> str:
+        self.artists_asked_for.append(release_id)
         raise RuntimeError(f"the catalogue could not read the release {release_id!r}")
 
     def tracks_for_isrc(self, isrc: str) -> tuple[Any, ...]:

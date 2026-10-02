@@ -1046,11 +1046,22 @@ _UNRESOLVED = (
 )
 
 
-def _item_from_row(row: sqlite3.Row) -> Item:
+def _payload_of(raw: str) -> dict[str, Any]:
+    """A stored payload as every reader is shown it. Never anything but a dict.
+
+    Text that is not JSON, and JSON that is not an object, are both the empty
+    payload. One reader, so a write that starts from the stored payload starts
+    from what a caller listing the item saw.
+    """
     try:
-        payload = json.loads(row["payload"])
+        payload = json.loads(raw)
     except ValueError:
-        payload = {}
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _item_from_row(row: sqlite3.Row) -> Item:
+    payload = _payload_of(row["payload"])
     try:
         options = json.loads(row["options"])
     except ValueError:
@@ -1059,7 +1070,7 @@ def _item_from_row(row: sqlite3.Row) -> Item:
         item_id=row["item_id"],
         queue=row["queue"],
         kind=row["kind"],
-        payload=payload if isinstance(payload, dict) else {},
+        payload=payload,
         options=tuple(
             Option.from_json(option) for option in options if isinstance(option, dict)
         ),
@@ -1347,7 +1358,11 @@ def offer(
     return get(store, item_id)
 
 
-def redescribe(store: ReviewStore, item_id: str, payload: Mapping[str, Any]) -> Item | None:
+def redescribe(
+    store: ReviewStore,
+    item_id: str,
+    payload: Mapping[str, Any] | Callable[[dict[str, Any]], Mapping[str, Any] | None],
+) -> Item | None:
     """Replace the payload of an item that is STILL OPEN, or None when it is not.
 
     R-815. For a producer that learned something about a candidate it filed
@@ -1360,12 +1375,31 @@ def redescribe(store: ReviewStore, item_id: str, payload: Mapping[str, Any]) -> 
     :func:`supersede` states. A decided item keeps the payload it was decided
     on, an item carrying a verdict this build cannot read keeps its own, and an
     identifier nothing answers to creates nothing. Each is None.
+
+    A CALLABLE CHANGES THE PAYLOAD AS IT STANDS (R-840). It is handed the open
+    item's payload, read under the write lock this function already takes, and
+    returns the payload to write, or None to write nothing. That is the form
+    for a caller changing some fields and keeping the rest: built from a
+    payload it read earlier, the same write takes back whatever another writer
+    put on the item in between. It is not called for an item that is not open.
     """
     with store.immediate() as conn:
+        if callable(payload):
+            held = conn.execute(
+                "SELECT payload FROM review_items WHERE item_id = ? AND verdict IS NULL",
+                (item_id,),
+            ).fetchone()
+            if held is None:
+                return None
+            wanted = payload(_payload_of(held["payload"]))
+            if wanted is None:
+                return None
+        else:
+            wanted = payload
         changed = conn.execute(
             "UPDATE review_items SET payload = ?, updated = ? "
             "WHERE item_id = ? AND verdict IS NULL",
-            (json.dumps(dict(payload), sort_keys=True), timestamp(), item_id),
+            (json.dumps(dict(wanted), sort_keys=True), timestamp(), item_id),
         ).rowcount
     return get(store, item_id) if changed else None
 
