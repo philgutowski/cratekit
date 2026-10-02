@@ -438,6 +438,11 @@ the short listing off as the account. Which tracks were withheld is never
 known and never guessed. A playlist's listing has the same shape and does not
 compare yet, which is R-515.
 
+Not the review store's **withhold**, which is a producer taking a candidate
+back out of a queue into a hold, see **Held release**. The provider withholds
+a track from a listing and nobody is told which. The review store withholds a
+release from review and `crate label held` names it.
+
 ### Recognition cache
 What the identification service already answered about a recording, since
 U103, kept so that `crate intake identify` followed by `crate intake set`

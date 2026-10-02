@@ -18,8 +18,59 @@ label's window is full of the 2,755 releases already in review, R-815
 filed. Pop from the general catalogue lands in Dance / Pop, R-799 measured.
 Main's highest residual number is R-815.
 
-**Last built: R-816, issue #239, `relay/239`, 2026-10-01, unattended. The
-residual stays OPEN: it closes on a run on the author's library.**
+**Last built: R-815, issue #240, `relay/240`, 2026-10-02, unattended. The
+residual stays OPEN: it closes on a run over the author's queue, which is
+R-798's owed check too.** `crate label judge` is new. It judges the label
+releases already waiting in review, with no sweep, by the kind each label is
+followed as, through the sweep's own rule, `SweepGate.judge_as`. It is a
+queued job with one item per pending release, read off the review queue with
+no provider call. `--job` drives and resumes, `--label NAME` narrows it to
+followed labels. A release the gate would not have filed leaves review for a
+hold in one transaction, `review.withhold`: `crate label held` lists it,
+`crate label held return` files it again under the run it was first filed
+under, and no tombstone is written. A release the gate passes or cannot
+judge stays, and its item carries the gate's stamp with `genre_gate_run`
+naming the job. A decided item and a returned release are never touched.
+What the item records is used first: a returned release, a settled label,
+recorded words that pass and a recorded no word answer cost no call, and a
+record that would hold is asked about before it holds. Otherwise two
+provider reads and at most three tracks asked about, so the 2,755 are 5,510
+provider reads at most. One refusal from the general catalogue, three
+releases unread in a row, three failed provider reads in a row, or any
+refusal of the provider's or of the library's own files parks the run with
+the next release unread and back in pending. The per label counts, judged,
+held, passed and not judged, ride the envelope on a finished run and the
+refusal on a parked, failed or stopped one, as `progress.judging` and
+`detail.judging`, and print per label without json. In the review store:
+`withhold`, `redescribe`, one writer of a hold row, a hold's
+`withheld_from_review` word and its filing run carried across a refresh,
+and `ordinal_floor`, an additive table that keeps an ordinal from being
+given out twice now that an item can be deleted. A sweep leaves a withheld
+hold past its window standing. `label approved` reads a release's record
+through the gate module's shared functions and decides nothing differently.
+The decisions are KTD64 to KTD90 in
+`docs/plans/2026-10-01-0949-feat-published-genre-by-isrc-plan.md`, and
+`docs/solutions/workflow-issues/a-second-producer-of-a-record-meets-every-reader-that-assumed-what-the-first-never-did.md`
+is what to read before giving any record a second producer. The built in
+review ran twice, ten findings each time: seventeen changed the code, and
+R-822, R-823 and the store opened per release, declined at 0.35 ms an open,
+are what the other three left. R-822 to R-827 filed, none on the board bar.
+`CONCEPTS.md` says how a release already in review becomes a held release,
+and keeps the review store's withhold apart from the provider's. Mutation
+tables `r815-a` to `r815-c`, 25 rows, 25 killed, none at zero, by the
+author. Battery on the committed tree: ruff clean, **11,678 passed and 1
+skipped**, scan clean, `board.py closing --since main` exit 0. **Main's
+highest residual number is R-827 once this merges.** **This card did not
+open the live review database, the live provider or the live catalogue**,
+and every number in its tests is from a fake of each, R-827. Owed to an
+attended sitting, in the order R-815's ledger entry gives: this build in
+use, a dated backup of the review database, `crate label judge --label` for
+the three labels of sitting 25 and `crate label held` read, then the run
+over the whole queue with its per label counts recorded in
+`docs/cutover.md`.
+
+**Built before it: R-816, issue #239, `relay/239`, 2026-10-01, unattended.
+The residual stays OPEN: it closes on a run on the author's library.**
 `crate tag rows` is new. It writes a library row's genre from its file where
 the two disagree, `GenreID` and no other column, and writes no file. The
 walk is adoption's census, so a tombstone is skipped, the probe is total and
