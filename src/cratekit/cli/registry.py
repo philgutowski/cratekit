@@ -1791,6 +1791,31 @@ ENTRIES: tuple[Entry, ...] = (
         doctor_checks=("library.mounted", "credential.provider"),
     ),
     Entry(
+        name="label.artists",
+        summary=(
+            "give the open label releases whose artist reads as a provider "
+            "object address the artist's name"
+        ),
+        module="cratekit.label.artists_cli",
+        builder="build_artists",
+        handler_key="label.artists",
+        feature_rows=(21,),
+        module_id="labels",
+        # ``diagnostic/1``, for the reason ``label.held`` gives: what a person
+        # needs is each release and what became of it, and the default
+        # renderer shows checks (R-840).
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
+        # NOT ADJUDICATING. It files nothing and decides nothing: an open item
+        # keeps its place and gains its artist's name, and a decided one is
+        # never rewritten. NO WRITE SURFACE and not destructive, on
+        # ``label.held``'s reasoning: the review database is this product's
+        # own record. NOT QUEUED: one provider read per release that reads an
+        # address, 29 when this landed, and a second run asks only about what
+        # the first left, so there is nothing for a job to resume.
+        doctor_checks=("library.mounted", "credential.provider"),
+    ),
+    Entry(
         name="label.harvest",
         summary="harvest the labels behind a playlist's tracks; imports nothing",
         module="cratekit.label.cli",
