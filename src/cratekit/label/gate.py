@@ -142,10 +142,16 @@ def _isrcs(rows: Sequence[Any]) -> tuple[str, ...]:
     return tuple(found)
 
 
-#: Which answer says the most about a release none of whose tracks gave a
-#: genre, most telling first. A track the catalogue KNOWS outranks one it does
-#: not, and either outranks a value that was never an ISRC.
-_TELLING = (Answer.MATCHED.value, Answer.MISS.value, NO_ISRC)
+#: The answers that say the general catalogue WAS ASKED AND HAD NO WORD for a
+#: release, most telling first. A track the catalogue KNOWS outranks one it
+#: does not, and either outranks a value that was never an ISRC, which is the
+#: order :func:`published_words` picks a wordless release's answer in.
+#:
+#: Public since R-815, which reads the same three off a filed release's stamp
+#: to know the catalogue has already said all it has to say about it. An
+#: answer that could not be read is not here, and neither is ``not-asked``:
+#: nobody was told anything, so asking is still owed.
+NO_WORD_ANSWERS: tuple[str, ...] = (Answer.MATCHED.value, Answer.MISS.value, NO_ISRC)
 
 
 def published_words(
@@ -199,7 +205,7 @@ def published_words(
             empty.setdefault(said.answer, said)
     if genres:
         return Words(tuple(genres), Answer.MATCHED.value)
-    for answer in _TELLING:
+    for answer in NO_WORD_ANSWERS:
         if answer in empty:
             return Words((), answer, empty[answer].note)
     said = next(iter(empty.values()))
@@ -263,6 +269,38 @@ def recorded_genres(source: Mapping[str, Any], field: str) -> tuple[str, ...] | 
     return words or None
 
 
+def release_id_of(store: review.ReviewStore, item: review.Item) -> str:
+    """The release a review item names, from its IDENTITY before its payload.
+
+    The identity is what the item is addressed by and is what the sweep keyed
+    on. An item that arrived through ``review import`` carries none, because
+    the export format does not, and then the payload's own copy of the
+    identifier is all there is. Empty for an item naming no release at all.
+    One reader, for ``label approved`` and ``label judge``.
+    """
+    identity = review.identity_of(store, item.item_id) or {}
+    for value in (identity.get("release_id"), item.payload.get("identity")):
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def returned_by(standing: review.Hold | None, payload: Mapping[str, Any]) -> bool:
+    """Whether a person returned this release to review, by either record.
+
+    The hold is the record of a return. A release the gate held at a SWEEP also
+    carries the word on its payload, written when it was filed, and that copy
+    is what survives a queue exported to another machine. A release returned
+    while it was already in review has the hold alone, since a decided item's
+    payload is never rewritten. Believing either is the safe direction: a
+    returned release held a second time is music a person asked for and never
+    gets.
+    """
+    return (standing is not None and standing.state == review.HOLD_RETURNED) or (
+        payload.get(GATE_FIELD) == RETURNED
+    )
+
+
 def _of(judgment: routing.KindJudgment, words: Words | None = None) -> Judged:
     return Judged(
         verdict=judgment.verdict,
@@ -292,6 +330,25 @@ def judge_words(declared: Taxonomy, kind: str | None, words: Words) -> Judged:
             words.answer,
         )
     return _of(routing.kind_verdict(declared, kind, words.genres), words)
+
+
+def judge_recorded(
+    declared: Taxonomy, kind: str | None, genres: tuple[str, ...] | None
+) -> Judged | None:
+    """The verdict a filed release's own record settles, or None when it settles none.
+
+    ``genres`` is what :func:`recorded_genres` read off the release. Two
+    releases need nobody asked: one whose published words were recorded when
+    it was filed, judged on them against the label's kind as it is now, and
+    one on a label no word could change the verdict for. None means the
+    catalogue is still owed a question. One spelling, for ``label approved``
+    and ``label judge``.
+    """
+    if genres is not None:
+        return judge_words(declared, kind, Words(genres, Answer.MATCHED.value))
+    if routing.kind_settled(declared, kind) is not None:
+        return judge_words(declared, kind, Words((), NOT_ASKED))
+    return None
 
 
 class Asking:
@@ -498,6 +555,7 @@ __all__ = [
     "GATE_NOTE_FIELD",
     "GATE_RUN_FIELD",
     "GENRES_FIELD",
+    "NO_WORD_ANSWERS",
     "RELEASE_KIND",
     "RETURNED",
     "TRACKS_ASKED",
@@ -508,10 +566,13 @@ __all__ = [
     "SweepGate",
     "TrackReader",
     "Words",
+    "judge_recorded",
     "judge_rows",
     "judge_words",
     "published_words",
     "recorded_genres",
+    "release_id_of",
     "release_item_id",
+    "returned_by",
     "returned_stamp",
 ]

@@ -240,6 +240,16 @@ class ReleaseTracks:
         """
         return self._failed_in_a_row >= READS_FAILED_IN_A_ROW
 
+    def forget(self) -> None:
+        """Drop every remembered read, and keep the count of failures in a row.
+
+        For a reader that outlives one sweep item (R-815): a job that reads
+        each release exactly once has no second asker to remember for, and
+        would otherwise carry every release's rows, and every failure with
+        its traceback, to the end of a run of thousands.
+        """
+        self._read.clear()
+
     def release_tracks(self, release_id: str) -> tuple[tuple[Any, ...], int | None]:
         held = self._read.get(release_id)
         if isinstance(held, Exception):

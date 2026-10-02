@@ -821,6 +821,28 @@ _SCHEMA = (
         PRIMARY KEY (queue, item_id)
     )
     """,
+    # THE HIGHEST ORDINAL A DELETED ITEM EVER HELD (R-815). Until an item could
+    # be taken back into a hold no row was ever deleted, and the next ordinal
+    # was one past the highest in the table. Deleting the newest item would
+    # hand its ordinal to the next one filed, and a reader holding a cursor at
+    # the old highest, ``review list --after``, would never be shown it. One
+    # row, raised and never lowered. ADDITIVE, on the reasoning ``offer_rounds``
+    # gives. A build that predates it allocates from the items alone, which is
+    # the old behaviour and no worse than it was.
+    """
+    CREATE TABLE IF NOT EXISTS ordinal_floor (
+        id      INTEGER PRIMARY KEY CHECK (id = 1),
+        ordinal INTEGER NOT NULL
+    )
+    """,
+)
+
+#: The next ordinal, as a scalar subquery: one past the highest any item holds
+#: or ever held. Spelled once, because the two writers that insert an item must
+#: not come to allocate differently.
+_NEXT_ORDINAL = (
+    "(SELECT MAX(COALESCE((SELECT MAX(ordinal) FROM review_items), 0), "
+    "COALESCE((SELECT MAX(ordinal) FROM ordinal_floor), 0)) + 1)"
 )
 
 
@@ -1281,7 +1303,7 @@ def offer(
                 "INSERT INTO review_items (item_id, queue, kind, identity, payload, options, "
                 "handler_key, ordinal, verdict, option, actor, created, updated, decided) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, "
-                "(SELECT COALESCE(MAX(ordinal), 0) + 1 FROM review_items), "
+                f"{_NEXT_ORDINAL}, "
                 "NULL, NULL, NULL, ?, ?, NULL)",
                 (
                     item_id,
@@ -1323,6 +1345,29 @@ def offer(
                     (encoded_identity, encoded_payload, encoded_options, handler_key, now, item_id),
                 )
     return get(store, item_id)
+
+
+def redescribe(store: ReviewStore, item_id: str, payload: Mapping[str, Any]) -> Item | None:
+    """Replace the payload of an item that is STILL OPEN, or None when it is not.
+
+    R-815. For a producer that learned something about a candidate it filed
+    earlier and is not offering it again. :func:`offer` does the same rewrite,
+    and it INSERTS when the row is gone, which is right for a producer that is
+    filing and wrong for one that is only describing: a candidate taken back
+    into a hold a moment ago would be filed again beside its own hold.
+
+    ONLY OVER AN EMPTY VERDICT COLUMN, inside the write, on the rule
+    :func:`supersede` states. A decided item keeps the payload it was decided
+    on, an item carrying a verdict this build cannot read keeps its own, and an
+    identifier nothing answers to creates nothing. Each is None.
+    """
+    with store.immediate() as conn:
+        changed = conn.execute(
+            "UPDATE review_items SET payload = ?, updated = ? "
+            "WHERE item_id = ? AND verdict IS NULL",
+            (json.dumps(dict(payload), sort_keys=True), timestamp(), item_id),
+        ).rowcount
+    return get(store, item_id) if changed else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1636,6 +1681,13 @@ def hold(
     producer knows now, the payload, the reason and what it judged on, and
     keeps the run and the time the hold was first made, so a count of what one
     round held does not move when a later round looks at the same release.
+
+    A REFRESH KEEPS THE RUN THE CANDIDATE WAS FILED UNDER, when the payload it
+    replaces names one and the new payload does not (R-815). A candidate taken
+    back out of the queue by :func:`withhold` carries the round that first
+    filed it, and the producer that refreshes its hold describes it as a
+    candidate never filed, with no run. Dropped, a return would file it under
+    the round that held it, which filed nothing.
     """
     declared = _assert_declared_queue(queue)
     item_id = item_id_for(declared, kind, identity)
@@ -1670,10 +1722,23 @@ def hold(
                 ),
             )
         elif row["state"] == HOLD_HELD:
+            refreshed = dict(payload)
+            filed_under = _hold_of(row).payload.get(RUN_FIELD)
+            if filed_under and not refreshed.get(RUN_FIELD):
+                refreshed[RUN_FIELD] = filed_under
             conn.execute(
                 "UPDATE held_offers SET payload = ?, group_key = ?, group_name = ?, "
                 "reason = ?, detail = ?, updated = ? WHERE queue = ? AND item_id = ?",
-                (encoded[1], group, name, encoded[2], encoded[3], now, declared, item_id),
+                (
+                    json.dumps(refreshed, sort_keys=True),
+                    group,
+                    name,
+                    encoded[2],
+                    encoded[3],
+                    now,
+                    declared,
+                    item_id,
+                ),
             )
     return _hold_of(_held_row(store, declared, item_id))
 
@@ -1721,7 +1786,7 @@ def withhold(
     now = timestamp()
     with store.immediate() as conn:
         row = conn.execute(
-            "SELECT queue, kind, identity, payload, verdict FROM review_items "
+            "SELECT queue, kind, identity, payload, verdict, ordinal FROM review_items "
             "WHERE item_id = ?",
             (item_id,),
         ).fetchone()
@@ -1762,6 +1827,13 @@ def withhold(
                 "reason = ?, detail = ?, updated = ? WHERE queue = ? AND item_id = ?",
                 (row["payload"], group, name, reason, encoded_detail, now, queue, item_id),
             )
+        # THE FLOOR BEFORE THE DELETE, so the ordinal this row held is never
+        # handed to a later item. See ``ordinal_floor`` in the schema.
+        conn.execute(
+            "INSERT INTO ordinal_floor (id, ordinal) VALUES (1, ?) "
+            "ON CONFLICT(id) DO UPDATE SET ordinal = MAX(ordinal, excluded.ordinal)",
+            (int(row["ordinal"]),),
+        )
         conn.execute(
             "DELETE FROM review_items WHERE item_id = ? AND verdict IS NULL", (item_id,)
         )
@@ -2343,7 +2415,7 @@ def _insert_imported(store: ReviewStore, raw: Mapping[str, Any]) -> None:
             "INSERT INTO review_items (item_id, queue, kind, payload, options, "
             "handler_key, ordinal, verdict, option, actor, created, updated, decided) "
             "VALUES (?, ?, ?, ?, ?, ?, "
-            "(SELECT COALESCE(MAX(ordinal), 0) + 1 FROM review_items), "
+            f"{_NEXT_ORDINAL}, "
             "NULL, NULL, NULL, ?, ?, NULL)",
             (
                 str(raw["id"]),
@@ -2892,6 +2964,7 @@ __all__ = [
     "open_store",
     "queue_path",
     "record_round",
+    "redescribe",
     "release_hold",
     "resolve",
     "return_hold",

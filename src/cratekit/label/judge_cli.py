@@ -32,9 +32,10 @@ picks up where it stopped. A finished item is never claimed again, and the one
 in flight when a run died is redone safely: a release this job already held is
 found as its hold, and a stamped one is judged from its record.
 
-A CATALOGUE THAT REFUSES PARKS THE RUN. The bound is the gate's own, three
-releases in a row unread, and nothing here retries, waits out or goes round an
-answer. The same holds for the provider. See :func:`_asked`.
+A CATALOGUE THAT REFUSES PARKS THE RUN. One refusal is enough, and an outage
+is given the gate's own bound, three releases in a row unread. Nothing here
+retries, waits out or goes round an answer. The same holds for the provider.
+See :func:`_asked`.
 
 Layer: modules.
 """
@@ -56,9 +57,7 @@ from cratekit.label import catalogue, sweep
 from cratekit.label import cli as label_cli
 from cratekit.label import gate as genre_gate
 from cratekit.label import registry as labels
-from cratekit.sync import run
 from cratekit.tagging import published, searchers, shell
-from cratekit.tagging.tag import NO_ISRC
 
 ORIGIN = ("label", "judge_cli")
 
@@ -76,15 +75,6 @@ RETURNED = genre_gate.RETURNED
 DECIDED = "decided"
 GONE = "gone"
 OUTCOMES: tuple[str, ...] = (HELD, PASSED, NOT_JUDGED, RETURNED, DECIDED, GONE)
-
-#: The recorded answers that say the general catalogue was asked and HAD NO WORD
-#: for the release. Asking again costs two provider reads to hear the same
-#: thing, so a release carrying one of these stays not judged from its record.
-#: An answer that could not be read, and ``not-asked``, are not here: nobody
-#: was told anything, so those releases are asked about.
-NO_WORD_ANSWERS: frozenset[str] = frozenset(
-    {searchers.Answer.MISS.value, searchers.Answer.MATCHED.value, NO_ISRC}
-)
 
 #: The warning codes a finished run can carry. Warnings and not causes: the run
 #: did what it could, and each names what a person may still want to do.
@@ -229,10 +219,12 @@ def summary(cfg: config.Config, job_id: str) -> dict[str, Any]:
     one's.
 
     ``judged`` IS HELD PLUS PASSED, the releases the gate gave a verdict on.
-    ``asked`` counts the releases whose rows were read from the provider, and
-    ``unread`` the ones the general catalogue could not be read for. ZEROES
-    INCLUDED for every outcome, because the set is closed and "none of those"
-    is a fact worth a number.
+    ``asked`` counts the releases THE PROVIDER WAS ASKED FOR, whether or not
+    it answered: a read that failed spent its calls like one that did not, so
+    this is the number a run's provider cost is sized from. ``unread`` counts
+    the ones the general catalogue could not be read for. ZEROES INCLUDED for
+    every outcome, because the set is closed and "none of those" is a fact
+    worth a number.
     """
     totals = _counts()
     rows: dict[str, dict[str, Any]] = {}
@@ -370,15 +362,27 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
 
 @dataclass
 class _Tools:
-    """What one job's items share: how the catalogue is asked, and the reader."""
+    """What one job's items share, each made on first use and kept for the job.
+
+    ``asking`` and ``reader`` carry the two counts of failures in a row, which
+    are counts across releases and would start at zero for every release if
+    they were built per item. ``refused`` is the general catalogue's refusal,
+    once it has given one. ``declared`` and ``followed`` are the library's
+    taxonomy and the label registry, read once for the job and not once for
+    each of thousands of releases, most of which are judged from their own
+    record with nothing else read at all.
+    """
 
     asking: genre_gate.Asking
     reader: catalogue.ReleaseTracks | None = None
+    refused: str | None = None
+    declared: Taxonomy | None = None
+    followed: labels.Registry | None = None
 
 
 #: The tools of the one job being driven, keyed by the job, on the reasoning
-#: ``label.cli._JOB_ASKING`` gives. One item is one release, so tools built per
-#: item would count every unread answer as the first and never give up.
+#: ``label.cli._JOB_ASKING`` gives. NOT THAT HOLDER, which keeps an asking and
+#: nothing else and is never dropped: this one is dropped when the run parks.
 _JOB_TOOLS: dict[str, _Tools] = {}
 
 
@@ -430,13 +434,10 @@ def _text(value: Any) -> str:
 def _subject(store: review.ReviewStore, item: review.Item) -> _Subject:
     """The release an item names, from its IDENTITY before its payload.
 
-    The rule ``label approved`` reads an item by: the identity is what the
-    sweep keyed on, and an item that arrived through an import carries none,
-    so the payload's own copy is all there is.
+    Through the one reader ``label approved`` reads an item by.
     """
-    identity = review.identity_of(store, item.item_id) or {}
     return _Subject(
-        release_id=_text(identity.get("release_id")) or _text(item.payload.get("identity")),
+        release_id=genre_gate.release_id_of(store, item),
         label_id=_text(item.payload.get("label_id")),
         label_name=_text(item.payload.get("label_name")),
         title=_text(item.payload.get("title")),
@@ -455,18 +456,42 @@ def _asked(
 ) -> genre_gate.Judged:
     """Read the release's rows and ask the general catalogue. The one costly branch.
 
-    THE RUN STOPS BEFORE A READ IT ALREADY KNOWS IS WASTED. Once the general
-    catalogue has gone unread for the gate's own bound of releases in a row,
-    the next release is not read from the provider: this refuses, and the
-    worker parks the run on the refusal. The provider's own outage rule stops
-    it the same way, and so does any refusal the provider or its adapter
-    raises, an expired session or a cooldown. See :func:`_parked`.
+    THE RUN STOPS BEFORE A READ IT ALREADY KNOWS IS WASTED, and this refuses
+    so the worker parks the run. See :func:`_parked`. Three things end it:
 
-    NOTHING HERE RETRIES OR WAITS. The lookup paces its own requests and
-    remembers a refusal for the rest of the process, and the provider's reads
-    go through its gate. This function only decides when to stop asking.
+    * THE GENERAL CATALOGUE REFUSED, once. The lookup remembers a refusal for
+      the rest of the process and answers every later release from memory, so
+      the release after a refusal is not read from the provider to be told
+      the same thing. The refused release itself was asked about and stays in
+      review saying so.
+    * THE GENERAL CATALOGUE WENT UNREAD for the gate's own bound of releases
+      in a row, which is how an outage ends: an outage is not remembered, so
+      it is given the bound a sweep gives it.
+    * THE PROVIDER FAILED its own bound of reads in a row, or refused, an
+      expired session or a cooldown.
+
+    NOTHING HERE RETRIES OR WAITS. The lookup paces its own requests and the
+    provider's reads go through its gate. This function only decides when to
+    stop asking.
+
+    THE READER FORGETS EACH RELEASE ONCE IT IS JUDGED. Nothing asks for one
+    release twice in this job, and its count of failures in a row is all the
+    next release needs from it.
     """
     tools = _tools(job)
+    if tools.refused is not None:
+        raise refuse(
+            "catalogue-unreachable",
+            f"the general catalogue refused ({tools.refused}), so the run stopped "
+            f"asking it. The release it refused stays in review marked not "
+            f"judged, and the next one was not read from the provider",
+            steps=(
+                "wait before continuing: nothing here tries to get past a "
+                "catalogue that refuses",
+            ),
+            origin=ORIGIN,
+            detail={"job_id": str(job.job_id), "refused": tools.refused},
+        )
     if tools.asking.given_up:
         raise refuse(
             "catalogue-unreachable",
@@ -494,7 +519,13 @@ def _asked(
             detail={"job_id": str(job.job_id)},
         )
     gate = genre_gate.SweepGate(declared, tracks=tools.reader.release_tracks, asking=tools.asking)
-    return gate.judge_as(kind, release_id)
+    try:
+        judged = gate.judge_as(kind, release_id)
+    finally:
+        tools.reader.forget()
+    if judged.answer == searchers.Answer.BLOCKED.value:
+        tools.refused = judged.reason
+    return judged
 
 
 def _judged(
@@ -512,27 +543,32 @@ def _judged(
 
     1. A label that is settled before a word is read, followed for any kind, or
        judged by a taxonomy with no rule for it. Nothing is read.
-    2. Words the item recorded, judged against the label's kind as it is now.
+    2. Words the item recorded, judged against the label's kind as it is now,
+       WHEN THEY PASS OR CANNOT BE JUDGED. See below for when they would hold.
     3. A recorded answer that the catalogue had no word for the release. It
        stays not judged, on the reason it was filed with.
     4. Otherwise the release's rows are read, two provider reads, and the
        general catalogue is asked about at most three of its tracks.
 
+    RECORDED WORDS NEVER HOLD A RELEASE ON THEIR OWN. A sweep stops asking at
+    the first track whose album is the label's kind and records the words read
+    so far, so a passed release's record can be one track's album. Judged
+    against a kind the label was given since, that record would hold the
+    release on the one track, which is the hold on a guess the gate asks up to
+    three tracks to avoid. So a record that would hold sends the release to
+    the fourth branch, and it is held only on what the catalogue says now.
+
     A RELEASE THE ITEM DOES NOT NAME is not judged and nothing is read: with no
     identifier there is nothing to read, and one that does not address this
-    item would stamp another.
+    item would be judged on another release's tracks.
     """
-    settled = routing.kind_settled(declared, kind)
-    if settled is not None:
-        return genre_gate.judge_words(
-            declared, kind, genre_gate.Words((), searchers.NOT_ASKED)
-        ), False
-    recorded = genre_gate.recorded_genres(item.payload, genre_gate.GENRES_FIELD)
-    if recorded is not None:
-        words = genre_gate.Words(recorded, searchers.Answer.MATCHED.value)
-        return genre_gate.judge_words(declared, kind, words), False
+    recorded = genre_gate.judge_recorded(
+        declared, kind, genre_gate.recorded_genres(item.payload, genre_gate.GENRES_FIELD)
+    )
+    if recorded is not None and not recorded.held:
+        return recorded, False
     said = item.payload.get(genre_gate.GATE_ANSWER_FIELD)
-    if isinstance(said, str) and said in NO_WORD_ANSWERS:
+    if recorded is None and isinstance(said, str) and said in genre_gate.NO_WORD_ANSWERS:
         why = _text(item.payload.get(genre_gate.GATE_NOTE_FIELD)) or (
             genre_gate.Words((), said).why_none
         )
@@ -556,17 +592,16 @@ def _judged(
 
 
 def _stamp(
-    store: review.ReviewStore,
-    item: review.Item,
-    subject: _Subject,
-    judged: genre_gate.Judged,
-    run_id: str,
+    store: review.ReviewStore, item: review.Item, judged: genre_gate.Judged, run_id: str
 ) -> None:
     """Write what the gate said onto a release that stays, when it says something new.
 
-    THROUGH THE SWEEP'S OWN ``offer_release``, which rewrites an open item's
-    payload and leaves a decided one alone, so a release a person decides
-    while this is running keeps the payload they decided on.
+    ONLY ONTO AN ITEM THAT IS STILL OPEN AND STILL THERE, which
+    :func:`cratekit.core.review.redescribe` checks inside its write. A release
+    a person decided while this was asking keeps the payload they decided on.
+    And one that left review meanwhile, withheld by another judging job, is
+    not filed again beside its own hold, which is what writing through the
+    sweep's ``offer_release`` did: that inserts when the row is gone.
 
     NOT WRITTEN WHEN NOTHING CHANGED. A release judged from its own record
     usually gets the verdict it already carries, and rewriting it would only
@@ -575,13 +610,8 @@ def _stamp(
     said = judged.stamp()
     if all(item.payload.get(field) == value for field, value in said.items()):
         return
-    if not subject.release_id or genre_gate.release_item_id(subject.release_id) != item.item_id:
-        return
-    payload = {**item.payload, **said, genre_gate.GATE_RUN_FIELD: run_id}
-    sweep.offer_release(
-        store,
-        run.Candidate(identity=subject.release_id, recency="", payload=payload),
-        handler_key=item.handler_key,
+    review.redescribe(
+        store, item.item_id, {**item.payload, **said, genre_gate.GATE_RUN_FIELD: run_id}
     )
 
 
@@ -627,15 +657,14 @@ def _judge_one(job, item_id: str, cfg: config.Config) -> dict[str, Any]:
         found = review.find(store, item_id)
         standing = review.find_hold(store, queue=queue, item_id=item_id)
         if found is None:
-            # THE ITEM THIS JOB WAS QUEUED FOR IS NOT IN REVIEW. When this job
-            # holds it, a run that died after the hold and before the item was
-            # marked done is being redone, and the release is counted held, as
-            # it was. Otherwise it left review some other way.
-            if (
-                standing is not None
-                and standing.state == review.HOLD_HELD
-                and standing.run_id == run_id
-            ):
+            # THE ITEM THIS JOB WAS QUEUED FOR IS NOT IN REVIEW. When a hold is
+            # in force on it, the release is held, and it is counted held: the
+            # usual way here is this job's own hold, made by a run that died
+            # before the item was marked done and is being redone. NOT KEYED ON
+            # THE HOLD'S RUN, which is the run that FIRST held the release and
+            # is an earlier one's when a hold already stood beside the item.
+            # Otherwise the release left review some other way.
+            if standing is not None and standing.state == review.HOLD_HELD:
                 return _report(item_id, HELD, _held_already(standing), reason=standing.reason)
             gone = _held_already(standing) if standing is not None else _Subject("", "", "", "", "")
             return _report(
@@ -646,24 +675,26 @@ def _judge_one(job, item_id: str, cfg: config.Config) -> dict[str, Any]:
             return _report(
                 item_id, DECIDED, subject, reason="a person has decided it, so it was not judged"
             )
-        if (standing is not None and standing.state == review.HOLD_RETURNED) or (
-            found.payload.get(genre_gate.GATE_FIELD) == genre_gate.RETURNED
-        ):
+        if genre_gate.returned_by(standing, found.payload):
             return _report(
                 item_id,
                 RETURNED,
                 subject,
                 reason="a person returned it to review, so it was not judged again",
             )
-        declared = active_taxonomy.load(cfg)
-        followed = labels.RegistryStore().load()
+        tools = _tools(job)
+        if tools.declared is None:
+            tools.declared = active_taxonomy.load(cfg)
+        if tools.followed is None:
+            tools.followed = labels.RegistryStore().load()
+        declared = tools.declared
         # A LABEL THE REGISTRY NO LONGER HOLDS IS THE DEFAULT KIND, which is
         # what ``label approved`` judges it as.
-        entry = followed.by_id(subject.label_id) if subject.label_id else None
+        entry = tools.followed.by_id(subject.label_id) if subject.label_id else None
         kind = entry.kind if entry is not None else None
         judged, asked = _judged(job, cfg, declared, kind, found, subject)
         if not judged.held:
-            _stamp(store, found, subject, judged, run_id)
+            _stamp(store, found, judged, run_id)
             return _report(
                 item_id, judged.verdict.value, subject, reason=judged.reason, judged=judged, asked=asked
             )
@@ -724,7 +755,6 @@ __all__ = [
     "NOTHING_PENDING",
     "NOT_JUDGED",
     "NOT_JUDGED_LEFT",
-    "NO_WORD_ANSWERS",
     "OUTCOMES",
     "PASSED",
     "RETURNED",
