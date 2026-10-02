@@ -1765,6 +1765,32 @@ ENTRIES: tuple[Entry, ...] = (
         doctor_checks=("library.mounted",),
     ),
     Entry(
+        name="label.judge",
+        summary=(
+            "judge the label releases waiting in review by their label's kind, "
+            "and hold the ones the genre gate would not have filed"
+        ),
+        module="cratekit.label.judge_cli",
+        builder="build_judge",
+        handler_key="label.judge",
+        feature_rows=(21,),
+        module_id="labels",
+        argv_builder="label_judge_argv",
+        # ONE ITEM PER PENDING RELEASE, each two provider reads and a few paced
+        # catalogue requests, over a queue that held 2,755 when this landed
+        # (R-815). Queued, so the pass picks up where it stopped.
+        long_running=True,
+        emits=frozenset({"job_state"}),
+        output_schema="job_state/1",
+        # IT MOVES A RELEASE OUT OF THE LABEL-RELEASE QUEUE and into a hold, and
+        # stamps the ones that stay, under the key the sweep filed them with.
+        adjudicates=True,
+        # NO WRITE SURFACE, and not destructive, on ``label.held``'s reasoning:
+        # the review database is this product's own record. A hold is not a
+        # rejection, no tombstone is written, and nothing is downloaded.
+        doctor_checks=("library.mounted", "credential.provider"),
+    ),
+    Entry(
         name="label.harvest",
         summary="harvest the labels behind a playlist's tracks; imports nothing",
         module="cratekit.label.cli",

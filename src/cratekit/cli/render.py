@@ -419,6 +419,40 @@ def render_job_state(envelope: Envelope, *, drive: Sequence[str] | None = None) 
         lines.append(f"  items: {settled} of {total} settled")
     if envelope.verb in _RESOLVING_VERBS and state != "queued":
         lines += _resolution_lines(job_id, state, progress)
+    lines += _judging_lines(progress)
+    return lines
+
+
+#: The four counts ``label judge`` reports for every label, in the order a
+#: person reads them (R-815). Spelled here, because this layer renders payloads
+#: and must not load a feature module to do it.
+_JUDGING_WORDS: tuple[str, ...] = ("judged", "held", "passed", "not-judged")
+
+
+def _judging_lines(progress: Mapping[str, Any]) -> list[str]:
+    """What a judging job did, in total and per label, or nothing at all.
+
+    Gated on the payload carrying the summary, never on the verb's name, so a
+    job that has not run yet prints nothing here. Only whole numbers are
+    printed: a count this build cannot read is left out, not shown as zero.
+    """
+    judging = progress.get("judging")
+    if not isinstance(judging, Mapping):
+        return []
+
+    def counted(row: Mapping[str, Any]) -> str:
+        return ", ".join(
+            f"{row[word]} {word.replace('-', ' ')}" for word in _JUDGING_WORDS if _whole(row.get(word))
+        )
+
+    lines = [f"  releases: {counted(judging)}"]
+    labels = judging.get("labels")
+    for row in labels if isinstance(labels, Sequence) and not isinstance(labels, str) else ():
+        if isinstance(row, Mapping):
+            name = row.get("label_name") or row.get("label_id") or "(no label)"
+            lines.append(f"    {name}: {counted(row)}")
+    if _whole(judging.get("held")) and judging["held"]:
+        lines.append("  the held releases are listed by: crate label held")
     return lines
 
 
