@@ -352,6 +352,43 @@ class LabelGate:
 
 
 @dataclass(frozen=True)
+class VocabularyWord:
+    """One word of a source's own vocabulary, and the genre written for it (R-799).
+
+    ``word`` is the source's word as the template spells it, matched whole and
+    without regard to case. ``tag`` is the genre written onto the file.
+    ``bucket`` and ``sub`` are the place routing files that tag in, resolved
+    by the loader and never declared, so a row cannot say one folder and write
+    a word that files in another. ``sub`` is None for a bucket that splits by
+    energy, where the band is the reading's to choose.
+    """
+
+    word: str
+    tag: str
+    bucket: str
+    sub: str | None = None
+
+
+@dataclass(frozen=True)
+class Vocabulary:
+    """Where each word of ONE source's vocabulary goes (R-799).
+
+    WHY A TABLE PER SOURCE. The alias lists on the buckets were written against
+    the record shops' words, where Pop is a dance genre. A general catalogue
+    says Pop of every kind of pop, so one table read for both files a pop
+    record beside dance tracks. ``source`` is the name a file's record gives
+    the source, which is the name the tag summary counts under.
+
+    WHERE A SOURCE HAS A TABLE IT IS THE WHOLE ANSWER. A word with no row is
+    declined, never passed on to the buckets' aliases, since that is the table
+    this one exists to keep such a word away from.
+    """
+
+    source: str
+    words: tuple[VocabularyWord, ...] = ()
+
+
+@dataclass(frozen=True)
 class Energy:
     enabled: bool
     scale_max: int
@@ -444,6 +481,11 @@ class Taxonomy:
     # builds no such playlist rather than one named by a default nobody saw.
     long_tracks: LongTracks | None = None
 
+    # The vocabularies of the sources that have one of their own (R-799), in
+    # declared order. EMPTY in a copy written before that unit, and then every
+    # source's word is resolved by the buckets' aliases, as it always was.
+    vocabularies: tuple[Vocabulary, ...] = ()
+
     # Indexes, built once at construction. They are derived data, so they can
     # never disagree with the declaration they came from.
     _by_id: Mapping[str, Bucket] = field(repr=False, default_factory=dict)
@@ -455,6 +497,19 @@ class Taxonomy:
     _former_places: Mapping[str, tuple[tuple[str, "FormerPlace"], ...]] = field(
         repr=False, default_factory=dict
     )
+    _vocabulary: Mapping[str, Mapping[str, VocabularyWord]] = field(
+        repr=False, default_factory=dict
+    )
+
+    def vocabulary(self, source: str) -> Mapping[str, VocabularyWord] | None:
+        """One source's own table, by lowercased word, or None when it has none.
+
+        NONE AND AN EMPTY TABLE ARE DIFFERENT ANSWERS. None says this taxonomy
+        declares nothing for the source, so its words are resolved the way
+        every word is. A table with no rows is a declaration that declines
+        every word of that source.
+        """
+        return self._vocabulary.get(source)
 
     def former_places(self, bucket_id: str) -> tuple[tuple[str, "FormerPlace"], ...]:
         """Every former place that competes in one bucket, with its declarer.
@@ -839,6 +894,16 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
     routing_alias, tagging_alias, alias_problems = _build_alias_indexes(buckets)
     problems += alias_problems
 
+    # Keyed on PRESENCE, for the catalog section's reason above: an empty
+    # table is a declaration and must be read as one.
+    vocabularies, vocabulary_problems = _build_vocabularies(
+        data.get("vocabulary") if "vocabulary" in data else None,
+        buckets,
+        routing_alias,
+        fallback,
+    )
+    problems += vocabulary_problems
+
     if problems:
         raise TaxonomyError(problems)
 
@@ -857,11 +922,16 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
         family=family,
         catalog=catalog,
         long_tracks=long_tracks,
+        vocabularies=vocabularies,
         _by_id=by_id,
         _by_display={b.display: b.id for b in buckets},
         _routing_alias=routing_alias,
         _tagging_alias=tagging_alias,
         _former_places=_index_former_places(buckets),
+        _vocabulary={
+            table.source: {row.word.lower(): row for row in table.words}
+            for table in vocabularies
+        },
     )
 
 
@@ -1499,6 +1569,129 @@ def _build_published(raw: Any) -> tuple[tuple[PublishedRule, ...], list[str]]:
             continue
         rules.append(PublishedRule(kind=kind, **matchers))
     return tuple(rules), problems
+
+
+def _tag_place(
+    tag: str,
+    buckets: Sequence[Bucket],
+    routing_alias: Mapping[str, str],
+    fallback: Fallback,
+) -> tuple[tuple[str, str | None] | None, str]:
+    """The place routing files one written genre in, or why it names no folder.
+
+    THE FIRST TWO TIERS OF ``routing.resolve_bucket`` AND NOT THE OTHER TWO. A
+    genre a table declares must be filed by a declaration: an exact routing
+    alias, or a bucket's own name. A keyword rule is a guess and the fallback
+    is nowhere, and a table that wrote a word either of those catches would
+    put a genre on a file that this taxonomy has no folder for. Spelled here
+    because routing imports this module and cannot be asked.
+
+    IN A BUCKET THAT FILES BY SOURCE GENRE THE TAG NEEDS A ROW OF ITS OWN in
+    that bucket's map. The bucket's bare name has none and lands in the default
+    sub, which is how Alternative came to be written as the bucket's name and
+    filed under another style with its word lost (R-799). A word with no row
+    lands there too, so both are refused, by the one test.
+    """
+    by_id = {bucket.id: bucket for bucket in buckets}
+    by_display = {bucket.display: bucket.id for bucket in buckets}
+    bucket_id = routing_alias.get(tag) or by_display.get(tag)
+    bucket = by_id.get(bucket_id or "")
+    if bucket is None:
+        return None, (
+            f"tag {tag!r} is filed by no exact declaration: it is neither a "
+            f"routing alias nor a bucket's own name, so routing would guess at "
+            f"it or leave it in the fallback"
+        )
+    if tag in fallback.too_coarse_as_source:
+        return None, (
+            f"tag {tag!r} is one this taxonomy lists as too coarse to be a final genre"
+        )
+    if bucket.sub_by_source is None:
+        return (bucket.id, None), ""
+    sub = bucket.sub_by_source.map.get(tag)
+    if sub is None:
+        return None, (
+            f"tag {tag!r} files under {bucket.display!r} with no row of its own "
+            f"in that bucket's sub_by_source map, so it would land in the default "
+            f"sub {bucket.sub_by_source.default!r} and the word naming its folder "
+            f"would be lost; write a genre the map lists"
+        )
+    return (bucket.id, sub), ""
+
+
+def _build_vocabularies(
+    raw: Any,
+    buckets: Sequence[Bucket],
+    routing_alias: Mapping[str, str],
+    fallback: Fallback,
+) -> tuple[tuple[Vocabulary, ...], list[str]]:
+    """The ``[vocabulary.SOURCE]`` tables, and what is wrong with them (R-799).
+
+    A ROW THAT CANNOT BE USED IS A PROBLEM AND NOT A SKIP. Where a source has a
+    table, a word with no row is declined, so a row dropped silently would
+    leave its word declined with nothing said, and a person who wrote the row
+    would be told the catalogue's word maps nowhere.
+
+    THE SHAPE IS CHECKED BEFORE A ROW IS READ, for the reason the former place
+    check gives: a person edits a library's copy by hand, and a table in the
+    wrong shape must be a line to fix and not a crash.
+    """
+    problems: list[str] = []
+    if raw is None:
+        return (), problems
+    if not isinstance(raw, Mapping):
+        return (), [
+            "[vocabulary] must be a table of sources, each written "
+            "[vocabulary.NAME] with words, a list of rows"
+        ]
+    tables: list[Vocabulary] = []
+    for source, table in raw.items():
+        where = f"[vocabulary.{source}]"
+        # LOWERCASE, AS A FILE'S RECORD NAMES THE SOURCE. A capital would be a
+        # table no source is ever looked up under, and its words would go on
+        # being filed by the buckets' aliases with nothing said.
+        if not _ID.match(str(source)):
+            problems.append(
+                f"{where}: the source name must match {_ID.pattern}, the name a "
+                f"file's record gives the source"
+            )
+            continue
+        rows = table.get("words") if isinstance(table, Mapping) else None
+        if not isinstance(rows, list):
+            problems.append(
+                f"{where}: needs words, a list of rows, each a word and the tag "
+                f"written for it"
+            )
+            continue
+        seen: set[str] = set()
+        words: list[VocabularyWord] = []
+        for index, row in enumerate(rows):
+            at = f"{where} words {index}"
+            if not isinstance(row, Mapping):
+                problems.append(f"{at}: is not a table")
+                continue
+            word, tag = row.get("word"), row.get("tag")
+            if not isinstance(word, str) or not word.strip():
+                problems.append(f"{at}: needs a word")
+                continue
+            word = word.strip()
+            at = f"{at} ({word!r})"
+            if not isinstance(tag, str) or not tag.strip():
+                problems.append(f"{at}: needs a tag, the genre written for the word")
+                continue
+            if word.lower() in seen:
+                problems.append(
+                    f"{at}: the word is declared twice, and one word cannot go two ways"
+                )
+                continue
+            seen.add(word.lower())
+            place, problem = _tag_place(tag.strip(), buckets, routing_alias, fallback)
+            if place is None:
+                problems.append(f"{at}: {problem}")
+                continue
+            words.append(VocabularyWord(word, tag.strip(), place[0], place[1]))
+        tables.append(Vocabulary(str(source), tuple(words)))
+    return tuple(tables), problems
 
 
 def _build_family(

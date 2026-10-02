@@ -87,6 +87,12 @@ every track it calls by a broad name under a word no folder holds. So an answer
 is written only when it maps to a folder, and the first of an album's genres
 that does is the one used.
 
+THIS CATALOGUE'S WORDS HAVE A TABLE OF THEIR OWN IN THE TAXONOMY (R-799), under
+:data:`SOURCE`. The buckets' aliases were written for the record shops, where
+Pop is a dance genre, and read through them this catalogue's Pop was written as
+the dance bucket's name and its Alternative as a bucket's bare name. Where the
+table is declared it is the whole answer and a word with no row is declined.
+
 Layer: modules.
 """
 
@@ -444,13 +450,15 @@ def choose(declared: Taxonomy, genres: Sequence[str]) -> tuple[str, str] | None:
     publishes, and a chooser that preferred the narrowest or the rarest word
     would be this module forming an opinion about music.
 
-    THE TAG IS THE RESOLVER'S ANSWER AND NOTHING HERE ADJUSTS IT. The alias
-    table was written against the record shops' vocabulary and this catalogue's
-    broad words inherit it as it stands, which is recorded as a residual with
-    the words measured rather than corrected by a second table in this module.
+    THE WORD IS RESOLVED AS THIS CATALOGUE'S (R-799). The resolver is told
+    whose word it is, and a taxonomy that declares a vocabulary for this
+    catalogue answers from that table alone, so its Pop is not filed by an
+    alias written for a record shop's Pop. A taxonomy that declares none
+    answers through the shared aliases, as every copy did before that unit.
+    The tag is still the resolver's answer and nothing here adjusts it.
     """
     for word in genres:
-        suggestion = routing.suggest_tag(declared, word)
+        suggestion = routing.suggest_tag(declared, word, source=SOURCE)
         tag = suggestion.tag
         if suggestion.declined or not tag:
             continue

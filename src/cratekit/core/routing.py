@@ -199,9 +199,23 @@ def resolve_bucket(taxonomy: Taxonomy, raw_genre: str | None) -> Resolution:
 
 
 def suggest_tag(
-    taxonomy: Taxonomy, raw_genre: str | None, *, bpm: float | None = None
+    taxonomy: Taxonomy,
+    raw_genre: str | None,
+    *,
+    bpm: float | None = None,
+    source: str | None = None,
 ) -> Suggestion:
     """Suggest the genre tag to write onto a file, or decline.
+
+    ``source`` names whose word this is, as a file's record names that source.
+    WHEN THE TAXONOMY DECLARES A VOCABULARY FOR IT, THAT TABLE IS THE WHOLE
+    ANSWER (R-799), ahead of every pass below. A row answers with its tag and
+    the place the loader resolved for it. A word with no row declines as
+    not-found, and is NOT passed on to the passes below: their aliases were
+    written against another vocabulary, which is how a general catalogue's Pop
+    came to be filed as a dance genre, and a genre is written once. A source
+    with no table, and a caller that names no source, get the passes below
+    exactly as before.
 
     Precedence, stated rather than emergent, in three passes:
 
@@ -228,6 +242,13 @@ def suggest_tag(
         return Suggestion(decline=Decline.NOT_FOUND)
 
     lowered = value.lower()
+
+    table = taxonomy.vocabulary(source) if source is not None else None
+    if table is not None:
+        row = table.get(lowered)
+        if row is None:
+            return Suggestion(decline=Decline.NOT_FOUND)
+        return Suggestion(bucket_id=row.bucket, sub_id=row.sub, tag=row.tag)
 
     for rule in taxonomy.suggest:
         if not (rule.equals or rule.split):
