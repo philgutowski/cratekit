@@ -26,8 +26,8 @@ rename lands. Only a title still exactly what the mark wrote is put back; one
 retitled since, unlisted, already put back or marked later by another pass
 is left and said; a `--playlist` the pass did not mark is refused. Explicit
 gate `sync.unmark.confirm`, a recheck against a second listing, each rename
-stamped as it lands, so a second run plans nothing. Battery on the branch
-below. Twenty seven mutation rows over four batches, the author's and not
+stamped as it lands, so a second run plans nothing. Battery on the branch:
+ruff clean, 12,247 passed and 1 skipped, the scan clean. Twenty seven mutation rows over four batches, the author's and not
 independent: three zeros, each closed by a new test and measured again as
 killed, `docs/mutation/r838-notes.md`. One pass of the built in review, ten
 findings: seven applied in code or tests, three recorded as R-853 and R-854.
