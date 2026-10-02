@@ -674,6 +674,39 @@ def test_a_stamp_landing_between_the_read_and_the_write_is_kept(cfg, monkeypatch
     assert counts(envelope["data"]["summary"]) == zeroes(repaired=1)
 
 
+def test_an_item_that_moves_under_every_attempt_refuses_the_run_and_is_left(
+    cfg, monkeypatch
+):
+    item_id = offered(cfg, "r-1")
+    offered(cfg, "r-2")
+    real_find = review.find
+    reads: list[str] = []
+
+    def find_then_stamp(store, wanted):
+        found = real_find(store, wanted)
+        reads.append(wanted)
+        review.redescribe(store, wanted, {**found.payload, "stamped": len(reads)})
+        return found
+
+    monkeypatch.setattr(review, "find", find_then_stamp)
+    fake = StrictCatalogue(release_artists={"r-1": "Harbour Act", "r-2": "Quay Act"})
+    bind(monkeypatch, fake)
+
+    code, envelope = artists()
+
+    assert code == int(ExitCode.UPSTREAM_UNAVAILABLE), envelope
+    cause = envelope["cause"]
+    assert cause["reason"] == "unavailable-transient"
+    assert f"review item {item_id} changed under each of 3 attempts" in cause["message"]
+    assert cause["detail"]["item_id"] == item_id
+    assert cause["detail"]["left"] == 2
+    assert reads == [item_id] * artists_cli.WRITE_ATTEMPTS == [item_id] * 3
+    assert fake.artists_asked_for == ["r-1"]
+    after = stored(cfg, item_id)
+    assert after.payload["artist"] == ADDRESS
+    assert after.payload["stamped"] == 3, "another writer's last word was taken back"
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 6b. The store: a rewrite that expects the payload it read
 # ═══════════════════════════════════════════════════════════════════════════
@@ -721,6 +754,21 @@ def test_a_rewrite_expecting_the_payload_of_a_decided_item_writes_nothing(cfg, v
         )
 
         assert review.get(items, item_id) == before
+
+
+def test_a_rewrite_expects_a_payload_that_is_not_json_as_the_empty_one_a_reader_sees(cfg):
+    item_id = offered(cfg, "r-1")
+    with review.open_store(cfg) as items:
+        with items.immediate() as conn:
+            conn.execute(
+                "UPDATE review_items SET payload = 'not json' WHERE item_id = ?", (item_id,)
+            )
+        shown = review.get(items, item_id).payload
+        assert shown == {}
+
+        after = review.redescribe(items, item_id, {"artist": "Harbour Act"}, expecting=shown)
+
+        assert after is not None and after.payload == {"artist": "Harbour Act"}
 
 
 def test_a_rewrite_expecting_anything_of_an_item_that_is_gone_files_nothing(cfg):
@@ -790,6 +838,21 @@ def test_an_item_naming_another_items_release_is_not_given_that_releases_artist(
     assert fake.artists_asked_for == []
     assert stored(cfg, item_id).payload["artist"] == ADDRESS
     assert counts(envelope["data"]["summary"]) == zeroes(unaddressed=1)
+
+
+def test_an_item_filed_under_an_empty_identifier_is_not_asked_about(cfg, monkeypatch):
+    """The sweep files ``""`` for a release with no id, and that item addresses it."""
+    item_id = offered(cfg, "")
+    assert item_id == genre_gate.release_item_id("")
+    fake = StrictCatalogue(release_artists={"": "Nobody"})
+    bind(monkeypatch, fake)
+
+    envelope = repaired_ok()
+
+    assert fake.artists_asked_for == []
+    assert stored(cfg, item_id).payload["artist"] == ADDRESS
+    assert counts(envelope["data"]["summary"]) == zeroes(unaddressed=1)
+    assert check(envelope, f"item.{item_id}")["status"] == "info"
 
 
 def test_two_items_naming_one_release_are_two_lines_under_two_keys(cfg, monkeypatch):

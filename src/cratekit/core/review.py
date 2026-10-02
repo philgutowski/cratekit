@@ -1377,11 +1377,12 @@ def redescribe(
     with store.immediate() as conn:
         if expecting is not None:
             held = conn.execute(
-                "SELECT payload FROM review_items WHERE item_id = ? AND verdict IS NULL",
-                (item_id,),
+                "SELECT payload FROM review_items WHERE item_id = ?", (item_id,)
             ).fetchone()
             if held is None:
                 return None
+            # Read as every reader of an item reads it: text that is not JSON
+            # is the empty payload, which is what the caller was shown.
             try:
                 current = json.loads(held["payload"])
             except ValueError:

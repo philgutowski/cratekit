@@ -68,6 +68,11 @@ ORIGIN = ("label", "artists_cli")
 #: around it, so an artist whose name merely contains such text is a name.
 ADDRESS = re.compile(r"<[A-Za-z_][\w.]* object at 0x[0-9A-Fa-f]+>")
 
+#: How many times one item's write is tried. Each refused try is another
+#: writer's write having landed between this verb's read and its own, and three
+#: in a row on one item is a store something else is busy in, not a race.
+WRITE_ATTEMPTS = 3
+
 #: What happened to one open item, as the summary counts it. The first three
 #: are the brief's. The rest are the ways an address is left where it is.
 REPAIRED = "repaired"
@@ -159,8 +164,9 @@ def _write(cfg: config.Config, subject: _Subject, name: str) -> str:
     since, and a payload written from it would take back whatever a judging job
     stamped on the item meanwhile. THE WRITE IS A COMPARE AND SET over that
     read, so the same holds for a stamp landing between the two: nothing is
-    written, and the item is read and decided again. Each turn of the loop is
-    another writer's write having landed, so it ends when they do.
+    written, and the item is read and decided again, :data:`WRITE_ATTEMPTS`
+    times at most. An item that moved under every one of them refuses the run,
+    on the remedy a busy store has, which is to come back.
 
     The outcome, one of three. :data:`REPAIRED` when the name was written.
     :data:`DECIDED` when the item was decided or left review in that time.
@@ -168,7 +174,7 @@ def _write(cfg: config.Config, subject: _Subject, name: str) -> str:
     else having put it right, and their word is kept.
     """
     with review.open_store(cfg) as store:
-        while True:
+        for _attempt in range(WRITE_ATTEMPTS):
             current = review.find(store, subject.item_id)
             if current is None or current.stored_verdict is not None:
                 return DECIDED
@@ -182,6 +188,15 @@ def _write(cfg: config.Config, subject: _Subject, name: str) -> str:
             )
             if written is not None:
                 return REPAIRED
+    raise refuse(
+        "unavailable-transient",
+        f"review item {subject.item_id} changed under each of {WRITE_ATTEMPTS} "
+        f"attempts to write its artist, so it was left as it is. Something "
+        f"else is writing to the review queue",
+        remedy=Remedy.RETRY_LATER,
+        origin=ORIGIN,
+        detail={"item_id": subject.item_id},
+    )
 
 
 def _check(key: str, status: str, detail: str) -> dict[str, Any]:
@@ -429,6 +444,7 @@ __all__ = [
     "UNADDRESSED",
     "UNNAMED",
     "UNREAD",
+    "WRITE_ATTEMPTS",
     "build_artists",
     "is_address",
     "label_artists",
