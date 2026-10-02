@@ -1,0 +1,206 @@
+{
+  "name": "r840-c",
+  "pass_kind": "light",
+  "branch": "relay/244",
+  "head": "4a930f2",
+  "when": "2026-10-02 21:08 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 12196,
+  "baseline_exit": 0,
+  "pytest_runs": 11,
+  "state_guarded": "~/Library/Application Support/cratekit (256854 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/review.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/review.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "59f3be5f3b186315",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 12196,
+    "baseline_collected": 12196,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C1_expecting_is_compared",
+      "description": "review.redescribe: drop the comparison, so a rewrite expecting a payload the item no longer carries is written over it",
+      "file": "src/cratekit/core/review.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "055e780a753aea84",
+      "subset": [
+        "tests/test_label_artists.py",
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 131,
+      "baseline_collected": 131,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_artists.py::test_a_rewrite_expecting_a_payload_the_item_no_longer_carries_writes_nothing",
+        "tests/test_label_artists.py::test_a_stamp_landing_between_the_read_and_the_write_is_kept",
+        "tests/test_label_artists.py::test_an_item_that_moves_under_every_attempt_refuses_the_run_and_is_left"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if current != dict(expecting):\n                return None\n",
+      "new": ""
+    },
+    {
+      "id": "C2_expecting_reads_an_unparseable_payload_as_empty",
+      "description": "review.redescribe: let text that is not JSON raise, where every reader of an item shows it as the empty payload",
+      "file": "src/cratekit/core/review.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "8b387c2ead1a4df5",
+      "subset": [
+        "tests/test_label_artists.py",
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 131,
+      "baseline_collected": 131,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_artists.py::test_a_rewrite_expects_a_payload_that_is_not_json_as_the_empty_one_a_reader_sees"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            try:\n                current = json.loads(held[\"payload\"])\n            except ValueError:\n                current = {}\n            if current != dict(expecting):",
+      "new": "            current = json.loads(held[\"payload\"])\n            if current != dict(expecting):"
+    },
+    {
+      "id": "C3_the_adapter_reads_a_name",
+      "description": "TidalCatalogue.release_artist: answer with the text of the album's artist object, which is its address, the defect R-379 named",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b17786725fa13b3c",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 156,
+      "baseline_collected": 156,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_rate_limited_artist_read_waits_and_is_asked_again",
+        "tests/test_label_tidal_catalogue.py::test_a_releases_artist_is_its_name_and_never_the_objects_address",
+        "tests/test_label_tidal_catalogue.py::test_an_artist_that_is_already_text_or_has_no_name_is_read_as_what_it_is[held2-]",
+        "tests/test_label_tidal_catalogue.py::test_an_artist_that_is_already_text_or_has_no_name_is_read_as_what_it_is[held3-]",
+        "tests/test_label_tidal_catalogue.py::test_the_sweep_files_the_name_the_artist_read_returns"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return artist_name(self._album(release_id))",
+      "new": "        return str(getattr(self._album(release_id), \"artist\", \"\") or \"\")"
+    },
+    {
+      "id": "C4_no_name_is_the_empty_string",
+      "description": "artist_name: answer with the text of whatever the artist's name attribute holds, so an object with no name reads None",
+      "file": "src/cratekit/label/catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9528d2437ae6f631",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py",
+        "tests/modules/test_labels.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 195,
+      "baseline_collected": 195,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_an_artist_that_is_already_text_or_has_no_name_is_read_as_what_it_is[held2-]",
+        "tests/test_label_tidal_catalogue.py::test_an_artist_that_is_already_text_or_has_no_name_is_read_as_what_it_is[held3-]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return name if isinstance(name, str) else \"\"",
+      "new": "    return str(name)"
+    },
+    {
+      "id": "C5_the_sweep_files_a_name",
+      "description": "sweep._candidate: file the text of the release's artist object, which is its address, where the seam's reader is called",
+      "file": "src/cratekit/label/sweep.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "054db0e8cfb699fe",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py",
+        "tests/modules/test_labels.py",
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 280,
+      "baseline_collected": 280,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_labels.py::test_an_offered_release_records_the_artist_name_not_the_provider_object",
+        "tests/test_label_tidal_catalogue.py::test_the_sweep_files_the_name_the_artist_read_returns"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"artist\": artist_name(release),",
+      "new": "            \"artist\": str(getattr(release, \"artist\", \"\") or \"\"),"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "C6_a_release_the_client_returns_nothing_for",
+      "description": "TidalCatalogue._album: read None from the client as a release and not as one that is gone",
+      "reason": "moved, not changed: the guard is U75's, measured in that unit's table, and this unit only lifted it into the read the two methods share"
+    }
+  ]
+}
