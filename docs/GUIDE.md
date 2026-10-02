@@ -398,8 +398,27 @@ one the pass offered you for review and you have not got, is left alone and the
 track is named. Nothing is renamed until you answer the gate, a playlist whose name
 changed since the plan is skipped, and a playlist already carrying the prefix is
 never prefixed twice. If a rename fails part way, the run names the playlists it
-had already renamed, and running it again picks up the rest. A rename is a
-change to your account that this tool does not undo.
+had already renamed, and running it again picks up the rest.
+
+Every rename that lands is recorded under its pass, so a mark made by mistake
+can be taken off again with `crate sync unmark`:
+
+```bash
+crate sync unmark --pass RUN_synced
+```
+
+Give it the pass's name, or the same intake file you gave `sync mark`; the file
+does not have to be there any more. It plans to put back the title each
+playlist had before the mark, and only where the title on the account is still
+exactly what the mark wrote. A playlist you have retitled since, with the
+prefix or without it, is listed and left, and so is one the account no longer
+lists. It only ever touches playlists that pass marked: `--playlist ID` narrows
+the plan to the ones you name, and naming a playlist the pass did not mark is
+refused, even when its name carries the prefix. Nothing is renamed until you
+answer its gate, and a playlist already put back is skipped, so running it
+twice renames nothing the second time. Taking the prefix off does not make the
+next `sync all` offer the playlist again: the pass already recorded it as
+resolved, which is a separate record.
 
 **Once your intake tree is database native this step has nothing to read.** A
 native landing writes no importable file, and `sync mark` finds its pass by
@@ -729,6 +748,7 @@ the same gate with nothing recorded and refuses again. Gates you will meet:
 | `sync.favorites.confirm` | sync | `sync favorites` |
 | `sync.all.favorites.confirm` | sync | `sync all` |
 | `sync.mark.confirm` | apply | `sync mark` |
+| `sync.unmark.confirm` | apply | `sync unmark`; explicit, `crate run decide` only |
 | `export.playlist.confirm` | export | `export playlist` |
 | `delete.review.confirm` | trash | `delete review` |
 | `adopt.apply.approve` | approve | `adopt apply` |

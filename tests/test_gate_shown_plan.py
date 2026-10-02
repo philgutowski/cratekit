@@ -216,6 +216,11 @@ SHOWS_ITS_OWN_WAY: dict[str, tuple[int, str]] = {
         "shows each item as renamed on the account or left alone with its "
         "reason, one line per fact",
     ),
+    "src/cratekit/sync/unmark_cli.py": (
+        1,
+        "shows each item as put back on the account or left alone with its "
+        "reason, one line per fact, as sync mark's screen does",
+    ),
     "src/cratekit/session/restore_cli.py": (
         1,
         "shows the off machine snapshot the restore would pull; the offer's "

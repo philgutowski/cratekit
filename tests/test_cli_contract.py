@@ -1651,6 +1651,11 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
                 )
             ),
         ],
+        # R-838. A pass the mark record holds nothing for, so the plan is
+        # empty, the explicit gate is still asked, and the verb ends NO_OP
+        # without listing the account or asking for a credential. The
+        # unmarking path is driven in tests/test_sync_unmark.py.
+        "sync.unmark": ["--pass", "no-such-pass_synced"],
         "tag.folder": [str(library / "Music")],
         # U40. Same convention as tag.folder: a folder under the CONFIGURED
         # library. It is empty here, so the selection is empty and the confirm

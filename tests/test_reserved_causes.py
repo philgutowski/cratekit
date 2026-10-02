@@ -5113,7 +5113,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # refuses with when a file did not take the genre its approved plan gave
     # it. It is in cause.REASONS and not in the reserved table. Population 187
     # to 188, non-reserved 159 to 160, reserved half UNCHANGED at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (188, 160, 28)
+    # Re-pinned on the residual finding "A `DOWNLOADED ` mark written by
+    # mistake cannot be undone", 2026-10-02. ONE slug:
+    # sync-mark-record-unusable, which the record of what sync mark renamed
+    # refuses with when it is present and cannot be read or locked. It is in
+    # cause.REASONS and not in the reserved table. Population 188 to 189,
+    # non-reserved 160 to 161, reserved half UNCHANGED at 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (189, 161, 28)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5976,7 +5982,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # state that module's plan document gives a library that has no vox tag.
     # The refusals the new read raises are soft-delete-marker-unreadable and
     # vocal-calibration-unreadable, both of which the tree already carried.
-    assert (len(literals), len(literals - set(causes))) == (586, 399), (
+    # Re-pinned on the residual finding "A `DOWNLOADED ` mark written by
+    # mistake cannot be undone", 2026-10-02: 586 to 592 distinct, non-keys 399
+    # to 404. SIX joined and nothing left, each checked against `main`'s own
+    # `src` by git grep. sync-mark-record-unusable is the one key, the record's
+    # refusal. sync-unmark is the plan KIND the unmark's digest is taken
+    # under, already-unmarked and renamed-since-mark are two REASONS a
+    # playlist the pass marked is left out of its plan, and
+    # sync-unmark-no-mark and sync-unmark-changed-since-plan are WARNING codes.
+    assert (len(literals), len(literals - set(causes))) == (592, 404), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6676,7 +6690,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # population above did not move: the new module spells no other literal of
     # that shape. Measured by this pair moving by one on the holders side and
     # by nothing on the other.
-    assert (len(literal_holders), len(literal_both)) == (119, 26), (
+    # Re-pinned on the residual finding "A `DOWNLOADED ` mark written by
+    # mistake cannot be undone", 2026-10-02: holders move 119 to 121, and the
+    # also-holds-an-integer half is UNCHANGED at 26. TWO modules joined and
+    # none left, both new files: sync/mark_record.py, which refuses with
+    # sync-mark-record-unusable, and sync/unmark_cli.py, which refuses with
+    # sync-marks-blocked and internal-error. Neither holds an in-range integer.
+    assert (len(literal_holders), len(literal_both)) == (121, 26), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
