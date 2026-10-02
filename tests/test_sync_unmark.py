@@ -333,6 +333,24 @@ def test_a_mark_after_an_unmark_clears_the_stamp(slim, monkeypatch):
         json.dumps({"version": 1, "library_id": "another-library", "marks": []}),
         "LIBRARY:" + json.dumps({"version": 1, "marks": {}}),
         "LIBRARY:" + json.dumps({"version": 1, "marks": [{"pass": "p", "playlist_id": "x"}]}),
+        # Every field present and non empty, one of them not text: only the
+        # type check refuses it (row R4 in docs/mutation/r838-c.md).
+        "LIBRARY:"
+        + json.dumps(
+            {
+                "version": 1,
+                "marks": [
+                    {
+                        "pass": "p",
+                        "playlist_id": "x",
+                        "name": "n",
+                        "to": "DOWNLOADED n",
+                        "marked": "t",
+                        "unmarked": 7,
+                    }
+                ],
+            }
+        ),
     ],
 )
 def test_an_unreadable_record_refuses_rather_than_reading_as_empty(slim, monkeypatch, written):
@@ -380,6 +398,11 @@ def test_a_later_mark_by_another_pass_owns_the_prefix(slim, monkeypatch):
     code, theirs = _answered("later_synced")
     assert code == int(ExitCode.OK), theirs
     assert account.renamed[-1] == ("pl-a", "Warmup")
+    # THE LATER PASS'S ENTRY IS THE ONE STAMPED, never the first one the
+    # record holds for that playlist (row R3 in docs/mutation/r838-c.md).
+    record = mark_record.MarkRecord(slim)
+    assert record.of_pass("later_synced")[0].unmarked
+    assert not {e.playlist_id: e.unmarked for e in record.of_pass(name)}["pl-a"]
 
 
 def test_an_unlockable_record_refuses_the_unmark_before_any_rename(slim, monkeypatch):

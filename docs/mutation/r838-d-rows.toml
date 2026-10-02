@@ -1,0 +1,22 @@
+name = "r838-d"
+pass_kind = "light"
+
+[[rows]]
+id = "R3b_stamp_target"
+description = "mark_record.record_unmarked: stamp the playlist's mark under any pass, so another pass's mark reads as put back"
+file = "src/cratekit/sync/mark_record.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''                if (entry.pass_name, entry.playlist_id) == (pass_name, playlist_id):
+                    entries[index] = replace(entry, unmarked=when)'''
+new = '''                if entry.playlist_id == playlist_id:
+                    entries[index] = replace(entry, unmarked=when)'''
+
+[[rows]]
+id = "R4b_field_types"
+description = "mark_record._recognize: accept an entry missing its title fields"
+file = "src/cratekit/sync/mark_record.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''            if not all(isinstance(value, str) for value in fields.values()):'''
+new = '''            if False:'''
