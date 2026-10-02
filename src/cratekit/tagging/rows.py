@@ -41,6 +41,12 @@ THE ROW'S WORD IS READ THE WAY ADOPTION READS IT, through
 :func:`cratekit.adopt.collection.genre_of`, because what this verb repairs is
 what that reader returns.
 
+TWO NAMES HERE MEAN SOMETHING ELSE ONE PACKAGE OVER, and it is said in both
+directions. ``cratekit.intake.native`` has a ``plan_rows`` and an
+``apply_rows`` too: there a row is a content row the landing ADDS, and here it
+is a row that exists and whose genre is written. Neither module imports the
+other and nothing should pass one's plan to the other's apply.
+
 Layer: modules. It opens no database of its own and names no verb.
 """
 
