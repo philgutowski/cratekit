@@ -52,9 +52,10 @@ The decisions are KTD64 to KTD90 in
 `docs/plans/2026-10-01-0949-feat-published-genre-by-isrc-plan.md`, and
 `docs/solutions/workflow-issues/a-second-producer-of-a-record-meets-every-reader-that-assumed-what-the-first-never-did.md`
 is what to read before giving any record a second producer. The built in
-review ran twice, ten findings each time: seventeen changed the code, and
-R-822, R-823 and the store opened per release, declined at 0.35 ms an open,
-are what the other three left. R-822 to R-827 filed, none on the board bar.
+review ran twice, ten findings each time: eighteen changed the code, and
+R-822 and the store opened per release, declined at 0.35 ms an open, are
+what the other two left. R-823 is what one of the eighteen fixed the
+cautious way. R-822 to R-827 filed, none on the board bar.
 `CONCEPTS.md` says how a release already in review becomes a held release,
 and keeps the review store's withhold apart from the provider's. Mutation
 tables `r815-a` to `r815-c`, 25 rows, 25 killed, none at zero, by the
