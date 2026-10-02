@@ -298,6 +298,46 @@ Not measured: the words the catalogue lists below its top level, how often an al
 - The built in review, a mutation table under `docs/mutation/`, and the battery.
 - Owed to an attended sitting: the active copy's edit, then a sweep over the labels of sitting 25 filing none of the 36 and counting them held, recorded in `docs/cutover.md`.
 
+### R-815, the releases already in review
+
+Written by the session that took R-815 on `relay/240`, 2026-10-01, before any code. It extends R11 to R18 to the releases a sweep filed before the gate had a genre, and changes no requirement above. KTD and unit numbers continue from R-798's.
+
+#### Measured before planning
+
+Read off the tree on 2026-10-01. Nothing here was measured on the live library, the live provider or the live catalogue, which this card does not touch.
+
+- A pending release's item carries an artist, a title, its label's identifier and name, the release identifier and the sweep that filed it. Since R-798 it also carries the gate's answer and, when the catalogue published any, the words. The 2,755 items of sitting 23 carry neither a word nor an ISRC.
+- An ISRC is reached only by reading the release's rows from the streaming provider, `Catalogue.release_tracks`, two provider reads, through the provider gate of R-705.
+- A sweep reads a release as already queued when an item exists for it in any state, and it drops a hold in force on such a release (KTD57). So one release cannot be an item and a hold at once.
+- `crate label held return` files a held release with the sweep's own `offer_release`, which inserts an item when none exists and leaves a decided one alone.
+- `jobs.Parked` is the one way a worker stops a run without failing the item in flight: the item goes back to pending and the job stays open for a resume.
+- A worker's count reaches its verb through the item report, `core.artifacts`, committed before the item is done and read back on a resume.
+- `crate label held` says what the newest sweep's gate did by reading the gate's answer off the items that sweep filed.
+
+Not measured: what a run over 2,755 releases costs in time and in provider calls, and how many of them the catalogue knows. The first is bounded below by the code. Both are the attended run's to record.
+
+#### Key technical decisions
+
+- **KTD64. The verb is `crate label judge`, a queued job with one item per pending release.** The item is the review item's identifier. The items are read off the review queue when the job is queued, with no provider call. `--job` drives and resumes, as every queued verb does. `--label NAME`, repeatable, scopes the job to the named followed labels, so the attended run can be rehearsed on three labels before it is run on thirty.
+- **KTD65. One rule, the sweep's.** A release with no recorded words is judged by the body of `SweepGate.judge`, lifted to `judge_as(kind, release_id)` and called by both. It reads the rows through the shared `ReleaseTracks` and asks through one `Asking` kept for the job. A release with recorded words is judged by `judge_words`, as `label approved` does. A label the registry no longer holds is the default kind, also as there.
+- **KTD66. What the item records is used first, and one release costs this.** Nothing at all for a release a person returned, for a label that is settled before a word is read (`any`, no published rules, a kind the taxonomy does not name), for a release with recorded words, and for one whose record says the catalogue had no word for it (a miss, a match with no genre, no ISRC). Otherwise two provider reads for the rows, then at most three tracks at two paced catalogue requests each, an album read once per process. The 2,755 are the last kind: 5,510 provider reads at most, and between two and six catalogue requests each.
+- **KTD67. A held release leaves the queue, in one transaction.** `review.withhold` deletes the open item and writes the hold together, and only over an empty verdict column. A decided item, an item carrying a verdict this build cannot read, and a release whose hold a person returned are left exactly as they are. Marking the item superseded was considered and dropped: a sweep would read it as queued and drop the hold, and `return` could not reopen it. The hold carries the item's payload, so a return files what was filed. No tombstone is written.
+- **KTD68. The hold's run is the judging job's.** It did the holding, and a grouping by run then counts it apart from any sweep. `return` files a release under the run its payload already names, the sweep that first filed it, so a returned release does not read as new.
+- **KTD69. A release that stays says what the gate said.** The stamp R-798 defined is written onto the open item through `offer_release`, which never rewrites a decided item, with one more field, `genre_gate_run`, naming the judging job. It is written only when it differs from what the item already says. `label approved` then reads the words and asks nothing, which is most of R-809 for this queue.
+- **KTD70. `crate label held` does not report a judge run's answers as a sweep's.** Its sweep rows count the gate's answer only on an item whose stamp names no judging job.
+- **KTD71. The resume is the engine's.** An item done is never claimed again, and the one in flight when a run died is redone. Redoing is safe: a release this job already held is found as its hold and counted held, and a stamped one is judged from its record with no request.
+- **KTD72. A catalogue that refuses parks the run.** The bound is R-798's own, three releases in a row unread. Those releases are stamped not judged and stay. The next release is not read from the provider: the run parks, the item goes back to pending, and the refusal says how many were left. The provider's own outage rule and any refusal of the provider's park it the same way. Nothing retries, waits out or goes round an answer, and a resume is a person's act.
+- **KTD73. The summary reaches both exits.** Per label: judged, held, passed, not judged, and beside them returned, decided and gone, zero filled, read from the item reports. On a run that finished it rides the envelope. On one that parked, failed or was stopped it rides the refusal, with the count left and the resume command.
+- **KTD74. The verb decides nothing and downloads nothing.** It writes the review database and no other surface. A hold is not a rejection, and a sync still downloads no label release on its own.
+
+#### Verification
+
+- `review.withhold` over an open item, a decided one, one with an unreadable verdict, a returned hold and an unknown identifier.
+- Through the dispatcher, the queue and the worker, with a fake provider and a fake catalogue: a queued release of another kind is held, gone from review, listed by `label held` and returned by `return`; one of the label's kind stays; one the catalogue does not know stays, marked not judged; an accepted and a rejected item are untouched; a label marked `any` holds nothing and asks nothing; a run stopped part way and resumed judges no release twice and skips none; a catalogue that refuses three times in a row parks the run and says how many were left.
+- A release with recorded words costs no request, and the next sweep keeps the hold.
+- The built in review, a mutation table under `docs/mutation/`, and the battery.
+- Owed to an attended sitting: the run over the author's queue, recorded in `docs/cutover.md` with the per label counts, which is also R-798's owed check.
+
 ## Implementation Units
 
 ### U1. The lookup: a published genre for an ISRC
@@ -371,3 +411,27 @@ Each read release is judged by kind before the share rule (KTD51), and a returne
 **Files:** `src/cratekit/label/held_cli.py` (new), `src/cratekit/cli/registry.py`, `tests/test_label_genre_gate.py`, `tests/test_cli_contract.py`, `tests/test_reserved_causes.py` (the counts), `CONCEPTS.md`.
 
 A diagnostic that lists and counts (KTD50), and `return` (KTD48).
+
+### U13. An open item becomes a hold in one write
+
+**Files:** `src/cratekit/core/review.py`, `tests/test_label_judge.py` (new).
+
+`review.withhold` moves one open item into `held_offers` and deletes its row, in one transaction (KTD67).
+
+### U14. The gate judges a release by a kind, and says when it has given up
+
+**Files:** `src/cratekit/label/gate.py`, `src/cratekit/label/catalogue.py`, `tests/test_label_judge.py`.
+
+`SweepGate.judge_as(kind, release_id)` is the body `judge` had, and `judge` calls it (KTD65). `Asking.given_up` and `ReleaseTracks.given_up` say the bound was reached, so a caller can stop before a provider read (KTD72). `GATE_RUN_FIELD` names the stamp's judging job (KTD69).
+
+### U15. `crate label judge`
+
+**Files:** `src/cratekit/label/judge_cli.py` (new), `src/cratekit/cli/registry.py`, `src/cratekit/cli/handlers.py`, `tests/test_label_judge.py`, `tests/test_cli_contract.py`, `tests/test_reserved_causes.py` (the counts), `CONCEPTS.md`.
+
+The verb queues one item per pending release (KTD64). The worker judges one release (KTD65, KTD66), holds it (KTD67, KTD68) or stamps it (KTD69), parks the run on a catalogue or a provider that refuses (KTD72), and reports. The shell reads the reports back into the per label summary on both exits (KTD73).
+
+### U16. `crate label held` after a judge run
+
+**Files:** `src/cratekit/label/held_cli.py`, `tests/test_label_judge.py`.
+
+`return` files under the run the payload names (KTD68). The sweep rows leave a judge run's stamp out of what a sweep's gate did (KTD70).
