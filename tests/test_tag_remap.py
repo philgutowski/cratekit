@@ -436,6 +436,30 @@ def test_a_path_that_climbs_out_of_the_library_is_outside_it(machine, silence, t
     assert genre_of(escaped) == OLD_POP
 
 
+def test_a_file_under_a_directory_this_account_cannot_enter_does_not_end_the_plan(
+    machine, silence
+):
+    """Found by the hunt after the reviews, and driven: asking whether such a
+    file is there raised out of the plan, so one folder ended the verb over
+    every other file."""
+    locked = music(machine) / "locked"
+    locked.mkdir()
+    hidden = locked / "a pop record.flac"
+    shutil.copy2(silence, hidden)
+    record(machine, hidden, OLD_POP, word="Pop")
+    tagged(machine, silence, "another pop record", OLD_POP, "Pop")
+    locked.chmod(0)
+    try:
+        plan = planned(machine)
+    finally:
+        locked.chmod(0o700)
+    counts(plan, write=1, file_unreadable=1)
+    assert [(Path(item.path).name, item.reason) for item in plan.items] == [
+        ("another pop record.flac", ""),
+        ("a pop record.flac", "file-unreadable"),
+    ]
+
+
 def test_every_file_is_counted_once_and_the_items_are_in_path_order(machine, silence):
     tagged(machine, silence, "d pop", OLD_POP, "Pop")
     tagged(machine, silence, "a rock", "Rock", "Rock")

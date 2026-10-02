@@ -385,7 +385,13 @@ def _settle(
         return reason, Item(path, of.word, of.written, current, wanted, LEAVE, reason)
 
     target = Path(path)
-    if not target.is_file():
+    try:
+        present = target.is_file()
+    except OSError:
+        # A directory above it this account cannot enter. Not gone, and not
+        # a reason to end the plan over every other file.
+        return left(FILE_UNREADABLE)
+    if not present:
         return left(FILE_MISSING)
     values = _file_genres(target)
     if values is None:
