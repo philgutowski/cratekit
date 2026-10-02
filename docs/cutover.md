@@ -883,6 +883,7 @@ landing.
 | `crate label artists`, R-840, #244 | live on the review store, no database | 29 open label releases read a provider object address and **29 were given the artist's name**: Anjunadeep 20, Amselcom 6, Last Night On Earth 2, Defected 1. 2,383 already fine, 33 provider calls, no rate limit. A second run reports none. | live, **R-840 closes** |
 | The review store read for addresses | read only, before and after | Before: `crate label held`, 339 holds over 14 labels, none reads an address. After: 2,618 review items and 339 holds read straight from the store, none carries one. | read, **R-389 and R-847 close, #213 done** |
 | `crate export playlist TOOLBOX/Dancefloor Rescue`, R-834, #242 | live on the account, at its gate, digest `869777719e9f317c` | One playlist created, 8 items settled, 39 provider calls, no rate limit. **Read back at the provider: `public: False`.** The account's web player, read only in the browser, shows Dancefloor Rescue, 4 tracks, the padlock reading Private. Four tracks did not match and the verb said only `ok`, R-850 filed with an issue. | live, **R-834 closes** |
+| rekordbox, read only through desktop control | opened after the feeder left, no job running | BY GENRE + ENERGY / R&B reads High 6, Low 27, Med 14, Unsorted 2 and **with vox 27**, the sub the apply made. Quit from the menu, `rekordbox` and `rekordboxAgent` both gone within ten seconds. | read |
 
 ## What blocks a full sync cycle, stated plainly
 
