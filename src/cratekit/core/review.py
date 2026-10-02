@@ -799,6 +799,8 @@ _SCHEMA = (
     # never decided. It is not a suppression either: nothing here keeps a
     # release out for good, and a person can return one to the queue. The row
     # carries what would have been filed, so returning it needs no producer.
+    # A candidate already filed and still open can be taken back into one
+    # (R-815): its item row is deleted in the transaction that writes the hold.
     # ADDITIVE, on the reasoning ``offer_rounds`` gives, so ``SCHEMA_VERSION``
     # does not move.
     """
@@ -1674,6 +1676,96 @@ def hold(
                 (encoded[1], group, name, encoded[2], encoded[3], now, declared, item_id),
             )
     return _hold_of(_held_row(store, declared, item_id))
+
+
+def withhold(
+    store: ReviewStore,
+    item_id: str,
+    *,
+    group: str,
+    name: str,
+    reason: str,
+    detail: Mapping[str, Any],
+    run_id: str,
+) -> Hold | None:
+    """Move one OPEN item out of its queue and into a hold, or None when it may not.
+
+    R-815. A producer that judges a candidate ALREADY FILED, and finds it would
+    not have filed it, takes it back: the item's row is deleted and a hold is
+    written carrying what the item carried, so returning it files the same
+    thing. Not a verdict. A superseded item would still be an item, and the
+    producer that reads "is there an item" to decide whether a candidate was
+    offered would read this one as offered and drop its hold.
+
+    ONE TRANSACTION, BOTH WRITES. A hold written beside an item still in the
+    queue is a candidate a person can decide while a listing says it is held,
+    and an item deleted with no hold written is a candidate nothing offers and
+    nothing holds.
+
+    ONLY OVER AN EMPTY VERDICT COLUMN, on the rule :func:`supersede` states. An
+    accepted, a rejected and a superseded item stand, and so does one carrying
+    a verdict this build cannot read: on a queue two builds share, that is a
+    decision somebody made. The check is inside the transaction, so an item a
+    person decides while a producer is judging it is theirs.
+
+    A HOLD A PERSON RETURNED IS NEVER HELD AGAIN, the rule :func:`hold` keeps.
+    The item stays where it is and None is the answer.
+
+    None for an identifier nothing answers to, too. Each None means the same
+    thing to a caller: nothing was moved.
+
+    AN ITEM THAT ARRIVED BY IMPORT CARRIES NO IDENTITY, and its hold then
+    carries an empty one. The hold is still found by the item's identifier,
+    which is all a return asks, and its payload still names the candidate.
+    """
+    now = timestamp()
+    with store.immediate() as conn:
+        row = conn.execute(
+            "SELECT queue, kind, identity, payload, verdict FROM review_items "
+            "WHERE item_id = ?",
+            (item_id,),
+        ).fetchone()
+        if row is None or row["verdict"] is not None:
+            return None
+        queue = row["queue"]
+        standing = _held_row(store, queue, item_id)
+        if standing is not None and standing["state"] == HOLD_RETURNED:
+            return None
+        encoded_detail = json.dumps(dict(detail), sort_keys=True)
+        if standing is None:
+            conn.execute(
+                "INSERT INTO held_offers (queue, item_id, kind, identity, payload, "
+                "group_key, group_name, reason, detail, state, run_id, created, updated) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    queue,
+                    item_id,
+                    row["kind"],
+                    row["identity"] if row["identity"] is not None else "{}",
+                    row["payload"],
+                    group,
+                    name,
+                    reason,
+                    encoded_detail,
+                    HOLD_HELD,
+                    run_id,
+                    now,
+                    now,
+                ),
+            )
+        else:
+            # A HOLD IN FORCE BESIDE AN OPEN ITEM, the state two writes of an
+            # earlier build can leave. Refreshed as :func:`hold` refreshes one,
+            # keeping the run that first held it.
+            conn.execute(
+                "UPDATE held_offers SET payload = ?, group_key = ?, group_name = ?, "
+                "reason = ?, detail = ?, updated = ? WHERE queue = ? AND item_id = ?",
+                (row["payload"], group, name, reason, encoded_detail, now, queue, item_id),
+            )
+        conn.execute(
+            "DELETE FROM review_items WHERE item_id = ? AND verdict IS NULL", (item_id,)
+        )
+    return _hold_of(_held_row(store, queue, item_id))
 
 
 def find_hold(store: ReviewStore, *, queue: str, item_id: str) -> Hold | None:
@@ -2811,4 +2903,5 @@ __all__ = [
     "RUN_FIELD",
     "store_dir",
     "unresolved_cause",
+    "withhold",
 ]
