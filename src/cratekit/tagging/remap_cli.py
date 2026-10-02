@@ -85,7 +85,7 @@ def _load() -> config.Config:
                 reason="config-unusable",
                 message=str(exc),
                 remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("tagging.remap_cli",),
+                origin=_ORIGIN,
                 detail={"kind": type(exc).__name__},
             )
         ) from exc
@@ -212,9 +212,12 @@ def _no_vocabulary(plan: remap.RemapPlan) -> list[dict[str, str]]:
             "message": (
                 f"the active taxonomy declares no vocabulary for {remap.SOURCE}, so "
                 f"its words are still resolved by the buckets' aliases and this "
-                f"plan compares each file with that; add the [vocabulary."
-                f"{remap.SOURCE}] table the shipped template carries to the "
-                f"library's copy, then run this again"
+                f"plan compares each file with that; give the library's copy the "
+                f"[vocabulary.{remap.SOURCE}] table the shipped template carries, "
+                f"together with every routing alias and sub_by_source map row that "
+                f"template declares for the table's tags, since a tag that names "
+                f"no folder is refused and the copy would not load, then run this "
+                f"again"
             ),
         }
     ]
@@ -340,6 +343,12 @@ def assert_written(written: remap.Written) -> None:
             "unrecorded": list(written.unrecorded),
             "written": written.written,
             "read_back": written.read_back,
+            # THE UNDO, which the envelope of a clean run carries as its items
+            # and this run never reaches. The next run lists none of these.
+            "rewritten": [
+                {"path": item.path, "from": item.current, "to": item.wanted}
+                for item in written.rewritten
+            ],
         },
     )
 

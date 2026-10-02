@@ -38,6 +38,19 @@ others once the file reads back. Without it this module's own write would
 look like a hand edit to the next run, and a word the taxonomy gives a new
 genre a second time could never be corrected a second time.
 
+A REWRITE RETIRES THE RECORD IT REPLACED. The records carry no time, so each
+rewrite's record carries a GENERATION, one past the record that explained the
+file, and only the highest generation of the source's records on a file is
+still in force. Without that, a genre a person put back by hand after a
+rewrite matched the retired record and was planned for rewrite on every run,
+which is the undo this verb's own message describes being undone.
+
+ONE FILE IS ONE GROUP, WHATEVER ITS RECORDS CALL IT. A folder tagged twice
+under two spellings of its path, or two cases on a volume that folds case,
+records one file under two strings. Grouped by the string, a record shop's
+record of the same genre was never seen beside the general catalogue's, and
+one file was planned twice.
+
 EVERY PATH LANDS IN ONE OUTCOME, counted zero filled. A plan that names only
 what it writes makes "nothing else was found" and "nothing else was looked at"
 the same output. A file that is gone or cannot be read is counted under its
@@ -107,13 +120,18 @@ _JOINED = " | "
 
 @dataclass(frozen=True, slots=True)
 class Recorded:
-    """One tagging record of a genre written onto a file."""
+    """One tagging record of a genre written onto a file.
+
+    ``generation`` is zero for a tagging job's record and, for a rewrite's
+    record, one past the record that explained the file when it was rewritten.
+    """
 
     job_id: str
     path: str
     written: str
     source: str
     word: str
+    generation: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +153,9 @@ class Item:
     wanted: str
     action: str
     reason: str = ""
+    #: The generation of the record that explains the file, which the record
+    #: of a rewrite goes one past. Bookkeeping, and not shown or digested.
+    generation: int = 0
 
     def to_json(self) -> dict[str, str]:
         return {
@@ -214,7 +235,8 @@ class Written:
     it, and was not written. ``failed`` is a file the tag writer could not
     write, which is untouched. ``wrong`` is a file that was written and does
     not read back as wanted. ``unrecorded`` is a file that was rewritten and
-    read back and whose record could not be committed.
+    read back and whose record could not be committed. ``rewritten`` is every
+    item that read back, which is what an undo needs when the run refuses.
     """
 
     written: int
@@ -223,6 +245,7 @@ class Written:
     moved: tuple[str, ...] = ()
     failed: tuple[str, ...] = ()
     unrecorded: tuple[str, ...] = ()
+    rewritten: tuple[Item, ...] = ()
 
     @property
     def clean(self) -> bool:
@@ -254,6 +277,7 @@ def recorded(reports: Iterable[tuple[str, Mapping[str, Any]]]) -> tuple[Recorded
             continue
         if not isinstance(written, str) or not written.strip():
             continue
+        generation = report.get("generation")
         found.append(
             Recorded(
                 job_id=job_id,
@@ -261,6 +285,13 @@ def recorded(reports: Iterable[tuple[str, Mapping[str, Any]]]) -> tuple[Recorded
                 written=written.strip(),
                 source=str(report.get("source") or ""),
                 word=str(report.get("source_genre") or "").strip(),
+                generation=(
+                    generation
+                    if isinstance(generation, int)
+                    and not isinstance(generation, bool)
+                    and generation > 0
+                    else 0
+                ),
             )
         )
     return tuple(found)
@@ -287,12 +318,46 @@ def _wanted(declared: taxonomy.Taxonomy, word: str) -> str:
     return chosen[1] if chosen else ""
 
 
-def _inside(path: str, root: Path) -> bool:
-    """Whether a recorded path is under the library's root. Opens nothing."""
+def _resolved(path: str) -> Path | None:
+    """A recorded path with its links and its dots resolved, or None."""
     try:
-        return Path(path).resolve().is_relative_to(root.resolve())
-    except (OSError, ValueError):
-        return False
+        return Path(path).resolve()
+    except (OSError, ValueError, RuntimeError):
+        return None
+
+
+def _inside(resolved: Path, root: Path) -> bool:
+    """Whether a resolved path is under the library's resolved root.
+
+    BY NAME, AND THEN BY THE DIRECTORY ITSELF. A volume that folds case names
+    one directory two ways, and resolving a path does not fold it, so a folder
+    typed in another case than the configured root reads as outside it while
+    being the same directory. So a path that is not under the root by name is
+    asked whether any directory above it IS the root. A directory that is not
+    there is not the root.
+    """
+    if resolved.is_relative_to(root):
+        return True
+    for parent in resolved.parents:
+        try:
+            if parent.samefile(root):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def _identity(resolved: Path) -> tuple[str, int, int] | tuple[str, str]:
+    """What makes two recorded paths one file: the file itself, where it exists.
+
+    The device and the inode, so two spellings and two cases of one file are
+    one group. A file that is gone has only its resolved name to go by.
+    """
+    try:
+        stat = resolved.stat()
+    except OSError:
+        return ("name", str(resolved))
+    return ("file", stat.st_dev, stat.st_ino)
 
 
 def _settle(
@@ -300,12 +365,20 @@ def _settle(
 ) -> tuple[str, Item | None]:
     """One file's outcome, and its item unless it agrees.
 
-    ``records`` is every record of a genre written onto this path, and at
-    least one of them is the source's. THEY CARRY NO TIME, so none is taken
-    for the latest. When several of the source's are on one path, the one a
-    left item shows is whichever sorts last, which is display and no more.
+    ``records`` is every record of a genre written onto this file, and at
+    least one of them is the source's. THEY CARRY NO TIME. What stands in for
+    one is the generation a rewrite's record carries: only the source's
+    records of the highest generation are still in force, and every lower one
+    was replaced by a rewrite. When several are in force, the one a left item
+    shows is whichever sorts last, which is display and no more.
     """
-    mine = [record for record in records if record.source == SOURCE]
+    newest = max(record.generation for record in records if record.source == SOURCE)
+    mine = [
+        record
+        for record in records
+        if record.source == SOURCE and record.generation == newest
+    ]
+    in_force = [record for record in records if record.source != SOURCE or record in mine]
     shown = mine[-1]
 
     def left(reason: str, *, current: str = "", wanted: str = "", of: Recorded = shown):
@@ -321,11 +394,12 @@ def _settle(
 
     # WHICH RECORDS EXPLAIN WHAT THE FILE CARRIES. One value, and a record that
     # wrote exactly it.
-    explaining = [record for record in records if values == (record.written,)]
+    explaining = [record for record in in_force if values == (record.written,)]
     if not explaining:
-        # Nobody recorded writing this. It agrees when it is already what one
-        # of the source's words is given now, which is a file a person
-        # corrected, and is otherwise somebody's own value.
+        # No record in force says this was written. It agrees when it is
+        # already what one of the source's words is given now, which is a file
+        # a person corrected, and is otherwise somebody's own value, a genre a
+        # person put back after a rewrite among them.
         if any(current and current == _wanted(declared, record.word) for record in mine):
             return AGREE, None
         return left(CHANGED_SINCE, current=current, wanted=_wanted(declared, shown.word))
@@ -342,7 +416,9 @@ def _settle(
         return left(WORD_DECLINED, current=current, of=wrote)
     if wanted == current:
         return AGREE, None
-    return WRITE, Item(path, wrote.word, wrote.written, current, wanted, WRITE)
+    return WRITE, Item(
+        path, wrote.word, wrote.written, current, wanted, WRITE, generation=wrote.generation
+    )
 
 
 def plan(cfg: config.Config, declared: taxonomy.Taxonomy) -> RemapPlan:
@@ -365,22 +441,38 @@ def plan_records(
     records_unread: int = 0,
 ) -> RemapPlan:
     """The plan over records already read. Split out so it is driven with no queue."""
-    by_path: dict[str, list[Recorded]] = {}
-    for record in records:
-        by_path.setdefault(record.path, []).append(record)
+    try:
+        library = root.resolve()
+    except (OSError, RuntimeError):
+        library = root
+    # ONE GROUP PER FILE. Under the library a group is keyed by the file
+    # itself, and named by the first of its resolved spellings in sorted
+    # order. Outside it nothing is opened, so a group is its resolved name.
+    groups: dict[object, list[Recorded]] = {}
+    named: dict[object, str] = {}
+    outside: set[object] = set()
+    for record in sorted(records, key=lambda one: one.path):
+        resolved = _resolved(record.path)
+        if resolved is None or not _inside(resolved, library):
+            key: object = ("outside", str(resolved) if resolved is not None else record.path)
+            outside.add(key)
+        else:
+            key = _identity(resolved)
+        groups.setdefault(key, []).append(record)
+        named.setdefault(key, str(resolved) if resolved is not None else record.path)
     counts = dict.fromkeys(OUTCOMES, 0)
     items: list[Item] = []
-    for path in sorted(by_path):
-        group = by_path[path]
+    for key in sorted(groups, key=lambda one: named[one]):
+        group = groups[key]
         if not any(record.source == SOURCE for record in group):
             continue
-        if not _inside(path, root):
+        if key in outside:
             # COUNTED AND NEVER OPENED. Not this library's file, or not where
             # it was when it was tagged, and this library's taxonomy is not
             # the one to resolve its word by.
             counts[OUTSIDE_LIBRARY] += 1
             continue
-        outcome, item = _settle(path, group, declared)
+        outcome, item = _settle(named[key], group, declared)
         counts[outcome] += 1
         if item is not None:
             items.append(item)
@@ -397,11 +489,18 @@ def plan_records(
 # ---------------------------------------------------------------------------
 
 
-def _record(cfg: config.Config, remap_plan: RemapPlan, ordinal: int, item: Item) -> bool:
-    """Commit the tagging record of one rewrite. False when it could not be."""
+def _record(cfg: config.Config, name: str, ordinal: int, item: Item) -> bool:
+    """Commit the tagging record of one rewrite. False when it could not be.
+
+    Through the engine's own commit, staged and then renamed into place, so a
+    run killed part way never leaves half a record for every later plan to
+    count as unread.
+    """
     try:
-        artifacts.write(
-            artifacts.final_path(cfg, f"{RECORD_PREFIX}{remap_plan.digest}", ordinal),
+        artifacts.commit(
+            cfg,
+            name,
+            ordinal,
             {
                 "item": item.path,
                 "path": item.path,
@@ -410,6 +509,7 @@ def _record(cfg: config.Config, remap_plan: RemapPlan, ordinal: int, item: Item)
                 "source": SOURCE,
                 "source_genre": item.word,
                 "remapped_from": item.current,
+                "generation": item.generation + 1,
             },
         )
     except OSError:
@@ -441,6 +541,10 @@ def apply(cfg: config.Config, remap_plan: RemapPlan) -> Written:
     moved: list[str] = []
     failed: list[str] = []
     unrecorded: list[str] = []
+    rewritten: list[Item] = []
+    # ONCE. The digest serializes every item, and the records of one plan sit
+    # under one name.
+    name = f"{RECORD_PREFIX}{remap_plan.digest}"
     for ordinal, item in enumerate(remap_plan.writes):
         target = Path(item.path)
         if _file_genres(target) != (item.current,):
@@ -454,7 +558,8 @@ def apply(cfg: config.Config, remap_plan: RemapPlan) -> Written:
             wrong.append(item.path)
             continue
         read_back += 1
-        if not _record(cfg, remap_plan, ordinal, item):
+        rewritten.append(item)
+        if not _record(cfg, name, ordinal, item):
             unrecorded.append(item.path)
     return Written(
         written=written,
@@ -463,6 +568,7 @@ def apply(cfg: config.Config, remap_plan: RemapPlan) -> Written:
         moved=tuple(moved),
         failed=tuple(failed),
         unrecorded=tuple(unrecorded),
+        rewritten=tuple(rewritten),
     )
 
 

@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import shutil
 import tomllib
+from dataclasses import replace
 from importlib import resources
 from pathlib import Path
 
@@ -137,6 +138,12 @@ def planned(cfg: config.Config, declared=DECLARED) -> remap.RemapPlan:
 
 def genre_of(path: Path) -> str | None:
     return tags.read_genre_from_file(path)
+
+
+def did(written: remap.Written) -> remap.Written:
+    """An apply's counts and named paths, with the list of rewritten items set
+    aside. That list is asserted where it is the point."""
+    return replace(written, rewritten=())
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -285,6 +292,61 @@ def test_a_genre_a_record_shop_wrote_later_on_a_path_the_catalogue_once_wrote_ag
     assert plan.items == ()
 
 
+def test_one_file_recorded_under_two_spellings_is_one_file(machine, silence):
+    """What the second review drove. Grouped by the string, the shop's record
+    was never seen beside the general catalogue's and the genre a record shop
+    supplied was planned for rewrite."""
+    path = tagged(machine, silence, "a record", OLD_POP, "Pop", job="job-a")
+    spelled = music(machine) / ".." / "Music" / "a record.flac"
+    record(machine, spelled, OLD_POP, source=SHOP, word="Pop", job="job-b")
+    plan = planned(machine)
+    counts(plan, ambiguous_record=1)
+    assert [item.path for item in plan.items] == [str(path)]
+
+
+def test_one_file_the_catalogue_recorded_twice_under_two_spellings_is_planned_once(
+    machine, silence
+):
+    path = tagged(machine, silence, "a record", OLD_POP, "Pop", job="job-a")
+    record(machine, music(machine) / "." / "a record.flac", OLD_POP, word="Pop", job="job-b")
+    plan = planned(machine)
+    counts(plan, write=1)
+    assert did(remap.apply(machine, plan)) == remap.Written(written=1, read_back=1)
+    assert genre_of(path) == NEW_POP
+
+
+def test_a_file_reached_through_a_link_is_the_file(machine, silence, tmp_path):
+    path = tagged(machine, silence, "a record", OLD_POP, "Pop", job="job-a")
+    link = music(machine) / "linked.flac"
+    link.symlink_to(path)
+    record(machine, link, OLD_POP, source=SHOP, word="Pop", job="job-b")
+    counts(planned(machine), ambiguous_record=1)
+
+
+def test_a_folder_named_in_another_case_on_a_volume_that_folds_case_is_inside(
+    machine, silence
+):
+    """A tag job keeps the folder as it was typed. Where the volume folds case
+    that is the same directory, and its files are this library's."""
+    path = tagged(machine, silence, "a record", OLD_POP, "Pop")
+    typed = Path(str(machine.library.root).upper()) / "Music" / "a record.flac"
+    if not typed.exists():
+        pytest.skip("this volume keeps two cases apart, so the other case is another folder")
+    directory = jobs.store_dir(machine) / artifacts.ARTIFACTS_DIRNAME / "job-a"
+    for report in directory.glob("*.json"):
+        report.unlink()
+    record(machine, typed, OLD_POP, word="Pop")
+    plan = planned(machine)
+    counts(plan, write=1)
+    assert genre_of(path) == OLD_POP
+
+
+def test_two_files_that_are_gone_are_two_files(machine):
+    record(machine, music(machine) / "gone one.flac", OLD_POP, word="Pop")
+    record(machine, music(machine) / "gone two.flac", OLD_POP, word="Pop")
+    counts(planned(machine), file_missing=2)
+
+
 def test_a_file_that_is_gone_is_counted_missing_and_listed(machine, silence):
     gone = music(machine) / "moved since.flac"
     record(machine, gone, OLD_POP, word="Pop")
@@ -326,7 +388,7 @@ def test_a_file_outside_this_librarys_root_is_counted_and_never_opened(
 
     counts(plan, outside_library=2)
     assert plan.items == () and plan.files == 2 and opened == []
-    assert remap.apply(machine, plan) == remap.Written(written=0, read_back=0)
+    assert did(remap.apply(machine, plan)) == remap.Written(written=0, read_back=0)
     assert genre_of(outside) == OLD_POP
 
 
@@ -532,7 +594,7 @@ def test_an_id3_container_carrying_one_genre_is_planned_and_rewritten(machine, i
     record(machine, path, OLD_POP, word="Pop")
     plan = planned(machine)
     counts(plan, write=1)
-    assert remap.apply(machine, plan) == remap.Written(written=1, read_back=1)
+    assert did(remap.apply(machine, plan)) == remap.Written(written=1, read_back=1)
     assert genre_of(path) == NEW_POP
 
 
@@ -617,7 +679,7 @@ def test_the_apply_writes_the_planned_genre_and_no_other_file(machine, silence):
 
     written = remap.apply(machine, planned(machine))
 
-    assert written == remap.Written(written=2, read_back=2)
+    assert did(written) == remap.Written(written=2, read_back=2)
     assert written.clean
     assert {p.stem: genre_of(p) for p in (pop, alternative, by_hand, shop, rock)} == {
         "a pop record": NEW_POP,
@@ -643,7 +705,7 @@ def test_a_second_plan_after_the_apply_agrees_and_writes_nothing(machine, silenc
     remap.apply(machine, planned(machine))
     again = planned(machine)
     counts(again, agree=1)
-    assert remap.apply(machine, again) == remap.Written(written=0, read_back=0)
+    assert did(remap.apply(machine, again)) == remap.Written(written=0, read_back=0)
 
 
 def test_a_rewrite_is_recorded_as_a_tagging_record_of_its_own(machine, silence):
@@ -660,7 +722,10 @@ def test_a_rewrite_is_recorded_as_a_tagging_record_of_its_own(machine, silence):
         "source": CATALOGUE,
         "source_genre": "Pop",
         "remapped_from": OLD_POP,
+        "generation": 1,
     }
+    staging = jobs.store_dir(machine) / artifacts.STAGING_DIRNAME / f"remap-{plan.digest}"
+    assert not list(staging.rglob("*.json")), "the record was staged and never put in place"
 
 
 def with_pop_written_as(tag: str) -> taxonomy.Taxonomy:
@@ -686,10 +751,68 @@ def test_a_file_this_verb_rewrote_is_corrected_again_when_the_word_moves_again(
     plan = planned(machine, moved)
 
     counts(plan, write=1)
-    assert plan.items == (remap.Item(str(path), "Pop", NEW_POP, NEW_POP, "Folk", "write"),)
-    assert remap.apply(machine, plan) == remap.Written(written=1, read_back=1)
+    assert plan.items == (
+        remap.Item(str(path), "Pop", NEW_POP, NEW_POP, "Folk", "write", generation=1),
+    )
+    assert did(remap.apply(machine, plan)) == remap.Written(written=1, read_back=1)
     assert genre_of(path) == "Folk"
     counts(planned(machine, moved), agree=1)
+    generations = sorted(
+        report.get("generation", 0) for _job, report in artifacts.every_committed(machine)[0]
+    )
+    assert generations == [0, 1, 2]
+
+
+def test_a_genre_put_back_by_hand_after_a_rewrite_is_left_alone(machine, silence):
+    """What the second review drove. The record the rewrite replaced still
+    matched the file, so the undo a person made was planned for rewrite again
+    on every run."""
+    path = tagged(machine, silence, "a pop record", OLD_POP, "Pop")
+    remap.apply(machine, planned(machine))
+    assert tags.write_genre(path, OLD_POP)
+
+    plan = planned(machine)
+
+    counts(plan, changed_since=1)
+    assert plan.items == (
+        remap.Item(str(path), "Pop", NEW_POP, OLD_POP, NEW_POP, "leave", "changed-since"),
+    )
+    assert did(remap.apply(machine, plan)) == remap.Written(written=0, read_back=0)
+    assert genre_of(path) == OLD_POP
+
+
+def test_a_word_given_its_first_genre_back_is_still_followed(machine, silence):
+    """A rewrite's record is in force however its genre compares with an older
+    record's. The genre goes there and back, and then moves a third time."""
+    path = tagged(machine, silence, "a pop record", OLD_POP, "Pop")
+    remap.apply(machine, planned(machine))
+    back = with_pop_written_as(OLD_POP)
+    remap.apply(machine, planned(machine, back))
+    assert genre_of(path) == OLD_POP
+    counts(planned(machine, back), agree=1)
+
+    third = planned(machine)
+
+    counts(third, write=1)
+    assert third.items[0].generation == 2
+    remap.apply(machine, third)
+    assert genre_of(path) == NEW_POP
+
+
+@pytest.mark.parametrize("generation", [True, -1, "2", 1.5, None])
+def test_a_generation_that_is_not_a_positive_whole_number_is_a_tagging_jobs(generation):
+    (read,) = remap.recorded(
+        [("job-a", {"path": "/a", "genre_written": "Rock", "generation": generation})]
+    )
+    assert read.generation == 0
+
+
+def test_the_rewritten_items_are_carried_for_the_undo(machine, silence):
+    path = tagged(machine, silence, "a pop record", OLD_POP, "Pop")
+    written = remap.apply(machine, planned(machine))
+    assert [(item.path, item.current, item.wanted) for item in written.rewritten] == [
+        (str(path), OLD_POP, NEW_POP)
+    ]
 
 
 def test_a_file_that_was_not_rewritten_gets_no_record(machine, silence, monkeypatch):
@@ -708,12 +831,12 @@ def test_a_record_that_cannot_be_committed_is_named_and_the_file_stays_rewritten
     path = tagged(machine, silence, "a pop record", OLD_POP, "Pop")
     plan = planned(machine)
 
-    def refuse_to_write(_path, _payload):
+    def refuse_to_write(_cfg, _name, _ordinal, _report):
         raise OSError("the queue's volume is full")
 
-    monkeypatch.setattr(artifacts, "write", refuse_to_write)
+    monkeypatch.setattr(artifacts, "commit", refuse_to_write)
     written = remap.apply(machine, plan)
-    assert written == remap.Written(written=1, read_back=1, unrecorded=(str(path),))
+    assert did(written) == remap.Written(written=1, read_back=1, unrecorded=(str(path),))
     assert not written.clean
     assert genre_of(path) == NEW_POP
 
@@ -724,7 +847,7 @@ def test_a_file_that_moved_since_the_plan_is_named_and_not_written(machine, sile
     plan = planned(machine)
     assert tags.write_genre(path, "Deep House")
     written = remap.apply(machine, plan)
-    assert written == remap.Written(written=1, read_back=1, moved=(str(path),))
+    assert did(written) == remap.Written(written=1, read_back=1, moved=(str(path),))
     assert genre_of(path) == "Deep House"
     assert genre_of(other) == NEW_POP
 
@@ -741,7 +864,7 @@ def test_a_file_the_writer_could_not_write_is_named_as_untouched_and_the_rest_ar
         tags, "write_genre", lambda path, genre: path != stuck and real(path, genre)
     )
     written = remap.apply(machine, planned(machine))
-    assert written == remap.Written(written=1, read_back=1, failed=(str(stuck),))
+    assert did(written) == remap.Written(written=1, read_back=1, failed=(str(stuck),))
     assert genre_of(stuck) == OLD_POP
     assert genre_of(fine) == NEW_POP
 
@@ -751,7 +874,7 @@ def test_a_file_written_that_does_not_read_back_is_named_as_wrong(machine, silen
     path = tagged(machine, silence, "a pop record", OLD_POP, "Pop")
     monkeypatch.setattr(tags, "write_genre", lambda _path, _genre: True)
     written = remap.apply(machine, planned(machine))
-    assert written == remap.Written(written=1, read_back=0, wrong=(str(path),))
+    assert did(written) == remap.Written(written=1, read_back=0, wrong=(str(path),))
     reports, _unread = artifacts.every_committed(machine)
     assert [job for job, _report in reports] == ["job-a"]
 
@@ -761,7 +884,7 @@ def test_only_a_planned_write_is_written(machine, silence):
     path = tagged(machine, silence, "by hand", OLD_POP, "Pop", now="Deep House")
     plan = planned(machine)
     assert plan.items[0].wanted == NEW_POP
-    assert remap.apply(machine, plan) == remap.Written(written=0, read_back=0)
+    assert did(remap.apply(machine, plan)) == remap.Written(written=0, read_back=0)
     assert genre_of(path) == "Deep House"
 
 
@@ -925,8 +1048,29 @@ def test_an_active_taxonomy_with_no_table_says_so_and_plans_nothing(machine, sil
 
     assert code == int(ExitCode.OK), acted
     assert codes(acted) == ["remap-nothing-to-write", "remap-no-vocabulary"]
-    assert "[vocabulary.deezer]" in message(acted, "remap-no-vocabulary")
+    said = message(acted, "remap-no-vocabulary")
+    assert "[vocabulary.deezer]" in said
+    # The table alone would not load: its Pop row's tag needs an alias and a
+    # map row the copy does not have yet, and the message has to say so.
+    assert "routing alias" in said and "sub_by_source map row" in said
     assert genre_of(path) == OLD_POP
+
+
+def test_the_shipped_table_alone_does_not_load_on_a_copy_from_before_it(machine):
+    """Why the message above names the alias and the map row."""
+    source = resources.files("cratekit") / "templates" / "taxonomy.default.toml"
+    shipped = tomllib.loads(source.read_text(encoding="utf-8"))
+    before = tomllib.loads(shipped_text_with_no_vocabulary())
+    bucket = next(b for b in before["bucket"] if b["id"] == "non_electronic")
+    bucket["aliases"].remove("NonElectronic / Pop")
+    bucket["sub_by_source"]["map"] = [
+        row for row in bucket["sub_by_source"]["map"] if row["source"] != "NonElectronic / Pop"
+    ]
+    taxonomy.build_taxonomy(before)
+    before["vocabulary"] = shipped["vocabulary"]
+    with pytest.raises(taxonomy.TaxonomyError) as caught:
+        taxonomy.build_taxonomy(before)
+    assert any("is filed by no exact declaration" in p for p in caught.value.problems)
 
 
 def test_the_shipped_template_declares_the_table_so_the_warning_is_not_given(machine, silence):
@@ -953,6 +1097,8 @@ def test_a_write_that_does_not_take_refuses_after_the_rest_were_written(
     assert cause["detail"] == {
         "wrong": [], "moved": [], "failed": [str(stuck)], "unrecorded": [],
         "written": 1, "read_back": 1,
+        # The undo for the file that did take, which no later run lists.
+        "rewritten": [{"path": str(fine), "from": OLD_POP, "to": NEW_POP}],
     }  # fmt: skip
     assert "1 file(s) were rewritten and read back" in cause["message"]
     assert "1 could not be written and are untouched" in cause["message"]

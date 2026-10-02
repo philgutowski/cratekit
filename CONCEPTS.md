@@ -228,9 +228,15 @@ record says was written. Every file lands in one outcome: `agree`, `write`,
 `changed-since`, `word-declined`, `ambiguous-record`, `file-missing`,
 `file-unreadable` or `outside-library`, a recorded path not under this
 library's root, which is counted and never opened. A file is followed only
-where it was tagged. It writes files behind an explicit gate, commits a tagging
-record of each rewrite so a later run can correct it again, and opens no
-database. The rows follow by `crate tag rows`.
+where it was tagged, and is one file however many spellings its records give
+its path. It writes files behind an explicit gate, commits a tagging record of
+each rewrite so a later run can correct it again, and opens no database. The
+rows follow by `crate tag rows`.
+
+A rewrite's record carries a **generation**, one past the record that
+explained the file. Only the general catalogue's records of the highest
+generation on a file are in force, so a genre a person puts back by hand after
+a rewrite matches nothing in force and is left as `changed-since`.
 
 Not `crate tag retag`, which selects a genre the taxonomy calls too coarse and
 asks a catalogue what it should be.

@@ -127,32 +127,44 @@ def committed(cfg: config.Config, job_id: str) -> tuple[dict[str, Any], ...]:
     directory = _job_dir(ARTIFACTS_DIRNAME, cfg, job_id)
     if not directory.is_dir():
         return ()
-    found: list[dict[str, Any]] = []
-    # SORTED BY THE ORDINAL AS A NUMBER, not by the filename. The name is
-    # ``{ordinal:04d}.json``, so four digits sort as text in item order and the
-    # ten thousandth does not: ``"10000"`` sorts before ``"9999"``. One item is
-    # one audio file here, and a folder holding ten thousand of them is a normal
-    # download directory rather than a hypothesis.
-    for path in sorted(directory.glob("*.json"), key=lambda item: int(item.stem)):
-        try:
-            parsed = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if isinstance(parsed, dict):
-            found.append(parsed)
-    return tuple(found)
+    return _reports(directory)[0]
 
 
 def _item_order(path: Path) -> tuple[int, int, str]:
     """A report's place among its job's: by its ordinal as a NUMBER.
 
-    The rule :func:`committed` states, ``"10000"`` sorts before ``"9999"`` as
-    text. A file whose name is no ordinal sorts after every one that is, by
-    name, and is never a reason to raise: this reads a whole installation's
-    directory and one stray file must not hide the rest.
+    SORTED BY THE ORDINAL AS A NUMBER, not by the filename. The name is
+    ``{ordinal:04d}.json``, so four digits sort as text in item order and the
+    ten thousandth does not: ``"10000"`` sorts before ``"9999"``. One item is
+    one audio file here, and a folder holding ten thousand of them is a normal
+    download directory rather than a hypothesis.
+
+    A file whose name is no ordinal sorts after every one that is, by name,
+    and is never a reason to raise: one stray file must not hide the rest.
     """
     stem = path.stem
     return (0, int(stem), "") if stem.isdigit() else (1, 0, stem)
+
+
+def _reports(directory: Path) -> tuple[tuple[dict[str, Any], ...], int]:
+    """One job directory's reports in item order, and how many could not be read.
+
+    The one parse loop both readers below use, so they cannot come to disagree
+    about which files are reports or what order they are in.
+    """
+    found: list[dict[str, Any]] = []
+    unread = 0
+    for path in sorted(directory.glob("*.json"), key=_item_order):
+        try:
+            parsed = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            unread += 1
+            continue
+        if not isinstance(parsed, dict):
+            unread += 1
+            continue
+        found.append(parsed)
+    return tuple(found), unread
 
 
 def every_committed(cfg: config.Config) -> tuple[tuple[tuple[str, dict[str, Any]], ...], int]:
@@ -180,22 +192,30 @@ def every_committed(cfg: config.Config) -> tuple[tuple[tuple[str, dict[str, Any]
     found: list[tuple[str, dict[str, Any]]] = []
     unread = 0
     for directory in sorted(entry for entry in root.iterdir() if entry.is_dir()):
-        for path in sorted(directory.glob("*.json"), key=_item_order):
-            try:
-                parsed = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                unread += 1
-                continue
-            if not isinstance(parsed, dict):
-                unread += 1
-                continue
-            found.append((directory.name, parsed))
+        reports, skipped = _reports(directory)
+        unread += skipped
+        found.extend((directory.name, report) for report in reports)
     return tuple(found), unread
+
+
+def commit(cfg: config.Config, name: str, ordinal: int, report: dict[str, Any]) -> Path:
+    """Stage one report and put it in place, for a writer that is not a job's worker.
+
+    THE ENGINE'S OWN COMMIT, flush then rename then flush the directory, so a
+    record written outside a drive is as whole as one written inside it. A
+    writer that went straight to the final path could be killed half way and
+    leave a truncated report every later reader counts as unread for good.
+    ``name`` is the directory the reports sit under, where a job's identifier
+    goes for a worker.
+    """
+    staged = write(staged_path(cfg, name, ordinal), report)
+    return jobs.commit_artifact(staged, final_path(cfg, name, ordinal))
 
 
 __all__ = [
     "ARTIFACTS_DIRNAME",
     "STAGING_DIRNAME",
+    "commit",
     "committed",
     "every_committed",
     "final_path",
