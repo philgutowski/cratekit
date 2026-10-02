@@ -1,0 +1,95 @@
+name = "r816-a"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_too_coarse_protection"
+description = "plan_rows: drop the rule that a too coarse file word does not replace a specific row word"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''        elif _protected(declared, row_word, file_word):'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "A2_held_out"
+description = "plan_rows: ignore the rows a person held out, so a hand set genre is planned as a write"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''        if content_id in held_out:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "A3_multi_valued"
+description = "plan_rows: write a row from a file holding more than one genre"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''            if several:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "A4_agreement"
+description = "plan_rows: stop reading equal words as agreement, so every row with a file genre is a write"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''        if row_word == file_word:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "A5_unreadable_is_blank"
+description = "_file_word: count a file whose tags would not open as a file with no genre"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''        return "", FILE_UNREADABLE'''
+new = '''        return "", FILE_BLANK'''
+
+[[rows]]
+id = "A6_first_value"
+description = "_file_word: compare the checked reader's text as it came, null bytes and all"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''    word = next((part.strip() for part in text.split("\x00") if part.strip()), "")'''
+new = '''    word = text.strip()'''
+
+[[rows]]
+id = "A7_digest_counts"
+description = "RowsPlan.digest: leave the outcome counts out of the digest"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''                "counts": dict(self.counts),
+'''
+new = ''''''
+
+[[rows]]
+id = "A8_leave_unmatched"
+description = "plan_rows: drop the identifiers held out that name no differing row"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''        leave_unmatched=tuple(sorted(held_out - listed)),'''
+new = '''        leave_unmatched=(),'''
+
+[[dropped]]
+id = "A9_blank_row_takes_coarse"
+description = "_protected: protect a blank row from a too coarse file word"
+reason = "ranked below the cap: the same predicate A1 measures, one clause in"
+
+[[dropped]]
+id = "A10_probe_fallback"
+description = "plan_rows: count an answer the census gains later as agreement"
+reason = "ranked below the cap: maintainer facing, no producer today"
+
+[[dropped]]
+id = "A11_item_order"
+description = "plan_rows: leave the items in walk order"
+reason = "ranked below the cap: digest determinism, held by one ordering assertion"
+
+[[dropped]]
+id = "A12_digest_leave_unmatched"
+description = "RowsPlan.digest: leave the unmatched identifiers out of the digest"
+reason = "ranked below the cap: A7 and A8 measure the two neighbours"

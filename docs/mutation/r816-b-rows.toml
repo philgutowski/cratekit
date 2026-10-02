@@ -1,0 +1,110 @@
+name = "r816-b"
+pass_kind = "light"
+
+[[rows]]
+id = "B1_stale_check"
+description = "apply_rows: write without asking whether each row is still as the plan read it"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''    assert_rows_as_planned(plan, mapped)
+'''
+new = ''''''
+
+[[rows]]
+id = "B2_stale_tombstone"
+description = "assert_rows_as_planned: write a row removed since the plan"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''        if row is None or trees.soft_delete_marker(row):'''
+new = '''        if row is None:'''
+
+[[rows]]
+id = "B3_blank_spellings"
+description = "assert_rows_as_planned: read two spellings of a blank genre as a change"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''        if (_empty(held) and _empty(planned)) or str(held) == str(planned):'''
+new = '''        if str(held) == str(planned):'''
+
+[[rows]]
+id = "B4_restore_detection"
+description = "apply_rows: record a fingerprint without first looking for an out of band restore"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''    convergence.detect_out_of_band_restore(cfg, db, tree_registry.read(cfg))
+'''
+new = ''''''
+
+[[rows]]
+id = "B5_commit_recorded"
+description = "apply_rows: leave the landed commit off the session record"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''        # RECORDED THE INSTANT THE COMMIT RETURNS.
+        _record_commit(record, written, cfg)
+'''
+new = '''        # RECORDED THE INSTANT THE COMMIT RETURNS.
+'''
+
+[[rows]]
+id = "B6_bookkeeping_exempt"
+description = "judge: stop exempting the binding's bookkeeping columns, so every clean write reads as moved"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''            and column not in rb_writer.BOOKKEEPING_COLUMNS
+'''
+new = ''''''
+
+[[rows]]
+id = "B7_read_back_word"
+description = "judge: stop comparing the genre read back with the file's word"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''        if word != item.file:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "B8_read_back_columns"
+description = "judge: stop reporting another column that moved"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''        if changed:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "B9_cache_reset"
+description = "apply_rows: leave the collection cache holding the words as they were"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''    collection.reset_cache()
+'''
+new = ''''''
+
+[[dropped]]
+id = "B10_fingerprint_recorded"
+description = "apply_rows: record no fingerprint after the commit"
+reason = "ranked below the cap: B4 measures the detection, which is the half that was missing"
+
+[[dropped]]
+id = "B11_zero_commit"
+description = "_record_commit: claim a commit for a run that wrote nothing"
+reason = "ranked below the cap: maintainer facing, the verb never applies a plan with no write"
+
+[[dropped]]
+id = "B12_read_back_refusal"
+description = "assert_read_back: never refuse"
+reason = "ranked below the cap: B7 and B8 measure what it judges"
+
+[[dropped]]
+id = "B13_barren_watch"
+description = "apply_rows: accept an empty analysis root list"
+reason = "ranked below the cap: a copy of the membership writer's guard, measured there"
