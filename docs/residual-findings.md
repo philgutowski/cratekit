@@ -33082,6 +33082,14 @@ library. A private step still refused after its retry is passed over, not
 raised, which is R-849. Closes once one created playlist reads private on the
 account at an attended sitting, recorded in `docs/cutover.md`.
 
+
+**Read back at sitting 30, 2026-10-02, and closed.** `crate export playlist
+TOOLBOX/Dancefloor Rescue` against the collection export of 2026-10-01, on
+the installed build at the merge of #242, created one playlist on the
+account. Read at the provider through the product's own session it reports
+`public: False`, and the account's web player shows it with the padlock
+reading Private. Four of its eight tracks were written; the other four are
+R-850.
 ---
 
 ## R-835. A followed label cannot become a folder of year playlists on the streaming account
@@ -33526,3 +33534,32 @@ protocol does not have.
 before R-834 rather than a new one, and the product makes no claim about
 visibility to the person. Revisit if R-835 or R-837 lands, since both would
 create many playlists through this member.
+
+## R-850. `export playlist` reports ok over a playlist it wrote half of, and never names the tracks it left out
+
+**Found:** at sitting 30, 2026-10-02, reading back R-834's live export.
+
+**The mechanism.** The export queues one item per library track, and an item
+whose track has no match at the provider settles `done` with the track
+recorded under `unmatched` in its artifact. The job's summary counts settled
+items, so the verb prints `export.playlist: ok`, `8 of 8 settled`, and
+nothing else. The unmatched tracks and their reasons are written only to the
+job's artifact files under the installation's state directory, which no verb
+reads back to a person.
+
+**Driven.** `crate export playlist TOOLBOX/Dancefloor Rescue` on the live
+account: eight items, `ok`, `8 of 8 settled`. The playlist holds four. The
+artifacts name the four: Mood Edits "Shiver" and Pavesi, Samir "Hungry"
+unmatched, David San "Lisztomania" unmatched, and Daniel Allan, Arlo,
+fkblnde, whose ISRC names two provider tracks (R-356).
+
+**Measured cost.** A person exporting a set is told it went over and finds
+half of it missing on the account, with no list of what to look for.
+
+**Closes when:** the export's answer counts the tracks written, already
+there and unmatched, and lists each unmatched track with its reason, on the
+human renderer and in the envelope, and a test drives an export with an
+unmatched track and reads it in the answer.
+
+**On the board bar, (b).** The product prints a clean report over a declared
+write it did not perform for half the playlist.
