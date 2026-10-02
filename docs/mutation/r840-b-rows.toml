@@ -36,48 +36,43 @@ new = '''    name = _text(name)
 
 [[rows]]
 id = "B4_an_unread_release_refuses"
-description = "label_artists: refuse only when the outage bound was reached, so a run that left one or two releases unread exits clean"
+description = "_walk: refuse only when the outage bound was reached, so a run that left one or two releases unread exits clean"
 file = "src/cratekit/label/artists_cli.py"
 surface = "user"
 tests = ["tests/test_label_artists.py"]
-old = '''        if done.counts[UNREAD]:
-            # AFTER THE WALK'''
-new = '''        if done.counts[UNREAD] >= catalogue.READS_FAILED_IN_A_ROW:
-            # AFTER THE WALK'''
+old = '''    if done.counts[UNREAD]:
+        # AFTER THE WALK'''
+new = '''    if done.counts[UNREAD] >= catalogue.READS_FAILED_IN_A_ROW:
+        # AFTER THE WALK'''
 
 [[rows]]
-id = "B5_decided_meanwhile_is_not_written"
-description = "_write: drop the verdict half of the settled check, so an item decided during the read is retried three times and refuses the run"
+id = "B5_decided_meanwhile_is_not_fine"
+description = "_write: answer already fine whenever nothing was written, so an item decided during the read is said to have stopped reading an address"
 file = "src/cratekit/label/artists_cli.py"
 surface = "user"
 tests = ["tests/test_label_artists.py"]
-old = '''            if current is None or current.stored_verdict is not None:
-                return DECIDED'''
-new = '''            if current is None:
-                return DECIDED'''
+old = '''    return ALREADY_FINE if seen else DECIDED'''
+new = '''    return ALREADY_FINE'''
 
 [[rows]]
 id = "B6_put_right_meanwhile_is_kept"
-description = "_write: drop the second address check, so an artist somebody typed during the read is overwritten by the provider's"
+description = "_write: drop the address check on the payload as it stands, so an artist somebody typed during the read is overwritten by the provider's"
 file = "src/cratekit/label/artists_cli.py"
 surface = "user"
 tests = ["tests/test_label_artists.py"]
-old = '''            if not is_address(current.payload.get("artist")):
-                return ALREADY_FINE
-'''
-new = ""
+old = '''        if not is_address(current.get("artist")):
+            return None
+        return {**current, "artist": name}'''
+new = '''        return {**current, "artist": name}'''
 
 [[rows]]
-id = "B7_the_write_expects_what_it_read"
-description = "_write: drop expecting, so a stamp landing between the read and the write is taken back"
+id = "B7_addresses_are_what_still_read_one"
+description = "_Run.addresses: count every outcome, so an item that stopped reading an address, and every item that never did, is counted as one"
 file = "src/cratekit/label/artists_cli.py"
 surface = "user"
 tests = ["tests/test_label_artists.py"]
-old = '''                {**current.payload, "artist": name},
-                expecting=current.payload,
-'''
-new = '''                {**current.payload, "artist": name},
-'''
+old = '''        return sum(n for outcome, n in self.counts.items() if outcome != ALREADY_FINE)'''
+new = '''        return sum(self.counts.values())'''
 
 [[rows]]
 id = "B8_only_the_artist_is_rewritten"
@@ -85,21 +80,20 @@ description = "_write: write a payload holding the artist alone, so every other 
 file = "src/cratekit/label/artists_cli.py"
 surface = "user"
 tests = ["tests/test_label_artists.py"]
-old = '''                {**current.payload, "artist": name},
-                expecting=current.payload,
-'''
-new = '''                {"artist": name},
-                expecting=current.payload,
-'''
+old = '''        return {**current, "artist": name}'''
+new = '''        return {"artist": name}'''
 
 [[rows]]
-id = "B9_write_attempts"
-description = "_write: try the write once and not three times, so one stamp landing between the read and the write refuses the run"
+id = "B9_a_refusal_carries_why_each_read_failed"
+description = "_Run.record: leave the sentence off the release's row, so a refusal, which carries no check line, says a read failed and not why"
 file = "src/cratekit/label/artists_cli.py"
 surface = "user"
 tests = ["tests/test_label_artists.py"]
-old = '''        for _attempt in range(WRITE_ATTEMPTS):'''
-new = '''        for _attempt in range(1):'''
+old = '''                "artist": artist,
+                "said": said,
+'''
+new = '''                "artist": artist,
+'''
 
 [[rows]]
 id = "B10_unaddressed_is_keyed_by_item"
@@ -118,7 +112,7 @@ description = "_with_counts: count left against every address and not against th
 file = "src/cratekit/label/artists_cli.py"
 tests = ["tests/test_label_artists.py"]
 old = '''    left = listed - len(done.releases)'''
-new = '''    left = addresses - done.counts[REPAIRED]'''
+new = '''    left = done.addresses - done.counts[REPAIRED]'''
 
 [[dropped]]
 id = "B12_a_refused_read_is_not_asked"

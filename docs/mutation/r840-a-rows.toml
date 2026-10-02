@@ -16,11 +16,11 @@ description = "_listed: drop the address check, so every open label release is r
 file = "src/cratekit/label/artists_cli.py"
 surface = "user"
 tests = ["tests/test_label_artists.py"]
-old = '''            if not is_address(item.payload.get("artist")):
-                counts[ALREADY_FINE] += 1
-                continue
-            if item.stored_verdict'''
-new = '''            if item.stored_verdict'''
+old = '''        if not is_address(item.payload.get("artist")):
+            done.counts[ALREADY_FINE] += 1
+            continue
+        if item.stored_verdict'''
+new = '''        if item.stored_verdict'''
 
 [[rows]]
 id = "A3_unreadable_verdict_is_decided"
@@ -28,9 +28,9 @@ description = "_listed: drop the stored verdict check, so an item carrying a ver
 file = "src/cratekit/label/artists_cli.py"
 surface = "user"
 tests = ["tests/test_label_artists.py"]
-old = '''            if item.stored_verdict is not None:
-                counts[DECIDED] += 1
-                continue
+old = '''        if item.stored_verdict is not None:
+            done.counts[DECIDED] += 1
+            continue
 '''
 new = ""
 
@@ -40,40 +40,40 @@ description = "_listed: drop the kind from the selection, so another producer's 
 file = "src/cratekit/label/artists_cli.py"
 surface = "user"
 tests = ["tests/test_label_artists.py"]
-old = '''review.Predicate(queue=str(Queue.LABEL_RELEASE), kind=sweep.KIND)'''
+old = '''review.Predicate(queue=str(Queue.LABEL_RELEASE), kind=genre_gate.RELEASE_KIND)'''
 new = '''review.Predicate(queue=str(Queue.LABEL_RELEASE))'''
 
 [[rows]]
 id = "A5_no_identifier_is_not_read"
-description = "label_artists: drop the empty identifier half of the unaddressed check, so an item filed under an empty identifier is asked for and reported as no longer served"
+description = "_walk: drop the empty identifier half of the unaddressed check, so an item filed under an empty identifier is asked for and reported as no longer served"
 file = "src/cratekit/label/artists_cli.py"
 surface = "user"
 tests = ["tests/test_label_artists.py"]
-old = '''            if (
-                not subject.release_id
-                or genre_gate.release_item_id(subject.release_id) != subject.item_id
-            ):'''
-new = '''            if (
-                genre_gate.release_item_id(subject.release_id) != subject.item_id
-            ):'''
+old = '''        if (
+            not subject.release_id
+            or genre_gate.release_item_id(subject.release_id) != subject.item_id
+        ):'''
+new = '''        if (
+            genre_gate.release_item_id(subject.release_id) != subject.item_id
+        ):'''
 
 [[rows]]
 id = "A6_another_items_release_is_not_read"
-description = "label_artists: drop the addressing half of the unaddressed check, so an item naming another item's release is given that release's artist"
+description = "_walk: drop the addressing half of the unaddressed check, so an item naming another item's release is given that release's artist"
 file = "src/cratekit/label/artists_cli.py"
 surface = "user"
 tests = ["tests/test_label_artists.py"]
-old = '''            if (
-                not subject.release_id
-                or genre_gate.release_item_id(subject.release_id) != subject.item_id
-            ):'''
-new = '''            if (
-                not subject.release_id
-            ):'''
+old = '''        if (
+            not subject.release_id
+            or genre_gate.release_item_id(subject.release_id) != subject.item_id
+        ):'''
+new = '''        if (
+            not subject.release_id
+        ):'''
 
 [[rows]]
 id = "A7_catalogue_opened_on_demand"
-description = "label_artists: open the catalogue before the walk, so a queue with no address in it logs in and can refuse on the credential"
+description = "_walk: open the catalogue before the walk, so a queue with no address in it logs in and can refuse on the credential"
 file = "src/cratekit/label/artists_cli.py"
 surface = "user"
 tests = ["tests/test_label_artists.py"]
@@ -84,18 +84,18 @@ new = '''    found: catalogue.Catalogue | None = catalogue.resolve(cfg)
 
 [[rows]]
 id = "A8_outage_bound"
-description = "label_artists: stop after four reads failing in a row and not three"
+description = "_walk: stop after four reads failing in a row and not three"
 file = "src/cratekit/label/artists_cli.py"
 surface = "user"
 tests = ["tests/test_label_artists.py"]
-old = '''            if failed_in_a_row >= catalogue.READS_FAILED_IN_A_ROW:
-                # THE RUN STOPS'''
-new = '''            if failed_in_a_row > catalogue.READS_FAILED_IN_A_ROW:
-                # THE RUN STOPS'''
+old = '''        if failed_in_a_row >= catalogue.READS_FAILED_IN_A_ROW:
+            # THE RUN STOPS'''
+new = '''        if failed_in_a_row > catalogue.READS_FAILED_IN_A_ROW:
+            # THE RUN STOPS'''
 
 [[rows]]
 id = "A9_an_answer_resets_the_count"
-description = "label_artists: never reset the count of failed reads, so three scattered failures stop the run as an outage"
+description = "_walk: never reset the count of failed reads, so three scattered failures stop the run as an outage"
 file = "src/cratekit/label/artists_cli.py"
 surface = "user"
 tests = ["tests/test_label_artists.py"]

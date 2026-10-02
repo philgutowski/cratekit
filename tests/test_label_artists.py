@@ -200,8 +200,10 @@ def test_an_open_item_reading_an_address_is_given_the_name_and_nothing_else_move
             "title": "Release r-1",
             "outcome": "repaired",
             "artist": "Harbour Act",
+            "said": "release r-1 ('Release r-1') on Tide Works now reads its artist, Harbour Act",
         }
     ]
+    assert envelope["data"]["summary"]["addresses"] == 1
     assert check(envelope, "release.r-1")["status"] == "ok"
     assert "Harbour Act" in check(envelope, "release.r-1")["detail"]
 
@@ -371,11 +373,15 @@ def test_a_release_the_provider_could_not_answer_for_is_left_and_the_run_refuses
     assert counts(cause["detail"]["artists"]) == zeroes(unread=1)
     assert cause["detail"]["artists"]["asked"] == 1
     assert cause["detail"]["left"] == 0
+    assert cause["detail"]["artists"]["addresses"] == 1
     [release] = cause["detail"]["artists"]["releases"]
     assert (release["release_id"], release["outcome"], release["artist"]) == (
         "r-1",
         "unread",
         None,
+    )
+    assert "RuntimeError: the catalogue could not read the release 'r-1'" in release["said"], (
+        "a refusal carries no check line, so the row is where the reason has to be"
     )
 
 
@@ -415,6 +421,7 @@ def test_three_reads_failing_in_a_row_stop_the_run_and_say_what_was_left(cfg, mo
     assert fake.artists_asked_for == ["r-1", "r-2", "r-3"]
     assert cause["detail"]["left"] == 2
     assert counts(cause["detail"]["artists"]) == zeroes(unread=3)
+    assert cause["detail"]["artists"]["addresses"] == 5, "the two not reached were dropped"
     assert "run crate label artists again" in cause["remediation"]["steps"][-1]
 
 
@@ -642,139 +649,141 @@ def test_an_artist_put_right_meanwhile_is_not_overwritten(cfg, monkeypatch):
     envelope = repaired_ok()
 
     assert stored(cfg, item_id).payload["artist"] == "Typed By Hand"
-    assert counts(envelope["data"]["summary"]) == zeroes(already_fine=1)
+    summary = envelope["data"]["summary"]
+    assert counts(summary) == zeroes(already_fine=1)
+    assert summary["addresses"] == 0, "an item that stopped reading an address is not one"
     assert envelope["outcome"] == "no_op"
     assert "stopped reading an address" in check(envelope, "release.r-1")["detail"]
-    assert "0 open label release(s) do not read an address" in check(envelope, "fine")["detail"]
+    assert "1 open label release(s) do not read an address" in check(envelope, "fine")["detail"]
+    assert "no open label release reads an address" in check(envelope, "addresses")["detail"]
 
 
-def test_a_stamp_landing_between_the_read_and_the_write_is_kept(cfg, monkeypatch):
-    """The write is a compare and set: a payload that moved is read again."""
-    item_id = offered(cfg, "r-1")
-    real_find = review.find
-    reads: list[str] = []
+def test_the_counts_always_sum_to_the_addresses_and_the_items_left_alone(cfg, monkeypatch):
+    """Every outcome but ``already_fine`` is an address, whatever happened meanwhile."""
+    offered(cfg, "r-1")
+    offered(cfg, "r-2", artist="Label Act")
+    offered(cfg, "r-gone")
+    renamed_id = offered(cfg, "r-4")
 
-    def find_then_stamp(store, wanted):
-        found = real_find(store, wanted)
-        reads.append(wanted)
-        if len(reads) == 1:
-            # Another writer's stamp, landing after this read and before the write.
-            review.redescribe(store, wanted, {**found.payload, genre_gate.GATE_FIELD: "pass"})
-        return found
+    def renamed(release_id: str) -> None:
+        if release_id != "r-4":
+            return
+        with review.open_store(cfg) as items:
+            current = review.get(items, renamed_id)
+            review.redescribe(items, renamed_id, {**current.payload, "artist": "Typed By Hand"})
 
-    monkeypatch.setattr(review, "find", find_then_stamp)
-    bind(monkeypatch, StrictCatalogue(release_artists={"r-1": "Harbour Act"}))
+    bind(
+        monkeypatch,
+        Meanwhile(release_artists={"r-1": "Harbour Act", "r-4": "Quay Act"}, during=renamed),
+    )
 
-    envelope = repaired_ok()
+    summary = repaired_ok()["data"]["summary"]
 
-    after = stored(cfg, item_id)
-    assert after.payload["artist"] == "Harbour Act"
-    assert after.payload[genre_gate.GATE_FIELD] == "pass", "the write took the stamp back"
-    assert reads == [item_id, item_id], "the item was not read again after the write was refused"
-    assert counts(envelope["data"]["summary"]) == zeroes(repaired=1)
-
-
-def test_an_item_that_moves_under_every_attempt_refuses_the_run_and_is_left(
-    cfg, monkeypatch
-):
-    item_id = offered(cfg, "r-1")
-    offered(cfg, "r-2")
-    real_find = review.find
-    reads: list[str] = []
-
-    def find_then_stamp(store, wanted):
-        found = real_find(store, wanted)
-        reads.append(wanted)
-        review.redescribe(store, wanted, {**found.payload, "stamped": len(reads)})
-        return found
-
-    monkeypatch.setattr(review, "find", find_then_stamp)
-    fake = StrictCatalogue(release_artists={"r-1": "Harbour Act", "r-2": "Quay Act"})
-    bind(monkeypatch, fake)
-
-    code, envelope = artists()
-
-    assert code == int(ExitCode.UPSTREAM_UNAVAILABLE), envelope
-    cause = envelope["cause"]
-    assert cause["reason"] == "unavailable-transient"
-    assert f"review item {item_id} changed under each of 3 attempts" in cause["message"]
-    assert cause["detail"]["item_id"] == item_id
-    assert cause["detail"]["left"] == 2
-    assert reads == [item_id] * artists_cli.WRITE_ATTEMPTS == [item_id] * 3
-    assert fake.artists_asked_for == ["r-1"]
-    after = stored(cfg, item_id)
-    assert after.payload["artist"] == ADDRESS
-    assert after.payload["stamped"] == 3, "another writer's last word was taken back"
+    assert counts(summary) == zeroes(repaired=1, not_served=1, already_fine=2)
+    assert summary["addresses"] == 2
+    assert summary["addresses"] == sum(
+        summary[word] for word in artists_cli.OUTCOMES if word != "already_fine"
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 6b. The store: a rewrite that expects the payload it read
+# 6b. The store: a rewrite made from the payload as it stands
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_a_rewrite_expecting_the_payload_the_item_carries_is_written(cfg):
+def test_a_rewrite_given_a_function_is_handed_the_payload_and_writes_what_it_returns(cfg):
+    item_id = offered(cfg, "r-1", stamped="by the sweep")
+    seen: list[dict] = []
+
+    def named(current: dict) -> dict:
+        seen.append(dict(current))
+        return {**current, "artist": "Harbour Act"}
+
+    with review.open_store(cfg) as items:
+        before = review.get(items, item_id)
+
+        after = review.redescribe(items, item_id, named)
+
+        assert seen == [before.payload]
+        assert after is not None
+        assert review.get(items, item_id).payload == {**before.payload, "artist": "Harbour Act"}
+        assert after.payload["stamped"] == "by the sweep"
+
+
+def test_a_rewrite_whose_function_returns_nothing_writes_nothing(cfg):
     item_id = offered(cfg, "r-1")
     with review.open_store(cfg) as items:
         before = review.get(items, item_id)
 
-        after = review.redescribe(
-            items, item_id, {**before.payload, "artist": "Harbour Act"}, expecting=before.payload
-        )
+        assert review.redescribe(items, item_id, lambda current: None) is None
 
-        assert after is not None and after.payload["artist"] == "Harbour Act"
-        assert review.get(items, item_id).payload == {**before.payload, "artist": "Harbour Act"}
+        assert review.get(items, item_id) == before
 
 
-def test_a_rewrite_expecting_a_payload_the_item_no_longer_carries_writes_nothing(cfg):
-    item_id = offered(cfg, "r-1")
-    with review.open_store(cfg) as items:
-        stale = review.get(items, item_id).payload
-        moved = review.redescribe(items, item_id, {**stale, genre_gate.GATE_FIELD: "pass"})
-
-        assert (
-            review.redescribe(items, item_id, {**stale, "artist": "Harbour Act"}, expecting=stale)
-            is None
-        )
-
-        assert review.get(items, item_id) == moved
+def never_called(current: dict) -> dict:
+    raise AssertionError("the payload of an item that is not open was handed over")
 
 
 @pytest.mark.parametrize("verdict", [review.Verdict.ACCEPTED, review.Verdict.REJECTED])
-def test_a_rewrite_expecting_the_payload_of_a_decided_item_writes_nothing(cfg, verdict):
+def test_a_rewrite_is_not_handed_the_payload_of_a_decided_item(cfg, verdict):
     item_id = offered(cfg, "r-1")
     decided(cfg, item_id, verdict)
     with review.open_store(cfg) as items:
         before = review.get(items, item_id)
 
-        assert (
-            review.redescribe(
-                items, item_id, {**before.payload, "artist": "X"}, expecting=before.payload
-            )
-            is None
-        )
+        assert review.redescribe(items, item_id, never_called) is None
 
         assert review.get(items, item_id) == before
 
 
-def test_a_rewrite_expects_a_payload_that_is_not_json_as_the_empty_one_a_reader_sees(cfg):
+def test_a_rewrite_is_not_handed_the_payload_of_an_item_with_an_unreadable_verdict(cfg):
     item_id = offered(cfg, "r-1")
     with review.open_store(cfg) as items:
         with items.immediate() as conn:
             conn.execute(
-                "UPDATE review_items SET payload = 'not json' WHERE item_id = ?", (item_id,)
+                "UPDATE review_items SET verdict = 'deferred' WHERE item_id = ?", (item_id,)
+            )
+        before = review.get(items, item_id)
+
+        assert review.redescribe(items, item_id, never_called) is None
+
+        assert review.get(items, item_id).payload == before.payload
+
+
+def test_a_rewrite_of_an_item_that_is_gone_calls_nothing_and_files_nothing(cfg):
+    with review.open_store(cfg) as items:
+        assert review.redescribe(items, "rv_nothing", never_called) is None
+        assert review.count_unresolved(items) == 0
+
+
+@pytest.mark.parametrize("raw", ["not json", "null", "[]", '"text"', "17"])
+def test_a_rewrite_is_handed_the_empty_payload_a_reader_of_the_item_is_shown(cfg, raw):
+    item_id = offered(cfg, "r-1")
+    seen: list[dict] = []
+    with review.open_store(cfg) as items:
+        with items.immediate() as conn:
+            conn.execute(
+                "UPDATE review_items SET payload = ? WHERE item_id = ?", (raw, item_id)
             )
         shown = review.get(items, item_id).payload
         assert shown == {}
 
-        after = review.redescribe(items, item_id, {"artist": "Harbour Act"}, expecting=shown)
+        def named(current: dict) -> dict:
+            seen.append(current)
+            return {**current, "artist": "Harbour Act"}
 
+        after = review.redescribe(items, item_id, named)
+
+        assert seen == [shown]
         assert after is not None and after.payload == {"artist": "Harbour Act"}
 
 
-def test_a_rewrite_expecting_anything_of_an_item_that_is_gone_files_nothing(cfg):
+def test_a_rewrite_given_a_payload_still_replaces_it_whole(cfg):
+    item_id = offered(cfg, "r-1")
     with review.open_store(cfg) as items:
-        assert review.redescribe(items, "rv_nothing", {"artist": "X"}, expecting={}) is None
-        assert review.count_unresolved(items) == 0
+        after = review.redescribe(items, item_id, {"artist": "Harbour Act"})
+
+        assert after is not None and after.payload == {"artist": "Harbour Act"}
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -2,28 +2,32 @@ name = "r840-c"
 pass_kind = "light"
 
 [[rows]]
-id = "C1_expecting_is_compared"
-description = "review.redescribe: drop the comparison, so a rewrite expecting a payload the item no longer carries is written over it"
+id = "C1_the_function_is_handed_the_payload_as_it_stands"
+description = "review.redescribe: hand the function an empty payload and not the stored one, so a caller changing one field writes that field alone"
 file = "src/cratekit/core/review.py"
 surface = "user"
 tests = ["tests/test_label_artists.py", "tests/test_label_judge.py"]
-old = '''            if current != dict(expecting):
-                return None
-'''
-new = ""
+old = '''            wanted = payload(_payload_of(held["payload"]))'''
+new = '''            wanted = payload({})'''
 
 [[rows]]
-id = "C2_expecting_reads_an_unparseable_payload_as_empty"
-description = "review.redescribe: let text that is not JSON raise, where every reader of an item shows it as the empty payload"
+id = "C2_the_function_is_only_handed_an_open_item"
+description = "review.redescribe: read the payload of any item, so the function is called for one that is decided or carries a verdict this build cannot read"
 file = "src/cratekit/core/review.py"
+surface = "user"
 tests = ["tests/test_label_artists.py", "tests/test_label_judge.py"]
-old = '''            try:
-                current = json.loads(held["payload"])
-            except ValueError:
-                current = {}
-            if current != dict(expecting):'''
-new = '''            current = json.loads(held["payload"])
-            if current != dict(expecting):'''
+old = '''                "SELECT payload FROM review_items WHERE item_id = ? AND verdict IS NULL",
+                (item_id,),
+            ).fetchone()
+            if held is None:
+                return None
+            wanted = payload('''
+new = '''                "SELECT payload FROM review_items WHERE item_id = ?",
+                (item_id,),
+            ).fetchone()
+            if held is None:
+                return None
+            wanted = payload('''
 
 [[rows]]
 id = "C3_the_adapter_reads_a_name"
@@ -44,15 +48,25 @@ old = '''    return name if isinstance(name, str) else ""'''
 new = '''    return str(name)'''
 
 [[rows]]
-id = "C5_the_sweep_files_a_name"
-description = "sweep._candidate: file the text of the release's artist object, which is its address, where the seam's reader is called"
-file = "src/cratekit/label/sweep.py"
+id = "C5_the_judging_stamp_is_made_on_the_payload_as_it_stands"
+description = "judge_cli._stamp: keep the fields of the item as it was read before the catalogue was asked, so an artist repaired in that time reads its address again"
+file = "src/cratekit/label/judge_cli.py"
 surface = "user"
-tests = ["tests/test_label_tidal_catalogue.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
-old = '''            "artist": artist_name(release),'''
-new = '''            "artist": str(getattr(release, "artist", "") or ""),'''
+tests = ["tests/test_label_judge.py", "tests/test_label_genre_gate.py"]
+old = '''        kept = {field: value for field, value in current.items() if field not in _STAMP_FIELDS}'''
+new = '''        kept = {field: value for field, value in item.payload.items() if field not in _STAMP_FIELDS}'''
 
 [[dropped]]
 id = "C6_a_release_the_client_returns_nothing_for"
 description = "TidalCatalogue._album: read None from the client as a release and not as one that is gone"
 reason = "moved, not changed: the guard is U75's, measured in that unit's table, and this unit only lifted it into the read the two methods share"
+
+[[dropped]]
+id = "C7_the_sweep_files_a_name"
+description = "sweep._candidate: file the text of the release's artist object where the seam's reader is called"
+reason = "measured before the second fix round, 2 killed of 280 collected, and the sweep was not touched by that round; it gave its place under the cap to C5"
+
+[[dropped]]
+id = "C8_a_payload_that_is_not_an_object_is_the_empty_one"
+description = "review._payload_of: hand JSON that is not an object on as it is"
+reason = "ranked below the cap: maintainer facing, and five parametrized cases in the suite drive it"

@@ -642,6 +642,12 @@ def _stamp(
     usually gets the verdict it already carries, and rewriting it would only
     move the stamp's judging job onto a release this job learned nothing about.
 
+    ON THE PAYLOAD AS IT STANDS AT THE WRITE, never as it was read before
+    the provider and the catalogue were asked, which is seconds earlier. The
+    store hands the current payload over under its write lock, so a field
+    another writer changed in that time, an artist ``label artists`` put
+    right, is kept (R-840).
+
     THE STAMP IS ONE STATEMENT AND IS REPLACED WHOLE. A verdict with no words
     takes the old words off the item with it. Merged over them, a release
     whose record would have held it, asked about and answered with nothing,
@@ -650,12 +656,14 @@ def _stamp(
     it on them.
     """
     said = judged.stamp()
-    if all(item.payload.get(field) == said.get(field) for field in _STAMP_FIELDS):
-        return
-    kept = {field: value for field, value in item.payload.items() if field not in _STAMP_FIELDS}
-    review.redescribe(
-        store, item.item_id, {**kept, **said, genre_gate.GATE_RUN_FIELD: run_id}
-    )
+
+    def stamped(current: dict[str, Any]) -> dict[str, Any] | None:
+        if all(current.get(field) == said.get(field) for field in _STAMP_FIELDS):
+            return None
+        kept = {field: value for field, value in current.items() if field not in _STAMP_FIELDS}
+        return {**kept, **said, genre_gate.GATE_RUN_FIELD: run_id}
+
+    review.redescribe(store, item.item_id, stamped)
 
 
 def _report(
