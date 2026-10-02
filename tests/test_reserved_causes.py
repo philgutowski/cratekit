@@ -5961,7 +5961,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # WARNING codes `tagging/remap_cli.py` gives. The other refusals the new
     # verb raises are internal-error, decision-stale and config-unusable, all
     # of which the tree already carried.
-    assert (len(literals), len(literals - set(causes))) == (580, 393), (
+    # Moved again on the same finding's review, 2026-10-02: 580 to 582
+    # distinct, non-keys 393 to 395. TWO joined and nothing left, neither a
+    # key. outside-library is the outcome `tagging/remap.py` counts a recorded
+    # path under when it is not beneath the library's root, and
+    # remap-outside-library is the WARNING code `tagging/remap_cli.py` gives
+    # for it.
+    assert (len(literals), len(literals - set(causes))) == (582, 395), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

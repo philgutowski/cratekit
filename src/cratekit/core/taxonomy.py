@@ -68,6 +68,16 @@ SUPPORTED_SCHEMA_VERSIONS = frozenset({1, 2})
 # there.
 FORMER_PLACE_SCHEMA_VERSION = 2
 
+# The sources whose words are read through a table of their own (R-799), by the
+# name a file's record gives each. ONE, the general catalogue. The record shops
+# are not here: their words are resolved by the buckets' aliases, which were
+# written for them, and a table declared for one would be read by nothing. A
+# name outside this tuple is refused at load for the same reason, since a
+# misspelled table loads clean and changes nothing, with nothing said. The
+# tagging package owns the name and cannot be imported from here, so the two
+# are pinned equal by a test, as the tree depth below is.
+VOCABULARY_SOURCES: tuple[str, ...] = ("deezer",)
+
 # How many levels a declared routing tree may nest: a root child, a folder, and a
 # sub-playlist (KTD14). Named here rather than written as a literal in the check
 # and again in its message, because it is the SAME number the XML bridge's
@@ -379,9 +389,11 @@ class Vocabulary:
     record beside dance tracks. ``source`` is the name a file's record gives
     the source, which is the name the tag summary counts under.
 
-    WHERE A SOURCE HAS A TABLE IT IS THE WHOLE ANSWER. A word with no row is
-    declined, never passed on to the buckets' aliases, since that is the table
-    this one exists to keep such a word away from.
+    THE TABLE IS ASKED FIRST. A word with no row goes on to the buckets'
+    aliases, as every word did before the table existed, so a specific word
+    those aliases already file correctly is not lost. What the table changes
+    for such a word is one thing: on a copy that declares a table, the answer
+    must still name a folder, see :meth:`Taxonomy.named_folder`.
     """
 
     source: str
@@ -505,11 +517,27 @@ class Taxonomy:
         """One source's own table, by lowercased word, or None when it has none.
 
         NONE AND AN EMPTY TABLE ARE DIFFERENT ANSWERS. None says this taxonomy
-        declares nothing for the source, so its words are resolved the way
-        every word is. A table with no rows is a declaration that declines
-        every word of that source.
+        declares nothing for the source, so its words are resolved exactly as
+        they were before any table existed. A table with no rows is a
+        declaration: it answers for no word, and the copy has still taken the
+        rule that a genre written from that source names a folder.
         """
         return self._vocabulary.get(source)
+
+    def named_folder(self, genre: str) -> tuple[str, str | None] | None:
+        """The place a written genre names by an exact declaration, or None.
+
+        The bucket and, in a bucket that files by source genre, the style sub.
+        None when the genre is filed by a keyword or the fallback, is too
+        coarse to be a final genre, or is such a bucket's bare name or a word
+        that would land in its default sub. ONE RULE WITH THE LOADER: this is
+        the test a vocabulary row's tag passed to be declared, asked again of
+        a genre the buckets' aliases answered.
+        """
+        place, _problem = _tag_place(
+            genre, self._by_id, self._by_display, self._routing_alias, self.fallback
+        )
+        return place
 
     def former_places(self, bucket_id: str) -> tuple[tuple[str, "FormerPlace"], ...]:
         """Every former place that competes in one bucket, with its declarer.
@@ -896,9 +924,11 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
 
     # Keyed on PRESENCE, for the catalog section's reason above: an empty
     # table is a declaration and must be read as one.
+    by_display = {b.display: b.id for b in buckets}
     vocabularies, vocabulary_problems = _build_vocabularies(
         data.get("vocabulary") if "vocabulary" in data else None,
-        buckets,
+        by_id,
+        by_display,
         routing_alias,
         fallback,
     )
@@ -924,7 +954,7 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
         long_tracks=long_tracks,
         vocabularies=vocabularies,
         _by_id=by_id,
-        _by_display={b.display: b.id for b in buckets},
+        _by_display=by_display,
         _routing_alias=routing_alias,
         _tagging_alias=tagging_alias,
         _former_places=_index_former_places(buckets),
@@ -1573,7 +1603,8 @@ def _build_published(raw: Any) -> tuple[tuple[PublishedRule, ...], list[str]]:
 
 def _tag_place(
     tag: str,
-    buckets: Sequence[Bucket],
+    by_id: Mapping[str, Bucket],
+    by_display: Mapping[str, str],
     routing_alias: Mapping[str, str],
     fallback: Fallback,
 ) -> tuple[tuple[str, str | None] | None, str]:
@@ -1584,7 +1615,9 @@ def _tag_place(
     alias, or a bucket's own name. A keyword rule is a guess and the fallback
     is nowhere, and a table that wrote a word either of those catches would
     put a genre on a file that this taxonomy has no folder for. Spelled here
-    because routing imports this module and cannot be asked.
+    because routing imports this module and cannot be asked, and held to
+    routing's own answer by a test over every string the template declares.
+    The indexes are the loader's, built once, and the built taxonomy's.
 
     IN A BUCKET THAT FILES BY SOURCE GENRE THE TAG NEEDS A ROW OF ITS OWN in
     that bucket's map. The bucket's bare name has none and lands in the default
@@ -1592,8 +1625,6 @@ def _tag_place(
     filed under another style with its word lost (R-799). A word with no row
     lands there too, so both are refused, by the one test.
     """
-    by_id = {bucket.id: bucket for bucket in buckets}
-    by_display = {bucket.display: bucket.id for bucket in buckets}
     bucket_id = routing_alias.get(tag) or by_display.get(tag)
     bucket = by_id.get(bucket_id or "")
     if bucket is None:
@@ -1621,16 +1652,16 @@ def _tag_place(
 
 def _build_vocabularies(
     raw: Any,
-    buckets: Sequence[Bucket],
+    by_id: Mapping[str, Bucket],
+    by_display: Mapping[str, str],
     routing_alias: Mapping[str, str],
     fallback: Fallback,
 ) -> tuple[tuple[Vocabulary, ...], list[str]]:
     """The ``[vocabulary.SOURCE]`` tables, and what is wrong with them (R-799).
 
-    A ROW THAT CANNOT BE USED IS A PROBLEM AND NOT A SKIP. Where a source has a
-    table, a word with no row is declined, so a row dropped silently would
-    leave its word declined with nothing said, and a person who wrote the row
-    would be told the catalogue's word maps nowhere.
+    A ROW THAT CANNOT BE USED IS A PROBLEM AND NOT A SKIP. A word whose row was
+    dropped silently would go on to the buckets' aliases, which is the filing
+    the row was written to replace, and nothing would say so.
 
     THE SHAPE IS CHECKED BEFORE A ROW IS READ, for the reason the former place
     check gives: a person edits a library's copy by hand, and a table in the
@@ -1654,6 +1685,15 @@ def _build_vocabularies(
             problems.append(
                 f"{where}: the source name must match {_ID.pattern}, the name a "
                 f"file's record gives the source"
+            )
+            continue
+        # A TABLE NOTHING READS IS REFUSED, NOT IGNORED. A misspelled name, or
+        # a record shop's, would load clean and file every word as before.
+        if source not in VOCABULARY_SOURCES:
+            problems.append(
+                f"{where}: no source's words are read through a table of this "
+                f"name, so it would change nothing; the sources that are: "
+                f"{', '.join(VOCABULARY_SOURCES)}"
             )
             continue
         rows = table.get("words") if isinstance(table, Mapping) else None
@@ -1685,7 +1725,9 @@ def _build_vocabularies(
                 )
                 continue
             seen.add(word.lower())
-            place, problem = _tag_place(tag.strip(), buckets, routing_alias, fallback)
+            place, problem = _tag_place(
+                tag.strip(), by_id, by_display, routing_alias, fallback
+            )
             if place is None:
                 problems.append(f"{at}: {problem}")
                 continue

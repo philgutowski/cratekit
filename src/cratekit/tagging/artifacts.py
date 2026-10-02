@@ -143,6 +143,18 @@ def committed(cfg: config.Config, job_id: str) -> tuple[dict[str, Any], ...]:
     return tuple(found)
 
 
+def _item_order(path: Path) -> tuple[int, int, str]:
+    """A report's place among its job's: by its ordinal as a NUMBER.
+
+    The rule :func:`committed` states, ``"10000"`` sorts before ``"9999"`` as
+    text. A file whose name is no ordinal sorts after every one that is, by
+    name, and is never a reason to raise: this reads a whole installation's
+    directory and one stray file must not hide the rest.
+    """
+    stem = path.stem
+    return (0, int(stem), "") if stem.isdigit() else (1, 0, stem)
+
+
 def every_committed(cfg: config.Config) -> tuple[tuple[tuple[str, dict[str, Any]], ...], int]:
     """Every committed report of every job, with its job, and how many were unread.
 
@@ -158,7 +170,9 @@ def every_committed(cfg: config.Config) -> tuple[tuple[tuple[str, dict[str, Any]
     might have needed one, and the caller has to be able to say how many.
 
     Jobs in name order and reports in item order, so two reads of one
-    unchanged queue agree and a digest over the result is stable.
+    unchanged queue agree and a digest over the result is stable. THE ORDER IS
+    NOT THE ORDER THINGS HAPPENED IN: a job's name says nothing about when it
+    ran, and a reader must not take the last report for the latest.
     """
     root = jobs.store_dir(cfg) / ARTIFACTS_DIRNAME
     if not root.is_dir():
@@ -166,7 +180,7 @@ def every_committed(cfg: config.Config) -> tuple[tuple[tuple[str, dict[str, Any]
     found: list[tuple[str, dict[str, Any]]] = []
     unread = 0
     for directory in sorted(entry for entry in root.iterdir() if entry.is_dir()):
-        for path in sorted(directory.glob("*.json"), key=lambda item: item.name):
+        for path in sorted(directory.glob("*.json"), key=_item_order):
             try:
                 parsed = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, ValueError):

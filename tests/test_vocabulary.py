@@ -5,8 +5,9 @@ where Pop is a dance genre. Read through them the general catalogue's Pop was
 written as the dance bucket's name on 10 of the author's tracks, and its
 Alternative as a bucket's bare name on 6. These tests drive the table the
 taxonomy now declares per source: the loader that refuses a row whose tag
-names no folder, the resolver that answers from the table and from nothing
-else where one is declared, and the tagger writing the word that files.
+names no folder, the resolver that asks the table first, the chooser that
+writes a word of the buckets' aliases only when it names a folder, and the
+tagger writing the word that files.
 
 EVERY EXPECTED VALUE IS A LITERAL. The shipped rows are written out here and
 never read off the template under test, and the places are pinned by
@@ -24,7 +25,7 @@ from importlib import resources
 
 import pytest
 
-from cratekit.core import routing
+from cratekit.core import routing, taxonomy
 from cratekit.core.routing import Decline, Match
 from cratekit.core.taxonomy import TaxonomyError, build_taxonomy, default_taxonomy
 from cratekit.tagging import published, searchers
@@ -148,36 +149,73 @@ def test_a_word_is_matched_whole_whatever_its_case(spelled):
 
 
 @pytest.mark.parametrize("word", NO_ROW)
-def test_a_top_level_word_with_no_row_is_declined(word):
-    answer = routing.suggest_tag(TAXONOMY, word, source=CATALOGUE)
-    assert answer.decline is Decline.NOT_FOUND
-    assert (answer.tag, answer.bucket_id, answer.sub_id) == (None, None, None)
+def test_a_top_level_word_with_no_row_is_declined_and_never_written(word):
+    """Electro and Dance stay declined, and so does every word no folder names."""
     assert published.choose(TAXONOMY, [word]) is None
 
 
 @pytest.mark.parametrize(
-    ("word", "by_the_shops_aliases"),
+    ("word", "written"),
     [
+        ("Disco", "House / Funky House / Disco"),
+        ("Trance", "Trance"),
         ("Deep House", "Deep House"),
-        ("Synth-Pop", "Dance / Pop"),
-        ("Indie Rock", "NonElectronic"),
-        ("Pop Rock", "Pop Rock"),
     ],
 )
-def test_a_word_with_no_row_is_not_passed_on_to_the_record_shops_aliases(
-    word, by_the_shops_aliases
+def test_a_word_with_no_row_goes_on_to_the_aliases_and_is_written_when_it_names_a_folder(
+    word, written
 ):
-    """The table is the whole answer. Each of these is a word the buckets'
-    aliases or the last tier would answer, pinned first so the test cannot pass
-    on a word nothing claims."""
-    assert routing.suggest_tag(TAXONOMY, word).tag == by_the_shops_aliases
-    assert routing.suggest_tag(TAXONOMY, word, source=CATALOGUE).declined
+    """The table is asked first and is not the whole answer. A specific word
+    the aliases already file correctly is still written."""
+    assert TAXONOMY.vocabulary(CATALOGUE).get(word.lower()) is None
+    assert routing.suggest_tag(TAXONOMY, word, source=CATALOGUE) == routing.suggest_tag(
+        TAXONOMY, word
+    )
+    assert published.choose(TAXONOMY, [word]) == (word, written)
+    assert TAXONOMY.named_folder(written) is not None
+
+
+def test_a_dance_word_the_aliases_file_is_not_passed_over_for_a_broad_word_with_a_row():
+    """What the review drove. Declining every word with no row made an album
+    listing Electro, Disco and Pop a pop record, where the aliases had filed
+    it under the disco bucket."""
+    assert published.choose(TAXONOMY, ["Electro", "Disco", "Pop"]) == (
+        "Disco",
+        "House / Funky House / Disco",
+    )
+
+
+@pytest.mark.parametrize("word", ["Indie Rock", "Punk", "Latin", "World Music", "Bollywood"])
+def test_a_word_the_aliases_answer_with_a_bare_bucket_name_is_declined(word, no_table):
+    """R-799's second fault, for the words with no row. The aliases answer each
+    with the non electronic bucket's own name, which a copy with no table
+    wrote, and a copy that declares the table never does."""
+    assert routing.suggest_tag(TAXONOMY, word, source=CATALOGUE).tag == "NonElectronic"
+    assert published.choose(no_table, [word]) == (word, "NonElectronic")
     assert published.choose(TAXONOMY, [word]) is None
+    assert published.choose(TAXONOMY, [word, "Rock"]) == ("Rock", "Rock")
+
+
+def test_the_guard_is_taken_with_the_table_and_not_with_its_rows(default_raw):
+    """A table with no rows still says a written genre names a folder."""
+
+    def mutate(data):
+        data["vocabulary"][CATALOGUE]["words"] = []
+
+    empty = built(default_raw, mutate)
+    assert published.choose(empty, ["Indie Rock"]) is None
+    assert published.choose(empty, ["Alternative"]) is None
+    assert published.choose(empty, ["Rock"]) == ("Rock", "Rock")
+    assert published.choose(empty, ["Pop"]) == ("Pop", "Dance / Pop")
 
 
 def test_part_of_a_word_is_not_the_word():
-    assert routing.suggest_tag(TAXONOMY, "Pop Rock", source=CATALOGUE).declined
-    assert routing.suggest_tag(TAXONOMY, "Ro", source=CATALOGUE).declined
+    """A row is matched whole. Neither of these reaches the row for Pop or Rock."""
+    assert routing.suggest_tag(TAXONOMY, "Pop Rock", source=CATALOGUE) == routing.suggest_tag(
+        TAXONOMY, "Pop Rock"
+    )
+    assert routing.suggest_tag(TAXONOMY, "Pop Rock", source=CATALOGUE).tag == "Pop Rock"
+    assert routing.suggest_tag(TAXONOMY, "Ro", source=CATALOGUE).tag == "Ro"
 
 
 def test_an_empty_word_is_declined_before_any_table_is_read():
@@ -302,26 +340,17 @@ def test_a_taxonomy_with_no_table_behaves_as_it_did(no_table, word):
     assert with_source == routing.suggest_tag(no_table, word)
 
 
-def test_a_table_for_another_source_is_not_read_for_the_catalogue(default_raw):
-    def mutate(data):
-        data["vocabulary"]["another_catalogue"] = data["vocabulary"].pop(CATALOGUE)
-
-    moved = built(default_raw, mutate)
-    assert moved.vocabulary(CATALOGUE) is None
-    assert published.choose(moved, ["Pop"]) == ("Pop", "Dance / Pop")
-    assert routing.suggest_tag(moved, "Pop", source="another_catalogue").tag == (
-        "NonElectronic / Pop"
-    )
+def test_a_table_is_read_only_for_the_source_it_names():
+    assert routing.suggest_tag(TAXONOMY, "Pop", source="another_catalogue").tag == "Dance / Pop"
 
 
-def test_a_table_with_no_rows_is_a_declaration_that_declines_every_word(default_raw):
+def test_a_table_with_no_rows_is_a_declaration_and_answers_for_no_word(default_raw):
     def mutate(data):
         data["vocabulary"][CATALOGUE]["words"] = []
 
     empty = built(default_raw, mutate)
     assert empty.vocabulary(CATALOGUE) == {}
-    for word in SHIPPED:
-        assert published.choose(empty, [word]) is None
+    assert empty.vocabularies[0].words == ()
 
 
 def test_an_empty_vocabulary_section_declares_no_table(default_raw):
@@ -360,6 +389,80 @@ def test_a_source_name_that_no_record_could_carry_is_refused(default_raw, name):
         data["vocabulary"][name] = {"words": []}
 
     assert any("the source name must match" in p for p in problems_from(default_raw, mutate))
+
+
+@pytest.mark.parametrize("name", ["dezer", "beatport", "traxsource", "bandcamp"])
+def test_a_table_nothing_would_read_is_refused_and_not_ignored(default_raw, name):
+    """A misspelled name and a record shop's. Each would load clean and change
+    nothing, and the review found nothing said so."""
+
+    def mutate(data):
+        data["vocabulary"][name] = {"words": [{"word": "Pop", "tag": "Rock"}]}
+
+    assert any(
+        f"[vocabulary.{name}]" in p and "it would change nothing" in p and "deezer" in p
+        for p in problems_from(default_raw, mutate)
+    )
+
+
+def test_the_sources_the_loader_knows_are_the_ones_the_tagger_reads_a_table_for():
+    """The loader cannot import the tagging package, so its tuple is pinned to
+    the name the chooser passes the resolver."""
+    assert taxonomy.VOCABULARY_SOURCES == (published.SOURCE,)
+    assert published.SOURCE == CATALOGUE
+    assert not set(taxonomy.VOCABULARY_SOURCES) & set(searchers.SOURCES)
+
+
+# ── one rule for a folder's name, held to routing's own answer ─────────────
+
+
+def _declared_strings() -> list[str]:
+    """Every string the template declares anywhere a genre can be named."""
+    found: set[str] = set(TAXONOMY.fallback.too_coarse_as_source)
+    for bucket in TAXONOMY.buckets:
+        found.add(bucket.display)
+        found.update(bucket.aliases)
+        found.update(bucket.tag_aliases)
+        for sub in bucket.subs:
+            found.add(sub.display)
+            found.update(sub.tag_aliases)
+        if bucket.sub_by_source is not None:
+            found.update(bucket.sub_by_source.map)
+    found.update(rule.keyword for rule in TAXONOMY.fuzzy)
+    found.update(row.tag for table in TAXONOMY.vocabularies for row in table.words)
+    return sorted(found | {"a word nothing declares", "Indie Pop"})
+
+
+@pytest.mark.parametrize("genre", _declared_strings())
+def test_a_named_folder_is_where_routing_files_the_genre(genre):
+    """The loader spells routing's two exact tiers for itself. This holds the
+    spelling to routing over every string the template declares: whenever a
+    folder is named, routing files the genre there by an exact declaration."""
+    place = TAXONOMY.named_folder(genre)
+    landed_bucket, landed_sub, match = filed(TAXONOMY, genre)
+    if place is None:
+        bucket = TAXONOMY.bucket(landed_bucket)
+        assert (
+            match in (Match.FUZZY, Match.FALLBACK)
+            or TAXONOMY.is_too_coarse_as_source(genre)
+            or (bucket.sub_by_source is not None and genre not in bucket.sub_by_source.map)
+        ), f"{genre!r} is filed exactly under {landed_bucket} and no folder is named"
+        return
+    assert match in (Match.EXACT, Match.PASSTHROUGH)
+    assert place[0] == landed_bucket
+    if place[1] is not None:
+        assert place[1] == landed_sub
+    else:
+        assert TAXONOMY.bucket(landed_bucket).sub_by_source is None
+
+
+def test_the_named_folder_population_is_not_empty_on_either_side():
+    """Measured on the shipped template on 2026-10-02: 154 strings, 77 naming a
+    folder and 77 not. Floors, so the test above cannot pass over a walk that
+    collapsed to one side."""
+    answers = [TAXONOMY.named_folder(genre) for genre in _declared_strings()]
+    assert sum(place is not None for place in answers) >= 70
+    assert sum(place is None for place in answers) >= 70
 
 
 def test_a_row_that_is_not_a_table_is_refused(default_raw):

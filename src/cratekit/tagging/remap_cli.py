@@ -27,7 +27,9 @@ WHAT A PERSON READS. The gate carries the outcome counts and the word pairs in
 front of the items. A run that left a file alone says how many and why on
 every path, and a run over a taxonomy that declares no table for the general
 catalogue says that, since on such a copy nothing can have changed and a clean
-answer would read as a library already corrected.
+answer would read as a library already corrected. A run in which a file did
+not take its genre refuses, and the refusal still names the row verb for the
+files that did, since the next run plans none of them and would not say it.
 
 Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
 command-line layer, for the reason ``adopt.apply_cli`` gives.
@@ -57,6 +59,9 @@ FILES_LEFT = "remap-left-alone"
 
 #: Files whose genre could not be learned.
 FILES_NOT_READ = "remap-file-not-read"
+
+#: Files a record names that are not under this library's root.
+FILES_OUTSIDE = "remap-outside-library"
 
 #: The active taxonomy declares no table for the general catalogue.
 NO_VOCABULARY = "remap-no-vocabulary"
@@ -178,6 +183,25 @@ def _not_read(plan: remap.RemapPlan) -> list[dict[str, str]]:
     ]
 
 
+def _outside(plan: remap.RemapPlan) -> list[dict[str, str]]:
+    """The warning a run carries when a record names a file outside the library."""
+    count = plan.counts[remap.OUTSIDE_LIBRARY]
+    if not count:
+        return []
+    return [
+        {
+            "code": FILES_OUTSIDE,
+            "message": (
+                f"{count} of {plan.files} file(s) a tagging job wrote a genre from "
+                f"{remap.SOURCE} onto are not under this library's root and were "
+                f"not opened: a folder tagged before it was landed, or another "
+                f"library's; a file is followed only where it was tagged, so one "
+                f"landed since is not among the files this plan looked at"
+            ),
+        }
+    ]
+
+
 def _no_vocabulary(plan: remap.RemapPlan) -> list[dict[str, str]]:
     """The warning a run carries over a taxonomy with no table for the source."""
     if plan.declared:
@@ -212,7 +236,13 @@ def _records_unread(plan: remap.RemapPlan) -> list[dict[str, str]]:
 
 
 def _advisories(plan: remap.RemapPlan) -> list[dict[str, str]]:
-    return [*_no_vocabulary(plan), *_left(plan), *_not_read(plan), *_records_unread(plan)]
+    return [
+        *_no_vocabulary(plan),
+        *_left(plan),
+        *_not_read(plan),
+        *_outside(plan),
+        *_records_unread(plan),
+    ]
 
 
 def _nothing(plan: remap.RemapPlan) -> dict[str, str]:
@@ -226,6 +256,16 @@ def _nothing(plan: remap.RemapPlan) -> dict[str, str]:
     }
 
 
+#: What a run that rewrote a file owes its rows. One text, on the envelope of a
+#: clean run and among the steps of a refusal that wrote some.
+ROWS_FOLLOW = (
+    "the library rows of the rewritten files go on carrying the old genre, so "
+    "run `crate tag rows`, which writes each row's genre from its file and no "
+    "other column, where a reload in rekordbox overwrites every tag field; for a "
+    "genre the library has never held that verb names the one act it needs first"
+)
+
+
 def _written(plan: remap.RemapPlan, written: remap.Written) -> dict[str, str]:
     pairs = "; ".join(
         f"{pair['from']!r} to {pair['to']!r}, {pair['files']}" for pair in plan.pairs()
@@ -236,11 +276,7 @@ def _written(plan: remap.RemapPlan, written: remap.Written) -> dict[str, str]:
             f"{written.written} file(s) now carry the genre the taxonomy gives "
             f"their word and {written.read_back} read back as written: {pairs}; "
             f"the items list each file with the genre it carried, which is the "
-            f"undo; the library rows go on carrying the old genre, so run `crate "
-            f"tag rows`, which writes each row's genre from its file and no other "
-            f"column, where a reload in rekordbox overwrites every tag field; for "
-            f"a genre the library has never held that verb names the one act it "
-            f"needs first"
+            f"undo; {ROWS_FOLLOW}"
         ),
     }
 
@@ -255,8 +291,13 @@ def assert_written(written: remap.Written) -> None:
 
     AFTER THE OTHER FILES WERE WRITTEN, and the message says how many, so a
     person is not told nothing happened. A second run plans what is left.
+
+    THE ROW VERB IS NAMED HERE TOO WHEN ANY FILE WAS REWRITTEN. This run ends
+    in the refusal and never reaches the envelope that names it, and the next
+    run finds those files agreeing and plans none of them, so neither would
+    say their rows are stale.
     """
-    if not written.wrong and not written.moved:
+    if written.clean:
         return
     parts = []
     if written.moved:
@@ -264,23 +305,40 @@ def assert_written(written: remap.Written) -> None:
             f"{len(written.moved)} carried something else by the time the write "
             f"reached them and were not written: {_named(written.moved)}"
         )
+    if written.failed:
+        parts.append(
+            f"{len(written.failed)} could not be written and are untouched: "
+            f"{_named(written.failed)}"
+        )
     if written.wrong:
         parts.append(
             f"{len(written.wrong)} were written and do not read back as the genre "
             f"wanted: {_named(written.wrong)}"
         )
+    if written.unrecorded:
+        parts.append(
+            f"{len(written.unrecorded)} were rewritten and read back and no record "
+            f"of the rewrite could be committed, so a later run reads their genre "
+            f"as set by hand: {_named(written.unrecorded)}"
+        )
+    steps = [
+        "check each named file can be written and is not open elsewhere",
+        "run the verb again, which plans what is left",
+    ]
+    if written.written:
+        steps.append(ROWS_FOLLOW)
     raise refuse(
         "tag-remap-unwritten",
         f"{written.read_back} file(s) were rewritten and read back, and "
         + "; ".join(parts),
-        steps=(
-            "check each named file can be written and is not open elsewhere",
-            "run the verb again, which plans what is left",
-        ),
+        steps=tuple(steps),
         origin=_ORIGIN,
         detail={
             "wrong": list(written.wrong),
             "moved": list(written.moved),
+            "failed": list(written.failed),
+            "unrecorded": list(written.unrecorded),
+            "written": written.written,
             "read_back": written.read_back,
         },
     )
@@ -303,7 +361,7 @@ def tag_remap(ctx) -> Envelope:
             warnings=[_nothing(plan), *_advisories(plan)],
         )
 
-    written = remap.apply(plan)
+    written = remap.apply(cfg, plan)
     assert_written(written)
     data["totals"] = {
         **data["totals"],
@@ -317,10 +375,12 @@ __all__ = [
     "CONFIRM_GATE",
     "FILES_LEFT",
     "FILES_NOT_READ",
+    "FILES_OUTSIDE",
     "GENRES_WRITTEN",
     "NOTHING_TO_WRITE",
     "NO_VOCABULARY",
     "RECORDS_UNREAD",
+    "ROWS_FOLLOW",
     "assert_written",
     "build",
     "tag_remap",

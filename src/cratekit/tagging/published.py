@@ -91,7 +91,8 @@ THIS CATALOGUE'S WORDS HAVE A TABLE OF THEIR OWN IN THE TAXONOMY (R-799), under
 :data:`SOURCE`. The buckets' aliases were written for the record shops, where
 Pop is a dance genre, and read through them this catalogue's Pop was written as
 the dance bucket's name and its Alternative as a bucket's bare name. Where the
-table is declared it is the whole answer and a word with no row is declined.
+table is declared it is asked first. A word with no row goes on to the
+aliases, and what they answer is written only when it names a folder.
 
 Layer: modules.
 """
@@ -452,11 +453,19 @@ def choose(declared: Taxonomy, genres: Sequence[str]) -> tuple[str, str] | None:
 
     THE WORD IS RESOLVED AS THIS CATALOGUE'S (R-799). The resolver is told
     whose word it is, and a taxonomy that declares a vocabulary for this
-    catalogue answers from that table alone, so its Pop is not filed by an
-    alias written for a record shop's Pop. A taxonomy that declares none
-    answers through the shared aliases, as every copy did before that unit.
-    The tag is still the resolver's answer and nothing here adjusts it.
+    catalogue answers from that table first, so its Pop is not filed by an
+    alias written for a record shop's Pop. The tag is still the resolver's
+    answer and nothing here adjusts it.
+
+    ON A COPY THAT DECLARES THE TABLE, A WRITTEN GENRE NAMES A FOLDER. A word
+    with no row is answered by the buckets' aliases, and those can answer with
+    the bare name of a bucket that files by source genre, which lands in that
+    bucket's default sub with the word lost. That is how this catalogue's
+    Alternative was filed. So such an answer is passed over, by the test the
+    loader holds a row's tag to. A copy that declares no table has not taken
+    the rule and answers exactly as it did before that unit.
     """
+    names_a_folder = declared.vocabulary(SOURCE) is not None
     for word in genres:
         suggestion = routing.suggest_tag(declared, word, source=SOURCE)
         tag = suggestion.tag
@@ -465,6 +474,8 @@ def choose(declared: Taxonomy, genres: Sequence[str]) -> tuple[str, str] | None:
         if suggestion.bucket_id is None and declared.bucket_for_display(tag) is None:
             continue
         if declared.is_too_coarse_as_source(tag):
+            continue
+        if names_a_folder and declared.named_folder(tag) is None:
             continue
         return word, tag
     return None

@@ -1712,10 +1712,11 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         #
         # The correction of genres an older mapping wrote was approved and a file
         # did not take it: it carried something else by the time the write
-        # reached it, or the write failed, or it does not read back as written.
-        # PRECONDITION because the cure is the file's, which is named, and a
-        # second run plans what is left. Raised after the other files were
-        # written, so the message says how many were.
+        # reached it, or the write failed, or it does not read back as written,
+        # or its rewrite could not be recorded. PRECONDITION because the cure is
+        # the file's, which is named, and a second run plans what is left.
+        # Raised after the other files were written, so the message says how
+        # many were and names the verb their rows follow by.
         "tag-remap-unwritten": ExitCode.PRECONDITION,
     }
 )

@@ -1088,18 +1088,27 @@ kind = "kids"
 # files by source genre it has to have a row of its own in that bucket's map,
 # so the bucket's bare name can never be written.
 #
-# WHERE A SOURCE HAS A TABLE IT IS THE WHOLE ANSWER. A word with no row is
-# declined: the file keeps no genre, stays askable, and the word is named in
-# the run's summary, which is where to read what to add a row for. The record
-# shops have no table and resolve through the aliases above, as they always
-# did. Delete this table and the general catalogue does too.
+# THE TABLE IS ASKED FIRST. A word with no row goes on to the aliases above,
+# as it did before this table existed, so a specific word they already file
+# correctly, Disco or Trance, still is. One thing changes for such a word on a
+# copy that declares this table: what the aliases answer must name a folder by
+# the rule above, so the bare name of the non electronic bucket is never
+# written and the word is declined instead. A declined word leaves the file
+# with no genre and askable, and is named in the run's summary, which is where
+# to read what to add a row for.
+#
+# ONLY THE GENERAL CATALOGUE HAS ONE. The record shops' words are resolved by
+# the aliases above, which were written for them, and a table under any other
+# name is refused, since nothing would read it. Delete this table and the
+# general catalogue's words are filed by the aliases too, as before R-799.
 #
 # MEASURED on 2026-10-01: the general catalogue's 27 top level words. The 11
 # below have a folder. Electro and Dance are too coarse for a dance track and
-# have no row on purpose. Reggaeton, Christian, Salsa, Traditional Mexicano,
-# Films/Games, Metal, African Music, Asian Music, Blues, Brazilian Music,
-# Cumbia, Indian Music, Kids and Latin Music have no folder that names them.
-# NOT MEASURED: the words it lists below that level. None has a row.
+# have no row on purpose: the aliases decline both. Reggaeton, Christian,
+# Salsa, Traditional Mexicano, Films/Games, Metal, African Music, Asian Music,
+# Blues, Brazilian Music, Cumbia, Indian Music, Kids and Latin Music have no
+# folder that names them. NOT MEASURED: the words it lists below that level.
+# None has a row, so each is filed as it was before, less the bare name.
 [vocabulary.deezer]
 words = [
   { word = "Pop", tag = "NonElectronic / Pop" },
