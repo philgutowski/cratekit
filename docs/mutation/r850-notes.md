@@ -1,6 +1,11 @@
 # R-850 mutation notes
 
-**Verdict: not measured.** Fifteen rows are written in `r850-a-rows.toml`,
+**Verdict: measured at sitting 30, 2026-10-02, 15 of 15 killed, none at
+zero**, `r850-a.md`, run from the attended worktree at `main` with no
+installed `crate` process running. What follows is why the author's own run
+could not measure it.
+
+**The author's verdict was: not measured.** Fifteen rows are written in `r850-a-rows.toml`,
 one per guard this unit added: the summary's three counts and its unmatched
 listing, the reason gate and the no match sentence, the warning's zero, total
 and whole count checks, the shell's call to the verb's `concluded`, and the

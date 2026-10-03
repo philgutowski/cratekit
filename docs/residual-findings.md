@@ -33804,4 +33804,6 @@ findings are driven, a mutation table of up to 25 rows is measured, the
 unit's residuals are filed, and the record is written; then #246 is closed
 again by hand.
 
-**Not on the board bar by itself.** The work it names is #246, reopened.
+**Put on the board at sitting 30 as the vehicle for #246's owed work**,
+since Relay will not run a task it has already landed again. Under the bar
+(d), a guard on a path that writes is unmeasured.
