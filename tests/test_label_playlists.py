@@ -904,3 +904,101 @@ def test_an_unrecorded_marked_year_in_the_folder_is_matched_by_its_marked_name(f
     assert (year.action, year.remote_id) == (folders.ADOPT, marked)
     assert _build()[0] == int(ExitCode.OK)
     assert "Kompakt 2022" not in account.created
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 9. Written for the zero rows of mutation batch b
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_the_sync_pass_hands_the_sweep_every_year_playlist_a_build_recorded(
+    followed, monkeypatch
+):
+    from types import SimpleNamespace
+
+    from cratekit.sync import cli as sync_cli
+
+    cfg, _fake, _account = followed
+    assert _build()[0] == int(ExitCode.OK)
+    handed: list[frozenset[str]] = []
+
+    class Stop(Exception):
+        pass
+
+    def plan(store, cfg_, found, *, handler_key, label_built=frozenset()):
+        handed.append(label_built)
+        raise Stop
+
+    monkeypatch.setattr(sync_playlists, "plan", plan)
+    with pytest.raises(Stop):
+        sync_cli._plan_playlists(SimpleNamespace(handler_key="intake.playlist"), None)
+    assert handed == [ledger.label_playlist_ids(cfg)] and len(handed[0]) == 3
+
+
+def test_a_track_the_provider_will_not_play_is_never_planned(followed):
+    cfg, fake, account = followed
+    withdrawn = FakeTrack("t12")
+    withdrawn.available = False
+    fake.releases["r2"] = ([FakeTrack("t3"), withdrawn], 2022)
+    (year,) = [step for step in _plan(cfg, fake, account).years if step.year == "2022"]
+    assert year.add == ("t3",)
+
+
+def test_a_second_mark_says_each_year_is_already_marked(followed):
+    cfg, _fake, _account = followed
+    assert _build()[0] == int(ExitCode.OK)
+    xml = _landed(cfg)
+    assert _mark(xml)[0] == int(ExitCode.OK)
+    code, done = _mark(xml)
+    assert code == int(ExitCode.OK), done
+    assert {item.get("reason") for item in done["data"]["items"]} == {"already-marked"}
+
+
+def test_a_title_changed_between_the_plan_and_the_write_is_not_renamed(followed):
+    cfg, _fake, account = followed
+    assert _build()[0] == int(ExitCode.OK)
+    argv = ["label", "mark", LABEL, "--xml", str(_landed(cfg))]
+    code, refused = drive(argv)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    assert drive(["run", "decide", run_id, MARK, "apply", "--actor", "a-person"])[0] == 0
+    real = account.folder_playlists
+    reads: list[int] = []
+
+    def retitled_after_the_plan(folder_id):
+        reads.append(1)
+        listed = real(folder_id)
+        if len(reads) > 1:
+            listed["pl-2"] = "Kompakt Live"
+        return listed
+
+    account.folder_playlists = retitled_after_the_plan
+    code, done = drive(["--run", run_id, *argv])
+    assert code == int(ExitCode.OK), done
+    assert "pl-2" not in dict(account.renamed)
+    assert [w["code"] for w in done["warnings"]] == ["label-mark-changed-since-plan"]
+
+
+def test_an_empty_intake_file_is_no_proof_and_marks_nothing(followed):
+    cfg, _fake, account = followed
+    assert _build()[0] == int(ExitCode.OK)
+    empty = _landed(cfg)
+    empty.write_bytes(b"")
+    code, refused = drive(["label", "mark", LABEL, "--xml", str(empty)])
+    assert code == int(ExitCode.PRECONDITION), refused
+    assert refused["cause"]["reason"] == "sync-marks-blocked"
+    assert account.renamed == []
+
+
+def test_an_add_answered_with_nothing_is_read_again_and_not_reported_refused():
+    client = _Client()
+    playlist = _Playlist([], skip=set())
+    real = playlist.add
+
+    def answers_nothing(media_ids):
+        real(media_ids)
+        return []
+
+    playlist.add = answers_nothing
+    client.lists["p1"] = playlist
+    assert _adapter(client).add_tracks("p1", ("c1", "c2")) == ("c1", "c2")
