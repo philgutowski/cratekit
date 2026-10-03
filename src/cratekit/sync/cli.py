@@ -365,8 +365,16 @@ def _plan_playlists(spec: sources.SourceSpec, ctx) -> _Plan:
     cfg = _load()
     handler_key = str(spec.handler_key)
     found = catalogue.resolve(cfg)
+    # THE YEAR PLAYLISTS ``label playlists`` BUILT ARE NEVER INTAKE (R-835).
+    # Read before the listing, so an unreadable ledger refuses this source
+    # rather than letting a label's whole catalogue be swept as missing.
+    from cratekit.modules.outbound import ledger
+
+    label_built = ledger.label_playlist_ids(cfg)
     with jobs.open_store() as store:
-        sweep = playlists.plan(store, cfg, found, handler_key=handler_key)
+        sweep = playlists.plan(
+            store, cfg, found, handler_key=handler_key, label_built=label_built
+        )
 
     def describe(filed: list[jobs.Job]) -> dict[str, Any]:
         return playlists.report(sweep, filed)

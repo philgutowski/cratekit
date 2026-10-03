@@ -66,6 +66,11 @@ from cratekit.modules.outbound import account
 #: How many times a write or a single lookup is retried after its first attempt.
 WRITE_RETRIES = 1
 
+#: How many tracks one add to a playlist carries (R-835). The client's own add
+#: asks the provider for a limit of a hundred per request, so a chunk of that
+#: size is what one request is known to take.
+ADD_CHUNK = 100
+
 #: Hosts a provider track URL is read from, the same three the catalogue reads a
 #: playlist URL from.
 TRACK_HOSTS = frozenset({"tidal.com", "www.tidal.com", "listen.tidal.com"})
@@ -208,10 +213,11 @@ def _streamable(track: Any) -> bool:
 
 
 class TidalAccount:
-    """The eight ``RemoteAccount`` members, over one logged in client.
+    """The thirteen ``RemoteAccount`` members, over one logged in client.
 
-    Six add only, one that retitles a playlist the account owns, and one that
-    says why the last match of a row came back empty.
+    Eight add only, two that read folders, one that puts a playlist in a
+    folder, one that retitles a playlist the account owns, and one that says
+    why the last match of a row came back empty.
     """
 
     def __init__(
@@ -599,6 +605,118 @@ class TidalAccount:
                 doing,
             )
 
+    # ── folders (R-835) ─────────────────────────────────────────────────────
+
+    def add_tracks(self, playlist_id: str, remote_ids: tuple[str, ...]) -> tuple[str, ...]:
+        """Add every asked track the playlist lacks, :data:`ADD_CHUNK` per request.
+
+        RETRIED LIKE A WRITE. The client asks the provider to skip a track the
+        playlist already holds, so a retried chunk that landed the first time
+        adds nothing twice.
+
+        THE ANSWER IS READ, NOT TRUSTED, on :meth:`add_to_playlist`'s argument:
+        the client skips a track it cannot find and raises nothing. When an
+        answer leaves out a track it was asked for, the playlist is read again
+        and the answer is what it holds. A track still absent is left out of
+        the return rather than raised, since the provider has said all it will.
+        """
+        wanted = [str(one) for one in dict.fromkeys(remote_ids) if str(one)]
+        members = self._membership(playlist_id)
+        held = set(members)
+        lacking = [one for one in wanted if one not in held]
+        if lacking:
+            playlist = self._playlist(playlist_id)
+            doing = f"add {len(lacking)} tracks to the playlist {playlist_id}"
+            unconfirmed = False
+            for start in range(0, len(lacking), ADD_CHUNK):
+                chunk = lacking[start : start + ADD_CHUNK]
+                added = self._call(doing, lambda chunk=chunk: playlist.add(chunk))
+                if added is _ABSENT:
+                    raise account.provider_failure(
+                        LookupError(
+                            f"the provider no longer has the playlist {playlist_id!r}"
+                        ),
+                        doing,
+                    )
+                named = {str(item) for item in added or ()}
+                members.extend(one for one in chunk if one in named)
+                unconfirmed = unconfirmed or any(one not in named for one in chunk)
+            if unconfirmed:
+                del self._members[playlist_id]
+                members = self._membership(playlist_id)
+            held = set(members)
+        return tuple(one for one in wanted if one in held)
+
+    def _folder(self, folder_id: str) -> Any:
+        """The client's folder object for one identifier, WITHOUT its lookup.
+
+        The client's own lookup reads one page of fifty root folders and raises
+        not found for any later one, so the object is built empty, which makes
+        no request, and given the identifier. Every call made on it after that
+        names the folder by that identifier and nothing else.
+        """
+        handle = self._session.folder()
+        handle.id = str(folder_id)
+        return handle
+
+    def folders(self) -> dict[str, str]:
+        found = self._read(
+            "read the account's folders", lambda: listing.account_folders(self._session)
+        )
+        return {
+            str(getattr(folder, "id", "") or ""): str(getattr(folder, "name", "") or "")
+            for folder in found
+            if str(getattr(folder, "id", "") or "")
+        }
+
+    def folder_playlists(self, folder_id: str) -> dict[str, str]:
+        handle = self._folder(folder_id)
+        found = self._read(
+            f"read the folder {folder_id}", lambda: listing.folder_playlists(handle)
+        )
+        return {
+            str(getattr(playlist, "id", "") or ""): str(getattr(playlist, "name", "") or "")
+            for playlist in found
+            if str(getattr(playlist, "id", "") or "")
+        }
+
+    def create_folder(self, name: str) -> str:
+        """Create one root folder and return its identifier. NEVER RETRIED.
+
+        A folder needs no visibility step: the source system sets none, and the
+        provider keeps an account's folders to the account.
+        """
+        doing = f"create the folder {name!r}"
+        created = self._call(
+            doing, lambda: self._session.user.create_folder(name), retries=0
+        )
+        identifier = str(getattr(created, "id", "") or "") if created is not _ABSENT else ""
+        if not identifier:
+            raise account.provider_failure(
+                LookupError("the provider assigned the new folder no identifier"), doing
+            )
+        return identifier
+
+    def move_to_folder(self, playlist_id: str, folder_id: str) -> None:
+        """Put the playlist in the folder. RETRIED LIKE A WRITE.
+
+        The call names the playlist and the folder and asks for one fixed
+        place, so a retry asks for what the first attempt asked for, on
+        :meth:`rename_playlist`'s argument. The client answers a refused move
+        with ``False`` rather than a raise, and returning here would record a
+        playlist in a folder the account does not show it in.
+        """
+        handle = self._folder(folder_id)
+        doing = f"put the playlist {playlist_id} in the folder {folder_id}"
+        moved = self._call(
+            doing, lambda: handle.move_items_to_folder([str(playlist_id)], str(folder_id))
+        )
+        if moved is False or moved is _ABSENT:
+            raise account.provider_failure(
+                RuntimeError("the provider did not accept the move into the folder"),
+                doing,
+            )
+
 
 def open_account(cfg: Any = None) -> TidalAccount:
     """An account over a freshly logged in client, from the stored session.
@@ -614,6 +732,7 @@ def open_account(cfg: Any = None) -> TidalAccount:
 
 
 __all__ = [
+    "ADD_CHUNK",
     "NOT_FOUND_NAMES",
     "TRACK_HOSTS",
     "WRITE_RETRIES",

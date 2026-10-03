@@ -1736,6 +1736,20 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # Raised after the other files were written, so the message says how
         # many were and names the verb their rows follow by.
         "tag-remap-unwritten": ExitCode.PRECONDITION,
+        # ── R-835's two, appended for the reason every block above gives ───────
+        #
+        # A label's folder of year playlists was planned and the label's
+        # catalogue was not read in full: a listing of the label went unread, or
+        # a release's tracks could not be read. Refused before the gate, so no
+        # plan built from part of a catalogue is shown as the whole of one.
+        # PRECONDITION on ``label-sweep-incomplete``'s argument: what failed is
+        # carried underneath, and another run reads the label again.
+        "label-playlists-incomplete": ExitCode.PRECONDITION,
+        # The account holds two root folders named as the label, so which one is
+        # the label's is not something a name decides. Its own slug rather than
+        # ``export-playlist-ambiguous``, since the remedy is on the account and
+        # not in the library. Nothing was written.
+        "label-playlists-ambiguous": ExitCode.PRECONDITION,
     }
 )
 

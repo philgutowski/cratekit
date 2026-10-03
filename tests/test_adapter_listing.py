@@ -667,7 +667,13 @@ def direct_listing_calls(source: str, module: str) -> list[str]:
 
 
 PLANTED_PAGINATION_METHODS = frozenset(
-    {"tracks", "playlist_and_favorite_playlists", "get_albums", "get_ep_singles"}
+    {
+        "tracks",
+        "playlist_and_favorite_playlists",
+        "get_albums",
+        "get_ep_singles",
+        "playlist_folders",
+    }
 )
 
 
@@ -769,6 +775,9 @@ def test_every_shape_declares_the_rule_its_provider_can_actually_support():
         "favorite_tracks": listing.StopRule.DECLARED_TOTAL,
         "account_playlists": listing.StopRule.EMPTY_PAGE,
         "artist_releases": listing.StopRule.EMPTY_PAGE,
+        # R-835. Neither folder listing publishes a count of what it serves.
+        "account_folders": listing.StopRule.EMPTY_PAGE,
+        "folder_playlists": listing.StopRule.EMPTY_PAGE,
     }
     assert listing.StopRule.SHORT_PAGE not in listing.STOP_RULES.values()
 
@@ -821,6 +830,10 @@ def test_every_budget_clears_the_largest_collection_this_project_has_measured():
         "account_playlists": 599,
         "favorite_tracks": 197,
         "artist_releases": 197,
+        # R-835. Not reads: one folder per followed label, 47 at sitting 11,
+        # and one year playlist per release year, under forty on any label.
+        "account_folders": 47,
+        "folder_playlists": 40,
     }
     assert set(measured) == set(listing.PAGE_CAPS)
     for name, largest in measured.items():
