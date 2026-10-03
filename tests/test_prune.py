@@ -217,8 +217,9 @@ def test_a_release_the_provider_no_longer_has_stops_the_unconfirmed_judgement(bu
         "resolve",
         catalogue_factory(
             _catalogue(
-                confirmed=(CONFIRMED - {"r2"}) | {"r7"},
+                confirmed=CONFIRMED | {"r7"},
                 listed=[*LISTED, FakeRelease("r7", year="2020")],
+                elsewhere={"r2"},
             )
         ),
     )
@@ -914,3 +915,25 @@ def test_a_track_on_a_kept_release_of_another_year_is_not_said_unreached(built):
     code, refused = drive(["label", "prune", LABEL])
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     assert "not judged" not in refused["cause"]["detail"]["shown"]
+
+
+def test_a_row_the_export_names_and_does_not_carry_keeps_its_track(installed, monkeypatch):
+    """A dangling row is still a row of the playlist, so its track stays."""
+    account = outbound_fakes.FakeAccount(catalog={str(i): f"tid-{i}" for i in (1, 2, 3)})
+    bind_account(monkeypatch, account)
+    _exported(installed, account)
+    now = outbound_fakes.write_export(
+        installed.library.root / "outbound", crate=(1, 2, 3), tracks=2
+    )
+    code, done = _export_prune(now)
+    assert code == int(ExitCode.OK), done
+    assert _taken(done) == []
+    assert account.playlists["pl-1"] == ["tid-1", "tid-2", "tid-3"]
+
+
+def test_a_row_is_never_recorded_for_a_track_this_product_did_not_write(installed):
+    ledger.reserve_playlist(installed, "crate", lambda: "pl")
+    ledger.record_playlist_track(installed, "crate", "tid-1", identity="1")
+    ledger.record_playlist_row(installed, "crate", "2", "by-hand")
+    ledger.record_playlist_row(installed, "crate", "1", "tid-1")
+    assert ledger.exported_playlist(installed, "crate").rows == {"1": "tid-1"}
