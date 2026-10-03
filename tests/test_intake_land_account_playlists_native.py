@@ -12,6 +12,7 @@ D1 applies. Nothing here names a real volume, a real person or a real track.
 from __future__ import annotations
 
 import shutil
+import sqlite3
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -305,3 +306,32 @@ def test_the_gate_screen_names_each_playlist_as_the_bridge_does(native_library, 
         "Sunset Warmup 2 (1 file(s)), the account's Sunset Warmup"
     ]
     assert shown["batch playlist holds"] == "1 file(s) no account playlist claimed"
+
+
+def test_a_playlist_the_rotation_removed_never_takes_a_new_landings_tracks(
+    native_library, silence
+):
+    cfg, root_id = native_library
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        gone = handle.create_playlist("Sunset Warmup", parent=handle.get_playlist(ID=root_id))
+        handle.session.commit()
+        gone_id = str(gone.ID)
+    finally:
+        rb_writer.close_db(handle)
+    # Soft removed, the way the rotation removes an expired batch.
+    conn = sqlite3.connect(cfg.library.db_path)
+    with conn:
+        conn.execute(
+            f"UPDATE djmdPlaylist SET {rb_writer.SOFT_DELETE_COLUMN} = 1 WHERE ID = ?", (gone_id,)
+        )
+    conn.close()
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
+    _stage(cfg, silence, "One")
+
+    _landed(cfg)
+
+    # A removed node holds no name, so the exact name is free, and the new
+    # playlist is a new live row: the removed one gains nothing.
+    assert _inbox(cfg, root_id) == {"Sunset Warmup": ["One"]}
+    assert _members(cfg, gone_id) == []
