@@ -425,14 +425,20 @@ def render_job_state(envelope: Envelope, *, drive: Sequence[str] | None = None) 
     return lines
 
 
-#: The three counts an export reports, in the order a person reads them, with
-#: the words each is printed under (R-850). Spelled here, for the reason
-#: :data:`_RESOLVING_VERBS` gives. "ALREADY THERE OR WRITTEN BEFORE", not "on
-#: the playlist": the engine counts a track as already there when the ledger
-#: recorded writing it, whether or not the account still holds it (R-855).
+#: The counts an outbound job reports, in the order a person reads them, with
+#: the words each is printed under. Spelled here, for the reason
+#: :data:`_RESOLVING_VERBS` gives. An export counts ``written``, ``already``
+#: and ``unmatched`` (R-850), a favourites sweep ``hearted``,
+#: ``already_hearted`` and ``unmatched`` (R-856), and only the keys a summary
+#: carries are printed. "ALREADY THERE OR WRITTEN BEFORE", not "on the
+#: playlist": the engine counts a track as already there when the ledger
+#: recorded writing it, whether or not the account still holds it (R-855), and
+#: the heart engine counts an already hearted favourite off the same ledger.
 _OUTBOUND_WORDS: tuple[tuple[str, str], ...] = (
     ("written", "written"),
+    ("hearted", "hearted"),
     ("already", "already there or written before"),
+    ("already_hearted", "already hearted or hearted before"),
     ("unmatched", "unmatched"),
 )
 

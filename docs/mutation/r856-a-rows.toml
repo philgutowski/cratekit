@@ -1,0 +1,138 @@
+name = "r856-a"
+pass_kind = "light"
+
+[[rows]]
+id = "F1_hearted_count"
+description = "favorites.summary: count hearted as the already list's length, so the answer's hearted count is the wrong list"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_render_payloads.py"]
+old = '''            "hearted": len(hearted),'''
+new = '''            "hearted": len(already),'''
+
+[[rows]]
+id = "F2_already_count"
+description = "favorites.summary: count already hearted as zero, so a favourite hearted before is counted nowhere"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_render_payloads.py"]
+old = '''            "already_hearted": len(already),'''
+new = '''            "already_hearted": 0,'''
+
+[[rows]]
+id = "F3_unmatched_count"
+description = "favorites.summary: count unmatched as the reason sentences, so a favourite the account said nothing about is not counted"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_render_payloads.py"]
+old = '''            "unmatched": len(unmatched),'''
+new = '''            "unmatched": len(reasons),'''
+
+[[rows]]
+id = "F4_listing_dropped"
+description = "favorites.summary: build each item's unmatched rows but never list them, so the answer counts a favourite it does not name"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_render_payloads.py"]
+old = '''        left_out.extend(_left_out(report, said))'''
+new = '''        pass'''
+
+[[rows]]
+id = "F5_listing_off_reasons"
+description = "favorites._left_out: list the rows reasons names instead of every unmatched row, so a favourite with no reason is left out"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_render_payloads.py"]
+old = '''    for item in report.get("unmatched") or ():'''
+new = '''    for item in [one.get("row") for one in said]:'''
+
+[[rows]]
+id = "F6_no_match_sentence"
+description = "favorites._left_out: leave the reason empty when the account gave none, so the line reads no reason given"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_render_payloads.py"]
+old = '''                "reason": str(one.get("reason") or "") or NO_MATCH,'''
+new = '''                "reason": str(one.get("reason") or ""),'''
+
+[[rows]]
+id = "F7_names_from_listing"
+description = "favorites._left_out: read names off reasons alone, so a new report's unmatched row with no reason has no artist or title"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_render_payloads.py"]
+old = '''    for one in (*said, *(report.get("unmatched_tracks") or ())):'''
+new = '''    for one in said:'''
+
+[[rows]]
+id = "F8_item_listing"
+description = "favorites.run_heart_item: commit no unmatched_tracks, so an artifact names no unmatched row the account said nothing about"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_render_payloads.py"]
+old = '''        "unmatched_tracks": [row_named(row, said.get(row, "")) for row in report.unmatched],'''
+new = '''        "unmatched_tracks": [],'''
+
+[[rows]]
+id = "F9_item_reason_carried"
+description = "favorites.run_heart_item: list every unmatched row with an empty reason, so the account's reason is lost from the listing"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_render_payloads.py"]
+old = '''        "unmatched_tracks": [row_named(row, said.get(row, "")) for row in report.unmatched],'''
+new = '''        "unmatched_tracks": [row_named(row, "") for row in report.unmatched],'''
+
+[[rows]]
+id = "F10_concluded_passed"
+description = "favorites.sync_favorites: pass no concluded hook to the resume, so a sweep with unmatched favourites carries no warning"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_render_payloads.py"]
+old = '''            concluded=concluded,'''
+new = '''            concluded=None,'''
+
+[[rows]]
+id = "F11_warning_total"
+description = "favorites.concluded: state the unmatched count as the total, so the warning says 1 of the 1"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_render_payloads.py"]
+old = '''                f"{missed} of the {total} favourite(s) in this sweep were not "'''
+new = '''                f"{missed} of the {missed} favourite(s) in this sweep were not "'''
+
+[[rows]]
+id = "S1_tally_zero"
+description = "shell.unmatched_tally: report a tally when nothing went unmatched, so a clean sweep and a clean export carry the warning"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_render_payloads.py"]
+old = '''    if not _whole(missed) or missed <= 0:'''
+new = '''    if not _whole(missed) or missed < 0:'''
+
+[[rows]]
+id = "S2_tally_bool"
+description = "shell._whole: take a bool for a count, so True reads as one unmatched and as one in the total"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_render_payloads.py"]
+old = '''    return isinstance(value, int) and not isinstance(value, bool)'''
+new = '''    return isinstance(value, int)'''
+
+[[rows]]
+id = "R1_hearted_words"
+description = "render._OUTBOUND_WORDS: drop the hearted words, so the sweep's line omits what it hearted"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_render_payloads.py"]
+old = '''    ("hearted", "hearted"),
+'''
+new = ""
+
+[[rows]]
+id = "R2_already_hearted_words"
+description = "render._OUTBOUND_WORDS: print already hearted in the export's playlist words"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_render_payloads.py"]
+old = '''    ("already_hearted", "already hearted or hearted before"),'''
+new = '''    ("already_hearted", "already there or written before"),'''

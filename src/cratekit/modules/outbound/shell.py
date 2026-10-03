@@ -62,6 +62,33 @@ TRACKS = "tracks"
 #: document, names the frozen path beside it rather than in its place.
 EXPORT_PATH = "export path"
 
+#: What an unmatched row is said to be when the account gave no reason for it,
+#: spelled once for both verbs so the export and the sweep name the same
+#: provider answer in the same words (R-850, R-856).
+NO_MATCH = "the provider returned no track for it"
+
+
+def unmatched_tally(outbound: Mapping[str, Any]) -> tuple[int, int] | None:
+    """How many rows a finished job left unmatched, and of how many, or none.
+
+    THE ARITHMETIC BOTH ``concluded`` HOOKS SHARE, so neither verb can count the
+    same condition differently: ``None`` when the summary does not count or
+    matched everything, otherwise the unmatched count and the sum of every
+    count the summary carries. A bool is not a count, though Python calls it an
+    int, so one is read as absent rather than as one.
+    """
+    counts = outbound.get("counts")
+    if not isinstance(counts, Mapping):
+        return None
+    missed = counts.get("unmatched")
+    if not _whole(missed) or missed <= 0:
+        return None
+    return missed, sum(n for n in counts.values() if _whole(n))
+
+
+def _whole(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
 
 def load_config(origin: str) -> config.Config:
     """The current configuration, or the refusal a person can act on.
@@ -445,6 +472,7 @@ def resume(
 __all__ = [
     "EXPORT",
     "EXPORT_PATH",
+    "NO_MATCH",
     "PLAYLIST",
     "TRACKS",
     "age_warnings",
@@ -454,4 +482,5 @@ __all__ = [
     "reported",
     "resume",
     "shown_export",
+    "unmatched_tally",
 ]

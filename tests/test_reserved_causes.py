@@ -6009,7 +6009,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # not-now is one of the verb's four ANSWERS, and label-sync-answered is
     # the RULE a superseded open item records. nothing-new, the third word the
     # verb's summary uses, was already in the tree.
-    assert (len(literals), len(literals - set(causes))) == (598, 408), (
+    # Re-pinned on the residual finding "`sync favorites` reports ok over
+    # hearts it could not match", 2026-10-02: 598 to 599 distinct, non-keys
+    # 408 to 409. ONE joined and nothing left, absent from `main`'s own `src`
+    # by git grep and not a key: favorites-hearts-unmatched is the WARNING code
+    # a finished sweep carries when the provider could not match a favourite.
+    assert (len(literals), len(literals - set(causes))) == (599, 409), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

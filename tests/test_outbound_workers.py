@@ -652,6 +652,126 @@ def test_an_unmatched_favourite_is_reported_and_does_not_fail_its_item(
     assert resumed["data"]["progress"]["outbound"]["unmatched"] == ["2"]
 
 
+def _three_favourites(installed) -> Path:
+    """An export whose favourites playlist holds all three rows."""
+    return outbound_fakes.write_export(
+        installed.library.root / "outbound-three", favorites=(1, 2, 3)
+    )
+
+
+def test_a_sweep_with_an_unmatched_favourite_counts_and_names_it_on_both_renderers(
+    installed, monkeypatch
+):
+    """R-856, driven. The sweep answered ``ok`` and ``3 of 3 settled`` and nothing else.
+
+    The standing warning stays first, since it is true of every pass, and the
+    unmatched one follows it. The second drive reports a finished job, so the
+    two answers are two readings of the same artifacts.
+    """
+    exported = _three_favourites(installed)
+    account = outbound_fakes.FakeAccount(catalog=catalog(1, 3))
+    bind(monkeypatch, account)
+    _run, job_id = approve_and_queue(favorites_verb(exported), "sync.favorites.confirm")
+
+    code, resumed = _resume(job_id)
+
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["outcome"] == "ok"
+    outbound = resumed["data"]["progress"]["outbound"]
+    assert outbound["counts"] == {"hearted": 2, "already_hearted": 0, "unmatched": 1}
+    assert outbound["unmatched_tracks"] == [
+        {
+            "identity": "2",
+            "artist": "Artist 2",
+            "title": "Track 2",
+            "reason": favorites_cli.NO_MATCH,
+        }
+    ]
+    assert _codes(resumed) == [
+        favorites_cli.LOCAL_WRITE_WARNING["code"],
+        favorites_cli.UNMATCHED_WARNING,
+    ]
+    assert "1 of the 3 favourite(s)" in resumed["warnings"][1]["message"]
+    assert sorted(account.hearted) == ["tid-1", "tid-3"]
+
+    code, said = _resume_human(job_id)
+    assert code == int(ExitCode.OK), said
+    assert "  tracks: 2 hearted, 0 already hearted or hearted before, 1 unmatched" in said
+    assert f"    unmatched: Artist 2 - Track 2: {favorites_cli.NO_MATCH}" in said, said
+    assert f"warning [{favorites_cli.UNMATCHED_WARNING}]" in said
+    assert _says_no_local_write(said), said
+
+
+def test_a_sweep_where_every_favourite_matches_answers_with_no_unmatched_line(
+    installed, monkeypatch
+):
+    exported = _three_favourites(installed)
+    bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3), hearts={"tid-3"}))
+    _run, job_id = approve_and_queue(favorites_verb(exported), "sync.favorites.confirm")
+
+    code, resumed = _resume(job_id)
+
+    assert code == int(ExitCode.OK), resumed
+    outbound = resumed["data"]["progress"]["outbound"]
+    assert outbound["counts"] == {"hearted": 2, "already_hearted": 1, "unmatched": 0}
+    assert outbound["unmatched_tracks"] == []
+    assert _codes(resumed) == [favorites_cli.LOCAL_WRITE_WARNING["code"]]
+    code, said = _resume_human(job_id)
+    assert "  tracks: 2 hearted, 1 already hearted or hearted before, 0 unmatched" in said, said
+    assert "unmatched:" not in said
+    assert favorites_cli.UNMATCHED_WARNING not in said
+
+
+def test_a_favourite_whose_isrc_names_several_tracks_is_listed_with_that_reason(
+    installed, monkeypatch
+):
+    exported = _three_favourites(installed)
+    account = outbound_fakes.FakeAccount(catalog=catalog(1, 2))
+    several = (
+        "the ISRC GBXXX names 2 provider tracks, 2 of them agree with this row's "
+        "artist, title and version and the account hearts 0 of those, so none was chosen"
+    )
+    account.reasons["3"] = several
+    bind(monkeypatch, account)
+    _run, job_id = approve_and_queue(favorites_verb(exported), "sync.favorites.confirm")
+
+    code, resumed = _resume(job_id)
+
+    assert code == int(ExitCode.OK), resumed
+    (row,) = resumed["data"]["progress"]["outbound"]["unmatched_tracks"]
+    assert row == {"identity": "3", "artist": "Artist 3", "title": "Track 3", "reason": several}
+    code, said = _resume_human(job_id)
+    assert f"    unmatched: Artist 3 - Track 3: {several}" in said, said
+
+
+def test_a_report_written_before_the_listing_still_names_its_unmatched_rows():
+    """An artifact from an earlier build carries ``reasons`` and no listing.
+
+    A row the account gave a reason for keeps its name and reason; a row it
+    said nothing about is listed by identity rather than dropped from the count.
+    """
+    report = {
+        "unmatched": ["4", "5"],
+        "reasons": [{"row": "4", "artist": "A", "title": "T", "reason": "names 2"}],
+    }
+    said = list(report["reasons"])
+    assert favorites_cli._left_out(report, said) == [
+        {"identity": "4", "artist": "A", "title": "T", "reason": "names 2"},
+        {"identity": "5", "artist": "", "title": "", "reason": favorites_cli.NO_MATCH},
+    ]
+
+
+def test_the_sweep_warning_counts_only_whole_numbers():
+    assert favorites_cli.concluded({}) == ()
+    assert favorites_cli.concluded({"counts": {"hearted": 3, "unmatched": 0}}) == ()
+    assert favorites_cli.concluded({"counts": {"hearted": 3, "unmatched": True}}) == ()
+    (warning,) = favorites_cli.concluded(
+        {"counts": {"hearted": 2, "already_hearted": True, "unmatched": 1}}
+    )
+    assert warning["code"] == favorites_cli.UNMATCHED_WARNING
+    assert warning["message"].startswith("1 of the 3 favourite(s)")
+
+
 def test_the_sweep_reaches_nothing_outside_the_add_only_protocol(
     installed, exported, monkeypatch
 ):

@@ -4,6 +4,22 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**R-856 built, 2026-10-02, on `relay/250`, issue #250.** `crate sync
+favorites` now answers with what it did: `tracks: N hearted, N already
+hearted or hearted before, N unmatched`, then one `unmatched: ARTIST -
+TITLE: REASON` line per favourite it could not heart, a row the account
+said nothing about included, and the warning `favorites-hearts-unmatched`
+after the standing local write one. The envelope carries `counts` and
+`unmatched_tracks` under `progress.outbound`, the export's shape with the
+sweep's own count keys. The unmatched arithmetic and the no match sentence
+now live once in the outbound shell for both verbs. Nothing hearted
+changed. Battery on the branch: ruff clean, 12,327 passed and 1 skipped,
+the scan clean. One round of the built in review, nine findings, three
+applied, two filed as R-862 and R-863, neither on the board bar, three
+declined in the ledger. Mutation table 15 of 15 killed,
+`docs/mutation/r856-a.md`. **Owed, attended:** one live sweep read back,
+the confirmation R-850 had. Main's highest residual number is R-863.
+
 **R-857 done, 2026-10-02, on `relay/251`, issue #251: U107 reviewed after
 it landed.** `crate label sync` was built by #246's task, which hit the
 model usage limit and was merged unreviewed as `fd7e205`; this task ran

@@ -336,8 +336,29 @@ def test_a_queued_export_prints_no_counts_since_it_has_written_nothing_yet():
     assert not any(line.startswith("  tracks:") for line in lines)
 
 
+def test_a_favourites_answer_counts_in_its_own_words_and_names_each_unhearted_row():
+    """R-856: the sweep's counts are printed as hearts, not as playlist writes."""
+    lines = render.render_job_state(
+        job_state(
+            "sync.favorites",
+            state="succeeded",
+            progress={
+                "outbound": {
+                    "counts": {"hearted": 2, "already_hearted": 1, "unmatched": 1},
+                    "unmatched_tracks": [
+                        {"identity": "3", "artist": "A", "title": "T", "reason": "names 2"},
+                    ],
+                }
+            },
+        )
+    )
+    assert "  tracks: 2 hearted, 1 already hearted or hearted before, 1 unmatched" in lines
+    assert "    unmatched: A - T: names 2" in lines
+
+
 def test_an_outbound_summary_that_does_not_count_prints_no_track_line():
-    """The favourites sweep's shape, which carries lists and no ``counts``."""
+    """A summary carrying lists and no ``counts``, the favourites sweep's shape
+    before R-856 and what any outbound verb that does not count still is."""
     lines = render.render_job_state(
         _exported(hearted=["1"], already=[], unmatched=["2"], reasons=[])
     )
