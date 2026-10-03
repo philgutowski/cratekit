@@ -1,0 +1,51 @@
+name = "r887-a"
+pass_kind = "light"
+
+[[rows]]
+id = "K1_folders_kept_unfiltered"
+description = "listing.account_folders: keep nothing out, so root playlists are parsed as folders and returned"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py", "tests/test_export_set.py"]
+old = '''        keep=_item_type("FOLDER"),'''
+new = '''        keep=None,'''
+
+[[rows]]
+id = "K2_playlists_kept_unfiltered"
+description = "listing.folder_playlists: keep nothing out, so a nested folder is parsed as a playlist"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py", "tests/test_export_set.py"]
+old = '''        keep=_item_type("PLAYLIST"),'''
+new = '''        keep=None,'''
+
+[[rows]]
+id = "K3_count_kept_not_served"
+description = "paginate_cursor: compare the kept items, not every served item, with the declared total, which is R-878's refusal on every real account"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py", "tests/test_export_set.py"]
+old = '''    counted = len(served) + unkeyed'''
+new = '''    counted = len(items)'''
+
+[[rows]]
+id = "K4_unkeyed_uncounted"
+description = "paginate_cursor: drop the count of raw items with no identity, so a served item without a trn is not counted"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_adapter_listing.py"]
+old = '''    counted = len(served) + unkeyed'''
+new = '''    counted = len(served)'''
+
+[[rows]]
+id = "K5_filter_before_count"
+description = "paginate_cursor: skip a raw item before counting it, so kept items alone are counted"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py", "tests/test_export_set.py"]
+old = '''            identity = _raw_identity(raw)
+            if identity is None:'''
+new = '''            if keep is not None and not keep(raw):
+                continue
+            identity = _raw_identity(raw)
+            if identity is None:'''
