@@ -33191,6 +33191,19 @@ rename in the record as it lands, so a second run plans nothing and lists
 nothing. Closes once one playlist marked for the purpose is unmarked live at
 an attended sitting, recorded in `docs/cutover.md`.
 
+
+**Unmarked live at sitting 30, 2026-10-02, and closed.** The account
+playlist `DOWNLOADED Kids`, two tracks, one of the four the 2026-09-30 pass
+marked before the mark record existed, was retitled `Kids` through the
+product's account adapter. `crate sync mark` from that pass's retired intake
+file, copied under its `_inboxed.xml` name, planned exactly `Kids ->
+DOWNLOADED Kids`, left the other three as already prefixed, and wrote the
+record. `crate sync unmark --pass 2026-09-30T173643Z-58f1_synced --playlist`
+that playlist planned `DOWNLOADED Kids -> Kids`, applied, and the account
+read `Kids`. A second unmark planned nothing, saying an unmark had already
+put the title back. The title was then set back to `DOWNLOADED Kids` through
+the adapter, so the account ends as it began. Each listing cost 619 to 1,241
+provider calls, no rate limit.
 ---
 
 ## R-839. Nothing triages the account's unprefixed playlists, and nothing deletes one
@@ -33602,6 +33615,15 @@ so a resumed export counts across both runs and an item once. Nothing written
 to the account changed. Closes once a live export at an attended sitting is
 read and names the tracks the account lacks, recorded in `docs/cutover.md`.
 
+
+**Read live at sitting 30, 2026-10-02, and closed.** `crate export playlist
+TOOLBOX/Dancefloor Rescue` again, onto the playlist R-834's run made, on the
+installed build at the merge of #246: `ok` with `tracks: 0 written, 4
+already there or written before, 4 unmatched`, one line naming each of the
+four with its reason, the three with no provider track and the one whose
+ISRC names two, and the warning `export-tracks-unmatched`. 22 provider calls.
+The mutation table this unit could not measure is recorded in
+`docs/mutation/r850-notes.md`.
 ---
 
 ## R-851. `sync unmark` takes the prefix off and the next `sync all` still does not offer the playlist
@@ -33759,3 +33781,27 @@ are the shape.
 
 **On the board bar, (b).** The product prints a clean report over a declared
 write it did not perform.
+
+## R-857. U107 landed on main with no review, no mutation table and no record, after its task hit the model usage limit
+
+**Found:** at sitting 30, 2026-10-02, reading the merge of #246.
+
+**The mechanism.** The Relay task for #246 exited on the model usage limit
+with no return envelope, two commits in: the verb and its tests, then the
+GUIDE and CONCEPTS lines. Relay's landing verdict still merged the branch as
+`fd7e205`, pushed `main`, and the closing keyword closed the issue. METHOD's
+review, mutation table, residuals and record were never run, and
+`RESTART-cratekit.md` and the ledger say nothing of the unit. The defect that
+let it land is Relay's, which lives outside this repository; this entry is
+the repository's side of it.
+
+**Measured cost.** `crate label sync` is on `main` and installed, writes the
+review store and the favourites registry, and has had no review. Issue #246
+was reopened so U108 stays blocked behind it.
+
+**Closes when:** the built in review has run over the unit's diff and its
+findings are driven, a mutation table of up to 25 rows is measured, the
+unit's residuals are filed, and the record is written; then #246 is closed
+again by hand.
+
+**Not on the board bar by itself.** The work it names is #246, reopened.

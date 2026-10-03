@@ -884,6 +884,9 @@ landing.
 | The review store read for addresses | read only, before and after | Before: `crate label held`, 339 holds over 14 labels, none reads an address. After: 2,618 review items and 339 holds read straight from the store, none carries one. | read, **R-389 and R-847 close, #213 done** |
 | `crate export playlist TOOLBOX/Dancefloor Rescue`, R-834, #242 | live on the account, at its gate, digest `869777719e9f317c` | One playlist created, 8 items settled, 39 provider calls, no rate limit. **Read back at the provider: `public: False`.** The account's web player, read only in the browser, shows Dancefloor Rescue, 4 tracks, the padlock reading Private. Four tracks did not match and the verb said only `ok`, R-850 filed with an issue. | live, **R-834 closes** |
 | rekordbox, read only through desktop control | opened after the feeder left, no job running | BY GENRE + ENERGY / R&B reads High 6, Low 27, Med 14, Unsorted 2 and **with vox 27**, the sub the apply made. Quit from the menu, `rekordbox` and `rekordboxAgent` both gone within ten seconds. | read |
+| `sync mark` then `sync unmark`, R-838, #243 | live on the account, each gate read, after cycle 39 | `DOWNLOADED Kids`, two tracks, retitled `Kids` through the account adapter. `sync mark` from the 2026-09-30 pass planned only `Kids -> DOWNLOADED Kids` and wrote the mark record. `sync unmark --playlist` planned `DOWNLOADED Kids -> Kids`, applied, **the account read `Kids`**, and a second unmark planned nothing. The title was set back to `DOWNLOADED Kids`. 619 to 1,241 provider calls a listing, no rate limit. | live, **R-838 closes** |
+| `export playlist` again, R-850, #249 | live, onto the playlist R-834's run made | `tracks: 0 written, 4 already there or written before, 4 unmatched`, each unmatched track named with its reason, warning `export-tracks-unmatched`, 22 calls. | live, **R-850 closes** |
+| #246, U107 | read from the merge | The task hit the model usage limit and exited with no envelope; Relay merged and closed it anyway, with no review, table or record. #246 reopened, R-857 filed. | **owed** |
 
 ## What blocks a full sync cycle, stated plainly
 
@@ -905,23 +908,10 @@ Owed by the author: the 2,416 label releases in review and a look at the
 count, 637 of them with no genre on the file either; the 20 label tracks
 held as other versions.
 
-Owed for R-788, issue #245, line 7 of #178: `crate adopt apply` rehearsed
-on a copy with library state redirected, then live on an equal digest.
-Before approving, read `vocal` on the gate: `add` should be the twelve, and
-a count under `withheld` or `under-another-name` is a tagged track the
-build leaves, with R-842 saying why for the first. After the apply, read the
-twelve in their `with vox` subs and tick line 7 only then.
-
-Owed for R-838, issue #243: retitle one account playlist by hand to a name
-of its own, mark it with `crate sync mark` from a pass that finished it, then
-`crate sync unmark --pass <that pass>`, answer the gate, and record here that
-the account lists it under the name it had before the mark and that a second
-`sync unmark` plans nothing. R-838 closes on that line and not before.
-
-Owed for R-834, issue #242: read back the visibility of one playlist
-`crate export playlist` created after the build of 2026-10-02 on `relay/242`,
-at the provider, and record here that it reads private. R-834 closes on that
-line and not before.
+Owed for U107, issue #246, reopened at sitting 30 (R-857): the built in review
+over its merge, a mutation table, its residuals and its record. Then the first
+`crate label sync` run on the live library, whose catch up of the label releases
+in review is the author's to answer, label by label.
 
 Owed for R-790, issue #234: follow a new label, sweep it once, and record
 here that it filed `labels.offer_per_sweep` releases, ten unless set, and

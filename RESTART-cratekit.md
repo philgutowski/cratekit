@@ -4,8 +4,19 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**Sitting 30 continued, after feeder cycle 39.** R-838: `sync mark` then
+`sync unmark` on one account playlist, `DOWNLOADED Kids`, retitled for the
+purpose and restored after; the unmark put the title back and a second
+planned nothing; closed. R-850: a second export of Dancefloor Rescue names
+its four unmatched tracks with their reasons; closed. **#246, U107, is
+reopened.** Its Relay task hit the model usage limit and exited with no
+envelope, and Relay merged it as `fd7e205` and closed the issue with no
+review, mutation table or record: R-857, and U108 stays blocked behind it.
+R-856 has issue #250 from #249's task. Main's highest residual number is
+R-857.
+
 **R-850 built, 2026-10-02, on `relay/249`, issue #249. The live read is
-owed.** `crate export playlist` now answers with what it did: `tracks: N
+owed, and was done at sitting 30.** `crate export playlist` now answers with what it did: `tracks: N
 written, N already there or written before, N unmatched`, then one
 `unmatched: ARTIST - TITLE: REASON` line per track it left out, a row the
 account said nothing about included, and the warning
