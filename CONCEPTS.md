@@ -1247,8 +1247,9 @@ run `sync favorites` and `intake playlist` run what it queues. It declares no
 `long_running` and no `argv_builder`, because nothing is ever queued under its
 own key. A guided source is not composed at all, see below.
 
-*Avoid:* a composer that spells a source's payload again. Each source owns one
-`queue_sweep`, and the composer calls it.
+*Avoid:* a composer that spells a source's payload again. Each source owns its
+one queueing path, favourites `queue_sweep` and playlists `playlists.queue`, and
+the composer calls it.
 
 ### Guided source
 A source `crate sync all` declares and does not compose, because another verb

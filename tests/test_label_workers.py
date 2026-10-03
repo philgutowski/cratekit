@@ -346,12 +346,7 @@ def test_an_import_against_an_empty_registry_refuses_the_unknown_name(installed)
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-@pytest.mark.parametrize(
-    "verb",
-    [["label", "import", "Kompakt"]],
-    ids=["label.import"],
-)
-def test_both_queueing_paths_queue_without_a_warning_now_an_adapter_is_bound(installed, verb):
+def test_the_import_queues_without_a_warning_now_an_adapter_is_bound(installed):
     """U62 flipped the warning, and the job still queues.
 
     Before a catalogue adapter shipped, both paths warned that the job would fail
@@ -361,20 +356,15 @@ def test_both_queueing_paths_queue_without_a_warning_now_an_adapter_is_bound(ins
     del installed
     assert catalogue.bound() is True
     register(*LABELS)
-    code, queued = drive(verb)
+    code, queued = drive(["label", "import", "Kompakt"])
     assert code == int(ExitCode.OK), queued
     codes = {warning["code"] for warning in queued.get("warnings") or ()}
     assert "label-catalogue-unbound" not in codes
     assert queued_items(queued["data"]["job_id"])
 
 
-@pytest.mark.parametrize(
-    "verb",
-    [["label", "import", "Kompakt"]],
-    ids=["label.import"],
-)
 def test_the_unbound_warning_says_the_job_will_fail_at_the_provider_seam(
-    installed, verb, monkeypatch
+    installed, monkeypatch
 ):
     """A code alone is a slug; the sentence is what a person reads.
 
@@ -384,7 +374,7 @@ def test_the_unbound_warning_says_the_job_will_fail_at_the_provider_seam(
     del installed
     monkeypatch.setattr(catalogue, "bound", lambda: False)
     register(*LABELS)
-    code, queued = drive(verb)
+    code, queued = drive(["label", "import", "Kompakt"])
     assert code == int(ExitCode.OK), queued
     said = [
         warning["message"]
@@ -1692,6 +1682,24 @@ def test_the_itemless_refusal_names_the_cancel_that_gets_a_person_out(installed)
     _, refused = drive(["sync", "labels", "--job", job.job_id])
     steps = refused["cause"]["remediation"]["steps"]
     assert any(f"crate job cancel {job.job_id}" in step for step in steps), steps
+    # A SWEEP CANNOT BE QUEUED AGAIN (U109), so the way back is the guided verb
+    # and never the retired one, which would only refuse.
+    assert steps[-1] == "then take label releases with: crate label sync", steps
+
+
+def test_the_itemless_refusal_of_an_import_still_says_queue_it_again(installed):
+    """The other branch of the same step: an import can still be queued."""
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store,
+            handler_key=IMPORT_KEY,
+            payload={"source_id": "labels", "name": "Kompakt", "label_id": "kompakt"},
+            cfg=installed,
+            item_ids=(),
+        )
+    _, refused = drive(["label", "import", "Kompakt", "--job", job.job_id])
+    steps = refused["cause"]["remediation"]["steps"]
+    assert steps[-1] == "then queue the import again, which records its items", steps
 
 
 class CountingCatalogue(FakeCatalogue):

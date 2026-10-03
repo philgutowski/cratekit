@@ -23,7 +23,7 @@ from cratekit.core.exit_codes import Remedy
 from cratekit.label import catalogue, harvest, sweep
 from cratekit.label import gate as genre_gate
 from cratekit.label import registry as labels
-from cratekit.sync import artifacts, run, watermarks
+from cratekit.sync import artifacts, run, sources, watermarks
 
 #: The two handler keys one label worker serves, and the only jobs a label
 #: verb's ``--job`` will drive. The same two strings ``cli/handlers.py`` binds
@@ -147,7 +147,10 @@ def build_sync(parser, entry) -> None:
         "--run-id",
         default=None,
         dest="run_id",
-        help="intake run the queued sweep was filed under, carried by a resume",
+        help=(
+            "accepted for the argv a resume is spawned with and otherwise "
+            "ignored: a queued sweep keeps the intake run it was filed under"
+        ),
     )
     parser.set_defaults(_handler=sync_labels)
 
@@ -591,7 +594,13 @@ def _refuse_an_itemless_job(store, job) -> None:
         remedy=Remedy.REPORT_DEFECT,
         steps=(
             f"cancel it with: crate job cancel {job.job_id}",
-            "then queue the sweep or the import again, which records its items",
+            # A SWEEP CANNOT BE QUEUED AGAIN since U109, so its way back is the
+            # verb that replaced it rather than a command that now refuses.
+            (
+                f"then take label releases with: {GUIDED_VERB}"
+                if job.handler_key == sweep.HANDLER_KEY
+                else "then queue the import again, which records its items"
+            ),
         ),
         origin=("label.cli",),
         detail={"job_id": job.job_id},
@@ -688,8 +697,12 @@ def _resume(ctx, job_id: str) -> Envelope:
         return ctx.envelope(data=_reported(store, job), warnings=warnings)
 
 
-#: The verb that took the sweep's place (U109), as a person types it.
-GUIDED_VERB = "crate label sync"
+#: The verb that took the sweep's place (U109), as a person types it. Read off
+#: the labels spec rather than typed again, so the refusal names the verb the
+#: registry pin in ``tests/test_sync_all.py`` already holds the spec to.
+GUIDED_VERB = str(
+    next(spec for spec in sources.SPECS if spec.source_id == "labels").command()
+)
 
 
 def sync_labels(ctx) -> Envelope:

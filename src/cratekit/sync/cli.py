@@ -178,7 +178,7 @@ class _Plan:
     describe: Callable[[list[jobs.Job]], dict[str, Any]] | None = None
     #: The question this source needs answered before it may queue, asked after
     #: every source is planned so the refusal can say what the pass would do.
-    ask: Callable[[list[_Plan]], None] | None = None
+    ask: Callable[[list[_Plan], tuple[sources.SourceSpec, ...]], None] | None = None
     #: Words the source's check carries whatever its status, read off its block.
     #: The check detail is what the default human output prints for this verb,
     #: so a fact only the json block states is a fact a person never reads.
@@ -302,7 +302,7 @@ def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
         *favorites_cli.local_write_warning(),
     )
 
-    def ask(plans: list[_Plan]) -> None:
+    def ask(plans: list[_Plan], guided: tuple[sources.SourceSpec, ...]) -> None:
         gate = next(g for g in ctx.entry.gates if g.name == CONFIRM)
         # THE TRACKS THE SWEEP'S DIGEST COVERS ARE SHOWN (R-693), the way the
         # favourites verb's own gate shows them, beside what would queue.
@@ -313,7 +313,7 @@ def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
                 "items": list(resolved.track_ids),
             },
             context={
-                **_awaiting(plans),
+                **_awaiting(plans, guided),
                 shell.PLAYLIST: resolved.key,
                 shell.EXPORT_PATH: str(exported),
                 **shell.shown_export(age),
@@ -411,6 +411,16 @@ PLANNERS: dict[str, Callable[[sources.SourceSpec, Any], _Plan]] = {
 }
 
 
+def _guided(guided: tuple[sources.SourceSpec, ...]) -> dict[str, str | None]:
+    """Each guided source, keyed by identifier, and the command that takes it."""
+    return {spec.source_id: spec.command() for spec in guided}
+
+
+def _guided_step(spec: sources.SourceSpec) -> str:
+    """The guided row's words as a refusal step, for a pass that queued nothing."""
+    return f"{spec.source_id} are not swept by sync all; take them with: {spec.command()}"
+
+
 def _guided_check(spec: sources.SourceSpec) -> dict[str, Any]:
     """The one row naming the verb that takes a guided source instead (U109).
 
@@ -442,11 +452,15 @@ def _plan(spec: sources.SourceSpec, ctx) -> _Plan:
         return _Plan(spec=spec, refused=exc.cause, not_queued=exc.cause.reason)
 
 
-def _awaiting(plans: list[_Plan]) -> dict[str, Any]:
+def _awaiting(
+    plans: list[_Plan], guided: tuple[sources.SourceSpec, ...]
+) -> dict[str, Any]:
     """What a person is shown at the gate: nothing queued yet, and why not.
 
     ``inbound`` says what each read only half will do WHATEVER the answer, so a
     person deciding the write knows whether the hearts are being listed.
+    ``guided`` names the verb each guided source is left to (U109), since the
+    gate is where every pass with favourites enabled stops first.
     """
     return {
         "queued": [],
@@ -462,6 +476,7 @@ def _awaiting(plans: list[_Plan]) -> dict[str, Any]:
             for p in plans
             if p.inbound is not None
         },
+        "guided": _guided(guided),
     }
 
 
@@ -598,7 +613,7 @@ def _report(
         # A GUIDED SOURCE IS NOT A SOURCE THAT FAILED TO QUEUE, so it is named
         # here rather than in ``not_queued``, whose every entry is a reason this
         # pass did not do something it would otherwise have done.
-        "guided": {spec.source_id: spec.command() for spec in guided},
+        "guided": _guided(guided),
     }
     for plan in plans:
         if plan.describe is not None:
@@ -663,7 +678,7 @@ def compose(ctx) -> tuple[dict[str, Any], Outcome, tuple[dict[str, str], ...]]:
 
     for plan in plans:
         if plan.ask is not None:
-            plan.ask(plans)
+            plan.ask(plans, guided)
 
     # THE READ ONLY HALF IS QUEUED BESIDE ITS SOURCE, not after the question,
     # so a declined or refused write half leaves it queued.
@@ -699,8 +714,21 @@ def compose(ctx) -> tuple[dict[str, Any], Outcome, tuple[dict[str, str], ...]]:
         # sync and got nothing because of something they can fix is told so
         # with that source's own remedy, and the whole pass rides the detail.
         first = refused[0]
+        # THE GUIDED LINE RIDES THE REFUSAL AS A LAST STEP (U109). A refusal
+        # envelope carries no check rows, so the row that names the guided verb
+        # would otherwise reach a person only inside the JSON detail. Appended,
+        # so the first step, the one the remediation line falls back to, is
+        # still the refusing source's own fix.
+        remediation = dataclasses.replace(
+            first.remediation,
+            steps=(*first.remediation.steps, *(_guided_step(spec) for spec in guided)),
+        )
         raise CratekitError(
-            dataclasses.replace(first, detail={**dict(first.detail or {}), "sources": data})
+            dataclasses.replace(
+                first,
+                remediation=remediation,
+                detail={**dict(first.detail or {}), "sources": data},
+            )
         )
 
     warnings: list[dict[str, str]] = []

@@ -397,10 +397,17 @@ def test_nothing_queued_because_every_source_refused_is_a_refusal(installed):
         "favorites": "outbound-export-required",
         "playlists": "credential-missing",
     }
-    # THE GUIDED LINE RIDES THE REFUSAL TOO, since it carries the whole pass.
+    # THE GUIDED LINE RIDES THE REFUSAL TOO, since it carries the whole pass,
+    # and as the LAST step, since a refusal prints no check rows. The first
+    # step stays the refusing source's own fix.
     assert refused["cause"]["detail"]["sources"]["summary"]["guided"] == {
         "labels": "crate label sync"
     }
+    steps = refused["cause"]["remediation"]["steps"]
+    assert steps[-1] == (
+        "labels are not swept by sync all; take them with: crate label sync"
+    ), steps
+    assert len(steps) >= 2, "the refusing source's own step was lost"
     assert _jobs() == []
 
 
@@ -474,8 +481,12 @@ def test_the_human_output_names_the_guided_verb(installed, monkeypatch):
     assert "crate label sync" in line, line
 
 
-def test_the_gate_names_nothing_for_labels_to_queue(installed, exported):
-    """Asked before anything queues, the gate shows labels in neither list."""
+def test_the_gate_names_the_guided_verb_and_nothing_for_labels_to_queue(
+    installed, exported
+):
+    """Asked before anything queues, the gate shows labels in neither list and
+    names the verb that takes them, since every pass with favourites enabled
+    stops here first."""
     del installed
     register(LABELS[0])
     code, refused = drive(_verb(exported))
@@ -483,6 +494,20 @@ def test_the_gate_names_nothing_for_labels_to_queue(installed, exported):
     shown = refused["cause"]["detail"]["shown"]
     assert "labels" not in shown["would_queue"]
     assert "labels" not in shown["not_queued"]
+    assert shown["guided"] == {"labels": "crate label sync"}
+
+
+def test_the_human_refusal_names_the_guided_verb(installed):
+    """No export and no credential: nothing queues and the pass refuses. The
+    labels sweep used to queue here and exit OK, so the refusal is where a
+    person learns where label releases went."""
+    del installed
+    register(LABELS[0])
+    out, err = io.StringIO(), io.StringIO()
+    code = cli.run(["sync", "all"], stdout=out, stderr=err)
+    text = out.getvalue() + err.getvalue()
+    assert code != int(ExitCode.OK), text
+    assert "take them with: crate label sync" in text, text
 
 
 def test_a_profile_without_the_labels_module_names_no_guided_verb(slim, monkeypatch):
