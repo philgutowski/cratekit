@@ -1,0 +1,52 @@
+name = "r836-a"
+pass_kind = "light"
+
+# R-836, batch a. The batches a to g together are the unit's 25 row
+# cap, split so each run fits one foreground wait.
+
+[[rows]]
+id = "A1_product_made_asked_first"
+description = "tidal_account.remove_tracks: the ledger is never asked, so a playlist the product did not create loses tracks"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py", "tests/test_export_collection.py"]
+surface = "user"
+old = '''        if self._cfg is None or not ledger.product_made(self._cfg, identifier):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "A3_declared_total_matches_read"
+description = "tidal_account._positions: a read shorter than the declared total is trusted, so positions shift and the wrong track comes off"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py", "tests/test_export_collection.py"]
+surface = "user"
+old = '''            or declared != len(tracks)'''
+new = ''''''
+
+[[rows]]
+id = "A4_no_video_declared"
+description = "tidal_account._positions: a playlist holding a video is read by track position, which the item removal does not use"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py", "tests/test_export_collection.py"]
+surface = "user"
+old = '''            or videos != 0'''
+new = ''''''
+
+[[rows]]
+id = "A5_removal_never_retried"
+description = "tidal_account.remove_tracks: a removal by position is retried once, so a request that landed and timed out takes off whatever moved up"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py", "tests/test_export_collection.py"]
+surface = "user"
+old = '''                doing, lambda at=at, playlist=playlist: playlist.remove_by_indices(at), retries=0'''
+new = '''                doing, lambda at=at, playlist=playlist: playlist.remove_by_indices(at)'''
+
+[[rows]]
+id = "A6_read_back_compared"
+description = "tidal_account.remove_tracks: the playlist read back is not compared, so a removal that took the wrong position reports success"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py", "tests/test_export_collection.py"]
+surface = "user"
+old = '''            if before != expected:'''
+new = '''            if False:'''
+
+# ── the ledger ─────────────────────────────────────────────────────────────

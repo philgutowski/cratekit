@@ -1,0 +1,40 @@
+name = "r836-c"
+pass_kind = "light"
+
+# R-836, batch c. The batches a to g together are the unit's 25 row
+# cap, split so each run fits one foreground wait.
+
+[[rows]]
+id = "L6_date_on_the_confirmed_record"
+description = "ledger._note_written: the export date goes on the key's own record, not the one the job was confirmed to update"
+file = "src/cratekit/modules/outbound/ledger.py"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''    if expected and str((record or {}).get("remote_id") or "") != expected:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "L7_row_only_for_a_written_track"
+description = "ledger.record_playlist_row: a row is recorded for a track this product never wrote, which a prune then reads as its own"
+file = "src/cratekit/modules/outbound/ledger.py"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''        if not record or str(remote_id) not in _listed(record, "added"):
+            return
+        rows = _rows(record)'''
+new = '''        if not record:
+            return
+        rows = _rows(record)'''
+
+# ── the build ──────────────────────────────────────────────────────────────
+
+[[rows]]
+id = "F1_build_skips_pruned"
+description = "folders.plan: a track a prune took off is added again by the next label build"
+file = "src/cratekit/modules/outbound/folders.py"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''            asked = recorded.added | recorded.refused | recorded.pruned'''
+new = '''            asked = recorded.added | recorded.refused'''
+
+# ── the planners and the apply ─────────────────────────────────────────────

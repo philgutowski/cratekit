@@ -1,0 +1,54 @@
+name = "r836-g"
+pass_kind = "light"
+
+# R-836, batch g. The batches a to g together are the unit's 25 row
+# cap, split so each run fits one foreground wait.
+
+[[rows]]
+id = "P11_absence_is_not_evidence"
+description = "prune.plan_label: a recorded track on no release the read reached leaves, so an empty catalogue read empties the playlists"
+file = "src/cratekit/modules/outbound/prune.py"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''            if one not in staying(year) and (one in on_held or one in on_other)'''
+new = '''            if one not in staying(year) and (one in on_held or judged)'''
+
+# ── the CLIs ───────────────────────────────────────────────────────────────
+
+[[rows]]
+id = "C1_holds_judged_again"
+description = "label.prune_cli.held_releases: a hold the gate would now release still takes the release's tracks off"
+file = "src/cratekit/label/prune_cli.py"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''        and (hold.payload.get(review.WITHHELD_FIELD) or judge.rejudge(entry, hold).held)'''
+new = ''''''
+
+[[rows]]
+id = "C3_dangling_rows_are_rows"
+description = "export.prune_cli: a row the export names and does not carry is read as gone, so its track is taken off"
+file = "src/cratekit/export/prune_cli.py"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''        (*resolved.track_ids, *resolved.dangling),'''
+new = '''        resolved.track_ids,'''
+
+[[dropped]]
+id = "A2_no_configuration_refuses"
+description = "tidal_account.remove_tracks: an adapter with no configuration asks the ledger with none"
+reason = "ranked below the cap: open_account always passes the frozen configuration, and the row's test drives it directly; same family as A1, which is measured"
+
+[[dropped]]
+id = "A7_false_accept_refused"
+description = "tidal_account.remove_tracks: a removal the client answers False is returned as done"
+reason = "ranked below the cap: a guard layer under A6, since an unchanged playlist differs from the expected read back and is refused there; A6 is measured"
+
+[[dropped]]
+id = "P10_older_export_left_alone"
+description = "prune.plan_export: an older export is planned"
+reason = "ranked below the cap: same family as L5, the date comparison that feeds it, which is measured"
+
+[[dropped]]
+id = "P6_unsaid_refused"
+description = "prune.apply: an account answer that leaves out an asked track is recorded as though all came off"
+reason = "dropped to make room for P2b, the re-measure of P2's guard after its redundant copy was removed; the adapter returns every asked id or raises, so this is a contract check on the fake and future adapters"

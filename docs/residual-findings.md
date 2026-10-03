@@ -33167,6 +33167,35 @@ and a prune of one label's year playlists is run at an attended sitting.
 
 **On the board bar, (c).** The author asked for it on 2026-10-02.
 
+**Built 2026-10-03 on `relay/254`, and still open on the live build.**
+`service.RemoteAccount` declares one removal, `remove_tracks`, and one read,
+`track_names`. The adapter asks `ledger.product_made` before it opens the
+playlist and refuses `outbound-remove-refused` with no provider call for a
+playlist the ledger does not record as made here: an exported or set
+playlist, or a label year written `created`, which `reserve_label_year` now
+records true when it creates and false when it adopts. The client's remove by
+identifier reads one page, so the adapter reads every position through
+`listing`, refuses when the read is short of the declared total or a video is
+declared, removes by position on the freshly opened playlist, never retries,
+and reads back, refusing a read back that differs as not retryable. Two verbs
+over `modules/outbound/prune.py`, not a step of the builders, so both keep
+their add only gate and a removal is its own named act: `crate label prune
+LABEL` at `label.prune.confirm` and `crate export prune PLAYLIST --export X`
+at `export.prune.confirm`, each listing every track by artist and title per
+playlist, an empty plan still asking. A label year track leaves only on a
+release the read reached: a hold in force, judged again from its own words,
+or a release the verifier credits to another label; absence is never the
+evidence. An exported track leaves by the library row it was written from,
+which the export now records, or by match alone for a track written before,
+guarded. Each removal moves the track from `added` to `pruned` as it lands,
+a build never adds a pruned track again, and a track already off is settled
+through the removal's own read. Two rounds of the built in review, twenty
+findings, seventeen fixed; R-889 to R-894 filed. Mutation table 25 rows, 24
+killed at first measure and the one zero resolved, `docs/mutation/r836-notes.md`.
+Closes once one label's year playlists are pruned on the author's account at
+an attended sitting, which also proves the provider honours the version tag a
+removal by position is sent under, recorded in `docs/cutover.md`.
+
 ---
 
 ## R-837. An identified set cannot become a playlist on the streaming account, and a downloaded set playlist is not archived
@@ -34690,3 +34719,135 @@ session part closes when the author mints a session.
 
 **Not on the board bar yet.** The artist is unmeasured, and the refusal is
 honest.
+
+---
+
+## R-889. A track a prune took off a label year playlist is never put back, even once its hold is lifted
+
+**Found:** by the built in review of R-836 on `relay/254`, 2026-10-03.
+
+**The mechanism.** `label prune` moves a taken track from `added` to
+`pruned`, and `label playlists` treats a pruned track as asked already, so
+the build never adds it again. Without that the build, which has no genre
+gate (R-872), would put back every held release's tracks the prune just took
+off. Nothing clears `pruned`: a hold a person returns, a release the verifier
+confirms again, or a label kind changed so the gate passes it, leaves the
+track off its year playlist for good.
+
+**Measured cost.** Driven in the suite only. A release a DJ returned from the
+gate stays missing from its year playlist, with no verb to put it back.
+
+**Closes when:** the author decides R-872. If the build follows the gate, it
+can drop the pruned exclusion and judge holds itself; if not, a prune needs a
+way to forget a track whose evidence is gone.
+
+**Not on the board bar.** The conservative reading of a decision that is the
+author's, tied to R-872.
+
+---
+
+## R-890. Each removal chunk opens and reads the whole playlist twice
+
+**Found:** by the built in review of R-836 on `relay/254`, 2026-10-03.
+
+**The mechanism.** `prune.apply` asks `remove_tracks` fifty tracks at a time,
+so each chunk is recorded as it lands, and each call opens the playlist,
+reads every position, removes, and reads every position again to check. The
+read back of one chunk is not reused as the next chunk's read, since they are
+separate calls. A prune of two hundred tracks off a thousand track playlist
+is about eight full paged reads.
+
+**Measured cost.** Provider calls, paced by the gate, on an account the
+provider has rate limited before. Not measured live.
+
+**Closes when:** the first live prune is timed at an attended sitting and the
+author decides whether recording per chunk is worth the reads.
+
+**Not on the board bar.** A cost in time.
+
+---
+
+## R-891. A label year recorded before R-836 is never pruned
+
+**Found:** by the built in review of R-836 on `relay/254`, 2026-10-03.
+
+**The mechanism.** `created` is written since R-836. A year record written
+before it carries none, and `ledger.product_made` answers no for it, so
+`label prune` leaves that year alone and says its record predates the field.
+No backfill exists, because nothing recorded whether R-835's build created
+the year or adopted it by its name.
+
+**Measured cost.** None on the author's account as measured: the cutover
+table records every live `label playlists` plan answered abort, so no year
+record exists there. A machine that applied a build between R-835 and R-836
+would hold such records.
+
+**Closes when:** a year record without the field is met on a real ledger, and
+the author decides whether a recreated build or a by hand mark is the remedy.
+
+**Not on the board bar.** No such record is known to exist.
+
+---
+
+## R-892. An exported playlist written before rows were kept is pruned by match alone
+
+**Found:** by the built in review of R-836 on `relay/254`, 2026-10-03.
+
+**The mechanism.** Since R-836 the export records the library row each track
+was written from, and a prune takes a track off by its row. A track written
+before has no row, so it leaves when no row of the library playlist matches it
+now. That reading is guarded: the playlist is left alone when any row matched
+nothing, or when any row matches a track the playlist was never written with.
+A match that moved to ANOTHER track already recorded here, two rows swapping
+their matches, passes both guards.
+
+**Measured cost.** Not measured. Needs two rows of one crate whose provider
+matches exchange between two exports.
+
+**Closes when:** an `export playlist` run over each pre R-836 playlist has
+recorded its rows, or the author accepts the guard as it stands.
+
+**Not on the board bar.** Unmeasured reachability.
+
+---
+
+## R-893. A release whose label credit disappeared is not read as no longer confirmed
+
+**Found:** by the built in review of R-836 on `relay/254`, 2026-10-03.
+
+**The mechanism.** `label prune` takes a release's tracks off for "the
+catalogue no longer confirms" only on the verifier's `mismatch`, a credit to
+another label. `unconfirmed` means no credit was found, which is also what a
+degraded credit endpoint answers, so it is read as absence and not as
+evidence. A release that lost its credit for good stays on its year playlist.
+
+**Measured cost.** Not measured on a live label.
+
+**Closes when:** the author decides whether an `unconfirmed` verdict seen on
+two separate runs is evidence enough.
+
+**Not on the board bar.** The conservative reading of a decision that is the
+author's.
+
+---
+
+## R-894. A product made playlist holding a track the account cannot play cannot be pruned
+
+**Found:** while building R-836 on `relay/254`, 2026-10-03.
+
+**The mechanism.** The provider leaves a track the account cannot play out of
+the listing and still counts it, so the read positions no longer match the
+provider's. `remove_tracks` refuses `outbound-remove-refused` with nothing sent
+rather than remove by a shifted position. The client's remove by identifier
+reads one page and the same shifted positions, so it is no way round. A
+playlist holding a video is refused the same way.
+
+**Measured cost.** Not measured live. A year playlist one of whose tracks went
+unavailable after the build cannot lose any track until that one is taken off
+by hand.
+
+**Closes when:** the first live prune says whether this occurs, and if it
+does, a removal by a stable item identifier is found on the provider.
+
+**Not on the board bar.** The refusal is honest and names the remedy.
+

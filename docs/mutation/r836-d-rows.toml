@@ -1,0 +1,32 @@
+name = "r836-d"
+pass_kind = "light"
+
+# R-836, batch d. The batches a to g together are the unit's 25 row
+# cap, split so each run fits one foreground wait.
+
+[[rows]]
+id = "P1_only_created_years"
+description = "prune.plan_label: a year recorded before the created field is pruned as though made here"
+file = "src/cratekit/modules/outbound/prune.py"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''        if recorded.created is not True:'''
+new = '''        if recorded.created is False:'''
+
+[[rows]]
+id = "P2_mismatch_judged_only_with_nothing_gone"
+description = "prune.plan_label: a release credited elsewhere is judged while a confirmed release is gone, so a track the gone one carries can leave"
+file = "src/cratekit/modules/outbound/prune.py"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''            if one not in staying(year) and (one in on_held or (judged and one in on_other))'''
+new = '''            if one not in staying(year) and (one in on_held or one in on_other)'''
+
+[[rows]]
+id = "P3_kept_release_keeps_its_track"
+description = "prune.plan_label: a track a kept release of the same year carries leaves because a held release carries it too"
+file = "src/cratekit/modules/outbound/prune.py"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''            if one not in staying(year) and (one in on_held or (judged and one in on_other))'''
+new = '''            if (one in on_held or (judged and one in on_other))'''

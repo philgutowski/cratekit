@@ -1,0 +1,53 @@
+name = "r836-b"
+pass_kind = "light"
+
+# R-836, batch b. The batches a to g together are the unit's 25 row
+# cap, split so each run fits one foreground wait.
+
+[[rows]]
+id = "L1_adopted_anywhere_wins"
+description = "ledger.product_made: a label year adopted from the account no longer answers no, so another record of the same id vouches for it"
+file = "src/cratekit/modules/outbound/ledger.py"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''                if entry.get("created") is not True:
+                    return False
+                made = True'''
+new = '''                if entry.get("created") is True:
+                    made = True'''
+
+[[rows]]
+id = "L2_export_records_are_made_here"
+description = "ledger.product_made: an exported playlist's record no longer vouches, so export prune can never take a track off"
+file = "src/cratekit/modules/outbound/ledger.py"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''    for record in (*document["playlists"].values(), *document["sets"].values()):'''
+new = '''    for record in document["sets"].values():'''
+
+[[rows]]
+id = "L3_created_false_when_adopted"
+description = "ledger.reserve_label_year: an adopted year is written as created, so a prune takes tracks off a playlist the source system made"
+file = "src/cratekit/modules/outbound/ledger.py"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''            "created": not adopt,'''
+new = '''            "created": True,'''
+
+[[rows]]
+id = "L4_pruned_leaves_added"
+description = "ledger._moved_to_pruned: a taken track stays in added, so the next prune asks the account for it again"
+file = "src/cratekit/modules/outbound/ledger.py"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''    entry["added"] = [one for one in _listed(entry, "added") if one not in gone]'''
+new = ''''''
+
+[[rows]]
+id = "L5_older_export_refused"
+description = "ledger.older_than: an export whose date could not be read is not older, so it is read for a prune"
+file = "src/cratekit/modules/outbound/ledger.py"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''    return not given or _later(recorded, given)'''
+new = '''    return bool(given) and _later(recorded, given)'''

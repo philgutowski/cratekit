@@ -922,7 +922,9 @@ held as other versions.
 
 Owed, the author's: the first `crate label sync` run, label by label, and its
 go; one label built with `crate label playlists` and read in the web player,
-which label being his call given R-872 and R-836; the set `tech_house_hits -
+which label being his call given R-872 and R-836; one label's created year
+playlists pruned with `crate label prune` and read back, which closes R-836
+and says whether R-894 occurs; the set `tech_house_hits -
 Phil` exported with `crate export set` and archived after its download; the
 DJ_tools docs commit #252's task left unpushed.
 
