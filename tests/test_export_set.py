@@ -561,6 +561,16 @@ def test_the_page_bound_reached_leaves_it_out_and_says_so(account):
     ] * 2
 
 
+def test_the_walk_never_asks_past_the_providers_ceiling_of_300():
+    """The client serves at most 300 rows of one search, so a page asked past
+    that comes back empty and would read as the end of the listing. The 300 is
+    the client's documented figure, written here and not read off the code."""
+    hits = [Hit("tid-7", *SEVEN), *_filler(399)]
+    answer, asked = _walk("Artist Seven - Title Seven", hits)
+    assert max(asked) + catalogue.TRACK_SEARCH_PAGE <= 300
+    assert answer.full and candidates.sole_exact(answer) is None
+
+
 def test_a_title_read_two_ways_on_a_full_page_says_so_and_not_the_bound(account):
     cfg, fake, _held_account = account
     from cratekit.acquire import match
@@ -626,6 +636,12 @@ def test_an_unreadable_row_on_a_full_page_reads_no_second_page():
     hits = [Hit("tid-7", *SEVEN), Unreadable(), *_filler(60)]
     answer, asked = _walk("Artist Seven - Title Seven", hits)
     assert answer.unreadable == 1
+    assert asked == [0] and candidates.sole_exact(answer) is None
+
+
+def test_an_exact_match_with_no_identifier_on_a_full_page_reads_no_second_page():
+    hits = [Hit("", *SEVEN), *_filler(60)]
+    answer, asked = _walk("Artist Seven - Title Seven", hits)
     assert asked == [0] and candidates.sole_exact(answer) is None
 
 
