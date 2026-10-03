@@ -1,0 +1,81 @@
+name = "u107-b"
+pass_kind = "light"
+
+# U107, `crate label sync`, measured by R-857's task after the unit landed
+# unreviewed. One row per guard the unit added, plus the five guards its
+# first fix round added: S05 in batch a, S20 to S23 in batch c. Subsets are
+# derived by the driver.
+
+[[rows]]
+id = "S10_pick_unknown"
+description = "sync_cli.record_answer: accept a pick naming a release the question did not offer"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+old = '''            if unknown or not wanted:'''
+new = '''            if not wanted:'''
+
+[[rows]]
+id = "S11_pick_takes_only_chosen"
+description = "sync_cli.record_answer: a pick takes every offered release, not only the chosen ones"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+old = '''            if answer == ALL or (answer == PICK and one.identity in wanted)'''
+new = '''            if answer in (ALL, PICK)'''
+
+[[rows]]
+id = "S12_stop_removes"
+description = "sync_cli.record_answer: stop reports the label removed and leaves it in the registry"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+old = '''            removed = labels.RegistryStore().remove(entry.label_id)'''
+new = '''            removed = True'''
+
+[[rows]]
+id = "S13_take_accepts"
+description = "sync_cli._take: file a taken release and never record it accepted"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+old = '''    review.resolve(store, item.item_id, Verdict.ACCEPTED, actor=ACTOR)'''
+new = '''    pass'''
+
+[[rows]]
+id = "S14_take_respects_decided"
+description = "sync_cli._take: overwrite an item a person decided between the question and the answer"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+old = '''    if item.stored_verdict is not None:
+        return False'''
+new = '''    if False:
+        return False'''
+
+[[rows]]
+id = "S15_no_default_answer"
+description = "sync_cli._ask: give the prompt a default of not-now, so an empty line moves the marker"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+old = '''        answer = prompter.ask(f"Answer ({', '.join(words)})").lower()'''
+new = '''        answer = prompter.ask(f"Answer ({', '.join(words)})", default=NOT_NOW).lower()'''
+
+[[rows]]
+id = "S16_save_before_ask"
+description = "sync_cli._walk: ask without saving the question first, so the answer has no question to apply to"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+old = '''            _save_pending(cfg, listed.question)'''
+new = '''            pass'''
+
+[[rows]]
+id = "S17_dead_verifier_skip"
+description = "sync_cli._question_for: read a catalogue that confirmed nothing as a label with nothing new"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+old = '''    if not candidates and source.dropped and unconfirmed == source.read:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "S18_half_shaped_invocation"
+description = "sync_cli.label_sync: accept --label or --release without --answer and walk the terminal instead"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+old = '''    elif args.label or args.releases:'''
+new = '''    elif False:'''

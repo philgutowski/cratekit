@@ -1,0 +1,272 @@
+{
+  "name": "u107-c",
+  "pass_kind": "light",
+  "branch": "relay/251",
+  "head": "7ca92b8",
+  "when": "2026-10-03 02:33 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 12316,
+  "baseline_exit": 0,
+  "pytest_runs": 13,
+  "state_guarded": "~/Library/Application Support/cratekit (256910 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/label/approved_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/label/approved_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "5d2518ef5d546081",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 12316,
+    "baseline_collected": 12316,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "S19_approved_superseded",
+      "description": "approved_cli._queued: count a superseded item as not yet answered",
+      "file": "src/cratekit/label/approved_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "55b94430c3010cc1",
+      "subset": [
+        "tests/test_label_approved.py",
+        "tests/test_label_tidal_catalogue.py",
+        "tests/test_landing_labels.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.approved_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 12316,
+      "baseline_collected": 12316,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_a_superseded_item_is_not_counted_as_waiting_by_label_approved"
+      ],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "",
+      "runs": 2,
+      "head_verified": true,
+      "old": "        elif item.verdict is not review.Verdict.SUPERSEDED:",
+      "new": "        else:"
+    },
+    {
+      "id": "S20_pick_isdecimal",
+      "description": "sync_cli._pick: decide a release number with isdigit again, so a superscript digit crashes the walk (fix round guard)",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3093062b075cd226",
+      "subset": [
+        "tests/test_label_sync.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.sync_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 46,
+      "baseline_collected": 46,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_a_pick_of_a_digit_that_is_not_a_number_is_asked_again"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if word.isdecimal() and 1 <= int(word) <= count:",
+      "new": "            if word.isdigit() and 1 <= int(word) <= count:"
+    },
+    {
+      "id": "S21_filing_run",
+      "description": "sync_cli.record_answer: file taken releases under the answering run, not the run that asked (fix round guard)",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "0c11d87c7747870c",
+      "subset": [
+        "tests/test_label_sync.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.sync_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 46,
+      "baseline_collected": 46,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_a_later_answer_files_its_releases_under_the_run_that_asked"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        filing_run = question.run or run_id",
+      "new": "        filing_run = run_id"
+    },
+    {
+      "id": "S22_unanswered_outcome",
+      "description": "sync_cli._walk: report no op over a walk that saved a question and was left unanswered (fix round guard)",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "24fe71d46c1e8e9a",
+      "subset": [
+        "tests/test_label_sync.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.sync_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 46,
+      "baseline_collected": 46,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_a_walk_left_unanswered_after_its_question_was_saved_is_not_a_no_op"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        outcome=Outcome.OK if answered or stopped_at else Outcome.NO_OP,",
+      "new": "        outcome=Outcome.OK if answered else Outcome.NO_OP,"
+    },
+    {
+      "id": "S23_stop_remedy",
+      "description": "sync_cli.record_answer: stop with nothing waiting sends a person to --next, which asks nothing (fix round guard)",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "70835700952768af",
+      "subset": [
+        "tests/test_label_sync.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.sync_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 46,
+      "baseline_collected": 46,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_stop_with_no_question_waiting_names_the_registry_remove"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    if answer == STOP",
+      "new": "                    if False"
+    },
+    {
+      "id": "S24_size_coefficient",
+      "description": "sync_cli: halve the bytes per second the size estimate uses",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c6609b53cdca24da",
+      "subset": [
+        "tests/test_label_sync.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.sync_cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 46,
+      "baseline_collected": 46,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_the_default_human_output_names_the_question_and_each_release",
+        "tests/test_label_sync.py::test_the_structured_path_asks_the_same_question_and_takes_the_same_answer"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "BYTES_PER_SECOND = 110_000",
+      "new": "BYTES_PER_SECOND = 55_000"
+    },
+    {
+      "id": "S25_measured_passes_refusal",
+      "description": "sync_cli._measured: count a provider refusal while reading a release's tracks as tracks unread, so the walk goes on instead of parking",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d55b3e954f3d0118",
+      "subset": [
+        "tests/test_label_sync.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.sync_cli",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 12316,
+      "baseline_collected": 12316,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "    except CratekitError:\n        raise\n    except Exception:  # noqa: BLE001 - counted as unread, never guessed at",
+      "new": "    except Exception:  # noqa: BLE001 - counted as unread, never guessed at"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "D1_quit_writes_nothing",
+      "description": "sync_cli._walk: treat quit as an answer",
+      "reason": "ranked below the cap: quit reaching record_answer is refused there as not an answer, so the row measures S16's refusal path twice"
+    },
+    {
+      "id": "D2_lock_refusal",
+      "description": "sync_cli._locked: proceed unlocked when the lock cannot be taken",
+      "reason": "ranked below the cap: the lock helper is config._exclusive_lock, shared and measured by its own suite"
+    },
+    {
+      "id": "D3_empty_registry",
+      "description": "sync_cli._followed_or_refuse: walk an empty registry",
+      "reason": "ranked below the cap: maintainer facing, an empty walk asks nothing either way"
+    },
+    {
+      "id": "D4_open_for_renamed",
+      "description": "sync_cli._Tools.open_for: group by the identifier the item names rather than the one the registry follows",
+      "reason": "ranked below the cap: R-381's rename mapping is measured by the registry's own table"
+    },
+    {
+      "id": "D5_record_round",
+      "description": "sync_cli._question_for: skip recording the round",
+      "reason": "ranked below the cap: a grouping count, maintainer facing"
+    }
+  ]
+}

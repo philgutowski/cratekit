@@ -314,6 +314,88 @@ def test_not_now_moves_the_marker_and_a_release_published_after_is_asked_next_ru
     assert list(items(installed)) == ["r4"]
 
 
+def sweep_labels() -> None:
+    code, queued = drive(["sync", "labels"])
+    assert code == int(ExitCode.OK), queued
+    code, resumed = drive(["sync", "labels", "--job", queued["data"]["job_id"]])
+    assert code == int(ExitCode.OK), resumed
+
+
+def test_a_release_answered_not_now_is_not_filed_by_the_labels_sweep(installed, monkeypatch):
+    """The asked marker holds for the old sweep too, or a no comes back as catch up.
+
+    Until U109 takes labels out of ``sync all``, ``sync labels`` still sweeps.
+    A sweep that did not read the marker filed every release answered not now
+    into review, and the next ``label sync`` asked about them again as open
+    items, so a no did not stay a no.
+    """
+    register()
+    three_new(monkeypatch)
+    next_question()
+    answer(SLUG, "not-now")
+    bind(monkeypatch, {SLUG: [("r4", "2027", 3), ("r3", "2026", 4), ("r2", "2025", 2), ("r1", "2024", 1)]})
+
+    sweep_labels()
+
+    assert sorted(items(installed)) == ["r4"]
+    question = next_question()
+    assert [one["identity"] for one in question["releases"]] == ["r4"]
+
+
+def test_a_release_the_sweep_filed_while_its_question_waited_is_settled_by_the_answer(
+    installed, monkeypatch
+):
+    """A question saved by ``--next`` holds its releases under pending, not asked.
+
+    A sweep that ran before the answer filed them, and a not now that settled
+    only the items the question knew of left them open for the next catch up.
+    """
+    register()
+    three_new(monkeypatch)
+    next_question()
+    sweep_labels()
+    assert sorted(items(installed)) == ["r1", "r2", "r3"]
+
+    answer(SLUG, "not-now")
+
+    assert open_items(installed) == []
+    assert {item.verdict for item in items(installed).values()} == {review.Verdict.SUPERSEDED}
+    assert tombstones(installed) == 0
+    assert next_question() is None
+
+
+def test_a_walk_whose_gate_took_back_every_open_item_is_not_a_no_op(installed, monkeypatch):
+    register()
+    bind(monkeypatch, {SLUG: []})
+    offered(installed, "r-old-hymn", published_genres=["Christian"])
+
+    code, envelope = sync("--next")
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "ok"
+    (label_line,) = checks(envelope, f"label.{SLUG}")
+    assert "1 open item(s) taken back by the genre gate" in label_line["detail"]
+    assert open_items(installed) == []
+
+
+def test_the_labels_sweep_refuses_an_unreadable_record_before_any_login(installed, monkeypatch):
+    register()
+    three_new(monkeypatch)
+    resolved: list[object] = []
+    monkeypatch.setattr(catalogue, "resolve", lambda cfg: resolved.append(cfg))
+    path = config.state_path("label_sync", installed)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{not json")
+
+    code, queued = drive(["sync", "labels"])
+    assert code == int(ExitCode.OK), queued
+    code, refused = drive(["sync", "labels", "--job", queued["data"]["job_id"]])
+
+    assert "label-sync-unusable" in json.dumps(refused)
+    assert resolved == []
+    assert items(installed) == {}
+
+
 def test_pick_records_exactly_the_chosen_releases_and_no_others(installed, monkeypatch):
     register()
     three_new(monkeypatch)
@@ -684,6 +766,19 @@ def test_a_pick_outside_the_numbers_is_asked_again(installed, monkeypatch):
     assert envelope["data"]["summary"]["answered"][0]["taken"] == ["r3", "r1"]
 
 
+def test_a_pick_of_a_digit_that_is_not_a_number_is_asked_again(installed, monkeypatch):
+    """A superscript two is a digit to ``str.isdigit`` and not a number to ``int``."""
+    register()
+    three_new(monkeypatch)
+    terminal = script(monkeypatch, "pick", "\u00b2", "2")
+
+    code, envelope = sync()
+
+    assert code == int(ExitCode.OK), envelope
+    assert "\u00b2 is not a release number between 1 and 3" in terminal.shown
+    assert envelope["data"]["summary"]["answered"][0]["taken"] == ["r2"]
+
+
 def test_the_prompt_goes_through_the_one_allowlisted_reader_and_the_verb_reads_no_stdin():
     tree = ast.parse((SRC_ROOT / "cratekit" / "label" / "sync_cli.py").read_text())
     for node in ast.walk(tree):
@@ -832,6 +927,48 @@ def test_an_answer_with_no_question_waiting_is_refused(installed, monkeypatch):
     assert record(installed)["labels"] == {}
 
 
+def test_stop_with_no_question_waiting_names_the_registry_remove(installed, monkeypatch):
+    """A label with nothing new is never asked, so ``--next`` is no remedy for stop."""
+    register()
+    bind(monkeypatch, {SLUG: []})
+
+    code, envelope = sync("--answer", "stop", "--label", SLUG)
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    steps = json.dumps(envelope["cause"])
+    assert f"crate label registry remove {SLUG}" in steps
+    assert "crate label sync --next" not in steps
+    assert SLUG in labels.RegistryStore().load().labels
+
+
+def test_a_later_answer_files_its_releases_under_the_run_that_asked(installed, monkeypatch):
+    register()
+    three_new(monkeypatch)
+    code, asked = sync("--next")
+    assert code == int(ExitCode.OK), asked
+
+    answer(SLUG, "all")
+
+    filed = items(installed)
+    assert {filed[rid].payload[sweep.SWEEP_RUN] for rid in ("r1", "r2", "r3")} == {
+        asked["run_id"]
+    }
+
+
+def test_a_walk_left_unanswered_after_its_question_was_saved_is_not_a_no_op(
+    installed, monkeypatch
+):
+    register()
+    three_new(monkeypatch)
+    script(monkeypatch, "quit")
+
+    code, envelope = sync()
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "ok"
+    assert record(installed)["labels"][SLUG]["pending"]
+
+
 def test_a_pick_naming_a_release_the_question_did_not_offer_is_refused(installed, monkeypatch):
     register()
     three_new(monkeypatch)
@@ -880,6 +1017,72 @@ def test_a_record_that_cannot_be_read_refuses_rather_than_asking_everything_agai
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "label-sync-unusable"
     assert fake.asked_for == []
+
+
+def test_a_record_of_another_version_refuses_rather_than_being_read_as_this_builds(
+    installed, monkeypatch
+):
+    """Measured at zero by R-857's table, row S02: no test wrote another version."""
+    register()
+    fake = three_new(monkeypatch)
+    path = config.state_path("label_sync", installed)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"version": 2, "labels": {}, "answers": []}))
+
+    code, envelope = sync("--next")
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "label-sync-unusable"
+    assert "version 2" in envelope["cause"]["message"]
+    assert fake.asked_for == []
+
+
+def test_an_item_decided_between_the_question_and_the_answer_is_left_as_decided(
+    installed, monkeypatch
+):
+    """Measured at zero by R-857's table, row S14: nothing decided an item mid question."""
+    register()
+    bind(monkeypatch, {SLUG: []})
+    decided = offered(installed, "r-old-1")
+    offered(installed, "r-old-2")
+    next_question()
+    with review.open_store(installed) as store:
+        review.resolve(store, decided, review.Verdict.REJECTED, actor="a person")
+
+    answered = answer(SLUG, "all")
+
+    assert answered["taken"] == ["r-old-2"]
+    assert answered["left"] == ["r-old-1"]
+    filed = items(installed)
+    assert filed["r-old-1"].verdict is review.Verdict.REJECTED
+    assert filed["r-old-2"].verdict is review.Verdict.ACCEPTED
+
+
+def test_a_provider_refusal_while_counting_a_catch_up_release_parks_the_run(
+    installed, monkeypatch
+):
+    """Measured at zero by R-857's table, row S25: a refusal counted as tracks unread."""
+    register()
+    fake = bind(monkeypatch, {SLUG: []})
+    offered(installed, "r-old-1")
+
+    def refused(release_id):
+        raise Parked(
+            Cause(
+                reason="provider-cooldown",
+                message="the streaming provider rate limited this account",
+                remediation=Remediation(remedy=Remedy.RETRY_LATER),
+                origin=("provider_gate",),
+            )
+        )
+
+    monkeypatch.setattr(fake, "release_tracks", refused)
+
+    code, envelope = sync("--next")
+
+    assert code == int(ExitCode.UPSTREAM_UNAVAILABLE), envelope
+    assert envelope["cause"]["reason"] == "provider-cooldown"
+    assert record(installed)["labels"] == {}
 
 
 # ═══════════════════════════════════════════════════════════════════════════

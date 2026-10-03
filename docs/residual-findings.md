@@ -33807,3 +33807,95 @@ again by hand.
 **Put on the board at sitting 30 as the vehicle for #246's owed work**,
 since Relay will not run a task it has already landed again. Under the bar
 (d), a guard on a path that writes is unmeasured.
+
+**Closed 2026-10-02 on `relay/251`, issue #251, by the review U107 never
+had.** The unit was built by #246's task and reviewed by this one. Two
+rounds of the built in review, ten findings then seven. Nine driven and
+fixed, each with a test that fails on the source before it: the labels
+sweep now reads the asked marker, read before its login, so a release
+answered not now is not filed again; an answer supersedes every untaken
+release by the id it files under, so one a sweep filed while the question
+waited is settled too; a superscript digit no longer crashes a pick; stop
+with nothing waiting names `label registry remove`; a later `--answer`
+files under the run that asked; and a walk that saved a question or took
+back open items reports ok, not no op. Two declined: honoring stop with no
+question waiting, which would change the author's design of stop as an
+answer to a question, and a fourth copy of the label package's `_check`
+helper, which matches the three beside it. Four recorded as R-858 to
+R-861. Mutation table 25 of 25 killed once three zero rows were given a
+test, `docs/mutation/u107-notes.md`. #246 closed again by hand after the
+merge. The first live run of `crate label sync` is still owed to an
+attended sitting.
+
+## R-858. The guided label sync's record grows for ever, and every question, answer and labels sweep item rereads all of it
+
+**Found:** by the built in review of U107 on `relay/251`, 2026-10-02.
+
+**The mechanism.** `record_answer` appends every answer to `answers` with a
+full copy of each taken release, payload included, and nothing ever trims
+it. Every saved question and every answer reads, parses and atomically
+rewrites the whole document under the lock, and since `relay/251` each
+labels sweep item parses it again to read one label's asked set.
+
+**Measured cost.** Not measured; the record does not yet exist on the live
+library. Thirty labels answered a few times a month is some hundreds of
+entries a year, each carrying release payloads. Maintainer facing: a slower
+write and a larger file, no wrong answer. The same shape as R-854's mark
+record.
+
+**Closes when:** the answer log is bounded or kept apart from the marker,
+or a measurement on a year's record says the cost does not matter.
+
+## R-859. The first run's catch up reads every open review item's tracks from the provider to size its question
+
+**Found:** by the built in review of U107 on `relay/251`, 2026-10-02.
+
+**The mechanism.** `_question_for` calls `_measured` for each open label
+release item it offers, one `release_tracks` read through the provider gate
+per item, with no cap, because the sweep's payload carries no track count
+and the question must show tracks and an estimated size.
+
+**Measured cost.** 2,416 label releases waited in review on 2026-10-02, so
+the first run makes at least 2,416 release reads, each paced at the gate's
+one second minimum, spread across about 30 questions; some labels hold over
+a hundred items, so a question can take minutes to appear. Paced and
+resumable, so no rate limit was driven; the wall time on the live provider
+is unmeasured and is the attended first run's to read.
+
+**Closes when:** the attended first run reports its time per question, and
+either it is acceptable or the catch up shows unread counts past a cap.
+
+## R-860. A walk replaces a question `--next` saved and showed, so a later `--answer` applies to the walk's question
+
+**Found:** by the built in review of U107 on `relay/251`, 2026-10-02.
+
+**The mechanism.** `_walk` lists every label afresh, by design, and saves
+its question over any pending one. An agent that ran `--next`, was shown
+three releases, and answers `all` after an interactive walk saved a new
+question for the same label takes the new question's releases, including
+any it was never shown.
+
+**Measured cost.** Reachable only with two sessions driving one library's
+label sync at once; not driven. The answer is still the person's and is
+recorded with the question it applied to.
+
+**Closes when:** an answer names the question it answers, or a walk keeps
+a pending question it did not save.
+
+## R-861. A bare `crate label sync` over an open input pipe that never closes waits for ever
+
+**Found:** by the built in review of U107 on `relay/251`, 2026-10-02.
+
+**The mechanism.** With no flags the verb walks the terminal and reads
+standard input through `cli/prompt.py`, which has no check that a person
+is there. Over a pipe that stays open and never writes, the first label is
+listed with provider calls and its question saved, then the read blocks.
+The setup verb shares the reader and the shape.
+
+**Measured cost.** One producer driven: an agent session's shell, whose
+standard input is `/dev/null`, so the read ends at once and the verb
+refuses with `label-sync-unanswerable` naming `--next` and `--answer`,
+which is the designed path. A never closing pipe was not driven.
+
+**Closes when:** the interactive path refuses before its first provider
+call when nothing could answer it, for both interactive verbs.

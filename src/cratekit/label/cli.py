@@ -1126,6 +1126,17 @@ _JOB_LIBRARY: dict[tuple[str, str], sweep.LibraryView] = {}
 _JOB_ASKING: dict[str, genre_gate.Asking] = {}
 
 
+def _asked_for(cfg: config.Config, label_id: str) -> frozenset[str]:
+    """The releases ``label sync`` already asked a person about for one label.
+
+    Imported here and not at the top, because ``label.sync_cli`` imports this
+    module for its configuration loader.
+    """
+    from cratekit.label import sync_cli
+
+    return sync_cli.asked_releases(sync_cli.load_record(cfg), label_id)
+
+
 def _job_asking(job) -> genre_gate.Asking:
     """The asking for ``job``, made on first use and kept for that job alone."""
     key = str(job.job_id)
@@ -1356,6 +1367,9 @@ def handle(job, item, cfg) -> jobs.Produced | None:
         # active copy that cannot be read refuses here, not after a label was
         # listed and its releases filed unjudged.
         declared = active_taxonomy.load(cfg)
+        # WHAT THE GUIDED SYNC ALREADY ASKED ABOUT (U107), read before the
+        # login for the same reason, so an unreadable record refuses first.
+        asked = _asked_for(cfg, entry.label_id)
         found = catalogue.resolve(cfg)
         # ONE READER FOR BOTH QUESTIONS (R-798). Ownership and the genre gate
         # read the same rows of the same release, so the second gets the
@@ -1376,6 +1390,12 @@ def handle(job, item, cfg) -> jobs.Produced | None:
                 asking=_job_asking(job),
             ),
             run_id=run_id,
+            # WHAT THE GUIDED SYNC ALREADY ASKED ABOUT TAKES A PLACE (U107), as
+            # it does in ``label sync``'s own listing. Without it this sweep
+            # filed every release answered not now, and the next guided sync
+            # asked about it again as an open item. An unreadable record
+            # refuses above rather than reading as nothing asked.
+            offered=asked,
         )
         result = run_increment(
             cfg,

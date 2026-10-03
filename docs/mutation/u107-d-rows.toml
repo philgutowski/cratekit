@@ -1,0 +1,33 @@
+name = "u107-d"
+pass_kind = "light"
+
+# Fix round two: the three rows batches a to c measured at zero, measured
+# again after a test was written for each.
+
+[[rows]]
+id = "S02_record_version_again"
+description = "sync_cli.load_record: accept a record of any version as this build's"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+old = '''    if version != RECORD_VERSION:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "S14_take_respects_decided_again"
+description = "sync_cli._take: overwrite an item a person decided between the question and the answer"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+old = '''    if item.stored_verdict is not None:
+        return False'''
+new = '''    if False:
+        return False'''
+
+[[rows]]
+id = "S25_measured_passes_refusal_again"
+description = "sync_cli._measured: count a provider refusal while reading a release's tracks as tracks unread, so the walk goes on instead of parking"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+old = '''    except CratekitError:
+        raise
+    except Exception:  # noqa: BLE001 - counted as unread, never guessed at'''
+new = '''    except Exception:  # noqa: BLE001 - counted as unread, never guessed at'''

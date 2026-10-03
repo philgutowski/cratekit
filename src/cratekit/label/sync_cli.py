@@ -462,6 +462,9 @@ class _Listed:
     question: Question | None = None
     skipped: str | None = None
     listing: sweep.LabelListing | None = None
+    #: Open items the gate took back, counted when no question was left to
+    #: carry the count, so the run still reports what it wrote.
+    withheld: int = 0
 
 
 def _text(value: Any) -> str:
@@ -580,7 +583,7 @@ def _question_for(
             )
         )
     if not releases:
-        return _Listed(listing=listing)
+        return _Listed(listing=listing, withheld=withheld)
     # WHAT THE WINDOW DID NOT REACH IS RECORDED, as the sweep records it, so
     # ``review list --group-by label`` says how much more the label could offer.
     review.record_round(
@@ -729,10 +732,18 @@ def record_answer(
         held = dict(document["labels"].get(entry.label_id) or {})
         pending = held.get("pending")
         if not isinstance(pending, Mapping) or not pending.get("releases"):
+            # STOP WITH NOTHING WAITING names the registry's remove, since
+            # ``--next`` asks nothing about a label with nothing new and the
+            # remedy would send a person round in a circle.
             raise _selection_invalid(
                 f"no question is waiting for {entry.name!r}, so there is nothing an "
                 f"answer could apply to; nothing was recorded",
-                "ask it first with: crate label sync --next",
+                (
+                    f"to stop following it with nothing to answer: crate label "
+                    f"registry remove {entry.label_id}"
+                    if answer == STOP
+                    else "ask it first with: crate label sync --next"
+                ),
                 label=entry.label_id,
             )
         question = Question.from_json(pending)
@@ -770,15 +781,24 @@ def record_answer(
         ]
         taken: list[Offered] = []
         left: list[str] = []
+        # FILED UNDER THE RUN THAT ASKED, which recorded the label's round, so
+        # a grouping by run finds the round and its filings together when the
+        # answer came from a later ``--answer``.
+        filing_run = question.run or run_id
         for one in chosen:
-            (taken if _take(store, one, run_id) else left).append(one)
+            (taken if _take(store, one, filing_run) else left).append(one)
         taken_ids = {one.identity for one in taken}
+        # SETTLED BY THE ID EACH RELEASE FILES UNDER, not only the ids the
+        # question knew: a sweep that ran while the question waited filed its
+        # new releases, and settling only the catch up items left those open
+        # for the next run to ask about again. ``supersede`` passes over an id
+        # nothing filed and over one already decided.
         review.supersede(
             store,
             [
-                one.item_id
+                one.item_id or genre_gate.release_item_id(one.identity)
                 for one in question.releases
-                if one.item_id is not None and one.identity not in taken_ids
+                if one.identity not in taken_ids
             ],
             rule=ANSWERED_RULE,
         )
@@ -898,10 +918,12 @@ def _answer_check(answered: Answered) -> dict[str, Any]:
     return _check(f"answered.{answered.label_id}", "ok", f"{answered.label_name}: {what}")
 
 
-def _nothing_check(entry: labels.LabelEntry, listing: sweep.LabelListing | None) -> dict[str, Any]:
+def _nothing_check(entry: labels.LabelEntry, listed: _Listed) -> dict[str, Any]:
     detail = f"{entry.name}: nothing new since it was last asked"
-    if listing is not None and listing.beyond:
-        detail += f"; {listing.beyond} release(s) past this run's window"
+    if listed.listing is not None and listed.listing.beyond:
+        detail += f"; {listed.listing.beyond} release(s) past this run's window"
+    if listed.withheld:
+        detail += f"; {listed.withheld} open item(s) taken back by the genre gate"
     return _check(f"label.{entry.label_id}", "ok", detail)
 
 
@@ -966,6 +988,7 @@ def _next(ctx, cfg: config.Config) -> Envelope:
     document = load_record(cfg)
     seen: list[dict[str, Any]] = []
     checks: list[dict[str, Any]] = []
+    withheld = 0
     with review.open_store(cfg) as store:
         for entry in list(followed.labels.values()):
             held = document["labels"].get(entry.label_id) or {}
@@ -979,7 +1002,8 @@ def _next(ctx, cfg: config.Config) -> Envelope:
                     seen.append({"label_id": entry.label_id, "state": "skipped"})
                     continue
                 if listed.question is None:
-                    checks.append(_nothing_check(entry, listed.listing))
+                    checks.append(_nothing_check(entry, listed))
+                    withheld += listed.withheld
                     seen.append({"label_id": entry.label_id, "state": "nothing-new"})
                     continue
                 question = listed.question
@@ -1000,7 +1024,9 @@ def _next(ctx, cfg: config.Config) -> Envelope:
     checks.append(_check("question", "ok", "no label has anything new to ask about"))
     return ctx.envelope(
         data={"checks": checks, "summary": _summary(labels_seen=seen)},
-        outcome=Outcome.NO_OP,
+        # NO_OP only when nothing was written: an open item the gate took
+        # back has left review even when no question was left to ask.
+        outcome=Outcome.OK if withheld else Outcome.NO_OP,
     )
 
 
@@ -1068,7 +1094,9 @@ def _pick(prompter: prompt.Prompter, question: Question) -> list[str] | None:
         numbers: list[int] = []
         bad: list[str] = []
         for word in typed.replace(",", " ").split():
-            if word.isdigit() and 1 <= int(word) <= count:
+            # ``isdecimal`` and not ``isdigit``: a superscript two is a digit
+            # that ``int`` refuses, and that crashed the walk mid question.
+            if word.isdecimal() and 1 <= int(word) <= count:
                 numbers.append(int(word))
             else:
                 bad.append(word)
@@ -1097,6 +1125,7 @@ def _walk(ctx, cfg: config.Config, prompter: prompt.Prompter) -> Envelope:
     seen: list[dict[str, Any]] = []
     checks: list[dict[str, Any]] = []
     stopped_at: str | None = None
+    withheld = 0
     with review.open_store(cfg) as store:
         for entry in list(followed.labels.values()):
             document = load_record(cfg)
@@ -1106,7 +1135,8 @@ def _walk(ctx, cfg: config.Config, prompter: prompt.Prompter) -> Envelope:
                 seen.append({"label_id": entry.label_id, "state": "skipped"})
                 continue
             if listed.question is None:
-                checks.append(_nothing_check(entry, listed.listing))
+                checks.append(_nothing_check(entry, listed))
+                withheld += listed.withheld
                 seen.append({"label_id": entry.label_id, "state": "nothing-new"})
                 continue
             _save_pending(cfg, listed.question)
@@ -1157,7 +1187,10 @@ def _walk(ctx, cfg: config.Config, prompter: prompt.Prompter) -> Envelope:
             "checks": checks,
             "summary": _summary(answered=answered, labels_seen=seen, stopped_at=stopped_at),
         },
-        outcome=Outcome.OK if answered else Outcome.NO_OP,
+        # A QUESTION LEFT UNANSWERED IS STILL A RUN THAT WROTE: the question
+        # was saved, its round recorded, and any open item the gate took back
+        # left review. NO_OP is a run that had nothing to ask and wrote nothing.
+        outcome=Outcome.OK if answered or stopped_at or withheld else Outcome.NO_OP,
     )
 
 
