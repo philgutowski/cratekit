@@ -918,6 +918,7 @@ DRIVEN = {
     "route.inbox",
     "route.unplaced",
     "export.playlist",
+    "export.prune",
     "sync.favorites",
     "sync.all",
 }
@@ -1141,6 +1142,37 @@ def test_a_playlist_export_reads_the_file_and_queues_the_playlists_tracks(
 
     with jobs.open_store() as store:
         assert [item.item_id for item in jobs.items(store, job_id)] == ["13", "31", "11"]
+
+
+def test_a_playlist_prune_reads_the_file_and_takes_off_only_what_left_it(either, monkeypatch):
+    """R-836. The crate's three rows in the file match three recorded tracks, and
+    the fourth recorded track, which no row matches any more, is the one taken off."""
+    machine = either
+    from cratekit.modules.outbound import ledger
+
+    exported = _export(machine)
+    account = outbound_fakes.FakeAccount(catalog={"13": "tid-13", "31": "tid-31", "11": "tid-11"})
+    _bind(monkeypatch, account)
+    from cratekit.modules.outbound import source
+
+    key = source.resolve(source.read_library(exported), CRATE).key
+    remote = ledger.reserve_playlist(machine, key, lambda: account.create_playlist(CRATE)).remote_id
+    for one in ("tid-13", "tid-31", "tid-11", "tid-gone"):
+        account.add_to_playlist(remote, one)
+        ledger.record_playlist_track(machine, key, one)
+    verb = ["export", "prune", CRATE, "--export", str(exported)]
+
+    code, refused = drive(verb)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    decided, envelope = drive(
+        ["run", "decide", refused["run_id"], "export.prune.confirm", "apply", "--actor", "a-person"]
+    )
+    assert decided == int(ExitCode.OK), envelope
+    code, done = drive(["--run", refused["run_id"], *verb])
+
+    assert code == int(ExitCode.OK), done
+    assert account.playlist_tracks(remote) == ("tid-13", "tid-31", "tid-11")
+    assert account.taken == [(remote, ("tid-gone",))]
 
 
 def test_the_favourites_sweep_reads_the_file_and_queues_the_favourites(either, monkeypatch):
