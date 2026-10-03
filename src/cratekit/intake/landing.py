@@ -62,7 +62,7 @@ import unicodedata
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Iterator, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Mapping, Sequence
 
 from cratekit.acquire import listdoc, match, match_cli
 from cratekit.core import (
@@ -79,6 +79,9 @@ from cratekit.core.naming import AUDIO_EXTS, NameTemplate
 from cratekit.intake import collection_xml, ingest, native
 from cratekit.intake.ingest import PlacedTrack
 from cratekit.write import rbxml, trees
+
+if TYPE_CHECKING:
+    from cratekit.intake.account_playlists import Claimed
 
 #: The per item download directory ``acquire download`` keeps under staging.
 #: Whatever is in it belongs to an attempt that did not finish. Named here
@@ -172,6 +175,23 @@ class Landed:
     refused: tuple[Refused, ...]
     labelled: tuple[Labelled, ...] = ()
     unlabelled: tuple[Unlabelled, ...] = ()
+    #: The account playlists written into the intake file, each with its count.
+    split: tuple[tuple[Claimed, int], ...] = ()
+
+
+def landed_counts(
+    split: Sequence[Claimed], target: Path, landed: set[Path]
+) -> tuple[tuple[Claimed, int], ...]:
+    """Each account playlist and how many of its files are among ``landed``, none left out.
+
+    A playlist none of whose files landed is not written by either medium, so
+    it is not reported as written.
+    """
+    counted = (
+        (claimed, sum(1 for path in claimed.files if target / path.name in landed))
+        for claimed in split
+    )
+    return tuple((claimed, count) for claimed, count in counted if count)
 
 
 def _listable(entry: Path) -> bool:
@@ -559,8 +579,12 @@ def preflight(
     export: Path,
     destination: Path,
     label_rows: tuple[listdoc.ManifestRow, ...] = (),
+    names: Sequence[str] = (),
 ) -> Checked:
     """Every check :func:`apply` makes before its first move, in its order.
+
+    ``names`` are the account playlists the landing writes (U113), each refused
+    when the export's intake tree holds it.
 
     ONE PLACE HOLDS THE ORDER, because a caller asks these before its gate
     (R-677) and :func:`apply` asks them again before the moves, and two copies
@@ -587,7 +611,50 @@ def preflight(
     # and cannot refuse after the moves because nothing reads it again.
     checked = Checked(registry=tree_registry.read(cfg), declared=active_taxonomy.load(cfg))
     _check_export(export, plan.batch, checked, label_rows)
+    _check_names_free(export, checked, names)
     return checked
+
+
+def inbox_held(export: Path, checked: Checked) -> tuple[str, ...] | str:
+    """Every name under the export's intake tree, or a sentence naming why it could not be read.
+
+    What a landing's account playlists are named against (U113), read from the
+    Fresh Export because that is rekordbox's tree as the person last exported it.
+    """
+    try:
+        content = export.read_bytes()
+    except OSError as exc:
+        return f"{export} could not be read ({exc.strerror or exc})"
+    try:
+        tree = ingest.bridge_intake_tree(checked.declared, checked.registry)
+    except CratekitError as exc:
+        return exc.cause.message
+    return rbxml.intake_names(content, tree=tree)
+
+
+def _check_names_free(export: Path, checked: Checked, names: Sequence[str]) -> None:
+    """Refuse an account playlist name the export's intake tree holds since it was chosen.
+
+    The names were chosen against this export before the gate. An export
+    rewritten since could hold one, and the intake file would then carry a
+    second playlist of a name INBOX already shows. An export the reader cannot
+    read is left to the splice, which refuses it by its own cause.
+    """
+    if not names:
+        return
+    held = inbox_held(export, checked)
+    if isinstance(held, str):
+        return
+    clash = sorted(set(names) & set(held))
+    if clash:
+        raise refuse(
+            "decision-stale",
+            f"{export} holds {', '.join(repr(name) for name in clash)} under the intake "
+            f"folder since this landing chose those names, so nothing was moved; run "
+            f"the landing again and it takes the next free name",
+            origin=_ORIGIN,
+            detail={"export": str(export), "names": clash},
+        )
 
 
 def _label_of(row: listdoc.ManifestRow) -> str:
@@ -1037,8 +1104,14 @@ def apply(
     destination: Path,
     manifest: Path | None = None,
     manifest_digest: str | None = None,
+    split: Sequence[Claimed] = (),
 ) -> Landed:
     """Move the planned files into the library, then write one intake file.
+
+    ``split`` is the playlists the author made on the account, each with the
+    planned files it claimed and the name it lands as (U113). Each is its own
+    playlist in the intake file and the batch playlist keeps the rest. A file
+    the move refused is in none of them.
 
     ``manifest`` is the provenance sidecar of the list the batch was acquired
     from. With one, its label rows are filed under the catalog tree in the same
@@ -1061,7 +1134,12 @@ def apply(
             )
         label_rows = read.rows
     checked = preflight(
-        plan, cfg=cfg, export=export, destination=destination, label_rows=label_rows
+        plan,
+        cfg=cfg,
+        export=export,
+        destination=destination,
+        label_rows=label_rows,
+        names=[claimed.name for claimed in split],
     )
     target = target_dir(cfg, plan.batch)
     movable, refused = _screen(
@@ -1080,6 +1158,11 @@ def apply(
             # THE BATCH'S OWN NAME (U110), the one its folder carries, and not
             # the intake file's stem, which names the pass and ends ``_inboxed``.
             playlist=plan.batch,
+            # Each file under the name it has in the library, where it now is.
+            split=[
+                (claimed.name, [target / path.name for path in claimed.files])
+                for claimed in split
+            ],
         )
     except Exception as exc:
         # ``place_files`` writes the intake file before it records the routing
@@ -1104,6 +1187,7 @@ def apply(
         refused=tuple(refused),
         labelled=tuple(labelled),
         unlabelled=tuple(unlabelled),
+        split=landed_counts(split, target, {item.path for item in placed}),
     )
 
 

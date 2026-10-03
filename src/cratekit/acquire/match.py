@@ -1971,20 +1971,38 @@ def index_library(
     replaces it; a default that read nothing would make an empty library and a
     forgotten argument look identical.
     """
+    return index_paths(
+        sorted(root.rglob("*")) if root.is_dir() else (), template=template, reader=reader
+    )
+
+
+def index_paths(
+    paths: Iterable[Path],
+    *,
+    template: naming.NameTemplate | None = None,
+    reader: Callable[[Path, naming.NameTemplate], Owned] = _read_from_disk,
+) -> LibraryIndex:
+    """Index exactly the files named, the way :func:`index_library` indexes a tree.
+
+    For a caller that knows which files it means and must not be answered from
+    anything else beside them: a landing ties its planned files to the rows that
+    asked for them before they move (U113), and download staging also holds the
+    partial downloads of attempts that never finished. A name that is not an
+    audio file, or not a file, is passed over exactly as the walk passes it.
+    """
     shape = template or naming.NameTemplate()
     suffixes = {suffix.lower() for suffix in naming.AUDIO_EXTS}
     grouped: dict[str, list[Owned]] = {}
     by_isrc: dict[str, list[Owned]] = {}
     by_title: dict[str, list[Owned]] = {}
-    if root.is_dir():
-        for path in sorted(root.rglob("*")):
-            if not path.is_file() or path.suffix.lower() not in suffixes:
-                continue
-            held = reader(path, shape)
-            grouped.setdefault(held.recording, []).append(held)
-            by_title.setdefault(fold(held.title), []).append(held)
-            if held.isrc:
-                by_isrc.setdefault(held.isrc, []).append(held)
+    for path in paths:
+        if not path.is_file() or path.suffix.lower() not in suffixes:
+            continue
+        held = reader(path, shape)
+        grouped.setdefault(held.recording, []).append(held)
+        by_title.setdefault(fold(held.title), []).append(held)
+        if held.isrc:
+            by_isrc.setdefault(held.isrc, []).append(held)
     return LibraryIndex(
         by_recording={key: tuple(rows) for key, rows in grouped.items()},
         by_isrc={key: tuple(rows) for key, rows in by_isrc.items()},
@@ -2854,6 +2872,7 @@ __all__ = [
     "fold",
     "fold_isrc",
     "index_library",
+    "index_paths",
     "isrc_token",
     "key_disagreement",
     "key_token",

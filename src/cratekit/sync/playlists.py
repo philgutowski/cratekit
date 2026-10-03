@@ -451,7 +451,12 @@ def queue(
     ``filed`` is appended to AS EACH JOB IS QUEUED, because each enqueue is its
     own transaction: a refusal on the third playlist leaves the first two filed,
     and the caller has to be able to name them.
+
+    EACH JOB CARRIES THE NAME THE ACCOUNT LISTED (U113), so the landing can
+    give the playlist its own INBOX playlist under that name without listing
+    the account again, after ``sync mark`` has prefixed it.
     """
+    names = sweep.names()
     for playlist_id, tracks in sweep.ready.items():
         filed.append(
             intake_cli.queue_playlist(
@@ -462,6 +467,7 @@ def queue(
                 tracks=tracks,
                 run_id=run_id,
                 source_id=SOURCE_ID,
+                name=names.get(playlist_id),
             )
         )
 
