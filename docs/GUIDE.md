@@ -443,6 +443,7 @@ crate label import "Some Label"
 crate label sync
 crate label sync --next
 crate label sync --answer pick --label "Some Label" --release RELEASE_ID
+crate label sync --go
 crate sync labels
 crate review list --queue label-release
 crate review resolve ITEM_ID --verdict accepted --actor YOUR_NAME
@@ -460,11 +461,29 @@ never asked about again, `not-now` included; a skipped release is still reachabl
 through `label import`. The genre gate runs before a label is asked, so a release
 it would hold never reaches a question, and the first run also offers, once per
 label, the releases already waiting in review from earlier sweeps. A taken
-release is an accepted review item, which `label approved` lists for download;
-nothing is downloaded by the answer itself. Without a terminal, `--next` prints
-the next question and `--answer` records one answer for one label, and both
-write the same record. A newly followed label is asked about its newest few
-releases, the `labels.offer_per_sweep` count, not its whole catalogue.
+release is an accepted review item; nothing is downloaded by the answer itself.
+Without a terminal, `--next` prints the next question and `--answer` records one
+answer for one label, and both write the same record. A newly followed label is
+asked about its newest few releases, the `labels.offer_per_sweep` count, not its
+whole catalogue.
+
+When every label with something new is answered, the walk ends at one gate,
+`label.sync.confirm`, over one summary of every answer saved since the last go:
+the labels taking releases, the releases, the tracks, an estimated size and
+time, and how many labels were answered not now or stop following. `--go` asks
+the same gate over answers already saved. The gate is explicit, so it is
+answered on its own with `crate run decide RUN label.sync.confirm apply --actor
+YOUR_NAME`, then `crate --run RUN label sync --go` downloads, unattended and
+paced through the provider gate. Only releases an `all` or a `pick` took are
+downloaded, a track the library holds in another version goes to the match
+queue instead, and a rate limit parks the download rather than retrying. A go
+that stopped part way is picked up by the next `--go`, which resumes it before
+anything new, and a track is never asked for twice. The report ends with the
+acquisition tail that lands the batch, `tag folder` through `intake land
+--manifest ... --name ...`; land each go before the next, since every go
+downloads into the same staging folder. The size and time are estimates: the
+size from each track's duration at a FLAC rate, the time from the pacing delay
+and an assumed transfer rate.
 
 `label registry` lists who you follow. The registry records nothing about what has
 been pulled. A
