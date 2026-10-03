@@ -634,14 +634,16 @@ class TidalCatalogue:
 
         return listing.fetch_with_retry(attempt, limit=0, offset=0, sleep=_pause)
 
-    def search_tracks(self, artist: str, title: str) -> tuple[Any, ...]:
-        """One track search for ``artist`` and ``title``, on the one retry ladder.
+    def search_tracks(self, artist: str, title: str, offset: int = 0) -> tuple[Any, ...]:
+        """One page of a track search for ``artist`` and ``title``, on the one retry ladder.
 
         NOTHING IS CHOSEN HERE. The hits come back in the provider's order,
         every one of them, and ``intake.candidates`` decides what is exact and
         offers the rest to a person. One page of ``TRACK_SEARCH_PAGE``, because a
         candidate list is read by a person and the caller truncates it again.
         The seam's own page, so the caller can tell a full answer from a short one.
+        ``offset`` is handed to the client as the start of the page, so the
+        caller reads the next page of the same search (R-879).
 
         A search that fails climbs the ladder and is re-raised, a not found
         among it: a search endpoint answers nothing found with an empty list,
@@ -656,10 +658,13 @@ class TidalCatalogue:
             raise ValueError("no artist and no title were given to search for")
 
         def attempt(limit: int, offset: int) -> Any:
-            del offset
-            return self._session.search(query, models=[tidalapi.media.Track], limit=limit)
+            return self._session.search(
+                query, models=[tidalapi.media.Track], limit=limit, offset=offset
+            )
 
-        found = listing.fetch_with_retry(attempt, limit=TRACK_SEARCH_PAGE, offset=0, sleep=_pause)
+        found = listing.fetch_with_retry(
+            attempt, limit=TRACK_SEARCH_PAGE, offset=max(int(offset), 0), sleep=_pause
+        )
         # AFTER THE LADDER, because waiting cannot change a shape.
         present = "tracks" in found if isinstance(found, Mapping) else hasattr(found, "tracks")
         if not present:

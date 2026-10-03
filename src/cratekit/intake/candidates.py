@@ -14,8 +14,10 @@ so every doubt lands on the offer side:
 - A row is LISTED without a person only when the answer holds candidates that
   fold to exactly the row, artist, title and version, under ``match``'s own fold,
   all of them carry ONE distinct identifier, every row of the answer could be
-  read, the answer is shorter than the seam's page, and the row's title reads
-  one way only. A row of the answer that could not be read, an exact candidate
+  read, the answer's last page is shorter than the seam's page, and the row's
+  title reads one way only. ``export set`` reads a full page on to the next
+  through :func:`search_pages`, within a bound, so a full first page is ruled
+  out rather than refused (R-879). A row of the answer that could not be read, an exact candidate
   carrying no identifier, and a page that came back full could each hide a
   second exact candidate nobody can see, and a title whose dash tail may be a
   version or the end of the title is a row nobody can call exact, so each of
@@ -38,8 +40,8 @@ Layer: modules. Nothing here writes a file or composes a download.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from typing import Any
 
 from cratekit.acquire import match
@@ -69,6 +71,16 @@ OFFER_LIMIT = 2 * match.APPROXIMATE_LIMIT
 #: it never hides an exact candidate, so the cost of it being wrong is a near
 #: miss a person has to find by hand, which the report names.
 CANDIDATE_FLOOR = 60.0
+
+#: The most rows the provider's client says one search serves, across pages.
+SEARCH_CEILING = 300
+
+#: How many pages of one search :func:`search_pages` reads at most: as many
+#: whole pages as fit under :data:`SEARCH_CEILING`, so the walk never asks past
+#: the listing's ceiling, where an empty page would be the provider declining
+#: to serve and not the end of what it holds (R-879). NOT MEASURED AGAINST A
+#: LIVE PROVIDER: how often a real query runs to the ceiling.
+SEARCH_PAGES = SEARCH_CEILING // TRACK_SEARCH_PAGE
 
 #: What became of one row, one word a script can switch on.
 LISTED = "listed"
@@ -108,11 +120,26 @@ class Answer:
     unreadable: int
     #: The row's title reads two ways, so no candidate can be called THE exact one.
     ambiguous: bool = False
+    #: How many of the provider's pages the answer was read from.
+    pages: int = 1
+    #: How many rows the LAST page read held. ``None`` for one page, which is
+    #: every row, so a single page answer is read as it always was.
+    last_page: int | None = None
 
     @property
     def full(self) -> bool:
-        """The answer filled the seam's page, so it may have been cut short."""
-        return self.hits >= TRACK_SEARCH_PAGE
+        """The last page read filled the seam's page, so the listing may go on.
+
+        THE LAST PAGE, NOT THE TOTAL. A walk that read a full page and then a
+        short one has read the listing to its end, and nothing sits past it.
+        """
+        last = self.hits if self.last_page is None else self.last_page
+        return last >= TRACK_SEARCH_PAGE
+
+    @property
+    def exact_refs(self) -> frozenset[str]:
+        """The distinct identifiers the exact candidates carry."""
+        return frozenset(one.track.ref for one in self.candidates if one.exact and one.track.ref)
 
 
 @dataclass(frozen=True, slots=True)
@@ -222,13 +249,63 @@ def read_answer(wanted: match.Wanted, rows: tuple[Any, ...]) -> Answer:
     )
 
 
+def read_pages(wanted: match.Wanted, pages: Sequence[tuple[Any, ...]]) -> Answer:
+    """Several pages of one search, read as one answer that knows its last page."""
+    answer = read_answer(wanted, tuple(row for page in pages for row in page))
+    return replace(answer, pages=len(pages), last_page=len(pages[-1]) if pages else 0)
+
+
+def _settled_early(answer: Answer) -> bool:
+    """Whether another page could change what :func:`sole_exact` says. ``True`` if not.
+
+    Each of these refuses the row however many pages follow: two readings of
+    the title, a row of the answer that could not be read, an exact candidate
+    with no identifier, and two distinct exact ones. Reading on would spend a
+    provider call on a question already answered.
+    """
+    exact = [one for one in answer.candidates if one.exact]
+    return (
+        answer.ambiguous
+        or bool(answer.unreadable)
+        or any(not one.track.ref for one in exact)
+        or len(answer.exact_refs) > 1
+    )
+
+
+def search_pages(
+    search: Callable[[int], Iterable[Any]],
+    wanted: match.Wanted,
+    *,
+    bound: int = SEARCH_PAGES,
+) -> Answer:
+    """One search read page by page, until what past the cut is ruled in or out.
+
+    ``search`` is handed the offset of each page and returns its rows (R-879).
+    The provider fills its page of 50 for any common query, so a first page is
+    almost always full, and a full page alone would refuse nearly every row. The
+    walk stops at the first of: a page shorter than the seam's, which is the end
+    of the listing; an answer no further page can make listable, see
+    :func:`_settled_early`; or ``bound`` pages read, after which the answer is
+    still full and :func:`sole_exact` refuses it as it always did.
+
+    NOTHING IS LOWERED. The walk only reads more of what the provider holds;
+    the exact test and its five conditions are the same.
+    """
+    pages: list[tuple[Any, ...]] = []
+    while True:
+        pages.append(tuple(search(len(pages) * TRACK_SEARCH_PAGE)))
+        answer = read_pages(wanted, pages)
+        if not answer.full or _settled_early(answer) or len(pages) >= bound:
+            return answer
+
+
 def sole_exact(answer: Answer) -> Candidate | None:
     """The one candidate the row may be listed as without a person, or ``None``.
 
     FIVE CONDITIONS, EACH REMOVABLE ALONE. The row's title reads one way. The
-    answer did not fill the page, since a second exact candidate could sit past
-    the cut. Every row of the answer was read. Every exact candidate carries an
-    identifier. Those identifiers are one.
+    answer's last page did not fill the page, since a second exact candidate
+    could sit past the cut. Every row of the answer was read. Every exact
+    candidate carries an identifier. Those identifiers are one.
     """
     exact = [one for one in answer.candidates if one.exact]
     if answer.ambiguous or answer.full:
@@ -475,6 +552,8 @@ __all__ = [
     "OFFER_LIMIT",
     "QUEUE",
     "REJECTED",
+    "SEARCH_CEILING",
+    "SEARCH_PAGES",
     "STALLED",
     "WAITING",
     "Answer",
@@ -485,6 +564,8 @@ __all__ = [
     "propose",
     "query_title",
     "read_answer",
+    "read_pages",
+    "search_pages",
     "settled",
     "shown",
     "sole_exact",

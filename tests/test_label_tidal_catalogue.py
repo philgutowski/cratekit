@@ -2130,6 +2130,23 @@ def test_a_track_search_returns_every_hit_in_the_providers_order_and_picks_none(
     assert pauses == []
 
 
+def test_a_track_search_asks_for_the_page_its_offset_names(pauses):
+    """R-879: the next page of the same search, read by the client's own offset."""
+    offsets: list[int] = []
+
+    class Paged(TrackSearchClient):
+        def search(self, query: str, models: Any = None, limit: int = 50, offset: int = 0, **_: Any) -> Any:
+            offsets.append(offset)
+            return super().search(query, models, limit)
+
+    client = Paged({"tracks": [ProviderTrack("9051", "A", "B")]})
+    found = tidal_catalogue.TidalCatalogue(client).search_tracks("A", "B", offset=50)
+    assert [track.id for track in found] == ["9051"]
+    assert offsets == [50]
+    tidal_catalogue.TidalCatalogue(client).search_tracks("A", "B")
+    assert offsets == [50, 0]
+
+
 def test_a_track_search_that_finds_nothing_is_an_empty_answer(pauses):
     client = TrackSearchClient({"tracks": []})
 

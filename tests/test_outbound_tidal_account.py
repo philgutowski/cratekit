@@ -424,6 +424,22 @@ def test_the_measured_cost_three_releases_of_one_isrc_resolve_to_the_rows_versio
     assert client.user.favorites.pages == [], "one agreeing track asks the hearts nothing"
 
 
+def test_a_code_asked_to_agree_lists_its_one_track_only_when_it_is_the_row():
+    """R-879: a code read off a library file's tag, which may be another
+    recording's, names its one provider track only when that track agrees."""
+    client = releases(Track("101", "Sun Path", None, ("Nova Reef",)))
+    found = adapter(client)
+    assert found.match_track(
+        identity="7", isrc=CODE, title="Sun Path", artist="Nova Reef", agree=True
+    ) == "101"
+    assert found.match_track(
+        identity="8", isrc=CODE, title="Moon Path", artist="Nova Reef", agree=True
+    ) is None
+    assert "none of them agrees" in found.unmatched_reason("8")
+    # Without it, one track is the match as it always was.
+    assert found.match_track(identity="9", isrc=CODE, title="Moon Path", artist="Nova Reef") == "101"
+
+
 def test_a_row_with_no_version_agrees_with_an_original_mix_and_not_with_an_edit():
     client = releases(
         Track("101", "Sun Path", "Original Mix", ("Nova Reef",)),

@@ -1,0 +1,112 @@
+name = "r879-a"
+pass_kind = "light"
+
+# R-879: export set matches a held row by its file's ISRC, and reads a full
+# search page on to the next within a bound. Every row is a guard this branch
+# added, plus C11, a sample of the existing exact test the walk now feeds.
+
+[[rows]]
+id = "C1_full_reads_total_not_last_page"
+description = "Answer.full: read the total hits rather than the last page, so a walk that read a full page then a short one still reads as cut short"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_export_set.py", "tests/test_intake_missing_search.py"]
+old = '''        last = self.hits if self.last_page is None else self.last_page'''
+new = '''        last = self.hits'''
+
+[[rows]]
+id = "C2_walk_ignores_short_page"
+description = "search_pages: drop the stop on a short page, so the walk asks every page to the bound"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_export_set.py"]
+old = '''        if not answer.full or _settled_early(answer) or len(pages) >= bound:'''
+new = '''        if _settled_early(answer) or len(pages) >= bound:'''
+
+[[rows]]
+id = "C3_settled_early_without_ambiguity"
+description = "_settled_early: drop the ambiguous title, so a title read two ways reads on past a full page"
+file = "src/cratekit/intake/candidates.py"
+surface = "maintainer"
+tests = ["tests/test_export_set.py"]
+old = '''        answer.ambiguous
+        or bool(answer.unreadable)'''
+new = '''        bool(answer.unreadable)'''
+
+[[rows]]
+id = "C4_settled_early_without_unreadable"
+description = "_settled_early: drop the unreadable row, so a page with one reads on"
+file = "src/cratekit/intake/candidates.py"
+surface = "maintainer"
+tests = ["tests/test_export_set.py"]
+old = '''        or bool(answer.unreadable)
+'''
+new = '''        or False
+'''
+
+[[rows]]
+id = "C5_settled_early_without_unnamed_exact"
+description = "_settled_early: drop the exact candidate with no identifier"
+file = "src/cratekit/intake/candidates.py"
+surface = "maintainer"
+tests = ["tests/test_export_set.py"]
+old = '''        or any(not one.track.ref for one in exact)
+'''
+new = '''        or False
+'''
+
+[[rows]]
+id = "C6_settled_early_without_several"
+description = "_settled_early: drop two distinct exact candidates, so a settled several reads a second page"
+file = "src/cratekit/intake/candidates.py"
+surface = "maintainer"
+tests = ["tests/test_export_set.py"]
+old = '''        or len(answer.exact_refs) > 1
+'''
+new = '''        or len(answer.exact_refs) > 2
+'''
+
+[[rows]]
+id = "C7_bound_off_by_one"
+description = "search_pages: let the bound allow one page more, so the walk asks offset 300, past the ceiling"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_export_set.py"]
+old = '''        if not answer.full or _settled_early(answer) or len(pages) >= bound:'''
+new = '''        if not answer.full or _settled_early(answer) or len(pages) > bound:'''
+
+[[rows]]
+id = "C8_ceiling_coefficient"
+description = "SEARCH_CEILING: 300 to 350, so the derived bound is seven pages"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_export_set.py"]
+old = '''SEARCH_CEILING = 300'''
+new = '''SEARCH_CEILING = 350'''
+
+[[rows]]
+id = "C9_read_pages_forgets_last_page"
+description = "read_pages: carry no last page, so a two page answer is judged on its total"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_export_set.py"]
+old = '''    return replace(answer, pages=len(pages), last_page=len(pages[-1]) if pages else 0)'''
+new = '''    return replace(answer, pages=len(pages), last_page=None)'''
+
+[[rows]]
+id = "C10_offset_counts_pages_not_rows"
+description = "search_pages: ask offset 1, 2 for the next pages instead of 50, 100"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_export_set.py"]
+old = '''        pages.append(tuple(search(len(pages) * TRACK_SEARCH_PAGE)))'''
+new = '''        pages.append(tuple(search(len(pages))))'''
+
+[[rows]]
+id = "C11_sole_exact_ignores_full"
+description = "sole_exact (existing, sampled): drop the full page condition, so a bound reached answer lists its one exact candidate"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_export_set.py", "tests/test_intake_missing_search.py"]
+old = '''    if answer.ambiguous or answer.full:'''
+new = '''    if answer.ambiguous:'''

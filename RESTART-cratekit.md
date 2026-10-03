@@ -4,6 +4,27 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**R-879 built, 2026-10-03, on `relay/256`, issue #256: a typed set row
+the library holds is matched by its file's ISRC, and a full search page is
+read on.** `export set` now asks a row carrying no ISRC of the library
+through `match_cli.library_view` and `match.resolve_one`, after a person's
+answer in review and before any search. A row held at its version whose
+files carry exactly one ISRC goes down `match_track` with the new `agree`,
+which makes even one provider track agree with the row, and is listed with
+`how` `library-isrc`. An absent music folder is said on the row. The search
+reads through `candidates.search_pages`, a page of 50 at a time by the new
+`offset` on `Catalogue.search_tracks`, until a short page, an answer no page
+can make listable, or `SEARCH_PAGES`, six, under the client's documented
+ceiling of 300. `Answer.full` reads the last page; `sole_exact` is
+unchanged. The refusal says none, several, or the page bound reached. `intake
+missing` still reads one page (R-882). Battery on the branch: ruff clean, the
+suite green, the scan clean. One round of the built in review, ten findings,
+five fixed with a test, R-882 and R-883 filed. Mutation table 22 of 25 killed,
+the zeros in `docs/mutation/r879-notes.md`. **Owed, attended:** export the
+nine track set in R-879's entry again; every row the library holds with an
+ISRC must match, and R-883 times both acts. Main's highest residual number
+is R-883.
+
 **R-878 built, 2026-10-03, on `relay/255`, issue #255: the account's
 folder listings walk the provider's cursor.** The collection folder endpoint
 ignores `offset`, so `listing.account_folders` and `listing.folder_playlists`

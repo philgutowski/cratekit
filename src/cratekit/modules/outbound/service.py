@@ -27,7 +27,13 @@ class RemoteAccount(Protocol):
     """Add-only writes against one streaming account, plus a playlist retitle."""
 
     def match_track(
-        self, *, identity: str, isrc: str = "", title: str = "", artist: str = ""
+        self,
+        *,
+        identity: str,
+        isrc: str = "",
+        title: str = "",
+        artist: str = "",
+        agree: bool = False,
     ) -> str | None:
         """The remote track id for this library identity, or None if unmatched.
 
@@ -36,6 +42,12 @@ class RemoteAccount(Protocol):
         named, several releases sharing one ISRC, and are never a search: an
         implementation that matched on them alone would heart a cover version
         (R-356).
+
+        ``agree`` ASKS THE ONE TRACK TO AGREE TOO. By default a code the
+        provider files one track under names that track, since the code came
+        from the provider. A code read off a library file's own tag did not, and
+        a file tagged with another recording's code would name the wrong track,
+        so with ``agree`` even a single track must agree with the row (R-879).
         """
 
     def unmatched_reason(self, identity: str) -> str:

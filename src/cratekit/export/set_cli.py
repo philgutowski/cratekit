@@ -15,10 +15,13 @@ on the way:
 
 1. the provider identifier the row carries, which only a list document has;
 2. its ISRC, through the account's own match, which chooses among releases;
+   a row carrying none is asked of the library, and the ISRC the file it holds
+   for the row carries goes down the same match (R-879);
 3. a provider candidate a person already accepted in review for the row,
    ``intake missing``'s own question, read and never offered here;
-4. the catalogue's text search, listed only on ``candidates.sole_exact``'s one
-   distinct exact candidate, never on a score.
+4. the catalogue's text search, read page by page within a bound and listed
+   only on ``candidates.sole_exact``'s one distinct exact candidate, never on a
+   score.
 
 Anything else is LEFT OUT AND NAMED, with its reason, on the gate screen, in the
 items and in a warning, as ``export playlist`` names its own (R-850). A second
@@ -69,6 +72,9 @@ REFUSED = "refused"
 TAKEN_OFF = "taken-off"
 #: The same track as an earlier row of the set, asked for once.
 REPEAT = "repeat"
+
+#: How a row was matched when the ISRC came off the library's own file.
+LIBRARY_ISRC = "library-isrc"
 
 _ROW_WHY = {
     REFUSED: "the provider would not add it when it was asked before, so it is not asked again",
@@ -180,10 +186,63 @@ class _Deferred:
 # ── matching ────────────────────────────────────────────────────────────────
 
 
+class _Library:
+    """The library as ``intake missing`` sees it, built the first time a row asks.
+
+    A set whose every row carries an identifier or an ISRC walks no music
+    volume. A music folder that is not there is SAID, never read as a library
+    that holds nothing, on ``intake missing``'s own rule: a row of a set the
+    library holds would otherwise be told it is not held.
+    """
+
+    def __init__(self, cfg: config.Config) -> None:
+        self._cfg = cfg
+        self._view: tuple[Any, ...] | None = None
+        self.music = Path(cfg.library.root) / cfg.library.music_dir
+
+    def file_isrc(self, one: match.Wanted) -> tuple[str, str]:
+        """The ISRC the library's own file of this row carries, or ``""`` and why not.
+
+        ONLY A ROW THE LIBRARY HOLDS, matched at its version by the engine every
+        intake verb asks. ONE ISRC OR NONE: held as several files carrying
+        different codes, the files do not say which recording the row is, so
+        none of them is asked about. The why is empty for a row the library
+        does not hold, which is the ordinary case and not a reason.
+        """
+        if not self.music.is_dir():
+            return "", (
+                f"the library's music folder {str(self.music)!r} is not there, so "
+                f"no file's ISRC could be read for it"
+            )
+        if self._view is None:
+            self._view = match_cli.library_view(self._cfg)
+        index, suppresses, identify = self._view
+        found = match.resolve_one(one, index, suppresses=suppresses, suppression_id=identify)
+        if found.state is not match.MatchState.MATCHED:
+            return "", ""
+        paths = set(found.paths)
+        codes = {
+            held.isrc
+            for held in index.held(one.artist, one.title)
+            if str(held.path) in paths and held.isrc
+        }
+        if len(codes) == 1:
+            return next(iter(codes)), ""
+        if codes:
+            return "", (
+                f"the library holds it in {len(paths)} file(s) carrying {len(codes)} "
+                f"different ISRCs, so none was asked about"
+            )
+        return "", "the library holds it and its file carries no ISRC"
+
+
 def _searched(found: catalogue.Catalogue, one: match.Wanted) -> candidates.Answer:
-    """One search answer, or the refusal ``intake missing`` gives when none came."""
+    """One search answer, page by page, or the refusal ``intake missing`` gives when none came."""
+    title = candidates.query_title(one)
     try:
-        rows = tuple(found.search_tracks(one.artist, candidates.query_title(one)))
+        return candidates.search_pages(
+            lambda offset: found.search_tracks(one.artist, title, offset=offset), one
+        )
     except CratekitError:
         raise
     except Exception as exc:  # noqa: BLE001 - refused whole, never swallowed
@@ -197,21 +256,76 @@ def _searched(found: catalogue.Catalogue, one: match.Wanted) -> candidates.Answe
             origin=_SET,
             detail={"artist": one.artist, "title": one.listed},
         ) from exc
-    return candidates.read_answer(one, rows)
+
+
+#: Where a person can answer a row the search did not settle.
+_REVIEW_ROUTE = (
+    "; crate intake missing --list over this tracklist offers its candidates for "
+    "review when the library lacks the track, and one accepted there is used on "
+    "the next run"
+)
 
 
 def _not_chosen(answer: candidates.Answer) -> str:
-    """Why a search answer named no track, in words for a person."""
+    """Why a search answer named no track, in words for a person.
+
+    WHICH IT WAS, since each sends a person somewhere different (R-879): none
+    found, several found, or the page bound reached with the listing still
+    going. The rest are the refusals :func:`candidates.sole_exact` always had.
+    """
     if not answer.hits:
         return "the provider's search returned nothing for it"
-    if candidates.shown(answer):
-        return (
-            f"the provider's search returned {answer.hits} hit(s) and no single "
-            f"exact match, so none was chosen; crate intake missing --list over "
-            f"this tracklist offers them for review when the library lacks the "
-            f"track, and one accepted there is used on the next run"
+    read = f"the provider's search returned {answer.hits} hit(s) over {answer.pages} page(s)"
+    exact = len(answer.exact_refs)
+    if answer.ambiguous and (exact or answer.full):
+        said = (
+            f"{read} and its title reads two ways, as a version or as the end of "
+            f"the title, so no candidate can be called the exact one"
         )
-    return f"the provider's search returned {answer.hits} hit(s) and none resembles it"
+    elif exact > 1:
+        said = f"{read} and several match it exactly, {exact} distinct tracks, so none was chosen"
+    elif answer.unreadable:
+        said = (
+            f"{read} and {answer.unreadable} of them could not be read, so an exact "
+            f"match among them cannot be ruled out"
+        )
+    elif any(one.exact and not one.track.ref for one in answer.candidates):
+        said = f"{read} and an exact match among them carries no identifier, so none was chosen"
+    elif answer.full:
+        said = (
+            f"{read}, the most read for one row, and the listing goes on past them, "
+            f"so the page bound was reached with "
+            + (
+                "one exact match that may not be the only one"
+                if exact
+                else "no exact match found"
+            )
+        )
+    else:
+        said = f"{read} and none matches it exactly"
+    if not candidates.shown(answer):
+        if any(one.exact for one in answer.candidates):
+            return said
+        return f"{said}, and none resembles it"
+    return said + _REVIEW_ROUTE
+
+
+def _isrc_match(account, identity: str, one: match.Wanted, code: str, *, agree: bool) -> tuple[str, str]:
+    """The provider track the account's own ISRC match names, or ``""`` and why not.
+
+    ``agree`` for a code read off the library's file rather than the row: the
+    file's tag is this library's statement, not the provider's, so even one
+    track under it must agree with the row before it is listed.
+    """
+    remote = account.match_track(
+        identity=identity, isrc=code, title=one.listed, artist=one.artist, agree=agree
+    )
+    if remote:
+        return str(remote), ""
+    whose = "its library file's ISRC" if agree else "its ISRC"
+    return "", account.unmatched_reason(identity) or (
+        f"the provider names no single track under {whose} {code}"
+    )
 
 
 def match_rows(
@@ -221,8 +335,14 @@ def match_rows(
 
     THE CATALOGUE IS RESOLVED ONLY WHEN A ROW HAS TO BE SEARCHED FOR, so a list
     document whose every row carries its identifier spends no login on it.
+
+    A ROW CARRYING NO ISRC IS ASKED OF THE LIBRARY BEFORE ANY SEARCH (R-879). A
+    typed line carries none, and the file the library holds for it usually
+    does, so that file's code goes down the same account match a row's own ISRC
+    does, after a person's answer in review and before any search is spent.
     """
     held: list[catalogue.Catalogue] = []
+    library = _Library(cfg)
     decided: list[sets.SetRow] = []
     with review.open_store(cfg) as items:
         for position, one in enumerate(wanted, start=1):
@@ -234,17 +354,15 @@ def match_rows(
                 decided.append(sets.SetRow(**row, remote_id=str(one.ref), how="ref"))
                 continue
             said = ""
+            identity = f"set-row-{position}"
             if one.isrc:
-                identity = f"set-row-{position}"
-                remote = account.match_track(
-                    identity=identity, isrc=one.isrc, title=one.listed, artist=one.artist
-                )
+                remote, said = _isrc_match(account, identity, one, one.isrc, agree=False)
                 if remote:
-                    decided.append(sets.SetRow(**row, remote_id=str(remote), how="isrc"))
+                    decided.append(sets.SetRow(**row, remote_id=remote, how="isrc"))
                     continue
-                said = account.unmatched_reason(identity) or (
-                    f"the provider names no single track under its ISRC {one.isrc}"
-                )
+            # A PERSON'S ANSWER BEFORE THE LIBRARY'S FILE, so an acceptance of
+            # one release, or a rejection of every candidate, is never
+            # overridden by a tag.
             answered = candidates.settled(items, one)
             if answered is not None:
                 if answered.state == candidates.ACCEPTED and answered.track is not None:
@@ -254,6 +372,13 @@ def match_rows(
                 else:
                     decided.append(sets.SetRow(**row, reason=answered.reason))
                 continue
+            if not one.isrc:
+                code, said = library.file_isrc(one)
+                if code:
+                    remote, said = _isrc_match(account, identity, one, code, agree=True)
+                    if remote:
+                        decided.append(sets.SetRow(**row, remote_id=remote, how=LIBRARY_ISRC))
+                        continue
             if not held:
                 held.append(catalogue.resolve(cfg))
             answer = _searched(held[0], one)

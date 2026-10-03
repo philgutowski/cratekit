@@ -494,7 +494,7 @@ class Catalogue(Protocol):
         short answer could turn two releases into one and list a guess.
         """
 
-    def search_tracks(self, artist: str, title: str) -> tuple[Any, ...]:
+    def search_tracks(self, artist: str, title: str, offset: int = 0) -> tuple[Any, ...]:
         """The provider tracks a text search for one artist and title returns.
 
         Consumed by ``intake.candidates``, which gives a missing row that has no
@@ -509,6 +509,11 @@ class Catalogue(Protocol):
         ``match.read_tidal_tracks`` reads, in the provider's order, and at most
         :data:`TRACK_SEARCH_PAGE` of them: an answer that long is one the
         caller must read as possibly cut short.
+
+        ``offset`` IS WHERE THE PAGE STARTS in the provider's listing of the
+        same search, so a caller that got a full page can ask for the next one
+        (R-879). A page shorter than :data:`TRACK_SEARCH_PAGE` is the end of
+        the listing.
 
         An empty tuple means the provider answered and found nothing. RAISES
         when the provider could not answer, on the same contract as the reads
