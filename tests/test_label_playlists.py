@@ -583,15 +583,24 @@ class _Endpoint:
                 base_url: str | None = None) -> _Answer:
         params = dict(params or {})
         assert (method, path) == ("GET", "my-collection/playlists/folders")
-        if params["includeOnly"] == "FOLDER":
-            held = [{"name": one.name, "data": {"id": one.id}} for one in self.client.root]
-        else:
+        # THE ENDPOINT SERVES EVERY KIND AND COUNTS EVERY KIND (R-887): a folder
+        # holds folders and playlists alike, and the walk keeps one kind.
+        assert "includeOnly" not in params
+        if params["folderId"] == "root":
             held = [
-                {"data": {"uuid": pid, "title": self.client.titles[pid]}}
-                for pid, folder in self.client.placed.items()
-                if folder == params["folderId"]
+                {"itemType": "FOLDER", "name": one.name, "data": {"id": one.id}}
+                for one in self.client.root
             ]
-        self.client.pages.append((params["includeOnly"], params["limit"], params.get("cursor")))
+            kind = "FOLDER"
+        else:
+            held = []
+            kind = "PLAYLIST"
+        held += [
+            {"itemType": "PLAYLIST", "data": {"uuid": pid, "title": self.client.titles[pid]}}
+            for pid, folder in self.client.placed.items()
+            if folder == params["folderId"]
+        ]
+        self.client.pages.append((kind, params["limit"], params.get("cursor")))
         start = int(params.get("cursor") or 0)
         window = held[start : start + min(params["limit"], self.WINDOW)]
         body: dict = {"items": window, "totalNumberOfItems": len(held)}

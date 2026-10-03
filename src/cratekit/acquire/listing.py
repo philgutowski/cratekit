@@ -388,6 +388,7 @@ def paginate_cursor(
     parse: Callable[[Any], Any],
     shape: str | None = None,
     key: Callable[[Any], Any] | None = None,
+    keep: Callable[[Any], bool] | None = None,
     **retry: Any,
 ) -> list[Any]:
     """Every item across every server page of an endpoint that pages by cursor.
@@ -418,6 +419,14 @@ def paginate_cursor(
     returning, on the argument that class makes. The latest count declared is
     the one checked, since the collection can change while it is read.
 
+    **``keep`` filters raw items after they are counted, not before** (R-887).
+    ``totalNumberOfItems`` counts every item the folder holds, folders and
+    playlists alike, whatever the request's ``includeOnly`` asks for: the
+    author's root read 26 folders and 29 playlists against a declared 55. So the
+    walk asks for everything, counts every raw item it is served against the
+    declared total, and parses only the ones ``keep`` passes. A filter applied
+    by the provider would leave nothing to check the count against.
+
     ``stop``, ``max_pages``, ``key`` and ``shape`` mean what they mean to
     :func:`paginate`, and ``stop`` must be :attr:`StopRule.CURSOR`, so a shape
     cannot reach this walk while its table says it walks some other way. The
@@ -435,6 +444,8 @@ def paginate_cursor(
     cursor: str | None = None
     total: int | None = None
     pages = 0
+    served: set[Any] = set()
+    unkeyed = 0
 
     while True:
         if pages >= max_pages:
@@ -464,6 +475,13 @@ def paginate_cursor(
         pages += 1
         page = list(response.get("items") or [])
         for raw in page:
+            identity = _raw_identity(raw)
+            if identity is None:
+                unkeyed += 1
+            else:
+                served.add(identity)
+            if keep is not None and not keep(raw):
+                continue
             item = fetch_with_retry(lambda _l, _o, raw=raw: parse(raw), limit=0, offset=0, **retry)
             _take(items, seen, item, key)
 
@@ -474,14 +492,37 @@ def paginate_cursor(
             break
         cursor = str(following)
 
-    if total is not None and len(items) < total:
+    counted = len(served) + unkeyed
+    if total is not None and counted < total:
         raise ListingTruncated(
             f"{shape or 'listing'} reached the end of its cursor having collected "
-            f"{len(items)} item(s) where the provider declared {total}. Returning "
-            f"the {len(items)} would be a truncated listing indistinguishable from "
-            f"a complete one, which is the thing this module refuses to guess at"
+            f"{counted} item(s) of every kind where the provider declared {total}. "
+            f"Returning the {len(items)} kept would be a truncated listing "
+            f"indistinguishable from a complete one, which is the thing this module "
+            f"refuses to guess at"
         )
     return items
+
+
+def _raw_identity(raw: Any) -> Any:
+    """What one raw folder endpoint item is, for counting it against the total.
+
+    The item's ``trn``, else its data's ``id`` or ``uuid``, else ``None``, which
+    is counted once per appearance rather than deduplicated.
+    """
+    if not isinstance(raw, dict):
+        return None
+    if raw.get("trn"):
+        return raw["trn"]
+    data = raw.get("data")
+    if isinstance(data, dict):
+        return data.get("id") or data.get("uuid")
+    return None
+
+
+def _item_type(wanted: str) -> Callable[[Any], bool]:
+    """Keep the raw folder endpoint items of one ``itemType``."""
+    return lambda raw: isinstance(raw, dict) and raw.get("itemType") == wanted
 
 
 def _shape(name: str, **overrides: Any) -> dict[str, Any]:
@@ -598,14 +639,15 @@ def _client_part(owner: Any, *path: str) -> Any:
 
 
 def _folder_endpoint(
-    request: Any, base_url: str, folder_id: str, include_only: str
+    request: Any, base_url: str, folder_id: str
 ) -> Callable[[int, str | None], Any]:
     """Bind the folder endpoint into the ``(limit, cursor)`` shape, raw.
 
-    Sends what the client's own listing sends, the folder, the limit, the order
-    and what to include, through the client's own request object, and adds the
-    cursor the last response carried. It sends no ``offset``, which the endpoint
-    ignores (R-878). The answer is the raw response, since the client's listing
+    Sends what the client's own listing sends, the folder, the limit and the
+    order, through the client's own request object, and adds the cursor the last
+    response carried. It sends no ``offset``, which the endpoint ignores (R-878),
+    and no ``includeOnly``, since the count the walk checks covers every kind of
+    item and the walk filters after counting (R-887). The answer is the raw response, since the client's listing
     methods throw away the cursor this walk needs.
     """
 
@@ -614,7 +656,6 @@ def _folder_endpoint(
             "folderId": folder_id,
             "limit": limit,
             "order": FOLDER_ORDER,
-            "includeOnly": include_only,
         }
         if cursor is not None:
             params["cursor"] = cursor
@@ -749,8 +790,9 @@ def account_folders(session: Any, **kwargs: Any) -> list[Any]:
     to 1,000, while the raw response carried ``totalNumberOfItems`` of 55 and a
     ``cursor`` that, sent back, returned the next page (R-878). The client
     exposes no cursor, so this walk sends the client's own request, root folder,
-    folders only, ordered by name, and parses each item with the client's own
-    ``parse_folder``.
+    ordered by name, and parses each folder with the client's own
+    ``parse_folder``. The 55 were 26 folders and 29 playlists, so the walk reads
+    both and keeps the folders (R-887).
 
     The client's own folder lookup reads ONE page of fifty and gives up, so an
     account with a fifty first folder would have it reported absent; this walk
@@ -764,10 +806,10 @@ def account_folders(session: Any, **kwargs: Any) -> list[Any]:
         _client_part(session, "request"),
         _client_part(session, "config", "api_v2_location"),
         "root",
-        "FOLDER",
     )
     return paginate_cursor(
         fetch,
+        keep=_item_type("FOLDER"),
         parse=_client_part(session, "parse_folder"),
         **_shape("account_folders", **kwargs),
     )
@@ -780,8 +822,8 @@ def folder_playlists(folder: Any, **kwargs: Any) -> list[Any]:
     gives: the folder's ``items`` reads the same endpoint, and on the author's
     account a folder's second page of five was its first (R-878). ``folder`` is
     the client's folder object, and the walk sends what its ``items`` sends, the
-    folder's identifier and playlists only, through its own request object, and
-    parses each item's ``data`` with the playlist parser ``items`` uses.
+    folder's identifier, through its own request object, keeps the playlists, and
+    parses each one's ``data`` with the playlist parser ``items`` uses.
     Deduplicated by identifier on the same argument.
     """
     kwargs.setdefault("key", lambda playlist: str(getattr(playlist, "id", "")))
@@ -789,11 +831,11 @@ def folder_playlists(folder: Any, **kwargs: Any) -> list[Any]:
         _client_part(folder, "request"),
         _client_part(folder, "session", "config", "api_v2_location"),
         str(_client_part(folder, "id")),
-        "PLAYLIST",
     )
     parse_playlist = _client_part(folder, "playlist", "parse_factory")
     return paginate_cursor(
         fetch,
+        keep=_item_type("PLAYLIST"),
         parse=lambda item: parse_playlist(item["data"]),
         **_shape("folder_playlists", **kwargs),
     )

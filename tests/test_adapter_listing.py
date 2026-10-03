@@ -1024,7 +1024,6 @@ def test_the_folder_request_is_the_one_the_client_sends_with_a_cursor_and_no_off
         "folderId": "root",
         "limit": listing.PAGE_SIZES["account_folders"],
         "order": "NAME",
-        "includeOnly": "FOLDER",
     }
     assert second == {**first, "cursor": "after-10"}
 
@@ -1044,8 +1043,41 @@ def test_a_folders_playlists_are_walked_by_cursor_through_the_folders_own_parser
     assert found[11].name == "Kompakt 2011"
     assert [sent.get("cursor") for sent in endpoint.sent] == [None, "after-5", "after-10"]
     assert {sent["folderId"] for sent in endpoint.sent} == {"folder-kompakt"}
-    assert {sent["includeOnly"] for sent in endpoint.sent} == {"PLAYLIST"}
+    assert all("includeOnly" not in sent for sent in endpoint.sent)
     assert all("offset" not in sent for sent in endpoint.sent)
+
+
+def test_the_root_count_covers_playlists_too_so_folders_are_kept_after_counting():
+    """R-887. The live root declared 55 and held 26 folders beside 29 playlists.
+
+    The endpoint is asked for everything, every item is counted against the
+    declared total, and only the folders come back.
+    """
+    held = [_raw_folder(n) for n in range(26)] + [_raw_playlist(n) for n in range(29)]
+    endpoint = CursorEndpoint(held, page=10)
+    found = listing.account_folders(_client_over(endpoint), sleep=lambda _: None)
+
+    assert [folder.id for folder in found] == [f"f{n}" for n in range(26)]
+    assert all("includeOnly" not in sent for sent in endpoint.sent)
+
+
+def test_a_folder_holding_a_folder_keeps_only_its_playlists():
+    """R-887. A folder's count covers a folder nested in it as well."""
+    endpoint = CursorEndpoint([_raw_folder(0)] + [_raw_playlist(n) for n in range(7)], page=5)
+    session = _client_over(endpoint)
+    handle = session.folder()
+    handle.id = "folder-kompakt"
+    found = listing.folder_playlists(handle, sleep=lambda _: None)
+
+    assert [playlist.id for playlist in found] == [f"p{n}" for n in range(7)]
+
+
+def test_a_short_walk_over_a_mixed_root_still_refuses():
+    """R-887 keeps R-878's refusal: served fewer of any kind than declared."""
+    held = [_raw_folder(n) for n in range(5)] + [_raw_playlist(n) for n in range(5)]
+    endpoint = CursorEndpoint(held, page=10, total=11)
+    with pytest.raises(listing.ListingTruncated, match="collected 10 item"):
+        listing.account_folders(_client_over(endpoint), sleep=lambda _: None)
 
 
 def test_a_response_with_no_cursor_ends_the_walk():
