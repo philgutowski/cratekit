@@ -1,0 +1,78 @@
+name = "u110-b"
+pass_kind = "light"
+
+[[rows]]
+id = "B1_pass_names_file"
+description = "--pass no longer names the intake file, so sync mark cannot find the pass"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''    if pass_name is not None:
+        return pass_name
+    if name'''
+new = '''    if name'''
+
+[[rows]]
+id = "B2_name_names_file"
+description = "--name alone no longer names the intake file, breaking a landing typed the old way"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''    if name is not None:
+        return name
+    return default_name'''
+new = '''    return default_name'''
+
+[[rows]]
+id = "B3_check_pass"
+description = "A --pass holding a slash or nothing is not refused before the gate"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''    _check_pass(pass_name)
+'''
+new = ''''''
+
+[[rows]]
+id = "B4_recheck_xml"
+description = "The xml landing does not ask again under the lock whether its default name is still free"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''            _still_free(cfg, batch)
+'''
+new = '''            pass
+'''
+
+[[rows]]
+id = "B5_recheck_native"
+description = "The native landing does not ask again under the lock whether its default name is still free"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''                _still_free(cfg, planned.batch)
+'''
+new = '''                pass
+'''
+
+[[rows]]
+id = "B6_intake_lock"
+description = "The landing takes only the batch lock and not the intake file's"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''    with landing.batch_lock(batch), landing.intake_lock(stem):'''
+new = '''    with landing.batch_lock(batch):'''
+
+[[rows]]
+id = "B7_name_overrides"
+description = "--name is ignored and the default name is always taken"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''        ctx.args.name
+        if ctx.args.name is not None
+        else batch_name.readable('''
+new = '''        batch_name.readable('''
+
+[[rows]]
+id = "B8_shown_playlist"
+description = "The xml gate screen no longer names the batch playlist"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''        "playlist": planned.batch,
+'''
+new = ''''''
