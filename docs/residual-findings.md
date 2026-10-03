@@ -34358,3 +34358,41 @@ again only for the first.
 
 **Not on the board bar.** The refusal is said every run, nothing is lost,
 and another name is a way through.
+
+---
+
+## R-878. The account's folder listings page by offset, which the provider ignores, so no folder verb can run on a real account
+
+**Found:** at sitting 30, 2026-10-03, running R-835's `crate label playlists
+metronomo-records` live. It refused before its gate with
+`unavailable-transient`: `account_folders` spent its whole budget of 100
+requests at 50 a page and collected 26 folders without reaching the end.
+
+**Driven.** The provider's `my-collection/playlists/folders` endpoint, which
+the client's `Favorites.playlist_folders` and `Folder.items` both call,
+ignores `offset`. On the author's account `playlist_folders(limit=50,
+offset=N)` returned the same 26 folders, `2025`, `2026 Custom Playlists`,
+`All Day I Dream` first, for N of 0, 10, 26, 50 and 1000; at a limit of 10,
+offsets 0 and 10 returned the same ten. The Sudbeat folder's `items(limit=5,
+offset=5)` returned the same five as offset 0. The raw response carries
+`items`, `totalNumberOfItems` (55 at the root) and a `cursor`; sending that
+cursor back as `cursor` returned the next ten, `Favorites`, `Genre Trivia!`,
+`King Street Sounds`, with a new cursor. The endpoint pages by cursor.
+
+**The mechanism.** `listing.account_folders` and `listing.folder_playlists`
+walk `(limit, offset)` through `_paged_caller` and stop on an empty page,
+which never comes, so the walk's own budget guard fires, correctly refusing
+a truncated listing. The client exposes no cursor on either call.
+
+**Measured cost.** `crate label playlists` (R-835) and `crate export
+archive` (R-837) cannot finish on the author's account, or on any account
+with a folder, and the playlists sweep's exclusion of recorded label and set
+playlists reads the same listing.
+
+**Closes when:** both folder listings walk the endpoint by its cursor,
+stopping when the response carries no further cursor, checked against
+`totalNumberOfItems` where it is given, with tests on a fake that pages by
+cursor and ignores offset; and `crate label playlists` plans one label on the
+author's account.
+
+**On the board bar, (c).** A workflow the author asked for cannot finish.
