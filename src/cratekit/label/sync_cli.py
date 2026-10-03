@@ -729,10 +729,18 @@ def record_answer(
         held = dict(document["labels"].get(entry.label_id) or {})
         pending = held.get("pending")
         if not isinstance(pending, Mapping) or not pending.get("releases"):
+            # STOP WITH NOTHING WAITING names the registry's remove, since
+            # ``--next`` asks nothing about a label with nothing new and the
+            # remedy would send a person round in a circle.
             raise _selection_invalid(
                 f"no question is waiting for {entry.name!r}, so there is nothing an "
                 f"answer could apply to; nothing was recorded",
-                "ask it first with: crate label sync --next",
+                (
+                    f"to stop following it with nothing to answer: crate label "
+                    f"registry remove {entry.label_id}"
+                    if answer == STOP
+                    else "ask it first with: crate label sync --next"
+                ),
                 label=entry.label_id,
             )
         question = Question.from_json(pending)
@@ -770,8 +778,12 @@ def record_answer(
         ]
         taken: list[Offered] = []
         left: list[str] = []
+        # FILED UNDER THE RUN THAT ASKED, which recorded the label's round, so
+        # a grouping by run finds the round and its filings together when the
+        # answer came from a later ``--answer``.
+        filing_run = question.run or run_id
         for one in chosen:
-            (taken if _take(store, one, run_id) else left).append(one)
+            (taken if _take(store, one, filing_run) else left).append(one)
         taken_ids = {one.identity for one in taken}
         review.supersede(
             store,
@@ -1068,7 +1080,9 @@ def _pick(prompter: prompt.Prompter, question: Question) -> list[str] | None:
         numbers: list[int] = []
         bad: list[str] = []
         for word in typed.replace(",", " ").split():
-            if word.isdigit() and 1 <= int(word) <= count:
+            # ``isdecimal`` and not ``isdigit``: a superscript two is a digit
+            # that ``int`` refuses, and that crashed the walk mid question.
+            if word.isdecimal() and 1 <= int(word) <= count:
                 numbers.append(int(word))
             else:
                 bad.append(word)
@@ -1157,7 +1171,10 @@ def _walk(ctx, cfg: config.Config, prompter: prompt.Prompter) -> Envelope:
             "checks": checks,
             "summary": _summary(answered=answered, labels_seen=seen, stopped_at=stopped_at),
         },
-        outcome=Outcome.OK if answered else Outcome.NO_OP,
+        # A QUESTION LEFT UNANSWERED IS STILL A RUN THAT WROTE: the question
+        # was saved, its round recorded, and any open item the gate took back
+        # left review. NO_OP is a run that had nothing to ask.
+        outcome=Outcome.OK if answered or stopped_at else Outcome.NO_OP,
     )
 
 
