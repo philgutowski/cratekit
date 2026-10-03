@@ -303,3 +303,49 @@ def test_a_shown_item_value_that_would_break_its_line_is_quoted():
         '    artist="\u00c2me, Dixon", title="Dub=Mix", note="Part\\n2", '
         'also="Part\\r3", track_id=11, vocal=, count=3'
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-850: what an export wrote and every track it left out
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _exported(state: str = "succeeded", **outbound) -> output.Envelope:
+    return job_state("export.playlist", state=state, progress={"outbound": outbound})
+
+
+def test_an_export_answer_counts_and_names_each_track_it_left_out():
+    lines = render.render_job_state(
+        _exported(
+            counts={"written": 2, "already": 1, "unmatched": 2},
+            unmatched_tracks=[
+                {"identity": "7", "artist": "A", "title": "T", "reason": "names 2 provider tracks"},
+                {"identity": "9", "artist": "", "title": "", "reason": ""},
+            ],
+        )
+    )
+    assert "  tracks: 2 written, 1 already on the playlist, 2 unmatched" in lines
+    assert "    unmatched: A - T: names 2 provider tracks" in lines
+    assert "    unmatched: row 9: no reason given" in lines
+
+
+def test_a_queued_export_prints_no_counts_since_it_has_written_nothing_yet():
+    lines = render.render_job_state(
+        _exported(state="queued", counts={"written": 0, "already": 0, "unmatched": 0})
+    )
+    assert not any(line.startswith("  tracks:") for line in lines)
+
+
+def test_an_outbound_summary_that_does_not_count_prints_no_track_line():
+    """The favourites sweep's shape, which carries lists and no ``counts``."""
+    lines = render.render_job_state(
+        _exported(hearted=["1"], already=[], unmatched=["2"], reasons=[])
+    )
+    assert not any("tracks:" in line or "unmatched:" in line for line in lines)
+
+
+def test_a_count_this_build_cannot_read_is_left_out_rather_than_shown_as_zero():
+    lines = render.render_job_state(
+        _exported(counts={"written": 3, "already": True, "unmatched": "1"})
+    )
+    assert "  tracks: 3 written" in lines

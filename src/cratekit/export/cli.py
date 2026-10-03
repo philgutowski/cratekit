@@ -37,6 +37,7 @@ Layer: modules.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -75,7 +76,16 @@ ACTION_UPDATE = "update"
 ACTION_ADOPT = "adopt"
 
 
-def summary(cfg: config.Config, job_id: str) -> dict[str, list[str]]:
+#: What an unmatched row is said to be when the account gave no reason for it.
+#: The engine records the slug ``unmatched`` for that row, which is a key to
+#: grep the artifacts for and not a sentence a person can act on (R-850).
+NO_MATCH = "the provider returned no track for it"
+
+#: The warning a finished export carries when any of its tracks went unwritten.
+UNMATCHED_WARNING = "export-tracks-unmatched"
+
+
+def summary(cfg: config.Config, job_id: str) -> dict[str, Any]:
     """What this job's committed artifacts say it wrote, in one summary.
 
     DERIVED FROM WHAT RAN, NOT FROM WHAT WAS PLANNED. The engine reports the
@@ -88,11 +98,22 @@ def summary(cfg: config.Config, job_id: str) -> dict[str, list[str]]:
     READ OFF DISK RATHER THAN ACCUMULATED, because a job driven over two sessions
     has some of its reports in this process and all of them on the filesystem,
     and the person asking what the export did means all of them.
+
+    COUNTED PER ITEM, AND EVERY UNMATCHED TRACK LISTED (R-850). The lists above
+    were in the envelope and nowhere a person reads, so a live export of eight
+    tracks answered ``ok`` and ``8 of 8 settled`` over a playlist holding four.
+    ``counts`` is what was written, what the playlist already held and what was
+    left out, and ``unmatched_tracks`` names each one left out with its reason,
+    including a row the account said nothing about, which ``reasons`` omits.
+    One item writes one track, so each report adds one to exactly one count, and
+    an item is one committed file whichever run settled it, so a resumed job is
+    counted across both runs and nothing in it twice.
     """
     added: list[str] = []
     already: list[str] = []
     unmatched: list[str] = []
     reasons: list[str] = []
+    left_out: list[dict[str, str]] = []
     for report in artifacts.committed(cfg, job_id):
         added.extend(str(item) for item in report.get("added") or ())
         already.extend(str(item) for item in report.get("already") or ())
@@ -114,12 +135,64 @@ def summary(cfg: config.Config, job_id: str) -> dict[str, list[str]]:
             for item in report.get("unmatched") or ()
             if isinstance(item, dict) and item.get("reason") not in (None, "", "unmatched")
         )
+        left_out.extend(_left_out(item) for item in report.get("unmatched") or ())
     return {
         "added": added,
         "already": already,
         "unmatched": unmatched,
         "reasons": reasons,
+        "counts": {
+            "written": len(added),
+            "already": len(already),
+            "unmatched": len(unmatched),
+        },
+        "unmatched_tracks": left_out,
     }
+
+
+def _left_out(row: Any) -> dict[str, str]:
+    """One unmatched row as the answer lists it, named as the library shows it."""
+    if not isinstance(row, dict):
+        return {"identity": str(row), "artist": "", "title": "", "reason": NO_MATCH}
+    said = str(row.get("reason") or "")
+    return {
+        "identity": _identity(row),
+        "artist": str(row.get("artist") or ""),
+        "title": str(row.get("title") or ""),
+        "reason": NO_MATCH if said in ("", "unmatched") else said,
+    }
+
+
+def concluded(outbound: Mapping[str, Any]) -> tuple[dict[str, str], ...]:
+    """The warning a finished export carries when it left tracks out, or none.
+
+    THE OUTCOME STAYS ``ok`` AND THIS IS WHAT STOPS IT BEING A BARE ONE (R-850).
+    ``ok`` with a warning is what the other job verbs answer for a partial
+    result: ``sync`` says ``ok`` with ``sync-source-not-queued`` when one source
+    refused, and the intake jobs say ``ok`` with a ``missing`` count. The outcome
+    vocabulary has no partial word. Every outcome but ``ok`` and ``no_op`` must
+    carry a cause and a non zero exit, which would make a job that finished every
+    item and has nothing to retry read as failed, and ``pending`` needs a human
+    action with a verb that verifies it, which nothing here has. The warning is
+    the line a script reading only the outcome and the warnings can key on.
+    """
+    counts = outbound.get("counts")
+    if not isinstance(counts, Mapping):
+        return ()
+    missed = counts.get("unmatched")
+    if not isinstance(missed, int) or missed <= 0:
+        return ()
+    total = sum(n for n in counts.values() if isinstance(n, int))
+    return (
+        {
+            "code": UNMATCHED_WARNING,
+            "message": (
+                f"{missed} of the {total} track(s) in this export are not on the "
+                f"remote playlist, because the provider could not match them; "
+                f"each is listed with its reason above"
+            ),
+        },
+    )
 
 
 def _identity(row: Any) -> str:
@@ -352,6 +425,7 @@ def export_playlist(ctx) -> Envelope:
             digest=confirm_digest,
             summary=summary,
             frozen_extra=_frozen_adoption,
+            concluded=concluded,
         )
 
     playlist = str(ctx.args.playlist or "")
@@ -533,7 +607,10 @@ def handle(job, item, cfg) -> jobs.Produced:
 
 
 __all__ = [
+    "NO_MATCH",
+    "UNMATCHED_WARNING",
     "build",
+    "concluded",
     "confirm_digest",
     "export_argv",
     "export_playlist",
