@@ -603,6 +603,26 @@ that would strand the row. It does not re-point rows or rewrite an export. `conv
 out of step, `crate rebuild --tree TREE_ID --actor YOUR_NAME` is the only way to
 clear it.
 
+To tidy everything the product's rules govern in one pass, on both sides:
+
+```bash
+crate organize --report
+crate organize
+```
+
+`organize` plans two areas and asks one question for each. The rekordbox area
+files unfiled tracks into BY GENRE + ENERGY and its `with vox` subs the way
+`adopt apply` does, and rotates INBOX the way `inbox rotate` does. The account
+area builds a folder for every followed label that lacks one or a year, marks
+every landed sync pass, and archives every set whose download an intake file
+named for the set proves. Approve one area and abort the other and only the
+approved one is written. Every playlist you made yourself, on either side, is
+listed with a suggested home where one is obvious, and is never moved or
+renamed. Nothing is deleted beyond the expired batch playlists the rotation
+removes, never a track. `--report` prints both plans and asks nothing. The
+rekordbox area needs a backup acknowledged under a day old, and like every
+database write it is worth rehearsing on a copy first.
+
 Removing files is deliberately slow. `crate delete review` offers the files behind
 rows you removed in rekordbox, and confirmed ones go to the system Trash and
 nowhere else. `crate tombstone list` shows what was removed and lets you lift one
@@ -816,6 +836,8 @@ the same gate with nothing recorded and refuses again. Gates you will meet:
 | `adopt.apply.approve` | approve | `adopt apply` |
 | `adopt.move.approve` | approve | `adopt move` |
 | `inbox.rotate.approve` | approve | `inbox rotate`; explicit, `crate run decide` only |
+| `organize.rekordbox.approve` | approve | `organize`, its rekordbox area; explicit, `crate run decide` only |
+| `organize.account.apply` | apply | `organize`, its account area; explicit, `crate run decide` only |
 | `restore.run.confirm` | restore | `restore run` |
 | `session.ack.backup` | acknowledged | `session ack` |
 | `write.cloudsync.unreadable` | proceed | any verb that writes |
