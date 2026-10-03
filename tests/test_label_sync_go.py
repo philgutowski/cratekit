@@ -705,3 +705,45 @@ def test_a_download_queued_by_hand_is_not_resumed_or_held_by_a_go(
     assert fetched(script) == ["t-r1-1"]
     with jobs.open_store() as store:
         assert jobs.get(store, queued["data"]["job_id"]).state is jobs.JobState.QUEUED
+
+
+def test_settling_leaves_an_answer_whose_place_now_holds_a_different_one():
+    """Mutation row G18: a record rewritten while a go waited is not settled blind."""
+    document = {
+        "answers": [
+            {"label_id": "tide-works", "answered_at": "2026-10-03T01:00:00Z", "answer": "all"},
+            {"label_id": "beta-works", "answered_at": "2026-10-03T02:00:00Z", "answer": "all"},
+        ]
+    }
+
+    settled = sync_cli.settle_in(
+        document,
+        [(0, "tide-works", "2026-10-03T01:00:00Z"), (1, "alpha-works", "2026-10-03T02:00:00Z")],
+        marker={"run": "r", "job": None},
+    )
+
+    assert settled == 1
+    assert sync_cli.SETTLED in document["answers"][0]
+    assert sync_cli.SETTLED not in document["answers"][1]
+
+
+def test_settling_an_answer_already_settled_keeps_its_first_marker():
+    """Mutation row G20: the job an answer went with is not overwritten by a later go."""
+    first = {"run": "first", "job": "job-1", "at": "2026-10-03T01:00:00Z"}
+    document = {
+        "answers": [
+            {
+                "label_id": "tide-works",
+                "answered_at": "2026-10-03T01:00:00Z",
+                "answer": "all",
+                sync_cli.SETTLED: first,
+            }
+        ]
+    }
+
+    settled = sync_cli.settle_in(
+        document, [(0, "tide-works", "2026-10-03T01:00:00Z")], marker={"run": "second", "job": None}
+    )
+
+    assert settled == 0
+    assert document["answers"][0][sync_cli.SETTLED] == first

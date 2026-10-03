@@ -1,0 +1,307 @@
+{
+  "name": "u108-a",
+  "pass_kind": "light",
+  "branch": "relay/247",
+  "head": "1a9e24b",
+  "when": "2026-10-03 04:26 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 12348,
+  "baseline_exit": 0,
+  "pytest_runs": 13,
+  "state_guarded": "~/Library/Application Support/cratekit (257133 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/label/sync_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/label/sync_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "dfecfcf7a6ab8a89",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 12348,
+    "baseline_collected": 12348,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "G01_unsettled_skips_settled",
+      "description": "sync_cli.unsettled: read every saved answer as unsettled, so a go summarises answers an earlier go already took",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ad276895dd05cb5e",
+      "subset": [
+        "tests/test_label_sync.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.sync_cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 71,
+      "baseline_collected": 71,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync_go.py::test_a_job_stopped_halfway_resumes_and_downloads_only_the_rest",
+        "tests/test_label_sync_go.py::test_a_settled_answer_is_not_summarised_again"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if isinstance(entry, Mapping) and not entry.get(SETTLED)\n    ]",
+      "new": "        if isinstance(entry, Mapping)\n    ]"
+    },
+    {
+      "id": "G02_pick_takes_releases",
+      "description": "go.summarise: only an all answer takes releases, so a pick's releases are left out of the summary and the download",
+      "file": "src/cratekit/label/go.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2798e9e69178c25b",
+      "subset": [
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.go",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync_go.py::test_a_release_accepted_by_hand_and_answered_for_by_nobody_is_not_downloaded",
+        "tests/test_label_sync_go.py::test_two_labels_answered_all_and_one_picked_produce_one_summary_and_one_gate"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if word in TAKING:",
+      "new": "        if word == sync_cli.ALL:"
+    },
+    {
+      "id": "G03_not_now_counted",
+      "description": "go.summarise: a not-now answer is not counted in the summary",
+      "file": "src/cratekit/label/go.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bfcc473edde86990",
+      "subset": [
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.go",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync_go.py::test_two_labels_answered_all_and_one_picked_produce_one_summary_and_one_gate"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        elif word == sync_cli.NOT_NOW:\n            not_now.setdefault(name)",
+      "new": "        elif word == sync_cli.NOT_NOW:\n            pass"
+    },
+    {
+      "id": "G04_digest_covers_releases",
+      "description": "Summary.plan: the digest leaves out the releases, so an answer saved after the decision does not make it stale",
+      "file": "src/cratekit/label/go.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "08de0b455239b618",
+      "subset": [
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.go",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync_go.py::test_an_answer_saved_after_the_decision_makes_the_decision_stale"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    \"releases\": [[one.label_id, one.identity] for one in self.taken],",
+      "new": "                    \"releases\": [],"
+    },
+    {
+      "id": "G05_digest_covers_resume",
+      "description": "Summary.plan: the digest leaves out the jobs a go would resume",
+      "file": "src/cratekit/label/go.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "19aa9e7864123c45",
+      "subset": [
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.go",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync_go.py::test_a_second_go_that_waited_for_the_first_refuses_rather_than_queue_its_tracks_again"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    \"resume\": [job_id for job_id, _left in self.open_jobs],\n                }",
+      "new": "                    \"resume\": [],\n                }"
+    },
+    {
+      "id": "G06_abort_downloads_nothing",
+      "description": "go.go: an abort at the gate goes on to download",
+      "file": "src/cratekit/label/go.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d43aeda120fe745f",
+      "subset": [
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.go",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync_go.py::test_aborting_at_the_gate_downloads_nothing_and_keeps_the_answers"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if option == \"abort\":",
+      "new": "    if False:"
+    },
+    {
+      "id": "G07_only_accepted_downloaded",
+      "description": "go.go: a release an answer took is downloaded even after a person cleared it in review",
+      "file": "src/cratekit/label/go.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cc679424ef8339cc",
+      "subset": [
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.go",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync_go.py::test_a_release_cleared_after_answering_is_named_and_not_downloaded"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    if item is not None and item.verdict is Verdict.ACCEPTED:",
+      "new": "                    if item is not None:"
+    },
+    {
+      "id": "G08_already_passed_to_listing",
+      "description": "go.go: the tracks an earlier go holds are not passed to the listing, so a second start asks for them again",
+      "file": "src/cratekit/label/go.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ddbfb2c3090aecae",
+      "subset": [
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.go",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync_go.py::test_a_go_killed_between_its_queue_and_its_record_never_asks_for_a_track_twice",
+        "tests/test_label_sync_go.py::test_an_answer_holding_a_release_the_provider_did_not_answer_for_is_kept_for_the_next_go"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                already=held.tracks,",
+      "new": "                already=frozenset(),"
+    },
+    {
+      "id": "G09_gone_excused",
+      "description": "go.go: a release gone from the provider refuses the go again when nothing else is listed",
+      "file": "src/cratekit/label/go.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4d58a02ceb409922",
+      "subset": [
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.go",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync_go.py::test_a_release_gone_from_the_provider_does_not_refuse_every_go_after_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                excuse=frozenset({approved_cli.GONE, approved_cli.NO_IDENTIFIER}),",
+      "new": "                excuse=frozenset(),"
+    }
+  ],
+  "dropped": []
+}
