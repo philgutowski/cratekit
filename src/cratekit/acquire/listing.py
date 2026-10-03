@@ -161,6 +161,7 @@ PAGE_CAPS: dict[str, int] = {
     "favorite_tracks": 200,  # reaches 19,900 tracks. Largest measured: 197.
     # Reaches 9,900 releases PER RELEASE METHOD. ``artist_releases`` walks each
     # method separately, so this is spent once per method, not once per artist.
+    # A label roster held in memory spends none of it (R-888, ``HeldReleases``).
     "artist_releases": 100,
     # R-835. The figures are bounds rather than reads, and they assume the
     # provider fills the page it is asked for. The account holds one folder per
@@ -848,6 +849,27 @@ def folder_playlists(folder: Any, **kwargs: Any) -> list[Any]:
 RELEASE_METHODS: tuple[str, ...] = ("get_albums", "get_ep_singles")
 
 
+class HeldReleases:
+    """An artist shaped object whose release listings are already in memory.
+
+    :func:`artist_releases` reads such an object's lists WHOLE and never pages
+    it, because a request budget guards against a provider that is not
+    advancing its window and memory cannot fail to advance. R-888 is what paging
+    one cost: a label roster of 756 artists held 27,002 releases, the walk spent
+    the ``artist_releases`` budget at 10,000 on one listing, and the refusal
+    blamed the provider's offset for a list that never left the process. A budget
+    drawn from the list's own length was the other way to close it and was not
+    taken, since a guard sized to what it guards can never fire.
+
+    A subclass answers :meth:`held` for each release method, and still exposes
+    the methods themselves so ``label.crawl.can_list`` reads it as listable.
+    """
+
+    def held(self, method: str) -> list[Any] | None:
+        """Every release this object holds for ``method``, or ``None`` when it holds no such listing."""
+        raise NotImplementedError
+
+
 def artist_releases(artist: Any, methods: Iterable[str] = RELEASE_METHODS, *,
                     skipped: list[str] | None = None, **kwargs: Any) -> list[Any]:
     """Every release credited to an artist, across both release-type listings.
@@ -878,17 +900,23 @@ def artist_releases(artist: Any, methods: Iterable[str] = RELEASE_METHODS, *,
     here in the same shape as a whole one, and a sweep reported the albums of a
     label whose singles were never listed as a complete crawl (R-261). Deciding
     what the skip means stays with the caller about to report it.
+
+    **A :class:`HeldReleases` object is read whole, not paged**, through the same
+    deduplication, and spends none of this shape's budget (R-888). A listing it
+    does not hold is skipped and recorded the same way.
     """
     releases: list[Any] = []
     seen: set[str] = set()
+    held = isinstance(artist, HeldReleases)
     for method in methods:
-        if getattr(artist, method, None) is None:
+        listed = artist.held(method) if held else getattr(artist, method, None)
+        if listed is None:
             if skipped is not None:
                 skipped.append(method)
             continue
-        for release in paginate(
-            _paged_caller(artist, method), **_shape("artist_releases", **kwargs)
-        ):
+        if not held:
+            listed = paginate(_paged_caller(artist, method), **_shape("artist_releases", **kwargs))
+        for release in listed:
             identity = str(getattr(release, "id", "")) or f"{method}:{len(releases)}"
             if identity in seen:
                 continue
@@ -939,6 +967,7 @@ __all__ = [
     "RELEASE_METHODS",
     "STOP_RULES",
     "WRAPPERS",
+    "HeldReleases",
     "ListingNotPaginated",
     "ListingTruncated",
     "StopRule",
