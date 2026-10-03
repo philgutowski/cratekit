@@ -26,10 +26,11 @@ or Old is a batch when ANY of these holds, and the plan says which:
                                 playlist by identifier (``native.BATCH_PLAYLIST_KEY``)
 ``_inboxed suffix``             the name ends ``_inboxed``, a batch named for
                                 its run before U110
-``recorded name``               an intake file's landing record names this
-                                playlist as one of the author's account
-                                playlists (U113) AND the batch folder the
-                                record names still sits under the music folder
+``recorded name``               an intake file's landing record whose import
+                                ``intake imported`` PROVED names this playlist
+                                as one of the author's account playlists
+                                (U113) AND the batch folder the record names
+                                still sits under the music folder
 ``dated name``                  the name is U110's ``2026-10-03 Tidal playlists``
                                 shape AND a batch folder of exactly that name
                                 sits under the music folder, which both media
@@ -40,10 +41,12 @@ AN ACCOUNT PLAYLIST'S NAME CARRIES NO DATE (U113), ``Sunset Warmup``, so it is
 never recognised by its name's shape. A native landing names each one on its
 record by identifier, ``ingest.INBOX_PLAYLISTS_KEY``, and it is a ``run
 record`` batch. An intake file's playlist has no identifier until rekordbox
-imports it, so its record names it and its batch folder, and the LATEST landing
-record of that name wins: a landing takes a name only while INBOX does not
-show it, so the newest record naming it is the one that made the playlist
-INBOX shows now.
+imports it, so its record names it and its batch folder. ONLY A PROVEN IMPORT
+COUNTS: an intake file nobody imported made no playlist, and a playlist of that
+name somebody makes later is theirs. The LATEST proven landing of a name wins:
+a landing takes a name only while INBOX and the pending intake files do not
+hold it, so the newest record naming it is the one that made the playlist INBOX
+shows now.
 
 EVERYTHING ELSE IS LEFT ALONE AND LISTED: a folder, a smart playlist, and an
 ordinary playlist no rule recognises. A dated name with no batch folder is a
@@ -333,8 +336,9 @@ def landings(cfg: config.Config) -> Landings:
     A NATIVE RECORD that names a playlist and committed nothing landed nothing,
     so it dates nothing, and the EARLIEST landing wins: a batch is as old as its
     first tracks. AN INTAKE FILE'S RECORD commits nothing to the database, so it
-    is read unless it was abandoned, which is a landing that left no file, and
-    the LATEST record naming a name wins, for the reason the module gives.
+    is read once ``intake imported`` proved its import, which is when the
+    playlists it names exist, and the LATEST record naming a name wins, for the
+    reason the module gives.
     """
     records, unreadable = session.scan_log(cfg)
     by_id: dict[str, date] = {}
@@ -345,7 +349,7 @@ def landings(cfg: config.Config) -> Landings:
         landed = _local_date(record.started)
         if landed is None:
             continue
-        if record.state is not session.SessionState.ABANDONED:
+        if session.IMPORT_VERIFIED_KEY in record.detail:
             for name, batch in _named_without_id(record):
                 if name not in by_name or landed >= by_name[name][0]:
                     by_name[name] = (landed, batch)
@@ -358,15 +362,6 @@ def landings(cfg: config.Config) -> Landings:
             if key not in by_id or landed < by_id[key]:
                 by_id[key] = landed
     return Landings(by_id=by_id, by_name=by_name, unreadable=len(unreadable))
-
-
-def landing_dates(cfg: config.Config) -> tuple[dict[str, date], int]:
-    """Each playlist a native landing recorded, the day it first landed, and the unreadable count.
-
-    :func:`landings` read by identifier only, for a caller that never ages by name.
-    """
-    found = landings(cfg)
-    return found.by_id, found.unreadable
 
 
 def _live_children(db: Any, parent_id: str) -> list[Any]:
@@ -789,7 +784,6 @@ __all__ = [
     "assert_read_back",
     "identity",
     "Landings",
-    "landing_dates",
     "landings",
     "old_node",
     "plan_rotation",

@@ -289,7 +289,12 @@ def _shown(
         "files": [item.name for item in planned.items],
     }
     if split:
-        shown.update(split_facts(planned, split))
+        shown.update(
+            split_facts(
+                [(one.name, one.account_name, len(one.files)) for one in split],
+                len(account_playlists.unclaimed(planned.items, split)),
+            )
+        )
     if manifest is not None:
         # What the manifest ASKS for, since which rows have a file in this
         # batch is known only once the batch folder can be indexed.
@@ -300,23 +305,21 @@ def _shown(
     return shown
 
 
-def split_facts(
-    planned: landing.Plan, split: tuple[account_playlists.Claimed, ...]
-) -> dict[str, Any]:
-    """The account playlists on a gate screen, each by the name it lands as (U113)."""
-    rest = account_playlists.unclaimed(planned.items, split)
+def split_facts(entries: list[tuple[str, str, int]], rest: int) -> dict[str, Any]:
+    """The account playlists on a gate screen, each by the name it lands as (U113).
+
+    ``entries`` are each playlist's name, the account's own name for it and how
+    many files it holds; ``rest`` is how many the batch playlist keeps. ONE
+    WORDING FOR BOTH MEDIA, so the same split reads the same on either screen.
+    """
     return {
         "account playlists": [
-            f"{claimed.name} ({len(claimed.files)} file(s))"
-            + (
-                f", the account's {claimed.account_name}"
-                if claimed.name != claimed.account_name
-                else ""
-            )
-            for claimed in split
+            f"{name} ({count} file(s))"
+            + (f", the account's {account}" if account and name != account else "")
+            for name, account, count in entries
         ],
         "batch playlist holds": (
-            f"{len(rest)} file(s) no account playlist claimed"
+            f"{rest} file(s) no account playlist claimed"
             if rest
             else "nothing, so it is not written"
         ),
@@ -403,6 +406,7 @@ def _reported(payload: dict, landed: landing.Landed) -> dict:
 
 
 def _xml_split(
+    cfg: config.Config,
     claims: tuple[tuple[account_playlists.Source, tuple[Path, ...]], ...],
     export: Path,
     *,
@@ -410,17 +414,20 @@ def _xml_split(
     declared,
     registry,
 ) -> tuple[account_playlists.Claimed, ...]:
-    """Each account playlist named against the intake tree of the export it is spliced into.
+    """Each account playlist named against the export it is spliced into, and the pending files.
 
-    An export that cannot be read names against nothing: the preflight refuses
-    it before anything moves, and the engine asks again under its own check.
+    The export's intake tree and playlist root (:func:`landing.inbox_held`), and
+    every account playlist an intake file still waiting on its import names,
+    which no export holds yet. An export that cannot be read names against the
+    pending files only: the preflight refuses it before anything moves.
     """
     if not claims:
         return ()
     held: tuple[str, ...] | str = ()
     if declared is not None and registry is not None:
         held = landing.inbox_held(export, landing.Checked(registry=registry, declared=declared))
-    return account_playlists.named(claims, held if isinstance(held, tuple) else (), batch=batch)
+    taken = (*(held if isinstance(held, tuple) else ()), *account_playlists.pending_names(cfg))
+    return account_playlists.named(claims, taken, batch=batch)
 
 
 def gate_named(entry, name: str):
@@ -519,7 +526,7 @@ def intake_land(ctx) -> Envelope:
         else Path(cfg.library.root) / "collection.xml"
     )
     destination = intake_file(cfg, stem)
-    split = _xml_split(claims, export, batch=batch, declared=declared, registry=registry)
+    split = _xml_split(cfg, claims, export, batch=batch, declared=declared, registry=registry)
     # THE ENGINE'S PRE-MOVE CHECKS ARE ASKED BEFORE THE GATE TOO (R-677), for
     # the manifest's reason. A plan over an export that is not there, or not a
     # collection, or a library that is not mounted, could never run, and the
@@ -694,14 +701,12 @@ def _native_shown(rows: native.NativePlan, *, folder: Path, target: Path) -> dic
     }
     if rows.playlists:
         claimed = {str(t) for one in rows.playlists for t in one.targets}
-        rest = sum(1 for row in rows.rows if str(row.target) not in claimed)
-        shown["account playlists"] = [
-            f"{one.name} ({len(one.targets)} file(s))" for one in rows.playlists
-        ]
-        shown["batch playlist holds"] = (
-            f"{rest} file(s) no account playlist claimed"
-            if rest
-            else "nothing, so it is not written"
+        written = [row for row in rows.rows if row.action != native.UNSUPPORTED]
+        shown.update(
+            split_facts(
+                [(one.name, one.account_name, len(one.targets)) for one in rows.playlists],
+                sum(1 for row in written if str(row.target) not in claimed),
+            )
         )
     return shown
 
@@ -877,6 +882,7 @@ def _native_split(
             name=claimed.name,
             account=claimed.playlist_id,
             targets=tuple(target / path.name for path in claimed.files),
+            account_name=claimed.account_name,
         )
         for claimed in account_playlists.named(claims, held, batch=batch)
     )
@@ -933,11 +939,7 @@ def awaiting_analysis(collection: native.NativeLanded) -> list[dict[str, str]]:
     if not collection.added:
         return []
     names = collection.names() or (collection.playlist,)
-    said = (
-        f"the {names[0]} playlist"
-        if len(names) == 1
-        else "the " + ", ".join(names[:-1]) + f" and {names[-1]} playlists"
-    )
+    said = f"the {ingest.spoken(names)} playlist" + ("s" if len(names) > 1 else "")
     return [
         {
             "code": AWAITING_ANALYSIS,

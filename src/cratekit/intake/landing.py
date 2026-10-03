@@ -616,10 +616,13 @@ def preflight(
 
 
 def inbox_held(export: Path, checked: Checked) -> tuple[str, ...] | str:
-    """Every name under the export's intake tree, or a sentence naming why it could not be read.
+    """Every name an imported playlist could meet, or a sentence naming why it could not be read.
 
     What a landing's account playlists are named against (U113), read from the
-    Fresh Export because that is rekordbox's tree as the person last exported it.
+    Fresh Export because that is rekordbox's tree as the person last exported
+    it: every name under the intake tree, and every name directly at the
+    playlist root, because a playlist imported from an intake file lands at the
+    root before it is dragged into the intake folder.
     """
     try:
         content = export.read_bytes()
@@ -629,7 +632,12 @@ def inbox_held(export: Path, checked: Checked) -> tuple[str, ...] | str:
         tree = ingest.bridge_intake_tree(checked.declared, checked.registry)
     except CratekitError as exc:
         return exc.cause.message
-    return rbxml.intake_names(content, tree=tree)
+    held = rbxml.intake_names(content, tree=tree)
+    if isinstance(held, str):
+        return held
+    root = rbxml.root_node(content)
+    at_root = tuple(node.name for node in rbxml.child_nodes(content, root)) if root else ()
+    return (*held, *at_root)
 
 
 def _check_names_free(export: Path, checked: Checked, names: Sequence[str]) -> None:
@@ -1262,6 +1270,9 @@ def apply_native(
             detail={"folder": str(plan.folder), "unplanned": unplanned},
         )
 
+    # BEFORE THE FIRST MOVE, so a name INBOX came to hold since the plan refuses
+    # with the files still in staging and the landing can simply be run again.
+    native.assert_names_still_free(db, rows)
     unsupported = {
         item: Refused(path=item, reason="intake-list-unusable", sentence=row.why)
         for item in plan.items

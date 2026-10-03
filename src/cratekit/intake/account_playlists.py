@@ -45,8 +45,8 @@ from pathlib import Path
 from typing import Any, Iterable, Sequence
 
 from cratekit.acquire import match, match_cli
-from cratekit.core import config, jobs
-from cratekit.intake import batch_name
+from cratekit.core import config, jobs, session
+from cratekit.intake import batch_name, ingest
 from cratekit.intake import cli as intake_cli
 
 #: The report states a landing's files were downloaded for. ``owned`` and
@@ -215,6 +215,24 @@ def named(
     )
 
 
+def pending_names(cfg: config.Config) -> tuple[str, ...]:
+    """Every account playlist an intake file still waiting on its import names.
+
+    Rekordbox has not seen such a file, so no Fresh Export holds its playlists,
+    and a second landing named only against the export would give one of them
+    the same name. Read from the intake records, which list each by name.
+    """
+    records, _unreadable = session.scan_log(cfg)
+    return tuple(
+        str(entry["name"])
+        for record in records
+        if record.workflow == ingest.INTAKE_WORKFLOW
+        and record.state is session.SessionState.AWAITING_IMPORT
+        for entry in record.detail.get(ingest.INBOX_PLAYLISTS_KEY) or ()
+        if isinstance(entry, dict) and entry.get("name")
+    )
+
+
 def unclaimed(files: Sequence[Path], claimed: Iterable[Claimed]) -> tuple[Path, ...]:
     """The planned files no account playlist claimed, which stay in the batch's playlist."""
     taken = {path for one in claimed for path in one.files}
@@ -227,6 +245,7 @@ __all__ = [
     "Source",
     "claims",
     "named",
+    "pending_names",
     "sources",
     "split",
     "unclaimed",

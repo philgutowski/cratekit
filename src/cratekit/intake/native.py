@@ -142,6 +142,8 @@ class PlaylistPlan:
     account: str
     #: The planned targets it holds, in the order the landing planned them.
     targets: tuple[Path, ...]
+    #: The account's own name for it, which ``name`` differs from only by a count.
+    account_name: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -423,9 +425,26 @@ def plan_rows(
         current_drive=current_drive,
         rows=tuple(rows),
         digest="",
-        playlists=tuple(split),
+        playlists=_supported_only(split, rows),
     )
     return replace(planned, digest=digest_of(identity(planned)))
+
+
+def _supported_only(
+    split: Sequence[PlaylistPlan], rows: Sequence[RowPlan]
+) -> tuple[PlaylistPlan, ...]:
+    """The account playlists over only the targets a row can be written for.
+
+    A file planned ``UNSUPPORTED`` stays in staging and no playlist can hold it,
+    so it is not counted on the screen as one of a playlist's, and a playlist
+    holding nothing else is not planned.
+    """
+    unsupported = {str(row.target) for row in rows if row.action == UNSUPPORTED}
+    kept = (
+        replace(one, targets=tuple(t for t in one.targets if str(t) not in unsupported))
+        for one in split
+    )
+    return tuple(one for one in kept if one.targets)
 
 
 def inbox_held(db: Any, root_id: str) -> tuple[str, ...]:
@@ -437,13 +456,15 @@ def inbox_held(db: Any, root_id: str) -> tuple[str, ...]:
     it, and an account playlist is created, never found by its name, so a
     removed node of that name is never written into.
     """
+    # ONE READ OF THE TABLE, walked in memory, rather than a query per node.
+    children: dict[str, list[Any]] = {}
+    for row in list(db.get_playlist()):
+        if not rb_writer.node_removed(row):
+            children.setdefault(str(getattr(row, "ParentID", "") or ""), []).append(row)
     names: list[str] = []
     pending = [str(root_id)]
     while pending:
-        parent = pending.pop()
-        for row in list(db.get_playlist(ParentID=parent)):
-            if rb_writer.node_removed(row):
-                continue
+        for row in children.get(pending.pop(), ()):
             names.append(str(getattr(row, "Name", "") or ""))
             pending.append(str(row.ID))
     return tuple(names)
@@ -660,7 +681,7 @@ def apply_rows(
             # BEFORE THE FIRST ROW, so a refusal adds nothing. A name the plan
             # chose free that INBOX holds now would show two playlists of one
             # name, and an account playlist is created rather than found.
-            _assert_names_still_free(db, plan)
+            assert_names_still_free(db, plan)
             to_add = plan.to_add()
             taken = _taken_since_the_plan(db, cfg, to_add)
             for row in to_add:
@@ -750,8 +771,13 @@ def apply_rows(
     )
 
 
-def _assert_names_still_free(db: Any, plan: NativePlan) -> None:
-    """Refuse an account playlist name INBOX came to hold after the plan chose it."""
+def assert_names_still_free(db: Any, plan: NativePlan) -> None:
+    """Refuse an account playlist name INBOX came to hold after the plan chose it.
+
+    ASKED BY THE LANDING BEFORE ITS FIRST MOVE, so a refusal leaves the files in
+    staging for the landing to be run again, and asked again here before the
+    first row, inside the session, for whatever took a name in between.
+    """
     if not plan.playlists:
         return
     held = set(inbox_held(db, plan.root_id))
@@ -848,6 +874,7 @@ __all__ = [
     "WrittenPlaylist",
     "anchored_intake_root",
     "apply_rows",
+    "assert_names_still_free",
     "assert_rows_gridless",
     "choose_device",
     "file_type_of",

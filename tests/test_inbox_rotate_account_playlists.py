@@ -5,8 +5,8 @@ native landing names it on its record by identifier, which the landing suite
 drives end to end in ``tests/test_intake_land_account_playlists_native.py``.
 An intake file's playlist has no identifier until rekordbox imports it, so its
 record names it and the batch folder it landed in, and these are the rules for
-that name: the batch folder must still be there, an abandoned landing names
-nothing, and the latest landing of a name is the one INBOX shows.
+that name: the import must have been proven, the batch folder must still be
+there, and the latest landing of a name is the one INBOX shows.
 """
 
 from __future__ import annotations
@@ -33,18 +33,25 @@ def _intake_record(
     landed: date,
     entries: list[dict],
     *,
-    state: session.SessionState = session.SessionState.AWAITING_IMPORT,
+    imported: bool = True,
     tag: str = "landing",
 ) -> None:
-    """An intake file's session record, as ``place_files`` leaves it, naming account playlists."""
+    """An intake file's session record naming account playlists.
+
+    As ``place_files`` leaves it, awaiting its import, or as ``intake imported``
+    leaves it once the import is proven.
+    """
     started = datetime.combine(landed, datetime.min.time().replace(hour=12)).astimezone()
+    detail: dict = {ingest.INBOX_PLAYLISTS_KEY: entries}
+    if imported:
+        detail[session.IMPORT_VERIFIED_KEY] = {"at": started.isoformat(), "evidence": "a test"}
     session.write_record(
         session.SessionRecord(
             session_id=f"{started.strftime('%Y%m%dT%H%M%S')}-{tag}",
             workflow=native.WORKFLOW,
             started=started.isoformat(),
-            state=state,
-            detail={ingest.INBOX_PLAYLISTS_KEY: entries},
+            state=session.SessionState.OPEN if imported else session.SessionState.AWAITING_IMPORT,
+            detail=detail,
         ),
         cfg,
     )
@@ -90,7 +97,8 @@ def test_a_recorded_name_whose_batch_folder_is_gone_is_left_alone(native_library
     assert left.kind == "playlist"
 
 
-def test_an_abandoned_landing_names_nothing(native_library):
+def test_an_intake_file_nobody_imported_names_nothing(native_library):
+    # It made no playlist, so one of that name under INBOX is somebody's own.
     cfg, root_id = native_library
     _node(cfg, "Sunset Warmup", under=root_id, age=0)
     _batch_folder(cfg)
@@ -98,7 +106,7 @@ def test_an_abandoned_landing_names_nothing(native_library):
         cfg,
         TODAY - timedelta(days=40),
         [{"name": "Sunset Warmup", "batch": BATCH}],
-        state=session.SessionState.ABANDONED,
+        imported=False,
     )
 
     assert isinstance(_shown(_plan(cfg))["Sunset Warmup"], rotate.Left)

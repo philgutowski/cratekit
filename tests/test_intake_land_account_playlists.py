@@ -179,6 +179,39 @@ def test_a_second_landing_of_one_playlist_the_next_week_is_named_two(
     assert held["Sunset Warmup 2"] == ["Two"]
 
 
+def test_a_name_an_unimported_intake_file_holds_is_not_given_again(cfg, silence, export):
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
+    _stage(cfg, silence, "One.flac")
+    _applied(export, "--pass", PASS)
+
+    # The first intake file is still waiting on its import, so the export the
+    # second landing is handed holds neither of its playlists.
+    run = "2026-10-03T201500Z-ab78"
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("Two",))}, run_id=run)
+    _stage(cfg, silence, "Two.flac")
+    envelope = _applied(export, "--pass", missing_cli.synced_name(run))
+
+    assert _inbox(_intake(envelope)) == {"Sunset Warmup 2": ["Two"]}
+
+
+def test_a_name_at_the_playlist_root_is_not_given_since_an_import_lands_there(
+    cfg, silence, export
+):
+    body = export.read_text(encoding="utf-8").replace(
+        '<NODE Name="INBOX" Type="0" Count="0">',
+        '<NODE Name="Sunset Warmup" Type="1" KeyType="0" Entries="0">\r\n'
+        "      </NODE>\r\n"
+        '      <NODE Name="INBOX" Type="0" Count="0">',
+    )
+    export.write_text(body, encoding="utf-8")
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
+    _stage(cfg, silence, "One.flac")
+
+    envelope = _applied(export, "--pass", PASS)
+
+    assert _inbox(_intake(envelope)) == {"Sunset Warmup 2": ["One"]}
+
+
 def test_a_label_landing_keeps_the_name_u110_gives_it(cfg, silence, export, tmp_path):
     _stage(cfg, silence, "One.flac")
     manifest = _manifest(tmp_path, [("1", "Probe", "One", "Kompakt", 2025)])

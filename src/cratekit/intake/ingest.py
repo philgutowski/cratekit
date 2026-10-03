@@ -146,7 +146,7 @@ def bridge_intake_tree(
     return rbxml.intake_tree(declared, registry)
 
 
-def _spoken(names: Sequence[str]) -> str:
+def spoken(names: Sequence[str]) -> str:
     """Several names as a person says the list, ``A, B and C``."""
     if len(names) == 1:
         return names[0]
@@ -179,7 +179,7 @@ def import_steps(
     copies, doubling each batch already in it.
     """
     if len(playlists) > 1:
-        said = _spoken(playlists)
+        said = spoken(playlists)
         return (
             f"import {destination} into rekordbox as a rekordbox xml library",
             f"import each of the {said} playlists from it on its own, never the "

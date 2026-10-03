@@ -229,6 +229,9 @@ def test_a_name_inbox_came_to_hold_after_the_plan_is_refused_and_nothing_is_writ
 
     assert code != int(ExitCode.OK), acted
     assert acted["cause"]["reason"] == "decision-stale", acted
+    assert "nothing was written" in acted["cause"]["message"]
+    # Refused before the first move, so the landing can simply be run again.
+    assert (Path(cfg.paths.download_staging) / "One.flac").is_file()
     assert _query(cfg, "SELECT ID FROM djmdContent WHERE Title = 'One'") == []
     assert list(_inbox(cfg, root_id)) == ["Sunset Warmup"]
 
@@ -280,3 +283,25 @@ def test_the_rotation_ages_an_account_playlist_by_its_landing_date(native_librar
     assert batch.aged_from == rotate.AGED_FROM_RECORD
     assert batch.landed == landed
     assert batch.action == rotate.MOVE
+
+
+def test_the_gate_screen_names_each_playlist_as_the_bridge_does(native_library, silence):
+    cfg, root_id = native_library
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        handle.create_playlist("Sunset Warmup", parent=handle.get_playlist(ID=root_id))
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
+    for title in ("One", "Loose"):
+        _stage(cfg, silence, title)
+
+    code, refused = drive(_land())
+
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["account playlists"] == [
+        "Sunset Warmup 2 (1 file(s)), the account's Sunset Warmup"
+    ]
+    assert shown["batch playlist holds"] == "1 file(s) no account playlist claimed"
