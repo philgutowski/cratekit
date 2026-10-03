@@ -6032,18 +6032,19 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # carried.
     # Re-pinned on the residual finding "A followed label cannot become a
     # folder of year playlists on the streaming account", 2026-10-03: 601 to
-    # 612 distinct, non-keys 411 to 420. ELEVEN joined and nothing left, each
+    # 613 distinct, non-keys 411 to 421. TWELVE joined and nothing left, each
     # absent from `main`'s own `src` by a set difference of the two trees.
     # label-playlists-incomplete and label-playlists-ambiguous are the two keys
     # named in the pin above. dj-label is the SOURCE SCRIPT the build verb now
     # claims. label-folder is the EXCLUSION the playlist sweep gives a year
     # playlist a label build recorded. label-playlists and label-mark are the
     # plan KINDS the two verbs' digests are taken under. retitled-since-built
-    # is the REASON the mark leaves a year playlist somebody retitled. And
+    # and not-in-batch are the REASONS the mark leaves a year playlist somebody
+    # retitled, and one whose year the landed batch did not file. And
     # label-playlists-not-followed, label-playlists-tracks-refused,
     # label-mark-nothing-built and label-mark-changed-since-plan are WARNING
     # codes.
-    assert (len(literals), len(literals - set(causes))) == (612, 420), (
+    assert (len(literals), len(literals - set(causes))) == (613, 421), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
