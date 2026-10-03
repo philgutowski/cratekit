@@ -1933,6 +1933,280 @@ def remove_memberships(db: Any, playlist: Any, content_ids: Iterable[str]) -> li
     return removed
 
 
+# ---------------------------------------------------------------------------
+# Playlist nodes: the move and the removal (U111)
+# ---------------------------------------------------------------------------
+
+
+def _node_refusal(reason: str, message: str, playlist: Any) -> CratekitError:
+    return refuse(
+        reason,
+        message,
+        remedy=Remedy.REPORT_DEFECT,
+        scope=Scope.RUN,
+        origin=("rb_writer",),
+        detail={"playlist_id": str(getattr(playlist, "ID", ""))},
+    )
+
+
+def _plain_playlist(playlist: Any, what: str) -> None:
+    """Refuse anything but a live, ordinary playlist. A folder carries a tree."""
+    if int(getattr(playlist, "Attribute", -1)) != 0:
+        raise _node_refusal(
+            "whitelist-violation",
+            f"{what} the playlist row {getattr(playlist, 'ID', '?')!r}, which is a "
+            f"folder or a smart playlist; only an ordinary playlist is moved or "
+            f"removed, so a node holding other nodes is never taken with it",
+            playlist,
+        )
+    if node_removed(playlist):
+        raise _node_refusal(
+            "whitelist-violation",
+            f"{what} the playlist row {getattr(playlist, 'ID', '?')!r}, which "
+            f"rekordbox or this product already removed",
+            playlist,
+        )
+
+
+def move_playlist_node(db: Any, playlist: Any, parent: Any) -> None:
+    """Move one ordinary playlist to the end of a live folder. Never a folder.
+
+    A MOVE CHANGES THE NODE'S PARENT AND ITS POSITION, and nothing it holds.
+    The binding's own ``move_playlist`` does it: the node takes the next
+    position in its new parent, and the nodes after it in the old parent close
+    up by one, which is how rekordbox numbers a parent's children. No
+    membership and no content row is read or written.
+
+    REFUSED, NOT SKIPPED: a folder or a smart playlist as the node, a removed
+    node, and a parent that is not a live folder. Each is a caller that planned
+    something the rotation never shows a person.
+
+    DOES NOT COMMIT. The commit is the caller's, through :func:`commit_guarded`.
+    """
+    _plain_playlist(playlist, "asked to move")
+    if not _is_folder(parent) or node_removed(parent):
+        raise _node_refusal(
+            "whitelist-violation",
+            f"asked to move a playlist into {getattr(parent, 'ID', '?')!r}, which "
+            f"is not a live folder",
+            playlist,
+        )
+    db.move_playlist(playlist, parent=parent)
+
+
+def remove_playlist_node(db: Any, playlist: Any) -> list[str]:
+    """Mark one ordinary playlist removed, with its own memberships. Returns their ids.
+
+    THE SECOND REMOVAL THIS PRODUCT MAKES, AND THE SAME SOFT DELETE (R-758).
+    rekordbox's own removed playlists keep their rows and carry the marker,
+    and the memberships inside them carry it too: 4,817 such rows were read on
+    2026-09-29, every one in a removed playlist. So the node's marker is set,
+    ``updated_at`` moves to now, and each live membership OF THIS PLAYLIST is
+    marked through :func:`remove_memberships`, which owns that rule.
+
+    WHAT IS NEVER TOUCHED. The tracks: no content row is read or written, and a
+    track's membership of any other playlist is a row of that playlist, which
+    this call never asks for. ``Seq`` stays, as ``TrackNo`` stays on a removed
+    membership, so the node's siblings are not renumbered.
+
+    REFUSED: a folder or a smart playlist, and a node already removed. A folder
+    would carry everything inside it, and a smart playlist has no rows of its
+    own to say what it held.
+
+    DOES NOT COMMIT. The commit is the caller's, through :func:`commit_guarded`
+    with both this table and the membership table named in ``removals``.
+    """
+    from datetime import datetime
+
+    _plain_playlist(playlist, "asked to remove")
+    held = [
+        str(song.ContentID)
+        for song in list(db.get_playlist_songs(PlaylistID=str(playlist.ID)))
+        if not membership_removed(song)
+    ]
+    marked = remove_memberships(db, playlist, held)
+    setattr(playlist, SOFT_DELETE_COLUMN, 1)
+    playlist.updated_at = datetime.now()
+    return marked
+
+
+@dataclass(frozen=True)
+class NodeTables:
+    """The three tables a node change could reach, read from SQL, row by row.
+
+    Each mapping is a row's identifier to the row's values as a tuple, every
+    column in the table's own order. Read with no object mapper in between,
+    so what is compared is what the database holds.
+    """
+
+    content: Mapping[str, tuple]
+    playlists: Mapping[str, tuple]
+    memberships: Mapping[str, tuple]
+    playlist_columns: tuple[str, ...]
+    membership_columns: tuple[str, ...]
+
+
+def _rows_by_id(session: Any, table: str) -> tuple[dict[str, tuple], tuple[str, ...]]:
+    from sqlalchemy import text
+
+    result = session.execute(text(f"SELECT * FROM {table}"))
+    columns = tuple(result.keys())
+    at = columns.index("ID")
+    return {str(row[at]): tuple(row) for row in result}, columns
+
+
+def node_tables(db: Any) -> NodeTables:
+    """Read the content, playlist and membership tables as they stand, from SQL.
+
+    Taken once before a node change and once after, by
+    :func:`assert_node_changes_confined`. It flushes nothing itself, so the
+    first reading is of the database before the caller has written anything.
+    """
+    session = db.session
+    content, _ = _rows_by_id(session, CONTENT_TABLE)
+    playlists, playlist_columns = _rows_by_id(session, PLAYLIST_TABLE)
+    memberships, membership_columns = _rows_by_id(session, MEMBERSHIP_TABLE)
+    return NodeTables(content, playlists, memberships, playlist_columns, membership_columns)
+
+
+def _changed(columns: Sequence[str], before: tuple, after: tuple) -> set[str]:
+    return {name for name, old, new in zip(columns, before, after) if old != new}
+
+
+def node_change_violations(
+    before: NodeTables,
+    after: NodeTables,
+    *,
+    moved: Mapping[str, str],
+    removed: Iterable[str],
+    created: Iterable[str] = (),
+) -> list[str]:
+    """Every difference between two readings that the planned node change does not explain.
+
+    ``moved`` maps each moved playlist to the folder it moves into, ``removed``
+    names each removed playlist, and ``created`` the folder rows the change
+    may add. Empty means the change was confined.
+
+    PURE, as :func:`guard_violations` is, so every branch is reachable with
+    literal readings. What it explains, and nothing more:
+
+    * no content row differs, is added or disappears;
+    * a membership differs only inside a removed playlist, and only in the
+      marker and the bookkeeping beside it, and the marker only ever goes on;
+    * a moved playlist differs only in its parent, which is the named folder,
+      its position and bookkeeping; a removed one only in the marker going on
+      and bookkeeping; any other playlist only in position and bookkeeping;
+    * the playlist rows added are exactly ``created``, and nothing is added to
+      the membership table and nothing disappears from either.
+    """
+    violations: list[str] = []
+    gone_removed = set(map(str, removed))
+    if before.content != after.content:
+        changed = sorted(
+            key
+            for key in set(before.content) | set(after.content)
+            if before.content.get(key) != after.content.get(key)
+        )
+        violations.append(
+            f"{len(changed)} {CONTENT_TABLE} row(s) changed, and a node change "
+            f"touches no track: {', '.join(changed[:10])}"
+        )
+
+    p_cols = before.playlist_columns
+    marker_at = p_cols.index(SOFT_DELETE_COLUMN) if SOFT_DELETE_COLUMN in p_cols else None
+    parent_at = p_cols.index("ParentID") if "ParentID" in p_cols else None
+    for key in sorted(set(before.playlists) - set(after.playlists)):
+        violations.append(f"the {PLAYLIST_TABLE} row {key!r} disappeared")
+    added = set(after.playlists) - set(before.playlists)
+    for key in sorted(added - set(map(str, created))):
+        violations.append(f"an unplanned {PLAYLIST_TABLE} row {key!r} was added")
+    for key in sorted(set(before.playlists) & set(after.playlists)):
+        old, new = before.playlists[key], after.playlists[key]
+        changed = _changed(p_cols, old, new)
+        if not changed:
+            continue
+        if key in moved:
+            allowed = _MOVED_COLUMNS
+            if parent_at is not None and str(new[parent_at]) != str(moved[key]):
+                violations.append(
+                    f"the moved playlist {key!r} sits under {new[parent_at]!r}, not "
+                    f"the planned {moved[key]!r}"
+                )
+        elif key in gone_removed:
+            allowed = _REMOVED_COLUMNS
+            if marker_at is not None and not new[marker_at]:
+                violations.append(f"the removed playlist {key!r} does not carry the marker")
+        else:
+            allowed = _SIBLING_COLUMNS
+        stray = changed - allowed
+        if stray:
+            violations.append(
+                f"the {PLAYLIST_TABLE} row {key!r} changed {sorted(stray)}, which the "
+                f"planned node change does not explain"
+            )
+
+    m_cols = before.membership_columns
+    owner_at = m_cols.index("PlaylistID")
+    m_marker = m_cols.index(SOFT_DELETE_COLUMN) if SOFT_DELETE_COLUMN in m_cols else None
+    for key in sorted(set(before.memberships) ^ set(after.memberships)):
+        violations.append(f"the {MEMBERSHIP_TABLE} row {key!r} was added or disappeared")
+    for key in sorted(set(before.memberships) & set(after.memberships)):
+        old, new = before.memberships[key], after.memberships[key]
+        changed = _changed(m_cols, old, new)
+        if not changed:
+            continue
+        owner = str(old[owner_at])
+        if owner not in gone_removed:
+            violations.append(
+                f"the {MEMBERSHIP_TABLE} row {key!r} of playlist {owner!r} changed "
+                f"{sorted(changed)}, and only a removed playlist's own memberships may"
+            )
+            continue
+        stray = changed - _REMOVED_COLUMNS
+        if stray or (m_marker is not None and not new[m_marker]):
+            violations.append(
+                f"the {MEMBERSHIP_TABLE} row {key!r} of the removed playlist {owner!r} "
+                f"changed {sorted(changed)}; only its marker may go on"
+            )
+    return violations
+
+
+def assert_node_changes_confined(
+    db: Any,
+    before: NodeTables,
+    *,
+    moved: Mapping[str, str],
+    removed: Iterable[str],
+    created: Iterable[str] = (),
+) -> None:
+    """Refuse, before the commit, a node change that reached anything it did not plan.
+
+    THE CHECK IS FROM SQL, as :func:`assert_created_rows_are_gridless` is and
+    for its reason: the mapped objects say what the writer intended. The
+    pending work is flushed DELIBERATELY, inside the transaction, so the
+    second reading sees it and a violation still rolls back. The whitelist
+    must have judged the session before this runs, because the flush empties
+    the collections it reads; :func:`commit_guarded` judges it again from the
+    binding's buffer, which a flush does not empty.
+
+    A REFUSAL ROLLS THE HANDLE BACK, so nothing the node change made can land
+    later under another operation's name.
+    """
+    db.session.flush()
+    after = node_tables(db)
+    violations = node_change_violations(
+        before, after, moved=moved, removed=removed, created=created
+    )
+    if violations:
+        db.rollback()
+        raise _unavailable(
+            "whitelist-violation",
+            "the node change reached rows it did not plan, read from SQL before "
+            "the commit:\n  - " + "\n  - ".join(violations),
+            detail={"violations": violations},
+        )
+
+
 def _mytag_templates(db: Any) -> tuple[Any, Any, Any]:
     """Mirror the shape of existing tag rows: (root parent, category, value).
 
@@ -2158,14 +2432,36 @@ SOFT_DELETE_COLUMN = "rb_local_deleted"
 #: makes a removal cannot disagree about which table they mean.
 MEMBERSHIP_TABLE = "djmdSongPlaylist"
 
+#: The playlist and folder table, named once for the node removal (U111).
+PLAYLIST_TABLE = "djmdPlaylist"
+
 #: Tables a commit may be ASKED to admit a removal in, and the whole of them.
 #:
 #: A removal is a row whose soft delete marker changes. It is refused in every
-#: table, this one included, unless the commit names the table in ``removals``,
+#: table, these included, unless the commit names the table in ``removals``,
 #: and a commit that names any table outside this set is refused as well, so no
 #: caller can widen it by asking. Static, for the reason
 #: :data:`PERMITTED_ROW_TABLES` is. A hard delete is admitted nowhere.
-REMOVABLE_TABLES = frozenset({MEMBERSHIP_TABLE})
+#:
+#: THE PLAYLIST TABLE JOINED WITH U111, on purpose and with a guard of its own.
+#: Admitting it here lets a commit carry a removed node, and that is all it
+#: does: the membership move names only :data:`MEMBERSHIP_TABLE`, and the one
+#: caller that names this table, the INBOX rotation, removes through
+#: :func:`remove_playlist_node`, which refuses a folder, and proves from SQL
+#: before its commit, :func:`assert_node_changes_confined`, that nothing it did
+#: not plan changed. Never the content table.
+REMOVABLE_TABLES = frozenset({MEMBERSHIP_TABLE, PLAYLIST_TABLE})
+
+#: The columns a node change may move on a playlist row it does not plan:
+#: a sibling's position, which the binding renumbers when a node leaves or
+#: joins its parent, and the bookkeeping it stamps beside that.
+_SIBLING_COLUMNS = frozenset({"Seq", "updated_at", "usn", "rb_local_usn"})
+
+#: What a planned move may change on its own row.
+_MOVED_COLUMNS = _SIBLING_COLUMNS | {"ParentID"}
+
+#: What a planned removal may change on its own row, and on its memberships.
+_REMOVED_COLUMNS = frozenset({SOFT_DELETE_COLUMN, "updated_at", "usn", "rb_local_usn"})
 
 #: Columns the binding and the object mapper bump on their own during a commit.
 #: TEN of them. Without every one, an otherwise legitimate write trips the guard,
@@ -2280,8 +2576,8 @@ def guard_violations(
     """Judge a pending session against the whitelist. Empty means allowed.
 
     ``removals`` names the tables this one commit admits a soft delete in. It
-    is empty for every writer but the one that moves a membership, and a name
-    outside :data:`REMOVABLE_TABLES` is itself a violation.
+    is empty for every writer but the membership move and the INBOX rotation,
+    and a name outside :data:`REMOVABLE_TABLES` is itself a violation.
 
     ``creations`` names the tables this one commit admits a creation in beyond
     the whitelist, the same shape for the same reason (R-746). It is empty for
@@ -2988,10 +3284,11 @@ def commit_guarded(
 ) -> None:
     """Commit only when it is still safe to, and roll back rather than leak.
 
-    ``removals`` IS EMPTY FOR EVERY WRITER BUT ONE. It names the tables this
-    commit admits a soft delete in, the whitelist holds it to
-    :data:`REMOVABLE_TABLES`, and a source guard holds the callers that pass it
-    to the membership move. Any other commit refuses a changed marker.
+    ``removals`` IS EMPTY FOR EVERY WRITER BUT TWO. It names the tables this
+    commit admits a soft delete in, and the whitelist holds it to
+    :data:`REMOVABLE_TABLES`. The membership move names the membership table
+    and the INBOX rotation names both (U111). Any other commit refuses a
+    changed marker.
 
     ``creations`` IS EMPTY FOR EVERY WRITER BUT ONE AS WELL (R-746). It names
     the tables this commit admits a creation in beyond the whitelist, the
@@ -3068,7 +3365,9 @@ __all__ = [
     "LIBRARY_SYNC_SETTING",
     "MASTER_PLAYLIST_XML",
     "MEMBERSHIP_TABLE",
+    "NodeTables",
     "PERMITTED_ROW_TABLES",
+    "PLAYLIST_TABLE",
     "REMOVABLE_TABLES",
     "ROOT_PARENT_SENTINELS",
     "SETTINGS_APP_DIRNAME",
@@ -3119,7 +3418,12 @@ __all__ = [
     "is_folder",
     "live_db_path",
     "membership_removed",
+    "move_playlist_node",
+    "node_change_violations",
     "node_removed",
+    "node_tables",
+    "assert_node_changes_confined",
+    "remove_playlist_node",
     "metadata_decision",
     "open_db",
     "pin_validated_on",

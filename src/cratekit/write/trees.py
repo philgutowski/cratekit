@@ -1465,7 +1465,10 @@ def move_tree_membership(
                     if gone:
                         touched.append("/".join(destination))
                     already_absent += len(set(content_ids) - gone)
-                rb_writer.commit_guarded(db, removals=rb_writer.REMOVABLE_TABLES)
+                # THE MEMBERSHIP TABLE ALONE, never the whole removable set:
+                # since U111 that set admits a removed playlist node too, and
+                # a membership move removes no node.
+                rb_writer.commit_guarded(db, removals=(rb_writer.MEMBERSHIP_TABLE,))
             except Exception as exc:
                 _rollback_quietly(db)
                 if witness.landed:
