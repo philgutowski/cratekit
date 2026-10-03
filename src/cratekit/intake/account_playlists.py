@@ -116,7 +116,9 @@ def sources(cfg: config.Config, pass_name: str) -> tuple[Source, ...]:
     found: list[Source] = []
     with jobs.open_store() as store:
         # IN THE ORDER THE SWEEP QUEUED THEM, which the store lists newest first.
-        queued = sorted(batch_name.pass_jobs(cfg, pass_name), key=lambda job: (job.created, job.job_id))
+        queued = sorted(
+            batch_name.pass_jobs(cfg, pass_name), key=lambda job: (job.created, job.job_id)
+        )
         for job in queued:
             name = _named(job)
             if name is None:
