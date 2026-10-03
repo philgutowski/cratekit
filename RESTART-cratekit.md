@@ -4,6 +4,15 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**Sitting 30, the last gap, 2026-10-03 morning.** R-887 fixed in the sitting:
+R-878's cursor walk compared kept folders with a count of every kind, so it
+refused every real account; it now counts every raw item and keeps one kind.
+`label playlists` then planned Sudbeat and Metronomo Records live, answered
+abort, R-878 and R-887 closed. `export set` matched 5 of 9 of a real set, R-879
+closed. Mango Alley's crawl spends its budget on one unnamed artist, and the
+**provider session expired**, so every streaming verb refuses until the author
+mints one: R-888. Main's highest residual number is R-888.
+
 **U109 built, 2026-10-03, on `relay/248`, issue #248: `crate sync all`
 no longer sweeps labels and names the guided label sync instead.** The
 labels spec in `sync/sources.py` is GUIDED: `guided_by="label.sync"`, no
