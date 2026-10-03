@@ -401,6 +401,20 @@ landing, before the emitter guard could call the cutover a defect. One verb
 still READS the file only a bridge landing writes: `sync mark` finds its pass
 by the intake file's name, so it has no input after a native landing.
 
+### Rotation
+`crate inbox rotate` (U111), the write `report intake-aging` only describes.
+A BATCH is a playlist directly under INBOX or under its Old folder that a
+native landing's session record names, or whose name ends `_inboxed`, or that
+carries a landing's default dated name with a batch folder of that name under
+the music folder; anything else there is left alone and listed. Old is the
+taxonomy's `[intake_old]` node, created once under the adopted intake root
+when a move needs it. A batch older than `reports.intake_stale_days` moves
+into Old; one in Old older than `reports.intake_expired_days` is removed, the
+node and its own memberships soft deleted. Tracks are never removed: the
+guarded writer compares the content, playlist and membership tables from SQL
+before the commit and refuses any change the plan does not name. Database
+native intake trees only.
+
 ### Fresh Export
 A collection export that describes the database as it is now: the XML document
 holding every collection row and the playlist tree, which the verbs on the

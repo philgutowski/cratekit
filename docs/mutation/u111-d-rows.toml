@@ -1,0 +1,76 @@
+name = "u111-d"
+pass_kind = "light"
+
+[[rows]]
+id = "C9_committed_records_only"
+description = "A landing record dates its batch whether or not its commit landed"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+old = '''        if str(session.SourceState.COMMITTED) not in {str(v) for v in record.sources.values()}:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "C10_two_olds_refused"
+description = "Two live Old folders under INBOX are no longer refused, the first is used"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+old = '''    if len(olds) > 1:'''
+new = '''    if len(olds) > 99:'''
+
+[[rows]]
+id = "D1_empty_plan_asks"
+description = "A plan that moves and removes nothing returns without asking the gate"
+file = "src/cratekit/intake/rotate_cli.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py", "tests/test_cli_contract.py"]
+old = '''    if ctx.gate.require(spec, plan=data, context=_facts(plan)) != "approve":'''
+new = '''    if plan.writes and ctx.gate.require(spec, plan=data, context=_facts(plan)) != "approve":'''
+
+[[rows]]
+id = "D2_ack_before_gate"
+description = "The backup acknowledgment is no longer read before the plan and the gate"
+file = "src/cratekit/intake/rotate_cli.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py", "tests/test_cli_contract.py"]
+old = '''    # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
+    session.assert_backup_acknowledged(cfg)'''
+new = '''    # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
+    pass'''
+
+[[rows]]
+id = "E1_landing_names_its_batch"
+description = "A native landing no longer names its batch playlist on its session record"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_inbox_rotate.py"]
+old = '''        record.detail[BATCH_PLAYLIST_KEY] = {"id": playlist_id, "name": plan.playlist}'''
+new = '''        pass'''
+
+[[rows]]
+id = "F1_old_differs_from_intake"
+description = "The taxonomy accepts an [intake_old] that repeats the intake flow's id or display"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py", "tests/test_taxonomy.py"]
+old = '''        if intake_old.id == intake.id or intake_old.display == intake.display:'''
+new = '''        if False:'''
+
+[[dropped]]
+id = "A2_removed_node_refused"
+description = "The writer no longer refuses a node already removed"
+reason = "ranked below the cap: the plan reads live children only, so no planned node reaches the writer removed; same refusal family as A1, which is measured"
+
+[[dropped]]
+id = "C8_earliest_landing"
+description = "The latest landing record wins over the earliest for one playlist"
+reason = "ranked below the cap: U110 never lands two batches into one playlist, so two records naming one playlist need a hand given --name twice, R-896's input"
+
+[[dropped]]
+id = "C11_future_date"
+description = "A batch dated after the as-of day is aged negative instead of left alone"
+reason = "ranked below the cap: a negative age bands as keep, the conservative band, so the cost is a wrong listing rather than a write"
+
+[[dropped]]
+id = "A11_unplanned_row"
+description = "The node judge admits a playlist row the plan did not create"
+reason = "ranked below the cap: pinned by the judge's parametrized unplanned case and by C7, which reverts the one planned creation and was killed by this check"

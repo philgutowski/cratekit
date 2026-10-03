@@ -1,0 +1,58 @@
+name = "u111-c"
+pass_kind = "light"
+
+[[rows]]
+id = "C1_local_day"
+description = "A batch's creation date is read on the UTC calendar, not the local one"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+old = '''        return (created.astimezone() if created.tzinfo is not None else created).date()'''
+new = '''        return created.date()'''
+
+[[rows]]
+id = "C2_batch_folder_asked"
+description = "A dated name is a batch whether or not a batch folder of that name exists"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+old = '''    if batch_name.is_default_shape(name) and os.path.isdir(landing.target_dir(cfg, name)):'''
+new = '''    if batch_name.is_default_shape(name):'''
+
+[[rows]]
+id = "C3_inboxed_suffix"
+description = "A name ending _inboxed is no longer recognised as a batch"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+old = '''    if name.endswith(INBOXED_SUFFIX):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "C4_removal_threshold"
+description = "A batch in Old is removed after the stale threshold instead of the expired one"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+old = '''        action = REMOVE if age > expired_days else KEEP'''
+new = '''        action = REMOVE if age > stale_days else KEEP'''
+
+[[rows]]
+id = "C5_move_threshold"
+description = "A batch in INBOX moves only after the expired threshold instead of the stale one"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+old = '''        action = MOVE if age > stale_days else KEEP'''
+new = '''        action = MOVE if age > expired_days else KEEP'''
+
+[[rows]]
+id = "C6_plan_taken_again"
+description = "The write no longer takes the plan again on its own handle and compares digests"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+old = '''    if again.digest != plan.digest:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "C7_old_creation_planned"
+description = "The folder the write creates for Old is not named to the confinement judge"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+old = '''                created.append(str(old.ID))'''
+new = '''                pass'''

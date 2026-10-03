@@ -35021,3 +35021,101 @@ run on the branch, the rerun's control included.
 **Closes when:** its failure is caught with output and the cause is named.
 
 **Not on the board bar.** Maintainer facing.
+
+
+---
+
+## R-901. A batch past expiry that is still in INBOX moves to Old, and the next run removes it
+
+**Found:** by U111 on `relay/259`, 2026-10-03, a decision taken against the
+brief rather than a defect found.
+
+**The mechanism.** The brief asks for a batch older than
+`reports.intake_stale_days` to move into Old, a batch in Old older than
+`reports.intake_expired_days` to be removed, and a second run to plan nothing.
+Its own scenario asks the 100 day batch in INBOX to "stay or move", so a batch
+past expiry that still sits in INBOX moves, and removal is only ever made in
+Old. A second run then removes it, so "a second run plans nothing" holds once
+no batch in INBOX is past expiry. The other choice was to remove straight out
+of INBOX, a fixed point after one run, at the cost of a batch never shown in
+Old. The conservative one was taken: every removal is asked at an explicit
+gate that lists the batch, its age and its tracks, and `tests/test_inbox_rotate.py`
+pins both stages.
+
+**Measured cost.** One more question on the first rotation of a library with
+a backlog, driven in the suite.
+
+**Closes when:** the author picks the other stage rule, if a backlog's second
+question is found to bite.
+
+**Not on the board bar.** Nothing is lost or misreported; it is a second gate.
+
+
+---
+
+## R-902. The live library's taxonomy predates [intake_old], so the rotation refuses there until it is declared
+
+**Found:** by U111 on `relay/259`, 2026-10-03.
+
+**The mechanism.** The folder a batch rotates into is declared in the
+taxonomy, `[intake_old]`, id `inbox_old`, display `Old`, because R19 keeps
+every playlist display name out of code. The shipped template carries it. A
+library's ACTIVE copy, the one every verb reads since R-685, was copied at
+setup and does not, so `inbox rotate` refuses with `intake-old-undeclared` and
+names the section to add.
+
+**Measured cost.** Not measured on the live library: no session read its
+active taxonomy. Driven on a template without the section, which refuses.
+
+**Closes when:** the attended sitting adds the section to the active copy,
+rehearses a rotation on a copy and applies it on an equal digest.
+
+**Not on the board bar.** It closes only at an attended sitting.
+
+
+---
+
+## R-903. How rekordbox shows a playlist this product removed is unobserved
+
+**Found:** by U111 on `relay/259`, 2026-10-03.
+
+**The mechanism.** A rotation removes a batch playlist as rekordbox's own
+removed playlists read: the node and its memberships keep their rows and carry
+`rb_local_deleted`, with `updated_at` moved. Three things rekordbox's own
+removals may also do are not done and were not observed: `rb_data_status` is
+not written, the removed node's siblings are not renumbered (its `Seq` stays,
+as a removed membership's `TrackNo` stays), and rekordbox's legacy
+`masterPlaylists6.xml` is not edited, since the binding's removal of an entry
+there comes only with its own hard delete. A move goes through the binding's
+own `move_playlist`, which renumbers both parents.
+
+**Measured cost.** Not measured: no live rotation has run.
+
+**Closes when:** the attended sitting's rotation is read in rekordbox, the
+removed batch gone from INBOX / Old and its tracks still in their genre
+playlists, and a launch and quit leaves the rows as written.
+
+**Not on the board bar.** It closes only at an attended sitting.
+
+
+---
+
+## R-904. The rotation and `report intake-aging` can put one playlist in different bands
+
+**Found:** by the built in review of U111 on `relay/259`, 2026-10-03.
+
+**The mechanism.** The report ages every intake grouping from the date in its
+NAME. The rotation ages a batch from its landing's run record, else from the
+playlist row's `created_at`, as the brief asks, and leaves a playlist with a
+dated name alone unless a batch folder of that name exists. A batch whose name
+and row disagree, one re-imported or renamed, is banded by the two verbs from
+different dates, and a source system grouping such as `lisa_06_19_2026` is
+aged by the report and left alone by the rotation.
+
+**Measured cost.** Not measured. No verb renames a batch, and a re-import
+needs a hand made state.
+
+**Closes when:** the report reads the rotation's classification, if the two
+are found to disagree on a real library.
+
+**Not on the board bar.** Neither verb says anything false about its own rule.
