@@ -324,7 +324,7 @@ def test_an_export_answer_counts_and_names_each_track_it_left_out():
             ],
         )
     )
-    assert "  tracks: 2 written, 1 already on the playlist, 2 unmatched" in lines
+    assert "  tracks: 2 written, 1 already there or written before, 2 unmatched" in lines
     assert "    unmatched: A - T: names 2 provider tracks" in lines
     assert "    unmatched: row 9: no reason given" in lines
 
@@ -349,3 +349,13 @@ def test_a_count_this_build_cannot_read_is_left_out_rather_than_shown_as_zero():
         _exported(counts={"written": 3, "already": True, "unmatched": "1"})
     )
     assert "  tracks: 3 written" in lines
+
+
+def test_an_unmatched_title_holding_a_line_break_stays_on_its_line():
+    lines = render.render_job_state(
+        _exported(
+            counts={"written": 0, "already": 0, "unmatched": 1},
+            unmatched_tracks=[{"identity": "4", "artist": "A, B", "title": "T\nU", "reason": "r"}],
+        )
+    )
+    assert '    unmatched: A, B - "T\\nU": r' in lines

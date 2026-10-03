@@ -432,7 +432,7 @@ def test_an_export_with_an_unmatched_track_counts_and_names_it_on_both_renderers
 
     code, said = _resume_human(job_id)
     assert code == int(ExitCode.OK), said
-    assert "  tracks: 2 written, 0 already on the playlist, 1 unmatched" in said
+    assert "  tracks: 2 written, 0 already there or written before, 1 unmatched" in said
     assert (
         f"    unmatched: Artist 2 - 08A - 124 - Track 2: {export_cli.NO_MATCH}" in said
     ), said
@@ -454,7 +454,7 @@ def test_an_export_where_every_track_matches_answers_with_no_unmatched_line(
     assert outbound["unmatched_tracks"] == []
     assert export_cli.UNMATCHED_WARNING not in _codes(resumed)
     code, said = _resume_human(job_id)
-    assert "  tracks: 3 written, 0 already on the playlist, 0 unmatched" in said, said
+    assert "  tracks: 3 written, 0 already there or written before, 0 unmatched" in said, said
     assert "unmatched:" not in said
     assert export_cli.UNMATCHED_WARNING not in said
 
@@ -2305,3 +2305,25 @@ def test_the_favorites_gate_shows_the_tracks_the_digest_covers_beside_the_age(
     assert shown[shell_module.EXPORT_PATH] == str(exported)
     assert shown["digest"] == favorites_cli.sweep_digest(exported, resolved)
     assert shown["export"]["file"] == exported.name
+
+
+@pytest.mark.parametrize(
+    "counts, said",
+    [
+        ({"written": 2, "already": 1, "unmatched": 1}, "1 of the 4 track(s)"),
+        ({"written": 2, "already": True, "unmatched": 1}, "1 of the 3 track(s)"),
+        ({"written": 2, "already": 0, "unmatched": True}, None),
+        ({"written": 2, "already": 0, "unmatched": 0}, None),
+        ({"written": 2}, None),
+        ({}, None),
+    ],
+    ids=["one-left-out", "bool-is-no-count", "bool-unmatched", "none-left-out", "no-key", "empty"],
+)
+def test_the_unmatched_warning_reads_only_whole_counts(counts, said):
+    warned = export_cli.concluded({"counts": counts})
+    if said is None:
+        assert warned == ()
+    else:
+        (warning,) = warned
+        assert warning["code"] == export_cli.UNMATCHED_WARNING
+        assert said in warning["message"]

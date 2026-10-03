@@ -427,10 +427,12 @@ def render_job_state(envelope: Envelope, *, drive: Sequence[str] | None = None) 
 
 #: The three counts an export reports, in the order a person reads them, with
 #: the words each is printed under (R-850). Spelled here, for the reason
-#: :data:`_RESOLVING_VERBS` gives.
+#: :data:`_RESOLVING_VERBS` gives. "ALREADY THERE OR WRITTEN BEFORE", not "on
+#: the playlist": the engine counts a track as already there when the ledger
+#: recorded writing it, whether or not the account still holds it (R-855).
 _OUTBOUND_WORDS: tuple[tuple[str, str], ...] = (
     ("written", "written"),
-    ("already", "already on the playlist"),
+    ("already", "already there or written before"),
     ("unmatched", "unmatched"),
 )
 
@@ -454,10 +456,25 @@ def _outbound_lines(progress: Mapping[str, Any]) -> list[str]:
     left_out = outbound.get("unmatched_tracks")
     for row in left_out if isinstance(left_out, Sequence) and not isinstance(left_out, str) else ():
         if isinstance(row, Mapping):
-            named = " - ".join(str(row[key]) for key in ("artist", "title") if row.get(key))
-            named = named or f"row {row.get('identity') or '?'}"
-            lines.append(f"    unmatched: {named}: {row.get('reason') or 'no reason given'}")
+            named = " - ".join(_one_line(row[key]) for key in ("artist", "title") if row.get(key))
+            named = named or f"row {_one_line(row.get('identity') or '?')}"
+            lines.append(f"    unmatched: {named}: {_one_line(row.get('reason') or 'no reason given')}")
     return lines
+
+
+def _one_line(value: Any) -> str:
+    """Free text on one unmatched line, quoted only when it would break the line.
+
+    NOT :func:`_item_value`, whose breakers include a comma and an equals sign
+    because its line is ``k=v, k=v``. This line is read by a person, a title
+    here already holds " - " from the library's own naming, and an artist list
+    holds commas, so quoting either would quote nearly every row. The envelope
+    carries each field apart for anything that needs to parse them.
+    """
+    text = str(value)
+    if "\n" in text or "\r" in text:
+        return json.dumps(text, ensure_ascii=False)
+    return text
 
 
 #: The four counts ``label judge`` reports for every label, in the order a

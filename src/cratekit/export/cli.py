@@ -102,8 +102,8 @@ def summary(cfg: config.Config, job_id: str) -> dict[str, Any]:
     COUNTED PER ITEM, AND EVERY UNMATCHED TRACK LISTED (R-850). The lists above
     were in the envelope and nowhere a person reads, so a live export of eight
     tracks answered ``ok`` and ``8 of 8 settled`` over a playlist holding four.
-    ``counts`` is what was written, what the playlist already held and what was
-    left out, and ``unmatched_tracks`` names each one left out with its reason,
+    ``counts`` is what was written, what was already there or written before
+    and what was left out, and ``unmatched_tracks`` names each one left out with its reason,
     including a row the account said nothing about, which ``reasons`` omits.
     One item writes one track, so each report adds one to exactly one count, and
     an item is one committed file whichever run settled it, so a resumed job is
@@ -117,25 +117,28 @@ def summary(cfg: config.Config, job_id: str) -> dict[str, Any]:
     for report in artifacts.committed(cfg, job_id):
         added.extend(str(item) for item in report.get("added") or ())
         already.extend(str(item) for item in report.get("already") or ())
-        # THE IDENTITY, NOT THE ROW. An unmatched entry is a mapping carrying the
-        # library identity, the title and the artist, because a person reading
-        # the ARTIFACT needs a name to recognise. Stringifying the mapping here
-        # put a Python dict repr in a JSON envelope, which is a value nothing
-        # downstream can key on. Measured by the first drive of this summary.
-        unmatched.extend(_identity(item) for item in report.get("unmatched") or ())
-        # WHAT THE ACCOUNT SAID ABOUT A ROW IT WOULD NOT CHOOSE FOR (R-356), one
-        # sentence per row and only for a row it said something about. A row the
-        # provider has three releases of and a row it has never heard of are both
-        # unmatched, and only the first is something a person can act on.
-        # NAMED AS THE LIBRARY SHOWS THE ROW, since this is the one string here
-        # written for a person and nobody finds a track by its row number.
-        reasons.extend(
-            f"{item.get('artist') or ''} - {item.get('title') or ''} "
-            f"(row {_identity(item)}): {item['reason']}"
-            for item in report.get("unmatched") or ()
-            if isinstance(item, dict) and item.get("reason") not in (None, "", "unmatched")
-        )
-        left_out.extend(_left_out(item) for item in report.get("unmatched") or ())
+        for item in report.get("unmatched") or ():
+            # THE IDENTITY, NOT THE ROW. An unmatched entry is a mapping carrying
+            # the library identity, the title and the artist, because a person
+            # reading the ARTIFACT needs a name to recognise. Stringifying the
+            # mapping here put a Python dict repr in a JSON envelope, which is a
+            # value nothing downstream can key on. Measured by the first drive of
+            # this summary. ONE ROW BUILT ONCE, and the identity list and the
+            # reason sentences read off it, so the three cannot disagree.
+            listed = _left_out(item)
+            left_out.append(listed)
+            unmatched.append(listed["identity"])
+            # WHAT THE ACCOUNT SAID ABOUT A ROW IT WOULD NOT CHOOSE FOR (R-356),
+            # one sentence per row and only for a row it said something about. A
+            # row the provider has three releases of and a row it has never heard
+            # of are both unmatched, and only the first is something a person can
+            # act on. NAMED AS THE LIBRARY SHOWS THE ROW, since nobody finds a
+            # track by its row number.
+            if _said(item):
+                reasons.append(
+                    f"{listed['artist']} - {listed['title']} "
+                    f"(row {listed['identity']}): {listed['reason']}"
+                )
     return {
         "added": added,
         "already": already,
@@ -150,16 +153,20 @@ def summary(cfg: config.Config, job_id: str) -> dict[str, Any]:
     }
 
 
+def _said(row: Any) -> str:
+    """What the account said about one unmatched row, or empty when nothing."""
+    said = str(row.get("reason") or "") if isinstance(row, dict) else ""
+    return "" if said == "unmatched" else said
+
+
 def _left_out(row: Any) -> dict[str, str]:
     """One unmatched row as the answer lists it, named as the library shows it."""
-    if not isinstance(row, dict):
-        return {"identity": str(row), "artist": "", "title": "", "reason": NO_MATCH}
-    said = str(row.get("reason") or "")
+    named = row if isinstance(row, dict) else {}
     return {
         "identity": _identity(row),
-        "artist": str(row.get("artist") or ""),
-        "title": str(row.get("title") or ""),
-        "reason": NO_MATCH if said in ("", "unmatched") else said,
+        "artist": str(named.get("artist") or ""),
+        "title": str(named.get("title") or ""),
+        "reason": _said(row) or NO_MATCH,
     }
 
 
@@ -180,19 +187,28 @@ def concluded(outbound: Mapping[str, Any]) -> tuple[dict[str, str], ...]:
     if not isinstance(counts, Mapping):
         return ()
     missed = counts.get("unmatched")
-    if not isinstance(missed, int) or missed <= 0:
+    if not _whole(missed) or missed <= 0:
         return ()
-    total = sum(n for n in counts.values() if isinstance(n, int))
+    total = sum(n for n in counts.values() if _whole(n))
+    # "WERE NOT WRITTEN", NOT "ARE NOT ON THE PLAYLIST". A track counted as
+    # already there may be counted so off the ledger rather than the account
+    # (R-855), so the missing set on the account can be larger than this one,
+    # and only what the provider could not match is this warning's to state.
     return (
         {
             "code": UNMATCHED_WARNING,
             "message": (
-                f"{missed} of the {total} track(s) in this export are not on the "
-                f"remote playlist, because the provider could not match them; "
-                f"each is listed with its reason above"
+                f"{missed} of the {total} track(s) in this export were not written "
+                f"to the remote playlist, because the provider could not match "
+                f"them; each is listed with its reason in this answer"
             ),
         },
     )
+
+
+def _whole(value: Any) -> bool:
+    """A count, which a bool is not, though Python calls it an int."""
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def _identity(row: Any) -> str:
