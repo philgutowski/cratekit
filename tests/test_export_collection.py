@@ -974,7 +974,8 @@ def test_a_landing_splices_into_the_file_and_the_import_is_proved_against_a_seco
     collection = spliced.find("COLLECTION")
     assert int(collection.get("Entries")) == len(collection.findall("TRACK")) == len(LIVE) + 2
     nodes = dict(_walk(spliced.find("PLAYLISTS").find("NODE")))
-    assert len(nodes[(INTAKE, intake_file.stem)].findall("TRACK")) == 2
+    # The batch playlist carries the batch's name, not the file's (U110).
+    assert len(nodes[(INTAKE, batch)].findall("TRACK")) == 2
     # What the export already held is still there, in the same order.
     assert tuple(t.get("Key") for t in nodes[(INTAKE, BATCH)].findall("TRACK")) == (
         "11", "12", "13",
