@@ -896,6 +896,10 @@ landing.
 | `label playlists sudbeat` and `metronomo-records` | live to the gate, answered abort | Sudbeat adopts its folder and eleven `DOWNLOADED ` year playlists and plans one new private 2026 playlist from 24 confirmed releases; Metronomo adopts its folder and reads 0 releases. **Not applied**: Sudbeat would add 32 tracks to year playlists the source system curated, with no genre gate (R-872) and no removal (R-836). | read, **R-878 and R-887 close** |
 | `label playlists mango-alley` | live | Refused after 2,378 calls, one artist's listing spends its budget, unmeasured which: R-888. | found |
 | `export set` after R-879 | live to the gate, then apply | **5 of 9 matched**, four by the library file's ISRC. The apply refused `credential-missing`, the provider session expired, nothing written: R-888. | read, **R-879 closes** |
+| R-836, #254 | landed after cycle 43 | The account protocol's first removal, `remove_tracks`, refused for any playlist the ledger does not record as product made; `crate label prune` and `crate export prune`, each behind a gate listing every track. R-889 to R-894, none on the board bar. | landed |
+| The provider session | re-minted by the author | `check_login` true, 221 favourites read. The plaintext token file was deleted. | live |
+| `export set`, R-837, #253 | live, applied at digest `82eb82e0dcbcc832` | **`tech_house_hits - Phil` on the account, `public: False`, five tracks**: OMRI., Adam Lance, Dubdogz, Anti Up, Durante; four named as unmatched. 75 calls. | live |
+| `export prune`, R-836 | live to the gate, answered abort | Dancefloor Rescue: nothing to take off, and the empty plan still asked. `TOOLBOX/Acapellas & Tools`, never exported: not judged, no remote playlist recorded. | read |
 
 ## What blocks a full sync cycle, stated plainly
 
@@ -917,15 +921,12 @@ Owed by the author: the 2,416 label releases in review and a look at the
 count, 637 of them with no genre on the file either; the 20 label tracks
 held as other versions.
 
-**The provider session expired at sitting 30.** Every streaming verb refuses
-`credential-missing` until the author mints a new one, as the refusal sets out.
-
 Owed, the author's: the first `crate label sync` run, label by label, and its
 go; one label built with `crate label playlists` and read in the web player,
 which label being his call given R-872 and R-836; one label's created year
 playlists pruned with `crate label prune` and read back, which closes R-836
 and says whether R-894 occurs; the set `tech_house_hits -
-Phil` exported with `crate export set` and archived after its download; the
+Phil`, on the account since sitting 30, archived after its download; the
 DJ_tools docs commit #252's task left unpushed.
 
 Owed for R-790, issue #234: follow a new label, sweep it once, and record
