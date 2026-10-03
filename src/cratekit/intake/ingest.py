@@ -138,8 +138,11 @@ def bridge_intake_tree(
     return rbxml.intake_tree(declared, registry)
 
 
-def import_steps(destination: Path, intake: str) -> tuple[str, ...]:
+def import_steps(destination: Path, intake: str, playlist: str | None = None) -> tuple[str, ...]:
     """What a person does with an intake file, end to end, in order.
+
+    ``playlist`` is the batch playlist the file holds, the intake file's stem
+    when none is named, which is what a single file's intake names it.
 
     END TO END IS THE REQUIREMENT. The steps used to stop at the import, and a
     person who followed every one of them was left with a session and a file
@@ -151,12 +154,13 @@ def import_steps(destination: Path, intake: str) -> tuple[str, ...]:
     imported from the file keeps every child it had and appends the file's
     copies, doubling each batch already in it.
     """
+    named = playlist if playlist is not None else destination.stem
     return (
         f"import {destination} into rekordbox as a rekordbox xml library",
-        f"import the {destination.stem} playlist from it on its own, never the "
+        f"import the {named} playlist from it on its own, never the "
         f"{intake} folder, which would add a second copy of every batch already "
         f"in it",
-        f"the {destination.stem} playlist lands at the playlist root, so drag it "
+        f"the {named} playlist lands at the playlist root, so drag it "
         f"into the {intake} folder, where a routing pass reads its batches",
         "take a Fresh Export of the collection from rekordbox",
         "run crate intake imported --export with that Fresh Export, which "
@@ -323,8 +327,13 @@ def place_files(
     lossy: bool = False,
     declared: taxonomy.Taxonomy | None = None,
     registry: tree_registry.Registry | None = None,
+    playlist: str | None = None,
 ) -> list[PlacedTrack]:
     """Splice each file into ``destination`` and record routing intents.
+
+    ``playlist`` names the batch playlist the file carries. A landing names it
+    for its batch (U110); with none it is the intake file's stem, which is what
+    a single file's intake has always called it.
 
     The Fresh Export is a path the caller names. This function does not hunt
     for one: a hunt that picked the newest XML would pick a pending intake
@@ -414,9 +423,10 @@ def place_files(
     if registry is None:
         registry = tree_registry.read(cfg)
     tree = bridge_intake_tree(declared, registry)
+    named = playlist if playlist is not None else destination.stem
     playlist_error = rbxml.insert_intake_playlist(
         content,
-        destination.stem,
+        named,
         [item.track_id for item in placed],
         tree=tree,
     )
@@ -458,7 +468,7 @@ def place_files(
                     f"which rekordbox has not imported yet"
                 ),
                 verify_verb=VERIFY_VERB,
-                steps=import_steps(destination, declared.intake.display),
+                steps=import_steps(destination, declared.intake.display, named),
             ),
             cfg,
         )

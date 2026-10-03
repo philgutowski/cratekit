@@ -52,7 +52,7 @@
         </NODE>
       </NODE>
       <NODE Name="INBOX" Type="0" Count="1">
-        <NODE Name="2026-09-19_labels_inboxed" Type="1" KeyType="0" Entries="4">
+        <NODE Name="2026-09-19_labels" Type="1" KeyType="0" Entries="4">
           <TRACK Key="900000001"/>
           <TRACK Key="900000002"/>
           <TRACK Key="900000003"/>

@@ -414,7 +414,7 @@ def _check_library(cfg: config.Config, folder: Path, target: Path) -> None:
 
 def _check_export(
     export: Path,
-    destination: Path,
+    playlist: str,
     checked: Checked,
     label_rows: tuple[listdoc.ManifestRow, ...] = (),
 ) -> None:
@@ -441,7 +441,7 @@ def _check_export(
     trial = bytearray(export.read_bytes())
     collection_xml.splice_tracks(trial, [])
     registry = checked.registry
-    error = rbxml.insert_intake_playlist(trial, destination.stem, [], tree=tree)
+    error = rbxml.insert_intake_playlist(trial, playlist, [], tree=tree)
     if error:
         raise refuse(
             "library-export-unusable",
@@ -536,7 +536,7 @@ def preflight(
     # write. A registry that cannot be read refuses here, with nothing moved,
     # and cannot refuse after the moves because nothing reads it again.
     checked = Checked(registry=tree_registry.read(cfg), declared=active_taxonomy.load(cfg))
-    _check_export(export, destination, checked, label_rows)
+    _check_export(export, plan.batch, checked, label_rows)
     return checked
 
 
@@ -1027,6 +1027,9 @@ def apply(
             destination=destination,
             declared=checked.declared,
             registry=checked.registry,
+            # THE BATCH'S OWN NAME (U110), the one its folder carries, and not
+            # the intake file's stem, which names the pass and ends ``_inboxed``.
+            playlist=plan.batch,
         )
     except Exception as exc:
         # ``place_files`` writes the intake file before it records the routing

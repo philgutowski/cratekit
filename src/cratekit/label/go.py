@@ -433,7 +433,13 @@ def _summary_line(summary: Summary) -> str:
 
 
 def tail(staging: Path, manifest: str, run_id: str) -> list[str]:
-    """The acquisition tail that lands what a go downloaded, as any intake lands."""
+    """The acquisition tail that lands what a go downloaded, as any intake lands.
+
+    THE LANDING NAMES ITS OWN BATCH (U110). The go's run is handed as the pass,
+    which names the intake file ``label mark`` reads, and no ``--name``, so the
+    batch folder and its INBOX playlist take the landing's date and the label
+    the manifest names rather than the run's identifier.
+    """
     folder = str(staging)
     return [
         shlex.join(["crate", "tag", "folder", folder]),
@@ -441,7 +447,7 @@ def tail(staging: Path, manifest: str, run_id: str) -> list[str]:
         shlex.join(["crate", "analyze", "restamp", folder]),
         shlex.join(["crate", "name", "apply", "--root", folder]),
         shlex.join(
-            ["crate", "intake", "land", folder, "--manifest", manifest, "--name", default_name(run_id)]
+            ["crate", "intake", "land", folder, "--manifest", manifest, "--pass", default_name(run_id)]
         ),
     ]
 

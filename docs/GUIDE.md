@@ -285,9 +285,10 @@ playlists share is listed once, and the list's manifest names both playlists.
 A job still running refuses the whole run. A job that failed or was cancelled
 is named and refuses the run too, unless you pass `--skip-failed`, which lists
 the rest and reports what it left out as a failing line. The output names the
-`--name` to give `intake land`, and says that the landing takes `--export`
+`--pass` to give `intake land`, and says that the landing takes `--export`
 while your intake tree is on the xml bridge and no export once it is database
-native, so the landed batch carries the run's name on either.
+native. The pass names the importable file, which is how `sync mark` later finds
+the run, and the batch itself is named for the date and the playlists.
 
 Downloading is its own step. `crate acquire download LIST` fetches tracks into
 the download staging folder through the configured adapter, paced so the account
@@ -311,12 +312,28 @@ crate route pending
 ```
 
 `intake land` reads download staging unless you name another folder. The files go
-to a new folder under your music folder, named for the run unless you pass
-`--name`, and the importable file is written beside the library as
-`NAME_inboxed.xml`. It never replaces a file already in the library: a file whose
+to a new folder under your music folder, and the batch playlist under INBOX takes
+the same name. Unless you pass `--name`, that name is the landing's date and what
+the files came from, read from what was queued rather than typed:
+
+| What the landing is handed | The batch is named |
+|---|---|
+| a `--manifest` whose label rows name one label | `2026-10-03 Sudbeat` |
+| a `--manifest` naming several labels | `2026-10-03 Labels` |
+| a `--pass` whose jobs listed account playlists | `2026-10-03 Tidal playlists` |
+| a `--pass` whose jobs listed your hearts | `2026-10-03 Favorites` |
+| a `--pass` whose jobs listed a set | `2026-10-03 Set` |
+| a `--pass` of more than one kind | `2026-10-03 Tidal playlists and Favorites` |
+| neither | `2026-10-03 Downloads` |
+
+A second landing on the same day from the same source gets ` 2`, the next ` 3`,
+so two batches never share a playlist. The importable file is written beside the
+library as `PASS_inboxed.xml` when you pass `--pass`, `NAME_inboxed.xml` when you
+pass only `--name`, and is named for the landing's own run otherwise. That name
+is what `sync mark`, `label mark` and `export archive` read, so keep the one the
+earlier step printed. It never replaces a file already in the library: a file whose
 name is taken stays in staging and the run says so. Two landings under one
-`--name` never run at once: the second is refused with nothing moved. If the
-first one then lands, the name is taken, so give the second another. Staging has to be on the same
+batch name never run at once: the second is refused with nothing moved. Staging has to be on the same
 volume as the library, because a move there is a rename and a copy is refused. The
 run ends waiting on you, naming the file to import.
 
@@ -345,7 +362,7 @@ Once you have imported the landed file, quit rekordbox, take a new export with
 `crate export collection` or from rekordbox's own menu, and run
 `crate intake imported --export` with that new export. It looks for every landed
 file in the export. When they are all there, the import is proven: the importable
-file is renamed to `NAME_inboxed.xml.imported`, which you can delete whenever you
+file is renamed to `PASS_inboxed.xml.imported`, which you can delete whenever you
 like, and the landing stops counting as unfinished. When any are missing it
 changes nothing and names them, so an export taken before the import, or an
 import that skipped a track, is never mistaken for a finished one. The importable
@@ -388,9 +405,9 @@ playlists it finished, by putting `DOWNLOADED ` in front of their names:
 crate sync mark --xml /path/to/library/RUN_synced_inboxed.xml
 ```
 
-Give it the importable file `intake land` wrote for the pass, under the name
-`intake missing --run` told you to land it as, since the name is how the pass is
-found. If you ran `intake imported` first, the file now ends in `.imported`, and
+Give it the importable file `intake land` wrote for the pass, under the
+`--pass` `intake missing --run` told you to land it with, since the file's name is
+how the pass is found. The batch folder and playlist carry the date instead. If you ran `intake imported` first, the file now ends in `.imported`, and
 that name works the same. It reads what each playlist's job reported, and plans a rename only for a
 playlist whose every track is now in your library, counting a track you have
 since deleted on purpose as settled. A playlist with a track still missing, or
@@ -479,7 +496,7 @@ queue instead, and a rate limit parks the download rather than retrying. A go
 that stopped part way is picked up by the next `--go`, which resumes it before
 anything new, and a track is never asked for twice. The report ends with the
 acquisition tail that lands the batch, `tag folder` through `intake land
---manifest ... --name ...`; land each go before the next, since every go
+--manifest ... --pass ...`, which names the batch for the date and the label; land each go before the next, since every go
 downloads into the same staging folder. The size and time are estimates: the
 size from each track's duration at a FLAC rate, the time from the pacing delay
 and an assumed transfer rate.

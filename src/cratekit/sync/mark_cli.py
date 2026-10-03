@@ -8,8 +8,9 @@ wait for. This verb is handed that file and is the one caller of
 :func:`cratekit.sync.playlists.mark_swept`.
 
 THE FILE NAMES THE PASS. ``intake missing --run`` names its list after the run,
-``<run without colons>_synced``, and tells the person to land under that name,
-so the intake file is ``<name>_inboxed.xml``. Nothing here is told a run
+``<run without colons>_synced``, and tells the person to land with that as
+``--pass``, so the intake file is ``<name>_inboxed.xml`` while the batch folder
+and playlist carry the date and the source (U110). Nothing here is told a run
 identifier. The name is read off the intake file, and the pass's jobs are the
 ones whose own run spells that name, which is a comparison in the direction the
 name was built and never an attempt to put the colons back.

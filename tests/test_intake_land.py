@@ -17,6 +17,7 @@ import re
 import shutil
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -27,7 +28,7 @@ from cratekit.cli import gates, output, registry
 from cratekit.core import config, session, tags
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
-from cratekit.intake import land_cli, landing
+from cratekit.intake import batch_name, land_cli, landing
 from tests._containers import synth_container
 from tests.test_config import valid_data
 from tests.xml_fixtures import _fresh_xml
@@ -293,17 +294,23 @@ def test_an_abort_is_no_op_and_moves_nothing(cfg, silence, export):
     assert not _music(cfg, BATCH).exists()
 
 
-def test_the_folder_defaults_to_staging_and_the_name_to_the_run(cfg, silence, export):
+def test_the_folder_defaults_to_staging_the_batch_to_the_date_and_the_file_to_the_run(
+    cfg, silence, export, monkeypatch
+):
+    """U110. The batch a person reads in INBOX is the date and the source, and
+    the run's identifier, colons removed, names only the intake file."""
+    monkeypatch.setattr(batch_name, "today", lambda: date(2026, 10, 3))
     _stage(cfg, silence, "One.flac")
     code, envelope = _drive(["-d", f"{GATE}=apply", *_land(export)])
 
     assert code == int(ExitCode.PENDING_HUMAN), envelope
-    batch = land_cli.default_name(envelope["run_id"])
-    assert ":" not in batch
-    assert batch == envelope["run_id"].replace(":", "")
+    batch = "2026-10-03 Downloads"
     assert (_music(cfg, batch) / "One.flac").is_file()
+    stem = land_cli.default_name(envelope["run_id"])
+    assert ":" not in stem
+    assert stem == envelope["run_id"].replace(":", "")
     assert envelope["pending_human_action"]["artifact"] == str(
-        Path(cfg.library.root) / f"{batch}_inboxed.xml"
+        Path(cfg.library.root) / f"{stem}_inboxed.xml"
     )
 
 

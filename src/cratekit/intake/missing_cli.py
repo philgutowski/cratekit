@@ -1342,9 +1342,12 @@ def _missing_for_run(ctx, run_id: str) -> Envelope:
         # a hint that always named --export sent a person on a cut over library
         # to a refusal. It says both rather than reading the switch, because a
         # hint must not be one more thing that can refuse a listing.
+        # ``--pass`` AND NOT ``--name`` (U110). The pass names the intake file,
+        # which is how ``sync mark`` finds this run's jobs, and the batch itself
+        # is named for the date and the playlists, not for the run.
         after=(
             f"; land what it downloads as one batch with: crate intake land "
-            f"--name {name}, adding --export XML, a Fresh Export of the collection, "
+            f"--pass {name}, adding --export XML, a Fresh Export of the collection, "
             f"while the intake tree is on the xml bridge, and no export once the "
             f"intake tree is database native"
         ),

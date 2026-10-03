@@ -608,7 +608,7 @@ def test_the_download_lands_as_an_intake_under_the_runs_one_batch(installed, mon
     staging = str(installed.paths.download_staging)
     assert report["next"][-1] == (
         f"crate intake land {staging} --manifest {report['manifest']} "
-        f"--name {default_name(run_id)}"
+        f"--pass {default_name(run_id)}"
     )
     assert report["next"][0] == f"crate tag folder {staging}"
     for track in ("t-r1-1", "t-r1-2"):

@@ -46,8 +46,8 @@ from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import config, rb_writer, session
 from cratekit.core.cause import CratekitError, Outcome, Remedy, refuse
 from cratekit.core.exit_codes import ExitCode
+from cratekit.intake import batch_name, ingest, landing, native
 from cratekit.intake import cli as intake_cli
-from cratekit.intake import ingest, landing, native
 
 #: The action every planned file carries until the apply reports on it.
 LAND = "land"
@@ -97,23 +97,69 @@ def unretired_name(name: str) -> str:
 
 
 def default_name(run_id: str) -> str:
-    """The batch name a run gets when ``--name`` is not given.
+    """A run's identifier as a file name: what an intake file is named for.
 
     The run's own identifier WITHOUT ITS COLONS. A run id spells the time as
-    ``19:34:38``, and a colon cannot be in a folder name on the exFAT volumes a
+    ``19:34:38``, and a colon cannot be in a file name on the exFAT volumes a
     library commonly sits on, and reads as a slash in Finder on the others.
+
+    NOT THE BATCH'S NAME SINCE U110. The batch folder and its playlist are named
+    for the date and the source (:mod:`cratekit.intake.batch_name`); this names
+    the intake file of a landing given neither ``--pass`` nor ``--name``, and
+    the pass ``intake missing --run`` and ``label sync --go`` tell a person to
+    land under.
     """
     return run_id.replace(":", "")
 
 
-def intake_file(cfg: config.Config, batch: str) -> Path:
-    """Where a batch's intake file is written, beside the library, not in staging.
+def intake_stem(*, pass_name: str | None, name: str | None, run_id: str) -> str:
+    """What a landing's intake file is named for, before ``_inboxed.xml``.
+
+    THE PASS FIRST, because the file's name is how ``sync mark`` finds the pass
+    and how ``label mark``, ``export archive`` and ``sync unmark`` key what they
+    record. Then ``--name``, which is what the file was named for before
+    ``--pass`` existed, so a landing typed the old way still writes the file a
+    later mark reads. Then the landing's own run.
+    """
+    if pass_name is not None:
+        return pass_name
+    if name is not None:
+        return name
+    return default_name(run_id)
+
+
+def _check_pass(pass_name: str | None) -> None:
+    """Refuse a ``--pass`` that is not one plain file name at the library root."""
+    if pass_name is None:
+        return
+    if (
+        not pass_name
+        or pass_name != pass_name.strip()
+        or pass_name.startswith(".")
+        or any(char in pass_name for char in ("/", "\\", "\0"))
+    ):
+        raise refuse(
+            "intake-list-unusable",
+            f"{pass_name!r} is not a pass this landing can name its intake file for, "
+            f"because it must be one plain file name beside the library; nothing was moved",
+            remedy=Remedy.FIX_COMMAND_LINE,
+            steps=("pass the name crate intake missing --run or crate label sync --go printed",),
+            origin=_ORIGIN,
+            detail={"pass": pass_name},
+        )
+
+
+def intake_file(cfg: config.Config, stem: str) -> Path:
+    """Where a landing's intake file is written, beside the library, not in staging.
+
+    ``stem`` is what :func:`intake_stem` names it for, which is the batch's
+    own name only when ``--name`` was given and ``--pass`` was not.
 
     Staging is the folder a person cleans, and the file has to outlive that
     until rekordbox has imported it. The suffix is one the pending intake scan
     already walks, so an unimported landing is visible to the cutover check.
     """
-    return Path(cfg.library.root) / f"{batch}{INTAKE_SUFFIX}"
+    return Path(cfg.library.root) / f"{stem}{INTAKE_SUFFIX}"
 
 
 def build_land(parser, entry) -> None:
@@ -139,7 +185,22 @@ def build_land(parser, entry) -> None:
         "--name",
         default=None,
         metavar="NAME",
-        help="the batch folder under the music folder (default: this run's identifier)",
+        help=(
+            "the batch folder under the music folder and the batch playlist under "
+            "INBOX (default: the landing's date and its source, for example "
+            "'2026-10-03 Tidal playlists', with ' 2' added when that is taken)"
+        ),
+    )
+    parser.add_argument(
+        "--pass",
+        dest="pass_name",
+        default=None,
+        metavar="PASS",
+        help=(
+            "the pass these files were acquired under, as crate intake missing --run "
+            "or crate label sync --go printed it; the intake file is named for it, so "
+            "sync mark finds the pass, and the batch is named for the pass's sources"
+        ),
     )
     parser.add_argument(
         "--manifest",
@@ -201,6 +262,7 @@ def _shown(
     shown: dict[str, Any] = {
         "folder": str(planned.folder),
         "lands in": str(target),
+        "playlist": planned.batch,
         "intake file": str(destination),
         "count": len(planned.items),
         "files": [item.name for item in planned.items],
@@ -304,12 +366,26 @@ def gate_named(entry, name: str):
 def intake_land(ctx) -> Envelope:
     cfg = intake_cli._load()
     folder = Path(ctx.args.folder) if ctx.args.folder else Path(cfg.paths.download_staging)
-    batch = ctx.args.name if ctx.args.name is not None else default_name(ctx.run.run_id)
+    pass_name = ctx.args.pass_name
+    _check_pass(pass_name)
     # READ BEFORE THE GATE, so a file that is not a manifest refuses before
     # anybody spends an answer on it, and the screen can say what it names.
     manifest = (
         landing.read_label_manifest(Path(ctx.args.manifest)) if ctx.args.manifest else None
     )
+    # TWO NAMES SINCE U110. The batch, its folder and its playlist, is what a
+    # person reads in INBOX: the date and the source unless ``--name`` says
+    # otherwise. The intake file keeps the identifier the marks read.
+    batch = (
+        ctx.args.name
+        if ctx.args.name is not None
+        else batch_name.readable(
+            cfg,
+            label_rows=manifest.rows if manifest is not None else (),
+            pass_name=pass_name,
+        )
+    )
+    stem = intake_stem(pass_name=pass_name, name=ctx.args.name, run_id=ctx.run.run_id)
     planned = _planned(folder, cfg, batch)
     target = landing.target_dir(cfg, batch)
     # THE MEDIUM IS THE INTAKE TREE'S MODE, the way the routing verbs choose
@@ -356,7 +432,7 @@ def intake_land(ctx) -> Envelope:
         if ctx.args.export is not None
         else Path(cfg.library.root) / "collection.xml"
     )
-    destination = intake_file(cfg, batch)
+    destination = intake_file(cfg, stem)
     # THE ENGINE'S PRE-MOVE CHECKS ARE ASKED BEFORE THE GATE TOO (R-677), for
     # the manifest's reason. A plan over an export that is not there, or not a
     # collection, or a library that is not mounted, could never run, and the
@@ -725,6 +801,7 @@ __all__ = [
     "gate_named",
     "intake_file",
     "intake_land",
+    "intake_stem",
     "playlist_item",
     "unretired_name",
 ]
