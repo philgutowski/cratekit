@@ -34611,3 +34611,36 @@ ignored.
 **Closes when:** R-885 closes, which removes the verb and the flag together.
 
 **On the board bar.** Not filed. A wording matter on a retired verb.
+
+---
+
+## R-887. R-878's cursor walk compared the folders it kept with a count of every kind of item, so it refused every real account
+
+**Found:** at sitting 30, 2026-10-03, running `crate label playlists
+metronomo-records` live on the build that carried R-878. It refused before
+its gate: the walk reached the end of its cursor with 26 folders where the
+provider declared 55.
+
+**Driven.** Walked by hand by cursor at pages of ten, the root served 26
+items with `includeOnly=FOLDER`, 29 with `includeOnly=PLAYLIST`, and 55, 26
+folders and 29 playlists, with no `includeOnly`; every response declared
+`totalNumberOfItems` 55. The count covers every kind of item whatever the
+request filters.
+
+**Fixed at sitting 30, a fix of a fix, on the gate alone.**
+`paginate_cursor` takes `keep`: the folder walks send no `includeOnly`,
+count every raw item they are served, by its `trn`, against the declared
+total, and parse only the kind they keep, `FOLDER` at the root and
+`PLAYLIST` in a folder. The refusal over a short walk stands. Read live on
+the author's account: 26 root folders, the Sudbeat folder's 12 playlists.
+Tests: a root of 26 folders and 29 playlists declaring 55 returns the 26, a
+folder holding a folder returns only its playlists, a short mixed walk still
+refuses, and the fakes now serve every kind and count every kind.
+Mutation table `r887-a`, 5 rows, 4 killed; K4, the count of a raw item with
+no identity, is maintainer facing and zero because no test serves one and
+the live endpoint gives every item a `trn`.
+
+**Closes when:** `crate label playlists` plans one label on the author's
+account, the close R-835 and R-878 both name.
+
+**Not on the board bar.** Fixed in the same sitting it was found.
