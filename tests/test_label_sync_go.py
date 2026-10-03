@@ -24,7 +24,14 @@ from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.core.jobs import Parked
 from cratekit.intake.land_cli import default_name
 from cratekit.label import approved_cli, go, sync_cli
-from tests.acquire_fakes import FAKE_ADAPTER, FAKE_DECLARATION, FakeAdapter, Landing, Script
+from tests.acquire_fakes import (
+    FAKE_ADAPTER,
+    FAKE_DECLARATION,
+    FakeAdapter,
+    Landing,
+    Script,
+    tidal_list,
+)
 from tests.cli_drive import drive
 from tests.test_config import valid_data
 from tests.test_label_sync import Track, answer, bind, next_question, offered, record, register
@@ -513,8 +520,11 @@ def test_a_second_go_that_waited_for_the_first_refuses_rather_than_queue_its_tra
     calls = []
 
     def first_blind(store):
+        # BLIND FOR BOTH SUMMARIES, the one the gate is asked over and the one
+        # the go rebuilds, so the gate's own digest agrees and the refusal
+        # measured is the one under the lock (mutation row G11).
         calls.append(1)
-        return go.Held(resume=(), tracks=frozenset()) if len(calls) == 1 else real(store)
+        return go.Held(resume=(), tracks=frozenset()) if len(calls) <= 2 else real(store)
 
     monkeypatch.setattr(go, "held_by_goes", first_blind)
 
@@ -646,3 +656,52 @@ def test_the_estimated_time_is_the_pacing_and_the_transfer_of_the_size():
     assert summary.seconds == 10 * 6 + 25_000_000 // go.TRANSFER_BYTES_PER_SECOND
     assert go.duration_text(summary.seconds) == "about 1 min"
     assert go.duration_text(3 * 3600 + 25 * 60) == "about 3 h 25 min"
+
+
+def test_a_go_job_whose_failures_cannot_succeed_on_a_retry_is_not_resumed(
+    installed, monkeypatch, script
+):
+    """Mutation row G14: a cause that says no retry can succeed is not retried."""
+    register()
+    bind(monkeypatch, {"tide-works": [("r1", "2026", 2)]})
+    next_question()
+    answer("tide-works", "all")
+    land_every(script, ("r1", 2))
+    script.landings["t-r1-2"] = Landing(offer_raises=LookupError("404 not found"))
+
+    _run, code, envelope = approved_go()
+
+    assert code != int(ExitCode.OK), envelope
+    (job,) = our_jobs()
+    assert job.state is jobs.JobState.FAILED and job.cause.retryable is False
+    script.fetched.clear()
+
+    shown = asked()["cause"]["detail"]["shown"]
+
+    assert "earlier_downloads_to_resume" not in shown
+    assert shown["releases"] == 0
+
+
+def test_a_download_queued_by_hand_is_not_resumed_or_held_by_a_go(
+    installed, monkeypatch, script, tmp_path
+):
+    """Mutation row G16: only a job a go queued is a go's to resume."""
+    listed = tmp_path / "by-hand.json"
+    listed.write_text(tidal_list([("x1", "Other Act", "Elsewhere")]))
+    code, queued = drive(["acquire", "download", str(listed)])
+    assert code == int(ExitCode.OK), queued
+    register()
+    bind(monkeypatch, {"tide-works": [("r1", "2026", 1)]})
+    next_question()
+    answer("tide-works", "all")
+    land_every(script, ("r1", 1))
+
+    shown = asked()["cause"]["detail"]["shown"]
+    assert "earlier_downloads_to_resume" not in shown
+
+    _run, code, envelope = approved_go()
+
+    assert code == int(ExitCode.OK), envelope
+    assert fetched(script) == ["t-r1-1"]
+    with jobs.open_store() as store:
+        assert jobs.get(store, queued["data"]["job_id"]).state is jobs.JobState.QUEUED
