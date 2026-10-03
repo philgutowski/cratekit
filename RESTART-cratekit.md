@@ -4,6 +4,31 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**U108 built, 2026-10-03, on `relay/247`, issue #247: the guided label
+sync's go.** `crate label sync` now ends its walk, once every label with
+something new is answered, at one explicit gate, `label.sync.confirm`, over
+one summary of every answer saved since the last go: labels taking
+releases, releases, tracks, estimated size and time, and the labels
+answered not now or stop following. `crate label sync --go` asks the same
+gate over answers already saved, and an empty set still asks. On apply it
+lists only the releases its answers took, while their review items are
+still accepted, down `label approved`'s own path, now
+`approved_cli.list_releases`, then queues the list as an ordinary
+`acquire download` job through `acquire_cli.queue_list` and drives it in
+the same process. One job per go: a go with an earlier one to resume,
+open, cancelled or half failed with a retryable cause, resumes only that.
+A track a go job holds is never listed again, planning and settling run
+under the record's blocking lock, and answers carry a `settled` marker.
+The report names the tail ending in `intake land STAGING --manifest M
+--name RUN`. Battery on the branch: ruff clean, the suite green, the scan
+clean. One round of the built in review, nine findings, six fixed, R-865,
+R-866, R-867 and R-870 filed from it, one declined (a duplicated check
+helper). Mutation table 25 of 25 killed after five zeros were given a
+test, `docs/mutation/u108-notes.md`. Residuals R-865 to R-870, none on the
+board bar. **Owed, attended:** a live download of one small label's new
+releases with the landing read in rekordbox, which is also where R-868's
+estimates are first measured. Main's highest residual number is R-870.
+
 **R-856 built, 2026-10-02, on `relay/250`, issue #250.** `crate sync
 favorites` now answers with what it did: `tracks: N hearted, N already
 hearted or hearted before, N unmatched`, then one `unmatched: ARTIST -

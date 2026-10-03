@@ -1749,10 +1749,11 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # reads an address, and over an empty review queue that is none: the
         # verb says so before any provider is resolved.
         "label.artists": [],
-        # U107. ``--next`` is the scriptable path, which asks nothing at a
-        # terminal; over a configured machine with no favourite label the verb
-        # refuses from the vocabulary before any provider is resolved.
-        "label.sync": ["--next"],
+        # U108. ``--go`` is the scriptable path to the verb's one gate, which
+        # asks nothing at a terminal and reaches no provider before the gate:
+        # over a configured machine with no saved answer the summary is empty,
+        # the gate is still asked, and a yes downloads nothing.
+        "label.sync": ["--go"],
         # U27. The four report verbs each take a collection export, and each is
         # handed a path under the CONFIGURED library that is deliberately absent,
         # for the same reason the file verbs above are: a literal here would be a

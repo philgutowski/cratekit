@@ -1,0 +1,87 @@
+name = "u108-a"
+pass_kind = "light"
+
+# U108, the guided label sync's go, after its first review round. Twenty five
+# rows over the guards the unit and that round added, the cap for a unit that
+# writes files. Ranked below the cap and dropped: resumable's "not left" clause
+# (a closed job with nothing left to run is SUCCEEDED in every path the engine
+# writes), go._gate's refusal (a registry edit, maintainer facing), and the
+# held_by_goes SKIPPED exclusion (no worker of acquire download skips an item).
+
+[[rows]]
+id = "G01_unsettled_skips_settled"
+description = "sync_cli.unsettled: read every saved answer as unsettled, so a go summarises answers an earlier go already took"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+old = '''        if isinstance(entry, Mapping) and not entry.get(SETTLED)
+    ]'''
+new = '''        if isinstance(entry, Mapping)
+    ]'''
+
+[[rows]]
+id = "G02_pick_takes_releases"
+description = "go.summarise: only an all answer takes releases, so a pick's releases are left out of the summary and the download"
+file = "src/cratekit/label/go.py"
+surface = "user"
+old = '''        if word in TAKING:'''
+new = '''        if word == sync_cli.ALL:'''
+
+[[rows]]
+id = "G03_not_now_counted"
+description = "go.summarise: a not-now answer is not counted in the summary"
+file = "src/cratekit/label/go.py"
+surface = "user"
+old = '''        elif word == sync_cli.NOT_NOW:
+            not_now.setdefault(name)'''
+new = '''        elif word == sync_cli.NOT_NOW:
+            pass'''
+
+[[rows]]
+id = "G04_digest_covers_releases"
+description = "Summary.plan: the digest leaves out the releases, so an answer saved after the decision does not make it stale"
+file = "src/cratekit/label/go.py"
+surface = "user"
+old = '''                    "releases": [[one.label_id, one.identity] for one in self.taken],'''
+new = '''                    "releases": [],'''
+
+[[rows]]
+id = "G05_digest_covers_resume"
+description = "Summary.plan: the digest leaves out the jobs a go would resume"
+file = "src/cratekit/label/go.py"
+surface = "user"
+old = '''                    "resume": [job_id for job_id, _left in self.open_jobs],
+                }'''
+new = '''                    "resume": [],
+                }'''
+
+[[rows]]
+id = "G06_abort_downloads_nothing"
+description = "go.go: an abort at the gate goes on to download"
+file = "src/cratekit/label/go.py"
+surface = "user"
+old = '''    if option == "abort":'''
+new = '''    if False:'''
+
+[[rows]]
+id = "G07_only_accepted_downloaded"
+description = "go.go: a release an answer took is downloaded even after a person cleared it in review"
+file = "src/cratekit/label/go.py"
+surface = "user"
+old = '''                    if item is not None and item.verdict is Verdict.ACCEPTED:'''
+new = '''                    if item is not None:'''
+
+[[rows]]
+id = "G08_already_passed_to_listing"
+description = "go.go: the tracks an earlier go holds are not passed to the listing, so a second start asks for them again"
+file = "src/cratekit/label/go.py"
+surface = "user"
+old = '''                already=held.tracks,'''
+new = '''                already=frozenset(),'''
+
+[[rows]]
+id = "G09_gone_excused"
+description = "go.go: a release gone from the provider refuses the go again when nothing else is listed"
+file = "src/cratekit/label/go.py"
+surface = "user"
+old = '''                excuse=frozenset({approved_cli.GONE, approved_cli.NO_IDENTIFIER}),'''
+new = '''                excuse=frozenset(),'''

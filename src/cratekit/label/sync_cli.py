@@ -6,8 +6,11 @@ label was meant to bring in its new music and instead filled review with back
 catalogue: 2,416 label releases waited there that day. This verb walks the
 favourite labels one at a time and asks, per label, about the releases that are
 new since that label was last asked, with four answers: download all new, pick
-releases, not now, stop following. Every answer is saved as it is given. It
-downloads nothing; U108 turns the answers into one download.
+releases, not now, stop following. Every answer is saved as it is given.
+Asking downloads nothing. Once every label with something new is answered, the
+walk ends at one gate over one summary of the saved answers, and ``--go`` asks
+the same gate over answers already saved; U108's :mod:`cratekit.label.go` is
+what a yes runs.
 
 THE MARKER IS A SET OF RELEASE IDENTITIES, NOT A DATE, and it lives in LIBRARY
 state. The catalogue dates a release by year alone and KTD11 forbids a date
@@ -54,9 +57,10 @@ twenty nine questions.
 
 Questions go to standard error through :mod:`cratekit.cli.prompt`, the one
 module allowed to read standard input, and this verb is the second the
-registry marks interactive. Not a confirm gate and not destructive: it writes
-the review database and its own record, and ``stop`` goes through the
-registry's own remove.
+registry marks interactive. The asking is not gated: it writes the review
+database and its own record, and ``stop`` goes through the registry's own
+remove. The go behind the one gate is what writes files, see
+:mod:`cratekit.label.go`.
 """
 
 from __future__ import annotations
@@ -82,6 +86,11 @@ from cratekit.label import registry as labels
 from cratekit.sync import run
 
 RECORD_VERSION = 1
+
+#: The marker a saved answer carries once a go has taken it (U108). An answer
+#: without it is what the next go's summary covers. Added beside the fields an
+#: answer already records, so a record U107 wrote reads unchanged.
+SETTLED = "settled"
 
 #: The four answers, in the order they are offered.
 ALL = "all"
@@ -138,6 +147,14 @@ def build_sync(parser, entry) -> None:
         default=None,
         metavar="RELEASE_ID",
         help="with --answer pick, a release to take; repeat for more",
+    )
+    parser.add_argument(
+        "--go",
+        action="store_true",
+        help=(
+            "show one summary over every answer saved since the last go, ask the "
+            "one gate, and on apply download what was answered for"
+        ),
     )
     parser.set_defaults(_handler=label_sync)
 
@@ -225,6 +242,68 @@ def _locked(cfg: config.Config, doing: str) -> Iterator[None]:
         yield
     finally:
         lock.__exit__(None, None, None)
+
+
+def unsettled(document: Mapping[str, Any]) -> list[tuple[int, Mapping[str, Any]]]:
+    """Every saved answer no go has taken yet, with its place in the record."""
+    return [
+        (index, entry)
+        for index, entry in enumerate(document["answers"])
+        if isinstance(entry, Mapping) and not entry.get(SETTLED)
+    ]
+
+
+def settle_in(
+    document: dict[str, Any],
+    answers: Sequence[tuple[int, str, str]],
+    *,
+    marker: Mapping[str, Any],
+    keep: Container[str] = frozenset(),
+) -> int:
+    """Mark, in ``document``, the saved answers a go took. Returns how many.
+
+    The caller holds :func:`record_lock` and writes the document back with
+    :func:`write_record`, which is what lets the go plan, queue and settle as
+    one locked step. ``answers`` names each one as ``(place, label,
+    answered_at)``, and one whose place now holds a different answer is left
+    alone, so a record rewritten while the go waited never has the wrong
+    answer settled. An answer that took a release named in ``keep`` is left
+    for the next go.
+    """
+    entries = document["answers"]
+    now = timestamp()
+    count = 0
+    for index, label_id, answered_at in answers:
+        if index >= len(entries):
+            continue
+        entry = entries[index]
+        if not isinstance(entry, Mapping) or entry.get(SETTLED):
+            continue
+        if (
+            _text(entry.get("label_id")) != label_id
+            or _text(entry.get("answered_at")) != answered_at
+        ):
+            continue
+        taken = entry.get("taken")
+        if isinstance(taken, list) and any(one in keep for one in taken):
+            continue
+        entries[index] = {**entry, SETTLED: {**marker, "at": now}}
+        count += 1
+    return count
+
+
+def write_record(cfg: config.Config, document: Mapping[str, Any]) -> None:
+    """Write the record back. The caller holds :func:`record_lock`."""
+    _write_record(cfg, document)
+
+
+def record_lock(cfg: config.Config, doing: str):
+    """The record's own lock, for a caller that reads, decides and writes as one step.
+
+    BLOCKING, not refusing: a second go waits for the first to finish
+    planning, and then sees the job the first one queued.
+    """
+    return _locked(cfg, doing)
 
 
 def asked_releases(document: Mapping[str, Any], label_id: str) -> frozenset[str]:
@@ -1182,11 +1261,18 @@ def _walk(ctx, cfg: config.Config, prompter: prompt.Prompter) -> Envelope:
                "; every label is answered"),
         )
     )
+    data = {
+        "checks": checks,
+        "summary": _summary(answered=answered, labels_seen=seen, stopped_at=stopped_at),
+    }
+    if stopped_at is None:
+        # EVERY LABEL WITH SOMETHING NEW IS ANSWERED, so the walk ends at the
+        # one gate over the summary of every saved answer, in this verb (U108).
+        # A walk that stopped asks nothing: the labels after it are unanswered.
+        return _go(ctx, cfg, walk=[one["detail"] for one in checks], data=data,
+                   wrote=bool(answered or withheld))
     return ctx.envelope(
-        data={
-            "checks": checks,
-            "summary": _summary(answered=answered, labels_seen=seen, stopped_at=stopped_at),
-        },
+        data=data,
         # A QUESTION LEFT UNANSWERED IS STILL A RUN THAT WROTE: the question
         # was saved, its round recorded, and any open item the gate took back
         # left review. NO_OP is a run that had nothing to ask and wrote nothing.
@@ -1194,9 +1280,23 @@ def _walk(ctx, cfg: config.Config, prompter: prompt.Prompter) -> Envelope:
     )
 
 
+def _go(ctx, cfg: config.Config, **kwargs: Any) -> Envelope:
+    """The go, imported here because :mod:`cratekit.label.go` imports this module
+    for the record, and a module scope import each way is a cycle."""
+    from cratekit.label import go  # noqa: PLC0415 - see the docstring
+
+    return go.go(ctx, cfg, **kwargs)
+
+
 def label_sync(ctx) -> Envelope:
-    """Ask label by label at the terminal, or print one question, or record one answer."""
+    """Ask label by label at the terminal, print one question, record one answer, or go."""
     args = ctx.args
+    if args.go and (args.answer is not None or args.next_question):
+        raise _selection_invalid(
+            "--go asks the one gate over the answers already saved, and --next and "
+            "--answer each do something else; one invocation does one",
+            "run them one at a time",
+        )
     if args.answer is not None and args.next_question:
         raise _selection_invalid(
             "--next prints a question and --answer records one; one invocation does one",
@@ -1221,6 +1321,8 @@ def label_sync(ctx) -> Envelope:
             "pass --answer, or drop them to ask at the terminal",
         )
     cfg = label_cli._load()
+    if args.go:
+        return _go(ctx, cfg)
     if args.answer is not None:
         return _answer(ctx, cfg)
     if args.next_question:
@@ -1239,6 +1341,7 @@ __all__ = [
     "QUIT",
     "RECORD_VERSION",
     "SECONDS_PER_TRACK",
+    "SETTLED",
     "STOP",
     "Answered",
     "Offered",
@@ -1248,5 +1351,9 @@ __all__ = [
     "label_sync",
     "load_record",
     "record_answer",
+    "record_lock",
+    "settle_in",
     "size_text",
+    "unsettled",
+    "write_record",
 ]

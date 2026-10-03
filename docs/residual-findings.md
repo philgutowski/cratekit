@@ -33997,3 +33997,138 @@ outbound verbs, or routed to the run's log file, and a sweep's terminal
 output starts with the verb's own answer.
 
 **Not on the board bar.** Wording and noise.
+
+---
+
+## R-865. The guided label sync's walk asks the explicit gate even when there is nothing to download
+
+**Found:** by the built in review of U108 on `relay/247`, 2026-10-03.
+
+**The mechanism.** `label sync`'s walk, once it ends without `quit`, calls
+the go, and the go asks `label.sync.confirm` over the summary of every
+unsettled answer, empty or not. A walk where every label had nothing new
+and no answer waits exits `DECISION_REQUIRED` and leaves an open gate on
+its run record, where before U108 it exited `no_op`.
+
+**Why it stands.** The brief says an empty set of answers still shows the
+summary and asks, and the walk is where the brief says the gate is asked.
+The session took the brief's words literally as the conservative reading,
+since asking never downloads anything. The options are: keep it; have the
+walk show an empty summary as a line and ask only when there is something
+to decide, leaving `--go` to always ask; or ask only when the summary holds
+a release, a resume or an answer to settle.
+
+**Measured cost.** One extra refusal, and one open gate per run record, on
+a walk with nothing to decide. Driven by `test_an_empty_set_of_answers_still_shows_the_summary_and_asks`
+through `--go`; the walk's empty case was read, not driven.
+
+**Closes when:** the author picks one of the options.
+
+**Not on the board bar.** Nothing is downloaded and nothing false is said.
+
+---
+
+## R-866. Every go downloads into the one staging folder, so two goes not landed between them land as one batch
+
+**Found:** by the built in review of U108 on `relay/247`, 2026-10-03.
+
+**The mechanism.** `acquire download` commits every track flat into the
+download staging root, and `intake land` lands a folder, reading one
+`--manifest`. U108 holds one job and one manifest per go, and names the
+tail in that order "before the next go adds to the same folder". Nothing
+refuses a second go while the first go's tracks sit unlanded. If one runs,
+the first `intake land` takes both batches under its own name and files
+the other go's tracks under no label, with the `Unlabelled` warning.
+
+**Measured cost.** A label batch landed outside its Record Labels branch.
+Not driven: the landing needs an export, which is the attended sitting's.
+This is the same shape `label approved` plus `acquire download` already
+had before U108.
+
+**Closes when:** a go downloads into a staging folder of its own and the
+tail names it, or a go refuses while an earlier go's tracks are unlanded.
+
+**Not on the board bar.** Nothing is lost, the warning names each track,
+and the report says to land before the next go.
+
+---
+
+## R-867. A go whose download parks or half fails reports the job's cause and not the landing tail
+
+**Found:** by the built in review of U108 on `relay/247`, 2026-10-03.
+
+**The mechanism.** `drive_queued` maps a parked or half failed job to a
+refusal through `raise_for_state`, so the go's envelope is the job's own
+cause and its `listed`, `settled` and `next` lines are not shown. The list
+and manifest are written and recorded on the job's payload, and the next
+`label sync --go`, which resumes the job, names the tail once it finishes.
+
+**Measured cost.** The manifest path is not on the screen until the next
+go. Driven by `test_a_rate_limit_refusal_parks_the_job`.
+
+**Closes when:** a parked or failed drive's refusal carries the list,
+manifest and tail in its detail.
+
+**Not on the board bar.** Nothing is lost and the resume names it.
+
+---
+
+## R-868. The guided label sync's estimated size and time are not measured against a real download
+
+**Found:** building U108 on `relay/247`, 2026-10-03.
+
+**The mechanism.** The size is U107's: each track's duration from the
+provider's rows at 110,000 bytes a second, a track with no duration
+counted at 360 seconds. The time is the configured pacing delay per track
+plus that size at an assumed 2,500,000 bytes a second
+(`go.TRANSFER_BYTES_PER_SECOND`). Neither constant was measured on this
+tree.
+
+**Measured cost.** Unmeasured. The summary says "about" on both.
+
+**Closes when:** the attended sitting the brief owes downloads one small
+label's new releases and the estimates are compared with the files and
+the wall clock, and the constants are corrected from that.
+
+**Not on the board bar.** Closes only at an attended sitting.
+
+---
+
+## R-869. Nothing stops a label listing in another process beside a go's running download
+
+**Found:** building U108 on `relay/247`, 2026-10-03.
+
+**The mechanism.** The brief asks that no sweep runs beside the download.
+The go itself lists no label, so none runs inside it. But `sync labels`,
+`label sync --next` and a walk in another terminal can list while a go's
+job downloads. The provider gate serialises every call across processes
+and shares one allowance and one breaker, so they slow each other and a
+trip parks both. They are not refused.
+
+**Measured cost.** A slower download, and a park that one of them caused
+for both. Not driven across two processes.
+
+**Closes when:** the author decides whether a listing should refuse while
+a go's job is running, and the listing verbs read the job store for it.
+
+**Not on the board bar.** Nothing is lost or misreported.
+
+---
+
+## R-870. A go reads every job in the store twice to find its own
+
+**Found:** by the built in review of U108 on `relay/247`, 2026-10-03.
+
+**The mechanism.** `go.held_by_goes` calls `jobs.list_jobs` unfiltered,
+which decodes every payload, then reads the items of every go job ever
+queued. A go calls it once for the summary and once under the record's
+lock. `acquire.cli.sweep_staging` measured `list_jobs` at 224 ms over 2,000
+jobs.
+
+**Measured cost.** Under a second on a store of thousands of jobs, twice
+a go. Not measured on the live store.
+
+**Closes when:** the job store can be asked for one handler's jobs, or the
+go's jobs are named in the record.
+
+**Not on the board bar.** Maintainer facing, a cost in time.

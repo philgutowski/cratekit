@@ -1,0 +1,60 @@
+name = "u108-d"
+pass_kind = "light"
+
+# The five rows batches b and c measured at zero, measured again after a
+# test was written for each.
+
+[[rows]]
+id = "G11_waited_go_refuses_again"
+description = "go.go: a go that waited for the record's lock while another queued goes on to list and queue"
+file = "src/cratekit/label/go.py"
+surface = "user"
+old = '''        if held.resume:
+            raise refuse('''
+new = '''        if False:
+            raise refuse('''
+
+[[rows]]
+id = "G14_retryable_cause_only_again"
+description = "go.resumable: a job whose cause says no retry can succeed is resumed anyway"
+file = "src/cratekit/label/go.py"
+surface = "user"
+old = '''    return job.cause is None or job.cause.retryable'''
+new = '''    return True'''
+
+[[rows]]
+id = "G16_origin_marker_filter_again"
+description = "go.held_by_goes: every acquire download job counts as a go's, so a download queued by hand is resumed and its tracks held by the go"
+file = "src/cratekit/label/go.py"
+surface = "user"
+old = '''        if job.handler_key != DOWNLOAD or not isinstance(
+            (job.payload or {}).get(ORIGIN_KEY), Mapping
+        ):
+            continue'''
+new = '''        if job.handler_key != DOWNLOAD:
+            continue'''
+
+[[rows]]
+id = "G18_settle_matches_identity_again"
+description = "sync_cli.settle_in: an answer is settled by its place alone, without checking it is the answer the summary covered"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+old = '''        if (
+            _text(entry.get("label_id")) != label_id
+            or _text(entry.get("answered_at")) != answered_at
+        ):
+            continue'''
+new = '''        if False:
+            continue'''
+
+[[rows]]
+id = "G20_settle_skips_settled_again"
+description = "sync_cli.settle_in: an answer already settled is settled again, its first marker overwritten"
+file = "src/cratekit/label/sync_cli.py"
+surface = "maintainer"
+old = '''        if not isinstance(entry, Mapping) or entry.get(SETTLED):
+            continue
+        if ('''
+new = '''        if not isinstance(entry, Mapping):
+            continue
+        if ('''

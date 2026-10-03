@@ -1,0 +1,85 @@
+name = "u108-b"
+pass_kind = "light"
+
+# The second and third of three batches of u108-a-rows, split to fit the
+# foreground ceiling. The ranking and the dropped rows are in batch a.
+
+[[rows]]
+id = "G10_unread_answer_kept"
+description = "go.go: an answer holding a release the provider did not answer for is settled anyway, so it is never asked for again"
+file = "src/cratekit/label/go.py"
+surface = "user"
+old = '''            keep=retry,
+        )'''
+new = '''            keep=frozenset(),
+        )'''
+
+[[rows]]
+id = "G11_waited_go_refuses"
+description = "go.go: a go that waited for the record's lock while another queued goes on to list and queue"
+file = "src/cratekit/label/go.py"
+surface = "user"
+old = '''        if held.resume:
+            raise refuse('''
+new = '''        if False:
+            raise refuse('''
+
+[[rows]]
+id = "G12_one_job_per_go"
+description = "go.go: a go with an earlier download to resume also lists and queues the new answers beside it"
+file = "src/cratekit/label/go.py"
+surface = "user"
+old = '''    if summary.open_jobs:
+        return _resume(ctx, summary, staging, checks, report, wrote=wrote)'''
+new = '''    if False:
+        return _resume(ctx, summary, staging, checks, report, wrote=wrote)'''
+
+[[rows]]
+id = "G13_closed_job_retried"
+description = "go._resume: a job that ended half failed is driven without being re-armed, so its failed tracks are never asked for again"
+file = "src/cratekit/label/go.py"
+surface = "user"
+old = '''            if not job.is_open():
+                # STOPPED BY A SIGNAL'''
+new = '''            if False:
+                # STOPPED BY A SIGNAL'''
+
+[[rows]]
+id = "G14_retryable_cause_only"
+description = "go.resumable: a job whose cause says no retry can succeed is resumed anyway"
+file = "src/cratekit/label/go.py"
+surface = "user"
+old = '''    return job.cause is None or job.cause.retryable'''
+new = '''    return True'''
+
+[[rows]]
+id = "G15_time_pacing_coefficient"
+description = "Summary.seconds: the pacing delay counted at half its value per track"
+file = "src/cratekit/label/go.py"
+surface = "user"
+old = '''        return round(self.tracks * self.pace_s + self.size / TRANSFER_BYTES_PER_SECOND)'''
+new = '''        return round(self.tracks * self.pace_s / 2 + self.size / TRANSFER_BYTES_PER_SECOND)'''
+
+[[rows]]
+id = "G16_origin_marker_filter"
+description = "go.held_by_goes: every acquire download job counts as a go's, so a download queued by hand is resumed and its tracks held by the go"
+file = "src/cratekit/label/go.py"
+surface = "user"
+old = '''        if job.handler_key != DOWNLOAD or not isinstance(
+            (job.payload or {}).get(ORIGIN_KEY), Mapping
+        ):
+            continue'''
+new = '''        if job.handler_key != DOWNLOAD:
+            continue'''
+
+[[rows]]
+id = "G17_done_tracks_held"
+description = "go.held_by_goes: a track a finished go job downloaded is not held, so a later go asks for it again"
+file = "src/cratekit/label/go.py"
+surface = "user"
+old = '''            if item.state is jobs.ItemState.DONE or (
+                again and item.state is not jobs.ItemState.SKIPPED
+            ):'''
+new = '''            if (
+                again and item.state is not jobs.ItemState.SKIPPED
+            ):'''

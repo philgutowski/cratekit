@@ -1768,7 +1768,8 @@ ENTRIES: tuple[Entry, ...] = (
         name="label.sync",
         summary=(
             "ask, label by label, about the releases new since each label was "
-            "last asked, and record each answer; downloads nothing"
+            "last asked, record each answer, then download what was answered for "
+            "behind one gate"
         ),
         module="cratekit.label.sync_cli",
         builder="build_sync",
@@ -1791,11 +1792,30 @@ ENTRIES: tuple[Entry, ...] = (
         # a label's answer did not take is superseded, and an open item the
         # gate would not have filed is withheld as ``label judge`` withholds.
         adjudicates=True,
-        # NO WRITE SURFACE, and not destructive, on ``label.held``'s reasoning:
-        # the review database and the sync record are this product's own.
-        # Nothing is downloaded, no tombstone is written, and stop following
-        # goes through the registry's own remove.
+        # THE GO WRITES FILES (U108): a list and its manifest, and the download
+        # job it queues and drives in this process lands tracks in staging. So
+        # the verb is destructive by KTD24's definition, though the asking half
+        # still writes only this product's own review database and record.
+        writes=frozenset({"files"}),
+        destructive=True,
         doctor_checks=("library.mounted", "credential.provider"),
+        gates=(
+            GateSpec(
+                name="label.sync.confirm",
+                options=("apply", "abort"),
+                prompt="Download every release the saved answers took?",
+                #: EXPLICIT, the brief's word and the author's standing rule: a
+                #: label release is downloaded only after it was answered for,
+                #: and the start of a download that runs unattended for hours is
+                #: asserted on its own and recorded with who made it, never
+                #: answered by one more flag on the walk that reached it.
+                explicit=True,
+                #: Over the digest of the summary, so an answer saved after the
+                #: decision is a stale decision rather than a download nobody
+                #: was shown.
+                digest_source="plan",
+            ),
+        ),
     ),
     Entry(
         name="label.judge",
