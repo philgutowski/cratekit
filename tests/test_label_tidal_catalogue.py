@@ -1055,6 +1055,29 @@ def test_a_listing_a_roster_does_not_hold_is_skipped_and_recorded():
     assert skipped == ["get_tracks"]
 
 
+class HoldsNothing(listing.HeldReleases):
+    def held(self, method: str) -> list[Any] | None:
+        return None
+
+
+def test_the_crawl_probe_asks_a_held_object_what_it_holds():
+    """The probe and the read ask one question, so they cannot disagree."""
+    from cratekit.label import crawl
+
+    roster, _ = _roster_of(1, 1)
+    assert not hasattr(roster, "get_albums"), "a roster offers nothing to page"
+    assert crawl.can_list(roster)
+    assert not crawl.can_list(HoldsNothing())
+
+
+def test_a_held_object_that_forgets_its_lists_fails_when_built():
+    class Forgetful(listing.HeldReleases):
+        pass
+
+    with pytest.raises(TypeError):
+        Forgetful()
+
+
 class EndlessArtist:
     """A provider artist whose listing ignores its offset and serves a full page for ever."""
 

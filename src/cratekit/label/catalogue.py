@@ -380,7 +380,10 @@ class Catalogue(Protocol):
         pages it. RAISES for a label the provider cannot resolve; see the failure
         contract above for why an absence may not be returned. The object may be
         a roster: the label's own page, every resolved seed, and artists
-        discovery found by album search and a credited artist walk.
+        discovery found by album search and a credited artist walk. A roster
+        whose releases are already in memory is a ``listing.HeldReleases``,
+        which the crawl reads whole; paged instead, it would spend one artist's
+        request budget on the whole label's releases (R-888).
 
         THE OBJECT MAY CARRY ``unread``, a tuple of :class:`Unread` naming the
         parts of the roster that could not be read while it was built. The sweep

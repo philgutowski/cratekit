@@ -152,9 +152,8 @@ class LabelRoster(listing.HeldReleases):
     sweep already turns a foreign exception into its refusal.
 
     THE CRAWL READS WHAT IT HOLDS WHOLE, as a ``listing.HeldReleases``, and never
-    pages it under one artist's budget (R-888). The two paging methods stay, so
-    ``crawl.can_list`` reads the roster as listable, and they serve slices of the
-    same lists to anything that asks for a page.
+    pages it under one artist's budget (R-888). It has no paging methods, so
+    nothing can page it, and ``crawl.can_list`` asks it what it holds.
 
     THE ROSTER ALWAYS EXPOSES BOTH LISTINGS, so the crawl paging it can never
     see a member that lacks one. ``unread`` is where that fact goes instead:
@@ -184,18 +183,14 @@ class LabelRoster(listing.HeldReleases):
         held: list[Any] = []
         for artist in self.artists:
             skipped: list[str] = []
-            held.extend(listing.artist_releases(artist, methods=(method,), skipped=skipped))
+            held.extend(
+                listing.artist_releases(artist, methods=(method,), skipped=skipped, sleep=_pause)
+            )
             missing.extend(missing_listing(artist, name) for name in skipped)
         return held
 
     def held(self, method: str) -> list[Any] | None:
         return self._listed.get(method)
-
-    def get_albums(self, limit: int, offset: int = 0) -> list[Any]:
-        return self._listed["get_albums"][offset : offset + limit]
-
-    def get_ep_singles(self, limit: int, offset: int = 0) -> list[Any]:
-        return self._listed["get_ep_singles"][offset : offset + limit]
 
 
 def _results(found: Any, key: str) -> list[Any]:

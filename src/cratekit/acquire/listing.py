@@ -50,6 +50,7 @@ network by the same transport, and the same pacing gate, as every client call.
 from __future__ import annotations
 
 import time
+from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable
 from enum import Enum
 from typing import Any
@@ -849,7 +850,7 @@ def folder_playlists(folder: Any, **kwargs: Any) -> list[Any]:
 RELEASE_METHODS: tuple[str, ...] = ("get_albums", "get_ep_singles")
 
 
-class HeldReleases:
+class HeldReleases(ABC):
     """An artist shaped object whose release listings are already in memory.
 
     :func:`artist_releases` reads such an object's lists WHOLE and never pages
@@ -861,13 +862,16 @@ class HeldReleases:
     drawn from the list's own length was the other way to close it and was not
     taken, since a guard sized to what it guards can never fire.
 
-    A subclass answers :meth:`held` for each release method, and still exposes
-    the methods themselves so ``label.crawl.can_list`` reads it as listable.
+    A subclass answers :meth:`held` for each release method and needs no paging
+    method at all: ``label.crawl.can_list`` asks :meth:`held` too, so the probe
+    and the read cannot disagree about what the object can list. Abstract, so a
+    subclass that forgets :meth:`held` fails when it is built rather than mid
+    crawl, where a sweep would report it as a provider that could not be read.
     """
 
+    @abstractmethod
     def held(self, method: str) -> list[Any] | None:
         """Every release this object holds for ``method``, or ``None`` when it holds no such listing."""
-        raise NotImplementedError
 
 
 def artist_releases(artist: Any, methods: Iterable[str] = RELEASE_METHODS, *,
@@ -903,7 +907,8 @@ def artist_releases(artist: Any, methods: Iterable[str] = RELEASE_METHODS, *,
 
     **A :class:`HeldReleases` object is read whole, not paged**, through the same
     deduplication, and spends none of this shape's budget (R-888). A listing it
-    does not hold is skipped and recorded the same way.
+    does not hold is skipped and recorded the same way. The remaining keywords
+    configure the paged walk, so the held read has no use for them.
     """
     releases: list[Any] = []
     seen: set[str] = set()
