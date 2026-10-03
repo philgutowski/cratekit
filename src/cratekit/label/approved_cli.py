@@ -652,6 +652,8 @@ def list_releases(
     handler_key: str,
     prefix: str = LIST_PREFIX,
     already: Container[str] = frozenset(),
+    excuse: Container[str] = frozenset(),
+    elsewhere: str = "name another folder with --out",
 ) -> Listing:
     """Read, gate, resolve and list the missing tracks of ``accepted``, or refuse.
 
@@ -659,7 +661,12 @@ def list_releases(
     ``already`` names provider track ids another job already holds, which are
     counted as ``queued`` and not listed again: the guided label sync's go
     passes the tracks an earlier go queued, so a second start never asks for a
-    track twice. ``label approved`` passes nothing and lists as it always did.
+    track twice. ``excuse`` names failure KINDS that do not by themselves make
+    an empty listing a refusal: the go passes the two that waiting never mends,
+    so one release gone from the provider does not refuse every go after it.
+    ``elsewhere`` is the remedy a folder that cannot take the list names, since
+    only this verb has ``--out``. ``label approved`` passes none of them and
+    lists and refuses as it always did.
     """
     # THE DECLARATION BEFORE THE FIRST LOGIN (R-685). An active copy that cannot
     # be read refuses here, not after every accepted release was fetched.
@@ -785,12 +792,15 @@ def list_releases(
                 origins.append((release, year))
 
     failed_detail = [one.to_json() for one in failures]
+    # A FAILURE THE CALLER EXCUSED is still reported, by its own failing line,
+    # and does not make an empty listing a refusal on its own.
+    unexcused = [one for one in failures if one.kind not in excuse]
     settle = (
         "run this again once the provider answers",
         "a release that is gone, or an item naming no release, stays that way; "
         "revoke its acceptance with: crate review clear ITEM_ID",
     )
-    if not read:
+    if not read and (unexcused or not failures):
         # NO RELEASE READ IS NOT NOTHING MISSING. A no-op here would read like a
         # library that holds every approved release, over a provider nobody
         # got an answer from.
@@ -810,9 +820,7 @@ def list_releases(
             body, _listed, _unlisted = listdoc.document(rows)
             written = listdoc.write(out(), list_name(body, provenance, prefix=prefix), rows, provenance)
         except listdoc.ListDocRefused as exc:
-            raise _unusable(
-                str(exc), "move the file aside or name another folder with --out"
-            ) from exc
+            raise _unusable(str(exc), f"move the file aside, or {elsewhere}") from exc
         except OSError as exc:
             # A FOLDER THAT CANNOT BE WRITTEN IS THIS VERB'S REFUSAL. The emitter
             # converts what it reads and lets a failed write through, and left
@@ -822,7 +830,7 @@ def list_releases(
                 f"the list could not be written ({type(exc).__name__}: "
                 f"{exc.strerror or exc}); nothing acquire download could read was "
                 f"left behind",
-                "name another folder with --out, or make this one writable",
+                f"{elsewhere}, or make this one writable",
                 path=str(exc.filename or ""),
             ) from exc
     listed = len(written.listed)
@@ -835,7 +843,7 @@ def list_releases(
             "run this again, and report it if it repeats",
             unlisted_tracks=[{"artist": row.artist, "title": row.title} for row in written.unlisted],
         )
-    if failures and not listed:
+    if unexcused and not listed:
         # NOTHING LISTED WITH RELEASES UNREAD IS NOT A LIBRARY THAT HOLDS THEM.
         raise _unusable(
             f"nothing is missing from the {read - len(held)} release(s) that could be read"

@@ -385,7 +385,7 @@ def test_a_go_killed_between_its_queue_and_its_record_never_asks_for_a_track_twi
         raise KeyboardInterrupt
 
     with monkeypatch.context() as patched:
-        patched.setattr(sync_cli, "settle_answers", killed)
+        patched.setattr(sync_cli, "settle_in", killed)
         with pytest.raises(KeyboardInterrupt):
             approved_go()
     (job,) = our_jobs()
@@ -400,9 +400,129 @@ def test_a_go_killed_between_its_queue_and_its_record_never_asks_for_a_track_twi
 
     assert code == int(ExitCode.OK), envelope
     assert sorted(fetched(script)) == ["t-r1-1", "t-r1-2"]
+    assert "1 answer(s) wait for the next go" in check(envelope, "waiting")["detail"]
+
+    _run, code, envelope = approved_go()
+
+    assert code == int(ExitCode.OK), envelope
+    assert sorted(fetched(script)) == ["t-r1-1", "t-r1-2"], "a track was asked for twice"
     assert [one.job_id for one in our_jobs()] == [job.job_id]
     assert "2 track(s) an earlier go already holds" in check(envelope, "held-by-a-go")["detail"]
     assert all(one[sync_cli.SETTLED] for one in record(installed)["answers"])
+
+
+def test_a_go_with_an_earlier_download_to_resume_resumes_it_and_queues_nothing_new(
+    installed, monkeypatch, script
+):
+    """One job per go, so one manifest and one landing per go (the review's second finding)."""
+    register("Alpha Works")
+    register("Beta Works")
+    bind(monkeypatch, {"alpha-works": [("a1", "2026", 2)], "beta-works": [("b1", "2026", 1)]})
+    next_question()
+    answer("alpha-works", "all")
+    land_every(script, ("a1", 2), ("b1", 1))
+    script.landings["t-a1-2"] = Landing(fetch_raises=cooldown(), fetch_raises_times=1)
+    approved_go()
+    (first,) = our_jobs()
+    next_question()
+    answer("beta-works", "all")
+
+    _run, code, envelope = approved_go()
+
+    assert code == int(ExitCode.OK), envelope
+    assert [one.job_id for one in our_jobs()] == [first.job_id]
+    assert "t-b1-1" not in fetched(script)
+    (landing,) = [one for one in envelope["data"]["summary"]["go"]["next"] if "intake land" in one]
+    assert first.payload[go.ORIGIN_KEY]["manifest"] in landing
+
+    _run, code, envelope = approved_go()
+
+    assert code == int(ExitCode.OK), envelope
+    assert fetched(script)[-1] == "t-b1-1"
+    assert len(our_jobs()) == 2
+
+
+def test_a_download_that_ended_half_failed_is_retried_by_the_next_go_and_only_its_failures(
+    installed, monkeypatch, script
+):
+    register()
+    bind(monkeypatch, {"tide-works": [("r1", "2026", 3)]})
+    next_question()
+    answer("tide-works", "all")
+    land_every(script, ("r1", 3))
+    script.landings["t-r1-2"] = Landing(
+        fetch_raises=RuntimeError("connection reset by peer"), fetch_raises_times=99
+    )
+
+    _run, code, envelope = approved_go()
+
+    assert code != int(ExitCode.OK), envelope
+    (job,) = our_jobs()
+    assert job.state is jobs.JobState.FAILED
+    assert item_states(job.job_id)["t-r1-2"] is jobs.ItemState.FAILED
+    script.landings["t-r1-2"] = Landing()
+    script.fetched.clear()
+
+    resumed = asked()
+    assert resumed["cause"]["detail"]["shown"]["earlier_downloads_to_resume"] == 1
+    decided(resumed["run_id"], "apply")
+    code, envelope = gone(resumed["run_id"])
+
+    assert code == int(ExitCode.OK), envelope
+    assert fetched(script) == ["t-r1-2"]
+    assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
+
+
+def test_a_release_gone_from_the_provider_does_not_refuse_every_go_after_it(
+    installed, monkeypatch, script
+):
+    """The review's fourth finding: nothing listed beside a gone release was a refusal."""
+    register()
+    fake = bind(monkeypatch, {"tide-works": [("r2", "2026", 1), ("r1", "2025", 1)]})
+    next_question()
+    answer("tide-works", "all")
+    del fake.releases["r1"]
+    (Path(installed.library.root) / "Music" / "Label Act - Cut 1 of r2.flac").write_bytes(b"")
+
+    _run, code, envelope = approved_go()
+
+    assert code == int(ExitCode.OK), envelope
+    assert fetched(script) == [] and our_jobs() == []
+    (gone_line,) = [
+        one for one in envelope["data"]["checks"] if one["key"] == "label.sync.go.list.release.r1"
+    ]
+    assert gone_line["status"] == "fail" and "crate review clear" in gone_line["detail"]
+    assert all(one[sync_cli.SETTLED] for one in record(installed)["answers"])
+
+
+def test_a_second_go_that_waited_for_the_first_refuses_rather_than_queue_its_tracks_again(
+    installed, monkeypatch, script
+):
+    """The review's fifth finding, the race, driven by letting the summary miss
+    the job another go queued while this one waited for the record's lock."""
+    register()
+    bind(monkeypatch, {"tide-works": [("r1", "2026", 1)]})
+    next_question()
+    answer("tide-works", "all")
+    land_every(script, ("r1", 1))
+    with monkeypatch.context() as patched:
+        patched.setattr(sync_cli, "settle_in", lambda *_a, **_k: (_ for _ in ()).throw(KeyboardInterrupt))
+        with pytest.raises(KeyboardInterrupt):
+            approved_go()
+    real = go.held_by_goes
+    calls = []
+
+    def first_blind(store):
+        calls.append(1)
+        return go.Held(resume=(), tracks=frozenset()) if len(calls) == 1 else real(store)
+
+    monkeypatch.setattr(go, "held_by_goes", first_blind)
+
+    _run, code, envelope = approved_go()
+
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "decision-stale"
+    assert len(our_jobs()) == 1 and fetched(script) == []
 
 
 def test_an_answer_holding_a_release_the_provider_did_not_answer_for_is_kept_for_the_next_go(

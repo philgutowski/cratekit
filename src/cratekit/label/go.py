@@ -42,8 +42,16 @@ passed to the listing as already held. The job store is that record and the
 sync record is not, so a go killed between queueing its job and settling its
 answers cannot queue the same tracks again on the next start.
 
-A GO RESUMES WHAT AN EARLIER GO LEFT OPEN, and that job is in the summary and
-in its digest, so the gate's answer covers resuming it.
+A GO RESUMES WHAT AN EARLIER GO LEFT UNFINISHED, AND THEN ONLY THAT. A job
+still open, stopped by a signal, or ended half failed with a retryable cause is
+in the summary and in its digest, so the gate's answer covers resuming it, and
+a go that has one queues nothing new: one job, one manifest and one landing per
+go, because ``intake land`` lands a whole folder and two batches in it would
+land as one. The answers saved since wait for the next go.
+
+PLANNED, QUEUED AND SETTLED UNDER THE RECORD'S LOCK, which blocks, so a second
+go started beside the first waits, finds the job the first one queued, and
+refuses as stale rather than list the same tracks into a second job.
 
 PACED THROUGH THE PROVIDER GATE BY THE WORKER. The download worker builds its
 adapter through the registry and every provider call passes the shared gate. A
@@ -134,35 +142,59 @@ class Taken:
 
 @dataclass(frozen=True, slots=True)
 class Held:
-    """The download jobs earlier goes queued: those still open, and their tracks."""
+    """The download jobs earlier goes queued: those to resume, and every track held.
 
-    open: tuple[jobs.Job, ...]
+    ``resume`` pairs each job a go would resume with how many of its tracks
+    are still to run.
+    """
+
+    resume: tuple[tuple[jobs.Job, int], ...]
     tracks: frozenset[str]
 
 
-def held_by_goes(store: jobs.JobStore) -> Held:
-    """Every track a go's job holds, done or still to run, and the open jobs.
+def resumable(job: jobs.Job, left: int) -> bool:
+    """Whether a go resumes this job: open, or stopped with tracks a retry re-arms.
 
-    A track of an OPEN job is held unless it failed, since a resume claims it.
-    A track of a CLOSED job is held only when it was downloaded: a failed or
-    cancelled one never landed, so a later go may ask for it again.
+    A job a signal CANCELLED or that ended FAILED with a retryable cause is
+    work a go started and did not finish, so it is resumed as an open one is,
+    through ``jobs.retry``, which keeps every downloaded track done. One whose
+    cause says no retry can succeed is not, and its failed tracks are not held.
     """
-    open_jobs: list[jobs.Job] = []
+    if job.is_open():
+        return True
+    if job.state is jobs.JobState.SUCCEEDED or not left:
+        return False
+    return job.cause is None or job.cause.retryable
+
+
+def held_by_goes(store: jobs.JobStore) -> Held:
+    """Every track a go's job holds, done or still to run, and the jobs to resume.
+
+    A track of a job a go RESUMES is held unless it was skipped, since the
+    resume claims it. A track of any other go job is held only when it was
+    downloaded: a failed one that cannot be retried never landed, so a later
+    go may ask for it again.
+    """
+    resume: list[tuple[jobs.Job, int]] = []
     tracks: set[str] = set()
     for job in jobs.list_jobs(store):
         if job.handler_key != DOWNLOAD or not isinstance(
             (job.payload or {}).get(ORIGIN_KEY), Mapping
         ):
             continue
-        live = job.is_open()
-        if live:
-            open_jobs.append(job)
-        for item in jobs.items(store, job.job_id):
+        items = jobs.items(store, job.job_id)
+        left = sum(
+            1 for item in items if item.state not in (jobs.ItemState.DONE, jobs.ItemState.SKIPPED)
+        )
+        again = resumable(job, left)
+        if again:
+            resume.append((job, left))
+        for item in items:
             if item.state is jobs.ItemState.DONE or (
-                live and item.state in (jobs.ItemState.PENDING, jobs.ItemState.CLAIMED)
+                again and item.state is not jobs.ItemState.SKIPPED
             ):
                 tracks.add(item.item_id)
-    return Held(open=tuple(open_jobs), tracks=frozenset(tracks))
+    return Held(resume=tuple(resume), tracks=frozenset(tracks))
 
 
 def _text(value: Any) -> str:
@@ -222,7 +254,9 @@ class Summary:
     taking: tuple[str, ...]
     not_now: tuple[str, ...]
     stopped: tuple[str, ...]
-    #: Open jobs an earlier go queued, as ``(job_id, tracks still to run)``.
+    #: Jobs an earlier go left unfinished, as ``(job_id, tracks still to run)``.
+    #: A go with any resumes them and queues nothing new: one job, one
+    #: manifest and one landing per go.
     open_jobs: tuple[tuple[str, int], ...]
     pace_s: float
 
@@ -281,6 +315,10 @@ class Summary:
             facts["releases_with_tracks_unread"] = self.unknown
         if self.open_jobs:
             facts["earlier_downloads_to_resume"] = len(self.open_jobs)
+            facts["this_go"] = (
+                "resumes the earlier download only, so it lands as one batch; the "
+                "answers above wait for the next go"
+            )
         return facts
 
     def to_json(self) -> dict[str, Any]:
@@ -312,7 +350,7 @@ def pace_of(cfg: config.Config) -> float:
     return float(configured) if configured is not None else download.DEFAULT_BASE_DELAY_S
 
 
-def summarise(document: Mapping[str, Any], held: Held, store: jobs.JobStore, cfg) -> Summary:
+def summarise(document: Mapping[str, Any], held: Held, cfg) -> Summary:
     """One summary over every saved answer no go has taken yet.
 
     A release two answers took is downloaded once and counted once, under the
@@ -338,17 +376,7 @@ def summarise(document: Mapping[str, Any], held: Held, store: jobs.JobStore, cfg
             not_now.setdefault(name)
         elif word == sync_cli.STOP:
             stopped.setdefault(name)
-    open_jobs = tuple(
-        (
-            job.job_id,
-            sum(
-                1
-                for item in jobs.items(store, job.job_id)
-                if item.state in (jobs.ItemState.PENDING, jobs.ItemState.CLAIMED)
-            ),
-        )
-        for job in held.open
-    )
+    open_jobs = tuple((job.job_id, left) for job, left in held.resume)
     return Summary(
         answers=tuple(answers),
         taken=tuple(taken.values()),
@@ -438,7 +466,7 @@ def go(
     run_id = ctx.run.run_id
     document = sync_cli.load_record(cfg)
     with jobs.open_store() as store:
-        summary = summarise(document, held_by_goes(store), store, cfg)
+        summary = summarise(document, held_by_goes(store), cfg)
     facts: dict[str, Any] = {}
     if walk is not None:
         facts["answered_this_run"] = list(walk)
@@ -466,75 +494,81 @@ def go(
         )
 
     staging = Path(cfg.paths.download_staging)
-    landed: list[str] = []
+    if summary.open_jobs:
+        return _resume(ctx, summary, staging, checks, report, wrote=wrote)
 
-    # WHAT AN EARLIER GO LEFT OPEN FIRST, so a resume and a new list never run
-    # side by side through one provider allowance.
-    with jobs.open_store() as store:
-        for job_id, _left in summary.open_jobs:
-            job, _warnings = acquire_cli.drive_queued(ctx, store, job_id)
-            checks.append(
-                _check(f"resumed.{job_id}", "ok", f"resumed the earlier download {job_id}: {job.state}")
-            )
-            payload = dict(job.payload or {})
-            manifest = dict(payload.get(ORIGIN_KEY) or {}).get("manifest")
-            if isinstance(manifest, str) and manifest:
-                landed.extend(tail(staging, manifest, str(payload.get(RUN_KEY) or run_id)))
-
+    warnings: list[dict[str, str]] = []
     withdrawn: list[Taken] = []
-    releases: list[Any] = []
-    if summary.taken:
-        with review.open_store(cfg) as items:
-            for one in summary.taken:
-                item = review.find(items, one.item_id)
-                if item is not None and item.verdict is Verdict.ACCEPTED:
-                    releases.append(approved_cli.release_of(items, item))
-                else:
-                    withdrawn.append(one)
-
     listing = None
     queued: jobs.Job | None = None
-    if releases:
+    # PLANNED, QUEUED AND SETTLED UNDER THE RECORD'S LOCK, which blocks: a
+    # second go waits here, then finds the job this one queued, so two goes
+    # never list the same tracks into two jobs. The drive is outside it.
+    with sync_cli.record_lock(cfg, "planning a go"):
         with jobs.open_store() as store:
-            already = held_by_goes(store).tracks
-        listing = approved_cli.list_releases(
-            cfg,
-            releases,
-            out=lambda: staging / LISTS_DIR,
-            handler_key=ctx.entry.handler_key,
-            prefix=LIST_PREFIX,
-            already=already,
+            held = held_by_goes(store)
+        if held.resume:
+            raise refuse(
+                "decision-stale",
+                "another go queued a download while this one waited for the label "
+                "sync record, so what was approved is no longer what would run; "
+                "nothing was queued by this one",
+                steps=("ask again with: crate label sync --go",),
+                origin=("label.go",),
+                detail={"queued": [job.job_id for job, _left in held.resume]},
+            )
+        releases: list[Any] = []
+        if summary.taken:
+            with review.open_store(cfg) as items:
+                for one in summary.taken:
+                    item = review.find(items, one.item_id)
+                    if item is not None and item.verdict is Verdict.ACCEPTED:
+                        releases.append(approved_cli.release_of(items, item))
+                    else:
+                        withdrawn.append(one)
+        if releases:
+            listing = approved_cli.list_releases(
+                cfg,
+                releases,
+                out=lambda: staging / LISTS_DIR,
+                handler_key=ctx.entry.handler_key,
+                prefix=LIST_PREFIX,
+                already=held.tracks,
+                excuse=frozenset({approved_cli.GONE, approved_cli.NO_IDENTIFIER}),
+                elsewhere="make the lists folder under download staging writable",
+            )
+            written = listing.written
+            if written.list_path is not None:
+                with jobs.open_store() as store:
+                    queued = acquire_cli.queue_list(
+                        store,
+                        cfg,
+                        written.list_path,
+                        handler_key=DOWNLOAD,
+                        extra={
+                            ORIGIN_KEY: {"run": run_id, "manifest": str(written.manifest_path)},
+                            RUN_KEY: run_id,
+                        },
+                    )
+        # SETTLED AFTER THE QUEUE AND BEFORE THE DRIVE. A go killed before this
+        # leaves its answers to the next go, which resumes the job and lists
+        # nothing it holds; one killed after it leaves the job for the next go
+        # to resume. An answer holding a release the provider did not answer
+        # for is left unsettled, so the next go asks for that release again.
+        retry = frozenset(
+            failed.release.release_id
+            for failed in (listing.failures if listing is not None else ())
+            if failed.kind in RETRY_KINDS
         )
-        written = listing.written
-        if written.list_path is not None:
-            with jobs.open_store() as store:
-                queued = acquire_cli.queue_list(
-                    store,
-                    cfg,
-                    written.list_path,
-                    handler_key=DOWNLOAD,
-                    extra={
-                        ORIGIN_KEY: {"run": run_id, "manifest": str(written.manifest_path)},
-                        RUN_KEY: run_id,
-                    },
-                )
-
-    # SETTLED AFTER THE QUEUE AND BEFORE THE DRIVE. A go killed before this
-    # line leaves its answers to the next go, whose listing passes over every
-    # track this job holds; one killed after it leaves an open job the next go
-    # resumes. An answer holding a release the provider did not answer for is
-    # left unsettled, so the next go asks for that release again.
-    retry = frozenset(
-        failed.release.release_id
-        for failed in (listing.failures if listing is not None else ())
-        if failed.kind in RETRY_KINDS
-    )
-    settled = sync_cli.settle_answers(
-        cfg,
-        summary.answers,
-        marker={"run": run_id, "job": queued.job_id if queued is not None else None},
-        keep=retry,
-    )
+        document = sync_cli.load_record(cfg)
+        settled = sync_cli.settle_in(
+            document,
+            summary.answers,
+            marker={"run": run_id, "job": queued.job_id if queued is not None else None},
+            keep=retry,
+        )
+        if settled:
+            sync_cli.write_record(cfg, document)
 
     if withdrawn:
         checks.append(
@@ -581,10 +615,12 @@ def go(
         _check("settled", "info", f"{settled} answer(s) taken by this go; it asks about none of them again")
     )
 
+    landed: list[str] = []
     if queued is not None:
         with jobs.open_store() as store:
-            queued, _warnings = acquire_cli.drive_queued(ctx, store, queued.job_id)
+            queued, drifted = acquire_cli.drive_queued(ctx, store, queued.job_id)
             done = jobs.progress(store, queued.job_id)["counts"][str(jobs.ItemState.DONE)]
+        warnings.extend(drifted)
         checks.append(
             _check(
                 "downloaded",
@@ -593,15 +629,8 @@ def go(
                 f"track(s) downloaded",
             )
         )
-        landed.extend(tail(staging, str(listing.written.manifest_path), run_id))
-    if landed:
-        checks.append(
-            _check(
-                "next",
-                "info",
-                "land it as any intake lands, in this order: " + "; then ".join(landed),
-            )
-        )
+        landed = tail(staging, str(listing.written.manifest_path), run_id)
+        checks.append(_next_check(landed))
     report["go"] = {
         **summary.to_json(),
         "declined": False,
@@ -616,10 +645,85 @@ def go(
         "carried": sorted(retry),
         "next": landed,
     }
-    downloaded = queued is not None or bool(summary.open_jobs)
     return ctx.envelope(
         data={"checks": checks, "summary": report},
-        outcome=Outcome.OK if downloaded or settled or wrote else Outcome.NO_OP,
+        outcome=Outcome.OK if queued is not None or settled or wrote else Outcome.NO_OP,
+        warnings=tuple(warnings),
+    )
+
+
+def _next_check(landed: Sequence[str]) -> dict[str, Any]:
+    return _check(
+        "next",
+        "info",
+        "land it as any intake lands, in this order, before the next go adds to "
+        "the same folder: " + "; then ".join(landed),
+    )
+
+
+def _resume(
+    ctx,
+    summary: Summary,
+    staging: Path,
+    checks: list[dict[str, Any]],
+    report: dict[str, Any],
+    *,
+    wrote: bool,
+) -> Envelope:
+    """Resume what earlier goes left unfinished, and queue nothing new.
+
+    ONE JOB PER GO. A resumed job and a new one would download into the same
+    staging folder under two manifests, and ``intake land`` lands a folder,
+    so the first landing would take both batches under one name and file the
+    other's tracks under no label. The answers saved since wait for the next
+    go, which lists nothing the resumed job holds.
+    """
+    warnings: list[dict[str, str]] = []
+    landed: list[str] = []
+    resumed: list[str] = []
+    with jobs.open_store() as store:
+        for job_id, _left in summary.open_jobs:
+            job = jobs.get(store, job_id)
+            if not job.is_open():
+                # STOPPED BY A SIGNAL OR ENDED HALF FAILED: re-armed, with
+                # every downloaded track left done.
+                jobs.retry(store, job_id)
+            job, drifted = acquire_cli.drive_queued(ctx, store, job_id)
+            warnings.extend(drifted)
+            resumed.append(job_id)
+            checks.append(
+                _check(f"resumed.{job_id}", "ok", f"resumed the earlier download {job_id}: {job.state}")
+            )
+            payload = dict(job.payload or {})
+            manifest = dict(payload.get(ORIGIN_KEY) or {}).get("manifest")
+            if isinstance(manifest, str) and manifest:
+                landed.extend(tail(staging, manifest, str(payload.get(RUN_KEY) or ctx.run.run_id)))
+    if summary.answers:
+        checks.append(
+            _check(
+                "waiting",
+                "info",
+                f"{len(summary.answers)} answer(s) wait for the next go, once this "
+                f"download is landed: crate label sync --go",
+            )
+        )
+    if landed:
+        checks.append(_next_check(landed))
+    report["go"] = {
+        **summary.to_json(),
+        "declined": False,
+        "job": None,
+        "resumed": resumed,
+        "list": None,
+        "manifest": None,
+        "withdrawn": [],
+        "carried": [],
+        "next": landed,
+    }
+    return ctx.envelope(
+        data={"checks": checks, "summary": report},
+        outcome=Outcome.OK,
+        warnings=tuple(warnings),
     )
 
 
@@ -637,6 +741,7 @@ __all__ = [
     "go",
     "held_by_goes",
     "pace_of",
+    "resumable",
     "summarise",
     "tail",
 ]

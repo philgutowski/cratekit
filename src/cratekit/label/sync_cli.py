@@ -253,44 +253,57 @@ def unsettled(document: Mapping[str, Any]) -> list[tuple[int, Mapping[str, Any]]
     ]
 
 
-def settle_answers(
-    cfg: config.Config,
+def settle_in(
+    document: dict[str, Any],
     answers: Sequence[tuple[int, str, str]],
     *,
     marker: Mapping[str, Any],
     keep: Container[str] = frozenset(),
 ) -> int:
-    """Mark the saved answers a go took, under the record's lock. Returns how many.
+    """Mark, in ``document``, the saved answers a go took. Returns how many.
 
-    ``answers`` names each one as ``(place, label, answered_at)``, and one whose
-    place now holds a different answer is left alone, so a record rewritten
-    while the go ran never has the wrong answer settled. An answer that took a
-    release named in ``keep`` is left for the next go.
+    The caller holds :func:`record_lock` and writes the document back with
+    :func:`write_record`, which is what lets the go plan, queue and settle as
+    one locked step. ``answers`` names each one as ``(place, label,
+    answered_at)``, and one whose place now holds a different answer is left
+    alone, so a record rewritten while the go waited never has the wrong
+    answer settled. An answer that took a release named in ``keep`` is left
+    for the next go.
     """
-    with _locked(cfg, "settling the answers a go took"):
-        document = load_record(cfg)
-        entries = document["answers"]
-        now = timestamp()
-        count = 0
-        for index, label_id, answered_at in answers:
-            if index >= len(entries):
-                continue
-            entry = entries[index]
-            if not isinstance(entry, Mapping) or entry.get(SETTLED):
-                continue
-            if (
-                _text(entry.get("label_id")) != label_id
-                or _text(entry.get("answered_at")) != answered_at
-            ):
-                continue
-            taken = entry.get("taken")
-            if isinstance(taken, list) and any(one in keep for one in taken):
-                continue
-            entries[index] = {**entry, SETTLED: {**marker, "at": now}}
-            count += 1
-        if count:
-            _write_record(cfg, document)
+    entries = document["answers"]
+    now = timestamp()
+    count = 0
+    for index, label_id, answered_at in answers:
+        if index >= len(entries):
+            continue
+        entry = entries[index]
+        if not isinstance(entry, Mapping) or entry.get(SETTLED):
+            continue
+        if (
+            _text(entry.get("label_id")) != label_id
+            or _text(entry.get("answered_at")) != answered_at
+        ):
+            continue
+        taken = entry.get("taken")
+        if isinstance(taken, list) and any(one in keep for one in taken):
+            continue
+        entries[index] = {**entry, SETTLED: {**marker, "at": now}}
+        count += 1
     return count
+
+
+def write_record(cfg: config.Config, document: Mapping[str, Any]) -> None:
+    """Write the record back. The caller holds :func:`record_lock`."""
+    _write_record(cfg, document)
+
+
+def record_lock(cfg: config.Config, doing: str):
+    """The record's own lock, for a caller that reads, decides and writes as one step.
+
+    BLOCKING, not refusing: a second go waits for the first to finish
+    planning, and then sees the job the first one queued.
+    """
+    return _locked(cfg, doing)
 
 
 def asked_releases(document: Mapping[str, Any], label_id: str) -> frozenset[str]:
@@ -1338,7 +1351,9 @@ __all__ = [
     "label_sync",
     "load_record",
     "record_answer",
-    "settle_answers",
+    "record_lock",
+    "settle_in",
     "size_text",
     "unsettled",
+    "write_record",
 ]
