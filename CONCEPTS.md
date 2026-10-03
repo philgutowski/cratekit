@@ -1160,6 +1160,20 @@ the renames it records do not roll back.
 *Avoid:* deciding from a title which pass marked a playlist, or reading it as
 the playlists cursor, which records what was resolved and not what was renamed.
 
+### Label folder
+A followed label's shape on the streaming account: one root folder named as
+the label, holding one private `<Label> <year>` year playlist per release year,
+each filled with that year's tracks from the label's confirmed catalogue
+(R-835). `crate label playlists` builds it add only, and the outbound ledger's
+`labels` map records the folder and each year playlist, which is what a second
+build reuses and what the playlists source excludes as `label-folder`, since a
+year playlist swept as intake would list the label's catalogue as missing.
+`crate label mark` prefixes the years a landed batch filed, through the mark
+record.
+
+*Avoid:* reading a year playlist as the label's releases in the library, which
+the Record Labels tree is, or as intake.
+
 ### Label debris
 An account playlist the source system's label batch built for one run and left
 behind, named `<label> LIBRARY`. The playlists source excludes any name ending

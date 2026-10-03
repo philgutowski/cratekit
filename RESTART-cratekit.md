@@ -4,6 +4,34 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**R-835 built, 2026-10-03, on `relay/252`, issue #252: a followed label as
+a folder of year playlists on the account.** `crate label playlists LABEL`
+plans, from the catalogue the sweep crawls and verifies
+(`sweep.confirmed_releases`), one root folder named as the label and one
+private `<Label> <year>` playlist per release year with that year's tracks,
+shows it at the explicit gate `label.playlists.confirm`, and on apply creates
+what is missing, puts each year in the folder and adds a hundred tracks a
+request. What the outbound ledger's new `labels` map records, or one exact
+name under the folder, is reused and never made twice; a second run plans
+nothing; a refusal part way resumes without a duplicate. A catalogue read in
+part, or one confirming nothing, refuses before the gate. `crate label mark
+LABEL --xml INTAKE` prefixes `DOWNLOADED ` on the years the intake file's own
+Record Labels tree filed under the label, behind `label.mark.confirm`, into
+the mark record, so `sync unmark --pass` takes it off. The account protocol
+gained five add only folder members, two listing shapes page the folder
+reads, and the playlists source now excludes every recorded year playlist
+as `label-folder`. Feature row 23 is `module` and `dj-label` is claimed.
+**DJ_tools carries a local commit, `docs(plan): Feature Inventory row 23
+moves from Defer to Module`, not pushed,** because the parity drift check
+reads that plan's cell beside this registry. Battery on the branch: ruff
+clean, the suite green, the scan clean. One round of the built in review,
+ten findings, nine fixed with a test each, R-873 filed from the tenth.
+Mutation table 24 of 25 killed after ten zeros were given a test, F13
+maintainer facing, `docs/mutation/r835-notes.md`. Residuals R-871 to R-874,
+none on the board bar. **Owed, attended:** one label built on the author's
+account and read back in the web player, the close R-835 names. Main's
+highest residual number is R-874.
+
 **U108 built, 2026-10-03, on `relay/247`, issue #247: the guided label
 sync's go.** `crate label sync` now ends its walk, once every label with
 something new is answered, at one explicit gate, `label.sync.confirm`, over
