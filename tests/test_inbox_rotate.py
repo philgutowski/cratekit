@@ -173,7 +173,14 @@ def _genre_playlist(cfg: config.Config) -> str:
     return _node(cfg, "House Low", under=folder, tracks=tuple(t.content_id for t in TRACKS))
 
 
-def _record_landing(cfg: config.Config, playlist_id: str, name: str, landed: date) -> None:
+def _record_landing(
+    cfg: config.Config,
+    playlist_id: str,
+    name: str,
+    landed: date,
+    *,
+    source: session.SourceState = session.SourceState.COMMITTED,
+) -> None:
     """A native landing's session record naming its batch playlist, closed."""
     started = datetime.combine(landed, datetime.min.time().replace(hour=12)).astimezone()
     record = session.SessionRecord(
@@ -181,7 +188,7 @@ def _record_landing(cfg: config.Config, playlist_id: str, name: str, landed: dat
         workflow=native.WORKFLOW,
         started=started.isoformat(),
         state=session.SessionState.CLOSED,
-        sources={INTAKE: str(session.SourceState.COMMITTED)},
+        sources={INTAKE: str(source)},
         ended=started.isoformat(),
         detail={native.BATCH_PLAYLIST_KEY: {"id": playlist_id, "name": name}},
     )
@@ -858,3 +865,13 @@ def test_a_batch_created_late_in_the_evening_is_aged_from_its_local_day(
     finally:
         monkeypatch.delenv("TZ")
         time.tzset()
+
+
+def test_a_landing_record_that_committed_nothing_dates_nothing(native_library):
+    """A record naming a playlist whose commit never landed is not the batch's landing."""
+    cfg, root_id = native_library
+    batch = _node(cfg, "2026-09-30 Set", under=root_id, age=3, tracks=("t1",), batch_folder=True)
+    refused = [state for state in session.SourceState if state is not session.SourceState.COMMITTED]
+    _record_landing(cfg, batch, "2026-09-30 Set", TODAY - timedelta(days=60), source=refused[0])
+    (kept,) = _plan(cfg).kept
+    assert (kept.aged_from, kept.age_days) == (rotate.AGED_FROM_CREATED, 3)
