@@ -570,6 +570,8 @@ def run_export_item(
         expected=str(payload.get(REMOTE) or ""),
         # THE WHOLE CRATE, not this item. See ``ExportPlan.contents``.
         contents=[str(track) for track in payload.get(shell.TRACKS) or ()],
+        # THE EXPORT'S DATE, so a later prune can refuse an older export (R-836).
+        written=exported_on(Path(str(payload[EXPORT])), cfg),
     )
     report = outbound_export.apply(cfg, remote, planned)
     return {
@@ -590,6 +592,12 @@ def run_export_item(
             for row in report.unmatched
         ],
     }
+
+
+def exported_on(path: Path, cfg: config.Config) -> str:
+    """The collection export's date as ISO text, or empty when it cannot be read."""
+    written = source.export_age(path, limit_days=cfg.outbound.export_stale_days).written
+    return written.isoformat() if written is not None else ""
 
 
 def handle(job, item, cfg) -> jobs.Produced:

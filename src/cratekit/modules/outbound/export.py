@@ -68,6 +68,9 @@ class ExportPlan:
     adopts: str = ""
     expected: str = ""
     contents: tuple[str, ...] = ()
+    #: The ISO date of the collection export the plan was read from, recorded
+    #: so ``export prune`` can refuse an older one (R-836). Empty when unread.
+    written: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +98,7 @@ def plan(
     adopts: str = "",
     expected: str = "",
     contents: Sequence[str] | None = None,
+    written: str = "",
 ) -> ExportPlan:
     """Match every track. Unmatched stay on the plan; they are not omitted.
 
@@ -129,6 +133,7 @@ def plan(
         unmatched=tuple(unmatched),
         adopts=adopts,
         expected=expected,
+        written=written,
         contents=tuple(
             str(item)
             for item in (
@@ -166,6 +171,7 @@ def apply(
         adopts=planned.adopts,
         expected=planned.expected,
         contents=planned.contents,
+        written=planned.written,
     )
     remote_id = reserved.remote_id
     already_on = set(account.playlist_tracks(remote_id))

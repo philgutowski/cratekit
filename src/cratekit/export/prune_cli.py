@@ -9,9 +9,11 @@ takes them off. The planning and the apply are
 :mod:`cratekit.modules.outbound.prune`'s.
 
 THE LIBRARY PLAYLIST IS READ FROM A COLLECTION EXPORT, as ``export playlist``
-reads it, and its age is shown on the gate: an export older than the playlist
-reads every track added since as gone, which is why the person sees the date
-beside the tracks it would take off. A row the provider does not match, or a
+reads it, and its age is shown on the gate. An export older than the one the
+remote playlist was last written from would read every track added since as
+gone, so the outbound ledger keeps that date and such an export leaves the
+playlist alone. A record from before the date was kept has none, and then the
+age on the gate is the only warning. A row the provider does not match, or a
 row the export names and does not carry, leaves the playlist alone, since its
 track may be one the ledger recorded.
 
@@ -77,7 +79,14 @@ def export_prune(ctx) -> Envelope:
         )
         wanted = frozenset(one for _row, one in matched.matched)
         unmatched = len(matched.unmatched) + len(resolved.dangling)
-    planned = prune.plan_export(cfg, resolved.key, resolved.name, wanted, unmatched, remote)
+    # AN EXPORT OLDER THAN THE ONE THE PLAYLIST WAS LAST WRITTEN FROM is not
+    # read for a prune: every track added since would read as gone. A record
+    # written before the date was kept has none, and only the age is shown.
+    given = age.written.isoformat() if age.written is not None else ""
+    older = record.written if record is not None and ledger.older_than(given, record.written) else ""
+    planned = prune.plan_export(
+        cfg, resolved.key, resolved.name, wanted, unmatched, remote, older=older
+    )
     payload = prune.payload(planned, kind=prune.EXPORTED, subject=resolved.key, digest=digest_of)
     # AN EMPTY PLAN STILL ASKS, so a person always sees what the prune judged.
     option = ctx.gate.require(

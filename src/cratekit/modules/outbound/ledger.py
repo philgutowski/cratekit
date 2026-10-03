@@ -463,6 +463,7 @@ def reserve_playlist(
     adopts: str = "",
     expected: str = "",
     contents: Iterable[str] = (),
+    written: str = "",
 ) -> Reserved:
     """The remote playlist for this crate, creating one only if none is recorded.
 
@@ -514,11 +515,12 @@ def reserve_playlist(
     lock = _locked(cfg)
     try:
         document = _load(cfg)
+        noted = _note_written(document, playlist_key, expected, written)
         playlists = document["playlists"]
         own = str((playlists.get(playlist_key) or {}).get("remote_id") or "")
         if adopts:
             if own:
-                return _settled(cfg, document, playlist_key, held)
+                return _settled(cfg, document, playlist_key, held, dirty=noted)
             if not (playlists.get(adopts) or {}).get("remote_id"):
                 raise _moved_on(
                     f"the remote playlist recorded for {adopts!r}, which this "
@@ -541,9 +543,9 @@ def reserve_playlist(
                     playlist=playlist_key,
                     remote_id=expected,
                 )
-            return _settled(cfg, document, holders[0], ())
+            return _settled(cfg, document, holders[0], (), dirty=noted)
         if own:
-            return _settled(cfg, document, playlist_key, held)
+            return _settled(cfg, document, playlist_key, held, dirty=noted)
         remote_id = create()
         record = playlists.get(playlist_key) or {"added": []}
         record["remote_id"] = remote_id
@@ -552,6 +554,49 @@ def reserve_playlist(
         return _settled(cfg, document, playlist_key, held, created=True, dirty=True)
     finally:
         lock.__exit__(None, None, None)
+
+
+def _note_written(
+    document: dict[str, Any], playlist_key: str, expected: str, written: str
+) -> bool:
+    """Carry the export's date onto the record it writes to, kept at its latest.
+
+    ``written`` is the ISO date of the collection export the write was made
+    from (R-836). ``export prune`` refuses to read an export older than the
+    record's, since every track added since would read as gone. The record is
+    found by key, or by the confirmed remote playlist when it has moved. A
+    date that is not newer than the recorded one changes nothing. True when
+    the document changed, so the caller writes it.
+    """
+    if not written:
+        return False
+    playlists = document["playlists"]
+    record = playlists.get(playlist_key)
+    if not (record or {}).get("remote_id") and expected:
+        record = next(
+            (one for one in playlists.values() if str(one.get("remote_id") or "") == expected),
+            record,
+        )
+    if record is None:
+        record = playlists.setdefault(playlist_key, {"added": []})
+    if _later(written, str(record.get("written") or "")):
+        record["written"] = written
+        return True
+    return False
+
+
+def _later(candidate: str, recorded: str) -> bool:
+    """Whether one ISO date is after another, an unreadable recorded one losing."""
+    from datetime import datetime
+
+    try:
+        new = datetime.fromisoformat(candidate)
+    except ValueError:
+        return False
+    try:
+        return new > datetime.fromisoformat(recorded)
+    except ValueError:
+        return True
 
 
 def _settled(
@@ -598,6 +643,8 @@ def _move(document: dict[str, Any], recorded_key: str, playlist_key: str) -> Non
     merged = _listed(record, "added")
     merged += [item for item in _listed(stub, "added") if item not in merged]
     record["added"] = merged
+    if _later(str(stub.get("written") or ""), str(record.get("written") or "")):
+        record["written"] = stub["written"]
     record["formerly"] = [*_listed(record, "formerly"), recorded_key]
     playlists[playlist_key] = record
 
@@ -1012,6 +1059,9 @@ class ExportedPlaylist:
     remote_id: str
     added: frozenset[str] = frozenset()
     pruned: frozenset[str] = frozenset()
+    #: The ISO date of the newest collection export this playlist was written
+    #: from, or empty for a record written before this build kept one.
+    written: str = ""
 
 
 def exported_playlist(cfg: config.Config, playlist_key: str) -> ExportedPlaylist | None:
@@ -1025,7 +1075,20 @@ def exported_playlist(cfg: config.Config, playlist_key: str) -> ExportedPlaylist
         remote_id=remote,
         added=frozenset(_listed(record, "added")),
         pruned=frozenset(_listed(record, "pruned")),
+        written=str(record.get("written") or ""),
     )
+
+
+def older_than(given: str, recorded: str) -> bool:
+    """Whether an export dated ``given`` is older than the recorded date.
+
+    An export whose date could not be read, ``given`` empty, is older than any
+    recorded date, since it cannot be shown to be newer. No recorded date is
+    nothing to be older than.
+    """
+    if not recorded:
+        return False
+    return not given or _later(recorded, given)
 
 
 def _moved_to_pruned(entry: dict[str, Any], taken: Iterable[str]) -> None:

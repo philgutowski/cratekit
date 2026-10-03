@@ -6088,15 +6088,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # in the pin above.
     # Re-pinned on the residual finding "A track the genre gate dropped stays
     # in its label year playlist, since the account protocol has no remove",
-    # 2026-10-03: 623 to 630 distinct, non-keys 429 to 435. SEVEN joined and
+    # 2026-10-03: 623 to 632 distinct, non-keys 429 to 437. NINE joined and
     # nothing left, each absent from `main`'s own `src` by a set difference of
     # the two trees. outbound-remove-refused is the key named in the pin
     # above. label-prune and export-prune are the plan KINDS the two prune
-    # verbs' digests are taken under. take-off and left-alone are the ACTIONS
-    # a prune plan gives a track it takes off and a playlist it does not
-    # touch. not-product-made and positions-unknown are the PROBLEMS a refused
-    # removal names in its detail.
-    assert (len(literals), len(literals - set(causes))) == (630, 435), (
+    # verbs' digests are taken under. take-off, already-off and left-alone
+    # are the ACTIONS a prune plan gives a track it takes off, a track already
+    # off that it records, and a playlist or track it does not touch.
+    # not-product-made, positions-unknown and read-back-differs are the
+    # PROBLEMS a refused removal names in its detail.
+    assert (len(literals), len(literals - set(causes))) == (632, 437), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

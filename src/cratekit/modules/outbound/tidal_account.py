@@ -848,8 +848,9 @@ class TidalAccount:
 
         READ BACK, NOT TRUSTED. After each request the playlist is read again
         and must equal what it held with exactly those positions gone. Any
-        other answer is refused, since a removal that took the wrong track is
-        the one outcome this member exists to rule out.
+        other answer is refused, ``outbound-remove-refused`` and not retryable,
+        since a removal that took the wrong track is the one outcome this
+        member exists to rule out.
         """
         identifier = str(playlist_id)
         wanted = [str(one) for one in dict.fromkeys(remote_ids) if str(one)]
@@ -866,14 +867,14 @@ class TidalAccount:
             )
         asked = set(wanted)
         doing = f"take {len(wanted)} tracks off the playlist {identifier}"
-        while wanted:
-            playlist = self._playlist(identifier)
-            before = self._positions(identifier, playlist)
+        playlist = self._playlist(identifier) if wanted else None
+        before = self._positions(identifier, playlist) if wanted else []
+        while playlist is not None:
             at = sorted(i for i, one in enumerate(before) if one in asked)[:REMOVE_CHUNK]
             if not at:
                 break
             accepted = self._call(
-                doing, lambda at=at: playlist.remove_by_indices(at), retries=0
+                doing, lambda at=at, playlist=playlist: playlist.remove_by_indices(at), retries=0
             )
             if accepted is False or accepted is _ABSENT:
                 raise account.provider_failure(
@@ -881,17 +882,27 @@ class TidalAccount:
                 )
             gone = set(at)
             expected = [one for i, one in enumerate(before) if i not in gone]
-            after = self._positions(identifier, self._playlist(identifier))
-            if after != expected:
-                raise account.provider_failure(
-                    RuntimeError(
-                        "the playlist read back after the removal is not what it "
-                        "held with the asked positions gone"
+            # THE READ BACK IS THE NEXT REQUEST'S READ, so a second chunk opens
+            # and reads the playlist once rather than twice.
+            playlist = self._playlist(identifier)
+            before = self._positions(identifier, playlist)
+            if before != expected:
+                # NOT ``provider_failure``, whose remedy is to run it again: a
+                # playlist that did not change as asked may have lost the wrong
+                # track, and another removal by position would compound it.
+                raise refuse(
+                    "outbound-remove-refused",
+                    f"the playlist {identifier} read back after a removal is not "
+                    f"what it held with the asked positions gone, so a track other "
+                    f"than the asked ones may have come off, and nothing more was sent",
+                    steps=(
+                        "check the playlist by hand in the provider's own player "
+                        "before running the prune again",
                     ),
-                    doing,
+                    scope=Scope.RUN,
+                    origin=("outbound", "account"),
+                    detail={"playlist_id": identifier, "problem": "read-back-differs"},
                 )
-            if not asked.intersection(after):
-                break
         held = set(self._members.get(identifier, ()))
         return tuple(one for one in wanted if one not in held)
 

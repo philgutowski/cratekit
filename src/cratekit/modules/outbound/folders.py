@@ -87,9 +87,13 @@ class LabelCatalogue:
     gone: int = 0
     suppressed: int = 0
     #: Every confirmed release whose tracks were read, release identifier to
-    #: its year, empty when undated, and its playable tracks (R-836). The
-    #: prune reads it to tell a held release's tracks from a kept one's.
+    #: its year, empty when undated, and every track it carries, playable or
+    #: not (R-836). The prune reads it to tell a held release's tracks from a
+    #: kept one's.
     by_release: Mapping[str, tuple[str, tuple[str, ...]]] = field(default_factory=dict)
+    #: Releases the verifier answered ``mismatch``, credited to another label,
+    #: which is what the prune reads as the catalogue no longer confirming one.
+    mismatched: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

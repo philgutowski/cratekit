@@ -20,7 +20,15 @@ the outbound ledger records it as added by this product, so a track a person
 put on the playlist by hand is never taken off, and only from a playlist
 ``ledger.product_made`` vouches for. A year playlist adopted by its name under
 the label's folder was made by the source system or a person, and is said and
-left alone.
+left alone. A track the playlist holds more than once is left alone too: this
+product never adds a member twice, so a second copy is a person's, and the
+removal takes every copy.
+
+ABSENCE IS NEVER THE EVIDENCE. A label year track leaves only when a release
+the read REACHED says so: one the genre gate holds, or one the verifier
+credits to another label. A track no release in the read carries stays,
+however the read came out, since an empty or short read looks exactly like a
+label whose catalogue moved on.
 
 THE PLAN READS AND WRITES NOTHING. The apply takes tracks off in chunks and
 records each chunk as it lands, moving it from ``added`` to ``pruned``, so a
@@ -32,6 +40,7 @@ Layer: modules.
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -75,6 +84,13 @@ class PlaylistPrune:
     name: str
     remote_id: str
     take: tuple[Taken, ...] = ()
+    #: Tracks that should leave and are already off the playlist, recorded
+    #: as taken off with no call to the provider. A removal that landed
+    #: before a failure part way, or a person's own, ends here.
+    settle: tuple[str, ...] = ()
+    #: Tracks that should leave and are on the playlist more than once, left
+    #: alone since the second copy is a person's.
+    twice: tuple[str, ...] = ()
     #: Why the playlist is left alone, when it is. A playlist left alone
     #: takes nothing off however many tracks it would otherwise lose.
     why: str = ""
@@ -83,7 +99,7 @@ class PlaylistPrune:
 
     @property
     def writes(self) -> bool:
-        return bool(self.take) and not self.why
+        return bool(self.take or self.settle) and not self.why
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,7 +123,12 @@ class Plan:
             "kind": self.kind,
             "subject": self.subject,
             "playlists": [
-                [one.key, one.remote_id, sorted(taken.remote_id for taken in one.take)]
+                [
+                    one.key,
+                    one.remote_id,
+                    sorted(taken.remote_id for taken in one.take),
+                    sorted(one.settle),
+                ]
                 for one in self.playlists
                 if one.writes
             ],
@@ -119,6 +140,8 @@ class Pruned:
     """What an apply took off, by remote playlist, for the report and a failure."""
 
     taken: dict[str, list[str]] = field(default_factory=dict)
+    #: Tracks recorded as taken off that were already off the playlist.
+    settled: dict[str, list[str]] = field(default_factory=dict)
 
     @property
     def count(self) -> int:
@@ -137,28 +160,44 @@ def _incomplete(subject: str, what: str) -> CratekitError:
     )
 
 
-def _named(
-    account: RemoteAccount, remote_id: str, wanted: Iterable[str]
-) -> tuple[tuple[Taken, ...], str]:
-    """The wanted tracks the playlist holds, in playlist order, or why it went unread.
+def _step(
+    account: RemoteAccount, key: str, name: str, remote_id: str, leaving: Iterable[str]
+) -> PlaylistPrune | None:
+    """One playlist's step from the tracks that should leave it, read against it.
 
-    A track recorded as added and no longer on the playlist was taken off
-    already, by a person or an earlier prune, and is not planned again.
+    A track on the playlist once is taken off, one on it more than once is
+    left alone, and one no longer on it is settled. None when there is
+    nothing to say. A playlist that could not be read is left alone, said.
     """
+    wanted = sorted(set(leaving))
+    if not wanted:
+        return None
     try:
         names = account.track_names(remote_id)
+        order = account.playlist_tracks(remote_id)
     except CratekitError as exc:
         if exc.cause.reason != "unavailable-transient":
             raise
-        return (), f"the playlist could not be read, so nothing is taken off it: {exc.cause.message}"
+        return PlaylistPrune(
+            key=key,
+            name=name,
+            remote_id=remote_id,
+            why=f"the playlist could not be read, so nothing is taken off it: {exc.cause.message}",
+            would=len(wanted),
+        )
+    copies = Counter(order)
     asked = set(wanted)
-    return (
-        tuple(
+    return PlaylistPrune(
+        key=key,
+        name=name,
+        remote_id=remote_id,
+        take=tuple(
             Taken(remote_id=one, artist=artist, title=title)
             for one, (artist, title) in names.items()
-            if one in asked
+            if one in asked and copies[one] == 1
         ),
-        "",
+        settle=tuple(one for one in wanted if one not in names and copies[one] == 0),
+        twice=tuple(one for one in wanted if copies[one] > 1),
     )
 
 
@@ -167,22 +206,27 @@ def plan_label(
     catalogue: LabelCatalogue,
     held: Iterable[str],
     account: RemoteAccount,
+    *,
+    tracks_of: Callable[[str], tuple[str, ...]] | None = None,
 ) -> Plan:
     """What leaves each year playlist this product created for one label.
 
     ``held`` is the release identifiers the genre gate holds in force for the
-    label, read from the review database, which is local.
+    label, read from the review database, which is local. ``tracks_of`` reads
+    a release's tracks for a held or mismatched release the catalogue read
+    did not, and is asked only while a recorded track is still unexplained.
 
     A TRACK LEAVES A YEAR WHEN THE LEDGER RECORDS IT AS ADDED there, no kept
-    release of that year carries it, and one of two things is true of it:
+    release of that year or of no year carries it, and a release the read
+    reached says it should go:
 
     * a release the gate holds carries it;
-    * no confirmed release of the label carries it at all. Judged only when
-      every confirmed release's tracks were read, since a release the
-      provider no longer has could be the one that carries it.
+    * a release the verifier credits to another label carries it. Judged
+      only when every confirmed release's tracks were read, since a release
+      the provider no longer has could be the one that keeps it.
 
-    A track on a held release and a kept one of the same year stays, since
-    the kept release asked for it.
+    A track on a held release and a kept one stays, since the kept release
+    asked for it. A track on no release the read reached stays, said.
     """
     if len(catalogue.by_release) + catalogue.gone != catalogue.releases:
         raise _incomplete(
@@ -191,32 +235,58 @@ def plan_label(
             f"with their tracks and {catalogue.gone} gone",
         )
     holding = set(held)
+    judged = catalogue.gone == 0
     kept: dict[str, set[str]] = {}
+    undated: set[str] = set()
     on_held: set[str] = set()
-    known: set[str] = set()
     for release_id, (year, tracks) in catalogue.by_release.items():
-        known.update(tracks)
         if release_id in holding:
             on_held.update(tracks)
         elif year:
             kept.setdefault(year, set()).update(tracks)
-    judged = catalogue.gone == 0
+        else:
+            undated.update(tracks)
+    on_other: set[str] = set()
+    shape = ledger.label_shape(cfg, catalogue.label_id)
+
+    def staying(year: str) -> set[str]:
+        return kept.get(year, set()) | undated
+
+    unexplained = {
+        one
+        for year, recorded in shape.years.items()
+        for one in recorded.added
+        if one not in staying(year) and one not in on_held
+    }
+    unread = sorted(holding - set(catalogue.by_release))
+    if judged:
+        unread += sorted(set(catalogue.mismatched) - set(catalogue.by_release))
+    for release_id in unread:
+        if tracks_of is None or not unexplained:
+            break
+        tracks = set(tracks_of(release_id))
+        (on_held if release_id in holding else on_other).update(tracks)
+        unexplained -= tracks
     notes: list[str] = []
     if not judged:
         notes.append(
             f"{catalogue.gone} confirmed release(s) the provider no longer has, so a "
-            f"track no longer confirmed is not judged and only the tracks of held "
-            f"releases are taken off"
+            f"release credited to another label is not judged and only the tracks "
+            f"of held releases are taken off"
         )
-    shape = ledger.label_shape(cfg, catalogue.label_id)
+    if unexplained:
+        notes.append(
+            f"{len(unexplained)} recorded track(s) are on no release this read "
+            f"reached, and a release the read did not reach is not evidence, so "
+            f"they stay"
+        )
     steps: list[PlaylistPrune] = []
     for year in sorted(shape.years):
         recorded = shape.years[year]
-        staying = kept.get(year, set())
         leaving = [
             one
             for one in sorted(recorded.added)
-            if one not in staying and (one in on_held or (judged and one not in known))
+            if one not in staying(year) and (one in on_held or (judged and one in on_other))
         ]
         if not leaving:
             continue
@@ -235,18 +305,9 @@ def plan_label(
                 )
             )
             continue
-        take, unread = _named(account, recorded.remote_id, leaving)
-        if unread:
-            steps.append(
-                PlaylistPrune(
-                    key=year, name=name, remote_id=recorded.remote_id, why=unread,
-                    would=len(leaving),
-                )
-            )
-        elif take:
-            steps.append(
-                PlaylistPrune(key=year, name=name, remote_id=recorded.remote_id, take=take)
-            )
+        step = _step(account, year, name, recorded.remote_id, leaving)
+        if step is not None and (step.take or step.settle or step.twice or step.why):
+            steps.append(step)
     return Plan(kind=LABEL, subject=catalogue.label_id, playlists=tuple(steps), notes=tuple(notes))
 
 
@@ -256,7 +317,9 @@ def plan_export(
     name: str,
     wanted: Iterable[str],
     unmatched: int,
-    account: RemoteAccount,
+    account: RemoteAccount | None,
+    *,
+    older: str = "",
 ) -> Plan:
     """What leaves the remote playlist one library playlist was exported to.
 
@@ -266,7 +329,9 @@ def plan_export(
 
     A PLAYLIST WITH ANY UNMATCHED ROW IS LEFT ALONE. That row's track may be
     one of the recorded ones, and a match that failed today would otherwise
-    read as a track that left the playlist.
+    read as a track that left the playlist. So is one whose export is older
+    than the one it was last written from, ``older`` being that date: every
+    track added since would read as gone.
     """
     record = ledger.exported_playlist(cfg, playlist_key)
     if record is None:
@@ -282,28 +347,29 @@ def plan_export(
     leaving = [one for one in sorted(record.added) if one not in staying]
     if not leaving:
         return Plan(kind=EXPORTED, subject=playlist_key)
-    if unmatched:
-        step = PlaylistPrune(
+    why = ""
+    if older:
+        why = (
+            f"this collection export is older than the one the playlist was last "
+            f"written from, on {older}, so a track added since would read as gone; "
+            f"export the collection again"
+        )
+    elif unmatched:
+        why = (
+            f"{unmatched} row(s) of the library playlist matched no track on the "
+            f"account, so which recorded tracks left it cannot be told"
+        )
+    if why or account is None:
+        step: PlaylistPrune | None = PlaylistPrune(
             key=playlist_key,
             name=name,
             remote_id=record.remote_id,
-            why=(
-                f"{unmatched} row(s) of the library playlist matched no track on the "
-                f"account, so which recorded tracks left it cannot be told"
-            ),
+            why=why or "no account was opened to read the playlist",
             would=len(leaving),
         )
     else:
-        take, unread = _named(account, record.remote_id, leaving)
-        step = PlaylistPrune(
-            key=playlist_key,
-            name=name,
-            remote_id=record.remote_id,
-            take=take,
-            why=unread,
-            would=len(leaving) if unread else 0,
-        )
-    if not (step.take or step.why):
+        step = _step(account, playlist_key, name, record.remote_id, leaving)
+    if step is None:
         return Plan(kind=EXPORTED, subject=playlist_key)
     return Plan(kind=EXPORTED, subject=playlist_key, playlists=(step,))
 
@@ -320,27 +386,35 @@ def _not_made(remote_id: str) -> CratekitError:
     )
 
 
+def _record(cfg: config.Config, planned: Plan, step: PlaylistPrune, taken: Iterable[str]) -> None:
+    if planned.kind == LABEL:
+        ledger.record_label_pruned(cfg, planned.subject, step.key, taken)
+    else:
+        ledger.record_playlist_pruned(cfg, step.key, taken)
+
+
 def apply(cfg: config.Config, account: RemoteAccount, planned: Plan, done: Pruned) -> Pruned:
     """Take the planned tracks off, recording each chunk as it lands, into ``done``.
 
     ``done`` is the caller's, so a raise part way leaves in it what was taken
     off before the raise, for the refusal to name. The ledger is asked again
-    before each playlist, since the plan was read in another invocation.
+    before each playlist, since the plan was read in another invocation. A
+    settled track is recorded first and sends nothing to the provider.
     """
     for step in planned.playlists:
         if not step.writes:
             continue
         if not ledger.product_made(cfg, step.remote_id):
             raise _not_made(step.remote_id)
+        if step.settle:
+            _record(cfg, planned, step, step.settle)
+            done.settled.setdefault(step.remote_id, []).extend(step.settle)
         ids = [taken.remote_id for taken in step.take]
         for start in range(0, len(ids), CHUNK):
             chunk = tuple(ids[start : start + CHUNK])
             gone = set(account.remove_tracks(step.remote_id, chunk))
             taken = [one for one in chunk if one in gone]
-            if planned.kind == LABEL:
-                ledger.record_label_pruned(cfg, planned.subject, step.key, taken)
-            else:
-                ledger.record_playlist_pruned(cfg, step.key, taken)
+            _record(cfg, planned, step, taken)
             done.taken.setdefault(step.remote_id, []).extend(taken)
     return done
 
@@ -356,6 +430,7 @@ def payload(
     identity = planned.identity() if planned is not None else {"kind": kind, "subject": subject}
     items: list[dict[str, Any]] = []
     for step in planned.playlists if planned is not None else ():
+        where = {"playlist": step.remote_id, "key": step.key, "name": step.name}
         if step.why:
             items.append(
                 {
@@ -373,14 +448,25 @@ def payload(
             {
                 "id": taken.remote_id,
                 "kind": "track",
-                "playlist": step.remote_id,
-                "key": step.key,
-                "name": step.name,
+                **where,
                 "action": "take-off",
                 "artist": taken.artist,
                 "title": taken.title,
             }
             for taken in step.take
+        )
+        items.extend(
+            {"id": one, "kind": "track", **where, "action": "already-off"} for one in step.settle
+        )
+        items.extend(
+            {
+                "id": one,
+                "kind": "track",
+                **where,
+                "action": "left-alone",
+                "why": "on the playlist more than once, and a second copy is a person's",
+            }
+            for one in step.twice
         )
     return {
         "digest": digest(identity),
@@ -400,8 +486,17 @@ def shown(planned: Plan) -> dict[str, Any]:
     for step in planned.playlists:
         if step.why:
             lists[step.name] = f"left alone, {step.why} ({step.would} track(s) would leave)"
-        else:
-            lists[step.name] = [taken.said() for taken in step.take]
+            continue
+        lines: list[str] = [taken.said() for taken in step.take]
+        if step.settle:
+            lines.append(
+                f"and {len(step.settle)} track(s) already off the playlist, recorded as taken off"
+            )
+        if step.twice:
+            lines.append(
+                f"and {len(step.twice)} track(s) on the playlist more than once, left alone"
+            )
+        lists[step.name] = lines
     said: dict[str, Any] = {
         "take off": lists or "nothing: every playlist already holds only what it should",
         "removes only": (
@@ -460,7 +555,11 @@ def failed_part_way(
 def finished(ctx, payload: dict[str, Any], planned: Plan, done: Pruned) -> Any:
     """The envelope of an apply, with what was taken off riding on the totals."""
     names = {step.remote_id: step.name for step in planned.playlists}
-    totals = {**payload["totals"], "applied": {"taken": report(done, names)}}
+    applied = {
+        "taken": report(done, names),
+        "settled": {names.get(remote, remote): list(ids) for remote, ids in done.settled.items()},
+    }
+    totals = {**payload["totals"], "applied": applied}
     return ctx.envelope(data={**payload, "totals": totals}, outcome=Outcome.OK)
 
 

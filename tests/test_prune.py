@@ -23,6 +23,7 @@ from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.core.review import Queue
 from cratekit.label import catalogue, sweep
+from cratekit.label import registry as labels
 from cratekit.modules.outbound import export as outbound_export
 from cratekit.modules.outbound import ledger, prune, tidal_account
 from tests import outbound_fakes
@@ -51,11 +52,30 @@ LISTED = [
 CONFIRMED = frozenset({"r1", "r2", "r3", "r4", "r5"})
 
 
-def _catalogue(confirmed=CONFIRMED, listed=None) -> FakeCatalogue:
-    return FakeCatalogue(
+class _Credited(FakeCatalogue):
+    """The fake catalogue, with releases the verifier credits to another label."""
+
+    def __init__(self, *args, elsewhere=(), **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.elsewhere = frozenset(elsewhere)
+
+    def search_release(self, claimed, release) -> dict:
+        if str(getattr(release, "id", "") or "") in self.elsewhere:
+            return {
+                "verdict": "mismatch",
+                "resolved_label": "Another Label",
+                "source": "fake-catalogue",
+                "notes": "credited as 'Another Label'",
+            }
+        return super().search_release(claimed, release)
+
+
+def _catalogue(confirmed=CONFIRMED, listed=None, elsewhere=()) -> FakeCatalogue:
+    return _Credited(
         artists={LABEL_ID: FakePagedArtist(list(LISTED if listed is None else listed))},
         releases=dict(RELEASES),
-        confirmed=set(confirmed),
+        confirmed=set(confirmed) - set(elsewhere),
+        elsewhere=elsewhere,
     )
 
 
@@ -87,7 +107,7 @@ def _prune(option: str = "apply") -> tuple[int, dict]:
     return _two_acts(["label", "prune", LABEL], PRUNE, option)
 
 
-def _hold(cfg, *release_ids: str) -> None:
+def _hold(cfg, *release_ids: str, genres=("Christian",)) -> None:
     with review.open_store(cfg) as store:
         for release_id in release_ids:
             review.hold(
@@ -99,7 +119,7 @@ def _hold(cfg, *release_ids: str) -> None:
                 group=LABEL_ID,
                 name=LABEL,
                 reason="held",
-                detail={"genres": ["Christian"], "kind": "dance"},
+                detail={"genres": list(genres), "kind": "dance"},
                 run_id="run-1",
             )
 
@@ -154,14 +174,37 @@ def test_a_held_release_plans_exactly_its_tracks_and_approved_only_they_leave(bu
 
 
 def test_a_release_the_catalogue_no_longer_confirms_plans_its_tracks(built):
+    """Credited to another label is the catalogue saying so; its tracks are read for it."""
     built.monkeypatch.setattr(
-        catalogue, "resolve", catalogue_factory(_catalogue(confirmed=CONFIRMED - {"r2"}))
+        catalogue, "resolve", catalogue_factory(_catalogue(elsewhere={"r2"}))
     )
     code, done = _prune()
     assert code == int(ExitCode.OK), done
     assert _taken(done) == [("pl-2", "t3")]
     assert built.account.playlists["pl-2"] == []
     assert built.account.playlists["pl-1"] == ["t1", "t2"]
+
+
+def test_a_release_merely_unconfirmed_is_not_evidence_and_its_tracks_stay(built):
+    """No credit found is an absence. The track stays and the gate says why."""
+    built.monkeypatch.setattr(
+        catalogue, "resolve", catalogue_factory(_catalogue(confirmed=CONFIRMED - {"r2"}))
+    )
+    code, refused = drive(["label", "prune", LABEL])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["take off"].startswith("nothing")
+    assert "1 recorded track(s) are on no release" in shown["not judged"][0]
+
+
+def test_a_catalogue_read_as_empty_takes_nothing_off(built):
+    """The R-135 shape, a first page served empty, reads as a label with no
+    releases at all. Absence is not evidence, so every recorded track stays."""
+    built.monkeypatch.setattr(catalogue, "resolve", catalogue_factory(_catalogue(listed=[])))
+    code, done = _prune()
+    assert code == int(ExitCode.OK), done
+    assert done["data"]["items"] == []
+    assert built.account.taken == []
 
 
 def test_a_release_the_provider_no_longer_has_stops_the_unconfirmed_judgement(built):
@@ -273,7 +316,7 @@ def test_a_year_adopted_from_the_account_is_said_and_left_alone(installed, monke
 def test_a_track_a_person_added_by_hand_is_never_planned(built):
     built.account.playlists["pl-3"].append("by-hand")
     built.monkeypatch.setattr(
-        catalogue, "resolve", catalogue_factory(_catalogue(confirmed=CONFIRMED - {"r3"}))
+        catalogue, "resolve", catalogue_factory(_catalogue(elsewhere={"r3"}))
     )
     code, done = _prune()
     assert code == int(ExitCode.OK), done
@@ -555,7 +598,10 @@ def test_a_removal_that_took_the_wrong_position_is_read_back_and_refused(install
     store.wrong = [0]
     with pytest.raises(CratekitError) as refused:
         _adapter(installed, store).remove_tracks("mine", ("b",))
-    assert "read back" in refused.value.cause.message
+    assert refused.value.cause.reason == "outbound-remove-refused"
+    assert refused.value.cause.detail["problem"] == "read-back-differs"
+    assert refused.value.cause.retryable is False
+    assert len(store.removals) == 1
 
 
 def test_the_adapter_names_each_track_by_artist_and_title(installed):
@@ -577,8 +623,10 @@ def test_the_client_library_still_offers_the_removal_the_adapter_makes():
 def test_the_hold_reader_returns_the_held_release_identifiers(installed):
     from cratekit.label import prune_cli
 
+    register(LABEL)
+    entry = labels.RegistryStore().load().resolve(LABEL)
     _hold(installed, "r3", "r5")
-    assert prune_cli.held_releases(installed, LABEL_ID) == frozenset({"r3", "r5"})
+    assert prune_cli.held_releases(installed, entry) == frozenset({"r3", "r5"})
 
 
 def test_a_build_marks_a_year_it_created_and_not_one_it_adopted(built):
@@ -588,3 +636,102 @@ def test_a_build_marks_a_year_it_created_and_not_one_it_adopted(built):
         "2022": True,
         "2023": True,
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6. What the review of the first round found
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_track_already_off_the_playlist_is_settled_with_no_call(built):
+    """A removal that landed before a failure leaves the track recorded as added;
+    the next prune records it as taken off and sends nothing for it."""
+    _hold(built.cfg, "r3")
+    built.account.playlists["pl-3"].remove("t4")
+    code, done = _prune()
+    assert code == int(ExitCode.OK), done
+    assert _taken(done) == [("pl-3", "t5")]
+    assert [item["id"] for item in done["data"]["items"] if item["action"] == "already-off"] == ["t4"]
+    assert built.account.taken == [("pl-3", ("t5",))]
+    year = ledger.label_shape(built.cfg, LABEL_ID).years["2023"]
+    assert year.pruned == frozenset({"t4", "t5"})
+    assert _prune()[1]["data"]["items"] == []
+
+
+def test_a_track_on_the_playlist_twice_is_left_alone(built):
+    _hold(built.cfg, "r3")
+    built.account.playlists["pl-3"].append("t4")
+    code, done = _prune()
+    assert code == int(ExitCode.OK), done
+    assert _taken(done) == [("pl-3", "t5")]
+    assert built.account.playlists["pl-3"].count("t4") == 2
+
+
+def test_a_hold_the_gate_would_now_release_takes_nothing_off(built):
+    """Judged again from its own words, as the sweep judges a standing hold."""
+    _hold(built.cfg, "r3", genres=("House",))
+    code, done = _prune()
+    assert code == int(ExitCode.OK), done
+    assert done["data"]["items"] == []
+    assert built.account.taken == []
+
+
+def test_an_unplayable_track_on_a_kept_release_stays(built):
+    built.fake.releases["r4"][0][0].available = False
+    _hold(built.cfg, "r3")
+    code, done = _prune()
+    assert code == int(ExitCode.OK), done
+    assert "t6" in built.account.playlists["pl-3"]
+
+
+def test_an_export_older_than_the_last_one_written_leaves_the_playlist_alone(
+    installed, monkeypatch
+):
+    import os
+
+    account = outbound_fakes.FakeAccount(catalog={str(i): f"tid-{i}" for i in (1, 2, 3)})
+    bind_account(monkeypatch, account)
+    planned = outbound_export.plan(
+        [outbound_export.LocalTrack(identity=str(index)) for index in (1, 2, 3)],
+        playlist_key=outbound_fakes.CRATE,
+        name=outbound_fakes.CRATE,
+        account=account,
+        written="2026-10-02T12:00:00+00:00",
+    )
+    outbound_export.apply(installed, account, planned)
+    old = outbound_fakes.write_export(installed.library.root / "older", crate=(1, 2))
+    stamp = 1_759_320_000  # 2025-10-01, a year before the recorded write
+    os.utime(old, (stamp, stamp))
+    code, done = _export_prune(old)
+    assert code == int(ExitCode.OK), done
+    (item,) = done["data"]["items"]
+    assert item["action"] == "left-alone" and "older" in item["why"]
+    assert account.taken == []
+
+
+def test_the_export_worker_records_the_date_of_the_export_it_read(installed, monkeypatch):
+    from tests.cli_drive import approve_and_queue
+    from tests.test_outbound_workers import _resume
+
+    account = outbound_fakes.FakeAccount(catalog={str(i): f"tid-{i}" for i in (1, 2, 3)})
+    bind_account(monkeypatch, account)
+    path = outbound_fakes.write_export(installed.library.root / "outbound")
+    _run, job_id = approve_and_queue(
+        ["export", "playlist", outbound_fakes.CRATE, "--export", str(path)],
+        "export.playlist.confirm",
+    )
+    assert _resume(job_id)[0] == int(ExitCode.OK)
+    record = ledger.exported_playlist(installed, outbound_fakes.CRATE)
+    assert record is not None and record.written
+    assert ledger.older_than("2000-01-01T00:00:00+00:00", record.written) is True
+    assert ledger.older_than(record.written, record.written) is False
+    assert ledger.older_than("", record.written) is True
+    assert ledger.older_than("", "") is False
+
+
+def test_a_later_export_date_moves_the_record_and_an_earlier_one_does_not(installed):
+    ledger.reserve_playlist(installed, "crate", lambda: "pl", written="2026-10-02T00:00:00+00:00")
+    ledger.reserve_playlist(installed, "crate", lambda: "pl", written="2026-10-01T00:00:00+00:00")
+    assert ledger.exported_playlist(installed, "crate").written == "2026-10-02T00:00:00+00:00"
+    ledger.reserve_playlist(installed, "crate", lambda: "pl", written="2026-10-03T00:00:00+00:00")
+    assert ledger.exported_playlist(installed, "crate").written == "2026-10-03T00:00:00+00:00"
