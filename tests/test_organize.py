@@ -233,6 +233,13 @@ def world(seams):
     code, built = _two_acts(["export", "set", str(tracklist)], SET_BUILD)
     assert code == int(ExitCode.OK), built
     _proof(cfg, SET_NAME)
+    # THE ACCOUNT LISTS WHAT THE PRODUCT MADE TOO, at its root, so an
+    # assertion that the set is not the author's has something to exclude.
+    from cratekit.modules.outbound import ledger
+
+    fake.account.append(
+        AccountPlaylist(ledger.set_playlist(cfg, SET_NAME).remote_id, SET_NAME, len(ROWS))
+    )
     return cfg, fake, held, inbox, ids
 
 
@@ -339,8 +346,9 @@ def test_what_the_author_made_is_listed_with_a_home_and_never_a_write(world):
     assert mine_db["listen later"]["suggested_home"] is None
     mine_account = {one["name"]: one for one in areas[account_area.AREA]["yours"]}
     assert mine_account[MINE_ON_ACCOUNT]["suggested_home"] == "the 2024 year folder"
-    # The set the product made is not the author's.
+    # The set the product made is listed by the account and is not the author's.
     assert SET_NAME not in mine_account
+    assert len(mine_account) == 1
     # The run named batch is a suggestion, never a step.
     assert [one["name"] for one in areas[rekordbox.AREA]["suggested"]] == [RUN_NAMED]
 
@@ -653,3 +661,27 @@ def test_a_playlist_of_yours_already_in_a_folder_of_yours_is_not_listed(world):
     mine = {one["name"] for one in _report()["data"]["summary"]["areas"][account_area.AREA]["yours"]}
 
     assert MINE_ON_ACCOUNT not in mine
+
+
+def test_a_run_that_writes_nothing_ends_as_a_no_op(world):
+    code, done, _first = _answered("abort", "abort")
+
+    assert code == int(ExitCode.OK), done
+    assert done["outcome"] == "no_op"
+    assert done["data"]["summary"]["answers"] == {
+        rekordbox.AREA: "abort",
+        account_area.AREA: "abort",
+    }
+
+
+def test_an_exported_playlist_the_product_made_is_not_listed_as_yours(world):
+    from cratekit.modules.outbound import ledger
+
+    cfg, fake, _held, _inbox, _ids = world
+    ledger.reserve_playlist(cfg, "crate-export", lambda: "exported-1")
+    fake.account.append(AccountPlaylist("exported-1", "Exported 2025", 3))
+
+    mine = {one["name"] for one in _report()["data"]["summary"]["areas"][account_area.AREA]["yours"]}
+
+    assert "Exported 2025" not in mine
+    assert MINE_ON_ACCOUNT in mine
