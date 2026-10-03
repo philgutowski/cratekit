@@ -493,6 +493,13 @@ class Taxonomy:
     # builds no such playlist rather than one named by a default nobody saw.
     long_tracks: LongTracks | None = None
 
+    # The folder inside the intake flow that a batch is rotated into once it is
+    # stale (U111), ``INBOX / Old`` in the shipped template. OPTIONAL for the
+    # catalog's reason: a library whose active copy predates the section has no
+    # such folder declared, and ``inbox rotate`` refuses by name rather than
+    # creating a folder from a default nobody saw.
+    intake_old: Node | None = None
+
     # The vocabularies of the sources that have one of their own (R-799), in
     # declared order. EMPTY in a copy written before that unit, and then every
     # source's word is resolved by the buckets' aliases, as it always was.
@@ -871,9 +878,18 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
     )
     long_tracks, long_problems = _build_long_tracks(data)
     problems += long_problems
+    # Keyed on PRESENCE, for the catalog section's reason.
+    old_raw = data.get("intake_old") if "intake_old" in data else None
+    intake_old = (
+        Node(str(old_raw.get("id", "")), str(old_raw.get("display", "")))
+        if old_raw is not None
+        else None
+    )
     declared_nodes = [(tree, "tree"), (intake, "intake")]
     if catalog is not None:
         declared_nodes.append((catalog, "catalog"))
+    if intake_old is not None:
+        declared_nodes.append((intake_old, "intake_old"))
     if long_tracks is not None:
         declared_nodes.append((Node(long_tracks.id, long_tracks.display), "long_tracks"))
     for node, label in declared_nodes:
@@ -952,6 +968,7 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
         family=family,
         catalog=catalog,
         long_tracks=long_tracks,
+        intake_old=intake_old,
         vocabularies=vocabularies,
         _by_id=by_id,
         _by_display=by_display,
