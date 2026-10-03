@@ -11,11 +11,17 @@ THE INTAKE FILE IS THE PROOF THE BATCH LANDED, and it names the pass. The file
 after the importable file is on disk. The pass's name is read off the file's
 name, as ``sync mark`` reads it.
 
+ONLY A YEAR THE BATCH FILED IS MARKED. ``intake land`` writes the batch's
+``Record Labels / <Label> / <Label> <year>`` tree into the intake file, so the
+file itself says which label and which years it carried, and a year playlist
+whose year it did not file under this label is listed and left. Without that a
+file from any landing marked every year of any label.
+
 ONLY A PLAYLIST THIS PRODUCT BUILT IS MARKED. The year playlists are the ones
 the outbound ledger records for the label, and each is planned only while its
 title in the label's folder is still exactly the one it was built under. One
 already prefixed, one retitled since, and one no longer in the folder are
-listed and left.
+listed and left, and so is every year when the folder itself is gone.
 
 EVERY RENAME IS RECORDED AS IT LANDS, in ``sync mark``'s record, under the
 pass, with the title before and the title written. That is what ``sync unmark
@@ -38,18 +44,29 @@ from typing import Any
 
 from cratekit.cli.output import Envelope, digest_of
 from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
-from cratekit.intake import land_cli
 from cratekit.label import cli as label_cli
 from cratekit.label import registry as labels
+from cratekit.label.playlists_cli import NOT_FOLLOWED_SAID
 from cratekit.modules.outbound import folders, ledger
 from cratekit.sync import mark_record, marks
-from cratekit.sync.mark_cli import ALREADY_MARKED, CHANGED_SINCE, MARK, MARKED, NOT_LISTED, SKIP
+from cratekit.sync.mark_cli import (
+    ALREADY_MARKED,
+    CHANGED_SINCE,
+    MARK,
+    MARKED,
+    NOT_LISTED,
+    SKIP,
+    pass_name_of,
+)
+from cratekit.write import rbxml
 
 _ORIGIN = ("label.mark",)
 
 #: A year playlist whose title is neither the one it was built under nor that
 #: title marked, so somebody chose another and it is left alone.
 RETITLED = "retitled-since-built"
+#: A year the landed batch filed no track of under this label.
+NOT_IN_BATCH = "not-in-batch"
 
 #: What the gate screen and the warning say when there is nothing to mark.
 NOTHING_BUILT_SAID = (
@@ -80,22 +97,45 @@ def _blocked(message: str, *steps: str, **detail: Any) -> CratekitError:
     )
 
 
-def _pass_name(xml: Path) -> str:
-    """The pass's name, read off the intake file's, retired or not."""
-    written = land_cli.unretired_name(xml.name)
-    if not written.endswith(land_cli.INTAKE_SUFFIX) or written == land_cli.INTAKE_SUFFIX:
+def batch_years(xml: Path, label: str) -> frozenset[str]:
+    """The years the landed batch filed tracks under ``label``, read off its file.
+
+    THE TREE ``intake land`` WROTE, and nothing else: a ``<Label> <year>``
+    playlist holding at least one track, directly under a ``<Label>`` folder.
+    The landing names both from the manifest's label, which is the registry's
+    name for it, so they are compared exactly.
+    """
+    try:
+        content = xml.read_bytes()
+    except OSError as exc:
         raise _blocked(
-            f"{xml.name} is not named as an intake file, so it does not say which "
-            f"batch landed and nothing can be marked from it",
-            f"pass the file ending in {land_cli.INTAKE_SUFFIX} that crate intake land wrote",
+            f"{xml.name} could not be read ({exc.strerror or exc}), so which label "
+            f"and years it landed is unknown and nothing was marked",
+            "pass the intake file crate intake land wrote for the batch",
             path=str(xml),
-        )
-    return written[: -len(land_cli.INTAKE_SUFFIX)]
+        ) from exc
+    root = rbxml.root_node(content)
+    if root is None:
+        return frozenset()
+    prefix = f"{label} "
+    years: set[str] = set()
+    for path, node in rbxml.walk_nodes(content, root):
+        if len(path) < 2 or path[-2] != label or not path[-1].startswith(prefix):
+            continue
+        year = path[-1][len(prefix) :]
+        if len(year) == 4 and year.isdigit() and rbxml.track_keys(content, node):
+            years.add(year)
+    return frozenset(years)
 
 
-def _item(year: ledger.LabelYear, listed: dict[str, str]) -> dict[str, Any]:
-    """One year playlist, decided against the titles its folder shows now."""
-    current = listed.get(year.remote_id)
+def _item(
+    year: ledger.LabelYear, listed: dict[str, str] | None, filed: frozenset[str]
+) -> dict[str, Any]:
+    """One year playlist, decided against the batch and its folder's titles now.
+
+    ``listed`` is ``None`` when the label's folder is no longer on the account.
+    """
+    current = None if listed is None else listed.get(year.remote_id)
     to = folders.MARK_PREFIX + year.name
     base: dict[str, Any] = {
         "id": year.remote_id,
@@ -104,12 +144,23 @@ def _item(year: ledger.LabelYear, listed: dict[str, str]) -> dict[str, Any]:
         "built_as": year.name,
         "to": to,
     }
+    if year.year not in filed:
+        return {
+            **base,
+            "action": SKIP,
+            "reason": NOT_IN_BATCH,
+            "why": "the landed batch filed no track of this year under the label",
+        }
     if current is None:
         return {
             **base,
             "action": SKIP,
             "reason": NOT_LISTED,
-            "why": "the label's folder no longer holds it, so there is no title to prefix",
+            "why": (
+                "the label's folder is no longer on the account"
+                if listed is None
+                else "the label's folder no longer holds it, so there is no title to prefix"
+            ),
         }
     if current.startswith(folders.MARK_PREFIX):
         return {**base, "action": SKIP, "reason": ALREADY_MARKED, "why": "its name already carries the prefix"}
@@ -161,14 +212,34 @@ def _shown(payload: dict[str, Any], *, label: str, pass_name: str) -> dict[str, 
     return shown
 
 
-def _failed_part_way(exc: Exception, landed: list[str], planned: list[str]) -> CratekitError:
+def _failed_part_way(
+    exc: Exception, landed: list[str], planned: list[str], unrecorded: list[str]
+) -> CratekitError:
+    """The failure, with what was marked and what the record holds named in it.
+
+    ``sync mark``'s rule: a refusal the account raised keeps its reason and
+    remedy, and anything else is this build's own defect and says so. A rename
+    the mark record could not take is said apart from the ones it holds, since
+    ``sync unmark`` will not find it.
+    """
+    recorded = [one for one in landed if one not in unrecorded]
     said = (
-        f"{len(landed)} year playlist(s) were marked before this failed, and each is "
+        f"{len(recorded)} year playlist(s) were marked before this failed, each "
         f"recorded for sync unmark"
-        if landed
-        else "no year playlist was marked before this failed"
+        if recorded
+        else "no year playlist was marked and recorded before this failed"
     )
-    detail = {"marked": list(landed), "still_unmarked": [one for one in planned if one not in landed]}
+    if unrecorded:
+        said += (
+            f"; {', '.join(unrecorded)} was renamed and the mark record could not "
+            f"take it, so sync unmark will not find it and its prefix is taken off "
+            f"by hand"
+        )
+    detail = {
+        "marked": list(landed),
+        "unrecorded": list(unrecorded),
+        "still_unmarked": [one for one in planned if one not in landed],
+    }
     again = "run crate label mark again; a playlist already marked is skipped"
     if isinstance(exc, CratekitError):
         cause = exc.cause
@@ -183,6 +254,15 @@ def _failed_part_way(exc: Exception, landed: list[str], planned: list[str]) -> C
             detail={**dict(cause.detail), **detail},
             inner=cause,
         )
+    if unrecorded:
+        return refuse(
+            "sync-mark-record-unusable",
+            f"{said}. The record could not be written ({type(exc).__name__}: {exc})",
+            steps=("make the library's state directory writable by this account", again),
+            scope=Scope.SOURCE,
+            origin=_ORIGIN,
+            detail={**detail, "kind": type(exc).__name__},
+        )
     return refuse(
         "internal-error",
         f"{said}. The mark failed in a way this build does not expect "
@@ -196,7 +276,7 @@ def _failed_part_way(exc: Exception, landed: list[str], planned: list[str]) -> C
 def label_mark(ctx) -> Envelope:
     cfg = label_cli._load()
     xml = Path(str(ctx.args.xml))
-    pass_name = _pass_name(xml)
+    pass_name = pass_name_of(xml)
     # THE PROOF FIRST, before the ledger, the account or a credential.
     marks.require_output(xml)
     name = str(ctx.args.name)
@@ -204,18 +284,25 @@ def label_mark(ctx) -> Envelope:
     shape = ledger.label_shape(cfg, entry.label_id) if entry is not None else None
     built = sorted((shape.years.values() if shape is not None else ()), key=lambda one: one.year)
     label = entry.name if entry is not None else name
+    filed = batch_years(xml, label) if built else frozenset()
     remote = None
     items: list[dict[str, Any]] = []
-    if built and shape is not None and shape.folder_id:
+    if built and shape is not None and shape.folder_id and filed & {y.year for y in built}:
         from cratekit.modules.outbound import account
 
         remote = account.resolve(cfg)
-        listed = remote.folder_playlists(shape.folder_id)
-        items = [_item(year, listed) for year in built]
+        # THE FOLDER IS ASKED FOR FIRST. One deleted on the account is listed
+        # as gone for every year, rather than a provider failure on every run.
+        listed = (
+            remote.folder_playlists(shape.folder_id)
+            if shape.folder_id in remote.folders()
+            else None
+        )
+        items = [_item(year, listed, filed) for year in built]
     elif built:
-        # Year playlists recorded and no folder: none can be read where they
-        # are kept, so each is listed and left rather than renamed unseen.
-        items = [_item(year, {}) for year in built]
+        # Nothing the batch filed is recorded here, or no folder is: no year
+        # can be marked, so each is listed and left and the account is not read.
+        items = [_item(year, {}, filed) for year in built]
     payload = _payload(items, label=label, pass_name=pass_name)
     # THE PLAN ITSELF, for the reason ``label playlists`` gives (R-693).
     option = ctx.gate.require(
@@ -223,6 +310,14 @@ def label_mark(ctx) -> Envelope:
         plan=payload,
         context=_shown(payload, label=label, pass_name=pass_name),
     )
+    if entry is None:
+        # NOT FOLLOWED is said as such, the build verb's warning, so a misspelled
+        # label is not read as one whose playlists were never built.
+        return ctx.envelope(
+            data=payload,
+            outcome=Outcome.NO_OP,
+            warnings=[{"code": "label-playlists-not-followed", "message": f"{name}: {NOT_FOLLOWED_SAID}"}],
+        )
     if not items:
         return ctx.envelope(
             data=payload,
@@ -238,6 +333,7 @@ def label_mark(ctx) -> Envelope:
     record.ready()
     by_id = {item["id"]: item for item in items}
     landed: list[str] = []
+    unrecorded: list[str] = []
     changed: list[str] = []
     try:
         now = remote.folder_playlists(shape.folder_id)
@@ -248,9 +344,13 @@ def label_mark(ctx) -> Envelope:
                 continue
             remote.rename_playlist(identity, item["to"])
             landed.append(identity)
-            record.record_marked(pass_name, {identity: (item["built_as"], item["to"])})
+            try:
+                record.record_marked(pass_name, {identity: (item["built_as"], item["to"])})
+            except (CratekitError, OSError):
+                unrecorded.append(identity)
+                raise
     except Exception as exc:
-        raise _failed_part_way(exc, landed, planned) from exc
+        raise _failed_part_way(exc, landed, planned, unrecorded) from exc
 
     done: list[dict[str, Any]] = []
     warnings: list[dict[str, str]] = []

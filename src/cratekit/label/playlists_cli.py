@@ -91,6 +91,17 @@ def read_catalogue(
             entry,
             "; ".join(f"{one.artist} ({one.listing}: {one.reason})" for one in confirmed.unread),
         )
+    # A CATALOGUE THAT CONFIRMS NOTHING IS NOT A LABEL WITH NOTHING ON IT, the
+    # sweep worker's own refusal (``label.cli._refuse_unfinished``): releases
+    # were read and the verifier would vouch for none, which is what a degraded
+    # credit endpoint answers. Shown, it would be an empty folder under the
+    # label's name, approved as the label.
+    if confirmed.dropped and not confirmed.releases:
+        raise _incomplete(
+            entry,
+            f"{len(confirmed.dropped)} release(s) were read and the catalogue "
+            f"confirmed none of them as the label's",
+        )
     tracks = catalogue.ReleaseTracks(found)
     years: dict[str, list[str]] = {}
     undated = gone = 0
@@ -178,7 +189,7 @@ def _payload(planned: folders.Plan | None, *, name: str) -> dict[str, Any]:
 
 
 def _line(step: folders.YearStep) -> str:
-    if step.action == folders.AMBIGUOUS:
+    if step.action in (folders.AMBIGUOUS, folders.UNREADABLE):
         return f"{step.name}: left alone, {step.why}"
     doing = {
         folders.CREATE: "create it private",

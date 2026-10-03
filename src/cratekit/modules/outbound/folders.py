@@ -54,6 +54,13 @@ REUSE = "reuse"
 ADOPT = "adopt"
 #: A year left alone because two playlists under the folder carry its name.
 AMBIGUOUS = "ambiguous"
+#: A year left alone because the playlist recorded for it is not in the folder
+#: and could not be read, which is what one deleted on the account looks like.
+UNREADABLE = "unreadable"
+
+#: How many tracks one add carries, so each chunk is recorded as it lands
+#: rather than a whole year after its last chunk.
+CHUNK = 100
 
 
 def year_name(label: str, year: str) -> str:
@@ -96,6 +103,8 @@ class YearStep:
 
     @property
     def writes(self) -> bool:
+        if self.action in (AMBIGUOUS, UNREADABLE):
+            return False
         return self.action in (CREATE, ADOPT) or self.move or bool(self.add)
 
 
@@ -116,12 +125,20 @@ class Plan:
 
     def identity(self) -> dict[str, Any]:
         """What the digest is taken over: every write, and nothing that is said."""
+        # THE TITLES ARE WRITES TOO. A folder and a year playlist are created
+        # under them, so a name changed after the plan was shown is a stale
+        # decision rather than a playlist nobody saw the title of.
         return {
             "kind": "label-playlists",
             "label": self.catalogue.label_id,
-            "folder": [self.folder_action, self.folder_id, self.stale_folder],
+            "folder": [
+                self.folder_action,
+                self.folder_id,
+                self.stale_folder,
+                self.catalogue.name,
+            ],
             "years": [
-                [step.year, step.action, step.remote_id, step.move, list(step.add)]
+                [step.year, step.name, step.action, step.remote_id, step.move, list(step.add)]
                 for step in self.years
             ],
         }
@@ -181,15 +198,41 @@ def plan(cfg: config.Config, catalogue: LabelCatalogue, account: RemoteAccount) 
         if recorded is not None:
             # A TRACK RECORDED AS ADDED AND NO LONGER ON THE PLAYLIST was taken
             # off by a person, and is not put back. Nor is one refused before.
-            held = set(account.playlist_tracks(recorded.remote_id))
-            skip = held | recorded.added | recorded.refused
+            # So a year whose every track is recorded, in the folder where it
+            # was put, has nothing to add and its playlist is not read at all.
+            asked = recorded.added | recorded.refused
+            placed = recorded.remote_id in inside
+            if placed and set(wanted) <= asked:
+                held: set[str] = set()
+            else:
+                try:
+                    held = set(account.playlist_tracks(recorded.remote_id))
+                except CratekitError as exc:
+                    if placed or exc.cause.reason != "unavailable-transient":
+                        raise
+                    steps.append(
+                        YearStep(
+                            year=year,
+                            name=recorded.name or name,
+                            action=UNREADABLE,
+                            remote_id=recorded.remote_id,
+                            tracks=len(wanted),
+                            why=(
+                                "the playlist recorded for this year is not in the "
+                                "folder and could not be read, so it may have been "
+                                "deleted on the account; nothing is made in its place"
+                            ),
+                        )
+                    )
+                    continue
+            skip = held | asked
             steps.append(
                 YearStep(
                     year=year,
                     name=recorded.name or name,
                     action=REUSE,
                     remote_id=recorded.remote_id,
-                    move=recorded.remote_id not in inside,
+                    move=not placed,
                     add=tuple(one for one in wanted if one not in skip),
                     tracks=len(wanted),
                 )
@@ -261,7 +304,7 @@ def apply(cfg: config.Config, account: RemoteAccount, planned: Plan, done: Appli
     )
     done.folder_id, done.folder_created = folder_id, created
     for step in planned.years:
-        if step.action == AMBIGUOUS:
+        if step.action in (AMBIGUOUS, UNREADABLE):
             continue
         remote_id, made = ledger.reserve_label_year(
             cfg,
@@ -276,16 +319,17 @@ def apply(cfg: config.Config, account: RemoteAccount, planned: Plan, done: Appli
         if step.move or made:
             account.move_to_folder(remote_id, folder_id)
             done.moved.append(step.year)
-        if step.add:
-            held = set(account.add_tracks(remote_id, step.add))
-            added = [one for one in step.add if one in held]
-            refused = [one for one in step.add if one not in held]
+        for start in range(0, len(step.add), CHUNK):
+            chunk = step.add[start : start + CHUNK]
+            held = set(account.add_tracks(remote_id, chunk))
+            added = [one for one in chunk if one in held]
+            refused = [one for one in chunk if one not in held]
             ledger.record_label_tracks(
                 cfg, catalogue.label_id, step.year, added=added, refused=refused
             )
-            done.added[step.year] = len(added)
+            done.added[step.year] = done.added.get(step.year, 0) + len(added)
             if refused:
-                done.refused[step.year] = len(refused)
+                done.refused[step.year] = done.refused.get(step.year, 0) + len(refused)
     return done
 
 
@@ -293,11 +337,13 @@ __all__ = [
     "ADOPT",
     "AMBIGUOUS",
     "Applied",
+    "CHUNK",
     "CREATE",
     "LabelCatalogue",
     "MARK_PREFIX",
     "Plan",
     "REUSE",
+    "UNREADABLE",
     "YearStep",
     "apply",
     "plan",

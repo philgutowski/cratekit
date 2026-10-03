@@ -35,6 +35,7 @@ from tests.label_fakes import (
     UnreadableCatalogue,
     catalogue_factory,
 )
+from tests.modules.test_reports import _close, _collection, _document, _folder, _playlist
 from tests.test_label_workers import installed as installed  # noqa: PLC0414 - fixture
 from tests.test_label_workers import register
 from tests.test_outbound_workers import bind as bind_account
@@ -411,9 +412,32 @@ def test_the_sweep_never_reads_a_built_year_playlist_as_intake(followed):
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def _landed(cfg, name: str = "label-sync-batch") -> Path:
+def _landed(
+    cfg,
+    name: str = "label-sync-batch",
+    *,
+    label: str = LABEL,
+    years: tuple[str, ...] = ("2021", "2022", "2023"),
+) -> Path:
+    """An intake file as ``intake land`` leaves one for a label batch: the
+    collection, and the ``Record Labels / <Label> / <Label> <year>`` tree."""
+    rows = [
+        (index, f"08A - 124 - Track {index}", f"Artist {index}", f"file://localhost/l/{index}.flac")
+        for index in range(1, len(years) + 1)
+    ]
+    tree = [
+        _folder("Record Labels", 1, 1),
+        _folder(label, len(years), 2),
+        *[line for index, year in enumerate(years, start=1)
+          for line in _playlist(f"{label} {year}", [index], 3)],
+        _close(2),
+        _close(1),
+    ]
     folder = cfg.library.root / "landed"
-    return outbound_fakes.write_export(folder).rename(folder / f"{name}_inboxed.xml")
+    folder.mkdir(parents=True, exist_ok=True)
+    xml = folder / f"{name}_inboxed.xml"
+    xml.write_bytes(_document(collection=_collection(rows), root_children=tree, root_count=1))
+    return xml
 
 
 def _mark(xml: Path, option: str = "apply") -> tuple[int, dict]:
@@ -702,3 +726,128 @@ def test_the_client_library_still_offers_the_folder_calls_the_adapter_makes():
     assert callable(getattr(tidalapi.user.Favorites, "playlist_folders", None))
     assert callable(getattr(tidalapi.playlist.Folder, "items", None))
     assert callable(getattr(tidalapi.playlist.Folder, "move_items_to_folder", None))
+
+
+def test_a_year_the_batch_did_not_file_is_left_alone(followed):
+    cfg, _fake, account = followed
+    assert _build()[0] == int(ExitCode.OK)
+    code, done = _mark(_landed(cfg, years=("2023",)))
+    assert code == int(ExitCode.OK), done
+    assert account.renamed == [("pl-3", "DOWNLOADED Kompakt 2023")]
+    reasons = {item["id"]: item.get("reason") for item in done["data"]["items"]}
+    assert reasons["pl-1"] == reasons["pl-2"] == "not-in-batch"
+
+
+def test_a_batch_of_another_label_marks_nothing_and_reads_no_account(followed):
+    cfg, _fake, account = followed
+    assert _build()[0] == int(ExitCode.OK)
+    calls = account._writes
+    code, done = _mark(_landed(cfg, label="Another Label"))
+    assert code == int(ExitCode.OK), done
+    assert done["outcome"] == "no_op" and account.renamed == []
+    assert account._writes == calls
+
+
+def test_a_label_folder_deleted_on_the_account_is_said_not_failed(followed):
+    cfg, _fake, account = followed
+    assert _build()[0] == int(ExitCode.OK)
+    account.folder_names.clear()
+    code, done = _mark(_landed(cfg))
+    assert code == int(ExitCode.OK), done
+    assert account.renamed == []
+    assert {item.get("reason") for item in done["data"]["items"]} == {"not-listed"}
+
+
+def test_a_mark_of_a_label_nobody_follows_says_so(followed):
+    cfg, _fake, _account = followed
+    code, done = _two_acts(
+        ["label", "mark", "Kompakd", "--xml", str(_landed(cfg))], MARK
+    )
+    assert code == int(ExitCode.OK), done
+    assert [w["code"] for w in done["warnings"]] == ["label-playlists-not-followed"]
+
+
+def test_a_rename_the_record_cannot_take_is_said_apart_from_the_recorded_ones(
+    followed, monkeypatch
+):
+    cfg, _fake, account = followed
+    assert _build()[0] == int(ExitCode.OK)
+    written: list[str] = []
+
+    def record_marked(self, pass_name, renamed, *, now=None):
+        if written:
+            raise OSError(28, "No space left on device")
+        written.extend(renamed)
+
+    monkeypatch.setattr(mark_record.MarkRecord, "record_marked", record_marked)
+    code, failed = _mark(_landed(cfg))
+    assert code == int(ExitCode.PRECONDITION), failed
+    assert failed["cause"]["reason"] == "sync-mark-record-unusable"
+    assert failed["cause"]["detail"]["unrecorded"] == ["pl-2"]
+    assert "sync unmark will not find it" in failed["cause"]["message"]
+    assert [pid for pid, _to in account.renamed] == ["pl-1", "pl-2"]
+
+
+def test_a_recorded_year_deleted_on_the_account_is_left_alone_not_refused(followed):
+    cfg, fake, account = followed
+    assert _build()[0] == int(ExitCode.OK)
+    gone = ledger.label_shape(cfg, LABEL_ID).years["2022"].remote_id
+    del account.placed[gone]
+
+    def unreadable(playlist_id):
+        if playlist_id == gone:
+            from cratekit.core.cause import refuse
+
+            raise refuse("unavailable-transient", "the provider has no such playlist")
+        return tuple(account.playlists.get(playlist_id, ()))
+
+    account.playlist_tracks = unreadable
+    fake.releases["r2"] = ([FakeTrack("t3"), FakeTrack("t11")], 2022)
+    planned = _plan(cfg, fake, account)
+    (left,) = [step for step in planned.years if step.year == "2022"]
+    assert left.action == folders.UNREADABLE and not left.writes
+
+
+def test_a_catalogue_that_confirms_nothing_is_refused_not_shown_empty(
+    installed, monkeypatch
+):
+    register(LABEL)
+    fake = _catalogue()
+    fake.confirmed = frozenset()
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
+    account = outbound_fakes.StrictAccount()
+    bind_account(monkeypatch, account)
+    code, refused = drive(["label", "playlists", LABEL])
+    assert code == int(ExitCode.PRECONDITION), refused
+    assert refused["cause"]["reason"] == "label-playlists-incomplete"
+    assert account._writes == 0
+
+
+def test_a_renamed_label_is_a_different_plan_and_its_approval_is_stale(followed):
+    cfg, fake, account = followed
+    first = folders.plan(cfg, playlists_cli.read_catalogue(cfg, _entry(), fake), account)
+    read = playlists_cli.read_catalogue(cfg, _entry(), fake)
+    renamed = folders.LabelCatalogue(
+        label_id=read.label_id, name="Kompakt Records", years=read.years
+    )
+    assert first.identity() != folders.plan(cfg, renamed, account).identity()
+
+
+def test_each_chunk_is_recorded_as_it_lands(followed, monkeypatch):
+    cfg, fake, account = followed
+    fake.releases["r3"] = ([FakeTrack(f"c{index}") for index in range(150)], 2023)
+    monkeypatch.setattr(folders, "CHUNK", 100)
+    real = account.add_tracks
+    calls: list[int] = []
+
+    def second_chunk_fails(playlist_id, remote_ids):
+        calls.append(len(remote_ids))
+        if len(calls) == 4:
+            raise RuntimeError("the provider dropped the connection")
+        return real(playlist_id, remote_ids)
+
+    account.add_tracks = second_chunk_fails
+    code, _failed = _build()
+    assert code == int(ExitCode.INTERNAL)
+    added = ledger.label_shape(cfg, LABEL_ID).years["2023"].added
+    assert len(added) == 100
