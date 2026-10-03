@@ -12,6 +12,7 @@ D1 applies. Nothing here names a real person or a real track.
 
 from __future__ import annotations
 
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -273,6 +274,24 @@ def test_a_row_the_library_owned_adds_nothing_to_the_playlist(cfg, silence, expo
     envelope = _applied(export, "--pass", PASS)
 
     assert _inbox(_intake(envelope)) == {"Sunset Warmup": ["One"]}
+
+
+def test_a_row_that_only_resembles_a_file_does_not_claim_it(cfg, silence, export, monkeypatch):
+    # The playlist asked for the extended mix and the file is the plain one:
+    # filing it would be the landing answering a question only a person may.
+    real = _track
+
+    def versioned(title: str) -> dict:
+        return {**real(title), "version": "Extended Mix"} if title == "One" else real(title)
+
+    monkeypatch.setattr(sys.modules[__name__], "_track", versioned)
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("One", "Two"))})
+    for name in ("One.flac", "Two.flac"):
+        _stage(cfg, silence, name)
+
+    envelope = _applied(export, "--pass", PASS)
+
+    assert _inbox(_intake(envelope)) == {BATCH: ["One"], "Sunset Warmup": ["Two"]}
 
 
 # ---------------------------------------------------------------------------
