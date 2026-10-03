@@ -32,7 +32,7 @@ batch folder exists, and ages them from the record. Owned tracks are not added,
 R-905. A job queued before this unit carries no name and lands as U110 did.
 Battery on the branch: ruff clean, 12,699 passed and 1 skipped of 12,700
 collected, the scan clean. One round of the built in review, ten findings,
-seven fixed, three recorded (R-906, R-909). Mutation table 25 rows, 24 killed,
+eight fixed, two recorded as R-909, and what remains of the first as R-906. Mutation table 25 rows, 24 killed,
 one zero measured as a second layer over the matcher,
 `docs/mutation/u113-notes.md`. R-905 to R-910 filed. **Owed, attended:** the next
 real sync of one of the author's playlists read in rekordbox, and his choice on
