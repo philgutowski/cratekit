@@ -33187,6 +33187,37 @@ sitting.
 
 **On the board bar, (c).** The author asked for it on 2026-10-02.
 
+**Built 2026-10-03 on `relay/253`, and still open on the live sitting.** The
+account protocol already offered every call the two steps need, read before
+writing: R-834's private `create_playlist`, and R-835's `add_tracks`,
+`folders`, `folder_playlists`, `create_folder` and `move_to_folder`, which
+reach `LoggedInUser.create_folder`, `Favorites.playlist_folders`,
+`Folder.items` and `Folder.move_items_to_folder` in the vendored client. So
+no step is refused and no member was added. `crate export set TRACKLIST
+[--name NAME]` reads the list `intake identify` writes, a typed one or a
+list document through `match_cli.read_list`, and decides each row by the
+first of four that applies: its provider identifier, only for the
+provider's own origin; its ISRC through the account's match; a provider
+candidate already accepted in review, read and never offered; or the
+catalogue's search, listed only on `candidates.sole_exact`. Every row left
+out is named with its reason in the items and in the
+`export-tracks-unmatched` warning, R-850's word. One explicit gate,
+`export.set.confirm`; on approval the playlist is created private and the
+matched tracks added a hundred a request, each chunk recorded under the
+set's name in the outbound ledger's new `sets` map, so a second run plans
+nothing and a set with nothing matched makes no empty playlist. `crate
+export archive NAME --xml INTAKE`, behind `export.archive.confirm`, takes
+the intake file as the proof the download landed and names the pass, puts
+the playlist in a root folder named for the year it was made, reused,
+adopted by its exact name or created and recorded in `set_folders`, then
+rechecks its title in that folder's listing before prefixing `DOWNLOADED `
+into the mark record, so `sync unmark --pass` takes it off. The playlists
+sweep excludes every recorded set playlist as `set-playlist`, the rule the
+R-835 learning wrote for the next verb that makes a playlist. Both verbs
+are feature row 36, module `export`. R-875 to R-877 filed from the build
+and its review. Closes once one set is written and archived on the author's
+account at an attended sitting, recorded in `docs/cutover.md`.
+
 ---
 
 ## R-838. A `DOWNLOADED ` mark written by mistake cannot be undone
@@ -34253,3 +34284,77 @@ label's every year, the source system's rule, or only its own.
 
 **Not on the board bar.** The conservative reading of a decision that is
 the author's, and `sync unmark` takes off any mark either way.
+
+---
+
+## R-875. The set archive takes any landed intake file as the proof its set was downloaded
+
+**Found:** by the built in review of R-837 on `relay/253`, 2026-10-03.
+
+**The mechanism.** `export archive NAME --xml INTAKE` refuses an intake
+file that is absent, not a file or empty, `sync/marks.py`'s rule, and reads
+the pass name off its file name. Nothing ties the file to the set: `label
+mark` checks the batch's own `Record Labels` tree for the label, and a
+set's landing leaves no tree a set playlist can be found in. So an intake
+file from any landing archives any recorded set.
+
+**Measured cost.** A person who passes the wrong intake file gets a set
+playlist prefixed `DOWNLOADED ` and filed before its tracks were fetched,
+recorded under an unrelated pass. Read from the source in review, not
+driven; the gate screen names the pass and the playlist, and `sync unmark
+--pass` takes the prefix off.
+
+**Closes when:** the archive reads a tie between the intake file and the
+set, for instance the set's matched tracks among the file's rows, and lists
+and leaves a set the file did not land; or the author decides the gate is
+enough.
+
+**Not on the board bar.** Nothing is lost, the gate names what it will
+rename and under which pass, and the mark is undone by an existing verb.
+
+---
+
+## R-876. An older build that writes the outbound ledger drops the set and label records
+
+**Found:** by the built in review of R-837 on `relay/253`, 2026-10-03.
+
+**The mechanism.** The ledger's `sets` and `set_folders` maps, like R-835's
+`labels`, were added without raising `LEDGER_VERSION`, since a raise makes
+every older build refuse the whole ledger, exports included. An older build
+reads only the maps it knows and rewrites the file on its next write, so the
+newer maps are gone.
+
+**Measured cost.** Run against the same library, an older install's export
+forgets every set and label playlist, the next `export set` makes a second
+playlist, and the sweep's `set-playlist` and `label-folder` exclusions go
+empty. Not driven: it needs two builds on one library state.
+
+**Closes when:** the ledger carries any map it does not recognise through a
+rewrite, or the author decides a version raise and its refusal are the
+better cost.
+
+**Not on the board bar.** It needs an older build writing a newer library's
+state, which upgrading the install ends.
+
+---
+
+## R-877. A set playlist deleted on the account blocks its set until the ledger is edited
+
+**Found:** by the built in review of R-837 on `relay/253`, 2026-10-03.
+
+**The mechanism.** `export set` plans against the playlist the ledger
+records for the set's name and reads its membership every run. One a person
+deleted on the account answers as a provider failure, the same cause an
+outage gives, which is R-871's mechanism for a label's year. No verb
+forgets a set's record.
+
+**Measured cost.** A set whose playlist was deleted by hand refuses on every
+later `export set` under that name. `--name` with another name makes a new
+one. Not met live.
+
+**Closes when:** the adapter tells a playlist the provider has nothing for
+from one it could not read (R-871), and the plan makes the set's playlist
+again only for the first.
+
+**Not on the board bar.** The refusal is said every run, nothing is lost,
+and another name is a way through.
