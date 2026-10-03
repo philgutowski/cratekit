@@ -1,0 +1,77 @@
+name = "u110-c"
+pass_kind = "light"
+
+[[rows]]
+id = "C1_apply_playlist"
+description = "The xml landing no longer hands its batch name to the splice, so the playlist is the intake file's stem again"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''            playlist=plan.batch,
+'''
+new = ''''''
+
+[[rows]]
+id = "C2_import_steps_named"
+description = "The import steps name the intake file's stem as the playlist to import"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+old = '''    named = playlist if playlist is not None else destination.stem
+    return ('''
+new = '''    named = destination.stem
+    return ('''
+
+[[rows]]
+id = "C3_place_files_named"
+description = "place_files ignores the playlist it is handed and writes the intake file's stem"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+old = '''    named = playlist if playlist is not None else destination.stem
+    playlist_error'''
+new = '''    named = destination.stem
+    playlist_error'''
+
+[[rows]]
+id = "C4_go_tail"
+description = "The label go tail prints --name RUN again"
+file = "src/cratekit/label/go.py"
+surface = "user"
+old = '''"--pass", default_name(run_id)]'''
+new = '''"--name", default_name(run_id)]'''
+
+[[rows]]
+id = "C5_missing_hint"
+description = "intake missing --run prints --name RUN again"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''f"--pass {name}, adding'''
+new = '''f"--name {name}, adding'''
+
+[[rows]]
+id = "C6_in_pass_empty"
+description = "A job queued by no run is read as belonging to the pass named _synced"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "maintainer"
+old = '''    return bool(run_id) and synced_name(run_id) == pass_name'''
+new = '''    return synced_name(run_id) == pass_name'''
+
+[[rows]]
+id = "C7_intake_lock_prefix"
+description = "The intake lock shares its key with a batch of the same name"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''lock_key("intake file\0" + stem)'''
+new = '''lock_key(stem)'''
+
+[[rows]]
+id = "C8_plain_dot"
+description = "A name starting with a dot passes the plain name rule"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''        and not text.startswith(".")
+'''
+new = ''''''
+
+[[dropped]]
+id = "C9_preflight_trial_name"
+description = "The preflight's trial insert uses another playlist name than the splice"
+reason = "the trial asks only whether the intake folder takes a playlist at all, and insert_intake_playlist never refuses a name, so no name can change its answer"
