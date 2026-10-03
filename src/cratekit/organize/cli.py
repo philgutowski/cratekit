@@ -33,7 +33,7 @@ from typing import Any
 
 from cratekit.cli.output import Envelope
 from cratekit.core import config, profiles
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
+from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt
 from cratekit.core.exit_codes import Remedy
 from cratekit.intake import rotate_cli
 from cratekit.organize import account, rekordbox
@@ -123,7 +123,7 @@ def _apply(area: Area) -> None:
         try:
             step.applied = step.apply()
         except CratekitError as exc:
-            step.failed = exc.cause
+            step.error = exc
 
 
 def _report(areas: list[Area], *, report: bool, answers: dict[str, str | None]) -> dict[str, Any]:
@@ -184,13 +184,16 @@ def _raise_failed(areas: list[Area], data: dict[str, Any]) -> None:
             else "No other step was written"
         )
     )
-    raise CratekitError(
+    # THROUGH ``rebuilt``, so a parked adoption job's ``JobBlocked`` leaves as
+    # the blocked refusal it is rather than as a plain failure.
+    raise rebuilt(
+        step.error,
         dataclasses.replace(
             first,
             message=said,
             origin=(*first.origin, *_ORIGIN),
             detail={**dict(first.detail or {}), "organize": data, "state": FAILED},
-        )
+        ),
     )
 
 

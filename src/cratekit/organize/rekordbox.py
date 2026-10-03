@@ -55,7 +55,7 @@ ROTATE = "rotate"
 RECORD_LABELS = "record-labels"
 YOURS = "yours"
 
-_ORIGIN = ("organize", "rekordbox")
+_ORIGIN = ("organize.rekordbox",)
 
 
 def acknowledgment(cfg: config.Config) -> CratekitError | None:

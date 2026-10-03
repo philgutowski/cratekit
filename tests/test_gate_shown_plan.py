@@ -212,7 +212,9 @@ SHOWS_ITS_OWN_WAY: dict[str, tuple[int, str]] = {
         "batch, the screen R-670 was written to match",
     ),
     "src/cratekit/sync/mark_cli.py": (
-        2,
+        # ONE since U112: the no pass branch and the pass branch ask through
+        # one call, after ``plan_pass`` has made either plan.
+        1,
         "shows each item as renamed on the account or left alone with its "
         "reason, one line per fact",
     ),

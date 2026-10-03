@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from cratekit.cli.output import digest_of
-from cratekit.core.cause import Cause
+from cratekit.core.cause import Cause, CratekitError
 
 #: A step's states, one word each.
 PLANNED = "planned"
@@ -55,12 +55,17 @@ class Step:
     #: What runs once the area is approved; ``None`` for every state but planned.
     apply: Callable[[], dict[str, Any]] | None = None
     applied: dict[str, Any] | None = None
-    failed: Cause | None = None
+    #: The refusal an apply raised, kept whole so a re-raise keeps its type.
+    error: CratekitError | None = None
     warnings: list[dict[str, str]] = field(default_factory=list)
 
     @property
     def writes(self) -> bool:
         return self.state == PLANNED
+
+    @property
+    def failed(self) -> Cause | None:
+        return self.error.cause if self.error is not None else None
 
     def identity(self) -> list[Any]:
         """What the area's digest covers of this step."""
