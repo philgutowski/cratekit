@@ -72,12 +72,15 @@ OFFER_LIMIT = 2 * match.APPROXIMATE_LIMIT
 #: miss a person has to find by hand, which the report names.
 CANDIDATE_FLOOR = 60.0
 
-#: How many pages of one search :func:`search_pages` reads at most. Six pages
-#: of fifty is 300, the most the provider's client says one search serves, so
-#: the walk never asks past the listing's ceiling, where an empty page would be
-#: the provider declining to serve and not the end of what it holds (R-879).
-#: NOT MEASURED AGAINST A LIVE PROVIDER: how often a real query runs to 300.
-SEARCH_PAGES = 6
+#: The most rows the provider's client says one search serves, across pages.
+SEARCH_CEILING = 300
+
+#: How many pages of one search :func:`search_pages` reads at most: as many
+#: whole pages as fit under :data:`SEARCH_CEILING`, so the walk never asks past
+#: the listing's ceiling, where an empty page would be the provider declining
+#: to serve and not the end of what it holds (R-879). NOT MEASURED AGAINST A
+#: LIVE PROVIDER: how often a real query runs to the ceiling.
+SEARCH_PAGES = SEARCH_CEILING // TRACK_SEARCH_PAGE
 
 #: What became of one row, one word a script can switch on.
 LISTED = "listed"
@@ -549,6 +552,7 @@ __all__ = [
     "OFFER_LIMIT",
     "QUEUE",
     "REJECTED",
+    "SEARCH_CEILING",
     "SEARCH_PAGES",
     "STALLED",
     "WAITING",

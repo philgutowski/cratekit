@@ -93,6 +93,8 @@ class FakeAccount:
         #: Every match asked, as the keyword arguments it was asked with, so a
         #: test can say what an engine handed the account to choose by.
         self.matches: list[dict[str, str]] = []
+        #: The identities a match was asked for with ``agree`` (R-879).
+        self.agreeing: list[str] = []
         #: What this account says about a row it does not match, by identity.
         self.reasons: dict[str, str] = {}
         #: R-835. Root folders, identifier to name, and which folder each
@@ -110,11 +112,19 @@ class FakeAccount:
         self.private: set[str] = set()
 
     def match_track(
-        self, *, identity: str, isrc: str = "", title: str = "", artist: str = ""
+        self,
+        *,
+        identity: str,
+        isrc: str = "",
+        title: str = "",
+        artist: str = "",
+        agree: bool = False,
     ) -> str | None:
         self.matches.append(
             {"identity": identity, "isrc": isrc, "title": title, "artist": artist}
         )
+        if agree:
+            self.agreeing.append(identity)
         return self.catalog.get(identity)
 
     def unmatched_reason(self, identity: str) -> str:

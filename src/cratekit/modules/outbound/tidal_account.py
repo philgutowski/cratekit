@@ -264,7 +264,13 @@ class TidalAccount:
     # ── matching ────────────────────────────────────────────────────────────
 
     def match_track(
-        self, *, identity: str, isrc: str = "", title: str = "", artist: str = ""
+        self,
+        *,
+        identity: str,
+        isrc: str = "",
+        title: str = "",
+        artist: str = "",
+        agree: bool = False,
     ) -> str | None:
         """The one provider track this row names exactly, or ``None``.
 
@@ -276,6 +282,10 @@ class TidalAccount:
         otherwise answers ``None`` and leaves the count in
         :meth:`unmatched_reason`. Measured live on 2026-09-17, returning ``None``
         for every such answer left half of a small playlist unmatched (R-356).
+
+        WITH ``agree`` ONE TRACK IS CHOSEN AS SEVERAL ARE, through
+        :meth:`_among`, so a code read off a library file's tag lists a track
+        only when that track is the row's recording and version (R-879).
 
         IDENTITY SECOND, and only an exact provider track reference, see
         :func:`track_reference`. Never a text search over title and artist:
@@ -295,9 +305,9 @@ class TidalAccount:
                     str(getattr(track, "id", "") or ""): track for track in found or ()
                 }
                 tracks.pop("", None)
-                if len(tracks) == 1:
+                if len(tracks) == 1 and not agree:
                     return next(iter(tracks))
-                if len(tracks) > 1:
+                if tracks:
                     chosen, reason = self._among(
                         tracks, isrc=wanted, title=title, artist=artist
                     )

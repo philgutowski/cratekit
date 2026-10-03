@@ -392,7 +392,31 @@ def test_a_row_the_library_holds_is_listed_by_its_files_isrc_with_no_search(
     # Twice, once at the gate's refusal and once on the run that carries it out.
     asked = {"identity": "set-row-1", "isrc": "QZABC2600007", "title": "Title Seven", "artist": "Artist Seven"}
     assert held.matches == [asked, asked]
+    assert held.agreeing == ["set-row-1", "set-row-1"], "a file's tag was trusted alone"
     assert fake.searched_for == []
+
+
+def test_a_persons_answer_in_review_wins_over_the_librarys_file(account, tmp_path):
+    from cratekit.acquire import match
+    from cratekit.core import review
+
+    cfg, fake, held = account
+    _held(tmp_path, cfg, isrc="QZABC2600007")
+    held.catalog["set-row-1"] = "tid-by-file"
+    fake.searches[SEVEN] = [Hit("tid-7a", *SEVEN), Hit("tid-7b", *SEVEN)]
+    (wanted,) = match.read_text_lines("Artist Seven - Title Seven\n")
+    answer = candidates.read_answer(wanted, tuple(fake.searches[SEVEN]))
+    with review.open_store(cfg) as items:
+        offered = candidates.propose(items, wanted, answer, handler_key="intake.missing")
+    code, resolved = drive(
+        ["review", "resolve", offered.item_id, "--verdict", "accepted", "--option", "tid-7b"]
+    )
+    assert code == int(ExitCode.OK), resolved
+    code, done = _build(_tracklist(cfg, rows=(SEVEN,), name="held.txt"), "abort")
+    assert code == int(ExitCode.OK), done
+    (row,) = _tracks(done)
+    assert (row["id"], row["how"]) == ("tid-7b", "accepted")
+    assert held.matches == []
 
 
 def test_a_held_file_whose_isrc_the_account_cannot_name_is_searched_and_said(
@@ -505,6 +529,31 @@ def test_the_page_bound_reached_leaves_it_out_and_says_so(account):
     assert [offset for *_row, offset in fake.pages_asked] == [
         n * catalogue.TRACK_SEARCH_PAGE for n in range(pages)
     ] * 2
+
+
+def test_a_title_read_two_ways_on_a_full_page_says_so_and_not_the_bound(account):
+    cfg, fake, _held_account = account
+    from cratekit.acquire import match
+
+    row = ("Artist Seven", "Sun Path - Live")
+    (wanted,) = match.read_text_lines("Artist Seven - Sun Path - Live\n")
+    assert wanted.other_reading is not None, "the fixture's title no longer reads two ways"
+    fake.searches[(wanted.artist, candidates.query_title(wanted))] = _filler(60)
+    code, done = _build(_tracklist(cfg, rows=(row,), name="paged.txt"), "abort")
+    assert code == int(ExitCode.OK), done
+    (said,) = _tracks(done)
+    assert "its title reads two ways" in said["why"], said["why"]
+    assert "page bound" not in said["why"]
+
+
+def test_an_exact_match_with_no_identifier_is_not_said_to_resemble_nothing(account):
+    cfg, fake, _held_account = account
+    fake.searches[SEVEN] = [Hit("", *SEVEN)]
+    code, done = _build(_tracklist(cfg, rows=(SEVEN,), name="paged.txt"), "abort")
+    assert code == int(ExitCode.OK), done
+    (row,) = _tracks(done)
+    assert "carries no identifier" in row["why"]
+    assert "none resembles it" not in row["why"]
 
 
 def _walk(line: str, hits: list) -> tuple[candidates.Answer, list[int]]:
