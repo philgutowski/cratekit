@@ -9,11 +9,11 @@ means a method the real ``RemoteAccount`` protocol grows is missing in one place
 rather than absent in three.
 
 **IT REFUSES ANYTHING OUTSIDE THE PROTOCOL, AND THAT IS A GUARD RATHER THAN
-TIDINESS.** ``modules/outbound/service.RemoteAccount`` declares no remove, no
-un-heart, and no playlist delete, and the product's add-only promise (R36) rests
-on that. :class:`StrictAccount` raises on any other attribute, so a worker that
-reached for one fails the suite instead of failing silently against a fake
-permissive enough to answer.
+TIDINESS.** ``modules/outbound/service.RemoteAccount`` declares no un-heart and
+no playlist delete, and one removal only, ``remove_tracks``, from a playlist the
+product made (R-836). :class:`StrictAccount` raises on any other attribute, so a
+worker that reached for one fails the suite instead of failing silently against
+a fake permissive enough to answer.
 
 Not a test module: pytest does not collect it.
 """
@@ -45,6 +45,9 @@ PROTOCOL_METHODS = frozenset(
         "folder_playlists",
         "create_folder",
         "move_to_folder",
+        # R-836. A read that names a playlist's tracks, and the one removal.
+        "track_names",
+        "remove_tracks",
     }
 )
 
@@ -110,6 +113,10 @@ class FakeAccount:
         self.unaddable: set[str] = set()
         #: Every playlist created private, which is what the adapter does.
         self.private: set[str] = set()
+        #: R-836. What each remote track is called, ``(artist, title)``, and
+        #: every removal asked, in order, as ``(playlist_id, ids)``.
+        self.names: dict[str, tuple[str, str]] = {}
+        self.taken: list[tuple[str, tuple[str, ...]]] = []
 
     def match_track(
         self,
@@ -200,6 +207,21 @@ class FakeAccount:
         self._bump(playlist_id)
         self.placed[playlist_id] = folder_id
         self.moves.append((playlist_id, folder_id))
+
+    def track_names(self, playlist_id: str) -> dict[str, tuple[str, str]]:
+        return {
+            one: self.names.get(one, (f"Artist of {one}", f"Title of {one}"))
+            for one in self.playlists.get(playlist_id, ())
+        }
+
+    def remove_tracks(self, playlist_id: str, remote_ids: tuple[str, ...]) -> tuple[str, ...]:
+        """Take every occurrence off. One write per call, so ``fail_on`` names the playlist."""
+        self._bump(playlist_id)
+        asked = set(remote_ids)
+        members = self.playlists.setdefault(playlist_id, [])
+        members[:] = [one for one in members if one not in asked]
+        self.taken.append((playlist_id, tuple(remote_ids)))
+        return tuple(one for one in remote_ids if one not in members)
 
     def _bump(self, subject: str = "") -> None:
         self._writes += 1
