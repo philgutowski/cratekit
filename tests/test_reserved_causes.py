@@ -6110,7 +6110,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # recorded under and the plan KIND its digest is taken under. And
     # rotate-nothing-planned, rotate-applied and rotate-records-unreadable are
     # WARNING codes.
-    assert (len(literals), len(literals - set(causes))) == (637, 441), (
+    # Re-pinned on U112, crate organize, 2026-10-03: 637 to 640 distinct,
+    # non-keys 441 to 444. THREE joined and nothing left, each absent from
+    # `main`'s own `src` by git grep. record-labels is the KEY of the step
+    # that names the Record Labels tree no verb files after a landing. And
+    # organize-area-refused and organize-step-refused are WARNING codes.
+    assert (len(literals), len(literals - set(causes))) == (640, 444), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6873,7 +6878,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Neither holds an in-range integer. ONE joined the integer half:
     # core/rb_writer.py, a holder before, whose node change judge names the
     # first ten changed content rows, a size and not a code.
-    assert (len(literal_holders), len(literal_both)) == (132, 29), (
+    # Re-pinned on U112, crate organize, 2026-10-03: holders move 132 to 134,
+    # and the also-holds-an-integer half is UNCHANGED at 29. TWO modules joined
+    # and none left, both new files: organize/cli.py, which refuses with
+    # config-unusable and internal-error, and organize/rekordbox.py, which
+    # refuses an adoption over a bridge tree with tree-unconverged. Neither
+    # holds an in-range integer.
+    assert (len(literal_holders), len(literal_both)) == (134, 29), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

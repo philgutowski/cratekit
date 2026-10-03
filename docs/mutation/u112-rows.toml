@@ -1,0 +1,274 @@
+name = "u112"
+pass_kind = "full"
+
+# ── The verb: plan, ask, write ─────────────────────────────────────────────
+
+[[rows]]
+id = "C1_report_asks"
+description = "--report no longer returns before the gates, so a report asks and may write"
+file = "src/cratekit/organize/cli.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''    if report:
+        data = _report(areas, report=True, answers={})'''
+new = '''    if False:
+        data = _report(areas, report=True, answers={})'''
+
+[[rows]]
+id = "C2_db_abort_applies"
+description = "The database area is written whatever its gate answered"
+file = "src/cratekit/organize/cli.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''    if answers[database.name] == APPROVE and database.writes:'''
+new = '''    if database.writes:'''
+
+[[rows]]
+id = "C3_account_abort_applies"
+description = "The account area is written whatever its gate answered"
+file = "src/cratekit/organize/cli.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''    if answers[remote.name] == APPLY and remote.writes:'''
+new = '''    if remote.writes:'''
+
+[[rows]]
+id = "C4_refused_area_asked"
+description = "An area refused before it was planned is still asked its gate"
+file = "src/cratekit/organize/cli.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''    if area.cause is not None:
+        return None
+    return ctx.gate.require('''
+new = '''    return ctx.gate.require('''
+
+[[rows]]
+id = "C5_unexpected_failure_stops"
+description = "A step failing in a way the build does not expect stops every later approved step"
+file = "src/cratekit/organize/cli.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''            step.error = refuse(
+                "internal-error",'''
+new = '''            raise
+            step.error = refuse(
+                "internal-error",'''
+
+[[rows]]
+id = "C6_failure_never_raised"
+description = "An approved step that failed is never raised, so the run reads as a clean organize"
+file = "src/cratekit/organize/cli.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''    if not failed:
+        return
+    wrote = ['''
+new = '''    if True:
+        return
+    wrote = ['''
+
+[[rows]]
+id = "C7_outcome_always_ok"
+description = "A run that wrote nothing ends OK rather than as a no-op"
+file = "src/cratekit/organize/cli.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''        outcome=Outcome.OK if wrote else Outcome.NO_OP,'''
+new = '''        outcome=Outcome.OK,'''
+
+# ── The area digest ────────────────────────────────────────────────────────
+
+[[rows]]
+id = "S1_digest_drops_step_plans"
+description = "The area digest covers each step's key and state and not its own plan's digest"
+file = "src/cratekit/organize/steps.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''        said = self.digest if self.cause is None else f"refused:{self.cause.reason}"'''
+new = '''        said = None if self.cause is None else f"refused:{self.cause.reason}"'''
+
+# ── The database area ──────────────────────────────────────────────────────
+
+[[rows]]
+id = "R1_no_ack_planned"
+description = "With no backup acknowledgment the database area is planned and asked anyway"
+file = "src/cratekit/organize/rekordbox.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''        if not report:
+            area.cause = unacknowledged.cause
+            return area'''
+new = '''        if False:
+            area.cause = unacknowledged.cause
+            return area'''
+
+[[rows]]
+id = "R2_applied_entries_outstanding"
+description = "Adoption plans every placeable entry, the ones a finished apply already filed included"
+file = "src/cratekit/organize/rekordbox.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''        pending = apply_engine.outstanding(plan, apply_engine.read(cfg))'''
+new = '''        pending = plan.applicable()'''
+
+[[rows]]
+id = "R3_bridge_tree_planned"
+description = "Adoption over a routing tree still on the bridge is planned rather than refused"
+file = "src/cratekit/organize/rekordbox.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''    if not registry.is_database_native(declared.tree.id):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "R4_job_without_gate_run"
+description = "The adoption job is queued with no gate run, so its resume can never be answered"
+file = "src/cratekit/organize/rekordbox.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''                    jobs.GATE_RUN_KEY: gate_run,
+'''
+new = '''
+'''
+
+[[rows]]
+id = "R5_actor_invented"
+description = "The adoption job's approving actor is the process rather than the person who answered"
+file = "src/cratekit/organize/rekordbox.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''                    apply_cli.ACTOR_KEY: decision.actor if decision is not None else "",'''
+new = '''                    apply_cli.ACTOR_KEY: "cli",'''
+
+[[rows]]
+id = "R6_declared_roots_yours"
+description = "The trees the taxonomy declares are listed as the author's own"
+file = "src/cratekit/organize/rekordbox.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''        if name in declared_roots:
+            continue'''
+new = '''        if False:
+            continue'''
+
+[[rows]]
+id = "R7_every_batch_suggested"
+description = "Every batch is suggested a rename, a readably named one included"
+file = "src/cratekit/organize/rekordbox.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''        if batch.recognised_by == rotate.BY_SUFFIX:'''
+new = '''        if True:'''
+
+[[rows]]
+id = "R8_inbox_mine_unlisted"
+description = "A playlist of the author's that the rotation leaves alone under INBOX is not listed"
+file = "src/cratekit/organize/rekordbox.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''    for node in plan.left:'''
+new = '''    for node in ():'''
+
+# ── The account area ───────────────────────────────────────────────────────
+
+[[rows]]
+id = "A1_put_back_reads_archived"
+description = "A set whose mark sync unmark put back reads as archived"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''            if not entry.unmarked
+'''
+new = '''
+'''
+
+[[rows]]
+id = "A2_pending_loses"
+description = "A pending intake file ranks below a retired one of the same pass"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''        return 1 << 30'''
+new = '''        return 0'''
+
+[[rows]]
+id = "A3_retired_unnumbered"
+description = "Every retired intake file ranks alike, so the first read wins rather than the latest"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''    return int(number) if number.isdigit() else 1'''
+new = '''    return 1'''
+
+[[rows]]
+id = "A4_in_folder_listed"
+description = "An account playlist already in the author's own folder is listed as not organized"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''            or one.playlist_id in in_folders
+'''
+new = '''
+'''
+
+[[rows]]
+id = "A5_nothing_product_made"
+description = "No account playlist is product made, so the product's own are listed as the author's"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''        made = (
+            label_built
+            | set_built
+            | ledger.product_made_among(cfg, (one.playlist_id for one in listed))
+        )'''
+new = '''        made = frozenset()'''
+
+[[rows]]
+id = "A6_exported_not_product_made"
+description = "An exported playlist the ledger records as product made is listed as the author's"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''            | ledger.product_made_among(cfg, (one.playlist_id for one in listed))'''
+new = '''            | frozenset()'''
+
+[[rows]]
+id = "A7_no_proof_read"
+description = "No intake file is read as a set's proof, so no downloaded set is ever archived"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''        xml = _proof(cfg, name)'''
+new = '''        xml = None'''
+
+# ── The verified hand off, and the homes ───────────────────────────────────
+
+[[rows]]
+id = "G1_part_unverified"
+description = "hand_off carries any digest a caller names as the part, whatever the answer was given over"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_organize.py", "tests/test_sync_all.py"]
+old = '''            if output.digest_of(document) != recorded.digest or digest not in _strings(document):'''
+new = '''            if False:'''
+
+[[rows]]
+id = "O1_year_before_label"
+description = "A year in an account playlist's name wins over the followed label it starts with"
+file = "src/cratekit/organize/own.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''    label = label_of(name, labels)
+    if label is not None:
+        return f"the {label} label folder"
+    year = year_of(name)
+    if year is not None:
+        return f"the {year} year folder"'''
+new = '''    year = year_of(name)
+    if year is not None:
+        return f"the {year} year folder"
+    label = label_of(name, labels)
+    if label is not None:
+        return f"the {label} label folder"'''

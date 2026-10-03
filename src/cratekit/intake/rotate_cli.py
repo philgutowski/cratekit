@@ -95,7 +95,7 @@ def build(parser, entry) -> None:
     parser.set_defaults(_handler=inbox_rotate)
 
 
-def _as_of(ctx) -> date:
+def as_of(ctx) -> date:
     """The day batches are aged against: the local calendar's, as a batch is named.
 
     ``is None`` and not falsiness, for the aging report's reason: an empty
@@ -134,8 +134,11 @@ def _approve_gate(entry):
     )
 
 
-def _payload(plan: rotate.RotationPlan) -> dict[str, Any]:
-    """The plan as the gate digests it and the envelope carries it."""
+def plan_payload(plan: rotate.RotationPlan) -> dict[str, Any]:
+    """The plan as the gate digests it and the envelope carries it.
+
+    Public for ``crate organize`` (U112), whose screen shows these items.
+    """
     items = [batch.to_json() for batch in (*plan.moves, *plan.removals, *plan.kept)]
     items += [{"action": LEAVE, **node.to_json()} for node in plan.left]
     return {
@@ -186,8 +189,12 @@ def _warnings(plan: rotate.RotationPlan) -> list[dict[str, str]]:
     ]
 
 
-def _plan(cfg: config.Config, declared, today: date) -> rotate.RotationPlan:
-    """The plan over INBOX as it stands, through a handle opened to read and closed."""
+def planned(cfg: config.Config, declared, today: date) -> rotate.RotationPlan:
+    """The plan over INBOX as it stands, through a handle opened to read and closed.
+
+    PUBLIC FOR ``crate organize`` (U112), which plans the rotation as one step
+    of its database area and must plan it exactly as this verb does.
+    """
     db = rb_writer.open_db(
         rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
     )
@@ -199,8 +206,11 @@ def _plan(cfg: config.Config, declared, today: date) -> rotate.RotationPlan:
         rb_writer.close_db(db)
 
 
-def _write(cfg: config.Config, declared, plan: rotate.RotationPlan) -> rotate.Rotated:
-    """Apply the plan through a handle of this function's own, opened to write."""
+def written(cfg: config.Config, declared, plan: rotate.RotationPlan) -> rotate.Rotated:
+    """Apply the plan through a handle of this function's own, opened to write.
+
+    Public for ``crate organize`` (U112), for :func:`planned`'s reason.
+    """
     db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
     try:
         return rotate.apply_rotation(
@@ -218,8 +228,8 @@ def inbox_rotate(ctx) -> Envelope:
     # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
     session.assert_backup_acknowledged(cfg)
 
-    plan = _plan(cfg, declared, _as_of(ctx))
-    data = _payload(plan)
+    plan = planned(cfg, declared, as_of(ctx))
+    data = plan_payload(plan)
     warnings = _warnings(plan)
     if ctx.gate.require(spec, plan=data, context=_facts(plan)) != "approve":
         return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=warnings)
@@ -239,7 +249,7 @@ def inbox_rotate(ctx) -> Envelope:
             ],
         )
 
-    rotated = _write(cfg, declared, plan)
+    rotated = written(cfg, declared, plan)
     rotate.assert_read_back(rotated)
     data["totals"] = {
         **data["totals"],
@@ -273,6 +283,10 @@ __all__ = [
     "NOTHING_TO_ROTATE",
     "RECORDS_UNREADABLE",
     "ROTATED",
+    "as_of",
     "build",
     "inbox_rotate",
+    "plan_payload",
+    "planned",
+    "written",
 ]

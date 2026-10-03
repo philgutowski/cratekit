@@ -427,6 +427,24 @@ guarded writer compares the content, playlist and membership tables from SQL
 before the commit and refuses any change the plan does not name. Database
 native intake trees only.
 
+### Organize
+`crate organize` (U112), a composer like `sync all`. It has two AREAS,
+rekordbox and the account, and each has its own explicit digest gate. An area
+is made of STEPS, and each step is one plan made by the verb that owns it:
+adoption and rotation on rekordbox; one label's folder, one landed pass's
+marks and one set's archive on the account. A step is planned, nothing (its
+plan writes nothing), refused (its own precondition refused, shown, and
+hiding no other step), or listed (named, and no verb owns it). The area's
+digest covers every step's key, state and own digest. Both areas are planned,
+then both asked, then written. YOURS is what the author made: a top level
+rekordbox node outside the declared trees, a node the rotation leaves alone,
+or an account playlist the product did not make that sits in no folder. It
+is listed with a suggested home, a followed label's folder or a year folder,
+and is never written. A set's download is proven only by an intake file named
+for the set.
+
+*Avoid:* reading a listed step as done, or a yours entry as a plan.
+
 ### Fresh Export
 A collection export that describes the database as it is now: the XML document
 holding every collection row and the playlist tree, which the verbs on the

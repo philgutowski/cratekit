@@ -35282,3 +35282,99 @@ killed nothing.
 **Closes when:** a run under load shows which spawned step outlives its wait.
 
 **Not on the board bar.** Maintainer facing.
+
+
+---
+
+## R-911. Nothing records which landing downloaded a set, so organize archives only a set an intake file is named for
+
+**Found:** by U112 on `relay/260`, 2026-10-03, while composing `export archive`.
+
+**The mechanism.** A set playlist's ledger record holds its name, its remote
+identifier, its year and its tracks, and no pass, run or intake file. `export
+archive NAME --xml INTAKE` is told the proof by a person. `crate organize` has
+no person to ask, so it reads one proof only: an intake file at the library
+root named for the set, `<set>_inboxed.xml`, pending or retired, which is what
+`intake land --pass <set>` writes. A set landed under any other pass name is
+listed as waiting, with the command that archives it, and nothing is planned
+for it. A set whose mark record entry stands, and was not put back, reads as
+archived.
+
+**Measured cost.** Not measured on the author's library; how his sets are
+landed is unknown here. On a library whose sets land under a sync pass's name,
+organize archives none of them and says so for each.
+
+**Closes when:** a set's download records the set it fetched, so the landing
+of that pass can be found from the set, or the author decides the naming rule
+is the rule.
+
+**Not on the board bar.** No false statement and no write: the step is listed
+with its own command, and `export archive` itself is unchanged.
+
+
+---
+
+## R-912. Every organize run crawls each followed label's whole catalogue, and answering two gates takes three runs
+
+**Found:** by the built in review of U112 on `relay/260`, 2026-10-03.
+
+**The mechanism.** The account area composes `label playlists`'s own plan for
+every followed label, which reads each label's confirmed catalogue in full
+through the provider gate's pacing, because missing years cannot be known
+without it. The two explicit gates are answered by R34's separate acts, so a
+person reaches the writes on the third run, and each run plans again from the
+provider. `--report` crawls the same. The account listing a mark reads is
+shared across passes within one run since the same review.
+
+**Measured cost.** Not measured. Fifteen followed labels is fifteen crawls a
+run, forty five to reach a write. Sitting 11 had the account rate limited by
+bulk work, so no live organize should run before #217's pacing and circuit
+breaker land.
+
+**Closes when:** a live organize is timed at an attended sitting after #217,
+or the plan is cached between the runs of one decision.
+
+**Not on the board bar.** Closes only at an attended sitting.
+
+
+---
+
+## R-913. Organize composes a label's folder plan whole, so it also adds a year's new tracks
+
+**Found:** by U112 on `relay/260`, 2026-10-03, a decision recorded rather than
+asked, since nobody was there to ask.
+
+**The mechanism.** The brief asks for a folder for every followed label "that
+has none or is missing years". `label playlists`'s plan is one plan: the
+folder, every year, and every track a year lacks. Narrowing it to folders and
+years would be a second implementation of that verb's rule, which the brief
+also forbids, so the plan is composed whole and the screen counts the tracks
+it adds beside the folders and years it creates. Every write is still an add.
+
+**Measured cost.** None measured. A followed label whose year playlists
+already exist is planned whenever its catalogue has grown.
+
+**Closes when:** the author says whether organize should add tracks to a
+year that already exists.
+
+**Not on the board bar.** Add only, shown on the screen before the gate.
+
+
+---
+
+## R-914. hand_off's verified part finds the digest anywhere in the document, not at the step it names
+
+**Found:** by U112 on `relay/260`, 2026-10-03.
+
+**The mechanism.** `Gates.hand_off(..., part=(document, digest))` refuses
+unless the document digests to the recorded answer and the digest is one of
+the document's string values. It does not check WHICH step holds it, so a step
+key or a refused step's reason equal to another step's digest would pass.
+Digests are sixteen hex characters and keys are words, so no producer is known.
+
+**Measured cost.** Zero candidates driven produce a collision.
+
+**Closes when:** a composer hands on a part whose step position matters, and
+the check takes the step's key.
+
+**Not on the board bar.** Maintainer facing.

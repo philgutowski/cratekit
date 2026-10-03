@@ -1,0 +1,130 @@
+{
+  "name": "u112-b",
+  "pass_kind": "light",
+  "branch": "relay/260",
+  "head": "61516bd",
+  "when": "2026-10-03 22:25 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 12739,
+  "baseline_exit": 0,
+  "pytest_runs": 6,
+  "state_guarded": "~/Library/Application Support/cratekit (257154 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/organize/cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/organize/cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "de7c942c16ade617",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 12739,
+    "baseline_collected": 12739,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C7_outcome_always_ok",
+      "description": "A run that wrote nothing ends OK rather than as a no-op",
+      "file": "src/cratekit/organize/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9daff740660f0d87",
+      "subset": [
+        "tests/test_organize.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 32,
+      "baseline_collected": 32,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize.py::test_a_run_that_writes_nothing_ends_as_a_no_op"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        outcome=Outcome.OK if wrote else Outcome.NO_OP,",
+      "new": "        outcome=Outcome.OK,"
+    },
+    {
+      "id": "A5_nothing_product_made",
+      "description": "No account playlist is product made, so the product's own are listed as the author's",
+      "file": "src/cratekit/organize/account.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1d928431e4f82808",
+      "subset": [
+        "tests/test_organize.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 32,
+      "baseline_collected": 32,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize.py::test_an_exported_playlist_the_product_made_is_not_listed_as_yours",
+        "tests/test_organize.py::test_what_the_author_made_is_listed_with_a_home_and_never_a_write"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        made = (\n            label_built\n            | set_built\n            | ledger.product_made_among(cfg, (one.playlist_id for one in listed))\n        )",
+      "new": "        made = frozenset()"
+    },
+    {
+      "id": "A6_exported_not_product_made",
+      "description": "An exported playlist the ledger records as product made is listed as the author's",
+      "file": "src/cratekit/organize/account.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "edb9cc2b3edf2679",
+      "subset": [
+        "tests/test_organize.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 32,
+      "baseline_collected": 32,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize.py::test_an_exported_playlist_the_product_made_is_not_listed_as_yours"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            | ledger.product_made_among(cfg, (one.playlist_id for one in listed))",
+      "new": "            | frozenset()"
+    }
+  ],
+  "dropped": []
+}

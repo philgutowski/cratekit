@@ -958,6 +958,21 @@ def set_playlist(cfg: config.Config, name: str) -> SetPlaylist | None:
     )
 
 
+def set_playlist_names(cfg: config.Config) -> tuple[str, ...]:
+    """The name of every set playlist recorded with an identifier, sorted. Read only.
+
+    For ``crate organize`` (U112), which looks each one up through
+    :func:`set_playlist` so a set is read one way wherever it is read.
+    """
+    return tuple(
+        sorted(
+            str(name)
+            for name, record in _load(cfg)["sets"].items()
+            if record and record.get("remote_id")
+        )
+    )
+
+
 def set_playlist_ids(cfg: config.Config) -> frozenset[str]:
     """Every set playlist this library made, for the playlist sweep to leave alone.
 
@@ -1086,7 +1101,24 @@ def product_made(cfg: config.Config, playlist_id: str) -> bool:
     wanted = str(playlist_id or "")
     if not wanted:
         return False
+    return _made_in(_load(cfg), wanted)
+
+
+def product_made_among(cfg: config.Config, playlist_ids) -> frozenset[str]:
+    """Those of ``playlist_ids`` this product created, the ledger read once.
+
+    :func:`product_made`'s rule over each, for ``crate organize`` (U112), which
+    asks it of every playlist on the account and would otherwise read and parse
+    the ledger once per playlist.
+    """
     document = _load(cfg)
+    return frozenset(
+        str(one) for one in playlist_ids if str(one or "") and _made_in(document, str(one))
+    )
+
+
+def _made_in(document: dict, wanted: str) -> bool:
+    """:func:`product_made`'s rule over a ledger already read."""
     made = False
     for record in document["labels"].values():
         for entry in (record.get("years") or {}).values():

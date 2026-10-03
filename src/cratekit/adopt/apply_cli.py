@@ -1008,8 +1008,18 @@ def _approving_actor(ctx, spec) -> str:
     return decision.actor if decision is not None else ""
 
 
+#: Public for ``crate organize`` (U112), which shows this verb's own screen as
+#: its adoption step and reports what its worker landed. The same functions
+#: under the names a composer may import.
+digested = _digested
+applied_summary = _summary
+
+
 __all__ = [
+    "ACTOR_KEY",
     "WORKFLOW",
+    "applied_summary",
+    "digested",
     "adopt_apply_argv",
     "apply_adoption",
     "apply_outstanding",

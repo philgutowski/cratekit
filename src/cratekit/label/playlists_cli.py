@@ -300,6 +300,60 @@ def _failed_part_way(
     )
 
 
+def plan_label(cfg, entry: labels.LabelEntry, found: catalogue.Catalogue, remote) -> folders.Plan:
+    """One followed label's plan against the account as it is, or its refusal.
+
+    PUBLIC FOR ``crate organize`` (U112), which plans every followed label
+    through this one body, so a label is planned there exactly as here.
+    """
+    return folders.plan(cfg, read_catalogue(cfg, entry, found), remote)
+
+
+def refused_warnings(done: folders.Applied) -> list[dict[str, str]]:
+    """What an apply says about tracks the provider would not add."""
+    if not done.refused:
+        return []
+    return [
+        {
+            "code": "label-playlists-tracks-refused",
+            "message": (
+                f"the provider would not add {sum(done.refused.values())} track(s) "
+                f"to {len(done.refused)} year playlist(s); they are recorded and "
+                f"not asked for again"
+            ),
+        }
+    ]
+
+
+def apply_plan(cfg, remote, planned: folders.Plan) -> folders.Applied:
+    """Build what one label's plan names, or raise naming what was written first.
+
+    Public for ``crate organize`` (U112), for :func:`plan_label`'s reason.
+    """
+    done = folders.Applied()
+    try:
+        folders.apply(cfg, remote, planned, done)
+    except Exception as exc:
+        raise _failed_part_way(exc, done, planned) from exc
+    return done
+
+
+def applied_totals(done: folders.Applied) -> dict[str, Any]:
+    """What was written, as the totals carry it."""
+    return {
+        "folder_id": done.folder_id,
+        "folder_created": done.folder_created,
+        "created": list(done.created),
+        "moved": list(done.moved),
+        "added": dict(done.added),
+        "refused": dict(done.refused),
+    }
+
+
+#: Public for ``crate organize`` (U112), whose label step shows these items.
+plan_payload = _payload
+
+
 def label_playlists(ctx) -> Envelope:
     cfg = label_cli._load()
     name = str(ctx.args.name)
@@ -328,40 +382,23 @@ def label_playlists(ctx) -> Envelope:
     if option != "apply" or not planned.writes:
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
 
-    done = folders.Applied()
-    try:
-        folders.apply(cfg, remote, planned, done)
-    except Exception as exc:
-        raise _failed_part_way(exc, done, planned) from exc
-
-    warnings: list[dict[str, str]] = []
-    if done.refused:
-        warnings.append(
-            {
-                "code": "label-playlists-tracks-refused",
-                "message": (
-                    f"the provider would not add {sum(done.refused.values())} track(s) "
-                    f"to {len(done.refused)} year playlist(s); they are recorded and "
-                    f"not asked for again"
-                ),
-            }
-        )
+    done = apply_plan(cfg, remote, planned)
     # WHAT WAS WRITTEN RIDES ON THE TOTALS, since ``plan/1`` admits no other
     # key at the top of the payload.
-    totals = {
-        **payload["totals"],
-        "applied": {
-            "folder_id": done.folder_id,
-            "folder_created": done.folder_created,
-            "created": list(done.created),
-            "moved": list(done.moved),
-            "added": dict(done.added),
-            "refused": dict(done.refused),
-        },
-    }
+    totals = {**payload["totals"], "applied": applied_totals(done)}
     return ctx.envelope(
-        data={**payload, "totals": totals}, outcome=Outcome.OK, warnings=warnings
+        data={**payload, "totals": totals}, outcome=Outcome.OK, warnings=refused_warnings(done)
     )
 
 
-__all__ = ["build_playlists", "incomplete", "label_playlists", "read_catalogue"]
+__all__ = [
+    "applied_totals",
+    "apply_plan",
+    "build_playlists",
+    "incomplete",
+    "label_playlists",
+    "plan_label",
+    "plan_payload",
+    "read_catalogue",
+    "refused_warnings",
+]

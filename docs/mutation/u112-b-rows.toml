@@ -1,0 +1,33 @@
+name = "u112-b"
+pass_kind = "light"
+
+[[rows]]
+id = "C7_outcome_always_ok"
+description = "A run that wrote nothing ends OK rather than as a no-op"
+file = "src/cratekit/organize/cli.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''        outcome=Outcome.OK if wrote else Outcome.NO_OP,'''
+new = '''        outcome=Outcome.OK,'''
+
+[[rows]]
+id = "A5_nothing_product_made"
+description = "No account playlist is product made, so the product's own are listed as the author's"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''        made = (
+            label_built
+            | set_built
+            | ledger.product_made_among(cfg, (one.playlist_id for one in listed))
+        )'''
+new = '''        made = frozenset()'''
+
+[[rows]]
+id = "A6_exported_not_product_made"
+description = "An exported playlist the ledger records as product made is listed as the author's"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''            | ledger.product_made_among(cfg, (one.playlist_id for one in listed))'''
+new = '''            | frozenset()'''
