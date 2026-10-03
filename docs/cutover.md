@@ -887,6 +887,8 @@ landing.
 | `sync mark` then `sync unmark`, R-838, #243 | live on the account, each gate read, after cycle 39 | `DOWNLOADED Kids`, two tracks, retitled `Kids` through the account adapter. `sync mark` from the 2026-09-30 pass planned only `Kids -> DOWNLOADED Kids` and wrote the mark record. `sync unmark --playlist` planned `DOWNLOADED Kids -> Kids`, applied, **the account read `Kids`**, and a second unmark planned nothing. The title was set back to `DOWNLOADED Kids`. 619 to 1,241 provider calls a listing, no rate limit. | live, **R-838 closes** |
 | `export playlist` again, R-850, #249 | live, onto the playlist R-834's run made | `tracks: 0 written, 4 already there or written before, 4 unmatched`, each unmatched track named with its reason, warning `export-tracks-unmatched`, 22 calls. | live, **R-850 closes** |
 | #246, U107 | read from the merge | The task hit the model usage limit and exited with no envelope; Relay merged and closed it anyway, with no review, table or record. #246 reopened, R-857 filed. | **owed** |
+| U107 reviewed, R-857, #251 | landed after cycle 40 | Two review rounds, nine findings fixed, 25 of 25 mutation rows killed, R-858 to R-861. #246 closed by hand. | **R-857 closes** |
+| `crate sync favorites`, R-856, #250 | live on the account at its gate, digest `ad7df9d6bbf83ffc` | 109 favourites: **0 hearted, 97 already hearted, 12 unmatched, each named with its reason**, warning `favorites-hearts-unmatched`. The provider client's own log lines print above it, R-864. | live |
 
 ## What blocks a full sync cycle, stated plainly
 

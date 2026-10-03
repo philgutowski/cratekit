@@ -33807,6 +33807,16 @@ account returned; and deriving `reasons` from the listing, an existing
 envelope key left as it was. A live sweep read back is the confirmation
 R-850 had at sitting 30 and is owed to an attended sitting, not to closing.
 
+
+**Read live at sitting 30, 2026-10-02.** `crate sync favorites` over
+`Favorites/All Favorites` in the collection export of 2026-10-01, 109
+favourites, digest `ad7df9d6bbf83ffc`, on the installed build at the merge
+of #250: `tracks: 0 hearted, 97 already hearted or hearted before, 12
+unmatched`, each of the twelve named with its reason, among them a Steve
+Reich recording and an Elderbrook remix the provider returned nothing for,
+and one ISRC naming two provider tracks neither of which agrees. Nothing
+was hearted, since everything matchable already was. The client library's
+own `Track '...' is unavailable` lines print above the answer, R-864.
 ## R-857. U107 landed on main with no review, no mutation table and no record, after its task hit the model usage limit
 
 **Found:** at sitting 30, 2026-10-02, reading the merge of #246.
@@ -33965,3 +33975,25 @@ such a script.
 contract says counts are meaningful only once the state is not queued.
 
 **Not on the board bar.** The envelope states the job is queued.
+
+---
+
+## R-864. The provider client's own log lines print above an outbound verb's answer
+
+**Found:** at sitting 30, 2026-10-02, running `crate sync favorites` live.
+
+**The mechanism.** The vendored provider client logs `Track '<id>' is
+unavailable` and `No matching tracks found for ISRC '<isrc>'` at a level the
+product's logging setup lets through to the terminal, so a favourites sweep
+over 109 rows printed 21 such lines before its answer. The answer already
+names each unmatched track with its reason, so the lines say less than the
+answer below them, by provider id rather than by track.
+
+**Measured cost.** Noise above the answer a person reads. Nothing is lost
+and nothing false is said.
+
+**Closes when:** the provider client's logger is held below warning for the
+outbound verbs, or routed to the run's log file, and a sweep's terminal
+output starts with the verb's own answer.
+
+**Not on the board bar.** Wording and noise.
