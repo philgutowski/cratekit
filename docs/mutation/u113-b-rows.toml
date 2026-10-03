@@ -1,0 +1,85 @@
+name = "u113-b"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_close_match_claims"
+description = "Re-measured after the fix round's test: a row that resolves only to something close claims the file anyway"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py"]
+old = '''            if resolved.state is not match.MatchState.MATCHED:
+                continue'''
+new = '''            if resolved.state is match.MatchState.MISSING:
+                continue'''
+
+[[rows]]
+id = "B1_batch_always_written"
+description = "The intake file always carries the batch playlist, empty when every file was claimed"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py", "tests/test_intake_land.py", "tests/test_intake_land_names.py"]
+old = '''    written = ([(named, rest)] if rest or not accounts else []) + accounts'''
+new = '''    written = [(named, rest)] + accounts'''
+
+[[rows]]
+id = "B2_batch_keeps_claimed"
+description = "The batch playlist in the intake file holds the claimed files too"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py", "tests/test_intake_land.py", "tests/test_intake_land_names.py"]
+old = '''    rest = [item.track_id for item in placed if item.path not in claimed]'''
+new = '''    rest = [item.track_id for item in placed]'''
+
+[[rows]]
+id = "B3_record_unnamed"
+description = "The intake session record does not list the account playlists, so the rotation cannot age them"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py"]
+old = '''        record.detail[INBOX_PLAYLISTS_KEY] = ['''
+new = '''        record.detail["inbox_playlists_unread"] = ['''
+
+[[rows]]
+id = "B4_steps_name_one"
+description = "The import steps name only the first playlist when the file holds several"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py", "tests/test_intake_land.py"]
+old = '''    if len(playlists) > 1:'''
+new = '''    if len(playlists) > 99:'''
+
+[[rows]]
+id = "B5_export_clash_unasked"
+description = "A name the export came to hold since it was chosen is not refused before the moves"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py", "tests/test_landing.py"]
+old = '''    clash = sorted(set(names) & set(held))'''
+new = '''    clash: list[str] = []'''
+
+[[rows]]
+id = "B6_root_names_unheld"
+description = "Names at the export's playlist root, where an import lands first, are not held"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py"]
+old = '''    return (*held, *at_root)'''
+new = '''    return held'''
+
+[[rows]]
+id = "B7_digest_blind_to_split"
+description = "The xml gate's digest does not cover the split, so an answer given for one carries out another"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py", "tests/test_intake_land.py"]
+old = '''        identity["playlists"] = [claimed.identity() for claimed in split]'''
+new = '''        pass'''
+
+[[rows]]
+id = "B8_pending_names_unheld"
+description = "Names an intake file still waiting on its import holds are not held"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py"]
+old = '''    taken = (*(held if isinstance(held, tuple) else ()), *account_playlists.pending_names(cfg))'''
+new = '''    taken = held if isinstance(held, tuple) else ()'''
