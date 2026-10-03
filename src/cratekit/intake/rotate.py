@@ -326,9 +326,11 @@ def _recognised(cfg: config.Config, row: Any, recorded: Mapping[str, date]) -> s
 def _created_date(row: Any) -> date | None:
     """The LOCAL day the row was created, as a batch is named for the local day.
 
-    The binding hands ``created_at`` back timezone aware, stored at UTC, so a
-    batch imported at 9 pm on the east coast reads as the next day until it is
-    converted, and ``collection_export`` converts for the same reason.
+    The column is stored at UTC. The pinned binding, pyrekordbox 0.4.4, hands
+    it back naive and already converted to local time, read on 2026-10-03, so
+    a batch imported at 9 pm on the east coast is that evening's. An aware
+    value, which a different binding could return, is converted the same way
+    rather than read on the UTC calendar, as ``collection_export`` converts.
     """
     created = getattr(row, "created_at", None)
     if isinstance(created, datetime):

@@ -830,7 +830,12 @@ def test_the_name_a_landing_gives_is_the_shape_the_rotation_recognises(machine, 
 def test_a_batch_created_late_in_the_evening_is_aged_from_its_local_day(
     native_library, monkeypatch
 ):
-    """The row stores UTC. A batch made at 23:30 local is that day's, not tomorrow's."""
+    """The row stores UTC. A batch made at 23:30 local is that day's, not tomorrow's.
+
+    End to end through the binding, which converts to naive local time on read,
+    so this pins the outcome and not the aware branch in ``_created_date``,
+    which the pinned binding never reaches (mutation row C1).
+    """
     cfg, root_id = native_library
     monkeypatch.setenv("TZ", "America/New_York")
     import time
