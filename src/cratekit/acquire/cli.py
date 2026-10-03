@@ -377,13 +377,6 @@ def acquire_download(ctx) -> Envelope:
         sweep_staging(Path(cfg.paths.download_staging), store)
         if ctx.args.job:
             job, warnings = drive_queued(ctx, store, ctx.args.job)
-            # THE VERB R-290 WAS FOUND ON. This worker is the one that parks, on
-            # a provider block or a dead session, and the park reached this
-            # report as ``ok`` with exit 0, legible only inside ``data.cause``. A
-            # list where one track landed and another did not did the same
-            # (R-225). OUTSIDE ``drive_queued``'s ``is_open`` branch, so a job already failed on
-            # entry is answered the same way however many times it is asked.
-            jobs.raise_for_state(job)
             return ctx.envelope(data=_reported(store, job), warnings=warnings)
         # READ FROM THE PATH AS TYPED, freeze it absolute. ``read_list`` refuses a
         # pasted URL by matching a scheme at the front of the string, and
@@ -431,12 +424,12 @@ def queue_list(
 
 
 def drive_queued(ctx, store: jobs.JobStore, job_id: str) -> tuple[jobs.Job, tuple[dict[str, str], ...]]:
-    """Drive one queued download in this process and return it as it ended.
+    """Drive one queued download in this process, and refuse unless it ended clean.
 
     RECONCILE FIRST. A resume arrives after something stopped, and a claim left
-    behind by a driver that died is state the queue cannot see for itself. A
-    job already terminal is returned as it stands. The caller decides what its
-    state means, through ``jobs.raise_for_state`` as this verb does.
+    behind by a driver that died is state the queue cannot see for itself.
+    Returns the job only when it succeeded or is still waiting; a parked, half
+    failed or cancelled one raises its own cause.
     """
     job = jobs.reconcile(store, job_id)
     warnings: tuple[dict[str, str], ...] = ()
@@ -461,6 +454,13 @@ def drive_queued(ctx, store: jobs.JobStore, job_id: str) -> tuple[jobs.Job, tupl
             )
         _, warnings = ctx.run_job(store, job)
         job = jobs.get(store, job.job_id)
+    # THE VERB R-290 WAS FOUND ON. This worker is the one that parks, on a
+    # provider block or a dead session, and the park reached the report as
+    # ``ok`` with exit 0, legible only inside ``data.cause``. A list where one
+    # track landed and another did not did the same (R-225). OUTSIDE the
+    # ``is_open`` branch, so a job already failed on entry is answered the same
+    # way however many times it is asked.
+    jobs.raise_for_state(job)
     return job, warnings
 
 
