@@ -79,7 +79,8 @@ ACTION_ADOPT = "adopt"
 #: What an unmatched row is said to be when the account gave no reason for it.
 #: The engine records the slug ``unmatched`` for that row, which is a key to
 #: grep the artifacts for and not a sentence a person can act on (R-850).
-NO_MATCH = "the provider returned no track for it"
+#: Spelled in the shell, which the favourites sweep shares.
+NO_MATCH = shell.NO_MATCH
 
 #: The warning a finished export carries when any of its tracks went unwritten.
 UNMATCHED_WARNING = "export-tracks-unmatched"
@@ -183,13 +184,10 @@ def concluded(outbound: Mapping[str, Any]) -> tuple[dict[str, str], ...]:
     action with a verb that verifies it, which nothing here has. The warning is
     the line a script reading only the outcome and the warnings can key on.
     """
-    counts = outbound.get("counts")
-    if not isinstance(counts, Mapping):
+    tally = shell.unmatched_tally(outbound)
+    if tally is None:
         return ()
-    missed = counts.get("unmatched")
-    if not _whole(missed) or missed <= 0:
-        return ()
-    total = sum(n for n in counts.values() if _whole(n))
+    missed, total = tally
     # "WERE NOT WRITTEN", NOT "ARE NOT ON THE PLAYLIST". A track counted as
     # already there may be counted so off the ledger rather than the account
     # (R-855), so the missing set on the account can be larger than this one,
@@ -204,11 +202,6 @@ def concluded(outbound: Mapping[str, Any]) -> tuple[dict[str, str], ...]:
             ),
         },
     )
-
-
-def _whole(value: Any) -> bool:
-    """A count, which a bool is not, though Python calls it an int."""
-    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def _identity(row: Any) -> str:

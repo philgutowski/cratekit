@@ -101,8 +101,9 @@ def local_write_warning() -> tuple[dict[str, str], ...]:
 
 #: What an unmatched favourite is said to be when the account gave no reason
 #: for it. The engine names such a row in ``unmatched`` and nowhere else, so
-#: without this sentence it reached no line a person reads (R-856).
-NO_MATCH = "the provider returned no track for it"
+#: without this sentence it reached no line a person reads (R-856). Spelled in
+#: the shell, so the export says the same thing in the same words.
+NO_MATCH = shell.NO_MATCH
 
 #: The warning a finished sweep carries when any favourite went unhearted.
 UNMATCHED_WARNING = "favorites-hearts-unmatched"
@@ -194,13 +195,10 @@ def concluded(outbound: Mapping[str, Any]) -> tuple[dict[str, str], ...]:
     reading only the outcome and the warnings can key on. It follows the
     standing warning, which ``shell.resume`` puts first.
     """
-    counts = outbound.get("counts")
-    if not isinstance(counts, Mapping):
+    tally = shell.unmatched_tally(outbound)
+    if tally is None:
         return ()
-    missed = counts.get("unmatched")
-    if not _whole(missed) or missed <= 0:
-        return ()
-    total = sum(n for n in counts.values() if _whole(n))
+    missed, total = tally
     # "WERE NOT HEARTED", NOT "ARE NOT HEARTED". A favourite counted as already
     # hearted may be counted so off the ledger rather than the account, the
     # export's R-855 shape, so only what the provider could not match is this
@@ -215,11 +213,6 @@ def concluded(outbound: Mapping[str, Any]) -> tuple[dict[str, str], ...]:
             ),
         },
     )
-
-
-def _whole(value: Any) -> bool:
-    """A count, which a bool is not, though Python calls it an int."""
-    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def build_sync(parser, entry) -> None:
