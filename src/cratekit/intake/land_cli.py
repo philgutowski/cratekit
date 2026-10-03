@@ -38,6 +38,7 @@ track, never a failure: the file, if there is one, is in the intake playlist.
 
 from __future__ import annotations
 
+import contextlib
 import re
 from pathlib import Path
 from typing import Any, Callable
@@ -132,12 +133,7 @@ def _check_pass(pass_name: str | None) -> None:
     """Refuse a ``--pass`` that is not one plain file name at the library root."""
     if pass_name is None:
         return
-    if (
-        not pass_name
-        or pass_name != pass_name.strip()
-        or pass_name.startswith(".")
-        or any(char in pass_name for char in ("/", "\\", "\0"))
-    ):
+    if not landing.plain_name(pass_name):
         raise refuse(
             "intake-list-unusable",
             f"{pass_name!r} is not a pass this landing can name its intake file for, "
@@ -160,6 +156,38 @@ def intake_file(cfg: config.Config, stem: str) -> Path:
     already walks, so an unimported landing is visible to the cutover check.
     """
     return Path(cfg.library.root) / f"{stem}{INTAKE_SUFFIX}"
+
+
+def _intake_held(stem: str, batch: str):
+    """The intake file's own lock, or nothing when the batch lock already is it.
+
+    APART SINCE U110: a batch named for the date and an intake file named for
+    the pass can each be shared by a landing the other lock does not see.
+    """
+    if landing.lock_key(stem) == landing.lock_key(batch):
+        # ``--name`` alone names both, and the batch lock already holds the
+        # one name; a second lock on it would refuse the landing holding it.
+        return contextlib.nullcontext()
+    return landing.intake_lock(stem)
+
+
+def _still_free(cfg: config.Config, batch: str) -> None:
+    """Refuse a default name another landing took since this one chose it.
+
+    UNDER THE BATCH LOCK, because the name was chosen before the gate and two
+    landings that both found it free would otherwise land into one folder and,
+    on the native medium, one playlist. Only a name this run chose: one a person
+    gave with ``--name`` is theirs to land into again.
+    """
+    if batch_name.taken(cfg, batch):
+        raise refuse(
+            "decision-stale",
+            f"the batch name {batch!r} was taken by another landing after this one "
+            f"chose it, so nothing was moved; run the landing again and it takes "
+            f"the next free name",
+            origin=_ORIGIN,
+            detail={"batch": batch},
+        )
 
 
 def build_land(parser, entry) -> None:
@@ -482,7 +510,9 @@ def intake_land(ctx) -> Envelope:
     # the same batch folder is refused at the door rather than waited for. Only
     # here, after the answer: a plan and a gate screen move nothing and a held
     # name does not stop anybody reading one.
-    with landing.batch_lock(batch):
+    with landing.batch_lock(batch), _intake_held(stem, batch):
+        if ctx.args.name is None:
+            _still_free(cfg, batch)
         landed = landing.apply(
             planned,
             cfg=cfg,
@@ -701,6 +731,8 @@ def _land_native(
         # ONE LANDING PER BATCH NAME, HELD ACROSS THE WHOLE APPLY (R-432), as on
         # the bridge: the engine checks a target free and then renames over it.
         with landing.batch_lock(planned.batch):
+            if ctx.args.name is None:
+                _still_free(cfg, planned.batch)
             return landing.apply_native(planned, cfg=cfg, db=db, rows=rows, declared=declared)
 
     payload, landed = ask_then_write(

@@ -38,10 +38,11 @@ analysis pass fills is left for rekordbox. That policy is the engine's and the
 guarded writer's, asserted from SQL before the commit and read back after it.
 
 THE NATIVE PLAYLIST IS NAMED AS THE NATIVE LANDING NAMES ITS OWN, by the bare
-batch, which for one file is the file's stem. The bridge names the batch
-playlist after its intake file, stem and suffix, on both verbs; the native
-medium has no intake file and the landing already dropped the suffix there, so
-a cut over library has one naming rule and not one per verb.
+batch, which for one file is the file's stem. On the bridge this verb still
+names the playlist after its intake file, stem and suffix, while a landing
+names it for its batch alone since U110; the native medium has no intake file
+and neither verb adds the suffix there, so a cut over library has one naming
+rule and not one per verb.
 
 THE MEDIUM IS READ BEFORE THE PLAN IS SHOWN, on the bridge too. Which medium
 the verb is on decides whether there is a gate to ask, and that is the

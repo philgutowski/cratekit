@@ -83,14 +83,14 @@ def _folder_safe(text: str) -> str:
 
 def label_words(rows: Iterable[listdoc.ManifestRow]) -> str | None:
     """The words a manifest's label rows say, or None when they name no label."""
-    named: list[str] = []
+    named: dict[str, str] = {}
     for row in rows:
         label = _folder_safe(landing._label_of(row))
-        if label and label.casefold() not in {one.casefold() for one in named}:
-            named.append(label)
+        if label:
+            named.setdefault(label.casefold(), label)
     if not named:
         return None
-    return named[0] if len(named) == 1 else LABELS
+    return next(iter(named.values())) if len(named) == 1 else LABELS
 
 
 def job_word(job: jobs.Job) -> str | None:
@@ -115,11 +115,12 @@ def joined(words: Iterable[str]) -> str | None:
 
 
 def pass_jobs(cfg: config.Config, pass_name: str) -> list[jobs.Job]:
-    """The intake jobs of the pass ``pass_name`` names, on this library.
+    """The intake jobs of the pass ``pass_name`` names that SUCCEEDED, on this library.
 
-    THE COMPARISON ``sync mark`` MAKES, in the direction the name was built: a
-    job belongs when its own run spells the pass. Nothing tries to put the
-    run's colons back.
+    THE COMPARISON ``sync mark`` MAKES, :func:`missing_cli.in_pass`, and no
+    copy of it. ONLY A JOB THAT SUCCEEDED, because a failed or cancelled one is
+    what ``intake missing --skip-failed`` leaves out of the download, and a
+    batch is named for what it carries.
     """
     from cratekit.intake import missing_cli
 
@@ -129,8 +130,8 @@ def pass_jobs(cfg: config.Config, pass_name: str) -> list[jobs.Job]:
             for job in jobs.list_jobs(store)
             if job.handler_key in intake_cli.INTAKE_KEYS
             and job.library_id == cfg.library.volume_id
-            and (run_id := str((job.payload or {}).get(missing_cli.RUN_ID) or ""))
-            and missing_cli.synced_name(run_id) == pass_name
+            and job.state is jobs.JobState.SUCCEEDED
+            and missing_cli.in_pass(job, pass_name)
         ]
 
 
@@ -151,14 +152,21 @@ def source_words(
     return DOWNLOADS
 
 
-def free(cfg: config.Config, base: str) -> str:
-    """``base``, or ``base 2``, ``base 3`` and on, the first no batch folder holds.
+def taken(cfg: config.Config, name: str) -> bool:
+    """Whether a batch folder of ``name`` is under the music folder.
 
     A link of that name counts as taken whether or not it leads anywhere, since
-    a landing could not make its folder there either.
+    a landing could not make its folder there either. Asked by :func:`free` to
+    choose and by the landing again under its lock, since the choice is made
+    before the gate and another landing can take the name in between.
     """
+    return os.path.lexists(landing.target_dir(cfg, name))
+
+
+def free(cfg: config.Config, base: str) -> str:
+    """``base``, or ``base 2``, ``base 3`` and on, the first no batch folder holds."""
     candidate, count = base, 1
-    while os.path.lexists(landing.target_dir(cfg, candidate)):
+    while taken(cfg, candidate):
         count += 1
         candidate = f"{base} {count}"
     return candidate
@@ -188,5 +196,6 @@ __all__ = [
     "pass_jobs",
     "readable",
     "source_words",
+    "taken",
     "today",
 ]

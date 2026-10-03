@@ -114,8 +114,10 @@ from cratekit.label import catalogue
 #: The payload key ``crate sync all`` stamps each job it queues with.
 RUN_ID = "run_id"
 
-#: What a run's list and its landed batch are named after the run, so the list,
-#: the download and the landing read as one pass.
+#: What a run's list and its landing's intake file are named after the run, so
+#: the list, the download and the landing read as one pass. The batch itself is
+#: named for the date and the source since U110, and ``land_name`` in the
+#: listing's subject is this pass, handed to the landing as ``--pass``.
 SYNCED_SUFFIX = "_synced"
 
 #: What the provenance sidecar says a listed row came from, by the job's key.
@@ -1297,8 +1299,20 @@ def _missing_for_list(ctx, given: str) -> Envelope:
 
 
 def synced_name(run_id: str) -> str:
-    """The name a run's list and its landed batch share, colons removed."""
+    """The pass a run's list and its landing's intake file share, colons removed."""
     return f"{land_cli.default_name(run_id)}{SYNCED_SUFFIX}"
+
+
+def in_pass(job: jobs.Job, pass_name: str) -> bool:
+    """Whether ``job`` was queued by the run the pass ``pass_name`` is named for.
+
+    ONE COMPARISON FOR EVERY READER OF A PASS, ``sync mark`` and the landing's
+    batch name (U110), made in the direction the name was built: the job's own
+    run is spelled as a pass and compared, and nothing puts the colons back. A
+    job queued by no run belongs to no pass.
+    """
+    run_id = str((job.payload or {}).get(RUN_ID) or "")
+    return bool(run_id) and synced_name(run_id) == pass_name
 
 
 def _missing_for_run(ctx, run_id: str) -> Envelope:

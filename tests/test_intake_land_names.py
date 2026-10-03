@@ -7,8 +7,9 @@ and its playlist take ``<date> <source>``, a second landing that day takes
 marks read, so ``sync mark`` still finds its pass's jobs from it and ``export
 archive`` still reads the same pass off it.
 
-The date is the module's own seam, pinned here, so a run that crosses midnight
-reads one date throughout.
+The date is the module's own seam, pinned here so a suite run across midnight
+reads one date. A landing whose gate is shown before midnight and answered after
+it chooses again, and its answer is stale; that is recorded, not hidden here.
 """
 
 from __future__ import annotations
@@ -20,8 +21,9 @@ from pathlib import Path
 import pytest
 
 from cratekit.core import config, jobs
+from cratekit.core.cause import Cause, CratekitError, Remediation
 from cratekit.core.exit_codes import ExitCode
-from cratekit.intake import batch_name, land_cli, missing_cli
+from cratekit.intake import batch_name, land_cli, landing, missing_cli
 from cratekit.intake import cli as intake_cli
 from cratekit.label import go
 from cratekit.sync import mark_cli, playlists
@@ -48,10 +50,18 @@ def pinned_day(monkeypatch):
     monkeypatch.setattr(batch_name, "today", lambda: DAY)
 
 
-def _queued(cfg: config.Config, reference: str, *, source_id: str, run_id: str = RUN) -> None:
-    """One intake job of a pass, queued the way ``crate sync all`` queues it."""
+def _queued(
+    cfg: config.Config,
+    reference: str,
+    *,
+    source_id: str,
+    run_id: str = RUN,
+    ended: jobs.JobState = jobs.JobState.SUCCEEDED,
+) -> None:
+    """One intake job of a pass, queued the way ``crate sync all`` queues it,
+    and ended the way its worker ends it."""
     with jobs.open_store() as store:
-        intake_cli.queue_playlist(
+        job = intake_cli.queue_playlist(
             store,
             cfg,
             handler_key="intake.playlist",
@@ -59,6 +69,15 @@ def _queued(cfg: config.Config, reference: str, *, source_id: str, run_id: str =
             tracks={"t1": {"artist": "A", "title": "T"}},
             run_id=run_id,
             source_id=source_id,
+        )
+        stopped = Cause(
+            reason="internal-error",
+            message="stopped for the test",
+            remediation=Remediation(steps=("nothing",)),
+            origin=("test",),
+        )
+        jobs.transition(
+            store, job.job_id, ended, cause=None if ended is jobs.JobState.SUCCEEDED else stopped
         )
 
 
@@ -169,6 +188,75 @@ def test_a_second_landing_under_the_same_pass_is_refused_and_not_merged(cfg, sil
     assert code != int(ExitCode.PENDING_HUMAN), refused
     assert refused["cause"]["reason"] == "output-exists"
     assert not (_music(cfg, "2026-10-03 Tidal playlists 2")).exists()
+
+
+def test_a_job_the_pass_lost_does_not_name_the_batch(cfg, silence, export):
+    """``intake missing --skip-failed`` leaves a failed job's tracks out of the
+    download, so its word is left out of the name too."""
+    _queued(cfg, "pl-a", source_id=playlists.SOURCE_ID)
+    _queued(cfg, "favorites", source_id="favorites", ended=jobs.JobState.FAILED)
+
+    assert batch_name.source_words(cfg, pass_name=PASS) == "Tidal playlists"
+
+    _queued(cfg, "favorites", source_id="favorites")
+    assert batch_name.source_words(cfg, pass_name=PASS) == "Tidal playlists and Favorites"
+
+
+def test_a_default_name_taken_after_the_gate_is_refused_under_the_lock(
+    cfg, silence, export, monkeypatch
+):
+    """The name is chosen before the gate. A landing that took it in between
+    would share the folder and the playlist, so the second is refused stale
+    with nothing moved, and run again it takes the next free name."""
+    _stage(cfg, silence, "One.flac")
+    real_apply = landing.apply
+
+    def taken_meanwhile(planned, **kwargs):
+        raise AssertionError("the engine was reached over a taken name")
+
+    def take_then_lock(batch):
+        _music(cfg, batch).mkdir(parents=True)
+        return real_lock(batch)
+
+    real_lock = landing.batch_lock
+    monkeypatch.setattr(landing, "batch_lock", take_then_lock)
+    monkeypatch.setattr(landing, "apply", taken_meanwhile)
+
+    code, refused = _drive(["-d", f"{GATE}=apply", *_land(export)])
+
+    assert refused["cause"]["reason"] == "decision-stale", refused
+    assert "2026-10-03 Downloads" in refused["cause"]["message"]
+    assert (Path(cfg.paths.download_staging) / "One.flac").is_file()
+    monkeypatch.setattr(landing, "batch_lock", real_lock)
+    monkeypatch.setattr(landing, "apply", real_apply)
+
+    _applied(export)
+    assert (_music(cfg, "2026-10-03 Downloads 2") / "One.flac").is_file()
+
+
+def test_a_name_a_person_gives_may_be_landed_into_again(cfg, silence, export):
+    """The recheck is for a name this run chose. ``--name`` is the person's,
+    and a second landing into it is what it always was."""
+    _music(cfg, "Friday warmup").mkdir(parents=True)
+    _stage(cfg, silence, "One.flac")
+
+    _applied(export, "--name", "Friday warmup", "--pass", PASS)
+
+    assert (_music(cfg, "Friday warmup") / "One.flac").is_file()
+
+
+def test_two_landings_of_one_pass_under_two_names_share_one_intake_lock(cfg):
+    """The batch lock is keyed on the batch and the intake file on the pass, so
+    the second needs its own lock or two names write one file."""
+    with landing.intake_lock(PASS):
+        with pytest.raises(CratekitError) as caught:
+            with landing.intake_lock(PASS):
+                pass
+    assert caught.value.cause.reason == "job-driver-held"
+    assert caught.value.cause.detail["intake"] == PASS
+    # A batch named exactly as a pass is a different lock.
+    with landing.intake_lock(PASS), landing.batch_lock(PASS):
+        pass
 
 
 def test_a_pass_with_no_jobs_here_lands_as_downloads(cfg, silence, export):
@@ -305,16 +393,7 @@ def test_a_folder_that_holds_nothing_but_exists_still_takes_the_name(cfg):
 
 
 def test_a_pass_with_jobs_on_another_library_says_nothing_about_this_one(cfg):
-    with jobs.open_store() as store:
-        intake_cli.queue_playlist(
-            store,
-            cfg,
-            handler_key="intake.playlist",
-            reference="pl-a",
-            tracks={"t1": {"artist": "A", "title": "T"}},
-            run_id=RUN,
-            source_id=playlists.SOURCE_ID,
-        )
+    _queued(cfg, "pl-a", source_id=playlists.SOURCE_ID)
     elsewhere = replace(cfg, library=replace(cfg.library, volume_id="another-volume"))
 
     assert batch_name.source_words(cfg, pass_name=PASS) == "Tidal playlists"
