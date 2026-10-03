@@ -12,6 +12,7 @@ D1 applies. Nothing here names a real volume, a real person, or a real track.
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -73,7 +74,9 @@ class _Credited(FakeCatalogue):
 def _catalogue(confirmed=CONFIRMED, listed=None, elsewhere=()) -> FakeCatalogue:
     return _Credited(
         artists={LABEL_ID: FakePagedArtist(list(LISTED if listed is None else listed))},
-        releases=dict(RELEASES),
+        # A DEEP COPY: a test that marks one track unplayable mutates it, and
+        # the tracks in the shared table would carry that into the next test.
+        releases=copy.deepcopy(RELEASES),
         confirmed=set(confirmed) - set(elsewhere),
         elsewhere=elsewhere,
     )
@@ -387,7 +390,20 @@ def test_an_exported_playlist_whose_library_playlist_lost_a_track_plans_exactly_
     assert account.taken == [("pl-1", ("tid-3",))]
 
 
-def test_an_unmatched_row_leaves_the_exported_playlist_alone(installed, monkeypatch):
+def _written_before_rows(cfg, account) -> None:
+    """The crate's three tracks recorded the way a build before R-836 wrote them:
+    added, with no row each came from."""
+    remote = ledger.reserve_playlist(
+        cfg, outbound_fakes.CRATE, lambda: account.create_playlist(outbound_fakes.CRATE)
+    ).remote_id
+    for index in (1, 2, 3):
+        account.add_to_playlist(remote, f"tid-{index}")
+        ledger.record_playlist_track(cfg, outbound_fakes.CRATE, f"tid-{index}")
+
+
+def test_a_row_whose_match_failed_today_does_not_stop_a_track_recorded_by_its_row(
+    installed, monkeypatch
+):
     account = outbound_fakes.FakeAccount(catalog={str(i): f"tid-{i}" for i in (1, 2, 3)})
     bind_account(monkeypatch, account)
     _exported(installed, account)
@@ -395,9 +411,60 @@ def test_an_unmatched_row_leaves_the_exported_playlist_alone(installed, monkeypa
     now = outbound_fakes.write_export(installed.library.root / "outbound", crate=(1, 2))
     code, done = _export_prune(now)
     assert code == int(ExitCode.OK), done
+    assert _taken(done) == [("pl-1", "tid-3")]
+    assert account.playlists["pl-1"] == ["tid-1", "tid-2"]
+
+
+def test_an_unmatched_row_leaves_a_playlist_written_before_rows_alone(installed, monkeypatch):
+    account = outbound_fakes.FakeAccount(catalog={str(i): f"tid-{i}" for i in (1, 2, 3)})
+    bind_account(monkeypatch, account)
+    _written_before_rows(installed, account)
+    del account.catalog["2"]
+    now = outbound_fakes.write_export(installed.library.root / "outbound", crate=(1, 2))
+    code, done = _export_prune(now)
+    assert code == int(ExitCode.OK), done
     (item,) = done["data"]["items"]
     assert (item["action"], item["would"]) == ("left-alone", 2)
     assert account.taken == []
+
+
+def test_a_match_that_moved_leaves_a_playlist_written_before_rows_alone(installed, monkeypatch):
+    """Row 1 now matches a track the playlist was never written with, which is
+    what a drifted match looks like, so tid-1 is not read as gone."""
+    account = outbound_fakes.FakeAccount(catalog={str(i): f"tid-{i}" for i in (1, 2, 3)})
+    bind_account(monkeypatch, account)
+    _written_before_rows(installed, account)
+    account.catalog["1"] = "tid-9"
+    now = outbound_fakes.write_export(installed.library.root / "outbound", crate=(1, 2, 3))
+    code, done = _export_prune(now)
+    assert code == int(ExitCode.OK), done
+    (item,) = done["data"]["items"]
+    assert item["action"] == "left-alone" and "never written with" in item["why"]
+    assert account.taken == []
+
+
+def test_a_match_that_moved_never_takes_off_a_track_recorded_by_its_row(installed, monkeypatch):
+    account = outbound_fakes.FakeAccount(catalog={str(i): f"tid-{i}" for i in (1, 2, 3)})
+    bind_account(monkeypatch, account)
+    _exported(installed, account)
+    account.catalog["1"] = "tid-9"
+    now = outbound_fakes.write_export(installed.library.root / "outbound", crate=(1, 2, 3))
+    code, done = _export_prune(now)
+    assert code == int(ExitCode.OK), done
+    assert done["data"]["items"] == []
+    assert account.playlists["pl-1"] == ["tid-1", "tid-2", "tid-3"]
+
+
+def test_a_playlist_written_before_rows_is_pruned_by_match_when_every_row_agrees(
+    installed, monkeypatch
+):
+    account = outbound_fakes.FakeAccount(catalog={str(i): f"tid-{i}" for i in (1, 2, 3)})
+    bind_account(monkeypatch, account)
+    _written_before_rows(installed, account)
+    now = outbound_fakes.write_export(installed.library.root / "outbound", crate=(1, 2))
+    code, done = _export_prune(now)
+    assert code == int(ExitCode.OK), done
+    assert _taken(done) == [("pl-1", "tid-3")]
 
 
 def test_a_playlist_never_exported_is_a_plan_of_nothing_still_gated(installed, monkeypatch):
@@ -643,16 +710,17 @@ def test_a_build_marks_a_year_it_created_and_not_one_it_adopted(built):
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_a_track_already_off_the_playlist_is_settled_with_no_call(built):
+def test_a_track_already_off_the_playlist_is_settled_through_the_removals_own_read(built):
     """A removal that landed before a failure leaves the track recorded as added;
-    the next prune records it as taken off and sends nothing for it."""
+    the next prune records it as taken off once the adapter's read vouches it is."""
     _hold(built.cfg, "r3")
     built.account.playlists["pl-3"].remove("t4")
     code, done = _prune()
     assert code == int(ExitCode.OK), done
     assert _taken(done) == [("pl-3", "t5")]
     assert [item["id"] for item in done["data"]["items"] if item["action"] == "already-off"] == ["t4"]
-    assert built.account.taken == [("pl-3", ("t5",))]
+    assert built.account.taken == [("pl-3", ("t5", "t4"))]
+    assert done["data"]["totals"]["applied"]["settled"] == {"Kompakt 2023": ["t4"]}
     year = ledger.label_shape(built.cfg, LABEL_ID).years["2023"]
     assert year.pruned == frozenset({"t4", "t5"})
     assert _prune()[1]["data"]["items"] == []
@@ -735,3 +803,114 @@ def test_a_later_export_date_moves_the_record_and_an_earlier_one_does_not(instal
     assert ledger.exported_playlist(installed, "crate").written == "2026-10-02T00:00:00+00:00"
     ledger.reserve_playlist(installed, "crate", lambda: "pl", written="2026-10-03T00:00:00+00:00")
     assert ledger.exported_playlist(installed, "crate").written == "2026-10-03T00:00:00+00:00"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 7. What the review of the second round found
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_settled_track_the_listing_hides_is_not_recorded_as_off(installed):
+    """The provider leaves an unplayable track out of the listing and still counts
+    it, so the plan reads it as off. The removal's own read refuses, and the
+    ledger still says added."""
+    store = _Store()
+    ledger.reserve_label_year(installed, "lbl", "2021", "L 2021", lambda: "mine")
+    ledger.record_label_tracks(installed, "lbl", "2021", added=["shown", "hidden"])
+    store.members["mine"] = ["shown"]
+    store.hidden["mine"] = 1
+    planned = prune.Plan(
+        kind=prune.LABEL,
+        subject="lbl",
+        playlists=(
+            prune.PlaylistPrune(key="2021", name="L 2021", remote_id="mine", settle=("hidden",)),
+        ),
+    )
+    with pytest.raises(CratekitError) as refused:
+        prune.apply(installed, _adapter(installed, store), planned, prune.Pruned())
+    assert refused.value.cause.detail["problem"] == "positions-unknown"
+    year = ledger.label_shape(installed, "lbl").years["2021"]
+    assert "hidden" in year.added and year.pruned == frozenset()
+
+
+def test_an_account_that_does_not_vouch_for_every_asked_track_is_refused(installed):
+    class Partial(outbound_fakes.FakeAccount):
+        def remove_tracks(self, playlist_id, remote_ids):
+            super().remove_tracks(playlist_id, remote_ids)
+            return remote_ids[:1]
+
+    account = Partial()
+    ledger.reserve_set_playlist(installed, "A Set", "2026", lambda: "mine")
+    ledger.reserve_playlist(installed, "crate", lambda: "mine")
+    account.playlists["mine"] = ["a", "b"]
+    planned = prune.Plan(
+        kind=prune.EXPORTED,
+        subject="crate",
+        playlists=(
+            prune.PlaylistPrune(
+                key="crate", name="Crate", remote_id="mine",
+                take=(prune.Taken("a"), prune.Taken("b")),
+            ),
+        ),
+    )
+    with pytest.raises(CratekitError) as refused:
+        prune.apply(installed, account, planned, prune.Pruned())
+    assert refused.value.cause.detail["unsaid"] == ["b"]
+
+
+def test_the_export_date_goes_on_the_record_the_job_was_confirmed_to_update(installed):
+    ledger.reserve_playlist(installed, "J", lambda: "Y")
+    ledger.reserve_playlist(installed, "K", lambda: "X")
+    ledger.reserve_playlist(
+        installed, "K", lambda: "never", expected="Y", written="2026-10-03T00:00:00+00:00"
+    )
+    assert ledger.exported_playlist(installed, "J").written == "2026-10-03T00:00:00+00:00"
+    assert ledger.exported_playlist(installed, "K").written == ""
+
+
+def test_a_year_recorded_before_the_field_is_said_as_such_not_as_adopted(built):
+    document = ledger._load(built.cfg)
+    del document["labels"][LABEL_ID]["years"]["2023"]["created"]
+    ledger._write(built.cfg, document)
+    _hold(built.cfg, "r3")
+    code, done = _prune()
+    assert code == int(ExitCode.OK), done
+    (item,) = done["data"]["items"]
+    assert item["action"] == "left-alone" and "predates" in item["why"]
+    assert built.account.taken == []
+
+
+def test_a_read_back_that_differed_is_not_told_to_run_again():
+    cause = prune.failed_part_way(
+        tidal_account_refusal("read-back-differs"),
+        prune.Pruned(),
+        origin=("test",),
+        again="run it again",
+    ).cause
+    assert "run it again" not in cause.remediation.steps
+    other = prune.failed_part_way(
+        tidal_account_refusal("positions-unknown"),
+        prune.Pruned(),
+        origin=("test",),
+        again="run it again",
+    ).cause
+    assert "run it again" in other.remediation.steps
+
+
+def tidal_account_refusal(problem: str) -> CratekitError:
+    from cratekit.core.cause import refuse
+
+    return refuse(
+        "outbound-remove-refused",
+        "refused",
+        steps=("check by hand",),
+        origin=("test",),
+        detail={"problem": problem},
+    )
+
+
+def test_a_track_on_a_kept_release_of_another_year_is_not_said_unreached(built):
+    built.fake.releases["r2"] = (built.fake.releases["r2"][0], 2024)
+    code, refused = drive(["label", "prune", LABEL])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert "not judged" not in refused["cause"]["detail"]["shown"]

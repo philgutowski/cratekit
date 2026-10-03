@@ -136,9 +136,10 @@ def _label_document(path, raw: Mapping[str, Any]) -> dict[str, Any]:
                 "added": _listed(record, "added"),
                 "refused": _listed(record, "refused"),
                 "pruned": _listed(record, "pruned"),
-                # TRUE ONLY WHEN WRITTEN TRUE (R-836). A record from before this
-                # field, or one adopted from the account, reads as not made here.
-                "created": record.get("created") is True,
+                # WRITTEN TRUE OR FALSE SINCE R-836, and absent before it. Absent
+                # is kept absent, so a gate can say the record predates the field
+                # rather than call the playlist adopted. Only true is made here.
+                **({"created": record["created"]} if isinstance(record.get("created"), bool) else {}),
             }
             for year, record in years.items()
         },
@@ -437,6 +438,9 @@ class Reserved:
     adopted_from: str = ""
     key: str = ""
     added: frozenset[str] = frozenset()
+    #: Library row to remote track, for the same reason ``added`` rides along:
+    #: the caller asks next whether a row is already recorded (R-836).
+    rows: Mapping[str, str] = field(default_factory=dict)
 
 
 def _moved_on(what: str, **detail: str) -> CratekitError:
@@ -572,7 +576,9 @@ def _note_written(
         return False
     playlists = document["playlists"]
     record = playlists.get(playlist_key)
-    if not (record or {}).get("remote_id") and expected:
+    if expected and str((record or {}).get("remote_id") or "") != expected:
+        # THE JOB WRITES WHERE IT WAS CONFIRMED TO, which is the record holding
+        # ``expected``, so the date goes there too and not on this key's own.
         record = next(
             (one for one in playlists.values() if str(one.get("remote_id") or "") == expected),
             record,
@@ -623,6 +629,7 @@ def _settled(
         adopted_from=adopted_from,
         key=key,
         added=frozenset(_listed(record, "added")),
+        rows=_rows(record),
     )
 
 
@@ -645,12 +652,21 @@ def _move(document: dict[str, Any], recorded_key: str, playlist_key: str) -> Non
     record["added"] = merged
     if _later(str(stub.get("written") or ""), str(record.get("written") or "")):
         record["written"] = stub["written"]
+    if _rows(stub):
+        record["rows"] = {**_rows(record), **_rows(stub)}
     record["formerly"] = [*_listed(record, "formerly"), recorded_key]
     playlists[playlist_key] = record
 
 
-def record_playlist_track(cfg: config.Config, playlist_key: str, remote_id: str) -> None:
-    """Remember one track added to the remote playlist."""
+def record_playlist_track(
+    cfg: config.Config, playlist_key: str, remote_id: str, *, identity: str = ""
+) -> None:
+    """Remember one track added to the remote playlist, and the row it came from.
+
+    ``identity`` is the library row the track was matched from, kept under
+    ``rows`` so ``export prune`` can tell a row that left the library playlist
+    from a row whose match drifted to another remote track (R-836).
+    """
     lock = _locked(cfg)
     try:
         document = _load(cfg)
@@ -661,7 +677,41 @@ def record_playlist_track(cfg: config.Config, playlist_key: str, remote_id: str)
         if remote_id not in added:
             added.append(remote_id)
         record["added"] = added
+        if identity:
+            record["rows"] = {**_rows(record), str(identity): str(remote_id)}
         document["playlists"][playlist_key] = record
+        _write(cfg, document)
+    finally:
+        lock.__exit__(None, None, None)
+
+
+def _rows(record: Mapping[str, Any]) -> dict[str, str]:
+    """A record's library row to remote track map, or empty when it has none."""
+    rows = record.get("rows")
+    if not isinstance(rows, Mapping):
+        return {}
+    return {str(key): str(value) for key, value in rows.items()}
+
+
+def record_playlist_row(
+    cfg: config.Config, playlist_key: str, identity: str, remote_id: str
+) -> None:
+    """Remember which library row a track ALREADY WRITTEN here was matched from.
+
+    Only for a track the record already holds as added: one a person put on
+    the playlist is never claimed as this product's by being matched again.
+    Writes nothing when the record already says so.
+    """
+    lock = _locked(cfg)
+    try:
+        document = _load(cfg)
+        record = document["playlists"].get(playlist_key)
+        if not record or str(remote_id) not in _listed(record, "added"):
+            return
+        rows = _rows(record)
+        if rows.get(str(identity)) == str(remote_id):
+            return
+        record["rows"] = {**rows, str(identity): str(remote_id)}
         _write(cfg, document)
     finally:
         lock.__exit__(None, None, None)
@@ -699,9 +749,10 @@ class LabelYear:
     #: Tracks a prune took off (R-836). Not added again by a build either, or
     #: the build would put back what the prune just took away.
     pruned: frozenset[str] = frozenset()
-    #: Whether this product created the playlist, rather than adopting one the
-    #: account already held. Only a created one may lose a track.
-    created: bool = False
+    #: Whether this product created the playlist, True, or adopted one the
+    #: account already held, False. None for a record written before this
+    #: build said either. Only a created one may lose a track.
+    created: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -729,7 +780,7 @@ def _shape_of(label_id: str, record: Mapping[str, Any] | None) -> LabelShape:
                 added=frozenset(_listed(entry, "added")),
                 refused=frozenset(_listed(entry, "refused")),
                 pruned=frozenset(_listed(entry, "pruned")),
-                created=entry.get("created") is True,
+                created=entry["created"] if isinstance(entry.get("created"), bool) else None,
             )
             for year, entry in (record.get("years") or {}).items()
             if entry.get("remote_id")
@@ -1062,6 +1113,9 @@ class ExportedPlaylist:
     #: The ISO date of the newest collection export this playlist was written
     #: from, or empty for a record written before this build kept one.
     written: str = ""
+    #: Library row to the remote track it was matched to, for the tracks this
+    #: build wrote or matched again. A track written before has no row here.
+    rows: Mapping[str, str] = field(default_factory=dict)
 
 
 def exported_playlist(cfg: config.Config, playlist_key: str) -> ExportedPlaylist | None:
@@ -1076,6 +1130,7 @@ def exported_playlist(cfg: config.Config, playlist_key: str) -> ExportedPlaylist
         added=frozenset(_listed(record, "added")),
         pruned=frozenset(_listed(record, "pruned")),
         written=str(record.get("written") or ""),
+        rows=_rows(record),
     )
 
 
@@ -1136,6 +1191,9 @@ def record_playlist_pruned(cfg: config.Config, playlist_key: str, taken: Iterabl
                 f"tracks were just taken off",
             )
         _moved_to_pruned(entry, taken)
+        gone = {str(one) for one in taken}
+        if _rows(entry):
+            entry["rows"] = {key: value for key, value in _rows(entry).items() if value not in gone}
         _write(cfg, document)
     finally:
         lock.__exit__(None, None, None)

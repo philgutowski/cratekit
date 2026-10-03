@@ -252,11 +252,14 @@ def plan_label(
     def staying(year: str) -> set[str]:
         return kept.get(year, set()) | undated
 
+    # ON NO RELEASE THE READ REACHED is judged against every kept release of
+    # any year, so a release the provider re-dated is not read as unreached.
+    anywhere = undated.union(*kept.values())
     unexplained = {
         one
-        for year, recorded in shape.years.items()
+        for recorded in shape.years.values()
         for one in recorded.added
-        if one not in staying(year) and one not in on_held
+        if one not in anywhere and one not in on_held
     }
     unread = sorted(holding - set(catalogue.by_release))
     if judged:
@@ -291,16 +294,17 @@ def plan_label(
         if not leaving:
             continue
         name = recorded.name or year
-        if not recorded.created:
+        if recorded.created is not True:
+            why = (
+                "this product adopted the playlist rather than creating it, so "
+                "nothing is taken off it"
+                if recorded.created is False
+                else "the record of this playlist predates the one that says whether "
+                "this product made it, so nothing is taken off it"
+            )
             steps.append(
                 PlaylistPrune(
-                    key=year,
-                    name=name,
-                    remote_id=recorded.remote_id,
-                    why=(
-                        "this product adopted the playlist rather than creating it, "
-                        "so nothing is taken off it"
-                    ),
+                    key=year, name=name, remote_id=recorded.remote_id, why=why,
                     would=len(leaving),
                 )
             )
@@ -315,6 +319,7 @@ def plan_export(
     cfg: config.Config,
     playlist_key: str,
     name: str,
+    crate: Iterable[str],
     wanted: Iterable[str],
     unmatched: int,
     account: RemoteAccount | None,
@@ -323,15 +328,22 @@ def plan_export(
 ) -> Plan:
     """What leaves the remote playlist one library playlist was exported to.
 
-    ``wanted`` is the remote identifiers the library playlist's rows match NOW,
-    and ``unmatched`` how many of its rows matched none. A track the ledger
-    records as added and no row matches any more is taken off.
+    ``crate`` is the library playlist's rows now, ``wanted`` the remote
+    identifiers they match now, and ``unmatched`` how many matched none. A
+    track the ledger records as added leaves on one of two readings:
 
-    A PLAYLIST WITH ANY UNMATCHED ROW IS LEFT ALONE. That row's track may be
-    one of the recorded ones, and a match that failed today would otherwise
-    read as a track that left the playlist. So is one whose export is older
-    than the one it was last written from, ``older`` being that date: every
-    track added since would read as gone.
+    * BY ITS ROW, for a track this build wrote: the library row it was matched
+      from is no longer in the playlist, and no row now matches it. A match
+      that drifted to another remote track says nothing about it.
+    * BY MATCH ALONE, for a track written before the row was kept: no row
+      matches it now. Absence of a match is weak evidence, so this reading
+      leaves the playlist alone when any row matched nothing, or when any row
+      matches a track the playlist was never written with, which is what a
+      drifted match or a row added since the last export looks like.
+
+    A playlist whose export is older than the one it was last written from,
+    ``older`` being that date, is left alone whatever the reading: every row
+    added since would read as gone.
     """
     record = ledger.exported_playlist(cfg, playlist_key)
     if record is None:
@@ -343,10 +355,15 @@ def plan_export(
                 f"so there is nothing to take off",
             ),
         )
-    staying = set(wanted)
+    rows_now = set(crate)
+    matched_now = set(wanted)
+    staying = matched_now | {one for row, one in record.rows.items() if row in rows_now}
+    by_row = set(record.rows.values())
     leaving = [one for one in sorted(record.added) if one not in staying]
+    unrowed = [one for one in leaving if one not in by_row]
     if not leaving:
         return Plan(kind=EXPORTED, subject=playlist_key)
+    fresh = matched_now - record.added - record.pruned
     why = ""
     if older:
         why = (
@@ -354,10 +371,16 @@ def plan_export(
             f"written from, on {older}, so a track added since would read as gone; "
             f"export the collection again"
         )
-    elif unmatched:
+    elif unrowed and unmatched:
         why = (
             f"{unmatched} row(s) of the library playlist matched no track on the "
             f"account, so which recorded tracks left it cannot be told"
+        )
+    elif unrowed and fresh:
+        why = (
+            f"{len(fresh)} row(s) of the library playlist match a track this playlist "
+            f"was never written with, so a match may have moved; export the playlist "
+            f"first, then prune"
         )
     if why or account is None:
         step: PlaylistPrune | None = PlaylistPrune(
@@ -398,24 +421,38 @@ def apply(cfg: config.Config, account: RemoteAccount, planned: Plan, done: Prune
 
     ``done`` is the caller's, so a raise part way leaves in it what was taken
     off before the raise, for the refusal to name. The ledger is asked again
-    before each playlist, since the plan was read in another invocation. A
-    settled track is recorded first and sends nothing to the provider.
+    before each playlist, since the plan was read in another invocation.
     """
     for step in planned.playlists:
         if not step.writes:
             continue
         if not ledger.product_made(cfg, step.remote_id):
             raise _not_made(step.remote_id)
-        if step.settle:
-            _record(cfg, planned, step, step.settle)
-            done.settled.setdefault(step.remote_id, []).extend(step.settle)
-        ids = [taken.remote_id for taken in step.take]
+        # A SETTLED TRACK GOES THROUGH THE REMOVAL TOO, with nothing at its
+        # position to take, so the adapter's full read vouches that it is off.
+        # The listing leaves out a track the account cannot play, and recorded
+        # on the plan's word alone such a track would be called gone while it
+        # is still on the playlist.
+        settling = set(step.settle)
+        ids = [taken.remote_id for taken in step.take] + list(step.settle)
         for start in range(0, len(ids), CHUNK):
             chunk = tuple(ids[start : start + CHUNK])
             gone = set(account.remove_tracks(step.remote_id, chunk))
-            taken = [one for one in chunk if one in gone]
-            _record(cfg, planned, step, taken)
-            done.taken.setdefault(step.remote_id, []).extend(taken)
+            unsaid = [one for one in chunk if one not in gone]
+            if unsaid:
+                raise refuse(
+                    "internal-error",
+                    f"the account answered a removal from {step.remote_id} without "
+                    f"saying {len(unsaid)} asked track(s) are off it, so they are not "
+                    f"recorded as taken off",
+                    scope=Scope.RUN,
+                    origin=_ORIGIN,
+                    detail={"playlist_id": step.remote_id, "unsaid": unsaid},
+                )
+            _record(cfg, planned, step, chunk)
+            for one in chunk:
+                held = done.settled if one in settling else done.taken
+                held.setdefault(step.remote_id, []).append(one)
     return done
 
 
@@ -524,18 +561,21 @@ def failed_part_way(
     was taken off is recorded already, so a run started again plans the rest.
     """
     wrote = (
-        f"before this failed {done.count} track(s) were taken off"
+        f"before this failed {done.count} track(s) were taken off and recorded"
         if done.count
-        else "nothing was taken off before this failed"
+        else "no track was recorded as taken off before this failed"
     )
     detail = {"taken": {remote: list(ids) for remote, ids in done.taken.items()}}
     if isinstance(exc, CratekitError):
         cause = exc.cause
+        # A READ BACK THAT DIFFERED says to look by hand before anything runs
+        # again, and "run it again" beside that would undo the advice.
+        differed = cause.detail.get("problem") == "read-back-differs"
         return refuse(
             cause.reason,
             f"{wrote}. {cause.message}",
             remedy=cause.remediation.remedy,
-            steps=(*cause.remediation.steps, again),
+            steps=cause.remediation.steps if differed else (*cause.remediation.steps, again),
             scope=Scope.RUN,
             retryable=cause.retryable,
             origin=origin,

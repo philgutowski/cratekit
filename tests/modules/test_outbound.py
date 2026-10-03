@@ -509,6 +509,8 @@ def test_an_adopted_record_moves_and_no_playlist_is_created(cfg):
             "added": ["tid-a", "tid-b"],
             "tracks": ["a", "b"],
             "formerly": ["Old"],
+            # R-836. The row each written track came from, moved with the record.
+            "rows": {"a": "tid-a", "b": "tid-b"},
         }
     }
 

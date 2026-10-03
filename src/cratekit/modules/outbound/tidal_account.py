@@ -151,16 +151,21 @@ def _count(value: Any) -> bool:
 
 def _shown_artist(track: Any) -> str:
     """The artists a provider track bills, as a person reads them on a gate."""
-    names = [
-        name.strip()
-        for entry in getattr(track, "artists", None) or ()
-        for name in (entry if isinstance(entry, str) else getattr(entry, "name", ""),)
-        if isinstance(name, str) and name.strip()
-    ]
+    names = _artist_names(track)
     if names:
         return ", ".join(names)
     lead = getattr(track, "artist", None)
     return str(getattr(lead, "name", "") or "")
+
+
+def _artist_names(track: Any) -> list[str]:
+    """Every artist a provider track bills, in its order."""
+    names = []
+    for entry in getattr(track, "artists", None) or ():
+        name = entry if isinstance(entry, str) else getattr(entry, "name", "")
+        if isinstance(name, str) and name.strip():
+            names.append(name.strip())
+    return names
 
 
 def _billed(track: Any) -> str:
@@ -169,12 +174,7 @@ def _billed(track: Any) -> str:
     A library row spells a record by two artists as one artist field holding
     both, and the matcher's reader keeps only the first a provider row names.
     """
-    names = []
-    for entry in getattr(track, "artists", None) or ():
-        name = entry if isinstance(entry, str) else getattr(entry, "name", "")
-        if isinstance(name, str) and name.strip():
-            names.append(name.strip())
-    return " ".join(names)
+    return " ".join(_artist_names(track))
 
 
 #: Words a library row puts BETWEEN artists that no artist is billed under. A

@@ -85,7 +85,14 @@ def export_prune(ctx) -> Envelope:
     given = age.written.isoformat() if age.written is not None else ""
     older = record.written if record is not None and ledger.older_than(given, record.written) else ""
     planned = prune.plan_export(
-        cfg, resolved.key, resolved.name, wanted, unmatched, remote, older=older
+        cfg,
+        resolved.key,
+        resolved.name,
+        (*resolved.track_ids, *resolved.dangling),
+        wanted,
+        unmatched,
+        remote,
+        older=older,
     )
     payload = prune.payload(planned, kind=prune.EXPORTED, subject=resolved.key, digest=digest_of)
     # AN EMPTY PLAN STILL ASKS, so a person always sees what the prune judged.
