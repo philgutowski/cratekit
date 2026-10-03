@@ -1,0 +1,83 @@
+name = "u113-c"
+pass_kind = "light"
+
+[[rows]]
+id = "C1_native_batch_always"
+description = "The native write always makes the batch playlist, empty when every row was claimed"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_native.py"]
+old = '''            if ordered or not accounts:'''
+new = '''            if True:'''
+
+[[rows]]
+id = "C2_native_batch_keeps_claimed"
+description = "The native batch playlist holds the claimed rows too"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_native.py"]
+old = '''                if str(row.target) in by_target and str(row.target) not in claimed'''
+new = '''                if str(row.target) in by_target'''
+
+[[rows]]
+id = "C3_native_found_by_name"
+description = "An account playlist is found by its name under INBOX and added to, rather than created"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py"]
+old = '''                created = db.create_playlist(one.name, parent=anchor)'''
+new = '''                created = rb_writer.ensure_playlist(db, one.name, anchor)'''
+
+[[rows]]
+id = "C4_native_record_unnamed"
+description = "The native landing record does not list the account playlists by identifier"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py"]
+old = '''        record.detail[INBOX_PLAYLISTS_KEY] = ['''
+new = '''        record.detail["inbox_playlists_unread"] = ['''
+
+[[rows]]
+id = "C5_removed_node_holds_name"
+description = "A removed node under INBOX still holds its name, so a free exact name takes a count"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py"]
+old = '''        if not rb_writer.node_removed(row):'''
+new = '''        if True:'''
+
+[[rows]]
+id = "C6_names_checked_after_moves"
+description = "The native landing no longer asks whether a chosen name was taken before its first move"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_native.py"]
+old = '''    native.assert_names_still_free(db, rows)'''
+new = '''    pass'''
+
+[[rows]]
+id = "C7_unproven_import_names"
+description = "The rotation reads an intake file's recorded names whether or not its import was proven"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate_account_playlists.py", "tests/test_inbox_rotate.py"]
+old = '''        if session.IMPORT_VERIFIED_KEY in record.detail:'''
+new = '''        if True:'''
+
+[[rows]]
+id = "C8_folder_test_dropped"
+description = "A recorded name is a batch whether or not its batch folder is still there"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate_account_playlists.py", "tests/test_inbox_rotate.py"]
+old = '''    if name in named and os.path.isdir(landing.target_dir(cfg, named[name][1])):'''
+new = '''    if name in named:'''
+
+[[rows]]
+id = "C9_earliest_name_wins"
+description = "The earliest landing of a recorded name ages it, not the latest"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate_account_playlists.py", "tests/test_inbox_rotate.py"]
+old = '''                if name not in by_name or landed >= by_name[name][0]:'''
+new = '''                if name not in by_name or landed <= by_name[name][0]:'''

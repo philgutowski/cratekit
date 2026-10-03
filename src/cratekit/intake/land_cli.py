@@ -46,7 +46,7 @@ from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import config, rb_writer, session
 from cratekit.core.cause import CratekitError, Outcome, Remedy, refuse
 from cratekit.core.exit_codes import ExitCode
-from cratekit.intake import batch_name, ingest, landing, native
+from cratekit.intake import account_playlists, batch_name, ingest, landing, native
 from cratekit.intake import cli as intake_cli
 
 #: The action every planned file carries until the apply reports on it.
@@ -235,6 +235,7 @@ def _payload(
     destination: Path,
     export: Path,
     manifest: landing.LabelManifest | None = None,
+    split: tuple[account_playlists.Claimed, ...] = (),
 ) -> dict:
     items = [
         {"action": LAND, "from": str(item), "to": str(target / item.name)}
@@ -257,6 +258,11 @@ def _payload(
         # would call that the plan the person saw.
         identity["manifest"] = str(manifest.path)
         identity["manifest_bytes"] = manifest.digest
+    if split:
+        # Only when there is one, for the manifest's reason: a landing that
+        # splits nothing is compared exactly as it was before U113. Another
+        # split, or another name for one playlist, is another plan.
+        identity["playlists"] = [claimed.identity() for claimed in split]
     return {
         "digest": digest_of(identity),
         "items": items,
@@ -271,6 +277,7 @@ def _shown(
     target: Path,
     destination: Path,
     manifest: landing.LabelManifest | None = None,
+    split: tuple[account_playlists.Claimed, ...] = (),
 ) -> dict[str, Any]:
     """What the gate screen puts in front of the person, one line per fact."""
     shown: dict[str, Any] = {
@@ -281,6 +288,13 @@ def _shown(
         "count": len(planned.items),
         "files": [item.name for item in planned.items],
     }
+    if split:
+        shown.update(
+            split_facts(
+                [(one.name, one.account_name, len(one.files)) for one in split],
+                len(account_playlists.unclaimed(planned.items, split)),
+            )
+        )
     if manifest is not None:
         # What the manifest ASKS for, since which rows have a file in this
         # batch is known only once the batch folder can be indexed.
@@ -289,6 +303,40 @@ def _shown(
             f"{name} ({count} listed)" for name, count in sorted(manifest.playlists().items())
         ]
     return shown
+
+
+def split_facts(entries: list[tuple[str, str, int]], rest: int) -> dict[str, Any]:
+    """The account playlists on a gate screen, each by the name it lands as (U113).
+
+    ``entries`` are each playlist's name, the account's own name for it and how
+    many files it holds; ``rest`` is how many the batch playlist keeps. ONE
+    WORDING FOR BOTH MEDIA, so the same split reads the same on either screen.
+    """
+    return {
+        "account playlists": [
+            f"{name} ({count} file(s))"
+            + (f", the account's {account}" if account and name != account else "")
+            for name, account, count in entries
+        ],
+        "batch playlist holds": (
+            f"{rest} file(s) no account playlist claimed"
+            if rest
+            else "nothing, so it is not written"
+        ),
+    }
+
+
+def _split_items(split: tuple[tuple[account_playlists.Claimed, int], ...]) -> list[dict[str, Any]]:
+    """One item per account playlist an intake file was given, with what it holds."""
+    return [
+        {
+            "action": PLAYLIST,
+            "playlist": claimed.name,
+            "account": claimed.playlist_id,
+            "count": count,
+        }
+        for claimed, count in split
+    ]
 
 
 def _planned(folder: Path, cfg: config.Config, batch: str) -> landing.Plan:
@@ -323,6 +371,7 @@ def _reported(payload: dict, landed: landing.Landed) -> dict:
         "landed": len(landed.moved),
         "refused": len(landed.refused),
     }
+    items.extend(_split_items(landed.split))
     if landed.labelled or landed.unlabelled:
         # IN ``items`` AND ``totals``, because the plan surface is closed at
         # four fields and a fifth is a schema break for every consumer. A label
@@ -354,6 +403,31 @@ def _reported(payload: dict, landed: landing.Landed) -> dict:
         totals["filed"] = len(landed.labelled)
         totals["unfiled"] = len(landed.unlabelled)
     return {**payload, "items": items, "totals": totals}
+
+
+def _xml_split(
+    cfg: config.Config,
+    claims: tuple[tuple[account_playlists.Source, tuple[Path, ...]], ...],
+    export: Path,
+    *,
+    batch: str,
+    declared,
+    registry,
+) -> tuple[account_playlists.Claimed, ...]:
+    """Each account playlist named against the export it is spliced into, and the pending files.
+
+    The export's intake tree and playlist root (:func:`landing.inbox_held`), and
+    every account playlist an intake file still waiting on its import names,
+    which no export holds yet. An export that cannot be read names against the
+    pending files only: the preflight refuses it before anything moves.
+    """
+    if not claims:
+        return ()
+    held: tuple[str, ...] | str = ()
+    if declared is not None and registry is not None:
+        held = landing.inbox_held(export, landing.Checked(registry=registry, declared=declared))
+    taken = (*(held if isinstance(held, tuple) else ()), *account_playlists.pending_names(cfg))
+    return account_playlists.named(claims, taken, batch=batch)
 
 
 def gate_named(entry, name: str):
@@ -402,6 +476,10 @@ def intake_land(ctx) -> Envelope:
     stem = intake_stem(pass_name=pass_name, name=ctx.args.name, run_id=ctx.run.run_id)
     planned = _planned(folder, cfg, batch)
     target = landing.target_dir(cfg, batch)
+    # WHICH PLAYLIST ON THE ACCOUNT ASKED FOR EACH FILE (U113), read from the
+    # pass's own jobs before the gate, so the screen can say where every file
+    # goes. Named per medium below, against what that medium's INBOX holds.
+    claims = account_playlists.split(cfg, pass_name, planned.items)
     # THE MEDIUM IS THE INTAKE TREE'S MODE, the way the routing verbs choose
     # theirs (R-746). A tree the database owns takes the files into the
     # collection through the guarded writer and no export is involved; a tree
@@ -423,6 +501,7 @@ def intake_land(ctx) -> Envelope:
             declared=declared,
             registry=registry,
             manifest=manifest,
+            claims=claims,
         )
     if ctx.args.export is None and declared is not None:
         raise refuse(
@@ -447,6 +526,7 @@ def intake_land(ctx) -> Envelope:
         else Path(cfg.library.root) / "collection.xml"
     )
     destination = intake_file(cfg, stem)
+    split = _xml_split(cfg, claims, export, batch=batch, declared=declared, registry=registry)
     # THE ENGINE'S PRE-MOVE CHECKS ARE ASKED BEFORE THE GATE TOO (R-677), for
     # the manifest's reason. A plan over an export that is not there, or not a
     # collection, or a library that is not mounted, could never run, and the
@@ -461,18 +541,26 @@ def intake_land(ctx) -> Envelope:
                 export=export,
                 destination=destination,
                 label_rows=manifest.rows if manifest is not None else (),
+                names=[claimed.name for claimed in split],
             )
         except CratekitError as exc:
             unusable = exc
     payload = _payload(
-        planned, target=target, destination=destination, export=export, manifest=manifest
+        planned,
+        target=target,
+        destination=destination,
+        export=export,
+        manifest=manifest,
+        split=split,
     )
     spec = gate_named(ctx.entry, XML_GATE)
     try:
         option = ctx.gate.require(
             spec,
             digest=payload["digest"],
-            context=_shown(planned, target=target, destination=destination, manifest=manifest),
+            context=_shown(
+                planned, target=target, destination=destination, manifest=manifest, split=split
+            ),
         )
     except CratekitError as exc:
         # THE REFUSAL TAKES THE PLACE OF AN UNANSWERED GATE ONLY, the refusal
@@ -509,6 +597,7 @@ def intake_land(ctx) -> Envelope:
             destination=destination,
             manifest=manifest.path if manifest is not None else None,
             manifest_digest=manifest.digest if manifest is not None else None,
+            split=split,
         )
     return ctx.envelope(
         data=_reported(payload, landed),
@@ -604,12 +693,22 @@ def playlist_item(collection: native.NativeLanded) -> dict[str, Any]:
 
 def _native_shown(rows: native.NativePlan, *, folder: Path, target: Path) -> dict[str, Any]:
     """The facts beside the items on the gate screen, one line per fact."""
-    return {
+    shown = {
         "folder": str(folder),
         "lands in": str(target),
         **collection_facts(rows),
         "left in staging": len(rows.unsupported()),
     }
+    if rows.playlists:
+        claimed = {str(t) for one in rows.playlists for t in one.targets}
+        written = [row for row in rows.rows if row.action != native.UNSUPPORTED]
+        shown.update(
+            split_facts(
+                [(one.name, one.account_name, len(one.targets)) for one in rows.playlists],
+                sum(1 for row in written if str(row.target) not in claimed),
+            )
+        )
+    return shown
 
 
 def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
@@ -654,7 +753,20 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
         "already present": len(landed.collection.present),
         "memberships": landed.collection.memberships_added,
     }
-    items.append(playlist_item(landed.collection))
+    if landed.collection.playlist_id:
+        items.append(playlist_item(landed.collection))
+    items.extend(
+        {
+            "action": PLAYLIST,
+            "playlist": written.name,
+            "id": written.playlist_id,
+            "account": written.account,
+            "count": written.tracks,
+            "tree": landed.collection.tree_id,
+            "session": landed.collection.session_id,
+        }
+        for written in landed.collection.playlists
+    )
     return {**payload, "items": items, "totals": totals}
 
 
@@ -667,6 +779,7 @@ def _land_native(
     declared,
     registry,
     manifest: landing.LabelManifest | None,
+    claims: tuple[tuple[account_playlists.Source, tuple[Path, ...]], ...] = (),
 ) -> Envelope:
     """Plan the rows against the database, ask, then move and write.
 
@@ -729,7 +842,15 @@ def _land_native(
         cfg,
         spec,
         plan=lambda db: native.plan_rows(
-            cfg, db, tree_id=tree_id, registry=registry, batch=planned.batch, files=files
+            cfg,
+            db,
+            tree_id=tree_id,
+            registry=registry,
+            batch=planned.batch,
+            files=files,
+            split=_native_split(
+                db, claims, tree_id=tree_id, registry=registry, batch=planned.batch, target=target
+            ),
         ),
         payload=lambda rows: _native_payload(planned, rows, target=target),
         shown=lambda rows: _native_shown(rows, folder=planned.folder, target=target),
@@ -741,6 +862,30 @@ def _land_native(
     warnings = [{"code": entry.reason, "message": entry.sentence} for entry in landed.refused]
     warnings.extend(awaiting_analysis(landed.collection))
     return ctx.envelope(data=_native_reported(payload, landed), warnings=warnings)
+
+
+def _native_split(
+    db,
+    claims: tuple[tuple[account_playlists.Source, tuple[Path, ...]], ...],
+    *,
+    tree_id: str,
+    registry,
+    batch: str,
+    target: Path,
+) -> tuple[native.PlaylistPlan, ...]:
+    """Each account playlist named against what the database's INBOX holds, on the write handle."""
+    if not claims:
+        return ()
+    held = native.inbox_held(db, native.anchored_intake_root(db, tree_id, registry))
+    return tuple(
+        native.PlaylistPlan(
+            name=claimed.name,
+            account=claimed.playlist_id,
+            targets=tuple(target / path.name for path in claimed.files),
+            account_name=claimed.account_name,
+        )
+        for claimed in account_playlists.named(claims, held, batch=batch)
+    )
 
 
 def ask_then_write(
@@ -793,14 +938,16 @@ def awaiting_analysis(collection: native.NativeLanded) -> list[dict[str, str]]:
     """
     if not collection.added:
         return []
+    names = collection.names() or (collection.playlist,)
+    said = f"the {ingest.spoken(names)} playlist" + ("s" if len(names) > 1 else "")
     return [
         {
             "code": AWAITING_ANALYSIS,
             "message": (
                 f"{len(collection.added)} row(s) joined the collection with no "
                 f"tempo, grid, key or waveform, and rekordbox analyses nothing on its "
-                f"own with Auto Analysis off; open rekordbox, select the "
-                f"{collection.playlist} playlist under the intake folder and "
+                f"own with Auto Analysis off; open rekordbox, select "
+                f"{said} under the intake folder and "
                 f"run Analyze Track"
             ),
         }

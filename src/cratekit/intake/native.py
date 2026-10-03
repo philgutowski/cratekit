@@ -40,6 +40,13 @@ person approves that digest. The apply takes the plan as approved and writes
 it, and asks the database again only for what the plan could not know, which
 is whether a row appeared between the two.
 
+A PLAYLIST THE AUTHOR MADE ON THE ACCOUNT GETS ITS OWN (U113). A landing hands
+the plan its account playlists, each named against :func:`inbox_held` and each
+holding the rows it claimed; they are created under the root, never found by
+name, so two landings never share one, and the batch playlist keeps the rest.
+The record names every one by identifier, which is what ``inbox rotate`` ages
+them by.
+
 ``plan_rows`` AND ``apply_rows`` MEAN SOMETHING ELSE IN ``cratekit.tagging.rows``,
 where a row is one that exists and whose genre is written from its file. Here
 a row is a content row this engine adds. The two are not interchangeable.
@@ -89,6 +96,11 @@ WORKFLOW = ingest.INTAKE_WORKFLOW
 #: identifier and its name. Read by ``inbox rotate`` for the landing date.
 BATCH_PLAYLIST_KEY = "batch_playlist"
 
+#: The session record field listing the account playlists a landing wrote, each
+#: by identifier and name (U113). The intake's one spelling, shared with the
+#: intake file's record.
+INBOX_PLAYLISTS_KEY = ingest.INBOX_PLAYLISTS_KEY
+
 _ORIGIN = ("intake.native",)
 
 
@@ -121,6 +133,30 @@ class RowPlan:
 
 
 @dataclass(frozen=True, slots=True)
+class PlaylistPlan:
+    """One INBOX playlist a landing writes for a playlist the author made on the account (U113)."""
+
+    #: The name it is created under, chosen against what INBOX holds.
+    name: str
+    #: The account's identifier for the playlist it carries.
+    account: str
+    #: The planned targets it holds, in the order the landing planned them.
+    targets: tuple[Path, ...]
+    #: The account's own name for it, which ``name`` differs from only by a count.
+    account_name: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class WrittenPlaylist:
+    """One INBOX playlist the commit wrote for an account playlist, read for the report."""
+
+    name: str
+    playlist_id: str
+    account: str
+    tracks: int
+
+
+@dataclass(frozen=True, slots=True)
 class NativePlan:
     """What :func:`apply_rows` will write, and the fingerprint it was planned at."""
 
@@ -135,6 +171,9 @@ class NativePlan:
     current_drive: str | None
     rows: tuple[RowPlan, ...]
     digest: str
+    #: The account playlists, each its own INBOX playlist (U113). The batch
+    #: playlist, ``playlist``, holds only the rows none of them holds.
+    playlists: tuple[PlaylistPlan, ...] = ()
 
     def to_add(self) -> tuple[RowPlan, ...]:
         return tuple(row for row in self.rows if row.action == ADD)
@@ -169,6 +208,14 @@ class NativeLanded:
     present: tuple[RowPlan, ...]
     memberships_added: int
     session_id: str
+    #: The account playlists written (U113). ``playlist_id`` is empty when every
+    #: row went into one of these and the batch playlist held none.
+    playlists: tuple[WrittenPlaylist, ...] = ()
+
+    def names(self) -> tuple[str, ...]:
+        """Every INBOX playlist the commit wrote, the batch's first when it wrote one."""
+        batch = (self.playlist,) if self.playlist_id else ()
+        return (*batch, *(written.name for written in self.playlists))
 
 
 def _property(db: Any) -> Any:
@@ -290,12 +337,17 @@ def plan_rows(
     registry: tree_registry.Registry,
     batch: str,
     files: Sequence[tuple[Path, Path]],
+    split: Sequence[PlaylistPlan] = (),
 ) -> NativePlan:
     """Plan one row per file and one playlist, against the open database.
 
     ``files`` pairs where each file is now with where the landing will put it.
     The row is planned for the target, since that is the path rekordbox will
     open, and the title is read off the source, since the tags do not move.
+
+    ``split`` is a landing's account playlists (U113), named by the caller
+    against :func:`inbox_held` on this same handle, each holding targets of
+    ``files``. They are part of the plan and of its digest.
 
     A FILE THE COLLECTION HOLDS IS PRESENT, NOT ADDED TWICE. The target is
     matched against every active row the way the membership writers match,
@@ -373,13 +425,69 @@ def plan_rows(
         current_drive=current_drive,
         rows=tuple(rows),
         digest="",
+        playlists=_supported_only(split, rows),
     )
     return replace(planned, digest=digest_of(identity(planned)))
 
 
+def _supported_only(
+    split: Sequence[PlaylistPlan], rows: Sequence[RowPlan]
+) -> tuple[PlaylistPlan, ...]:
+    """The account playlists over only the targets a row can be written for.
+
+    A file planned ``UNSUPPORTED`` stays in staging and no playlist can hold it,
+    so it is not counted on the screen as one of a playlist's, and a playlist
+    holding nothing else is not planned.
+    """
+    unsupported = {str(row.target) for row in rows if row.action == UNSUPPORTED}
+    kept = (
+        replace(one, targets=tuple(t for t in one.targets if str(t) not in unsupported))
+        for one in split
+    )
+    return tuple(one for one in kept if one.targets)
+
+
+def inbox_held(db: Any, root_id: str) -> tuple[str, ...]:
+    """Every name a live node anywhere under the intake root carries (U113).
+
+    What a landing's account playlists are named against. Every descendant and
+    not only the root's children, so a batch the rotation moved into ``Old``
+    still holds its name. A removed node holds none: rekordbox no longer shows
+    it, and an account playlist is created, never found by its name, so a
+    removed node of that name is never written into.
+    """
+    # ONE READ OF THE TABLE, walked in memory, rather than a query per node.
+    children: dict[str, list[Any]] = {}
+    for row in list(db.get_playlist()):
+        if not rb_writer.node_removed(row):
+            children.setdefault(str(getattr(row, "ParentID", "") or ""), []).append(row)
+    names: list[str] = []
+    pending = [str(root_id)]
+    while pending:
+        for row in children.get(pending.pop(), ()):
+            names.append(str(getattr(row, "Name", "") or ""))
+            pending.append(str(row.ID))
+    return tuple(names)
+
+
 def identity(plan: NativePlan) -> dict[str, Any]:
     """What the digest covers: every fact the screen shows and the apply writes."""
+    split = (
+        {
+            "playlists": [
+                {
+                    "name": one.name,
+                    "account": one.account,
+                    "targets": [str(target) for target in one.targets],
+                }
+                for one in plan.playlists
+            ]
+        }
+        if plan.playlists
+        else {}
+    )
     return {
+        **split,
         "kind": "land-native",
         "tree": plan.tree_id,
         "root": plan.root_id,
@@ -568,7 +676,12 @@ def apply_rows(
                 root_id=plan.root_id,
             )
         playlist_id = ""
+        written: list[WrittenPlaylist] = []
         try:
+            # BEFORE THE FIRST ROW, so a refusal adds nothing. A name the plan
+            # chose free that INBOX holds now would show two playlists of one
+            # name, and an account playlist is created rather than found.
+            assert_names_still_free(db, plan)
             to_add = plan.to_add()
             taken = _taken_since_the_plan(db, cfg, to_add)
             for row in to_add:
@@ -579,27 +692,56 @@ def apply_rows(
                 content = db.add_content(row.target, Title=row.title)
                 _restamp(content, row, plan)
                 added_ids.append((row, str(content.ID)))
-            playlist = rb_writer.ensure_playlist(db, plan.playlist, anchor)
             # In listing order: the files the plan named, in the order it named
             # them, whether the row is new or was already there.
             by_target = {str(row.target): content_id for row, content_id in added_ids}
             by_target.update({str(row.target): row.content_id for row in present if row.content_id})
-            ordered = [
-                by_target[str(row.target)] for row in plan.rows if str(row.target) in by_target
+            claimed = {str(target) for one in plan.playlists for target in one.targets}
+            accounts = [
+                (one, [by_target[str(t)] for t in one.targets if str(t) in by_target])
+                for one in plan.playlists
             ]
-            memberships = len(rb_writer.add_memberships(db, playlist, ordered))
-            playlist_id = str(playlist.ID)
+            accounts = [(one, ids) for one, ids in accounts if ids]
+            ordered = [
+                by_target[str(row.target)]
+                for row in plan.rows
+                if str(row.target) in by_target and str(row.target) not in claimed
+            ]
+            # THE BATCH PLAYLIST HOLDS WHAT NO ACCOUNT PLAYLIST CLAIMED, and is
+            # not written when that is nothing, as the intake file does it.
+            if ordered or not accounts:
+                playlist = rb_writer.ensure_playlist(db, plan.playlist, anchor)
+                memberships = len(rb_writer.add_memberships(db, playlist, ordered))
+                playlist_id = str(playlist.ID)
+            for one, ids in accounts:
+                created = db.create_playlist(one.name, parent=anchor)
+                count = len(rb_writer.add_memberships(db, created, ids))
+                memberships += count
+                written.append(
+                    WrittenPlaylist(
+                        name=one.name,
+                        playlist_id=str(created.ID),
+                        account=one.account,
+                        tracks=count,
+                    )
+                )
             rb_writer.commit_guarded(db, creations=(rb_writer.CONTENT_TABLE,))
         except BaseException:
             trees._rollback_quietly(db)
             if witness.landed:
                 _record_landing_commit(
-                    record, plan, len(added_ids), memberships, cfg, playlist_id=playlist_id
+                    record,
+                    plan,
+                    len(added_ids),
+                    memberships,
+                    cfg,
+                    playlist_id=playlist_id,
+                    written=written,
                 )
             raise
 
         _record_landing_commit(
-            record, plan, len(added_ids), memberships, cfg, playlist_id=playlist_id
+            record, plan, len(added_ids), memberships, cfg, playlist_id=playlist_id, written=written
         )
         convergence.record_fingerprint(cfg, db)
 
@@ -625,7 +767,30 @@ def apply_rows(
         present=tuple(present),
         memberships_added=memberships,
         session_id=session_id,
+        playlists=tuple(written),
     )
+
+
+def assert_names_still_free(db: Any, plan: NativePlan) -> None:
+    """Refuse an account playlist name INBOX came to hold after the plan chose it.
+
+    ASKED BY THE LANDING BEFORE ITS FIRST MOVE, so a refusal leaves the files in
+    staging for the landing to be run again, and asked again here before the
+    first row, inside the session, for whatever took a name in between.
+    """
+    if not plan.playlists:
+        return
+    held = set(inbox_held(db, plan.root_id))
+    clash = sorted(one.name for one in plan.playlists if one.name in held)
+    if clash:
+        raise refuse(
+            "decision-stale",
+            f"the intake folder holds {', '.join(repr(name) for name in clash)} since "
+            f"this landing chose those names, so nothing was written; run the landing "
+            f"again and it takes the next free name",
+            origin=_ORIGIN,
+            detail={"names": clash, "root": plan.root_id},
+        )
 
 
 def _record_landing_commit(
@@ -636,6 +801,7 @@ def _record_landing_commit(
     cfg: config.Config,
     *,
     playlist_id: str,
+    written: Sequence[WrittenPlaylist] = (),
 ) -> None:
     """Record the commit on the session, once anything landed.
 
@@ -653,6 +819,11 @@ def _record_landing_commit(
     # by the call that persists it.
     if playlist_id:
         record.detail[BATCH_PLAYLIST_KEY] = {"id": playlist_id, "name": plan.playlist}
+    # AND EACH ACCOUNT PLAYLIST (U113), whose name carries no date to age it by.
+    if written:
+        record.detail[INBOX_PLAYLISTS_KEY] = [
+            {"id": one.playlist_id, "name": one.name} for one in written
+        ]
     changes = []
     if memberships > 0:
         changes.append(session.TreeChange(tree=plan.tree_id, created=memberships))
@@ -690,6 +861,7 @@ def assert_rows_gridless(landed: NativeLanded) -> None:
 __all__ = [
     "ADD",
     "BATCH_PLAYLIST_KEY",
+    "INBOX_PLAYLISTS_KEY",
     "LEFT_EMPTY",
     "PRESENT",
     "UNSUPPORTED",
@@ -697,13 +869,17 @@ __all__ = [
     "AddedRow",
     "NativeLanded",
     "NativePlan",
+    "PlaylistPlan",
     "RowPlan",
+    "WrittenPlaylist",
     "anchored_intake_root",
     "apply_rows",
+    "assert_names_still_free",
     "assert_rows_gridless",
     "choose_device",
     "file_type_of",
     "identity",
+    "inbox_held",
     "plan_rows",
     "stored_folder_path",
 ]

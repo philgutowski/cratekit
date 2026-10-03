@@ -70,6 +70,12 @@ TRACKS = "tracks"
 CALLS = "calls"
 UNREACHED = "unreached"
 PARTS = "parts"
+#: The name the account gave the playlist, as the sweep that queued the job
+#: listed it (U113). Recorded at the queue because nothing else keeps it, and
+#: ``sync mark`` later prefixes the account's copy, so a listing taken after the
+#: mark would not say what the author called it. A landing names the playlist's
+#: own INBOX playlist from this.
+PLAYLIST_NAME = "playlist_name"
 
 #: The two handler keys one worker serves. A resume is refused for any other,
 #: because the driver resolves the worker from the job row and not from the
@@ -1117,6 +1123,7 @@ def queue_playlist(
     tracks: Mapping[str, Mapping[str, Any]],
     run_id: str | None = None,
     source_id: str | None = None,
+    name: str | None = None,
 ) -> jobs.Job:
     """Queue one playlist job, one item per frozen track. The one spelling of it.
 
@@ -1127,12 +1134,17 @@ def queue_playlist(
     its job succeeds (R-382), because it reconciles over every playlist intake
     job for the library rather than only the ones a pass queued. Until then, an
     open job queued here holds the playlist back from a pass as in flight.
+
+    ``name`` is the account's name for the playlist, which only a sweep has in
+    hand (U113). A job queued without one lands in its batch's playlist.
     """
     payload: dict[str, Any] = {SOURCE: reference, TRACKS: dict(tracks)}
     if run_id is not None:
         payload["run_id"] = run_id
     if source_id is not None:
         payload["source_id"] = source_id
+    if name:
+        payload[PLAYLIST_NAME] = name
     return jobs.enqueue(
         store,
         handler_key=handler_key,
@@ -1321,6 +1333,7 @@ __all__ = [
     "HEARTS_WITHHELD",
     "INTAKE_KEYS",
     "MIX_SCRATCH_LEFT",
+    "PLAYLIST_NAME",
     "SOURCE",
     "TRACKLISTS_DIR",
     "TRACKLIST_SUFFIX",

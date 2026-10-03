@@ -33,6 +33,13 @@ the tracks it holds are in the library. The native writer finds a playlist by
 its name under INBOX and adds to it, so a name reused there would merge two
 batches silently.
 
+A PLAYLIST THE AUTHOR MADE ON THE ACCOUNT KEEPS ITS OWN NAME (U113). The files
+of a pass still land in the one batch folder named above, and the tracks each
+account playlist brought in go into an INBOX playlist named exactly as the
+account names it, :func:`inbox_names`. The batch playlist keeps only what no
+account playlist claimed. :mod:`cratekit.intake.account_playlists` decides which
+file is whose.
+
 Layer: modules.
 """
 
@@ -187,6 +194,28 @@ def free(cfg: config.Config, base: str) -> str:
     return candidate
 
 
+def inbox_names(wanted: Iterable[str], held: Iterable[str], *, batch: str) -> tuple[str, ...]:
+    """The INBOX playlist each account playlist lands as, in order (U113).
+
+    EXACTLY THE ACCOUNT'S NAME, ``Sunset Warmup`` for ``Sunset Warmup``, with no
+    date and nothing made folder safe, since a playlist name is not a path. A
+    name already ``held`` under INBOX, the batch's own, or one an earlier
+    playlist of this landing took, gets `` 2``, `` 3`` and on, so one landing
+    never adds its tracks to another's playlist. Compared exactly, the way the
+    database writer finds a playlist by its name.
+    """
+    taken = {*held, batch}
+    named: list[str] = []
+    for base in wanted:
+        candidate, count = base, 1
+        while candidate in taken:
+            count += 1
+            candidate = f"{base} {count}"
+        taken.add(candidate)
+        named.append(candidate)
+    return tuple(named)
+
+
 def readable(
     cfg: config.Config,
     *,
@@ -205,6 +234,7 @@ __all__ = [
     "PLAYLISTS",
     "SET",
     "free",
+    "inbox_names",
     "is_default_shape",
     "job_word",
     "joined",

@@ -26,17 +26,34 @@ or Old is a batch when ANY of these holds, and the plan says which:
                                 playlist by identifier (``native.BATCH_PLAYLIST_KEY``)
 ``_inboxed suffix``             the name ends ``_inboxed``, a batch named for
                                 its run before U110
+``recorded name``               an intake file's landing record whose import
+                                ``intake imported`` PROVED names this playlist
+                                as one of the author's account playlists
+                                (U113) AND the batch folder the record names
+                                still sits under the music folder
 ``dated name``                  the name is U110's ``2026-10-03 Tidal playlists``
                                 shape AND a batch folder of exactly that name
                                 sits under the music folder, which both media
                                 make for every landing
 ==============================  ===============================================
 
+AN ACCOUNT PLAYLIST'S NAME CARRIES NO DATE (U113), ``Sunset Warmup``, so it is
+never recognised by its name's shape. A native landing names each one on its
+record by identifier, ``ingest.INBOX_PLAYLISTS_KEY``, and it is a ``run
+record`` batch. An intake file's playlist has no identifier until rekordbox
+imports it, so its record names it and its batch folder. ONLY A PROVEN IMPORT
+COUNTS: an intake file nobody imported made no playlist, and a playlist of that
+name somebody makes later is theirs. The LATEST proven landing of a name wins:
+a landing takes a name only while INBOX and the pending intake files do not
+hold it, so the newest record naming it is the one that made the playlist INBOX
+shows now.
+
 EVERYTHING ELSE IS LEFT ALONE AND LISTED: a folder, a smart playlist, and an
 ordinary playlist no rule recognises. A dated name with no batch folder is a
 playlist somebody named that way, and the folder test is what keeps it out.
 
-A BATCH'S AGE is its landing date from the run record when one names it, else
+A BATCH'S AGE is its landing date from the run record when one names it, by
+identifier or by its recorded name, else
 the playlist row's own ``created_at``, which for a batch rekordbox imported from
 an intake file is the day it was imported. Each batch says which it was aged
 from. A batch with neither, or dated after the day the rotation is run for, is
@@ -69,7 +86,7 @@ from cratekit.core import (
     tree_registry,
 )
 from cratekit.core.cause import Remedy, refuse
-from cratekit.intake import batch_name, landing, native
+from cratekit.intake import batch_name, ingest, landing, native
 from cratekit.write import trees
 
 #: The session workflow a rotation is recorded under.
@@ -84,6 +101,7 @@ KEEP = "keep"
 BY_RECORD = "run record"
 BY_SUFFIX = "_inboxed suffix"
 BY_NAME = "dated name"
+BY_RECORDED_NAME = "recorded name"
 
 #: What a batch's age was read from.
 AGED_FROM_RECORD = "run record"
@@ -270,30 +288,80 @@ def _local_date(stamp: str) -> date | None:
     return moment.date()
 
 
-def landing_dates(cfg: config.Config) -> tuple[dict[str, date], int]:
-    """Each batch playlist a native landing recorded, and the day it first landed.
+def _named_ids(record: session.SessionRecord) -> list[str]:
+    """Every playlist identifier a native landing record names, batch and account playlists."""
+    ids: list[str] = []
+    batch = record.detail.get(native.BATCH_PLAYLIST_KEY)
+    if isinstance(batch, Mapping) and batch.get("id"):
+        ids.append(str(batch["id"]))
+    accounts = record.detail.get(native.INBOX_PLAYLISTS_KEY)
+    if isinstance(accounts, list):
+        ids.extend(
+            str(entry["id"]) for entry in accounts if isinstance(entry, Mapping) and entry.get("id")
+        )
+    return ids
 
-    Answers the mapping and how many records could not be read. A record that
-    names a playlist and committed nothing landed nothing, so it dates nothing.
-    The EARLIEST landing wins: a batch is as old as its first tracks.
+
+def _named_without_id(record: session.SessionRecord) -> list[tuple[str, str]]:
+    """Each account playlist an intake file's record names, with the batch folder it landed in."""
+    accounts = record.detail.get(ingest.INBOX_PLAYLISTS_KEY)
+    if not isinstance(accounts, list):
+        return []
+    return [
+        (str(entry["name"]), str(entry["batch"]))
+        for entry in accounts
+        if isinstance(entry, Mapping)
+        and not entry.get("id")
+        and entry.get("name")
+        and entry.get("batch")
+    ]
+
+
+@dataclass(frozen=True, slots=True)
+class Landings:
+    """What the landing records say about the batches they made."""
+
+    #: Each playlist a native landing named by identifier, and the day it first landed.
+    by_id: dict[str, date]
+    #: Each account playlist an intake file named, the day of the latest landing
+    #: naming it, and the batch folder that landing made.
+    by_name: dict[str, tuple[date, str]]
+    #: How many records could not be read.
+    unreadable: int
+
+
+def landings(cfg: config.Config) -> Landings:
+    """Every batch the landing records name, by identifier and by recorded name.
+
+    A NATIVE RECORD that names a playlist and committed nothing landed nothing,
+    so it dates nothing, and the EARLIEST landing wins: a batch is as old as its
+    first tracks. AN INTAKE FILE'S RECORD commits nothing to the database, so it
+    is read once ``intake imported`` proved its import, which is when the
+    playlists it names exist, and the LATEST record naming a name wins, for the
+    reason the module gives.
     """
     records, unreadable = session.scan_log(cfg)
-    found: dict[str, date] = {}
+    by_id: dict[str, date] = {}
+    by_name: dict[str, tuple[date, str]] = {}
     for record in records:
         if record.workflow != native.WORKFLOW:
-            continue
-        named = record.detail.get(native.BATCH_PLAYLIST_KEY)
-        if not isinstance(named, Mapping) or not named.get("id"):
-            continue
-        if str(session.SourceState.COMMITTED) not in {str(v) for v in record.sources.values()}:
             continue
         landed = _local_date(record.started)
         if landed is None:
             continue
-        key = str(named["id"])
-        if key not in found or landed < found[key]:
-            found[key] = landed
-    return found, len(unreadable)
+        if session.IMPORT_VERIFIED_KEY in record.detail:
+            for name, batch in _named_without_id(record):
+                if name not in by_name or landed >= by_name[name][0]:
+                    by_name[name] = (landed, batch)
+        ids = _named_ids(record)
+        if not ids:
+            continue
+        if str(session.SourceState.COMMITTED) not in {str(v) for v in record.sources.values()}:
+            continue
+        for key in ids:
+            if key not in by_id or landed < by_id[key]:
+                by_id[key] = landed
+    return Landings(by_id=by_id, by_name=by_name, unreadable=len(unreadable))
 
 
 def _live_children(db: Any, parent_id: str) -> list[Any]:
@@ -312,10 +380,17 @@ def _track_count(db: Any, playlist: Any) -> int:
     )
 
 
-def _recognised(cfg: config.Config, row: Any, recorded: Mapping[str, date]) -> str | None:
+def _recognised(
+    cfg: config.Config,
+    row: Any,
+    recorded: Mapping[str, date],
+    named: Mapping[str, tuple[date, str]],
+) -> str | None:
     name = str(getattr(row, "Name", "") or "")
     if str(row.ID) in recorded:
         return BY_RECORD
+    if name in named and os.path.isdir(landing.target_dir(cfg, named[name][1])):
+        return BY_RECORDED_NAME
     if name.endswith(INBOXED_SUFFIX):
         return BY_SUFFIX
     if batch_name.is_default_shape(name) and os.path.isdir(landing.target_dir(cfg, name)):
@@ -351,6 +426,7 @@ def _classify(
     today: date,
     stale_days: int,
     expired_days: int,
+    named: Mapping[str, tuple[date, str]] | None = None,
 ) -> Batch | Left:
     playlist_id, name = str(row.ID), str(getattr(row, "Name", "") or "")
 
@@ -361,7 +437,8 @@ def _classify(
         return left("folder", "a folder is never a batch, and nothing inside it is rotated")
     if int(getattr(row, "Attribute", -1)) != 0:
         return left("smart playlist", "a smart playlist is never a batch")
-    recognised_by = _recognised(cfg, row, recorded)
+    named = named or {}
+    recognised_by = _recognised(cfg, row, recorded, named)
     if recognised_by is None:
         return left(
             "playlist",
@@ -370,6 +447,8 @@ def _classify(
         )
     if playlist_id in recorded:
         landed, aged_from = recorded[playlist_id], AGED_FROM_RECORD
+    elif recognised_by == BY_RECORDED_NAME:
+        landed, aged_from = named[name][0], AGED_FROM_RECORD
     else:
         landed, aged_from = _created_date(row), AGED_FROM_CREATED
     if landed is None:
@@ -418,7 +497,8 @@ def plan_rotation(
     tree_id = declared.intake.id
     root_id = anchored_root(db, tree_id, registry)
     root = db.get_playlist(ID=root_id)
-    recorded, unreadable = landing_dates(cfg)
+    found = landings(cfg)
+    recorded, unreadable = found.by_id, found.unreadable
 
     children = _live_children(db, root_id)
     olds = [row for row in children if rb_writer.is_folder(row) and row.Name == old.display]
@@ -444,7 +524,7 @@ def plan_rotation(
     batches: list[Batch] = []
     left: list[Left] = []
     for row, place, in_old in nodes:
-        found = _classify(
+        classified = _classify(
             cfg,
             db,
             row,
@@ -454,8 +534,9 @@ def plan_rotation(
             today=today,
             stale_days=stale_days,
             expired_days=expired_days,
+            named=found.by_name,
         )
-        (batches if isinstance(found, Batch) else left).append(found)
+        (batches if isinstance(classified, Batch) else left).append(classified)
 
     def oldest_first(action: str) -> tuple[Batch, ...]:
         return tuple(
@@ -686,6 +767,7 @@ __all__ = [
     "AGED_FROM_RECORD",
     "BY_NAME",
     "BY_RECORD",
+    "BY_RECORDED_NAME",
     "BY_SUFFIX",
     "INBOXED_SUFFIX",
     "KEEP",
@@ -701,7 +783,8 @@ __all__ = [
     "apply_rotation",
     "assert_read_back",
     "identity",
-    "landing_dates",
+    "Landings",
+    "landings",
     "old_node",
     "plan_rotation",
 ]

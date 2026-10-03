@@ -13,6 +13,31 @@ closed. Mango Alley's crawl spends its budget on one unnamed artist, and the
 **provider session expired**, so every streaming verb refuses until the author
 mints one: R-888. Main's highest residual number is R-888.
 
+**U113 built, 2026-10-03, on `relay/261`, issue #261: an account playlist
+lands in INBOX as its own playlist under its exact name.** `sync all` records
+the account's name on each playlist job (`intake_cli.PLAYLIST_NAME`). A landing
+given `--pass` ties each planned file to the account playlist rows that resolve
+to it, by the match rule over exactly the planned files
+(`intake/account_playlists.py`), and each claiming playlist becomes its own
+INBOX playlist named exactly as on the account, ` 2` and on when held
+(`batch_name.inbox_names`). The batch folder and its U110 name are unchanged;
+the batch playlist keeps what no account playlist claimed and is not written
+when that is nothing. Both media: the bridge names against the export's intake
+tree, its playlist root and pending intake files, writes one node per playlist
+and records each by name and batch folder; the native writer names against the
+database's INBOX, creates each playlist, refuses a name taken since the plan
+before its first move, and records each by id. `inbox rotate` recognises them by
+id, or by recorded name once `intake imported` proved the import and while the
+batch folder exists, and ages them from the record. Owned tracks are not added,
+R-905. A job queued before this unit carries no name and lands as U110 did.
+Battery on the branch: ruff clean, 12,699 passed and 1 skipped of 12,700
+collected, the scan clean. One round of the built in review, ten findings,
+eight fixed, two recorded as R-909, and what remains of the first as R-906. Mutation table 25 rows, 24 killed,
+one zero measured as a second layer over the matcher,
+`docs/mutation/u113-notes.md`. R-905 to R-910 filed. **Owed, attended:** the next
+real sync of one of the author's playlists read in rekordbox, and his choice on
+R-905. Main's highest residual number is R-910.
+
 **U111 built, 2026-10-03, on `relay/259`, issue #259: `crate inbox rotate`.**
 A batch playlist under INBOX older than `reports.intake_stale_days` moves into
 `INBOX / Old`, one in Old older than `reports.intake_expired_days` is removed

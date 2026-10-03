@@ -52,6 +52,14 @@ INTAKE_WORKFLOW = "intake"
 #: answers without reading anything (R-436).
 VERIFY_VERB = "intake.imported"
 
+#: The session record field listing the INBOX playlists a landing wrote for the
+#: playlists the author made on the account (U113), so ``inbox rotate`` ages
+#: each from the day it landed, since its name carries no date. A native
+#: landing lists each by ``id`` and ``name``; an intake file's playlist has no
+#: identifier until rekordbox imports it, so its entry is the ``name`` and the
+#: ``batch`` folder it landed in.
+INBOX_PLAYLISTS_KEY = "inbox_playlists"
+
 
 @dataclass(frozen=True, slots=True)
 class IntakeMedium:
@@ -138,11 +146,27 @@ def bridge_intake_tree(
     return rbxml.intake_tree(declared, registry)
 
 
-def import_steps(destination: Path, intake: str, playlist: str | None = None) -> tuple[str, ...]:
+def spoken(names: Sequence[str]) -> str:
+    """Several names as a person says the list, ``A, B and C``."""
+    if len(names) == 1:
+        return names[0]
+    return ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def import_steps(
+    destination: Path,
+    intake: str,
+    playlist: str | None = None,
+    *,
+    playlists: Sequence[str] = (),
+) -> tuple[str, ...]:
     """What a person does with an intake file, end to end, in order.
 
     ``playlist`` is the batch playlist the file holds, the intake file's stem
     when none is named, which is what a single file's intake names it.
+    ``playlists``, when given, is every playlist the file holds instead, which
+    is a landing whose account playlists each have their own (U113); each is
+    imported and dragged on its own, for the reason the batch's one is.
 
     END TO END IS THE REQUIREMENT. The steps used to stop at the import, and a
     person who followed every one of them was left with a session and a file
@@ -154,7 +178,22 @@ def import_steps(destination: Path, intake: str, playlist: str | None = None) ->
     imported from the file keeps every child it had and appends the file's
     copies, doubling each batch already in it.
     """
-    named = playlist if playlist is not None else destination.stem
+    if len(playlists) > 1:
+        said = spoken(playlists)
+        return (
+            f"import {destination} into rekordbox as a rekordbox xml library",
+            f"import each of the {said} playlists from it on its own, never the "
+            f"{intake} folder, which would add a second copy of every batch already "
+            f"in it",
+            f"the {said} playlists land at the playlist root, so drag each one "
+            f"into the {intake} folder, where a routing pass reads its batches",
+            "take a Fresh Export of the collection from rekordbox",
+            "run crate intake imported --export with that Fresh Export, which "
+            "proves the import, retires the intake file and settles this run",
+        )
+    named = (
+        playlists[0] if playlists else playlist if playlist is not None else destination.stem
+    )
     return (
         f"import {destination} into rekordbox as a rekordbox xml library",
         f"import the {named} playlist from it on its own, never the "
@@ -328,12 +367,20 @@ def place_files(
     declared: taxonomy.Taxonomy | None = None,
     registry: tree_registry.Registry | None = None,
     playlist: str | None = None,
+    split: Sequence[tuple[str, Sequence[Path]]] = (),
 ) -> list[PlacedTrack]:
     """Splice each file into ``destination`` and record routing intents.
 
     ``playlist`` names the batch playlist the file carries. A landing names it
     for its batch (U110); with none it is the intake file's stem, which is what
     a single file's intake has always called it.
+
+    ``split`` is a landing's account playlists (U113): each name and the paths
+    of ``paths`` it holds. Each is its own playlist under the intake tree, the
+    batch playlist keeps only the files none of them holds, and a batch
+    playlist that would hold nothing is not written. A playlist none of whose
+    files is here is not written either. The session record lists each one
+    written under :data:`INBOX_PLAYLISTS_KEY`.
 
     The Fresh Export is a path the caller names. This function does not hunt
     for one: a hunt that picked the newest XML would pick a pending intake
@@ -424,22 +471,28 @@ def place_files(
         registry = tree_registry.read(cfg)
     tree = bridge_intake_tree(declared, registry)
     named = playlist if playlist is not None else destination.stem
-    playlist_error = rbxml.insert_intake_playlist(
-        content,
-        named,
-        [item.track_id for item in placed],
-        tree=tree,
-    )
-    if playlist_error:
-        raise refuse(
-            "library-export-unusable",
-            f"the intake playlist could not be written ({playlist_error})",
-            steps=(
-                "export the collection again from rekordbox so the intake "
-                "folder is present, then retry",
-            ),
-            origin=("intake.ingest",),
-        )
+    ids_by_path = {item.path: item.track_id for item in placed}
+    claimed: set[Path] = set()
+    accounts: list[tuple[str, list[int]]] = []
+    for name, members in split:
+        claimed.update(members)
+        held = [ids_by_path[path] for path in members if path in ids_by_path]
+        if held:
+            accounts.append((name, held))
+    rest = [item.track_id for item in placed if item.path not in claimed]
+    written = ([(named, rest)] if rest or not accounts else []) + accounts
+    for name, track_ids in written:
+        playlist_error = rbxml.insert_intake_playlist(content, name, track_ids, tree=tree)
+        if playlist_error:
+            raise refuse(
+                "library-export-unusable",
+                f"the intake playlist could not be written ({playlist_error})",
+                steps=(
+                    "export the collection again from rekordbox so the intake "
+                    "folder is present, then retry",
+                ),
+                origin=("intake.ingest",),
+            )
     # OPENED AFTER THE LAST REFUSAL THAT NEEDS NO SESSION, so a file with a
     # bad tag or an export with no intake folder leaves no record at all. It
     # cannot move below the write, because the intents carry its identifier.
@@ -449,6 +502,11 @@ def place_files(
         session_id=session_id,
     )
     placed = [replace(item, session_id=record.session_id) for item in placed]
+    if accounts:
+        # PERSISTED WITH THE AWAITING STATE BELOW, by the write that persists it.
+        record.detail[INBOX_PLAYLISTS_KEY] = [
+            {"name": name, "batch": named} for name, _ids in accounts
+        ]
     # WHAT THE ROLLBACK MAY REMOVE IS DECIDED BEFORE THE WRITE. The write is a
     # plain overwrite, and a file already here is an earlier run's intake file
     # that run's steps still name, so a failure below must not take it away.
@@ -468,7 +526,12 @@ def place_files(
                     f"which rekordbox has not imported yet"
                 ),
                 verify_verb=VERIFY_VERB,
-                steps=import_steps(destination, declared.intake.display, named),
+                steps=import_steps(
+                    destination,
+                    declared.intake.display,
+                    named,
+                    playlists=[name for name, _ids in written] if accounts else (),
+                ),
             ),
             cfg,
         )

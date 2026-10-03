@@ -1,0 +1,85 @@
+name = "u113-a"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_close_match_claims"
+description = "A row that resolves only to something close, a different version, claims the file anyway"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py"]
+old = '''            if resolved.state is not match.MatchState.MATCHED:
+                continue'''
+new = '''            if resolved.state is match.MatchState.MISSING:
+                continue'''
+
+[[rows]]
+id = "A2_queue_order"
+description = "The account playlists are taken newest job first, the order the store lists them"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py"]
+old = '''        queued = sorted(
+            batch_name.pass_jobs(cfg, pass_name), key=lambda job: (job.created, job.job_id)
+        )'''
+new = '''        queued = batch_name.pass_jobs(cfg, pass_name)'''
+
+[[rows]]
+id = "A3_no_pass_splits_nothing"
+description = "A landing given no pass still splits, by every named job on the library"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py"]
+old = '''    if not pass_name or not files:
+        return ()
+    found = sources(cfg, pass_name)'''
+new = '''    if not files:
+        return ()
+    found = sources(cfg, pass_name or "")'''
+
+[[rows]]
+id = "A4_batch_name_not_taken"
+description = "An account playlist may take the batch's own name"
+file = "src/cratekit/intake/batch_name.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py"]
+old = '''    taken = {*held, batch}'''
+new = '''    taken = {*held}'''
+
+[[rows]]
+id = "A5_landing_names_its_own"
+description = "Two account playlists of one name in one landing share it"
+file = "src/cratekit/intake/batch_name.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py"]
+old = '''        taken.add(candidate)
+        named.append(candidate)'''
+new = '''        named.append(candidate)'''
+
+[[rows]]
+id = "A6_sweep_passes_no_name"
+description = "The sweep queues each playlist job without the account's name"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py", "tests/test_sync_all.py"]
+old = '''                name=names.get(playlist_id),'''
+new = '''                name=None,'''
+
+[[rows]]
+id = "A7_payload_drops_name"
+description = "queue_playlist is handed the name and records nothing"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py"]
+old = '''    if name:
+        payload[PLAYLIST_NAME] = name'''
+new = '''    if name and False:
+        payload[PLAYLIST_NAME] = name'''
+
+[[rows]]
+id = "A8_pending_any_state"
+description = "Names held by intake files are read from records whatever their state, not only those awaiting import"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py"]
+old = '''        and record.state is session.SessionState.AWAITING_IMPORT'''
+new = '''        and record.state is not session.SessionState.AWAITING_IMPORT'''

@@ -35131,3 +35131,154 @@ needs a hand made state.
 are found to disagree on a real library.
 
 **Not on the board bar.** Neither verb says anything false about its own rule.
+
+
+---
+
+## R-905. Tracks the library already owned are not added to an account playlist's INBOX playlist
+
+**Found:** by U113 on `relay/261`, 2026-10-03, a decision the brief asked for.
+
+**The mechanism.** A landing gives each playlist the author made on the
+account its own INBOX playlist, holding the files THIS landing brought in for
+it. A row the sweep resolved as owned was not downloaded and is not added, so
+the INBOX playlist mirrors the account playlist only when the library held
+none of its tracks. Chosen because INBOX is the listening queue `route inbox`
+and `inbox rotate` work over, and an owned track is usually already filed
+under BY GENRE, where it would be queued a second time. Mirroring would also
+need each owned file's row in the collection, found by path, on both media,
+which no verb does yet. The author's word was that the landing carries his
+playlist into INBOX, which can be read either way.
+
+**The options.** (a) As built, new tracks only. (b) Mirror: add every owned
+row too, read from the intake report's `paths`, which needs a path to row
+lookup in the export and in the database. (c) Mirror into a second playlist
+outside INBOX, so the queue holds only what is new.
+
+**Measured cost.** None measured; it is a choice of contents, and the files
+and rows are all where they were.
+
+**Closes when:** the author picks one at an attended sitting, reading the next
+real sync of one of his playlists in rekordbox.
+
+**Not on the board bar.** Nothing is lost or said falsely, and it closes only
+by the author's choice.
+
+
+---
+
+## R-906. The rotation recognises an intake file's account playlist by its name
+
+**Found:** by the built in review of U113 on `relay/261`, 2026-10-03.
+
+**The mechanism.** A native landing records each account playlist by
+identifier. An intake file's playlist has no identifier until rekordbox
+imports it, so its record names it and its batch folder, and `inbox rotate`
+recognises a playlist directly under INBOX or Old by that name, while the
+record's import is proven and its batch folder is under the music folder, the
+latest such record of a name winning. A name is a single field trusted alone:
+a person who removes the landed playlist and makes one of their own under the
+same name in INBOX, while the batch folder stays, would have theirs recognised
+as the batch and aged from the old record.
+
+**Measured cost.** Not measured. The review's first reading, an intake file
+nobody imported, was driven and fixed: only a proven import counts now. The
+remaining shape needs a hand made playlist of a landed name in INBOX, and no
+candidate that produces one was driven. The rotation is gated and its plan
+says "recorded name" beside every such batch.
+
+**Closes when:** the record also names the files each playlist holds and the
+rotation requires a playlist recognised by name to hold those files, or the
+playlist's identifier is recorded once a native read can see it, so the
+rotation matches by identifier on both media.
+
+**Not on the board bar.** Unmeasured reachability, and the plan names the rule
+it applied before anything is moved.
+
+
+---
+
+## R-907. `report intake-aging` cannot date an account playlist, whose name carries no date
+
+**Found:** by U113 on `relay/261`, 2026-10-03.
+
+**The mechanism.** R-904's report ages every intake grouping from the date in
+its name. An account playlist lands as `Sunset Warmup`, so the report has no
+date to read for it, while the rotation ages it from its landing record. The
+two verbs already band by different rules (R-904); this is a playlist the
+report cannot band at all.
+
+**Measured cost.** Not measured; the report was not driven over an account
+playlist.
+
+**Closes when:** the report reads the rotation's classification, R-904's
+closing condition.
+
+**Not on the board bar.** The rotation, the verb that writes, ages it correctly.
+
+
+---
+
+## R-908. The two media can give one account playlist different names
+
+**Found:** by U113 on `relay/261`, 2026-10-03.
+
+**The mechanism.** Both media name an account playlist exactly as the account
+does, with ` 2` and on when the name is held. What counts as held differs by
+where the playlist is written. The bridge counts every name under the export's
+intake tree, every name at its playlist root, because an imported playlist
+lands there before it is dragged into INBOX, and every account playlist an
+intake file still waiting on its import names. The native writer creates the
+playlist directly under INBOX and counts only the names under INBOX. A library
+with a root playlist of an account playlist's name gets the exact name on one
+medium and ` 2` on the other.
+
+**Measured cost.** Driven: the bridge test with a root playlist of the name
+lands ` 2`; the native medium was not driven with one, by construction.
+
+**Closes when:** it is judged the right difference, or the native writer also
+counts the root's names.
+
+**Not on the board bar.** Neither medium merges two playlists or says
+anything false.
+
+
+---
+
+## R-909. A landing that splits reads the export and every planned file's tags more than once
+
+**Found:** by the built in review of U113 on `relay/261`, 2026-10-03.
+
+**The mechanism.** Naming on the bridge reads the Fresh Export once before
+the gate, the check before the gate reads it again against names chosen from
+the same bytes, and the apply's check reads it a third time. The split also
+indexes every planned file's tags, which the plan and the splice each read
+too. The native INBOX walk was made one read of the playlist table in the same
+review.
+
+**Measured cost.** Not measured; no landing over a large export or a large
+pass was timed.
+
+**Closes when:** a landing is timed and the reads are found to matter.
+
+**Not on the board bar.** Maintainer facing.
+
+
+---
+
+## R-910. A queued resume contract test failed once under the full parallel suite
+
+**Found:** by U113's mutation driver on `relay/261`, 2026-10-03.
+
+**The mechanism.** Unmeasured, the shape R-900 records.
+`tests/test_queued_resume_contract.py::test_the_resume_the_job_driver_spawns_can_actually_proceed[tag.retag]`
+died under the null control of a batch, a comment line appended to
+`intake/native.py`, with 12,700 collected. Its file passed 16 of 16 alone in 57
+seconds, since each case spawns a real job driver, and the rerun's control
+killed nothing.
+
+**Measured cost.** One invalid mutation batch, rerun.
+
+**Closes when:** a run under load shows which spawned step outlives its wait.
+
+**Not on the board bar.** Maintainer facing.

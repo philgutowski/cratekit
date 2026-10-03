@@ -401,12 +401,24 @@ landing, before the emitter guard could call the cutover a defect. One verb
 still READS the file only a bridge landing writes: `sync mark` finds its pass
 by the intake file's name, so it has no input after a native landing.
 
+### Account playlist
+A playlist the author made on the streaming account, as distinct from his
+hearts, a set or a label's releases. A sweep records the account's name for it
+on its intake job (U113), and a landing of that pass gives it its OWN INBOX
+playlist named exactly as on the account, holding the files this landing
+brought in for it, with ` 2` and on when the name is held. The files still
+land in the one batch folder; only the rekordbox playlists split, and the
+batch playlist keeps what no account playlist claimed. Owned tracks are not
+added (R-905).
+
 ### Rotation
 `crate inbox rotate` (U111), the write `report intake-aging` only describes.
 A BATCH is a playlist directly under INBOX or under its Old folder that a
-native landing's session record names, or whose name ends `_inboxed`, or that
-carries a landing's default dated name with a batch folder of that name under
-the music folder; anything else there is left alone and listed. Old is the
+native landing's session record names, or that an intake file's proven
+landing record names as an account playlist while its batch folder is there,
+or whose name ends `_inboxed`, or that carries a landing's default dated name
+with a batch folder of that name under the music folder; anything else there is
+left alone and listed. Old is the
 taxonomy's `[intake_old]` node, created once under the adopted intake root
 when a move needs it. A batch older than `reports.intake_stale_days` moves
 into Old; one in Old older than `reports.intake_expired_days` is removed, the

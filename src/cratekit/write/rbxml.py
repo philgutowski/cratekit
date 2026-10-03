@@ -1519,6 +1519,20 @@ def insert_intake_playlist(
     return None
 
 
+def intake_names(content: bytes, *, tree: Tree | None = None) -> tuple[str, ...] | str:
+    """Every name a node anywhere under the intake tree carries, or a warning naming why not.
+
+    A LOCATE, NOT A WRITER, for a landing choosing a name INBOX does not hold
+    yet (U113). Every descendant and not only the direct children, so a batch
+    the rotation moved into ``Old`` still holds its name, and a folder's name
+    counts as much as a playlist's.
+    """
+    parent = _tree_node(content, tree)
+    if isinstance(parent, str):
+        return parent
+    return tuple(node.name for _path, node in walk_nodes(content, parent))
+
+
 def insert_empty_subplaylist(
     content: bytearray,
     folder_name: str,
@@ -2008,6 +2022,7 @@ __all__ = [
     "insert_empty_subplaylist",
     "insert_genre_folder",
     "insert_intake_playlist",
+    "intake_names",
     "insert_root_playlist",
     "intake_tree",
     "line_start",
