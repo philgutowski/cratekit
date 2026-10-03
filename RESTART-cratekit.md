@@ -4,6 +4,27 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**R-850 built, 2026-10-02, on `relay/249`, issue #249. The live read is
+owed.** `crate export playlist` now answers with what it did: `tracks: N
+written, N already there or written before, N unmatched`, then one
+`unmatched: ARTIST - TITLE: REASON` line per track it left out, a row the
+account said nothing about included, and the warning
+`export-tracks-unmatched` when any was. The envelope carries the same as
+`counts` and `unmatched_tracks` under `progress.outbound`, read off every
+committed item artifact, so a resumed export counts across both runs and an
+item once. The outcome stays `ok` with the warning, which is how `sync` and
+the intake jobs answer a partial result; the ledger entry says why no other
+word fits. Nothing written to the account changed. Battery on the branch:
+ruff clean, 12,262 passed and 1 skipped, the scan clean. One pass of the
+built in review, eight findings: six applied, the already count's ledger
+reading recorded as R-855 and the favourites sweep's same bare ok as R-856,
+on the board bar, issue #250. **The mutation table was not measured**: fifteen rows are
+committed and the driver halted on a state leak caused by an attended
+session's live `crate` jobs, `docs/mutation/r850-notes.md` says how to run
+it. Main's highest residual number was R-854 at branch time; this unit files
+R-855 and R-856. **Owed, attended, then R-850 closes:** one live export read
+back, naming the tracks the account lacks, in `docs/cutover.md`.
+
 **Sitting 30, 2026-10-02, no code, the three cards of feeder cycle 39 proven
 live.** R-788: `adopt apply` rehearsed on a copy and live on an equal digest
 `70e700cf69b129ca`, 33 vocal memberships added, `R&B / with vox` made and

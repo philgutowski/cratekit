@@ -45,7 +45,7 @@ from cratekit.modules.outbound import shell as shell_module
 from cratekit.modules.reports import export as library_export
 from tests import outbound_fakes
 from tests._containers import synth_container
-from tests.cli_drive import approve_and_queue, drive
+from tests.cli_drive import approve_and_queue, drive, drive_human
 from tests.test_config import valid_data
 
 EXPORT_KEY = "export.playlist"
@@ -382,6 +382,129 @@ def test_the_envelope_names_the_tracks_the_provider_could_not_match(
         "the envelope must name the library identity of each unmatched row, not "
         "a stringified mapping nothing downstream can key on"
     )
+
+
+def _resume_human(job_id: str) -> tuple[int, str]:
+    """The same resume as :func:`_resume`, answered in the default output mode."""
+    from cratekit.cli import jobs as cli_jobs
+
+    with jobs.open_store() as store:
+        job = jobs.get(store, job_id)
+    return drive_human(cli_jobs.argv_for(job))
+
+
+def _codes(envelope: dict) -> list[str]:
+    return [warning["code"] for warning in envelope["warnings"]]
+
+
+def test_an_export_with_an_unmatched_track_counts_and_names_it_on_both_renderers(
+    installed, exported, monkeypatch
+):
+    """R-850, driven. A live export of eight answered ``ok`` and ``8 of 8 settled``.
+
+    The second drive is of a job that already finished, which reports without
+    running anything, so the person's answer and the envelope are two readings of
+    the same artifacts rather than of two runs.
+    """
+    del installed
+    account = outbound_fakes.FakeAccount(catalog=catalog(1, 3))
+    bind(monkeypatch, account)
+    _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
+
+    code, resumed = _resume(job_id)
+
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["outcome"] == "ok"
+    outbound = resumed["data"]["progress"]["outbound"]
+    assert outbound["counts"] == {"written": 2, "already": 0, "unmatched": 1}
+    assert outbound["unmatched_tracks"] == [
+        {
+            "identity": "2",
+            "artist": "Artist 2",
+            "title": "08A - 124 - Track 2",
+            "reason": export_cli.NO_MATCH,
+        }
+    ]
+    assert _codes(resumed) == [export_cli.UNMATCHED_WARNING]
+    (warning,) = resumed["warnings"]
+    assert "1 of the 3 track(s)" in warning["message"]
+    assert account.playlist_tracks("pl-1") == ("tid-1", "tid-3")
+
+    code, said = _resume_human(job_id)
+    assert code == int(ExitCode.OK), said
+    assert "  tracks: 2 written, 0 already there or written before, 1 unmatched" in said
+    assert (
+        f"    unmatched: Artist 2 - 08A - 124 - Track 2: {export_cli.NO_MATCH}" in said
+    ), said
+    assert f"warning [{export_cli.UNMATCHED_WARNING}]" in said
+
+
+def test_an_export_where_every_track_matches_answers_with_no_unmatched_line(
+    installed, exported, monkeypatch
+):
+    del installed
+    bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3)))
+    _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
+
+    code, resumed = _resume(job_id)
+
+    assert code == int(ExitCode.OK), resumed
+    outbound = resumed["data"]["progress"]["outbound"]
+    assert outbound["counts"] == {"written": 3, "already": 0, "unmatched": 0}
+    assert outbound["unmatched_tracks"] == []
+    assert export_cli.UNMATCHED_WARNING not in _codes(resumed)
+    code, said = _resume_human(job_id)
+    assert "  tracks: 3 written, 0 already there or written before, 0 unmatched" in said, said
+    assert "unmatched:" not in said
+    assert export_cli.UNMATCHED_WARNING not in said
+
+
+def test_a_second_export_counts_what_the_playlist_already_held(
+    installed, exported, monkeypatch
+):
+    del installed
+    bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3)))
+    _run, first = approve_and_queue(export_verb(exported), "export.playlist.confirm")
+    assert _resume(first)[0] == int(ExitCode.OK)
+    _run, second = approve_and_queue(export_verb(exported), "export.playlist.confirm")
+
+    code, resumed = _resume(second)
+
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["data"]["progress"]["outbound"]["counts"] == {
+        "written": 0,
+        "already": 3,
+        "unmatched": 0,
+    }
+
+
+def test_a_resumed_export_counts_across_both_runs_and_each_item_once(
+    installed, exported, monkeypatch
+):
+    """Track 1 settles in the first run, track 3 only in the second.
+
+    Counted per committed artifact, so the first run's item is in the answer
+    the second run gives, and is in it once.
+    """
+    del installed
+    account = outbound_fakes.FakeAccount(
+        catalog=catalog(1, 3), fail_on={"tid-3"}, transient=True
+    )
+    bind(monkeypatch, account)
+    _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
+    assert _resume(job_id)[0] != int(ExitCode.OK)
+
+    account.fail_on = frozenset()
+    with jobs.open_store() as store:
+        jobs.retry(store, job_id)
+    code, resumed = _drive_job(job_id, exported)
+
+    assert code == int(ExitCode.OK), resumed
+    outbound = resumed["data"]["progress"]["outbound"]
+    assert outbound["counts"] == {"written": 2, "already": 0, "unmatched": 1}
+    assert sorted(outbound["added"]) == ["tid-1", "tid-3"]
+    assert [row["identity"] for row in outbound["unmatched_tracks"]] == ["2"]
+    assert account.added.count(("pl-1", "tid-1")) == 1
 
 
 def test_a_failed_item_leaves_the_job_resumable_and_the_resume_redoes_only_it(
@@ -2182,3 +2305,25 @@ def test_the_favorites_gate_shows_the_tracks_the_digest_covers_beside_the_age(
     assert shown[shell_module.EXPORT_PATH] == str(exported)
     assert shown["digest"] == favorites_cli.sweep_digest(exported, resolved)
     assert shown["export"]["file"] == exported.name
+
+
+@pytest.mark.parametrize(
+    "counts, said",
+    [
+        ({"written": 2, "already": 1, "unmatched": 1}, "1 of the 4 track(s)"),
+        ({"written": 2, "already": True, "unmatched": 1}, "1 of the 3 track(s)"),
+        ({"written": 2, "already": 0, "unmatched": True}, None),
+        ({"written": 2, "already": 0, "unmatched": 0}, None),
+        ({"written": 2}, None),
+        ({}, None),
+    ],
+    ids=["one-left-out", "bool-is-no-count", "bool-unmatched", "none-left-out", "no-key", "empty"],
+)
+def test_the_unmatched_warning_reads_only_whole_counts(counts, said):
+    warned = export_cli.concluded({"counts": counts})
+    if said is None:
+        assert warned == ()
+    else:
+        (warning,) = warned
+        assert warning["code"] == export_cli.UNMATCHED_WARNING
+        assert said in warning["message"]

@@ -28,11 +28,12 @@ from cratekit.acquire import listing, provider_session
 from cratekit.core import config, jobs, locations, secrets, tags
 from cratekit.core.cause import CratekitError, Scope
 from cratekit.core.exit_codes import ExitCode
+from cratekit.export import cli as export_cli
 from cratekit.modules.outbound import account, artifacts, ledger, source, tidal_account
 from cratekit.modules.outbound.service import RemoteAccount
 from tests import outbound_fakes
 from tests._containers import synth_container
-from tests.cli_drive import approve_and_queue, drive
+from tests.cli_drive import approve_and_queue, drive, drive_human
 from tests.test_config import valid_data
 
 ADAPTER_SOURCE = Path(tidal_account.__file__)
@@ -1116,6 +1117,15 @@ def _resume(job_id: str) -> tuple[int, dict]:
     return drive(cli_jobs.argv_for(job))
 
 
+def _resume_human(job_id: str) -> tuple[int, str]:
+    """The same resume as :func:`_resume`, answered in the default output mode."""
+    from cratekit.cli import jobs as cli_jobs
+
+    with jobs.open_store() as store:
+        job = jobs.get(store, job_id)
+    return drive_human(cli_jobs.argv_for(job))
+
+
 def export_verb(exported: Path) -> list[str]:
     return ["export", "playlist", outbound_fakes.CRATE, "--export", str(exported)]
 
@@ -1425,6 +1435,14 @@ def test_an_export_resolves_a_shared_isrc_by_the_rows_own_names_and_says_why_it_
     ]
     assert row["title"] == "08A - 124 - Track 2", "reported as the library shows it"
     assert "names 2 provider tracks" in row["reason"]
+    # R-850: the answer lists the row with that same reason, and counts it.
+    assert outbound["counts"] == {"written": 2, "already": 0, "unmatched": 1}
+    (listed,) = outbound["unmatched_tracks"]
+    assert (listed["artist"], listed["title"]) == ("Artist 2", "08A - 124 - Track 2")
+    assert listed["reason"] == row["reason"]
+    code, said = _resume_human(job_id)
+    assert code == int(ExitCode.OK), said
+    assert f"    unmatched: Artist 2 - 08A - 124 - Track 2: {row['reason']}" in said, said
 
 
 def test_a_release_the_account_already_hearts_is_the_one_an_export_adds(
@@ -1466,6 +1484,9 @@ def test_an_unmatched_row_with_nothing_said_about_it_adds_no_reason_to_the_envel
     assert code == int(ExitCode.OK), resumed
     outbound = resumed["data"]["progress"]["outbound"]
     assert outbound["unmatched"] == ["1"] and outbound["reasons"] == []
+    # R-850: ``reasons`` omits it, and the answer's list still names it.
+    (listed,) = outbound["unmatched_tracks"]
+    assert listed["identity"] == "1" and listed["reason"] == export_cli.NO_MATCH
 
 
 # ═══════════════════════════════════════════════════════════════════════════

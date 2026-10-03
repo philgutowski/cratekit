@@ -30,7 +30,7 @@ Layer: modules.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Mapping
 
 from cratekit.core import config, jobs
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
@@ -92,7 +92,7 @@ def reported(
     store,
     job,
     cfg: config.Config,
-    summary: Callable[[config.Config, str], Mapping[str, Sequence[str]]],
+    summary: Callable[[config.Config, str], Mapping[str, Any]],
 ) -> dict[str, Any]:
     """One queued job, flattened for the envelope, with what it actually wrote.
 
@@ -336,9 +336,10 @@ def resume(
     job_id: str,
     *,
     digest: Callable[..., str],
-    summary: Callable[[config.Config, str], Mapping[str, Sequence[str]]],
+    summary: Callable[[config.Config, str], Mapping[str, Any]],
     standing: tuple[dict[str, str], ...] = (),
     frozen_extra: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
+    concluded: Callable[[Mapping[str, Any]], tuple[dict[str, str], ...]] | None = None,
 ):
     """Answer the gate from the frozen payload, then drive the job's items.
 
@@ -363,6 +364,12 @@ def resume(
     SHARED KEYS. It is handed the frozen payload and returns keyword arguments
     for ``digest``, so what one verb adds to its digest is read off the payload
     here, where the payload is, and the other verb's digest is untouched.
+
+    ``concluded`` IS WHAT A FINISHED RUN SAYS, as against ``standing``. It is
+    handed the job's own summary, the one the envelope carries, after the job
+    is driven, and returns warnings for what that summary shows (R-850). Handed
+    the summary rather than reading the artifacts itself, so the warning and
+    the counts beside it are one reading of the disk and cannot disagree.
 
     RECONCILE BEFORE DRIVING. A resume arrives after something stopped, and a
     claim left behind by a driver that died is state the queue cannot see for
@@ -424,12 +431,14 @@ def resume(
         # already on the remote playlist. SUCCEEDED carries no cause, so it is
         # unaffected. ``backup/cli.py`` already uses this predicate.
         jobs.raise_for_state(job)
+        data = reported(store, job, frozen, summary)
+        said = concluded(data["progress"]["outbound"]) if concluded is not None else ()
         return ctx.envelope(
-            data=reported(store, job, frozen, summary),
+            data=data,
             # THE STANDING ONES FIRST, because they are true whether or not the
             # run produced any of its own, and a person scanning a long report
             # should not have to reach the end to learn what the verb cannot do.
-            warnings=(*standing, *warnings),
+            warnings=(*standing, *warnings, *said),
         )
 
 

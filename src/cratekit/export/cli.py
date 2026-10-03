@@ -37,6 +37,7 @@ Layer: modules.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -75,7 +76,16 @@ ACTION_UPDATE = "update"
 ACTION_ADOPT = "adopt"
 
 
-def summary(cfg: config.Config, job_id: str) -> dict[str, list[str]]:
+#: What an unmatched row is said to be when the account gave no reason for it.
+#: The engine records the slug ``unmatched`` for that row, which is a key to
+#: grep the artifacts for and not a sentence a person can act on (R-850).
+NO_MATCH = "the provider returned no track for it"
+
+#: The warning a finished export carries when any of its tracks went unwritten.
+UNMATCHED_WARNING = "export-tracks-unmatched"
+
+
+def summary(cfg: config.Config, job_id: str) -> dict[str, Any]:
     """What this job's committed artifacts say it wrote, in one summary.
 
     DERIVED FROM WHAT RAN, NOT FROM WHAT WAS PLANNED. The engine reports the
@@ -88,38 +98,117 @@ def summary(cfg: config.Config, job_id: str) -> dict[str, list[str]]:
     READ OFF DISK RATHER THAN ACCUMULATED, because a job driven over two sessions
     has some of its reports in this process and all of them on the filesystem,
     and the person asking what the export did means all of them.
+
+    COUNTED PER ITEM, AND EVERY UNMATCHED TRACK LISTED (R-850). The lists above
+    were in the envelope and nowhere a person reads, so a live export of eight
+    tracks answered ``ok`` and ``8 of 8 settled`` over a playlist holding four.
+    ``counts`` is what was written, what was already there or written before
+    and what was left out, and ``unmatched_tracks`` names each one left out with its reason,
+    including a row the account said nothing about, which ``reasons`` omits.
+    One item writes one track, so each report adds one to exactly one count, and
+    an item is one committed file whichever run settled it, so a resumed job is
+    counted across both runs and nothing in it twice.
     """
     added: list[str] = []
     already: list[str] = []
     unmatched: list[str] = []
     reasons: list[str] = []
+    left_out: list[dict[str, str]] = []
     for report in artifacts.committed(cfg, job_id):
         added.extend(str(item) for item in report.get("added") or ())
         already.extend(str(item) for item in report.get("already") or ())
-        # THE IDENTITY, NOT THE ROW. An unmatched entry is a mapping carrying the
-        # library identity, the title and the artist, because a person reading
-        # the ARTIFACT needs a name to recognise. Stringifying the mapping here
-        # put a Python dict repr in a JSON envelope, which is a value nothing
-        # downstream can key on. Measured by the first drive of this summary.
-        unmatched.extend(_identity(item) for item in report.get("unmatched") or ())
-        # WHAT THE ACCOUNT SAID ABOUT A ROW IT WOULD NOT CHOOSE FOR (R-356), one
-        # sentence per row and only for a row it said something about. A row the
-        # provider has three releases of and a row it has never heard of are both
-        # unmatched, and only the first is something a person can act on.
-        # NAMED AS THE LIBRARY SHOWS THE ROW, since this is the one string here
-        # written for a person and nobody finds a track by its row number.
-        reasons.extend(
-            f"{item.get('artist') or ''} - {item.get('title') or ''} "
-            f"(row {_identity(item)}): {item['reason']}"
-            for item in report.get("unmatched") or ()
-            if isinstance(item, dict) and item.get("reason") not in (None, "", "unmatched")
-        )
+        for item in report.get("unmatched") or ():
+            # THE IDENTITY, NOT THE ROW. An unmatched entry is a mapping carrying
+            # the library identity, the title and the artist, because a person
+            # reading the ARTIFACT needs a name to recognise. Stringifying the
+            # mapping here put a Python dict repr in a JSON envelope, which is a
+            # value nothing downstream can key on. Measured by the first drive of
+            # this summary. ONE ROW BUILT ONCE, and the identity list and the
+            # reason sentences read off it, so the three cannot disagree.
+            listed = _left_out(item)
+            left_out.append(listed)
+            unmatched.append(listed["identity"])
+            # WHAT THE ACCOUNT SAID ABOUT A ROW IT WOULD NOT CHOOSE FOR (R-356),
+            # one sentence per row and only for a row it said something about. A
+            # row the provider has three releases of and a row it has never heard
+            # of are both unmatched, and only the first is something a person can
+            # act on. NAMED AS THE LIBRARY SHOWS THE ROW, since nobody finds a
+            # track by its row number.
+            if _said(item):
+                reasons.append(
+                    f"{listed['artist']} - {listed['title']} "
+                    f"(row {listed['identity']}): {listed['reason']}"
+                )
     return {
         "added": added,
         "already": already,
         "unmatched": unmatched,
         "reasons": reasons,
+        "counts": {
+            "written": len(added),
+            "already": len(already),
+            "unmatched": len(unmatched),
+        },
+        "unmatched_tracks": left_out,
     }
+
+
+def _said(row: Any) -> str:
+    """What the account said about one unmatched row, or empty when nothing."""
+    said = str(row.get("reason") or "") if isinstance(row, dict) else ""
+    return "" if said == "unmatched" else said
+
+
+def _left_out(row: Any) -> dict[str, str]:
+    """One unmatched row as the answer lists it, named as the library shows it."""
+    named = row if isinstance(row, dict) else {}
+    return {
+        "identity": _identity(row),
+        "artist": str(named.get("artist") or ""),
+        "title": str(named.get("title") or ""),
+        "reason": _said(row) or NO_MATCH,
+    }
+
+
+def concluded(outbound: Mapping[str, Any]) -> tuple[dict[str, str], ...]:
+    """The warning a finished export carries when it left tracks out, or none.
+
+    THE OUTCOME STAYS ``ok`` AND THIS IS WHAT STOPS IT BEING A BARE ONE (R-850).
+    ``ok`` with a warning is what the other job verbs answer for a partial
+    result: ``sync`` says ``ok`` with ``sync-source-not-queued`` when one source
+    refused, and the intake jobs say ``ok`` with a ``missing`` count. The outcome
+    vocabulary has no partial word. Every outcome but ``ok`` and ``no_op`` must
+    carry a cause and a non zero exit, which would make a job that finished every
+    item and has nothing to retry read as failed, and ``pending`` needs a human
+    action with a verb that verifies it, which nothing here has. The warning is
+    the line a script reading only the outcome and the warnings can key on.
+    """
+    counts = outbound.get("counts")
+    if not isinstance(counts, Mapping):
+        return ()
+    missed = counts.get("unmatched")
+    if not _whole(missed) or missed <= 0:
+        return ()
+    total = sum(n for n in counts.values() if _whole(n))
+    # "WERE NOT WRITTEN", NOT "ARE NOT ON THE PLAYLIST". A track counted as
+    # already there may be counted so off the ledger rather than the account
+    # (R-855), so the missing set on the account can be larger than this one,
+    # and only what the provider could not match is this warning's to state.
+    return (
+        {
+            "code": UNMATCHED_WARNING,
+            "message": (
+                f"{missed} of the {total} track(s) in this export were not written "
+                f"to the remote playlist, because the provider could not match "
+                f"them; each is listed with its reason in this answer"
+            ),
+        },
+    )
+
+
+def _whole(value: Any) -> bool:
+    """A count, which a bool is not, though Python calls it an int."""
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def _identity(row: Any) -> str:
@@ -352,6 +441,7 @@ def export_playlist(ctx) -> Envelope:
             digest=confirm_digest,
             summary=summary,
             frozen_extra=_frozen_adoption,
+            concluded=concluded,
         )
 
     playlist = str(ctx.args.playlist or "")
@@ -533,7 +623,10 @@ def handle(job, item, cfg) -> jobs.Produced:
 
 
 __all__ = [
+    "NO_MATCH",
+    "UNMATCHED_WARNING",
     "build",
+    "concluded",
     "confirm_digest",
     "export_argv",
     "export_playlist",

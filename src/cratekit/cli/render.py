@@ -420,7 +420,61 @@ def render_job_state(envelope: Envelope, *, drive: Sequence[str] | None = None) 
     if envelope.verb in _RESOLVING_VERBS and state != "queued":
         lines += _resolution_lines(job_id, state, progress)
     lines += _judging_lines(progress)
+    if state != "queued":
+        lines += _outbound_lines(progress)
     return lines
+
+
+#: The three counts an export reports, in the order a person reads them, with
+#: the words each is printed under (R-850). Spelled here, for the reason
+#: :data:`_RESOLVING_VERBS` gives. "ALREADY THERE OR WRITTEN BEFORE", not "on
+#: the playlist": the engine counts a track as already there when the ledger
+#: recorded writing it, whether or not the account still holds it (R-855).
+_OUTBOUND_WORDS: tuple[tuple[str, str], ...] = (
+    ("written", "written"),
+    ("already", "already there or written before"),
+    ("unmatched", "unmatched"),
+)
+
+
+def _outbound_lines(progress: Mapping[str, Any]) -> list[str]:
+    """What an outbound job wrote and every track it left out, or nothing at all.
+
+    Gated on the payload carrying ``counts`` under ``outbound``, never on the
+    verb's name, so a summary that does not count prints nothing here rather
+    than a zero that reads as counted. A queued job is not asked, since it has
+    written nothing yet and its zeros would read as a finished export's.
+    """
+    outbound = progress.get("outbound")
+    if not isinstance(outbound, Mapping):
+        return []
+    counts = outbound.get("counts")
+    if not isinstance(counts, Mapping):
+        return []
+    said = [f"{counts[word]} {words}" for word, words in _OUTBOUND_WORDS if _whole(counts.get(word))]
+    lines = [f"  tracks: {', '.join(said)}"] if said else []
+    left_out = outbound.get("unmatched_tracks")
+    for row in left_out if isinstance(left_out, Sequence) and not isinstance(left_out, str) else ():
+        if isinstance(row, Mapping):
+            named = " - ".join(_one_line(row[key]) for key in ("artist", "title") if row.get(key))
+            named = named or f"row {_one_line(row.get('identity') or '?')}"
+            lines.append(f"    unmatched: {named}: {_one_line(row.get('reason') or 'no reason given')}")
+    return lines
+
+
+def _one_line(value: Any) -> str:
+    """Free text on one unmatched line, quoted only when it would break the line.
+
+    NOT :func:`_item_value`, whose breakers include a comma and an equals sign
+    because its line is ``k=v, k=v``. This line is read by a person, a title
+    here already holds " - " from the library's own naming, and an artist list
+    holds commas, so quoting either would quote nearly every row. The envelope
+    carries each field apart for anything that needs to parse them.
+    """
+    text = str(value)
+    if "\n" in text or "\r" in text:
+        return json.dumps(text, ensure_ascii=False)
+    return text
 
 
 #: The four counts ``label judge`` reports for every label, in the order a

@@ -1,0 +1,141 @@
+name = "r850-a"
+pass_kind = "light"
+
+[[rows]]
+id = "E1_written_count"
+description = "export.summary: count written as the already list's length, so the answer's written count is the wrong list"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_outbound_tidal_account.py"]
+old = '''            "written": len(added),'''
+new = '''            "written": len(already),'''
+
+[[rows]]
+id = "E2_unmatched_count"
+description = "export.summary: count unmatched as the reason sentences, so a row the account said nothing about is not counted"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_outbound_tidal_account.py"]
+old = '''            "unmatched": len(unmatched),'''
+new = '''            "unmatched": len(reasons),'''
+
+[[rows]]
+id = "E3_listing_dropped"
+description = "export.summary: build each unmatched row but never list it, so the answer counts a track it does not name"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_outbound_tidal_account.py"]
+old = '''            left_out.append(listed)'''
+new = '''            pass'''
+
+[[rows]]
+id = "E4_reason_gate"
+description = "export.summary: write a reason sentence for every unmatched row, so reasons carries rows the account said nothing about"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_outbound_tidal_account.py"]
+old = '''            if _said(item):'''
+new = '''            if True:'''
+
+[[rows]]
+id = "E5_slug_is_no_reason"
+description = "export._said: take the engine's slug unmatched as something the account said, so it is shown instead of the sentence"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_outbound_tidal_account.py"]
+old = '''    return "" if said == "unmatched" else said'''
+new = '''    return said'''
+
+[[rows]]
+id = "E6_no_match_sentence"
+description = "export._left_out: leave the reason empty when the account said nothing, so the row is listed with no reason"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_outbound_tidal_account.py"]
+old = '''        "reason": _said(row) or NO_MATCH,'''
+new = '''        "reason": _said(row),'''
+
+[[rows]]
+id = "E7_warning_on_zero"
+description = "export.concluded: warn when nothing was left out, so a clean export carries the unmatched warning"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py"]
+old = '''    if not _whole(missed) or missed <= 0:'''
+new = '''    if not _whole(missed) or missed < 0:'''
+
+[[rows]]
+id = "E8_warning_total"
+description = "export.concluded: total only written and unmatched, so the warning names a smaller export than the one run"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py"]
+old = '''    total = sum(n for n in counts.values() if _whole(n))'''
+new = '''    total = sum(n for k, n in counts.items() if _whole(n) and k != "already")'''
+
+[[rows]]
+id = "E9_bool_count"
+description = "export._whole: accept a bool as a count, so the warning reads True as one"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py"]
+old = '''    return isinstance(value, int) and not isinstance(value, bool)'''
+new = '''    return isinstance(value, int)'''
+
+[[rows]]
+id = "E10_concluded_not_called"
+description = "shell.resume: never ask the verb what its finished run says, so the unmatched warning is never given"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_outbound_tidal_account.py"]
+old = '''        said = concluded(data["progress"]["outbound"]) if concluded is not None else ()'''
+new = '''        said = ()'''
+
+[[rows]]
+id = "E11_queued_gate"
+description = "render.render_job_state: print the counts for a queued job too, so its zeros read as a finished export"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/test_outbound_workers.py"]
+old = '''    if state != "queued":
+        lines += _outbound_lines(progress)'''
+new = '''    if True:
+        lines += _outbound_lines(progress)'''
+
+[[rows]]
+id = "E12_count_gate"
+description = "render._outbound_lines: print any value under a count word, so a bool or a string reads as counted"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py"]
+old = '''for word, words in _OUTBOUND_WORDS if _whole(counts.get(word))]'''
+new = '''for word, words in _OUTBOUND_WORDS if counts.get(word) is not None]'''
+
+[[rows]]
+id = "E13_row_fallback"
+description = "render._outbound_lines: name a row with no artist and no title by nothing, so the line names no track"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py"]
+old = '''            named = named or f"row {_one_line(row.get('identity') or '?')}"'''
+new = '''            named = named or ""'''
+
+[[rows]]
+id = "E14_line_break_quote"
+description = "render._one_line: never quote, so a title holding a line break splits its row in two"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py"]
+old = '''    if "\n" in text or "\r" in text:
+        return json.dumps(text, ensure_ascii=False)
+    return text'''
+new = '''    return text'''
+
+[[rows]]
+id = "E15_rows_not_printed"
+description = "render._outbound_lines: print the counts and none of the unmatched rows, which is the R-850 answer with its list gone"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/test_outbound_workers.py", "tests/test_outbound_tidal_account.py"]
+old = '''            lines.append(f"    unmatched: {named}: {_one_line(row.get('reason') or 'no reason given')}")'''
+new = '''            pass'''
