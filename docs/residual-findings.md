@@ -34432,3 +34432,64 @@ found none or several; and the set above matches at least the rows whose
 track the library holds with an ISRC.
 
 **On the board bar, (c).** A workflow the author asked for cannot finish.
+
+---
+
+## R-880. The folder walks refuse when they collect fewer than the count the endpoint declares, and what that count counts is unmeasured
+
+**Found:** by the built in review of R-878, 2026-10-03, on `relay/255`. Not
+driven against the provider; this is a reading of the sitting 30 probe R-878
+carries, and the walk's behaviour on a real account is unmeasured.
+
+**The mechanism.** `listing.paginate_cursor` raises `ListingTruncated` when it
+reaches the end of the cursor having collected fewer items than the latest
+`totalNumberOfItems`, as R-878's brief asks. Both folder walks send
+`includeOnly` (`FOLDER` at the root, `PLAYLIST` in a folder). Nothing proves
+the declared count is filtered the same way. Two readings of the probe point
+the other way: `playlist_folders(limit=50)` returned 26 folders while the raw
+response declared 55, and the client's own `Favorites.get_playlists_count`
+reads the same field with `includeOnly` empty to count everything. If the
+count covers every item at the root, folders and loose playlists alike,
+`account_folders` refuses on any account holding a playlist outside a folder,
+with "collected 26 item(s) where the provider declared 55".
+
+**Why it was left this way.** The refusal is the conservative direction. A
+walk that returned a short folder listing as whole would make `crate label
+playlists` and `crate export archive` create a folder the account already
+holds. A refusal names both numbers and blocks the verb; a wrong answer
+writes to the account.
+
+**Measured cost.** Unmeasured. If the reading above holds, R-835's and R-837's
+folder verbs still refuse on the author's account, now with the count in the
+message rather than a spent budget.
+
+**Closes when:** an attended sitting runs `crate label playlists` on the
+author's account and either it plans, or its refusal shows the declared count
+covers more than folders, in which case the root walk compares against a
+count read with the same filter it walks, or against none.
+
+**On the board bar.** Not filed. It closes only at an attended sitting, and
+R-878's own verification is that sitting.
+
+---
+
+## R-881. A folder cursor the provider hands back unchanged costs the whole request budget before the walk refuses
+
+**Found:** by the built in review of R-878, 2026-10-03, on `relay/255`.
+
+**The mechanism.** `paginate_cursor` refuses a cursor that never advances
+only when its request budget is spent, 100 requests for `account_folders` and
+20 for `folder_playlists`, every one through the pacing gate. The second
+response carrying the cursor the walk just sent already proves the walk is
+not advancing. R-878's brief named the budget guard as the stop for this
+case, so it was kept; an earlier refusal on a repeated cursor would not catch
+a cursor that cycles between two values, which the budget still would.
+
+**Measured cost.** Driven on a fake: 100 requests before the refusal. No
+provider has been seen to repeat a cursor; at sitting 30 the cursor advanced.
+
+**Closes when:** the walk refuses on the first response whose cursor equals
+the one it sent, keeping the budget for a cycle, with a test on each.
+
+**On the board bar.** Not filed. Maintainer facing; the verb refuses either
+way, only later.

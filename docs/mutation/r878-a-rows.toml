@@ -1,0 +1,135 @@
+name = "r878-a"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_paginate_refuses_cursor"
+description = "paginate: drop the refusal of a cursor shape, so an offset walk can run over the folder endpoint again"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '''    if stop is StopRule.CURSOR:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A2_cursor_refuses_offset_rule"
+description = "paginate_cursor: drop the refusal of a shape that declares an offset rule"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '''    if stop is not StopRule.CURSOR:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A3_budget_off_by_one"
+description = "paginate_cursor: let the budget guard allow one request past the cap, so a cursor that never changes spends more than its budget"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '''        if pages >= max_pages:
+            raise ListingTruncated(
+                f"{shape or 'listing'} spent its whole budget of {max_pages} requests "
+                f"at {page_size} per page without reaching the end, having collected "
+                f"{len(items)} item(s). The budget is sized far above any real "
+                f"collection, so reaching it means the provider is not advancing its "
+                f"cursor. Returning'''
+new = '''        if pages > max_pages:
+            raise ListingTruncated(
+                f"{shape or 'listing'} spent its whole budget of {max_pages} requests "
+                f"at {page_size} per page without reaching the end, having collected "
+                f"{len(items)} item(s). The budget is sized far above any real "
+                f"collection, so reaching it means the provider is not advancing its "
+                f"cursor. Returning'''
+
+[[rows]]
+id = "A4_declared_total_check"
+description = "paginate_cursor: drop the refusal of a walk that collected fewer than the declared count, so a short listing returns as whole"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '''    if total is not None and len(items) < total:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A5_declared_total_off_by_one"
+description = "paginate_cursor: tolerate one item short of the declared count"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '''    if total is not None and len(items) < total:'''
+new = '''    if total is not None and len(items) < total - 1:'''
+
+[[rows]]
+id = "A6_latest_count_wins"
+description = "paginate_cursor: keep the first declared count rather than the latest, so a folder removed mid walk refuses a whole listing"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '''        if _declared(response) is not None:
+            total = _declared(response)'''
+new = '''        if total is None and _declared(response) is not None:
+            total = _declared(response)'''
+
+[[rows]]
+id = "A7_empty_page_ends"
+description = "paginate_cursor: an empty page carrying a cursor no longer ends the walk"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '''        if not page or not following:'''
+new = '''        if not following:'''
+
+[[rows]]
+id = "A8_no_cursor_ends"
+description = "paginate_cursor: a response with no cursor no longer ends the walk"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '''        if not page or not following:'''
+new = '''        if not page:'''
+
+[[rows]]
+id = "A9_cursor_advances"
+description = "paginate_cursor: never send the cursor the last response carried, so every request reads the first page"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '''        cursor = str(following)'''
+new = '''        pass'''
+
+[[rows]]
+id = "A10_non_page_refused"
+description = "paginate_cursor: drop the refusal of a response with neither items nor a count, so it reads as an empty listing"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '''            if not isinstance(response, dict) or ('''
+new = '''            if False and ('''
+
+[[rows]]
+id = "A11_count_alone_is_a_page"
+description = "paginate_cursor: refuse a response that declares a count but carries no items, so an empty folder refuses"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '''                not isinstance(response.get("items"), list) and _declared(response) is None'''
+new = '''                not isinstance(response.get("items"), list)'''
+
+[[rows]]
+id = "A12_parse_retried"
+description = "paginate_cursor: parse each item once with no retry, so a rate limited playlist read refuses the verb"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '''            item = fetch_with_retry(lambda _l, _o, raw=raw: parse(raw), limit=0, offset=0, **retry)'''
+new = '''            item = parse(raw)'''
+
+[[rows]]
+id = "A13_dedupe_shared"
+description = "_take: never skip an identifier already taken, in both walks"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '''        if identity in seen:
+            return'''
+new = '''        if False:
+            return'''

@@ -4,6 +4,23 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**R-878 built, 2026-10-03, on `relay/255`, issue #255: the account's
+folder listings walk the provider's cursor.** The collection folder endpoint
+ignores `offset`, so `listing.account_folders` and `listing.folder_playlists`
+now declare the new `StopRule.CURSOR` and walk `paginate_cursor`: the
+client's own request through its own request object, the folder, limit,
+order `NAME` and `includeOnly` the client sends, the last response's
+`cursor`, no offset, items parsed with `parse_folder` and the playlist
+parser `Folder.items` uses. The walk ends on a missing cursor or an empty
+page and refuses when it collected fewer than the latest declared
+`totalNumberOfItems`; `paginate` refuses a cursor shape. Battery on the
+branch: ruff clean, the suite green, the scan clean. One round of the built
+in review, eight findings, four fixed with a test each, R-880 and R-881
+filed. Mutation table 25 of 25 killed, `docs/mutation/r878-notes.md`.
+**Owed, attended:** `crate label playlists` plans one label on the author's
+account, which also proves R-835; R-880 says what a refusal there would
+mean. Main's highest residual number is R-881.
+
 **R-837 built, 2026-10-03, on `relay/253`, issue #253: an identified set
 as a private playlist on the account, and its archive.** `crate export set
 TRACKLIST [--name NAME]` reads the tracklist `intake identify` writes, a

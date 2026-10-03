@@ -1,0 +1,131 @@
+name = "r878-b"
+pass_kind = "light"
+
+[[rows]]
+id = "B1_type_error_translated"
+description = "_folder_endpoint: stop translating a TypeError from the client's request object, so a signature change climbs the retry ladder"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '''        except TypeError as exc:
+            raise ListingNotPaginated(
+                f"{type(request).__name__}.request'''
+new = '''        except KeyError as exc:
+            raise ListingNotPaginated(
+                f"{type(request).__name__}.request'''
+
+[[rows]]
+id = "B2_client_part_refusal"
+description = "_client_part: drop the refusal of a missing client part, so a moved request object is retried and slept on"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '''        if value is None:
+            raise ListingNotPaginated(
+                f"{type(owner).__name__} has no'''
+new = '''        if False:
+            raise ListingNotPaginated(
+                f"{type(owner).__name__} has no'''
+
+[[rows]]
+id = "B3_root_folders_only"
+description = "account_folders: ask for every root item rather than folders only"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '''        "root",
+        "FOLDER",'''
+new = '''        "root",
+        "",'''
+
+[[rows]]
+id = "B4_root_folder_id"
+description = "account_folders: name no parent folder rather than the root"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '''        "root",
+        "FOLDER",'''
+new = '''        "",
+        "FOLDER",'''
+
+[[rows]]
+id = "B5_folder_playlists_only"
+description = "folder_playlists: ask for every item in the folder rather than playlists only"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '''        "PLAYLIST",'''
+new = '''        "",'''
+
+[[rows]]
+id = "B6_order_by_name"
+description = "FOLDER_ORDER: order by date rather than the name the client asks for"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '''FOLDER_ORDER = "NAME"'''
+new = '''FOLDER_ORDER = "DATE"'''
+
+[[rows]]
+id = "B7_no_offset_sent"
+description = "_folder_endpoint: send an offset of zero beside the cursor, as the client does"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '''            "folderId": folder_id,
+            "limit": limit,'''
+new = '''            "folderId": folder_id,
+            "offset": 0,
+            "limit": limit,'''
+
+[[rows]]
+id = "B8_first_request_no_cursor"
+description = "_folder_endpoint: always send the cursor key, so the first request carries a cursor of None"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '''        if cursor is not None:
+            params["cursor"] = cursor'''
+new = '''        params["cursor"] = cursor'''
+
+[[rows]]
+id = "B9_v2_base_url"
+description = "account_folders: send the request to the client's v1 base rather than v2"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '''        _client_part(session, "config", "api_v2_location"),'''
+new = '''        _client_part(session, "config", "api_v1_location"),'''
+
+[[rows]]
+id = "B10_folder_dedupe_key"
+description = "account_folders: no dedupe key, so a folder served on two windows is returned twice"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '''    kwargs.setdefault("key", lambda folder: str(getattr(folder, "id", "")))'''
+new = '''    kwargs.setdefault("key", None)'''
+
+[[rows]]
+id = "B11_folder_rule_in_table"
+description = "STOP_RULES: put account_folders back on the empty page rule, the offset walk R-878 found"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '''    "account_folders": StopRule.CURSOR,'''
+new = '''    "account_folders": StopRule.EMPTY_PAGE,'''
+
+[[rows]]
+id = "B12_folder_id_sent"
+description = "folder_playlists: send the root as the folder rather than the folder's own identifier"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '''        str(_client_part(folder, "id")),'''
+new = '''        "root",'''
+
+[[dropped]]
+id = "B13_parse_data_field"
+description = "folder_playlists: hand the parser the whole item rather than its data"
+reason = "equivalent on the real client: Playlist.parse reads obj.get('data', obj), so the mutant parses the same playlist; only a stand in parser could tell them apart"
