@@ -23,7 +23,8 @@ class SourceSpec:
     playlists.
 
     ``handler_key`` is the key the source's OWN verb queues under, and None when
-    no worker exists for the source yet. ``crate sync all`` queues each source
+    no worker exists for the source yet or when the source is guided (below).
+    ``crate sync all`` queues each source
     under this key and never under its own, so a source with None is reported as
     not built rather than queued as work nothing runs (R-203). The keys are
     pinned against the registry in ``tests/test_sync_all.py``, since this layer
@@ -41,6 +42,15 @@ class SourceSpec:
     "never completed cleanly" for a source that records one, and "records none"
     for a source that does not. ``watermarks.status_rows`` reports the second
     as its own state rather than telling a person a clean sweep never ran.
+
+    ``guided_by`` is the registry name of the verb that takes this source
+    INSTEAD of ``crate sync all``, and None for a source the composer runs
+    (U109). Such a source is still declared, so ``crate sync status`` still
+    reports it, but the composer plans nothing for it, calls no provider for
+    it and queues nothing, and its report names that verb as the way in. A
+    guided source declares no ``handler_key``, because nothing ``sync all``
+    queues is its work. The name is pinned against the registry in
+    ``tests/test_sync_all.py`` beside the handler keys.
     """
 
     source_id: str
@@ -48,6 +58,13 @@ class SourceSpec:
     handler_key: str | None = None
     inbound_key: str | None = None
     no_cursor: str | None = None
+    guided_by: str | None = None
+
+    def command(self) -> str | None:
+        """The command that takes a guided source, as a person types it."""
+        if self.guided_by is None:
+            return None
+        return "crate " + self.guided_by.replace(".", " ")
 
 
 SPECS: tuple[SourceSpec, ...] = (
@@ -68,12 +85,18 @@ SPECS: tuple[SourceSpec, ...] = (
     SourceSpec(
         "labels",
         module_id="labels",
-        handler_key="sync.labels",
-        # BY DESIGN (R-140): the sweep OFFERS releases and ``run.increment``
-        # records nothing for a source whose ``acquires`` is False.
-        no_cursor="a labels sweep offers releases to the review queue rather "
-        "than acquiring them, so it records no cursor; the review queue is "
-        "where a completed sweep shows",
+        # GUIDED, NOT COMPOSED (U109). A routine sync swept every favourite
+        # label whether the author wanted that today or not, and the sweep's
+        # offers grew the review queue to thousands of back catalogue releases.
+        # Label releases are now taken only when ``crate label sync`` asks,
+        # label by label, so ``sync all`` names that verb and touches nothing.
+        guided_by="label.sync",
+        # NO CURSOR HERE, still. ``crate label sync`` keeps its own per label
+        # marker of the releases it has asked about, and this document is not
+        # it.
+        no_cursor="label releases are taken by crate label sync, which keeps "
+        "its own marker per label of the releases it has asked about rather "
+        "than a cursor here",
     ),
     # NO WORKER OF ITS OWN (U64). Each new account playlist is queued as the
     # job ``crate intake playlist`` queues, so the intake worker runs it.

@@ -444,7 +444,6 @@ crate label sync
 crate label sync --next
 crate label sync --answer pick --label "Some Label" --release RELEASE_ID
 crate label sync --go
-crate sync labels
 crate review list --queue label-release
 crate review resolve ITEM_ID --verdict accepted --actor YOUR_NAME
 crate label approved
@@ -494,7 +493,12 @@ next sync treat the whole catalogue as new. `harvest` offers the labels behind a
 playlist for review and adds and downloads nothing. Accept the ones you want in
 review, then `label registry adopt` adds each accepted label the registry does
 not already hold, under any spelling of its name, and reports the rest as
-already held. Running it again adds nothing new. A sweep proposes releases into the
+already held. Running it again adds nothing new.
+
+`sync labels` is retired. It queues nothing and names `label sync`, and `sync
+all` no longer sweeps labels either. A labels sweep queued before the guided
+sync replaced it still runs with `crate sync labels --job JOB_ID`, so a job
+already in the queue is never lost. Such a sweep proposes releases into the
 review queue rather than taking them, and a rejection is remembered until you
 clear it.
 
@@ -524,6 +528,8 @@ crate job resume JOB_ID
 
 `sync all` queues each enabled source's own increment under one shared run and
 returns almost at once. That is the design, not a failure. Nothing has run yet.
+Labels are not among the sources it queues: it makes no provider call for them,
+and its report names `crate label sync` as the way to take label releases.
 Resume the jobs it names, and every source appends to one importable file
 instead of one per source. Each source keeps a bookmark (its watermark) that
 moves only after a pass in which every item finished, so a partial failure is

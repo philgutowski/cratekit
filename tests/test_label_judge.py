@@ -57,6 +57,7 @@ from tests.test_label_genre_gate import (
     register,
     sweep_once,
 )
+from tests.test_label_workers import queued_sweep
 
 QUEUE = str(Queue.LABEL_RELEASE)
 FILED_BY = "sweep-1"
@@ -1366,9 +1367,7 @@ def test_the_verb_drives_no_job_but_its_own(installed, monkeypatch):
     monkeypatch.setattr(
         catalogue, "resolve", catalogue_factory(FakeCatalogue(artists={SLUG: FakePagedArtist([])}))
     )
-    code, queued = drive(["sync", "labels"])
-    assert code == int(ExitCode.OK), queued
-    other = queued["data"]["job_id"]
+    other = queued_sweep()
 
     code, envelope = judge("--job", other)
 

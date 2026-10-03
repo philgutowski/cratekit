@@ -32,6 +32,7 @@ from cratekit.sync import artifacts, run, watermarks
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, FakePagedArtist, FakeRelease, catalogue_factory
 from tests.test_config import valid_data
+from tests.test_label_workers import queued_sweep
 
 LABEL = "Anjunadeep"
 SLUG = "anjunadeep"
@@ -63,9 +64,8 @@ def bind(monkeypatch, releases: list[FakeRelease]) -> FakeCatalogue:
 
 
 def sweep_once() -> None:
-    code, queued = drive(["sync", "labels"])
-    assert code == int(ExitCode.OK), queued
-    code, resumed = drive(["sync", "labels", "--job", queued["data"]["job_id"]])
+    job_id = queued_sweep()
+    code, resumed = drive(["sync", "labels", "--job", job_id])
     assert code == int(ExitCode.OK), resumed
 
 
@@ -406,9 +406,7 @@ def item_causes(job_id: str) -> dict[str, str | None]:
 
 
 def sweep_expecting_refusal() -> str:
-    code, queued = drive(["sync", "labels"])
-    assert code == int(ExitCode.OK), queued
-    job_id = queued["data"]["job_id"]
+    job_id = queued_sweep()
     code, resumed = drive(["sync", "labels", "--job", job_id])
     assert code != int(ExitCode.OK), resumed
     return job_id

@@ -36,6 +36,7 @@ from cratekit.sync import run, watermarks
 from tests.cli_drive import drive
 from tests.label_fakes import FakeArtistLookup
 from tests.test_config import valid_data
+from tests.test_label_workers import queued_sweep
 
 PLAYLIST = "0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0"
 ADAPTER_SOURCE = Path(tidal_catalogue.__file__)
@@ -1438,9 +1439,7 @@ def _sweep_through_the_worker(monkeypatch, client: FakeClient) -> tuple[int, dic
     monkeypatch.setattr(
         catalogue, "resolve", lambda cfg: tidal_catalogue.TidalCatalogue(client)
     )
-    code, queued = drive(["sync", "labels"])
-    assert code == int(ExitCode.OK), queued
-    job_id = queued["data"]["job_id"]
+    job_id = queued_sweep()
     code, done = drive(["sync", "labels", "--job", job_id])
     return code, done, job_id
 

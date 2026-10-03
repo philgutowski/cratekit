@@ -658,7 +658,7 @@ def test_a_clean_labels_sweep_is_not_reported_as_never_having_run(cfg):
     row = _row(cfg, "labels")
     assert row["state"] == "unrecorded"
     assert "no clean increment has completed" not in row["detail"]
-    assert "review queue" in row["detail"]
+    assert "crate label sync" in row["detail"]
 
 
 def test_the_labels_spec_agrees_with_the_source_that_offers():
@@ -702,7 +702,7 @@ def test_a_stale_cursor_on_a_source_that_records_none_is_not_a_live_completion(c
     )
     row = _row(cfg, "labels")
     assert row["state"] == "unrecorded"
-    assert "review queue" in row["detail"]
+    assert "crate label sync" in row["detail"]
     assert "2026-08-01T00:00:00+00:00" in row["detail"]
     assert "no longer moves" in row["detail"]
 
@@ -714,5 +714,5 @@ def test_doctor_prints_the_labels_row_it_is_given(cfg):
     found = {f.key: f for f in doctor._source_findings(cfg)}
     labels = found["source.labels.watermark"]
     assert "no clean increment has completed" not in labels.detail
-    assert "review queue" in labels.detail
+    assert "crate label sync" in labels.detail
     assert found["source.playlists.watermark"].detail == "no clean increment has completed"

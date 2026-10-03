@@ -13,12 +13,13 @@ ways to do one thing.
 crate label registry
 crate label import "Some Label"
 crate label harvest https://provider.example/playlist/PLAYLIST_ID
-crate sync labels
+crate label sync
 ```
 
 The registry says which labels are followed. Import brings one catalogue in on
 demand. Harvest reads labels back off a playlist and imports nothing at all. The
-labels sync brings the whole followed set current against its own watermark.
+guided label sync asks, label by label, about the releases new since that label
+was last asked, and downloads only what was answered for.
 
 ## The registry holds intent, not history
 
@@ -247,31 +248,27 @@ carries no year in the manifest.
 
 ## Syncing the followed set
 
-The labels sync pulls new releases across every followed label and advances its
-own watermark. It is one source among several, and it keeps its own cursor, so
-running it does not disturb where any other source had got to.
+The guided label sync walks the followed labels one at a time and asks, per
+label, only about the releases new since that label was last asked. Every
+answer is saved as it is given, so a walk can stop at any label and resume
+there. When every label is answered, one gate over one summary starts the
+download, which then runs unattended.
 
 ```bash
-crate sync labels
-crate status
+crate label sync
+crate label sync --next
+crate label sync --go
 ```
 
-`status` is the verb that answers where each source stands, which is the
-question people usually mean when they ask whether a sync worked.
+`crate sync all` does not touch labels. It makes no provider call for them and
+queues nothing for them, whatever the profile enables, and its report names
+`crate label sync` instead, so a routine sync can never start a label download.
 
-When the whole set is being brought current at once, queue every source instead
-and let them share one intake run, so the increments land in one intake file
-rather than one per source:
-
-```bash
-crate sync all
-```
-
-The run identifier is what couples them. Pass it explicitly only when you are
-attaching a labels increment to a run something else already started:
+`crate sync labels` is retired. It queues nothing and names the guided verb. It
+still resumes a labels sweep queued before the guided verb replaced it, so a job
+already in the queue is never lost:
 
 ```bash
-crate sync labels --run-id RUN_ID
 crate sync labels --job JOB_ID
 ```
 

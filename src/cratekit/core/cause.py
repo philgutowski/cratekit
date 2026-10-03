@@ -1535,7 +1535,7 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # a catalogue adapter is a stated limitation rather than a defect a
         # person should be told to report.
         "label-catalogue-unbound": ExitCode.PRECONDITION,
-        # A sweep was asked for with no favourite label registered. THE ZERO
+        # A label walk was asked for with no favourite label registered. THE ZERO
         # ITEM RULE, at the second place that enforces it, beside
         # ``export-playlist-empty``: ``core.jobs`` reports a job with no items
         # as SUCCEEDED by design, so a verb that queued this would report a
@@ -1570,6 +1570,15 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # scriptable path, ``--next`` and ``--answer``, so PRECONDITION rather
         # than a defect.
         "label-sync-unanswerable": ExitCode.PRECONDITION,
+        # ── U109's refusal, appended for the reason every block above gives ────
+        #
+        # A verb whose queueing half was retired in favour of another verb was
+        # asked to queue. ``crate sync labels`` is the first: the guided label
+        # sync replaced its sweep, and the verb still resumes a job queued
+        # before that, so its name stays and only the queueing is refused. The
+        # remedy is the replacing command, named in the steps, so PRECONDITION
+        # rather than a usage error the parser could have caught.
+        "verb-retired": ExitCode.PRECONDITION,
         # ── U58's refusals, appended for the reason every block above gives ────
         #
         # A restamp was asked for over a library that has never been calibrated.

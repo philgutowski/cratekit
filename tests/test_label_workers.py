@@ -48,6 +48,7 @@ from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.label import catalogue, sweep
 from cratekit.label import cli as label_cli
+from cratekit.label import registry as label_registry
 from cratekit.label.catalogue import ReleaseUnresolvable
 from tests.cli_drive import drive
 from tests.label_fakes import (
@@ -154,6 +155,32 @@ def queued_job(verb: list[str]) -> str:
     return envelope["data"]["job_id"]
 
 
+def queued_sweep(run_id: str | None = None) -> str:
+    """File a labels sweep the way a build before U109 did, and return its id.
+
+    NOTHING IN ``src`` QUEUES ONE ANY MORE. ``crate sync labels`` refuses to and
+    ``crate sync all`` no longer composes the labels source, so the only sweep
+    job that can exist is one a person queued before upgrading. This is that
+    job: the payload and the items exactly as the retired ``queue_sweep`` wrote
+    them, one item per registered label keyed by identifier (KTD1, R19), under
+    the sweep's own handler key. Every test that drives a sweep through
+    ``sync labels --job`` is therefore a test that such a job still resumes.
+    """
+    cfg = config.load()
+    held = label_registry.RegistryStore().load()
+    items = tuple(entry.label_id for entry in held.labels.values())
+    assert items, "register a label before filing a sweep, as the old verb refused"
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store,
+            handler_key=SWEEP_KEY,
+            payload={"source_id": "labels", "run_id": run_id or output.new_run_id()},
+            item_ids=items,
+            cfg=cfg,
+        )
+    return job.job_id
+
+
 def item_states(job_id: str) -> dict[str, str]:
     with jobs.open_store() as store:
         return {item.item_id: str(item.state) for item in jobs.items(store, job_id)}
@@ -217,118 +244,53 @@ def offers(cfg: config.Config) -> dict[str, str]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 1. The sweep's items are the registry
+# 1. The sweep's queueing half is retired (U109)
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_a_sweep_queues_one_item_per_registered_label(installed):
-    """One favourite label is one item (KTD1), and the id is the identifier."""
-    del installed
-    register(*LABELS)
-    code, queued = drive(["sync", "labels"])
-    assert code == int(ExitCode.OK), queued
-    assert queued_items(queued["data"]["job_id"]) == list(SLUGS)
+def test_sync_labels_refuses_to_queue_and_names_the_guided_verb(installed):
+    """Labels registered, so the old verb would have queued, and it queues nothing.
 
-
-def test_a_sweep_carries_the_identifier_and_never_the_display_name(installed):
-    """R19 in the one place it can be broken silently.
-
-    A display name is what a person typed and a rename moves it, so an item keyed
-    on one is an item the registry can no longer answer for. Asserted as a
-    disjointness rather than by equality alone, so a build that carried both
-    fails here too.
+    Proven by the absence of a job row as well as by the cause, because a verb
+    that queued first and refused afterwards would raise the same cause and
+    leave a sweep in the queue for the next resume to run.
     """
     del installed
     register(*LABELS)
-    code, queued = drive(["sync", "labels"])
-    assert code == int(ExitCode.OK), queued
-    carried = set(queued_items(queued["data"]["job_id"]))
-    assert carried == set(SLUGS)
-    assert carried.isdisjoint(set(LABELS))
-
-
-def test_a_sweep_with_an_empty_registry_refuses_and_queues_nothing(installed):
-    """The zero item rule, proven by the absence of a job row.
-
-    A verb that enqueued and then refused would raise this same cause and leave
-    the empty job in the queue, where a later resume would drive it to SUCCEEDED
-    over work nothing did. Only the queue can see that difference.
-
-    THE ``!= USAGE`` LINE THAT USED TO SIT HERE IS GONE. The equality above
-    already pins the code, so it could not fail for any input, and an assertion
-    that cannot fail reads like coverage while providing none. What it was
-    reaching for, that the refusal is a state of this installation rather than a
-    malformed invocation, is said by the equality it followed.
-    """
-    del installed
     code, refused = drive(["sync", "labels"])
     assert code == int(ExitCode.PRECONDITION), refused
-    assert refused["cause"]["reason"] == "label-registry-empty"
-    assert queue_is_empty()
-
-
-def test_a_sweep_on_an_unconfigured_machine_says_so_rather_than_naming_the_registry():
-    """No ``installed`` fixture, which is the whole test: a fresh install.
-
-    THE FAVOURITE LABEL REGISTRY IS INSTALLATION SCOPED, so it reads perfectly
-    well on a machine that has never run ``crate setup`` (KTD6). Deriving the
-    sweep's items before loading the configuration therefore reached the empty
-    registry refusal first and told a person to run ``crate label registry add``,
-    hiding the blocker that a registered label would not have moved. On ``main``
-    this same command refused ``config-unusable``, because ``_queue`` opened with
-    ``cfg = _load()`` and an argument evaluated before the call cannot come after
-    it.
-
-    THE SIBLING VERB IS WHY THIS IS A DEFECT AND NOT A PREFERENCE. ``crate label
-    harvest`` loads the configuration first and refuses ``config-unusable`` on
-    the same machine, so two verbs in one package disagreed about what a fresh
-    install's problem is.
-    """
-    code, refused = drive(["sync", "labels"])
-    assert code == int(ExitCode.PRECONDITION), refused
-    assert refused["cause"]["reason"] == "config-unusable"
-    assert refused["cause"]["remediation"]["remedy"] == str(Remedy.RUN_SETUP)
-    assert queue_is_empty()
-
-
-def test_the_unconfigured_refusal_outranks_the_registry_one_even_with_a_label_added():
-    """Both conditions at once, and the one that has to win.
-
-    A registry with a label in it is the state where the two refusals genuinely
-    compete: the items derive fine and the configuration still cannot be read.
-    Without this, a build could satisfy the test above by accident, because an
-    empty registry and no configuration are both true there and either answer
-    ends the command.
-    """
-    register(LABELS[0])
-    code, refused = drive(["sync", "labels"])
-    assert code == int(ExitCode.PRECONDITION), refused
-    assert refused["cause"]["reason"] == "config-unusable"
-    assert queue_is_empty()
-
-
-def test_the_empty_registry_refusal_names_the_command_that_fixes_it(installed):
-    """A remedy a person can act on, rather than a diagnostic to go and run."""
-    del installed
-    code, refused = drive(["sync", "labels"])
-    assert code == int(ExitCode.PRECONDITION), refused
+    assert refused["cause"]["reason"] == "verb-retired"
+    assert "crate label sync" in refused["cause"]["message"]
     steps = refused["cause"]["remediation"]["steps"]
-    assert any("crate label registry add" in step for step in steps), steps
+    assert any(step.endswith(": crate label sync") for step in steps), steps
+    assert any("--job" in step for step in steps), steps
+    assert queue_is_empty()
 
 
-def test_the_empty_registry_refusal_says_that_no_label_is_registered(installed):
-    """The sentence, pinned, because the slug and the steps were and it was not.
+def test_the_retired_refusal_reads_nothing_so_a_fresh_install_gets_it_too():
+    """No ``installed`` fixture: a machine that was never set up.
 
-    A reword of this message survived the mutation table with zero deaths: the
-    cause was asserted and the remedy was asserted and the one thing a person
-    actually reads was not. The state it has to name is that no favourite label
-    is REGISTERED, which is what distinguishes it from a sweep whose registry
-    could not be read or whose labels all listed nothing.
+    The refusal is about the verb, not about this installation, so it must not
+    be outranked by ``config-unusable`` or ``label-registry-empty``. Either
+    would send a person to fix something that would not make the verb queue.
     """
+    code, refused = drive(["sync", "labels"])
+    assert code == int(ExitCode.PRECONDITION), refused
+    assert refused["cause"]["reason"] == "verb-retired"
+    assert queue_is_empty()
+
+
+def test_a_sweep_queued_before_u109_still_resumes_to_done(installed, monkeypatch):
+    """The other half of retiring by reduction: an old job is never dropped."""
     del installed
-    _, refused = drive(["sync", "labels"])
-    said = refused["cause"]["message"]
-    assert "no favourite label is registered" in said, said
+    register(*LABELS[:2])
+    bind(monkeypatch, readable(*SLUGS[:2]))
+    job_id = queued_sweep()
+    assert queued_items(job_id) == list(SLUGS[:2])
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+    assert code == int(ExitCode.OK), resumed
+    assert set(item_states(job_id).values()) == {str(jobs.ItemState.DONE)}
+    assert set(offers(config.load()).values()) == set(SLUGS[:2])
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -386,8 +348,8 @@ def test_an_import_against_an_empty_registry_refuses_the_unknown_name(installed)
 
 @pytest.mark.parametrize(
     "verb",
-    [["sync", "labels"], ["label", "import", "Kompakt"]],
-    ids=["sync.labels", "label.import"],
+    [["label", "import", "Kompakt"]],
+    ids=["label.import"],
 )
 def test_both_queueing_paths_queue_without_a_warning_now_an_adapter_is_bound(installed, verb):
     """U62 flipped the warning, and the job still queues.
@@ -408,8 +370,8 @@ def test_both_queueing_paths_queue_without_a_warning_now_an_adapter_is_bound(ins
 
 @pytest.mark.parametrize(
     "verb",
-    [["sync", "labels"], ["label", "import", "Kompakt"]],
-    ids=["sync.labels", "label.import"],
+    [["label", "import", "Kompakt"]],
+    ids=["label.import"],
 )
 def test_the_unbound_warning_says_the_job_will_fail_at_the_provider_seam(
     installed, verb, monkeypatch
@@ -433,13 +395,16 @@ def test_the_unbound_warning_says_the_job_will_fail_at_the_provider_seam(
     assert queued_items(queued["data"]["job_id"])
 
 
-def test_a_refused_sweep_carries_no_warning_because_nothing_was_queued(installed):
+def test_a_refused_sweep_carries_no_warning_because_nothing_was_queued(installed, monkeypatch):
     """The warning belongs to a queued job, so a refusal must not carry one.
 
     A refusal telling a person their job will fail at the provider seam would be
-    naming a job that does not exist.
+    naming a job that does not exist. Driven with the catalogue unbound, which
+    is the one state that would put the warning on a queued job.
     """
     del installed
+    monkeypatch.setattr(catalogue, "bound", lambda: False)
+    register(*LABELS)
     code, refused = drive(["sync", "labels"])
     assert code == int(ExitCode.PRECONDITION), refused
     assert not (refused.get("warnings") or ())
@@ -456,7 +421,7 @@ def test_the_warning_rides_the_envelope_rather_than_the_job_state_payload(instal
     del installed
     monkeypatch.setattr(catalogue, "bound", lambda: False)
     register(*LABELS)
-    code, queued = drive(["sync", "labels"])
+    code, queued = drive(["label", "import", "Kompakt"])
     assert code == int(ExitCode.OK), queued
     assert set(queued["data"]) == {"job_id", "state", "cause", "progress"}
     assert queued.get("warnings")
@@ -525,7 +490,7 @@ def test_a_sweep_runs_every_one_of_its_labels_from_pending_to_done(
     del installed
     register(*LABELS[:2])
     bind(monkeypatch, readable(*SLUGS[:2]))
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
     assert set(item_states(job_id).values()) == {str(jobs.ItemState.PENDING)}
 
     code, resumed = drive(["sync", "labels", "--job", job_id])
@@ -547,7 +512,7 @@ def test_each_item_sweeps_its_own_label_and_not_one_named_by_the_payload(
     """
     register(*LABELS[:2])
     catalogue_fake = bind(monkeypatch, readable(*SLUGS[:2]))
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
     code, resumed = drive(["sync", "labels", "--job", job_id])
     assert code == int(ExitCode.OK), resumed
 
@@ -585,7 +550,7 @@ def test_the_resume_envelope_is_exactly_job_state_and_nothing_beside_it(
     del installed
     register(LABELS[0])
     bind(monkeypatch, readable(SLUGS[0]))
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
     code, resumed = drive(["sync", "labels", "--job", job_id])
     assert code == int(ExitCode.OK), resumed
     assert set(resumed["data"]) == {"job_id", "state", "cause", "progress"}
@@ -611,7 +576,7 @@ def test_a_catalogue_that_cannot_be_listed_fails_the_item_and_the_job(
     del installed
     register(LABELS[0])
     bind(monkeypatch, UnreadableCatalogue())
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
     code, failed = drive(["sync", "labels", "--job", job_id])
     assert code != int(ExitCode.OK), failed
     assert item_causes(job_id) == {SLUGS[0]: "sync-source-lookups-failed"}
@@ -635,7 +600,7 @@ def test_a_sweep_whose_failures_are_permanent_does_not_tell_the_person_to_resume
     del installed
     register(*LABELS[:2])
     bind(monkeypatch, readable(SLUGS[0]))
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
     code, failed = drive(["sync", "labels", "--job", job_id])
     assert code != int(ExitCode.OK), failed
     assert item_causes(job_id) == {
@@ -672,7 +637,7 @@ def test_an_increment_that_could_not_offer_every_release_fails_the_item(
         raise RuntimeError(f"the review queue rejected {candidate.identity}")
 
     monkeypatch.setattr(sweep, "offer_release", refusing_offer)
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
     code, failed = drive(["sync", "labels", "--job", job_id])
     assert code != int(ExitCode.OK), failed
     assert item_causes(job_id) == {SLUGS[0]: "label-sweep-incomplete"}
@@ -691,7 +656,7 @@ def test_a_label_the_registry_no_longer_holds_refuses_rather_than_sweeping_nothi
     del installed
     register(*LABELS[:2])
     bind(monkeypatch, readable(*SLUGS[:2]))
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
     code, removed = drive(["label", "registry", "remove", LABELS[0]])
     assert code == int(ExitCode.OK), removed
 
@@ -755,7 +720,7 @@ def test_a_sweep_that_confirmed_none_of_what_it_read_fails_rather_than_succeedin
     """
     register(LABELS[0])
     bind(monkeypatch, unconfirming(SLUGS[0]))
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, failed = drive(["sync", "labels", "--job", job_id])
 
@@ -780,7 +745,7 @@ def test_the_unconfirmed_refusal_says_how_many_were_read_and_that_the_provider_a
     del installed
     register(LABELS[0])
     bind(monkeypatch, unconfirming(SLUGS[0]))
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     drive(["sync", "labels", "--job", job_id])
 
@@ -810,7 +775,7 @@ def test_a_label_whose_every_release_is_tombstoned_still_succeeds(
             actor="tests",
         )
     bind(monkeypatch, readable(SLUGS[0]))
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, resumed = drive(["sync", "labels", "--job", job_id])
 
@@ -845,7 +810,7 @@ def test_a_verification_call_that_raises_fails_the_item_in_the_lookup_vocabulary
             answers=0,
         ),
     )
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, failed = drive(["sync", "labels", "--job", job_id])
 
@@ -865,7 +830,7 @@ def test_a_label_whose_crawl_listed_nothing_at_all_still_succeeds(
     """
     register(LABELS[0])
     bind(monkeypatch, FakeCatalogue(artists={SLUGS[0]: FakePagedArtist([])}))
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, resumed = drive(["sync", "labels", "--job", job_id])
 
@@ -898,7 +863,7 @@ def test_a_sweep_that_confirmed_some_of_what_it_read_succeeds_and_offers_those(
             confirmed={"hf-1"},
         ),
     )
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, resumed = drive(["sync", "labels", "--job", job_id])
 
@@ -960,7 +925,7 @@ def test_a_refusal_the_sweep_verifier_raises_in_kind_keeps_its_own_reason(
             }
         ),
     )
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, failed = drive(["sync", "labels", "--job", job_id])
 
@@ -988,7 +953,7 @@ def test_a_revoked_tombstone_no_longer_keeps_a_release_out_of_the_queue(
     )
     store.revoke(recorded.suppression_id, actor="tests")
     bind(monkeypatch, readable(SLUGS[0]))
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, resumed = drive(["sync", "labels", "--job", job_id])
 
@@ -1022,7 +987,7 @@ def test_an_unreadable_tombstone_store_does_not_fail_a_label_with_nothing_to_ask
     register(LABELS[0])
     corrupt_tombstone_store(installed)
     bind(monkeypatch, FakeCatalogue(artists={SLUGS[0]: FakePagedArtist([])}))
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, resumed = drive(["sync", "labels", "--job", job_id])
 
@@ -1043,7 +1008,7 @@ def test_an_unreadable_tombstone_store_still_refuses_a_label_with_a_confirmed_re
     register(LABELS[0])
     corrupt_tombstone_store(installed)
     bind(monkeypatch, readable(SLUGS[0]))
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, failed = drive(["sync", "labels", "--job", job_id])
 
@@ -1099,7 +1064,7 @@ def test_a_second_resume_of_a_failed_sweep_still_does_not_exit_ok(
     del installed
     register(LABELS[0])
     bind(monkeypatch, UnreadableCatalogue())
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
     assert drive(["sync", "labels", "--job", job_id])[0] != int(ExitCode.OK)
 
     code, again = drive(["sync", "labels", "--job", job_id])
@@ -1127,7 +1092,7 @@ def test_a_resume_of_a_cancelled_sweep_does_not_exit_ok_over_the_items_it_never_
     del installed
     register(*LABELS)
     bind(monkeypatch, readable(*SLUGS))
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
     with jobs.open_store() as store:
         jobs.cancel(store, job_id)
 
@@ -1165,7 +1130,7 @@ def test_the_worker_offers_into_the_library_its_job_was_queued_for(
     """
     register(LABELS[0])
     bind(monkeypatch, readable(SLUGS[0]))
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     elsewhere = tmp_path / "another-library"
     (elsewhere / "Music").mkdir(parents=True)
@@ -1778,7 +1743,7 @@ def test_a_mixed_listing_of_tombstoned_and_unconfirmed_releases_is_a_label_with_
     register(LABELS[0])
     bury(installed, "hf-1")
     bind(monkeypatch, counting(SLUGS[0], confirmed=frozenset()))
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, resumed = drive(["sync", "labels", "--job", job_id])
 
@@ -1793,7 +1758,7 @@ def test_a_sweep_that_read_releases_and_confirmed_none_of_them_still_refuses(
     """The composite for the test above: the refusal it keeps is the one that was true."""
     register(LABELS[0])
     bind(monkeypatch, counting(SLUGS[0], confirmed=frozenset()))
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     drive(["sync", "labels", "--job", job_id])
 
@@ -1814,7 +1779,7 @@ def test_a_tombstoned_release_is_never_sent_to_the_provider_for_verification(
     register(LABELS[0])
     bury(installed, "hf-1")
     fake = bind(monkeypatch, counting(SLUGS[0]))
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, resumed = drive(["sync", "labels", "--job", job_id])
 
@@ -1837,7 +1802,7 @@ def test_one_item_opens_the_review_store_once_however_many_releases_it_offers(
     """
     register(LABELS[0])
     bind(monkeypatch, readable(SLUGS[0]))
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
     opened: list[object] = []
     real_open = review.open_store
 
@@ -1880,7 +1845,7 @@ def test_a_refusal_the_artist_lookup_raises_in_kind_keeps_its_own_reason(
     del installed
     register(LABELS[0])
     bind(monkeypatch, SessionExpiredAtListing())
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, failed = drive(["sync", "labels", "--job", job_id])
 
@@ -1954,7 +1919,7 @@ def test_a_label_whose_catalogue_the_library_already_holds_offers_nothing(
         "Mira Vale - Glass Hour.flac",
     )
     bind(monkeypatch, tracked())
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, resumed = drive(["sync", "labels", "--job", job_id])
 
@@ -1970,7 +1935,7 @@ def test_a_release_with_one_track_still_missing_is_offered_beside_one_that_is_he
     register(LABELS[0])
     hold(installed, "Aurora Bloom - Sun Path.flac", "Mira Vale - Glass Hour.flac")
     bind(monkeypatch, tracked())
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, resumed = drive(["sync", "labels", "--job", job_id])
 
@@ -1990,7 +1955,7 @@ def test_a_release_listing_no_tracks_and_a_release_that_is_gone_are_both_offered
     register(LABELS[0])
     hold(installed, "Mira Vale - Glass Hour.flac")
     fake = bind(monkeypatch, tracked(releases={"hf-1": ([], 2026)}))
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, resumed = drive(["sync", "labels", "--job", job_id])
 
@@ -2011,7 +1976,7 @@ def test_a_release_the_library_holds_only_in_another_version_is_offered(
         "Mira Vale - Glass Hour (Extended Mix).flac",
     )
     bind(monkeypatch, tracked())
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, resumed = drive(["sync", "labels", "--job", job_id])
 
@@ -2031,7 +1996,7 @@ def test_an_unconfirmed_release_is_never_read_and_a_confirmed_one_is_read_once(
     """
     register(LABELS[0])
     fake = bind(monkeypatch, tracked(confirmed={"hf-1"}))
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, resumed = drive(["sync", "labels", "--job", job_id])
 
@@ -2079,7 +2044,7 @@ def test_a_track_read_the_provider_could_not_answer_offers_the_release(
         "Mira Vale - Glass Hour.flac",
     )
     fake = bind(monkeypatch, tracked(cls=TracksOutage))
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, resumed = drive(["sync", "labels", "--job", job_id])
 
@@ -2096,7 +2061,7 @@ def test_three_failed_track_reads_in_a_row_stop_the_asking(installed, monkeypatc
     fake = bind(
         monkeypatch, TracksOutage(artists={SLUGS[0]: FakePagedArtist(many)})
     )
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, resumed = drive(["sync", "labels", "--job", job_id])
 
@@ -2118,7 +2083,7 @@ def test_a_release_that_is_gone_breaks_the_run_of_failed_reads(installed, monkey
     register(LABELS[0])
     many = [FakeRelease(f"hf-{n}") for n in range(1, 8)]
     fake = bind(monkeypatch, Alternating(artists={SLUGS[0]: FakePagedArtist(many)}))
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, resumed = drive(["sync", "labels", "--job", job_id])
 
@@ -2149,7 +2114,7 @@ def test_a_sweep_of_two_labels_walks_the_library_once(installed, monkeypatch):
             releases={**TRACKS, "ot-1": ([Row("31", "Lumen Drift", "Salt Road")], 2024)},
         ),
     )
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, resumed = drive(["sync", "labels", "--job", job_id])
 
@@ -2165,7 +2130,7 @@ def test_a_refusal_the_track_read_raises_in_kind_keeps_its_own_reason(
     del installed
     register(LABELS[0])
     bind(monkeypatch, tracked(cls=TracksSessionExpired))
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, failed = drive(["sync", "labels", "--job", job_id])
 
@@ -2191,7 +2156,7 @@ def test_a_release_with_a_row_the_reader_cannot_read_is_offered(installed, monke
         "hf-2": ([Row("21", "Mira Vale", "Glass Hour"), Row("22", "", "Untitled")], 2025),
     }
     bind(monkeypatch, tracked(releases=releases))
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, resumed = drive(["sync", "labels", "--job", job_id])
 
@@ -2214,7 +2179,7 @@ def test_a_track_read_that_succeeds_breaks_the_run_of_failed_reads(
     register(LABELS[0])
     many = [FakeRelease(f"hf-{n}") for n in range(1, 8)]
     fake = bind(monkeypatch, Intermittent(artists={SLUGS[0]: FakePagedArtist(many)}))
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, resumed = drive(["sync", "labels", "--job", job_id])
 
@@ -2331,7 +2296,7 @@ def test_a_rate_limited_listing_fails_its_item_as_retryable_and_the_job_says_res
     register(*LABELS[:2])
     waits = _ladder_without_waiting(monkeypatch)
     _, limit = _one_label_rate_limited(monkeypatch)
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, failed = drive(["sync", "labels", "--job", job_id])
 
@@ -2371,7 +2336,7 @@ def test_a_resumed_job_rearms_the_rate_limited_label_and_not_the_settled_one(
     register(*LABELS[:2])
     _ladder_without_waiting(monkeypatch)
     fake, limit = _one_label_rate_limited(monkeypatch)
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
     assert drive(["sync", "labels", "--job", job_id])[0] != int(ExitCode.OK)
     assert fake.asked_for == [SLUGS[0], SLUGS[1]]
 
@@ -2423,7 +2388,7 @@ def test_a_rate_limited_verification_is_retryable_too(installed, monkeypatch):
             limit=limit,
         ),
     )
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, failed = drive(["sync", "labels", "--job", job_id])
 
@@ -2447,7 +2412,7 @@ def test_a_listing_failure_that_is_not_a_rate_limit_stays_permanent(
     del installed
     register(LABELS[0])
     bind(monkeypatch, UnreadableCatalogue())
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     drive(["sync", "labels", "--job", job_id])
 
@@ -2499,7 +2464,7 @@ def test_a_rate_limit_at_every_other_sweep_boundary_is_retryable(
     del installed
     register(LABELS[0])
     bind(monkeypatch, fake())
-    job_id = queued_job(["sync", "labels"])
+    job_id = queued_sweep()
 
     code, failed = drive(["sync", "labels", "--job", job_id])
 

@@ -51,7 +51,7 @@ from tests.test_intake_land_native import (
     _query,
     _seed_binding_rows,
 )
-from tests.test_label_workers import LABELS, SLUGS, readable, register
+from tests.test_label_workers import LABELS, SLUGS, queued_sweep, readable, register
 from tests.test_label_workers import bind as bind_catalogue
 from tests.test_outbound_workers import _resume as resume_outbound
 from tests.test_outbound_workers import bind as bind_account
@@ -1034,7 +1034,8 @@ def test_the_composed_pass_queues_each_source_on_either_medium(either, monkeypat
     assert code == int(ExitCode.OK), passed
     with jobs.open_store() as store:
         queued = {job.handler_key for job in jobs.list_jobs(store)}
-    assert queued == {"sync.favorites", "sync.labels"}
+    # LABELS REGISTERED AND NOT SWEPT (U109): ``crate label sync`` takes them.
+    assert queued == {"sync.favorites"}
     _assert_the_intake_tree_was_left_alone(cfg, exported, before)
 
 
@@ -1045,9 +1046,7 @@ def test_the_label_batch_sweeps_on_either_medium(either, monkeypatch):
     register(*LABELS[:2])
     bind_catalogue(monkeypatch, readable(*SLUGS[:2]))
 
-    code, queued = drive(["sync", "labels"])
-    assert code == int(ExitCode.OK), queued
-    job_id = queued["data"]["job_id"]
+    job_id = queued_sweep()
     code, resumed = drive(["sync", "labels", "--job", job_id])
 
     assert code == int(ExitCode.OK), resumed

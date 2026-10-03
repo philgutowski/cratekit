@@ -3,7 +3,11 @@
 Builders take an untyped ``entry`` so this file does not import the CLI
 registry (KTD23). Long-running work queues a job. The increment engine is
 ``cratekit.sync.run.increment``; this shell freezes the source id and the
-run id so two sources queued by ``sync all`` still share one intake file.
+run id a job carries, so a sweep's workers write that run's intake file.
+
+``crate sync labels`` QUEUES NOTHING SINCE U109. ``crate label sync`` takes
+label releases now, and this verb only resumes a sweep queued before it, on
+the one worker the sweep and the import share.
 """
 
 from __future__ import annotations
@@ -134,13 +138,16 @@ def build_sync(parser, entry) -> None:
         "--job",
         default=None,
         metavar="JOB_ID",
-        help="continue the increment already queued under this identifier",
+        help=(
+            "continue a labels sweep queued before crate label sync replaced it; "
+            "without this the verb queues nothing and names crate label sync"
+        ),
     )
     parser.add_argument(
         "--run-id",
         default=None,
         dest="run_id",
-        help="intake run shared with the other sources in this sync",
+        help="intake run the queued sweep was filed under, carried by a resume",
     )
     parser.set_defaults(_handler=sync_labels)
 
@@ -522,8 +529,9 @@ def _queue(ctx, *, payload: dict, item_ids: tuple[str, ...]) -> Envelope:
     item count is zero straight to SUCCEEDED, because nothing was attempted and
     nothing failed, so a shared helper that let a caller forget its items was one
     keyword away from a clean report over work the product never did. Each verb
-    now has to say what its job is made of, and each says it in a different way:
-    the sweep from the registry, the import from the entry it already resolved.
+    now has to say what its job is made of, and the import says it from the
+    entry it already resolved. The sweep said it from the registry until U109
+    retired its queueing half.
 
     IT USED TO REPORT A RESUME TOO, and :func:`_resume` took that half over when
     the workers were bound. The branch is gone rather than left beside a second
@@ -680,107 +688,42 @@ def _resume(ctx, job_id: str) -> Envelope:
         return ctx.envelope(data=_reported(store, job), warnings=warnings)
 
 
-def sweep_items(held: labels.Registry) -> tuple[str, ...]:
-    """The items one sweep job carries: one per registered favourite label.
-
-    ONE FAVOURITE LABEL IS ONE ITEM (KTD1), and the identifier is the item id
-    rather than the display name. Seam R19 and the registry's own D5 both forbid
-    keying a persisted record on a name, and an item row is exactly that: a
-    rename would move the name and leave the queue holding a label nothing can
-    resolve.
-
-    DERIVED FROM THE REGISTRY AND NEVER FROM A PROVIDER LISTING (KTD2).
-    ``src/cratekit/backup/cli.py`` established the rule and states the reason:
-    items must be derivable without touching the machine, so queueing cannot
-    refuse where the work would have run once claimed. Listing the catalogue here
-    would also freeze a snapshot that has moved by the time the driver claims it,
-    and the registry is a local state document that needs no provider at all.
-    """
-    return tuple(entry.label_id for entry in held.labels.values())
-
-
-def sweep_items_or_refuse() -> tuple[str, ...]:
-    """The sweep's items, or the refusal an empty registry earns.
-
-    PUBLIC because ``crate sync all`` asks it too, before it queues anything,
-    so an empty registry is reported for the labels source rather than
-    discovered after another source was already queued.
-
-    THE ZERO ITEM RULE, enforced before anything is written. A job with no items
-    drives straight to SUCCEEDED, so queueing one here would file a sweep that
-    reports a clean success over a registry it never read a label from. The
-    remedy is a COMMAND rather than a diagnostic, because what is missing is a
-    decision nobody has made yet rather than a fault in this installation.
-    """
-    items = sweep_items(labels.RegistryStore().load())
-    if items:
-        return items
-    raise refuse(
-        "label-registry-empty",
-        "no favourite label is registered, so a sweep would queue a job with "
-        "nothing to claim and would then report that it succeeded",
-        steps=(
-            "register a label with: crate label registry add <name>",
-            "then run the sweep again",
-        ),
-        origin=("label.cli",),
-    )
+#: The verb that took the sweep's place (U109), as a person types it.
+GUIDED_VERB = "crate label sync"
 
 
 def sync_labels(ctx) -> Envelope:
-    # THE RESUME IS ANSWERED FIRST, so the registry is read only on the queueing
-    # path. It is a structural guarantee rather than a rule to remember: nothing
-    # below this line runs for a job that already exists, so a label registered
-    # since a job was queued cannot decide whether that job may be continued.
+    """Resume a labels sweep queued before U109, and refuse to queue a new one.
+
+    RETIRED BY REDUCTION, NOT REMOVAL (U109). The sweep listed every favourite
+    label's newest releases into review on every run, whether anyone wanted
+    that today or not, and it filled the review queue with back catalogue.
+    ``crate label sync`` replaced it: it asks label by label and records each
+    answer. The queueing half is therefore a refusal naming that verb.
+
+    THE RESUME HALF STAYS, and it is why the verb was not deleted. A sweep job
+    queued before this change is a durable row in the queue, and
+    ``crate job resume`` rebuilds its argv through :func:`sync_labels_argv` as
+    ``sync labels --job``. Removing the verb would leave that job with no way
+    to run and no way to say so, which is a job silently dropped. It runs on
+    the same worker as before, which offers releases to review and downloads
+    nothing, so resuming one cannot start a label download.
+
+    THE RESUME IS ANSWERED FIRST, and nothing below it reads the configuration
+    or the registry, so the refusal is the same on any machine.
+    """
     if ctx.args.job:
         return _resume(ctx, ctx.args.job)
-    # THE CONFIGURATION IS READ BEFORE THE ITEMS ARE DERIVED, and the order is
-    # the fix rather than an ornament. When the items were an ARGUMENT to the
-    # shared queue helper they were evaluated before that helper's own
-    # ``_load()`` ever ran, and the favourite label registry is installation
-    # scoped (KTD6) so it reads perfectly well on a machine that has never been
-    # set up. A fresh install therefore got ``label-registry-empty`` and was told
-    # to run ``crate label registry add``, which would not have moved the real
-    # blocker. ``main`` refused ``config-unusable`` here, and the sibling verb
-    # ``label.harvest`` still does, so this had made two verbs in one package
-    # disagree about what a fresh install's problem is.
-    #
-    # THE SECOND LOAD COSTS A ``stat`` AND NOTHING ELSE. ``config.load`` memoizes
-    # on ``(path, inode, mtime, size)`` and every write here goes through an
-    # atomic replace, so ``_queue``'s call is a memo hit rather than a second
-    # parse, and this does not become a reason to thread a ``Config`` through.
-    cfg = _load()
-    run_id = getattr(ctx.args, "run_id", None) or ctx.run.run_id
-    items = sweep_items_or_refuse()
-    with jobs.open_store() as store:
-        job = queue_sweep(
-            store, cfg, handler_key=ctx.entry.handler_key, run_id=run_id, item_ids=items
-        )
-        return ctx.envelope(data=_reported(store, job), warnings=queue_warnings())
-
-
-def queue_sweep(
-    store, cfg: config.Config, *, handler_key: str, run_id: str, item_ids: tuple[str, ...]
-) -> jobs.Job:
-    """Queue one label sweep. The one spelling of what a sweep job is.
-
-    TWO CALLERS, ONE JOB. ``sync labels`` passes its own handler key and
-    ``crate sync all`` passes the key ``cratekit.sync.sources`` declares for the
-    labels source, which is the same key, so a sweep queued by either verb is the
-    same job shape and the same worker runs it. A second copy of this payload in
-    the composer would be the place the two drift.
-
-    ``item_ids`` comes from :func:`sweep_items_or_refuse`, which refuses an empty
-    registry before anything is written, so neither caller can file a sweep with
-    nothing to claim (the ZERO ITEM RULE). ``run_id`` is the INTAKE run, shared
-    with the other sources of one sync so their workers write one file (R29).
-    """
-    return jobs.enqueue(
-        store,
-        handler_key=handler_key,
-        payload={"source_id": "labels", "run_id": run_id},
-        item_ids=item_ids,
-        cfg=cfg,
+    raise refuse(
+        "verb-retired",
+        "sync labels no longer queues a sweep. Label releases are taken label "
+        f"by label with {GUIDED_VERB}, which asks before it downloads anything",
+        steps=(
+            f"take label releases with: {GUIDED_VERB}",
+            "a sweep queued before this change still runs with: crate sync labels "
+            "--job JOB_ID",
+        ),
+        origin=("label.cli",),
     )
 
 
@@ -792,9 +735,9 @@ def import_label(ctx) -> Envelope:
     # is still refused, per item, where a person is told which label it was.
     if ctx.args.job:
         return _resume(ctx, ctx.args.job)
-    # THE CONFIGURATION IS READ BEFORE THE REGISTRY, for the reason
-    # :func:`sync_labels` gives. The registry is installation scoped and reads
-    # on a machine that has never been set up, so a fresh install used to be
+    # THE CONFIGURATION IS READ BEFORE THE REGISTRY. The registry is
+    # installation scoped and reads on a machine that has never been set up,
+    # so a fresh install used to be
     # refused ``label-unknown`` here and sent to ``crate label registry add``,
     # and then refused ``config-unusable`` once it had obeyed. The sibling verb
     # had been brought into line and this one had not.
@@ -1443,12 +1386,9 @@ __all__ = [
     "playlist_tracks_or_refuse",
     "import_label",
     "label_import_argv",
-    "queue_sweep",
     "queue_warnings",
     "registry_cmd",
     "run_increment",
-    "sweep_items",
-    "sweep_items_or_refuse",
     "sync_labels",
     "sync_labels_argv",
 ]
