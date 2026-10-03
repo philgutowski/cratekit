@@ -878,13 +878,21 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
     )
     long_tracks, long_problems = _build_long_tracks(data)
     problems += long_problems
-    # Keyed on PRESENCE, for the catalog section's reason.
+    # Keyed on PRESENCE, for the catalog section's reason, and a value that is
+    # not a table is a problem reported by name rather than a traceback.
     old_raw = data.get("intake_old") if "intake_old" in data else None
-    intake_old = (
-        Node(str(old_raw.get("id", "")), str(old_raw.get("display", "")))
-        if old_raw is not None
-        else None
-    )
+    intake_old: Node | None = None
+    if old_raw is not None and not isinstance(old_raw, Mapping):
+        problems.append("[intake_old] must be a table with an id and a display")
+    elif old_raw is not None:
+        intake_old = Node(str(old_raw.get("id", "")), str(old_raw.get("display", "")))
+        # A rotation tells INBOX from Old by the tree, but an Old that shares
+        # the intake flow's id or display is a declaration of one folder twice.
+        if intake_old.id == intake.id or intake_old.display == intake.display:
+            problems.append(
+                "[intake_old] must differ from [intake] in both id and display; "
+                "it declares a folder inside the intake flow, not the flow itself"
+            )
     declared_nodes = [(tree, "tree"), (intake, "intake")]
     if catalog is not None:
         declared_nodes.append((catalog, "catalog"))

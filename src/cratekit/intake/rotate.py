@@ -53,7 +53,6 @@ Layer: modules. It opens no database of its own: the verb hands it a handle.
 from __future__ import annotations
 
 import os
-import re
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
@@ -70,7 +69,7 @@ from cratekit.core import (
     tree_registry,
 )
 from cratekit.core.cause import Remedy, refuse
-from cratekit.intake import landing, native
+from cratekit.intake import batch_name, landing, native
 from cratekit.write import trees
 
 #: The session workflow a rotation is recorded under.
@@ -92,9 +91,6 @@ AGED_FROM_CREATED = "playlist created"
 
 #: The suffix a batch named for its run carried before U110.
 INBOXED_SUFFIX = "_inboxed"
-
-#: U110's default batch name: an ISO date, one space, then the source words.
-_DATED_NAME = re.compile(r"^\d{4}-\d{2}-\d{2} \S")
 
 #: The tables the rotation's one commit admits a removal in, and only it.
 REMOVALS: tuple[str, ...] = (rb_writer.PLAYLIST_TABLE, rb_writer.MEMBERSHIP_TABLE)
@@ -193,6 +189,8 @@ class Rotated:
     memberships_removed: int
     session_id: str
     #: Every way the read back disagrees with the plan. Empty when it agrees.
+    #: ``memberships_removed`` is the rows the removal marked, as the writer
+    #: returned them; the read back checks none of a removed node's is live.
     disagreements: tuple[str, ...]
 
 
@@ -320,15 +318,21 @@ def _recognised(cfg: config.Config, row: Any, recorded: Mapping[str, date]) -> s
         return BY_RECORD
     if name.endswith(INBOXED_SUFFIX):
         return BY_SUFFIX
-    if _DATED_NAME.match(name) and os.path.isdir(landing.target_dir(cfg, name)):
+    if batch_name.is_default_shape(name) and os.path.isdir(landing.target_dir(cfg, name)):
         return BY_NAME
     return None
 
 
 def _created_date(row: Any) -> date | None:
+    """The LOCAL day the row was created, as a batch is named for the local day.
+
+    The binding hands ``created_at`` back timezone aware, stored at UTC, so a
+    batch imported at 9 pm on the east coast reads as the next day until it is
+    converted, and ``collection_export`` converts for the same reason.
+    """
     created = getattr(row, "created_at", None)
     if isinstance(created, datetime):
-        return created.date()
+        return (created.astimezone() if created.tzinfo is not None else created).date()
     if isinstance(created, date):
         return created
     return None
@@ -340,7 +344,7 @@ def _classify(
     row: Any,
     *,
     place: str,
-    old_place: str,
+    in_old: bool,
     recorded: Mapping[str, date],
     today: date,
     stale_days: int,
@@ -373,7 +377,7 @@ def _classify(
             "batch", f"dated {landed.isoformat()}, after {today.isoformat()}, so its age is unknown"
         )
     age = (today - landed).days
-    if place == old_place:
+    if in_old:
         action = REMOVE if age > expired_days else KEEP
     else:
         action = MOVE if age > stale_days else KEEP
@@ -427,21 +431,23 @@ def plan_rotation(
             detail={"folders": [str(row.ID) for row in olds]},
         )
     old_row = olds[0] if olds else None
-    nodes = [(row, tree_id) for row in children if row is not old_row]
+    # WHERE A ROW SITS IS READ OFF THE TREE, never off the two taxonomy ids,
+    # which a hand edited template could make equal.
+    nodes = [(row, tree_id, False) for row in children if row is not old_row]
     if old_row is not None:
-        nodes += [(row, old.id) for row in _live_children(db, str(old_row.ID))]
+        nodes += [(row, old.id, True) for row in _live_children(db, str(old_row.ID))]
 
     stale_days = cfg.reports.intake_stale_days
     expired_days = cfg.reports.intake_expired_days
     batches: list[Batch] = []
     left: list[Left] = []
-    for row, place in nodes:
+    for row, place, in_old in nodes:
         found = _classify(
             cfg,
             db,
             row,
             place=place,
-            old_place=old.id,
+            in_old=in_old,
             recorded=recorded,
             today=today,
             stale_days=stale_days,
@@ -512,7 +518,7 @@ def _record_rotation_commit(
     )
 
 
-def _read_back(db: Any, plan: RotationPlan, old_id: str) -> tuple[list[str], int]:
+def _read_back(db: Any, plan: RotationPlan, old_id: str) -> list[str]:
     """Where every planned node sits now, read from SQL after the commit."""
     from sqlalchemy import text
 
@@ -527,7 +533,6 @@ def _read_back(db: Any, plan: RotationPlan, old_id: str) -> tuple[list[str], int
         ).first()
         if row is None or str(row[0]) != old_id or row[1]:
             problems.append(f"{batch.name!r} ({batch.playlist_id}) is not live under Old")
-    removed = 0
     for batch in plan.removals:
         row = db.session.execute(
             text(
@@ -549,8 +554,7 @@ def _read_back(db: Any, plan: RotationPlan, old_id: str) -> tuple[list[str], int
             problems.append(
                 f"{batch.name!r} ({batch.playlist_id}) still holds {live} live membership(s)"
             )
-        removed += batch.tracks
-    return problems, removed
+    return problems
 
 
 def apply_rotation(
@@ -574,11 +578,12 @@ def apply_rotation(
     witness, and the guarded commit, which here names the playlist and the
     membership tables in ``removals`` and nothing else.
 
-    CONFINED BEFORE IT COMMITS. The whitelist judges the pending session, and
-    then :func:`rb_writer.assert_node_changes_confined` compares SQL readings
-    taken before and after the writes: no content row, no membership of any
-    playlist the plan does not remove, and no playlist row beyond what the
-    plan names may have changed. Either refusal rolls everything back.
+    CONFINED BEFORE IT COMMITS. :func:`rb_writer.assert_node_changes_confined`
+    compares SQL readings taken before and after the writes: no content row,
+    no membership of any playlist the plan does not remove, and no playlist
+    row beyond what the plan names may have changed, and every planned move
+    and removal must be there. Then the guarded commit's whitelist judges the
+    session from the binding's buffer. Either refusal rolls everything back.
     """
     watched = [Path(root) for root in analysis_roots]
     if not watched:
@@ -599,6 +604,7 @@ def apply_rotation(
 
     created: list[str] = []
     moved: dict[str, str] = {}
+    marked = 0
     with (
         session.assert_gates(
             cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
@@ -622,10 +628,9 @@ def apply_rotation(
                 rb_writer.move_playlist_node(db, db.get_playlist(ID=batch.playlist_id), old)
                 moved[batch.playlist_id] = str(old.ID)
             for batch in plan.removals:
-                rb_writer.remove_playlist_node(db, db.get_playlist(ID=batch.playlist_id))
-            # JUDGED BEFORE THE FLUSH the confinement check makes, so nothing
-            # pending has left the collections the whitelist reads.
-            rb_writer.assert_session_whitelisted(db.session, db, removals=REMOVALS)
+                marked += len(
+                    rb_writer.remove_playlist_node(db, db.get_playlist(ID=batch.playlist_id))
+                )
             rb_writer.assert_node_changes_confined(
                 db,
                 before,
@@ -643,7 +648,7 @@ def apply_rotation(
         _record_rotation_commit(record, plan, len(created), changed, cfg)
         convergence.record_fingerprint(cfg, db)
         old_id = str(old.ID) if old is not None else (plan.old_id or "")
-        problems, memberships = _read_back(db, plan, old_id)
+        problems = _read_back(db, plan, old_id)
         session_id = record.session_id
 
     return Rotated(
@@ -651,7 +656,7 @@ def apply_rotation(
         removed=tuple(batch.playlist_id for batch in plan.removals),
         old_id=old_id,
         old_created=bool(created),
-        memberships_removed=memberships,
+        memberships_removed=marked,
         session_id=session_id,
         disagreements=tuple(problems),
     )

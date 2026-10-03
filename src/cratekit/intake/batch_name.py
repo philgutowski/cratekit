@@ -70,6 +70,21 @@ _SET_KEY = "intake.set"
 _UNSAFE = re.compile(r'[/\\:*?"<>|\x00-\x1f]')
 
 
+#: The shape :func:`readable` gives a name: an ISO date, one space, then the
+#: source words. Held here, beside the code that makes the name, so a reader
+#: that recognises a batch by it cannot drift from the writer (U111).
+_DEFAULT_SHAPE = re.compile(r"^\d{4}-\d{2}-\d{2} \S")
+
+
+def is_default_shape(name: str) -> bool:
+    """Whether ``name`` has the shape a landing's default batch name has.
+
+    The shape only. A person can type a name of this shape too, so a reader
+    deciding a playlist IS a batch asks something else as well.
+    """
+    return bool(_DEFAULT_SHAPE.match(name))
+
+
 def today() -> date:
     """The landing's date, the local calendar's. A seam for the suite."""
     return date.today()
@@ -190,6 +205,7 @@ __all__ = [
     "PLAYLISTS",
     "SET",
     "free",
+    "is_default_shape",
     "job_word",
     "joined",
     "label_words",

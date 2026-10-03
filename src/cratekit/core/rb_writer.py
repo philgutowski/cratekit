@@ -2035,11 +2035,13 @@ class NodeTables:
     """The three tables a node change could reach, read from SQL, row by row.
 
     Each mapping is a row's identifier to the row's values as a tuple, every
-    column in the table's own order. Read with no object mapper in between,
-    so what is compared is what the database holds.
+    column in the table's own order, read with no object mapper in between, so
+    what is compared is what the database holds. THE CONTENT TABLE IS KEPT AS
+    ONE DIGEST PER ROW rather than the row, since it is the widest table and
+    the only question asked of it is whether any row differs at all.
     """
 
-    content: Mapping[str, tuple]
+    content: Mapping[str, str]
     playlists: Mapping[str, tuple]
     memberships: Mapping[str, tuple]
     playlist_columns: tuple[str, ...]
@@ -2055,6 +2057,19 @@ def _rows_by_id(session: Any, table: str) -> tuple[dict[str, tuple], tuple[str, 
     return {str(row[at]): tuple(row) for row in result}, columns
 
 
+def _row_digests(session: Any, table: str) -> dict[str, str]:
+    import hashlib
+
+    from sqlalchemy import text
+
+    result = session.execute(text(f"SELECT * FROM {table}"))
+    at = tuple(result.keys()).index("ID")
+    return {
+        str(row[at]): hashlib.sha256(repr(tuple(row)).encode("utf-8")).hexdigest()
+        for row in result
+    }
+
+
 def node_tables(db: Any) -> NodeTables:
     """Read the content, playlist and membership tables as they stand, from SQL.
 
@@ -2063,7 +2078,7 @@ def node_tables(db: Any) -> NodeTables:
     first reading is of the database before the caller has written anything.
     """
     session = db.session
-    content, _ = _rows_by_id(session, CONTENT_TABLE)
+    content = _row_digests(session, CONTENT_TABLE)
     playlists, playlist_columns = _rows_by_id(session, PLAYLIST_TABLE)
     memberships, membership_columns = _rows_by_id(session, MEMBERSHIP_TABLE)
     return NodeTables(content, playlists, memberships, playlist_columns, membership_columns)
@@ -2085,7 +2100,7 @@ def node_change_violations(
 
     ``moved`` maps each moved playlist to the folder it moves into, ``removed``
     names each removed playlist, and ``created`` the folder rows the change
-    may add. Empty means the change was confined.
+    may add. Empty means the change was confined, AND that it was made.
 
     PURE, as :func:`guard_violations` is, so every branch is reachable with
     literal readings. What it explains, and nothing more:
@@ -2093,14 +2108,20 @@ def node_change_violations(
     * no content row differs, is added or disappears;
     * a membership differs only inside a removed playlist, and only in the
       marker and the bookkeeping beside it, and the marker only ever goes on;
-    * a moved playlist differs only in its parent, which is the named folder,
-      its position and bookkeeping; a removed one only in the marker going on
-      and bookkeeping; any other playlist only in position and bookkeeping;
+    * a moved playlist sits under the named folder, live, and differs in its
+      parent, position and bookkeeping only; a removed one carries the marker
+      and differs in the marker and bookkeeping only. EACH IS ASKED WHETHER IT
+      CHANGED OR NOT, so a planned write that never happened is refused here,
+      before the commit, and not found by the read back after it;
+    * any other playlist differs in position and bookkeeping only, and only
+      when it sits in a parent a node left or joined, which is where the
+      binding renumbers; a position change anywhere else is refused;
     * the playlist rows added are exactly ``created``, and nothing is added to
       the membership table and nothing disappears from either.
     """
     violations: list[str] = []
-    gone_removed = set(map(str, removed))
+    gone = {str(key) for key in removed}
+    planned_moves = {str(key): str(value) for key, value in moved.items()}
     if before.content != after.content:
         changed = sorted(
             key
@@ -2113,31 +2134,41 @@ def node_change_violations(
         )
 
     p_cols = before.playlist_columns
-    marker_at = p_cols.index(SOFT_DELETE_COLUMN) if SOFT_DELETE_COLUMN in p_cols else None
-    parent_at = p_cols.index("ParentID") if "ParentID" in p_cols else None
+    marker_at = p_cols.index(SOFT_DELETE_COLUMN)
+    parent_at = p_cols.index("ParentID")
     for key in sorted(set(before.playlists) - set(after.playlists)):
         violations.append(f"the {PLAYLIST_TABLE} row {key!r} disappeared")
     added = set(after.playlists) - set(before.playlists)
-    for key in sorted(added - set(map(str, created))):
+    for key in sorted(added - {str(key) for key in created}):
         violations.append(f"an unplanned {PLAYLIST_TABLE} row {key!r} was added")
+    # The parents a node left or joined: the only places a renumbering belongs.
+    renumbered = {
+        str(before.playlists[key][parent_at]) for key in planned_moves if key in before.playlists
+    } | set(planned_moves.values())
+    for key in sorted(planned_moves):
+        new = after.playlists.get(key)
+        if new is None or str(new[parent_at]) != planned_moves[key] or new[marker_at]:
+            violations.append(
+                f"the moved playlist {key!r} is not live under the planned "
+                f"{planned_moves[key]!r}"
+            )
+    for key in sorted(gone):
+        new = after.playlists.get(key)
+        if new is None or not new[marker_at]:
+            violations.append(f"the removed playlist {key!r} does not carry the marker")
     for key in sorted(set(before.playlists) & set(after.playlists)):
         old, new = before.playlists[key], after.playlists[key]
         changed = _changed(p_cols, old, new)
         if not changed:
             continue
-        if key in moved:
+        if key in planned_moves:
             allowed = _MOVED_COLUMNS
-            if parent_at is not None and str(new[parent_at]) != str(moved[key]):
-                violations.append(
-                    f"the moved playlist {key!r} sits under {new[parent_at]!r}, not "
-                    f"the planned {moved[key]!r}"
-                )
-        elif key in gone_removed:
+        elif key in gone:
             allowed = _REMOVED_COLUMNS
-            if marker_at is not None and not new[marker_at]:
-                violations.append(f"the removed playlist {key!r} does not carry the marker")
-        else:
+        elif str(old[parent_at]) in renumbered:
             allowed = _SIBLING_COLUMNS
+        else:
+            allowed = frozenset()
         stray = changed - allowed
         if stray:
             violations.append(
@@ -2147,23 +2178,31 @@ def node_change_violations(
 
     m_cols = before.membership_columns
     owner_at = m_cols.index("PlaylistID")
-    m_marker = m_cols.index(SOFT_DELETE_COLUMN) if SOFT_DELETE_COLUMN in m_cols else None
+    m_marker = m_cols.index(SOFT_DELETE_COLUMN)
     for key in sorted(set(before.memberships) ^ set(after.memberships)):
         violations.append(f"the {MEMBERSHIP_TABLE} row {key!r} was added or disappeared")
+    # A REMOVED NODE KEEPS NO LIVE MEMBERSHIP, asked of every row it owns
+    # whether the row changed or not, for the planned moves' reason above.
+    for key in sorted(set(after.memberships)):
+        row = after.memberships[key]
+        if str(row[owner_at]) in gone and not row[m_marker]:
+            violations.append(
+                f"the {MEMBERSHIP_TABLE} row {key!r} of the removed playlist "
+                f"{str(row[owner_at])!r} is still live"
+            )
     for key in sorted(set(before.memberships) & set(after.memberships)):
         old, new = before.memberships[key], after.memberships[key]
         changed = _changed(m_cols, old, new)
         if not changed:
             continue
         owner = str(old[owner_at])
-        if owner not in gone_removed:
+        if owner not in gone:
             violations.append(
                 f"the {MEMBERSHIP_TABLE} row {key!r} of playlist {owner!r} changed "
                 f"{sorted(changed)}, and only a removed playlist's own memberships may"
             )
             continue
-        stray = changed - _REMOVED_COLUMNS
-        if stray or (m_marker is not None and not new[m_marker]):
+        if changed - _REMOVED_COLUMNS or not new[m_marker]:
             violations.append(
                 f"the {MEMBERSHIP_TABLE} row {key!r} of the removed playlist {owner!r} "
                 f"changed {sorted(changed)}; only its marker may go on"
@@ -2184,10 +2223,14 @@ def assert_node_changes_confined(
     THE CHECK IS FROM SQL, as :func:`assert_created_rows_are_gridless` is and
     for its reason: the mapped objects say what the writer intended. The
     pending work is flushed DELIBERATELY, inside the transaction, so the
-    second reading sees it and a violation still rolls back. The whitelist
-    must have judged the session before this runs, because the flush empties
-    the collections it reads; :func:`commit_guarded` judges it again from the
-    binding's buffer, which a flush does not empty.
+    second reading sees it and a violation still rolls back.
+
+    WHAT IT ADDS TO THE WHITELIST, which :func:`commit_guarded` still runs
+    after it from the binding's buffer, a list a flush does not empty. The
+    whitelist judges tables and columns, so it admits a marker on ANY
+    membership once the commit names the membership table, and it cannot see
+    the sibling renumbering the binding makes with its tracking switched off.
+    This judges rows: whose membership, which parent, which position.
 
     A REFUSAL ROLLS THE HANDLE BACK, so nothing the node change made can land
     later under another operation's name.
@@ -2201,8 +2244,8 @@ def assert_node_changes_confined(
         db.rollback()
         raise _unavailable(
             "whitelist-violation",
-            "the node change reached rows it did not plan, read from SQL before "
-            "the commit:\n  - " + "\n  - ".join(violations),
+            "the node change reached rows it did not plan, or did not make one it "
+            "planned, read from SQL before the commit:\n  - " + "\n  - ".join(violations),
             detail={"violations": violations},
         )
 

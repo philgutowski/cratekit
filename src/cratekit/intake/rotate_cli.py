@@ -256,9 +256,10 @@ def inbox_rotate(ctx) -> Envelope:
                 "code": ROTATED,
                 "message": (
                     f"{len(rotated.moved)} batch playlist(s) moved into "
-                    f"{plan.old_display} and {len(rotated.removed)} removed with their "
-                    f"{rotated.memberships_removed} membership(s), read back from the "
-                    f"database; no track left the collection; undo with a restore of "
+                    f"{plan.old_display} and {len(rotated.removed)} removed, "
+                    f"{rotated.memberships_removed} membership(s) marked with them; "
+                    f"every node read back from the database where the plan put it, "
+                    f"and no track left the collection; undo with a restore of "
                     f"session {rotated.session_id}"
                 ),
             },

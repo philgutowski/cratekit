@@ -569,7 +569,7 @@ def test_a_move_that_lands_somewhere_else_is_refused_and_rolled_back(four_batche
     nodes = _query(cfg, "SELECT * FROM djmdPlaylist ORDER BY ID")
     with pytest.raises(rb_writer.RekordboxUnavailable) as raised:
         _apply(cfg, plan)
-    assert "not the planned" in raised.value.cause.message
+    assert "not live under the planned" in raised.value.cause.message
     assert _query(cfg, "SELECT * FROM djmdPlaylist ORDER BY ID") == nodes
 
 
@@ -626,7 +626,7 @@ def test_the_membership_move_commit_still_refuses_a_removed_playlist(native_libr
 
 def _tables(**changes) -> rb_writer.NodeTables:
     base = {
-        "content": {"c1": ("c1", "title", 0)},
+        "content": {"c1": "a digest"},
         "playlists": {
             "root": ("root", "INBOX", "", 1, 0),
             "old": ("old", "Old", "root", 2, 0),
@@ -656,40 +656,67 @@ def _judge(after: rb_writer.NodeTables, **kwargs) -> list[str]:
     return rb_writer.node_change_violations(_tables(), after, **plan)
 
 
+#: The reading after exactly the planned change: b1 moved to the end of Old,
+#: its INBOX sibling closed up, b2 and its membership marked removed.
+ADMITTED = {
+    "playlists": {
+        "b1": ("b1", "batch", "old", 2, 0),
+        "b2": ("b2", "batch two", "old", 1, 1),
+        "sib": ("sib", "sibling", "root", 3, 0),
+    },
+    "memberships": {"m1": ("m1", "b2", "c1", 1)},
+}
+
+
+def _after(**changes) -> rb_writer.NodeTables:
+    merged = {key: dict(value) for key, value in ADMITTED.items()}
+    for key, value in changes.items():
+        merged[key] = {**merged.get(key, {}), **value}
+    return _tables(**merged)
+
+
 def test_the_judge_admits_exactly_the_planned_change():
-    after = _tables(
-        playlists={
-            "b1": ("b1", "batch", "old", 2, 0),
-            "b2": ("b2", "batch two", "old", 1, 1),
-            "sib": ("sib", "sibling", "root", 3, 0),
-        },
-        memberships={"m1": ("m1", "b2", "c1", 1)},
-    )
-    assert _judge(after) == []
+    assert _judge(_after()) == []
 
 
 @pytest.mark.parametrize(
     "after, expected",
     [
-        (_tables(content={"c1": ("c1", "title", 1)}), "djmdContent"),
-        (_tables(memberships={"m2": ("m2", "g", "c1", 1)}), "only a removed playlist"),
-        (_tables(memberships={"m1": ("m1", "b2", "c9", 1)}), "only its marker may go on"),
-        (_tables(memberships={"m3": ("m3", "b2", "c1", 0)}), "added or disappeared"),
-        (_tables(playlists={"b1": ("b1", "batch", "sib", 2, 0)}), "not the planned"),
-        (_tables(playlists={"b1": ("b1", "renamed", "old", 2, 0)}), "['Name']"),
-        (_tables(playlists={"sib": ("sib", "sibling", "old", 4, 0)}), "['ParentID']"),
-        (_tables(playlists={"sib": ("sib", "sibling", "root", 4, 1)}), "rb_local_deleted"),
-        (_tables(playlists={"b2": ("b2", "batch two", "old", 1, 0), "x": ("x",) * 5}), "unplanned"),
+        (_after(content={"c1": "another digest"}), "djmdContent"),
+        (_after(memberships={"m2": ("m2", "g", "c1", 1)}), "only a removed playlist"),
+        (_after(memberships={"m1": ("m1", "b2", "c9", 1)}), "only its marker may go on"),
+        (_after(memberships={"m1": ("m1", "b2", "c1", 0)}), "is still live"),
+        (_after(memberships={"m3": ("m3", "g", "c1", 0)}), "added or disappeared"),
+        (_after(playlists={"b1": ("b1", "batch", "sib", 2, 0)}), "not live under the planned"),
+        (_after(playlists={"b1": ("b1", "batch", "root", 3, 0)}), "not live under the planned"),
+        (_after(playlists={"b1": ("b1", "renamed", "old", 2, 0)}), "['Name']"),
+        (_after(playlists={"b2": ("b2", "batch two", "old", 1, 0)}), "does not carry the marker"),
+        (_after(playlists={"sib": ("sib", "sibling", "old", 3, 0)}), "['ParentID']"),
+        (_after(playlists={"sib": ("sib", "sibling", "root", 3, 1)}), "rb_local_deleted"),
+        (_after(playlists={"x": ("x", "x", "root", 9, 0)}), "unplanned"),
     ],
 )
 def test_the_judge_refuses_every_change_the_plan_does_not_explain(after, expected):
     violations = _judge(after)
-    assert violations and any(expected in line for line in violations), violations
+    assert len(violations) == 1 and expected in violations[0], violations
 
 
-def test_the_judge_refuses_a_removal_whose_marker_did_not_go_on():
-    after = _tables(playlists={"b2": ("b2", "batch two", "old", 5, 0)})
-    assert any("does not carry the marker" in line for line in _judge(after))
+def test_the_judge_refuses_a_renumbering_outside_the_parents_a_node_left_or_joined():
+    """The binding renumbers INBOX and Old. A position moved anywhere else is not that."""
+    base = _tables(playlists={"g1": ("g1", "genre", "genre-root", 1, 0)})
+    after = _after(playlists={"g1": ("g1", "genre", "genre-root", 2, 0)})
+    violations = rb_writer.node_change_violations(base, after, moved={"b1": "old"}, removed=["b2"])
+    assert len(violations) == 1 and "['Seq']" in violations[0], violations
+
+
+def test_the_judge_refuses_a_planned_change_that_was_never_made():
+    """Asked whether it changed or not: a move or a removal that did nothing is a refusal."""
+    violations = _judge(_tables())
+    assert sorted(violations) == [
+        "the djmdSongPlaylist row 'm1' of the removed playlist 'b2' is still live",
+        "the moved playlist 'b1' is not live under the planned 'old'",
+        "the removed playlist 'b2' does not carry the marker",
+    ]
 
 
 def test_a_commit_naming_the_rotation_tables_admits_a_node_marker_and_no_content_marker():
@@ -704,3 +731,125 @@ def test_a_commit_naming_the_rotation_tables_admits_a_node_marker_and_no_content
         [], [(rb_writer.CONTENT_TABLE, removal)], [], removals=rotate.REMOVALS
     )
     assert len(refused) == 1 and "djmdContent" in refused[0]
+
+
+# ---------------------------------------------------------------------------
+# What the review of U111 asked for
+# ---------------------------------------------------------------------------
+
+
+def _removal_callers() -> dict[str, list[str]]:
+    """Every ``removals=`` handed to the guarded commit or the whitelist in ``src``."""
+    import ast
+
+    src = Path(rb_writer.__file__).resolve().parents[1]
+    found: dict[str, list[str]] = {}
+    for path in sorted(src.rglob("*.py")):
+        if "_vendor" in path.parts:
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.Call):
+                continue
+            name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(
+                node.func, "id", ""
+            )
+            if name not in {"commit_guarded", "assert_session_whitelisted", "guard_violations"}:
+                continue
+            for keyword in node.keywords:
+                if keyword.arg == "removals":
+                    found.setdefault(path.relative_to(src).as_posix(), []).append(
+                        ast.unparse(keyword.value)
+                    )
+    return found
+
+
+def test_only_the_rotation_asks_its_commit_to_admit_a_removed_playlist():
+    """The playlist table is in the removable set, so who names it is held here.
+
+    The membership move names its own table and nothing else, the rotation
+    names its own tuple, and the writer's two judges pass the argument through.
+    A new caller, or ``REMOVABLE_TABLES`` handed over whole, fails this.
+    """
+    assert _removal_callers() == {
+        "core/rb_writer.py": ["removals", "removals"],
+        "intake/rotate.py": ["REMOVALS"],
+        "write/trees.py": ["(rb_writer.MEMBERSHIP_TABLE,)"],
+    }
+    assert set(rotate.REMOVALS) == {rb_writer.PLAYLIST_TABLE, rb_writer.MEMBERSHIP_TABLE}
+
+
+def _template_with(section: str) -> str:
+    text = Path(taxonomy.__file__).resolve().parents[1].joinpath(
+        "templates", "taxonomy.default.toml"
+    ).read_text(encoding="utf-8")
+    start = text.index("[intake_old]")
+    end = text.index("\n\n", start)
+    return text[:start] + section + text[end:]
+
+
+@pytest.mark.parametrize(
+    "declared, expected",
+    [
+        ("Old", "must be a table"),
+        ({"id": "inbox", "display": "Old"}, "must differ from [intake]"),
+        ({"id": "inbox_old", "display": "INBOX"}, "must differ from [intake]"),
+    ],
+)
+def test_an_old_folder_declared_wrongly_is_a_taxonomy_problem_and_not_a_traceback(
+    declared, expected
+):
+    import tomllib
+
+    data = tomllib.loads(_template_with(""))
+    data["intake_old"] = declared
+    with pytest.raises(taxonomy.TaxonomyError) as raised:
+        taxonomy.build_taxonomy(data)
+    assert any(expected in problem for problem in raised.value.problems), raised.value.problems
+
+
+def test_a_template_without_the_section_declares_no_old_folder():
+    import tomllib
+
+    assert taxonomy.build_taxonomy(tomllib.loads(_template_with(""))).intake_old is None
+    assert DECLARED.intake_old == taxonomy.Node("inbox_old", "Old")
+
+
+def test_the_name_a_landing_gives_is_the_shape_the_rotation_recognises(machine, monkeypatch):
+    """One owner of the shape: what ``readable`` names, ``is_default_shape`` knows."""
+    from cratekit.intake import batch_name
+
+    monkeypatch.setattr(batch_name, "today", lambda: TODAY)
+    for words in (batch_name.PLAYLISTS, batch_name.DOWNLOADS, "Sudbeat"):
+        name = batch_name.free(machine, f"{batch_name.today().isoformat()} {words}")
+        assert batch_name.is_default_shape(name), name
+    assert batch_name.is_default_shape("2026-10-03 Tidal playlists 2")
+    for name in ("listen later", "2026-10-03", "2026-10-03T101010Z-1_inboxed", "3_9_26 phil"):
+        assert not batch_name.is_default_shape(name), name
+
+
+def test_a_batch_created_late_in_the_evening_is_aged_from_its_local_day(
+    native_library, monkeypatch
+):
+    """The row stores UTC. A batch made at 23:30 local is that day's, not tomorrow's."""
+    cfg, root_id = native_library
+    monkeypatch.setenv("TZ", "America/New_York")
+    import time
+
+    time.tzset()
+    try:
+        batch = _node(cfg, "2026-10-02 Set", under=root_id, batch_folder=True)
+        handle = _open(cfg)
+        try:
+            row = handle.get_playlist(ID=batch)
+            local = datetime(2026, 10, 2, 23, 30).astimezone()
+            row.created_at = local
+            handle.session.commit()
+        finally:
+            rb_writer.close_db(handle)
+        stored = _query(cfg, "SELECT created_at FROM djmdPlaylist WHERE ID = ?", batch)[0][0]
+        assert stored.startswith("2026-10-03"), stored
+        (kept,) = _plan(cfg).kept
+        assert (kept.landed, kept.age_days) == (date(2026, 10, 2), 1)
+    finally:
+        monkeypatch.delenv("TZ")
+        time.tzset()
