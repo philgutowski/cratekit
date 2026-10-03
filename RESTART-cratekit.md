@@ -18,7 +18,7 @@ word fits. Nothing written to the account changed. Battery on the branch:
 ruff clean, 12,262 passed and 1 skipped, the scan clean. One pass of the
 built in review, eight findings: six applied, the already count's ledger
 reading recorded as R-855 and the favourites sweep's same bare ok as R-856,
-on the board bar. **The mutation table was not measured**: fifteen rows are
+on the board bar, issue #250. **The mutation table was not measured**: fifteen rows are
 committed and the driver halted on a state leak caused by an attended
 session's live `crate` jobs, `docs/mutation/r850-notes.md` says how to run
 it. Main's highest residual number was R-854 at branch time; this unit files
