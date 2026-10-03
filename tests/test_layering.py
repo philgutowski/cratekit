@@ -67,7 +67,12 @@ RANK = {name: index for index, name in enumerate(LAYERS)}
 #     the one output contract they are all required to use.
 #   * the tree registry lives under core/ but is a WRITE concern.
 _LAYER_RULES: tuple[tuple[str, str], ...] = (
-    (r"^cratekit\.cli\.(output|exit_codes|envelope)$", "foundation"),
+    # ``prompt`` joins the foundation list with U107. It is the ONE module
+    # allowed to read standard input and it imports nothing of this package,
+    # so ranking it as CLI would forbid a verb that lives beside its domain,
+    # ``label.sync_cli``, from asking a question through the one allowlisted
+    # reader, and the alternative was a second reader in a second file.
+    (r"^cratekit\.cli\.(output|exit_codes|envelope|prompt)$", "foundation"),
     # ``cause`` joins the foundation list for the same reason ``exit_codes``
     # does: KTD25 reserves the failure vocabulary globally, before any verb
     # ships, and every layer from the adapter upwards has to be able to build one.

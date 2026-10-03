@@ -716,16 +716,17 @@ def test_the_declared_envelope_keys_are_exactly_what_is_serialized():
     assert set(document) == set(output.ENVELOPE_KEYS)
 
 
-def test_exactly_one_verb_is_interactive_and_it_is_the_one_with_the_stdin_exemption():
-    """The exemption is a list of one, in two files, checked against each other.
+def test_exactly_two_verbs_are_interactive_and_one_file_holds_the_stdin_exemption():
+    """The exemption is a list of two verbs and ONE file, checked against each other.
 
     An interactive verb is exempt from the no-standard-input assertion, so the
-    number of them is the size of the hole. Asserting it here means a second one
-    cannot be added quietly, and the module it is allowed to live in is the same
-    single path the static guard allows.
+    number of them is the size of the hole. Asserting it here means a third one
+    cannot be added quietly, and the module they are allowed to read through is
+    the same single path the static guard allows. U107 added the second verb,
+    the guided label sync, and added no file: it asks through ``cli/prompt.py``.
     """
     interactive = [entry for entry in registry.entries() if entry.interactive]
-    assert [entry.name for entry in interactive] == ["setup"]
+    assert [entry.name for entry in interactive] == ["setup", "label.sync"]
     assert len(INTERACTIVE_ALLOWLIST) == 1
 
 
@@ -1748,6 +1749,10 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # reads an address, and over an empty review queue that is none: the
         # verb says so before any provider is resolved.
         "label.artists": [],
+        # U107. ``--next`` is the scriptable path, which asks nothing at a
+        # terminal; over a configured machine with no favourite label the verb
+        # refuses from the vocabulary before any provider is resolved.
+        "label.sync": ["--next"],
         # U27. The four report verbs each take a collection export, and each is
         # handed a path under the CONFIGURED library that is deliberately absent,
         # for the same reason the file verbs above are: a literal here would be a

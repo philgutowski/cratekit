@@ -440,11 +440,31 @@ crate label registry add "Some Label" --match "Some Label Rec"
 crate label harvest https://tidal.com/playlist/PLAYLIST_UUID
 crate label registry adopt
 crate label import "Some Label"
+crate label sync
+crate label sync --next
+crate label sync --answer pick --label "Some Label" --release RELEASE_ID
 crate sync labels
 crate review list --queue label-release
 crate review resolve ITEM_ID --verdict accepted --actor YOUR_NAME
 crate label approved
 ```
+
+`label sync` is the guided way through your labels. It walks them one at a
+time and asks, per label, only about the releases that are new since that label
+was last asked, showing the release count, the track count and an estimated
+size. Four answers: `all` takes every new release, `pick` lets you choose them by
+number, `not-now` takes none, and `stop` removes the label from the registry.
+Every answer is saved as it is given, so you can `quit` at any label and the next
+run picks up at the first label still unanswered. A release answered once is
+never asked about again, `not-now` included; a skipped release is still reachable
+through `label import`. The genre gate runs before a label is asked, so a release
+it would hold never reaches a question, and the first run also offers, once per
+label, the releases already waiting in review from earlier sweeps. A taken
+release is an accepted review item, which `label approved` lists for download;
+nothing is downloaded by the answer itself. Without a terminal, `--next` prints
+the next question and `--answer` records one answer for one label, and both
+write the same record. A newly followed label is asked about its newest few
+releases, the `labels.offer_per_sweep` count, not its whole catalogue.
 
 `label registry` lists who you follow. The registry records nothing about what has
 been pulled. A

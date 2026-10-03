@@ -1765,6 +1765,39 @@ ENTRIES: tuple[Entry, ...] = (
         doctor_checks=("library.mounted",),
     ),
     Entry(
+        name="label.sync",
+        summary=(
+            "ask, label by label, about the releases new since each label was "
+            "last asked, and record each answer; downloads nothing"
+        ),
+        module="cratekit.label.sync_cli",
+        builder="build_sync",
+        handler_key="label.sync",
+        feature_rows=(21,),
+        module_id="labels",
+        # THE SECOND INTERACTIVE VERB (U107). The brainstorm chose a question
+        # asked in the terminal over an answer file, and every read of
+        # standard input still happens in the one allowlisted module,
+        # ``cli/prompt.py``. ``--next`` and ``--answer`` are the same verb
+        # driven with no terminal, which is what keeps it scriptable.
+        interactive=True,
+        # ``diagnostic/1``, for the reason ``label.held`` gives: what a person
+        # needs is each label's question, each answer recorded, and the
+        # command that asks the next, and the default renderer shows checks.
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
+        # IT FILES AND DECIDES. A taken release is filed into the label-release
+        # queue under the sweep's own key and recorded accepted, an open item
+        # a label's answer did not take is superseded, and an open item the
+        # gate would not have filed is withheld as ``label judge`` withholds.
+        adjudicates=True,
+        # NO WRITE SURFACE, and not destructive, on ``label.held``'s reasoning:
+        # the review database and the sync record are this product's own.
+        # Nothing is downloaded, no tombstone is written, and stop following
+        # goes through the registry's own remove.
+        doctor_checks=("library.mounted", "credential.provider"),
+    ),
+    Entry(
         name="label.judge",
         summary=(
             "judge the label releases waiting in review by their label's kind, "

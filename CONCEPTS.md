@@ -1194,6 +1194,23 @@ Each filed item carries the run that filed it as `sweep_run`.
 *Avoid:* reading it as a date floor, or as an acceptance. It decides what a
 person is asked about, never what is downloaded.
 
+### Last asked marker
+What `crate label sync` keeps per favourite label (U107): the set of release
+identities a question about that label already covered, and when it was last
+answered. A release is new when it is not in the set. The set takes places in
+the label's offer window exactly as a queued release does, so a label whose
+newest releases were all asked about has nothing to ask and a release published
+since takes the one place above them. Every answer moves it, `not-now`
+included, which is why back catalogue never returns and a skipped release is
+reached only through `label import`. It lives in `label_sync.json`, library
+state coupled with the review queue, beside the question waiting to be
+answered and every answer given. It reverses R-140's no cursor design for the
+labels source on purpose: the sweep only offered, this verb asks, and an answer
+is the event the marker records.
+
+*Avoid:* reading it as a date, or as a record of what was downloaded. A release
+in the set may have been answered `not-now`.
+
 ### Composer
 A verb that queues no work of its own and queues other verbs' work through
 THEIR queueing paths, under THEIR handler keys. `crate sync all` is the one

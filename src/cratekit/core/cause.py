@@ -1556,6 +1556,20 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # product rather than a verdict about the provider: what failed is
         # already carried underneath as the inner cause.
         "label-sweep-incomplete": ExitCode.PRECONDITION,
+        # ── U107's refusals, appended for the reason every block above gives ───
+        #
+        # The guided label sync's record, which labels were asked about what and
+        # every answer given, exists and cannot be read or locked. Its own slug,
+        # as the per-label watermark and the sync watermark each have one,
+        # because reading it as empty would ask every question again and lose
+        # every answer. PRECONDITION: the file is this installation's to repair.
+        "label-sync-unusable": ExitCode.PRECONDITION,
+        # A question was put at the terminal and nothing could answer it: the
+        # stream ended, or nothing usable was typed. The answers given before
+        # it are saved and the question is waiting, and the remedy is the
+        # scriptable path, ``--next`` and ``--answer``, so PRECONDITION rather
+        # than a defect.
+        "label-sync-unanswerable": ExitCode.PRECONDITION,
         # ── U58's refusals, appended for the reason every block above gives ────
         #
         # A restamp was asked for over a library that has never been calibrated.

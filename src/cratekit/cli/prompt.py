@@ -28,7 +28,7 @@ a test fixture instead of refusing with a remedy.
 ``getpass`` is imported here and nowhere else, for the same reason the whole
 module is allowlisted. A credential typed at a visible prompt is a credential in
 a screen recording, and a credential passed on a command line is one in the
-process listing, which is why ``crate login`` takes a file or an opted-in
+process listing, which is why the login verb takes a file or an opted-in
 environment variable and never a value argument.
 
 The honest limit, inherited from ``getpass.getpass`` and not fixable here: on a

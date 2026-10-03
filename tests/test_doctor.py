@@ -2014,17 +2014,18 @@ def test_an_unanswered_credential_offer_leaves_it_outstanding_rather_than_empty(
     assert all(note.status is doctor.Status.INFO for note in wizard.notes)
 
 
-def test_only_the_wizard_is_declared_interactive_and_it_reads_no_standard_input():
-    """The exemption is one FILE, and the wizard is not it.
+def test_only_the_wizard_and_the_label_sync_are_interactive_and_neither_reads_stdin():
+    """The exemption is one FILE, and neither interactive verb is it.
 
-    The registry marks setup interactive; the static allowlist names
-    ``cli/prompt.py``. Those are two different things on purpose, and asserting
-    both here is what stops the second one drifting into "the setup module may
-    prompt", which would put a read of standard input in a module the wizard's
-    own helpers keep growing.
+    The registry marks setup and label.sync interactive; the static allowlist
+    names ``cli/prompt.py``. Those are two different things on purpose, and
+    asserting both here is what stops the second one drifting into "the setup
+    module may prompt", which would put a read of standard input in a module
+    the wizard's own helpers keep growing. U107's verb is held to the same
+    rule in ``tests/test_label_sync.py``.
     """
     interactive = [entry.name for entry in registry.entries() if entry.interactive]
-    assert interactive == ["setup"]
+    assert interactive == ["setup", "label.sync"]
     tree = ast.parse((SRC_ROOT / "cratekit" / "cli" / "setup.py").read_text())
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):

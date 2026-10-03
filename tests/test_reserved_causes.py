@@ -5119,7 +5119,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # refuses with when it is present and cannot be read or locked. It is in
     # cause.REASONS and not in the reserved table. Population 188 to 189,
     # non-reserved 160 to 161, reserved half UNCHANGED at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (189, 161, 28)
+    # Re-pinned on U107, the guided label sync, 2026-10-02. TWO slugs, named
+    # rather than counted: label-sync-unusable, which the record of what each
+    # label was asked about refuses with when it is present and cannot be
+    # read or locked, and label-sync-unanswerable, which the interactive walk
+    # refuses with when a question was put and nothing could answer it. Both
+    # are in cause.REASONS and neither is in the reserved table. Population
+    # 189 to 191, non-reserved 161 to 163, reserved half UNCHANGED at 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (191, 163, 28)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -5995,7 +6002,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # 405 to 406. ONE joined and nothing left, absent from `main`'s own `src`
     # by git grep and not a key: export-tracks-unmatched is the WARNING code a
     # finished export carries when the provider could not match a track.
-    assert (len(literals), len(literals - set(causes))) == (594, 406), (
+    # Re-pinned on U107, the guided label sync, 2026-10-02: 594 to 598
+    # distinct, non-keys 406 to 408. FOUR joined and nothing left, each
+    # checked against `main`'s own `src` by git grep. label-sync-unusable and
+    # label-sync-unanswerable are the two keys named in the pin above.
+    # not-now is one of the verb's four ANSWERS, and label-sync-answered is
+    # the RULE a superseded open item records. nothing-new, the third word the
+    # verb's summary uses, was already in the tree.
+    assert (len(literals), len(literals - set(causes))) == (598, 408), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6701,7 +6715,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # none left, both new files: sync/mark_record.py, which refuses with
     # sync-mark-record-unusable, and sync/unmark_cli.py, which refuses with
     # sync-marks-blocked and internal-error. Neither holds an in-range integer.
-    assert (len(literal_holders), len(literal_both)) == (121, 26), (
+    # Re-pinned on U107, the guided label sync, 2026-10-02: holders move 121
+    # to 122, and the also-holds-an-integer half is UNCHANGED at 26. ONE
+    # module joined and none left, and it is a new file. label/sync_cli.py,
+    # the verb that asks label by label, refuses with label-sync-unusable,
+    # label-sync-unanswerable, review-selection-invalid, label-registry-empty
+    # and label-unknown, and holds no in-range integer: its two size
+    # constants are far above the range. label/sweep.py, label/approved_cli.py
+    # and cli/prompt.py are unchanged in whether they hold one.
+    assert (len(literal_holders), len(literal_both)) == (122, 26), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
