@@ -1,0 +1,89 @@
+name = "u107-c"
+pass_kind = "light"
+
+# U107, `crate label sync`, measured by R-857's task after the unit landed
+# unreviewed. One row per guard the unit added, plus the five guards its
+# first fix round added (S20 to S24). Subsets are derived by the driver.
+
+[[rows]]
+id = "S19_approved_superseded"
+description = "approved_cli._queued: count a superseded item as not yet answered"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+old = '''        elif item.verdict is not review.Verdict.SUPERSEDED:'''
+new = '''        else:'''
+
+[[rows]]
+id = "S20_pick_isdecimal"
+description = "sync_cli._pick: decide a release number with isdigit again, so a superscript digit crashes the walk (fix round guard)"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+old = '''            if word.isdecimal() and 1 <= int(word) <= count:'''
+new = '''            if word.isdigit() and 1 <= int(word) <= count:'''
+
+[[rows]]
+id = "S21_filing_run"
+description = "sync_cli.record_answer: file taken releases under the answering run, not the run that asked (fix round guard)"
+file = "src/cratekit/label/sync_cli.py"
+surface = "maintainer"
+old = '''        filing_run = question.run or run_id'''
+new = '''        filing_run = run_id'''
+
+[[rows]]
+id = "S22_unanswered_outcome"
+description = "sync_cli._walk: report no op over a walk that saved a question and was left unanswered (fix round guard)"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+old = '''        outcome=Outcome.OK if answered or stopped_at else Outcome.NO_OP,'''
+new = '''        outcome=Outcome.OK if answered else Outcome.NO_OP,'''
+
+[[rows]]
+id = "S23_stop_remedy"
+description = "sync_cli.record_answer: stop with nothing waiting sends a person to --next, which asks nothing (fix round guard)"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+old = '''                    if answer == STOP'''
+new = '''                    if False'''
+
+[[rows]]
+id = "S24_size_coefficient"
+description = "sync_cli: halve the bytes per second the size estimate uses"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+old = '''BYTES_PER_SECOND = 110_000'''
+new = '''BYTES_PER_SECOND = 55_000'''
+
+[[rows]]
+id = "S25_measured_passes_refusal"
+description = "sync_cli._measured: count a provider refusal while reading a release's tracks as tracks unread, so the walk goes on instead of parking"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+old = '''    except CratekitError:
+        raise
+    except Exception:  # noqa: BLE001 - counted as unread, never guessed at'''
+new = '''    except Exception:  # noqa: BLE001 - counted as unread, never guessed at'''
+
+[[dropped]]
+id = "D1_quit_writes_nothing"
+description = "sync_cli._walk: treat quit as an answer"
+reason = "ranked below the cap: quit reaching record_answer is refused there as not an answer, so the row measures S16's refusal path twice"
+
+[[dropped]]
+id = "D2_lock_refusal"
+description = "sync_cli._locked: proceed unlocked when the lock cannot be taken"
+reason = "ranked below the cap: the lock helper is config._exclusive_lock, shared and measured by its own suite"
+
+[[dropped]]
+id = "D3_empty_registry"
+description = "sync_cli._followed_or_refuse: walk an empty registry"
+reason = "ranked below the cap: maintainer facing, an empty walk asks nothing either way"
+
+[[dropped]]
+id = "D4_open_for_renamed"
+description = "sync_cli._Tools.open_for: group by the identifier the item names rather than the one the registry follows"
+reason = "ranked below the cap: R-381's rename mapping is measured by the registry's own table"
+
+[[dropped]]
+id = "D5_record_round"
+description = "sync_cli._question_for: skip recording the round"
+reason = "ranked below the cap: a grouping count, maintainer facing"
