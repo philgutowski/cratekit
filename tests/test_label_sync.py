@@ -965,6 +965,72 @@ def test_a_record_that_cannot_be_read_refuses_rather_than_asking_everything_agai
     assert fake.asked_for == []
 
 
+def test_a_record_of_another_version_refuses_rather_than_being_read_as_this_builds(
+    installed, monkeypatch
+):
+    """Measured at zero by R-857's table, row S02: no test wrote another version."""
+    register()
+    fake = three_new(monkeypatch)
+    path = config.state_path("label_sync", installed)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"version": 2, "labels": {}, "answers": []}))
+
+    code, envelope = sync("--next")
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "label-sync-unusable"
+    assert "version 2" in envelope["cause"]["message"]
+    assert fake.asked_for == []
+
+
+def test_an_item_decided_between_the_question_and_the_answer_is_left_as_decided(
+    installed, monkeypatch
+):
+    """Measured at zero by R-857's table, row S14: nothing decided an item mid question."""
+    register()
+    bind(monkeypatch, {SLUG: []})
+    decided = offered(installed, "r-old-1")
+    offered(installed, "r-old-2")
+    next_question()
+    with review.open_store(installed) as store:
+        review.resolve(store, decided, review.Verdict.REJECTED, actor="a person")
+
+    answered = answer(SLUG, "all")
+
+    assert answered["taken"] == ["r-old-2"]
+    assert answered["left"] == ["r-old-1"]
+    filed = items(installed)
+    assert filed["r-old-1"].verdict is review.Verdict.REJECTED
+    assert filed["r-old-2"].verdict is review.Verdict.ACCEPTED
+
+
+def test_a_provider_refusal_while_counting_a_catch_up_release_parks_the_run(
+    installed, monkeypatch
+):
+    """Measured at zero by R-857's table, row S25: a refusal counted as tracks unread."""
+    register()
+    fake = bind(monkeypatch, {SLUG: []})
+    offered(installed, "r-old-1")
+
+    def refused(release_id):
+        raise Parked(
+            Cause(
+                reason="provider-cooldown",
+                message="the streaming provider rate limited this account",
+                remediation=Remediation(remedy=Remedy.RETRY_LATER),
+                origin=("provider_gate",),
+            )
+        )
+
+    monkeypatch.setattr(fake, "release_tracks", refused)
+
+    code, envelope = sync("--next")
+
+    assert code == int(ExitCode.UPSTREAM_UNAVAILABLE), envelope
+    assert envelope["cause"]["reason"] == "provider-cooldown"
+    assert record(installed)["labels"] == {}
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 7. What the verb and its record declare
 # ═══════════════════════════════════════════════════════════════════════════
