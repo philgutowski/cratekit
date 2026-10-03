@@ -851,3 +851,56 @@ def test_each_chunk_is_recorded_as_it_lands(followed, monkeypatch):
     assert code == int(ExitCode.INTERNAL)
     added = ledger.label_shape(cfg, LABEL_ID).years["2023"].added
     assert len(added) == 100
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 8. Written for the zero rows of mutation batch a
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_label_folder_deleted_on_the_account_is_made_again_and_recorded(followed):
+    cfg, fake, account = followed
+    assert _build()[0] == int(ExitCode.OK)
+    (gone,) = account.folder_names
+    account.folder_names.clear()
+    account.placed.clear()
+
+    planned = _plan(cfg, fake, account)
+    assert (planned.folder_action, planned.stale_folder) == (folders.CREATE, gone)
+    assert _build()[0] == int(ExitCode.OK)
+    (made,) = account.folder_names
+    assert made != gone
+    assert ledger.label_shape(cfg, LABEL_ID).folder_id == made
+    assert set(account.placed.values()) == {made}
+    assert account.created.count("Kompakt 2021") == 1
+
+
+def test_a_rejected_session_reading_a_recorded_year_is_raised_not_passed_over(followed):
+    from cratekit.core.cause import refuse
+
+    cfg, fake, account = followed
+    assert _build()[0] == int(ExitCode.OK)
+    gone = ledger.label_shape(cfg, LABEL_ID).years["2022"].remote_id
+    del account.placed[gone]
+    fake.releases["r2"] = ([FakeTrack("t3"), FakeTrack("t11")], 2022)
+
+    def rejected(playlist_id):
+        raise refuse("credential-missing", "the provider rejected the session")
+
+    account.playlist_tracks = rejected
+    with pytest.raises(CratekitError) as raised:
+        _plan(cfg, fake, account)
+    assert raised.value.cause.reason == "credential-missing"
+
+
+def test_an_unrecorded_marked_year_in_the_folder_is_matched_by_its_marked_name(followed):
+    cfg, fake, account = followed
+    account.folder_names = {"f-hand": LABEL}
+    marked = account.create_playlist("DOWNLOADED Kompakt 2022")
+    account.move_to_folder(marked, "f-hand")
+    account.created.clear()
+    planned = _plan(cfg, fake, account)
+    (year,) = [step for step in planned.years if step.year == "2022"]
+    assert (year.action, year.remote_id) == (folders.ADOPT, marked)
+    assert _build()[0] == int(ExitCode.OK)
+    assert "Kompakt 2022" not in account.created
