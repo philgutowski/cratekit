@@ -163,7 +163,7 @@ def test_two_labels_across_two_years_are_four_playlists_in_the_intake_file(
     assert body.find(b"Kompakt 2025") < body.find(b"Kompakt 2024"), "newest year first"
     assert body.find(b'Name="Kompakt"') < body.find(b'Name="Ostgut Ton"'), "a new tree reads A to Z"
     # ONE file carries both: every landed track is in the intake playlist too.
-    assert sorted(_playlist_keys(body, f"{BATCH}_inboxed")) == sorted(
+    assert sorted(_playlist_keys(body, BATCH)) == sorted(
         item.track_id for item in landed.placed
     )
     assert [(entry.playlist, entry.track_ids) for entry in landed.labelled] == [
@@ -365,7 +365,7 @@ def test_a_label_row_no_landed_file_matches_is_reported_by_name(
     assert _playlist_keys(body, "Kompakt 2025") == [_id_of(landed, "Ada - North")]
     # The file no row names is filed under no label and is still importable.
     unlisted = _id_of(landed, "Cy - Unlisted")
-    assert unlisted in _playlist_keys(body, f"{BATCH}_inboxed")
+    assert unlisted in _playlist_keys(body, BATCH)
     assert unlisted not in _playlist_keys(body, "Kompakt 2025")
 
 
@@ -506,7 +506,7 @@ def test_a_tree_the_disk_refuses_after_the_moves_is_named_and_the_file_stays(
     assert landed.labelled == ()
     body = _destination(cfg).read_bytes()
     assert b"Record Labels" not in body
-    assert sorted(_playlist_keys(body, f"{BATCH}_inboxed")) == sorted(
+    assert sorted(_playlist_keys(body, BATCH)) == sorted(
         item.track_id for item in landed.placed
     )
 

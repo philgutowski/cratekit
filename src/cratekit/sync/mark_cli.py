@@ -8,8 +8,9 @@ wait for. This verb is handed that file and is the one caller of
 :func:`cratekit.sync.playlists.mark_swept`.
 
 THE FILE NAMES THE PASS. ``intake missing --run`` names its list after the run,
-``<run without colons>_synced``, and tells the person to land under that name,
-so the intake file is ``<name>_inboxed.xml``. Nothing here is told a run
+``<run without colons>_synced``, and tells the person to land with that as
+``--pass``, so the intake file is ``<name>_inboxed.xml`` while the batch folder
+and playlist carry the date and the source (U110). Nothing here is told a run
 identifier. The name is read off the intake file, and the pass's jobs are the
 ones whose own run spells that name, which is a comparison in the direction the
 name was built and never an attempt to put the colons back.
@@ -156,7 +157,11 @@ class _Playlist:
 
 
 def _pass_name(xml: Path) -> str:
-    """The name the pass's list, batch and intake file share, read off the file."""
+    """The name the pass's list and intake file share, read off the file.
+
+    NOT THE BATCH'S since U110, which is named for the date and the source; a
+    landing names only its intake file for the pass.
+    """
     # RETIRED OR NOT (R-501). ``intake imported`` renames the file once the
     # import is proven, and a person who proved it before marking passes that
     # name. It is the same file and it names the same pass.
@@ -225,8 +230,7 @@ def _pass_jobs(store, cfg: config.Config, name: str, handler_key: str) -> list[j
         (
             job
             for job in playlists.source_jobs(store, cfg, handler_key=handler_key)
-            if missing_cli.synced_name(str((job.payload or {}).get(missing_cli.RUN_ID) or ""))
-            == name
+            if missing_cli.in_pass(job, name)
         ),
         key=lambda job: (job.created, job.job_id),
     )

@@ -298,6 +298,62 @@ def test_three_files_become_three_rows_and_one_playlist_under_the_adopted_root(
     assert record.snapshot_path, "the capture the commit happened behind is not attached"
 
 
+def test_two_unnamed_landings_on_one_day_are_two_playlists_and_never_one(
+    native_library, silence, monkeypatch
+):
+    """U110. The writer finds a playlist by its name under the root and adds to
+    it, so the second landing's default name has to differ or the two batches
+    merge silently. Each is named for the date, the second with `` 2``."""
+    from cratekit.intake import batch_name
+
+    cfg, root_id = native_library
+    monkeypatch.setattr(batch_name, "today", lambda: date(2026, 10, 3))
+    _stage(cfg, silence, "One.flac")
+    code, first, _ = _two_acts(["intake", "land"])
+    assert code == int(ExitCode.OK), first
+    _stage(cfg, silence, "Two.flac")
+
+    code, second, _ = _two_acts(["intake", "land"])
+
+    assert code == int(ExitCode.OK), second
+    named = _query(
+        cfg,
+        "SELECT Name, ParentID FROM djmdPlaylist WHERE Name LIKE ? ORDER BY Name",
+        "2026-10-03 Downloads%",
+    )
+    assert named == [("2026-10-03 Downloads", root_id), ("2026-10-03 Downloads 2", root_id)]
+    assert [first["data"]["items"][-1]["playlist"], second["data"]["items"][-1]["playlist"]] == [
+        "2026-10-03 Downloads",
+        "2026-10-03 Downloads 2",
+    ]
+
+
+def test_a_default_name_taken_after_the_approval_is_refused_and_writes_nothing(
+    native_library, silence, monkeypatch
+):
+    """U110. The name is chosen before the gate and the write comes after it,
+    so another landing can take the name in between. Under the batch lock the
+    native landing asks again and refuses stale, with no move and no row."""
+    from cratekit.intake import batch_name
+
+    cfg, _root_id = native_library
+    monkeypatch.setattr(batch_name, "today", lambda: date(2026, 10, 3))
+    _stage(cfg, silence, "One.flac")
+    real_lock = landing.batch_lock
+
+    def take_then_lock(batch):
+        (Path(cfg.library.root) / cfg.library.music_dir / batch).mkdir(parents=True)
+        return real_lock(batch)
+
+    monkeypatch.setattr(landing, "batch_lock", take_then_lock)
+
+    code, acted, _ = _two_acts(["intake", "land"])
+
+    assert acted["cause"]["reason"] == "decision-stale", acted
+    assert _staged_names(cfg) == ["One.flac"]
+    assert _query(cfg, "SELECT ID FROM djmdPlaylist WHERE Name LIKE ?", "2026-10-03%") == []
+
+
 def test_the_rows_carry_the_library_device_and_not_the_bindings_first(native_library, silence):
     """Sitting 17: the database holds two devices and ``get_device().first()``
     is order dependent. The row is stamped with the device whose MasterDBID is

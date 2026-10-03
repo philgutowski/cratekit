@@ -152,7 +152,8 @@ def test_a_landing_followed_step_by_step_passes_the_cutover_precheck(
     assert pending["verify_verb"] in registry.VERB_NAMES
     assert len(pending["steps"]) == 5
     assert str(intake_file) in pending["steps"][0]
-    assert f"import the {intake_file.stem} playlist from it on its own" in pending["steps"][1]
+    # THE BATCH'S NAME, NOT THE FILE'S (U110): the playlist carries no ``_inboxed``.
+    assert f"import the {BATCH} playlist from it on its own" in pending["steps"][1]
     assert "drag it into the INBOX folder" in pending["steps"][2]
     assert "Fresh Export" in pending["steps"][3]
     assert "crate intake imported --export" in pending["steps"][4]

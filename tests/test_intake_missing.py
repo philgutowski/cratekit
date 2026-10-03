@@ -1209,7 +1209,10 @@ def test_the_default_human_output_names_the_list_the_download_and_the_landing(cf
     # R-770. The landing takes an export on the xml bridge and refuses one on a
     # native intake tree, so the hint names the batch and says which medium
     # wants the export, and never hands a cut over library a flag that refuses.
-    assert "crate intake land --name 2026-09-18T100000Z-ab12_synced" in text
+    # ``--pass`` and never ``--name`` (U110): the run names the intake file
+    # sync mark reads, and the batch is named for the date and the playlists.
+    assert "crate intake land --pass 2026-09-18T100000Z-ab12_synced" in text
+    assert "--name" not in text
     assert "adding --export XML" in text and "while the intake tree is on the xml bridge" in text
     assert "no export once the intake tree is database native" in text
     assert "crate intake land --export" not in text

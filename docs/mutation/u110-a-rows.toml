@@ -1,0 +1,71 @@
+name = "u110-a"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_free_loop"
+description = "free() never looks past the first name, so a taken name is reused"
+file = "src/cratekit/intake/batch_name.py"
+surface = "user"
+old = '''    while taken(cfg, candidate):'''
+new = '''    while False and taken(cfg, candidate):'''
+
+[[rows]]
+id = "A2_favorites_word"
+description = "A hearts job says Tidal playlists instead of Favorites"
+file = "src/cratekit/intake/batch_name.py"
+surface = "user"
+old = '''        return FAVORITES if source_id == intake_cli.FAVORITES_SOURCE_ID else PLAYLISTS'''
+new = '''        return PLAYLISTS'''
+
+[[rows]]
+id = "A3_succeeded_only"
+description = "A failed or cancelled pass job still names the batch"
+file = "src/cratekit/intake/batch_name.py"
+surface = "user"
+old = '''            and job.state is jobs.JobState.SUCCEEDED
+'''
+new = ''''''
+
+[[rows]]
+id = "A4_this_library"
+description = "A pass job on another library names this library's batch"
+file = "src/cratekit/intake/batch_name.py"
+surface = "user"
+old = '''            and job.library_id == cfg.library.volume_id
+'''
+new = ''''''
+
+[[rows]]
+id = "A5_several_labels"
+description = "A manifest naming several labels is named for its first label, not Labels"
+file = "src/cratekit/intake/batch_name.py"
+surface = "user"
+old = '''else LABELS'''
+new = '''else next(iter(named.values()))'''
+
+[[rows]]
+id = "A6_folder_safe"
+description = "A label name's slash and colon reach the folder name unreplaced"
+file = "src/cratekit/intake/batch_name.py"
+surface = "user"
+old = '''_UNSAFE.sub("-", text)'''
+new = '''text'''
+
+[[rows]]
+id = "A7_join_order"
+description = "Several pass words are joined alphabetically instead of in the fixed order"
+file = "src/cratekit/intake/batch_name.py"
+surface = "user"
+old = '''    ordered = [word for word in _ORDER if word in present]'''
+new = '''    ordered = [word for word in sorted(present) if word in _ORDER]'''
+
+[[rows]]
+id = "A8_labels_first"
+description = "Label rows lose their precedence over the pass's jobs"
+file = "src/cratekit/intake/batch_name.py"
+surface = "user"
+old = '''    said = label_words(label_rows)
+    if said is not None:
+        return said
+    if pass_name:'''
+new = '''    if pass_name:'''

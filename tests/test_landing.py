@@ -114,7 +114,9 @@ def test_three_tagged_files_land_in_one_intake_file(cfg, silence, export):
     for moved in result.moved:
         assert locations.location_url(moved.target.resolve()).encode() in locations_written
     assert b"staging" not in b"".join(locations_written)
-    assert body.count(f'Name="{BATCH}_inboxed"'.encode()) == 1
+    # The batch playlist is named for the batch and never for the file (U110).
+    assert body.count(f'Name="{BATCH}"'.encode()) == 1
+    assert b"_inboxed" not in body
     assert b"<TEMPO" not in body
 
 

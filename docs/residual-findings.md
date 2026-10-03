@@ -34915,3 +34915,109 @@ its re-reads, and either it finishes or `search_release` reads through
 
 **Not on the board bar.** The reachability is unmeasured, and a refusal that
 writes nothing is honest about what it could not read.
+
+
+---
+
+## R-896. A batch name given with --name and --pass together lands into a folder already holding it
+
+**Found:** by the built in review of U110 on `relay/258`, 2026-10-03.
+
+**The mechanism.** Before U110 the intake file was named for the batch, so a
+second landing under one `--name` was refused by the file the first had
+written. The file is now named for the pass, so `--name A --pass P1` and later
+`--name A --pass P2` write two files, and the second moves its tracks into the
+folder `A` already is. The native writer then adds them to the `A` playlist,
+and the xml splice replaces the export's `A` node with the second batch alone.
+A name the landing chose is rechecked under the lock and never reused; a name a
+person gave is theirs, and the native suite pins landing into one again.
+
+**Measured cost.** Not measured. No printer prints both flags, and nothing
+drove a person typing them.
+
+**Closes when:** a person given name is refused over an existing folder on
+both media, if the second landing into one name is not wanted.
+
+**Not on the board bar.** The input is a hand typed combination no verb
+produces, and the reachability is unmeasured.
+
+
+---
+
+## R-897. A batch name counts as taken only while its folder exists
+
+**Found:** by the built in review of U110 on `relay/258`, 2026-10-03.
+
+**The mechanism.** `batch_name.free` asks whether the music folder holds a
+folder of the name. Both media make that folder and it stays while its tracks
+are in the library, so it is the record of an earlier landing. A folder moved
+or deleted by hand while its INBOX playlist is kept leaves the name free, and
+the next landing that day from that source reuses it: the native writer finds
+the playlist by name under INBOX and adds to it.
+
+**Measured cost.** Not measured. Nothing in the product removes a batch folder
+that holds tracks, and rotation is the next card.
+
+**Closes when:** the native plan, which has the database open, also asks
+whether INBOX holds a playlist of the name, and the xml plan asks the export.
+
+**Not on the board bar.** The input needs a hand made state no verb produces.
+
+
+---
+
+## R-898. On a database native intake tree a landing's pass is recorded nowhere
+
+**Found:** by the built in review of U110 on `relay/258`, 2026-10-03.
+
+**The mechanism.** The native medium writes no intake file, and since U110 its
+batch folder and playlist carry the date rather than the run, so `--pass` only
+chooses the batch's source words there. Nothing a later verb can read ties a
+native landing to its pass. `sync mark` and `label mark` take an intake file
+and cannot run on that medium today either.
+
+**Measured cost.** None today: no verb reads a native landing's pass.
+
+**Closes when:** the marks gain a native path, which then needs the pass on
+the landing's session record.
+
+**Not on the board bar.** Maintainer facing until a reader exists.
+
+
+---
+
+## R-899. A landing's gate shown before midnight and answered after it is stale
+
+**Found:** by the built in review of U110 on `relay/258`, 2026-10-03.
+
+**The mechanism.** The default batch name is chosen from the local date on
+every invocation, and the gate's digest covers the batch name. A plan shown at
+23:55 and applied at 00:05 chooses the next day's name, so the recorded answer
+is refused as stale and asked again. Nothing moves.
+
+**Measured cost.** One repeated question, driven in no test.
+
+**Closes when:** the name is kept on the run with the offer, if the re-ask is
+found to bite.
+
+**Not on the board bar.** The refusal is honest and costs a second answer.
+
+
+---
+
+## R-900. A sync unmark test failed once under the full parallel suite
+
+**Found:** by U110's mutation driver on `relay/258`, 2026-10-03.
+
+**The mechanism.** Unmeasured.
+`tests/test_sync_unmark.py::test_a_mark_that_fails_part_way_records_what_landed`
+died under the null control of a batch, a comment line appended to
+`land_cli.py`, with 12,620 collected. It passed six of six alone, the first of
+them taking 18 seconds cold, passed its whole file, and passed every other full
+run on the branch, the rerun's control included.
+
+**Measured cost.** One invalid mutation batch, rerun.
+
+**Closes when:** its failure is caught with output and the cause is named.
+
+**Not on the board bar.** Maintainer facing.

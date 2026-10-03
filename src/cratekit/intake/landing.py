@@ -62,7 +62,7 @@ import unicodedata
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator, Mapping
+from typing import Any, Callable, Iterator, Mapping
 
 from cratekit.acquire import listdoc, match, match_cli
 from cratekit.core import (
@@ -209,15 +209,23 @@ def _digest(items: tuple[Path, ...]) -> str:
     return hasher.hexdigest()
 
 
+def plain_name(text: str) -> bool:
+    """Whether ``text`` is one plain name a folder or a file can carry here.
+
+    ONE RULE FOR THE BATCH AND FOR THE PASS (U110). A batch name becomes a
+    folder under the music folder and a pass becomes a file name beside the
+    library, and a slash in either would put it somewhere else.
+    """
+    return bool(
+        text
+        and text == text.strip()
+        and not text.startswith(".")
+        and not any(char in text for char in ("/", "\\", "\0"))
+    )
+
+
 def _check_batch(batch: str) -> None:
-    if (
-        not batch
-        or batch != batch.strip()
-        or batch.startswith(".")
-        or "/" in batch
-        or "\\" in batch
-        or "\0" in batch
-    ):
+    if not plain_name(batch):
         raise refuse(
             "intake-list-unusable",
             f"{batch!r} is not a batch name this engine can land under, because "
@@ -260,6 +268,25 @@ def _holder(path: Path) -> str:
 
 
 @contextmanager
+def _held(key: str, refusal: Callable[[str, Path], CratekitError]) -> Iterator[Path]:
+    """Hold one landing lock, or raise ``refusal(who, path)`` without waiting."""
+    root = config.state_path(LOCK_KEY)
+    lock = jobs.driver_lock(key, root=root)
+    # Entered by hand so only the TAKING is translated. A ``with`` around the
+    # yield would also catch a held job lock raised by whatever the caller runs
+    # under this one, and report it as a second landing.
+    try:
+        path = lock.__enter__()
+    except jobs.DriverHeld:
+        held = jobs.lock_path(key, root=root)
+        raise refusal(_holder(held), held) from None
+    try:
+        yield path
+    finally:
+        lock.__exit__(None, None, None)
+
+
+@contextmanager
 def batch_lock(batch: str) -> Iterator[Path]:
     """Hold the one landing per batch name lock, or refuse without waiting.
 
@@ -288,35 +315,58 @@ def batch_lock(batch: str) -> Iterator[Path]:
     primitive proceeds unlocked there. And one small file per batch name stays
     behind for good, since unlinking a lock file races its live holder.
     """
-    key = lock_key(batch)
-    root = config.state_path(LOCK_KEY)
-    lock = jobs.driver_lock(key, root=root)
-    # Entered by hand so only the TAKING is translated. A ``with`` around the
-    # yield would also catch a held job lock raised by whatever the caller runs
-    # under this one, and report it as a second landing.
-    try:
-        path = lock.__enter__()
-    except jobs.DriverHeld:
-        held = jobs.lock_path(key, root=root)
-        who = _holder(held)
-        raise refuse(
+
+    def refusal(who: str, held: Path) -> CratekitError:
+        return refuse(
             "job-driver-held",
             f"another landing under the batch name {batch!r} is running ({who}), "
             f"so nothing was moved; two landings into one batch folder can "
             f"replace each other's files",
             steps=(
                 "wait for that landing to finish, then run this one again",
-                "if that landing succeeded its intake file now holds the name, "
-                "so land this folder under another --name",
+                "if that landing succeeded its folder now holds the name, so land "
+                "this folder under another --name, or with none and the next free "
+                "name is taken",
             ),
             retryable=True,
             origin=_ORIGIN,
             detail={"batch": batch, "lock": str(held), "holder": who},
-        ) from None
-    try:
+        )
+
+    with _held(lock_key(batch), refusal) as path:
         yield path
-    finally:
-        lock.__exit__(None, None, None)
+
+
+@contextmanager
+def intake_lock(stem: str) -> Iterator[Path]:
+    """Hold the one landing per intake file lock, or refuse without waiting.
+
+    R-432's other half, apart since U110. The intake file is named for the pass
+    and the batch for the date, so two landings under two batch names can still
+    write one intake file: the file is checked absent at the preflight and
+    written after the moves, and a second writer in between replaces the first's
+    importable file, or deletes it when its own write fails. The key cannot be a
+    batch name's, because a batch name never holds a NUL.
+    """
+
+    def refusal(who: str, held: Path) -> CratekitError:
+        return refuse(
+            "job-driver-held",
+            f"another landing writing the intake file for {stem!r} is running "
+            f"({who}), so nothing was moved; two landings writing one intake file "
+            f"replace each other's importable file",
+            steps=(
+                "wait for that landing to finish, then run this one again",
+                "if that landing succeeded this pass has its intake file, so land "
+                "this folder under another --pass",
+            ),
+            retryable=True,
+            origin=_ORIGIN,
+            detail={"intake": stem, "lock": str(held), "holder": who},
+        )
+
+    with _held(lock_key("intake file\0" + stem), refusal) as path:
+        yield path
 
 
 def plan(folder: Path, cfg: config.Config, batch: str) -> Plan:
@@ -414,7 +464,7 @@ def _check_library(cfg: config.Config, folder: Path, target: Path) -> None:
 
 def _check_export(
     export: Path,
-    destination: Path,
+    playlist: str,
     checked: Checked,
     label_rows: tuple[listdoc.ManifestRow, ...] = (),
 ) -> None:
@@ -441,7 +491,7 @@ def _check_export(
     trial = bytearray(export.read_bytes())
     collection_xml.splice_tracks(trial, [])
     registry = checked.registry
-    error = rbxml.insert_intake_playlist(trial, destination.stem, [], tree=tree)
+    error = rbxml.insert_intake_playlist(trial, playlist, [], tree=tree)
     if error:
         raise refuse(
             "library-export-unusable",
@@ -536,7 +586,7 @@ def preflight(
     # write. A registry that cannot be read refuses here, with nothing moved,
     # and cannot refuse after the moves because nothing reads it again.
     checked = Checked(registry=tree_registry.read(cfg), declared=active_taxonomy.load(cfg))
-    _check_export(export, destination, checked, label_rows)
+    _check_export(export, plan.batch, checked, label_rows)
     return checked
 
 
@@ -1027,6 +1077,9 @@ def apply(
             destination=destination,
             declared=checked.declared,
             registry=checked.registry,
+            # THE BATCH'S OWN NAME (U110), the one its folder carries, and not
+            # the intake file's stem, which names the pass and ends ``_inboxed``.
+            playlist=plan.batch,
         )
     except Exception as exc:
         # ``place_files`` writes the intake file before it records the routing
