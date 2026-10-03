@@ -410,7 +410,7 @@ def _judged_by_kind(
     return held, unjudged
 
 
-def _release_of(items: review.ReviewStore, item: review.Item) -> _Release:
+def release_of(items: review.ReviewStore, item: review.Item) -> _Release:
     """The release an accepted item names, from its IDENTITY before its payload.
 
     The identity is what the item is addressed by and is what the sweep keyed
@@ -455,7 +455,7 @@ def _queued(items: review.ReviewStore) -> tuple[list[_Release], int, int]:
     rejected = still_open = 0
     for item in page.items:
         if item.verdict is review.Verdict.ACCEPTED:
-            accepted.append(_release_of(items, item))
+            accepted.append(release_of(items, item))
         elif item.verdict is review.Verdict.REJECTED:
             rejected += 1
         elif item.verdict is not review.Verdict.SUPERSEDED:
@@ -1065,4 +1065,5 @@ __all__ = [
     "list_name",
     "list_releases",
     "listing_checks",
+    "release_of",
 ]

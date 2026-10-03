@@ -236,6 +236,25 @@ def checks(envelope: dict, prefix: str) -> list[dict]:
     return [one for one in envelope["data"]["checks"] if one["key"].startswith(f"label.sync.{prefix}")]
 
 
+def walked() -> list[str]:
+    """A walk that answered every label, which ends at U108's one gate.
+
+    Returns the lines the walk said about each label, which the refusal
+    carries in front of the summary, so a test reads what the walk did from
+    exactly what a person deciding is shown.
+    """
+    code, envelope = sync()
+    assert code == int(ExitCode.DECISION_REQUIRED), envelope
+    detail = envelope["cause"]["detail"]
+    assert detail["gate"] == "label.sync.confirm"
+    return detail["shown"]["answered_this_run"]
+
+
+def line_for(lines: list[str], name: str) -> str:
+    (found,) = [one for one in lines if one.startswith(f"{name}: ")]
+    return found
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 1. The brief's scenarios, through the structured path
 # ═══════════════════════════════════════════════════════════════════════════
@@ -652,26 +671,24 @@ def test_stopping_after_two_of_five_labels_resumes_at_the_third(installed, monke
     assert sorted(items(installed)) == ["alpha-works-r0", "alpha-works-r1"]
 
     terminal = script(monkeypatch, "pick", "2", "stop", "all")
-    code, envelope = sync()
+    lines = walked()
 
-    assert code == int(ExitCode.OK), envelope
-    summary = envelope["data"]["summary"]
-    assert [(one["label_id"], one["answer"]) for one in summary["answered"]] == [
+    answered = record(installed)["answers"][2:]
+    assert [(one["label_id"], one["answer"]) for one in answered] == [
         ("gamma-works", "pick"),
         ("delta-works", "stop"),
         ("epsilon-works", "all"),
     ]
-    assert summary["stopped_at"] is None
-    assert [one["state"] for one in summary["labels"]] == [
-        "nothing-new", "nothing-new", "answered", "answered", "answered"
-    ]
+    assert "nothing new" in line_for(lines, "Alpha Works")
+    assert "nothing new" in line_for(lines, "Beta Works")
+    assert line_for(lines, "Gamma Works").startswith("Gamma Works: pick")
     held = record(installed)["labels"]
     assert held["alpha-works"]["answer"] == "all"
     assert held["beta-works"]["answer"] == "not-now"
     assert held["gamma-works"]["answer"] == "pick"
-    assert summary["answered"][0]["taken"] == ["gamma-works-r1"]
+    assert answered[0]["taken"] == ["gamma-works-r1"]
     assert "delta-works" not in labels.RegistryStore().load().labels
-    assert "every label is answered" in checks(envelope, "run")[0]["detail"]
+    assert "every label is answered" in lines[-1]
 
 
 def test_the_structured_path_asks_the_same_question_and_takes_the_same_answer(
@@ -693,12 +710,10 @@ def test_the_structured_path_asks_the_same_question_and_takes_the_same_answer(
     answer("alpha-works", "pick", "a2")
     terminal = script(monkeypatch, "pick", "2")
 
-    code, envelope = sync()
+    lines = walked()
 
-    assert code == int(ExitCode.OK), envelope
-    assert [one["state"] for one in envelope["data"]["summary"]["labels"]] == [
-        "nothing-new", "answered"
-    ]
+    assert "nothing new" in line_for(lines, "Alpha Works")
+    assert line_for(lines, "Beta Works").startswith("Beta Works: pick")
     assert "Beta Works: 3 new release(s), 7 track(s), about 277 MB" in terminal.shown
     for number, one in enumerate(shown["releases"], start=1):
         twin = one["identity"].replace("a", "b")
@@ -759,11 +774,10 @@ def test_a_pick_outside_the_numbers_is_asked_again(installed, monkeypatch):
     three_new(monkeypatch)
     terminal = script(monkeypatch, "pick", "9", "1 3")
 
-    code, envelope = sync()
+    walked()
 
-    assert code == int(ExitCode.OK), envelope
     assert "9 is not a release number between 1 and 3" in terminal.shown
-    assert envelope["data"]["summary"]["answered"][0]["taken"] == ["r3", "r1"]
+    assert record(installed)["answers"][0]["taken"] == ["r3", "r1"]
 
 
 def test_a_pick_of_a_digit_that_is_not_a_number_is_asked_again(installed, monkeypatch):
@@ -772,11 +786,10 @@ def test_a_pick_of_a_digit_that_is_not_a_number_is_asked_again(installed, monkey
     three_new(monkeypatch)
     terminal = script(monkeypatch, "pick", "\u00b2", "2")
 
-    code, envelope = sync()
+    walked()
 
-    assert code == int(ExitCode.OK), envelope
     assert "\u00b2 is not a release number between 1 and 3" in terminal.shown
-    assert envelope["data"]["summary"]["answered"][0]["taken"] == ["r2"]
+    assert record(installed)["answers"][0]["taken"] == ["r2"]
 
 
 def test_the_prompt_goes_through_the_one_allowlisted_reader_and_the_verb_reads_no_stdin():
@@ -827,14 +840,12 @@ def test_a_label_whose_catalogue_cannot_be_listed_fails_its_line_and_the_walk_go
     fake = bind(monkeypatch, {"alpha-works": [("a-r0", "2026", 1)], "gamma-works": [("g-r0", "2026", 1)]})
     script(monkeypatch, "all", "all")
 
-    code, envelope = sync()
+    lines = walked()
 
-    assert code == int(ExitCode.OK), envelope
-    assert [one["state"] for one in envelope["data"]["summary"]["labels"]] == [
-        "answered", "skipped", "answered", "skipped", "skipped"
-    ]
-    (line,) = checks(envelope, "label.beta-works")
-    assert line["status"] == "fail" and "could not be listed" in line["detail"]
+    assert line_for(lines, "Alpha Works").startswith("Alpha Works: all")
+    assert line_for(lines, "Gamma Works").startswith("Gamma Works: all")
+    for name in ("Beta Works", "Delta Works", "Epsilon Works"):
+        assert "not asked; its catalogue could not be listed" in line_for(lines, name)
     assert set(record(installed)["labels"]) == {"alpha-works", "gamma-works"}
     assert fake.asked_for == ["alpha-works", "beta-works", "gamma-works", "delta-works", "epsilon-works"]
 
@@ -1095,8 +1106,12 @@ def test_the_verb_declares_what_it_is():
     assert entry.interactive
     assert entry.output_schema == "diagnostic/1"
     assert entry.adjudicates
-    assert not entry.destructive
-    assert entry.writes == frozenset()
+    # U108's go writes the list and lands the downloads, behind its one gate.
+    assert entry.destructive
+    assert entry.writes == frozenset({"files"})
+    assert [(gate.name, gate.explicit, gate.digest_source) for gate in entry.gates] == [
+        ("label.sync.confirm", True, "plan")
+    ]
     assert not entry.long_running
     assert entry.module_id == "labels"
     assert entry.doctor_checks == ("library.mounted", "credential.provider")
