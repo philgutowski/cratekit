@@ -1588,7 +1588,10 @@ ENTRIES: tuple[Entry, ...] = (
     # ── Sync ────────────────────────────────────────────────────────────────
     Entry(
         name="sync.all",
-        summary="queue each enabled source's own increment under one intake run",
+        summary=(
+            "queue each enabled source's own increment under one intake run; "
+            "label releases are left to crate label sync"
+        ),
         module="cratekit.sync.cli",
         builder="build_all",
         handler_key="sync.all",
@@ -1617,7 +1620,16 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="sync.labels",
-        summary="sync new releases from the favourite-label registry, on its own watermark",
+        # RETIRED BY REDUCTION (U109). ``label.sync`` takes label releases now,
+        # and ``sync.all`` no longer composes this source. The entry stays, its
+        # handler key, worker and argv builder with it, because a sweep queued
+        # before U109 is resumed through ``sync labels --job`` and would
+        # otherwise have no way to run. Without ``--job`` it refuses
+        # ``verb-retired`` and names the guided verb.
+        summary=(
+            "resume a labels sweep queued before crate label sync replaced it; "
+            "retired, it queues nothing new"
+        ),
         module="cratekit.label.cli",
         builder="build_sync",
         handler_key="sync.labels",

@@ -1738,6 +1738,11 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # conformance asks. The queueing path over a registry that holds labels,
         # and the refusal over one that does not, are both driven in
         # tests/test_label_workers.py, where a registry can be populated.
+        #
+        # U109 CHANGED IT AGAIN. ``sync labels`` queues nothing now, whatever
+        # the registry holds, and refuses ``verb-retired`` naming ``crate label
+        # sync`` before it reads anything. Still a vocabulary code and still
+        # not USAGE. Driven in tests/test_label_workers.py section 1.
         "label.registry": [],
         "sync.labels": [],
         "label.import": ["no-such-label"],

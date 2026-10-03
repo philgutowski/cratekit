@@ -5141,7 +5141,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # root folders on the account carry the year's name. It is in
     # cause.REASONS and not in the reserved table. Population 193 to 194,
     # non-reserved 165 to 166, reserved half UNCHANGED at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (194, 166, 28)
+    # Re-pinned on U109, sync all no longer sweeps labels, 2026-10-03. ONE
+    # slug, named rather than counted: verb-retired, which crate sync labels
+    # refuses with when asked to queue a sweep now that crate label sync takes
+    # label releases. It is in cause.REASONS and not in the reserved table.
+    # Population 194 to 195, non-reserved 166 to 167, reserved half UNCHANGED
+    # at 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (195, 167, 28)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -6068,7 +6074,11 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # 429. ONE joined and nothing left, absent from `main`'s own `src` by git
     # grep. library-isrc is the HOW a set row is matched by when its ISRC came
     # off the library's own file.
-    assert (len(literals), len(literals - set(causes))) == (622, 429), (
+    # Re-pinned on U109, sync all no longer sweeps labels, 2026-10-03: 622 to
+    # 623 distinct, non-keys UNCHANGED at 429. ONE joined and nothing left,
+    # absent from `main`'s own `src` by git grep. verb-retired is the key named
+    # in the pin above.
+    assert (len(literals), len(literals - set(causes))) == (623, 429), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

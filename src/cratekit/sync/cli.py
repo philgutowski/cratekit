@@ -5,21 +5,27 @@ per enabled source under its own handler key, ``sync.all``, with no items and
 no worker behind that key, so the verb that replaces ``dj-sync`` filed work the
 product never ran and reported success over it. Now it calls each source's own
 queueing path, under that source's own handler key, and the workers that
-already run ``sync labels`` and ``sync favorites`` run what it queues. Nothing
-is ever queued under ``sync.all``, so there is nothing to resume and the entry
-declares no ``argv_builder``.
+already run ``sync favorites`` and ``intake playlist`` run what it queues.
+Nothing is ever queued under ``sync.all``, so there is nothing to resume and the
+entry declares no ``argv_builder``.
 
-THE ORDER IS PLAN, ASK, QUEUE. Every enabled source is planned first, which is
-where a source's own precondition refuses: an empty label registry, a missing
-export. Then the one question favourites needs is asked. Only then is anything
-queued. A refusal at the gate has therefore queued nothing, and answering it and
-running again cannot queue the labels sweep twice.
+LABELS ARE NOT SWEPT HERE (U109). The labels source is GUIDED: its spec names
+``crate label sync`` as the verb that takes it, so it is never planned, no
+provider is called for it and nothing is queued for it, whatever the profile
+enables. The pass's report names that verb instead, so a routine sync can never
+start a label download and a person is still told where label releases went.
+
+THE ORDER IS PLAN, ASK, QUEUE. Every composed source is planned first, which is
+where a source's own precondition refuses: a missing export, a missing
+credential. Then the one question favourites needs is asked. Only then is
+anything queued. A refusal at the gate has therefore queued nothing, and
+answering it and running again cannot queue a source twice.
 
 ONE INTAKE RUN (R29). Every job carries ``ctx.run.run_id`` as its intake run,
 which is the value each source's own verb uses when run alone, so the workers of
 one pass write one intake file.
 
-ONE SOURCE MAY FILE SEVERAL JOBS (U64). Labels and favourites each queue one job.
+ONE SOURCE MAY FILE SEVERAL JOBS (U64). Favourites queues one job for each half.
 Playlists queue one ``intake.playlist`` job per account playlist that is new, so
 a plan carries the jobs it filed as a list, and a refusal part way through keeps
 the ones already filed named in the report.
@@ -172,7 +178,7 @@ class _Plan:
     describe: Callable[[list[jobs.Job]], dict[str, Any]] | None = None
     #: The question this source needs answered before it may queue, asked after
     #: every source is planned so the refusal can say what the pass would do.
-    ask: Callable[[list[_Plan]], None] | None = None
+    ask: Callable[[list[_Plan], tuple[sources.SourceSpec, ...]], None] | None = None
     #: Words the source's check carries whatever its status, read off its block.
     #: The check detail is what the default human output prints for this verb,
     #: so a fact only the json block states is a fact a person never reads.
@@ -184,21 +190,6 @@ class _Plan:
 def _filed(plan: _Plan) -> list[jobs.Job]:
     """Every job the source filed, its read only half's included."""
     return [*plan.filed, *(plan.inbound.filed if plan.inbound is not None else ())]
-
-
-def _plan_labels(spec: sources.SourceSpec, ctx) -> _Plan:
-    from cratekit.label import cli as label_cli
-
-    items = label_cli.sweep_items_or_refuse()
-
-    def queue(store, cfg: config.Config, run_id: str, filed: list[jobs.Job]) -> None:
-        filed.append(
-            label_cli.queue_sweep(
-                store, cfg, handler_key=str(spec.handler_key), run_id=run_id, item_ids=items
-            )
-        )
-
-    return _Plan(spec=spec, queue=queue, warnings=label_cli.queue_warnings())
 
 
 def _hearts_jobs(store, cfg: config.Config, *, handler_key: str) -> tuple[jobs.Job, ...]:
@@ -311,7 +302,7 @@ def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
         *favorites_cli.local_write_warning(),
     )
 
-    def ask(plans: list[_Plan]) -> None:
+    def ask(plans: list[_Plan], guided: tuple[sources.SourceSpec, ...]) -> None:
         gate = next(g for g in ctx.entry.gates if g.name == CONFIRM)
         # THE TRACKS THE SWEEP'S DIGEST COVERS ARE SHOWN (R-693), the way the
         # favourites verb's own gate shows them, beside what would queue.
@@ -322,7 +313,7 @@ def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
                 "items": list(resolved.track_ids),
             },
             context={
-                **_awaiting(plans),
+                **_awaiting(plans, guided),
                 shell.PLAYLIST: resolved.key,
                 shell.EXPORT_PATH: str(exported),
                 **shell.shown_export(age),
@@ -416,9 +407,37 @@ def _plan_playlists(spec: sources.SourceSpec, ctx) -> _Plan:
 #: so a source given a worker there without a planner here fails the suite.
 PLANNERS: dict[str, Callable[[sources.SourceSpec, Any], _Plan]] = {
     "favorites": _plan_favorites,
-    "labels": _plan_labels,
     "playlists": _plan_playlists,
 }
+
+
+def _guided(guided: tuple[sources.SourceSpec, ...]) -> dict[str, str | None]:
+    """Each guided source, keyed by identifier, and the command that takes it."""
+    return {spec.source_id: spec.command() for spec in guided}
+
+
+def _guided_step(spec: sources.SourceSpec) -> str:
+    """The guided row's words as a refusal step, for a pass that queued nothing."""
+    return f"{spec.source_id} are not swept by sync all; take them with: {spec.command()}"
+
+
+def _guided_check(spec: sources.SourceSpec) -> dict[str, Any]:
+    """The one row naming the verb that takes a guided source instead (U109).
+
+    A check and not only a summary field, for the reason ``_next_step`` gives:
+    the default human output prints the checks and nothing else, and a person
+    running a routine sync has to be told where label releases went.
+    """
+    return {
+        "key": f"sync.{spec.source_id}",
+        "title": spec.source_id,
+        "status": "info",
+        "detail": (
+            f"not swept by sync all; {spec.command()} takes this source on its "
+            "own, and asks before it downloads anything"
+        ),
+        "remedy": None,
+    }
 
 
 def _plan(spec: sources.SourceSpec, ctx) -> _Plan:
@@ -428,16 +447,20 @@ def _plan(spec: sources.SourceSpec, ctx) -> _Plan:
         return PLANNERS[spec.source_id](spec, ctx)
     except CratekitError as exc:
         # A SOURCE'S OWN PRECONDITION, reported for that source rather than
-        # ending the pass. ``dj-sync`` ran every source in one pass, and an empty
-        # label registry is no reason not to sweep favourites.
+        # ending the pass. ``dj-sync`` ran every source in one pass, and a
+        # missing export is no reason not to sweep the account's playlists.
         return _Plan(spec=spec, refused=exc.cause, not_queued=exc.cause.reason)
 
 
-def _awaiting(plans: list[_Plan]) -> dict[str, Any]:
+def _awaiting(
+    plans: list[_Plan], guided: tuple[sources.SourceSpec, ...]
+) -> dict[str, Any]:
     """What a person is shown at the gate: nothing queued yet, and why not.
 
     ``inbound`` says what each read only half will do WHATEVER the answer, so a
     person deciding the write knows whether the hearts are being listed.
+    ``guided`` names the verb each guided source is left to (U109), since the
+    gate is where every pass with favourites enabled stops first.
     """
     return {
         "queued": [],
@@ -453,6 +476,7 @@ def _awaiting(plans: list[_Plan]) -> dict[str, Any]:
             for p in plans
             if p.inbound is not None
         },
+        "guided": _guided(guided),
     }
 
 
@@ -566,7 +590,9 @@ def _inbound_check(plan: _Plan, inbound: _Inbound) -> dict[str, Any]:
     return check
 
 
-def _report(plans: list[_Plan], run_id: str) -> dict[str, Any]:
+def _report(
+    plans: list[_Plan], run_id: str, guided: tuple[sources.SourceSpec, ...]
+) -> dict[str, Any]:
     queued = [p for p in plans if _filed(p)]
     summary: dict[str, Any] = {
         "run_id": run_id,
@@ -584,6 +610,10 @@ def _report(plans: list[_Plan], run_id: str) -> dict[str, Any]:
         "not_queued": {
             p.spec.source_id: p.not_queued for p in plans if p.not_queued is not None
         },
+        # A GUIDED SOURCE IS NOT A SOURCE THAT FAILED TO QUEUE, so it is named
+        # here rather than in ``not_queued``, whose every entry is a reason this
+        # pass did not do something it would otherwise have done.
+        "guided": _guided(guided),
     }
     for plan in plans:
         if plan.describe is not None:
@@ -597,6 +627,7 @@ def _report(plans: list[_Plan], run_id: str) -> dict[str, Any]:
         checks.append(_check(plan))
         if plan.inbound is not None:
             checks.append(_inbound_check(plan, plan.inbound))
+    checks.extend(_guided_check(spec) for spec in guided)
     step = _next_step(plans, run_id)
     summary["next"] = step["command"] if step is not None else None
     if step is not None:
@@ -638,11 +669,16 @@ def compose(ctx) -> tuple[dict[str, Any], Outcome, tuple[dict[str, str], ...]]:
     cfg = _load()
     membership = profiles.resolve(cfg.profile.name, cfg.modules.explicit)
     run_id = ctx.run.run_id
-    plans = [_plan(spec, ctx) for spec in sources.enabled_specs(membership)]
+    enabled = sources.enabled_specs(membership)
+    # A GUIDED SOURCE IS NEVER PLANNED (U109). Planning is where a source lists
+    # its provider and refuses on its own preconditions, so a guided source kept
+    # out of here is one this pass cannot call a provider for or queue.
+    plans = [_plan(spec, ctx) for spec in enabled if spec.guided_by is None]
+    guided = tuple(spec for spec in enabled if spec.guided_by is not None)
 
     for plan in plans:
         if plan.ask is not None:
-            plan.ask(plans)
+            plan.ask(plans, guided)
 
     # THE READ ONLY HALF IS QUEUED BESIDE ITS SOURCE, not after the question,
     # so a declined or refused write half leaves it queued.
@@ -665,7 +701,7 @@ def compose(ctx) -> tuple[dict[str, Any], Outcome, tuple[dict[str, str], ...]]:
                 except CratekitError as exc:
                     half.refused, half.not_queued = exc.cause, exc.cause.reason
 
-    data = _report(plans, run_id)
+    data = _report(plans, run_id, guided)
     queued_any = any(_filed(p) for p in plans)
     refused = [
         cause
@@ -678,8 +714,21 @@ def compose(ctx) -> tuple[dict[str, Any], Outcome, tuple[dict[str, str], ...]]:
         # sync and got nothing because of something they can fix is told so
         # with that source's own remedy, and the whole pass rides the detail.
         first = refused[0]
+        # THE GUIDED LINE RIDES THE REFUSAL AS A LAST STEP (U109). A refusal
+        # envelope carries no check rows, so the row that names the guided verb
+        # would otherwise reach a person only inside the JSON detail. Appended,
+        # so the first step, the one the remediation line falls back to, is
+        # still the refusing source's own fix.
+        remediation = dataclasses.replace(
+            first.remediation,
+            steps=(*first.remediation.steps, *(_guided_step(spec) for spec in guided)),
+        )
         raise CratekitError(
-            dataclasses.replace(first, detail={**dict(first.detail or {}), "sources": data})
+            dataclasses.replace(
+                first,
+                remediation=remediation,
+                detail={**dict(first.detail or {}), "sources": data},
+            )
         )
 
     warnings: list[dict[str, str]] = []

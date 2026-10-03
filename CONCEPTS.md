@@ -1241,13 +1241,27 @@ in the set may have been answered `not-now`.
 ### Composer
 A verb that queues no work of its own and queues other verbs' work through
 THEIR queueing paths, under THEIR handler keys. `crate sync all` is the one
-composer: it plans every enabled source, asks the one question favourites needs,
-then queues each source's own job, so the workers that already run `sync labels`
-and `sync favorites` run what it queues. It declares no `long_running` and no
-`argv_builder`, because nothing is ever queued under its own key.
+composer: it plans every enabled source it composes, asks the one question
+favourites needs, then queues each source's own job, so the workers that already
+run `sync favorites` and `intake playlist` run what it queues. It declares no
+`long_running` and no `argv_builder`, because nothing is ever queued under its
+own key. A guided source is not composed at all, see below.
 
-*Avoid:* a composer that spells a source's payload again. Each source owns one
-`queue_sweep`, and the composer calls it.
+*Avoid:* a composer that spells a source's payload again. Each source owns its
+one queueing path, favourites `queue_sweep` and playlists `playlists.queue`, and
+the composer calls it.
+
+### Guided source
+A source `crate sync all` declares and does not compose, because another verb
+takes it, named by `guided_by` on its spec (U109). Labels is the one guided
+source: `crate label sync` asks label by label before anything downloads, so a
+routine sync plans nothing for labels, calls no provider for them, queues
+nothing for them, and names that verb in one check row and in
+`summary.guided`. Only a profile that switches the labels module on is shown
+the row.
+
+*Avoid:* reading `summary.not_queued` for labels. A guided source is not a
+source that failed to queue, so it never appears there.
 
 ### Inbound half
 A source's read only half, declared as `inbound_key` on its spec. Favourites is

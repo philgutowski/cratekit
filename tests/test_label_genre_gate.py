@@ -43,6 +43,7 @@ from cratekit.tagging import published
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, FakePagedArtist, FakeRelease, catalogue_factory
 from tests.test_config import valid_data
+from tests.test_label_workers import queued_sweep
 
 LABEL = "Tide Works"
 SLUG = "tide-works"
@@ -179,9 +180,7 @@ def register(*argv: str, name: str = LABEL) -> None:
 
 
 def sweep_once() -> str:
-    code, queued = drive(["sync", "labels"])
-    assert code == int(ExitCode.OK), queued
-    job_id = queued["data"]["job_id"]
+    job_id = queued_sweep()
     code, resumed = drive(["sync", "labels", "--job", job_id])
     assert code == int(ExitCode.OK), resumed
     return job_id
@@ -1216,9 +1215,8 @@ def test_a_taxonomy_that_cannot_be_read_refuses_the_sweep_before_the_provider_is
         raise AssertionError("the provider was resolved")
 
     monkeypatch.setattr(catalogue, "resolve", never)
-    code, queued = drive(["sync", "labels"])
-    assert code == int(ExitCode.OK), queued
-    code, resumed = drive(["sync", "labels", "--job", queued["data"]["job_id"]])
+    job_id = queued_sweep()
+    code, resumed = drive(["sync", "labels", "--job", job_id])
     assert code != int(ExitCode.OK), resumed
     assert filed(installed) == {}
 
@@ -1233,8 +1231,7 @@ def test_a_dead_verifier_over_a_window_of_standing_holds_refuses(installed, monk
     assert sorted(held_ids(installed)) == ["r-1", "r-2"]
 
     bind(monkeypatch, {"r-3": ("2026", isrc(3)), **releases}, confirmed=set())
-    code, queued = drive(["sync", "labels"])
-    job_id = queued["data"]["job_id"]
+    job_id = queued_sweep()
     code, resumed = drive(["sync", "labels", "--job", job_id])
 
     assert code != int(ExitCode.OK), resumed

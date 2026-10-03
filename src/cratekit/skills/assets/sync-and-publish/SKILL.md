@@ -18,7 +18,9 @@ refusal.
 
 `crate sync all` queues each enabled source's own increment, the same job that
 source's own verb would queue, and reports every source: what it queued and
-under which job, and why anything was not queued. There is no monolithic gated
+under which job, and why anything was not queued. Labels are not among them.
+Label releases are taken with `crate label sync`, which asks label by label, and
+the pass names that verb rather than sweeping them. There is no monolithic gated
 run to sit and watch, so the verb returning almost immediately is the design
 rather than a failure.
 
@@ -72,7 +74,7 @@ re-invokes. `sync all` takes no `--job`, because it queues nothing under its own
 name: resume the source's job instead.
 
 ```bash
-crate sync labels --job JOB-ID
+crate sync favorites --job JOB-ID
 ```
 
 ## A cursor advances only on a clean pass

@@ -45,8 +45,7 @@ from tests.intake.test_workers import Track
 from tests.label_fakes import FakeCatalogue, FakePagedPlaylist, catalogue_factory
 from tests.test_cli_contract import _enqueue_calls
 from tests.test_config import valid_data
-from tests.test_label_workers import LABELS, SLUGS, readable, register
-from tests.test_label_workers import bind as bind_catalogue
+from tests.test_label_workers import LABELS, register
 from tests.test_outbound_workers import bind as bind_account
 from tests.test_outbound_workers import catalog
 
@@ -145,6 +144,24 @@ def test_every_source_with_a_worker_has_a_planner_and_no_other_does():
     }
 
 
+def test_every_guided_source_names_a_verb_the_registry_declares_and_queues_nothing():
+    """U109. The table says which sources ``sync all`` leaves to another verb,
+    and the registry has to agree that the verb exists, is switched by the same
+    module, and is the command the pass prints. A guided source declaring a
+    handler key would be a source the composer both skips and claims to queue.
+    """
+    guided = [spec for spec in sources.SPECS if spec.guided_by is not None]
+    assert [spec.source_id for spec in guided] == ["labels"]
+    for spec in guided:
+        owner = registry.entry(spec.guided_by)
+        assert owner.landed, owner.name
+        assert owner.module_id == spec.module_id, owner.name
+        assert spec.handler_key is None and spec.inbound_key is None, spec.source_id
+        assert spec.source_id not in sync_cli.PLANNERS
+        assert spec.command() == "crate " + " ".join(owner.name.split(".")), spec.command()
+    assert dict((s.source_id, s.command()) for s in guided) == {"labels": "crate label sync"}
+
+
 def test_no_path_creates_a_job_under_sync_all():
     """The registry derived population, and the composer's own module, both say no.
 
@@ -182,31 +199,32 @@ def test_a_full_pass_queues_each_source_under_its_own_key_with_one_run(
     installed, exported
 ):
     del installed
+    # LABELS ARE REGISTERED AND STILL NOT SWEPT (U109). The pass that used to
+    # queue a labels job beside favourites queues favourites alone.
     register(*LABELS[:2])
     run_id, code, passed = _confirmed(exported)
     assert code == int(ExitCode.OK), passed
     assert passed["outcome"] == "ok"
 
     queued = {job.handler_key: job for job in _jobs()}
-    assert set(queued) == {"sync.favorites", "sync.labels"}
+    assert set(queued) == {"sync.favorites"}
     assert {job.payload["run_id"] for job in queued.values()} == {run_id}, (
         "every source in one pass must share one intake run, or each worker "
         "writes its own intake file and R29 is broken"
     )
-    assert _items(queued["sync.labels"].job_id) == list(SLUGS[:2])
     _, resolved = favorites_cli.resolve_sweep(str(exported), None)
     assert _items(queued["sync.favorites"].job_id) == list(resolved.track_ids)
     assert resolved.track_ids, "the fixture's favourites playlist is empty"
 
     summary = passed["data"]["summary"]
-    assert summary["queued"] == 2
+    assert summary["queued"] == 1
     assert {(j["source"], j["job_id"], j["handler_key"]) for j in summary["jobs"]} == {
         (job.payload["source_id"], job.job_id, key) for key, job in queued.items()
     }
     # PLAYLISTS IS CORE, so every profile enables it and every pass names it.
     # No provider session is stored here, so it refuses for itself.
     assert summary["not_queued"] == {"playlists": "credential-missing"}
-    # A LABELS AND A FAVOURITES JOB ARE NOT INTAKE JOBS, so the pass names no
+    # A FAVOURITES JOB IS NOT AN INTAKE JOB, so the pass names no
     # ``intake missing --run``, which would find nothing of theirs to list.
     assert summary["next"] is None
     assert "sync.next" not in {c["key"] for c in passed["data"]["checks"]}
@@ -215,7 +233,7 @@ def test_a_full_pass_queues_each_source_under_its_own_key_with_one_run(
 def test_the_gate_refusal_has_queued_nothing_and_says_what_would_be(
     installed, exported
 ):
-    """PLAN, ASK, QUEUE. A labels sweep queued before the question would be queued
+    """PLAN, ASK, QUEUE. A source queued before the question would be queued
     again by the run that answers it."""
     del installed
     register(LABELS[0])
@@ -224,7 +242,7 @@ def test_the_gate_refusal_has_queued_nothing_and_says_what_would_be(
     assert _jobs() == []
     shown = refused["cause"]["detail"]["shown"]
     assert shown["queued"] == []
-    assert shown["would_queue"] == ["favorites", "labels"]
+    assert shown["would_queue"] == ["favorites"]
 
 
 def test_the_gate_asks_over_the_digest_sync_favorites_itself_offers(
@@ -234,7 +252,6 @@ def test_the_gate_asks_over_the_digest_sync_favorites_itself_offers(
     comparison is between what each verb offered rather than a function and
     itself."""
     del installed
-    register(LABELS[0])
     _, composed = drive(_verb(exported))
     _, alone = drive(["sync", "favorites", "--export", str(exported)])
     offered = gates.load(composed["run_id"]).offers[CONFIRM]
@@ -255,12 +272,11 @@ def test_the_composed_gate_names_the_exports_date_beside_what_would_queue(
     absent here, on the pass most people run. The pass's own block must survive
     beside it, because the two are merged into one ``shown``."""
     del installed
-    register(LABELS[0])
     written = _written_days_ago(exported, 30)
     code, refused = drive(_verb(exported))
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     shown = refused["cause"]["detail"]["shown"]
-    assert shown["would_queue"] == ["favorites", "labels"]
+    assert shown["would_queue"] == ["favorites"]
     assert shown["export"]["written"] == (
         written.astimezone().replace(microsecond=0).isoformat()
     )
@@ -274,7 +290,6 @@ def test_the_composed_gate_shows_the_tracks_the_sweeps_digest_covers(installed, 
     are listed the way the favourites verb's own gate lists them, beside what
     would queue and the export's date."""
     del installed
-    register(LABELS[0])
     code, refused = drive(_verb(exported))
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     shown = refused["cause"]["detail"]["shown"]
@@ -285,16 +300,15 @@ def test_the_composed_gate_shows_the_tracks_the_sweeps_digest_covers(installed, 
     assert shown["playlist"] == resolved.key
     assert shown["export path"] == str(exported)
     assert shown["digest"] == favorites_cli.sweep_digest(exported, resolved)
-    assert shown["would_queue"] == ["favorites", "labels"]
+    assert shown["would_queue"] == ["favorites"]
 
 
 def test_a_pass_that_queued_over_an_old_export_warns_and_still_queues(
     installed, exported
 ):
-    """A label is registered in BOTH halves so each pass reaches the report
+    """The confirmed favourites job is what carries each pass to the report
     rather than the refusal, which carries no warnings to be absent from."""
     del installed
-    register(LABELS[0])
     written = _written_days_ago(exported, 30)
     _, code, passed = _confirmed(exported)
     assert code == int(ExitCode.OK), passed
@@ -310,7 +324,6 @@ def test_the_composed_gate_judges_against_the_configured_limit(installed, export
     """Not a seven spelled in this shell. A month old export under a sixty day
     limit is within it, and the block says whose number that was."""
     del installed
-    register(LABELS[0])
     _written_days_ago(exported, 30)
     current = config.load()
     config.save(
@@ -325,7 +338,6 @@ def test_the_composed_gate_judges_against_the_configured_limit(installed, export
 
 def test_a_pass_over_a_recent_export_carries_no_age_warning(installed, exported):
     del installed
-    register(LABELS[0])
     _written_days_ago(exported, 2)
     _, code, passed = _confirmed(exported)
     assert code == int(ExitCode.OK), passed
@@ -336,32 +348,39 @@ def test_a_pass_over_a_recent_export_carries_no_age_warning(installed, exported)
 
 
 def test_aborting_the_confirmation_queues_no_favourites_job_and_says_so(
-    installed, exported
+    installed, exported, monkeypatch
 ):
+    """The account's hearts are what queue, so the pass reaches its report."""
     del installed
-    register(LABELS[0])
+    bind_hearts(monkeypatch)
     _, code, passed = _confirmed(exported, option="abort")
     assert code == int(ExitCode.OK), passed
-    assert [job.handler_key for job in _jobs()] == ["sync.labels"]
+    assert [job.handler_key for job in _jobs()] == [INTAKE_PLAYLIST]
     assert passed["data"]["summary"]["not_queued"] == {
         "favorites": sync_cli.DECLINED,
-        "playlists": "credential-missing",
+        "playlists": sync_cli.NOTHING_NEW,
     }
     (check,) = [c for c in passed["data"]["checks"] if c["title"] == "favorites"]
     assert check["status"] == "info" and "abort" in check["detail"]
 
 
-def test_a_source_that_refuses_does_not_stop_the_other(installed):
-    """No export: favourites refuses for itself and labels is still swept, with
-    no question asked, because the only question was favourites'."""
+def test_a_source_that_refuses_does_not_stop_the_other(installed, monkeypatch):
+    """No export: favourites refuses for itself and the account's new playlist is
+    still queued, with no question asked, because the only question was
+    favourites'."""
     del installed
-    register(LABELS[0])
+    bind_hearts(
+        monkeypatch,
+        FakeCatalogue(
+            playlists={"pl-a": FakePagedPlaylist(_tracks("101"))},
+            account=[_playlist("pl-a", "Warmup")],
+        ),
+    )
     code, passed = drive(["sync", "all"])
     assert code == int(ExitCode.OK), passed
-    assert [job.handler_key for job in _jobs()] == ["sync.labels"]
+    assert [job.payload[intake_cli.SOURCE] for job in _jobs()] == ["pl-a"]
     assert passed["data"]["summary"]["not_queued"] == {
         "favorites": "outbound-export-required",
-        "playlists": "credential-missing",
     }
     assert "sync-source-not-queued" in {w["code"] for w in passed["warnings"]}
     (check,) = [c for c in passed["data"]["checks"] if c["title"] == "favorites"]
@@ -376,10 +395,130 @@ def test_nothing_queued_because_every_source_refused_is_a_refusal(installed):
     assert refused["cause"]["reason"] == "outbound-export-required"
     assert refused["cause"]["detail"]["sources"]["summary"]["not_queued"] == {
         "favorites": "outbound-export-required",
-        "labels": "label-registry-empty",
         "playlists": "credential-missing",
     }
+    # THE GUIDED LINE RIDES THE REFUSAL TOO, since it carries the whole pass,
+    # and as the LAST step, since a refusal prints no check rows. The first
+    # step stays the refusing source's own fix.
+    assert refused["cause"]["detail"]["sources"]["summary"]["guided"] == {
+        "labels": "crate label sync"
+    }
+    steps = refused["cause"]["remediation"]["steps"]
+    assert steps[-1] == (
+        "labels are not swept by sync all; take them with: crate label sync"
+    ), steps
+    assert len(steps) >= 2, "the refusing source's own step was lost"
     assert _jobs() == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 2b. Labels are not swept here, and the pass says where they went (U109)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class NoLabelCalls(FakeCatalogue):
+    """An account whose label catalogue must never be asked anything.
+
+    ``artist_for`` is where a label sweep starts, one call per favourite label,
+    so a pass that planned the labels source would fail here rather than
+    count. The playlists and the hearts are this account's ordinary reads.
+    """
+
+    def artist_for(self, entry):
+        raise AssertionError(f"sync all asked the label catalogue for {entry!r}")
+
+
+def test_a_pass_with_labels_enabled_and_registered_calls_no_label_provider(
+    installed, exported, monkeypatch
+):
+    """The test scenario, driven to the queue: every label registered, the
+    labels module on, a bound catalogue, and still no labels job and no label
+    listing. ``LabelSource`` is fenced too, so a pass that reached the sweep's
+    engine through some other door fails as loudly as one that listed."""
+    del installed
+    from cratekit.label import sweep
+
+    def fenced(*args, **kwargs):
+        raise AssertionError("sync all built a label sweep")
+
+    register(*LABELS)
+    monkeypatch.setattr(sweep, "LabelSource", fenced)
+    bind_hearts(monkeypatch, NoLabelCalls(hearts=_hearts("301"), **_A_NEW_PLAYLIST))
+    run_id, code, passed = _confirmed(exported)
+    assert code == int(ExitCode.OK), passed
+    keys = sorted(job.handler_key for job in _jobs())
+    assert keys == sorted([INTAKE_PLAYLIST, INTAKE_PLAYLIST, "sync.favorites"]), keys
+    assert "sync.labels" not in keys
+    summary = passed["data"]["summary"]
+    assert "labels" not in summary["sources"]
+    assert "labels" not in summary["not_queued"]
+    assert summary["guided"] == {"labels": "crate label sync"}
+
+
+def test_the_pass_names_the_guided_verb_in_one_check_row(installed, exported):
+    del installed
+    register(LABELS[0])
+    _, code, passed = _confirmed(exported)
+    assert code == int(ExitCode.OK), passed
+    rows = [c for c in passed["data"]["checks"] if c["title"] == "labels"]
+    assert len(rows) == 1, rows
+    (row,) = rows
+    assert row["key"] == "sync.labels" and row["status"] == "info"
+    assert "crate label sync" in row["detail"]
+    assert "not swept by sync all" in row["detail"]
+
+
+def test_the_human_output_names_the_guided_verb(installed, monkeypatch):
+    """The default output prints the checks and nothing else, so the row is
+    the only place a person running a routine sync is told."""
+    del installed
+    bind_hearts(monkeypatch)
+    out, err = io.StringIO(), io.StringIO()
+    code = cli.run(["sync", "all"], stdout=out, stderr=err)
+    text = out.getvalue() + err.getvalue()
+    assert code == int(ExitCode.OK), text
+    (line,) = [one for one in text.splitlines() if "sync.labels" in one]
+    assert "crate label sync" in line, line
+
+
+def test_the_gate_names_the_guided_verb_and_nothing_for_labels_to_queue(
+    installed, exported
+):
+    """Asked before anything queues, the gate shows labels in neither list and
+    names the verb that takes them, since every pass with favourites enabled
+    stops here first."""
+    del installed
+    register(LABELS[0])
+    code, refused = drive(_verb(exported))
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]
+    assert "labels" not in shown["would_queue"]
+    assert "labels" not in shown["not_queued"]
+    assert shown["guided"] == {"labels": "crate label sync"}
+
+
+def test_the_human_refusal_names_the_guided_verb(installed):
+    """No export and no credential: nothing queues and the pass refuses. The
+    labels sweep used to queue here and exit OK, so the refusal is where a
+    person learns where label releases went."""
+    del installed
+    register(LABELS[0])
+    out, err = io.StringIO(), io.StringIO()
+    code = cli.run(["sync", "all"], stdout=out, stderr=err)
+    text = out.getvalue() + err.getvalue()
+    assert code != int(ExitCode.OK), text
+    assert "take them with: crate label sync" in text, text
+
+
+def test_a_profile_without_the_labels_module_names_no_guided_verb(slim, monkeypatch):
+    """A verb the profile does not switch on is not a way in, so slim, which
+    runs playlists alone, is not pointed at it."""
+    del slim
+    bind_hearts(monkeypatch, FakeCatalogue(**_A_NEW_PLAYLIST))
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert passed["data"]["summary"]["guided"] == {}
+    assert "sync.labels" not in {c["key"] for c in passed["data"]["checks"]}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1431,8 +1570,6 @@ def test_the_jobs_a_pass_queues_run_to_done_through_the_existing_workers(
     favourites resume loads the run ``hand_off`` minted and the dispatcher's own
     rule that a run belongs to one verb is what is under test."""
     del installed
-    register(*LABELS[:2])
-    bind_catalogue(monkeypatch, readable(*SLUGS[:2]))
     account = outbound_fakes.FakeAccount(catalog=catalog(1, 2))
     bind_account(monkeypatch, account)
     _, code, passed = _confirmed(exported)
@@ -1443,12 +1580,11 @@ def test_the_jobs_a_pass_queues_run_to_done_through_the_existing_workers(
         assert code == int(ExitCode.OK), (job.handler_key, resumed)
         assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), job.handler_key
     assert sorted(account.hearted) == ["tid-1", "tid-2"]
-    assert {job.handler_key for job in _jobs()} == {"sync.favorites", "sync.labels"}
+    assert {job.handler_key for job in _jobs()} == {"sync.favorites"}
 
 
 def test_the_favourites_job_carries_a_gate_run_its_own_verb_owns(installed, exported):
     del installed
-    register(LABELS[0])
     run_id, _, _ = _confirmed(exported)
     (job,) = [j for j in _jobs() if j.handler_key == "sync.favorites"]
     handed = gates.load(job.payload[jobs.GATE_RUN_KEY])
@@ -1514,24 +1650,30 @@ def test_a_source_refused_at_queue_time_leaves_the_queued_ones_named(
     installed, exported, monkeypatch
 ):
     """The review's finding, driven. Favourites queues first and each enqueue is
-    its own transaction, so a labels refusal at that moment leaves a favourites
-    job filed. The pass must say so, or rerunning it queues favourites twice."""
+    its own transaction, so a playlists refusal at that moment leaves a
+    favourites job filed. The pass must say so, or rerunning it queues
+    favourites twice."""
     del installed
     from cratekit.core.cause import refuse
-    from cratekit.label import cli as label_cli
 
     def refusing(*args, **kwargs):
         raise refuse("internal-error", "the queue refused this source")
 
-    monkeypatch.setattr(label_cli, "queue_sweep", refusing)
-    register(LABELS[0])
+    bind_hearts(
+        monkeypatch,
+        FakeCatalogue(
+            playlists={"pl-a": FakePagedPlaylist(_tracks("101"))},
+            account=[_playlist("pl-a", "Warmup")],
+        ),
+    )
+    monkeypatch.setattr(playlists, "queue", refusing)
     _, code, passed = _confirmed(exported)
     assert code == int(ExitCode.OK), passed
     (job,) = _jobs()
     assert job.handler_key == "sync.favorites"
     summary = passed["data"]["summary"]
     assert [j["job_id"] for j in summary["jobs"]] == [job.job_id]
-    assert summary["not_queued"]["labels"] == "internal-error"
+    assert summary["not_queued"]["playlists"] == "internal-error"
     assert "sync-source-not-queued" in {w["code"] for w in passed["warnings"]}
 
 
@@ -1559,7 +1701,7 @@ def test_the_composed_pass_carries_the_favourites_verb_standing_warning(
 
 
 def test_a_declined_favourites_source_says_nothing_about_a_write_it_never_reached(
-    installed, exported
+    installed, exported, monkeypatch
 ):
     """The reverse, which is the direction a standing warning rots in.
 
@@ -1567,20 +1709,21 @@ def test_a_declined_favourites_source_says_nothing_about_a_write_it_never_reache
     confirm with abort queued no sweep, so telling them what that sweep would not
     have written is noise about work that did not happen.
 
-    A LABEL IS REGISTERED AND THAT IS THE WHOLE POINT OF IT. Written without
-    one, this test was vacuous and passed for the wrong reason: every source
-    refuses, nothing is queued, and the pass RAISES before it reaches the
+    THE HEARTS ARE LISTED AND THAT IS THE WHOLE POINT OF IT. Written without
+    other work, this test was vacuous and passed for the wrong reason: every
+    source refuses, nothing is queued, and the pass RAISES before it reaches the
     warnings loop at all, so the envelope carries no warnings whatever the
     filter does. Measured by the mutation row ``D2_filed_filter``, which
-    deleted the filter and killed nothing. With the labels sweep queued the
-    pass exits OK, the loop runs, and the filter is the only thing keeping the
-    declined source's sentence out.
+    deleted the filter and killed nothing. A labels sweep was that other work
+    until U109; the hearts listing is now. With it queued the pass exits OK,
+    the loop runs, and the filter is the only thing keeping the declined
+    source's sentence out.
     """
     del installed
-    register(LABELS[0])
+    bind_hearts(monkeypatch)
     _, code, passed = _confirmed(exported, option="abort")
     assert code == int(ExitCode.OK), passed
-    assert [job.handler_key for job in _jobs()] == ["sync.labels"]
+    assert [job.handler_key for job in _jobs()] == [INTAKE_PLAYLIST]
     assert passed["data"]["summary"]["not_queued"]["favorites"] == sync_cli.DECLINED
     codes = {w["code"] for w in passed["warnings"]}
     assert favorites_cli.LOCAL_WRITE_WARNING["code"] not in codes, passed["warnings"]
@@ -1627,6 +1770,15 @@ def bind_hearts(monkeypatch, fake: FakeCatalogue | None = None) -> FakeCatalogue
     fake = fake if fake is not None else FakeCatalogue(hearts=_hearts("301", "302", "303"))
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
     return fake
+
+
+#: An account playlist the pass has never seen, so the playlists source queues
+#: one intake job. The work that carries a pass to its report when the hearts
+#: under test queue nothing, which a labels sweep did until U109.
+_A_NEW_PLAYLIST = {
+    "playlists": {"pl-a": FakePagedPlaylist([Track("101", "Artist 101", "Title 101")])},
+    "account": [AccountPlaylist(playlist_id="pl-a", name="Warmup", tracks=None)],
+}
 
 
 def _hearts_jobs() -> list[jobs.Job]:
@@ -1693,13 +1845,12 @@ def test_an_abort_still_queues_the_hearts_listing_under_the_shared_run(
 ):
     """The unit's whole point. Declining the write no longer drops the read."""
     del installed
-    register(LABELS[0])
     fake = bind_hearts(monkeypatch)
     run_id, code, passed = _confirmed(exported, option="abort")
     assert code == int(ExitCode.OK), passed
     assert passed["outcome"] == "ok"
 
-    assert sorted(job.handler_key for job in _jobs()) == [INTAKE_PLAYLIST, "sync.labels"]
+    assert [job.handler_key for job in _jobs()] == [INTAKE_PLAYLIST]
     (job,) = _hearts_jobs()
     assert job.payload["run_id"] == run_id
     assert job.payload[intake_cli.SOURCE] == intake_cli.FAVORITES
@@ -1721,7 +1872,7 @@ def test_an_abort_still_queues_the_hearts_listing_under_the_shared_run(
     assert ("favorites", job.job_id, INTAKE_PLAYLIST) in {
         (j["source"], j["job_id"], j["handler_key"]) for j in summary["jobs"]
     }
-    assert summary["queued"] == 2
+    assert summary["queued"] == 1
     # AN INTAKE JOB, so the pass names the verb that lists what it found missing.
     assert summary["next"] == f"crate intake missing --run {run_id}"
     check = _inbound_check(passed)
@@ -1743,9 +1894,9 @@ def test_a_confirmed_pass_queues_both_halves(installed, exported, monkeypatch):
 def test_a_missing_export_still_queues_the_hearts_and_the_pass_is_not_a_refusal(
     installed, monkeypatch
 ):
-    """The write half's own precondition used to refuse the whole source. With
-    the labels registry empty too, the hearts are the only work, and the pass is
-    OK rather than a refusal naming the export."""
+    """The write half's own precondition used to refuse the whole source. The
+    hearts are the only work, and the pass is OK rather than a refusal naming
+    the export."""
     del installed
     bind_hearts(monkeypatch)
     code, passed = drive(["sync", "all"])
@@ -1754,7 +1905,6 @@ def test_a_missing_export_still_queues_the_hearts_and_the_pass_is_not_a_refusal(
     assert len(_hearts_jobs()) == 1
     assert passed["data"]["summary"]["not_queued"] == {
         "favorites": "outbound-export-required",
-        "labels": "label-registry-empty",
         "playlists": sync_cli.NOTHING_NEW,
     }
     (outbound,) = [c for c in passed["data"]["checks"] if c["key"] == "sync.favorites"]
@@ -1779,14 +1929,16 @@ def test_a_slim_pass_lists_no_hearts_and_queues_none(slim, monkeypatch):
     assert "sync.favorites.inbound" not in {c["key"] for c in passed["data"]["checks"]}
 
 
-def test_a_catalogue_refusal_is_the_hearts_own_and_the_others_still_run(installed):
+def test_a_catalogue_refusal_is_the_hearts_own_and_the_others_still_run(
+    installed, exported
+):
     """No provider session: the hearts are reported not listed, with the
-    catalogue's own remedy, and the labels sweep is queued regardless."""
+    catalogue's own remedy, and the confirmed favourites write is queued
+    regardless."""
     del installed
-    register(LABELS[0])
-    code, passed = drive(["sync", "all"])
+    _, code, passed = _confirmed(exported)
     assert code == int(ExitCode.OK), passed
-    assert [job.handler_key for job in _jobs()] == ["sync.labels"]
+    assert [job.handler_key for job in _jobs()] == ["sync.favorites"]
     block = _inbound(passed)
     assert block["not_queued"] == "credential-missing"
     assert block["hearts"] is None and block["job_ids"] == []
@@ -1803,7 +1955,6 @@ def test_an_unreadable_hearts_listing_is_reported_and_the_playlists_still_queue(
     installed, monkeypatch
 ):
     del installed
-    register(LABELS[0])
 
     class NoHearts(FakeCatalogue):
         def favourite_tracks(self):
@@ -1820,7 +1971,6 @@ def test_an_unreadable_hearts_listing_is_reported_and_the_playlists_still_queue(
     assert code == int(ExitCode.OK), passed
     assert _hearts_jobs() == []
     assert [job.payload[intake_cli.SOURCE] for job in _playlist_jobs()] == ["pl-a"]
-    assert "sync.labels" in {job.handler_key for job in _jobs()}
     assert _inbound(passed)["not_queued"] == "label-playlist-unreadable"
     assert _inbound_check(passed)["status"] == "fail"
 
@@ -1847,8 +1997,7 @@ def test_nothing_queued_because_every_half_refused_is_still_a_refusal(installed,
 
 def test_an_account_with_no_hearts_queues_nothing_for_them(installed, monkeypatch):
     del installed
-    register(LABELS[0])
-    bind_hearts(monkeypatch, FakeCatalogue())
+    bind_hearts(monkeypatch, FakeCatalogue(**_A_NEW_PLAYLIST))
     code, passed = drive(["sync", "all"])
     assert code == int(ExitCode.OK), passed
     assert _hearts_jobs() == []
@@ -1862,8 +2011,8 @@ class ShortHearts(FakeCatalogue):
     """The seam answering as the adapter does when the provider counted hearts
     it did not serve (R-504): the rows it served, and the count."""
 
-    def __init__(self, rows: list[Track], *, declared: int) -> None:
-        super().__init__(hearts=rows)
+    def __init__(self, rows: list[Track], *, declared: int, **kwargs) -> None:
+        super().__init__(hearts=rows, **kwargs)
         self.declared = declared
 
     def favourite_tracks(self):
@@ -1875,7 +2024,6 @@ def test_a_short_hearts_listing_is_queued_and_fails_the_inbound_check_by_count(
     installed, monkeypatch
 ):
     del installed
-    register(LABELS[0])
     bind_hearts(monkeypatch, ShortHearts(_hearts("301", "302", "303"), declared=5))
     code, passed = drive(["sync", "all"])
     assert code == int(ExitCode.OK), passed
@@ -1892,8 +2040,7 @@ def test_a_short_hearts_listing_is_queued_and_fails_the_inbound_check_by_count(
 
 def test_hearts_all_withheld_are_not_reported_as_an_account_with_none(installed, monkeypatch):
     del installed
-    register(LABELS[0])
-    bind_hearts(monkeypatch, ShortHearts([], declared=4))
+    bind_hearts(monkeypatch, ShortHearts([], declared=4, **_A_NEW_PLAYLIST))
     code, passed = drive(["sync", "all"])
     assert code == int(ExitCode.OK), passed
     assert _hearts_jobs() == []
@@ -1908,7 +2055,6 @@ def test_hearts_all_withheld_are_not_reported_as_an_account_with_none(installed,
 
 def test_a_complete_hearts_listing_carries_no_shortfall(installed, monkeypatch):
     del installed
-    register(LABELS[0])
     bind_hearts(monkeypatch)
     code, passed = drive(["sync", "all"])
     assert code == int(ExitCode.OK), passed
@@ -1919,7 +2065,6 @@ def test_a_complete_hearts_listing_carries_no_shortfall(installed, monkeypatch):
 
 def test_the_human_output_prints_the_inbound_shortfall(installed, monkeypatch):
     del installed
-    register(LABELS[0])
     bind_hearts(monkeypatch, ShortHearts(_hearts("301", "302", "303"), declared=5))
     out, err = io.StringIO(), io.StringIO()
     code = cli.run(["sync", "all"], stdout=out, stderr=err)
@@ -2027,8 +2172,9 @@ def test_a_hearts_queue_refusal_is_recorded_against_the_hearts_alone(
     del installed
     from cratekit.core.cause import refuse
 
-    register(LABELS[0])
-    bind_hearts(monkeypatch)
+    bind_hearts(
+        monkeypatch, FakeCatalogue(hearts=_hearts("301", "302", "303"), **_A_NEW_PLAYLIST)
+    )
     real = intake_cli.queue_playlist
 
     def refusing(store, cfg, **kwargs):
@@ -2039,7 +2185,7 @@ def test_a_hearts_queue_refusal_is_recorded_against_the_hearts_alone(
     monkeypatch.setattr(intake_cli, "queue_playlist", refusing)
     code, passed = drive(["sync", "all"])
     assert code == int(ExitCode.OK), passed
-    assert [job.handler_key for job in _jobs()] == ["sync.labels"]
+    assert [job.payload[intake_cli.SOURCE] for job in _jobs()] == ["pl-a"]
     assert _inbound(passed)["not_queued"] == "internal-error"
     assert passed["data"]["summary"]["not_queued"]["favorites"] == "outbound-export-required"
     check = _inbound_check(passed)

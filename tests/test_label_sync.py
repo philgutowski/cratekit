@@ -32,6 +32,7 @@ from cratekit.tagging import published
 from tests.cli_drive import drive, drive_human
 from tests.label_fakes import FakeCatalogue, FakePagedArtist, FakeRelease, catalogue_factory
 from tests.test_config import valid_data
+from tests.test_label_workers import queued_sweep
 
 SRC_ROOT = Path(__file__).resolve().parents[1] / "src"
 
@@ -334,9 +335,8 @@ def test_not_now_moves_the_marker_and_a_release_published_after_is_asked_next_ru
 
 
 def sweep_labels() -> None:
-    code, queued = drive(["sync", "labels"])
-    assert code == int(ExitCode.OK), queued
-    code, resumed = drive(["sync", "labels", "--job", queued["data"]["job_id"]])
+    job_id = queued_sweep()
+    code, resumed = drive(["sync", "labels", "--job", job_id])
     assert code == int(ExitCode.OK), resumed
 
 
@@ -406,9 +406,8 @@ def test_the_labels_sweep_refuses_an_unreadable_record_before_any_login(installe
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("{not json")
 
-    code, queued = drive(["sync", "labels"])
-    assert code == int(ExitCode.OK), queued
-    code, refused = drive(["sync", "labels", "--job", queued["data"]["job_id"]])
+    job_id = queued_sweep()
+    code, refused = drive(["sync", "labels", "--job", job_id])
 
     assert "label-sync-unusable" in json.dumps(refused)
     assert resolved == []
