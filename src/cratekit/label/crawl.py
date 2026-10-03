@@ -2,7 +2,8 @@
 
 A hand-written page loop here would be the fourth copy of a defect this
 repository already removed: a listing that quietly returns one page looks
-exactly like a short catalogue.
+exactly like a short catalogue. The wrapper reads a label roster, a
+``listing.HeldReleases``, whole rather than paging it (R-888).
 """
 
 from __future__ import annotations
@@ -47,5 +48,10 @@ def can_list(artist: Any) -> bool:
     It answers about the DEFAULT method set. A caller that overrides ``methods``
     on :func:`releases` is asking a different question and must ask it itself,
     which no caller in this package does.
+
+    A ``listing.HeldReleases`` is asked what it holds, the same question the
+    read asks it, rather than probed for paging methods it has no need of.
     """
+    if isinstance(artist, listing.HeldReleases):
+        return any(artist.held(method) is not None for method in LISTING_METHODS)
     return any(getattr(artist, method, None) is not None for method in LISTING_METHODS)

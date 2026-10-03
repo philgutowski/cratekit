@@ -1,0 +1,91 @@
+name = "r888"
+pass_kind = "light"
+
+# R-888, the unit's own guards. A read path, not a write, so the table is
+# scoped to the new guards with one line per zero (METHOD).
+
+[[rows]]
+id = "H1_held_is_paged"
+description = "listing.artist_releases: a HeldReleases roster is treated as a provider artist, probed for paging methods it lacks, and read as empty"
+file = "src/cratekit/acquire/listing.py"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+surface = "user"
+old = '''    held = isinstance(artist, HeldReleases)'''
+new = '''    held = False'''
+
+[[rows]]
+id = "H2_held_not_deduplicated"
+description = "listing.artist_releases: a release a held roster lists under two artists is returned twice"
+file = "src/cratekit/acquire/listing.py"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+surface = "user"
+old = '''            if identity in seen:'''
+new = '''            if identity in seen and not held:'''
+
+[[rows]]
+id = "H3_unheld_listing_not_recorded"
+description = "listing.artist_releases: a listing a held roster does not hold reads as an empty listing and is not recorded as skipped"
+file = "src/cratekit/acquire/listing.py"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+surface = "user"
+old = '''        listed = artist.held(method) if held else getattr(artist, method, None)'''
+new = '''        listed = (artist.held(method) or []) if held else getattr(artist, method, None)'''
+
+[[rows]]
+id = "H4_provider_budget_halved"
+description = "listing.PAGE_CAPS: a real provider artist's release walk gets a budget of 50 requests rather than 100"
+file = "src/cratekit/acquire/listing.py"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+surface = "user"
+old = '''    # A label roster held in memory spends none of it (R-888, ``HeldReleases``).
+    "artist_releases": 100,'''
+new = '''    # A label roster held in memory spends none of it (R-888, ``HeldReleases``).
+    "artist_releases": 50,'''
+
+[[rows]]
+id = "H5_abstract_held"
+description = "listing.HeldReleases: held is not abstract, so a subclass without it is built and fails mid crawl"
+file = "src/cratekit/acquire/listing.py"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+surface = "maintainer"
+old = '''    @abstractmethod
+    def held('''
+new = '''    def held('''
+
+[[rows]]
+id = "C1_probe_ignores_held"
+description = "crawl.can_list: a held roster is probed for paging methods, finds none, and the sweep refuses a readable label"
+file = "src/cratekit/label/crawl.py"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+surface = "user"
+old = '''    if isinstance(artist, listing.HeldReleases):
+        return any(artist.held(method) is not None for method in LISTING_METHODS)
+'''
+new = ''''''
+
+[[rows]]
+id = "C2_probe_trusts_held"
+description = "crawl.can_list: a held object holding no listing is read as listable, so its empty read passes as a quiet label"
+file = "src/cratekit/label/crawl.py"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+surface = "user"
+old = '''        return any(artist.held(method) is not None for method in LISTING_METHODS)'''
+new = '''        return True'''
+
+[[rows]]
+id = "R1_roster_serves_one_listing"
+description = "LabelRoster.held: the roster answers its albums for every listing, so its singles are never read"
+file = "src/cratekit/label/tidal_catalogue.py"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+surface = "user"
+old = '''        return self._listed.get(method)'''
+new = '''        return self._listed.get("get_albums")'''
+
+[[rows]]
+id = "R2_member_listing_real_sleep"
+description = "LabelRoster._list: a member listing's retry waits on the real clock rather than the module's injectable pause"
+file = "src/cratekit/label/tidal_catalogue.py"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+surface = "maintainer"
+old = '''skipped=skipped, sleep=_pause)'''
+new = '''skipped=skipped)'''

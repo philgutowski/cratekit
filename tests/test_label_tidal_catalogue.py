@@ -1000,6 +1000,107 @@ def test_the_roster_lists_once_when_it_is_built_and_the_crawl_reads_memory():
     assert artist.asked == listed, "the crawl reached the provider again"
 
 
+def _roster_of(artists: int, per_artist: int) -> tuple[tidal_catalogue.LabelRoster, int]:
+    """A roster of ``artists`` members, each with ``per_artist`` albums, and its size."""
+    members = [
+        ProviderArtist(
+            f"Act {n}",
+            [Release(f"a{n}-{k}") for k in range(per_artist)],
+            artist_id=str(n),
+        )
+        for n in range(artists)
+    ]
+    return tidal_catalogue.LabelRoster(members), artists * per_artist
+
+
+def test_a_roster_larger_than_one_artists_budget_is_read_in_full_once_each():
+    """R-888: 12,000 releases on one listing, past the 9,900 one artist's walk reaches."""
+    from cratekit.label import crawl
+
+    roster, size = _roster_of(120, 100)
+    reachable = (listing.PAGE_CAPS["artist_releases"] - 1) * listing.PAGE_SIZES["artist_releases"]
+    assert size > reachable
+
+    skipped: list[str] = []
+    found = crawl.releases(roster, skipped=skipped)
+
+    ids = [release.id for release in found]
+    assert len(ids) == size
+    assert set(ids) == {f"a{n}-{k}" for n in range(120) for k in range(100)}
+    assert skipped == []
+
+
+def test_a_roster_release_credited_under_two_artists_is_returned_once():
+    from cratekit.label import crawl
+
+    shared = Release("shared")
+    roster = tidal_catalogue.LabelRoster(
+        [
+            ProviderArtist("First", [shared, Release("one")], artist_id="1"),
+            ProviderArtist("Second", [Release("two")], [shared], artist_id="2"),
+        ]
+    )
+
+    assert [release.id for release in crawl.releases(roster)] == ["shared", "one", "two"]
+
+
+def test_a_listing_a_roster_does_not_hold_is_skipped_and_recorded():
+    """The held path keeps the skip record a paged artist leaves (R-261)."""
+    roster, _ = _roster_of(1, 2)
+    skipped: list[str] = []
+
+    found = listing.artist_releases(roster, methods=("get_albums", "get_tracks"), skipped=skipped)
+
+    assert [release.id for release in found] == ["a0-0", "a0-1"]
+    assert skipped == ["get_tracks"]
+
+
+class HoldsNothing(listing.HeldReleases):
+    def held(self, method: str) -> list[Any] | None:
+        return None
+
+
+def test_the_crawl_probe_asks_a_held_object_what_it_holds():
+    """The probe and the read ask one question, so they cannot disagree."""
+    from cratekit.label import crawl
+
+    roster, _ = _roster_of(1, 1)
+    assert not hasattr(roster, "get_albums"), "a roster offers nothing to page"
+    assert crawl.can_list(roster)
+    assert not crawl.can_list(HoldsNothing())
+
+
+def test_a_held_object_that_forgets_its_lists_fails_when_built():
+    class Forgetful(listing.HeldReleases):
+        pass
+
+    with pytest.raises(TypeError):
+        Forgetful()
+
+
+class EndlessArtist:
+    """A provider artist whose listing ignores its offset and serves a full page for ever."""
+
+    name = "Endless"
+    id = "endless"
+
+    def get_albums(self, limit: int, offset: int = 0) -> list[Release]:
+        return [Release(f"e{offset + k}") for k in range(limit)]
+
+    def get_ep_singles(self, limit: int, offset: int = 0) -> list[Release]:
+        return []
+
+
+def test_a_provider_listing_that_never_ends_still_spends_its_budget_and_blames_the_offset():
+    """R-888 left the real listing's budget and its wording exactly as they were."""
+    with pytest.raises(listing.ListingTruncated) as raised:
+        listing.artist_releases(EndlessArtist(), sleep=lambda _s: None)
+
+    text = str(raised.value)
+    assert "artist_releases spent its whole budget of 100 requests" in text
+    assert "the offset parameter is the suspect" in text
+
+
 def test_a_near_name_is_not_the_label():
     client = FakeClient(artists=[ProviderArtist("Harbour Lights Tribute", [Release("r1")])])
     adapter = tidal_catalogue.TidalCatalogue(client)

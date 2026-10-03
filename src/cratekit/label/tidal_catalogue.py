@@ -135,22 +135,25 @@ def _year(release: Any) -> int | None:
     return None
 
 
-class LabelRoster:
+class LabelRoster(listing.HeldReleases):
     """Every artist a favourite label resolved to, listed as one artist object.
 
     ``Catalogue.artist_for`` hands ``crawl.releases`` ONE object, and a label on
     the provider is a roster: the label's own artist page when it has one, plus
     the seed artists the registry names, plus artists discovery found by album
     search and a credited artist walk. This presents the roster in the shape
-    ``listing.artist_releases`` pages.
+    ``listing.artist_releases`` reads.
 
-    THE LISTING HAPPENS HERE, ONCE, AT CONSTRUCTION, and the two methods serve
-    slices of what it read. Listing lazily inside a method the crawl pages would
-    run a whole retry ladder inside each attempt of the crawl's own ladder, so
-    one failure that does not clear would be retried dozens of times and every
-    retry would list every artist from the start. Built eagerly, a failure
-    raises out of ``artist_for``, which is where a sweep already turns a foreign
-    exception into its refusal, and the crawl pages memory that cannot fail.
+    THE LISTING HAPPENS HERE, ONCE, AT CONSTRUCTION. Listing lazily inside a
+    method the crawl pages would run a whole retry ladder inside each attempt of
+    the crawl's own ladder, so one failure that does not clear would be retried
+    dozens of times and every retry would list every artist from the start.
+    Built eagerly, a failure raises out of ``artist_for``, which is where a
+    sweep already turns a foreign exception into its refusal.
+
+    THE CRAWL READS WHAT IT HOLDS WHOLE, as a ``listing.HeldReleases``, and never
+    pages it under one artist's budget (R-888). It has no paging methods, so
+    nothing can page it, and ``crawl.can_list`` asks it what it holds.
 
     THE ROSTER ALWAYS EXPOSES BOTH LISTINGS, so the crawl paging it can never
     see a member that lacks one. ``unread`` is where that fact goes instead:
@@ -170,7 +173,7 @@ class LabelRoster:
         """Every artist's releases for one listing, concatenated.
 
         NOT DEDUPLICATED HERE. ``listing.artist_releases`` deduplicates by
-        identifier when the crawl pages this roster, and the copy that used to sit
+        identifier when the crawl reads this roster, and the copy that used to sit
         here killed no test in U62's mutation table because that one always ran
         after it. One place decides what a repeat is.
 
@@ -180,15 +183,14 @@ class LabelRoster:
         held: list[Any] = []
         for artist in self.artists:
             skipped: list[str] = []
-            held.extend(listing.artist_releases(artist, methods=(method,), skipped=skipped))
+            held.extend(
+                listing.artist_releases(artist, methods=(method,), skipped=skipped, sleep=_pause)
+            )
             missing.extend(missing_listing(artist, name) for name in skipped)
         return held
 
-    def get_albums(self, limit: int, offset: int = 0) -> list[Any]:
-        return self._listed["get_albums"][offset : offset + limit]
-
-    def get_ep_singles(self, limit: int, offset: int = 0) -> list[Any]:
-        return self._listed["get_ep_singles"][offset : offset + limit]
+    def held(self, method: str) -> list[Any] | None:
+        return self._listed.get(method)
 
 
 def _results(found: Any, key: str) -> list[Any]:
