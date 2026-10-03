@@ -34493,3 +34493,53 @@ the one it sent, keeping the budget for a cycle, with a test on each.
 
 **On the board bar.** Not filed. Maintainer facing; the verb refuses either
 way, only later.
+
+---
+
+## R-882. intake missing still reads one page of a search, so a row export set now lists is offered to a person there
+
+**Found:** by the built in review of R-879, 2026-10-03, on `relay/256`.
+
+**The mechanism.** R-879 gave `export set` `candidates.search_pages`, which
+reads a full page on to the next within six pages. `intake missing --list`
+still asks `search_tracks` once and reads it with `read_answer`, so the same
+row with one exact candidate on a full first page is listed by one verb and
+offered for review by the other. R-879's brief scoped the walk to the set,
+and the review route is a working answer: a person accepts the candidate.
+
+**Measured cost.** Unmeasured, read from the source and not driven: a row
+`export set` lists from a full first page and a short second one reaches
+`propose` in `intake missing` as a full single page answer, which offers it
+with "another exact one may sit past the cut".
+
+**Closes when:** `intake missing` searches through `search_pages`, with its
+offer wording reading the paged answer, and a test of the full first page.
+
+**On the board bar.** Not filed. The workflow finishes through review.
+
+---
+
+## R-883. export set walks the music volume and repeats every search once per act of its gate
+
+**Found:** by the built in review of R-879, 2026-10-03, on `relay/256`.
+
+**The mechanism.** The gate is two acts, so `match_rows` runs once when the
+gate refuses and again on the run that carries the decision out. R-879's
+library route builds `match_cli.library_view` the first time a row carries no
+ISRC, which reads every file's tags on the volume and opens the tombstone
+store, and the paged search asks up to six pages per row the library does not
+settle. Each act pays both. A tombstone store that cannot be read now refuses
+`export set` where it did not before, which is the conservative direction and
+the same refusal `intake missing` gives.
+
+**Measured cost.** Unmeasured. The suite drives an empty or one file volume;
+the live volume holds about 9,868 files, and the provider calls go through the
+pacing gate. Worst case on a forty row set none of which the library settles,
+480 paced searches.
+
+**Closes when:** the attended export of the nine track set times both acts
+and counts the searches, and the cost is either accepted with its figure or
+the plan's matches are carried from the first act to the second.
+
+**On the board bar.** Not filed. A cost, not a failure, and it closes only at
+an attended sitting.

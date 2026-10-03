@@ -464,6 +464,16 @@ def test_another_versions_isrc_is_not_the_rows(account, tmp_path):
     assert {one["isrc"] for one in held.matches} == {"QZABC2600007"}
 
 
+def test_a_row_held_only_at_another_version_is_not_said_to_be_held(account, tmp_path):
+    cfg, _fake, held = account
+    _held(tmp_path, cfg, isrc="QZABC2600010", name="Title Seven (Extended Mix)")
+    code, done = _build(_tracklist(cfg, rows=(SEVEN,), name="held.txt"), "abort")
+    assert code == int(ExitCode.OK), done
+    (row,) = _tracks(done)
+    assert held.matches == []
+    assert row["why"] == "the provider's search returned nothing for it"
+
+
 def test_a_held_file_with_no_isrc_is_searched_and_says_so(account, tmp_path):
     cfg, fake, held = account
     _held(tmp_path, cfg)
