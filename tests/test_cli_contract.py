@@ -1754,6 +1754,21 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # over a configured machine with no saved answer the summary is empty,
         # the gate is still asked, and a yes downloads nothing.
         "label.sync": ["--go"],
+        # R-835. A label nobody follows is a plan of nothing, still gated, and
+        # the verb ends NO_OP before any provider or credential is asked for.
+        # The building path is driven in tests/test_label_playlists.py.
+        "label.playlists": ["no-such-label"],
+        # R-835. The same, with the landed batch's intake file the mark needs
+        # as its proof, LAZY for the reason ``sync.mark``'s sample gives.
+        "label.mark": lambda: [
+            "no-such-label",
+            "--xml",
+            str(
+                outbound_fakes.write_export(library / "label-landed").rename(
+                    library / "label-landed" / "no-such-batch_inboxed.xml"
+                )
+            ),
+        ],
         # U27. The four report verbs each take a collection export, and each is
         # handed a path under the CONFIGURED library that is deliberately absent,
         # for the same reason the file verbs above are: a literal here would be a

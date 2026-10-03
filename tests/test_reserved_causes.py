@@ -5126,7 +5126,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # refuses with when a question was put and nothing could answer it. Both
     # are in cause.REASONS and neither is in the reserved table. Population
     # 189 to 191, non-reserved 161 to 163, reserved half UNCHANGED at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (191, 163, 28)
+    # Re-pinned on the residual finding "A followed label cannot become a
+    # folder of year playlists on the streaming account", 2026-10-03. TWO
+    # slugs, named rather than counted: label-playlists-incomplete, which the
+    # label folder verb refuses with when the label's catalogue was not read in
+    # full, and label-playlists-ambiguous, which its plan refuses with when two
+    # root folders on the account carry the label's name. Both are in
+    # cause.REASONS and neither is in the reserved table. Population 191 to
+    # 193, non-reserved 163 to 165, reserved half UNCHANGED at 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (193, 165, 28)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -6022,7 +6030,21 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # holds it. The refusals the go raises are refused-by-policy,
     # decision-stale and label-list-unusable, all of which the tree already
     # carried.
-    assert (len(literals), len(literals - set(causes))) == (601, 411), (
+    # Re-pinned on the residual finding "A followed label cannot become a
+    # folder of year playlists on the streaming account", 2026-10-03: 601 to
+    # 613 distinct, non-keys 411 to 421. TWELVE joined and nothing left, each
+    # absent from `main`'s own `src` by a set difference of the two trees.
+    # label-playlists-incomplete and label-playlists-ambiguous are the two keys
+    # named in the pin above. dj-label is the SOURCE SCRIPT the build verb now
+    # claims. label-folder is the EXCLUSION the playlist sweep gives a year
+    # playlist a label build recorded. label-playlists and label-mark are the
+    # plan KINDS the two verbs' digests are taken under. retitled-since-built
+    # and not-in-batch are the REASONS the mark leaves a year playlist somebody
+    # retitled, and one whose year the landed batch did not file. And
+    # label-playlists-not-followed, label-playlists-tracks-refused,
+    # label-mark-nothing-built and label-mark-changed-since-plan are WARNING
+    # codes.
+    assert (len(literals), len(literals - set(causes))) == (613, 421), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6743,7 +6765,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # holds no in-range integer: its one rate constant is far above the range.
     # label/sync_cli.py, label/approved_cli.py and acquire/cli.py were holders
     # before and are unchanged in that.
-    assert (len(literal_holders), len(literal_both)) == (123, 26), (
+    # Re-pinned on the residual finding "A followed label cannot become a
+    # folder of year playlists on the streaming account", 2026-10-03: holders
+    # move 123 to 126, and the also-holds-an-integer half is UNCHANGED at 26.
+    # THREE modules joined and none left, all three new files.
+    # label/playlists_cli.py refuses with label-playlists-incomplete and
+    # internal-error, label/mark_cli.py with sync-marks-blocked and
+    # internal-error, and modules/outbound/folders.py with
+    # label-playlists-ambiguous. None holds an in-range integer: the adapter's
+    # new chunk size of a hundred is above the range, and it was a holder
+    # before. modules/outbound/ledger.py and sync/playlists.py are unchanged in
+    # both halves.
+    assert (len(literal_holders), len(literal_both)) == (126, 26), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

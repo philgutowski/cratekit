@@ -104,6 +104,10 @@ PAGE_SIZES: dict[str, int] = {
     "account_playlists": 50,
     "favorite_tracks": 100,
     "artist_releases": 100,
+    # The provider's own ceiling for its collection folder endpoint, which both
+    # folder shapes below read: the client documents it as "Cannot exceed 50".
+    "account_folders": 50,
+    "folder_playlists": 50,
 }
 
 #: The stop rule each listing shape declares. Nothing here reads the end of a
@@ -116,6 +120,10 @@ STOP_RULES: dict[str, StopRule] = {
     "account_playlists": StopRule.EMPTY_PAGE,
     "favorite_tracks": StopRule.DECLARED_TOTAL,
     "artist_releases": StopRule.EMPTY_PAGE,
+    # R-835. Neither folder listing publishes a count this module can read
+    # without a request of its own, so both take the weaker rule.
+    "account_folders": StopRule.EMPTY_PAGE,
+    "folder_playlists": StopRule.EMPTY_PAGE,
 }
 
 #: REQUEST budgets, per listing shape, not item budgets. A walk that spends its
@@ -142,6 +150,11 @@ PAGE_CAPS: dict[str, int] = {
     # Reaches 9,900 releases PER RELEASE METHOD. ``artist_releases`` walks each
     # method separately, so this is spent once per method, not once per artist.
     "artist_releases": 100,
+    # R-835. NOT MEASURED, and the figures are bounds rather than reads. The
+    # account holds one folder per followed label, 47 when sitting 11 swept
+    # them, and a label folder holds one playlist per release year.
+    "account_folders": 100,  # reaches 4,950 folders.
+    "folder_playlists": 20,  # reaches 950 year playlists in one folder.
 }
 
 DEFAULT_MAX_RETRIES = 5
@@ -525,6 +538,36 @@ def account_playlists(session: Any, **kwargs: Any) -> list[Any]:
     )
 
 
+def account_folders(session: Any, **kwargs: Any) -> list[Any]:
+    """Every folder at the root of the account's playlist collection, across pages.
+
+    Stops on an **empty page**, the weaker rule, because the endpoint publishes
+    no count of the folders it serves that this walk could end on. The client's
+    own folder lookup reads ONE page of fifty and gives up, so an account with a
+    fifty first folder would have it reported absent; this walk is why the
+    outbound adapter never asks that lookup anything (R-835).
+
+    Deduplicated by identifier, since the listing is ordered by name and a folder
+    created while it is read shifts every later one by a place.
+    """
+    kwargs.setdefault("key", lambda folder: str(getattr(folder, "id", "")))
+    return paginate(
+        _paged_caller(session.user.favorites, "playlist_folders"),
+        **_shape("account_folders", **kwargs),
+    )
+
+
+def folder_playlists(folder: Any, **kwargs: Any) -> list[Any]:
+    """Every playlist one account folder holds, across pages.
+
+    Stops on an **empty page**, for the reason :func:`account_folders` gives.
+    ``folder`` is the client's folder object, whose ``items`` lists playlists
+    only. Deduplicated by identifier on the same argument.
+    """
+    kwargs.setdefault("key", lambda playlist: str(getattr(playlist, "id", "")))
+    return paginate(_paged_caller(folder, "items"), **_shape("folder_playlists", **kwargs))
+
+
 #: The two release listings a provider artist exposes, and the ones
 #: :func:`artist_releases` reads by default. Owned here so a caller that has to
 #: ask "can this object be listed at all" (``label.crawl.can_list``) checks the
@@ -589,6 +632,8 @@ WRAPPERS: dict[str, Callable[..., list[Any]]] = {
     "favorite_tracks": favorite_tracks,
     "account_playlists": account_playlists,
     "artist_releases": artist_releases,
+    "account_folders": account_folders,
+    "folder_playlists": folder_playlists,
 }
 
 #: The provider listing methods that must not be called outside this module.
@@ -597,7 +642,13 @@ WRAPPERS: dict[str, Callable[..., list[Any]]] = {
 #: also uses for its own collections, and a guard that fires on correct code gets
 #: routed around rather than obeyed (P7).
 GUARDED_METHODS = frozenset(
-    {"tracks", "playlist_and_favorite_playlists", "get_albums", "get_ep_singles"}
+    {
+        "tracks",
+        "playlist_and_favorite_playlists",
+        "get_albums",
+        "get_ep_singles",
+        "playlist_folders",
+    }
 )
 PAGINATION_KEYWORDS = frozenset({"limit", "offset"})
 
@@ -616,11 +667,13 @@ __all__ = [
     "ListingNotPaginated",
     "ListingTruncated",
     "StopRule",
+    "account_folders",
     "account_playlists",
     "artist_releases",
     "favorite_tracks",
     "favorite_tracks_declared",
     "fetch_with_retry",
+    "folder_playlists",
     "paginate",
     "playlist_tracks",
 ]

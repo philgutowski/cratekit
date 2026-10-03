@@ -1110,3 +1110,78 @@ class LabelSource:
                 queue=Queue.LABEL_RELEASE,
                 item_id=genre_gate.release_item_id(candidate.identity),
             )
+
+
+@dataclass(frozen=True, slots=True)
+class Confirmed:
+    """A label's whole catalogue as the crawl and the verifier confirm it (R-835).
+
+    ``releases`` is every confirmed release that no tombstone suppresses, newest
+    first. ``listed`` is everything the crawl read, so the plan can say what it
+    left out, and ``unread`` is what the crawl could not read, which a caller
+    must not present as the whole label.
+    """
+
+    releases: tuple[Any, ...]
+    listed: int
+    dropped: tuple[Dropped, ...]
+    suppressed: int
+    unread: tuple[Unread, ...]
+
+
+def confirmed_releases(
+    cfg: config.Config, entry: registry.LabelEntry, found: Catalogue
+) -> Confirmed:
+    """Every release of one label the catalogue confirms, with no window and no gate.
+
+    THE SAME CRAWL :func:`list_for_label` READS, asked the same questions in the
+    same order: the roster through :meth:`LabelSource._artist_for`, the listing
+    through :func:`_crawl_or_refuse`, the tombstone first because it is local,
+    then the verifier, since a roster artist's releases on another label are
+    not this label's. What it leaves out is the review half: no offer window,
+    no queue, no ownership and no genre gate, because a label's folder on the
+    account mirrors its catalogue and not the library.
+
+    A listing that could not be read raises ``run.LookupFailure`` here, as it
+    does for the sweep, and a ``CratekitError`` passes through unchanged.
+    """
+    source = LabelSource(
+        cfg, registry=registry.Registry(labels={entry.label_id: entry}), catalogue=found
+    )
+    artist = source._artist_for(entry)
+    verify = source._verifier()
+    claimed = entry.match or entry.name
+    listed, unread = _crawl_or_refuse(entry, artist)
+    listed.sort(key=_year_of, reverse=True)
+    tombstoned = _suppression_reader(cfg)
+    confirmed: list[Any] = []
+    dropped: list[Dropped] = []
+    suppressed = 0
+    for release in listed:
+        if tombstoned(release):
+            suppressed += 1
+            continue
+        verdict = label_verify.verify_release(claimed, release, search=verify)
+        status = str(verdict.get("verdict") or "unconfirmed")
+        if status != "confirmed":
+            dropped.append(
+                Dropped(
+                    identity=str(getattr(release, "id", "") or ""),
+                    reason=status,
+                    notes=str(verdict.get("notes") or ""),
+                )
+            )
+            continue
+        confirmed.append(release)
+    return Confirmed(
+        releases=tuple(confirmed),
+        listed=len(listed),
+        dropped=tuple(dropped),
+        suppressed=suppressed,
+        unread=tuple(unread),
+    )
+
+
+#: The year a release reads as, ``""`` when it carries none. Public for the
+#: label folder's read (R-835), which groups a catalogue by it.
+year_of = _year_of

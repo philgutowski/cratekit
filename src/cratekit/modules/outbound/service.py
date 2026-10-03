@@ -1,8 +1,9 @@
 """The remote mutations this product is allowed to make.
 
 A streaming account is mutated by adding a heart, by adding a track to a
-playlist, and by retitling a playlist. There is no remove, no un-heart, no
-un-color, and no playlist delete on this protocol. Deletion never propagates
+playlist, by retitling a playlist, by making a folder and by putting a playlist
+in one. There is no remove, no un-heart, no un-color, and no playlist or folder
+delete on this protocol. Deletion never propagates
 to a streaming service (R36). The type is the rule: a caller that wants a
 remove has nowhere to call it.
 
@@ -78,3 +79,36 @@ class RemoteAccount(Protocol):
         otherwise report a rename over a playlist that never changed, which is
         the one wrong answer this member exists to make impossible.
         """
+
+    # ── folders (R-835) ──────────────────────────────────────────────────────
+    #
+    # FIVE MEMBERS, AND NONE OF THEM TAKES ANYTHING AWAY. A label's shape on the
+    # account is one folder holding one playlist per release year, so the
+    # protocol can list a folder, make one, put a playlist in one, and add a
+    # chunk of tracks at once. A move changes where a playlist sits and nothing
+    # it holds; it deletes nothing and removes no track.
+
+    def add_tracks(self, playlist_id: str, remote_ids: tuple[str, ...]) -> tuple[str, ...]:
+        """Add tracks to a playlist in chunks the provider accepts, skipping members.
+
+        Returns every asked identifier the playlist holds once the adds are
+        done, already a member or added now. One the provider would not add is
+        left out of the answer rather than raised, because one withdrawn track
+        on a year of a label's catalogue is not a reason to add none of it.
+        """
+
+    def folders(self) -> dict[str, str]:
+        """Every folder at the root of the account's playlists, identifier to name."""
+
+    def folder_playlists(self, folder_id: str) -> dict[str, str]:
+        """Every playlist one folder holds, identifier to name."""
+
+    def create_folder(self, name: str) -> str:
+        """Create one folder at the root of the account's playlists, and return its id.
+
+        Never retried, on ``create_playlist``'s argument: a create that reached
+        the provider and then timed out would be retried into a second folder.
+        """
+
+    def move_to_folder(self, playlist_id: str, folder_id: str) -> None:
+        """Put one playlist the account holds into one folder. Idempotent."""

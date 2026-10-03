@@ -39,6 +39,12 @@ PROTOCOL_METHODS = frozenset(
         "add_to_playlist",
         "playlist_tracks",
         "rename_playlist",
+        # R-835. The folder members, none of which takes anything away.
+        "add_tracks",
+        "folders",
+        "folder_playlists",
+        "create_folder",
+        "move_to_folder",
     }
 )
 
@@ -89,6 +95,19 @@ class FakeAccount:
         self.matches: list[dict[str, str]] = []
         #: What this account says about a row it does not match, by identity.
         self.reasons: dict[str, str] = {}
+        #: R-835. Root folders, identifier to name, and which folder each
+        #: playlist sits in. A playlist in no folder sits at the root.
+        self.folder_names: dict[str, str] = {}
+        self.placed: dict[str, str] = {}
+        self.folders_created: list[str] = []
+        #: Every move, in order, as ``(playlist_id, folder_id)``.
+        self.moves: list[tuple[str, str]] = []
+        #: Every chunked add, in order, as ``(playlist_id, ids)``.
+        self.chunks: list[tuple[str, tuple[str, ...]]] = []
+        #: Tracks the provider will not add, as the client skips them.
+        self.unaddable: set[str] = set()
+        #: Every playlist created private, which is what the adapter does.
+        self.private: set[str] = set()
 
     def match_track(
         self, *, identity: str, isrc: str = "", title: str = "", artist: str = ""
@@ -115,6 +134,7 @@ class FakeAccount:
         self.playlists[remote_id] = []
         self.titles[remote_id] = name
         self.created.append(name)
+        self.private.add(remote_id)
         return remote_id
 
     def add_to_playlist(self, playlist_id: str, remote_id: str) -> None:
@@ -135,6 +155,41 @@ class FakeAccount:
         self._bump(playlist_id)
         self.titles[playlist_id] = name
         self.renamed.append((playlist_id, name))
+
+    def add_tracks(self, playlist_id: str, remote_ids: tuple[str, ...]) -> tuple[str, ...]:
+        """Chunked add. One write per call, so ``fail_on`` names the playlist."""
+        self._bump(playlist_id)
+        members = self.playlists.setdefault(playlist_id, [])
+        fresh = tuple(
+            one for one in dict.fromkeys(remote_ids)
+            if one not in members and one not in self.unaddable
+        )
+        members.extend(fresh)
+        self.chunks.append((playlist_id, fresh))
+        self.added.extend((playlist_id, one) for one in fresh)
+        return tuple(one for one in remote_ids if one in members)
+
+    def folders(self) -> dict[str, str]:
+        return dict(self.folder_names)
+
+    def folder_playlists(self, folder_id: str) -> dict[str, str]:
+        return {
+            playlist_id: self.titles.get(playlist_id, "")
+            for playlist_id, folder in self.placed.items()
+            if folder == folder_id
+        }
+
+    def create_folder(self, name: str) -> str:
+        self._bump(name)
+        folder_id = f"folder-{len(self.folders_created) + 1}"
+        self.folder_names[folder_id] = name
+        self.folders_created.append(name)
+        return folder_id
+
+    def move_to_folder(self, playlist_id: str, folder_id: str) -> None:
+        self._bump(playlist_id)
+        self.placed[playlist_id] = folder_id
+        self.moves.append((playlist_id, folder_id))
 
     def _bump(self, subject: str = "") -> None:
         self._writes += 1

@@ -295,7 +295,10 @@ FEATURES: tuple[Feature, ...] = (
     Feature(20, "intake aging report", "module"),
     Feature(21, "favourite label registry and sweeps", "module"),
     Feature(22, "label import and label harvest", "module"),
-    Feature(23, "label to streaming playlist folders", "defer"),
+    #: Flipped from Defer on 2026-10-02 (R-835). The author reversed the
+    #: non-replacement: the account's main structure, a folder per label, is
+    #: no longer kept once the source system retires.
+    Feature(23, "label to streaming playlist folders", "module"),
     Feature(24, "hearted-track sync with auto-acquire", "module"),
     Feature(25, "sync orchestrator", "reshaped"),
     Feature(26, "embedded job engine", "core"),
@@ -1879,6 +1882,70 @@ ENTRIES: tuple[Entry, ...] = (
         emits=frozenset({"review_set"}),
         output_schema="review_set/1",
         adjudicates=True,
+    ),
+    # ── A label's folder of year playlists on the account (R-835) ───────────
+    Entry(
+        name="label.playlists",
+        summary=(
+            "build a followed label's folder of private year playlists on the "
+            "streaming account; adds, never removes"
+        ),
+        module="cratekit.label.playlists_cli",
+        builder="build_playlists",
+        handler_key="label.playlists",
+        feature_rows=(23,),
+        source_scripts=("dj-label",),
+        module_id="labels",
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: One surface, the account. A folder and its year playlists are
+        #: created, tracks are added and a playlist is put in the folder;
+        #: nothing is removed, retitled or deleted. What was written is
+        #: recorded in this product's own outbound ledger, which is not a
+        #: declared surface. NOT destructive, on ``export.playlist``'s
+        #: precedent: every write adds to the account.
+        writes=frozenset({"remote"}),
+        doctor_checks=("credential.provider",),
+        gates=(
+            GateSpec(
+                name="label.playlists.confirm",
+                options=("apply", "abort"),
+                prompt="Build this label's folder of year playlists on the streaming account?",
+                # EXPLICIT, as every other write to the account is (R34).
+                explicit=True,
+                digest_source="plan",
+            ),
+        ),
+    ),
+    Entry(
+        name="label.mark",
+        summary="prefix the year playlists of a label whose batch has landed",
+        module="cratekit.label.mark_cli",
+        builder="build_mark",
+        handler_key="label.mark",
+        feature_rows=(23,),
+        module_id="labels",
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: One surface, the account, and the one write is ``rename_playlist``
+        #: on a year playlist the outbound ledger records for the label. Each
+        #: rename is recorded in ``sync mark``'s record so ``sync unmark``
+        #: puts it back. ``destructive`` for ``sync.mark``'s reason: a year
+        #: playlist adopted by its name was made by a person, and a retitle
+        #: lands on it.
+        writes=frozenset({"remote"}),
+        destructive=True,
+        doctor_checks=("credential.provider",),
+        gates=(
+            GateSpec(
+                name="label.mark.confirm",
+                options=("apply", "abort"),
+                prompt="Rename these year playlists on the streaming account?",
+                # EXPLICIT, as sync.mark's is, for the same reason (R34).
+                explicit=True,
+                digest_source="plan",
+            ),
+        ),
     ),
     # ── Adoption, deletion, export, standalone utilities ────────────────────
     Entry(

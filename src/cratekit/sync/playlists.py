@@ -168,6 +168,10 @@ class Excluded(StrEnum):
 
     SWEPT = "already-swept"
     LABEL_DEBRIS = "label-debris"
+    #: A year playlist ``label playlists`` built for a followed label (R-835).
+    #: It is that label's catalogue, and swept as intake every release on it
+    #: would be listed as missing from the library.
+    LABEL_FOLDER = "label-folder"
     RECORDED = "recorded"
     PLACEHOLDER = "favorites-placeholder"
     IN_FLIGHT = "in-flight"
@@ -190,6 +194,7 @@ def exclusion(
     *,
     recorded: frozenset[str] | set[str],
     in_flight: frozenset[str] | set[str],
+    label_built: frozenset[str] | set[str] = frozenset(),
 ) -> Excluded | None:
     """Why this playlist is not new, or ``None`` when it is. Pure.
 
@@ -201,6 +206,8 @@ def exclusion(
         return Excluded.SWEPT
     if is_library_debris(playlist.name):
         return Excluded.LABEL_DEBRIS
+    if playlist.playlist_id in label_built:
+        return Excluded.LABEL_FOLDER
     if playlist.playlist_id in recorded:
         return Excluded.RECORDED
     if placeholders.is_placeholder(playlist.name):
@@ -372,11 +379,16 @@ def plan(
     found: Catalogue,
     *,
     handler_key: str,
+    label_built: frozenset[str] = frozenset(),
 ) -> Sweep:
     """Reconcile the cursor, list the account, and decide every playlist.
 
     Reconciled FIRST so a playlist whose job finished since the last pass is
     excluded as recorded in this one rather than queued again.
+
+    ``label_built`` is every year playlist ``label playlists`` recorded, HANDED
+    IN rather than read here, because this source is core and the record is
+    the outbound package's, which a core module does not import (R-835).
     """
     recorded_now = reconcile(store, cfg, handler_key=handler_key)
     existing = WatermarkStore(cfg).read(SOURCE_ID)
@@ -389,7 +401,9 @@ def plan(
         recorded=recorded,
     )
     for playlist in sweep.listed:
-        reason = exclusion(playlist, recorded=recorded, in_flight=in_flight)
+        reason = exclusion(
+            playlist, recorded=recorded, in_flight=in_flight, label_built=label_built
+        )
         if reason is not None:
             sweep.excluded[playlist.playlist_id] = reason
             continue

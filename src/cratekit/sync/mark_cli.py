@@ -171,6 +171,11 @@ def _pass_name(xml: Path) -> str:
     return written[: -len(land_cli.INTAKE_SUFFIX)]
 
 
+#: The pass name rule, public for ``label mark`` (R-835), so the two verbs that
+#: read a pass off an intake file read it one way.
+pass_name_of = _pass_name
+
+
 def _comparable(path: str | Path) -> str:
     """A path as both sides spell it, THROUGH THE FILESYSTEM and then the form.
 

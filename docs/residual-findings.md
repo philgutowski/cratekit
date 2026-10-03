@@ -33117,6 +33117,36 @@ the author's account at an attended sitting.
 
 **On the board bar, (c).** The author asked for it on 2026-10-02.
 
+**Built 2026-10-03 on `relay/252`, and still open on the live build.** The
+vendored client offers a call for every step, read before writing:
+`LoggedInUser.create_folder`, `Favorites.playlist_folders` for the root
+folders, `Folder.items` for a folder's playlists, and
+`Folder.move_items_to_folder`, so no step is refused. `service.RemoteAccount`
+gains five add only members, `add_tracks`, `folders`, `folder_playlists`,
+`create_folder` and `move_to_folder`, and the adapter builds a folder handle
+empty because the client's own folder lookup reads one page of fifty root
+folders. `crate label playlists LABEL` plans from the catalogue the sweep
+already crawls, through `sweep.confirmed_releases`, the roster, listing,
+tombstones and verifier of `list_for_label` with no window and no gate,
+refusing `label-playlists-incomplete` before its explicit gate when any of
+it went unread or nothing confirmed. On apply it creates the folder if
+absent and each missing year private through `create_playlist`, puts each in
+the folder, and adds a hundred tracks a request, reusing what the outbound
+ledger's new `labels` map records or what one exact name under the folder
+matches, the marked title included. Each write is recorded as it lands, so
+a refusal part way resumes without a duplicate, and a second run plans
+nothing. `crate label mark LABEL --xml INTAKE` prefixes `DOWNLOADED ` on the
+years the intake file's own `Record Labels` tree filed under the label,
+behind `label.mark.confirm`, recording each rename in `sync_marks.json`, and
+`sync unmark --pass` takes it off, driven in the suite. The playlist sweep
+now excludes every year playlist a build recorded, `label-folder`, since
+swept as intake each would list the label's catalogue as missing. Feature
+row 23 is `module`, `dj-label` is claimed, and the source plan's row 23 cell
+moved in DJ_tools for the parity check. R-871 to R-874 filed from the build
+and its review. Closes once one label is built on the author's account at an
+attended sitting and read back in the web player, recorded in
+`docs/cutover.md`.
+
 ---
 
 ## R-836. A track the genre gate dropped stays in its label year playlist, since the account protocol has no remove
@@ -34132,3 +34162,94 @@ a go. Not measured on the live store.
 go's jobs are named in the record.
 
 **Not on the board bar.** Maintainer facing, a cost in time.
+
+---
+
+## R-871. A year playlist deleted on the account is never built again
+
+**Found:** by the built in review of R-835 on `relay/252`, 2026-10-03.
+
+**The mechanism.** `folders.plan` reads a recorded year playlist that is
+not in the label's folder, and the adapter answers a playlist the provider
+has nothing for with the same `unavailable-transient` cause it gives an
+outage. So the plan cannot tell a playlist a person deleted from one it
+could not reach, and it lists that year as `unreadable`, left alone, rather
+than making it again. Making it again over an outage would be a second
+playlist for the year. No verb forgets a year's record.
+
+**Measured cost.** A year deleted by hand stays out of the folder for good,
+said on every plan. Driven in the suite with a fake; not met live.
+
+**Closes when:** the adapter tells a playlist the provider has nothing for
+from one it could not read, and the plan makes a year again only for the
+first.
+
+**Not on the board bar.** The plan says it every run, nothing is lost or
+misreported, and the account is never written for it.
+
+---
+
+## R-872. A label's year playlists carry every confirmed release, with no genre gate
+
+**Found:** while building R-835 on `relay/252`, 2026-10-03.
+
+**The mechanism.** The source system builds a label's folder house gated.
+`label playlists` builds from `sweep.confirmed_releases`, the crawl and the
+verifier with no genre gate, because the gate judges each release through
+the general catalogue at a cost per release, and the brief named the
+catalogue as crawled. A release `label held` lists as not the label's kind
+of music is still on its year playlist.
+
+**Measured cost.** Year playlists can hold releases the sweep would hold
+back. Not measured on a live label.
+
+**Closes when:** the author decides whether the folder follows the genre
+gate, and if it does, the read asks the gate's standing holds, which are
+local, before it reads a release's tracks.
+
+**Not on the board bar.** A decision for the author, and R-836 is the prune
+for what is already there.
+
+---
+
+## R-873. Every label folder plan crawls and verifies the whole catalogue, twice per build
+
+**Found:** by the built in review of R-835 on `relay/252`, 2026-10-03.
+
+**The mechanism.** The plan is built from the catalogue as read now, so the
+run that shows the gate and the run that carries out its answer each crawl
+the roster, verify every release and read every release's tracks, about two
+provider calls a release, before the account is read. A second build over
+an unchanged catalogue pays the same to plan nothing. The year playlists'
+own reads are skipped when every wanted track is already recorded.
+
+**Measured cost.** Hundreds of paced provider calls per label per build, on
+an account the provider has rate limited before. Not measured live.
+
+**Closes when:** the first live build is timed at an attended sitting, and
+the author decides whether a plan may be reused within its gate's run.
+
+**Not on the board bar.** A cost in time, paced by the provider gate.
+
+---
+
+## R-874. The label mark prefixes the years its batch filed, not every year
+
+**Found:** by the built in review of R-835 on `relay/252`, 2026-10-03.
+
+**The mechanism.** The source system prefixes every year playlist of a
+label once a batch for it lands. `label mark` reads the batch's own
+`Record Labels` tree out of the intake file and marks only the years that
+tree files under the label, because without a tie to the file any intake
+file marked every year of any label, the review's finding. A year whose
+releases a batch never downloaded stays unprefixed.
+
+**Measured cost.** A label the author has taken in full over several
+batches ends prefixed only on the years each batch filed, which is what was
+downloaded. Not met live.
+
+**Closes when:** the author decides whether a landed batch marks the
+label's every year, the source system's rule, or only its own.
+
+**Not on the board bar.** The conservative reading of a decision that is
+the author's, and `sync unmark` takes off any mark either way.

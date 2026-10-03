@@ -1,0 +1,117 @@
+name = "r835-b"
+pass_kind = "light"
+
+# R-835, batch b: the sweep exclusion, the two verbs and the adapter.
+
+[[rows]]
+id = "S1_built_year_excluded_from_sweep"
+description = "sync.playlists.exclusion: a year playlist a label build recorded is swept as intake"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''    if playlist.playlist_id in label_built:
+        return Excluded.LABEL_FOLDER'''
+new = '''    if False:
+        return Excluded.LABEL_FOLDER'''
+
+[[rows]]
+id = "S2_sync_hands_the_ledger_to_the_sweep"
+description = "sync.cli._plan_playlists: the sweep is handed no label built playlists, so every year playlist is swept as intake"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''    label_built = ledger.label_playlist_ids(cfg)'''
+new = '''    label_built = frozenset()'''
+
+[[rows]]
+id = "P1_unread_listing_refused"
+description = "playlists_cli.read_catalogue: a listing of the label that was not read is passed over, and part of the label is shown as all of it"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+old = '''    if confirmed.unread:
+        raise _incomplete('''
+new = '''    if False:
+        raise _incomplete('''
+
+[[rows]]
+id = "P2_nothing_confirmed_refused"
+description = "playlists_cli.read_catalogue: a catalogue that confirmed none of its releases is shown as an empty label"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+old = '''    if confirmed.dropped and not confirmed.releases:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "P3_unplayable_track_never_asked"
+description = "playlists_cli.read_catalogue: a track the provider will not play is asked for and refused on every run"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+old = '''            if identifier and getattr(row, "available", True) is not False:'''
+new = '''            if identifier:'''
+
+[[rows]]
+id = "M1_only_the_batch_years_marked"
+description = "mark_cli._item: a year the landed batch did not file is marked anyway"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+old = '''    if year.year not in filed:
+        return {'''
+new = '''    if False:
+        return {'''
+
+[[rows]]
+id = "M2_already_marked_skipped"
+description = "mark_cli._item: a year playlist already carrying the prefix is planned for a second prefix"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+old = '''    if current.startswith(folders.MARK_PREFIX):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M4_recheck_before_rename"
+description = "mark_cli.label_mark: a title changed between the plan and the write is renamed anyway"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+old = '''            if now.get(identity) != item["built_as"]:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "M5_deleted_folder_said"
+description = "mark_cli.label_mark: a label folder deleted on the account is listed as if it were there, and the read fails every run"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+old = '''            if shape.folder_id in remote.folders()'''
+new = '''            if True'''
+
+[[rows]]
+id = "M6_landed_file_required"
+description = "mark_cli.label_mark: the importable file is not required before a mark is planned"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+old = '''    marks.require_output(xml)
+    name = str(ctx.args.name)'''
+new = '''    name = str(ctx.args.name)'''
+
+[[rows]]
+id = "T1_folder_create_never_retried"
+description = "TidalAccount.create_folder: a create that timed out after reaching the provider is retried into a second folder"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''            doing, lambda: self._session.user.create_folder(name), retries=0'''
+new = '''            doing, lambda: self._session.user.create_folder(name), retries=1'''
+
+[[rows]]
+id = "T2_refused_move_raised"
+description = "TidalAccount.move_to_folder: a move the client answers False is returned as done"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''        if moved is False or moved is _ABSENT:'''
+new = '''        if moved is _ABSENT:'''
+
+[[rows]]
+id = "T3_short_answer_read_again"
+description = "TidalAccount.add_tracks: an add answer that leaves a track out is trusted, so a track the playlist holds is reported refused"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''            if unconfirmed:
+                del self._members[playlist_id]'''
+new = '''            if False:
+                del self._members[playlist_id]'''

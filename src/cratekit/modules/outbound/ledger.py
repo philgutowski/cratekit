@@ -4,13 +4,18 @@ A year watermark is not this file. This file is the remote identifiers a
 re-run must reuse so an interrupted write does not create a second playlist
 or a second heart. It SURVIVES a library rollback: the remote account does
 not roll back, and forgetting a remote id is how the next export duplicates.
+
+SINCE R-835 IT ALSO HOLDS EACH LABEL'S SHAPE ON THE ACCOUNT, under ``labels``:
+the folder a label's year playlists live in, and per year the playlist, the
+title it was given and the tracks written to it. Every reader and writer here
+carries the map through, so an export that writes this file never drops it.
 """
 
 from __future__ import annotations
 
 import json
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
 from cratekit.core import config
@@ -33,7 +38,7 @@ def _unusable(path, what: str) -> CratekitError:
 
 
 def _empty() -> dict[str, Any]:
-    return {"version": LEDGER_VERSION, "playlists": {}, "hearts": {}}
+    return {"version": LEDGER_VERSION, "playlists": {}, "hearts": {}, "labels": {}}
 
 
 def _load(cfg: config.Config) -> dict[str, Any]:
@@ -55,13 +60,44 @@ def _load(cfg: config.Config) -> dict[str, Any]:
         )
     playlists = raw.get("playlists", {})
     hearts = raw.get("hearts", {})
+    labels = raw.get("labels", {})
     if not isinstance(playlists, Mapping) or not isinstance(hearts, Mapping):
         raise _unusable(path, "playlists and hearts must both be maps")
+    if not isinstance(labels, Mapping) or not all(
+        isinstance(value, Mapping) for value in labels.values()
+    ):
+        # REFUSED, NOT SKIPPED, unlike a playlist record above. A label entry
+        # dropped here is a folder and its year playlists forgotten, and the
+        # next build would make all of them a second time.
+        raise _unusable(path, "labels must be a map of label records")
     return {
         "version": LEDGER_VERSION,
         "playlists": {str(key): dict(value) for key, value in playlists.items()
                       if isinstance(value, Mapping)},
         "hearts": {str(key): str(value) for key, value in hearts.items()},
+        "labels": {str(key): _label_document(path, value) for key, value in labels.items()},
+    }
+
+
+def _label_document(path, raw: Mapping[str, Any]) -> dict[str, Any]:
+    """One label's record as written, or the refusal a malformed one earns."""
+    years = raw.get("years", {})
+    if not isinstance(years, Mapping) or not all(
+        isinstance(value, Mapping) for value in years.values()
+    ):
+        raise _unusable(path, "a label record's years must be a map of year records")
+    return {
+        "name": str(raw.get("name") or ""),
+        "folder_id": str(raw.get("folder_id") or ""),
+        "years": {
+            str(year): {
+                "remote_id": str(record.get("remote_id") or ""),
+                "name": str(record.get("name") or ""),
+                "added": _listed(record, "added"),
+                "refused": _listed(record, "refused"),
+            }
+            for year, record in years.items()
+        },
     }
 
 
@@ -546,6 +582,184 @@ def record_heart(cfg: config.Config, remote_id: str) -> None:
     try:
         document = _load(cfg)
         document["hearts"][remote_id] = "hearted"
+        _write(cfg, document)
+    finally:
+        lock.__exit__(None, None, None)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# A label's folder of year playlists (R-835)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@dataclass(frozen=True, slots=True)
+class LabelYear:
+    """One year playlist this library built for a label, as recorded."""
+
+    year: str
+    remote_id: str
+    #: The title it was created or adopted under, never the prefixed one a
+    #: mark wrote since: the mark record keeps that.
+    name: str
+    added: frozenset[str] = frozenset()
+    #: Tracks the provider was asked for and would not add. Not asked again,
+    #: so a second build over an unchanged catalogue plans nothing.
+    refused: frozenset[str] = frozenset()
+
+
+@dataclass(frozen=True, slots=True)
+class LabelShape:
+    """What this library has built on the account for one label."""
+
+    label_id: str
+    name: str = ""
+    folder_id: str = ""
+    years: Mapping[str, LabelYear] = field(default_factory=dict)
+
+
+def _shape_of(label_id: str, record: Mapping[str, Any] | None) -> LabelShape:
+    if not record:
+        return LabelShape(label_id=label_id)
+    return LabelShape(
+        label_id=label_id,
+        name=str(record.get("name") or ""),
+        folder_id=str(record.get("folder_id") or ""),
+        years={
+            year: LabelYear(
+                year=year,
+                remote_id=str(entry.get("remote_id") or ""),
+                name=str(entry.get("name") or ""),
+                added=frozenset(_listed(entry, "added")),
+                refused=frozenset(_listed(entry, "refused")),
+            )
+            for year, entry in (record.get("years") or {}).items()
+            if entry.get("remote_id")
+        },
+    )
+
+
+def label_shape(cfg: config.Config, label_id: str) -> LabelShape:
+    """The folder and year playlists recorded for one label. Read only."""
+    return _shape_of(label_id, _load(cfg)["labels"].get(label_id))
+
+
+def label_playlist_ids(cfg: config.Config) -> frozenset[str]:
+    """Every year playlist this library built for any label.
+
+    For the playlist sweep, which must never read one as intake: a year
+    playlist is a label's catalogue, and swept it would list every release of
+    the label as missing from the library.
+    """
+    return frozenset(
+        str(entry.get("remote_id"))
+        for record in _load(cfg)["labels"].values()
+        for entry in (record.get("years") or {}).values()
+        if entry.get("remote_id")
+    )
+
+
+def _label_entry(document: dict[str, Any], label_id: str, name: str) -> dict[str, Any]:
+    record = document["labels"].setdefault(
+        label_id, {"name": name, "folder_id": "", "years": {}}
+    )
+    if name:
+        record["name"] = name
+    record.setdefault("years", {})
+    return record
+
+
+def reserve_label_folder(
+    cfg: config.Config,
+    label_id: str,
+    name: str,
+    create: Callable[[], str],
+    *,
+    adopt: str = "",
+    stale: str = "",
+) -> tuple[str, bool]:
+    """The label's folder, creating one only if none is recorded. ``(id, created)``.
+
+    THE LOCK IS TAKEN BEFORE THE CREATE, on ``reserve_playlist``'s argument: an
+    unwritable ledger refuses before anything exists on the account, rather
+    than after a folder nothing remembers.
+
+    ``adopt`` is a folder already on the account under the label's name, which
+    the plan found and a person was shown. It is recorded and nothing is made.
+    ``stale`` is a recorded folder the plan read as gone from the account, so
+    the record of it is replaced rather than reused.
+    """
+    lock = _locked(cfg)
+    try:
+        document = _load(cfg)
+        record = _label_entry(document, label_id, name)
+        recorded = str(record.get("folder_id") or "")
+        if recorded and recorded != stale:
+            return recorded, False
+        if adopt:
+            record["folder_id"] = adopt
+            _write(cfg, document)
+            return adopt, False
+        folder_id = create()
+        record["folder_id"] = folder_id
+        _write(cfg, document)
+        return folder_id, True
+    finally:
+        lock.__exit__(None, None, None)
+
+
+def reserve_label_year(
+    cfg: config.Config,
+    label_id: str,
+    year: str,
+    name: str,
+    create: Callable[[], str],
+    *,
+    adopt: str = "",
+) -> tuple[str, bool]:
+    """One year's playlist, creating it only if none is recorded. ``(id, created)``.
+
+    The same shape as :func:`reserve_label_folder` and for its reason. A year
+    already recorded is never created again, so a build killed after the
+    create and before the move resumes by moving the playlist it made.
+    """
+    lock = _locked(cfg)
+    try:
+        document = _load(cfg)
+        record = _label_entry(document, label_id, "")
+        years = record["years"]
+        recorded = str((years.get(year) or {}).get("remote_id") or "")
+        if recorded:
+            return recorded, False
+        remote_id = adopt or create()
+        years[year] = {"remote_id": remote_id, "name": name, "added": [], "refused": []}
+        _write(cfg, document)
+        return remote_id, not adopt
+    finally:
+        lock.__exit__(None, None, None)
+
+
+def record_label_tracks(
+    cfg: config.Config,
+    label_id: str,
+    year: str,
+    *,
+    added: Iterable[str] = (),
+    refused: Iterable[str] = (),
+) -> None:
+    """Remember tracks written to one year playlist, and ones the provider refused."""
+    lock = _locked(cfg)
+    try:
+        document = _load(cfg)
+        entry = (document["labels"].get(label_id) or {}).get("years", {}).get(year)
+        if not entry:
+            raise _unusable(
+                config.state_path("outbound_writes", cfg),
+                f"it holds no playlist for {label_id} {year}, whose tracks were just written",
+            )
+        for key, values in (("added", added), ("refused", refused)):
+            held = _listed(entry, key)
+            held += [str(one) for one in values if str(one) not in held]
+            entry[key] = held
         _write(cfg, document)
     finally:
         lock.__exit__(None, None, None)
