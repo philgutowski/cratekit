@@ -434,6 +434,36 @@ def test_a_held_file_whose_isrc_the_account_cannot_name_is_searched_and_said(
     assert fake.searched_for == [SEVEN, SEVEN]
 
 
+def test_held_copies_carrying_different_isrcs_ask_the_account_nothing(account, tmp_path):
+    cfg, fake, held = account
+    _held(tmp_path, cfg, isrc="QZABC2600007")
+    music = cfg.library.root / cfg.library.music_dir
+    tagged_container(
+        tmp_path,
+        music / "copy" / f"04A - 126 - {SEVEN[0]} - {SEVEN[1]}.flac",
+        artist=SEVEN[0], title=f"04A - 126 - {SEVEN[1]}", isrc="QZABC2600009",
+    )
+    code, done = _build(_tracklist(cfg, rows=(SEVEN,), name="held.txt"), "abort")
+    assert code == int(ExitCode.OK), done
+    (row,) = _tracks(done)
+    assert held.matches == []
+    assert row["why"].startswith(
+        "the library holds it in 2 file(s) carrying 2 different ISRCs, so none was asked about; "
+    )
+
+
+def test_another_versions_isrc_is_not_the_rows(account, tmp_path):
+    cfg, _fake, held = account
+    _held(tmp_path, cfg, isrc="QZABC2600007")
+    _held(tmp_path, cfg, isrc="QZABC2600010", name="Title Seven (Extended Mix)")
+    held.catalog["set-row-1"] = "tid-by-file"
+    code, done = _build(_tracklist(cfg, rows=(SEVEN,), name="held.txt"), "abort")
+    assert code == int(ExitCode.OK), done
+    (row,) = _tracks(done)
+    assert (row["id"], row["how"]) == ("tid-by-file", "library-isrc")
+    assert {one["isrc"] for one in held.matches} == {"QZABC2600007"}
+
+
 def test_a_held_file_with_no_isrc_is_searched_and_says_so(account, tmp_path):
     cfg, fake, held = account
     _held(tmp_path, cfg)
