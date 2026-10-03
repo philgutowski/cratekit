@@ -1372,6 +1372,41 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="label_sync",
+        snapshot=SnapshotRole.COUPLED,
+        # The record describes review rows and itself. The download an answer
+        # leads to is U108's, and lands as an intake whose own records declare
+        # the downloaded file.
+        rollback_effects=(RollbackEffect.NONE,),
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="label_sync.json",
+        why=(
+            "The guided label sync's record (U107): per label, which releases a "
+            "person has been asked about and when, the question waiting to be "
+            "answered, and every answer given. LIBRARY scoped because what was "
+            "asked depends on this library's holdings and its review queue, and "
+            "a copy run redirects library state so a rehearsal cannot move the "
+            "live marker. COUPLED because the record describes review rows: a "
+            "restore that puts the review queue back must put the asked set "
+            "back with it, or a release answered in a rolled back run is never "
+            "asked again."
+        ),
+    ),
+    StateFile(
+        key="label_sync_lock",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="label_sync.lock",
+        why=(
+            "The sibling lock for the guided label sync's record. An answer is "
+            "a read, modify, write of one document, and a structured answer "
+            "given beside an interactive run must not discard the other's. "
+            "NEVER_RESTORED for the inode reason every lock here shares."
+        ),
+    ),
+    StateFile(
         key="tree_registry",
         snapshot=SnapshotRole.COUPLED,
         # A cutover's effect is entirely inside the database it adopted, so

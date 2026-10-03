@@ -437,7 +437,10 @@ def _queued(items: review.ReviewStore) -> tuple[list[_Release], int, int]:
 
     An item whose stored verdict this build cannot read counts as OPEN, which
     is the direction ``review`` argues for everywhere: undecided rather than
-    decided the wrong way.
+    decided the wrong way. A SUPERSEDED item counts as neither (U107): the
+    guided label sync closes the open items an answer did not take that way,
+    answered and not rejected, and counting them as not yet answered would
+    report a question still waiting that a person already answered.
     """
     page = review.list_items(
         items,
@@ -453,7 +456,7 @@ def _queued(items: review.ReviewStore) -> tuple[list[_Release], int, int]:
             accepted.append(_release_of(items, item))
         elif item.verdict is review.Verdict.REJECTED:
             rejected += 1
-        else:
+        elif item.verdict is not review.Verdict.SUPERSEDED:
             still_open += 1
     return accepted, rejected, still_open
 

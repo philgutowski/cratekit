@@ -477,14 +477,23 @@ class QueuedReleases:
     and :func:`list_for_label` counts it toward the offer window instead. Asked
     one identity at a time against the open store, because the window stops the
     walk long before a label's catalogue runs out.
+
+    ``also`` is a second container of identities that take a place as a queued
+    release does (U107): the releases a person was ASKED about by the guided
+    sync and answered for, which were never filed when the answer did not
+    take them. Asked first, because its answer is a set lookup and the
+    queue's is a database read.
     """
 
-    def __init__(self, store: review.ReviewStore) -> None:
+    def __init__(self, store: review.ReviewStore, also: Container[str] | None = None) -> None:
         self.store = store
+        self.also = also
 
     def __contains__(self, identity: object) -> bool:
         if not isinstance(identity, str) or not identity:
             return False
+        if self.also is not None and identity in self.also:
+            return True
         return review.find(self.store, genre_gate.release_item_id(identity)) is not None
 
 
@@ -763,11 +772,16 @@ class LabelSource:
         owned: Container[str] | None = None,
         gate: genre_gate.SweepGate | None = None,
         run_id: str | None = None,
+        offered: Container[str] | None = None,
     ) -> None:
         self.cfg = cfg
         #: The genre gate every label's listing is judged by, or None to judge
         #: nothing (R-798). The worker builds one per item.
         self.gate = gate
+        #: Identities that take a place in the offer window BESIDE the queued
+        #: releases (U107): what the guided sync already asked a person about.
+        #: None adds nothing, and the queue alone decides, as before.
+        self.offered = offered
         #: The sweep run a hold made by this source is recorded under, so a
         #: grouping by run counts what each sweep held. The listing pass is
         #: handed no run by the increment, which is why it is taken here.
@@ -989,7 +1003,7 @@ class LabelSource:
         listings: list[tuple[registry.LabelEntry, LabelListing]] = []
         read = 0
         with self._queue() as store:
-            offered = QueuedReleases(store) if store is not None else None
+            offered = QueuedReleases(store, self.offered) if store is not None else None
             for entry in self.registry.labels.values():
                 listing = list_for_label(
                     self.cfg,
