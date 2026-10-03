@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -557,21 +558,63 @@ class _Named:
         self.name = name
 
 
+class _Answer:
+    def __init__(self, body: dict) -> None:
+        self._body = body
+
+    def json(self) -> dict:
+        return self._body
+
+
+class _Endpoint:
+    """The collection folder endpoint as R-878 measured it on a real account.
+
+    It ignores ``offset`` and pages by a ``cursor`` it hands back, serving at
+    most :attr:`WINDOW` items whatever limit is asked for. The client's own
+    listing methods throw that cursor away, which is why the fake offers none.
+    """
+
+    WINDOW = 20
+
+    def __init__(self, client: _Client) -> None:
+        self.client = client
+
+    def request(self, method: str, path: str, params: dict | None = None,
+                base_url: str | None = None) -> _Answer:
+        params = dict(params or {})
+        assert (method, path) == ("GET", "my-collection/playlists/folders")
+        if params["includeOnly"] == "FOLDER":
+            held = [{"name": one.name, "data": {"id": one.id}} for one in self.client.root]
+        else:
+            held = [
+                {"data": {"uuid": pid, "title": self.client.titles[pid]}}
+                for pid, folder in self.client.placed.items()
+                if folder == params["folderId"]
+            ]
+        self.client.pages.append((params["includeOnly"], params["limit"], params.get("cursor")))
+        start = int(params.get("cursor") or 0)
+        window = held[start : start + min(params["limit"], self.WINDOW)]
+        body: dict = {"items": window, "totalNumberOfItems": len(held)}
+        if start + len(window) < len(held):
+            body["cursor"] = str(start + len(window))
+        return _Answer(body)
+
+
+class _PlaylistParser:
+    @staticmethod
+    def parse_factory(data: dict) -> _Named:
+        return _Named(data["uuid"], data["title"])
+
+
 class _Folder:
     """The client's folder object as the adapter builds it: empty, then named."""
 
     def __init__(self, client: _Client) -> None:
         self.client = client
+        self.session = client
+        self.request = client.request
+        self.playlist = _PlaylistParser()
         self.id = None
-
-    def items(self, offset: int = 0, limit: int = 50) -> list[_Named]:
-        held = [
-            _Named(pid, self.client.titles[pid])
-            for pid, folder in self.client.placed.items()
-            if folder == self.id
-        ]
-        self.client.pages.append(("items", limit, offset))
-        return held[offset : offset + limit]
 
     def move_items_to_folder(self, trns: list[str], folder: str | None = None) -> bool:
         self.client.moves.append((tuple(trns), folder))
@@ -584,19 +627,9 @@ class _Folder:
         return True
 
 
-class _Favorites:
-    def __init__(self, client: _Client) -> None:
-        self.client = client
-
-    def playlist_folders(self, limit: int = 50, offset: int = 0) -> list[_Named]:
-        self.client.pages.append(("folders", limit, offset))
-        return self.client.root[offset : offset + limit]
-
-
 class _User:
     def __init__(self, client: _Client) -> None:
         self.client = client
-        self.favorites = _Favorites(client)
 
     def create_folder(self, title: str, parent_id: str = "root") -> _Named:
         del parent_id
@@ -640,6 +673,11 @@ class _Client:
         self.create_fail: Exception | None = None
         self.user = _User(self)
         self.lists: dict[str, _Playlist] = {}
+        self.request = _Endpoint(self)
+        self.config = SimpleNamespace(api_v2_location="https://api.invalid/v2/")
+
+    def parse_folder(self, raw: dict) -> _Named:
+        return _Named(raw["data"]["id"], raw["name"])
 
     def folder(self, folder_id: str | None = None) -> _Folder:
         assert folder_id is None, "the adapter asked the client's own folder lookup"
@@ -658,7 +696,9 @@ def test_the_root_folders_are_read_past_one_page():
     client.root = [_Named(f"f{index}", f"Label {index}") for index in range(120)]
     found = _adapter(client).folders()
     assert len(found) == 120 and found["f119"] == "Label 119"
-    assert [page for page in client.pages if page[0] == "folders"][-1] == ("folders", 50, 150)
+    assert [page[2] for page in client.pages if page[0] == "FOLDER"] == [
+        None, "20", "40", "60", "80", "100",
+    ]
 
 
 def test_a_folders_playlists_are_read_past_one_page_without_the_clients_lookup():
@@ -720,12 +760,21 @@ def test_the_client_library_still_offers_the_folder_calls_the_adapter_makes():
     """A rename upstream would fail every folder member at the provider; this
     turns it red here instead."""
     import tidalapi.playlist
+    import tidalapi.request
+    import tidalapi.session
     import tidalapi.user
 
     assert callable(getattr(tidalapi.user.LoggedInUser, "create_folder", None))
-    assert callable(getattr(tidalapi.user.Favorites, "playlist_folders", None))
-    assert callable(getattr(tidalapi.playlist.Folder, "items", None))
     assert callable(getattr(tidalapi.playlist.Folder, "move_items_to_folder", None))
+    # R-878: the folder walks reach past the listing methods to these.
+    assert callable(getattr(tidalapi.session.Session, "parse_folder", None))
+    assert callable(getattr(tidalapi.request.Requests, "request", None))
+    assert callable(getattr(tidalapi.playlist.Playlist, "parse_factory", None))
+    session = tidalapi.session.Session()
+    handle = session.folder()
+    assert handle.request is session.request
+    assert handle.session.config.api_v2_location
+    assert callable(handle.playlist.parse_factory)
 
 
 def test_a_year_the_batch_did_not_file_is_left_alone(followed):
