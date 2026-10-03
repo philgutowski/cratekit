@@ -34717,8 +34717,26 @@ which only he can.
 **Closes when:** the artist is named and Mango Alley plans to its gate; the
 session part closes when the author mints a session.
 
-**Not on the board bar yet.** The artist is unmeasured, and the refusal is
-honest.
+**Measured at sitting 30, 2026-10-03, uncapped.** The object that spends the
+budget is not an artist: it is `tidal_catalogue.LabelRoster`, which lists
+every artist of the label's roster once at construction, concatenates their
+releases, and is then paged by `crawl.releases` through
+`listing.artist_releases` as if it were one artist, with that shape's budget
+of 100 requests at 100 a page. Mango Alley's roster is **756 artists, 27,002
+releases across both listings**, every artist read cleanly in 2 to 7
+seconds, the largest 373. The walk reached 10,000 and refused, and the
+refusal's own text, that the provider is not advancing its window and the
+offset is the suspect, is false here: the roster serves memory and the
+offset works. Any label whose roster lists more than 10,000 releases on one
+listing can never be read by a sweep, `label sync` or `label playlists`.
+
+**Closes when:** a roster is read in full whatever its size, by serving its
+lists directly or by a budget drawn from its own length, with a test of a
+roster over 10,000 releases; the refusal names a roster rather than the
+provider's offset; and Mango Alley plans to its gate.
+
+**On the board bar, (c).** A workflow the author follows labels for cannot
+finish on one of his labels, and the product blames the provider for it.
 
 ---
 
