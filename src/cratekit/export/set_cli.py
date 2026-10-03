@@ -37,7 +37,6 @@ import the CLI registry (KTD23).
 
 from __future__ import annotations
 
-import re
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
@@ -50,6 +49,7 @@ from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.export.cli import UNMATCHED_WARNING
 from cratekit.intake import candidates
+from cratekit.intake.cli import TRACKLIST_SUFFIX
 from cratekit.label import catalogue
 from cratekit.modules.outbound import ledger, sets, shell
 from cratekit.sync import mark_record, marks
@@ -62,6 +62,19 @@ _ARCHIVE = ("export.archive",)
 ADD = "add"
 ALREADY = "already"
 UNMATCHED = "unmatched"
+#: Matched, and the provider would not add it when it was asked before.
+REFUSED = "refused"
+#: Matched, recorded as written, and no longer on the playlist: a person took
+#: it off, and it is not put back.
+TAKEN_OFF = "taken-off"
+#: The same track as an earlier row of the set, asked for once.
+REPEAT = "repeat"
+
+_ROW_WHY = {
+    REFUSED: "the provider would not add it when it was asked before, so it is not asked again",
+    TAKEN_OFF: "it was written before and is no longer on the playlist, so it is not put back",
+    REPEAT: "an earlier row of the set is the same track",
+}
 
 #: What the gate screen and the warning say when no set playlist is recorded.
 NOTHING_BUILT_SAID = (
@@ -70,9 +83,8 @@ NOTHING_BUILT_SAID = (
 )
 
 #: The file name endings a tracklist is known by, taken off for its name.
-_ENDINGS = (".tracklist.txt", ".list.json", ".txt", ".json")
-#: The piece of the recording's digest ``intake identify`` adds to a name.
-_DIGEST_TAIL = re.compile(r"-[0-9a-f]{12}$")
+#: ``intake identify``'s own first, so its ``.txt`` is not the one taken.
+_ENDINGS = (TRACKLIST_SUFFIX, ".list.json", ".txt", ".json")
 
 
 def build_set(parser, entry) -> None:
@@ -106,20 +118,31 @@ def build_archive(parser, entry) -> None:
     parser.set_defaults(_handler=export_archive)
 
 
+def set_name(given: str) -> str:
+    """A set playlist's name as it is made and recorded, and as it is looked up.
+
+    A slash becomes a dash, the source system's rule, since a downloader reads
+    one in a playlist name as a folder. ONE SPELLING FOR BOTH VERBS, so a name
+    the archive is handed finds the record the build wrote under it.
+    """
+    return str(given).replace("/", "-").strip()
+
+
 def name_of(path: Path) -> str:
     """The playlist name a tracklist file gives, when none is asked for.
 
-    The file's own name, its ending and ``intake identify``'s digest piece
-    off. A slash becomes a dash, the source system's rule, since a downloader
-    reads one in a playlist name as a folder.
+    The file's own name with its ending off. ``intake identify``'s piece of
+    the recording's digest STAYS ON: it is what tells two recordings that share
+    a recorder's stem apart (``intake.cli.tracklist_name``), and the name is the
+    key the set's playlist is recorded under, so taking it off would add a
+    second night's set to the first night's playlist. ``--name`` chooses another.
     """
     stem = path.name
     for ending in _ENDINGS:
         if stem.lower().endswith(ending):
             stem = stem[: -len(ending)]
             break
-    stem = _DIGEST_TAIL.sub("", stem)
-    return stem.replace("/", "-").strip()
+    return set_name(stem)
 
 
 def _unnamed(given: str) -> CratekitError:
@@ -184,8 +207,9 @@ def _not_chosen(answer: candidates.Answer) -> str:
     if candidates.shown(answer):
         return (
             f"the provider's search returned {answer.hits} hit(s) and no single "
-            f"exact match, so none was chosen; a candidate accepted in review is "
-            f"used on the next run"
+            f"exact match, so none was chosen; crate intake missing --list over "
+            f"this tracklist offers them for review when the library lacks the "
+            f"track, and one accepted there is used on the next run"
         )
     return f"the provider's search returned {answer.hits} hit(s) and none resembles it"
 
@@ -203,7 +227,10 @@ def match_rows(
     with review.open_store(cfg) as items:
         for position, one in enumerate(wanted, start=1):
             row = {"position": position, "artist": one.artist, "title": one.listed}
-            if one.ref:
+            # ONLY THE PROVIDER'S OWN IDENTIFIER, on ``listdoc``'s rule: a list
+            # of another origin carries that source's identifier as provenance,
+            # and handed to the account it names nothing or the wrong track.
+            if one.ref and one.origin == match.TIDAL:
                 decided.append(sets.SetRow(**row, remote_id=str(one.ref), how="ref"))
                 continue
             said = ""
@@ -245,15 +272,23 @@ def match_rows(
 def _row_items(planned: sets.SetPlan) -> list[dict[str, Any]]:
     """One item per tracklist row, in its order, each saying what becomes of it."""
     owed = set(planned.add)
+    seen: set[str] = set()
     items: list[dict[str, Any]] = []
     for row in planned.rows:
         if not row.matched:
             action = UNMATCHED
+        elif row.remote_id in seen:
+            action = REPEAT
         elif row.remote_id in owed:
             action = ADD
-            owed.discard(row.remote_id)
-        else:
+        elif row.remote_id in planned.refused:
+            action = REFUSED
+        elif row.remote_id in planned.on_playlist:
             action = ALREADY
+        else:
+            action = TAKEN_OFF
+        seen.add(row.remote_id)
+        why = row.reason or _ROW_WHY.get(action, "")
         items.append(
             {
                 "id": row.remote_id,
@@ -263,7 +298,7 @@ def _row_items(planned: sets.SetPlan) -> list[dict[str, Any]]:
                 "title": row.title,
                 "action": action,
                 **({"how": row.how} if row.how else {}),
-                **({"why": row.reason} if row.reason else {}),
+                **({"why": why} if why else {}),
             }
         )
     return items
@@ -288,6 +323,9 @@ def _set_payload(planned: sets.SetPlan) -> dict[str, Any]:
             "count": len(tracks),
             ADD: sum(1 for item in tracks if item["action"] == ADD),
             ALREADY: sum(1 for item in tracks if item["action"] == ALREADY),
+            REFUSED: sum(1 for item in tracks if item["action"] == REFUSED),
+            TAKEN_OFF: sum(1 for item in tracks if item["action"] == TAKEN_OFF),
+            REPEAT: sum(1 for item in tracks if item["action"] == REPEAT),
             UNMATCHED: sum(1 for item in tracks if item["action"] == UNMATCHED),
             "writes": planned.writes,
         },
@@ -313,11 +351,17 @@ def _set_shown(planned: sets.SetPlan) -> dict[str, Any]:
         "left out": _left_out(planned),
         "removes": "nothing, ever: no track or playlist is taken away",
     }
+    if planned.refused or planned.taken_off:
+        shown["not asked again"] = (
+            f"{len(planned.refused)} matched track(s) the provider would not add "
+            f"before, and {len(planned.taken_off)} written before and since taken "
+            f"off the playlist"
+        )
     if not planned.writes:
         shown["nothing to write"] = (
             "nothing in the set was matched"
             if planned.action == sets.CREATE
-            else "the playlist already holds every matched track"
+            else "every matched track is on the playlist or is not asked for again"
         )
     return shown
 
@@ -381,7 +425,7 @@ def export_set(ctx) -> Envelope:
     path = Path(str(ctx.args.tracklist))
     wanted = match_cli.read_list(path)
     given = ctx.args.name if ctx.args.name is not None else name_of(path)
-    name = str(given).replace("/", "-").strip()
+    name = set_name(given)
     if not name:
         raise _unnamed(str(given))
     remote = _Deferred(cfg)
@@ -568,7 +612,7 @@ def export_archive(ctx) -> Envelope:
     pass_name = pass_name_of(xml)
     # THE PROOF FIRST, before the ledger, the account or a credential.
     marks.require_output(xml)
-    name = str(ctx.args.name)
+    name = set_name(ctx.args.name)
     playlist = ledger.set_playlist(cfg, name)
     planned: sets.ArchivePlan | None = None
     remote = None
@@ -619,12 +663,15 @@ def export_archive(ctx) -> Envelope:
                 "code": "export-archive-changed-since-plan",
                 "message": (
                     f"{planned.playlist.name} was "
-                    + (
-                        "already marked"
-                        if done.left == sets.ALREADY_MARKED
-                        else "retitled by somebody"
+                    + {
+                        sets.ALREADY_MARKED: "already marked when it was read in the folder",
+                        sets.RETITLED: "retitled by somebody when it was read in the folder",
+                    }.get(
+                        done.left,
+                        "not yet listed in the folder it was put in; archive it again "
+                        "once the account lists it",
                     )
-                    + " when it was read in the folder, so it was not renamed"
+                    + ", so it was not renamed"
                 ),
             }
         )
@@ -652,4 +699,5 @@ __all__ = [
     "export_set",
     "match_rows",
     "name_of",
+    "set_name",
 ]

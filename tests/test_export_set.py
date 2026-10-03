@@ -12,6 +12,7 @@ D1 applies. Nothing here names a real volume, a real person, or a real track.
 from __future__ import annotations
 
 import ast
+import json
 from pathlib import Path
 
 import pytest
@@ -115,10 +116,14 @@ def test_both_verbs_write_only_the_account_behind_an_explicit_gate():
     assert not registry.entry("export.set").destructive
 
 
-def test_a_tracklist_name_gives_the_playlist_name_without_its_digest_or_slash():
-    assert set_cli.name_of(Path("Night a/b-0123456789ab.tracklist.txt")) == "b"
-    assert set_cli.name_of(Path("Club-Night-0123456789ab.tracklist.txt")) == "Club-Night"
+def test_a_tracklist_name_keeps_the_digest_that_tells_two_recordings_apart():
+    # Two recordings sharing a recorder's stem are two sets, and the name is
+    # the key each set's playlist is recorded under.
+    assert set_cli.name_of(Path("REC001-aaaaaaaaaaaa.tracklist.txt")) == "REC001-aaaaaaaaaaaa"
+    assert set_cli.name_of(Path("REC001-bbbbbbbbbbbb.tracklist.txt")) == "REC001-bbbbbbbbbbbb"
     assert set_cli.name_of(Path("typed set.txt")) == "typed set"
+    assert set_cli.name_of(Path("found.list.json")) == "found"
+    assert set_cli.set_name(" Live / Boiler Room ") == "Live - Boiler Room"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -245,6 +250,60 @@ def test_the_sweep_never_reads_a_set_playlist_as_intake(account, monkeypatch):
     assert handed == [built]
 
 
+def _document(cfg, name: str, origin: str, rows: list[dict]) -> Path:
+    folder = cfg.library.root.parent / "lists"
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / name
+    path.write_text(json.dumps({"list": 1, "origin": origin, "tracks": rows}), encoding="utf-8")
+    return path
+
+
+def test_a_tidal_list_documents_own_identifiers_are_used_without_a_search(account):
+    cfg, fake, held = account
+    rows = [{"id": "tid-9", "title": "Title Nine", "artist": {"name": "Artist Nine"}}]
+    code, done = _build(_document(cfg, "doc.list.json", "tidal", rows))
+    assert code == int(ExitCode.OK), done
+    assert fake.searched_for == []
+    (playlist,) = held.playlists
+    assert held.playlists[playlist] == ["tid-9"]
+
+
+def test_another_sources_identifier_is_never_handed_to_the_account(account):
+    cfg, fake, held = account
+    rows = [{"id": "sp-1", "name": "Title One", "artists": [{"name": "Artist One"}]}]
+    code, done = _build(_document(cfg, "spot.list.json", "spotify", rows), "abort")
+    assert code == int(ExitCode.OK), done
+    (row,) = _tracks(done)
+    assert row["id"] != "sp-1"
+    assert fake.searched_for, "the row was searched for rather than read off its source id"
+
+
+def test_a_track_refused_before_is_said_as_refused_not_as_on_the_playlist(account):
+    cfg, _fake, held = account
+    held.unaddable.add("tid-2")
+    code, done = _build(_tracklist(cfg))
+    assert code == int(ExitCode.OK), done
+    assert any(w["code"] == "export-set-tracks-refused" for w in done["warnings"])
+    code, done = _build(_tracklist(cfg))
+    assert code == int(ExitCode.OK), done
+    actions = [row["action"] for row in _tracks(done)]
+    assert actions == ["already", "refused", "already", "already", "unmatched"]
+    assert "would not add it" in _tracks(done)[1]["why"]
+
+
+def test_a_track_taken_off_by_a_person_is_said_and_not_put_back(account):
+    cfg, _fake, held = account
+    assert _build(_tracklist(cfg))[0] == int(ExitCode.OK)
+    (playlist,) = held.playlists
+    held.playlists[playlist].remove("tid-3")
+    fake_rows = (*ROWS, ("Artist One", "Title One"))
+    code, done = _build(_tracklist(cfg, rows=fake_rows))
+    assert code == int(ExitCode.OK), done
+    actions = [row["action"] for row in _tracks(done)]
+    assert actions == ["already", "already", "taken-off", "already", "unmatched", "repeat"]
+    assert "tid-3" not in held.playlists[playlist]
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 3. The archive
 # ═══════════════════════════════════════════════════════════════════════════
@@ -319,6 +378,39 @@ def test_a_playlist_retitled_by_a_person_is_filed_and_its_title_left(account):
     assert held.placed.get(playlist) and held.renamed == []
     assert any(w["code"] == "export-archive-changed-since-plan" for w in done["warnings"])
     assert mark_record.MarkRecord(cfg).of_pass("set-batch") == ()
+
+
+def test_a_name_with_a_slash_finds_the_set_it_named_at_build(account):
+    cfg, _fake, held = account
+    assert _build(_tracklist(cfg), "apply", "--name", "Live / Boiler Room")[0] == int(ExitCode.OK)
+    assert held.created == ["Live - Boiler Room"]
+    code, done = _archive(_landed(cfg), name="Live / Boiler Room")
+    assert code == int(ExitCode.OK), done
+    assert done["outcome"] == "ok" and held.renamed
+
+
+def test_a_playlist_the_folder_does_not_list_yet_is_not_renamed_or_blamed(account, monkeypatch):
+    cfg, _fake, held = account
+    assert _build(_tracklist(cfg))[0] == int(ExitCode.OK)
+    lagging = {"on": True}
+    listed = held.folder_playlists
+
+    def folder_playlists(folder_id):
+        return {} if lagging["on"] else listed(folder_id)
+
+    monkeypatch.setattr(held, "folder_playlists", folder_playlists)
+    code, done = _archive(_landed(cfg))
+    assert code == int(ExitCode.OK), done
+    assert held.moves and held.renamed == []
+    (warning,) = [w for w in done["warnings"] if w["code"] == "export-archive-changed-since-plan"]
+    assert "not yet listed" in warning["message"] and "retitled" not in warning["message"]
+    lagging["on"] = False
+    held.moves.clear()
+    code, done = _archive(_landed(cfg))
+    assert code == int(ExitCode.OK), done
+    assert held.moves == [] and held.renamed == [
+        (ledger.set_playlist(cfg, NAME).remote_id, f"DOWNLOADED {NAME}")
+    ]
 
 
 def test_an_archive_with_no_landed_file_refuses_before_anything(account):

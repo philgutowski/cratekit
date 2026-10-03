@@ -53,6 +53,9 @@ MARK = "mark"
 #: Why the archive leaves a title alone, one word each.
 ALREADY_MARKED = "already-marked"
 RETITLED = "retitled-since-built"
+#: The folder's listing did not show the playlist just put in it, so there is
+#: no title to recheck, and a rename without one is not made.
+NOT_LISTED = "not-listed"
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +87,12 @@ class SetPlan:
     remote_id: str = ""
     #: The matched tracks the playlist does not hold yet, in tracklist order.
     add: tuple[str, ...] = ()
+    #: Matched tracks the provider refused before, not asked for again.
+    refused: frozenset[str] = frozenset()
+    #: Matched tracks on the playlist now.
+    on_playlist: frozenset[str] = frozenset()
+    #: Matched tracks recorded as written and no longer on the playlist.
+    taken_off: frozenset[str] = frozenset()
 
     @property
     def unmatched(self) -> tuple[SetRow, ...]:
@@ -137,7 +146,10 @@ def plan_set(
     if recorded is None:
         return SetPlan(name=name, year=year, action=CREATE, rows=tuple(rows), add=wanted)
     asked = recorded.added | recorded.refused
-    held = set() if set(wanted) <= asked else set(account.playlist_tracks(recorded.remote_id))
+    # THE PLAYLIST IS READ EVERY TIME, one paged read, so a track a person took
+    # off is said as taken off rather than shown as on the playlist from what
+    # the record says was written.
+    held = set(account.playlist_tracks(recorded.remote_id))
     return SetPlan(
         name=name,
         year=recorded.year or year,
@@ -145,6 +157,11 @@ def plan_set(
         rows=tuple(rows),
         remote_id=recorded.remote_id,
         add=tuple(one for one in wanted if one not in asked and one not in held),
+        refused=frozenset(one for one in wanted if one in recorded.refused and one not in held),
+        on_playlist=frozenset(one for one in wanted if one in held),
+        taken_off=frozenset(
+            one for one in wanted if one in recorded.added and one not in held
+        ),
     )
 
 
@@ -311,8 +328,13 @@ def apply_archive(
     # THE RECHECK, ON THE FOLDER IT NOW SITS IN. A title that is no longer the
     # one it was built under is somebody's, and a prefixed one is already done.
     now = account.folder_playlists(folder_id).get(playlist.remote_id)
+    if now is None:
+        # NOT A RETITLE. A listing that does not show the playlist yet says
+        # nothing about its title, so nothing is renamed and nobody is blamed.
+        done.left = NOT_LISTED
+        return done
     if now != playlist.name:
-        done.left = ALREADY_MARKED if (now or "").startswith(MARK_PREFIX) else RETITLED
+        done.left = ALREADY_MARKED if now.startswith(MARK_PREFIX) else RETITLED
         return done
     account.rename_playlist(playlist.remote_id, planned.to)
     done.marked = True
@@ -328,6 +350,7 @@ __all__ = [
     "CHUNK",
     "CREATE",
     "MARK",
+    "NOT_LISTED",
     "RETITLED",
     "REUSE",
     "SetApplied",
