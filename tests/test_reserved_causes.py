@@ -6014,7 +6014,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # 408 to 409. ONE joined and nothing left, absent from `main`'s own `src`
     # by git grep and not a key: favorites-hearts-unmatched is the WARNING code
     # a finished sweep carries when the provider could not match a favourite.
-    assert (len(literals), len(literals - set(causes))) == (599, 409), (
+    # Re-pinned on U108, the guided label sync's go, 2026-10-03: 599 to 601
+    # distinct, non-keys 409 to 411. TWO joined and nothing left, each absent
+    # from `main`'s own `src` by git grep, and neither is a key. label-sync is
+    # the PREFIX every list the go writes is named after, and held-by-a-go is
+    # the CHECK the go reports a track under when an earlier go's job already
+    # holds it. The refusals the go raises are refused-by-policy,
+    # decision-stale and label-list-unusable, all of which the tree already
+    # carried.
+    assert (len(literals), len(literals - set(causes))) == (601, 411), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6728,7 +6736,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # and label-unknown, and holds no in-range integer: its two size
     # constants are far above the range. label/sweep.py, label/approved_cli.py
     # and cli/prompt.py are unchanged in whether they hold one.
-    assert (len(literal_holders), len(literal_both)) == (122, 26), (
+    # Re-pinned on U108, the guided label sync's go, 2026-10-03: holders move
+    # 122 to 123, and the also-holds-an-integer half is UNCHANGED at 26. ONE
+    # module joined and none left, and it is a new file. label/go.py refuses
+    # with refused-by-policy when the registry declares no gate for it, and
+    # holds no in-range integer: its one rate constant is far above the range.
+    # label/sync_cli.py, label/approved_cli.py and acquire/cli.py were holders
+    # before and are unchanged in that.
+    assert (len(literal_holders), len(literal_both)) == (123, 26), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
