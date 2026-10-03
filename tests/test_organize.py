@@ -490,3 +490,127 @@ def test_a_rekordbox_home_needs_a_declared_label_tree():
     assert own.rekordbox_home("Kompakt faves", ("Kompakt",), "Record Labels") == (
         "Record Labels / Kompakt"
     )
+
+
+# ---------------------------------------------------------------------------
+# What the review found
+# ---------------------------------------------------------------------------
+
+
+def test_the_adoption_job_carries_a_run_its_own_resume_can_answer(world):
+    from cratekit.cli import gates
+    from cratekit.core import jobs
+
+    code, done, _first = _answered("approve", "abort")
+    assert code == int(ExitCode.OK), done
+
+    step = _steps(done, rekordbox.AREA)[rekordbox.ADOPT]
+    with jobs.open_store() as store:
+        (job,) = [one for one in jobs.list_jobs(store) if one.handler_key == rekordbox.ADOPT_HANDLER]
+    handed = gates.load(job.payload[jobs.GATE_RUN_KEY])
+    assert handed.verb == rekordbox.ADOPT_VERB == registry.entry("adopt.apply").name
+    decision = handed.decisions[rekordbox.ADOPT_GATE]
+    assert (decision.option, decision.actor, decision.digest) == ("approve", "a-person", step["digest"])
+    assert rekordbox.ADOPT_GATE in {spec.name for spec in registry.entry("adopt.apply").gates}
+
+
+def _held_gates(digest: str):
+    from cratekit.cli import gates
+
+    state = gates.RunState(run_id="run-1", verb="organize", created="2026-10-03T00:00:00Z")
+    state.decisions[DB_GATE] = gates.Decision(
+        option="approve", actor="a-person", recorded="2026-10-03T00:00:00Z", digest=digest
+    )
+    return gates.Gates(state=state)
+
+
+def test_a_part_hand_off_refuses_a_digest_the_answer_was_not_given_over(tmp_path, monkeypatch):
+    from cratekit.cli import output
+    from cratekit.core.cause import CratekitError
+
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(tmp_path))
+    document = {"kind": "organize", "steps": [["adopt", "planned", "aaaa"]]}
+    spec = next(one for one in registry.entry("organize").gates if one.name == DB_GATE)
+    held = _held_gates(output.digest_of(document))
+    with pytest.raises(CratekitError):
+        held.hand_off(
+            spec, verb=rekordbox.ADOPT_VERB, gate=rekordbox.ADOPT_GATE, part=(document, "bbbb")
+        )
+    other = {**document, "kind": "something else"}
+    with pytest.raises(CratekitError):
+        held.hand_off(
+            spec, verb=rekordbox.ADOPT_VERB, gate=rekordbox.ADOPT_GATE, part=(other, "aaaa")
+        )
+
+
+def test_report_says_the_backup_acknowledgment_is_missing(seams):
+    envelope = _report()
+
+    facts = envelope["data"]["summary"]["areas"][rekordbox.AREA]["facts"]
+    assert facts["backup acknowledgment"].startswith("missing")
+    rows = {row["key"]: row for row in envelope["data"]["checks"]}
+    assert "backup acknowledgment: missing" in rows[f"organize.{rekordbox.AREA}"]["detail"]
+
+
+def test_a_set_whose_mark_was_put_back_waits_rather_than_reads_archived(world):
+    from cratekit.modules.outbound import ledger
+    from cratekit.sync import mark_record
+
+    cfg, _fake, _held, _inbox, _ids = world
+    (Path(cfg.library.root) / f"{SET_NAME}_inboxed.xml").unlink()
+    recorded = ledger.set_playlist(cfg, SET_NAME)
+    record = mark_record.MarkRecord(cfg)
+    record.record_marked(SET_NAME, {recorded.remote_id: (SET_NAME, f"DOWNLOADED {SET_NAME}")})
+    assert _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]["state"] == "nothing"
+
+    record.record_unmarked(SET_NAME, recorded.remote_id)
+
+    assert _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]["state"] == "listed"
+
+
+def test_the_latest_retired_landing_wins_by_number_and_a_bracket_is_no_pattern(machine):
+    root = Path(machine.library.root)
+    name = "Boiler [Berlin] 2024"
+    for tail in (".imported", ".imported-9", ".imported-10"):
+        (root / f"{name}_inboxed.xml{tail}").write_text("x", encoding="utf-8")
+    (root / "other_inboxed.xml.imported-2").write_text("x", encoding="utf-8")
+    (root / "other_inboxed.xml").write_text("x", encoding="utf-8")
+
+    found = account_area.intake_by_pass(machine)
+
+    assert found[name].name == f"{name}_inboxed.xml.imported-10"
+    assert found["other"].name == "other_inboxed.xml"
+
+
+def test_an_unreadable_label_registry_refuses_the_label_step_alone(world):
+    from cratekit.label import registry as labels
+
+    labels.RegistryStore().path.write_text("{ not json", encoding="utf-8")
+
+    envelope = _report()
+
+    remote = _steps(envelope, account_area.AREA)
+    assert remote[account_area.LABELS]["state"] == "refused"
+    assert remote[account_area.LABELS]["reason"] == "label-intent-unusable"
+    assert remote[f"archive:{SET_NAME}"]["state"] == "planned"
+    assert _steps(envelope, rekordbox.AREA)[rekordbox.ROTATE]["state"] == "planned"
+
+
+def test_a_step_that_fails_unexpectedly_lets_the_rest_run_and_is_raised_after(world, monkeypatch):
+    from cratekit.intake import rotate_cli
+
+    cfg, _fake, held, inbox, ids = world
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("the disk went away")
+
+    monkeypatch.setattr(rotate_cli, "written", broken)
+
+    code, done, _first = _answered()
+
+    assert code != int(ExitCode.OK)
+    assert done["cause"]["reason"] == "internal-error"
+    assert "These were written and stay written" in done["cause"]["message"]
+    # The steps after the broken one were still applied.
+    assert LABEL in held.folders_created
+    assert _parent(cfg, ids["batch"]) == inbox

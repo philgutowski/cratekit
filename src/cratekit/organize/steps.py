@@ -120,14 +120,16 @@ class Area:
             tally[step.state] = tally.get(step.state, 0) + 1
         return tally
 
+    def identity(self) -> dict[str, Any]:
+        """The document the area's digest is taken over, every step's own digest in it."""
+        return {
+            "kind": "organize",
+            "area": self.name,
+            "steps": [step.identity() for step in self.steps],
+        }
+
     def digest(self) -> str:
-        return digest_of(
-            {
-                "kind": "organize",
-                "area": self.name,
-                "steps": [step.identity() for step in self.steps],
-            }
-        )
+        return digest_of(self.identity())
 
     def payload(self) -> dict[str, Any]:
         """The area as its gate digests and shows it, every step an item."""
@@ -170,6 +172,10 @@ class Area:
             ],
             "yours": list(self.yours),
             "suggested": list(self.suggested),
+            # THE FACTS RIDE THE REPORT TOO, not only the gate's screen, since
+            # ``--report`` asks nothing and a missing backup acknowledgment it
+            # notes would otherwise reach no one.
+            "facts": dict(self.facts),
         }
         if self.cause is not None:
             block["refused"] = self.cause.to_json()
@@ -221,12 +227,16 @@ def area_check(area: Area) -> dict[str, Any]:
             "detail": f"not planned: {detail}",
             "remedy": str(area.cause.remediation.remedy),
         }
+    facts = "; ".join(
+        f"{key}: {value}" for key, value in area.facts.items() if isinstance(value, (str, int))
+    )
     return {
         "key": f"organize.{area.name}",
         "title": area.name,
         "status": "info",
         "detail": (
-            f"{len(area.yours)} of your own listed and not moved"
+            (f"{facts}; " if facts else "")
+            + f"{len(area.yours)} of your own listed and not moved"
             + (
                 ": " + "; ".join(_your_line(one) for one in area.yours)
                 if area.yours

@@ -76,26 +76,47 @@ class _Lazy:
         return self._value
 
 
-def intake_files(cfg: config.Config) -> list[Path]:
-    """Every intake file at the library root, pending or retired, one per pass.
+def _rank(name: str) -> int:
+    """How late a landing's file is: pending above every retired one, then by number.
 
-    A PENDING FILE WINS over a retired one of the same pass, since it is the
-    newer landing and the one a mark reads.
+    ``X_inboxed.xml`` is the newest, a pending landing. Retired files are
+    ``.imported``, then ``.imported-2`` and on, each later than the one before,
+    so the number decides and never the spelling: ``-10`` is later than ``-9``.
+    """
+    tail = name[name.rfind(land_cli.INTAKE_SUFFIX) + len(land_cli.INTAKE_SUFFIX):]
+    if not tail:
+        return 1 << 30
+    number = tail[len(land_cli.RETIRED_SUFFIX):].lstrip("-")
+    return int(number) if number.isdigit() else 1
+
+
+def intake_by_pass(cfg: config.Config) -> dict[str, Path]:
+    """The latest intake file at the library root for each pass, pending or retired.
+
+    ONE RULE for the mark and for the set's proof, so the two never read two
+    different landings of one pass. Listed by reading the directory, never by a
+    glob, since a pass or set name may hold ``[``, ``*`` or ``?``.
     """
     root = Path(cfg.library.root)
-    by_pass: dict[str, Path] = {}
     if not root.is_dir():
-        return []
-    for path in sorted(root.iterdir()):
-        if not path.is_file():
-            continue
+        return {}
+    by_pass: dict[str, Path] = {}
+    for path in root.iterdir():
         written = land_cli.unretired_name(path.name)
         if not written.endswith(land_cli.INTAKE_SUFFIX) or written == land_cli.INTAKE_SUFFIX:
             continue
+        if not path.is_file():
+            continue
         name = written[: -len(land_cli.INTAKE_SUFFIX)]
         held = by_pass.get(name)
-        if held is None or (held.name != written and path.name == written):
+        if held is None or _rank(path.name) > _rank(held.name):
             by_pass[name] = path
+    return by_pass
+
+
+def intake_files(cfg: config.Config) -> list[Path]:
+    """Every pass's latest intake file, in pass name order."""
+    by_pass = intake_by_pass(cfg)
     return [by_pass[name] for name in sorted(by_pass)]
 
 
@@ -145,12 +166,15 @@ def _label_apply(cfg, step: Step, planned, remote_of: _Lazy):
 
 def _mark_steps(cfg, area: Area) -> None:
     unpassed = 0
+    # ONE LISTING OF THE ACCOUNT FOR EVERY PASS, asked only when a file a pass
+    # owns needs it, and its refusal kept for each pass that asks.
+    listing = _Lazy(lambda: mark_cli.listed(cfg))
     for xml in intake_files(cfg):
         name = mark_cli.pass_name_of(xml)
         key = f"mark:{name}"
         title = f"mark the playlists pass {name} finished"
         try:
-            planned = mark_cli.plan_pass(cfg, xml)
+            planned = mark_cli.plan_pass(cfg, xml, listing=listing.get)
         except CratekitError as exc:
             area.steps.append(refused(key, title, exc.cause))
             continue
@@ -187,14 +211,8 @@ def _mark_apply(cfg, step: Step, planned):
 
 
 def _proof(cfg: config.Config, name: str) -> Path | None:
-    """The intake file named for a set, pending first, else retired, else ``None``."""
-    root = Path(cfg.library.root)
-    pending = root / f"{name}{land_cli.INTAKE_SUFFIX}"
-    if pending.is_file():
-        return pending
-    retired = sorted(root.glob(f"{name}{land_cli.INTAKE_SUFFIX}{land_cli.RETIRED_SUFFIX}*"))
-    retired = [path for path in retired if land_cli.unretired_name(path.name) == pending.name]
-    return retired[-1] if retired else None
+    """The latest intake file named for a set, by :func:`intake_by_pass`'s rule."""
+    return intake_by_pass(cfg).get(name)
 
 
 def _set_steps(cfg, area: Area) -> None:
@@ -202,7 +220,13 @@ def _set_steps(cfg, area: Area) -> None:
 
     try:
         names = ledger.set_playlist_names(cfg)
-        marked = {entry.playlist_id for entry in mark_record.MarkRecord(cfg).all()}
+        # A MARK ``sync unmark`` PUT BACK IS NO MARK: the playlist carries its
+        # old title again and is not archived as far as anyone can see.
+        marked = {
+            entry.playlist_id
+            for entry in mark_record.MarkRecord(cfg).all()
+            if not entry.unmarked
+        }
     except CratekitError as exc:
         area.steps.append(refused(SETS, "archive downloaded sets", exc.cause))
         return
@@ -281,13 +305,11 @@ def _yours(cfg, area: Area, labels: tuple[str, ...], catalogue_of: _Lazy, remote
             in_folders.update(remote.folder_playlists(folder_id))
         label_built = ledger.label_playlist_ids(cfg)
         set_built = ledger.set_playlist_ids(cfg)
-        made = {
-            one.playlist_id
-            for one in listed
-            if one.playlist_id in label_built
-            or one.playlist_id in set_built
-            or ledger.product_made(cfg, one.playlist_id)
-        }
+        made = (
+            label_built
+            | set_built
+            | ledger.product_made_among(cfg, (one.playlist_id for one in listed))
+        )
     except CratekitError as exc:
         area.steps.append(refused(YOURS, title, exc.cause))
         return
@@ -326,8 +348,18 @@ def _yours(cfg, area: Area, labels: tuple[str, ...], catalogue_of: _Lazy, remote
     )
 
 
-def plan_area(cfg: config.Config, *, available: frozenset[str], followed) -> Area:
-    """Plan every account step; a step that refuses is shown and hides no other."""
+def plan_area(
+    cfg: config.Config,
+    *,
+    available: frozenset[str],
+    followed,
+    unfollowed: CratekitError | None = None,
+) -> Area:
+    """Plan every account step; a step that refuses is shown and hides no other.
+
+    ``unfollowed`` is the label registry's own refusal when it could not be
+    read, shown as the label step's refusal, so the other steps still plan.
+    """
     from cratekit.label import catalogue
     from cratekit.modules.outbound import account
 
@@ -335,7 +367,9 @@ def plan_area(cfg: config.Config, *, available: frozenset[str], followed) -> Are
     catalogue_of = _Lazy(lambda: catalogue.resolve(cfg))
     remote_of = _Lazy(lambda: account.resolve(cfg))
     labels = tuple(entry.name for entry in followed)
-    if LABELS_MODULE in available:
+    if LABELS_MODULE in available and unfollowed is not None:
+        area.steps.append(refused(LABELS, "label folders", unfollowed.cause))
+    elif LABELS_MODULE in available:
         _label_steps(cfg, area, followed, catalogue_of, remote_of)
     else:
         area.steps.append(

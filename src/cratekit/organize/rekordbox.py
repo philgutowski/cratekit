@@ -46,9 +46,12 @@ from cratekit.organize.steps import LISTED, NOTHING, PLANNED, Area, Step, refuse
 
 AREA = "rekordbox"
 
-#: The handler key ``adopt apply`` queues under, whose worker this area drives.
-#: ``tests/test_organize.py`` holds it equal to the registry's.
+#: The handler key ``adopt apply`` queues under, whose worker this area drives,
+#: and the verb and gate whose resume a job interrupted here goes through.
+#: ``tests/test_organize.py`` holds each equal to the registry's.
 ADOPT_HANDLER = "adopt.apply"
+ADOPT_VERB = "adopt.apply"
+ADOPT_GATE = "adopt.apply.approve"
 
 ADOPT = "adopt"
 ROTATE = "rotate"
@@ -67,7 +70,7 @@ def acknowledgment(cfg: config.Config) -> CratekitError | None:
     return None
 
 
-def _adoption(cfg: config.Config, declared, registry, ctx, gate: str) -> Step:
+def _adoption(cfg: config.Config, declared, registry, ctx, gate: str, area: Area) -> Step:
     title = f"file tracks into {declared.tree.display}"
     try:
         plan = apply_cli.current_plan(cfg, declared)
@@ -136,6 +139,14 @@ def _adoption(cfg: config.Config, declared, registry, ctx, gate: str) -> Step:
 
     def apply() -> dict[str, Any]:
         decision = ctx.run.decisions.get(gate)
+        spec = next(one for one in ctx.entry.gates if one.name == gate)
+        # A RUN ``adopt apply --job`` CAN LOAD, holding this area's answer
+        # over the adoption's own digest. A job that parks or is interrupted
+        # here resumes through that verb, whose explicit gate would otherwise
+        # meet nothing recorded on every respawn and never be driven.
+        gate_run = ctx.gate.hand_off(
+            spec, verb=ADOPT_VERB, gate=ADOPT_GATE, part=(area.identity(), step.digest)
+        )
         with jobs.open_store() as store:
             job = jobs.enqueue(
                 store,
@@ -146,6 +157,7 @@ def _adoption(cfg: config.Config, declared, registry, ctx, gate: str) -> Step:
                     # WHO ANSWERED THIS AREA, off the recorded decision, as
                     # ``adopt apply`` freezes the actor of its own gate.
                     apply_cli.ACTOR_KEY: decision.actor if decision is not None else "",
+                    jobs.GATE_RUN_KEY: gate_run,
                 },
                 item_ids=(plan.digest(),),
                 cfg=cfg,
@@ -331,7 +343,7 @@ def plan_area(
     except CratekitError as exc:
         area.cause = exc.cause
         return area
-    area.steps.append(_adoption(cfg, declared, registry, ctx, gate))
+    area.steps.append(_adoption(cfg, declared, registry, ctx, gate, area))
     area.steps.append(_rotation(cfg, declared, today, area))
     area.steps.append(_record_labels(declared))
     area.steps.append(_yours(cfg, declared, labels, area))
@@ -344,7 +356,9 @@ def plan_area(
 
 __all__ = [
     "ADOPT",
+    "ADOPT_GATE",
     "ADOPT_HANDLER",
+    "ADOPT_VERB",
     "AREA",
     "RECORD_LABELS",
     "ROTATE",

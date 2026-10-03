@@ -489,7 +489,14 @@ class Gates:
         self.state.open_gate = None
         return chosen
 
-    def hand_off(self, spec: GateSpec, *, verb: str, gate: str) -> str:
+    def hand_off(
+        self,
+        spec: GateSpec,
+        *,
+        verb: str,
+        gate: str,
+        part: tuple[Any, str] | None = None,
+    ) -> str:
         """Carry the answer recorded on ``spec`` to a new run owned by ``verb``.
 
         WHY THIS EXISTS. A verb that queues another verb's job has to freeze a
@@ -507,6 +514,16 @@ class Gates:
         payload is not what the person saw. The target gate must be declared by
         ``verb``, must offer the chosen option, and must compare a digest, or the
         copy would answer a question the person was never asked.
+
+        ``part`` IS FOR A COMPOSER WHOSE ONE ANSWER COVERS SEVERAL PLANS (U112).
+        ``crate organize`` asks one question over an area whose digest is taken
+        over every step's own digest, and a step it hands to ``adopt apply``'s
+        job must carry that step's digest, not the area's, or the job's resume
+        meets ``DecisionStale``. ``part`` is the document the recorded digest
+        was taken over and the step's digest inside it. The copy refuses unless
+        the document digests to exactly what the person answered and the
+        step's digest is one of its values, so the digest handed on is one the
+        recorded answer was given over and never one a caller made up.
 
         Returns the new run's identifier, saved before returning.
         """
@@ -543,6 +560,23 @@ class Gates:
                     detail={"gate": spec.name, "verb": verb, "target": gate},
                 )
             )
+        digest = recorded.digest
+        if part is not None:
+            document, digest = part
+            if output.digest_of(document) != recorded.digest or digest not in _strings(document):
+                raise CratekitError(
+                    Cause(
+                        reason="internal-error",
+                        message=(
+                            f"the answer on {spec.name!r} was not given over a plan "
+                            f"holding the digest {digest!r}, so it cannot stand for "
+                            f"{verb}'s gate {gate!r}"
+                        ),
+                        remediation=Remediation(remedy=Remedy.REPORT_DEFECT),
+                        origin=("gates",),
+                        detail={"gate": spec.name, "verb": verb, "target": gate},
+                    )
+                )
         handed = RunState(
             run_id=output.new_run_id(),
             verb=verb,
@@ -552,13 +586,28 @@ class Gates:
                     option=recorded.option,
                     actor=recorded.actor,
                     recorded=recorded.recorded,
-                    digest=recorded.digest,
+                    digest=digest,
                 )
             },
-            offers={gate: recorded.digest},
+            offers={gate: digest},
         )
         save(handed)
         return handed.run_id
+
+
+def _strings(document: Any) -> set[str]:
+    """Every string anywhere in a JSON shaped document, for ``hand_off``'s part."""
+    found: set[str] = set()
+    pending = [document]
+    while pending:
+        value = pending.pop()
+        if isinstance(value, str):
+            found.add(value)
+        elif isinstance(value, Mapping):
+            pending.extend(value.values())
+        elif isinstance(value, (list, tuple)):
+            pending.extend(value)
+    return found
 
 
 def record(state: RunState, spec: GateSpec, option: str, *, actor: str) -> None:

@@ -516,8 +516,14 @@ class PassPlan:
         return [entry.identity for entry in self.decided if entry.planned]
 
 
-def plan_pass(cfg: config.Config, xml: Path) -> PassPlan:
-    """Plan the marks one intake file's pass earns, reading the account only when it has one."""
+def plan_pass(cfg: config.Config, xml: Path, *, listing=None) -> PassPlan:
+    """Plan the marks one intake file's pass earns, reading the account only when it has one.
+
+    ``listing`` IS FOR A CALLER PLANNING MANY PASSES (U112): a callable
+    answering ``(catalogue, sweep)``, asked only for a file a pass owns, so
+    one listing of the account serves every pass rather than one listing
+    each. Absent, this pass lists the account itself, as the verb does.
+    """
     # THE FILE FIRST, before the account is listed or a credential is asked
     # for, by the same single read the engine makes again before it renames.
     seen = marks.require_output(xml)
@@ -534,11 +540,11 @@ def plan_pass(cfg: config.Config, xml: Path) -> PassPlan:
         # rather than "log in" followed by it.
         return PassPlan(xml=xml, name=name, payload=_payload([], xml=xml, seen=seen))
 
-    from cratekit.label import catalogue
-
-    catalogue_found = catalogue.resolve(cfg)
+    if listing is None:
+        catalogue_found, sweep = listed(cfg)
+    else:
+        catalogue_found, sweep = listing()
     with jobs.open_store() as store:
-        sweep = playlists.marking_sweep(store, cfg, catalogue_found, handler_key=handler_key)
         decided = _decided(store, sweep, found)
     _settle(decided, named, cfg)
 
@@ -563,6 +569,19 @@ def plan_pass(cfg: config.Config, xml: Path) -> PassPlan:
         sweep=sweep,
         catalogue_found=catalogue_found,
     )
+
+
+def listed(cfg: config.Config) -> tuple[Any, Any]:
+    """The catalogue and the account's playlists as a mark reads them, listed once."""
+    from cratekit.label import catalogue
+
+    spec = next(one for one in sources.SPECS if one.source_id == playlists.SOURCE_ID)
+    catalogue_found = catalogue.resolve(cfg)
+    with jobs.open_store() as store:
+        sweep = playlists.marking_sweep(
+            store, cfg, catalogue_found, handler_key=str(spec.handler_key)
+        )
+    return catalogue_found, sweep
 
 
 def shown(planned: PassPlan) -> dict[str, Any]:
@@ -656,4 +675,4 @@ def sync_mark(ctx) -> Envelope:
     )
 
 
-__all__ = ["PassPlan", "apply_pass", "build_mark", "plan_pass", "shown", "sync_mark"]
+__all__ = ["PassPlan", "apply_pass", "build_mark", "listed", "plan_pass", "shown", "sync_mark"]

@@ -32,10 +32,11 @@ import dataclasses
 from typing import Any
 
 from cratekit.cli.output import Envelope
-from cratekit.core import config, profiles
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt
+from cratekit.core import profiles
+from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.intake import rotate_cli
+from cratekit.modules.outbound import shell
 from cratekit.organize import account, rekordbox
 from cratekit.organize.steps import FAILED, Area, area_check, check
 
@@ -48,21 +49,6 @@ APPROVE = "approve"
 APPLY = "apply"
 
 _ORIGIN = ("organize", "cli")
-
-
-def _load() -> config.Config:
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("organize.cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def build(parser, entry) -> None:
@@ -102,11 +88,21 @@ def _gate(entry, name: str):
     )
 
 
-def _followed() -> tuple:
+def _followed() -> tuple[tuple, CratekitError | None]:
+    """Every followed label, or none and the registry's refusal when it cannot be read.
+
+    THE REFUSAL IS THE LABEL STEP'S, not the verb's: the database area reads
+    the labels only for a suggested home, and the other account steps not at
+    all, so an unreadable registry refuses the one step that needs it.
+    """
     from cratekit.label import registry as labels
 
-    held = labels.RegistryStore().load()
-    return tuple(sorted(held.labels.values(), key=lambda entry: (entry.name, entry.label_id)))
+    try:
+        held = labels.RegistryStore().load()
+    except CratekitError as exc:
+        return (), exc
+    entries = sorted(held.labels.values(), key=lambda entry: (entry.name, entry.label_id))
+    return tuple(entries), None
 
 
 def _ask(ctx, area: Area, name: str) -> str | None:
@@ -124,6 +120,18 @@ def _apply(area: Area) -> None:
             step.applied = step.apply()
         except CratekitError as exc:
             step.error = exc
+        except Exception as exc:  # noqa: BLE001 - recorded, never swallowed
+            # ANY OTHER FAILURE IS THIS BUILD'S OWN, and it is the step's: the
+            # steps after it are their own verbs' writes and still run, and the
+            # failure is raised once they have, naming what did land.
+            step.error = refuse(
+                "internal-error",
+                f"{step.title} failed in a way this build does not expect "
+                f"({type(exc).__name__}: {exc})",
+                remedy=Remedy.REPORT_DEFECT,
+                origin=_ORIGIN,
+                detail={"step": step.key, "kind": type(exc).__name__},
+            )
 
 
 def _report(areas: list[Area], *, report: bool, answers: dict[str, str | None]) -> dict[str, Any]:
@@ -199,10 +207,10 @@ def _raise_failed(areas: list[Area], data: dict[str, Any]) -> None:
 
 def organize(ctx) -> Envelope:
     """Plan both areas, ask each its own question, then write what was approved."""
-    cfg = _load()
+    cfg = shell.load_config("organize.cli")
     report = bool(getattr(ctx.args, "report", False))
     membership = profiles.resolve(cfg.profile.name, cfg.modules.explicit)
-    followed = _followed()
+    followed, unfollowed = _followed()
     today = rotate_cli.as_of(ctx)
 
     database = rekordbox.plan_area(
@@ -213,7 +221,9 @@ def organize(ctx) -> Envelope:
         labels=tuple(entry.name for entry in followed),
         report=report,
     )
-    remote = account.plan_area(cfg, available=membership.available, followed=followed)
+    remote = account.plan_area(
+        cfg, available=membership.available, followed=followed, unfollowed=unfollowed
+    )
     areas = [database, remote]
 
     if report:
