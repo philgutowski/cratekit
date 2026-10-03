@@ -4,6 +4,24 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**R-857 done, 2026-10-02, on `relay/251`, issue #251: U107 reviewed after
+it landed.** `crate label sync` was built by #246's task, which hit the
+model usage limit and was merged unreviewed as `fd7e205`; this task ran
+the rest of METHOD's pipeline over it. Two rounds of the built in review,
+nine findings fixed with a test each, two declined, four recorded. The
+fix that matters: the labels sweep, `sync labels`, now reads the guided
+sync's asked marker before its login, and an answer supersedes every
+untaken release by the id it files under, so a release answered not now
+is never filed into review again by the old sweep. Mutation table 25 of
+25 killed after three user facing zeros (S02, S14, S25) were given a
+test, `docs/mutation/u107-notes.md`. Residuals R-858 to R-861, none on
+the board bar: the record's unbounded growth, the first run's per item
+track reads (2,416 paced reads, the attended first run's to time), a walk
+replacing a question `--next` showed, and a bare walk over a never closing
+pipe. **#246 is to be closed by hand after this merge, and U108 then
+unblocks.** The first live run of `crate label sync` stays owed to an
+attended sitting. Main's highest residual number is R-861.
+
 **Sitting 30 continued, after feeder cycle 39.** R-838: `sync mark` then
 `sync unmark` on one account playlist, `DOWNLOADED Kids`, retitled for the
 purpose and restored after; the unmark put the title back and a second
