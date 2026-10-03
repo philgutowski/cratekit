@@ -791,6 +791,12 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # they declare the tree in the template, so a cause built here carries
         # the configuration token instead.
         "catalog-tree-undeclared": ExitCode.LIBRARY_PREREQUISITE,
+        # U111. ``inbox rotate`` was asked to move a stale batch into a folder
+        # this library's taxonomy does not declare, ``[intake_old]``, or the
+        # intake root holds that folder twice. The catalog's code and its
+        # reason: the remedy is a declaration or a folder, never this
+        # installation's configuration.
+        "intake-old-undeclared": ExitCode.LIBRARY_PREREQUISITE,
         # ── This installation ───────────────────────────────────────────────
         "doctor-check-failed": ExitCode.PRECONDITION,
         # One slug for every way configuration can be unusable, because the

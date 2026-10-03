@@ -5155,7 +5155,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # prune's apply when the ledger no longer vouches for a playlist. It is in
     # cause.REASONS and not in the reserved table. Population 195 to 196,
     # non-reserved 167 to 168, reserved half UNCHANGED at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (196, 168, 28)
+    # Re-pinned on U111, the INBOX rotation, 2026-10-03. ONE slug, named
+    # rather than counted: intake-old-undeclared, which the rotation refuses
+    # with when the active taxonomy declares no [intake_old] folder or the
+    # intake root holds two of it. It is in cause.REASONS and not in the
+    # reserved table. Population 196 to 197, non-reserved 168 to 169,
+    # reserved half UNCHANGED at 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (197, 169, 28)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -6097,7 +6103,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # off that it records, and a playlist or track it does not touch.
     # not-product-made, positions-unknown and read-back-differs are the
     # PROBLEMS a refused removal names in its detail.
-    assert (len(literals), len(literals - set(causes))) == (632, 437), (
+    # Re-pinned on U111, the INBOX rotation, 2026-10-03: 632 to 637 distinct,
+    # non-keys 437 to 441. FIVE joined and nothing left, each absent from
+    # `main`'s own `src` by git grep. intake-old-undeclared is the key named in
+    # the pin above. inbox-rotate is the session WORKFLOW the rotation is
+    # recorded under and the plan KIND its digest is taken under. And
+    # rotate-nothing-planned, rotate-applied and rotate-records-unreadable are
+    # WARNING codes.
+    assert (len(literals), len(literals - set(causes))) == (637, 441), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6851,7 +6864,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # new removal chunk of fifty is the first integer of its own in the range.
     # Both are sizes, not codes. label/prune_cli.py spells only a warning code
     # and is no holder.
-    assert (len(literal_holders), len(literal_both)) == (130, 28), (
+    # Re-pinned on U111, the INBOX rotation, 2026-10-03: holders move 130 to
+    # 132, and the also-holds-an-integer half moves 28 to 29. TWO modules
+    # joined the holders and none left, both new files: intake/rotate.py,
+    # which refuses with intake-old-undeclared, tree-unconverged,
+    # decision-stale and internal-error, and intake/rotate_cli.py, which
+    # refuses with config-unusable, report-as-of-invalid and internal-error.
+    # Neither holds an in-range integer. ONE joined the integer half:
+    # core/rb_writer.py, a holder before, whose node change judge names the
+    # first ten changed content rows, a size and not a code.
+    assert (len(literal_holders), len(literal_both)) == (132, 29), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

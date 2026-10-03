@@ -1896,8 +1896,41 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # R-799. No argument: it reads every tagging record this installation
         # committed, which on the fixture's machine is none.
         "tag.remap": [],
+        # U111. No argument, and a CALLABLE because the drive needs a state the
+        # fixture does not build: the rotation refuses an intake tree on the
+        # xml bridge, naming ``tree cutover``, so on this fixture it would never
+        # reach its gate. Rather than exempt the gate, the intake tree is
+        # recorded database native here, anchored to a root folder the
+        # fixture's database is given, and the verb plans INBOX as empty and
+        # still asks. The bridge refusal is driven in tests/test_inbox_rotate.py.
+        "inbox.rotate": _intake_cut_over,
     }[entry.name]
     return sample() if callable(sample) else sample
+
+
+def _intake_cut_over() -> list[str]:
+    """Record the configured library's intake tree database native. Answers no arguments."""
+    from datetime import date
+
+    from cratekit.core import tree_registry
+    from tests import cutover_fixtures
+
+    cfg = config.load()
+    declared = taxonomy.default_taxonomy()
+    root_id = cutover_fixtures.one_root(cfg, declared.intake.display)
+    tree_registry.write(
+        cfg,
+        tree_registry.read(cfg).with_record(
+            tree_registry.TreeRecord(
+                tree_id=declared.intake.id,
+                mode=tree_registry.Mode.DATABASE,
+                cutover_on=date(2026, 10, 3),
+                root_id=root_id,
+                source=tree_registry.DerivationSource.TAXONOMY,
+            )
+        ),
+    )
+    return []
 
 
 def _routing_tree() -> tuple[str, str]:
@@ -2083,6 +2116,10 @@ def _assert_gate_reach(entry: registry.Entry, reached: list[str]) -> None:
 ACKNOWLEDGED_BEFORE_THE_GATE = {
     "adopt.move": (
         "tests/test_adopt_move.py::"
+        "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
+    ),
+    "inbox.rotate": (
+        "tests/test_inbox_rotate.py::"
         "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
     ),
     "tag.rows": (
@@ -2568,14 +2605,22 @@ def test_conformance_6_destructive_verbs_refuse_without_the_session_gates(
 
 
 TAXONOMY_IDS = frozenset(
-    {taxonomy.default_taxonomy().tree.id, taxonomy.default_taxonomy().intake.id}
+    {
+        taxonomy.default_taxonomy().tree.id,
+        taxonomy.default_taxonomy().intake.id,
+        taxonomy.default_taxonomy().intake_old.id,
+    }
     | set(taxonomy.default_taxonomy().bucket_ids())
     | {band.id for band in taxonomy.default_taxonomy().energy.bands}
     | {sub.id for sub in taxonomy.default_taxonomy().sub_classes}
 )
 
 TAXONOMY_DISPLAY_NAMES = frozenset(
-    {taxonomy.default_taxonomy().tree.display, taxonomy.default_taxonomy().intake.display}
+    {
+        taxonomy.default_taxonomy().tree.display,
+        taxonomy.default_taxonomy().intake.display,
+        taxonomy.default_taxonomy().intake_old.display,
+    }
     | {bucket.display for bucket in taxonomy.default_taxonomy().buckets}
     | {band.display for band in taxonomy.default_taxonomy().energy.bands}
 )
