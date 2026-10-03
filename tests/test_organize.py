@@ -49,6 +49,8 @@ VERB = ["organize", "--as-of", TODAY.isoformat()]
 #: The batch named for its run, forty days old: the rotation moves it into Old,
 #: where it is younger than the expiry and stays.
 RUN_NAMED = "2026-06-25T101010Z-1_inboxed"
+#: A batch named the way U110 names one, which no suggestion touches.
+DATED = "2026-09-28 Tidal playlists"
 #: The author's own, one on each side, each with an obvious home.
 MINE_IN_REKORDBOX = f"{LABEL} favourites"
 MINE_ON_ACCOUNT = "Warmup 2024"
@@ -218,9 +220,12 @@ def world(seams):
     inbox = _cut_over(cfg)
     ids = {
         "batch": _node(cfg, RUN_NAMED, under=inbox, age=40, tracks=("r-one",)),
+        # A U110 batch, young and readably named: kept, and no rename suggested.
+        "dated": _node(cfg, DATED, under=inbox, age=5, tracks=("r-two",)),
         "listen later": _node(cfg, "listen later", under=inbox, age=5),
         "mine": _node(cfg, MINE_IN_REKORDBOX, under=None),
     }
+    (Path(cfg.library.root) / cfg.library.music_dir / DATED).mkdir(parents=True)
     register(LABEL)
     tracklist = Path(cfg.library.root).parent / "lists" / f"{SET_NAME}.txt"
     tracklist.parent.mkdir(parents=True, exist_ok=True)
@@ -270,13 +275,13 @@ def _parent(cfg: config.Config, playlist_id: str) -> str:
 
 
 def _filed(cfg: config.Config) -> list[str]:
-    """Every live membership outside INBOX, as content identifiers."""
+    """Every live membership outside the INBOX batches, as content identifiers."""
     rows = _query(
         cfg,
         "SELECT s.ContentID, p.Name FROM djmdSongPlaylist s JOIN djmdPlaylist p "
         "ON p.ID = s.PlaylistID WHERE COALESCE(s.rb_local_deleted, 0) = 0",
     )
-    return sorted(str(content) for content, name in rows if name != RUN_NAMED)
+    return sorted(str(content) for content, name in rows if name not in (RUN_NAMED, DATED))
 
 
 # ---------------------------------------------------------------------------
@@ -327,6 +332,9 @@ def test_what_the_author_made_is_listed_with_a_home_and_never_a_write(world):
     areas = envelope["data"]["summary"]["areas"]
 
     mine_db = {one["name"]: one for one in areas[rekordbox.AREA]["yours"]}
+    # The trees the taxonomy declares are the product's, never the author's.
+    assert not {DECLARED.tree.display, DECLARED.intake.display} & set(mine_db)
+    assert DATED not in mine_db
     assert mine_db[MINE_IN_REKORDBOX]["suggested_home"] == f"{DECLARED.catalog.display} / {LABEL}"
     assert mine_db["listen later"]["suggested_home"] is None
     mine_account = {one["name"]: one for one in areas[account_area.AREA]["yours"]}
@@ -511,6 +519,9 @@ def test_the_adoption_job_carries_a_run_its_own_resume_can_answer(world):
     assert handed.verb == rekordbox.ADOPT_VERB == registry.entry("adopt.apply").name
     decision = handed.decisions[rekordbox.ADOPT_GATE]
     assert (decision.option, decision.actor, decision.digest) == ("approve", "a-person", step["digest"])
+    from cratekit.adopt import apply_cli
+
+    assert job.payload[apply_cli.ACTOR_KEY] == "a-person"
     assert rekordbox.ADOPT_GATE in {spec.name for spec in registry.entry("adopt.apply").gates}
 
 
@@ -614,3 +625,31 @@ def test_a_step_that_fails_unexpectedly_lets_the_rest_run_and_is_raised_after(wo
     # The steps after the broken one were still applied.
     assert LABEL in held.folders_created
     assert _parent(cfg, ids["batch"]) == inbox
+
+
+def test_a_plan_that_moves_after_the_answer_is_stale_rather_than_applied(world):
+    cfg, _fake, held, inbox, ids = world
+    collection.reset_cache()
+    code, first = drive(VERB)
+    assert code == int(ExitCode.DECISION_REQUIRED), first
+    run_id = first["run_id"]
+    assert drive(["run", "decide", run_id, DB_GATE, "approve", "--actor", "a-person"])[0] == 0
+    # Another batch old enough to move, landed after the answer was given.
+    _node(cfg, "2026-07-01T101010Z-2_inboxed", under=inbox, age=60)
+
+    collection.reset_cache()
+    code, again = drive(["--run", run_id, *VERB])
+
+    assert code == int(ExitCode.DECISION_STALE), again
+    assert again["cause"]["reason"] == "decision-stale"
+    assert _filed(cfg) == [] and held.folders_created == []
+
+
+def test_a_playlist_of_yours_already_in_a_folder_of_yours_is_not_listed(world):
+    _cfg, _fake, held, _inbox, _ids = world
+    folder = held.create_folder("My sets")
+    held.placed["mine-1"] = folder
+
+    mine = {one["name"] for one in _report()["data"]["summary"]["areas"][account_area.AREA]["yours"]}
+
+    assert MINE_ON_ACCOUNT not in mine
