@@ -217,9 +217,10 @@ def label_mark(ctx) -> Envelope:
         # are kept, so each is listed and left rather than renamed unseen.
         items = [_item(year, {}) for year in built]
     payload = _payload(items, label=label, pass_name=pass_name)
+    # THE PLAN ITSELF, for the reason ``label playlists`` gives (R-693).
     option = ctx.gate.require(
         ctx.entry.gates[0],
-        digest=payload["digest"],
+        plan=payload,
         context=_shown(payload, label=label, pass_name=pass_name),
     )
     if not items:

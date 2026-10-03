@@ -286,9 +286,9 @@ def label_playlists(ctx) -> Envelope:
         remote = account.resolve(cfg)
         planned = folders.plan(cfg, read, remote)
     payload = _payload(planned, name=name)
-    option = ctx.gate.require(
-        ctx.entry.gates[0], digest=payload["digest"], context=_shown(planned, name=name)
-    )
+    # THE PLAN ITSELF, so the screen shows every item the digest covers
+    # (R-693), with the year by year sentences as the facts in front of them.
+    option = ctx.gate.require(ctx.entry.gates[0], plan=payload, context=_shown(planned, name=name))
     if planned is None:
         return ctx.envelope(
             data=payload,
