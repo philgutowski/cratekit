@@ -33782,6 +33782,31 @@ are the shape.
 **On the board bar, (b).** The product prints a clean report over a declared
 write it did not perform.
 
+**Built and closed, 2026-10-02, on `relay/250`, issue #250.** The sweep's
+summary now carries `counts`, `hearted`, `already_hearted` and `unmatched`,
+and `unmatched_tracks`, one row per favourite left unhearted with its
+identity, artist, title and reason. Every item report names each unmatched
+row, so a favourite the account said nothing about is listed too, with the
+sentence `the provider returned no track for it`; a report written before
+this falls back to its `reasons` and then to the identity alone. The resume
+passes a `concluded` hook that warns `favorites-hearts-unmatched` after the
+standing `favorites-local-write-unbound`. The default answer reads `tracks:
+2 hearted, 0 already hearted or hearted before, 1 unmatched` and one
+`unmatched: ARTIST - TITLE: REASON` line each, the count keys being the
+sweep's own because the export's are printed in words about a playlist.
+`unmatched_tally` and `NO_MATCH` moved to the outbound shell, read by both
+verbs. Nothing hearted changed. Driven through the dispatcher on both
+renderers in `tests/test_outbound_workers.py`, the brief's three scenarios.
+Mutation table 15 of 15 killed, `docs/mutation/r856-a.md`. Of the review's
+nine findings, three were applied (the literal pin, the shared tally, the
+shared sentence), one is the record, two are filed as R-862 and R-863, and
+three were declined: a summary carrying both count vocabularies, which no
+summary does; the engine's `unmatched` slug read as a reason, which the
+heart engine never records, since `heart_back` keeps only a reason the
+account returned; and deriving `reasons` from the listing, an existing
+envelope key left as it was. A live sweep read back is the confirmation
+R-850 had at sitting 30 and is owed to an attended sitting, not to closing.
+
 ## R-857. U107 landed on main with no review, no mutation table and no record, after its task hit the model usage limit
 
 **Found:** at sitting 30, 2026-10-02, reading the merge of #246.
@@ -33899,3 +33924,44 @@ which is the designed path. A never closing pipe was not driven.
 
 **Closes when:** the interactive path refuses before its first provider
 call when nothing could answer it, for both interactive verbs.
+
+## R-862. The favourites summary lists hearted favourites by provider track and unmatched ones by library row
+
+**Found:** by the built in review of R-856 on `relay/250`, 2026-10-02.
+
+**The mechanism.** `hearts.heart_back` appends the REMOTE identifier to
+`hearted` and `already` and the library row to `unmatched`, and the sweep's
+summary passes the three lists through. The counts are right, since one
+item adds one to exactly one list, but a consumer of the json envelope
+cannot join `hearted` or `already` to the favourites it queued, while it
+can join `unmatched` and `unmatched_tracks`.
+
+**Measured cost.** Read, not driven against a consumer: no verb in `src`
+reads the lists back. The default answer prints only the counts and the
+unmatched rows, which are correct.
+
+**Closes when:** the item report and the summary name each hearted and
+already hearted favourite by its library row as well as its provider track.
+
+**Not on the board bar.** A json shape, with nothing false in the answer a
+person reads.
+
+## R-863. A queued outbound job's json envelope carries counts of zero
+
+**Found:** by the built in review of R-856 on `relay/250`, 2026-10-02.
+
+**The mechanism.** Both outbound verbs answer their queueing pass with
+`shell.reported`, which calls the verb's `summary` over a job with no
+committed artifacts, so since R-850 for the export and R-856 for the sweep
+`progress.outbound.counts` is all zeros at queue time. The default renderer
+prints no track line for a queued job; the json carries the zeros beside
+`state: queued`.
+
+**Measured cost.** A script reading only the counts and not the state
+would read a queued sweep as one that hearted nothing. Not driven against
+such a script.
+
+**Closes when:** a queued job's summary carries no `counts`, or the json
+contract says counts are meaningful only once the state is not queued.
+
+**Not on the board bar.** The envelope states the job is queued.
