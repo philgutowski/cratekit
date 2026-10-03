@@ -20,12 +20,14 @@ import pytest
 from cratekit.cli import registry
 from cratekit.core.exit_codes import ExitCode
 from cratekit.export import set_cli
+from cratekit.intake import candidates
 from cratekit.label import catalogue
 from cratekit.label.catalogue import AccountPlaylist
 from cratekit.modules.outbound import ledger, sets
 from cratekit.sync import mark_record
 from cratekit.sync import playlists as sync_playlists
 from tests import outbound_fakes
+from tests._containers import tagged_container
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, UnreadableCatalogue, catalogue_factory
 from tests.test_intake_missing_search import Hit
@@ -217,7 +219,7 @@ def test_two_exact_candidates_are_not_chosen_between(account):
     code, done = _build(_tracklist(cfg), "abort")
     assert code == int(ExitCode.OK), done
     fifth = _tracks(done)[4]
-    assert fifth["action"] == "unmatched" and "no single exact match" in fifth["why"]
+    assert fifth["action"] == "unmatched" and "several match it exactly" in fifth["why"]
 
 
 def test_the_sweep_never_reads_a_set_playlist_as_intake(account, monkeypatch):
@@ -354,6 +356,210 @@ def test_a_candidate_accepted_in_review_is_used_and_not_searched_for_again(accou
     fifth = _tracks(done)[4]
     assert (fifth["id"], fifth["how"], fifth["action"]) == ("tid-5b", "accepted", "add")
     assert ("Artist Five", "Title Five") not in fake.searched_for
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 2b. R-879: a set the library holds, and a search that fills its page
+# ═══════════════════════════════════════════════════════════════════════════
+
+SEVEN = ("Artist Seven", "Title Seven")
+
+
+def _held(tmp_path, cfg, isrc: str = "", name: str = "Title Seven") -> Path:
+    """A real file the library holds for ``SEVEN``, carrying ``isrc`` when given."""
+    fields = {"artist": SEVEN[0], "title": f"04A - 126 - {name}"}
+    if isrc:
+        fields["isrc"] = isrc
+    target = cfg.library.root / cfg.library.music_dir / f"04A - 126 - {SEVEN[0]} - {name}.flac"
+    return tagged_container(tmp_path, target, **fields)
+
+
+def _filler(count: int, start: int = 0) -> list[Hit]:
+    """Hits that resemble nothing the row says, to fill a page."""
+    return [Hit(f"fill-{n}", "Other Act", f"Unrelated {n}") for n in range(start, start + count)]
+
+
+def test_a_row_the_library_holds_is_listed_by_its_files_isrc_with_no_search(
+    account, tmp_path
+):
+    cfg, fake, held = account
+    _held(tmp_path, cfg, isrc="QZABC2600007")
+    held.catalog["set-row-1"] = "tid-by-file"
+    code, done = _build(_tracklist(cfg, rows=(SEVEN,), name="held.txt"), "abort")
+    assert code == int(ExitCode.OK), done
+    (row,) = _tracks(done)
+    assert (row["id"], row["how"], row["action"]) == ("tid-by-file", "library-isrc", "add")
+    # Twice, once at the gate's refusal and once on the run that carries it out.
+    asked = {"identity": "set-row-1", "isrc": "QZABC2600007", "title": "Title Seven", "artist": "Artist Seven"}
+    assert held.matches == [asked, asked]
+    assert fake.searched_for == []
+
+
+def test_a_held_file_whose_isrc_the_account_cannot_name_is_searched_and_said(
+    account, tmp_path
+):
+    cfg, fake, held = account
+    _held(tmp_path, cfg, isrc="QZABC2600007")
+    code, done = _build(_tracklist(cfg, rows=(SEVEN,), name="held.txt"), "abort")
+    assert code == int(ExitCode.OK), done
+    (row,) = _tracks(done)
+    assert row["action"] == "unmatched"
+    assert row["why"].startswith(
+        "the provider names no single track under its library file's ISRC QZABC2600007; "
+    )
+    assert fake.searched_for == [SEVEN, SEVEN]
+
+
+def test_a_held_file_with_no_isrc_is_searched_and_says_so(account, tmp_path):
+    cfg, fake, held = account
+    _held(tmp_path, cfg)
+    code, done = _build(_tracklist(cfg, rows=(SEVEN,), name="held.txt"), "abort")
+    assert code == int(ExitCode.OK), done
+    (row,) = _tracks(done)
+    assert row["why"].startswith("the library holds it and its file carries no ISRC; ")
+    assert held.matches == [] and fake.searched_for == [SEVEN, SEVEN]
+
+
+def test_a_row_the_library_does_not_hold_asks_the_account_nothing(account, tmp_path):
+    cfg, _fake, held = account
+    _held(tmp_path, cfg, isrc="QZABC2600008", name="Another Title")
+    code, done = _build(_tracklist(cfg, rows=(SEVEN,), name="held.txt"), "abort")
+    assert code == int(ExitCode.OK), done
+    (row,) = _tracks(done)
+    assert held.matches == []
+    assert row["why"] == "the provider's search returned nothing for it"
+
+
+def test_an_absent_music_folder_is_said_and_never_read_as_holding_nothing(account):
+    cfg, _fake, held = account
+    (cfg.library.root / cfg.library.music_dir).rmdir()
+    code, done = _build(_tracklist(cfg, rows=(SEVEN,), name="held.txt"), "abort")
+    assert code == int(ExitCode.OK), done
+    (row,) = _tracks(done)
+    assert "music folder" in row["why"] and "is not there" in row["why"]
+    assert held.matches == []
+
+
+def test_a_full_first_page_with_one_exact_and_a_second_with_none_lists_it(account):
+    cfg, fake, _held_account = account
+    fake.searches[SEVEN] = [Hit("tid-7", *SEVEN), *_filler(49), *_filler(10, start=49)]
+    code, done = _build(_tracklist(cfg, rows=(SEVEN,), name="paged.txt"), "abort")
+    assert code == int(ExitCode.OK), done
+    (row,) = _tracks(done)
+    assert (row["id"], row["how"], row["action"]) == ("tid-7", "search", "add")
+    assert fake.pages_asked == [(*SEVEN, 0), (*SEVEN, catalogue.TRACK_SEARCH_PAGE)] * 2
+
+
+def test_an_exact_match_on_the_second_page_alone_is_listed(account):
+    cfg, fake, _held_account = account
+    fake.searches[SEVEN] = [*_filler(50), Hit("tid-7", *SEVEN)]
+    code, done = _build(_tracklist(cfg, rows=(SEVEN,), name="paged.txt"), "abort")
+    assert code == int(ExitCode.OK), done
+    (row,) = _tracks(done)
+    assert (row["id"], row["how"]) == ("tid-7", "search")
+
+
+def test_a_second_distinct_exact_match_on_the_next_page_leaves_it_out_as_several(account):
+    cfg, fake, _held_account = account
+    fake.searches[SEVEN] = [Hit("tid-7a", *SEVEN), *_filler(49), Hit("tid-7b", *SEVEN)]
+    code, done = _build(_tracklist(cfg, rows=(SEVEN,), name="paged.txt"), "abort")
+    assert code == int(ExitCode.OK), done
+    (row,) = _tracks(done)
+    assert row["action"] == "unmatched"
+    assert "several match it exactly, 2 distinct tracks" in row["why"]
+
+
+def test_the_same_exact_track_served_again_on_the_next_page_is_one(account):
+    cfg, fake, _held_account = account
+    fake.searches[SEVEN] = [Hit("tid-7", *SEVEN), *_filler(49), Hit("tid-7", *SEVEN)]
+    code, done = _build(_tracklist(cfg, rows=(SEVEN,), name="paged.txt"), "abort")
+    assert code == int(ExitCode.OK), done
+    (row,) = _tracks(done)
+    assert (row["id"], row["how"]) == ("tid-7", "search")
+
+
+def test_no_exact_match_on_any_page_leaves_it_out_as_none(account):
+    cfg, fake, _held_account = account
+    fake.searches[SEVEN] = [*_filler(50), *_filler(5, start=50), Hit("tid-near", SEVEN[0], "Title Sevens")]
+    code, done = _build(_tracklist(cfg, rows=(SEVEN,), name="paged.txt"), "abort")
+    assert code == int(ExitCode.OK), done
+    (row,) = _tracks(done)
+    assert row["action"] == "unmatched"
+    assert row["why"].startswith(
+        "the provider's search returned 56 hit(s) over 2 page(s) and none matches it exactly"
+    )
+
+
+def test_the_page_bound_reached_leaves_it_out_and_says_so(account):
+    cfg, fake, _held_account = account
+    pages = candidates.SEARCH_PAGES
+    fake.searches[SEVEN] = [
+        Hit("tid-7", *SEVEN),
+        *_filler(pages * catalogue.TRACK_SEARCH_PAGE + 20 - 1),
+    ]
+    code, done = _build(_tracklist(cfg, rows=(SEVEN,), name="paged.txt"), "abort")
+    assert code == int(ExitCode.OK), done
+    (row,) = _tracks(done)
+    assert row["action"] == "unmatched"
+    assert "the page bound was reached with one exact match" in row["why"]
+    assert [offset for *_row, offset in fake.pages_asked] == [
+        n * catalogue.TRACK_SEARCH_PAGE for n in range(pages)
+    ] * 2
+
+
+def _walk(line: str, hits: list) -> tuple[candidates.Answer, list[int]]:
+    """``search_pages`` over ``hits`` served a page at a time, and the offsets asked."""
+    from cratekit.acquire import match
+
+    (wanted,) = match.read_text_lines(f"{line}\n")
+    asked: list[int] = []
+
+    def search(offset: int):
+        asked.append(offset)
+        return hits[offset : offset + catalogue.TRACK_SEARCH_PAGE]
+
+    return candidates.search_pages(search, wanted), asked
+
+
+def test_a_short_first_page_is_read_once():
+    answer, asked = _walk("Artist Seven - Title Seven", [Hit("tid-7", *SEVEN)])
+    assert asked == [0] and answer.pages == 1 and not answer.full
+    assert candidates.sole_exact(answer).track.ref == "tid-7"
+
+
+def test_two_exact_matches_on_the_first_page_read_no_second():
+    hits = [Hit("tid-7a", *SEVEN), Hit("tid-7b", *SEVEN), *_filler(60)]
+    answer, asked = _walk("Artist Seven - Title Seven", hits)
+    assert asked == [0] and candidates.sole_exact(answer) is None
+
+
+def test_a_title_that_reads_two_ways_reads_no_second_page():
+    hits = [Hit("tid-7", "Artist Seven", "Sun Path", version="Live"), *_filler(60)]
+    answer, asked = _walk("Artist Seven - Sun Path - Live", hits)
+    assert answer.ambiguous, "the fixture's title no longer reads two ways"
+    assert asked == [0] and candidates.sole_exact(answer) is None
+
+
+def test_an_unreadable_row_on_a_full_page_reads_no_second_page():
+    class Unreadable:
+        id = "tid-x"
+
+    hits = [Hit("tid-7", *SEVEN), Unreadable(), *_filler(60)]
+    answer, asked = _walk("Artist Seven - Title Seven", hits)
+    assert answer.unreadable == 1
+    assert asked == [0] and candidates.sole_exact(answer) is None
+
+
+def test_an_empty_page_after_full_ones_ends_the_listing_and_a_full_last_page_never_lists():
+    from cratekit.acquire import match
+
+    hits = [Hit("tid-7", *SEVEN), *_filler(2 * catalogue.TRACK_SEARCH_PAGE - 1)]
+    answer, asked = _walk("Artist Seven - Title Seven", hits)
+    assert asked == [0, 50, 100], "the third page, empty, is the end of the listing"
+    assert candidates.sole_exact(answer).track.ref == "tid-7"
+    (wanted,) = match.read_text_lines("Artist Seven - Title Seven\n")
+    two = candidates.read_pages(wanted, [tuple(hits[:50]), tuple(hits[50:100])])
+    assert two.hits == 100 and two.full and candidates.sole_exact(two) is None
 
 
 # ═══════════════════════════════════════════════════════════════════════════

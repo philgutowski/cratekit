@@ -66,7 +66,8 @@ class SetRow:
     artist: str
     title: str
     remote_id: str = ""
-    #: How the row was matched, ``ref``, ``isrc``, ``accepted`` or ``search``.
+    #: How the row was matched, ``ref``, ``isrc``, ``library-isrc``, ``accepted``
+    #: or ``search``.
     how: str = ""
     #: Why it was not, in words for a person. Empty for a matched row.
     reason: str = ""

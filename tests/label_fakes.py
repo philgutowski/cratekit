@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from cratekit.label.catalogue import ReleaseUnresolvable
+from cratekit.label.catalogue import TRACK_SEARCH_PAGE, ReleaseUnresolvable
 
 #: Every method the ``Catalogue`` protocol declares. Derived once here rather
 #: than remembered at each assertion site.
@@ -234,8 +234,11 @@ class FakeCatalogue:
         #: The provider's hits for each search, keyed by the artist and the title
         #: exactly as the seam was handed them, in the provider's order. A search
         #: absent here is one the provider answers with nothing.
+        #: A list longer than the seam's page is served a page at a time.
         self.searches = dict(searches or {})
         self.searched_for: list[tuple[str, str]] = []
+        #: Every page asked for, as the artist, the title and the offset.
+        self.pages_asked: list[tuple[str, str, int]] = []
         self.asked_for: list[str] = []
         self.playlists_asked_for: list[str] = []
 
@@ -302,9 +305,11 @@ class FakeCatalogue:
         self.isrcs_asked_for.append(isrc)
         return tuple(self.isrcs.get(isrc, ()))
 
-    def search_tracks(self, artist: str, title: str) -> tuple[Any, ...]:
+    def search_tracks(self, artist: str, title: str, offset: int = 0) -> tuple[Any, ...]:
         self.searched_for.append((artist, title))
-        return tuple(self.searches.get((artist, title), ()))
+        self.pages_asked.append((artist, title, offset))
+        hits = tuple(self.searches.get((artist, title), ()))
+        return hits[offset : offset + TRACK_SEARCH_PAGE]
 
     def check_label(self, name: str) -> dict:
         if self.known_labels is not None and name not in self.known_labels:
@@ -373,7 +378,7 @@ class UnreadableCatalogue(FakeCatalogue):
         self.isrcs_asked_for.append(isrc)
         raise RuntimeError(f"the catalogue could not look up the ISRC {isrc!r}")
 
-    def search_tracks(self, artist: str, title: str) -> tuple[Any, ...]:
+    def search_tracks(self, artist: str, title: str, offset: int = 0) -> tuple[Any, ...]:
         self.searched_for.append((artist, title))
         raise RuntimeError(f"the catalogue could not search for {artist!r} {title!r}")
 
