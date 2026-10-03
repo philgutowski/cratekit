@@ -34738,6 +34738,25 @@ provider's offset; and Mango Alley plans to its gate.
 **On the board bar, (c).** A workflow the author follows labels for cannot
 finish on one of his labels, and the product blames the provider for it.
 
+**Built, 2026-10-03, on `relay/257`, issue #257: the roster is read whole.**
+`listing.HeldReleases` names an object whose release listings are already in
+memory, and `listing.artist_releases` reads one through its own deduplication
+and skip record without paging it, spending none of the budget.
+`LabelRoster` is one and has no paging methods left, so nothing can page it,
+and `crawl.can_list` asks it what it holds. The other way the brief offered, a
+budget drawn from the roster's length, was not taken: a guard sized to what
+it guards can never fire. With nothing paging a roster, no roster refusal
+remains to reword. The real provider listing keeps its budget of 100 and its
+wording, pinned by a test of a listing that never ends. Driven in the suite:
+a roster of 12,000 releases on one listing, past the 9,900 one artist's walk
+reaches, read in full and once each. **Owed, attended:** `crate label
+playlists mango-alley` planned to its gate, which needs the fresh provider
+session this entry's second half still waits on. The roster lists every held
+artist a second time after discovery listed it, about 1,500 listings, 756
+artists by two methods, for Mango Alley by arithmetic and not by measurement, which is R-468's walk
+rather than this entry's. The verifier's reads over what is now every
+release are R-895.
+
 ---
 
 ## R-889. A track a prune took off a label year playlist is never put back, even once its hold is lifted
@@ -34869,3 +34888,30 @@ does, a removal by a stable item identifier is found on the provider.
 
 **Not on the board bar.** The refusal is honest and names the remedy.
 
+
+---
+
+## R-895. A large roster's every listed release can reach a verifier read that climbs no retry ladder
+
+**Found:** by the built in review of R-888 on `relay/257`, 2026-10-03.
+
+**The mechanism.** `label playlists` verifies every release a roster lists,
+with no window, and `TidalCatalogue.search_release` reads a release again by
+identifier when its listed copy carries no copyright line. That read is a bare
+`session.album` call. The provider gate paces it, and nothing retries it, so a
+rate limit on one of them ends the plan through the lookup failure path where
+`_album` would have waited and asked again. Before R-888 a roster over 10,000
+releases refused before any verification; now Mango Alley's 27,002 releases
+all reach the verifier.
+
+**Measured cost.** Not measured. How many of a large roster's listed releases
+lack a copyright line, and so cost a read, is unmeasured, and so is whether
+the paced rate draws a rate limit at that volume. The verb refuses and writes
+nothing when it happens.
+
+**Closes when:** the attended Mango Alley plan R-888 owes is timed and counts
+its re-reads, and either it finishes or `search_release` reads through
+`_album`'s ladder.
+
+**Not on the board bar.** The reachability is unmeasured, and a refusal that
+writes nothing is honest about what it could not read.
