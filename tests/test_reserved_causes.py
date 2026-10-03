@@ -6053,15 +6053,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # codes.
     # Re-pinned on the residual finding "An identified set cannot become a
     # playlist on the streaming account, and a downloaded set playlist is not
-    # archived", 2026-10-03: 613 to 620 distinct, non-keys 421 to 427. SEVEN
+    # archived", 2026-10-03: 613 to 621 distinct, non-keys 421 to 428. EIGHT
     # joined and nothing left, each absent from `main`'s own `src` by git
     # grep. export-set-ambiguous is the key named in the pin above.
     # export-set and export-archive are the plan KINDS the two verbs' digests
     # are taken under. set-playlist is the EXCLUSION the playlist sweep gives
-    # a playlist export set recorded. And export-set-tracks-refused,
-    # export-archive-nothing-built and export-archive-changed-since-plan are
-    # WARNING codes.
-    assert (len(literals), len(literals - set(causes))) == (620, 427), (
+    # a playlist export set recorded. taken-off is the ACTION the set's plan
+    # gives a row written before and since taken off the playlist. And
+    # export-set-tracks-refused, export-archive-nothing-built and
+    # export-archive-changed-since-plan are WARNING codes.
+    assert (len(literals), len(literals - set(causes))) == (621, 428), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
