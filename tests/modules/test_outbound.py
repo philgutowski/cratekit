@@ -509,6 +509,8 @@ def test_an_adopted_record_moves_and_no_playlist_is_created(cfg):
             "added": ["tid-a", "tid-b"],
             "tracks": ["a", "b"],
             "formerly": ["Old"],
+            # R-836. The row each written track came from, moved with the record.
+            "rows": {"a": "tid-a", "b": "tid-b"},
         }
     }
 
@@ -689,6 +691,42 @@ def test_the_outbound_package_defines_no_remove_write():
     )
     clash = sorted(defined & FORBIDDEN_WRITE_NAMES)
     assert clash == []
+
+
+#: R-836. The one removal the protocol declares, and the two flag readers that
+#: were already here and name a question rather than a write.
+ADMITTED_REMOVE_NAMES = frozenset({"remove_tracks", "remove_requested"})
+
+
+def _defined_where(root: Path) -> list[tuple[str, str]]:
+    found: list[tuple[str, str]] = []
+    for path in sorted(root.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                found.append((path.name, node.name))
+    return found
+
+
+def test_the_one_remove_the_outbound_package_defines_is_the_protocols_own():
+    """Narrowed on R-836 from "no remove" to exactly ``remove_tracks``.
+
+    The exact name scan above misses a plural, which ``remove_tracks`` is of
+    ``remove_track``, so this one reads every function whose name opens with
+    ``remove`` or names a delete, and admits only the protocol's member, in
+    the two files that declare and implement it, and the flag readers.
+    """
+    shaped = [
+        (where, name)
+        for root in (OUTBOUND_ROOT, EXPORT_ROOT, FAVORITES_ROOT)
+        for where, name in _defined_where(root)
+        if name.lstrip("_").startswith("remove") or "delete" in name.lower()
+    ]
+    assert {name.lstrip("_") for _where, name in shaped} == ADMITTED_REMOVE_NAMES, shaped
+    assert sorted(where for where, name in shaped if name == "remove_tracks") == [
+        "service.py",
+        "tidal_account.py",
+    ]
 
 
 # ═══════════════════════════════════════════════════════════════════════════

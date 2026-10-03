@@ -58,7 +58,7 @@ def build_playlists(parser, entry) -> None:
     parser.set_defaults(_handler=label_playlists)
 
 
-def _incomplete(entry: labels.LabelEntry, what: str) -> CratekitError:
+def incomplete(entry: labels.LabelEntry, what: str) -> CratekitError:
     return refuse(
         "label-playlists-incomplete",
         f"the catalogue of {entry.name!r} was not read in full ({what}), so no plan "
@@ -78,6 +78,10 @@ def _year(stated: Any, release: Any) -> str:
     return listed if len(listed) == 4 and listed.isdigit() else ""
 
 
+def _id(row: Any) -> str:
+    return str(getattr(row, "id", "") or "")
+
+
 def read_catalogue(
     cfg, entry: labels.LabelEntry, found: catalogue.Catalogue
 ) -> folders.LabelCatalogue:
@@ -85,9 +89,9 @@ def read_catalogue(
     try:
         confirmed = sweep.confirmed_releases(cfg, entry, found)
     except run.LookupFailure as exc:
-        raise _incomplete(entry, str(exc)) from exc
+        raise incomplete(entry, str(exc)) from exc
     if confirmed.unread:
-        raise _incomplete(
+        raise incomplete(
             entry,
             "; ".join(f"{one.artist} ({one.listing}: {one.reason})" for one in confirmed.unread),
         )
@@ -97,13 +101,14 @@ def read_catalogue(
     # credit endpoint answers. Shown, it would be an empty folder under the
     # label's name, approved as the label.
     if confirmed.dropped and not confirmed.releases:
-        raise _incomplete(
+        raise incomplete(
             entry,
             f"{len(confirmed.dropped)} release(s) were read and the catalogue "
             f"confirmed none of them as the label's",
         )
     tracks = catalogue.ReleaseTracks(found)
     years: dict[str, list[str]] = {}
+    by_release: dict[str, tuple[str, tuple[str, ...]]] = {}
     undated = gone = 0
     for release in confirmed.releases:
         release_id = str(getattr(release, "id", "") or "")
@@ -115,18 +120,25 @@ def read_catalogue(
         except CratekitError:
             raise
         except Exception as exc:  # noqa: BLE001 - refused, never swallowed
-            raise _incomplete(
+            raise incomplete(
                 entry,
                 f"the tracks of the release {release_id} could not be read "
                 f"({type(exc).__name__}: {exc})",
             ) from exc
         year = _year(stated, release)
+        # EVERY TRACK the release carries, playable or not, is what the prune
+        # reads as still the label's (R-836): a track that stopped playing is
+        # still on a release the catalogue confirms.
+        by_release[release_id] = (
+            year,
+            tuple(dict.fromkeys(_id(row) for row in rows if _id(row))),
+        )
         if not year:
             undated += 1
             continue
         held = years.setdefault(year, [])
         for row in rows:
-            identifier = str(getattr(row, "id", "") or "")
+            identifier = _id(row)
             # A TRACK THE PROVIDER WILL NOT PLAY is never asked for, since the
             # client skips it on an add and it would be refused every run.
             if identifier and getattr(row, "available", True) is not False:
@@ -141,6 +153,11 @@ def read_catalogue(
         dropped=len(confirmed.dropped),
         gone=gone,
         suppressed=confirmed.suppressed,
+        by_release=by_release,
+        # A VERDICT OF MISMATCH IS THE CATALOGUE SAYING ANOTHER LABEL, which is
+        # what "no longer confirms" means to the prune. "unconfirmed" is no
+        # credit found, an absence, and is not evidence of anything (R-836).
+        mismatched=tuple(one.identity for one in confirmed.dropped if one.reason == "mismatch"),
     )
 
 
@@ -347,4 +364,4 @@ def label_playlists(ctx) -> Envelope:
     )
 
 
-__all__ = ["build_playlists", "label_playlists", "read_catalogue"]
+__all__ = ["build_playlists", "incomplete", "label_playlists", "read_catalogue"]

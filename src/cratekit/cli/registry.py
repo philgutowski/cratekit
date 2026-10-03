@@ -1959,6 +1959,39 @@ ENTRIES: tuple[Entry, ...] = (
             ),
         ),
     ),
+    # ── Taking dropped tracks off a label's year playlists (R-836) ──────────
+    Entry(
+        name="label.prune",
+        summary=(
+            "take the tracks the genre gate holds or the catalogue no longer "
+            "confirms off the year playlists this product made for a label"
+        ),
+        module="cratekit.label.prune_cli",
+        builder="build_prune",
+        handler_key="label.prune",
+        feature_rows=(23,),
+        module_id="labels",
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: One surface, the account, and the one write is ``remove_tracks`` on
+        #: a year playlist the outbound ledger records this product CREATED.
+        #: What was taken off is recorded in the outbound ledger, which is not
+        #: a declared surface. ``destructive`` because it is the first path
+        #: that takes anything away from the account.
+        writes=frozenset({"remote"}),
+        destructive=True,
+        doctor_checks=("credential.provider",),
+        gates=(
+            GateSpec(
+                name="label.prune.confirm",
+                options=("apply", "abort"),
+                prompt="Take these tracks off this label's year playlists on the streaming account?",
+                # EXPLICIT, as every other write to the account is (R34).
+                explicit=True,
+                digest_source="plan",
+            ),
+        ),
+    ),
     # ── Adoption, deletion, export, standalone utilities ────────────────────
     Entry(
         name="adopt.scan",
@@ -2149,6 +2182,35 @@ ENTRIES: tuple[Entry, ...] = (
                 name="export.playlist.confirm",
                 options=("export", "abort"),
                 prompt="Write this playlist to the streaming service?",
+                explicit=True,
+                digest_source="plan",
+            ),
+        ),
+    ),
+    Entry(
+        name="export.prune",
+        summary=(
+            "take the tracks no longer in a library playlist off the remote "
+            "playlist it was exported to"
+        ),
+        module="cratekit.export.prune_cli",
+        builder="build_prune",
+        handler_key="export.prune",
+        feature_rows=(36,),
+        module_id="export",
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: One surface, the account, and the one write is ``remove_tracks`` on
+        #: the remote playlist ``export.playlist`` made, which the outbound
+        #: ledger records. ``destructive`` on ``label.prune``'s reason.
+        writes=frozenset({"remote"}),
+        destructive=True,
+        doctor_checks=("credential.provider",),
+        gates=(
+            GateSpec(
+                name="export.prune.confirm",
+                options=("apply", "abort"),
+                prompt="Take these tracks off the remote playlist on the streaming service?",
                 explicit=True,
                 digest_source="plan",
             ),

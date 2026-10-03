@@ -1169,7 +1169,8 @@ each filled with that year's tracks from the label's confirmed catalogue
 build reuses and what the playlists source excludes as `label-folder`, since a
 year playlist swept as intake would list the label's catalogue as missing.
 `crate label mark` prefixes the years a landed batch filed, through the mark
-record.
+record. `crate label prune` takes a held or reattributed release's tracks off
+the years it created (R-836), see Prune.
 
 *Avoid:* reading a year playlist as the label's releases in the library, which
 the Record Labels tree is, or as intake.
@@ -1186,6 +1187,31 @@ prefixed `DOWNLOADED ` through the mark record.
 
 *Avoid:* reading it as intake, or keying it by anything a person can retype
 differently, such as the tracklist's path.
+
+### Product made
+A playlist on the streaming account that this product itself created, as the
+outbound ledger records it: an exported playlist, a set playlist, or a label
+year playlist written `created` (R-836). `ledger.product_made` is the answer,
+and it is no unless a record says yes. A label year adopted by its name under
+the folder was made by the source system or a person, and is not product made
+whatever else records it. The only removal the account protocol declares,
+`remove_tracks`, is refused for any other playlist before a provider call.
+
+*Avoid:* reading "recorded in the ledger" as product made. An adopted year is
+recorded and was not made here.
+
+### Prune
+Taking tracks off a product made playlist that should no longer hold them,
+through `crate label prune` or `crate export prune`, each behind its own
+explicit gate that lists every track by artist and title (R-836). Only tracks
+the ledger records as added are planned, and only on evidence a read reached:
+a hold in force, a release credited to another label, or a library row that
+left the playlist. A taken track moves from `added` to `pruned`, which is why a
+resume takes nothing twice and a label build never adds it again. A prune never
+removes a playlist, a folder or a heart.
+
+*Avoid:* reading a track's absence from a catalogue read as a reason to take it
+off. An empty or short read looks exactly like a label that moved on.
 
 ### Label debris
 An account playlist the source system's label batch built for one run and left

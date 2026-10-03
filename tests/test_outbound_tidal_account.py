@@ -1536,18 +1536,48 @@ def test_the_adapter_pages_nothing_by_hand():
     assert calls == [], f"the adapter calls a paging method directly: {calls}"
 
 
-def test_the_adapter_names_no_remove_on_the_client():
-    """Add only is the protocol's rule; a remove named here would be a new write."""
+#: The one removal the adapter may name on the client, and the one member it
+#: may name it in (R-836). Anything else with a removal shape is a new write.
+ADMITTED_REMOVAL = ("remove_tracks", "remove_by_indices")
+
+
+def test_the_adapter_names_one_remove_on_the_client_inside_the_one_member():
+    """The protocol declares one removal; a second named here would be a new write.
+
+    Narrowed on R-836 from "no removal at all" to exactly one client call,
+    ``remove_by_indices``, named only inside ``remove_tracks``. A removal shape
+    anywhere else in the file, or a different one in that member, fails here.
+    """
     shapes = ("remove", "delete", "unheart", "unlike", "clear")
-    named = sorted(
-        {
-            node.attr
-            for node in ast.walk(_tree())
-            if isinstance(node, ast.Attribute)
-            and any(shape in node.attr.lower() for shape in shapes)
-        }
-    )
-    assert named == [], named
+    member, call = ADMITTED_REMOVAL
+    named: set[tuple[str, str]] = set()
+    defined: list[str] = []
+    for function in ast.walk(_tree()):
+        if not isinstance(function, ast.FunctionDef):
+            continue
+        if any(shape in function.name.lower() for shape in shapes):
+            defined.append(function.name)
+    for node in ast.walk(_tree()):
+        if isinstance(node, ast.Attribute) and any(s in node.attr.lower() for s in shapes):
+            named.add((_enclosing(node), node.attr))
+    assert defined == [member], defined
+    assert named == {(member, call)}, sorted(named)
+
+
+def _enclosing(target: ast.AST) -> str:
+    """The name of the innermost function that holds ``target``, or ``""``."""
+    found = ""
+    for function in ast.walk(_tree()):
+        if isinstance(function, ast.FunctionDef):
+            for node in ast.walk(function):
+                if node is target or (
+                    isinstance(node, ast.Attribute)
+                    and isinstance(target, ast.Attribute)
+                    and (node.lineno, node.col_offset, node.attr)
+                    == (target.lineno, target.col_offset, target.attr)
+                ):
+                    found = function.name
+    return found
 
 
 def test_the_client_library_still_offers_the_private_call_a_create_relies_on():

@@ -1770,6 +1770,9 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # the verb ends NO_OP before any provider or credential is asked for.
         # The building path is driven in tests/test_label_playlists.py.
         "label.playlists": ["no-such-label"],
+        # R-836. The same for the prune: a label nobody follows is a plan of
+        # nothing, still gated. The removing path is in tests/test_prune.py.
+        "label.prune": ["no-such-label"],
         # R-835. The same, with the landed batch's intake file the mark needs
         # as its proof, LAZY for the reason ``sync.mark``'s sample gives.
         "label.mark": lambda: [
@@ -1849,6 +1852,15 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
             str(outbound_fakes.write_export(library / "outbound")),
         ],
         "sync.favorites": [
+            "--export",
+            str(outbound_fakes.write_export(library / "outbound")),
+        ],
+        # R-836. A playlist never exported has nothing recorded to take off:
+        # the plan is empty, still gated, and no account is resolved, so the
+        # verb reaches its gate with no credential and ends NO_OP. The removing
+        # path is driven in tests/test_prune.py.
+        "export.prune": [
+            "crate-export",
             "--export",
             str(outbound_fakes.write_export(library / "outbound")),
         ],

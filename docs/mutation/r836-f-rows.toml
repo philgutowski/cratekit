@@ -1,0 +1,32 @@
+name = "r836-f"
+pass_kind = "light"
+
+# R-836, batch f. The batches a to g together are the unit's 25 row
+# cap, split so each run fits one foreground wait.
+
+[[rows]]
+id = "P7_unrowed_with_unmatched_left_alone"
+description = "prune.plan_export: a playlist written before rows were kept is pruned by match while a row matched nothing today"
+file = "src/cratekit/modules/outbound/prune.py"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''    elif unrowed and unmatched:'''
+new = '''    elif False:'''
+
+[[rows]]
+id = "P8_drifted_match_left_alone"
+description = "prune.plan_export: a row matching a track never written here does not stop the match reading, so a drifted match takes a track off"
+file = "src/cratekit/modules/outbound/prune.py"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''    elif unrowed and fresh:'''
+new = '''    elif False:'''
+
+[[rows]]
+id = "P9_row_in_playlist_keeps_its_track"
+description = "prune.plan_export: a track whose row is still in the playlist leaves when today's match of that row failed"
+file = "src/cratekit/modules/outbound/prune.py"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''    staying = matched_now | {one for row, one in record.rows.items() if row in rows_now}'''
+new = '''    staying = matched_now'''

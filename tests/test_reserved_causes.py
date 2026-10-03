@@ -5147,7 +5147,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # label releases. It is in cause.REASONS and not in the reserved table.
     # Population 194 to 195, non-reserved 166 to 167, reserved half UNCHANGED
     # at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (195, 167, 28)
+    # Re-pinned on the residual finding "A track the genre gate dropped stays
+    # in its label year playlist, since the account protocol has no remove",
+    # 2026-10-03. ONE slug, named rather than counted: outbound-remove-refused,
+    # which the adapter's one removal refuses with for a playlist the ledger
+    # does not record as made here or whose positions cannot be read, and the
+    # prune's apply when the ledger no longer vouches for a playlist. It is in
+    # cause.REASONS and not in the reserved table. Population 195 to 196,
+    # non-reserved 167 to 168, reserved half UNCHANGED at 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (196, 168, 28)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -6078,7 +6086,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # 623 distinct, non-keys UNCHANGED at 429. ONE joined and nothing left,
     # absent from `main`'s own `src` by git grep. verb-retired is the key named
     # in the pin above.
-    assert (len(literals), len(literals - set(causes))) == (623, 429), (
+    # Re-pinned on the residual finding "A track the genre gate dropped stays
+    # in its label year playlist, since the account protocol has no remove",
+    # 2026-10-03: 623 to 632 distinct, non-keys 429 to 437. NINE joined and
+    # nothing left, each absent from `main`'s own `src` by a set difference of
+    # the two trees. outbound-remove-refused is the key named in the pin
+    # above. label-prune and export-prune are the plan KINDS the two prune
+    # verbs' digests are taken under. take-off, already-off and left-alone
+    # are the ACTIONS a prune plan gives a track it takes off, a track already
+    # off that it records, and a playlist or track it does not touch.
+    # not-product-made, positions-unknown and read-back-differs are the
+    # PROBLEMS a refused removal names in its detail.
+    assert (len(literals), len(literals - set(causes))) == (632, 437), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6820,7 +6839,19 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # in-range integer: the set's chunk size of a hundred is above the range.
     # modules/outbound/ledger.py and sync/playlists.py are unchanged in both
     # halves.
-    assert (len(literal_holders), len(literal_both)) == (128, 26), (
+    # Re-pinned on the residual finding "A track the genre gate dropped stays
+    # in its label year playlist, since the account protocol has no remove",
+    # 2026-10-03: holders move 128 to 130, and the also-holds-an-integer half
+    # moves 26 to 28. TWO modules joined the holders and none left, both new
+    # files: modules/outbound/prune.py, which refuses with internal-error and
+    # outbound-remove-refused and reads unavailable-transient, and
+    # export/prune_cli.py, which refuses with export-playlist-unknown. TWO
+    # joined the integer half: prune.py, whose removal chunk of fifty is in
+    # the range, and modules/outbound/tidal_account.py, a holder before, whose
+    # new removal chunk of fifty is the first integer of its own in the range.
+    # Both are sizes, not codes. label/prune_cli.py spells only a warning code
+    # and is no holder.
+    assert (len(literal_holders), len(literal_both)) == (130, 28), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

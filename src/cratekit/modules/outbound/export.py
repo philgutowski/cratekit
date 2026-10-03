@@ -68,6 +68,9 @@ class ExportPlan:
     adopts: str = ""
     expected: str = ""
     contents: tuple[str, ...] = ()
+    #: The ISO date of the collection export the plan was read from, recorded
+    #: so ``export prune`` can refuse an older one (R-836). Empty when unread.
+    written: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +98,7 @@ def plan(
     adopts: str = "",
     expected: str = "",
     contents: Sequence[str] | None = None,
+    written: str = "",
 ) -> ExportPlan:
     """Match every track. Unmatched stay on the plan; they are not omitted.
 
@@ -129,6 +133,7 @@ def plan(
         unmatched=tuple(unmatched),
         adopts=adopts,
         expected=expected,
+        written=written,
         contents=tuple(
             str(item)
             for item in (
@@ -166,18 +171,24 @@ def apply(
         adopts=planned.adopts,
         expected=planned.expected,
         contents=planned.contents,
+        written=planned.written,
     )
     remote_id = reserved.remote_id
     already_on = set(account.playlist_tracks(remote_id))
     already_recorded = reserved.added
     added: list[str] = []
     already: list[str] = []
-    for _local, remote in planned.matched:
+    for local, remote in planned.matched:
         if remote in already_on or remote in already_recorded:
             already.append(remote)
+            # WHICH ROW A WRITTEN TRACK CAME FROM (R-836), kept for a track this
+            # product wrote, so a prune can tell a row that left from a match
+            # that drifted. A track a person put there is never claimed.
+            if remote in already_recorded and reserved.rows.get(local) != remote:
+                ledger.record_playlist_row(cfg, reserved.key, local, remote)
             continue
         account.add_to_playlist(remote_id, remote)
-        ledger.record_playlist_track(cfg, reserved.key, remote)
+        ledger.record_playlist_track(cfg, reserved.key, remote, identity=local)
         added.append(remote)
     return ExportReport(
         playlist_key=planned.playlist_key,

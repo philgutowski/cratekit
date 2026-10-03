@@ -1,0 +1,34 @@
+name = "r836-e"
+pass_kind = "light"
+
+# R-836, batch e. The batches a to g together are the unit's 25 row
+# cap, split so each run fits one foreground wait.
+
+[[rows]]
+id = "P4_twice_left_alone"
+description = "prune._step: a track on the playlist more than once is taken off, a person's second copy with it"
+file = "src/cratekit/modules/outbound/prune.py"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''            if one in asked and copies[one] == 1'''
+new = '''            if one in asked'''
+
+[[rows]]
+id = "P5_apply_asks_the_ledger_again"
+description = "prune.apply: a plan built in another invocation removes from a playlist the ledger no longer vouches for"
+file = "src/cratekit/modules/outbound/prune.py"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''        if not ledger.product_made(cfg, step.remote_id):
+            raise _not_made(step.remote_id)'''
+new = ''''''
+
+[[rows]]
+id = "P2b_mismatch_read_only_with_nothing_gone"
+description = "prune.plan_label: a release credited elsewhere is read and judged while a confirmed release is gone, so a track the gone one carries can leave. P2 measured the same guard's second copy in the leaving rule at zero; that copy was removed as redundant and this is the one left"
+file = "src/cratekit/modules/outbound/prune.py"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+surface = "user"
+old = '''    if judged:
+        unread += sorted(set(catalogue.mismatched) - set(catalogue.by_release))'''
+new = '''    unread += sorted(set(catalogue.mismatched) - set(catalogue.by_release))'''
