@@ -5,9 +5,10 @@ The source system keeps the account organised one way: for a label, one
 year, each holding that year's tracks from the label's catalogue. This module is
 that shape, planned and then applied, against the account seam.
 
-ADD ONLY, BECAUSE THE PROTOCOL IS. ``service.RemoteAccount`` declares no remove,
-so nothing here can take a track, a playlist or a folder away. A track that has
-left the label's catalogue stays on its year playlist, which is R-836.
+ADD ONLY. Nothing here takes a track, a playlist or a folder away. A track that
+has left the label's catalogue, or that the genre gate now holds, is taken off
+a year playlist this product made by ``label prune`` (R-836), in
+:mod:`cratekit.modules.outbound.prune`, behind its own gate.
 
 THE PLAN READS THE ACCOUNT AND WRITES NOTHING. It lists the root folders, the
 folder's playlists and each existing year playlist's tracks, and compares them
@@ -85,6 +86,10 @@ class LabelCatalogue:
     dropped: int = 0
     gone: int = 0
     suppressed: int = 0
+    #: Every confirmed release whose tracks were read, release identifier to
+    #: its year, empty when undated, and its playable tracks (R-836). The
+    #: prune reads it to tell a held release's tracks from a kept one's.
+    by_release: Mapping[str, tuple[str, tuple[str, ...]]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,7 +205,9 @@ def plan(cfg: config.Config, catalogue: LabelCatalogue, account: RemoteAccount) 
             # off by a person, and is not put back. Nor is one refused before.
             # So a year whose every track is recorded, in the folder where it
             # was put, has nothing to add and its playlist is not read at all.
-            asked = recorded.added | recorded.refused
+            # Nor one a prune took off (R-836), or the build would put back
+            # what the prune just took away.
+            asked = recorded.added | recorded.refused | recorded.pruned
             placed = recorded.remote_id in inside
             if placed and set(wanted) <= asked:
                 held: set[str] = set()

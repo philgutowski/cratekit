@@ -1,11 +1,19 @@
 """The remote mutations this product is allowed to make.
 
 A streaming account is mutated by adding a heart, by adding a track to a
-playlist, by retitling a playlist, by making a folder and by putting a playlist
-in one. There is no remove, no un-heart, no un-color, and no playlist or folder
-delete on this protocol. Deletion never propagates
-to a streaming service (R36). The type is the rule: a caller that wants a
-remove has nowhere to call it.
+playlist, by retitling a playlist, by making a folder, by putting a playlist
+in one, and by taking tracks off a playlist THE PRODUCT ITSELF CREATED. There
+is no un-heart, no un-color, and no playlist or folder delete on this protocol.
+Deletion in the library never propagates to a streaming service (R36). The
+type is the rule: a caller that wants any other remove has nowhere to call it.
+
+**ONE REMOVAL, THE NARROWEST THAT DOES THE JOB (R-836).** ``remove_tracks``
+takes tracks out of one playlist and nothing else, and an implementation
+refuses it, before any call to the provider, for a playlist the outbound
+ledger does not record as one the product created
+(``ledger.product_made``). A playlist the source system or a person made,
+including a label year playlist adopted by its name, is never touched. The
+suite's removal scans admit this one member by name and nothing else.
 
 **RETITLING IS NOT A REMOVAL, AND IT IS THE ONE WRITE THAT TOUCHES SOMETHING
 THE PRODUCT DID NOT MAKE.** It exists because a title is how the source system
@@ -24,7 +32,7 @@ from typing import Protocol
 
 
 class RemoteAccount(Protocol):
-    """Add-only writes against one streaming account, plus a playlist retitle."""
+    """Writes against one streaming account: adds, a retitle, and one narrow remove."""
 
     def match_track(
         self,
@@ -124,3 +132,27 @@ class RemoteAccount(Protocol):
 
     def move_to_folder(self, playlist_id: str, folder_id: str) -> None:
         """Put one playlist the account holds into one folder. Idempotent."""
+
+    # ── the one removal (R-836) ──────────────────────────────────────────────
+    #
+    # TWO MEMBERS: a read that names what a playlist holds, for the gate a
+    # person approves a removal at, and the removal itself.
+
+    def track_names(self, playlist_id: str) -> dict[str, tuple[str, str]]:
+        """Every track on the playlist, remote identifier to ``(artist, title)``.
+
+        A read, for the prune's gate, which lists every track it would take
+        off by artist and title. It writes nothing.
+        """
+
+    def remove_tracks(self, playlist_id: str, remote_ids: tuple[str, ...]) -> tuple[str, ...]:
+        """Take tracks off one playlist the product created, and nothing else.
+
+        REFUSED BEFORE ANY PROVIDER CALL for a playlist the outbound ledger
+        does not record as one the product created. Every occurrence of an
+        asked track comes off; nothing else on the playlist moves.
+
+        Returns every asked identifier the playlist no longer holds once the
+        removal is done, taken off now or already absent, so a resume asking
+        again for one that came off before records it and takes nothing.
+        """

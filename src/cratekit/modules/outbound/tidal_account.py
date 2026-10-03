@@ -6,13 +6,15 @@ goes through ``acquire.listing``, for the reason ``label.tidal_catalogue`` gives
 a listing that quietly returns one page looks exactly like a short one. A guard
 in the suite scans this file for a direct paging call and for a vendored import.
 
-**ADD ONLY, BECAUSE THE PROTOCOL IS.** ``service.RemoteAccount`` declares no
-remove, and this class calls no remove on the client. The outbound gates and the
+**ONE REMOVAL, BECAUSE THE PROTOCOL DECLARES ONE (R-836).** ``remove_tracks``
+takes tracks off a playlist the outbound ledger records as one the product
+created, and refuses any other before a provider call. It is the one place this
+class names a removal on the client, and the suite's scan of this file admits
+that one call inside that one member and nothing else. The outbound gates and the
 confirm digest sit in front of every write; this module adds no gate and removes
 none. ``rename_playlist`` is the one member that writes to something the product
-did not create, and it is still not a removal: it retitles, changes no membership
-and deletes nothing. The suite scans this file for a removal shape and a retitle
-is not one.
+did not create, and it is not a removal: it retitles, changes no membership and
+deletes nothing.
 
 **THE WORKERS RELY ON THREE RULES THAT ARE NOT VISIBLE IN THEIR CODE.**
 
@@ -61,7 +63,7 @@ from cratekit.acquire import listing, match, provider_session
 from cratekit.acquire.adapter import TrackOutcome, classify_unavailable
 from cratekit.core import provider_gate
 from cratekit.core.cause import CratekitError, Scope, refuse
-from cratekit.modules.outbound import account
+from cratekit.modules.outbound import account, ledger
 
 #: How many times a write or a single lookup is retried after its first attempt.
 WRITE_RETRIES = 1
@@ -70,6 +72,10 @@ WRITE_RETRIES = 1
 #: asks the provider for a limit of a hundred per request, so a chunk of that
 #: size is what one request is known to take.
 ADD_CHUNK = 100
+
+#: How many positions one removal request names (R-836). The client's own
+#: clear takes fifty a request, so a request of that size is one it makes.
+REMOVE_CHUNK = 50
 
 #: Hosts a provider track URL is read from, the same three the catalogue reads a
 #: playlist URL from.
@@ -136,6 +142,25 @@ def _row_of(title: str, artist: str) -> match.Wanted | None:
         )
     except match.UnreadableList:
         return None
+
+
+def _count(value: Any) -> bool:
+    """Whether a declared count is a whole number and not a flag."""
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _shown_artist(track: Any) -> str:
+    """The artists a provider track bills, as a person reads them on a gate."""
+    names = [
+        name.strip()
+        for entry in getattr(track, "artists", None) or ()
+        for name in (entry if isinstance(entry, str) else getattr(entry, "name", ""),)
+        if isinstance(name, str) and name.strip()
+    ]
+    if names:
+        return ", ".join(names)
+    lead = getattr(track, "artist", None)
+    return str(getattr(lead, "name", "") or "")
 
 
 def _billed(track: Any) -> str:
@@ -213,17 +238,26 @@ def _streamable(track: Any) -> bool:
 
 
 class TidalAccount:
-    """The thirteen ``RemoteAccount`` members, over one logged in client.
+    """The fifteen ``RemoteAccount`` members, over one logged in client.
 
     Eight add only, two that read folders, one that puts a playlist in a
-    folder, one that retitles a playlist the account owns, and one that says
-    why the last match of a row came back empty.
+    folder, one that retitles a playlist the account owns, one that says why
+    the last match of a row came back empty, one that names a playlist's
+    tracks, and the one removal, from a playlist the product made.
     """
 
     def __init__(
-        self, session: Any, *, sleep: Callable[[float], None] | None = None
+        self,
+        session: Any,
+        *,
+        sleep: Callable[[float], None] | None = None,
+        cfg: Any = None,
     ) -> None:
         self._session = session
+        #: The configuration whose outbound ledger says which playlists the
+        #: product made (R-836). None refuses every removal, since a ledger
+        #: that cannot be named cannot say yes.
+        self._cfg = cfg
         # Looked up at construction rather than bound as a default, so a caller
         # that replaced ``time.sleep`` is honoured.
         self._sleep = sleep or time.sleep
@@ -445,13 +479,16 @@ class TidalAccount:
             )
         return found
 
+    def _listed(self, playlist_id: str, playlist: Any) -> list[Any]:
+        """Every track object on the playlist, in order, read now across pages."""
+        return self._read(
+            f"read the playlist {playlist_id}",
+            lambda: listing.playlist_tracks(playlist),
+        )
+
     def _membership(self, playlist_id: str) -> list[str]:
         if playlist_id not in self._members:
-            playlist = self._playlist(playlist_id)
-            tracks = self._read(
-                f"read the playlist {playlist_id}",
-                lambda: listing.playlist_tracks(playlist),
-            )
+            tracks = self._listed(playlist_id, self._playlist(playlist_id))
             self._members[playlist_id] = [
                 str(getattr(track, "id", "") or "") for track in tracks
             ]
@@ -727,6 +764,137 @@ class TidalAccount:
                 doing,
             )
 
+    # ── the one removal (R-836) ─────────────────────────────────────────────
+
+    def track_names(self, playlist_id: str) -> dict[str, tuple[str, str]]:
+        """Every track on the playlist, identifier to ``(artist, title)``, read now.
+
+        Read fresh rather than from the membership this adapter remembers,
+        since a playlist created or added to in this run is remembered by
+        identifier alone.
+        """
+        tracks = self._listed(playlist_id, self._playlist(playlist_id))
+        self._members[playlist_id] = [str(getattr(track, "id", "") or "") for track in tracks]
+        return {
+            str(getattr(track, "id", "") or ""): (
+                _shown_artist(track),
+                str(getattr(track, "full_name", "") or getattr(track, "name", "") or ""),
+            )
+            for track in tracks
+            if str(getattr(track, "id", "") or "")
+        }
+
+    def _positions(self, playlist_id: str, playlist: Any) -> list[str]:
+        """The playlist's tracks by position, refused when a position is unknowable.
+
+        THE PROVIDER LEAVES OUT A TRACK THIS ACCOUNT CANNOT PLAY AND STILL
+        COUNTS IT (``listing.playlist_tracks``), so a read shorter than the
+        declared total has its positions shifted from the provider's, and a
+        removal by position would take off the wrong track. Refused, with
+        nothing sent. A playlist declaring no total cannot be checked and is
+        refused the same way.
+
+        A VIDEO SHIFTS THEM TOO. The client removes by ITEM position, items
+        are tracks and videos together, and the read here is of tracks alone,
+        so a playlist declaring any video, or declaring no video count, is
+        refused as well.
+        """
+        tracks = self._listed(playlist_id, playlist)
+        declared = getattr(playlist, "num_tracks", None)
+        videos = getattr(playlist, "num_videos", None)
+        if (
+            not _count(declared)
+            or declared != len(tracks)
+            or not _count(videos)
+            or videos != 0
+        ):
+            raise refuse(
+                "outbound-remove-refused",
+                f"the playlist {playlist_id} declares {declared!r} track(s) and "
+                f"{videos!r} video(s), and {len(tracks)} track(s) could be read, so "
+                f"which position holds which track is not known and nothing was "
+                f"taken off it",
+                steps=(
+                    "take the tracks off by hand in the provider's own player, or "
+                    "remove the tracks this account cannot play first",
+                ),
+                scope=Scope.SOURCE,
+                origin=("outbound", "account"),
+                detail={"playlist_id": str(playlist_id), "problem": "positions-unknown"},
+            )
+        members = [str(getattr(track, "id", "") or "") for track in tracks]
+        self._members[playlist_id] = members
+        return members
+
+    def remove_tracks(self, playlist_id: str, remote_ids: tuple[str, ...]) -> tuple[str, ...]:
+        """Take tracks off one playlist the product made. NEVER RETRIED.
+
+        THE LEDGER IS ASKED FIRST, before the playlist is even opened: a
+        playlist ``ledger.product_made`` does not vouch for is refused with no
+        provider call at all.
+
+        BY POSITION, BECAUSE THE CLIENT'S REMOVE BY IDENTIFIER READS ONE PAGE.
+        Its own lookup of an identifier's position reads the first window of
+        the playlist and nothing after it, so the positions are read here
+        through ``listing`` instead, and :meth:`_positions` refuses when they
+        cannot be trusted. The playlist object is opened fresh for each
+        request, so the request carries the version tag the provider issued
+        with that read, and the client's own reread after the request is what
+        the next one carries.
+
+        NOT RETRIED, on ``create_playlist``'s argument and more so: a removal
+        by position that reached the provider and then timed out, sent again,
+        would take off whatever moved into those positions.
+
+        READ BACK, NOT TRUSTED. After each request the playlist is read again
+        and must equal what it held with exactly those positions gone. Any
+        other answer is refused, since a removal that took the wrong track is
+        the one outcome this member exists to rule out.
+        """
+        identifier = str(playlist_id)
+        wanted = [str(one) for one in dict.fromkeys(remote_ids) if str(one)]
+        if self._cfg is None or not ledger.product_made(self._cfg, identifier):
+            raise refuse(
+                "outbound-remove-refused",
+                f"the outbound ledger does not record the playlist {identifier} as "
+                f"one this product created, so no track was taken off it and the "
+                f"provider was not asked",
+                steps=("take the tracks off by hand in the provider's own player",),
+                scope=Scope.SOURCE,
+                origin=("outbound", "account"),
+                detail={"playlist_id": identifier, "problem": "not-product-made"},
+            )
+        asked = set(wanted)
+        doing = f"take {len(wanted)} tracks off the playlist {identifier}"
+        while wanted:
+            playlist = self._playlist(identifier)
+            before = self._positions(identifier, playlist)
+            at = sorted(i for i, one in enumerate(before) if one in asked)[:REMOVE_CHUNK]
+            if not at:
+                break
+            accepted = self._call(
+                doing, lambda at=at: playlist.remove_by_indices(at), retries=0
+            )
+            if accepted is False or accepted is _ABSENT:
+                raise account.provider_failure(
+                    RuntimeError("the provider did not accept the removal"), doing
+                )
+            gone = set(at)
+            expected = [one for i, one in enumerate(before) if i not in gone]
+            after = self._positions(identifier, self._playlist(identifier))
+            if after != expected:
+                raise account.provider_failure(
+                    RuntimeError(
+                        "the playlist read back after the removal is not what it "
+                        "held with the asked positions gone"
+                    ),
+                    doing,
+                )
+            if not asked.intersection(after):
+                break
+        held = set(self._members.get(identifier, ()))
+        return tuple(one for one in wanted if one not in held)
+
 
 def open_account(cfg: Any = None) -> TidalAccount:
     """An account over a freshly logged in client, from the stored session.
@@ -738,12 +906,13 @@ def open_account(cfg: Any = None) -> TidalAccount:
     gate = provider_gate.Gate(
         provider_gate.GateSettings.from_config(cfg) if cfg is not None else None
     )
-    return TidalAccount(provider_session.client_session(gate=gate))
+    return TidalAccount(provider_session.client_session(gate=gate), cfg=cfg)
 
 
 __all__ = [
     "ADD_CHUNK",
     "NOT_FOUND_NAMES",
+    "REMOVE_CHUNK",
     "TRACK_HOSTS",
     "WRITE_RETRIES",
     "TidalAccount",

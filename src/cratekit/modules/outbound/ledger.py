@@ -15,6 +15,11 @@ playlist's name: the playlist an identified set or a typed tracklist became,
 the year it was made in and the tracks written to it. ``set_folders`` maps a
 year to the root folder its archived set playlists are filed in. Both are
 carried through the way ``labels`` is, for the same reason.
+
+SINCE R-836 IT SAYS WHICH PLAYLISTS THE PRODUCT MADE, because that is the one
+kind of playlist a track may be taken off. :func:`product_made` is the answer,
+and a track taken off moves from ``added`` to ``pruned`` on its record, so a
+resume takes nothing off twice and a second prune plans nothing.
 """
 
 from __future__ import annotations
@@ -130,6 +135,10 @@ def _label_document(path, raw: Mapping[str, Any]) -> dict[str, Any]:
                 "name": str(record.get("name") or ""),
                 "added": _listed(record, "added"),
                 "refused": _listed(record, "refused"),
+                "pruned": _listed(record, "pruned"),
+                # TRUE ONLY WHEN WRITTEN TRUE (R-836). A record from before this
+                # field, or one adopted from the account, reads as not made here.
+                "created": record.get("created") is True,
             }
             for year, record in years.items()
         },
@@ -640,6 +649,12 @@ class LabelYear:
     #: Tracks the provider was asked for and would not add. Not asked again,
     #: so a second build over an unchanged catalogue plans nothing.
     refused: frozenset[str] = frozenset()
+    #: Tracks a prune took off (R-836). Not added again by a build either, or
+    #: the build would put back what the prune just took away.
+    pruned: frozenset[str] = frozenset()
+    #: Whether this product created the playlist, rather than adopting one the
+    #: account already held. Only a created one may lose a track.
+    created: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -666,6 +681,8 @@ def _shape_of(label_id: str, record: Mapping[str, Any] | None) -> LabelShape:
                 name=str(entry.get("name") or ""),
                 added=frozenset(_listed(entry, "added")),
                 refused=frozenset(_listed(entry, "refused")),
+                pruned=frozenset(_listed(entry, "pruned")),
+                created=entry.get("created") is True,
             )
             for year, entry in (record.get("years") or {}).items()
             if entry.get("remote_id")
@@ -756,6 +773,10 @@ def reserve_label_year(
     The same shape as :func:`reserve_label_folder` and for its reason. A year
     already recorded is never created again, so a build killed after the
     create and before the move resumes by moving the playlist it made.
+
+    ``created`` IS WRITTEN WITH THE RECORD (R-836), true for a playlist this
+    call made and false for one adopted from the account, because a prune may
+    take a track off the first and never off the second.
     """
     lock = _locked(cfg)
     try:
@@ -766,7 +787,14 @@ def reserve_label_year(
         if recorded:
             return recorded, False
         remote_id = adopt or create()
-        years[year] = {"remote_id": remote_id, "name": name, "added": [], "refused": []}
+        years[year] = {
+            "remote_id": remote_id,
+            "name": name,
+            "added": [],
+            "refused": [],
+            "pruned": [],
+            "created": not adopt,
+        }
         _write(cfg, document)
         return remote_id, not adopt
     finally:
@@ -932,5 +960,119 @@ def reserve_set_folder(
         document["set_folders"][year] = folder_id
         _write(cfg, document)
         return folder_id, True
+    finally:
+        lock.__exit__(None, None, None)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# What the product made, and what a prune took off it (R-836)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def product_made(cfg: config.Config, playlist_id: str) -> bool:
+    """Whether this product created the remote playlist, by the ledger alone.
+
+    THE ONE QUESTION A REMOVAL ASKS FIRST, and the answer is no unless a record
+    says yes. Three records can:
+
+    * an exported playlist's, since ``reserve_playlist`` records only a
+      playlist it created, and an adoption (R-229) moves a record the product
+      already held rather than taking in one it did not make;
+    * a set playlist's, since ``reserve_set_playlist`` only creates;
+    * a label year's, only when it was written ``created``. A year adopted by
+      its name under the folder was made by the source system or a person.
+
+    ADOPTED ANYWHERE WINS. A playlist a label record holds as adopted is not
+    made here, whatever another record says about the same identifier.
+    """
+    wanted = str(playlist_id or "")
+    if not wanted:
+        return False
+    document = _load(cfg)
+    made = False
+    for record in document["labels"].values():
+        for entry in (record.get("years") or {}).values():
+            if str(entry.get("remote_id") or "") == wanted:
+                if entry.get("created") is not True:
+                    return False
+                made = True
+    if made:
+        return True
+    for record in (*document["playlists"].values(), *document["sets"].values()):
+        if str(record.get("remote_id") or "") == wanted:
+            return True
+    return False
+
+
+@dataclass(frozen=True, slots=True)
+class ExportedPlaylist:
+    """One exported playlist's record, read once for a prune plan."""
+
+    key: str
+    remote_id: str
+    added: frozenset[str] = frozenset()
+    pruned: frozenset[str] = frozenset()
+
+
+def exported_playlist(cfg: config.Config, playlist_key: str) -> ExportedPlaylist | None:
+    """The record an export wrote under this key, or ``None``. Read only."""
+    record = _load(cfg)["playlists"].get(playlist_key) or {}
+    remote = str(record.get("remote_id") or "")
+    if not remote:
+        return None
+    return ExportedPlaylist(
+        key=playlist_key,
+        remote_id=remote,
+        added=frozenset(_listed(record, "added")),
+        pruned=frozenset(_listed(record, "pruned")),
+    )
+
+
+def _moved_to_pruned(entry: dict[str, Any], taken: Iterable[str]) -> None:
+    """Move each taken identifier off ``added`` and onto ``pruned``, in place."""
+    gone = [str(one) for one in taken]
+    entry["added"] = [one for one in _listed(entry, "added") if one not in gone]
+    held = _listed(entry, "pruned")
+    held += [one for one in gone if one not in held]
+    entry["pruned"] = held
+
+
+def record_label_pruned(
+    cfg: config.Config, label_id: str, year: str, taken: Iterable[str]
+) -> None:
+    """Remember tracks a prune took off one year playlist, as they land."""
+    lock = _locked(cfg)
+    try:
+        document = _load(cfg)
+        entry = (document["labels"].get(label_id) or {}).get("years", {}).get(year)
+        if not entry:
+            raise _unusable(
+                config.state_path("outbound_writes", cfg),
+                f"it holds no playlist for {label_id} {year}, whose tracks were just taken off",
+            )
+        _moved_to_pruned(entry, taken)
+        _write(cfg, document)
+    finally:
+        lock.__exit__(None, None, None)
+
+
+def record_playlist_pruned(cfg: config.Config, playlist_key: str, taken: Iterable[str]) -> None:
+    """Remember tracks a prune took off one exported playlist, as they land.
+
+    Off ``added``, so a track put back in the library playlist is exported
+    again by the next ``export playlist`` rather than skipped as written.
+    """
+    lock = _locked(cfg)
+    try:
+        document = _load(cfg)
+        entry = document["playlists"].get(playlist_key)
+        if not entry:
+            raise _unusable(
+                config.state_path("outbound_writes", cfg),
+                f"it holds no exported playlist under {playlist_key!r}, whose "
+                f"tracks were just taken off",
+            )
+        _moved_to_pruned(entry, taken)
+        _write(cfg, document)
     finally:
         lock.__exit__(None, None, None)

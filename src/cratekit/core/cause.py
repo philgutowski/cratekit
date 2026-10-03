@@ -1767,6 +1767,15 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # ambiguous``'s argument: the remedy is on the account. Nothing was
         # written.
         "export-set-ambiguous": ExitCode.PRECONDITION,
+        # ── R-836's one, appended for the same reason ──────────────────────────
+        #
+        # A removal from a remote playlist was refused with nothing sent: the
+        # outbound ledger does not record the playlist as one the product
+        # created, or the playlist's positions could not be read in full, so a
+        # removal by position might take off the wrong track. PRECONDITION:
+        # the remedy is on the account, by hand, and the same ask refuses the
+        # same way.
+        "outbound-remove-refused": ExitCode.PRECONDITION,
     }
 )
 

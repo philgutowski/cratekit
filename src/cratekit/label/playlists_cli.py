@@ -104,6 +104,7 @@ def read_catalogue(
         )
     tracks = catalogue.ReleaseTracks(found)
     years: dict[str, list[str]] = {}
+    by_release: dict[str, tuple[str, tuple[str, ...]]] = {}
     undated = gone = 0
     for release in confirmed.releases:
         release_id = str(getattr(release, "id", "") or "")
@@ -121,17 +122,22 @@ def read_catalogue(
                 f"({type(exc).__name__}: {exc})",
             ) from exc
         year = _year(stated, release)
+        # A TRACK THE PROVIDER WILL NOT PLAY is never asked for, since the
+        # client skips it on an add and it would be refused every run.
+        playable = tuple(
+            dict.fromkeys(
+                str(getattr(row, "id", "") or "")
+                for row in rows
+                if str(getattr(row, "id", "") or "")
+                and getattr(row, "available", True) is not False
+            )
+        )
+        by_release[release_id] = (year, playable)
         if not year:
             undated += 1
             continue
         held = years.setdefault(year, [])
-        for row in rows:
-            identifier = str(getattr(row, "id", "") or "")
-            # A TRACK THE PROVIDER WILL NOT PLAY is never asked for, since the
-            # client skips it on an add and it would be refused every run.
-            if identifier and getattr(row, "available", True) is not False:
-                if identifier not in held:
-                    held.append(identifier)
+        held.extend(one for one in playable if one not in held)
     return folders.LabelCatalogue(
         label_id=entry.label_id,
         name=entry.name,
@@ -141,6 +147,7 @@ def read_catalogue(
         dropped=len(confirmed.dropped),
         gone=gone,
         suppressed=confirmed.suppressed,
+        by_release=by_release,
     )
 
 
