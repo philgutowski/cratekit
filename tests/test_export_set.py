@@ -304,6 +304,43 @@ def test_a_track_taken_off_by_a_person_is_said_and_not_put_back(account):
     assert "tid-3" not in held.playlists[playlist]
 
 
+def test_a_row_carrying_an_isrc_is_matched_through_the_accounts_own_match(account):
+    cfg, fake, held = account
+    held.catalog["set-row-1"] = "tid-by-isrc"
+    rows = [{"title": "Title Six", "artist": {"name": "Artist Six"}, "isrc": "QZABC2600001"}]
+    code, done = _build(_document(cfg, "isrc.list.json", "tidal", rows))
+    assert code == int(ExitCode.OK), done
+    (row,) = _tracks(done)
+    assert (row["id"], row["how"]) == ("tid-by-isrc", "isrc")
+    assert held.matches[0]["isrc"] == "QZABC2600001" and fake.searched_for == []
+
+
+def test_a_candidate_accepted_in_review_is_used_and_not_searched_for_again(account):
+    from cratekit.acquire import match
+    from cratekit.core import review
+    from cratekit.intake import candidates
+
+    cfg, fake, _held = account
+    fake.searches[("Artist Five", "Title Five")] = [
+        Hit("tid-5a", "Artist Five", "Title Five"),
+        Hit("tid-5b", "Artist Five", "Title Five"),
+    ]
+    (wanted,) = match.read_text_lines("Artist Five - Title Five\n")
+    answer = candidates.read_answer(wanted, tuple(fake.searches[("Artist Five", "Title Five")]))
+    with review.open_store(cfg) as items:
+        offered = candidates.propose(items, wanted, answer, handler_key="intake.missing")
+    code, resolved = drive(
+        ["review", "resolve", offered.item_id, "--verdict", "accepted", "--option", "tid-5b"]
+    )
+    assert code == int(ExitCode.OK), resolved
+    fake.searched_for.clear()
+    code, done = _build(_tracklist(cfg), "abort")
+    assert code == int(ExitCode.OK), done
+    fifth = _tracks(done)[4]
+    assert (fifth["id"], fifth["how"], fifth["action"]) == ("tid-5b", "accepted", "add")
+    assert ("Artist Five", "Title Five") not in fake.searched_for
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 3. The archive
 # ═══════════════════════════════════════════════════════════════════════════
