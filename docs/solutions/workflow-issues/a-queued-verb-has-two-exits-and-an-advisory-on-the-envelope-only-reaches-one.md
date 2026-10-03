@@ -165,3 +165,17 @@ written against it never looks at the refusal. And a composing verb is a second
 gate: `crate sync all` builds the favourites plan itself and asks its own
 question, so a context given to `sync favorites` alone is absent on the pass most
 people run.
+
+## Seen again on U109, 2026-10-03: a diagnostic composer has the same two exits
+
+`crate sync all` queues nothing of its own, and it still has both exits. When
+nothing queues and a source refused, `compose` raises, and the refusal envelope
+carries `{"checks": [], "summary": {}}`, so `render_checks` prints no row at all.
+U109 put the line naming `crate label sync` in a check row and in
+`summary.guided`, and the built in review found that the row never reaches a
+person on the refusal exit: no export and no credential used to exit OK over a
+queued labels sweep, and now exits PRECONDITION with nothing said about labels.
+The fix was the one above: the same words appended as the LAST step of the
+raised cause, so the refusing source's own fix stays the step the remediation
+line falls back to, plus the guided block in the gate's `shown`, which is the
+third moment. A diagnostic verb's checks are the success exit's channel only.

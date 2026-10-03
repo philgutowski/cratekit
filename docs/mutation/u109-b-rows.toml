@@ -1,0 +1,108 @@
+name = "u109-b"
+pass_kind = "light"
+
+[[rows]]
+id = "B1_labels_not_guided"
+description = "Drop guided_by from the labels spec, so labels is an ordinary source with no worker"
+file = "src/cratekit/sync/sources.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py", "tests/test_label_workers.py"]
+old = '''        guided_by="label.sync",'''
+new = ''''''
+
+[[rows]]
+id = "B2_command_spelling"
+description = "Spell the guided command with the registry's dotted name, crate label.sync"
+file = "src/cratekit/sync/sources.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_label_workers.py"]
+old = '''        return "crate " + self.guided_by.replace(".", " ")'''
+new = '''        return "crate " + self.guided_by'''
+
+[[rows]]
+id = "B3_no_cursor_reworded"
+description = "Reword the labels no_cursor sentence so it no longer names the guided verb"
+file = "src/cratekit/sync/sources.py"
+surface = "user"
+tests = ["tests/test_incremental_sync.py"]
+old = '''        no_cursor="label releases are taken by crate label sync, which keeps "'''
+new = '''        no_cursor="label releases are taken by the guided verb, which keeps "'''
+
+[[rows]]
+id = "B4_resume_dropped"
+description = "sync labels refuses even with --job, so a sweep queued before U109 can never run"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_workers.py"]
+old = '''    if ctx.args.job:
+        return _resume(ctx, ctx.args.job)
+    raise refuse(
+        "verb-retired",'''
+new = '''    raise refuse(
+        "verb-retired",'''
+
+[[rows]]
+id = "B5_refusal_reason"
+description = "Refuse with the old empty registry slug instead of verb-retired"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_workers.py", "tests/test_cli_contract.py"]
+old = '''    raise refuse(
+        "verb-retired",'''
+new = '''    raise refuse(
+        "label-registry-empty",'''
+
+[[rows]]
+id = "B6_message_drops_verb"
+description = "Reword the refusal message so it no longer names crate label sync"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_workers.py"]
+old = '''        f"by label with {GUIDED_VERB}, which asks before it downloads anything",'''
+new = '''        "by label, asking before anything downloads",'''
+
+[[rows]]
+id = "B7_step_drops_verb"
+description = "Drop the step that names the guided verb from the retired refusal"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_workers.py"]
+old = '''            f"take label releases with: {GUIDED_VERB}",
+            "a sweep queued before this change still runs with: crate sync labels "'''
+new = '''            "a sweep queued before this change still runs with: crate sync labels "'''
+
+[[rows]]
+id = "B8_itemless_branch"
+description = "The itemless refusal tells a sweep job to queue the import again, never naming the guided verb"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_workers.py"]
+old = '''                if job.handler_key == sweep.HANDLER_KEY'''
+new = '''                if False'''
+
+[[rows]]
+id = "B9_queue_again"
+description = "The retired verb queues a sweep again: the refusal is replaced by a legacy enqueue over the registry"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_workers.py", "tests/test_cli_contract.py"]
+old = '''    if ctx.args.job:
+        return _resume(ctx, ctx.args.job)
+    raise refuse(
+        "verb-retired",'''
+new = '''    if ctx.args.job:
+        return _resume(ctx, ctx.args.job)
+    held = labels.RegistryStore().load()
+    if held.labels:
+        return _queue(
+            ctx,
+            payload={"source_id": "labels", "run_id": ctx.run.run_id},
+            item_ids=tuple(entry.label_id for entry in held.labels.values()),
+        )
+    raise refuse(
+        "verb-retired",'''
+
+[[dropped]]
+id = "B10_derived_guided_verb"
+description = "Type GUIDED_VERB again instead of reading it off the labels spec"
+reason = "same text either way today, so no test can kill it; B2 measures the spec's spelling, which is the derivation's only input"

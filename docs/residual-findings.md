@@ -34543,3 +34543,71 @@ the plan's matches are carried from the first act to the second.
 
 **On the board bar.** Not filed. A cost, not a failure, and it closes only at
 an attended sitting.
+
+---
+
+## R-884. The retired sync labels --job still drives a label import job
+
+**Found:** by the built in review of U109, 2026-10-03, on `relay/248`.
+
+**The mechanism.** `_resume` in `src/cratekit/label/cli.py` accepts any job
+under `LABEL_KEYS`, the sweep key and `label.import`, because one worker serves
+both and both verbs share the resume. U109 kept `sync labels` only to finish a
+sweep queued before the guided verb, and its help and docstring now say so,
+but `crate sync labels --job <an import job>` still drives the import under the
+`sync.labels` envelope.
+
+**Measured cost.** None to a person: the import runs exactly as `label import
+--job` would run it, on the same worker. The verb does more than it says.
+
+**Closes when:** each label verb's resume accepts only its own handler key, or
+the retired verb is removed (R-885).
+
+**On the board bar.** Not filed. A maintainer facing mismatch with no user cost.
+
+---
+
+## R-885. sync labels is kept as a verb only so crate job resume can respawn an old sweep
+
+**Found:** by the built in review of U109, 2026-10-03, on `relay/248`.
+
+**The mechanism.** U109 retired the verb by reduction: without `--job` it
+refuses `verb-retired`, with `--job` it resumes. It could not be removed,
+because `crate job resume` rebuilds a job's argv through the entry's
+`argv_builder` and spawns the verb. So the entry keeps `long_running`,
+`destructive`, the `xml` and `files` writes, and the `library.mounted` and
+`credential.provider` doctor checks. Those are accurate for the resume, which
+runs the sweep worker, and they keep a retired verb in `crate --help` and in
+doctor's per verb readiness.
+
+**Measured cost.** A person sees `sync labels` listed, with a summary that says
+it is retired and queues nothing. Nothing is lost or misreported.
+
+**Options.** (a) Leave it until no sweep job queued before U109 remains on any
+machine, then delete the entry, its builder and its argv builder. (b) Teach
+`crate job resume` to drive a job whose verb is retired through the handler
+directly, then delete the verb now. U109 took the conservative one, (a), since
+(b) changes the job engine's resume for every verb.
+
+**Closes when:** one of the two is done.
+
+**On the board bar.** Not filed. No user facing cost.
+
+---
+
+## R-886. sync labels accepts --run-id and ignores it
+
+**Found:** by the built in review of U109, 2026-10-03, on `relay/248`.
+
+**The mechanism.** `sync_labels_argv` still appends `--run-id` from the job's
+payload, so the parser keeps the flag. The resume never read it, before U109 or
+since: the worker takes the run from the job's frozen payload. U109 reworded
+the help to say the flag is accepted and ignored rather than remove it, since a
+resume spawned by an older build's argv would otherwise meet a usage error.
+
+**Measured cost.** None. A person who passes a different run is not told it was
+ignored.
+
+**Closes when:** R-885 closes, which removes the verb and the flag together.
+
+**On the board bar.** Not filed. A wording matter on a retired verb.

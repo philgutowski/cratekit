@@ -1,0 +1,82 @@
+name = "u109-a"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_plan_guided"
+description = "Plan every enabled source again, guided ones included, so labels is planned as a source with no worker"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''    plans = [_plan(spec, ctx) for spec in enabled if spec.guided_by is None]'''
+new = '''    plans = [_plan(spec, ctx) for spec in enabled]'''
+
+[[rows]]
+id = "A2_guided_empty"
+description = "Collect no guided source, so nothing names crate label sync anywhere"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''    guided = tuple(spec for spec in enabled if spec.guided_by is not None)'''
+new = '''    guided = ()'''
+
+[[rows]]
+id = "A3_no_check_row"
+description = "Drop the guided check row, the one line the human output prints"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''    checks.extend(_guided_check(spec) for spec in guided)'''
+new = ''''''
+
+[[rows]]
+id = "A4_summary_guided"
+description = "Drop summary.guided from the pass report"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''        "guided": _guided(guided),
+    }
+    for plan in plans:'''
+new = '''    }
+    for plan in plans:'''
+
+[[rows]]
+id = "A5_gate_guided"
+description = "Drop the guided block from what the favourites gate shows"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''            if p.inbound is not None
+        },
+        "guided": _guided(guided),
+    }'''
+new = '''            if p.inbound is not None
+        },
+    }'''
+
+[[rows]]
+id = "A6_refusal_step_dropped"
+description = "A pass that queued nothing refuses without the step naming the guided verb"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''            steps=(*first.remediation.steps, *(_guided_step(spec) for spec in guided)),'''
+new = '''            steps=first.remediation.steps,'''
+
+[[rows]]
+id = "A7_refusal_step_first"
+description = "Prepend the guided step instead of appending it, so it displaces the refusing source's own first step"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''            steps=(*first.remediation.steps, *(_guided_step(spec) for spec in guided)),'''
+new = '''            steps=(*(_guided_step(spec) for spec in guided), *first.remediation.steps),'''
+
+[[rows]]
+id = "A8_row_reworded"
+description = "Reword the guided row so it no longer says the source is not swept here"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''            f"not swept by sync all; {spec.command()} takes this source on its "'''
+new = '''            f"left to another verb; {spec.command()} takes this source on its "'''
