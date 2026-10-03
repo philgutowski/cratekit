@@ -286,10 +286,12 @@ def plan_label(
     steps: list[PlaylistPrune] = []
     for year in sorted(shape.years):
         recorded = shape.years[year]
+        # ``on_other`` holds only what was read while ``judged``, so the one
+        # guard on a release credited elsewhere is where it is read, above.
         leaving = [
             one
             for one in sorted(recorded.added)
-            if one not in staying(year) and (one in on_held or (judged and one in on_other))
+            if one not in staying(year) and (one in on_held or one in on_other)
         ]
         if not leaving:
             continue
