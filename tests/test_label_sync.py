@@ -342,6 +342,60 @@ def test_a_release_answered_not_now_is_not_filed_by_the_labels_sweep(installed, 
     assert [one["identity"] for one in question["releases"]] == ["r4"]
 
 
+def test_a_release_the_sweep_filed_while_its_question_waited_is_settled_by_the_answer(
+    installed, monkeypatch
+):
+    """A question saved by ``--next`` holds its releases under pending, not asked.
+
+    A sweep that ran before the answer filed them, and a not now that settled
+    only the items the question knew of left them open for the next catch up.
+    """
+    register()
+    three_new(monkeypatch)
+    next_question()
+    sweep_labels()
+    assert sorted(items(installed)) == ["r1", "r2", "r3"]
+
+    answer(SLUG, "not-now")
+
+    assert open_items(installed) == []
+    assert {item.verdict for item in items(installed).values()} == {review.Verdict.SUPERSEDED}
+    assert tombstones(installed) == 0
+    assert next_question() is None
+
+
+def test_a_walk_whose_gate_took_back_every_open_item_is_not_a_no_op(installed, monkeypatch):
+    register()
+    bind(monkeypatch, {SLUG: []})
+    offered(installed, "r-old-hymn", published_genres=["Christian"])
+
+    code, envelope = sync("--next")
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "ok"
+    (label_line,) = checks(envelope, f"label.{SLUG}")
+    assert "1 open item(s) taken back by the genre gate" in label_line["detail"]
+    assert open_items(installed) == []
+
+
+def test_the_labels_sweep_refuses_an_unreadable_record_before_any_login(installed, monkeypatch):
+    register()
+    three_new(monkeypatch)
+    resolved: list[object] = []
+    monkeypatch.setattr(catalogue, "resolve", lambda cfg: resolved.append(cfg))
+    path = config.state_path("label_sync", installed)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{not json")
+
+    code, queued = drive(["sync", "labels"])
+    assert code == int(ExitCode.OK), queued
+    code, refused = drive(["sync", "labels", "--job", queued["data"]["job_id"]])
+
+    assert "label-sync-unusable" in json.dumps(refused)
+    assert resolved == []
+    assert items(installed) == {}
+
+
 def test_pick_records_exactly_the_chosen_releases_and_no_others(installed, monkeypatch):
     register()
     three_new(monkeypatch)

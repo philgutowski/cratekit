@@ -1367,6 +1367,9 @@ def handle(job, item, cfg) -> jobs.Produced | None:
         # active copy that cannot be read refuses here, not after a label was
         # listed and its releases filed unjudged.
         declared = active_taxonomy.load(cfg)
+        # WHAT THE GUIDED SYNC ALREADY ASKED ABOUT (U107), read before the
+        # login for the same reason, so an unreadable record refuses first.
+        asked = _asked_for(cfg, entry.label_id)
         found = catalogue.resolve(cfg)
         # ONE READER FOR BOTH QUESTIONS (R-798). Ownership and the genre gate
         # read the same rows of the same release, so the second gets the
@@ -1391,8 +1394,8 @@ def handle(job, item, cfg) -> jobs.Produced | None:
             # it does in ``label sync``'s own listing. Without it this sweep
             # filed every release answered not now, and the next guided sync
             # asked about it again as an open item. An unreadable record
-            # refuses here rather than reading as nothing asked.
-            offered=_asked_for(cfg, entry.label_id),
+            # refuses above rather than reading as nothing asked.
+            offered=asked,
         )
         result = run_increment(
             cfg,

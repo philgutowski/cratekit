@@ -3,7 +3,8 @@ pass_kind = "light"
 
 # U107, `crate label sync`, measured by R-857's task after the unit landed
 # unreviewed. One row per guard the unit added, plus the five guards its
-# first fix round added (S20 to S24). Subsets are derived by the driver.
+# first fix round added: S05 in batch a, S20 to S23 in batch c. Subsets are
+# derived by the driver.
 
 [[rows]]
 id = "S19_approved_superseded"
