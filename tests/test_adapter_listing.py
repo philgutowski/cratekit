@@ -775,9 +775,9 @@ def test_every_shape_declares_the_rule_its_provider_can_actually_support():
         "favorite_tracks": listing.StopRule.DECLARED_TOTAL,
         "account_playlists": listing.StopRule.EMPTY_PAGE,
         "artist_releases": listing.StopRule.EMPTY_PAGE,
-        # R-835. Neither folder listing publishes a count of what it serves.
-        "account_folders": listing.StopRule.EMPTY_PAGE,
-        "folder_playlists": listing.StopRule.EMPTY_PAGE,
+        # R-878. The folder endpoint ignores offset and pages by its cursor.
+        "account_folders": listing.StopRule.CURSOR,
+        "folder_playlists": listing.StopRule.CURSOR,
     }
     assert listing.StopRule.SHORT_PAGE not in listing.STOP_RULES.values()
 
@@ -882,3 +882,287 @@ def test_a_permanent_count_failure_still_surfaces_at_the_ceiling():
     favorites = Broken(corpus(150), set())
     with pytest.raises(RuntimeError, match="count endpoint"):
         listing.favorite_tracks(Session(User(favorites=favorites)), sleep=lambda _: None)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-878: the folder endpoint ignores offset and pages by cursor
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class _Answer:
+    def __init__(self, body: dict) -> None:
+        self._body = body
+
+    def json(self) -> dict:
+        return self._body
+
+
+def _raw_folder(index: int) -> dict:
+    """One root item as the endpoint serves it, in the shape ``parse_folder`` reads."""
+    return {
+        "trn": f"trn:folder:f{index}",
+        "itemType": "FOLDER",
+        "name": f"Label {index:02d}",
+        "addedAt": "2026-01-01T00:00:00Z",
+        "data": {
+            "id": f"f{index}",
+            "createdAt": "2026-01-01T00:00:00Z",
+            "lastModifiedAt": "2026-01-01T00:00:00Z",
+            "totalNumberOfItems": 0,
+        },
+    }
+
+
+def _raw_playlist(index: int) -> dict:
+    """One folder item as the endpoint serves it, its ``data`` a playlist."""
+    return {
+        "trn": f"trn:playlist:p{index}",
+        "itemType": "PLAYLIST",
+        "name": f"Kompakt {2000 + index}",
+        "data": {
+            "uuid": f"p{index}",
+            "title": f"Kompakt {2000 + index}",
+            "type": "USER",
+            "numberOfTracks": 0,
+            "numberOfVideos": 0,
+            "description": "",
+            "duration": 0,
+            "image": None,
+            "squareImage": None,
+            "promotedArtists": [],
+            "creator": None,
+        },
+    }
+
+
+class CursorEndpoint:
+    """The provider's collection folder endpoint as R-878 measured it.
+
+    ``offset`` is IGNORED: a request without a cursor is served the first window
+    whatever offset it names, which is what the author's account did at every
+    offset from 0 to 1,000. Each response carries ``items``, the declared
+    ``totalNumberOfItems`` and, while more remain, a ``cursor`` that sent back
+    serves the next window. ``page`` is the window the provider serves, which can
+    be narrower than the limit asked for, as the live 26 at a limit of 50 was.
+
+    ``stuck`` hands back the same cursor for ever, and sending it serves the same
+    second window, so the walk never ends unless its budget does.
+    """
+
+    def __init__(self, held: list[dict], *, page: int, total: int | None = -1,
+                 cursors: bool = True, stuck: bool = False) -> None:
+        self.held = held
+        self.page = page
+        self.total = len(held) if total == -1 else total
+        self.cursors = cursors
+        self.stuck = stuck
+        self.sent: list[dict] = []
+        self.fail: list[Exception] = []
+
+    def request(self, method: str, path: str, params: dict | None = None,
+                data: dict | None = None, headers: dict | None = None,
+                base_url: str | None = None) -> _Answer:
+        self.sent.append(
+            {"method": method, "path": path, "base_url": base_url, **dict(params or {})}
+        )
+        if self.fail:
+            raise self.fail.pop(0)
+        cursor = (params or {}).get("cursor")
+        start = int(cursor.removeprefix("after-")) if cursor else 0
+        window = self.held[start : start + min(params["limit"], self.page)]
+        end = start + len(window)
+        body: dict = {"items": window, "lastModifiedAt": "2026-10-03T00:00:00Z"}
+        if self.total is not None:
+            body["totalNumberOfItems"] = self.total
+        if self.cursors and end < len(self.held):
+            body["cursor"] = f"after-{self.page if self.stuck else end}"
+        return _Answer(body)
+
+
+def _client_over(endpoint: CursorEndpoint):
+    """A real ``tidalapi`` session whose request object is the fake endpoint.
+
+    Real rather than a stand in, so the walk is proven against the client's own
+    ``parse_folder``, its folder object and its playlist parser, the parts R-878
+    has the walk reach past the client's listing methods for. Building one makes
+    no request.
+    """
+    tidalapi = pytest.importorskip("tidalapi")
+    session = tidalapi.Session()
+    session.request = endpoint
+    return session
+
+
+def test_the_root_folders_are_walked_by_cursor_past_an_endpoint_that_ignores_offset():
+    """The brief's first scenario: 55 folders over pages of 10, all returned once."""
+    import tidalapi.playlist
+
+    endpoint = CursorEndpoint([_raw_folder(n) for n in range(55)], page=10)
+    session = _client_over(endpoint)
+    found = listing.account_folders(session, sleep=lambda _: None)
+
+    assert [folder.id for folder in found] == [f"f{n}" for n in range(55)]
+    assert all(isinstance(folder, tidalapi.playlist.Folder) for folder in found)
+    assert found[54].name == "Label 54"
+    assert len(endpoint.sent) == 6
+    assert [sent.get("cursor") for sent in endpoint.sent] == [
+        None, "after-10", "after-20", "after-30", "after-40", "after-50",
+    ]
+
+
+def test_the_folder_request_is_the_one_the_client_sends_with_a_cursor_and_no_offset():
+    """The walk asks what ``Favorites.playlist_folders`` asks, through its transport."""
+    endpoint = CursorEndpoint([_raw_folder(n) for n in range(15)], page=10)
+    session = _client_over(endpoint)
+    listing.account_folders(session, sleep=lambda _: None)
+
+    first, second = endpoint.sent
+    assert first == {
+        "method": "GET",
+        "path": "my-collection/playlists/folders",
+        "base_url": session.config.api_v2_location,
+        "folderId": "root",
+        "limit": listing.PAGE_SIZES["account_folders"],
+        "order": "NAME",
+        "includeOnly": "FOLDER",
+    }
+    assert second == {**first, "cursor": "after-10"}
+
+
+def test_a_folders_playlists_are_walked_by_cursor_through_the_folders_own_parser():
+    """The brief's fourth scenario: a folder holding 12 playlists over pages of 5."""
+    import tidalapi.playlist
+
+    endpoint = CursorEndpoint([_raw_playlist(n) for n in range(12)], page=5)
+    session = _client_over(endpoint)
+    handle = session.folder()
+    handle.id = "folder-kompakt"
+    found = listing.folder_playlists(handle, sleep=lambda _: None)
+
+    assert [playlist.id for playlist in found] == [f"p{n}" for n in range(12)]
+    assert all(isinstance(playlist, tidalapi.playlist.Playlist) for playlist in found)
+    assert found[11].name == "Kompakt 2011"
+    assert [sent.get("cursor") for sent in endpoint.sent] == [None, "after-5", "after-10"]
+    assert {sent["folderId"] for sent in endpoint.sent} == {"folder-kompakt"}
+    assert {sent["includeOnly"] for sent in endpoint.sent} == {"PLAYLIST"}
+    assert all("offset" not in sent for sent in endpoint.sent)
+
+
+def test_a_response_with_no_cursor_ends_the_walk():
+    """The brief's second scenario. More is held, none is offered, one request."""
+    endpoint = CursorEndpoint(
+        [_raw_folder(n) for n in range(30)], page=10, cursors=False, total=None
+    )
+    found = listing.account_folders(_client_over(endpoint), sleep=lambda _: None)
+    assert len(found) == 10
+    assert len(endpoint.sent) == 1
+
+
+def test_an_empty_page_ends_the_walk_even_when_it_carries_a_cursor():
+    pages = iter([
+        {"items": [_raw_folder(0)], "cursor": "a"},
+        {"items": [], "cursor": "b"},
+        {"items": [_raw_folder(1)], "cursor": None},
+    ])
+    sent: list[str | None] = []
+
+    def fetch(limit: int, cursor: str | None) -> dict:
+        sent.append(cursor)
+        return next(pages)
+
+    got = listing.paginate_cursor(
+        fetch, parse=lambda raw: raw["data"]["id"], **listing._shape("account_folders")
+    )
+    assert got == ["f0"]
+    assert sent == [None, "a"]
+
+
+def test_a_walk_that_collects_fewer_than_the_declared_count_refuses():
+    """The brief's third scenario: ending is not the same as reaching the count."""
+    endpoint = CursorEndpoint([_raw_folder(n) for n in range(30)], page=10, total=31)
+    with pytest.raises(listing.ListingTruncated) as raised:
+        listing.account_folders(_client_over(endpoint), sleep=lambda _: None)
+    assert "collected 30" in str(raised.value)
+    assert "declared 31" in str(raised.value)
+
+
+def test_the_latest_declared_count_is_the_one_checked():
+    """A folder removed mid walk lowers the count; the first answer must not win."""
+    pages = iter([
+        {"items": [_raw_folder(0), _raw_folder(1)], "totalNumberOfItems": 4, "cursor": "a"},
+        {"items": [_raw_folder(2)], "totalNumberOfItems": 3},
+    ])
+    got = listing.paginate_cursor(
+        lambda limit, cursor: next(pages),
+        parse=lambda raw: raw["data"]["id"],
+        **listing._shape("account_folders"),
+    )
+    assert got == ["f0", "f1", "f2"]
+
+
+def test_a_folder_served_on_two_pages_is_returned_once():
+    held = [_raw_folder(n) for n in range(12)]
+    held.insert(10, _raw_folder(9))
+    endpoint = CursorEndpoint(held, page=10, total=12)
+    found = listing.account_folders(_client_over(endpoint), sleep=lambda _: None)
+    assert [folder.id for folder in found] == [f"f{n}" for n in range(12)]
+
+
+def test_a_cursor_that_never_changes_spends_the_budget_and_refuses():
+    """The brief's fifth scenario. A fixed cursor serves the same window for ever."""
+    endpoint = CursorEndpoint([_raw_folder(n) for n in range(30)], page=10, stuck=True)
+    with pytest.raises(listing.ListingTruncated) as raised:
+        listing.account_folders(_client_over(endpoint), sleep=lambda _: None)
+    assert len(endpoint.sent) == listing.PAGE_CAPS["account_folders"]
+    assert "not advancing its cursor" in str(raised.value)
+    assert "collected 20" in str(raised.value)
+
+
+def test_a_transient_failure_retries_the_same_cursor_and_not_the_first_page():
+    endpoint = CursorEndpoint([_raw_folder(n) for n in range(25)], page=10)
+    real = endpoint.request
+    calls = {"n": 0}
+
+    def flaky(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            endpoint.sent.append({"failed": True, **kwargs["params"]})
+            raise TimeoutError("the provider is busy")
+        return real(*args, **kwargs)
+
+    endpoint.request = flaky
+    slept: list[float] = []
+    found = listing.account_folders(_client_over(endpoint), sleep=slept.append)
+    assert len(found) == 25
+    assert slept == [1.0]
+    assert [sent.get("cursor") for sent in endpoint.sent] == [
+        None, "after-10", "after-10", "after-20",
+    ]
+
+
+def test_a_client_without_the_request_object_refuses_by_name_and_is_not_retried():
+    class Bare:
+        config = None
+
+    with pytest.raises(listing.ListingNotPaginated, match="request"):
+        listing.account_folders(Bare(), sleep=lambda _: pytest.fail("slept"))
+
+
+def test_paginate_refuses_a_shape_that_walks_by_cursor():
+    """An offset walk over the folder endpoint reads its first page for ever."""
+    calls: list[tuple[int, int]] = []
+    with pytest.raises(ValueError, match="paginate_cursor"):
+        listing.paginate(
+            lambda limit, offset: calls.append((limit, offset)) or [Item("x")],
+            **listing._shape("account_folders"),
+        )
+    assert calls == []
+
+
+def test_paginate_cursor_refuses_a_shape_that_walks_by_offset():
+    with pytest.raises(ValueError, match="paginate"):
+        listing.paginate_cursor(
+            lambda limit, cursor: pytest.fail("requested"),
+            parse=lambda raw: raw,
+            **listing._shape("account_playlists"),
+        )

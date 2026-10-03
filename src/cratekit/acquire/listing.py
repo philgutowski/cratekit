@@ -41,7 +41,10 @@ THE THREE THINGS EACH WRAPPER DOES, and why each is not optional:
 
 WHAT IS NOT HERE. Nothing calls the network in this module by itself; every
 wrapper takes the provider object or a page-fetching callable, which is what lets
-the whole module be proven against fakes with no account and no session.
+the whole module be proven against fakes with no account and no session. The two
+folder shapes are the nearest thing to an exception: they send their own request,
+but through the request object the provider client hands them, so they reach the
+network by the same transport, and the same pacing gate, as every client call.
 """
 
 from __future__ import annotations
@@ -89,11 +92,20 @@ class StopRule(Enum):
     the saving is real for a listing read per item in a crawl, and a future shape
     that can PROVE the provider serves it full should be able to say so in one
     word rather than reinventing the loop.
+
+    ``CURSOR`` is for an endpoint that ignores ``offset`` altogether and pages by
+    a cursor it hands back with each response (R-878). The walk stops on the
+    **exhausted cursor**, a response that carries no further cursor, or on an
+    empty page, and then checks what it collected against the count the response
+    declares, refusing when it falls short. It is walked by
+    :func:`paginate_cursor` and never by :func:`paginate`, which refuses it,
+    because an offset walk over such an endpoint reads its first page forever.
     """
 
     DECLARED_TOTAL = "declared total"
     EMPTY_PAGE = "empty page"
     SHORT_PAGE = "short page"
+    CURSOR = "exhausted cursor"
 
 #: Server page ceilings, per listing shape. These are the PROVIDER's numbers, not
 #: preferences: asking for more returns the ceiling, and asking for fewer costs
@@ -120,10 +132,10 @@ STOP_RULES: dict[str, StopRule] = {
     "account_playlists": StopRule.EMPTY_PAGE,
     "favorite_tracks": StopRule.DECLARED_TOTAL,
     "artist_releases": StopRule.EMPTY_PAGE,
-    # R-835. Neither folder listing publishes a count this module can read
-    # without a request of its own, so both take the weaker rule.
-    "account_folders": StopRule.EMPTY_PAGE,
-    "folder_playlists": StopRule.EMPTY_PAGE,
+    # R-878. The provider's folder endpoint ignores offset and returns its first
+    # page at every one, so both folder listings walk its cursor instead.
+    "account_folders": StopRule.CURSOR,
+    "folder_playlists": StopRule.CURSOR,
 }
 
 #: REQUEST budgets, per listing shape, not item budgets. A walk that spends its
@@ -150,9 +162,10 @@ PAGE_CAPS: dict[str, int] = {
     # Reaches 9,900 releases PER RELEASE METHOD. ``artist_releases`` walks each
     # method separately, so this is spent once per method, not once per artist.
     "artist_releases": 100,
-    # R-835. NOT MEASURED, and the figures are bounds rather than reads. The
-    # account holds one folder per followed label, 47 when sitting 11 swept
-    # them, and a label folder holds one playlist per release year.
+    # R-835. The figures are bounds rather than reads, and they assume the
+    # provider fills the page it is asked for. The account holds one folder per
+    # followed label, 47 when sitting 11 swept them and 55 declared at sitting
+    # 30 (R-878), and a label folder holds one playlist per release year.
     "account_folders": 100,  # reaches 4,950 folders.
     "folder_playlists": 20,  # reaches 950 year playlists in one folder.
 }
@@ -277,7 +290,17 @@ def paginate(
     ``shape`` names the listing in that exception and does nothing else. It is
     optional so this function stays a mechanism a test can drive directly, while
     :data:`STOP_RULES` and :data:`PAGE_CAPS` hold the policy.
+
+    **A shape that declares :attr:`StopRule.CURSOR` is refused here**, before any
+    request. Its endpoint ignores ``offset``, so this walk would read the same
+    first page until its budget ran out, which is R-878 exactly. That shape is
+    walked by :func:`paginate_cursor`.
     """
+    if stop is StopRule.CURSOR:
+        raise ValueError(
+            f"{shape or 'listing'} declares the {stop.value} rule, so its endpoint "
+            f"ignores offset and must be walked by paginate_cursor, not paginate"
+        )
     items: list[Any] = []
     seen: set[Any] = set()
     offset = 0
@@ -342,6 +365,98 @@ def paginate(
         elif not page:
             break
 
+    return items
+
+
+def paginate_cursor(
+    fetch_page: Callable[[int, str | None], Any],
+    *,
+    page_size: int,
+    stop: StopRule,
+    max_pages: int,
+    parse: Callable[[Any], Any],
+    shape: str | None = None,
+    key: Callable[[Any], Any] | None = None,
+    **retry: Any,
+) -> list[Any]:
+    """Every item across every server page of an endpoint that pages by cursor.
+
+    ``fetch_page(limit, cursor)`` returns the provider's RAW response, a mapping
+    carrying ``items``, ``totalNumberOfItems`` and ``cursor``. The first request
+    sends no cursor, and every later one sends the cursor the previous response
+    carried. ``parse`` turns one raw item into the object the caller gets back,
+    and runs outside the retry ladder, so a malformed item raises once rather
+    than being slept on as though waiting could change it.
+
+    **The walk stops on the exhausted cursor**, a response with no further
+    cursor, or on a page with no items. Neither proves the listing is whole, so
+    the count is checked after: when a response declared ``totalNumberOfItems``
+    and the walk collected fewer, it raises :class:`ListingTruncated` rather than
+    returning, on the argument that class makes. The latest count declared is
+    the one checked, since the collection can change while it is read.
+
+    ``stop``, ``max_pages``, ``key`` and ``shape`` mean what they mean to
+    :func:`paginate`, and ``stop`` must be :attr:`StopRule.CURSOR`, so a shape
+    cannot reach this walk while its table says it walks some other way. The
+    budget is the same budget of requests and spending it raises the same way:
+    a cursor the provider hands back unchanged is how this walk would otherwise
+    loop for ever.
+    """
+    if stop is not StopRule.CURSOR:
+        raise ValueError(
+            f"{shape or 'listing'} declares the {stop.value} rule and is walked by "
+            f"paginate; paginate_cursor walks only the {StopRule.CURSOR.value} rule"
+        )
+    items: list[Any] = []
+    seen: set[Any] = set()
+    cursor: str | None = None
+    total: int | None = None
+    pages = 0
+
+    while True:
+        if pages >= max_pages:
+            raise ListingTruncated(
+                f"{shape or 'listing'} spent its whole budget of {max_pages} requests "
+                f"at {page_size} per page without reaching the end, having collected "
+                f"{len(items)} item(s). The budget is sized far above any real "
+                f"collection, so reaching it means the provider is not advancing its "
+                f"cursor. Returning the {len(items)} would be a truncated listing "
+                f"indistinguishable from a complete one, which is the thing this "
+                f"module refuses to guess at"
+            )
+        response = fetch_with_retry(
+            lambda limit, _offset, cursor=cursor: fetch_page(limit, cursor),
+            limit=page_size,
+            offset=0,
+            **retry,
+        )
+        pages += 1
+        response = response if isinstance(response, dict) else {}
+        page = list(response.get("items") or [])
+        for raw in page:
+            item = parse(raw)
+            if key is not None:
+                identity = key(item)
+                if identity in seen:
+                    continue
+                seen.add(identity)
+            items.append(item)
+
+        declared = response.get("totalNumberOfItems")
+        if isinstance(declared, int) and not isinstance(declared, bool):
+            total = declared
+        following = response.get("cursor")
+        if not page or not following:
+            break
+        cursor = str(following)
+
+    if total is not None and len(items) < total:
+        raise ListingTruncated(
+            f"{shape or 'listing'} reached the end of its cursor having collected "
+            f"{len(items)} item(s) where the provider declared {total}. Returning "
+            f"the {len(items)} would be a truncated listing indistinguishable from "
+            f"a complete one, which is the thing this module refuses to guess at"
+        )
     return items
 
 
@@ -425,6 +540,61 @@ def _paged_caller(owner: Any, method: str) -> Callable[[int, int], Any]:
                 f"arguments, so it can only ever serve one page; a truncated listing "
                 f"is indistinguishable from a short one and must not be guessed at"
             ) from exc
+
+    return call
+
+
+#: The provider's collection folder endpoint, the one both of the client's own
+#: folder listings call, ``Favorites.playlist_folders`` and ``Folder.items``.
+FOLDER_ENDPOINT = "my-collection/playlists/folders"
+
+#: The ordering both of those listings send. The cursor is cut from an ordered
+#: walk, so a walk that asked for another order than the client does would be
+#: reading a listing nobody has measured.
+FOLDER_ORDER = "NAME"
+
+
+def _client_part(owner: Any, *path: str) -> Any:
+    """``owner.a.b``, or :class:`ListingNotPaginated` naming the missing part.
+
+    The folder walks reach past the client's listing methods to its request
+    object, its configuration and its parsers. A client version that moved one
+    of those is an upgrade problem the user can act on, the same as a listing
+    method that went away, and it is refused by name rather than retried.
+    """
+    value = owner
+    for name in path:
+        value = getattr(value, name, None)
+        if value is None:
+            raise ListingNotPaginated(
+                f"{type(owner).__name__} has no {'.'.join(path)}; the provider client "
+                f"changed shape and the folder listing needs updating with it"
+            )
+    return value
+
+
+def _folder_endpoint(
+    request: Any, base_url: str, folder_id: str, include_only: str
+) -> Callable[[int, str | None], Any]:
+    """Bind the folder endpoint into the ``(limit, cursor)`` shape, raw.
+
+    Sends what the client's own listing sends, the folder, the limit, the order
+    and what to include, through the client's own request object, and adds the
+    cursor the last response carried. It sends no ``offset``, which the endpoint
+    ignores (R-878). The answer is the raw response, since the client's listing
+    methods throw away the cursor this walk needs.
+    """
+
+    def call(limit: int, cursor: str | None) -> Any:
+        params: dict[str, Any] = {
+            "folderId": folder_id,
+            "limit": limit,
+            "order": FOLDER_ORDER,
+            "includeOnly": include_only,
+        }
+        if cursor is not None:
+            params["cursor"] = cursor
+        return request.request("GET", FOLDER_ENDPOINT, base_url=base_url, params=params).json()
 
     return call
 
@@ -541,18 +711,32 @@ def account_playlists(session: Any, **kwargs: Any) -> list[Any]:
 def account_folders(session: Any, **kwargs: Any) -> list[Any]:
     """Every folder at the root of the account's playlist collection, across pages.
 
-    Stops on an **empty page**, the weaker rule, because the endpoint publishes
-    no count of the folders it serves that this walk could end on. The client's
-    own folder lookup reads ONE page of fifty and gives up, so an account with a
-    fifty first folder would have it reported absent; this walk is why the
-    outbound adapter never asks that lookup anything (R-835).
+    Stops on the **exhausted cursor**, and checks the count the response
+    declares. The endpoint ignores ``offset``: on the author's account
+    ``playlist_folders`` returned the same first folders at every offset from 0
+    to 1,000, while the raw response carried ``totalNumberOfItems`` of 55 and a
+    ``cursor`` that, sent back, returned the next page (R-878). The client
+    exposes no cursor, so this walk sends the client's own request, root folder,
+    folders only, ordered by name, and parses each item with the client's own
+    ``parse_folder``.
 
-    Deduplicated by identifier, since the listing is ordered by name and a folder
-    created while it is read shifts every later one by a place.
+    The client's own folder lookup reads ONE page of fifty and gives up, so an
+    account with a fifty first folder would have it reported absent; this walk
+    is why the outbound adapter never asks that lookup anything (R-835).
+
+    Deduplicated by identifier, since a folder created while the listing is read
+    can shift the window it falls in.
     """
     kwargs.setdefault("key", lambda folder: str(getattr(folder, "id", "")))
-    return paginate(
-        _paged_caller(session.user.favorites, "playlist_folders"),
+    fetch = _folder_endpoint(
+        _client_part(session, "request"),
+        _client_part(session, "config", "api_v2_location"),
+        "root",
+        "FOLDER",
+    )
+    return paginate_cursor(
+        fetch,
+        parse=_client_part(session, "parse_folder"),
         **_shape("account_folders", **kwargs),
     )
 
@@ -560,12 +744,27 @@ def account_folders(session: Any, **kwargs: Any) -> list[Any]:
 def folder_playlists(folder: Any, **kwargs: Any) -> list[Any]:
     """Every playlist one account folder holds, across pages.
 
-    Stops on an **empty page**, for the reason :func:`account_folders` gives.
-    ``folder`` is the client's folder object, whose ``items`` lists playlists
-    only. Deduplicated by identifier on the same argument.
+    Stops on the **exhausted cursor**, for the reason :func:`account_folders`
+    gives: the folder's ``items`` reads the same endpoint, and on the author's
+    account a folder's second page of five was its first (R-878). ``folder`` is
+    the client's folder object, and the walk sends what its ``items`` sends, the
+    folder's identifier and playlists only, through its own request object, and
+    parses each item's ``data`` with the playlist parser ``items`` uses.
+    Deduplicated by identifier on the same argument.
     """
     kwargs.setdefault("key", lambda playlist: str(getattr(playlist, "id", "")))
-    return paginate(_paged_caller(folder, "items"), **_shape("folder_playlists", **kwargs))
+    fetch = _folder_endpoint(
+        _client_part(folder, "request"),
+        _client_part(folder, "session", "config", "api_v2_location"),
+        str(_client_part(folder, "id")),
+        "PLAYLIST",
+    )
+    parse_playlist = _client_part(folder, "playlist", "parse_factory")
+    return paginate_cursor(
+        fetch,
+        parse=lambda item: parse_playlist(item["data"]),
+        **_shape("folder_playlists", **kwargs),
+    )
 
 
 #: The two release listings a provider artist exposes, and the ones
@@ -657,6 +856,8 @@ __all__ = [
     "DEFAULT_BASE_DELAY_S",
     "DEFAULT_MAX_DELAY_S",
     "DEFAULT_MAX_RETRIES",
+    "FOLDER_ENDPOINT",
+    "FOLDER_ORDER",
     "GUARDED_METHODS",
     "PAGE_CAPS",
     "PAGE_SIZES",
@@ -675,5 +876,6 @@ __all__ = [
     "fetch_with_retry",
     "folder_playlists",
     "paginate",
+    "paginate_cursor",
     "playlist_tracks",
 ]
