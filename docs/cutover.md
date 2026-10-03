@@ -900,6 +900,9 @@ landing.
 | The provider session | re-minted by the author | `check_login` true, 221 favourites read. The plaintext token file was deleted. | live |
 | `export set`, R-837, #253 | live, applied at digest `82eb82e0dcbcc832` | **`tech_house_hits - Phil` on the account, `public: False`, five tracks**: OMRI., Adam Lance, Dubdogz, Anti Up, Durante; four named as unmatched. 75 calls. | live |
 | `export prune`, R-836 | live to the gate, answered abort | Dancefloor Rescue: nothing to take off, and the empty plan still asked. `TOOLBOX/Acapellas & Tools`, never exported: not judged, no remote playlist recorded. | read |
+| R-888, #257 | landed after cycle 44 | A label roster is read whole and spends no budget; the refusal over a real listing keeps its wording. | landed |
+| `label playlists mango-alley`, R-835 | live, applied at digest `d7cd746d02e19f10` | **A new `Mango Alley` folder on the account, 15 private year playlists, 2009 to 2026, 1,014 tracks**, read back at the provider and in the web player. 334 releases confirmed of a roster of 756 artists. | live, **R-835 and R-888 close** |
+| The author's asks of 2026-10-03 | filed | U110 #258 readable INBOX batch names, U111 #259 `inbox rotate`, U112 #260 `crate organize`, which fixes what the product's rules govern and only lists what the author made. | queued |
 
 ## What blocks a full sync cycle, stated plainly
 

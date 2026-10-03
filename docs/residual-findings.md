@@ -33147,6 +33147,14 @@ and its review. Closes once one label is built on the author's account at an
 attended sitting and read back in the web player, recorded in
 `docs/cutover.md`.
 
+**Built live at sitting 30, 2026-10-03, and closed.** `crate label playlists
+mango-alley`, digest `d7cd746d02e19f10`, applied: one new root folder `Mango
+Alley` holding 15 private year playlists, 2009 to 2026, 1,014 tracks, read back
+at the provider playlist by playlist, every one `public: False`, and in the web
+player, where the folder lists 15 playlists. 3,227 provider calls, no rate
+limit. Chosen as a label with no folder on the account, so nothing the source
+system curated was added to (R-872, R-836).
+
 ---
 
 ## R-836. A track the genre gate dropped stays in its label year playlist, since the account protocol has no remove
@@ -34756,6 +34764,10 @@ artist a second time after discovery listed it, about 1,500 listings, 756
 artists by two methods, for Mango Alley by arithmetic and not by measurement, which is R-468's walk
 rather than this entry's. The verifier's reads over what is now every
 release are R-895.
+
+**Closed at sitting 30, 2026-10-03.** On the build carrying #257, `crate label
+playlists mango-alley` read the roster in full, 334 confirmed releases, 11,864
+not confirmed as the label's, 3,052 provider calls, and planned to its gate.
 
 ---
 
