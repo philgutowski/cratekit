@@ -34396,3 +34396,39 @@ cursor and ignores offset; and `crate label playlists` plans one label on the
 author's account.
 
 **On the board bar, (c).** A workflow the author asked for cannot finish.
+
+---
+
+## R-879. A typed tracklist row the provider search answers with one exact track is never matched, because every search fills its page
+
+**Found:** at sitting 30, 2026-10-03, running R-837's `crate export set` live
+over a typed tracklist of the nine tracks in the author's GIG READY set
+`tech_house_hits - Phil (25 minutes)`.
+
+**Driven.** The plan matched one of nine: OMRI., "Nothing Wrong", by search.
+The other eight were left out with "the provider's search returned 50 hit(s)
+and no single exact match". Probed directly, the provider's track search
+returned 50 hits for each query, and among them exactly one track by the
+row's artist and title for "Chris Lake, Ragie Ban - Toxic" and for "Anti Up -
+Concentrate", and three versions for "Durante - Never B Alone".
+
+**The mechanism.** `candidates.sole_exact` returns nothing when the answer
+`full`, filled its page, on the reasoning that a second exact candidate could
+sit past the cut. The provider's search returns a full page of 50 for any
+common query, so the fourth route `export set`'s module notes declare, the
+search's one exact candidate, almost never fires. The refusal says "no
+single exact match" whether there were none, one or several. The remedy it
+names, `crate intake missing --list`, offers a row for review only when the
+library lacks the track, so a set whose tracks the library already holds has
+no route to a match at all.
+
+**Measured cost.** One of nine tracks of a real set reached the playlist, and
+the eight cannot be matched by any verb.
+
+**Closes when:** a row whose track the library holds is matched through that
+file's ISRC, the account's own ISRC route, or a full page is read on until an
+exact candidate past the cut is ruled in or out; the refusal says whether it
+found none or several; and the set above matches at least the rows whose
+track the library holds with an ISRC.
+
+**On the board bar, (c).** A workflow the author asked for cannot finish.
