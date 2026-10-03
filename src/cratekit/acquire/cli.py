@@ -376,37 +376,12 @@ def acquire_download(ctx) -> Envelope:
             )
         sweep_staging(Path(cfg.paths.download_staging), store)
         if ctx.args.job:
-            # RECONCILE FIRST. A resume arrives after something stopped, and a
-            # claim left behind by a driver that died is state the queue cannot
-            # see for itself.
-            job = jobs.reconcile(store, ctx.args.job)
-            warnings: tuple[dict[str, str], ...] = ()
-            if job.is_open():
-                if not jobs.items(store, job.job_id):
-                    # THE ZERO ITEM RULE ON THE RESUME SIDE, which ``adopt`` and
-                    # ``tagging`` both guard and ``master`` does not need because
-                    # it always queues exactly one item. A job queued by a build
-                    # before this unit carries a frozen list path and no items at
-                    # all, and driving it reports SUCCEEDED over a list nothing
-                    # acquired, which is R-198's empty queue wearing a full one's
-                    # clothes.
-                    raise refuse(
-                        "internal-error",
-                        f"job {job.job_id} has no items to run, so driving it "
-                        f"would report every track acquired over a list nothing "
-                        f"read. It was queued by a build that did not record "
-                        f"what its items were",
-                        remedy=Remedy.REPORT_DEFECT,
-                        origin=("acquire.cli",),
-                        detail={"job_id": job.job_id},
-                    )
-                _, warnings = ctx.run_job(store, job)
-                job = jobs.get(store, job.job_id)
+            job, warnings = drive_queued(ctx, store, ctx.args.job)
             # THE VERB R-290 WAS FOUND ON. This worker is the one that parks, on
             # a provider block or a dead session, and the park reached this
             # report as ``ok`` with exit 0, legible only inside ``data.cause``. A
             # list where one track landed and another did not did the same
-            # (R-225). OUTSIDE the ``is_open`` branch, so a job already failed on
+            # (R-225). OUTSIDE ``drive_queued``'s ``is_open`` branch, so a job already failed on
             # entry is answered the same way however many times it is asked.
             jobs.raise_for_state(job)
             return ctx.envelope(data=_reported(store, job), warnings=warnings)
@@ -416,23 +391,77 @@ def acquire_download(ctx) -> Envelope:
         # under the working directory, which that guard cannot see. Absolutising
         # before the read swapped the sentence telling somebody to fetch the
         # playlist into a list document for a file-not-found over a mangled path.
-        given = Path(str(ctx.args.list))
-        wanted = match_cli.read_list(given)
-        # ABSOLUTE, for the reason ``master`` freezes its recording absolute: the
-        # child a resume spawns inherits the resuming process's directory, and a
-        # relative path would name a different file there.
-        listed = given.expanduser().absolute()
-        tracks = frozen_tracks(wanted)
-        if not tracks:
+        job = queue_list(store, cfg, Path(str(ctx.args.list)), handler_key=ctx.entry.handler_key)
+        if job is None:
             return ctx.envelope(data=_no_op("no-tracks"), outcome=Outcome.NO_OP)
-        job = jobs.enqueue(
-            store,
-            handler_key=ctx.entry.handler_key,
-            payload={LIST: str(listed), TRACKS: tracks},
-            cfg=cfg,
-            item_ids=tuple(tracks),
-        )
         return ctx.envelope(data=_reported(store, job))
+
+
+def queue_list(
+    store: jobs.JobStore,
+    cfg: config.Config,
+    given: Path,
+    *,
+    handler_key: str,
+    extra: dict[str, Any] | None = None,
+) -> jobs.Job | None:
+    """Read a list, freeze it, and queue one item per track, or None for no tracks.
+
+    THE ONE SPELLING OF A DOWNLOAD JOB, which ``acquire download`` and the
+    guided label sync's go both queue through (U108), so a job the go queued
+    is a job ``acquire download --job`` drives and ``job resume`` respawns.
+    ``extra`` is what a composing verb adds to the payload beside the list and
+    its tracks; the worker reads neither key of it.
+    """
+    wanted = match_cli.read_list(given)
+    # ABSOLUTE, for the reason ``master`` freezes its recording absolute: the
+    # child a resume spawns inherits the resuming process's directory, and a
+    # relative path would name a different file there.
+    listed = given.expanduser().absolute()
+    tracks = frozen_tracks(wanted)
+    if not tracks:
+        return None
+    return jobs.enqueue(
+        store,
+        handler_key=handler_key,
+        payload={**(extra or {}), LIST: str(listed), TRACKS: tracks},
+        cfg=cfg,
+        item_ids=tuple(tracks),
+    )
+
+
+def drive_queued(ctx, store: jobs.JobStore, job_id: str) -> tuple[jobs.Job, tuple[dict[str, str], ...]]:
+    """Drive one queued download in this process and return it as it ended.
+
+    RECONCILE FIRST. A resume arrives after something stopped, and a claim left
+    behind by a driver that died is state the queue cannot see for itself. A
+    job already terminal is returned as it stands. The caller decides what its
+    state means, through ``jobs.raise_for_state`` as this verb does.
+    """
+    job = jobs.reconcile(store, job_id)
+    warnings: tuple[dict[str, str], ...] = ()
+    if job.is_open():
+        if not jobs.items(store, job.job_id):
+            # THE ZERO ITEM RULE ON THE RESUME SIDE, which ``adopt`` and
+            # ``tagging`` both guard and ``master`` does not need because
+            # it always queues exactly one item. A job queued by a build
+            # before this unit carries a frozen list path and no items at
+            # all, and driving it reports SUCCEEDED over a list nothing
+            # acquired, which is R-198's empty queue wearing a full one's
+            # clothes.
+            raise refuse(
+                "internal-error",
+                f"job {job.job_id} has no items to run, so driving it "
+                f"would report every track acquired over a list nothing "
+                f"read. It was queued by a build that did not record "
+                f"what its items were",
+                remedy=Remedy.REPORT_DEFECT,
+                origin=("acquire.cli",),
+                detail={"job_id": job.job_id},
+            )
+        _, warnings = ctx.run_job(store, job)
+        job = jobs.get(store, job.job_id)
+    return job, warnings
 
 
 # ---------------------------------------------------------------------------
@@ -976,10 +1005,12 @@ __all__ = [
     "checked_landing",
     "classify",
     "download_argv",
+    "drive_queued",
     "findings",
     "frozen_tracks",
     "handle",
     "marked_name",
+    "queue_list",
     "request_for",
     "staging_dir",
     "sweep_staging",
