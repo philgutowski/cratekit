@@ -371,9 +371,17 @@ def _plan_playlists(spec: sources.SourceSpec, ctx) -> _Plan:
     from cratekit.modules.outbound import ledger
 
     label_built = ledger.label_playlist_ids(cfg)
+    # NOR ARE THE SET PLAYLISTS ``export set`` MADE (R-837), whose tracks are
+    # fetched from the set's own tracklist.
+    set_built = ledger.set_playlist_ids(cfg)
     with jobs.open_store() as store:
         sweep = playlists.plan(
-            store, cfg, found, handler_key=handler_key, label_built=label_built
+            store,
+            cfg,
+            found,
+            handler_key=handler_key,
+            label_built=label_built,
+            set_built=set_built,
         )
 
     def describe(filed: list[jobs.Job]) -> dict[str, Any]:

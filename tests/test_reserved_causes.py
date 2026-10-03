@@ -5134,7 +5134,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # root folders on the account carry the label's name. Both are in
     # cause.REASONS and neither is in the reserved table. Population 191 to
     # 193, non-reserved 163 to 165, reserved half UNCHANGED at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (193, 165, 28)
+    # Re-pinned on the residual finding "An identified set cannot become a
+    # playlist on the streaming account, and a downloaded set playlist is not
+    # archived", 2026-10-03. ONE slug, named rather than counted:
+    # export-set-ambiguous, which the archive's plan refuses with when two
+    # root folders on the account carry the year's name. It is in
+    # cause.REASONS and not in the reserved table. Population 193 to 194,
+    # non-reserved 165 to 166, reserved half UNCHANGED at 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (194, 166, 28)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -6044,7 +6051,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # label-playlists-not-followed, label-playlists-tracks-refused,
     # label-mark-nothing-built and label-mark-changed-since-plan are WARNING
     # codes.
-    assert (len(literals), len(literals - set(causes))) == (613, 421), (
+    # Re-pinned on the residual finding "An identified set cannot become a
+    # playlist on the streaming account, and a downloaded set playlist is not
+    # archived", 2026-10-03: 613 to 620 distinct, non-keys 421 to 427. SEVEN
+    # joined and nothing left, each absent from `main`'s own `src` by git
+    # grep. export-set-ambiguous is the key named in the pin above.
+    # export-set and export-archive are the plan KINDS the two verbs' digests
+    # are taken under. set-playlist is the EXCLUSION the playlist sweep gives
+    # a playlist export set recorded. And export-set-tracks-refused,
+    # export-archive-nothing-built and export-archive-changed-since-plan are
+    # WARNING codes.
+    assert (len(literals), len(literals - set(causes))) == (620, 427), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6776,7 +6793,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # new chunk size of a hundred is above the range, and it was a holder
     # before. modules/outbound/ledger.py and sync/playlists.py are unchanged in
     # both halves.
-    assert (len(literal_holders), len(literal_both)) == (126, 26), (
+    # Re-pinned on the residual finding "An identified set cannot become a
+    # playlist on the streaming account, and a downloaded set playlist is not
+    # archived", 2026-10-03: holders move 126 to 128, and the also-holds-an-
+    # integer half is UNCHANGED at 26. TWO modules joined and none left, both
+    # new files. export/set_cli.py refuses with intake-list-unusable,
+    # unavailable-transient, sync-mark-record-unusable and internal-error,
+    # and modules/outbound/sets.py with export-set-ambiguous. Neither holds an
+    # in-range integer: the set's chunk size of a hundred is above the range.
+    # modules/outbound/ledger.py and sync/playlists.py are unchanged in both
+    # halves.
+    assert (len(literal_holders), len(literal_both)) == (128, 26), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

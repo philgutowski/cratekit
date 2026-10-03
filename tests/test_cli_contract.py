@@ -1455,6 +1455,13 @@ def test_conformance_1_structured_output_is_actually_emitted(entry, configured):
     assert out.strip().count("\n") == 0
 
 
+def _written(path: Path, text: str) -> Path:
+    """One small file at ``path``, for a sample that needs a file of a given shape."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
 def _sample_arguments(entry: registry.Entry) -> list[str]:
     """Enough POSITIONAL arguments to drive one verb, per verb this unit ships.
 
@@ -1768,6 +1775,21 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
                     library / "label-landed" / "no-such-batch_inboxed.xml"
                 )
             ),
+        ],
+        # R-837. An empty list document is a set of nothing: no row is searched
+        # for and the account is resolved only on first use, so the verb reaches
+        # its gate with no credential and ends NO_OP with nothing to write. LAZY,
+        # since the file is written under the configured library. The writing
+        # path is driven in tests/test_export_set.py.
+        "export.set": lambda: [
+            str(_written(library / "set-lists" / "empty-set.list.json", '{"list": 1, "tracks": []}'))
+        ],
+        # R-837. A set never made is an archive of nothing, still gated, with
+        # the landed intake file the archive needs as its proof.
+        "export.archive": lambda: [
+            "no-such-set",
+            "--xml",
+            str(_written(library / "set-landed" / "no-such-set_inboxed.xml", "<DJ_PLAYLISTS/>")),
         ],
         # U27. The four report verbs each take a collection export, and each is
         # handed a path under the CONFIGURED library that is deliberately absent,
