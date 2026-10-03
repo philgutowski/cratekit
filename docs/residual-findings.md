@@ -34397,6 +34397,13 @@ author's account.
 
 **On the board bar, (c).** A workflow the author asked for cannot finish.
 
+**Closed at sitting 30, 2026-10-03, with R-887.** On the build carrying both,
+`crate label playlists sudbeat` planned on the author's account to its gate:
+it adopted the Sudbeat folder and all eleven of its year playlists, by their
+`DOWNLOADED ` titles, and planned one new private 2026 playlist, from 24
+confirmed releases, 246 provider calls. The gate was answered abort, see
+`docs/cutover.md`; Metronomo Records planned too, adopting its folder.
+
 ---
 
 ## R-879. A typed tracklist row the provider search answers with one exact track is never matched, because every search fills its page
@@ -34432,6 +34439,14 @@ found none or several; and the set above matches at least the rows whose
 track the library holds with an ISRC.
 
 **On the board bar, (c).** A workflow the author asked for cannot finish.
+
+**Read live at sitting 30, 2026-10-03, and closed on its mechanism.** The same
+nine track set planned **5 of 9**, four by the library file's ISRC and one by
+the search read past its first page. Three of the four left out are R-572's:
+the file's ISRC names 6, 2 and 17 provider tracks that all agree and none is
+hearted. The fourth's ISRC names one track that does not agree. The apply
+then refused `credential-missing` on an expired provider session, writing
+nothing, R-888.
 
 ---
 
@@ -34644,3 +34659,34 @@ the live endpoint gives every item a `trn`.
 account, the close R-835 and R-878 both name.
 
 **Not on the board bar.** Fixed in the same sitting it was found.
+
+**Closed at sitting 30, 2026-10-03,** on the Sudbeat and Metronomo Records
+plans above.
+
+---
+
+## R-888. One followed label's catalogue walk spends its budget, and the provider session expired mid run
+
+**Found:** at sitting 30, 2026-10-03, driving R-835 and R-837 live.
+
+**Driven.** `crate label playlists mango-alley` refused
+`label-playlists-incomplete` after 2,378 provider calls: `artist_releases`
+spent its budget of 100 requests at 100 a page having collected 10,000
+items. Which artist was not measured: a traced rerun named more than eighty
+artists, each 6 to 127 releases in about four seconds, before the harness
+stopped it at thirty minutes. Various Artists lists nothing, so it is not
+that one. The verb refused before its gate and wrote nothing, which is right.
+Separately, `crate export set` refused `credential-missing` at its apply:
+the stored provider session had expired, every ISRC lookup answered
+`Expired token`, and nothing was written.
+
+**Measured cost.** Mango Alley cannot be built as a folder until the artist
+is named and either its listing is fixed or it is left out of the crawl. The
+expired session stops every provider verb until the author mints a new one,
+which only he can.
+
+**Closes when:** the artist is named and Mango Alley plans to its gate; the
+session part closes when the author mints a session.
+
+**Not on the board bar yet.** The artist is unmeasured, and the refusal is
+honest.

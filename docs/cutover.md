@@ -889,6 +889,13 @@ landing.
 | #246, U107 | read from the merge | The task hit the model usage limit and exited with no envelope; Relay merged and closed it anyway, with no review, table or record. #246 reopened, R-857 filed. | **owed** |
 | U107 reviewed, R-857, #251 | landed after cycle 40 | Two review rounds, nine findings fixed, 25 of 25 mutation rows killed, R-858 to R-861. #246 closed by hand. | **R-857 closes** |
 | `crate sync favorites`, R-856, #250 | live on the account at its gate, digest `ad7df9d6bbf83ffc` | 109 favourites: **0 hearted, 97 already hearted, 12 unmatched, each named with its reason**, warning `favorites-hearts-unmatched`. The provider client's own log lines print above it, R-864. | live |
+| Cycles 41 and 42 | landed | U108 #247, R-835 #252, R-837 #253, R-878 #255, R-879 #256, U109 #248, each with its review, table and record. Its task left DJ_tools one local docs commit, not pushed. | landed |
+| `label playlists metronomo-records` | live, before R-878 | Refused: the folders endpoint ignores `offset`, R-878 filed and carded. | found |
+| `export set` over a typed nine track set | live, before R-879 | 1 of 9 matched, every search fills its page: R-879 filed and carded. | found |
+| `label playlists` after R-878 | live | Refused again: the declared total counts folders and playlists alike. **R-887 fixed in the sitting** on the gate alone, 4 of 5 mutation rows killed. | fixed |
+| `label playlists sudbeat` and `metronomo-records` | live to the gate, answered abort | Sudbeat adopts its folder and eleven `DOWNLOADED ` year playlists and plans one new private 2026 playlist from 24 confirmed releases; Metronomo adopts its folder and reads 0 releases. **Not applied**: Sudbeat would add 32 tracks to year playlists the source system curated, with no genre gate (R-872) and no removal (R-836). | read, **R-878 and R-887 close** |
+| `label playlists mango-alley` | live | Refused after 2,378 calls, one artist's listing spends its budget, unmeasured which: R-888. | found |
+| `export set` after R-879 | live to the gate, then apply | **5 of 9 matched**, four by the library file's ISRC. The apply refused `credential-missing`, the provider session expired, nothing written: R-888. | read, **R-879 closes** |
 
 ## What blocks a full sync cycle, stated plainly
 
@@ -910,10 +917,14 @@ Owed by the author: the 2,416 label releases in review and a look at the
 count, 637 of them with no genre on the file either; the 20 label tracks
 held as other versions.
 
-Owed for U107, issue #246, reopened at sitting 30 (R-857): the built in review
-over its merge, a mutation table, its residuals and its record. Then the first
-`crate label sync` run on the live library, whose catch up of the label releases
-in review is the author's to answer, label by label.
+**The provider session expired at sitting 30.** Every streaming verb refuses
+`credential-missing` until the author mints a new one, as the refusal sets out.
+
+Owed, the author's: the first `crate label sync` run, label by label, and its
+go; one label built with `crate label playlists` and read in the web player,
+which label being his call given R-872 and R-836; the set `tech_house_hits -
+Phil` exported with `crate export set` and archived after its download; the
+DJ_tools docs commit #252's task left unpushed.
 
 Owed for R-790, issue #234: follow a new label, sweep it once, and record
 here that it filed `labels.offer_per_sweep` releases, ten unless set, and
