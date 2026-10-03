@@ -41,6 +41,7 @@ import the CLI registry (KTD23).
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -731,13 +732,37 @@ def _archive_failed(exc: Exception, done: sets.ArchiveApplied, unrecorded: bool)
     )
 
 
-def export_archive(ctx) -> Envelope:
-    cfg = shell.load_config("export.set_cli")
-    xml = Path(str(ctx.args.xml))
+@dataclass
+class ArchivePlanned:
+    """One set's archive, planned: the gate's payload and what an apply needs.
+
+    PUBLIC FOR ``crate organize`` (U112), which plans every set it can prove
+    landed through :func:`plan_archive` and applies an approved one through
+    :func:`apply_archive`, so a set is archived there by this verb's body.
+    """
+
+    name: str
+    pass_name: str
+    xml: Path
+    payload: dict[str, Any]
+    planned: sets.ArchivePlan | None = None
+    remote: Any = None
+
+    @property
+    def shown(self) -> dict[str, Any]:
+        return _archive_shown(self.planned, name=self.name, pass_name=self.pass_name)
+
+    @property
+    def writes(self) -> bool:
+        return self.planned is not None and self.remote is not None and self.planned.writes
+
+
+def plan_archive(cfg, name: str, xml: Path) -> ArchivePlanned:
+    """Plan one set's archive from the intake file that proves its download."""
     pass_name = pass_name_of(xml)
     # THE PROOF FIRST, before the ledger, the account or a credential.
     marks.require_output(xml)
-    name = set_name(ctx.args.name)
+    name = set_name(name)
     playlist = ledger.set_playlist(cfg, name)
     planned: sets.ArchivePlan | None = None
     remote = None
@@ -748,21 +773,34 @@ def export_archive(ctx) -> Envelope:
         planned = sets.plan_archive(
             cfg, playlist, remote, year=playlist.year or str(datetime.now().year)
         )
-    payload = _archive_payload(planned, name=name, pass_name=pass_name)
-    option = ctx.gate.require(
-        ctx.entry.gates[0],
-        plan=payload,
-        context=_archive_shown(planned, name=name, pass_name=pass_name),
+    return ArchivePlanned(
+        name=name,
+        pass_name=pass_name,
+        xml=xml,
+        payload=_archive_payload(planned, name=name, pass_name=pass_name),
+        planned=planned,
+        remote=remote,
     )
-    if planned is None or remote is None:
-        return ctx.envelope(
-            data=payload,
-            outcome=Outcome.NO_OP,
-            warnings=[{"code": "export-archive-nothing-built", "message": f"{name}: {NOTHING_BUILT_SAID}"}],
-        )
-    if option != "apply" or not planned.writes:
-        return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
 
+
+def apply_archive(cfg, archived: ArchivePlanned) -> tuple[dict[str, Any], list[dict[str, str]], bool]:
+    """File, move and mark what the plan names, after the gate said apply.
+
+    Returns the payload as applied, its warnings and whether anything was
+    written. Raises naming what was written when the account or the record
+    fails.
+    """
+    planned = archived.planned
+    if planned is None or archived.remote is None:
+        raise refuse(
+            "internal-error",
+            f"{archived.name} has no recorded set playlist to archive, so there is "
+            f"nothing an apply could write",
+            remedy=Remedy.REPORT_DEFECT,
+            scope=Scope.SOURCE,
+            origin=_ARCHIVE,
+            detail={"name": archived.name},
+        )
     record = mark_record.MarkRecord(cfg)
     # THE RECORD IS LOCKABLE BEFORE ANYTHING IS WRITTEN, as ``sync mark`` asks.
     record.ready()
@@ -771,13 +809,13 @@ def export_archive(ctx) -> Envelope:
 
     def keep(before: str, to: str) -> None:
         try:
-            record.record_marked(pass_name, {planned.playlist.remote_id: (before, to)})
+            record.record_marked(archived.pass_name, {planned.playlist.remote_id: (before, to)})
         except (CratekitError, OSError):
             unrecorded[0] = True
             raise
 
     try:
-        sets.apply_archive(cfg, remote, planned, done, record=keep)
+        sets.apply_archive(cfg, archived.remote, planned, done, record=keep)
     except Exception as exc:
         raise _archive_failed(exc, done, unrecorded[0]) from exc
 
@@ -801,7 +839,7 @@ def export_archive(ctx) -> Envelope:
             }
         )
     totals = {
-        **payload["totals"],
+        **archived.payload["totals"],
         "applied": {
             "folder_id": done.folder_id,
             "folder_created": done.folder_created,
@@ -809,20 +847,45 @@ def export_archive(ctx) -> Envelope:
             "marked": done.marked,
         },
     }
-    wrote = done.folder_created or done.moved or done.marked
+    wrote = bool(done.folder_created or done.moved or done.marked)
+    return {**archived.payload, "totals": totals}, warnings, wrote
+
+
+def export_archive(ctx) -> Envelope:
+    cfg = shell.load_config("export.set_cli")
+    archived = plan_archive(cfg, ctx.args.name, Path(str(ctx.args.xml)))
+    option = ctx.gate.require(ctx.entry.gates[0], plan=archived.payload, context=archived.shown)
+    if archived.planned is None or archived.remote is None:
+        return ctx.envelope(
+            data=archived.payload,
+            outcome=Outcome.NO_OP,
+            warnings=[
+                {
+                    "code": "export-archive-nothing-built",
+                    "message": f"{archived.name}: {NOTHING_BUILT_SAID}",
+                }
+            ],
+        )
+    if option != "apply" or not archived.planned.writes:
+        return ctx.envelope(data=archived.payload, outcome=Outcome.NO_OP)
+
+    data, warnings, wrote = apply_archive(cfg, archived)
     return ctx.envelope(
-        data={**payload, "totals": totals},
+        data=data,
         outcome=Outcome.OK if wrote else Outcome.NO_OP,
         warnings=warnings,
     )
 
 
 __all__ = [
+    "ArchivePlanned",
+    "apply_archive",
     "build_archive",
     "build_set",
     "export_archive",
     "export_set",
     "match_rows",
     "name_of",
+    "plan_archive",
     "set_name",
 ]

@@ -958,6 +958,21 @@ def set_playlist(cfg: config.Config, name: str) -> SetPlaylist | None:
     )
 
 
+def set_playlist_names(cfg: config.Config) -> tuple[str, ...]:
+    """The name of every set playlist recorded with an identifier, sorted. Read only.
+
+    For ``crate organize`` (U112), which looks each one up through
+    :func:`set_playlist` so a set is read one way wherever it is read.
+    """
+    return tuple(
+        sorted(
+            str(name)
+            for name, record in _load(cfg)["sets"].items()
+            if record and record.get("remote_id")
+        )
+    )
+
+
 def set_playlist_ids(cfg: config.Config) -> frozenset[str]:
     """Every set playlist this library made, for the playlist sweep to leave alone.
 

@@ -1904,6 +1904,10 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # fixture's database is given, and the verb plans INBOX as empty and
         # still asks. The bridge refusal is driven in tests/test_inbox_rotate.py.
         "inbox.rotate": _intake_cut_over,
+        # U112. No argument. Its database area reads the backup acknowledgment
+        # first, see ACKNOWLEDGED_BEFORE_THE_GATE; on this fixture every step
+        # either plans nothing or refuses on its own, and both areas still ask.
+        "organize": [],
     }[entry.name]
     return sample() if callable(sample) else sample
 
@@ -2124,6 +2128,12 @@ ACKNOWLEDGED_BEFORE_THE_GATE = {
     ),
     "tag.rows": (
         "tests/test_tag_rows.py::"
+        "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
+    ),
+    # U112. Only its database area is refused without one; the account area
+    # is still asked, which its own suite drives.
+    "organize": (
+        "tests/test_organize.py::"
         "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
     ),
 }

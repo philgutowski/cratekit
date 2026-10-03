@@ -1,0 +1,239 @@
+"""``crate organize``: plan both areas, ask each its own question, then write (U112).
+
+THE ORDER IS PLAN, ASK, WRITE, ``sync all``'s order and for its reason. Both
+areas are planned first, which is where every step's own precondition refuses.
+Then the database area's gate is asked, then the account area's. Only once both
+are answered does anything write, so a refusal at either gate has written
+nothing, and the run that answers the second gate rebuilds the first area's
+plan from a library nothing has touched yet, which is the plan its recorded
+answer was given against.
+
+ONE GATE PER AREA, EACH EXPLICIT AND BOUND TO ITS AREA'S DIGEST. Approving one
+and aborting the other writes only the approved area. An area with nothing to
+do says so and still asks. The database area is not asked when the backup
+acknowledgment is missing: it was refused before it was planned, and it is the
+account area alone that is asked and may write.
+
+AN APPLIED STEP THAT FAILS DOES NOT STOP THE STEPS AFTER IT. Each step is its
+own verb's write and none depends on another. Once every approved step has
+run, a failure is raised with its own reason, the steps that did write named
+in its message and the whole report in its detail, so a person is never told a
+clean organize over a write that failed.
+
+``--report`` plans both areas, asks nothing and writes nothing.
+
+Layer: modules. The builder's parameters are unannotated so this file does not
+import the CLI registry (KTD23).
+"""
+
+from __future__ import annotations
+
+import dataclasses
+from typing import Any
+
+from cratekit.cli.output import Envelope
+from cratekit.core import config, profiles
+from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
+from cratekit.core.exit_codes import Remedy
+from cratekit.intake import rotate_cli
+from cratekit.organize import account, rekordbox
+from cratekit.organize.steps import FAILED, Area, area_check, check
+
+#: The two gates, one per area. Looked up on ``ctx.entry.gates`` by name.
+REKORDBOX_GATE = "organize.rekordbox.approve"
+ACCOUNT_GATE = "organize.account.apply"
+
+#: What each gate's go option is.
+APPROVE = "approve"
+APPLY = "apply"
+
+_ORIGIN = ("organize", "cli")
+
+
+def _load() -> config.Config:
+    try:
+        return config.load()
+    except config.ConfigError as exc:
+        raise CratekitError(
+            Cause(
+                reason="config-unusable",
+                message=str(exc),
+                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
+                origin=("organize.cli",),
+                detail={"kind": type(exc).__name__},
+            )
+        ) from exc
+
+
+def build(parser, entry) -> None:
+    """Declare the verb. THERE IS NO ``--yes``: each area's gate is its only answer."""
+    del entry
+    parser.add_argument(
+        "--report",
+        action="store_true",
+        default=False,
+        help="print both plans and write nothing; no question is asked",
+    )
+    parser.add_argument(
+        "--as-of",
+        dest="as_of",
+        default=None,
+        metavar="DATE",
+        help=(
+            "the ISO date INBOX batches are aged against; today by default. Give "
+            "the same date on the run that applies, or the plan is a different one"
+        ),
+    )
+    parser.set_defaults(_handler=organize)
+
+
+def _gate(entry, name: str):
+    for spec in entry.gates:
+        if spec.name == name:
+            return spec
+    raise CratekitError(
+        Cause(
+            reason="internal-error",
+            message=f"{entry.name} declares no gate named {name!r}, so an area has no question",
+            remediation=Remediation(remedy=Remedy.REPORT_DEFECT),
+            origin=_ORIGIN,
+            detail={"verb": entry.name, "gate": name},
+        )
+    )
+
+
+def _followed() -> tuple:
+    from cratekit.label import registry as labels
+
+    held = labels.RegistryStore().load()
+    return tuple(sorted(held.labels.values(), key=lambda entry: (entry.name, entry.label_id)))
+
+
+def _ask(ctx, area: Area, name: str) -> str | None:
+    """The area's answer, or ``None`` for an area refused before it was planned."""
+    if area.cause is not None:
+        return None
+    return ctx.gate.require(_gate(ctx.entry, name), plan=area.payload(), context=area.shown())
+
+
+def _apply(area: Area) -> None:
+    for step in area.steps:
+        if step.apply is None:
+            continue
+        try:
+            step.applied = step.apply()
+        except CratekitError as exc:
+            step.failed = exc.cause
+
+
+def _report(areas: list[Area], *, report: bool, answers: dict[str, str | None]) -> dict[str, Any]:
+    checks: list[dict[str, Any]] = []
+    for area in areas:
+        checks.append(area_check(area))
+        checks.extend(check(area, step) for step in area.steps)
+    return {
+        "checks": checks,
+        "summary": {
+            "report": report,
+            "answers": answers,
+            "areas": {area.name: area.block() for area in areas},
+        },
+    }
+
+
+def _warnings(areas: list[Area]) -> list[dict[str, str]]:
+    found: list[dict[str, str]] = []
+    for area in areas:
+        if area.cause is not None:
+            found.append(
+                {
+                    "code": "organize-area-refused",
+                    "message": f"{area.name}: {area.cause.message}",
+                }
+            )
+        for step in area.steps:
+            found.extend(step.warnings)
+            if step.cause is not None:
+                found.append(
+                    {
+                        "code": "organize-step-refused",
+                        "message": f"{area.name}, {step.title}: {step.cause.message}",
+                    }
+                )
+    return found
+
+
+def _raise_failed(areas: list[Area], data: dict[str, Any]) -> None:
+    failed = [(area, step) for area in areas for step in area.steps if step.failed is not None]
+    if not failed:
+        return
+    wrote = [
+        f"{area.name}, {step.title}"
+        for area in areas
+        for step in area.steps
+        if step.applied is not None
+    ]
+    area, step = failed[0]
+    first = step.failed
+    said = (
+        f"{len(failed)} approved step(s) failed, the first {area.name}, {step.title}: "
+        f"{first.message}. "
+        + (
+            "These were written and stay written: " + "; ".join(wrote)
+            if wrote
+            else "No other step was written"
+        )
+    )
+    raise CratekitError(
+        dataclasses.replace(
+            first,
+            message=said,
+            origin=(*first.origin, *_ORIGIN),
+            detail={**dict(first.detail or {}), "organize": data, "state": FAILED},
+        )
+    )
+
+
+def organize(ctx) -> Envelope:
+    """Plan both areas, ask each its own question, then write what was approved."""
+    cfg = _load()
+    report = bool(getattr(ctx.args, "report", False))
+    membership = profiles.resolve(cfg.profile.name, cfg.modules.explicit)
+    followed = _followed()
+    today = rotate_cli.as_of(ctx)
+
+    database = rekordbox.plan_area(
+        cfg,
+        ctx,
+        gate=REKORDBOX_GATE,
+        today=today,
+        labels=tuple(entry.name for entry in followed),
+        report=report,
+    )
+    remote = account.plan_area(cfg, available=membership.available, followed=followed)
+    areas = [database, remote]
+
+    if report:
+        data = _report(areas, report=True, answers={})
+        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=_warnings(areas))
+
+    answers = {
+        database.name: _ask(ctx, database, REKORDBOX_GATE),
+        remote.name: _ask(ctx, remote, ACCOUNT_GATE),
+    }
+    if answers[database.name] == APPROVE and database.writes:
+        _apply(database)
+    if answers[remote.name] == APPLY and remote.writes:
+        _apply(remote)
+
+    data = _report(areas, report=False, answers=answers)
+    _raise_failed(areas, data)
+    wrote = any(step.applied is not None for area in areas for step in area.steps)
+    return ctx.envelope(
+        data=data,
+        outcome=Outcome.OK if wrote else Outcome.NO_OP,
+        warnings=_warnings(areas),
+    )
+
+
+__all__ = ["ACCOUNT_GATE", "REKORDBOX_GATE", "build", "organize"]

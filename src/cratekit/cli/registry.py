@@ -2797,6 +2797,60 @@ ENTRIES: tuple[Entry, ...] = (
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
+    # ── The retroactive tidy (U112) ─────────────────────────────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives. A
+    # COMPOSER, as ``sync.all`` is: every step it plans is another verb's plan
+    # and every write another verb's write, so it owns no rule of its own.
+    Entry(
+        name="organize",
+        summary="tidy rekordbox and the account by the product's own rules, one "
+        "question per side; lists what you made and never moves it",
+        module="cratekit.organize.cli",
+        builder="build",
+        handler_key="organize",
+        # NO FEATURE ROW. The source system never tidied retroactively, and
+        # each row a step serves is claimed by the verb that owns the step.
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
+        #: The union of its steps' surfaces: adoption writes the tree and its
+        #: rows, the rotation the tree, the label folders, the marks and the
+        #: archive the account. No file is written by any step it composes,
+        #: since the adoption is applied with no tag value. ``destructive``
+        #: because the rotation removes an expired batch playlist and a mark
+        #: retitles a playlist the product did not make.
+        writes=frozenset({"db_tree", "db_metadata", "remote"}),
+        destructive=True,
+        taxonomy_terms=("genre_energy", "inbox", "inbox_old"),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+            "credential.provider",
+        ),
+        gates=(
+            GateSpec(
+                name="organize.rekordbox.approve",
+                options=("approve", "abort"),
+                prompt="Apply these steps to the rekordbox library? Nothing you "
+                "made is moved and no track is removed.",
+                #: EXPLICIT (R34). It stands for ``adopt.apply.approve`` and
+                #: ``inbox.rotate.approve``, both explicit.
+                explicit=True,
+                digest_source="plan",
+            ),
+            GateSpec(
+                name="organize.account.apply",
+                options=("apply", "abort"),
+                prompt="Apply these steps to the streaming account? Nothing is "
+                "removed and nothing you made is moved.",
+                #: EXPLICIT, as every other write to the account is (R34).
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
 )
 
 #: The verb names, as data. ``tests/test_layering.py`` reads this to enforce that

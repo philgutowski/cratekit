@@ -490,9 +490,34 @@ def _remember(
     return None
 
 
-def sync_mark(ctx) -> Envelope:
-    cfg = sync_cli._load()
-    xml = Path(ctx.args.xml)
+@dataclass
+class PassPlan:
+    """One intake file's pass, planned: what the gate is asked over and what applies.
+
+    PUBLIC FOR ``crate organize`` (U112), which plans every landed pass through
+    :func:`plan_pass` and applies an approved one through :func:`apply_pass`,
+    so a pass is marked there by exactly this verb's body.
+    """
+
+    xml: Path
+    name: str
+    payload: dict[str, Any]
+    decided: list[_Playlist] = field(default_factory=list)
+    sweep: Any = None
+    catalogue_found: Any = None
+
+    @property
+    def of_a_pass(self) -> bool:
+        """Whether any playlist job a sync pass queued belongs to the file."""
+        return self.sweep is not None
+
+    @property
+    def planned(self) -> list[str]:
+        return [entry.identity for entry in self.decided if entry.planned]
+
+
+def plan_pass(cfg: config.Config, xml: Path) -> PassPlan:
+    """Plan the marks one intake file's pass earns, reading the account only when it has one."""
     # THE FILE FIRST, before the account is listed or a credential is asked
     # for, by the same single read the engine makes again before it renames.
     seen = marks.require_output(xml)
@@ -507,15 +532,7 @@ def sync_mark(ctx) -> Envelope:
         # BEFORE THE LISTING AND THE CREDENTIAL. Neither can change the answer,
         # and a person with no session stored is owed "this file is no pass's"
         # rather than "log in" followed by it.
-        payload = _payload([], xml=xml, seen=seen)
-        ctx.gate.require(
-            ctx.entry.gates[0], digest=payload["digest"], context=_shown(payload, xml=xml)
-        )
-        return ctx.envelope(
-            data=payload,
-            outcome=Outcome.NO_OP,
-            warnings=[{"code": "sync-mark-no-pass", "message": f"{xml.name}: {NO_PASS_SAID}"}],
-        )
+        return PassPlan(xml=xml, name=name, payload=_payload([], xml=xml, seen=seen))
 
     from cratekit.label import catalogue
 
@@ -538,36 +555,51 @@ def sync_mark(ctx) -> Envelope:
     for item in payload["items"]:
         if item["action"] == MARK and item["id"] in put_back:
             item["put_back"] = put_back[item["id"]]
-    option = ctx.gate.require(
-        ctx.entry.gates[0], digest=payload["digest"], context=_shown(payload, xml=xml)
+    return PassPlan(
+        xml=xml,
+        name=name,
+        payload=payload,
+        decided=decided,
+        sweep=sweep,
+        catalogue_found=catalogue_found,
     )
-    planned = [entry.identity for entry in decided if entry.planned]
-    if option != "apply" or not planned:
-        return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
 
+
+def shown(planned: PassPlan) -> dict[str, Any]:
+    """The gate screen's facts for one planned pass."""
+    return _shown(planned.payload, xml=planned.xml)
+
+
+def apply_pass(cfg: config.Config, planned: PassPlan) -> tuple[dict[str, Any], list[dict[str, str]], list[str]]:
+    """Rename what the plan marks and record it, after the gate said apply.
+
+    Returns the payload as applied, its warnings and the identifiers renamed.
+    Raises naming what was marked when the account or the record fails.
+    """
     from cratekit.modules.outbound import account
 
     remote = account.resolve(cfg)
     landed: list[str] = []
+    sweep = planned.sweep
     try:
         playlists.mark_swept(
             sweep,
-            catalogue_found,
+            planned.catalogue_found,
             remote,
-            local_output=xml,
+            local_output=planned.xml,
             applied=landed,
-            only=frozenset(planned),
+            only=frozenset(planned.planned),
         )
     except Exception as exc:
-        unrecorded = _remember(cfg, name, landed, sweep.names())
-        raise _failed_part_way(exc, landed, sweep.names(), planned, unrecorded) from exc
-    unrecorded = _remember(cfg, name, landed, sweep.names())
+        unrecorded = _remember(cfg, planned.name, landed, sweep.names())
+        raise _failed_part_way(exc, landed, sweep.names(), planned.planned, unrecorded) from exc
+    unrecorded = _remember(cfg, planned.name, landed, sweep.names())
     if unrecorded is not None:
         raise unrecorded
 
     items: list[dict[str, Any]] = []
     warnings: list[dict[str, str]] = []
-    for item in payload["items"]:
+    for item in planned.payload["items"]:
         if item["action"] != MARK:
             items.append(item)
         elif item["id"] in landed:
@@ -596,11 +628,32 @@ def sync_mark(ctx) -> Envelope:
         MARKED: len(landed),
         SKIP: sum(1 for item in items if item["action"] == SKIP),
     }
+    return {**planned.payload, "items": items, "totals": totals}, warnings, landed
+
+
+def sync_mark(ctx) -> Envelope:
+    cfg = sync_cli._load()
+    planned = plan_pass(cfg, Path(ctx.args.xml))
+    option = ctx.gate.require(
+        ctx.entry.gates[0], digest=planned.payload["digest"], context=shown(planned)
+    )
+    if not planned.of_a_pass:
+        return ctx.envelope(
+            data=planned.payload,
+            outcome=Outcome.NO_OP,
+            warnings=[
+                {"code": "sync-mark-no-pass", "message": f"{planned.xml.name}: {NO_PASS_SAID}"}
+            ],
+        )
+    if option != "apply" or not planned.planned:
+        return ctx.envelope(data=planned.payload, outcome=Outcome.NO_OP)
+
+    data, warnings, landed = apply_pass(cfg, planned)
     return ctx.envelope(
-        data={**payload, "items": items, "totals": totals},
+        data=data,
         outcome=Outcome.OK if landed else Outcome.NO_OP,
         warnings=warnings,
     )
 
 
-__all__ = ["build_mark", "sync_mark"]
+__all__ = ["PassPlan", "apply_pass", "build_mark", "plan_pass", "shown", "sync_mark"]
