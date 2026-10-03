@@ -925,7 +925,7 @@ def test_the_sync_pass_hands_the_sweep_every_year_playlist_a_build_recorded(
     class Stop(Exception):
         pass
 
-    def plan(store, cfg_, found, *, handler_key, label_built=frozenset()):
+    def plan(store, cfg_, found, *, handler_key, label_built=frozenset(), set_built=frozenset()):
         handed.append(label_built)
         raise Stop
 

@@ -1750,6 +1750,14 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # ``export-playlist-ambiguous``, since the remedy is on the account and
         # not in the library. Nothing was written.
         "label-playlists-ambiguous": ExitCode.PRECONDITION,
+        # ── R-837's one, appended for the same reason ──────────────────────────
+        #
+        # A set playlist's archive was planned and the account holds two root
+        # folders named as the year, so which one is the year's is not
+        # something a name decides. PRECONDITION on ``label-playlists-
+        # ambiguous``'s argument: the remedy is on the account. Nothing was
+        # written.
+        "export-set-ambiguous": ExitCode.PRECONDITION,
     }
 )
 

@@ -1,0 +1,154 @@
+name = "r837-a"
+pass_kind = "light"
+
+# R-837, batch a: the engine, the ledger's set records and the sweep hand off.
+
+[[rows]]
+id = "A1_no_record_creates"
+description = "sets.plan_set: a set already recorded is planned as a create, so a second run makes a second playlist"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+old = '''    if recorded is None:
+        return SetPlan(name=name, year=year, action=CREATE, rows=tuple(rows), add=wanted)'''
+new = '''    if True:
+        return SetPlan(name=name, year=year, action=CREATE, rows=tuple(rows), add=wanted)'''
+
+[[rows]]
+id = "A2_asked_not_asked_again"
+description = "sets.plan_set: a track written or refused before is asked for again"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+old = '''        add=tuple(one for one in wanted if one not in asked and one not in held),'''
+new = '''        add=tuple(one for one in wanted if one not in held),'''
+
+[[rows]]
+id = "A3_held_not_added"
+description = "sets.plan_set: a track already on the playlist and never recorded is added again"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+old = '''        add=tuple(one for one in wanted if one not in asked and one not in held),'''
+new = '''        add=tuple(one for one in wanted if one not in asked),'''
+
+[[rows]]
+id = "A4_nothing_matched_writes_nothing"
+description = "SetPlan.writes: a plan with nothing to add still writes, so a set with nothing matched makes an empty playlist"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+old = '''        return bool(self.add)'''
+new = '''        return True'''
+
+[[rows]]
+id = "A5_chunk_recorded"
+description = "sets.apply_set: a chunk written is not recorded, so a resume asks for it again"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+old = '''        ledger.record_set_tracks(cfg, planned.name, added=added, refused=refused)'''
+new = '''        pass'''
+
+[[rows]]
+id = "A6_refused_split"
+description = "sets.apply_set: a track the provider would not add is not counted as refused"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+old = '''        refused = [one for one in chunk if one not in held]'''
+new = '''        refused = []'''
+
+[[rows]]
+id = "A7_reserve_reuses_recorded"
+description = "ledger.reserve_set_playlist: a recorded set playlist is not reused, so the create runs again"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+old = '''        recorded = str((document["sets"].get(name) or {}).get("remote_id") or "")
+        if recorded:'''
+new = '''        recorded = str((document["sets"].get(name) or {}).get("remote_id") or "")
+        if False:'''
+
+[[rows]]
+id = "A8_load_carries_sets"
+description = "ledger._load: the sets map is dropped on read, so every later write forgets each set playlist"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+old = '''            for key, value in sets.items()'''
+new = '''            for key, value in ()'''
+
+[[rows]]
+id = "A9_recorded_folder_listed"
+description = "sets.plan_archive: a recorded year folder the account no longer lists is reused"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+old = '''    if recorded and recorded in root:'''
+new = '''    if recorded:'''
+
+[[rows]]
+id = "A10_two_year_folders_refuse"
+description = "sets.plan_archive: two root folders named as the year are not refused"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+old = '''        if len(named) > 1:
+            raise _ambiguous_folder(year, named)'''
+new = '''        if False:
+            raise _ambiguous_folder(year, named)'''
+
+[[rows]]
+id = "A11_year_folder_adopted"
+description = "sets.plan_archive: a root folder already named as the year is never adopted, so a second is made"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+old = '''        action, folder_id = (ADOPT, named[0]) if named else (CREATE, "")'''
+new = '''        action, folder_id = (CREATE, "")'''
+
+[[rows]]
+id = "A12_in_folder_not_moved"
+description = "ArchivePlan.move: a playlist already in its folder is moved again"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+old = '''    def move(self) -> bool:
+        return self.title is None'''
+new = '''    def move(self) -> bool:
+        return True'''
+
+[[rows]]
+id = "A13_recheck_title"
+description = "sets.apply_archive: a title retitled by a person is renamed anyway"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+old = '''    if now != playlist.name:
+        done.left = ALREADY_MARKED if now.startswith(MARK_PREFIX) else RETITLED'''
+new = '''    if False:
+        done.left = ALREADY_MARKED if now.startswith(MARK_PREFIX) else RETITLED'''
+
+[[rows]]
+id = "A14_not_listed_not_blamed"
+description = "sets.apply_archive: a playlist the folder does not list yet is read as retitled by somebody"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+old = '''    if now is None:
+        # NOT A RETITLE.'''
+new = '''    if False:
+        # NOT A RETITLE.'''
+
+[[rows]]
+id = "A15_rename_recorded"
+description = "sets.apply_archive: the rename is not handed to the mark record, so sync unmark cannot take it off"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+old = '''    record(playlist.name, planned.to)'''
+new = '''    None'''
+
+[[rows]]
+id = "A16_sweep_excludes_set"
+description = "sync.playlists.exclusion: a set playlist export set recorded is swept as intake"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+old = '''    if playlist.playlist_id in set_built:
+        return Excluded.SET_PLAYLIST'''
+new = '''    if False:
+        return Excluded.SET_PLAYLIST'''
+
+[[rows]]
+id = "A17_sweep_hand_off"
+description = "sync.cli: the sweep is handed no set playlist, so the exclusion has nothing to exclude"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+old = '''            set_built=set_built,'''
+new = '''            set_built=frozenset(),'''

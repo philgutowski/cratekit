@@ -2142,6 +2142,70 @@ ENTRIES: tuple[Entry, ...] = (
             ),
         ),
     ),
+    # ── A set as a playlist on the account, and its archive (R-837) ─────────
+    Entry(
+        name="export.set",
+        summary=(
+            "make an identified set or a typed tracklist a private playlist on the "
+            "streaming account; adds, never removes"
+        ),
+        module="cratekit.export.set_cli",
+        builder="build_set",
+        handler_key="export.set",
+        feature_rows=(36,),
+        module_id="export",
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: One surface, the account: a playlist is created private and tracks
+        #: are added. What was written is recorded in this product's own
+        #: outbound ledger, which is not a declared surface. NOT destructive,
+        #: on ``export.playlist``'s precedent: every write adds to the account.
+        #: A provider candidate accepted in review is READ, never offered.
+        writes=frozenset({"remote"}),
+        doctor_checks=("credential.provider",),
+        gates=(
+            GateSpec(
+                name="export.set.confirm",
+                options=("apply", "abort"),
+                prompt="Make this set a private playlist on the streaming account?",
+                # EXPLICIT, as every other write to the account is (R34).
+                explicit=True,
+                digest_source="plan",
+            ),
+        ),
+    ),
+    Entry(
+        name="export.archive",
+        summary=(
+            "file a downloaded set's playlist in its year folder on the streaming "
+            "account, prefixed as downloaded"
+        ),
+        module="cratekit.export.set_cli",
+        builder="build_archive",
+        handler_key="export.archive",
+        feature_rows=(36,),
+        module_id="export",
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: One surface, the account: a year folder is created, the set playlist
+        #: is put in it, and the playlist is retitled with the swept prefix,
+        #: recorded in ``sync mark``'s record so ``sync unmark`` puts it back.
+        #: ``destructive`` for ``label.mark``'s reason: a retitle lands on a
+        #: title a person can see.
+        writes=frozenset({"remote"}),
+        destructive=True,
+        doctor_checks=("credential.provider",),
+        gates=(
+            GateSpec(
+                name="export.archive.confirm",
+                options=("apply", "abort"),
+                prompt="File this set playlist in its year folder on the streaming account?",
+                # EXPLICIT, as label.mark's is, for the same reason (R34).
+                explicit=True,
+                digest_source="plan",
+            ),
+        ),
+    ),
     Entry(
         name="setbuild",
         summary="build a short set or transition around an anchor track",

@@ -4,6 +4,31 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**R-837 built, 2026-10-03, on `relay/253`, issue #253: an identified set
+as a private playlist on the account, and its archive.** `crate export set
+TRACKLIST [--name NAME]` reads the tracklist `intake identify` writes, a
+typed one or a list document, matches each row by its provider identifier
+(provider origin only), its ISRC, a review answer already accepted, or the
+search's one exact candidate, and names every row left out with its reason
+in the items and the `export-tracks-unmatched` warning. On approval at
+`export.set.confirm` it creates the playlist private and adds the matched
+tracks a hundred a request, recorded in the outbound ledger's new `sets`
+map under the set's name, which keeps `intake identify`'s digest piece; a
+second run plans nothing. `crate export archive NAME --xml INTAKE`, behind
+`export.archive.confirm`, puts the playlist in a root folder named for the
+year it was made, created, adopted or reused through `set_folders`, then
+rechecks the title in that folder and prefixes `DOWNLOADED ` into the mark
+record for `sync unmark`. No protocol member was added: R-835's folder calls
+cover every step. The playlists sweep excludes recorded set playlists as
+`set-playlist`. Both verbs are feature row 36, module `export`. Battery on
+the branch: ruff clean, the suite green, the scan clean. One round of the
+built in review, ten findings, seven fixed with a test each, R-875, R-876
+and R-877 filed from the other three. Mutation table 25 of 25 killed after
+two zeros were given a test, `docs/mutation/r837-notes.md`. Residuals R-875
+to R-877, none on the board bar. **Owed, attended:** one set written and
+archived on the author's account and read back in the web player. Main's
+highest residual number is R-877.
+
 **R-835 built, 2026-10-03, on `relay/252`, issue #252: a followed label as
 a folder of year playlists on the account.** `crate label playlists LABEL`
 plans, from the catalogue the sweep crawls and verifies

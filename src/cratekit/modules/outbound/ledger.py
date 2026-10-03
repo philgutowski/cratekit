@@ -9,6 +9,12 @@ SINCE R-835 IT ALSO HOLDS EACH LABEL'S SHAPE ON THE ACCOUNT, under ``labels``:
 the folder a label's year playlists live in, and per year the playlist, the
 title it was given and the tracks written to it. Every reader and writer here
 carries the map through, so an export that writes this file never drops it.
+
+SINCE R-837 IT HOLDS EACH SET PLAYLIST TOO, under ``sets``, keyed by the
+playlist's name: the playlist an identified set or a typed tracklist became,
+the year it was made in and the tracks written to it. ``set_folders`` maps a
+year to the root folder its archived set playlists are filed in. Both are
+carried through the way ``labels`` is, for the same reason.
 """
 
 from __future__ import annotations
@@ -38,7 +44,14 @@ def _unusable(path, what: str) -> CratekitError:
 
 
 def _empty() -> dict[str, Any]:
-    return {"version": LEDGER_VERSION, "playlists": {}, "hearts": {}, "labels": {}}
+    return {
+        "version": LEDGER_VERSION,
+        "playlists": {},
+        "hearts": {},
+        "labels": {},
+        "sets": {},
+        "set_folders": {},
+    }
 
 
 def _load(cfg: config.Config) -> dict[str, Any]:
@@ -70,12 +83,34 @@ def _load(cfg: config.Config) -> dict[str, Any]:
         # dropped here is a folder and its year playlists forgotten, and the
         # next build would make all of them a second time.
         raise _unusable(path, "labels must be a map of label records")
+    sets = raw.get("sets", {})
+    set_folders = raw.get("set_folders", {})
+    if not isinstance(sets, Mapping) or not all(
+        isinstance(value, Mapping) for value in sets.values()
+    ):
+        # REFUSED for the label map's reason: a set record dropped here is a
+        # playlist forgotten, and the next run onto the set makes a second one.
+        raise _unusable(path, "sets must be a map of set playlist records")
+    if not isinstance(set_folders, Mapping):
+        raise _unusable(path, "set_folders must be a map of year to folder")
     return {
         "version": LEDGER_VERSION,
         "playlists": {str(key): dict(value) for key, value in playlists.items()
                       if isinstance(value, Mapping)},
         "hearts": {str(key): str(value) for key, value in hearts.items()},
         "labels": {str(key): _label_document(path, value) for key, value in labels.items()},
+        "sets": {
+            str(key): {
+                "remote_id": str(value.get("remote_id") or ""),
+                "year": str(value.get("year") or ""),
+                "added": _listed(value, "added"),
+                "refused": _listed(value, "refused"),
+            }
+            for key, value in sets.items()
+        },
+        "set_folders": {
+            str(year): str(folder) for year, folder in set_folders.items() if folder
+        },
     }
 
 
@@ -761,5 +796,141 @@ def record_label_tracks(
             held += [str(one) for one in values if str(one) not in held]
             entry[key] = held
         _write(cfg, document)
+    finally:
+        lock.__exit__(None, None, None)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# A set playlist, and the year folders it is archived in (R-837)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@dataclass(frozen=True, slots=True)
+class SetPlaylist:
+    """One playlist this library made on the account from a set's tracklist."""
+
+    name: str
+    remote_id: str
+    #: The year it was made in, which names the folder it is archived in.
+    year: str
+    added: frozenset[str] = frozenset()
+    #: Tracks the provider was asked for and would not add, not asked again.
+    refused: frozenset[str] = frozenset()
+
+
+def set_playlist(cfg: config.Config, name: str) -> SetPlaylist | None:
+    """The set playlist recorded under this name, or ``None``. Read only."""
+    record = _load(cfg)["sets"].get(name)
+    if not record or not record.get("remote_id"):
+        return None
+    return SetPlaylist(
+        name=name,
+        remote_id=str(record["remote_id"]),
+        year=str(record.get("year") or ""),
+        added=frozenset(_listed(record, "added")),
+        refused=frozenset(_listed(record, "refused")),
+    )
+
+
+def set_playlist_ids(cfg: config.Config) -> frozenset[str]:
+    """Every set playlist this library made, for the playlist sweep to leave alone.
+
+    A set playlist is the set's own record on the account and its tracks are
+    fetched from the tracklist it was made from, so swept as intake it would be
+    a second download of the same set.
+    """
+    return frozenset(
+        str(record.get("remote_id"))
+        for record in _load(cfg)["sets"].values()
+        if record.get("remote_id")
+    )
+
+
+def set_folder(cfg: config.Config, year: str) -> str:
+    """The root folder recorded for this year's set playlists, or ``""``."""
+    return str(_load(cfg)["set_folders"].get(year) or "")
+
+
+def reserve_set_playlist(
+    cfg: config.Config, name: str, year: str, create: Callable[[], str]
+) -> tuple[str, bool]:
+    """The set's playlist, creating it only if none is recorded. ``(id, created)``.
+
+    THE LOCK IS TAKEN BEFORE THE CREATE, on ``reserve_playlist``'s argument: an
+    unwritable ledger refuses before anything exists on the account.
+    """
+    lock = _locked(cfg)
+    try:
+        document = _load(cfg)
+        recorded = str((document["sets"].get(name) or {}).get("remote_id") or "")
+        if recorded:
+            return recorded, False
+        remote_id = create()
+        document["sets"][name] = {
+            "remote_id": remote_id,
+            "year": year,
+            "added": [],
+            "refused": [],
+        }
+        _write(cfg, document)
+        return remote_id, True
+    finally:
+        lock.__exit__(None, None, None)
+
+
+def record_set_tracks(
+    cfg: config.Config,
+    name: str,
+    *,
+    added: Iterable[str] = (),
+    refused: Iterable[str] = (),
+) -> None:
+    """Remember tracks written to one set playlist, and ones the provider refused."""
+    lock = _locked(cfg)
+    try:
+        document = _load(cfg)
+        entry = document["sets"].get(name)
+        if not entry:
+            raise _unusable(
+                config.state_path("outbound_writes", cfg),
+                f"it holds no set playlist named {name!r}, whose tracks were just written",
+            )
+        for key, values in (("added", added), ("refused", refused)):
+            held = _listed(entry, key)
+            held += [str(one) for one in values if str(one) not in held]
+            entry[key] = held
+        _write(cfg, document)
+    finally:
+        lock.__exit__(None, None, None)
+
+
+def reserve_set_folder(
+    cfg: config.Config,
+    year: str,
+    create: Callable[[], str],
+    *,
+    adopt: str = "",
+    stale: str = "",
+) -> tuple[str, bool]:
+    """The year's archive folder, creating one only if none is recorded.
+
+    The shape of :func:`reserve_label_folder` and for its reason. ``adopt`` is
+    one root folder already named as the year, which the plan found and a
+    person was shown; ``stale`` is a recorded folder the plan read as gone.
+    """
+    lock = _locked(cfg)
+    try:
+        document = _load(cfg)
+        recorded = str(document["set_folders"].get(year) or "")
+        if recorded and recorded != stale:
+            return recorded, False
+        if adopt:
+            document["set_folders"][year] = adopt
+            _write(cfg, document)
+            return adopt, False
+        folder_id = create()
+        document["set_folders"][year] = folder_id
+        _write(cfg, document)
+        return folder_id, True
     finally:
         lock.__exit__(None, None, None)

@@ -1,0 +1,302 @@
+{
+  "name": "r837-b",
+  "pass_kind": "light",
+  "branch": "relay/253",
+  "head": "cf1d509",
+  "when": "2026-10-03 07:40 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 12465,
+  "baseline_exit": 0,
+  "pytest_runs": 11,
+  "state_guarded": "~/Library/Application Support/cratekit (257133 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/export/set_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/export/set_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "816b6dc3812739ac",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 12465,
+    "baseline_collected": 12465,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "B1_ref_only_from_the_provider",
+      "description": "set_cli.match_rows: a list document's row identifier is trusted whatever its origin, so a Spotify id is handed to the account",
+      "file": "src/cratekit/export/set_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d980c547ef9918ca",
+      "subset": [
+        "tests/test_export_set.py"
+      ],
+      "subset_reason": "test files importing cratekit.export.set_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 30,
+      "baseline_collected": 30,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set.py::test_another_sources_identifier_is_never_handed_to_the_account"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if one.ref and one.origin == match.TIDAL:",
+      "new": "            if one.ref:"
+    },
+    {
+      "id": "B2_isrc_route",
+      "description": "set_cli.match_rows: a row's ISRC is never asked of the account, so it goes to the text search",
+      "file": "src/cratekit/export/set_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "26789205a851134f",
+      "subset": [
+        "tests/test_export_set.py"
+      ],
+      "subset_reason": "test files importing cratekit.export.set_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 30,
+      "baseline_collected": 30,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set.py::test_a_row_carrying_an_isrc_is_matched_through_the_accounts_own_match"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if one.isrc:",
+      "new": "            if False:"
+    },
+    {
+      "id": "B3_accepted_in_review",
+      "description": "set_cli.match_rows: a candidate accepted in review is not used, so the row is left out",
+      "file": "src/cratekit/export/set_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8ee29b25ae77de3f",
+      "subset": [
+        "tests/test_export_set.py"
+      ],
+      "subset_reason": "test files importing cratekit.export.set_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 30,
+      "baseline_collected": 30,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set.py::test_a_candidate_accepted_in_review_is_used_and_not_searched_for_again"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                if answered.state == candidates.ACCEPTED and answered.track is not None:",
+      "new": "                if False:"
+    },
+    {
+      "id": "B4_sole_exact_listed",
+      "description": "set_cli.match_rows: the one exact search candidate is never listed, so every typed row is left out",
+      "file": "src/cratekit/export/set_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ab96386960972f7d",
+      "subset": [
+        "tests/test_export_set.py"
+      ],
+      "subset_reason": "test files importing cratekit.export.set_cli",
+      "status": "killed",
+      "deaths": 17,
+      "collected": 30,
+      "baseline_collected": 30,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set.py::test_a_folder_named_as_the_year_by_hand_is_adopted_not_doubled",
+        "tests/test_export_set.py::test_a_name_with_a_slash_finds_the_set_it_named_at_build",
+        "tests/test_export_set.py::test_a_playlist_already_in_its_folder_is_left",
+        "tests/test_export_set.py::test_a_playlist_retitled_by_a_person_is_filed_and_its_title_left",
+        "tests/test_export_set.py::test_a_playlist_the_folder_does_not_list_yet_is_not_renamed_or_blamed",
+        "tests/test_export_set.py::test_a_row_added_to_the_tracklist_later_is_added_to_the_same_playlist",
+        "tests/test_export_set.py::test_a_second_run_onto_the_same_set_plans_nothing",
+        "tests/test_export_set.py::test_a_track_already_on_the_playlist_and_never_recorded_is_not_asked_for",
+        "tests/test_export_set.py::test_a_track_refused_before_is_said_as_refused_not_as_on_the_playlist",
+        "tests/test_export_set.py::test_a_track_taken_off_by_a_person_is_said_and_not_put_back",
+        "tests/test_export_set.py::test_a_year_folder_deleted_on_the_account_is_made_again",
+        "tests/test_export_set.py::test_approved_the_account_holds_a_private_playlist_of_four_in_order",
+        "tests/test_export_set.py::test_five_rows_with_one_unmatched_plan_four_and_name_the_fifth",
+        "tests/test_export_set.py::test_sync_unmark_takes_the_archive_mark_off_again",
+        "tests/test_export_set.py::test_the_archive_prefixes_records_and_files_it_in_a_year_folder_made_once",
+        "tests/test_export_set.py::test_the_sweep_never_reads_a_set_playlist_as_intake",
+        "tests/test_export_set.py::test_two_folders_named_as_the_year_refuse_and_write_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            sole = candidates.sole_exact(answer)",
+      "new": "            sole = None"
+    },
+    {
+      "id": "B5_unmatched_warning",
+      "description": "set_cli._unmatched_warnings: a set that left tracks out answers with no warning naming them (R-850)",
+      "file": "src/cratekit/export/set_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7bcd577cd20938c7",
+      "subset": [
+        "tests/test_export_set.py"
+      ],
+      "subset_reason": "test files importing cratekit.export.set_cli",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 30,
+      "baseline_collected": 30,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set.py::test_approved_the_account_holds_a_private_playlist_of_four_in_order",
+        "tests/test_export_set.py::test_five_rows_with_one_unmatched_plan_four_and_name_the_fifth"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not planned.unmatched:\n        return []\n    return [",
+      "new": "    if True:\n        return []\n    return ["
+    },
+    {
+      "id": "B6_archive_name_spelled_once",
+      "description": "set_cli.export_archive: the name is looked up as typed, so a name with a slash misses the set its build recorded",
+      "file": "src/cratekit/export/set_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "136b06a110586cc9",
+      "subset": [
+        "tests/test_export_set.py"
+      ],
+      "subset_reason": "test files importing cratekit.export.set_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 30,
+      "baseline_collected": 30,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set.py::test_a_name_with_a_slash_finds_the_set_it_named_at_build"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    name = set_name(ctx.args.name)",
+      "new": "    name = str(ctx.args.name)"
+    },
+    {
+      "id": "A3r_held_not_added",
+      "description": "batch a's A3 again: sets.plan_set adds a track already on the playlist and never recorded",
+      "file": "src/cratekit/modules/outbound/sets.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b0d6a0c929d4de59",
+      "subset": [
+        "tests/test_export_set.py"
+      ],
+      "subset_reason": "test files importing cratekit.modules.outbound.sets",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 30,
+      "baseline_collected": 30,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set.py::test_a_track_already_on_the_playlist_and_never_recorded_is_not_asked_for"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        add=tuple(one for one in wanted if one not in asked and one not in held),",
+      "new": "        add=tuple(one for one in wanted if one not in asked),"
+    },
+    {
+      "id": "A9r_recorded_folder_listed",
+      "description": "batch a's A9 again: sets.plan_archive reuses a recorded year folder the account no longer lists",
+      "file": "src/cratekit/modules/outbound/sets.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bf27b8dadf64071f",
+      "subset": [
+        "tests/test_export_set.py"
+      ],
+      "subset_reason": "test files importing cratekit.modules.outbound.sets",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 30,
+      "baseline_collected": 30,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set.py::test_a_year_folder_deleted_on_the_account_is_made_again"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if recorded and recorded in root:",
+      "new": "    if recorded:"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "B7_proof_first",
+      "description": "set_cli.export_archive: drop marks.require_output, so an archive runs with no landed file",
+      "reason": "ranked below the cap: the same call label.mark makes, and test_an_archive_with_no_landed_file_refuses_before_anything drives it"
+    },
+    {
+      "id": "B8_record_ready",
+      "description": "set_cli.export_archive: drop record.ready(), so an unlockable mark record is found after the move rather than before",
+      "reason": "ranked below the cap: maintainer facing ordering, the rename still refuses when the record cannot take it"
+    }
+  ]
+}
