@@ -38,7 +38,6 @@ track, never a failure: the file, if there is one, is in the intake playlist.
 
 from __future__ import annotations
 
-import contextlib
 import re
 from pathlib import Path
 from typing import Any, Callable
@@ -156,19 +155,6 @@ def intake_file(cfg: config.Config, stem: str) -> Path:
     already walks, so an unimported landing is visible to the cutover check.
     """
     return Path(cfg.library.root) / f"{stem}{INTAKE_SUFFIX}"
-
-
-def _intake_held(stem: str, batch: str):
-    """The intake file's own lock, or nothing when the batch lock already is it.
-
-    APART SINCE U110: a batch named for the date and an intake file named for
-    the pass can each be shared by a landing the other lock does not see.
-    """
-    if landing.lock_key(stem) == landing.lock_key(batch):
-        # ``--name`` alone names both, and the batch lock already holds the
-        # one name; a second lock on it would refuse the landing holding it.
-        return contextlib.nullcontext()
-    return landing.intake_lock(stem)
 
 
 def _still_free(cfg: config.Config, batch: str) -> None:
@@ -510,7 +496,10 @@ def intake_land(ctx) -> Envelope:
     # the same batch folder is refused at the door rather than waited for. Only
     # here, after the answer: a plan and a gate screen move nothing and a held
     # name does not stop anybody reading one.
-    with landing.batch_lock(batch), _intake_held(stem, batch):
+    # AND ONE LANDING PER INTAKE FILE (U110), since the file is named for the
+    # pass and the batch for the date, and either can be shared by a landing
+    # the other lock does not see.
+    with landing.batch_lock(batch), landing.intake_lock(stem):
         if ctx.args.name is None:
             _still_free(cfg, batch)
         landed = landing.apply(
