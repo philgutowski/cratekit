@@ -234,6 +234,22 @@ def test_a_default_name_taken_after_the_gate_is_refused_under_the_lock(
     assert (_music(cfg, "2026-10-03 Downloads 2") / "One.flac").is_file()
 
 
+def test_a_landing_whose_intake_file_another_landing_is_writing_is_refused(
+    cfg, silence, export
+):
+    """Driven through the verb: the intake lock is taken by the landing itself,
+    so a second landing of one pass under another batch name waits on it."""
+    _stage(cfg, silence, "One.flac")
+
+    with landing.intake_lock(PASS):
+        code, refused = _drive(["-d", f"{GATE}=apply", *_land(export, "--name", "Other", "--pass", PASS)])
+
+    assert refused["cause"]["reason"] == "job-driver-held", refused
+    assert refused["cause"]["detail"]["intake"] == PASS
+    assert (Path(cfg.paths.download_staging) / "One.flac").is_file()
+    assert not (Path(cfg.library.root) / f"{PASS}_inboxed.xml").exists()
+
+
 def test_a_name_a_person_gives_may_be_landed_into_again(cfg, silence, export):
     """The recheck is for a name this run chose. ``--name`` is the person's,
     and a second landing into it is what it always was."""
