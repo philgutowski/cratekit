@@ -304,6 +304,21 @@ def test_a_track_taken_off_by_a_person_is_said_and_not_put_back(account):
     assert "tid-3" not in held.playlists[playlist]
 
 
+def test_a_track_already_on_the_playlist_and_never_recorded_is_not_asked_for(account):
+    cfg, fake, held = account
+    assert _build(_tracklist(cfg))[0] == int(ExitCode.OK)
+    (playlist,) = held.playlists
+    # A person added the fifth row's track by hand, and the provider's search
+    # now names it: it is on the playlist and this library never wrote it.
+    held.playlists[playlist].append("tid-5")
+    fake.searches[("Artist Five", "Title Five")] = [Hit("tid-5", "Artist Five", "Title Five")]
+    held.chunks.clear()
+    code, done = _build(_tracklist(cfg))
+    assert code == int(ExitCode.OK), done
+    assert done["outcome"] == "no_op" and held.chunks == []
+    assert _tracks(done)[4]["action"] == "already"
+
+
 def test_a_row_carrying_an_isrc_is_matched_through_the_accounts_own_match(account):
     cfg, fake, held = account
     held.catalog["set-row-1"] = "tid-by-isrc"
@@ -382,6 +397,23 @@ def test_a_playlist_already_in_its_folder_is_left(account):
     assert code == int(ExitCode.OK), done
     assert done["outcome"] == "no_op"
     assert held.moves == [] and held.renamed == [] and len(held.folders_created) == 1
+
+
+def test_a_year_folder_deleted_on_the_account_is_made_again(account):
+    cfg, _fake, held = account
+    assert _build(_tracklist(cfg))[0] == int(ExitCode.OK)
+    assert _build(_tracklist(cfg, name="Second Night.txt"))[0] == int(ExitCode.OK)
+    xml = _landed(cfg)
+    assert _archive(xml)[0] == int(ExitCode.OK)
+    (gone,) = held.folder_names
+    del held.folder_names[gone]
+    code, done = _archive(xml, name="Second Night")
+    assert code == int(ExitCode.OK), done
+    assert len(held.folders_created) == 2
+    (fresh,) = held.folder_names
+    assert fresh != gone
+    assert held.placed[ledger.set_playlist(cfg, "Second Night").remote_id] == fresh
+    assert ledger.set_folder(cfg, ledger.set_playlist(cfg, "Second Night").year) == fresh
 
 
 def test_a_folder_named_as_the_year_by_hand_is_adopted_not_doubled(account):

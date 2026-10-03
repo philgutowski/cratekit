@@ -1,0 +1,84 @@
+name = "r837-b"
+pass_kind = "light"
+
+# R-837, batch b: the set verbs' matching and answers, and batch a's two zero
+# rows measured again against the tests written for them. Together with batch
+# a this is the unit's 25 row cap.
+
+[[rows]]
+id = "B1_ref_only_from_the_provider"
+description = "set_cli.match_rows: a list document's row identifier is trusted whatever its origin, so a Spotify id is handed to the account"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+old = '''            if one.ref and one.origin == match.TIDAL:'''
+new = '''            if one.ref:'''
+
+[[rows]]
+id = "B2_isrc_route"
+description = "set_cli.match_rows: a row's ISRC is never asked of the account, so it goes to the text search"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+old = '''            if one.isrc:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "B3_accepted_in_review"
+description = "set_cli.match_rows: a candidate accepted in review is not used, so the row is left out"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+old = '''                if answered.state == candidates.ACCEPTED and answered.track is not None:'''
+new = '''                if False:'''
+
+[[rows]]
+id = "B4_sole_exact_listed"
+description = "set_cli.match_rows: the one exact search candidate is never listed, so every typed row is left out"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+old = '''            sole = candidates.sole_exact(answer)'''
+new = '''            sole = None'''
+
+[[rows]]
+id = "B5_unmatched_warning"
+description = "set_cli._unmatched_warnings: a set that left tracks out answers with no warning naming them (R-850)"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+old = '''    if not planned.unmatched:
+        return []
+    return ['''
+new = '''    if True:
+        return []
+    return ['''
+
+[[rows]]
+id = "B6_archive_name_spelled_once"
+description = "set_cli.export_archive: the name is looked up as typed, so a name with a slash misses the set its build recorded"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+old = '''    name = set_name(ctx.args.name)'''
+new = '''    name = str(ctx.args.name)'''
+
+[[rows]]
+id = "A3r_held_not_added"
+description = "batch a's A3 again: sets.plan_set adds a track already on the playlist and never recorded"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+old = '''        add=tuple(one for one in wanted if one not in asked and one not in held),'''
+new = '''        add=tuple(one for one in wanted if one not in asked),'''
+
+[[rows]]
+id = "A9r_recorded_folder_listed"
+description = "batch a's A9 again: sets.plan_archive reuses a recorded year folder the account no longer lists"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+old = '''    if recorded and recorded in root:'''
+new = '''    if recorded:'''
+
+[[dropped]]
+id = "B7_proof_first"
+description = "set_cli.export_archive: drop marks.require_output, so an archive runs with no landed file"
+reason = "ranked below the cap: the same call label.mark makes, and test_an_archive_with_no_landed_file_refuses_before_anything drives it"
+
+[[dropped]]
+id = "B8_record_ready"
+description = "set_cli.export_archive: drop record.ready(), so an unlockable mark record is found after the move rather than before"
+reason = "ranked below the cap: maintainer facing ordering, the rename still refuses when the record cannot take it"
