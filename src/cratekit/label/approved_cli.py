@@ -100,7 +100,7 @@ import dataclasses
 import hashlib
 import json
 import shlex
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Container, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -165,8 +165,10 @@ def _unusable(message: str, *steps: str, **detail: Any):
     )
 
 
-def _check(key: str, status: str, detail: str) -> dict[str, Any]:
-    return {"key": f"label.approved.{key}", "title": key, "status": status,
+def _check(
+    key: str, status: str, detail: str, *, namespace: str = "label.approved"
+) -> dict[str, Any]:
+    return {"key": f"{namespace}.{key}", "title": key, "status": status,
             "detail": detail, "remedy": None}
 
 
@@ -518,7 +520,10 @@ def _out_dir(ctx, cfg) -> Path:
 
 
 def list_name(
-    body: Mapping[str, Any], provenance: Mapping[str, listdoc.Provenance]
+    body: Mapping[str, Any],
+    provenance: Mapping[str, listdoc.Provenance],
+    *,
+    prefix: str = LIST_PREFIX,
 ) -> str:
     """The name a list of exactly these rows, from exactly these releases, takes.
 
@@ -536,7 +541,7 @@ def list_name(
     }
     encoded = json.dumps(said, ensure_ascii=False, sort_keys=True).encode("utf-8")
     digest = hashlib.blake2s(encoded, digest_size=DIGEST_BYTES)
-    return f"{LIST_PREFIX}-{digest.hexdigest()}"
+    return f"{prefix}-{digest.hexdigest()}"
 
 
 def _named(release: _Release) -> str:
@@ -547,7 +552,7 @@ def _named(release: _Release) -> str:
     return said
 
 
-def _failure_check(failed: _Failed) -> dict[str, Any]:
+def _failure_check(failed: _Failed, *, namespace: str = "label.approved") -> dict[str, Any]:
     """One failing line per release, ending in the act that settles ITS kind."""
     release = failed.release
     clear = f"crate review clear {release.item_id}"
@@ -573,10 +578,12 @@ def _failure_check(failed: _Failed) -> dict[str, Any]:
             f"{_named(release)} could not be read and none of it is in the list "
             f"({failed.why}); run this again once the provider answers"
         )
-    return _check(f"release.{release.release_id or release.item_id}", "fail", detail)
+    return _check(
+        f"release.{release.release_id or release.item_id}", "fail", detail, namespace=namespace
+    )
 
 
-def _held_check(held: _Held | _OutOfKind) -> dict[str, Any]:
+def _held_check(held: _Held | _OutOfKind, *, namespace: str = "label.approved") -> dict[str, Any]:
     """One line per held release, carrying what it was held on."""
     release = held.release
     if isinstance(held, _OutOfKind):
@@ -587,6 +594,7 @@ def _held_check(held: _Held | _OutOfKind) -> dict[str, Any]:
             f"list: {held.judged.reason}; to list this one anyway: crate label held "
             f"return {release.release_id}; to pass its kind for the whole label: "
             f"crate label registry set LABEL --kind KIND",
+            namespace=namespace,
         )
     label = release.label_name or release.label_id or "no named label"
     detail = (
@@ -595,35 +603,64 @@ def _held_check(held: _Held | _OutOfKind) -> dict[str, Any]:
         f"the {held.classified} release(s) with a genre accepted from {label}, "
         f"under the {held.share:.0%} share a family needs to belong to that label"
     )
-    return _check(f"held.{release.release_id or release.item_id}", "info", detail)
-
-
-def label_approved(ctx) -> Envelope:
-    """List the missing tracks of every accepted label release, or say why not."""
-    cfg = label_cli._load()
-    with review.open_store(cfg) as items:
-        accepted, rejected, still_open = _queued(items)
-    queue_check = _check(
-        "queue",
-        "info",
-        f"{len(accepted)} accepted release(s) read; {rejected} rejected and "
-        f"{still_open} not yet answered were not; see: crate review list --queue "
-        f"{Queue.LABEL_RELEASE}",
+    return _check(
+        f"held.{release.release_id or release.item_id}", "info", detail, namespace=namespace
     )
-    if not accepted:
-        # ASKED BEFORE THE CATALOGUE IS RESOLVED, so a queue with nothing
-        # accepted spends no login and refuses over no missing credential.
-        return ctx.envelope(
-            data={
-                "checks": [
-                    _check("written", "info", "nothing listed: no label release is accepted"),
-                    queue_check,
-                ],
-                "summary": _summary(None, accepted=0, rejected=rejected, open=still_open),
-            },
-            outcome=Outcome.NO_OP,
-        )
 
+
+@dataclass(frozen=True, slots=True)
+class Listing:
+    """What listing a set of accepted releases did, for a caller to report.
+
+    U108 split this out of :func:`label_approved` so the guided label sync's
+    go lists its answered releases down THE SAME PATH, the gate, the match
+    queue offer and the one emitter, rather than through a second copy of it.
+    """
+
+    accepted: int
+    read: int
+    held: Mapping[str, _Held | _OutOfKind]
+    failures: tuple[_Failed, ...]
+    unreadable: tuple[tuple[_Release, str], ...]
+    undated: tuple[_Release, ...]
+    ungated: tuple[tuple[_Release, str], ...]
+    counts: Mapping[str, int]
+    written: listdoc.Written
+
+    @property
+    def passed(self) -> int:
+        """The releases read that the genre gate did not hold."""
+        return self.read - len(self.held)
+
+    @property
+    def listed(self) -> int:
+        return len(self.written.listed)
+
+    @property
+    def command(self) -> str | None:
+        """The command that downloads the list, or None when none was written."""
+        if self.written.list_path is None:
+            return None
+        return shlex.join(["crate", "acquire", "download", str(self.written.list_path)])
+
+
+def list_releases(
+    cfg,
+    accepted: list[_Release],
+    *,
+    out: Callable[[], Path],
+    handler_key: str,
+    prefix: str = LIST_PREFIX,
+    already: Container[str] = frozenset(),
+) -> Listing:
+    """Read, gate, resolve and list the missing tracks of ``accepted``, or refuse.
+
+    ``out`` is asked for the folder only when there is something to write.
+    ``already`` names provider track ids another job already holds, which are
+    counted as ``queued`` and not listed again: the guided label sync's go
+    passes the tracks an earlier go queued, so a second start never asks for a
+    track twice. ``label approved`` passes nothing and lists as it always did.
+    """
     # THE DECLARATION BEFORE THE FIRST LOGIN (R-685). An active copy that cannot
     # be read refuses here, not after every accepted release was fetched.
     declared = active_taxonomy.load(cfg)
@@ -638,7 +675,9 @@ def label_approved(ctx) -> Envelope:
     found = catalogue.resolve(cfg)
     index, suppresses, identify = match_cli.library_view(cfg)
 
-    counts = {"owned": 0, "offered": 0, "suppressed": 0, "duplicate": 0, "missing": 0}
+    counts = {
+        "owned": 0, "offered": 0, "suppressed": 0, "duplicate": 0, "missing": 0, "queued": 0
+    }
     failures: list[_Failed] = []
     undated: list[_Release] = []
     unreadable: list[tuple[_Release, str]] = []
@@ -720,7 +759,7 @@ def label_approved(ctx) -> Envelope:
                 resolved = match_cli.adjudicate(
                     items,
                     resolved,
-                    handler_key=ctx.entry.handler_key,
+                    handler_key=handler_key,
                     suppresses=suppresses,
                     suppression_id=identify,
                 )
@@ -733,6 +772,12 @@ def label_approved(ctx) -> Envelope:
                 counts["suppressed"] += 1
             elif settled.match_id in seen:
                 counts["duplicate"] += 1
+            elif str(settled.wanted.ref or "").strip() in already:
+                # ANOTHER JOB ALREADY HOLDS IT, done or still to run, so it is
+                # neither listed nor counted missing: a second start never asks
+                # the provider for a track twice (U108).
+                seen.add(settled.match_id)
+                counts["queued"] += 1
             else:
                 seen.add(settled.match_id)
                 counts["missing"] += 1
@@ -763,9 +808,7 @@ def label_approved(ctx) -> Envelope:
         provenance = _provenance(rows, origins)
         try:
             body, _listed, _unlisted = listdoc.document(rows)
-            written = listdoc.write(
-                _out_dir(ctx, cfg), list_name(body, provenance), rows, provenance
-            )
+            written = listdoc.write(out(), list_name(body, provenance, prefix=prefix), rows, provenance)
         except listdoc.ListDocRefused as exc:
             raise _unusable(
                 str(exc), "move the file aside or name another folder with --out"
@@ -792,11 +835,10 @@ def label_approved(ctx) -> Envelope:
             "run this again, and report it if it repeats",
             unlisted_tracks=[{"artist": row.artist, "title": row.title} for row in written.unlisted],
         )
-    passed = read - len(held)
     if failures and not listed:
         # NOTHING LISTED WITH RELEASES UNREAD IS NOT A LIBRARY THAT HOLDS THEM.
         raise _unusable(
-            f"nothing is missing from the {passed} release(s) that could be read"
+            f"nothing is missing from the {read - len(held)} release(s) that could be read"
             + (f" and passed the genre gate ({len(held)} more held by it)" if held else "")
             + f", and {len(failures)} could not be, so this is not a library holding "
             f"every approved release: "
@@ -804,12 +846,132 @@ def label_approved(ctx) -> Envelope:
             *settle,
             failed=failed_detail,
         )
-
-    command = (
-        shlex.join(["crate", "acquire", "download", str(written.list_path)])
-        if written.list_path is not None
-        else None
+    return Listing(
+        accepted=len(accepted),
+        read=read,
+        held=held,
+        failures=tuple(failures),
+        unreadable=tuple(unreadable),
+        undated=tuple(undated),
+        ungated=tuple(ungated),
+        counts=counts,
+        written=written,
     )
+
+
+def listing_checks(listing: Listing, *, namespace: str = "label.approved") -> list[dict[str, Any]]:
+    """Every line a listing reports, after the caller's own ``written`` line."""
+    counts = listing.counts
+    unlisted = len(listing.written.unlisted)
+
+    def check(key: str, status: str, detail: str) -> dict[str, Any]:
+        return _check(key, status, detail, namespace=namespace)
+
+    lines = [
+        check("owned", "info", f"{counts['owned']} already in the library, not listed"),
+        check(
+            "offered",
+            "info",
+            f"{counts['offered']} held in another version, offered for review and not "
+            f"listed until answered; see: crate review list",
+        ),
+        check("suppressed", "info", f"{counts['suppressed']} deleted on purpose, not listed"),
+        check(
+            "duplicate",
+            "info",
+            f"{counts['duplicate']} the same recording as a track already listed from "
+            f"an earlier release, listed once",
+        ),
+        check(
+            "unlisted",
+            "fail" if unlisted else "ok",
+            f"{unlisted} missing track(s) carry no provider identifier and are NOT in the list"
+            if unlisted
+            else "every missing track is in the list",
+        ),
+        check(
+            "unreadable",
+            "fail" if listing.unreadable else "ok",
+            f"{len(listing.unreadable)} track row(s) the provider returned could not be "
+            f"read and are NOT in the list: "
+            + "; ".join(f"{_named(release)}: {why}" for release, why in listing.unreadable)
+            if listing.unreadable
+            else "every track row the provider returned was read",
+        ),
+        check(
+            "undated",
+            "fail" if listing.undated else "ok",
+            f"{len(listing.undated)} release(s) carry no year the provider could be read "
+            f"for, so their manifest rows say none: "
+            + ", ".join(_named(release) for release in listing.undated)
+            if listing.undated
+            else "every release the genre gate passed carries its year",
+        ),
+        check(
+            "held",
+            "info",
+            f"{len(listing.held)} accepted release(s) held by the genre gate and NOT in "
+            f"the list: " + ", ".join(_named(one.release) for one in listing.held.values())
+            if listing.held
+            else "no release was held by the genre gate",
+        ),
+        check(
+            "ungated",
+            "fail" if listing.ungated else "ok",
+            f"{len(listing.ungated)} release(s) the genre gate could not judge, so they "
+            f"are listed unjudged: "
+            + "; ".join(f"{_named(release)}: {why}" for release, why in listing.ungated)
+            if listing.ungated
+            else "every release read was judged by the genre gate",
+        ),
+        check(
+            "releases",
+            "fail" if listing.failures else "ok",
+            f"{len(listing.failures)} accepted release(s) could not be read and are NOT "
+            f"in the list"
+            if listing.failures
+            else "every accepted release was read",
+        ),
+        *(_failure_check(one, namespace=namespace) for one in listing.failures),
+        *(_held_check(one, namespace=namespace) for one in listing.held.values()),
+    ]
+    return lines
+
+
+def label_approved(ctx) -> Envelope:
+    """List the missing tracks of every accepted label release, or say why not."""
+    cfg = label_cli._load()
+    with review.open_store(cfg) as items:
+        accepted, rejected, still_open = _queued(items)
+    queue_check = _check(
+        "queue",
+        "info",
+        f"{len(accepted)} accepted release(s) read; {rejected} rejected and "
+        f"{still_open} not yet answered were not; see: crate review list --queue "
+        f"{Queue.LABEL_RELEASE}",
+    )
+    if not accepted:
+        # ASKED BEFORE THE CATALOGUE IS RESOLVED, so a queue with nothing
+        # accepted spends no login and refuses over no missing credential.
+        return ctx.envelope(
+            data={
+                "checks": [
+                    _check("written", "info", "nothing listed: no label release is accepted"),
+                    queue_check,
+                ],
+                "summary": _summary(None, accepted=0, rejected=rejected, open=still_open),
+            },
+            outcome=Outcome.NO_OP,
+        )
+
+    listing = list_releases(
+        cfg, accepted, out=lambda: _out_dir(ctx, cfg), handler_key=ctx.entry.handler_key
+    )
+    written = listing.written
+    listed = listing.listed
+    held = listing.held
+    passed = listing.passed
+    command = listing.command
     checks = [
         _check(
             "written",
@@ -823,93 +985,30 @@ def label_approved(ctx) -> Envelope:
             f"accepted release(s) the genre gate passed, and {len(held)} more were "
             f"held by it"
             if held
-            else f"nothing listed: the library holds every track of the {read} "
+            else f"nothing listed: the library holds every track of the {listing.read} "
             f"accepted release(s)",
         ),
         queue_check,
-        _check("owned", "info", f"{counts['owned']} already in the library, not listed"),
-        _check(
-            "offered",
-            "info",
-            f"{counts['offered']} held in another version, offered for review and not "
-            f"listed until answered; see: crate review list",
-        ),
-        _check("suppressed", "info", f"{counts['suppressed']} deleted on purpose, not listed"),
-        _check(
-            "duplicate",
-            "info",
-            f"{counts['duplicate']} the same recording as a track already listed from "
-            f"an earlier release, listed once",
-        ),
-        _check(
-            "unlisted",
-            "fail" if unlisted else "ok",
-            f"{unlisted} missing track(s) carry no provider identifier and are NOT in the list"
-            if unlisted
-            else "every missing track is in the list",
-        ),
-        _check(
-            "unreadable",
-            "fail" if unreadable else "ok",
-            f"{len(unreadable)} track row(s) the provider returned could not be read "
-            f"and are NOT in the list: "
-            + "; ".join(f"{_named(release)}: {why}" for release, why in unreadable)
-            if unreadable
-            else "every track row the provider returned was read",
-        ),
-        _check(
-            "undated",
-            "fail" if undated else "ok",
-            f"{len(undated)} release(s) carry no year the provider could be read for, "
-            f"so their manifest rows say none: "
-            + ", ".join(_named(release) for release in undated)
-            if undated
-            else "every release the genre gate passed carries its year",
-        ),
-        _check(
-            "held",
-            "info",
-            f"{len(held)} accepted release(s) held by the genre gate and NOT in the list: "
-            + ", ".join(_named(one.release) for one in held.values())
-            if held
-            else "no release was held by the genre gate",
-        ),
-        _check(
-            "ungated",
-            "fail" if ungated else "ok",
-            f"{len(ungated)} release(s) the genre gate could not judge, so they are "
-            f"listed unjudged: "
-            + "; ".join(f"{_named(release)}: {why}" for release, why in ungated)
-            if ungated
-            else "every release read was judged by the genre gate",
-        ),
-        _check(
-            "releases",
-            "fail" if failures else "ok",
-            f"{len(failures)} accepted release(s) could not be read and are NOT in the list"
-            if failures
-            else "every accepted release was read",
-        ),
-        *(_failure_check(one) for one in failures),
-        *(_held_check(one) for one in held.values()),
+        *listing_checks(listing),
     ]
+    counts = listing.counts
     summary = _summary(
         written,
         accepted=len(accepted),
         rejected=rejected,
         open=still_open,
-        read=read,
+        read=listing.read,
         next=command,
         missing=counts["missing"],
         owned=counts["owned"],
         offered=counts["offered"],
         suppressed=counts["suppressed"],
         duplicate=counts["duplicate"],
-        unreadable=len(unreadable),
-        undated=[release.release_id for release in undated],
+        unreadable=len(listing.unreadable),
+        undated=[release.release_id for release in listing.undated],
         held=[one.to_json() for one in held.values()],
-        ungated=[release.release_id for release, _why in ungated],
-        failed=failed_detail,
+        ungated=[release.release_id for release, _why in listing.ungated],
+        failed=[one.to_json() for one in listing.failures],
     )
     return ctx.envelope(
         data={"checks": checks, "summary": summary},
@@ -957,10 +1056,13 @@ __all__ = [
     "LABEL_SOURCE",
     "LIST_PREFIX",
     "NOT_ASKED",
+    "Listing",
     "NO_IDENTIFIER",
     "OUTAGE_AFTER",
     "PROVIDER",
     "build_approved",
     "label_approved",
     "list_name",
+    "list_releases",
+    "listing_checks",
 ]
