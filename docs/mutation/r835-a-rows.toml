@@ -1,0 +1,113 @@
+name = "r835-a"
+pass_kind = "light"
+
+# R-835, batch a: the engine and the ledger's label shape.
+
+[[rows]]
+id = "F1_recorded_folder_must_be_listed"
+description = "folders.plan: a recorded folder the account no longer lists is reused, so year playlists are moved into a folder that is gone"
+file = "src/cratekit/modules/outbound/folders.py"
+surface = "user"
+old = '''    if shape.folder_id and shape.folder_id in root:'''
+new = '''    if shape.folder_id:'''
+
+[[rows]]
+id = "F2_two_root_folders_refuse"
+description = "folders.plan: two root folders under the label's name are not refused, and the first by identifier is adopted"
+file = "src/cratekit/modules/outbound/folders.py"
+surface = "user"
+old = '''        if len(named) > 1:
+            raise _ambiguous_folder(catalogue.name, named)'''
+new = '''        if False:
+            raise _ambiguous_folder(catalogue.name, named)'''
+
+[[rows]]
+id = "F3_root_folder_adopted_by_name"
+description = "folders.plan: a root folder already named as the label is never adopted, so a second folder of that name is created"
+file = "src/cratekit/modules/outbound/folders.py"
+surface = "user"
+old = '''        if named:
+            folder_action, folder_id = ADOPT, named[0]'''
+new = '''        if False:
+            folder_action, folder_id = ADOPT, named[0]'''
+
+[[rows]]
+id = "F4_recorded_and_refused_not_asked_again"
+description = "folders.plan: a track recorded as added or refused is asked for again, so one a person took off is put back and one refused is asked every run"
+file = "src/cratekit/modules/outbound/folders.py"
+surface = "user"
+old = '''            skip = held | asked'''
+new = '''            skip = held'''
+
+[[rows]]
+id = "F5_unplaced_recorded_year_is_moved"
+description = "folders.plan: a recorded year playlist that is not in the folder is never moved into it, so a build stopped after its create leaves it at the root"
+file = "src/cratekit/modules/outbound/folders.py"
+surface = "user"
+old = '''                    move=not placed,'''
+new = '''                    move=False,'''
+
+[[rows]]
+id = "F7_only_a_provider_failure_is_unreadable"
+description = "folders.plan: any refusal reading a recorded year outside the folder is passed over as unreadable, a rejected session included"
+file = "src/cratekit/modules/outbound/folders.py"
+surface = "user"
+old = '''                    if placed or exc.cause.reason != "unavailable-transient":
+                        raise'''
+new = '''                    if placed:
+                        raise'''
+
+[[rows]]
+id = "F8_marked_title_matches_by_name"
+description = "folders.plan: a year playlist in the folder carrying the mark prefix is not matched by name, so an unrecorded marked year is created a second time"
+file = "src/cratekit/modules/outbound/folders.py"
+surface = "user"
+old = '''            pid for pid, title in inside.items() if title in (name, MARK_PREFIX + name)'''
+new = '''            pid for pid, title in inside.items() if title == name'''
+
+[[rows]]
+id = "F12_refused_tracks_recorded"
+description = "folders.apply: a track the provider would not add is not recorded as refused, so every later plan asks for it again"
+file = "src/cratekit/modules/outbound/folders.py"
+surface = "user"
+old = '''            refused = [one for one in chunk if one not in held]'''
+new = '''            refused = []'''
+
+[[rows]]
+id = "F13_digest_covers_the_folder_title"
+description = "folders.Plan.identity: the label's name is left out of the digest, so a renamed label's folder is created under a title nobody approved"
+file = "src/cratekit/modules/outbound/folders.py"
+surface = "user"
+old = '''                self.stale_folder,
+                self.catalogue.name,
+            ],'''
+new = '''                self.stale_folder,
+            ],'''
+
+[[rows]]
+id = "L1_load_carries_the_label_map"
+description = "ledger._load: the label map is dropped on load, so any other write to the ledger forgets every label's folder and year playlists"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+old = '''        "labels": {str(key): _label_document(path, value) for key, value in labels.items()},'''
+new = '''        "labels": {},'''
+
+[[rows]]
+id = "L2_stale_folder_record_replaced"
+description = "ledger.reserve_label_folder: a recorded folder the plan read as gone is reused rather than replaced"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+old = '''        if recorded and recorded != stale:'''
+new = '''        if recorded:'''
+
+[[rows]]
+id = "L3_recorded_year_never_created_again"
+description = "ledger.reserve_label_year: a year already recorded is created again, so a resumed build makes a second playlist for it"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+old = '''        recorded = str((years.get(year) or {}).get("remote_id") or "")
+        if recorded:
+            return recorded, False'''
+new = '''        recorded = str((years.get(year) or {}).get("remote_id") or "")
+        if False:
+            return recorded, False'''
