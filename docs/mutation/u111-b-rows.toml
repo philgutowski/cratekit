@@ -1,0 +1,70 @@
+name = "u111-b"
+pass_kind = "light"
+
+[[rows]]
+id = "A8_membership_owner"
+description = "The node judge admits a changed membership in any playlist, not only a removed one"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py", "tests/test_rb_writer_guard.py"]
+old = '''        owner = str(old[owner_at])
+        if owner not in gone:'''
+new = '''        owner = str(old[owner_at])
+        if False:'''
+
+[[rows]]
+id = "A9_planned_move_made"
+description = "The node judge no longer asks whether each planned move sits live under its folder"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py", "tests/test_rb_writer_guard.py"]
+old = '''        if new is None or str(new[parent_at]) != planned_moves[key] or new[marker_at]:'''
+new = '''        if new is None:'''
+
+[[rows]]
+id = "A10_renumber_scoped"
+description = "The node judge admits a position change in any parent, not only one a node left or joined"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py", "tests/test_rb_writer_guard.py"]
+old = '''        elif str(old[parent_at]) in renumbered:
+            allowed = _SIBLING_COLUMNS
+        else:
+            allowed = frozenset()'''
+new = '''        else:
+            allowed = _SIBLING_COLUMNS'''
+
+[[rows]]
+id = "A12_removed_keeps_no_live"
+description = "The node judge no longer asks that a removed node keeps no live membership"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py", "tests/test_rb_writer_guard.py"]
+old = '''        if str(row[owner_at]) in gone and not row[m_marker]:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "A13_confinement_raises"
+description = "assert_node_changes_confined computes the violations and never raises"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py", "tests/test_rb_writer_guard.py"]
+old = '''    violations = node_change_violations(
+        before, after, moved=moved, removed=removed, created=created
+    )
+    if violations:
+        db.rollback()'''
+new = '''    violations = node_change_violations(
+        before, after, moved=moved, removed=removed, created=created
+    )
+    if False:
+        db.rollback()'''
+
+[[rows]]
+id = "B1_move_names_every_table"
+description = "The membership move's commit admits the whole removable set again, the playlist table included"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py", "tests/test_adopt_move.py"]
+old = '''                rb_writer.commit_guarded(db, removals=(rb_writer.MEMBERSHIP_TABLE,))'''
+new = '''                rb_writer.commit_guarded(db, removals=rb_writer.REMOVABLE_TABLES)'''

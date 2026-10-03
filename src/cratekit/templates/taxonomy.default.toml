@@ -61,6 +61,14 @@ depth = 3
 id = "inbox"
 display = "INBOX"
 
+# The folder inside the intake flow a stale batch is rotated into (U111):
+# `crate inbox rotate` moves a batch older than reports.intake_stale_days here
+# and removes one here older than reports.intake_expired_days, never its tracks.
+# Optional; delete the section and the rotation refuses by name.
+[intake_old]
+id = "inbox_old"
+display = "Old"
+
 # The catalog tree (R19): where a whole-catalog import lands, one folder per
 # catalogued source holding one playlist per release year. Optional, unlike the
 # two above. Delete this section and a catalog import refuses by name instead of

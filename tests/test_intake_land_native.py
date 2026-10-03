@@ -296,6 +296,9 @@ def test_three_files_become_three_rows_and_one_playlist_under_the_adopted_root(
         rb_writer.CONTENT_TABLE: 3,
     }
     assert record.snapshot_path, "the capture the commit happened behind is not attached"
+    # U111. The record names the batch playlist, which is where the rotation
+    # reads a batch's landing date from.
+    assert record.detail[native.BATCH_PLAYLIST_KEY] == {"id": str(playlist_id), "name": BATCH}
 
 
 def test_two_unnamed_landings_on_one_day_are_two_playlists_and_never_one(

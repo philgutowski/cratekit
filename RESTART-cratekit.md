@@ -13,6 +13,26 @@ closed. Mango Alley's crawl spends its budget on one unnamed artist, and the
 **provider session expired**, so every streaming verb refuses until the author
 mints one: R-888. Main's highest residual number is R-888.
 
+**U111 built, 2026-10-03, on `relay/259`, issue #259: `crate inbox rotate`.**
+A batch playlist under INBOX older than `reports.intake_stale_days` moves into
+`INBOX / Old`, one in Old older than `reports.intake_expired_days` is removed
+with its own memberships, never a track (`intake/rotate.py`, the recognition
+table in its docstring; the verb `intake/rotate_cli.py`). The guarded writer
+gained a playlist node move and removal, `rb_writer.move_playlist_node` and
+`remove_playlist_node`, the playlist table joined `REMOVABLE_TABLES`, the
+membership move names only its own table, and `assert_node_changes_confined`
+compares three tables from SQL before the commit. The taxonomy gained an
+optional `[intake_old]`, and a native landing's session record names its batch
+playlist. One explicit gate, `inbox.rotate.approve`, asked on an empty plan
+too. Battery on the branch: ruff clean, the suite green, 12,667 collected, the
+scan clean. One round of the built in review, ten findings, eight fixed, R-904
+filed; its finding on `created_at` was wrong for the pinned binding, which
+reads it back naive and local. Mutation table 25 rows, 24 killed, one zero
+with no reachable input, `docs/mutation/u111-notes.md`. R-901 to R-904 filed.
+**Owed, attended:** the live library's active taxonomy needs `[intake_old]`
+(R-902), then a rotation rehearsed on a copy and applied on an equal digest,
+read in rekordbox (R-903). Main's highest residual number is R-904.
+
 **U110 built, 2026-10-03, on `relay/258`, issue #258: an INBOX batch is named
 by its date and source.** A landing with no `--name` names its batch folder and
 playlist `2026-10-03 Tidal playlists`, `Favorites`, `Set`, `Labels`, one label's

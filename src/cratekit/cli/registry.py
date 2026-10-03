@@ -2755,6 +2755,48 @@ ENTRIES: tuple[Entry, ...] = (
             ),
         ),
     ),
+    # ── The INBOX rotation (U111) ───────────────────────────────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives. The
+    # report it grows out of is ``report.intake-aging``, which only reads.
+    Entry(
+        name="inbox.rotate",
+        summary="move stale INBOX batches into INBOX / Old and remove expired ones "
+        "from Old, never a track",
+        module="cratekit.intake.rotate_cli",
+        builder="build",
+        handler_key="inbox.rotate",
+        # Row 20 is the aging report's, and this is the half of the source
+        # system's rotation that report left to a person.
+        feature_rows=(20,),
+        source_scripts=("dj-inbox-rotation",),
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: The database tree and nothing else. A playlist node under the
+        #: intake root is moved or soft deleted with its own memberships, and
+        #: no content row, no file and no other playlist's membership changes.
+        writes=frozenset({"db_tree"}),
+        destructive=True,
+        taxonomy_terms=("inbox", "inbox_old"),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+        ),
+        gates=(
+            GateSpec(
+                name="inbox.rotate.approve",
+                options=("approve", "abort"),
+                prompt="Move these batches into Old and remove these from it, "
+                "keeping every track?",
+                #: EXPLICIT (R34). A removal takes a playlist out of the
+                #: library, so no blanket affirmative satisfies it.
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
 )
 
 #: The verb names, as data. ``tests/test_layering.py`` reads this to enforce that

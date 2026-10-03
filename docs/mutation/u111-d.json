@@ -1,0 +1,245 @@
+{
+  "name": "u111-d",
+  "pass_kind": "light",
+  "branch": "relay/259",
+  "head": "4c5b76a",
+  "when": "2026-10-03 19:31 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 12667,
+  "baseline_exit": 0,
+  "pytest_runs": 12,
+  "state_guarded": "~/Library/Application Support/cratekit (257154 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/rotate.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/rotate.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "d476946a47b133c2",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 12667,
+    "baseline_collected": 12667,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C9_committed_records_only",
+      "description": "A landing record dates its batch whether or not its commit landed",
+      "file": "src/cratekit/intake/rotate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "389123140d4645f4",
+      "subset": [
+        "tests/test_inbox_rotate.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.rotate",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 41,
+      "baseline_collected": 41,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_inbox_rotate.py::test_a_landing_record_that_committed_nothing_dates_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if str(session.SourceState.COMMITTED) not in {str(v) for v in record.sources.values()}:",
+      "new": "        if False:"
+    },
+    {
+      "id": "C10_two_olds_refused",
+      "description": "Two live Old folders under INBOX are no longer refused, the first is used",
+      "file": "src/cratekit/intake/rotate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f416052c8631d9f1",
+      "subset": [
+        "tests/test_inbox_rotate.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.rotate",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 41,
+      "baseline_collected": 41,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_inbox_rotate.py::test_two_old_folders_are_refused_rather_than_one_chosen"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if len(olds) > 1:",
+      "new": "    if len(olds) > 99:"
+    },
+    {
+      "id": "D1_empty_plan_asks",
+      "description": "A plan that moves and removes nothing returns without asking the gate",
+      "file": "src/cratekit/intake/rotate_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "43f2efb125d7f81d",
+      "subset": [
+        "tests/test_inbox_rotate.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 804,
+      "baseline_collected": 804,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cli_contract.py::test_conformance_3_every_gate_refuses_and_then_the_verb_proceeds[inbox.rotate]",
+        "tests/test_inbox_rotate.py::test_a_batch_moved_past_expiry_is_removed_by_the_next_run_and_then_nothing",
+        "tests/test_inbox_rotate.py::test_a_second_run_plans_nothing_and_still_asks",
+        "tests/test_inbox_rotate.py::test_an_empty_inbox_still_asks_and_creates_no_old"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if ctx.gate.require(spec, plan=data, context=_facts(plan)) != \"approve\":",
+      "new": "    if plan.writes and ctx.gate.require(spec, plan=data, context=_facts(plan)) != \"approve\":"
+    },
+    {
+      "id": "D2_ack_before_gate",
+      "description": "The backup acknowledgment is no longer read before the plan and the gate",
+      "file": "src/cratekit/intake/rotate_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2344b64f2344d193",
+      "subset": [
+        "tests/test_inbox_rotate.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 804,
+      "baseline_collected": 804,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_inbox_rotate.py::test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).\n    session.assert_backup_acknowledged(cfg)",
+      "new": "    # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).\n    pass"
+    },
+    {
+      "id": "E1_landing_names_its_batch",
+      "description": "A native landing no longer names its batch playlist on its session record",
+      "file": "src/cratekit/intake/native.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "590d9c37bfe934b9",
+      "subset": [
+        "tests/test_intake_land_native.py",
+        "tests/test_inbox_rotate.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 68,
+      "baseline_collected": 68,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land_native.py::test_three_files_become_three_rows_and_one_playlist_under_the_adopted_root"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        record.detail[BATCH_PLAYLIST_KEY] = {\"id\": playlist_id, \"name\": plan.playlist}",
+      "new": "        pass"
+    },
+    {
+      "id": "F1_old_differs_from_intake",
+      "description": "The taxonomy accepts an [intake_old] that repeats the intake flow's id or display",
+      "file": "src/cratekit/core/taxonomy.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9b0e8049c2e5a359",
+      "subset": [
+        "tests/test_inbox_rotate.py",
+        "tests/test_taxonomy.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 114,
+      "baseline_collected": 114,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_inbox_rotate.py::test_an_old_folder_declared_wrongly_is_a_taxonomy_problem_and_not_a_traceback[declared1-must differ from [intake]]",
+        "tests/test_inbox_rotate.py::test_an_old_folder_declared_wrongly_is_a_taxonomy_problem_and_not_a_traceback[declared2-must differ from [intake]]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if intake_old.id == intake.id or intake_old.display == intake.display:",
+      "new": "        if False:"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "A2_removed_node_refused",
+      "description": "The writer no longer refuses a node already removed",
+      "reason": "ranked below the cap: the plan reads live children only, so no planned node reaches the writer removed; same refusal family as A1, which is measured"
+    },
+    {
+      "id": "C8_earliest_landing",
+      "description": "The latest landing record wins over the earliest for one playlist",
+      "reason": "ranked below the cap: U110 never lands two batches into one playlist, so two records naming one playlist need a hand given --name twice, R-896's input"
+    },
+    {
+      "id": "C11_future_date",
+      "description": "A batch dated after the as-of day is aged negative instead of left alone",
+      "reason": "ranked below the cap: a negative age bands as keep, the conservative band, so the cost is a wrong listing rather than a write"
+    },
+    {
+      "id": "A11_unplanned_row",
+      "description": "The node judge admits a playlist row the plan did not create",
+      "reason": "ranked below the cap: pinned by the judge's parametrized unplanned case and by C7, which reverts the one planned creation and was killed by this check"
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+name = "u111-a"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_folder_refused"
+description = "The writer no longer refuses a folder or smart playlist as the node it moves or removes"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py", "tests/test_rb_writer_guard.py"]
+old = '''    if int(getattr(playlist, "Attribute", -1)) != 0:
+        raise _node_refusal('''
+new = '''    if False:
+        raise _node_refusal('''
+
+[[rows]]
+id = "A3_parent_not_folder"
+description = "move_playlist_node no longer refuses a parent that is not a live folder"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py", "tests/test_rb_writer_guard.py"]
+old = '''    if not _is_folder(parent) or node_removed(parent):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A4_memberships_unmarked"
+description = "remove_playlist_node marks the node and leaves its own memberships live"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py", "tests/test_rb_writer_guard.py"]
+old = '''    marked = remove_memberships(db, playlist, held)
+    setattr(playlist, SOFT_DELETE_COLUMN, 1)'''
+new = '''    marked = list(held)
+    setattr(playlist, SOFT_DELETE_COLUMN, 1)'''
+
+[[rows]]
+id = "A5_node_unmarked"
+description = "remove_playlist_node marks the memberships and never the node itself"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py", "tests/test_rb_writer_guard.py"]
+old = '''    setattr(playlist, SOFT_DELETE_COLUMN, 1)
+    playlist.updated_at = datetime.now()
+    return marked'''
+new = '''    playlist.updated_at = datetime.now()
+    return marked'''
+
+[[rows]]
+id = "A6_playlist_not_removable"
+description = "REMOVABLE_TABLES loses the playlist table, so the rotation's commit cannot carry a removed node"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py", "tests/test_rb_writer_guard.py"]
+old = '''REMOVABLE_TABLES = frozenset({MEMBERSHIP_TABLE, PLAYLIST_TABLE})'''
+new = '''REMOVABLE_TABLES = frozenset({MEMBERSHIP_TABLE})'''
+
+[[rows]]
+id = "A7_content_compared"
+description = "The node judge no longer compares the content table"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_inbox_rotate.py", "tests/test_rb_writer_guard.py"]
+old = '''    if before.content != after.content:
+        changed = sorted('''
+new = '''    if False:
+        changed = sorted('''

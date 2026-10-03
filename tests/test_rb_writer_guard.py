@@ -910,9 +910,11 @@ def test_a_changed_marker_is_a_removal_and_no_ordinary_commit_admits_one(table):
         assert "soft delete marker" in violations[0] and repr(table) in violations[0]
 
 
-def test_the_removable_tables_are_exactly_the_membership_table():
-    assert W.REMOVABLE_TABLES == frozenset({"djmdSongPlaylist"})
+def test_the_removable_tables_are_exactly_the_membership_and_playlist_tables():
+    """The playlist table joined with U111, for the INBOX rotation's node removal."""
+    assert W.REMOVABLE_TABLES == frozenset({"djmdSongPlaylist", "djmdPlaylist"})
     assert W.MEMBERSHIP_TABLE == "djmdSongPlaylist"
+    assert W.PLAYLIST_TABLE == "djmdPlaylist"
 
 
 def test_a_commit_that_asks_may_remove_a_membership_and_nothing_else():
@@ -927,7 +929,7 @@ def test_a_commit_that_asks_may_remove_a_membership_and_nothing_else():
 
 
 @pytest.mark.parametrize(
-    "table", [name for name in _tables_with_a_marker() if name != "djmdSongPlaylist"]
+    "table", [name for name in _tables_with_a_marker() if name not in W.REMOVABLE_TABLES]
 )
 def test_asking_for_a_removal_in_any_other_table_is_itself_refused(table):
     """The set is a ceiling a caller cannot raise by asking."""

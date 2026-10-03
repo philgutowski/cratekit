@@ -85,6 +85,10 @@ LEFT_EMPTY: tuple[str, ...] = tuple(sorted(rb_writer.CONTENT_ROW_EMPTY_COLUMNS))
 #: The session workflow a native landing is recorded under, the intake's own.
 WORKFLOW = ingest.INTAKE_WORKFLOW
 
+#: The session record field naming the batch playlist a landing wrote, its
+#: identifier and its name. Read by ``inbox rotate`` for the landing date.
+BATCH_PLAYLIST_KEY = "batch_playlist"
+
 _ORIGIN = ("intake.native",)
 
 
@@ -589,10 +593,14 @@ def apply_rows(
         except BaseException:
             trees._rollback_quietly(db)
             if witness.landed:
-                _record_landing_commit(record, plan, len(added_ids), memberships, cfg)
+                _record_landing_commit(
+                    record, plan, len(added_ids), memberships, cfg, playlist_id=playlist_id
+                )
             raise
 
-        _record_landing_commit(record, plan, len(added_ids), memberships, cfg)
+        _record_landing_commit(
+            record, plan, len(added_ids), memberships, cfg, playlist_id=playlist_id
+        )
         convergence.record_fingerprint(cfg, db)
 
         landed = []
@@ -621,7 +629,13 @@ def apply_rows(
 
 
 def _record_landing_commit(
-    record: session.SessionRecord, plan: NativePlan, rows: int, memberships: int, cfg: config.Config
+    record: session.SessionRecord,
+    plan: NativePlan,
+    rows: int,
+    memberships: int,
+    cfg: config.Config,
+    *,
+    playlist_id: str,
 ) -> None:
     """Record the commit on the session, once anything landed.
 
@@ -633,6 +647,12 @@ def _record_landing_commit(
     """
     if rows <= 0 and memberships <= 0:
         return
+    # THE BATCH PLAYLIST IS NAMED ON THE RECORD (U111), by identifier as well
+    # as by name, so ``inbox rotate`` ages a batch from the day it landed
+    # rather than from whatever the playlist row says. Written with the commit,
+    # by the call that persists it.
+    if playlist_id:
+        record.detail[BATCH_PLAYLIST_KEY] = {"id": playlist_id, "name": plan.playlist}
     changes = []
     if memberships > 0:
         changes.append(session.TreeChange(tree=plan.tree_id, created=memberships))
@@ -669,6 +689,7 @@ def assert_rows_gridless(landed: NativeLanded) -> None:
 
 __all__ = [
     "ADD",
+    "BATCH_PLAYLIST_KEY",
     "LEFT_EMPTY",
     "PRESENT",
     "UNSUPPORTED",
