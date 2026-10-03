@@ -5990,7 +5990,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # under, already-unmarked, renamed-since-mark and marked-again are three
     # REASONS a playlist the pass marked is left out of its plan, and
     # sync-unmark-no-mark and sync-unmark-changed-since-plan are WARNING codes.
-    assert (len(literals), len(literals - set(causes))) == (593, 405), (
+    # Re-pinned on the residual finding "`export playlist` reports ok over a
+    # playlist it wrote half of", 2026-10-02: 593 to 594 distinct, non-keys
+    # 405 to 406. ONE joined and nothing left, absent from `main`'s own `src`
+    # by git grep and not a key: export-tracks-unmatched is the WARNING code a
+    # finished export carries when the provider could not match a track.
+    assert (len(literals), len(literals - set(causes))) == (594, 406), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
