@@ -342,12 +342,7 @@ def paginate(
         page = list(page or [])
         pages += 1
         for item in page:
-            if key is not None:
-                identity = key(item)
-                if identity in seen:
-                    continue
-                seen.add(identity)
-            items.append(item)
+            _take(items, seen, item, key)
 
         if stop is StopRule.SHORT_PAGE and len(page) < page_size:
             break
@@ -368,6 +363,22 @@ def paginate(
     return items
 
 
+def _take(items: list[Any], seen: set[Any], item: Any, key: Callable[[Any], Any] | None) -> None:
+    """Append ``item`` unless ``key`` says it was already taken. Both walks."""
+    if key is not None:
+        identity = key(item)
+        if identity in seen:
+            return
+        seen.add(identity)
+    items.append(item)
+
+
+def _declared(response: Any) -> int | None:
+    """The ``totalNumberOfItems`` a raw response declares, or ``None``."""
+    value = response.get("totalNumberOfItems") if isinstance(response, dict) else None
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
 def paginate_cursor(
     fetch_page: Callable[[int, str | None], Any],
     *,
@@ -384,9 +395,21 @@ def paginate_cursor(
     ``fetch_page(limit, cursor)`` returns the provider's RAW response, a mapping
     carrying ``items``, ``totalNumberOfItems`` and ``cursor``. The first request
     sends no cursor, and every later one sends the cursor the previous response
-    carried. ``parse`` turns one raw item into the object the caller gets back,
-    and runs outside the retry ladder, so a malformed item raises once rather
-    than being slept on as though waiting could change it.
+    carried. ``parse`` turns one raw item into the object the caller gets back.
+
+    **``parse`` is retried on the same ladder, one item at a time**, because it
+    can be a request of its own: the client's playlist parser fetches a playlist
+    the account created to rebuild it as the account's own (R-878's review). It
+    sat inside the page fetch before this walk existed, so a rate limit on it
+    was retried, and a walk that stopped retrying it would turn one blip into a
+    refused verb. Retried per item rather than with the page, so a blip on the
+    thirtieth playlist does not fetch the other twenty nine again.
+
+    **A response that is not a page is refused, not read as the end.** One with
+    neither an ``items`` list nor a declared count is retried on the ladder and
+    then raised. Read as an empty last page it would have returned an empty
+    listing, and an empty folder listing is what makes a caller create a folder
+    the account already holds.
 
     **The walk stops on the exhausted cursor**, a response with no further
     cursor, or on a page with no items. Neither proves the listing is whole, so
@@ -424,27 +447,28 @@ def paginate_cursor(
                 f"indistinguishable from a complete one, which is the thing this "
                 f"module refuses to guess at"
             )
-        response = fetch_with_retry(
-            lambda limit, _offset, cursor=cursor: fetch_page(limit, cursor),
-            limit=page_size,
-            offset=0,
-            **retry,
-        )
+
+        def page_at(limit: int, _offset: int, cursor: str | None = cursor) -> dict:
+            response = fetch_page(limit, cursor)
+            if not isinstance(response, dict) or (
+                not isinstance(response.get("items"), list) and _declared(response) is None
+            ):
+                raise ValueError(
+                    f"{shape or 'listing'} was answered with neither a list of items "
+                    f"nor a count, which is not a page of the listing; reading it as "
+                    f"the end would return a listing that is not there"
+                )
+            return response
+
+        response = fetch_with_retry(page_at, limit=page_size, offset=0, **retry)
         pages += 1
-        response = response if isinstance(response, dict) else {}
         page = list(response.get("items") or [])
         for raw in page:
-            item = parse(raw)
-            if key is not None:
-                identity = key(item)
-                if identity in seen:
-                    continue
-                seen.add(identity)
-            items.append(item)
+            item = fetch_with_retry(lambda _l, _o, raw=raw: parse(raw), limit=0, offset=0, **retry)
+            _take(items, seen, item, key)
 
-        declared = response.get("totalNumberOfItems")
-        if isinstance(declared, int) and not isinstance(declared, bool):
-            total = declared
+        if _declared(response) is not None:
+            total = _declared(response)
         following = response.get("cursor")
         if not page or not following:
             break
@@ -594,7 +618,15 @@ def _folder_endpoint(
         }
         if cursor is not None:
             params["cursor"] = cursor
-        return request.request("GET", FOLDER_ENDPOINT, base_url=base_url, params=params).json()
+        try:
+            answer = request.request("GET", FOLDER_ENDPOINT, base_url=base_url, params=params)
+        except TypeError as exc:
+            raise ListingNotPaginated(
+                f"{type(request).__name__}.request does not accept the arguments the "
+                f"folder listing sends; the provider client changed shape and the "
+                f"folder listing needs updating with it"
+            ) from exc
+        return answer.json()
 
     return call
 

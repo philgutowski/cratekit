@@ -1166,3 +1166,84 @@ def test_paginate_cursor_refuses_a_shape_that_walks_by_offset():
             parse=lambda raw: raw,
             **listing._shape("account_playlists"),
         )
+
+
+def test_a_parse_that_fails_transiently_is_retried_alone_without_refetching_the_page():
+    """R-878 review: the playlist parser can be a request of its own.
+
+    ``Playlist.parse_factory`` fetches a playlist the account created, so a rate
+    limit can land on it. It sat inside the page fetch before the cursor walk,
+    and was retried there; it must still be retried, and only itself.
+    """
+    pages = iter([{"items": [_raw_folder(n) for n in range(3)], "totalNumberOfItems": 3}])
+    fetched: list[str | None] = []
+    parsed: list[str] = []
+
+    def fetch(limit: int, cursor: str | None) -> dict:
+        fetched.append(cursor)
+        return next(pages)
+
+    def parse(raw: dict) -> str:
+        parsed.append(raw["data"]["id"])
+        if parsed == ["f0", "f1"]:
+            raise TimeoutError("the playlist read was rate limited")
+        return raw["data"]["id"]
+
+    slept: list[float] = []
+    got = listing.paginate_cursor(
+        fetch, parse=parse, sleep=slept.append, **listing._shape("folder_playlists")
+    )
+    assert got == ["f0", "f1", "f2"]
+    assert parsed == ["f0", "f1", "f1", "f2"]
+    assert fetched == [None]
+    assert slept == [1.0]
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [{"error": "upstream"}, {"items": None}, ["not", "a", "page"], None],
+    ids=["no-items-no-count", "items-null", "a-list", "nothing"],
+)
+def test_a_response_that_is_not_a_page_is_refused_not_read_as_an_empty_listing(answer):
+    """R-878 review: an empty folder listing is what makes a caller create a folder.
+
+    Read as an empty last page, any of these returned no folders at all, and the
+    label playlists verb would have planned a second folder for every label.
+    """
+    calls: list[str | None] = []
+    slept: list[float] = []
+
+    def fetch(limit: int, cursor: str | None):
+        calls.append(cursor)
+        return answer
+
+    with pytest.raises(ValueError, match="neither a list of items nor a count"):
+        listing.paginate_cursor(
+            fetch, parse=lambda raw: raw, sleep=slept.append,
+            **listing._shape("account_folders"),
+        )
+    assert len(calls) == listing.DEFAULT_MAX_RETRIES + 1
+    assert len(slept) == listing.DEFAULT_MAX_RETRIES
+
+
+def test_a_response_with_a_count_and_no_items_is_an_empty_listing():
+    """The other half: a folder the provider declares empty is empty."""
+    got = listing.paginate_cursor(
+        lambda limit, cursor: {"totalNumberOfItems": 0},
+        parse=lambda raw: raw,
+        **listing._shape("folder_playlists"),
+    )
+    assert got == []
+
+
+def test_a_client_whose_request_rejects_the_arguments_refuses_by_name_unslept():
+    """R-878 review: the translation ``_paged_caller`` made, kept for the raw call."""
+
+    class Older:
+        def request(self, method: str, path: str, params: dict | None = None):
+            pytest.fail("a request that cannot carry its base url was sent")
+
+    session = _client_over(CursorEndpoint([], page=10))
+    session.request = Older()
+    with pytest.raises(listing.ListingNotPaginated, match="changed shape"):
+        listing.account_folders(session, sleep=lambda _: pytest.fail("slept"))
