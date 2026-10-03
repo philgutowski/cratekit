@@ -4,6 +4,19 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**Sitting 30 closed, 2026-10-03 evening. Every unit on the board is built**;
+`board.py next` names only #29, which is attended, and the open issues are #29,
+#178 and #39, none a session's. Built and proven in the run: R-788, R-840,
+R-834, R-838, R-850, R-856, R-835 (a private Mango Alley folder of 15 year
+playlists on the account), R-837 (a private set playlist), R-878 with R-887
+fixed in the sitting, R-879, R-888; U107 to U113 built, U107's review done by
+#251 after Relay landed it unreviewed (R-857). **Owed, the author's:** the
+`[intake_old]` section in the active taxonomy, then a rotation rehearsed and
+applied (R-902, R-903); the first `crate label sync` and its go; `crate
+organize` read as a report, then each area at its gate; the DJ_tools docs
+commit #252's task left unpushed; `crate delete review` over the 36. Main's
+highest residual number is R-914.
+
 **Sitting 30, the last gap, 2026-10-03 morning.** R-887 fixed in the sitting:
 R-878's cursor walk compared kept folders with a count of every kind, so it
 refused every real account; it now counts every raw item and keeps one kind.
