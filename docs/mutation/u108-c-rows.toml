@@ -1,0 +1,88 @@
+name = "u108-c"
+pass_kind = "light"
+
+# The second and third of three batches of u108-a-rows, split to fit the
+# foreground ceiling. The ranking and the dropped rows are in batch a.
+
+[[rows]]
+id = "G18_settle_matches_identity"
+description = "sync_cli.settle_in: an answer is settled by its place alone, without checking it is the answer the summary covered"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+old = '''        if (
+            _text(entry.get("label_id")) != label_id
+            or _text(entry.get("answered_at")) != answered_at
+        ):
+            continue'''
+new = '''        if False:
+            continue'''
+
+[[rows]]
+id = "G19_settle_keeps"
+description = "sync_cli.settle_in: an answer holding a release named in keep is settled anyway"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+old = '''        if isinstance(taken, list) and any(one in keep for one in taken):
+            continue'''
+new = '''        if False:
+            continue'''
+
+[[rows]]
+id = "G20_settle_skips_settled"
+description = "sync_cli.settle_in: an answer already settled is settled again, its first marker overwritten"
+file = "src/cratekit/label/sync_cli.py"
+surface = "maintainer"
+old = '''        if not isinstance(entry, Mapping) or entry.get(SETTLED):
+            continue
+        if ('''
+new = '''        if not isinstance(entry, Mapping):
+            continue
+        if ('''
+
+[[rows]]
+id = "G21_listing_skips_already"
+description = "approved_cli.list_releases: a track another job already holds is listed again"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+old = '''            elif str(settled.wanted.ref or "").strip() in already:'''
+new = '''            elif False:'''
+
+[[rows]]
+id = "G22_listing_excuse_applies"
+description = "approved_cli.list_releases: an excused failure kind still refuses an empty listing"
+file = "src/cratekit/label/approved_cli.py"
+surface = "user"
+old = '''    unexcused = [one for one in failures if one.kind not in excuse]'''
+new = '''    unexcused = list(failures)'''
+
+[[rows]]
+id = "G23_job_carries_origin"
+description = "go.go: the download job is queued without the go's marker, so no later go knows it holds those tracks"
+file = "src/cratekit/label/go.py"
+surface = "user"
+old = '''                        extra={
+                            ORIGIN_KEY: {"run": run_id, "manifest": str(written.manifest_path)},
+                            RUN_KEY: run_id,
+                        },'''
+new = '''                        extra={
+                            RUN_KEY: run_id,
+                        },'''
+
+[[rows]]
+id = "G24_walk_ends_at_gate"
+description = "sync_cli._walk: a walk that answered every label ends without asking the gate"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+old = '''    if stopped_at is None:
+        # EVERY LABEL WITH SOMETHING NEW IS ANSWERED'''
+new = '''    if False:
+        # EVERY LABEL WITH SOMETHING NEW IS ANSWERED'''
+
+[[rows]]
+id = "G25_drive_maps_ending"
+description = "acquire_cli.drive_queued: a parked or half failed job is returned as if it ended clean"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+old = '''    jobs.raise_for_state(job)
+    return job, warnings'''
+new = '''    return job, warnings'''
