@@ -37,6 +37,7 @@ Layer: modules.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -98,35 +99,127 @@ def local_write_warning() -> tuple[dict[str, str], ...]:
     return (dict(LOCAL_WRITE_WARNING),)
 
 
-def summary(cfg: config.Config, job_id: str) -> dict[str, list[str]]:
+#: What an unmatched favourite is said to be when the account gave no reason
+#: for it. The engine names such a row in ``unmatched`` and nowhere else, so
+#: without this sentence it reached no line a person reads (R-856).
+NO_MATCH = "the provider returned no track for it"
+
+#: The warning a finished sweep carries when any favourite went unhearted.
+UNMATCHED_WARNING = "favorites-hearts-unmatched"
+
+
+def summary(cfg: config.Config, job_id: str) -> dict[str, Any]:
     """What this sweep's committed artifacts say it wrote.
 
     THE ``already`` SET IS THE ONE WORTH REPORTING, because it is the difference
     between a sweep that had nothing to do and a sweep that did nothing. Both
     show every item done, and only one of them means the account changed.
+
+    COUNTED, AND EVERY UNMATCHED FAVOURITE LISTED (R-856). The lists alone were
+    in the envelope and nowhere a person reads, because the default renderer
+    prints an outbound summary only when it carries ``counts``, so a sweep that
+    hearted nothing it could not match answered ``ok`` and ``N of N settled``.
+    The count keys are this verb's own, ``hearted`` and ``already_hearted``,
+    because the export's ``written`` and ``already`` are printed in words about
+    a playlist. ``unmatched_tracks`` is the export's shape, one row per
+    favourite with its identity, artist, title and reason, a row the account
+    said nothing about included, which ``reasons`` omits. Read per committed
+    item, so a resumed sweep is counted across both runs and nothing twice.
     """
     hearted: list[str] = []
     already: list[str] = []
     unmatched: list[str] = []
     reasons: list[str] = []
+    left_out: list[dict[str, str]] = []
     for report in artifacts.committed(cfg, job_id):
         hearted.extend(str(item) for item in report.get("hearted") or ())
         already.extend(str(item) for item in report.get("already") or ())
         unmatched.extend(str(item) for item in report.get("unmatched") or ())
         # One sentence per favourite the account would not choose a release for
         # (R-356). A report written before that key existed carries none.
+        said = [one for one in report.get("reasons") or () if isinstance(one, dict)]
         reasons.extend(
             f"{one.get('artist') or ''} - {one.get('title') or ''} "
             f"(row {one.get('row') or ''}): {one.get('reason') or ''}"
-            for one in report.get("reasons") or ()
-            if isinstance(one, dict)
+            for one in said
         )
+        left_out.extend(_left_out(report, said))
     return {
         "hearted": hearted,
         "already": already,
         "unmatched": unmatched,
         "reasons": reasons,
+        "counts": {
+            "hearted": len(hearted),
+            "already_hearted": len(already),
+            "unmatched": len(unmatched),
+        },
+        "unmatched_tracks": left_out,
     }
+
+
+def _left_out(report: dict, said: list[dict]) -> list[dict[str, str]]:
+    """Each favourite one item report left unhearted, named as the answer lists it.
+
+    OFF THE REPORT'S ``unmatched`` LIST, which names every such row, and not off
+    ``reasons``, which names only a row the account said something about. The
+    names come from ``unmatched_tracks``, which every item report carries since
+    R-856, then from ``reasons`` for a report written before that, and a row
+    neither names is listed by its identity alone rather than left out.
+    """
+    named: dict[str, dict] = {}
+    for one in (*said, *(report.get("unmatched_tracks") or ())):
+        if isinstance(one, dict):
+            named[str(one.get("row") or "")] = one
+    rows = []
+    for item in report.get("unmatched") or ():
+        identity = str(item)
+        one = named.get(identity, {})
+        rows.append(
+            {
+                "identity": identity,
+                "artist": str(one.get("artist") or ""),
+                "title": str(one.get("title") or ""),
+                "reason": str(one.get("reason") or "") or NO_MATCH,
+            }
+        )
+    return rows
+
+
+def concluded(outbound: Mapping[str, Any]) -> tuple[dict[str, str], ...]:
+    """The warning a finished sweep carries when it left favourites unhearted.
+
+    THE OUTCOME STAYS ``ok``, for the reason ``export.cli.concluded`` gives:
+    the outcome vocabulary has no partial word, and this is the line a script
+    reading only the outcome and the warnings can key on. It follows the
+    standing warning, which ``shell.resume`` puts first.
+    """
+    counts = outbound.get("counts")
+    if not isinstance(counts, Mapping):
+        return ()
+    missed = counts.get("unmatched")
+    if not _whole(missed) or missed <= 0:
+        return ()
+    total = sum(n for n in counts.values() if _whole(n))
+    # "WERE NOT HEARTED", NOT "ARE NOT HEARTED". A favourite counted as already
+    # hearted may be counted so off the ledger rather than the account, the
+    # export's R-855 shape, so only what the provider could not match is this
+    # warning's to state.
+    return (
+        {
+            "code": UNMATCHED_WARNING,
+            "message": (
+                f"{missed} of the {total} favourite(s) in this sweep were not "
+                f"hearted on the streaming service, because the provider could "
+                f"not match them; each is listed with its reason in this answer"
+            ),
+        },
+    )
+
+
+def _whole(value: Any) -> bool:
+    """A count, which a bool is not, though Python calls it an int."""
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def build_sync(parser, entry) -> None:
@@ -249,6 +342,7 @@ def sync_favorites(ctx) -> Envelope:
             # queue time would put the correction on the invocation that wrote
             # nothing at all.
             standing=local_write_warning(),
+            concluded=concluded,
         )
 
     exported, resolved = resolve_sweep(
@@ -393,6 +487,16 @@ def run_heart_item(
         )
     report = hearts.heart_back(cfg, remote, candidates, colors=None)
     named = {item.row_id: item for item in candidates}
+    said = dict(report.reasons)
+
+    def row_named(row: str, reason: str) -> dict[str, str]:
+        return {
+            "row": row,
+            "title": named[row].release_title if row in named else "",
+            "artist": named[row].artist if row in named else "",
+            "reason": reason,
+        }
+
     return {
         "row": row_id,
         "hearted": list(report.hearted),
@@ -402,15 +506,11 @@ def run_heart_item(
         # identifier and a person reading why a favourite was not hearted needs
         # to know which favourite. The title is the release title, head off,
         # which is the only one a heart candidate carries.
-        "reasons": [
-            {
-                "row": row,
-                "title": named[row].release_title if row in named else "",
-                "artist": named[row].artist if row in named else "",
-                "reason": reason,
-            }
-            for row, reason in report.reasons
-        ],
+        "reasons": [row_named(row, reason) for row, reason in report.reasons],
+        # EVERY UNMATCHED ROW NAMED, the account's reason or none (R-856).
+        # ``reasons`` carries only a row the account said something about, so
+        # a favourite the provider has never heard of had no name on disk.
+        "unmatched_tracks": [row_named(row, said.get(row, "")) for row in report.unmatched],
     }
 
 
@@ -434,8 +534,11 @@ def handle(job, item, cfg) -> jobs.Produced:
 __all__ = [
     "BACKLOG",
     "LOCAL_WRITE_WARNING",
+    "NO_MATCH",
     "PLACEHOLDER_NAME",
+    "UNMATCHED_WARNING",
     "build_sync",
+    "concluded",
     "confirm_digest",
     "handle",
     "local_write_warning",
