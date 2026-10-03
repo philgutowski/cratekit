@@ -33581,6 +33581,27 @@ unmatched track and reads it in the answer.
 **On the board bar, (b).** The product prints a clean report over a declared
 write it did not perform for half the playlist.
 
+**Built 2026-10-02 on `relay/249`, and still open on the live read.** The
+export job's summary, read off every committed item artifact, now carries
+`counts`, the tracks written, already there or written before, and unmatched,
+and `unmatched_tracks`, one row per unmatched track with its identity,
+artist, title and reason. A row the account said nothing about is listed too,
+with the sentence `the provider returned no track for it` in place of the
+engine's slug. The default renderer prints both for any `job_state` payload
+whose outbound summary counts, `tracks: 2 written, 0 already there or written
+before, 1 unmatched` and an `unmatched: ARTIST - TITLE: REASON` line each,
+and nothing for a queued job. A finished export that left any track out
+carries the warning `export-tracks-unmatched`. **The outcome stays `ok`, on
+purpose.** `ok` with a warning is what the other job verbs answer for a
+partial result, `sync` with `sync-source-not-queued` and the intake jobs with
+a `missing` count. The outcome vocabulary has no partial word, every outcome
+but `ok` and `no_op` must carry a cause and a non zero exit, which would read
+a job that finished every item as failed, and `pending` needs a human action
+with a verify verb, which nothing here has. Counted per committed artifact,
+so a resumed export counts across both runs and an item once. Nothing written
+to the account changed. Closes once a live export at an attended sitting is
+read and names the tracks the account lacks, recorded in `docs/cutover.md`.
+
 ---
 
 ## R-851. `sync unmark` takes the prefix off and the next `sync all` still does not offer the playlist
@@ -33679,3 +33700,62 @@ wording has one home.
 
 **Not on the board bar.** Maintainer facing.
 
+---
+
+## R-855. A track removed from the remote playlist by hand is counted as already there and never written again
+
+**Found:** 2026-10-02, the built in review of R-850's branch.
+
+**The mechanism.** `export.apply` files a matched track under `already` when
+the live playlist holds it OR when the ledger records writing it under this
+crate, `reserved.added`. A track a person took off the remote playlist by
+hand is still in the ledger, so a second export skips it and counts it as
+already there. A track written by an attempt whose artifact was never
+committed is counted the same way on the retry, which is true of the account
+and not of who wrote it.
+
+**Driven.** Not driven. Read from `export.apply`.
+
+**Measured cost.** A re-export after a hand removal leaves that track off the
+playlist and says it is there. R-850's answer words the count as `already
+there or written before` and its warning says only that the unmatched
+tracks were not written, so neither says the playlist holds a track it may
+not.
+
+**Closes when:** the author decides whether a hand removal is a choice the
+export keeps or drift it repairs. Kept: the count splits into on the
+playlist and written before. Repaired: `apply` reads the live playlist alone
+for `already` and adds what the ledger holds and the account lacks.
+
+**Not on the board bar.** The behaviour predates R-850 and which of the two
+is wanted is the author's decision.
+
+---
+
+## R-856. `sync favorites` reports ok over hearts it could not match, and never names them
+
+**Found:** 2026-10-02, the built in review of R-850's branch.
+
+**The mechanism.** The favourites sweep shares `shell.resume` with the
+export, and its summary carries `hearted`, `already`, `unmatched` and
+`reasons` lists and no counts. The default renderer prints an outbound
+summary only when it carries `counts`, so a sweep answers `ok`, `N of N
+settled` and its standing warning, with nothing about the favourites it
+could not heart. `reasons` names only a row the account said something
+about, so a row it has never heard of is named nowhere a person reads.
+
+**Driven.** By `tests/test_render_payloads.py`: the favourites shaped
+summary renders no track line.
+
+**Measured cost.** A person syncing favourites is told the sweep went over
+and finds hearts missing on the account with no list of what to look for,
+the same cost R-850 measured on the export.
+
+**Closes when:** the sweep's summary counts what it hearted, what was already
+hearted and what it could not match, lists each unmatched favourite with its
+artist, title and reason, carries a warning when any is unmatched, and a test
+reads them in the default answer. `export/cli.py`'s `summary` and `concluded`
+are the shape.
+
+**On the board bar, (b).** The product prints a clean report over a declared
+write it did not perform.
