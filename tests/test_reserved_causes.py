@@ -6062,7 +6062,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # gives a row written before and since taken off the playlist. And
     # export-set-tracks-refused, export-archive-nothing-built and
     # export-archive-changed-since-plan are WARNING codes.
-    assert (len(literals), len(literals - set(causes))) == (621, 428), (
+    # Re-pinned on the residual finding "A typed tracklist row the provider
+    # search answers with one exact track is never matched, because every
+    # search fills its page", 2026-10-03: 621 to 622 distinct, non-keys 428 to
+    # 429. ONE joined and nothing left, absent from `main`'s own `src` by git
+    # grep. library-isrc is the HOW a set row is matched by when its ISRC came
+    # off the library's own file.
+    assert (len(literals), len(literals - set(causes))) == (622, 429), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
