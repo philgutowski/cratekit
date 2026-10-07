@@ -1102,6 +1102,8 @@ empty.
 **Closes when:** both branches are on `main` and the six items above are
 resolved.
 
+**Closed 2026-10-07, ledger triage.** Both branches are on main (U36 merge c114afa, U32 merge 184fc81), and the 184fc81 merge message records the parked merge obligations as discharged.
+
 ---
 
 ## R-17. Two convergence flags that are set correctly and never cleared
@@ -1537,6 +1539,8 @@ back, so the premise is false while the derivation it justifies is still exactly
 right: the exemption is now LIVE rather than inert. Nothing behaves differently,
 because that function subtracts the tree kind by name from whatever the set holds.
 The reverse direction is already correct in `reconcile.assert_converged`.
+
+**Closed 2026-10-07, ledger triage.** The merge it was written for happened: U32 merged at 184fc81 onto U36's c114afa, and that merge message says "The two merge obligations R-21 parked here are both discharged".
 
 ---
 
@@ -3755,6 +3759,8 @@ it.
 
 **Closes when:** nothing has to close it. Item 2 of the residual
 "Five accepted findings from the U38 reviews" closes the live instance.
+
+**Closed 2026-10-07, ledger triage.** Its only live instance is R-56 item 2, which U48 closed (core/session.py:1281 forwards Remedy(str(exc.remedy))), and the entry itself says nothing else has to close it.
 
 ---
 
@@ -6177,6 +6183,8 @@ the whole loop, passing its own open guard down. That is registered in
 `tests/_pending.py` against `cratekit.adopt.apply_cli`, so the obligation is
 tracked by the file the board audit reads rather than by this paragraph.
 
+**Closed 2026-10-07, ledger triage.** src/cratekit/adopt/apply_cli.py now opens one session around the whole apply loop (module docstring lines 1 to 38), and tests/_pending.py:202 records the apply_cli obligation deleted because U27 landed it.
+
 ---
 
 ## R-82. Conformance 3 cannot pass a verb with an explicit gate, and the reason is not the database
@@ -6223,6 +6231,8 @@ correcting conformance 3 now, so this may be spent before U27 reaches it.
 **This entry needs its own issue.** `main` already defines R-14 and R-15, U27 is
 renumbering its own to R-16, U16 is adding R-17 and U32 is adding R-19, so R-81
 and R-82 are the next free numbers as of this merge.
+
+**Closed 2026-10-07, ledger triage.** Conformance 3 now answers each explicit gate by a separate `run decide` with an actor (tests/test_cli_contract.py, about lines 2227 to 2251), and the R-13 wall it described is closed on relay/151 (U106).
 
 ---
 
@@ -6790,6 +6800,8 @@ for all forty call sites at once and the guard test above must be deleted rather
 than adjusted. **Expires if U27 ships without it:** the remedy is then naming a
 verb nobody is building, and the correct move is a new slug rendered as the
 ledger's own path.
+
+**Closed 2026-10-07, ledger triage.** The doctor verb has landed: cli/registry.py's Entry(name="doctor", module="cratekit.cli.doctor") carries no planned_in, so the `crate doctor` remedy is now true.
 
 ---
 
@@ -7498,6 +7510,8 @@ to catch a shape nobody has written yet, is a fix aimed at the wrong machine.
 **Closes when:** U25 says what its items are. If they are paths and identifiers,
 this is unreachable and the entry closes as not applicable. If any pass wants to
 map over objects, the check goes in at that call site where the cost is known.
+
+**Closed 2026-10-07, ledger triage.** The closing condition is met as not applicable: the only map_workers callers map paths (analysis/light.py:66, list[str]) and plain picklable dicts (analysis/vocals.py:346).
 
 ---
 
@@ -8683,6 +8697,8 @@ temporary directory. What is unchanged is the sentence this entry exists for:
 none of it has run on a live tree, and the closing condition above is still the
 whole of what is left.
 
+**Closed 2026-10-07, ledger triage.** The attended half was performed: genre_energy was cut over LIVE and rekordbox opened "with no warning" (cutover.md Sitting 15), then new tracks were placed into the native tree by adopt apply with no playlist import into it (Sittings 16, 21 and 24).
+
 ---
 
 ## R-132. U37 lands the emitter and the pipeline; it does not drive a live set
@@ -8734,6 +8750,8 @@ two intake verbs no longer reconcile forever. What stays open is exactly this
 entry's attended half: no live key has been bound and no paid call has been
 made, so the response table has met no real answer (R-300) and the closing
 condition above, one real set through to an importable file, is untouched.
+
+**Closed 2026-10-07, ledger triage.** A real set (identified live with ACRCloud, split by hand under R-706) and a real typed tracklist were acquired (cutover.md Sitting 11), landed through intake land into an intake file, imported into rekordbox and proven imported with no tempo data (Sitting 16).
 
 ---
 
@@ -9187,6 +9205,8 @@ about their playlist to a true statement about the build. That is the smaller
 half of this entry and it is the honest version of it, but it is not the half the
 closing condition is for.
 
+**Closed 2026-10-07, ledger triage.** The verb now lists the playlist through listing.playlist_tracks (label/cli.py, U52), U62 shipped label/tidal_catalogue.py, which closes R-258's agent half, and a live harvest found four labels (cutover.md Sitting 4, 2026-09-17).
+
 ---
 
 ## R-140. LabelSource.process treats offer as an acquisition
@@ -9434,6 +9454,9 @@ did not move would be the half nobody looks at.
 shipped one as its fallback, every consumer asks it, and a library whose
 active copy declares a differently named tree is driven end to end
 through routing, a report, and doctor.
+
+**Closed 2026-10-07, ledger triage.** Superseded by R-685 (closed 2026-09-24 on relay/198): core/active_taxonomy.load is the one loader, cli/reports.py lines 186, 300 and 427 use it, and no src consumer calls taxonomy.default_taxonomy() any longer.
+
 
 ## R-146. A playlist may reference a track the collection does not carry, and nothing checks it
 
@@ -10578,6 +10601,9 @@ it and is the current number.
 **Closes when:** a mutation table names the commit it was measured at in its own
 header, so the two cannot be confused.
 
+**Closed 2026-10-07, ledger triage.** scripts/mutate.py now stamps every table header with the commit it measured (head_sha at line 567, used at 1223), e.g. docs/mutation u112 header "branch relay/260 at efd71c5".
+
+
 ## R-180. The measurements that decided this unit cannot be re-derived
 
 **Found by** the U41 independent adversarial pass, 2026-08-25.
@@ -10625,6 +10651,9 @@ unit's, and there is no user facing cost to name.
 
 **Closes when:** `plan_genre_retag` resolves each distinct genre name once, or
 somebody measures a sweep large enough for the difference to be visible.
+
+**Closed 2026-10-07, ledger triage.** write/metadata.plan_genre_retag now memoizes each wanted genre in a `resolved` dict, so resolve_genre_id runs once per name (commit 1f6b634).
+
 
 ## R-182. A review item is addressed by the file's absolute path
 
@@ -12571,6 +12600,9 @@ answer. The prune warning is a fact about how the transfer went, which only the
 claimed item knows, and there is nowhere for it to go: `jobs.Produced` carries
 two paths and `job_items.artifact` is a single `TEXT` column.
 
+**Closed 2026-10-07, ledger triage.** Its remaining half was handed to R-349, closed 2026-09-21 on relay/102 (cdb3d2b): outcome_payload carries each portion's rotation warnings and rides `progress.outcomes` (core/backup_facts.OUTCOMES_FIELD) on the resume envelope and job show.
+
+
 ## R-222. A retried portion takes the last rotation slot, and the default keeps one
 
 **Found:** during U50, 2026-09-02, while binding the backup worker.
@@ -12791,6 +12823,8 @@ export through the real workers to done with the ledger recording every write.
 carry none, which is R-355: a live sweep today matches nothing.** The live half
 stays open with R-144, recorded in `docs/cutover.md`. `outbound-account-unbound`
 survives only for a build whose adapter does not import.
+
+**Closed 2026-10-07, ledger triage.** The live half (R-144's condition) was met at docs/cutover.md Sitting 4, 2026-09-17: playlist export and favourites sweep each run twice against the live account, R-144 closed.
 
 ---
 
@@ -13060,6 +13094,8 @@ declarations back.
 
 **Closes when:** the local colour write lands and the declaration is true again,
 or the entry is narrowed with the destructive question answered.
+
+**Closed 2026-10-07, ledger triage.** sync.favorites now declares writes={"remote"} only (commit 5a0ec26, R-424 closed on relay/111), and the leftover destructive question is carried by R-536.
 
 ---
 
@@ -13982,6 +14018,8 @@ open**: one real label sweep and one real playlist harvest are the next attended
 sitting's, recorded in `docs/cutover.md`. `label-catalogue-unbound` survives only
 for a build whose adapter does not import.
 
+**Closed 2026-10-07, ledger triage.** The live half was met at docs/cutover.md Sitting 4, 2026-09-17: a live label sweep (47 queued, 15 swept) and a live playlist harvest against the provider.
+
 ---
 
 ## R-259. The labels path applies no ownership filtering at all
@@ -14363,6 +14401,8 @@ would have to fake the credential too. That is a change to the substitution
 contract three docstrings state, and R-258 already records the closing shape.
 
 **Closes when:** one value answers both, on both seams.
+
+**Closed 2026-10-07, ledger triage.** label/catalogue.bound and resolve, and modules/outbound/account.bound, now both answer from the same importlib import of ADAPTER_MODULE instead of two constants (U62 and U63).
 
 ---
 
@@ -15823,6 +15863,8 @@ trees, and the registry cannot hold a native record for a tree the taxonomy does
 not declare. One candidate was driven, the shipped template, and it produces one.
 
 **Closes when:** the plan's totals name the trees the apply would write into.
+
+**Closed 2026-10-07, ledger triage.** write/routing_cli._inbox_facts now puts `"trees": list(plan.native)` in the gate's totals (commit 583291a, R-691).
 
 ---
 
@@ -17486,6 +17528,8 @@ can only mark fewer playlists. A pass still reports `"mark": "unbound"`, which
 is R-481. **What is still open is the first live rename, which is attended and
 Phillip's**: no rename has been made on a real account by this product.
 
+**Closed 2026-10-07, ledger triage.** The only open item, "the first live rename", was performed: `docs/cutover.md` sitting 23 (line 729) "four account playlists renamed with the DOWNLOADED prefix" via `crate sync mark`, and sitting 30 drove mark then unmark live (R-838); the leftovers are R-481 and R-482.
+
 ---
 
 ## R-359. A playlist is recorded as swept once its tracks are resolved, not once they are acquired
@@ -18378,6 +18422,8 @@ label catalogue, and that is this product's core job. Slower beats wrong.
 and wall clock are recorded next to the sitting of 2026-09-17, or the provider
 exposes a release count the walk can end on, which would remove the cost entirely.
 
+**Closed 2026-10-07, ledger triage.** Closing condition "a live label sweep runs under the new rule and its request count and wall clock are recorded" is met by `docs/cutover.md` sitting 26 (line 794): `sync labels` 30 labels, 16,796 provider calls, 15:59 to 20:41, no rate limit.
+
 ---
 
 ## R-385. Two listings are narrowed rather than closed, because their provider publishes no count
@@ -19051,6 +19097,8 @@ all`, which is R-402 and R-403, and from an identified set, R-401, whose
 tracks carry no provider id. The one real run, `intake playlist`, then `intake
 missing`, then `acquire download` on a small playlist, is owed to an attended
 sitting.
+
+**Closed 2026-10-07, ledger triage.** Closing condition "a verb in this product writes a document `acquire download` accepts" is met: `intake/missing_cli.py:396` and `label/approved_cli.py:821` call `listdoc.write`, and the entrance residuals R-401, R-402, R-403 and R-359 are all recorded closed.
 
 ---
 
@@ -20847,6 +20895,8 @@ attended, and it is the sitting the brief already owes.
 **Closes when:** one routed file is imported and the ratings are seen in
 rekordbox, or the check stops counting ratings if they are not.
 
+**Closed 2026-10-07, ledger triage.** The attended import was performed at `docs/cutover.md` sitting 10 (line 286, "All four ratings read 0"), filed as R-688, which is CLOSED (`relay/201`): `write/routing_cli._owed_ratings` now only counts owed ratings and the export writes none, so the check no longer counts ratings.
+
 ---
 
 ## R-442. The long track playlist only adds, so a track is never taken out of it
@@ -21159,6 +21209,8 @@ person to report a defect.
 
 **Closes when:** `intake missing` converts an `OSError` from the write into its
 own refusal, with a test, which R-451's shared tail would do for both.
+
+**Closed 2026-10-07, ledger triage.** Closing condition met: `intake/missing_cli.py` now has `except OSError` around `listdoc.write` refusing with "name another folder with --out, or make this one writable", commit 86d4e2d, pinned in `tests/test_intake_missing_search.py`.
 
 ---
 
@@ -21649,6 +21701,8 @@ leaves the file with the blank rendering art it had.
 **Closes when:** U84 decides what a repair does on that refusal, a downscale
 toward 800, a larger cap passed to both the encoder and the writer, or a named
 line in its report, and drives it on a large real cover.
+
+**Closed 2026-10-07, ledger triage.** Closing condition met by U84: `core/art._repaired` shrinks a picture that will not fit at native size into `ART_SIZE`, commit f5a2782, tested in `tests/test_tagging_engine.py`.
 
 ---
 
@@ -23238,6 +23292,8 @@ help. The refusal's prose is accurate.
 
 **Closes when:** doctor gains the grouped prefix check, or the token changes.
 
+**Closed 2026-10-07, ledger triage.** Doctor now reads the prefix map and groups unmapped rows by prefix (`cli/doctor.py` path survey check using `metadata_cli.majority_unmapped_cause` over `totals.prefixes`, commit 983291e, 2026-09-22), so `RUN_DOCTOR` on `deletion/candidates.assert_complete` now leads to a check that names the cause.
+
 ---
 
 ## R-528. A landing whose import is proven stays an open session until a tree cuts over
@@ -23292,6 +23348,8 @@ say. It is a one time population, the landings made on 2026-09-18 and
 **Closes when:** those files are removed at the cutover sitting, or the intake
 playlist node inside a file is matched to a run's tracks exactly and that is
 shown to identify one file.
+
+**Closed 2026-10-07, ledger triage.** Its one time population was paid at the attended cutover: sitting 15's LIVE `tree cutover genre_energy` passed all four prechecks, including `cutover-xml-pending` (`core/tree_registry._pending_xml_refusal`).
 
 ---
 
@@ -24076,6 +24134,8 @@ not think of one" is not a measurement.
 **Closes when:** the apply pass refuses, or reports as outstanding, a file whose
 re-render disagrees with the name the plan promised, or a driven producer shows
 the window is unreachable and this entry is closed as such.
+
+**Closed 2026-10-07, ledger triage.** `write/naming_cli.py` `name_apply` now re-renders and owes the item when `rendered.filename != item["to"]` ("not the ... the plan was approved with"), commit 746e19b, 2026-09-23.
 
 ---
 
@@ -24997,6 +25057,8 @@ store round trips differently from the way the walk spelled it.
 **Closes when:** an attended sitting runs one recursive pass over the real
 library and records what it measured, including the failures.
 
+**Closed 2026-10-07, ledger triage.** Attended recursive pass over the real library done: sitting 11 launched `analyze vocals --recursive` job `fbe8` over 9,929 tracks at about twenty a minute, and sitting 12 recorded it succeeded with 4,153 scored, 10 too large and 4 undecodable.
+
 ---
 
 ## R-591. `test_a_spent_acknowledgment_decision_cannot_be_replayed` fails intermittently under the parallel suite
@@ -25541,6 +25603,8 @@ exit code and remediation, which is a unit of its own.
 
 **Closes when:** a listing that failed has its own cause whose steps say check
 the remote.
+
+**Closed 2026-10-07, ledger triage.** Failed listings now raise their own `snapshot-listing-failed` (`modules/tools/backup.py` `share_is_held`, `snapshot_filenames`, `snapshot_identities`), whose `cli/exit_codes.py` steps say "check the backup remote is reachable", commit 37bb479, 2026-09-21.
 
 ---
 
@@ -29713,6 +29777,8 @@ with it.
 **Not on the board bar.** Nothing is written and nothing false is said. The
 list is short of a population the card excluded.
 
+**Closed 2026-10-07, ledger triage.** The 37 double filed tracks were moved live by `adopt move` at cutover sitting 20 ("the 37 of R-734 are in the sub their file names"), and `adopt/move.py` names this shape in its plan.
+
 ---
 
 ## R-735. The routing pass and the rebuild reach the add only membership writer with no competing sub check
@@ -30278,6 +30344,8 @@ owes.
 
 **Not on the board bar.** It closes only at an attended sitting.
 
+**Closed 2026-10-07, ledger triage.** Cutover sitting 18 landed an intake file over `crate export collection` (run `b7f7`) and sitting 19 imported it into rekordbox through desktop control ("works"), which is the closing condition.
+
 ---
 
 ## R-754. The refusals that ask for an export name rekordbox's menu as its only source
@@ -30605,6 +30673,8 @@ the move left.
 **Not on the board bar.** It closes only at an attended sitting, and that
 sitting is R-758's own verification.
 
+**Closed 2026-10-07, ledger triage.** Cutover sitting 21 read the moved subs in rekordbox's own view and records "R-761 closed" (docs/cutover.md:605).
+
 ---
 
 ## R-762. The additive find or create hands back a playlist rekordbox removed
@@ -30722,6 +30792,8 @@ holds two files of one name would then hold two.
 full run sends nothing beyond the product's own state files.
 
 **Not on the board bar.** Closes only at an attended sitting.
+
+**Closed 2026-10-07, ledger triage.** Cutover sitting 23 ran `crate backup run --full` live, 91,418 compared and 2 sent, recorded "live, R-766 closed" (docs/cutover.md:713).
 
 ---
 
@@ -31734,6 +31806,8 @@ test feeds an artist object to the payload writer.
 
 **Not on the board bar.** One row, visible as wrong.
 
+**Closed 2026-10-07, ledger triage.** `label/sweep.py:211` files `catalogue.artist_name(release)`, pinned by `tests/modules/test_labels.py::test_an_offered_release_records_the_artist_name_not_the_provider_object` with a stringifying artist object, and pre fix rows are repaired by `crate label artists` (R-840, commit 164bfc2).
+
 ---
 
 ## R-793. The R-790 mutation tables were measured with the driver's leak watch off
@@ -32733,6 +32807,9 @@ those are recorded in `docs/cutover.md`.
 
 **Not on the board bar.** It closes only at an attended sitting.
 
+**Closed 2026-10-07, ledger triage.** cutover sitting 28 `crate tag rows` was rehearsed on a copy and run live on an equal digest `3dbf848be3ab3619` with "every other column of every row read equal to live ... live read back equal to the copy", which is the real database read back the entry feared; only the plan and write times were not written down.
+
+
 ## R-821. METHOD tells a session to run the mutation driver as a background job and a Relay session may not, and one 25 row table in the foreground sits at the ceiling
 
 **Found:** on `relay/239`, 2026-10-01, running this unit's tables. METHOD's
@@ -32887,6 +32964,9 @@ runs a fake provider and a fake catalogue, in one process.
 provider call count.
 
 **Not on the board bar.** It closes at an attended sitting.
+
+**Closed 2026-10-07, ledger triage.** cutover sitting 27 records the attended R-815 run with its time and calls: three labels "406 items, 816 provider calls, 29 minutes", then the whole queue "03:46 to 06:23, 2,602 items, 4,693 provider calls", "R-815 closes".
+
 
 ## R-828. The general catalogue's Pop is written as `NonElectronic / Pop`, a word the session chose, and the shared resolver answers that word with the bucket's bare name
 
@@ -33044,6 +33124,8 @@ read the installation's queue or the library's files.
 counts and its time.
 
 **Not on the board bar.** It closes at an attended sitting.
+
+**Closed 2026-10-07, ledger triage.** cutover sitting 28 records the attended R-799 `tag remap` with its plan's counts, "78 files ... 62 agree, 16 written and read back", digest `ec826897c78a99c4`, and sitting 29 re-planned 78 agree; only the wall time was not written down, and its other bullets are R-817 and R-819's.
 
 ---
 
@@ -33457,6 +33539,8 @@ declared name, a live sub of the bucket's own folder. Or leave it until
 live plan.
 
 **Not on the board bar.** Visible on the gate, and it closes at a sitting.
+
+**Closed 2026-10-07, ledger triage.** Its closing condition is "`vocal.withheld` reads zero on the live plan", and cutover sitting 30's R-788 row records the live plan as "`vocal` add 33, present 912, no-bucket 196, withheld 0".
 
 ---
 
@@ -34523,6 +34607,8 @@ count read with the same filter it walks, or against none.
 **On the board bar.** Not filed. It closes only at an attended sitting, and
 R-878's own verification is that sitting.
 
+**Closed 2026-10-07, ledger triage.** Superseded by R-887, which drove exactly this question at sitting 30 (the declared 55 counts folders and playlists alike), fixed `paginate_cursor` in src/cratekit/acquire/listing.py with `keep` and a count of every raw item, and closed when the Sudbeat and Metronomo plans ran (cutover sitting 30, "R-878 and R-887 close").
+
 ---
 
 ## R-881. A folder cursor the provider hands back unchanged costs the whole request budget before the walk refuses
@@ -34928,6 +35014,7 @@ its re-reads, and either it finishes or `search_release` reads through
 **Not on the board bar.** The reachability is unmeasured, and a refusal that
 writes nothing is honest about what it could not read.
 
+**Closed 2026-10-07, ledger triage.** Its closing condition allows "either it finishes": cutover sitting 30 and R-888's close record the Mango Alley plan reading the full roster, 334 confirmed and 11,864 not, in 3,052 provider calls, with no rate limit, and then applying; the wall time and a separate re-read count were not recorded, and `search_release` still uses a bare `session.album`.
 
 ---
 
