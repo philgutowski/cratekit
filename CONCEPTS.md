@@ -397,9 +397,10 @@ an analysis the person asks rekordbox for. Since R-770 `intake file` chooses
 the same way for one file, and both verbs read one switch,
 `ingest.intake_medium`. Nothing else writes the intake tree: the splice,
 `ingest.place_files`, refuses a native tree in its own words, naming the
-landing, before the emitter guard could call the cutover a defect. One verb
-still READS the file only a bridge landing writes: `sync mark` finds its pass
-by the intake file's name, so it has no input after a native landing.
+landing, before the emitter guard could call the cutover a defect. `sync
+mark` finds a bridge pass by its intake file's name and a native pass by
+`--pass`, since R-777, and the engine waits on a `marks.NativeLanding` there in
+place of the file.
 
 ### Account playlist
 A playlist the author made on the streaming account, as distinct from his

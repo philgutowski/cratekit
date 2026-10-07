@@ -15,13 +15,14 @@ from __future__ import annotations
 import errno
 import os
 import stat as stat_module
+from datetime import date
 from pathlib import Path
 
 import pytest
 
 from cratekit.cli import jobs as cli_jobs
 from cratekit.cli import registry
-from cratekit.core import artifacts, config, jobs, locations
+from cratekit.core import active_taxonomy, artifacts, config, jobs, locations, tree_registry
 from cratekit.core.cause import Cause, CratekitError, Remediation
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import cli as intake_cli
@@ -779,3 +780,193 @@ def test_an_answer_is_stale_once_the_intake_file_is_rewritten(slim, monkeypatch)
     code, stale = drive(["--run", run_id, "sync", "mark", "--xml", str(xml)])
     assert code != int(ExitCode.OK), stale
     assert account.renamed == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-777. A pass landed on a database native intake tree, named with --pass
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _cut_over_intake(cfg: config.Config) -> str:
+    """Record the intake tree database native. Only the mode is read here."""
+    intake = active_taxonomy.load(cfg).intake.id
+    tree_registry.write(
+        cfg,
+        tree_registry.Registry().with_record(
+            tree_registry.TreeRecord(
+                tree_id=intake,
+                mode=tree_registry.Mode.DATABASE,
+                cutover_on=date(2026, 10, 7),
+                root_id="900",
+                source=tree_registry.DerivationSource.TAXONOMY,
+            )
+        ),
+    )
+    return intake
+
+
+def _hold(cfg: config.Config, *track_ids: str) -> None:
+    """Put each track's file in the music folder the way a native landing does,
+    with no intake file written."""
+    batch = Path(cfg.library.root) / cfg.library.music_dir / "2026-10-07 Tidal playlists"
+    batch.mkdir(parents=True, exist_ok=True)
+    for track_id in track_ids:
+        (batch / f"Artist {track_id} - Title {track_id}.flac").write_bytes(b"")
+
+
+def _mark_pass(name: str, *extra: str) -> tuple[int, dict]:
+    return drive(["sync", "mark", "--pass", name, *extra])
+
+
+def _answered_pass(name: str, option: str = "apply") -> tuple[int, dict]:
+    code, refused = _mark_pass(name)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    code, decided = drive(["run", "decide", run_id, CONFIRM, option, "--actor", "a-person"])
+    assert code == int(ExitCode.OK), decided
+    return drive(["--run", run_id, "sync", "mark", "--pass", name])
+
+
+def test_a_native_pass_whose_tracks_the_library_holds_is_marked_after_the_answer(
+    slim, monkeypatch
+):
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    tree = _cut_over_intake(slim)
+    _hold(slim, "101", "102", "201")
+
+    code, refused = _mark_pass(name)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert account.renamed == [], "a rename landed before the gate was answered"
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["pass"] == f"{name}, landed on the database native {tree!r} tree"
+    assert "intake file" not in shown
+
+    code, done = _answered_pass(name)
+    assert code == int(ExitCode.OK), done
+    assert sorted(account.renamed) == [
+        ("pl-a", "DOWNLOADED Warmup"),
+        ("pl-b", "DOWNLOADED Peak"),
+    ]
+    item = _by_id(done)["pl-a"]
+    # NO FILE SAYS WHICH LANDING BROUGHT A TRACK, so each one held is owned.
+    assert (item["action"], item["landed"], item["owned"]) == ("marked", 0, 2)
+
+
+def test_a_native_pass_with_one_track_not_held_leaves_that_playlist_alone(slim, monkeypatch):
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    _cut_over_intake(slim)
+    _hold(slim, "101", "201")
+
+    code, done = _answered_pass(name)
+    assert code == int(ExitCode.OK), done
+    assert account.renamed == [("pl-b", "DOWNLOADED Peak")]
+    held_back = _by_id(done)["pl-a"]
+    assert (held_back["action"], held_back["reason"]) == ("skip", "rows-outstanding")
+    assert [row["id"] for row in held_back["outstanding"]] == ["102"]
+
+
+def test_a_pass_named_on_a_tree_still_on_the_bridge_is_refused_naming_the_file(
+    slim, monkeypatch
+):
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    _hold(slim, "101", "102", "201")
+
+    code, refused = _mark_pass(name)
+    assert code == int(ExitCode.PRECONDITION), refused
+    assert refused["cause"]["reason"] == "sync-marks-blocked"
+    assert "--xml" in " ".join(refused["cause"]["remediation"]["steps"])
+    assert account.renamed == []
+
+
+def test_the_file_and_the_pass_are_one_or_the_other(slim, tmp_path):
+    xml = tmp_path / "x_inboxed.xml"
+    xml.write_bytes(b"<x/>")
+    code, _ = drive(["sync", "mark", "--xml", str(xml), "--pass", "x"])
+    assert code == int(ExitCode.USAGE)
+    code, _ = drive(["sync", "mark"])
+    assert code == int(ExitCode.USAGE)
+
+
+def test_a_pass_name_no_landing_could_have_been_given_is_refused(slim, monkeypatch):
+    _cut_over_intake(slim)
+    code, refused = _mark_pass("../elsewhere")
+    assert code == int(ExitCode.PRECONDITION), refused
+    assert refused["cause"]["reason"] == "sync-marks-blocked"
+
+
+def test_a_native_pass_of_no_jobs_is_a_gated_plan_of_nothing(slim, monkeypatch):
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    _cut_over_intake(slim)
+    code, done = _answered_pass("nobody_synced")
+    assert code == int(ExitCode.OK), done
+    assert done["outcome"] == "no_op"
+    assert [warning["code"] for warning in done["warnings"]] == ["sync-mark-no-pass"]
+    assert "nobody_synced" in done["warnings"][0]["message"]
+
+
+def test_a_tree_put_back_on_the_bridge_after_the_plan_renames_nothing(slim, monkeypatch):
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    _cut_over_intake(slim)
+    _hold(slim, "101", "102", "201")
+    code, refused = _mark_pass(name)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    code, _ = drive(["run", "decide", run_id, CONFIRM, "apply", "--actor", "a-person"])
+    assert code == int(ExitCode.OK)
+
+    planned = mark_cli.plan_pass(slim, pass_name=name, listing=lambda: mark_cli.listed(slim))
+    tree_registry.write(slim, tree_registry.Registry())
+    with pytest.raises(CratekitError) as refused_late:
+        mark_cli.apply_pass(slim, planned)
+    assert refused_late.value.cause.reason == "sync-marks-blocked"
+    assert account.renamed == []
+
+
+def test_a_native_answer_is_stale_once_another_playlist_becomes_whole(slim, monkeypatch):
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    _cut_over_intake(slim)
+    _hold(slim, "101", "201")
+    code, refused = _mark_pass(name)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    code, _ = drive(["run", "decide", run_id, CONFIRM, "apply", "--actor", "a-person"])
+    assert code == int(ExitCode.OK)
+    _hold(slim, "102")
+    code, stale = drive(["--run", run_id, "sync", "mark", "--pass", name])
+    assert code == int(ExitCode.DECISION_STALE), stale
+    assert account.renamed == []
+
+
+def test_the_engine_refuses_a_mark_with_neither_proof():
+    with pytest.raises(CratekitError) as nothing:
+        marks.apply_deferred((), local_output=None, recheck=lambda _: True, apply=lambda _: None)
+    assert nothing.value.cause.reason == "sync-marks-blocked"
+    for empty in (
+        marks.NativeLanding(tree_id="", pass_name="p"),
+        marks.NativeLanding(tree_id="inbox", pass_name=""),
+    ):
+        with pytest.raises(CratekitError) as unnamed:
+            marks.apply_deferred(
+                (), local_output=empty, recheck=lambda _: True, apply=lambda _: None
+            )
+        assert unnamed.value.cause.reason == "sync-marks-blocked"
+    assert (
+        marks.apply_deferred(
+            (marks.PendingMark("pl-a", "rename"),),
+            local_output=marks.NativeLanding(tree_id="inbox", pass_name="p"),
+            recheck=lambda _: True,
+            apply=lambda _: None,
+        )
+        == ("pl-a",)
+    )

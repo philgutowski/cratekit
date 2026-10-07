@@ -550,7 +550,7 @@ def mark_swept(
     found: Catalogue,
     account: RemoteAccount,
     *,
-    local_output: Path,
+    local_output: Path | marks.NativeLanding,
     applied: list[str] | None = None,
     only: frozenset[str] | None = None,
 ) -> tuple[str, ...]:
@@ -572,7 +572,8 @@ def mark_swept(
     prefix, which :func:`pending_marks` makes true.
 
     **THE ONE PRODUCTION CALLER IS** ``sync/mark_cli.py`` (U82), which hands it
-    the intake file a landing wrote and the playlists that file completes. The
+    the intake file a landing wrote and the playlists that file completes, or,
+    on a database native intake tree, a :class:`marks.NativeLanding` (R-777). The
     pass itself still never calls this, since a pass writes no importable file.
     """
     listed = sweep.names()

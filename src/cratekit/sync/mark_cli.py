@@ -52,6 +52,16 @@ account. A refusal the account raised keeps its reason, anything else is this
 build's own defect and says so, and either way the message and detail carry the
 playlists already renamed, which stay renamed.
 
+A DATABASE NATIVE INTAKE TREE WRITES NO INTAKE FILE (R-777), so there the
+pass is named with ``--pass`` instead of ``--xml``. The pass's jobs are found
+by that name exactly as by the file's, and every track the pass did not find is
+resolved against the library the same way; with no file to say which landing
+brought a track, each one the library holds is counted owned. The proof the
+engine waits for is :class:`cratekit.sync.marks.NativeLanding`, made only after
+the medium reads native, and the medium is read again before the first rename.
+``--pass`` on a tree still on the bridge is refused naming ``--xml``, because
+there the intake file is the proof and a pass named without it is unproven.
+
 EVERY RENAME THAT LANDS IS RECORDED (R-838), under the pass, with the title
 before and the title written, on the failure path as well. That record is what
 ``sync unmark`` reads to put a mistaken mark back, and the only thing it trusts
@@ -72,7 +82,7 @@ from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import config, jobs, locations
 from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
 from cratekit.intake import cli as intake_cli
-from cratekit.intake import land_cli, missing_cli
+from cratekit.intake import ingest, land_cli, landing, missing_cli
 from cratekit.sync import cli as sync_cli
 from cratekit.sync import mark_record, marks, playlists, sources
 from cratekit.write import rbxml
@@ -116,11 +126,20 @@ _NOT_FOUND = frozenset({"missing", "offered"})
 
 def build_mark(parser, entry) -> None:
     del entry
-    parser.add_argument(
+    proof = parser.add_mutually_exclusive_group(required=True)
+    proof.add_argument(
         "--xml",
-        required=True,
         metavar="XML",
         help="the intake file crate intake land wrote for the sync pass",
+    )
+    proof.add_argument(
+        "--pass",
+        dest="pass_name",
+        metavar="NAME",
+        help=(
+            "the sync pass to mark, by the name it was landed with, on a database "
+            "native intake tree, which writes no intake file"
+        ),
     )
     parser.set_defaults(_handler=sync_mark)
 
@@ -222,6 +241,31 @@ def _locations(xml: Path) -> frozenset[str]:
             path=str(xml),
         )
     return frozenset(named)
+
+
+def _native_proof(cfg: config.Config, name: str) -> marks.NativeLanding:
+    """The native proof for a pass named on the command line, or the refusal.
+
+    THE MEDIUM IS ``ingest.intake_medium`` AND NO COPY OF IT (R-770), the one
+    switch every verb that writes the intake tree reads.
+    """
+    if not landing.plain_name(name):
+        raise _blocked(
+            f"{name!r} is not a pass name a landing could have been given, so it names "
+            f"no pass and nothing was marked",
+            "pass the name crate intake missing --run told the landing to use as --pass",
+            pass_name=name,
+        )
+    medium = ingest.intake_medium(cfg)
+    if not medium.native:
+        raise _blocked(
+            f"the intake tree is on the xml bridge, so the landing of {name!r} wrote an "
+            f"intake file and that file is what proves the pass landed; nothing was marked",
+            f"pass the file ending in {land_cli.INTAKE_SUFFIX} that crate intake land "
+            f"wrote as --xml",
+            pass_name=name,
+        )
+    return marks.NativeLanding(tree_id=medium.declared.intake.id, pass_name=name)
 
 
 def _pass_jobs(store, cfg: config.Config, name: str, handler_key: str) -> list[jobs.Job]:
@@ -349,18 +393,32 @@ def _item(entry: _Playlist) -> dict[str, Any]:
     }
 
 
-def _payload(decided: list[_Playlist], *, xml: Path, seen) -> dict[str, Any]:
+def _payload(
+    decided: list[_Playlist], *, proof: Path | marks.NativeLanding, seen
+) -> dict[str, Any]:
     items = [_item(entry) for entry in decided]
-    identity = {
-        "kind": "sync-mark",
-        "xml": str(xml),
-        # THE ONE STAT ``marks.require_output`` TOOK. A file rewritten since the
-        # person was shown the plan is another landing, and its size and time
-        # move with it.
-        "xml_size": seen.st_size,
-        "xml_mtime_ns": seen.st_mtime_ns,
-        "marks": sorted((item["id"], item["to"]) for item in items if item["action"] == MARK),
-    }
+    planned = sorted((item["id"], item["to"]) for item in items if item["action"] == MARK)
+    if isinstance(proof, marks.NativeLanding):
+        # NO FILE TO FINGERPRINT. The pass and the tree it landed on are what
+        # the person was shown, and the marks themselves, which a track
+        # landing since the plan moves.
+        identity: dict[str, Any] = {
+            "kind": "sync-mark",
+            "pass": proof.pass_name,
+            "tree": proof.tree_id,
+            "marks": planned,
+        }
+    else:
+        identity = {
+            "kind": "sync-mark",
+            "xml": str(proof),
+            # THE ONE STAT ``marks.require_output`` TOOK. A file rewritten since
+            # the person was shown the plan is another landing, and its size
+            # and time move with it.
+            "xml_size": seen.st_size,
+            "xml_mtime_ns": seen.st_mtime_ns,
+            "marks": planned,
+        }
     return {
         "digest": digest_of(identity),
         "items": items,
@@ -373,10 +431,15 @@ def _payload(decided: list[_Playlist], *, xml: Path, seen) -> dict[str, Any]:
     }
 
 
-def _shown(payload: dict[str, Any], *, xml: Path) -> dict[str, Any]:
+def _shown(payload: dict[str, Any], *, proof: Path | marks.NativeLanding) -> dict[str, Any]:
     """What the gate screen puts in front of the person, one line per fact."""
+    said = (
+        {"pass": f"{proof.pass_name}, landed on the database native {proof.tree_id!r} tree"}
+        if isinstance(proof, marks.NativeLanding)
+        else {"intake file": str(proof)}
+    )
     shown: dict[str, Any] = {
-        "intake file": str(xml),
+        **said,
         "renamed on the account": [
             f"{item['name']} -> {item['to']}"
             + (f" (sync unmark put this title back {item['put_back']})" if "put_back" in item else "")
@@ -499,12 +562,24 @@ class PassPlan:
     so a pass is marked there by exactly this verb's body.
     """
 
-    xml: Path
+    xml: Path | None
     name: str
     payload: dict[str, Any]
     decided: list[_Playlist] = field(default_factory=list)
     sweep: Any = None
     catalogue_found: Any = None
+    #: What the engine waits for before a rename: the intake file, or on a
+    #: database native intake tree the :class:`marks.NativeLanding` (R-777).
+    native: marks.NativeLanding | None = None
+
+    @property
+    def proof(self) -> Path | marks.NativeLanding:
+        return self.native if self.native is not None else self.xml
+
+    @property
+    def said(self) -> str:
+        """The pass as a person names it, the file's name or the pass's."""
+        return self.xml.name if self.xml is not None else self.name
 
     @property
     def of_a_pass(self) -> bool:
@@ -516,7 +591,13 @@ class PassPlan:
         return [entry.identity for entry in self.decided if entry.planned]
 
 
-def plan_pass(cfg: config.Config, xml: Path, *, listing=None) -> PassPlan:
+def plan_pass(
+    cfg: config.Config,
+    xml: Path | None = None,
+    *,
+    pass_name: str | None = None,
+    listing=None,
+) -> PassPlan:
     """Plan the marks one intake file's pass earns, reading the account only when it has one.
 
     ``listing`` IS FOR A CALLER PLANNING MANY PASSES (U112): a callable
@@ -526,9 +607,18 @@ def plan_pass(cfg: config.Config, xml: Path, *, listing=None) -> PassPlan:
     """
     # THE FILE FIRST, before the account is listed or a credential is asked
     # for, by the same single read the engine makes again before it renames.
-    seen = marks.require_output(xml)
-    name = _pass_name(xml)
-    named = _locations(xml)
+    # With no file, the native proof first, for the same reason (R-777).
+    native: marks.NativeLanding | None = None
+    if xml is not None:
+        seen = marks.require_output(xml)
+        name = _pass_name(xml)
+        named = _locations(xml)
+    else:
+        native = _native_proof(cfg, str(pass_name))
+        seen = None
+        name = native.pass_name
+        named = frozenset()
+    proof: Path | marks.NativeLanding = native if native is not None else xml
 
     spec = next(one for one in sources.SPECS if one.source_id == playlists.SOURCE_ID)
     handler_key = str(spec.handler_key)
@@ -538,7 +628,9 @@ def plan_pass(cfg: config.Config, xml: Path, *, listing=None) -> PassPlan:
         # BEFORE THE LISTING AND THE CREDENTIAL. Neither can change the answer,
         # and a person with no session stored is owed "this file is no pass's"
         # rather than "log in" followed by it.
-        return PassPlan(xml=xml, name=name, payload=_payload([], xml=xml, seen=seen))
+        return PassPlan(
+            xml=xml, name=name, payload=_payload([], proof=proof, seen=seen), native=native
+        )
 
     if listing is None:
         catalogue_found, sweep = listed(cfg)
@@ -557,7 +649,7 @@ def plan_pass(cfg: config.Config, xml: Path, *, listing=None) -> PassPlan:
         for entry in mark_record.MarkRecord(cfg).ready()
         if entry.pass_name == name and entry.unmarked
     }
-    payload = _payload(decided, xml=xml, seen=seen)
+    payload = _payload(decided, proof=proof, seen=seen)
     for item in payload["items"]:
         if item["action"] == MARK and item["id"] in put_back:
             item["put_back"] = put_back[item["id"]]
@@ -568,6 +660,7 @@ def plan_pass(cfg: config.Config, xml: Path, *, listing=None) -> PassPlan:
         decided=decided,
         sweep=sweep,
         catalogue_found=catalogue_found,
+        native=native,
     )
 
 
@@ -586,7 +679,7 @@ def listed(cfg: config.Config) -> tuple[Any, Any]:
 
 def shown(planned: PassPlan) -> dict[str, Any]:
     """The gate screen's facts for one planned pass."""
-    return _shown(planned.payload, xml=planned.xml)
+    return _shown(planned.payload, proof=planned.proof)
 
 
 def apply_pass(cfg: config.Config, planned: PassPlan) -> tuple[dict[str, Any], list[dict[str, str]], list[str]]:
@@ -597,6 +690,11 @@ def apply_pass(cfg: config.Config, planned: PassPlan) -> tuple[dict[str, Any], l
     """
     from cratekit.modules.outbound import account
 
+    if planned.native is not None:
+        # THE MEDIUM AGAIN, before the first rename. A tree reverted to the
+        # bridge since the plan has an intake file to wait for, and the native
+        # proof would stand in for a file that should exist.
+        _native_proof(cfg, planned.name)
     remote = account.resolve(cfg)
     landed: list[str] = []
     sweep = planned.sweep
@@ -605,7 +703,7 @@ def apply_pass(cfg: config.Config, planned: PassPlan) -> tuple[dict[str, Any], l
             sweep,
             planned.catalogue_found,
             remote,
-            local_output=planned.xml,
+            local_output=planned.proof,
             applied=landed,
             only=frozenset(planned.planned),
         )
@@ -652,7 +750,8 @@ def apply_pass(cfg: config.Config, planned: PassPlan) -> tuple[dict[str, Any], l
 
 def sync_mark(ctx) -> Envelope:
     cfg = sync_cli._load()
-    planned = plan_pass(cfg, Path(ctx.args.xml))
+    xml = Path(ctx.args.xml) if ctx.args.xml is not None else None
+    planned = plan_pass(cfg, xml, pass_name=ctx.args.pass_name)
     option = ctx.gate.require(
         ctx.entry.gates[0], digest=planned.payload["digest"], context=shown(planned)
     )
@@ -661,7 +760,7 @@ def sync_mark(ctx) -> Envelope:
             data=planned.payload,
             outcome=Outcome.NO_OP,
             warnings=[
-                {"code": "sync-mark-no-pass", "message": f"{planned.xml.name}: {NO_PASS_SAID}"}
+                {"code": "sync-mark-no-pass", "message": f"{planned.said}: {NO_PASS_SAID}"}
             ],
         )
     if option != "apply" or not planned.planned:

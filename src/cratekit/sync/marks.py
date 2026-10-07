@@ -63,10 +63,58 @@ def require_output(local_output: Path) -> os.stat_result:
     return found
 
 
+@dataclass(frozen=True, slots=True)
+class NativeLanding:
+    """The proof a pass landed on a database native intake tree (R-777).
+
+    A native landing takes its files into the collection through the guarded
+    writer and writes NO importable file, so the file this module waits for
+    cannot exist. What stands in for it is what the file was evidence of: the
+    caller read the intake tree's medium as native and resolved every track
+    the pass did not find against the library, by ``acquire match``'s view,
+    before planning a single mark. ``sync mark --pass`` is the one maker, and
+    it reads the medium again before the first rename.
+
+    A TYPE AND NOT A MISSING ARGUMENT. A ``None`` where the file belongs is
+    still refused, so a caller that has neither proof is as wrong about the
+    run as it was before this existed.
+    """
+
+    tree_id: str
+    pass_name: str
+
+
+def require_proof(local_output: Path | NativeLanding) -> os.stat_result | None:
+    """The importable file's stat, the native proof as given, or the refusal."""
+    if isinstance(local_output, NativeLanding):
+        if not local_output.tree_id or not local_output.pass_name:
+            raise refuse(
+                "sync-marks-blocked",
+                "a remote mark was requested on a database native intake tree with no "
+                "pass or no tree named, so nothing proves the increment finished",
+                steps=("name the pass with crate sync mark --pass",),
+                scope=Scope.SOURCE,
+                origin=("sync.marks",),
+                detail={"tree_id": local_output.tree_id, "pass": local_output.pass_name},
+            )
+        return None
+    if not isinstance(local_output, Path):
+        raise refuse(
+            "sync-marks-blocked",
+            "a remote mark was requested with neither an importable file nor a native "
+            "landing to prove the increment finished",
+            steps=("write the importable file, then mark the remote side",),
+            scope=Scope.SOURCE,
+            origin=("sync.marks",),
+            detail={"given": type(local_output).__name__},
+        )
+    return require_output(local_output)
+
+
 def apply_deferred(
     pending: Sequence[PendingMark],
     *,
-    local_output: Path,
+    local_output: Path | NativeLanding,
     recheck: Callable[[PendingMark], bool],
     apply: Callable[[PendingMark], None],
 ) -> tuple[str, ...]:
@@ -74,9 +122,10 @@ def apply_deferred(
 
     Returns the target ids that were actually marked. A failed recheck skips
     that mark rather than forcing it: the remote item changed, and the next
-    increment will see it again.
+    increment will see it again. On a database native intake tree the file is
+    a :class:`NativeLanding` instead, see there.
     """
-    require_output(local_output)
+    require_proof(local_output)
     applied: list[str] = []
     for mark in pending:
         if not recheck(mark):
