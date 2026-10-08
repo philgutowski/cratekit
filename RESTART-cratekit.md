@@ -4,6 +4,27 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**R-777 built, 2026-10-08, on `unit/issue265`, issue #265: `sync mark --pass`
+marks a pass landed on a database native intake tree.** A native landing given
+`--pass` records the pass on the session record it commits
+(`native.PASS_KEY`), and `native.landings_of_pass` reads the closed, committed
+intake records naming it. `sync mark --pass NAME`, exclusive with `--xml`,
+refuses on a tree still on the bridge naming `--xml`, refuses a name no
+landing could have been given, refuses an unreachable library as such, and
+refuses a pass no committed landing names; otherwise it plans exactly as the
+file path does, every track the pass did not find resolved against the
+library, each one held counted owned. The engine waits on a
+`marks.NativeLanding` in place of the file and refuses a mark with neither
+proof; the digest binds the pass, the tree, its landings and its marks, and the
+apply reads the proof again before the first rename. Battery on the branch:
+ruff clean, 12,739 passed and 2 skipped, the scan clean. One round of the
+built in review, nine findings, six fixed, R-915 to R-917 and R-919 recorded.
+Mutation table 20 rows, 16 killed, one refused and one zero each killed on a
+confirm table, two maintainer zeros covered by other layers,
+`docs/mutation/r777-notes.md`. R-918, `label sync --next` relisting answered
+labels, was measured live the same night. Main's highest residual number is
+R-919.
+
 **Sitting 30 closed, 2026-10-03 evening. Every unit on the board is built**;
 `board.py next` names only #29, which is attended, and the open issues are #29,
 #178 and #39, none a session's. Built and proven in the run: R-788, R-840,
