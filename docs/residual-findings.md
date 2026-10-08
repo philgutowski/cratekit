@@ -35567,3 +35567,34 @@ time, on both media.
 rename, on both media.
 
 **Not on the board bar.** No producer driven.
+
+---
+
+## R-920. A run of hours loses the account's folder endpoint to a 401 and every later label is refused
+
+**Found:** at the attended sitting of 2026-10-08, reading `crate organize
+--report` over 46 followed labels.
+
+**The mechanism.** The account area reads the account's playlist folders
+through the provider's collection endpoint for each label in turn. About four
+hours in, that endpoint answered `401 Unauthorized`, and every label after it,
+24 of them from Defected on, was refused with the same cause, while the
+catalogue reads the same process made kept working. A fresh process read a
+release a minute later without a login. So the in memory session stops being
+accepted by the collection endpoint and nothing re-authenticates it. R-350 is
+the neighbouring question, whether a refresh rotates the stored token; this is
+an access token the long running client never refreshes for this endpoint.
+
+**Measured cost.** Measured live: the report covers 9 of 46 labels' folders,
+13 being unresolvable on their own account. Each refusal is said per label, so
+nothing reads as clean. The guided label walk ran six hours without one,
+because it never reads the collection endpoint.
+
+**Closes when:** the account adapter re-authenticates once on a 401 from the
+collection endpoint and retries the read, or a run of hours re-opens its
+session between labels, and a long organize report reads every resolvable
+label.
+
+**Not on the board bar.** Every refusal is named; R-912's crawl, which makes
+the run long enough to meet it, is the cost to fix first.
+
