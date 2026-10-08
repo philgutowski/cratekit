@@ -82,7 +82,7 @@ from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import config, jobs, locations
 from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
 from cratekit.intake import cli as intake_cli
-from cratekit.intake import ingest, land_cli, landing, missing_cli
+from cratekit.intake import ingest, land_cli, landing, missing_cli, native
 from cratekit.sync import cli as sync_cli
 from cratekit.sync import mark_record, marks, playlists, sources
 from cratekit.write import rbxml
@@ -257,6 +257,14 @@ def _native_proof(cfg: config.Config, name: str) -> marks.NativeLanding:
             pass_name=name,
         )
     medium = ingest.intake_medium(cfg)
+    if medium.declared is None:
+        # AN UNREACHABLE ROOT DECIDES NOTHING, so it is not called the bridge.
+        raise _blocked(
+            f"the library root {cfg.library.root} could not be reached, so whether the "
+            f"intake tree is database native cannot be read and nothing was marked",
+            "mount the library volume, then run crate sync mark again",
+            pass_name=name,
+        )
     if not medium.native:
         raise _blocked(
             f"the intake tree is on the xml bridge, so the landing of {name!r} wrote an "
@@ -265,7 +273,18 @@ def _native_proof(cfg: config.Config, name: str) -> marks.NativeLanding:
             f"wrote as --xml",
             pass_name=name,
         )
-    return marks.NativeLanding(tree_id=medium.declared.intake.id, pass_name=name)
+    landings = native.landings_of_pass(cfg, name)
+    if not landings:
+        raise _blocked(
+            f"no landing of {name!r} into the database native intake tree committed, so "
+            f"nothing proves the pass landed and nothing was marked",
+            "land the pass with crate intake land --pass and the name crate intake missing "
+            "--run gave, then mark it by that same name",
+            pass_name=name,
+        )
+    return marks.NativeLanding(
+        tree_id=medium.declared.intake.id, pass_name=name, landings=landings
+    )
 
 
 def _pass_jobs(store, cfg: config.Config, name: str, handler_key: str) -> list[jobs.Job]:
@@ -406,6 +425,9 @@ def _payload(
             "kind": "sync-mark",
             "pass": proof.pass_name,
             "tree": proof.tree_id,
+            # THE LANDINGS THAT PROVE IT, so a second landing of the pass since
+            # the plan is another plan, as a rewritten intake file is.
+            "landings": list(proof.landings),
             "marks": planned,
         }
     else:
@@ -609,12 +631,18 @@ def plan_pass(
     # for, by the same single read the engine makes again before it renames.
     # With no file, the native proof first, for the same reason (R-777).
     native: marks.NativeLanding | None = None
+    if (xml is None) == (pass_name is None):
+        raise _blocked(
+            "a mark names its pass by exactly one of the intake file and the pass name, "
+            "and this was given both or neither; nothing was marked",
+            "pass --xml on an intake tree on the bridge, or --pass on a database native one",
+        )
     if xml is not None:
         seen = marks.require_output(xml)
         name = _pass_name(xml)
         named = _locations(xml)
     else:
-        native = _native_proof(cfg, str(pass_name))
+        native = _native_proof(cfg, pass_name)
         seen = None
         name = native.pass_name
         named = frozenset()
@@ -694,7 +722,13 @@ def apply_pass(cfg: config.Config, planned: PassPlan) -> tuple[dict[str, Any], l
         # THE MEDIUM AGAIN, before the first rename. A tree reverted to the
         # bridge since the plan has an intake file to wait for, and the native
         # proof would stand in for a file that should exist.
-        _native_proof(cfg, planned.name)
+        if _native_proof(cfg, planned.name) != planned.native:
+            raise _blocked(
+                f"the intake tree or the landings of {planned.name!r} changed since the "
+                f"plan was shown, so the answer does not cover them and nothing was marked",
+                "run crate sync mark again and answer the new plan",
+                pass_name=planned.name,
+            )
     remote = account.resolve(cfg)
     landed: list[str] = []
     sweep = planned.sweep

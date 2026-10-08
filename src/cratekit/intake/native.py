@@ -95,6 +95,11 @@ WORKFLOW = ingest.INTAKE_WORKFLOW
 #: The session record field naming the batch playlist a landing wrote, its
 #: identifier and its name. Read by ``inbox rotate`` for the landing date.
 BATCH_PLAYLIST_KEY = "batch_playlist"
+#: The session record field naming the sync pass a landing was given with
+#: ``--pass`` (R-777). Written with the commit, so ``sync mark --pass`` reads a
+#: closed record naming the pass as the proof the pass landed, the one an
+#: intake file is on the bridge.
+PASS_KEY = "pass"
 
 #: The session record field listing the account playlists a landing wrote, each
 #: by identifier and name (U113). The intake's one spelling, shared with the
@@ -174,6 +179,9 @@ class NativePlan:
     #: The account playlists, each its own INBOX playlist (U113). The batch
     #: playlist, ``playlist``, holds only the rows none of them holds.
     playlists: tuple[PlaylistPlan, ...] = ()
+    #: The sync pass the landing was given with ``--pass``, recorded with the
+    #: commit under :data:`PASS_KEY` (R-777). None for a landing of no pass.
+    pass_name: str | None = None
 
     def to_add(self) -> tuple[RowPlan, ...]:
         return tuple(row for row in self.rows if row.action == ADD)
@@ -338,6 +346,7 @@ def plan_rows(
     batch: str,
     files: Sequence[tuple[Path, Path]],
     split: Sequence[PlaylistPlan] = (),
+    pass_name: str | None = None,
 ) -> NativePlan:
     """Plan one row per file and one playlist, against the open database.
 
@@ -426,6 +435,7 @@ def plan_rows(
         rows=tuple(rows),
         digest="",
         playlists=_supported_only(split, rows),
+        pass_name=pass_name,
     )
     return replace(planned, digest=digest_of(identity(planned)))
 
@@ -819,6 +829,10 @@ def _record_landing_commit(
     # by the call that persists it.
     if playlist_id:
         record.detail[BATCH_PLAYLIST_KEY] = {"id": playlist_id, "name": plan.playlist}
+    # AND THE PASS (R-777), which is what ``sync mark --pass`` reads as the
+    # proof this pass landed. Only with the commit, never for a plan.
+    if plan.pass_name:
+        record.detail[PASS_KEY] = plan.pass_name
     # AND EACH ACCOUNT PLAYLIST (U113), whose name carries no date to age it by.
     if written:
         record.detail[INBOX_PLAYLISTS_KEY] = [
@@ -830,6 +844,28 @@ def _record_landing_commit(
     if rows > 0:
         changes.append(session.TreeChange(tree=rb_writer.CONTENT_TABLE, created=rows))
     session.record_commit(record, plan.tree_id, session.ChangeSummary(tuple(changes)), cfg)
+
+
+def landings_of_pass(cfg: config.Config, name: str) -> tuple[str, ...]:
+    """The session ids of every closed native landing that committed ``name``.
+
+    THE PROOF ``sync mark --pass`` WAITS FOR (R-777), the native counterpart of
+    an intake file: a record of this workflow, closed, whose intake source
+    committed and whose detail names the pass. A landing refused after its
+    moves leaves its files in the library and adds no row, and its record
+    names no pass, so its files cannot mark a playlist by being on disk.
+    """
+    records, _unreadable = session.scan_log(cfg)
+    return tuple(
+        sorted(
+            record.session_id
+            for record in records
+            if record.workflow == WORKFLOW
+            and record.state is session.SessionState.CLOSED
+            and str(session.SourceState.COMMITTED) in record.sources.values()
+            and record.detail.get(PASS_KEY) == name
+        )
+    )
 
 
 def assert_rows_gridless(landed: NativeLanded) -> None:

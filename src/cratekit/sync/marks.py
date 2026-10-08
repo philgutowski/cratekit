@@ -82,16 +82,19 @@ class NativeLanding:
 
     tree_id: str
     pass_name: str
+    #: The closed native landings that committed the pass, which a mark waits
+    #: for the way it waits for a file (R-777).
+    landings: tuple[str, ...] = ()
 
 
 def require_proof(local_output: Path | NativeLanding) -> os.stat_result | None:
     """The importable file's stat, the native proof as given, or the refusal."""
     if isinstance(local_output, NativeLanding):
-        if not local_output.tree_id or not local_output.pass_name:
+        if not local_output.tree_id or not local_output.pass_name or not local_output.landings:
             raise refuse(
                 "sync-marks-blocked",
                 "a remote mark was requested on a database native intake tree with no "
-                "pass or no tree named, so nothing proves the increment finished",
+                "pass, no tree or no landing named, so nothing proves the increment finished",
                 steps=("name the pass with crate sync mark --pass",),
                 scope=Scope.SOURCE,
                 origin=("sync.marks",),

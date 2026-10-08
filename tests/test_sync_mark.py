@@ -22,11 +22,19 @@ import pytest
 
 from cratekit.cli import jobs as cli_jobs
 from cratekit.cli import registry
-from cratekit.core import active_taxonomy, artifacts, config, jobs, locations, tree_registry
+from cratekit.core import (
+    active_taxonomy,
+    artifacts,
+    config,
+    jobs,
+    locations,
+    session,
+    tree_registry,
+)
 from cratekit.core.cause import Cause, CratekitError, Remediation
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import cli as intake_cli
-from cratekit.intake import land_cli, missing_cli
+from cratekit.intake import land_cli, missing_cli, native
 from cratekit.modules.outbound import account as account_module
 from cratekit.sync import mark_cli, marks, playlists, watermarks
 from tests import outbound_fakes
@@ -805,6 +813,29 @@ def _cut_over_intake(cfg: config.Config) -> str:
     return intake
 
 
+def _record_landing(
+    cfg: config.Config,
+    name: str,
+    *,
+    state: session.SessionState = session.SessionState.CLOSED,
+    source: session.SourceState = session.SourceState.COMMITTED,
+    stamp: str = "120000",
+) -> str:
+    """The session record a native landing given ``--pass name`` commits."""
+    started = f"2026-10-07T{stamp[:2]}:{stamp[2:4]}:{stamp[4:]}+00:00"
+    record = session.SessionRecord(
+        session_id=f"20261007T{stamp}-landing",
+        workflow=native.WORKFLOW,
+        started=started,
+        state=state,
+        sources={active_taxonomy.load(cfg).intake.id: str(source)},
+        ended=started,
+        detail={native.PASS_KEY: name},
+    )
+    session.write_record(record, cfg)
+    return record.session_id
+
+
 def _hold(cfg: config.Config, *track_ids: str) -> None:
     """Put each track's file in the music folder the way a native landing does,
     with no intake file written."""
@@ -835,6 +866,7 @@ def test_a_native_pass_whose_tracks_the_library_holds_is_marked_after_the_answer
     bind_account(monkeypatch, account)
     tree = _cut_over_intake(slim)
     _hold(slim, "101", "102", "201")
+    _record_landing(slim, name)
 
     code, refused = _mark_pass(name)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
@@ -860,6 +892,7 @@ def test_a_native_pass_with_one_track_not_held_leaves_that_playlist_alone(slim, 
     bind_account(monkeypatch, account)
     _cut_over_intake(slim)
     _hold(slim, "101", "201")
+    _record_landing(slim, name)
 
     code, done = _answered_pass(name)
     assert code == int(ExitCode.OK), done
@@ -904,6 +937,7 @@ def test_a_native_pass_of_no_jobs_is_a_gated_plan_of_nothing(slim, monkeypatch):
     account = outbound_fakes.FakeAccount()
     bind_account(monkeypatch, account)
     _cut_over_intake(slim)
+    _record_landing(slim, "nobody_synced")
     code, done = _answered_pass("nobody_synced")
     assert code == int(ExitCode.OK), done
     assert done["outcome"] == "no_op"
@@ -917,6 +951,7 @@ def test_a_tree_put_back_on_the_bridge_after_the_plan_renames_nothing(slim, monk
     bind_account(monkeypatch, account)
     _cut_over_intake(slim)
     _hold(slim, "101", "102", "201")
+    _record_landing(slim, name)
     code, refused = _mark_pass(name)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     run_id = refused["run_id"]
@@ -937,6 +972,7 @@ def test_a_native_answer_is_stale_once_another_playlist_becomes_whole(slim, monk
     bind_account(monkeypatch, account)
     _cut_over_intake(slim)
     _hold(slim, "101", "201")
+    _record_landing(slim, name)
     code, refused = _mark_pass(name)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     run_id = refused["run_id"]
@@ -953,8 +989,9 @@ def test_the_engine_refuses_a_mark_with_neither_proof():
         marks.apply_deferred((), local_output=None, recheck=lambda _: True, apply=lambda _: None)
     assert nothing.value.cause.reason == "sync-marks-blocked"
     for empty in (
-        marks.NativeLanding(tree_id="", pass_name="p"),
-        marks.NativeLanding(tree_id="inbox", pass_name=""),
+        marks.NativeLanding(tree_id="", pass_name="p", landings=("s",)),
+        marks.NativeLanding(tree_id="inbox", pass_name="", landings=("s",)),
+        marks.NativeLanding(tree_id="inbox", pass_name="p"),
     ):
         with pytest.raises(CratekitError) as unnamed:
             marks.apply_deferred(
@@ -964,9 +1001,95 @@ def test_the_engine_refuses_a_mark_with_neither_proof():
     assert (
         marks.apply_deferred(
             (marks.PendingMark("pl-a", "rename"),),
-            local_output=marks.NativeLanding(tree_id="inbox", pass_name="p"),
+            local_output=marks.NativeLanding(tree_id="inbox", pass_name="p", landings=("s",)),
             recheck=lambda _: True,
             apply=lambda _: None,
         )
         == ("pl-a",)
     )
+
+
+@pytest.mark.parametrize(
+    "landing",
+    [
+        None,
+        {"state": session.SessionState.ABANDONED},
+        {"source": session.SourceState.REFUSED},
+        {"name": "ANOTHER_synced"},
+    ],
+    ids=["no-landing", "abandoned", "never-committed", "another-pass"],
+)
+def test_a_native_pass_no_closed_committed_landing_names_is_refused(
+    slim, monkeypatch, landing
+):
+    """The finding the review drove: files on disk are not a landing. A landing
+    refused after its moves leaves its files and no closed committed record."""
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    _cut_over_intake(slim)
+    _hold(slim, "101", "102", "201")
+    if landing is not None:
+        _record_landing(slim, landing.pop("name", name), **landing)
+
+    code, refused = _mark_pass(name)
+    assert code == int(ExitCode.PRECONDITION), refused
+    assert refused["cause"]["reason"] == "sync-marks-blocked"
+    assert "no landing" in refused["cause"]["message"]
+    assert account.renamed == []
+
+
+def test_an_unreachable_library_is_named_and_never_called_the_bridge(slim, monkeypatch):
+    _cut_over_intake(slim)
+    monkeypatch.setattr(
+        mark_cli.ingest,
+        "intake_medium",
+        lambda cfg: mark_cli.ingest.IntakeMedium(declared=None, registry=None),
+    )
+    code, refused = _mark_pass("RUN_synced")
+    assert code == int(ExitCode.PRECONDITION), refused
+    assert "could not be reached" in refused["cause"]["message"]
+    assert "bridge" not in refused["cause"]["message"]
+
+
+def test_a_second_landing_of_the_pass_since_the_plan_makes_the_answer_stale(
+    slim, monkeypatch
+):
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    _cut_over_intake(slim)
+    _hold(slim, "101", "102", "201")
+    _record_landing(slim, name)
+    code, refused = _mark_pass(name)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    code, _ = drive(["run", "decide", run_id, CONFIRM, "apply", "--actor", "a-person"])
+    assert code == int(ExitCode.OK)
+    _record_landing(slim, name, stamp="130000")
+    code, stale = drive(["--run", run_id, "sync", "mark", "--pass", name])
+    assert code == int(ExitCode.DECISION_STALE), stale
+    assert account.renamed == []
+
+
+def test_a_landing_recorded_between_the_plan_and_the_apply_renames_nothing(slim, monkeypatch):
+    """The apply's reread compares the proof, not only the medium."""
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    _cut_over_intake(slim)
+    _hold(slim, "101", "102", "201")
+    _record_landing(slim, name)
+    planned = mark_cli.plan_pass(slim, pass_name=name, listing=lambda: mark_cli.listed(slim))
+    _record_landing(slim, name, stamp="130000")
+    with pytest.raises(CratekitError) as refused:
+        mark_cli.apply_pass(slim, planned)
+    assert "changed since the plan" in refused.value.cause.message
+    assert account.renamed == []
+
+
+def test_a_plan_given_both_proofs_or_neither_is_refused(slim, tmp_path):
+    with pytest.raises(CratekitError):
+        mark_cli.plan_pass(slim)
+    with pytest.raises(CratekitError):
+        mark_cli.plan_pass(slim, tmp_path / "x_inboxed.xml", pass_name="x")
