@@ -904,6 +904,60 @@ landing.
 | `label playlists mango-alley`, R-835 | live, applied at digest `d7cd746d02e19f10` | **A new `Mango Alley` folder on the account, 15 private year playlists, 2009 to 2026, 1,014 tracks**, read back at the provider and in the web player. 334 releases confirmed of a roster of 756 artists. | live, **R-835 and R-888 close** |
 | The author's asks of 2026-10-03 | filed | U110 #258 readable INBOX batch names, U111 #259 `inbox rotate`, U112 #260 `crate organize`, which fixes what the product's rules govern and only lists what the author made. | queued |
 
+## Sitting 31, 2026-10-07 evening to 2026-10-08, attended, the author's five asks
+
+The author set the order and left the session to drive: the first guided label
+sync, INBOX, the missing genres, the rest of #178 and #29, and a ledger triage,
+with full autonomy, no questions, and later a cap of **50 label tracks** for
+the download. A fresh backup ran first (files and database 22:06Z, 94 files
+sent). The author minted the backup acknowledgment from Terminal at 23:49Z,
+valid to 11:49Z. The build in use is the installed copy, reinstalled from local
+`main` at the R-777 merge. Another project's Relay feeder ran throughout; no
+Cratekit build ran beside rekordbox.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `crate label sync`, the first guided walk | live, one interactive pass fed on standard input by a driver reading each saved question | **46 labels: 28 answered, 22 picks, 7 not now, 0 stop; 7 not listed** (Rebellion, Kompakt, Rhombus, Sueño, LabelUnresolvable on a shared artist name; Colours Audio, Liebe Detail Spezial, Voll Schön, no artist of the name). The rule, the author's delegation: per label, the single newest release dated 2025 or 2026 with three tracks or fewer, while the total stayed under the cap; everything else not now. About six hours of listing, paced, no rate limit. **Open label releases in review: 2,416 to 8.** | live, **#178 line 5** |
+| `label sync --next`, before the walk | live | 17 minutes 54 seconds and 1,059 calls to relist two answered labels and reach the third: R-918. | found |
+| The go, `label sync --go` | at its gate, answered apply inside the cap | 22 releases, 42 tracks listed, 4 already owned, 2 offered as other versions, **36 downloaded of 36**, 264 calls, no rate limit. | live |
+| `tag folder`, `analyze run`, `analyze restamp`, `name apply` | yes | 34 of 36 given a genre, 2 none; two genres outside the taxonomy (`140 / Deep Dubstep / Grime`, `Indie Tech`); Traxsource and Bandcamp blocked as before. 36 analysed, stamped and renamed, no collision. | live |
+| `intake land --manifest --pass`, on the bridge | applied | 36 into `Music/2026-10-08 Labels`, batch playlist `2026-10-08 Labels`, the label year playlists named in the intake file. | live |
+| Import through desktop control | yes | Imported Library pointed at the intake file, the batch playlist imported alone, collection 10,236 to 10,272, dragged into INBOX on a box outline after the hover had expanded the tree under it. Analyze Tracks with KEY unticked; every tempo equals the file head but `Villa Loop`, head 85, rekordbox 127. | live |
+| `intake imported` | over a `crate export collection` | 36 proven, intake file retired. | live |
+| `adopt apply` | rehearsed on a copy, live on an equal digest `b87adda1f85b0766` | **35 memberships added, 0 removed**, live memberships and every content row's tempo, rating and path equal to the copy. Route 8,802, needs-genre 1,290. | live |
+| Rebellion's seed | `label registry set` | Jonas Rathsman, the artist of the Rebellion release already in the library. The other six left unseeded, no evidence in the library. | set |
+| `[intake_old]` in the active taxonomy | written, the prior copy kept as `taxonomy.toml.bak-2026-10-07` | doctor parses it. | **R-902 half** |
+| `inbox rotate`, rehearsal | on a copy | Refused first: the intake tree is on the xml bridge. On the copy, `tree cutover inbox` passed all four prechecks, digest `a22bb1d46da3a36e`; the rotation then planned **nothing: 7 product batches kept, all under 30 days, 14 hand made playlists left alone**, applied as a no-op. | rehearsed |
+| `tree cutover inbox`, live | to its gate, run `2026-10-08T04:00:47Z-c16b` | Digest `ded0029507c5e5a1`, which differs from the rehearsal only in the three paths it names. Not approved by the session, by the standing rule; the author's call, since a cutover leaves label landings without their record labels filing (R-771). | **owed, the author's** |
+| Legacy INBOX playlists | by hand in rekordbox | The two July playlists the product does not own, `lisa_07_10_2026 SYNC 20260715_133430` and `7_10_26_summer_sampler_2021 SYNC 20260715_133430`, moved into `INBOX / Old`. The twelve in Old, February to June, left for the author. | live |
+| The missing genres, measured | on a copy of the database | **621 rows have no genre on the row or the file**; adoption's 1,290 also counts genres with no bucket. Artist and folder neighbours suggest a genre at 80 percent agreement over six votes for 60. Two set by hand in rekordbox, Melodic House, about 25 seconds a track. U114, issue #266, scoped from this. | measured |
+| R-777, issue #265 | built and merged locally | `sync mark --pass` on a native intake tree, proven by a closed landing that records the pass. | built |
+| `crate organize --report` | live, started 05:28Z | Still crawling every followed label's catalogue seven hours in, R-912's cost measured on 46 labels; its plans are appended below when it ends. No gate asked. | running |
+| Ledger triage | six read only passes over 697 open entries | 41 closed with evidence, 19 already closed in wording a search missed, 632 left. Three promoted for daily use, #262 R-572, #263 R-228, #264 R-515, and R-777 carded as owed since 2026-09-30. | done |
+
+**#178 lines 8 and 9 stay open, the author's.** No player is near and no spare
+drive is planned.
+
+**#29 is not retired.** Its own brief retires DJ_tools only when every
+workflow's replacement has run on the live library and a full sync cycle has
+run on Cratekit alone; #178 lines 4, 7, 8 and 9 are not proven. The skills
+would be pointed as below when it is.
+
+| Source system skill | What replaces it |
+|---|---|
+| dj-sync | `crate sync all`, then `crate label sync`; shipped skill `sync-and-publish` |
+| dj-label-batch | `crate label sync`, `label import`, `label harvest`; `label-catalogues` |
+| dj-label-playlists | `crate label playlists`; `label-catalogues` |
+| dj-favorites | `crate sync favorites`, `intake playlist favorites`; `sync-and-publish`. Gap: a pink row outside the playlist is not hearted, #263 |
+| dj-pipeline | `crate intake`, `acquire`, `match`, `export set`; `intake-and-name` |
+| dj-tagging | `crate tag folder`; `intake-and-name` |
+| dj-maintenance | `route inbox`, `adopt`, `inbox rotate`, `organize`, `tag retag`, `repair paths`, `report`, `audit`; `route-the-library`, `library-reports` |
+| dj-vocal | `crate analyze vocals`, calibrate, restamp; `analyze-audio`. #178 line 7 unproven |
+| dj-backup | `crate backup run`, `restore`; `restore-and-converge`. No shipped skill triggers on "back up" |
+| dj-master-set | `crate master`. No shipped skill |
+| dj-set-builder | `crate setbuild`. No shipped skill |
+| dj-core | the shipped skills' own descriptions route |
+
 ## What blocks a full sync cycle, stated plainly
 
 **Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
