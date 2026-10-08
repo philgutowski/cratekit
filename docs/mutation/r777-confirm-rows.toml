@@ -1,0 +1,19 @@
+name = "r777-confirm"
+pass_kind = "light"
+
+[[rows]]
+id = "N4_plain_name"
+description = "Confirm: _native_proof takes a pass name no landing could have been given, after the test that pins its message"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+old = '''    if not landing.plain_name(name):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "N7_digest_marks"
+description = "Confirm, the first table's old text was moved by the fix round: the native digest no longer covers the planned marks"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+old = '''            "landings": list(proof.landings),
+            "marks": planned,'''
+new = '''            "landings": list(proof.landings),'''

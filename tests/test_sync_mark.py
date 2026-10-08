@@ -931,6 +931,9 @@ def test_a_pass_name_no_landing_could_have_been_given_is_refused(slim, monkeypat
     code, refused = _mark_pass("../elsewhere")
     assert code == int(ExitCode.PRECONDITION), refused
     assert refused["cause"]["reason"] == "sync-marks-blocked"
+    # SAID AS A NAME NO LANDING COULD HAVE BEEN GIVEN, before any record is
+    # read, and not as a pass that never landed.
+    assert "not a pass name a landing could have been given" in refused["cause"]["message"]
 
 
 def test_a_native_pass_of_no_jobs_is_a_gated_plan_of_nothing(slim, monkeypatch):
