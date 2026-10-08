@@ -35465,3 +35465,105 @@ Digests are sixteen hex characters and keys are words, so no producer is known.
 the check takes the step's key.
 
 **Not on the board bar.** Maintainer facing.
+
+---
+
+## R-915. Organize finds a pass only by its intake file, so on a native intake tree it plans no mark step
+
+**Found:** by the built in review of R-777 on `unit/issue265`, 2026-10-08.
+
+**The mechanism.** `organize/account.py` plans a `sync mark` step for every
+pass's latest intake file at the library root, through
+`mark_cli.plan_pass(cfg, xml, ...)`. A native landing writes no intake file,
+so once the intake tree cuts over organize finds no pass and plans no mark,
+and says nothing about it. `sync mark --pass` marks the same pass directly.
+
+**Measured cost.** Read, not driven: no library's intake tree has cut over.
+A person relying on organize to mark is told nothing is owed.
+
+**Closes when:** organize finds native passes from `native.landings_of_pass`'s
+records and plans each through `plan_pass(cfg, pass_name=...)`, or says on a
+native tree that marks are made with `sync mark --pass`.
+
+**Not on the board bar.** `sync mark --pass` finishes the workflow.
+
+---
+
+## R-916. label mark reads an intake file a native landing never writes
+
+**Found:** by the built in review of R-777 on `unit/issue265`, 2026-10-08.
+
+**The mechanism.** `label/mark_cli.py` calls `marks.require_output(xml)` and
+reads the pass off the intake file, as `sync mark` did before R-777. On a
+native intake tree a label batch writes no intake file.
+
+**Measured cost.** Not driven. A native label landing is already refused its
+manifest by R-771, so no label batch lands natively with its filing today.
+
+**Closes when:** `label mark` takes the pass by name on a native tree the way
+`sync mark --pass` does, through `native.landings_of_pass`, once R-771 gives
+a label batch a native landing.
+
+**Not on the board bar.** Behind R-771, which is not.
+
+---
+
+## R-917. PassPlan carries the intake file and the native proof as two optional fields for one either or
+
+**Found:** by the built in review of R-777 on `unit/issue265`, 2026-10-08.
+
+**The mechanism.** `mark_cli.PassPlan` keeps `xml: Path | None` and `native:
+NativeLanding | None`, and `proof` and `said` derive from whichever is set.
+`plan_pass` refuses both or neither, and nothing stops a caller building a
+plan by hand with both. `xml` stays because organize reads plans by file.
+
+**Measured cost.** None. Maintainer facing.
+
+**Closes when:** the plan holds one `proof` and organize no longer needs the
+file by name.
+
+**Not on the board bar.** Maintainer facing.
+
+---
+
+## R-918. label sync --next lists every label already answered again on each call
+
+**Found:** at the attended sitting of 2026-10-07, driving the first guided
+label sync.
+
+**The mechanism.** `label/sync_cli._next` walks the registry in order and
+skips the provider only for a label with a saved question. A label already
+answered has no saved question, so each call lists it again before reaching
+the next unasked one. Driving a walk of N labels with `--next` and `--answer`
+lists on the order of N squared labels. The interactive walk lists each once.
+
+**Measured cost.** Measured live: the second `--next` took 17 minutes 54
+seconds and 1,059 provider calls to re-list two answered labels and reach the
+third. The sitting moved to the interactive walk fed on standard input.
+
+**Closes when:** `--next` skips a label whose last answer covers the releases
+a listing would offer, or records which labels this walk already listed, so a
+driven walk lists each label once.
+
+**Not on the board bar.** The interactive walk finishes the workflow; the
+cost is time and provider calls, paced through the gate.
+
+---
+
+## R-919. A native mark's digest binds the pass, its landings and its marks, not the library's files
+
+**Found:** by the built in review of R-777 on `unit/issue265`, 2026-10-08.
+
+**The mechanism.** The bridge digest carries the intake file's size and
+modification time, so a file rewritten after the plan makes the answer stale.
+The native digest carries the pass, the tree, the landings that prove it and
+the planned marks. A file deleted and replaced by another resolving to the
+same track between the plan and the answer leaves all four unchanged.
+
+**Measured cost.** None driven. Every track is resolved again only at plan
+time, on both media.
+
+**Closes when:** the apply resolves the planned tracks again before the first
+rename, on both media.
+
+**Not on the board bar.** No producer driven.

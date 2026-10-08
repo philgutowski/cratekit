@@ -851,6 +851,7 @@ def _land_native(
             split=_native_split(
                 db, claims, tree_id=tree_id, registry=registry, batch=planned.batch, target=target
             ),
+            pass_name=ctx.args.pass_name,
         ),
         payload=lambda rows: _native_payload(planned, rows, target=target),
         shown=lambda rows: _native_shown(rows, folder=planned.folder, target=target),

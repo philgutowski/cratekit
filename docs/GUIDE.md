@@ -437,11 +437,20 @@ twice renames nothing the second time. Taking the prefix off does not make the
 next `sync all` offer the playlist again: the pass already recorded it as
 resolved, which is a separate record.
 
-**Once your intake tree is database native this step has nothing to read.** A
-native landing writes no importable file, and `sync mark` finds its pass by
-that file's name, so after a cutover the playlists of a pass stay unmarked and
-are offered again on the next one. That is a known gap, recorded in
-`docs/residual-findings.md`, and not something a flag works around.
+**Once your intake tree is database native, name the pass instead of the file.**
+A native landing writes no importable file, so give `sync mark` the name you
+landed the pass with:
+
+```bash
+crate sync mark --pass RUN_synced
+```
+
+Everything else is the same: a playlist is planned only when every track the
+pass did not find is now in your library, and nothing is renamed until you
+answer the gate. With no file to say which landing brought a track, each one
+your library holds is counted as owned rather than landed. `--pass` on an intake
+tree still on the xml bridge is refused and names `--xml`, since there the file
+is what proves the pass landed.
 
 `name apply`, `intake land` and `route inbox` each build a plan and stop at a
 gate before they write. Run once to read the plan, then answer the gate. See

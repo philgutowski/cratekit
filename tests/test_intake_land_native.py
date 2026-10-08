@@ -301,6 +301,32 @@ def test_three_files_become_three_rows_and_one_playlist_under_the_adopted_root(
     assert record.detail[native.BATCH_PLAYLIST_KEY] == {"id": str(playlist_id), "name": BATCH}
 
 
+def test_a_landing_given_a_pass_names_it_on_the_record_sync_mark_reads(
+    native_library, silence
+):
+    """R-777. The pass is written with the commit, and ``landings_of_pass`` is
+    what ``sync mark --pass`` reads as the proof the pass landed."""
+    cfg, _root_id = native_library
+    _stage(cfg, silence, "One.flac")
+
+    code, acted, _refused = _two_acts(_land("--pass", "RUN_synced"))
+
+    assert code == int(ExitCode.OK), acted
+    (record,) = session.records(cfg)
+    assert record.detail[native.PASS_KEY] == "RUN_synced"
+    assert native.landings_of_pass(cfg, "RUN_synced") == (record.session_id,)
+    assert native.landings_of_pass(cfg, "ANOTHER_synced") == ()
+
+
+def test_a_landing_given_no_pass_names_none(native_library, silence):
+    cfg, _root_id = native_library
+    _stage(cfg, silence, "One.flac")
+    code, acted, _refused = _two_acts(_land())
+    assert code == int(ExitCode.OK), acted
+    (record,) = session.records(cfg)
+    assert native.PASS_KEY not in record.detail
+
+
 def test_two_unnamed_landings_on_one_day_are_two_playlists_and_never_one(
     native_library, silence, monkeypatch
 ):

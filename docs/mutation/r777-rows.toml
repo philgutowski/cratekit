@@ -1,0 +1,182 @@
+name = "r777"
+pass_kind = "light"
+
+[[rows]]
+id = "N1_empty_proof"
+description = "marks.require_proof accepts a NativeLanding naming no tree, no pass or no landing"
+file = "src/cratekit/sync/marks.py"
+surface = "maintainer"
+old = '''        if not local_output.tree_id or not local_output.pass_name or not local_output.landings:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "N2_neither_proof"
+description = "marks.require_proof hands anything that is not a NativeLanding to require_output, so None is no longer refused by name"
+file = "src/cratekit/sync/marks.py"
+surface = "maintainer"
+old = '''    if not isinstance(local_output, Path):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "N3_engine_unchecked"
+description = "apply_deferred no longer checks its proof before renaming"
+file = "src/cratekit/sync/marks.py"
+surface = "user"
+old = '''    require_proof(local_output)
+    applied: list[str] = []'''
+new = '''    applied: list[str] = []'''
+
+[[rows]]
+id = "N4_plain_name"
+description = "_native_proof takes a pass name no landing could have been given"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+old = '''    if not landing.plain_name(name):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "N5_bridge_accepted"
+description = "_native_proof accepts --pass on an intake tree still on the xml bridge"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+old = '''    if not medium.native:
+        raise _blocked('''
+new = '''    if False:
+        raise _blocked('''
+
+[[rows]]
+id = "N6_no_reread"
+description = "apply_pass no longer reads the proof again before the first rename"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+old = '''        if _native_proof(cfg, planned.name) != planned.native:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "N7_digest_marks"
+description = "The native digest no longer covers the planned marks"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+old = '''            "tree": proof.tree_id,
+            "marks": planned,
+        }'''
+new = '''            "tree": proof.tree_id,
+        }'''
+
+[[rows]]
+id = "N8_digest_pass"
+description = "The native digest no longer covers the pass name"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "maintainer"
+old = '''            "pass": proof.pass_name,
+            "tree": proof.tree_id,'''
+new = '''            "tree": proof.tree_id,'''
+
+[[rows]]
+id = "N9_proof_is_file"
+description = "PassPlan.proof hands the engine the absent file on a native pass"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+old = '''        return self.native if self.native is not None else self.xml'''
+new = '''        return self.xml'''
+
+[[rows]]
+id = "N10_screen_says_pass"
+description = "The gate screen on a native pass shows an intake file line instead of the pass"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+old = '''        if isinstance(proof, marks.NativeLanding)
+        else {"intake file": str(proof)}'''
+new = '''        if False
+        else {"intake file": str(proof)}'''
+
+[[rows]]
+id = "N11_exclusive"
+description = "--xml and --pass are no longer one or the other"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+old = '''    proof = parser.add_mutually_exclusive_group(required=True)'''
+new = '''    proof = parser'''
+
+[[rows]]
+id = "N12_no_landing_required"
+description = "_native_proof makes a proof when no closed landing of the pass committed"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+old = '''    if not landings:
+        raise _blocked('''
+new = '''    if False:
+        raise _blocked('''
+
+[[rows]]
+id = "N13_any_state"
+description = "landings_of_pass counts a landing record in any state, an abandoned one included"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''            and record.state is session.SessionState.CLOSED
+'''
+new = ""
+
+[[rows]]
+id = "N14_any_source"
+description = "landings_of_pass counts a landing whose intake source never committed"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''            and str(session.SourceState.COMMITTED) in record.sources.values()
+'''
+new = ""
+
+[[rows]]
+id = "N15_any_pass"
+description = "landings_of_pass counts a landing of another pass"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''            and record.detail.get(PASS_KEY) == name
+'''
+new = ""
+
+[[rows]]
+id = "N16_pass_not_recorded"
+description = "The native landing's commit no longer records the pass"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''    if plan.pass_name:
+        record.detail[PASS_KEY] = plan.pass_name'''
+new = '''    if False:
+        record.detail[PASS_KEY] = plan.pass_name'''
+
+[[rows]]
+id = "N17_pass_not_planned"
+description = "intake land no longer hands its --pass to the native plan"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''            pass_name=ctx.args.pass_name,
+        ),'''
+new = '''        ),'''
+
+[[rows]]
+id = "N18_unreachable_called_bridge"
+description = "An unreachable library falls through to the bridge refusal"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+old = '''    if medium.declared is None:
+        # AN UNREACHABLE ROOT'''
+new = '''    if False:
+        # AN UNREACHABLE ROOT'''
+
+[[rows]]
+id = "N19_digest_landings"
+description = "The native digest no longer covers the landings that prove the pass"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+old = '''            "landings": list(proof.landings),
+'''
+new = ""
+
+[[rows]]
+id = "N20_both_or_neither"
+description = "plan_pass no longer refuses both proofs or neither"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "maintainer"
+old = '''    if (xml is None) == (pass_name is None):'''
+new = '''    if False:'''
