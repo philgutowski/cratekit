@@ -596,6 +596,7 @@ def apply_rows(
     plan: RowsPlan,
     *,
     analysis_roots: Iterable[Path | str],
+    workflow: str = WORKFLOW,
 ) -> Written:
     """Write the plan's genres, commit behind the guard, and read them back.
 
@@ -624,6 +625,10 @@ def apply_rows(
 
     ``analysis_roots`` has no default for the reason the membership writer
     gives: a watch that watches nothing reports every session clean.
+
+    ``workflow`` is the name the session record carries. ``tag suggest`` writes
+    its rows through this function under its own name, so a restore lists the
+    write as the verb that made it.
     """
     watched = [Path(root) for root in analysis_roots]
     if not watched:
@@ -645,7 +650,7 @@ def apply_rows(
     convergence.detect_out_of_band_restore(cfg, db, tree_registry.read(cfg))
     with (
         session.assert_gates(
-            cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
+            cfg, workflow=workflow, analysis_roots=watched, keep=session.Keep.RECORD
         ) as gates,
         rb_writer.commit_witness(db) as witness,
     ):

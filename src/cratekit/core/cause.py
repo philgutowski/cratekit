@@ -1751,6 +1751,15 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # Raised after the other files were written, so the message says how
         # many were and names the verb their rows follow by.
         "tag-remap-unwritten": ExitCode.PRECONDITION,
+        # ── U114's refusal, appended for the reason every block above gives ────
+        #
+        # A suggested genre was approved and a file did not take it: it carried
+        # a genre by the time the write reached it, the write failed, or it does
+        # not read back. Its row is left without one, so file and row agree.
+        # PRECONDITION on ``tag-remap-unwritten``'s argument: the cure is the
+        # file's, which is named, and a second run offers what is left. Raised
+        # after the other rows were written, so the message names their session.
+        "tag-suggest-unwritten": ExitCode.PRECONDITION,
         # ── R-835's two, appended for the reason every block above gives ───────
         #
         # A label's folder of year playlists was planned and the label's
