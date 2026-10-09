@@ -1,0 +1,136 @@
+name = "u117"
+pass_kind = "light"
+
+[[rows]]
+id = "D1_heard_left_out"
+description = "plan: drop the heard check, so a release the record lists as heard is filed into the dated playlist again"
+file = "src/cratekit/label/dated.py"
+surface = "user"
+tests = ["tests/test_label_dated.py"]
+old = '''        if identity in gone:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "D2_unsettled_taken"
+description = "taken_by_goes: drop the settled check, so an answer no go has taken files its releases as downloaded"
+file = "src/cratekit/label/dated.py"
+surface = "user"
+tests = ["tests/test_label_dated.py"]
+old = '''        if not isinstance(settled, Mapping):
+            continue'''
+new = '''        if not isinstance(settled, Mapping):
+            settled = {"at": "2026-10-09T12:00:00+00:00"}'''
+
+[[rows]]
+id = "D3_not_now_taken"
+description = "taken_by_goes: drop the taking answer check, so a not now answer files releases"
+file = "src/cratekit/label/dated.py"
+surface = "user"
+tests = ["tests/test_label_dated.py"]
+old = '''        if entry.get("answer") not in TAKING:
+            continue'''
+new = ''
+
+[[rows]]
+id = "D4_local_day"
+description = "_local_day: keep the recorded UTC day instead of the local one, so a go late in the evening is filed under tomorrow"
+file = "src/cratekit/label/dated.py"
+surface = "user"
+tests = ["tests/test_label_dated.py"]
+old = '''    if moment.tzinfo is not None:
+        moment = moment.astimezone()'''
+new = '''    if moment.tzinfo is not None:
+        moment = moment'''
+
+[[rows]]
+id = "D5_reuse_by_name"
+description = "plan: never reuse a dated playlist by its name, so a second go the same day makes a second playlist"
+file = "src/cratekit/label/dated.py"
+surface = "user"
+tests = ["tests/test_label_dated.py"]
+old = '''        matching = sorted(pid for pid, title in inside.items() if title == name)'''
+new = '''        matching = []'''
+
+[[rows]]
+id = "D6_reuse_adds_only_missing"
+description = "plan: a reused dated playlist adds every track again rather than only the missing ones"
+file = "src/cratekit/label/dated.py"
+surface = "user"
+tests = ["tests/test_label_dated.py"]
+old = '''                    add=tuple(one for one in tracks if one not in have),'''
+new = '''                    add=tuple(tracks),'''
+
+[[rows]]
+id = "D7_ambiguous"
+description = "plan: two playlists with the dated name reuse the first instead of being left alone"
+file = "src/cratekit/label/dated.py"
+surface = "user"
+tests = ["tests/test_label_dated.py"]
+old = '''        if len(matching) > 1:'''
+new = '''        if len(matching) > 99:'''
+
+[[rows]]
+id = "D8_age_bound"
+description = "_aged: report at the age rather than past it, an off by one on the bound"
+file = "src/cratekit/label/dated.py"
+surface = "user"
+tests = ["tests/test_label_dated.py"]
+old = '''        if days > limit:'''
+new = '''        if days > limit * 2:'''
+
+[[rows]]
+id = "D9_age_configured"
+description = "plan: ignore the configured age and use the default"
+file = "src/cratekit/label/dated.py"
+surface = "user"
+tests = ["tests/test_label_dated.py"]
+old = '''        aged=_aged(catalogue.name, inside, today, cfg.labels.new_playlist_age_days),'''
+new = '''        aged=_aged(catalogue.name, inside, today, 30),'''
+
+[[rows]]
+id = "D10_no_folder_refusal"
+description = "apply: drop the missing folder refusal, so a dated playlist is made at the account root"
+file = "src/cratekit/label/dated.py"
+surface = "user"
+tests = ["tests/test_label_dated.py"]
+old = '''    if not folder_id:
+        raise _no_folder(planned)'''
+new = ''
+
+[[rows]]
+id = "D11_part_way_named"
+description = "apply: a failure part way is raised bare, without what was written"
+file = "src/cratekit/label/dated.py"
+surface = "user"
+tests = ["tests/test_label_dated.py"]
+old = '''        raise _failed_part_way(exc, done, planned) from exc'''
+new = '''        raise'''
+
+[[rows]]
+id = "D12_move_into_folder"
+description = "apply: a created dated playlist is not moved into the label's folder"
+file = "src/cratekit/label/dated.py"
+surface = "user"
+tests = ["tests/test_label_dated.py"]
+old = '''                account.move_to_folder(remote_id, folder_id)'''
+new = '''                pass'''
+
+[[rows]]
+id = "D13_config_validation"
+description = "config: accept a zero age"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_label_dated.py"]
+old = '''    if age is not None and (not isinstance(age, int) or isinstance(age, bool) or age < 1):'''
+new = '''    if age is not None and (not isinstance(age, int) or isinstance(age, bool) or age < 0):'''
+
+[[rows]]
+id = "D14_organize_call"
+description = "organize: drop the one call line, so organize never plans a dated playlist"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_label_dated.py", "tests/test_organize.py"]
+old = '''        dated.add_step(cfg, area, entry, planned, remote_of)
+'''
+new = '''        pass
+'''

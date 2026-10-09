@@ -1,0 +1,5 @@
+# U117 mutation notes
+
+Fourteen rows are prepared in `docs/mutation/u117-rows.toml`, scoped to this card's diff: the heard check, the settled and taking answer checks, the local day of a go, the reuse of a dated playlist by its name and its add of only the missing tracks, the two playlists of one name left alone, the age bound and its configured value, the missing folder refusal, the failure part way named, the move into the label's folder, the age key's validation, and the one call line in `organize`'s account step.
+
+They were NOT run. `scripts/mutate.py` refuses a batch whose full suite baseline is not green, and this Linux box measured 96 failures and 28 errors at base `48c4369` and on the branch alike, all in macOS dependent files (hdiutil volumes, backup rehearsals and comparison, FAT adoption hardware, deletion, restore, doctor, repair rows, pool sizing, preflight). The driver was not hand rolled around that refusal, on METHOD's rule. The watcher can run the rows file on macOS as it stands.
