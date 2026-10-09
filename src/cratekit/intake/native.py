@@ -83,7 +83,7 @@ from cratekit.core import (
     tree_registry,
 )
 from cratekit.core.cause import Remedy, refuse
-from cratekit.intake import ingest
+from cratekit.intake import ingest, set_playlist
 from cratekit.write import routing_pass, trees
 
 #: What a planned row will do. A file whose suffix the binding has no file
@@ -198,6 +198,10 @@ class NativePlan:
     #: The sync pass the landing was given with ``--pass``, recorded with the
     #: commit under :data:`PASS_KEY` (R-777). None for a landing of no pass.
     pass_name: str | None = None
+    #: The set's permanent playlist (U121), written in this same commit under
+    #: the declared INSPIRATION folder, for a landing given ``--set``. None
+    #: for every other landing.
+    set_playlist: set_playlist.SetPlaylistPlan | None = None
 
     def to_add(self) -> tuple[RowPlan, ...]:
         return tuple(row for row in self.rows if row.action == ADD)
@@ -237,6 +241,8 @@ class NativeLanded:
     #: The account playlists written (U113). ``playlist_id`` is empty when every
     #: row went into one of these and the batch playlist held none.
     playlists: tuple[WrittenPlaylist, ...] = ()
+    #: The set's permanent playlist written under INSPIRATION (U121), or None.
+    set_playlist: set_playlist.Written | None = None
 
     def names(self) -> tuple[str, ...]:
         """Every INBOX playlist the commit wrote, the batch's first when it wrote one."""
@@ -365,6 +371,7 @@ def plan_rows(
     files: Sequence[tuple[Path, Path]],
     split: Sequence[PlaylistPlan] = (),
     pass_name: str | None = None,
+    set_plan: set_playlist.SetPlaylistPlan | None = None,
 ) -> NativePlan:
     """Plan one row per file and one playlist, against the open database.
 
@@ -374,7 +381,9 @@ def plan_rows(
 
     ``split`` is a landing's account playlists (U113), named by the caller
     against :func:`inbox_held` on this same handle, each holding targets of
-    ``files``. They are part of the plan and of its digest.
+    ``files``. They are part of the plan and of its digest. ``set_plan`` is the
+    set's permanent playlist (U121), planned by the caller on this same handle
+    over the same targets, and part of the digest the same way.
 
     A FILE THE COLLECTION HOLDS IS PRESENT, NOT ADDED TWICE. The target is
     matched against every active row the way the membership writers match,
@@ -454,6 +463,7 @@ def plan_rows(
         digest="",
         playlists=_supported_only(split, rows),
         pass_name=pass_name,
+        set_playlist=set_plan,
     )
     return replace(planned, digest=digest_of(identity(planned)))
 
@@ -514,8 +524,14 @@ def identity(plan: NativePlan) -> dict[str, Any]:
         if plan.playlists
         else {}
     )
+    kept = (
+        {"set_playlist": set_playlist.identity(plan.set_playlist)}
+        if plan.set_playlist is not None
+        else {}
+    )
     return {
         **split,
+        **kept,
         "kind": "land-native",
         "tree": plan.tree_id,
         "root": plan.root_id,
@@ -727,6 +743,7 @@ def apply_rows(
             )
         playlist_id = ""
         written: list[WrittenPlaylist] = []
+        set_written: set_playlist.Written | None = None
         try:
             # BEFORE THE FIRST ROW, so a refusal adds nothing. A name the plan
             # chose free that INBOX holds now would show two playlists of one
@@ -775,6 +792,11 @@ def apply_rows(
                         tracks=count,
                     )
                 )
+            # THE SET'S PERMANENT PLAYLIST, IN THE SAME COMMIT (U121): the rows
+            # this landing made are keyed by target, and a member the landing
+            # could not make a row for is left and listed, never guessed.
+            if plan.set_playlist is not None:
+                set_written = set_playlist.write_members(db, plan.set_playlist, by_target=by_target)
             rb_writer.commit_guarded(db, creations=(rb_writer.CONTENT_TABLE,))
         except BaseException:
             trees._rollback_quietly(db)
@@ -787,13 +809,25 @@ def apply_rows(
                     cfg,
                     playlist_id=playlist_id,
                     written=written,
+                    set_written=set_written,
                 )
             raise
 
         _record_landing_commit(
-            record, plan, len(added_ids), memberships, cfg, playlist_id=playlist_id, written=written
+            record,
+            plan,
+            len(added_ids),
+            memberships,
+            cfg,
+            playlist_id=playlist_id,
+            written=written,
+            set_written=set_written,
         )
         convergence.record_fingerprint(cfg, db)
+        if set_written is not None:
+            set_written = replace(
+                set_written, read_back=set_playlist.read_back(db, set_written.playlist_id)
+            )
 
         landed = []
         for row, content_id in added_ids:
@@ -819,6 +853,7 @@ def apply_rows(
         memberships_added=memberships,
         session_id=session_id,
         playlists=tuple(written),
+        set_playlist=set_written,
     )
 
 
@@ -853,6 +888,7 @@ def _record_landing_commit(
     *,
     playlist_id: str,
     written: Sequence[WrittenPlaylist] = (),
+    set_written: set_playlist.Written | None = None,
 ) -> None:
     """Record the commit on the session, once anything landed.
 
@@ -862,7 +898,7 @@ def _record_landing_commit(
     kept apart because a restore that discards them discards tracks, not
     memberships, and a person weighing that should see the difference.
     """
-    if rows <= 0 and memberships <= 0:
+    if rows <= 0 and memberships <= 0 and set_written is None:
         return
     # THE BATCH PLAYLIST IS NAMED ON THE RECORD (U111), by identifier as well
     # as by name, so ``inbox rotate`` ages a batch from the day it landed
@@ -885,6 +921,10 @@ def _record_landing_commit(
     if rows > 0:
         changes.append(session.TreeChange(tree=rb_writer.CONTENT_TABLE, created=rows))
     session.record_commit(record, plan.tree_id, session.ChangeSummary(tuple(changes)), cfg)
+    # AND THE SET'S PLAYLIST (U121), under the declared folder's own id, so
+    # the record counts the batch's memberships and the set's apart.
+    if set_written is not None and plan.set_playlist is not None:
+        set_playlist.record_commit(record, set_written, plan.set_playlist, cfg)
 
 
 def landings_of_pass(cfg: config.Config, name: str) -> tuple[str, ...]:

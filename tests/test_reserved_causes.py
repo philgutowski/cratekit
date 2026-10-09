@@ -5166,7 +5166,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # intake root holds two of it. It is in cause.REASONS and not in the
     # reserved table. Population 196 to 197, non-reserved 168 to 169,
     # reserved half UNCHANGED at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (197, 169, 28)
+    # Re-pinned on U121, the set's permanent playlist under INSPIRATION,
+    # 2026-10-09. TWO slugs, named rather than counted:
+    # inspiration-folder-undeclared, which both the landing given --set and
+    # crate intake inspiration refuse with when the active taxonomy declares
+    # no [inspiration] folder or the playlist root holds two of it, and
+    # set-playlist-unnamed, which both refuse with when the job's page and the
+    # flags together do not name the DJ, the set and its month. Both are in
+    # cause.REASONS and neither is in the reserved table. Population 197 to
+    # 199, non-reserved 169 to 171, reserved half UNCHANGED at 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (199, 171, 28)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -6133,7 +6142,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # absent from `main`'s own `src` by git grep. row-file-id is the OWNER of
     # the field policy the repair registers when it renumbers. And
     # rows-file-id-undecidable and rows-file-id-unrenumbered are WARNING codes.
-    assert (len(literals), len(literals - set(causes))) == (647, 451), (
+    # Re-pinned on U121, the set's permanent playlist under INSPIRATION,
+    # 2026-10-09: 647 to 652 distinct, non-keys 451 to 454. FIVE joined and
+    # nothing left, each absent from `main`'s own `src` by git grep.
+    # inspiration-folder-undeclared and set-playlist-unnamed are the keys named
+    # in the pin above. set-playlist-written, set-playlist-left-out and
+    # set-playlist-nothing-to-write are WARNING codes. The session WORKFLOW
+    # the backfill is recorded under and the plan KIND its digest is taken
+    # under, set-playlist, was a literal already, the account's exclusion.
+    assert (len(literals), len(literals - set(causes))) == (652, 454), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6250,7 +6267,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # release the gate's kind rule could not judge, declared in the file that
     # gives it. It names no cause declared elsewhere, so THE WITHOUT-OWN HALF
     # IS STILL 11, and the integer half did not move.
-    assert (len(without), len(with_own), len(both)) == (11, 26, 13), (
+    #
+    # Re-pinned on U121, the set's permanent playlist under INSPIRATION,
+    # 2026-10-09: without-own 11 to 12, with-own 26 to 27, the integer half
+    # unchanged at 13. Named from this derivation's own output:
+    # `intake/set_playlist.py` joined, and it joined the without-own half for
+    # the searcher's reason above. It names its two slugs once each, as
+    # `FOLDER_UNDECLARED` and `UNNAMED`, resolving to the causes `cause.py`
+    # declares, and both the landing and the backfill verb raise them through
+    # `cause.refuse` from that one module, so the two verbs spell each slug
+    # from one line. It holds no in-range integer.
+    assert (len(without), len(with_own), len(both)) == (12, 27, 13), (
         f"the named at-risk population moved: {len(without)} modules hold a name "
         f"resolving to a cause declared elsewhere, {len(with_own)} once each "
         f"file's own enum declarations count, {len(both)} of those also hold an "
@@ -6909,7 +6936,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # refuses with decision-stale, internal-error and whitelist-violation, and
     # write/row_defaults_cli.py, which refuses with config-unusable and
     # internal-error. Neither holds an in-range integer.
-    assert (len(literal_holders), len(literal_both)) == (136, 29), (
+    # Re-pinned on U121, the set's permanent playlist under INSPIRATION,
+    # 2026-10-09: holders move 136 to 138, and the also-holds-an-integer half
+    # is UNCHANGED at 29. TWO modules joined and none left, both new files:
+    # intake/set_playlist.py, which refuses with inspiration-folder-undeclared,
+    # set-playlist-unnamed, job-unknown, intake-list-unusable, decision-stale
+    # and session-committed-unverified, and intake/inspiration_cli.py, which
+    # refuses with config-unusable and tree-unconverged. Neither holds an
+    # in-range integer.
+    assert (len(literal_holders), len(literal_both)) == (138, 29), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

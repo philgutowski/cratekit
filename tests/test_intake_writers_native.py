@@ -1108,7 +1108,9 @@ def test_an_unreachable_library_root_decides_nothing(machine):
 
 def test_both_intake_verbs_read_the_one_switch_and_nothing_beside_it_reads_the_mode():
     """No second switch. Under ``intake`` the recorded mode is read in one
-    module, and both verbs that write the intake tree call the function there."""
+    module, and both verbs that write the intake tree call the function there.
+    So does the set playlist's backfill (U121), which writes no intake node
+    and asks the same switch only to refuse a bridge tree by name."""
     readers: set[str] = set()
     switched: set[str] = set()
     for module in sorted((SRC / "intake").glob("*.py")):
@@ -1121,4 +1123,4 @@ def test_both_intake_verbs_read_the_one_switch_and_nothing_beside_it_reads_the_m
             if node.func.attr == "intake_medium":
                 switched.add(module.name)
     assert readers == {"ingest.py"}
-    assert switched == {"land_cli.py", "file_cli.py"}
+    assert switched == {"land_cli.py", "file_cli.py", "inspiration_cli.py"}

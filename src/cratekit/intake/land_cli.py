@@ -43,10 +43,10 @@ from pathlib import Path
 from typing import Any, Callable
 
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import config, rb_writer, session
+from cratekit.core import config, jobs, rb_writer, session
 from cratekit.core.cause import CratekitError, Outcome, Remedy, refuse
 from cratekit.core.exit_codes import ExitCode
-from cratekit.intake import account_playlists, batch_name, ingest, landing, native
+from cratekit.intake import account_playlists, batch_name, ingest, landing, native, set_playlist
 from cratekit.intake import cli as intake_cli
 
 #: The action every planned file carries until the apply reports on it.
@@ -225,6 +225,19 @@ def build_land(parser, entry) -> None:
             "from; its label rows are filed under the record labels tree"
         ),
     )
+    parser.add_argument(
+        "--set",
+        dest="set_job",
+        default=None,
+        metavar="JOB",
+        help=(
+            "the intake set job these files were downloaded for; the landing then "
+            "also writes the whole set, owned and landed tracks in set order, as one "
+            "permanent playlist under the INSPIRATION folder, in the same commit as "
+            "the batch (database native intake trees only)"
+        ),
+    )
+    set_playlist.add_word_arguments(parser)
     parser.set_defaults(_handler=intake_land)
 
 
@@ -492,6 +505,24 @@ def intake_land(ctx) -> Envelope:
     # the same one, so the two verbs cannot choose by two rules.
     medium = ingest.intake_medium(cfg)
     declared, registry = medium.declared, medium.registry
+    # THE SET PLAYLIST IS A DATABASE WRITE (U121), one more node in the native
+    # landing's commit, and the bridge landing splices an export and opens no
+    # database. Refused by name before the gate rather than landing the batch
+    # and quietly writing no playlist.
+    if ctx.args.set_job and not medium.native:
+        raise refuse(
+            "intake-list-unusable",
+            f"--set names a set job whose permanent playlist is written through "
+            f"the database, and this library's intake tree is "
+            f"{'on the xml bridge' if declared is not None else 'unreadable'}, so "
+            f"a landing here cannot write it; land without --set, nothing was moved",
+            remedy=Remedy.FIX_COMMAND_LINE,
+            steps=(
+                "land without --set, or cut the intake tree over and land with it",
+            ),
+            origin=_ORIGIN,
+            detail={"set_job": str(ctx.args.set_job)},
+        )
     if medium.native:
         return _land_native(
             ctx,
@@ -699,6 +730,8 @@ def _native_shown(rows: native.NativePlan, *, folder: Path, target: Path) -> dic
         **collection_facts(rows),
         "left in staging": len(rows.unsupported()),
     }
+    if rows.set_playlist is not None:
+        shown.update(set_playlist.facts(rows.set_playlist))
     if rows.playlists:
         claimed = {str(t) for one in rows.playlists for t in one.targets}
         written = [row for row in rows.rows if row.action != native.UNSUPPORTED]
@@ -772,7 +805,30 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
         }
         for written in landed.collection.playlists
     )
+    kept = landed.collection.set_playlist
+    if kept is not None:
+        items.append(set_playlist_item(kept, session_id=landed.collection.session_id))
+        totals = {
+            **totals,
+            "set playlist tracks": kept.members,
+            "set playlist left out": len(kept.left),
+        }
     return {**payload, "items": items, "totals": totals}
+
+
+def set_playlist_item(kept: set_playlist.Written, *, session_id: str) -> dict[str, Any]:
+    """The one item a write appends for the set's permanent playlist (U121)."""
+    return {
+        "action": PLAYLIST,
+        "playlist": kept.name,
+        "id": kept.playlist_id,
+        "folder": kept.folder_id,
+        "folder_created": kept.folder_created,
+        "count": kept.members,
+        "added": kept.added,
+        "left": [one.identity() for one in kept.left],
+        "session": session_id,
+    }
 
 
 def _land_native(
@@ -833,6 +889,30 @@ def _land_native(
     # before its first move, as the xml landing's preflight is.
     landing.preflight_native(planned, cfg=cfg)
     files = [(item, target / item.name) for item in planned.items]
+    # THE SET AND ITS NAME BEFORE THE GATE (U121): a job that is not a finished
+    # set, and a name the page and the flags cannot complete, refuse with the
+    # files still in staging and nothing shown.
+    set_job: jobs.Job | None = None
+    words: set_playlist.SetWords | None = None
+    reports: tuple[dict[str, Any], ...] = ()
+    if ctx.args.set_job:
+        with jobs.open_store() as store:
+            set_job = set_playlist.set_job_or_refuse(store, str(ctx.args.set_job))
+        words = set_playlist.words_for(
+            set_job, dj=ctx.args.dj, set_name=ctx.args.set_name, set_date=ctx.args.set_date
+        )
+        reports = set_playlist.reports_of(cfg, set_job)
+
+    set_planned: list[set_playlist.SetPlaylistPlan] = []
+
+    def set_plan(db) -> set_playlist.SetPlaylistPlan | None:
+        if set_job is None or words is None:
+            return None
+        made = set_playlist.plan_for_landing(
+            cfg, db, declared, set_job, words, reports, files=files
+        )
+        set_planned.append(made)
+        return made
 
     def write(db, rows: native.NativePlan) -> landing.LandedNative:
         # ONE LANDING PER BATCH NAME, HELD ACROSS THE WHOLE APPLY (R-432), as on
@@ -857,6 +937,7 @@ def _land_native(
                 db, claims, tree_id=tree_id, registry=registry, batch=planned.batch, target=target
             ),
             pass_name=ctx.args.pass_name,
+            set_plan=set_plan(db),
         ),
         payload=lambda rows: _native_payload(planned, rows, target=target),
         shown=lambda rows: _native_shown(rows, folder=planned.folder, target=target),
@@ -868,6 +949,14 @@ def _land_native(
     native.assert_rows_identified(landed.collection)
     warnings = [{"code": entry.reason, "message": entry.sentence} for entry in landed.refused]
     warnings.extend(awaiting_analysis(landed.collection))
+    kept = landed.collection.set_playlist
+    if kept is not None:
+        set_playlist.assert_read_back(kept)
+        warnings.extend(set_playlist.written_note(kept))
+        warnings.extend(set_playlist.left_warning(kept.left))
+    elif set_planned:
+        warnings.extend(set_playlist.nothing_note(set_planned[0]))
+        warnings.extend(set_playlist.left_warning(set_planned[0].left))
     return ctx.envelope(data=_native_reported(payload, landed), warnings=warnings)
 
 
@@ -978,5 +1067,6 @@ __all__ = [
     "intake_land",
     "intake_stem",
     "playlist_item",
+    "set_playlist_item",
     "unretired_name",
 ]

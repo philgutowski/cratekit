@@ -2837,6 +2837,45 @@ ENTRIES: tuple[Entry, ...] = (
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
+    # ── The set's permanent playlist (U121) ─────────────────────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives. The
+    # landing writes the playlist itself when given ``--set``; this is the
+    # backfill for a set that landed without it.
+    Entry(
+        name="intake.inspiration",
+        summary="write a landed set's permanent playlist under INSPIRATION, every "
+        "identified track the library owns in set order, named the source system's way",
+        module="cratekit.intake.inspiration_cli",
+        builder="build",
+        handler_key="intake.inspiration",
+        # NO FEATURE ROW. The source system made these playlists by hand, and
+        # the author decided on 2026-10-09 that every set intake leaves one.
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: The database tree and nothing else: one playlist node under the
+        #: declared INSPIRATION folder, that folder when the root lacks it, and
+        #: the memberships. No content row, no file, no INBOX node.
+        writes=frozenset({"db_tree"}),
+        taxonomy_terms=("inspiration",),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+        ),
+        gates=(
+            GateSpec(
+                name="intake.inspiration.approve",
+                options=("apply", "abort"),
+                prompt="Write the set's playlist under INSPIRATION with these tracks?",
+                #: EXPLICIT (R34). A node written outside the intake flow stays
+                #: in the library for good, so no blanket affirmative satisfies it.
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
     # ── The retroactive tidy (U112) ─────────────────────────────────────────
     #
     # Appended, for the reason the deferred routing block above gives. A

@@ -797,6 +797,16 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # reason: the remedy is a declaration or a folder, never this
         # installation's configuration.
         "intake-old-undeclared": ExitCode.LIBRARY_PREREQUISITE,
+        # U121. A set's playlist was asked for under a folder this library's
+        # taxonomy does not declare, ``[inspiration]``, or the playlist root
+        # holds that folder twice. The catalog's code and its reason.
+        "inspiration-folder-undeclared": ExitCode.LIBRARY_PREREQUISITE,
+        # U121. The set's playlist could not be named: the job's page carried
+        # no uploader, no title or no upload date, and the flag that stands in
+        # for the missing one was not given. PRECONDITION rather than USAGE,
+        # since the parser accepted the command line and what is missing is a
+        # fact about the recording, which the flag supplies.
+        "set-playlist-unnamed": ExitCode.PRECONDITION,
         # ── This installation ───────────────────────────────────────────────
         "doctor-check-failed": ExitCode.PRECONDITION,
         # One slug for every way configuration can be unusable, because the
