@@ -6128,7 +6128,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # row-defaults is the OWNER of the field policy the apply registers. And
     # rows-defaults-nothing-to-write and rows-defaults-written are WARNING
     # codes.
-    assert (len(literals), len(literals - set(causes))) == (644, 448), (
+    # Re-pinned on U115, the file id a native row carries, 2026-10-09: 644 to
+    # 647 distinct, non-keys 448 to 451. THREE joined and nothing left, each
+    # absent from `main`'s own `src` by git grep. row-file-id is the OWNER of
+    # the field policy the repair registers when it renumbers. And
+    # rows-file-id-undecidable and rows-file-id-unrenumbered are WARNING codes.
+    assert (len(literals), len(literals - set(causes))) == (647, 451), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

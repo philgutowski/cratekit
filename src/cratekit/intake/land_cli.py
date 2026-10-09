@@ -731,7 +731,12 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
                     **item,
                     "action": LANDED,
                     "content_id": row.content_id,
-                    "row": {**item["row"], "Title": row.title, "FolderPath": row.folder_path},
+                    "row": {
+                        **item["row"],
+                        "Title": row.title,
+                        "FolderPath": row.folder_path,
+                        rb_writer.FILE_ID_COLUMN: row.file_id,
+                    },
                     "left_empty": sorted(row.empty),
                 }
             )
@@ -860,6 +865,7 @@ def _land_native(
     if landed is None:
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
     native.assert_rows_gridless(landed.collection)
+    native.assert_rows_identified(landed.collection)
     warnings = [{"code": entry.reason, "message": entry.sentence} for entry in landed.refused]
     warnings.extend(awaiting_analysis(landed.collection))
     return ctx.envelope(data=_native_reported(payload, landed), warnings=warnings)

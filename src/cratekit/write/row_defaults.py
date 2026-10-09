@@ -1,4 +1,5 @@
-"""Fill rekordbox's own defaults on a content row that lacks them (R-923).
+"""Fill rekordbox's own defaults on a content row that lacks them (R-923), and
+give a row the binding numbered at random its file's inode (U115).
 
 WHY THIS EXISTS. The native landing made each row with the binding's
 ``add_content`` and set nothing else, so twenty one columns rekordbox fills on
@@ -30,18 +31,54 @@ rehearsal on a disposable copy of the database digests equal to the live plan
 when the rows are the same, which is what lets a session approve the live write
 on its own (R-922 is the landing that does not).
 
+THE FILE ID (U115, R-928). rekordbox will not load a row whose
+:data:`cratekit.core.rb_writer.FILE_ID_COLUMN` the binding minted at random,
+and rekordbox's own value is the file's inode at import. A random id is told
+from one rekordbox wrote by THE VOLUME'S INODE BOUND: APFS hands out inode
+numbers from a counter that never reuses one, so the inode of a file created
+this moment on the volume is above every inode any file on it has ever had. A
+row whose id is above that bound, and whose file reads back a different inode,
+carries a value no file ever carried, and is given its file's inode, owned,
+through :data:`cratekit.core.rb_writer.FILE_ID_POLICY`. A row whose id is at or
+under the bound is left alone whether it matches its file or not: rekordbox
+tolerates a stale inode and a zero, measured on 1,358 rows carrying 0 and on
+every row whose file was copied since import, and renumbering them would be a
+write over thousands of rows rekordbox made that buys nothing. The bound is a
+measurement, so it is shown at the gate and kept out of the digest: a copy
+rehearsal and the live run each create their own file and read two numbers.
+
+The rule has edges the gate states: a random id under the bound reads as
+stale, which at this volume's counter is about one in two hundred; a volume
+whose counter has passed :data:`cratekit.core.rb_writer.BINDING_ID_LIMIT`
+hides every random id; and a volume that is not APFS makes no such promise
+about its inode numbers at all. In the last two cases nothing is renumbered
+and the gate says why. A file a prefix rule places on another volume than the
+bound's is left too, since its inode is another volume's number.
+
 Layer: write. It opens no database of its own and names no verb.
 """
 
 from __future__ import annotations
 
+import os
+import stat
+import tempfile
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from cratekit.cli.output import digest_of
-from cratekit.core import config, convergence, rb_writer, session, snapshot, tree_registry
+from cratekit.core import (
+    config,
+    convergence,
+    locations,
+    preflight,
+    rb_writer,
+    session,
+    snapshot,
+    tree_registry,
+)
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.write import trees
@@ -56,6 +93,17 @@ CHANGE_KEY = "content.defaults"
 #: The columns this repair fills, in the order the screen and the digest list them.
 COLUMNS: tuple[str, ...] = tuple(rb_writer.CONTENT_ROW_DEFAULTS)
 
+#: The column the repair renumbers, the writer's name for it.
+FILE_ID = rb_writer.FILE_ID_COLUMN
+
+#: Why a row with a file id above the bound was not renumbered.
+FILE_MISSING = "the file is not on this machine"
+PATH_UNRESOLVED = "the path does not resolve on this machine"
+ON_ANOTHER_VOLUME = "the file is on another volume than the bound was measured on"
+
+#: The one filesystem whose inode numbers the bound is a statement about.
+APFS = "apfs"
+
 #: How many offending rows a refusal's sentence names. The detail carries all.
 _NAMED_ROWS = 5
 
@@ -68,12 +116,20 @@ _ORIGIN = ("write", "row_defaults")
 
 @dataclass(frozen=True, slots=True)
 class Item:
-    """One live row with at least one default column NULL, and which ones."""
+    """One live row to be written: its NULL default columns, its random file id, or both."""
 
     content_id: str
     title: str
     path: str
     columns: tuple[str, ...]
+    #: The inode to write to :data:`FILE_ID`, when the row's id is random (U115).
+    file_id: int | None = None
+    #: The random id the row carries, as text, so the apply can see it moved.
+    file_id_was: str | None = None
+
+    @property
+    def renumbers(self) -> bool:
+        return self.file_id is not None
 
     def to_json(self) -> dict[str, Any]:
         """The item as the gate shows it and the digest covers it."""
@@ -82,20 +138,96 @@ class Item:
             "title": self.title,
             "path": self.path,
             "fills": list(self.columns),
+            "renumber": (
+                {"from": self.file_id_was, "to": self.file_id} if self.renumbers else None
+            ),
         }
 
 
 @dataclass(frozen=True, slots=True)
+class Unrenumbered:
+    """One live row with a file id above the bound whose file could not be read."""
+
+    content_id: str
+    title: str
+    path: str
+    file_id: str
+    why: str
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "content_id": self.content_id,
+            "title": self.title,
+            "path": self.path,
+            FILE_ID: self.file_id,
+            "why": self.why,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class InodeBound:
+    """What :func:`inode_bound` measured: a fresh file's inode, and where (U115)."""
+
+    inode: int
+    #: ``st_dev`` of the file, so a candidate on another volume is not compared.
+    device: int
+    #: The filesystem type of the volume, as the mount table names it.
+    filesystem: str | None
+
+    @property
+    def why_undecidable(self) -> str | None:
+        """Why no id can be judged random against this bound, or None when it can."""
+        if self.filesystem != APFS:
+            named = self.filesystem or "unknown"
+            return (
+                f"the library's volume is {named}, not {APFS}, and only {APFS} allocates "
+                f"inode numbers from a counter it never winds back, so a fresh file's "
+                f"inode bounds nothing there"
+            )
+        if self.inode >= rb_writer.BINDING_ID_LIMIT:
+            return (
+                f"the volume's inode counter, {self.inode}, has passed the binding's "
+                f"range of {rb_writer.BINDING_ID_LIMIT}, so a random id cannot be told "
+                f"from one rekordbox wrote by its size"
+            )
+        return None
+
+
+@dataclass(frozen=True, slots=True)
 class DefaultsPlan:
-    """Every live row missing a default, and how many live rows were read."""
+    """Every live row missing a default or carrying a random file id, and what was read."""
 
     items: tuple[Item, ...]
     rows: int
+    #: The volume's inode bound the plan judged file ids against (U115).
+    bound: int = 0
+    #: The filesystem of the volume the bound was measured on.
+    filesystem: str | None = None
+    #: Why no file id was judged random, or None when the bound decides.
+    why_undecidable: str | None = None
+    #: Rows above the bound whose file could not be read, so they stay as they are.
+    unrenumbered: tuple[Unrenumbered, ...] = ()
+    #: Live rows whose id is at or under the bound and not zero, left alone.
+    within_bound: int = 0
+    #: Live rows above the bound whose file reads the same inode, left alone.
+    matched: int = 0
+    #: Live rows whose id is zero or NULL, left alone.
+    zero: int = 0
 
     @property
     def fills(self) -> int:
-        """Every column this plan writes, across every row."""
+        """Every default column this plan writes, across every row."""
         return sum(len(item.columns) for item in self.items)
+
+    @property
+    def renumbers(self) -> int:
+        """Every file id this plan writes."""
+        return sum(1 for item in self.items if item.renumbers)
+
+    @property
+    def undecidable(self) -> bool:
+        """No random id could be told against this bound; ``why_undecidable`` says why."""
+        return self.why_undecidable is not None
 
     def by_column(self) -> dict[str, int]:
         """How many rows each column is filled on, every column named, zeros included."""
@@ -112,7 +244,9 @@ class DefaultsPlan:
         OVER THE ITEMS, THE ROW COUNT AND THE VALUES WRITTEN, AND NOTHING THAT
         NAMES A COPY, so a rehearsal on a disposable copy digests equal to the
         live plan when the rows are the same. The values are in it so a build
-        that changes a default is a different plan.
+        that changes a default is a different plan. The bound is NOT in it: it
+        is a fresh file's inode and differs between any two runs, while the
+        items it selected are what the approval is for.
         """
         return digest_of(
             {
@@ -139,6 +273,8 @@ class Written:
     read_back: int
     wrong: tuple[str, ...] = ()
     moved: tuple[str, ...] = ()
+    #: How many of the written rows were given their file's inode (U115).
+    renumbered: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -146,38 +282,200 @@ class Written:
 # ---------------------------------------------------------------------------
 
 
-def plan_rows(db: Any) -> DefaultsPlan:
-    """Every live content row with a default column NULL, from SQL, by identifier.
+def filesystem_of(path: Path) -> str | None:
+    """The filesystem type of the volume holding ``path``, from the mount table, or None.
+
+    Imported lazily, as :func:`cratekit.core.preflight.local_mount_points` does,
+    so a test that injects its own bound never loads the extension module.
+    """
+    import psutil
+
+    mount = str(preflight.containing_mount(path))
+    for part in psutil.disk_partitions(all=False):
+        if part.mountpoint == mount:
+            return part.fstype.lower() or None
+    return None
+
+
+def inode_bound(cfg: config.Config) -> InodeBound:
+    """The inode of a file created this moment in the library's state directory (U115).
+
+    ON APFS THIS IS ABOVE EVERY INODE THE VOLUME HAS EVER GIVEN A FILE, because
+    the volume allocates them from a counter it never winds back. So an id
+    above it was never an inode on this volume, and the binding's random id,
+    which is what every native row before U115 carries, is almost always
+    above it. The file is removed again at once. The device and the filesystem
+    are measured with it: a candidate on another device is another volume's
+    number, and a volume that is not APFS promises nothing about its numbers.
+
+    REFUSES WHEN THE LIBRARY ROOT IS ABSENT, in the words ``open_db`` uses,
+    rather than creating it: a root made on the boot volume squats the mount
+    point, and the next mount lands beside it.
+    """
+    root = Path(cfg.library.root)
+    if not root.is_dir():
+        raise refuse(
+            "library-directory-missing",
+            f"the library root does not exist: {root}; the library volume is most "
+            f"likely not mounted, so no inode bound can be measured on it",
+            origin=_ORIGIN,
+            detail={"directory": str(root)},
+        )
+    directory = config.library_state_dir(cfg)
+    directory.mkdir(exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=directory, prefix=".inode-bound-") as handle:
+        measured = os.fstat(handle.fileno())
+    return InodeBound(
+        inode=measured.st_ino, device=measured.st_dev, filesystem=filesystem_of(directory)
+    )
+
+
+#: What a file id is, judged against the bound alone. Pure.
+ZERO = "zero"
+WITHIN = "within"
+ABOVE = "above"
+
+
+def file_id_state(value: Any, bound: int) -> str:
+    """Judge one stored file id against the volume's inode bound. Pure.
+
+    ``ZERO`` for NULL, an empty string and 0, which rekordbox tolerates;
+    ``ABOVE`` for a number above the bound, which no file on the volume has
+    ever carried; ``WITHIN`` for everything else, a value that was an inode on
+    this volume at some time, or a text that is not a plain run of digits and
+    that this repair makes no claim about. ``int`` alone would take a sign, an
+    underscore or a digit from another script, none of which rekordbox or the
+    binding writes.
+    """
+    if value is None:
+        return ZERO
+    text = str(value).strip()
+    if text in ("", "0"):
+        return ZERO
+    if not (text.isascii() and text.isdigit()):
+        return WITHIN
+    return ABOVE if int(text) > bound else WITHIN
+
+
+def _file_inode(
+    recorded: str,
+    *,
+    root: Path | str,
+    prefix_map: Sequence[locations.PrefixRule],
+    device: int,
+) -> tuple[int | None, str]:
+    """The inode of the file a recorded path names on this machine, or why not.
+
+    ONE STAT, and the device is read from it: a file a prefix rule places on
+    another volume carries that volume's inode numbers, which the bound says
+    nothing about, so it is left with its reason rather than compared.
+    """
+    try:
+        _decoded, resolved = trees.located(recorded, root=root, prefix_map=prefix_map)
+    except locations.LocationDecodeError:
+        return None, PATH_UNRESOLVED
+    if resolved.path is None:
+        return None, PATH_UNRESOLVED
+    try:
+        found = os.stat(Path(resolved.path))
+    except OSError:
+        return None, FILE_MISSING
+    if not stat.S_ISREG(found.st_mode):
+        return None, FILE_MISSING
+    if found.st_dev != device:
+        return None, ON_ANOTHER_VOLUME
+    return found.st_ino, ""
+
+
+def plan_rows(
+    db: Any,
+    *,
+    root: Path | str,
+    prefix_map: Sequence[locations.PrefixRule] = (),
+    bound: InodeBound,
+) -> DefaultsPlan:
+    """Every live content row with a default column NULL or a random file id, from SQL.
 
     FROM SQL AND NOT FROM THE MAPPED ROWS, so a NULL is what the table holds and
     not what the binding substitutes on load. Ordered by identifier, so the
     digest is the same whatever order the database returns rows in.
+
+    ONLY A ROW ABOVE THE BOUND HAS ITS FILE READ. A row at or under it is left
+    whatever its file says, so the plan stats the handful of candidates and
+    not the library. A candidate whose file reads back the same inode is not
+    random after all and is left; one whose file cannot be read, or sits on
+    another volume, is listed apart, unwritten, since there is no inode to give
+    it. A BOUND THAT DECIDES NOTHING, off APFS or past the binding's range,
+    judges every id as within it, so nothing is renumbered and the plan says why.
     """
     from sqlalchemy import text
 
     selected = ", ".join(COLUMNS)
     result = db.session.execute(
         text(
-            f"SELECT ID, Title, FolderPath, {selected} FROM {rb_writer.CONTENT_TABLE} "
+            f"SELECT ID, Title, FolderPath, {FILE_ID}, {selected} FROM {rb_writer.CONTENT_TABLE} "
             f"WHERE {rb_writer.SOFT_DELETE_COLUMN} = 0"
         )
     )
     items: list[Item] = []
-    rows = 0
+    unrenumbered: list[Unrenumbered] = []
+    rows = within = matched = zero = 0
+    decides = bound.why_undecidable is None
     for row in result.mappings():
         rows += 1
+        content_id = str(row["ID"])
+        title = str(row["Title"] or "")
+        path = str(row["FolderPath"] or "")
         missing = tuple(column for column in COLUMNS if row[column] is None)
-        if missing:
+        file_id: int | None = None
+        was: str | None = None
+        state = file_id_state(row[FILE_ID], bound.inode)
+        if state == ZERO:
+            zero += 1
+        elif state == WITHIN or not decides:
+            within += 1
+        else:
+            inode, why = _file_inode(
+                path, root=root, prefix_map=prefix_map, device=bound.device
+            )
+            if inode is None:
+                unrenumbered.append(
+                    Unrenumbered(
+                        content_id=content_id,
+                        title=title,
+                        path=path,
+                        file_id=str(row[FILE_ID]),
+                        why=why,
+                    )
+                )
+            elif str(inode) == str(row[FILE_ID]).strip():
+                matched += 1
+            else:
+                file_id, was = inode, str(row[FILE_ID]).strip()
+        if missing or file_id is not None:
             items.append(
                 Item(
-                    content_id=str(row["ID"]),
-                    title=str(row["Title"] or ""),
-                    path=str(row["FolderPath"] or ""),
+                    content_id=content_id,
+                    title=title,
+                    path=path,
                     columns=missing,
+                    file_id=file_id,
+                    file_id_was=was,
                 )
             )
     items.sort(key=lambda item: (len(item.content_id), item.content_id))
-    return DefaultsPlan(items=tuple(items), rows=rows)
+    unrenumbered.sort(key=lambda one: (len(one.content_id), one.content_id))
+    return DefaultsPlan(
+        items=tuple(items),
+        rows=rows,
+        bound=bound.inode,
+        filesystem=bound.filesystem,
+        why_undecidable=bound.why_undecidable,
+        unrenumbered=tuple(unrenumbered),
+        within_bound=within,
+        matched=matched,
+        zero=zero,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +516,7 @@ def _mapped(db: Any, content_ids: Sequence[str]) -> dict[str, Any]:
     return found
 
 
-def _named(offenders: Sequence[str]) -> str:
+def named(offenders: Sequence[str]) -> str:
     """The first few offenders as a sentence, and how many more there are."""
     shown = "; ".join(offenders[:_NAMED_ROWS])
     more = len(offenders) - _NAMED_ROWS
@@ -229,8 +527,9 @@ def assert_rows_as_planned(plan: DefaultsPlan, now: Mapping[str, Mapping[str, An
     """Refuse when a row to be written is not the row the plan read.
 
     THE PLAN IS MADE ON A READ HANDLE AND THE WRITE ON ANOTHER, so the apply
-    asks SQL again whether each row is still live and whether every column the
-    plan would fill is still NULL. A column given a value since, by rekordbox or
+    asks SQL again whether each row is still live, whether every column the
+    plan would fill is still NULL, and whether a file id to be replaced is
+    still the one the plan read. A column given a value since, by rekordbox or
     by a person, is a row nobody was shown, and nothing is written for any row.
     """
     moved: list[str] = []
@@ -242,11 +541,13 @@ def assert_rows_as_planned(plan: DefaultsPlan, now: Mapping[str, Mapping[str, An
         filled = [column for column in item.columns if row.get(column) is not None]
         if filled:
             moved.append(f"{item.content_id}: {', '.join(filled)} set since the plan")
+        if item.renumbers and str(row.get(FILE_ID) or "").strip() != item.file_id_was:
+            moved.append(f"{item.content_id}: {FILE_ID} changed since the plan")
     if moved:
         raise refuse(
             "decision-stale",
             f"{len(moved)} of {len(plan.items)} row(s) to be written are not as the "
-            f"plan read them, so nothing was written: " + _named(moved),
+            f"plan read them, so nothing was written: " + named(moved),
             steps=("run the verb again and approve the plan as it is now",),
             origin=_ORIGIN,
             detail={"moved": moved},
@@ -265,7 +566,9 @@ def judge(
     rekordbox's 0 by affinity, so the same value can read back either way. The
     one float, ``SamplerGain``, was measured stored real on the live table; an
     integer affinity there would read back ``'0'`` and refuse here, after a
-    durable commit, which the first live run would show at once.
+    durable commit, which the first live run would show at once. The file id
+    is declared a string by the binding and holds an integer on the live
+    table, and is compared the same way.
     """
     wrong: list[str] = []
     moved: list[str] = []
@@ -282,7 +585,11 @@ def judge(
         ]
         if off:
             wrong.append(f"{item.content_id}: {', '.join(off)} not as the default")
+        if item.renumbers and str(now.get(FILE_ID) or "").strip() != str(item.file_id):
+            wrong.append(f"{item.content_id}: {FILE_ID} not the file's inode")
         planned = set(item.columns)
+        if item.renumbers:
+            planned.add(FILE_ID)
         changed = sorted(
             column
             for column in now
@@ -311,32 +618,38 @@ def _record_commit(record: session.SessionRecord, written: int, cfg: config.Conf
     )
 
 
-def _fill(plan: DefaultsPlan, mapped: Mapping[str, Any]) -> int:
-    """Set every planned column on its mapped row through the field policy.
+def _fill(plan: DefaultsPlan, mapped: Mapping[str, Any]) -> tuple[int, int]:
+    """Set every planned column on its mapped row through the field policies.
 
-    Returns the rows written. A decision other than a write means the policy
-    disagrees with a plan the staleness check has just passed, which is this
-    module's defect and refuses before the commit.
+    Returns the rows written and how many of them were renumbered. A decision
+    other than a write means a policy disagrees with a plan the staleness check
+    has just passed, which is this module's defect and refuses before the
+    commit.
     """
     owner = rb_writer.ROW_DEFAULTS_POLICY.owner
-    written = 0
+    file_owner = rb_writer.FILE_ID_POLICY.owner
+    written = renumbered = 0
     for item in plan.items:
         row = mapped[item.content_id]
-        for column in item.columns:
-            decision = rb_writer.write_metadata_field(
-                row, owner, column, rb_writer.CONTENT_ROW_DEFAULTS[column]
-            )
+        writes = [
+            (owner, column, rb_writer.CONTENT_ROW_DEFAULTS[column]) for column in item.columns
+        ]
+        if item.renumbers:
+            writes.append((file_owner, FILE_ID, item.file_id))
+        for who, column, value in writes:
+            decision = rb_writer.write_metadata_field(row, who, column, value)
             if decision is not rb_writer.Decision.WRITE:
                 raise refuse(
                     "internal-error",
-                    f"the row {item.content_id} was planned to have {column} filled "
+                    f"the row {item.content_id} was planned to have {column} written "
                     f"and the field policy answered {decision}, so nothing was written",
                     remedy=Remedy.REPORT_DEFECT,
                     origin=_ORIGIN,
                     detail={"content_id": item.content_id, "column": column},
                 )
         written += 1
-    return written
+        renumbered += 1 if item.renumbers else 0
+    return written, renumbered
 
 
 def apply_rows(
@@ -375,13 +688,17 @@ def apply_rows(
     # gives: the fingerprint recorded after the commit must not bless a
     # database recovered out of band.
     convergence.detect_out_of_band_restore(cfg, db, tree_registry.read(cfg))
-    # REGISTERED FOR THIS COMMIT AND THEN PUT BACK. The policy is what admits
-    # these columns, and a registration left behind would widen the guard for
-    # every writer that commits later in the process. The registry as it was
-    # is restored whatever happens inside, the baseline colour policy included.
+    # REGISTERED FOR THIS COMMIT AND THEN PUT BACK. The two policies are what
+    # admit these columns, and a registration left behind would widen the guard
+    # for every writer that commits later in the process. The registry as it
+    # was is restored whatever happens inside, the baseline colour policy
+    # included. The file id policy is registered only when the plan renumbers,
+    # so a run that fills defaults alone cannot write the column.
     was = rb_writer.registered_field_policies()
     try:
         rb_writer.register_field_policy(rb_writer.ROW_DEFAULTS_POLICY)
+        if plan.renumbers:
+            rb_writer.register_field_policy(rb_writer.FILE_ID_POLICY)
         with (
             session.assert_gates(
                 cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
@@ -394,9 +711,9 @@ def apply_rows(
             snapshot.assert_verified(capture)
 
             before = _columns(db, content_ids)
-            written = 0
+            written = renumbered = 0
             try:
-                written = _fill(plan, mapped)
+                written, renumbered = _fill(plan, mapped)
                 rb_writer.commit_guarded(db)
             except BaseException:
                 trees._rollback_quietly(db)
@@ -422,6 +739,7 @@ def apply_rows(
         read_back=len(plan.items) - len(wrong),
         wrong=wrong,
         moved=moved,
+        renumbered=renumbered,
     )
 
 
@@ -439,9 +757,8 @@ def assert_read_back(written: Written) -> None:
     if written.moved:
         raise refuse(
             "whitelist-violation",
-            "a row given rekordbox's defaults has another column changed after the "
-            "commit, which the guard should have refused before it: "
-            + _named(written.moved),
+            "a repaired row has another column changed after the commit, which "
+            "the guard should have refused before it: " + named(written.moved),
             remedy=Remedy.REPORT_DEFECT,
             steps=undo,
             origin=_ORIGIN,
@@ -450,7 +767,7 @@ def assert_read_back(written: Written) -> None:
     raise refuse(
         "internal-error",
         f"{len(written.wrong)} of {written.written} row(s) written do not read back "
-        f"with rekordbox's defaults: " + _named(written.wrong),
+        f"as planned: " + named(written.wrong),
         remedy=Remedy.REPORT_DEFECT,
         steps=undo,
         origin=_ORIGIN,
@@ -459,15 +776,29 @@ def assert_read_back(written: Written) -> None:
 
 
 __all__ = [
+    "ABOVE",
+    "APFS",
     "CHANGE_KEY",
     "COLUMNS",
+    "FILE_ID",
+    "FILE_MISSING",
+    "ON_ANOTHER_VOLUME",
+    "PATH_UNRESOLVED",
+    "WITHIN",
     "WORKFLOW",
+    "ZERO",
     "DefaultsPlan",
+    "InodeBound",
     "Item",
+    "Unrenumbered",
     "Written",
     "apply_rows",
     "assert_read_back",
     "assert_rows_as_planned",
+    "file_id_state",
+    "filesystem_of",
+    "inode_bound",
     "judge",
+    "named",
     "plan_rows",
 ]

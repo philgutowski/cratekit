@@ -2625,6 +2625,41 @@ ROW_DEFAULTS_POLICY = FieldPolicy(
     fields=MappingProxyType(dict.fromkeys(CONTENT_ROW_DEFAULTS, Ownership.FILL_IF_EMPTY)),
 )
 
+#: The column rekordbox keys a row's file by, and what it holds: THE FILE'S
+#: INODE NUMBER AT THE MOMENT REKORDBOX IMPORTED IT (U115, R-928). Measured on
+#: the live library on 2026-10-09: every row rekordbox made that day carries
+#: its file's ``st_ino`` exactly, as do 459 of 459 rows created that month,
+#: 1,851 of 1,851 in July and 33 of 33 in April. A row whose file was copied
+#: since carries the old inode and still loads, and 1,358 rows carry 0 and
+#: load, so the value need not match the file today. The binding's
+#: ``add_content`` mints a random 28 bit id instead, a value no file on the
+#: volume has ever carried, and that is the one rekordbox refuses: such a row
+#: shows every column and never loads to a deck.
+#:
+#: NOT A BOOKKEEPING COLUMN. Adding it to :data:`BOOKKEEPING_COLUMNS` would
+#: blind the guard to it for every writer. The landing sets it on the row it
+#: creates, where the creation policy admits any column rekordbox does not
+#: derive from the audio, and the repair below owns it for its one commit.
+FILE_ID_COLUMN = "rb_file_id"
+
+#: The upper bound of the binding's random id. ``generate_unused_id`` takes
+#: four random bytes and shifts them right by four, so the value is under
+#: 2 to the 28th. A volume whose inode counter has passed this cannot tell a
+#: random id from a stale one by magnitude, and the repair says so.
+BINDING_ID_LIMIT = 1 << 28
+
+#: The repair of a row the binding gave a random file id (U115). Registered by
+#: that repair alone and never at baseline, as :data:`ROW_DEFAULTS_POLICY` is.
+#:
+#: OWNED, NOT FILL IF EMPTY, because the value it replaces is present and
+#: wrong: a random id is what the row carries, and the file's inode is what
+#: rekordbox would have written. Nothing a person could have set is in this
+#: column, so an overwrite replaces only what the binding minted.
+FILE_ID_POLICY = FieldPolicy(
+    owner="row-file-id",
+    fields=MappingProxyType({FILE_ID_COLUMN: Ownership.OWNED}),
+)
+
 _REGISTERED: dict[str, FieldPolicy] = {}
 
 
@@ -3454,6 +3489,7 @@ def commit_guarded(
 
 __all__ = [
     "ADMITTABLE_ROW_TABLES",
+    "BINDING_ID_LIMIT",
     "BOOKKEEPING_COLUMNS",
     "CONTENT_ANALYSIS_TABLES",
     "CONTENT_ROW_DEFAULTS",
@@ -3463,6 +3499,8 @@ __all__ = [
     "CommitWitness",
     "ENV_APP_PATH",
     "FIELD_EMPTIES",
+    "FILE_ID_COLUMN",
+    "FILE_ID_POLICY",
     "GRIDLESS_ON_CREATE_COLUMNS",
     "LIBRARY_SYNC_SETTING",
     "MASTER_PLAYLIST_XML",

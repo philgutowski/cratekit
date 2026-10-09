@@ -630,7 +630,8 @@ ENTRIES: tuple[Entry, ...] = (
     Entry(
         name="repair.rows",
         summary="give each live library row rekordbox's own defaults where a "
-        "column is empty, so it loads to a deck; writes no file",
+        "column is empty, and its file's inode where the file id is random, so "
+        "it loads to a deck; writes no file",
         module="cratekit.write.row_defaults_cli",
         builder="build",
         handler_key="repair.rows",
@@ -643,7 +644,8 @@ ENTRIES: tuple[Entry, ...] = (
         emits=frozenset({"plan"}),
         output_schema="plan/1",
         #: THE ROW AND ONLY THE ROW, and of it only the columns
-        #: ``rb_writer.CONTENT_ROW_DEFAULTS`` names, each only where NULL.
+        #: ``rb_writer.CONTENT_ROW_DEFAULTS`` names, each only where NULL, and
+        #: ``rb_writer.FILE_ID_COLUMN`` where the binding minted it (U115).
         writes=frozenset({"db_metadata"}),
         destructive=True,
         doctor_checks=(

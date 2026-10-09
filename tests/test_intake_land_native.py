@@ -424,6 +424,93 @@ def test_the_rows_carry_every_default_rekordbox_writes_on_a_row_it_makes(native_
     assert not set(rb_writer.CONTENT_ROW_DEFAULTS) & rb_writer.CONTENT_ROW_EMPTY_COLUMNS
 
 
+def test_the_rows_carry_the_landed_files_inode_as_their_file_id(native_library, silence):
+    """U115, R-928: a row the binding makes carries a random ``rb_file_id`` and
+    rekordbox will not load it to a deck. rekordbox's own value is the file's
+    inode at import, so every landed row carries ``st_ino`` of its landed
+    file, read from SQL and compared as text, and the envelope says so."""
+    cfg, _root = native_library
+    for name in ("One.flac", "Two.flac"):
+        _stage(cfg, silence, name)
+    code, acted, _ = _two_acts(_land())
+    assert code == int(ExitCode.OK), acted
+
+    rows = _query(
+        cfg,
+        f"SELECT ID, FolderPath, {rb_writer.FILE_ID_COLUMN} FROM djmdContent WHERE FolderPath LIKE ?",
+        f"%{BATCH}%",
+    )
+    assert len(rows) == 2
+    by_id: dict[str, str] = {}
+    for content_id, folder_path, file_id in rows:
+        landed = Path(folder_path)
+        assert landed.is_file(), folder_path
+        assert file_id is not None and str(file_id) == str(landed.stat().st_ino), content_id
+        # Not the binding's random id: that is under 2 to the 28th by construction,
+        # and the inode of a file on this machine is what the row holds instead.
+        assert int(file_id) == landed.stat().st_ino
+        by_id[str(content_id)] = str(file_id)
+    landed_items = [item for item in acted["data"]["items"] if item["action"] == "landed"]
+    assert len(landed_items) == 2
+    for item in landed_items:
+        assert item["row"][rb_writer.FILE_ID_COLUMN] == by_id[item["content_id"]]
+
+
+def test_a_row_whose_file_id_did_not_take_is_refused_after_the_commit_naming_the_session(
+    native_library, silence, monkeypatch
+):
+    """The restamp reads the inode once per row and the assertion reads it again
+    after the commit. A first reading that lies, standing in for a binding or
+    guard that drops the column, leaves a row rekordbox will not load, and the
+    landing says so with the session to restore rather than exiting OK."""
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    real = native.file_id_of
+    calls: list[Path] = []
+
+    def lying_once(path: Path) -> int:
+        calls.append(path)
+        return real(path) + (1 if len(calls) == 1 else 0)
+
+    monkeypatch.setattr(native, "file_id_of", lying_once)
+    code, acted, _ = _two_acts(_land())
+
+    assert code != int(ExitCode.OK), acted
+    assert acted["cause"]["reason"] == "internal-error"
+    assert rb_writer.FILE_ID_COLUMN in acted["cause"]["message"]
+    (record,) = session.records(cfg)
+    assert record.session_id in " ".join(acted["cause"]["remediation"]["steps"])
+    ((file_id, folder_path),) = _query(
+        cfg, f"SELECT {rb_writer.FILE_ID_COLUMN}, FolderPath FROM djmdContent WHERE FolderPath LIKE ?", f"%{BATCH}%"
+    )
+    assert int(file_id) == Path(folder_path).stat().st_ino + 1, "the write is durable"
+
+
+def test_assert_rows_identified_is_pure_over_what_was_read_back(tmp_path):
+    path = tmp_path / "a.flac"
+    path.write_bytes(b"fLaC")
+    right = native.AddedRow(
+        target=path, content_id="1", title="t", folder_path=str(path), empty={},
+        file_id=str(path.stat().st_ino),
+    )
+    wrong = native.AddedRow(
+        target=path, content_id="2", title="t", folder_path=str(path), empty={}, file_id="73894078"
+    )
+    native.assert_rows_identified(_landed(right))
+    with pytest.raises(CratekitError) as caught:
+        native.assert_rows_identified(_landed(right, wrong))
+    assert caught.value.cause.reason == "internal-error"
+    assert "2: " in caught.value.cause.message and "73894078" in caught.value.cause.message
+    assert "restore session s-1" in " ".join(caught.value.cause.remediation.steps)
+
+
+def _landed(*rows: native.AddedRow) -> native.NativeLanded:
+    return native.NativeLanded(
+        tree_id=INTAKE, playlist="p", playlist_id="9", added=tuple(rows), present=(),
+        memberships_added=len(rows), session_id="s-1",
+    )
+
+
 def test_after_the_write_no_analysis_value_exists_on_the_new_rows_column_by_column(
     native_library, silence
 ):
@@ -466,7 +553,17 @@ def test_the_gate_screen_names_every_row_its_columns_the_playlist_and_the_databa
     (item,) = shown["items"]
     assert item["action"] == native.ADD
     assert item["to"] == str(_music(cfg) / "One.flac")
-    assert set(item["row"]) == {"Title", "FolderPath", "FileNameL", "FileSize", "FileType"}
+    assert set(item["row"]) == {
+        "Title",
+        "FolderPath",
+        "FileNameL",
+        "FileSize",
+        "FileType",
+        rb_writer.FILE_ID_COLUMN,
+    }
+    # U115: the file id is named as the sentence it is, since the number is
+    # read on the landed file when the row is made and no plan can know it.
+    assert item["row"][rb_writer.FILE_ID_COLUMN] == native.FILE_ID_AT_LANDING
     assert item["row"]["FileType"] == 5, "FLAC is file type 5 in the binding"
     # Nothing moved and nothing was written for a plan nobody answered.
     assert _staged_names(cfg) == ["One.flac"]
