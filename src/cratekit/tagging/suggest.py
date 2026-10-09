@@ -93,7 +93,7 @@ WRITE = "write"
 HELD_OUT = "held-out"
 BELOW_BAND = "below-band"
 TIED = "tied"
-NO_EVIDENCE = "no-evidence"
+NO_VOTES = "no-votes"
 GENRE_UNKNOWN = "genre-unknown"
 ROW_HAS_GENRE = "row-has-genre"
 FILE_HAS_GENRE = "file-has-genre"
@@ -103,7 +103,7 @@ OUTCOMES: tuple[str, ...] = (
     HELD_OUT,
     BELOW_BAND,
     TIED,
-    NO_EVIDENCE,
+    NO_VOTES,
     GENRE_UNKNOWN,
     ROW_HAS_GENRE,
     FILE_HAS_GENRE,
@@ -112,7 +112,7 @@ OUTCOMES: tuple[str, ...] = (
 
 #: The outcomes of a candidate that is offered and not written. Each is listed
 #: in the plan as an item with the outcome as its reason.
-LEFT: tuple[str, ...] = (HELD_OUT, BELOW_BAND, TIED, NO_EVIDENCE, GENRE_UNKNOWN)
+LEFT: tuple[str, ...] = (HELD_OUT, BELOW_BAND, TIED, NO_VOTES, GENRE_UNKNOWN)
 
 #: What an item whose row is not written says it does.
 LEAVE = "leave"
@@ -125,8 +125,8 @@ UNREAD = "unread"
 #: How long a catalogue answer is reused, in days.
 CATALOGUE_DAYS = 7
 
-#: The file the catalogue's answers are kept in, under the library's state.
-CATALOGUE_FILE = "tag_suggest_catalogue.json"
+#: The state entry the catalogue's answers are kept in, under the library's state.
+CATALOGUE_STATE = "tag_suggest_catalogue"
 
 #: How many lookups are kept between saves, so a run stopped part way loses
 #: at most this many paced lookups.
@@ -381,7 +381,7 @@ def catalogue_lookup(searcher: Searcher, published: PublishedGenre | None = None
 
 
 def catalogue_path(cfg: config.Config) -> Path:
-    return config.library_state_dir(cfg) / CATALOGUE_FILE
+    return config.state_path(CATALOGUE_STATE, cfg)
 
 
 def _read_kept(path: Path) -> dict[str, Any]:
@@ -398,7 +398,6 @@ def _read_kept(path: Path) -> dict[str, Any]:
 
 
 def _save_kept(path: Path, kept: Mapping[str, Any]) -> None:
-    path.parent.mkdir(exist_ok=True)
     payload = json.dumps(dict(sorted(kept.items())), indent=1, sort_keys=True)
     config.atomic_write_bytes(payload.encode("utf-8"), path)
 
@@ -632,7 +631,7 @@ def plan_suggestions(
         elif earned == SPLIT:
             reason = TIED
         elif earned == NONE:
-            reason = NO_EVIDENCE
+            reason = NO_VOTES
         elif not _at_or_above(earned, band):
             reason = BELOW_BAND
         else:
@@ -760,7 +759,7 @@ __all__ = [
     "BANDS",
     "BELOW_BAND",
     "CATALOGUE_DAYS",
-    "CATALOGUE_FILE",
+    "CATALOGUE_STATE",
     "CATALOGUE_WEIGHT",
     "DECLINED",
     "FILE_HAS_GENRE",
@@ -774,7 +773,7 @@ __all__ = [
     "MATCHED",
     "MEDIUM",
     "NONE",
-    "NO_EVIDENCE",
+    "NO_VOTES",
     "OUTCOMES",
     "ROW_HAS_GENRE",
     "SPLIT",

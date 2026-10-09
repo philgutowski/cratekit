@@ -314,7 +314,7 @@ def test_a_catalogue_answer_outside_the_taxonomy_is_never_suggested(machine, sil
     )
     with suggest.KeptCatalogue(machine, lookup) as kept:
         plan = _planned(machine, catalogue=kept)
-    assert _item(plan, "10").votes == () and _item(plan, "10").reason == suggest.NO_EVIDENCE
+    assert _item(plan, "10").votes == () and _item(plan, "10").reason == suggest.NO_VOTES
     assert _item(plan, "11").votes == () and _item(plan, "11").genre == ""
     twelve = _item(plan, "12")
     assert twelve.votes == ((MELODIC, suggest.CATALOGUE_WEIGHT),)
@@ -355,7 +355,7 @@ def test_every_live_row_lands_in_exactly_one_outcome(machine, silence):
             suggest.ROW_HAS_GENRE: 8,
             suggest.FILE_HAS_GENRE: 1,
             "file-missing": 1,
-            suggest.NO_EVIDENCE: 1,
+            suggest.NO_VOTES: 1,
             "no-path": BASELINE,
         }
     )
@@ -509,7 +509,7 @@ def test_an_answer_nobody_could_read_is_not_kept(machine):
 
 def test_a_kept_file_that_cannot_be_read_is_asked_again(machine):
     path = suggest.catalogue_path(machine)
-    path.parent.mkdir(exist_ok=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("{not json", encoding="utf-8")
     lookup = _Lookup({"t": suggest.Asked(suggest.MATCHED, genre=DEEP)})
     with suggest.KeptCatalogue(machine, lookup) as kept:
