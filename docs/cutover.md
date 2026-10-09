@@ -1033,6 +1033,34 @@ made playlists in INBOX / Old; the sampler rows and the A8 row of
 2026-09-29 (`73894078`, random id, inode 1104075) still carry random ids
 and are outside INBOX, untouched here.
 
+## Sitting 35, 2026-10-09, attended, the first set intake end to end on the native tree
+
+A SoundCloud mix of 5 hours 5 minutes, Public Service NYC live at Vonking on
+2026-05-03, taken from the address to BY GENRE + ENERGY with the installed
+copy at the merge of #260, which predates U115. rekordbox was closed for
+every verb and both processes confirmed gone after it quit. The
+acknowledgment the author minted at 12:43Z held throughout.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `intake set` on the address | live, detached, paused 30 minutes mid download at the author's ask and resumed | 557 MB fetched in about 7 minutes, 732 recognition calls in two parts over about 19 minutes, **54 tracks** queued. No output for the whole run, R-924; the tracks visible only in the job store, R-925. The run also surfaced the config overwrite, R-926, found and restored by its drift warning. | live |
+| The review of the 54 | the session, the author told the lane | 36 keep, 18 drop: one song under several ISRCs five times (Black Coffee, Edwin Starr, Michael Jackson, D'Angelo, The Emotions, Francis Overcast, Afrikan Roots, Soul Central, Merceditas Valdes, ManWomanBoogie), a karaoke cover, a piano cover, a continuous DJ mix, a row with no ISRC. The author stated the library is growing into hip hop, R&B and soul, so those rows are kept on the same footing as house. | decided |
+| `intake set --job` | live | 17 owned, 5 offered, 32 missing, 102 provider calls, no rate limit. | live |
+| `intake missing --job`, then `--list` over the unlisted keeps | live | 6 listed by ISRC. 26 handed on: 7 drops, 18 keeps of which one ISRC named several releases or none. The text search listed 1 exactly, offered 15 for review, found nothing for 2. Fifteen verdicts recorded by the session, the ISRC match chosen where one existed, the heard mix otherwise. Two resolved by hand from the provider's own rows for the two ISRCs the search skipped: Soul Central's Funky Lowlives Mix, two releases, the single taken; Edwin Starr's King Britt Remix in place of the Extended Mix the provider lacks. **20 listed**, merged into one list by hand. Not on the provider at all: Freyta, Richie Rich, Atix, Xandra. | live |
+| `acquire download` | live, one job, 120 calls, no rate limit, about 4 minutes | **20 of 20.** | live |
+| `tag folder`, `analyze run`, `analyze restamp`, `name apply` | yes, in one detached chain | 19 of 20 tagged (one `Dance`, unmapped), Traxsource and Bandcamp blocked as before, art repaired on 20; 20 analysed and stamped; 19 renamed. **One pulled before the rename**: Stefan Ringer `SO` is the library's `Sexual Obsession`, so the resolver's title approximate hold was right and the session's rejection of it wrong; the verdict was cleared and the library candidate accepted. The first chain ran nothing, zsh passing each two word verb as one word. | live |
+| `intake land --name`, native | rehearsed on a copy, applied there, the 19 files moved back by the plan's mapping; live on the same screen but the database line, `4c8eeef47fd787ee` against `1f2428567691ccb7`, R-922, approved by the session | 19 rows, 19 memberships in `INBOX / 2026-10-09 Set Public Service NYC Live at Vonking 5-3-26`, files in the folder of that name. A `run decide` only answers; the verb resumed under `--run` applies. | live |
+| rekordbox, desktop control | the computer use lock was held by cratekit-7e, idle since 2026-10-08 01:17, pid 20715; removed with the author's choice | Analyze Tracks with KEY unticked, about a minute for 19; Reload Tags filled artist, key and genre on 19, one with no genre (Tribal Kings). **A permanent playlist for the set**, decided by the author for every set intake from now on: `INSPIRATION / 10_09_26 Public Service NYC Live at Vonking 5-26`, the source system's name form, holding the 19 landed and the 13 owned identified tracks, **32**, each owned one found through the Collection search. INSPIRATION already held two such playlists from the source system; TOOLBOX / Sets and Long Tracks is the long recordings, a different thing. U121 (#278) makes the landing write it. | live |
+| `adopt scan`, `adopt apply` | rehearsed on a fresh copy, live on an equal digest `b23bf7a9b105529a`, the session approving | 9,016 routed, 1,302 needing a genre, 13 withheld, no collisions. **18 memberships added, 8,998 already present**, the same 18 plan ids on copy and live: House / Funky House / Disco 6, R&B 3, Breaks 2, NonElectronic / Hip-Hop 2 (Kendrick Lamar, Q-Tip), Afro House, Dance / Pop, Deep House, Tech House, UK Garage 1 each. `adopt apply --job` without `--run` opens a new run and asks the gate again; the drive carries the approved run. | live |
+
+**What the sitting leaves.** The 19 rows are native rows made before U115
+merged, so they carry random `rb_file_id`s and will not load to a deck
+until `crate repair rows` runs over them, after the installed copy is
+rebuilt at the merge of #272. Tribal Kings sits in INBOX only until a genre
+is set. The four tracks the provider lacks are not acquired. The duplicate
+pulled from the batch sits in the session's scratch, not in the library.
+The INSPIRATION playlist was made by hand and U121 (#278) is the verb.
+
 ## What blocks a full sync cycle, stated plainly
 
 **Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the

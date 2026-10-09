@@ -28,6 +28,62 @@ killed, one zero, `S2_album_not_stripped`, an equivalent mutant since
 **Owed, Phillip's, live:** rerun the R-879 `export set` that left three of
 nine rows unmatched and read whether they now resolve.
 
+**R-925 built, 2026-10-09, on `relay/269`, issue #269: a queued set's
+tracks can be read.** `intake set` writes the tracklist `intake identify`
+writes, through the same writer, into download staging's tracklists folder
+or the folder its new `--out` names, after the job is queued, and names the
+path in the `tracklist-written` note and under `progress.tracklist`. A
+write that fails is the `tracklist-unwritten` warning naming `crate job
+show`, and the job stays queued. `job show` on an intake job lists every
+frozen track under `progress.intake_tracks` and one line per track in human
+output, artist, title, version and ISRC or `no isrc`. The review drove eight
+findings in one fix round: the folder refusal named an `--out` the verb did
+not take, a write failure withheld a paid job, the field collided with the
+`tracks` counts a dozen payloads carry. Twenty mutation rows, eighteen
+killed, two maintainer facing zeros (`docs/mutation/r925-notes.md`). R-933
+records identify's rerun wording over a fetched mix. One song under several
+ISRCs is still listed once per ISRC.
+
+**R-924 built, 2026-10-09, on `relay/268`, issue #268: `intake set` says
+its phase and progress while it runs.** The first five hour mix fetched 557
+MB and paid 732 calls with nothing on the screen. The dispatcher now hands a
+verb `Context.progress`, a flushed writer on standard error in human output
+and None in JSON output. The fetch says it started, the size of the largest
+file in its scratch folder every fifteen seconds, and what landed. The bound
+identifier states its plan (chunks, cached, paid calls to send, parts) after
+the bounds and the credential read, then counts calls on the first, every
+twentieth and the last; a fully cached recording says no call is sent.
+`intake identify` says the same. The review drove nine findings, five
+applied in one fix round. Twenty two mutation rows, nineteen killed, three
+zeros in `docs/mutation/r924-notes.md`, one of which exposed a test that
+could not see a dead watcher, fixed after the pass. R-932 records what a
+real pipe would show. The identified tracks are still not shown (R-925).
+
+**R-926 built, 2026-10-09, on `relay/270`, issue #270: under pytest a state
+write outside the test root is refused.** The 2026-10-08 clobber of the live
+config was a review subagent's probe run from outside `tests/`, where the
+conftest never loads. The config writer now refuses, under pytest, any path
+outside the base temporary root the conftest registers, and everything when
+none is registered; `atomic_write_bytes` and `_exclusive_lock` run the same
+check and also accept the system temporary directory. The review drove nine
+findings, one fix round: the guard widened to the shared primitives, the
+tests reworked. Battery on the branch: ruff clean, 12,835 passed and 1
+skipped, the scan clean. Fifteen mutation rows, all killed
+(`docs/mutation/r926-notes.md`), the live config's modification time
+unchanged throughout. R-931 records what it cannot see. The rule for
+writers is `docs/solutions/workflow-issues/under-pytest-a-state-write-outside-the-test-root-is-refused.md`.
+
+**Sitting 35, 2026-10-09, attended. The first set intake end to end on the
+native tree.** A 5 hour SoundCloud mix: 54 identified, 36 kept, 20
+downloaded, 19 landed natively under `INBOX / 2026-10-09 Set Public Service
+NYC Live at Vonking 5-3-26`, analysed and tags reloaded in rekordbox, 18
+adopted on an equal digest, and a permanent set playlist made by hand under
+INSPIRATION, which the author decided every set intake gets from now on
+(U121, #278). The 19 rows predate U115's merge and need `crate repair rows`
+once `~/cratekit` is rebuilt. R-924 to R-926 were filed from the run, and
+the Soul, Hip-Hop and genre Favorites work is planned as U118 to U120
+(#275 to #277). Record in `docs/cutover.md`.
+
 **U115 built, 2026-10-09, on `unit/u115`, issue #272: a native row carries
 its file's inode as `rb_file_id`, and the rows numbered at random can be
 repaired.** Sitting 34 named the column: rekordbox writes the file's inode
