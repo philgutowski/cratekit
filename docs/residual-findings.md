@@ -35859,3 +35859,45 @@ login only when the first request of a run is refused.
 
 **On the board bar.** Every pass over a playlist holding one such track
 stops with a wrong remedy; the author chose the sync as daily use.
+
+
+---
+
+## R-928. A row given every column a loadable row has still will not load to a deck, so the block is outside the content row
+
+**Found:** at the attended sitting of 2026-10-09, after `crate repair rows`
+(R-923, issue #267) filled rekordbox's defaults on the 165 rows of sitting
+32 and rekordbox was opened fresh.
+
+**The mechanism.** Unknown, and that is the finding. After the repair, a
+repaired row and a row rekordbox made the day before by importing a file
+from the same drive differ only in rating, their own ids, `TrackInfoUpdated`
+and `AnalysisUpdated`; every other column is equal in value and in SQLite
+storage type, and every table keyed by content id holds the same rows for
+both (five `contentFile` rows, one mixer parameter, no cue). rekordbox reads
+the repaired row whole: title, artist, album, art, length, size, sample rate
+and location in its information panel, and it analysed the file on request.
+Yet `Load` is greyed on the row's context menu, in its playlist and in the
+Collection view, and a drag to a deck lands nothing, while the made row's
+`Load` is live. No other store on the machine names either row: `datafile.edb`
+and `ExtData.edb` date from 2024 and `networkAnalyze6.db` holds one
+management table. The one unexplained column is `rb_file_id`, a random id
+the binding mints and a value rekordbox assigns on its own rows; it keys no
+table in `master.db`.
+
+**Measured cost.** Measured live: the 165 rows of sitting 32 and the 42 of
+sitting 33 stay unplayable. The experiment that would name the cause, one
+file removed from the collection and imported again through rekordbox's own
+panel so the two rows can be compared, was begun and could not be finished
+from the session: the panel accepts typed text and clicks but not a Return
+or Escape from the desktop control tool nor from System Events, so the track
+`Maxwell, The Urban Theme (Remastered 2021)` was removed and not re-imported.
+It was landed again by Cratekit.
+
+**Closes when:** a row rekordbox imports from the same file is diffed
+against a repaired one and the difference is named, or rekordbox's own
+import of the landed files is accepted as the native landing's last step,
+which the XML bridge did by construction.
+
+**On the board bar.** Every native landing produces unplayable rows; the
+author chose the native path for INBOX on 2026-10-08.
