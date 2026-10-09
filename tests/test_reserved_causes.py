@@ -6142,15 +6142,20 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # absent from `main`'s own `src` by git grep. row-file-id is the OWNER of
     # the field policy the repair registers when it renumbers. And
     # rows-file-id-undecidable and rows-file-id-unrenumbered are WARNING codes.
+    # Re-pinned on the residual "A queued set's tracks are shown nowhere, only
+    # their count", 2026-10-09: 647 to 648 distinct, non-keys 451 to 452. ONE
+    # joined and nothing left, absent from `main`'s own `src` by git grep.
+    # tracklist-unwritten is a WARNING code: intake set queued its job and
+    # could not write the tracklist.
     # Re-pinned on U121, the set's permanent playlist under INSPIRATION,
-    # 2026-10-09: 647 to 652 distinct, non-keys 451 to 454. FIVE joined and
+    # 2026-10-09: 648 to 653 distinct, non-keys 452 to 455. FIVE joined and
     # nothing left, each absent from `main`'s own `src` by git grep.
     # inspiration-folder-undeclared and set-playlist-unnamed are the keys named
     # in the pin above. set-playlist-written, set-playlist-left-out and
     # set-playlist-nothing-to-write are WARNING codes. The session WORKFLOW
     # the backfill is recorded under and the plan KIND its digest is taken
     # under, set-playlist, was a literal already, the account's exclusion.
-    assert (len(literals), len(literals - set(causes))) == (652, 454), (
+    assert (len(literals), len(literals - set(causes))) == (653, 455), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

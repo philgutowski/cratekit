@@ -74,6 +74,10 @@ class Identified:
 #: does. ``identify`` normalises the two.
 Identifier = Callable[[Path], "Identified | tuple[Wanted, ...]"]
 
+#: What a progress line is handed (R-924). None says nothing, which is what
+#: JSON output, a queued job and an injected identifier all get.
+Progress = Callable[[str], None]
+
 #: The binaries recognition needs, in the order a person would install them.
 #: Both are checked by presence here and resolved again by the carver at call
 #: time, so an override that points at nothing refuses there by name.
@@ -116,6 +120,7 @@ def identify(
     identifier: Identifier | None = None,
     refresh: bool = False,
     recognition: config.RecognitionConfig | None = None,
+    progress: Progress | None = None,
 ) -> Identified:
     """Identify the tracks in ``source``: the Wanted rows, and what it cost.
 
@@ -136,6 +141,10 @@ def identify(
     RUN WITHOUT IT (R-301). The host and the month's bound come from nowhere
     else, so a caller that forgot to hand them over is a defect to be told
     about rather than a run against a region and a month nobody chose.
+
+    ``progress`` reaches the bound identifier only, which says the plan and
+    the count as it pays (R-924). An injected identifier spends nothing, so
+    it has nothing to count.
     """
     assert_recognition_ready()
     if identifier is None:
@@ -146,7 +155,9 @@ def identify(
             )
         from cratekit.intake import acrcloud  # noqa: PLC0415 - bound only on the paid path
 
-        identifier = acrcloud.bound_identifier(recognition, refresh=refresh)
+        identifier = acrcloud.bound_identifier(
+            recognition, refresh=refresh, progress=progress
+        )
     found = identifier(source)
     if isinstance(found, Identified):
         return found

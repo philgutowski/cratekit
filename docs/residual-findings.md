@@ -35753,6 +35753,21 @@ is sent.
 **On the board at the author's request, 2026-10-08.** Nothing is lost or
 wrong; the run is opaque, not incorrect.
 
+**Closed by #268, 2026-10-09, on `relay/268`.** The dispatcher hands a verb
+a progress writer on standard error in human output and None in JSON
+output, so the envelope stays the one document on standard output. A fetch
+says it started, the size of the largest file in its scratch folder every
+fifteen seconds while the fetcher runs, and what landed; the folder is
+watched rather than the tool, so `yt-dlp`'s argv and captured failure line
+are unchanged. The bound identifier states the chunks, the cached count and
+the paid calls left after every refusal that spends nothing and before the
+first call, then counts calls sent on the first, every twentieth and the
+last. A recording the cache answers whole says no call is sent. A line that
+cannot be written is dropped rather than ending a paid pass. `intake
+identify` shares both paths and says the same. Twenty two mutation rows,
+nineteen killed (`docs/mutation/r924-notes.md`). R-932 records what was not
+measured on a real pipe.
+
 ---
 
 ## R-925. A queued set's tracks are shown nowhere, only their count
@@ -35779,6 +35794,18 @@ intake job's tracks (artist, title, ISRC) in human output.
 
 **On the board at the author's request, 2026-10-08.** The data is kept and
 readable; only the surface is missing.
+
+**Closed by #269, 2026-10-09, on `relay/269`.** `intake set` writes the
+tracklist `intake identify` writes, through the same writer, into the same
+default folder or the folder `--out` names, after the job is queued. The
+path is named on the envelope in the `tracklist-written` note and under
+`progress.tracklist`. A write that fails is the `tracklist-unwritten`
+warning naming `crate job show`, not a refusal, because the job is what the
+spend bought. `job show` on an `intake.set` or `intake.playlist` job lists
+every frozen track in order under `progress.intake_tracks` (item, artist,
+title, version, ISRC) and prints one line per track in human output; a job
+of another handler gains no field. Collapsing one song's several ISRCs is
+still out of scope.
 
 ---
 
@@ -35826,6 +35853,18 @@ folder was touched in that window and no acknowledgment was minted. The
 guard the closing line asks for would have refused this write wherever the
 probe ran from. Until it lands, a probe goes under `tests/` or does not run.
 
+**Closed by #270, 2026-10-09, on `relay/270`.** Under pytest the
+configuration writer refuses any path outside the root the suite's
+isolation registers, pytest's base temporary directory, and refuses every
+write when no root is registered, which is the state a probe outside
+`tests/` runs in. The check reads no environment variable. It sits in
+`_write_lock`, which every configuration writer takes first, and the same
+check runs in `atomic_write_bytes` and `_exclusive_lock`, which also accept
+the system temporary directory, where shipped code keeps scratch files of
+its own; the configuration never gets that allowance. Fifteen mutation rows,
+all killed (`docs/mutation/r926-notes.md`), the live config's modification
+time unchanged across the branch's suites and the table. R-931 records what
+the guard cannot see.
 
 ---
 
@@ -36016,7 +36055,77 @@ live run's warning says what it is.
 **Closes when:** the file returns and the verb is run again, which the
 plan handles with no change. Ledger only.
 
-## R-931. A set playlist is refused on a library whose intake tree is on the xml bridge
+---
+
+## R-931. The test root guard keys on pytest being loaded in the process
+
+**Found:** by the review of #270, 2026-10-09.
+
+**The mechanism.** `_refuse_write_outside_test_root` asks whether pytest
+is in `sys.modules`. Two edges follow. A child process a test starts that
+imports nothing from `tests`, a `crate` subprocess or a `python -c` over
+cratekit alone, has no pytest loaded and is never checked, so it relies on
+the environment it inherited, exactly as before #270. A probe outside
+`tests/` that shells out to `crate setup` would still write the real
+config. The other edge is a process that is not a test and has pytest
+loaded for its own reasons: every configuration write it makes is refused,
+with a message that blames `tests/conftest.py`.
+
+**Measured cost.** The first edge needs the R-926 probe shape plus a
+subprocess; no such test was driven. The second: one candidate considered,
+`scripts/mutate.py`, which imports pytest in its plugin but never calls a
+cratekit writer in that process, so none driven produces it.
+
+**Closes when:** a child process can tell it was started by a test without
+reading the environment, or the edges are judged acceptable. Ledger only:
+both are maintainer facing, and the shipped tool never imports pytest.
+
+---
+
+## R-932. intake progress lines are unmeasured on a real pipe
+
+**Found:** by the review and the mutation table of #268, 2026-10-09.
+
+**The mechanism.** Every progress test drives the dispatcher over an
+in memory stream. Two properties only a real pipe shows are therefore not
+measured. The writer flushes each line, and a mutation removing the flush
+kills nothing, because an in memory stream holds no buffer. And the fetch
+watcher is joined with no bound: a reader that stops draining standard
+error while the download runs would block the watcher's write, and the join
+behind it, once the pipe's buffer is full.
+
+**Measured cost.** None driven. A run writes about forty short lines in
+all, a few kilobytes, against a pipe buffer of sixty four kilobytes on this
+platform, so the blocked join needs a reader that drains nothing and a run
+far longer than any measured. The flush is ordinary practice and was read,
+not driven.
+
+**Closes when:** a test drives `crate intake set` in a child process over
+a real pipe and reads a line before the verb ends, or the edges are judged
+acceptable. Ledger only: maintainer facing, nothing is lost or misreported.
+
+---
+
+## R-933. intake identify on a mix URL promises a free rerun after a tracklist it could not write
+
+**Found:** at the review of #269, 2026-10-09, reading `_tracklist_written`.
+
+**The mechanism.** When the tracklist cannot be written, `intake identify`
+refuses and says what running again costs, read from the recognition
+answers: "running again spends nothing" when every answer was kept. For a
+mix URL the fetched file is removed when the recording block ends, so
+running again downloads the whole mix again through yt-dlp. The sentence is
+true of the recognition spend and silent about the download.
+
+**Measured cost.** Not driven. No paid call is involved; the rerun costs the
+download time again, minutes for a five hour mix. `intake set` no longer
+reaches this sentence, since #269 made its write failure a warning.
+
+**Closes when:** the refusal over a fetched mix says the mix is fetched
+again on a rerun, or the verb points at a folder `--out` can name before
+the fetch. Ledger only: a wording over a rerun's time, no file or row is
+lost and no call is paid twice.
+## R-934. A set playlist is refused on a library whose intake tree is on the xml bridge
 
 **Found:** by the author of U121, 2026-10-09, choosing the medium.
 
@@ -36036,7 +36145,7 @@ on 2026-09-29, so the cost is nobody's today.
 **Closes when:** a bridge writer for the folder is wanted, or every library
 this product serves has cut over. Ledger only.
 
-## R-932. A track that becomes owned after the set's playlist was written joins it last, not in set order
+## R-935. A track that becomes owned after the set's playlist was written joins it last, not in set order
 
 **Found:** by the review of U121, 2026-10-09, reading the read back.
 
@@ -36056,7 +36165,7 @@ for a set that played One, Three, Two. Order only; nothing is lost.
 **Closes when:** the write re-sorts the memberships to set order, a
 `TrackNo` rewrite the guarded writer does not make today. Ledger only.
 
-## R-933. The page title is used whole as the set's name when no flag abbreviates it
+## R-936. The page title is used whole as the set's name when no flag abbreviates it
 
 **Found:** by the author of U121, 2026-10-09, naming the Vonking set.
 
@@ -36077,7 +36186,7 @@ No playlist is misnamed in a way that loses it.
 **Closes when:** the author decides a rule for abbreviating, which the brief
 left to the flag. Ledger only.
 
-## R-934. A backfill names the playlist for the day it runs, not the day the set landed
+## R-937. A backfill names the playlist for the day it runs, not the day the set landed
 
 **Found:** by the author of U121, 2026-10-09, planning the Vonking backfill.
 
