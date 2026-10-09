@@ -2618,6 +2618,10 @@ def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recor
         # U111. The INBOX rotation: playlist nodes moved and removed behind one
         # capture, recorded under the intake tree.
         "intake/rotate.py::apply_rotation",
+        # U121. The set's permanent playlist written for a set already landed:
+        # one playlist and its memberships behind one capture, recorded under
+        # the declared INSPIRATION folder's own id.
+        "intake/set_playlist.py::apply_alone",
         # R-816. A row's genre written from its file, recorded under the
         # content genre key as rows updated.
         "tagging/rows.py::apply_rows",
