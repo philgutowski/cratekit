@@ -12,7 +12,8 @@ outside the base temporary root the conftest registers, and everything when
 none is registered; `atomic_write_bytes` and `_exclusive_lock` run the same
 check and also accept the system temporary directory. The review drove nine
 findings, one fix round: the guard widened to the shared primitives, the
-tests reworked. Fifteen mutation rows, all killed
+tests reworked. Battery on the branch: ruff clean, 12,835 passed and 1
+skipped, the scan clean. Fifteen mutation rows, all killed
 (`docs/mutation/r926-notes.md`), the live config's modification time
 unchanged throughout. R-931 records what it cannot see. The rule for
 writers is `docs/solutions/workflow-issues/under-pytest-a-state-write-outside-the-test-root-is-refused.md`.
