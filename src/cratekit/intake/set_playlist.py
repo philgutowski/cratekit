@@ -900,26 +900,34 @@ def apply_alone(
         except BaseException:
             trees._rollback_quietly(db)
             if witness.landed and written is not None:
-                record_commit(record, written, plan, cfg)
+                _record_set_commit(record, written, plan, cfg)
             raise
-        record_commit(record, written, plan, cfg)
+        _record_set_commit(record, written, plan, cfg)
         convergence.record_fingerprint(cfg, db)
         written = replace(written, read_back=read_back(db, written.playlist_id))
     return written
 
 
-def record_commit(
+def _record_set_commit(
     record: session.SessionRecord, written: Written, plan: SetPlaylistPlan, cfg: config.Config
 ) -> None:
     """Record the commit on the session, under the declared folder's own id (R19).
 
-    THE LANDING CALLS THIS BESIDE ITS OWN RECORD, so the intake tree's entry
-    counts the batch's memberships and this one counts the set's, and a restore
-    weighing the session sees both by name.
+    THE LANDING CALLS THIS BESIDE ITS OWN RECORD, through :func:`record_commit`,
+    so the intake tree's entry counts the batch's memberships and this one
+    counts the set's, and a restore weighing the session sees both by name.
+    Named the way the write session guard reads a commit helper.
     """
     record_on(record, written, plan)
     changes = (session.TreeChange(tree=plan.tree_id, created=written.added),)
     session.record_commit(record, plan.tree_id, session.ChangeSummary(changes), cfg)
+
+
+def record_commit(
+    record: session.SessionRecord, written: Written, plan: SetPlaylistPlan, cfg: config.Config
+) -> None:
+    """The public face of :func:`_record_set_commit`, for the landing's own helper."""
+    _record_set_commit(record, written, plan, cfg)
 
 
 __all__ = [
