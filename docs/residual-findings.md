@@ -35709,6 +35709,111 @@ every row it creates, and `crate repair rows` fills them on a live row that
 lacks them, only where NULL, through the fill if empty policy
 `ROW_DEFAULTS_POLICY` the apply alone registers, with a digest that names no
 database path so a copy rehearsal can match, a staleness recheck from SQL,
-and a read back that refuses a moved column. The live verification, the 165
-rows repaired and one loaded to a deck, is owed to `docs/cutover.md` sitting
-32 and is recorded there when it runs.
+and a read back that refuses a moved column. Twenty mutation rows, nineteen
+killed and one maintainer zero, `docs/mutation/r923-notes.md`. The live
+verification, the 165 rows repaired and one loaded to a deck, is owed to
+`docs/cutover.md` sitting 32 and is recorded there when it runs.
+
+---
+
+## R-924. intake set on a mix URL says nothing until it ends, through a download and a paid identification of an hour
+
+**Found:** at an attended session on 2026-10-08, the first `crate intake set`
+on a SoundCloud mix URL, a recording of 5 hours 5 minutes.
+
+**The mechanism.** `fetch.YtDlpSetFetcher` runs `yt-dlp` through
+`fallback.YtDlpFetcher.fetch`, which calls `subprocess.run` with
+`capture_output=True`, so the download's own progress is swallowed.
+`pipeline.identify_only` then carves and sends every chunk with no counter
+and no line on any stream. The job's progress, which `job show` reads, only
+exists once `jobs.enqueue` runs at the very end. Between the command and its
+envelope a person sees nothing, in human output and in JSON alike.
+
+**Measured cost.** Measured live: 557 MB fetched in about 7 minutes of
+running time, then 732 recognition calls over about 19 minutes, with no
+output for the whole run. The only way to tell a download from a paid
+identification, or either from a hang, was to read the process table and the
+scratch folder. A person who interrupts what looks like a hang during
+identification has spent the calls already made.
+
+**Closes when:** the verb reports its phase and its progress on standard
+error in human output (bytes or percent while fetching, chunks sent of
+chunks planned while identifying), the JSON envelope stays one document on
+standard output, and the planned call count is stated before the first call
+is sent.
+
+**On the board at the author's request, 2026-10-08.** Nothing is lost or
+wrong; the run is opaque, not incorrect.
+
+---
+
+## R-925. A queued set's tracks are shown nowhere, only their count
+
+**Found:** at the same session, reading the job `intake set` queued for the
+5 hour mix.
+
+**The mechanism.** `intake set` freezes the identified rows into the job's
+payload and returns `job_id` and counts. `job show` reports state and counts
+per item state and never the items. `intake identify` writes a tracklist
+file under download staging, and `intake set`, which identifies the same
+way, writes none. The only way to read the 54 tracks was to open
+`jobs/queue.db` by hand.
+
+**Measured cost.** The payload held 54 rows, and the list is the thing a
+person wants before acquiring anything from it: it carried one song under
+several ISRCs (Black Coffee, `Superman`, five times; Edwin Starr, `War`,
+three times) and two rows that read as misidentifications, a karaoke cover
+and a piano cover. None of that is visible from the verb.
+
+**Closes when:** `intake set` writes the same tracklist file `intake
+identify` writes and names it on the envelope, and `job show` lists an
+intake job's tracks (artist, title, ISRC) in human output.
+
+**On the board at the author's request, 2026-10-08.** The data is kept and
+readable; only the surface is missing.
+
+---
+
+## R-926. A test run overwrote the live config with a pytest library
+
+**Found:** at the same session. `job show` on a job queued one minute
+earlier warned of configuration drift on eleven keys.
+
+**The mechanism.** At 2026-10-08 22:33:06 local, `config.toml` in the
+installation's config directory was replaced by one naming a library under
+a pytest temporary folder, `pytest-1768/test_at_baseline_the_same_bare0/`, volume
+`F1E2-D3C4`, `pinned_app_version = "9.9.9.0001"`, `validated_on =
+"2026-08-01"`, with no backup section. The suite isolates the config by
+environment (`tests/conftest.py` sets HOME, the XDG variables and
+`CRATEKIT_CONFIG_DIR`), so a run without that isolation writes the real one.
+The test that wrote it is not identified: no file in the main checkout or
+the attended worktree, and no commit in any branch, carries a test of that
+name. A mutation run was active in the attended worktree at the time and is
+the likely source, either a test since renamed or a mutant that defeated the
+isolation. Not confirmed.
+
+**Measured cost.** Every `crate` verb run after 22:33 read a library that no
+longer existed, with a fake rekordbox pin. Caught only because the job
+queued at 22:03 froze the real config and `job show` compared them. Restored
+at 23:03 from that frozen copy; the overwritten file is kept beside it as
+`config.toml.clobbered-2026-10-08-2233`.
+
+**Closes when:** the cause is named, and nothing under pytest can write the
+real config: the config writer refuses a path outside the test root while
+running under pytest, or a session guard fails the run, and a test proves a
+write with the isolation removed is refused.
+
+**On the board bar.** The live library's config is the one file every verb
+trusts, and a silent overwrite of it is a correctness failure.
+
+**The cause, named 2026-10-09.** Not the mutation run. The adversarial
+review subagent for #267 wrote a probe test in its session's scratchpad,
+outside the repository, imported the `machine` and `acknowledged` fixtures
+from `tests/test_repair_rows.py`, and ran the worktree's pytest on it from
+there. `tests/conftest.py` loads only for files under `tests/`, so the
+fixture's `config.save` wrote the tmp library into the real file at
+22:33:06; the probe's test `test_at_baseline_the_same_bare_write_is_refused`
+is the folder name in the clobbered copy. Nothing else under the state
+folder was touched in that window and no acknowledgment was minted. The
+guard the closing line asks for would have refused this write wherever the
+probe ran from. Until it lands, a probe goes under `tests/` or does not run.
