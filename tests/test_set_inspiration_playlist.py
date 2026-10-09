@@ -1141,11 +1141,14 @@ def test_a_rerun_that_adds_nothing_records_no_commit(native_library, silence):
     code, again, _ = _two_acts_approve(_inspiration(job_id, *WORDS))
     assert code == int(ExitCode.OK), again
     assert again["data"]["totals"]["added"] == 0
-    first_record, second_record = [
-        r for r in session.records(cfg) if r.workflow == set_playlist.WORKFLOW
-    ]
+    # Two records written inside one second sort either way by identifier,
+    # so each is found by what it holds rather than by its place.
+    records = [r for r in session.records(cfg) if r.workflow == set_playlist.WORKFLOW]
+    assert len(records) == 2
+    (first_record,) = [r for r in records if r.sources]
+    (second_record,) = [r for r in records if not r.sources]
     assert first_record.sources == {DECLARED.inspiration.id: "committed"}
-    assert second_record.sources == {} and second_record.change.trees == ()
+    assert second_record.change.trees == ()
     assert set_playlist.RECORD_KEY not in second_record.detail
 
 
