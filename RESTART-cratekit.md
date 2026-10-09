@@ -4,6 +4,32 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**U116 built, 2026-10-09, on `grok/273-custom-playlists-year-folders`, issue #273,
+pull request #283: a marked custom playlist at the account root is filed into
+its mark's year folder.** `organize/filing.py` adds the `file` step to
+`crate organize`'s account area: root playlists are listed, a standing mark's
+latest stamp chooses the year in local time, and the year folder is reserved
+through the set archive's ledger so one year holds one folder. Label and set
+playlists stay with their steps; product working playlists stay; unmarked
+playlists and ones whose name already says DOWNLOADED with no mark record are
+reported and left. Nested playlists and ones already in a folder are left
+where they are. Two root folders named as the year leave that year's playlists
+reported, never moved. The plan is read only, the digest covers every root row
+and every year's folder, the area's existing gate asks it, and an apply stops
+at the first refusal naming every move and every folder created. **The rule as
+it now stands:** a marked custom playlist at the root goes to its mark's local
+year folder; nested and already filed playlists are left; unmarked and prefixed
+but unmarked ones are reported and left. **Deliberately narrower:** no move
+back to the root as a verb (the totals name each move); a playlist marked in
+the same organize pass is filed on the next; the filing step and the yours list
+each read the account listing rather than sharing one; `tidal_account.py` is
+untouched. Two review rounds fixed the five findings (nested leave, local year,
+provider refusal shape, folder created before a failed ledger write, prefixed
+but unmarked wording), then this measured table. Thirteen mutation rows on
+macOS, twelve killed, one zero, `M7_folder_per_playlist`, equivalent and
+reclassified maintainer facing (`docs/mutation/u116.md`). **Owed, Phillip's,
+live:** a reported `organize` pass on the real account, then the gated one.
+
 **U115 built, 2026-10-09, on `unit/u115`, issue #272: a native row carries
 its file's inode as `rb_file_id`, and the rows numbered at random can be
 repaired.** Sitting 34 named the column: rekordbox writes the file's inode
