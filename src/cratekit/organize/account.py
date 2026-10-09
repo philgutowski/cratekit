@@ -16,13 +16,19 @@ THE STEPS, each the owning verb's plan and apply:
   set, ``<set>_inboxed.xml``, which is what ``intake land --pass <set>``
   writes. A set the mark record already names is archived. Any other set is
   listed as waiting, with the command that archives it, and nothing is
-  planned for it.
+  planned for it;
+* EVERY MARKED CUSTOM PLAYLIST FILED (U116), :mod:`cratekit.organize.filing`:
+  each playlist at the account root that a sync marked is moved into the year
+  folder of its mark, and every other playlist at the root is named with why
+  it stays. A playlist marked by this same pass is filed by the next one,
+  since the plan reads the mark record before the marks are applied.
 
 A STEP THAT NEEDS THE ACCOUNT AND CANNOT HAVE IT is refused, with that
 refusal's own reason, and every other step is still planned and shown.
 
 WHAT THE AUTHOR MADE is every playlist the account created that the product did
-not make, that is no source system debris and that sits in no folder. Each is
+not make, that is no source system debris, that sits in no folder and that the
+filing step does not move. Each is
 listed with a home where :mod:`cratekit.organize.own` finds an obvious one, and
 the sync's word on it. Unread is not none: a listing that refuses is a refused
 step, never an empty list.
@@ -35,12 +41,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from cratekit.cli.output import digest_of
 from cratekit.core import config
 from cratekit.core.cause import CratekitError
 from cratekit.export import set_cli
 from cratekit.intake import land_cli
 from cratekit.label import playlists_cli
-from cratekit.organize import own
+from cratekit.organize import filing, own
 from cratekit.organize.steps import LISTED, NOTHING, PLANNED, Area, Step, refused
 from cratekit.sync import mark_cli, mark_record
 
@@ -48,6 +55,7 @@ AREA = "account"
 
 LABELS = "labels"
 SETS = "sets"
+FILE = "file"
 YOURS = "yours"
 
 #: The modules that switch a step on. Adoption, rotation and the mark are core.
@@ -291,7 +299,61 @@ def _set_apply(cfg, step: Step, archived):
     return apply
 
 
-def _yours(cfg, area: Area, labels: tuple[str, ...], catalogue_of: _Lazy, remote_of: _Lazy) -> None:
+def _file_step(cfg, area: Area, labels: tuple[str, ...], catalogue_of: _Lazy, remote_of: _Lazy) -> frozenset[str]:
+    """Plan the filing of every marked playlist at the root; answer what it moves."""
+    from cratekit.favorites import placeholders
+    from cratekit.sync import playlists
+
+    title = "file marked playlists into their year folders"
+    try:
+        planned = filing.plan(
+            cfg,
+            listed=catalogue_of.get().account_playlists(),
+            remote=remote_of.get(),
+            labels=labels,
+            marks=mark_record.MarkRecord(cfg).all(),
+            working=lambda name: placeholders.is_placeholder(name) or playlists.is_library_debris(name),
+        )
+    except CratekitError as exc:
+        area.steps.append(refused(FILE, title, exc.cause))
+        return frozenset()
+    moves = planned.moves
+    created = planned.creates()
+    step = Step(
+        key=FILE,
+        title=title,
+        state=PLANNED if planned.writes else NOTHING,
+        detail=(
+            f"move {len(moves)} marked playlist(s) into their year folders, creating "
+            f"{len(created)} folder(s), and leave {len(planned.rows) - len(moves)} at the root, each with its reason"
+            if planned.writes
+            else f"nothing to move: {len(planned.rows)} playlist(s) at the root, each left with its reason"
+        ),
+        digest=digest_of(planned.identity()),
+        counts={"move": len(moves), "left": len(planned.rows) - len(moves), "create": len(created)},
+        items=planned.items(),
+    )
+    if planned.writes:
+        step.apply = _file_apply(cfg, planned, remote_of)
+    area.steps.append(step)
+    return frozenset(row.playlist_id for row in moves)
+
+
+def _file_apply(cfg, planned, remote_of: _Lazy):
+    def apply() -> dict[str, Any]:
+        return filing.apply(cfg, remote_of.get(), planned).totals()
+
+    return apply
+
+
+def _yours(
+    cfg,
+    area: Area,
+    labels: tuple[str, ...],
+    catalogue_of: _Lazy,
+    remote_of: _Lazy,
+    moving: frozenset[str] = frozenset(),
+) -> None:
     from cratekit.favorites import placeholders
     from cratekit.modules.outbound import ledger
     from cratekit.sync import playlists
@@ -317,6 +379,7 @@ def _yours(cfg, area: Area, labels: tuple[str, ...], catalogue_of: _Lazy, remote
     for one in sorted(listed, key=lambda playlist: (playlist.name, playlist.playlist_id)):
         if (
             one.playlist_id in made
+            or one.playlist_id in moving
             or one.playlist_id in in_folders
             or placeholders.is_placeholder(one.name)
             or playlists.is_library_debris(one.name)
@@ -392,9 +455,10 @@ def plan_area(
             )
         )
     _mark_steps(cfg, area)
-    _yours(cfg, area, labels, catalogue_of, remote_of)
+    moving = _file_step(cfg, area, labels, catalogue_of, remote_of)
+    _yours(cfg, area, labels, catalogue_of, remote_of, moving)
     area.facts["writes"] = "add only: folders are created and playlists filed and prefixed"
     return area
 
 
-__all__ = ["AREA", "LABELS", "SETS", "YOURS", "intake_files", "plan_area"]
+__all__ = ["AREA", "FILE", "LABELS", "SETS", "YOURS", "intake_files", "plan_area"]

@@ -630,10 +630,13 @@ files unfiled tracks into BY GENRE + ENERGY and its `with vox` subs the way
 `adopt apply` does, and rotates INBOX the way `inbox rotate` does. The account
 area builds a folder for every followed label that lacks one or a year, marks
 every landed sync pass, and archives every set whose download an intake file
-named for the set proves. Approve one area and abort the other and only the
-approved one is written. Every playlist you made yourself, on either side, is
-listed with a suggested home where one is obvious, and is never moved or
-renamed. Nothing is deleted beyond the expired batch playlists the rotation
+named for the set proves. It also files every playlist at the account root
+that a sync marked downloaded into the root folder named for the year of its
+mark, creating that folder once if the account lacks it, and names every other
+playlist at the root with why it stays. Approve one area and abort the other
+and only the approved one is written. Every other playlist you made yourself,
+on either side, is listed with a suggested home where one is obvious, and is
+never moved or renamed. Nothing is deleted beyond the expired batch playlists the rotation
 removes, never a track. `--report` prints both plans and asks nothing. The
 rekordbox area needs a backup acknowledged under a day old, and like every
 database write it is worth rehearsing on a copy first.
