@@ -859,3 +859,32 @@ def test_a_mark_with_no_year_is_left_and_the_year_is_the_marks():
     assert filing.year_of_mark("2025-12-31T23:00:00+00:00") == "2025"
     assert filing.year_of_mark("") == ""
     assert filing.year_of_mark("soon") == ""
+
+
+def test_a_year_folder_already_on_the_account_is_adopted_with_no_set_to_make_it(seams):
+    """No set archive runs here, so only the filing step can have found the folder."""
+    cfg, fake, held = seams
+    existing = held.create_folder(MARKED_YEAR)
+    held.folders_created.clear()
+    _marked(cfg, fake, held)
+
+    code, done = _two_acts(VERB, ACCOUNT_GATE, "apply")
+
+    assert code == int(ExitCode.OK), done
+    assert held.placed[MARKED_ID] == existing
+    assert held.folders_created == []
+
+
+def test_a_playlist_marked_twice_is_filed_by_its_latest_mark(seams):
+    from cratekit.sync import mark_record
+
+    cfg, fake, held = seams
+    _marked(cfg, fake, held, when="2025-12-30T10:00:00+00:00")
+    mark_record.MarkRecord(cfg).record_marked(
+        "a later pass", {MARKED_ID: ("Phil 10_8_26", MARKED_NAME)}, now="2026-01-02T10:00:00+00:00"
+    )
+
+    code, done = _two_acts(VERB, ACCOUNT_GATE, "apply")
+
+    assert code == int(ExitCode.OK), done
+    assert held.folder_names[held.placed[MARKED_ID]] == "2026"

@@ -1,0 +1,109 @@
+name = "u116"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_label_rule_dropped"
+description = "plan: a followed label's playlist is no longer left to the label step"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''        if identity in label_built or own.label_of(name, labels) is not None:'''
+new = '''        if identity in label_built:'''
+
+[[rows]]
+id = "M2_set_rule_dropped"
+description = "plan: a set playlist is no longer left to the archive"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''        if identity in set_built:
+            rows.append(Placement(identity, name, LEFT, why=SET_STEP))'''
+new = '''        if False:
+            rows.append(Placement(identity, name, LEFT, why=SET_STEP))'''
+
+[[rows]]
+id = "M3_unmark_ignored"
+description = "_standing_marks: a mark sync unmark put back still counts as standing"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''        if entry.unmarked:
+            continue'''
+new = '''        if False:
+            continue'''
+
+[[rows]]
+id = "M4_folders_not_read"
+description = "plan: a playlist already in a folder is read as at the root"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''    at_root = [one for one in listed if one.playlist_id not in in_folders]'''
+new = '''    at_root = list(listed)'''
+
+[[rows]]
+id = "M5_ambiguous_moves_anyway"
+description = "_year_folder: two folders named as the year adopt the first rather than leave"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''    if len(named) > 1:'''
+new = '''    if len(named) > 9:'''
+
+[[rows]]
+id = "M6_no_adopt"
+description = "_year_folder: a root folder named as the year is ignored and a second made"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''    if named:
+        return YearFolder(year=year, action=sets.ADOPT, folder_id=named[0], stale=recorded)'''
+new = '''    if False:
+        return YearFolder(year=year, action=sets.ADOPT, folder_id=named[0], stale=recorded)'''
+
+[[rows]]
+id = "M7_folder_per_playlist"
+description = "apply: the year folder is reserved again for every playlist rather than once"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''            if row.year not in done.folders:'''
+new = '''            if True:'''
+
+[[rows]]
+id = "M8_stops_naming_nothing"
+description = "_failed_part_way: the moves made before a refusal are not named"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''    if done.moved or done.created:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M9_yours_lists_moved"
+description = "_yours: a playlist the filing step moves is still listed as yours, not moved"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''            or one.playlist_id in moving
+'''
+new = '''
+'''
+
+[[rows]]
+id = "M10_year_check"
+description = "year_of_mark: any four characters are a year"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''    return head if len(head) == 4 and head.isdigit() else ""'''
+new = '''    return head'''
+
+[[rows]]
+id = "M11_latest_mark"
+description = "_standing_marks: the earliest mark wins rather than the latest"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''        if held is None or str(entry.marked) > held:'''
+new = '''        if held is None:'''
