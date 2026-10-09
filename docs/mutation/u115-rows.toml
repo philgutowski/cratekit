@@ -39,15 +39,15 @@ id = "F5_bound_boundary"
 description = "An id equal to the bound is judged above it"
 file = "src/cratekit/write/row_defaults.py"
 surface = "user"
-old = '''    return ABOVE if number > bound else WITHIN'''
-new = '''    return ABOVE if number >= bound else WITHIN'''
+old = '''    return ABOVE if int(text) > bound else WITHIN'''
+new = '''    return ABOVE if int(text) >= bound else WITHIN'''
 
 [[rows]]
 id = "F6_every_id_above"
 description = "Every nonzero id is judged above the bound, so stale rows rekordbox tolerates are renumbered"
 file = "src/cratekit/write/row_defaults.py"
 surface = "user"
-old = '''    return ABOVE if number > bound else WITHIN'''
+old = '''    return ABOVE if int(text) > bound else WITHIN'''
 new = '''    return ABOVE'''
 
 [[rows]]
@@ -66,9 +66,9 @@ description = "A row above the bound whose file reads the same inode is renumber
 file = "src/cratekit/write/row_defaults.py"
 surface = "user"
 old = '''            elif str(inode) == str(row[FILE_ID]).strip():
-                within += 1'''
+                matched += 1'''
 new = '''            elif False:
-                within += 1'''
+                matched += 1'''
 
 [[rows]]
 id = "F9_unreadable_file_dropped_silently"
