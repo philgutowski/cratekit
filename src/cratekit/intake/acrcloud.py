@@ -72,7 +72,7 @@ from cratekit.acquire.match import Wanted
 from cratekit.core import binaries, config, secrets
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import Remedy
-from cratekit.intake.recognize import Identified
+from cratekit.intake.recognize import Identified, Progress
 
 # ---------------------------------------------------------------------------
 # The grid, the bound, the endpoint
@@ -104,6 +104,11 @@ MAX_CALLS_PER_RUN = 400
 #: needing more is refused before the first call as not one set, which is the
 #: refusal the per run bound was written for.
 MAX_PARTS = 3
+
+#: How often the identify counter speaks, in calls sent (R-924). The first
+#: call and the last always do. The measured five hour set sent 732 calls in
+#: about nineteen minutes, so twenty calls is a line every half minute or so.
+PROGRESS_EVERY = 20
 
 #: How many attempts in a row may get no answer before the run stops. An
 #: answer this build cannot read, an HTTP status that is not 200, a transport
@@ -914,6 +919,7 @@ def identify(
     cache: RecognitionCache | None = None,
     refresh: bool = False,
     month: str | None = None,
+    progress: Progress | None = None,
 ) -> Identified:
     """Identify the tracks in ``source``. Bounded before the first call.
 
@@ -974,6 +980,11 @@ def identify(
     one result for one set. The parts are never files: the carver reads any
     offset of the recording, so the cut is a place in the grid, and nothing
     is written to disk to make it. ``parts`` on the result says how many.
+
+    ``progress``, when given, is told the plan before the first call, how many
+    chunks, how many the cache answers and how many calls that leaves, and is
+    then told the count sent as it climbs (R-924). A recording the cache
+    answers whole is said to send nothing, and no counter follows.
     """
     spend = budget
     counter = ledger or Ledger()
@@ -1014,6 +1025,7 @@ def identify(
             counter=counter,
             host=host,
             month=month,
+            progress=progress,
         )
     finally:
         # ``paid`` is filled as the answers arrive, so this keeps what a pass
@@ -1046,6 +1058,7 @@ def _identified(
     counter: Ledger,
     host: str,
     month: str | None,
+    progress: Progress | None = None,
 ) -> Identified:
     """The pass itself. ``paid`` is the caller's, filled as each answer arrives,
     so the caller can keep it whether this returns or raises.
@@ -1062,12 +1075,18 @@ def _identified(
     if owed:
         assert_month_within(spend, planned=len(owed), used_this_month=counter.used(month))
         keys = credentials()
+    # AFTER EVERY REFUSAL THAT SPENDS NOTHING, so a run told it is about to pay
+    # is a run that will, and one refused by a bound or a missing key is told
+    # only the refusal.
+    offsets = tuple(offset for part in parts for offset in part)
+    if progress is not None:
+        progress(_plan_line(len(offsets), cached=len(offsets) - len(owed), parts=len(parts)))
 
     found: list[Match] = []
     calls = misses = unreached = streak = 0
-    offsets = tuple(offset for part in parts for offset in part)
     for part in parts:
         for offset in part:
+            before = calls
             calls, misses, unreached, streak = _one_chunk(
                 source,
                 offset,
@@ -1082,6 +1101,8 @@ def _identified(
                 month=month,
                 counts=(calls, misses, unreached, streak),
             )
+            if progress is not None and calls > before and _worth_saying(calls, len(owed)):
+                progress(f"identifying: sent {calls} of {len(owed)} call(s)")
     if unreached and unreached == len(offsets):
         raise _failed(
             f"none of the {calls} call(s) for {source.name} got an answer, so nothing "
@@ -1099,6 +1120,26 @@ def _identified(
         cached=len(offsets) - len(owed),
         parts=len(parts),
     )
+
+
+def _plan_line(chunks: int, *, cached: int, parts: int) -> str:
+    """What identification will cost, said before the first call is sent."""
+    owed = chunks - cached
+    if owed == 0:
+        return (
+            f"identifying: all {chunks} chunk(s) are answered from the recognition "
+            f"cache, so no call is sent"
+        )
+    split = f" in {parts} parts" if parts > 1 else ""
+    return (
+        f"identifying: {chunks} chunk(s) planned, {cached} answered from the "
+        f"recognition cache, {owed} paid call(s) to send{split}"
+    )
+
+
+def _worth_saying(calls: int, owed: int) -> bool:
+    """The first call, every :data:`PROGRESS_EVERY`, and the last."""
+    return calls == 1 or calls == owed or calls % PROGRESS_EVERY == 0
 
 
 def _one_chunk(
@@ -1222,6 +1263,7 @@ def bound_identifier(
     ledger: Ledger | None = None,
     cache: RecognitionCache | None = None,
     refresh: bool = False,
+    progress: Progress | None = None,
 ) -> Callable[[Path], Identified]:
     """The identifier in the seam's own shape, over the shipped seams.
 
@@ -1245,6 +1287,7 @@ def bound_identifier(
             ledger=ledger,
             cache=cache,
             refresh=refresh,
+            progress=progress,
         )
 
     return run
@@ -1261,6 +1304,7 @@ __all__ = [
     "MAX_CALLS_PER_RUN",
     "MAX_PARTS",
     "MONTHLY_KEY",
+    "PROGRESS_EVERY",
     "SAMPLE_RATE",
     "UNREACHED_STOP",
     "Budget",
