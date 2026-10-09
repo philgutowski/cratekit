@@ -1,0 +1,206 @@
+name = "r925"
+pass_kind = "light"
+
+[[rows]]
+id = "S1_no_folder_check"
+description = "intake set skips the free tracklist folder check, so a folder that is a file is found only after the spend"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py", "tests/intake/test_set_fetch.py"]
+old = '''        out = _tracklist_dir(cfg, ctx.args.out, local if local is not None else source.strip())'''
+new = '''        out = Path(ctx.args.out or cfg.paths.download_staging / TRACKLISTS_DIR)'''
+
+[[rows]]
+id = "S2_out_ignored"
+description = "intake set ignores --out and always writes under download staging"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py"]
+old = '''        out = _tracklist_dir(cfg, ctx.args.out, local if local is not None else source.strip())'''
+new = '''        out = _tracklist_dir(cfg, None, local if local is not None else source.strip())'''
+
+[[rows]]
+id = "S3_no_write"
+description = "intake set writes no tracklist and says it wrote one"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py", "tests/intake/test_set_fetch.py"]
+old = '''    try:
+        path = _write_tracklist(out, held, result)
+    except OSError as exc:
+        failed = _tracklist_path(out, held, result)'''
+new = '''    try:
+        path = _tracklist_path(out, held, result)
+    except OSError as exc:
+        failed = _tracklist_path(out, held, result)'''
+
+[[rows]]
+id = "S4_write_failure_refuses"
+description = "A tracklist that cannot be written raises out of intake set after the job is queued"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py"]
+old = '''    try:
+        path = _write_tracklist(out, held, result)
+    except OSError as exc:
+        failed = _tracklist_path(out, held, result)'''
+new = '''    try:
+        path = _write_tracklist(out, held, result)
+    except ValueError as exc:
+        failed = _tracklist_path(out, held, result)'''
+
+[[rows]]
+id = "S5_unwritten_note_names_no_job_show"
+description = "The unwritten note no longer names the verb that lists the tracks"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py"]
+old = '''f"{exc.strerror or exc}); the job is queued, and its tracks are listed "
+                f"by: crate job show {job_id}"'''
+new = '''f"{exc.strerror or exc}); the job is queued"'''
+
+[[rows]]
+id = "S6_progress_path_dropped"
+description = "intake set's progress carries no tracklist path"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py"]
+old = '''                    TRACKLIST: str(listed) if listed is not None else None,'''
+new = '''                    TRACKLIST: None,'''
+
+[[rows]]
+id = "S7_written_note_dropped"
+description = "intake set does not put the tracklist-written note on its warnings"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py", "tests/intake/test_set_fetch.py"]
+old = '''            warnings=(note, *warnings),'''
+new = '''            warnings=warnings,'''
+
+[[rows]]
+id = "J1_handler_gate"
+description = "job show lists frozen tracks for a job of any handler"
+file = "src/cratekit/cli/jobs.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py"]
+old = '''    if job.handler_key not in INTAKE_HANDLERS:
+        return None'''
+new = '''    if False:
+        return None'''
+
+[[rows]]
+id = "J2_playlist_excluded"
+description = "job show lists tracks for a set job only, not a playlist job"
+file = "src/cratekit/cli/jobs.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py"]
+old = '''INTAKE_HANDLERS: frozenset[str] = frozenset({"intake.set", "intake.playlist"})'''
+new = '''INTAKE_HANDLERS: frozenset[str] = frozenset({"intake.set"})'''
+
+[[rows]]
+id = "J3_field_not_set"
+description = "job show computes the tracks and never puts them on the envelope"
+file = "src/cratekit/cli/jobs.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py"]
+old = '''    if tracks is not None:
+        summary[TRACKS_FIELD] = tracks'''
+new = '''    if tracks is None:
+        summary[TRACKS_FIELD] = tracks'''
+
+[[rows]]
+id = "J4_isrc_dropped"
+description = "job show lists every track without its ISRC"
+file = "src/cratekit/cli/jobs.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py"]
+old = '''                "isrc": str(said["isrc"]) if said.get("isrc") else None,'''
+new = '''                "isrc": None,'''
+
+[[rows]]
+id = "J5_version_dropped"
+description = "job show lists every track without its version"
+file = "src/cratekit/cli/jobs.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py"]
+old = '''                "version": str(said.get("version") or ""),'''
+new = '''                "version": "",'''
+
+[[rows]]
+id = "J6_non_mapping_payload"
+description = "A tracks payload that is not a mapping crashes job show rather than listing none"
+file = "src/cratekit/cli/jobs.py"
+surface = "maintainer"
+tests = ["tests/intake/test_workers.py", "tests/test_render_payloads.py"]
+old = '''    if not isinstance(frozen, Mapping):
+        return []'''
+new = '''    if frozen is None:
+        return []'''
+
+[[rows]]
+id = "J7_non_mapping_row_dropped"
+description = "A frozen row that is not a mapping crashes the listing rather than being listed by item"
+file = "src/cratekit/cli/jobs.py"
+surface = "maintainer"
+tests = ["tests/intake/test_workers.py"]
+old = '''        said = said if isinstance(said, Mapping) else {}'''
+new = '''        pass'''
+
+[[rows]]
+id = "R1_render_not_called"
+description = "The human renderer never prints the track list"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py"]
+old = '''    lines += _track_lines(progress)
+    return lines'''
+new = '''    return lines'''
+
+[[rows]]
+id = "R2_string_rows"
+description = "A string under intake_tracks is printed one character per line"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py"]
+old = '''    rows = progress.get(_INTAKE_TRACKS)
+    if not isinstance(rows, Sequence) or isinstance(rows, str):'''
+new = '''    rows = progress.get(_INTAKE_TRACKS)
+    if not isinstance(rows, Sequence):'''
+
+[[rows]]
+id = "R3_no_isrc_unsaid"
+description = "A track with no ISRC prints nothing where the ISRC goes"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py"]
+old = '''        isrc = f"isrc {_one_line(row['isrc'])}" if row.get("isrc") else "no isrc"'''
+new = '''        isrc = f"isrc {_one_line(row['isrc'])}" if row.get("isrc") else ""'''
+
+[[rows]]
+id = "R4_version_unsaid"
+description = "The human line drops a track's version"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py"]
+old = '''        if row.get("version"):
+            named += f" ({_one_line(row['version'])})"'''
+new = '''        if False:
+            named += f" ({_one_line(row['version'])})"'''
+
+[[rows]]
+id = "R5_nameless_row_unsaid"
+description = "A row with no artist or title prints an empty name instead of its item"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py"]
+old = '''        named = named or f"item {_one_line(row.get('item') or '?')}"'''
+new = '''        named = named or ""'''
+
+[[rows]]
+id = "R6_count_line"
+description = "The heading line counts one fewer track than it lists"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py", "tests/intake/test_workers.py"]
+old = '''    lines = [f"  tracks: {len(rows)}"]'''
+new = '''    lines = [f"  tracks: {len(rows) - 1}"]'''

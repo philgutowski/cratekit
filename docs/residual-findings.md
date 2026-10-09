@@ -35795,6 +35795,18 @@ intake job's tracks (artist, title, ISRC) in human output.
 **On the board at the author's request, 2026-10-08.** The data is kept and
 readable; only the surface is missing.
 
+**Closed by #269, 2026-10-09, on `relay/269`.** `intake set` writes the
+tracklist `intake identify` writes, through the same writer, into the same
+default folder or the folder `--out` names, after the job is queued. The
+path is named on the envelope in the `tracklist-written` note and under
+`progress.tracklist`. A write that fails is the `tracklist-unwritten`
+warning naming `crate job show`, not a refusal, because the job is what the
+spend bought. `job show` on an `intake.set` or `intake.playlist` job lists
+every frozen track in order under `progress.intake_tracks` (item, artist,
+title, version, ISRC) and prints one line per track in human output; a job
+of another handler gains no field. Collapsing one song's several ISRCs is
+still out of scope.
+
 ---
 
 ## R-926. A test run overwrote the live config with a pytest library
@@ -36091,3 +36103,25 @@ not driven.
 **Closes when:** a test drives `crate intake set` in a child process over
 a real pipe and reads a line before the verb ends, or the edges are judged
 acceptable. Ledger only: maintainer facing, nothing is lost or misreported.
+
+---
+
+## R-933. intake identify on a mix URL promises a free rerun after a tracklist it could not write
+
+**Found:** at the review of #269, 2026-10-09, reading `_tracklist_written`.
+
+**The mechanism.** When the tracklist cannot be written, `intake identify`
+refuses and says what running again costs, read from the recognition
+answers: "running again spends nothing" when every answer was kept. For a
+mix URL the fetched file is removed when the recording block ends, so
+running again downloads the whole mix again through yt-dlp. The sentence is
+true of the recognition spend and silent about the download.
+
+**Measured cost.** Not driven. No paid call is involved; the rerun costs the
+download time again, minutes for a five hour mix. `intake set` no longer
+reaches this sentence, since #269 made its write failure a warning.
+
+**Closes when:** the refusal over a fetched mix says the mix is fetched
+again on a rerun, or the verb points at a folder `--out` can name before
+the fetch. Ledger only: a wording over a rerun's time, no file or row is
+lost and no call is paid twice.
