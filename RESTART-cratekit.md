@@ -4,6 +4,21 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**R-924 built, 2026-10-09, on `relay/268`, issue #268: `intake set` says
+its phase and progress while it runs.** The first five hour mix fetched 557
+MB and paid 732 calls with nothing on the screen. The dispatcher now hands a
+verb `Context.progress`, a flushed writer on standard error in human output
+and None in JSON output. The fetch says it started, the size of the largest
+file in its scratch folder every fifteen seconds, and what landed. The bound
+identifier states its plan (chunks, cached, paid calls to send, parts) after
+the bounds and the credential read, then counts calls on the first, every
+twentieth and the last; a fully cached recording says no call is sent.
+`intake identify` says the same. The review drove nine findings, five
+applied in one fix round. Twenty two mutation rows, nineteen killed, three
+zeros in `docs/mutation/r924-notes.md`, one of which exposed a test that
+could not see a dead watcher, fixed after the pass. R-932 records what a
+real pipe would show. The identified tracks are still not shown (R-925).
+
 **R-926 built, 2026-10-09, on `relay/270`, issue #270: under pytest a state
 write outside the test root is refused.** The 2026-10-08 clobber of the live
 config was a review subagent's probe run from outside `tests/`, where the

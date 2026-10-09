@@ -35753,6 +35753,21 @@ is sent.
 **On the board at the author's request, 2026-10-08.** Nothing is lost or
 wrong; the run is opaque, not incorrect.
 
+**Closed by #268, 2026-10-09, on `relay/268`.** The dispatcher hands a verb
+a progress writer on standard error in human output and None in JSON
+output, so the envelope stays the one document on standard output. A fetch
+says it started, the size of the largest file in its scratch folder every
+fifteen seconds while the fetcher runs, and what landed; the folder is
+watched rather than the tool, so `yt-dlp`'s argv and captured failure line
+are unchanged. The bound identifier states the chunks, the cached count and
+the paid calls left after every refusal that spends nothing and before the
+first call, then counts calls sent on the first, every twentieth and the
+last. A recording the cache answers whole says no call is sent. A line that
+cannot be written is dropped rather than ending a paid pass. `intake
+identify` shares both paths and says the same. Twenty two mutation rows,
+nineteen killed (`docs/mutation/r924-notes.md`). R-932 records what was not
+measured on a real pipe.
+
 ---
 
 ## R-925. A queued set's tracks are shown nowhere, only their count
@@ -36052,3 +36067,27 @@ cratekit writer in that process, so none driven produces it.
 **Closes when:** a child process can tell it was started by a test without
 reading the environment, or the edges are judged acceptable. Ledger only:
 both are maintainer facing, and the shipped tool never imports pytest.
+
+---
+
+## R-932. intake progress lines are unmeasured on a real pipe
+
+**Found:** by the review and the mutation table of #268, 2026-10-09.
+
+**The mechanism.** Every progress test drives the dispatcher over an
+in memory stream. Two properties only a real pipe shows are therefore not
+measured. The writer flushes each line, and a mutation removing the flush
+kills nothing, because an in memory stream holds no buffer. And the fetch
+watcher is joined with no bound: a reader that stops draining standard
+error while the download runs would block the watcher's write, and the join
+behind it, once the pipe's buffer is full.
+
+**Measured cost.** None driven. A run writes about forty short lines in
+all, a few kilobytes, against a pipe buffer of sixty four kilobytes on this
+platform, so the blocked join needs a reader that drains nothing and a run
+far longer than any measured. The flush is ordinary practice and was read,
+not driven.
+
+**Closes when:** a test drives `crate intake set` in a child process over
+a real pipe and reads a line before the verb ends, or the edges are judged
+acceptable. Ledger only: maintainer facing, nothing is lost or misreported.
