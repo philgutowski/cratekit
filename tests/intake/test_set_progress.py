@@ -167,7 +167,7 @@ def test_the_watcher_reports_the_bytes_written_while_the_download_runs(
     assert any(one.startswith("fetching: 2.0 MB so far, ") for one in lines)
     assert lines[-1].startswith("fetched: 2.0 MB in ")
     # Stopped and joined before the block was lent: nothing outlives the fetch.
-    assert not [one for one in threading.enumerate() if one.name == "mix-fetch-progress"]
+    assert not [one for one in threading.enumerate() if one.name == fetch.WATCHER_NAME]
 
 
 def test_a_fetch_that_raises_still_stops_the_watcher(cfg, library, monkeypatch):
@@ -176,5 +176,8 @@ def test_a_fetch_that_raises_still_stops_the_watcher(cfg, library, monkeypatch):
     with pytest.raises(fetch.SetFetchFailed):
         with fetch.fetched(URL, library, FakeFetcher(fail="404"), progress=lines.append):
             pass
-    assert lines == [f"fetching: {URL}"]
-    assert not [one for one in threading.enumerate() if one.name == "mix-fetch-progress"]
+    # The watcher may have read the partial before the raise; it never says
+    # anything landed.
+    assert lines[0] == f"fetching: {URL}"
+    assert not [one for one in lines if one.startswith("fetched:")]
+    assert not [one for one in threading.enumerate() if one.name == fetch.WATCHER_NAME]

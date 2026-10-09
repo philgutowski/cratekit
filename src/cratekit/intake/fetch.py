@@ -88,6 +88,9 @@ PLAYLIST_PROBE = 2
 #: seconds is a line a person sees move without a screen of them.
 FETCH_PROGRESS_SECONDS = 15.0
 
+#: The watcher thread's name, so a test can see none outlived its fetch.
+WATCHER_NAME = "mix fetch progress"
+
 #: What a progress line is handed. A no op is what JSON output gets.
 Progress = Callable[[str], None]
 
@@ -308,7 +311,7 @@ def _watched(directory: Path, progress: Progress | None) -> Iterator[None]:
             elapsed = int(time.monotonic() - started)
             progress(f"fetching: {megabytes(_bytes_in(directory))} so far, {elapsed}s")
 
-    watcher = threading.Thread(target=watch, name="mix-fetch-progress", daemon=True)
+    watcher = threading.Thread(target=watch, name=WATCHER_NAME, daemon=True)
     watcher.start()
     try:
         yield
@@ -381,6 +384,7 @@ __all__ = [
     "SCRATCH_KEY",
     "SET_FETCH_TIMEOUT_SECONDS",
     "STEM_MAX_CHARS",
+    "WATCHER_NAME",
     "FetchedMix",
     "Progress",
     "ScratchUnderLibrary",
