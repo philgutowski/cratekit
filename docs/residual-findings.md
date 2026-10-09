@@ -1606,6 +1606,13 @@ space, and neither was driven. Not this unit's to fix, per the owner line above,
 and recorded so the next flake of this shape is read as a second measurement
 rather than a first.
 
+**A further measurement, sitting 32, 2026-10-09, the full suite in parallel.**
+`tests/test_sync_unmark.py::test_an_unreadable_record_refuses_the_mark_before_its_gate`
+failed in `_swept_pass` with the same `UNIQUE constraint failed: jobs.job_id`
+from `sync all`, on a branch whose diff was documentation only. The file
+passed alone and the suite passed on the next full run. Same shape, same path
+through `enqueue`, a second confirmed sighting.
+
 **A possible further measurement, `relay/230`, 2026-09-30, not confirmed as
 this.** `tests/test_restore.py::test_round2_three_attempts_stage_their_logs_side_by_side`
 failed once in a full parallel run, 1 failed and 10,944 passed, on a run
@@ -35171,6 +35178,11 @@ rehearses a rotation on a copy and applies it on an equal digest.
 
 **Not on the board bar.** It closes only at an attended sitting.
 
+**Closed 2026-10-09, sitting 32.** The section was added at sitting 31, and
+`inbox rotate --as-of 2026-11-01` was rehearsed on a copy and applied live on
+an equal digest `ba9c5d7bd7ceeae7`: 7 batches moved into Old, none removed.
+`docs/cutover.md` sitting 32 has the row.
+
 
 ---
 
@@ -35598,3 +35610,63 @@ label.
 **Not on the board bar.** Every refusal is named; R-912's crawl, which makes
 the run long enough to meet it, is the cost to fix first.
 
+
+---
+
+## R-921. A native landing writes no artist, album, genre or key, so its rows wait on Reload Tags
+
+**Found:** at the attended sitting of 2026-10-08, the first live native
+landing, 165 files of the pass `2026-10-08T141649Z-d4ce_synced`.
+
+**The mechanism.** `native.RowPlan.columns` sets five columns on each new
+content row: Title, FolderPath, FileNameL, FileSize and FileType. The tagger
+had already written artist, album, genre and Cratekit's key into every file,
+and none of it reaches the row. rekordbox's Analyze Tracks reads tempo, grid,
+waveform and art from the audio and does not read tags, so after analysis the
+rows still showed no artist and no key. Adoption routes by the genre on the
+row, so a landed batch would route nothing until somebody runs Reload Tags in
+rekordbox. The XML bridge never had this gap, because the import read the
+export's columns.
+
+**Measured cost.** Measured live: after Analyze Tracks, artist and key were
+empty on all 165 rows. Reload Tags on the playlist filled artist, album and
+key on 165 and genre on 159, the six without one being the files the tagger
+found no answer for, and adoption then placed 158. One extra hand step in
+rekordbox per landing, and a person who skips it gets an INBOX of nameless
+rows and an adoption that silently places nothing.
+
+**Closes when:** the native writer sets the artist, album, genre and key
+columns from the file's tags (the same reader `adopt` and the tagger use), so
+a landed row reads whole before rekordbox is opened, and the tail in
+`docs/GUIDE.md` drops Reload Tags.
+
+**Not on the board bar.** The hand step is known and recorded in the tail;
+nothing is lost, only delayed.
+
+---
+
+## R-922. A native landing's digest names the database file, so no copy rehearsal can match it
+
+**Found:** at the attended sitting of 2026-10-08, rehearsing the first live
+native landing on a disposable copy.
+
+**The mechanism.** `native.identity` puts `str(plan.database)` in what the
+gate digests. A rehearsal reads a copy at another path by design, so its
+digest differs from the live one even when every item, row and playlist is
+identical. Measured: the copy's screen and the live screen differed only in
+the "reads and writes" line, and the digests were `78d6b6880d0f6cdc` and
+`33c8ce60c7cd8595`. The rule that a session approves a database write only
+on an equal rehearsal digest therefore can never be met for this verb, so
+every native landing goes to the author. The cutover gate has the same shape
+(recorded at sitting 31). Adoption, whose digest leaves the path out, matched
+`a74ae7c88692d6a0` on copy and live the same night.
+
+**Measured cost.** Every native landing waits on the author for a
+`crate run decide`, which on 2026-10-08 held the tail about five hours.
+
+**Closes when:** the native digest carries the database's identity (device
+and master id, already in it) and not its file path, or the screen shows the
+path outside the digest, and a copy rehearsal matches a live plan.
+
+**Not on the board bar.** The author can always approve; the cost is
+latency, not correctness.

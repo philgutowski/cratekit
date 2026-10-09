@@ -355,7 +355,10 @@ inline. A file already in the collection is reported present and not added
 twice. **Nothing about the audio is written**: no tempo, no grid, no key, no
 waveform, and the run says so. rekordbox does not analyse a row it did not
 make until you ask, so open it, select the batch playlist and run Analyze
-Track. There is no import, no drag and no `intake imported` on this path.
+Track with KEY unticked, then Reload Tags on the same selection. **The rows
+carry no artist, album, genre or key until Reload Tags reads them from the
+files** (R-921), and adoption places a track by the genre on its row, so
+skipping it leaves nameless rows that file nowhere. There is no import, no drag and no `intake imported` on this path.
 Filing the batch into your genre tree is `adopt scan` and `adopt apply`.
 
 Once you have imported the landed file, quit rekordbox, take a new export with

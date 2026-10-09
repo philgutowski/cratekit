@@ -958,6 +958,31 @@ would be pointed as below when it is.
 | dj-set-builder | `crate setbuild`. No shipped skill |
 | dj-core | the shipped skills' own descriptions route |
 
+## Sitting 32, 2026-10-08 into 2026-10-09, attended, the first native sync cycle
+
+The rest of #178 line 4, on the intake tree sitting 31 cut over. The backup
+acknowledgment the author minted at 14:16Z held to 02:16Z. rekordbox was closed
+for every verb and both processes confirmed gone after it quit.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `crate sync all` | live, run `2026-10-08T14:16:49Z-d4ce`, the favourites gate answered sync | Four jobs succeeded: favourites hearting, hearts intake, `Phil 9-30-26`, `Dancefloor Rescue`. | live |
+| `intake missing --run` | live | 166 tracks to the list `2026-10-08T141649Z-d4ce_synced`, two hearts and 165 of `Phil 9-30-26`. The author chose all 166. | live |
+| `acquire download` | live, detached | **165 of 166**, one refused `lossy-refused` (the provider offers it only lossy), 993 calls, no rate limit, about 30 minutes. | live |
+| `tag folder`, `analyze run`, `analyze restamp`, `name apply` | yes | 159 tagged, 4 left with a catalogue unread, one `Indie Tech`; Traxsource and Bandcamp blocked. 165 analysed and stamped. **161 renamed, 4 held as two collisions**: Bilal `Soul Sista` and Tweet `Boogie 2Nite` each sit in the playlist twice, the original album and a compilation, and keep their identifier names. | live |
+| `intake land --pass`, native, rehearsal | on a copy, state redirected, applied | 165 rows and files, one INBOX playlist `Phil 9-30-26` named for the account's, nothing for a batch playlist. The apply moves the real files, so the session moved the 165 back by the plan's own mapping and removed the empty folder before the live plan. | rehearsed |
+| `intake land --pass`, native, live | to its gate, run `2026-10-08T19:57:21Z-ffa2` | Same screen as the copy but the database line, digest `33c8ce60c7cd8595` against `78d6b6880d0f6cdc`: R-922. **Approved by the author from Terminal and applied**: 165 files into `Music/2026-10-08 Tidal playlists and Favorites`, 165 rows. | live |
+| `sync mark --pass`, rehearsal | on the copy, after its landing | The native proof read: `Dancefloor Rescue` planned for the prefix, `Phil 9-30-26` left alone with its tracks not yet adopted. | rehearsed |
+| rekordbox, desktop control | Analyze Track on `Phil 9-30-26`, KEY unticked | Tempo, waveform and art on all 165. **Artist and key empty on every row**, the native writer sets five columns and no tag: R-921. Reload Tags on the same selection filled artist, album and key on 165, genre on 159. | live |
+| `adopt scan` then `adopt apply` | rehearsed on a copy, live on an equal digest `a74ae7c88692d6a0` | Route 8,960, needs-genre 1,297, withheld 13, no collisions, every item line identical. **158 memberships added, 0 removed**: R&B 62, Nu Disco / Indie Dance 38, Dance / Pop 30, Breaks / D&B / Dubstep 13, NonElectronic 12, House / Funky House / Disco 2, Deep House 1. 2,135 playlists before and after, no tempo changed. Live read back equal to the copy. | live |
+| `sync mark --pass`, live | at its gate, the same rename as the rehearsal, approved by the session | **`Dancefloor Rescue` renamed `DOWNLOADED Dancefloor Rescue`** on the account, recorded in the library's mark ledger, 1,305 calls, no rate limit. The first mark proven by a native landing. | live, **#178 line 4** |
+| `inbox rotate --as-of 2026-11-01` | the author asked for INBOX cleaned up; rehearsed on a copy, live on an equal digest `ba9c5d7bd7ceeae7` | Aged as of a date past the 30 day rule so every batch adopted before this week goes: **7 moved into Old** (both 09-23 batches, both 09-29, both 09-30, the 10-01 labels 1 percent), 2 kept (`2026-10-08 Labels`, `Phil 9-30-26`), the 14 hand made playlists in Old left alone, 0 removed, no track left the collection. Live read back equal to the copy. | live, **R-902 closes**; R-903 still unobserved, nothing was removed |
+
+**`Phil 9-30-26` stays unmarked, correctly.** Three of its tracks match a
+version the library already holds and wait in review: Sister Sledge `Thinking
+of You` (Dimitri from Paris remix), Leela James `Good Time`, Sade `Your Love Is
+King`. Once the author answers them, a later pass marks it.
+
 ## What blocks a full sync cycle, stated plainly
 
 **Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
