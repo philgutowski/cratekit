@@ -7,6 +7,7 @@ the shipped fetcher is only ever built over a fake ``run``.
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -534,8 +535,12 @@ def test_the_shipped_fetcher_runs_u80s_download_under_a_mix_sized_bound(tmp_path
     assert argv[argv.index("--output") + 1] == str(tmp_path / "fetched-%(autonumber)s.%(ext)s")
     assert argv[argv.index("--playlist-end") + 1] == "2"
     assert argv.index("--playlist-end") < argv.index("--")
+    # U121. The page is kept beside the recording, so a set's playlist can be
+    # named from it, and the flag sits with the other edit ahead of the address.
+    assert "--write-info-json" in argv
+    assert argv.index("--write-info-json") < argv.index("--")
     # Everything else is U80's argv, unchanged.
-    rest = [one for one in argv if one not in ("--playlist-end", "2")]
+    rest = [one for one in argv if one not in ("--playlist-end", "2", "--write-info-json")]
     theirs = fallback.YtDlpFetcher("/opt/bin/yt-dlp").argv(URL, tmp_path)
     assert [a for a, b in zip(rest, theirs, strict=True) if a != b] == [
         str(tmp_path / "fetched-%(autonumber)s.%(ext)s")
@@ -587,3 +592,76 @@ def test_an_ordinary_failed_download_is_neither_a_timeout_nor_a_playlist(tmp_pat
 def test_the_suite_cannot_reach_the_shipped_fetcher():
     with pytest.raises(AssertionError, match="shipped mix fetcher"):
         fetch.fetcher()
+
+
+# ---------------------------------------------------------------------------
+# U121: the page the mix came from rides on the job
+# ---------------------------------------------------------------------------
+
+
+class PageWritingFetcher(FakeFetcher):
+    """Lands the recording and the info document ``yt-dlp`` writes beside it."""
+
+    def __init__(self, page: dict) -> None:
+        super().__init__()
+        self.page = page
+
+    def fetch(self, url: str, directory: Path) -> Path:
+        landed = super().fetch(url, directory)
+        (directory / f"{landed.stem}{fetch.INFO_SUFFIX}").write_text(
+            json.dumps(self.page), encoding="utf-8"
+        )
+        return landed
+
+
+def test_the_page_a_mix_came_from_is_frozen_on_the_set_job(cfg, library, recognised, monkeypatch):
+    """U121. The uploader, the title and the upload day name the set's permanent
+    playlist later, so the job carries them; nothing else of the document does."""
+    three_tracks(recognised)
+    page = {
+        "title": "Probe - Friday Night Mix",
+        "uploader": "Probe",
+        "upload_date": "20260503",
+        "description": "not kept",
+        "duration": 5400,
+    }
+    monkeypatch.setattr(fetch, "fetcher", lambda: PageWritingFetcher(page))
+    code, envelope = drive(["intake", "set", URL])
+    assert code == int(ExitCode.OK), envelope
+    assert job_of(envelope["data"]["job_id"]).payload[intake_cli.PAGE] == {
+        "title": "Probe - Friday Night Mix",
+        "uploader": "Probe",
+        "upload_date": "20260503",
+    }
+    assert nothing_left()
+
+
+def test_a_fetch_that_left_no_info_document_freezes_an_empty_page(
+    cfg, library, recognised, fetcher
+):
+    three_tracks(recognised)
+    code, envelope = drive(["intake", "set", URL])
+    assert code == int(ExitCode.OK), envelope
+    assert job_of(envelope["data"]["job_id"]).payload[intake_cli.PAGE] == {}
+
+
+def test_a_local_recording_freezes_an_empty_page(cfg, library, recognised):
+    three_tracks(recognised)
+    path = recording(library)
+    code, envelope = drive(["intake", "set", str(path)])
+    assert code == int(ExitCode.OK), envelope
+    assert job_of(envelope["data"]["job_id"]).payload[intake_cli.PAGE] == {}
+
+
+def test_page_of_reads_the_three_words_and_nothing_a_document_cannot_say(tmp_path):
+    assert fetch.page_of(tmp_path / "absent") == {}
+    assert fetch.page_of(tmp_path) == {}
+    (tmp_path / "fetched.info.json").write_text("not json", encoding="utf-8")
+    assert fetch.page_of(tmp_path) == {}
+    (tmp_path / "fetched.info.json").write_text(
+        json.dumps({"title": "  A Set ", "uploader": 7, "upload_date": "", "other": "x"}),
+        encoding="utf-8",
+    )
+    assert fetch.page_of(tmp_path) == {"title": "A Set"}
+    (tmp_path / "fetched.mp3").write_bytes(b"ID3")
+    assert fetch.page_of(tmp_path) == {"title": "A Set"}

@@ -42,12 +42,13 @@ wants a download injects a fake.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import shutil
 import subprocess
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import urlsplit
@@ -82,6 +83,19 @@ STEM_MAX_CHARS = 80
 PLAYLIST_PROBE = 2
 
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
+
+#: The three facts of the page a fetched mix came from that a set's playlist is
+#: named with (U121): what the uploader is called, what they called the set,
+#: and the day it went up, as ``yt-dlp`` writes them in the info document it
+#: leaves beside the download. Kept as plain text under these keys, so the job
+#: payload carries words and not the whole document.
+PAGE_TITLE = "title"
+PAGE_UPLOADER = "uploader"
+PAGE_UPLOAD_DATE = "upload_date"
+PAGE_KEYS = (PAGE_TITLE, PAGE_UPLOADER, PAGE_UPLOAD_DATE)
+
+#: What ``yt-dlp`` names the info document, next to the download, by the stem.
+INFO_SUFFIX = ".info.json"
 
 
 class SetFetchFailed(Exception):
@@ -137,7 +151,12 @@ class _MixDownload(fallback.YtDlpFetcher):
         argv = super().argv(url, directory)
         template = argv.index("--output") + 1
         argv[template] = str(directory / f"{fallback.FETCH_STEM}-%(autonumber)s.%(ext)s")
-        argv[1:1] = ["--playlist-end", str(PLAYLIST_PROBE)]
+        # THE PAGE IS KEPT BESIDE THE RECORDING (U121). The info document names
+        # the uploader, the title and the upload date, which is what a set's
+        # playlist is named with, and it is read off the scratch folder before
+        # the folder goes. It is not an audio file, so the recording count
+        # above never sees it.
+        argv[1:1] = ["--playlist-end", str(PLAYLIST_PROBE), "--write-info-json"]
         return argv
 
 
@@ -182,6 +201,34 @@ def _recordings_in(directory: Path) -> list[str]:
         for one in directory.iterdir()
         if one.is_file() and one.suffix.lower() == fallback.FETCH_SUFFIX
     )
+
+
+def page_of(directory: Path) -> dict[str, str]:
+    """The page facts the info documents in ``directory`` carry, or nothing (U121).
+
+    READ, NEVER REQUIRED. A fetcher that wrote no document, a document that is
+    not JSON, or one that names none of the three keys gives an empty answer,
+    and the set's playlist is then named from the flags instead. Several
+    documents, which only a playlist address leaves and the fetch refuses
+    anyway, are read in name order and the first word for each key kept.
+    """
+    if not directory.is_dir():
+        return {}
+    found: dict[str, str] = {}
+    for one in sorted(directory.iterdir()):
+        if not one.is_file() or not one.name.lower().endswith(INFO_SUFFIX):
+            continue
+        try:
+            parsed = json.loads(one.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(parsed, dict):
+            continue
+        for key in PAGE_KEYS:
+            value = parsed.get(key)
+            if key not in found and isinstance(value, str) and value.strip():
+                found[key] = value.strip()
+    return found
 
 
 def fetcher() -> SetFetcher:
@@ -246,6 +293,10 @@ class FetchedMix:
     path: Path
     #: The scratch folder, when it could not be removed. None is the ordinary end.
     leftover: str | None = None
+    #: What the page said about the recording, under :data:`PAGE_KEYS`, each
+    #: present only when the info document carried it. Empty for a fetcher
+    #: that wrote no document (U121).
+    page: dict[str, str] = field(default_factory=dict)
 
 
 @contextmanager
@@ -280,6 +331,7 @@ def fetched(url: str, library_root: Path, found: SetFetcher) -> Iterator[Fetched
                 f"the folder it was given"
             )
         held.path = landed
+        held.page = page_of(scratch)
         yield held
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
@@ -294,6 +346,11 @@ __all__ = [
     "SCRATCH_KEY",
     "SET_FETCH_TIMEOUT_SECONDS",
     "STEM_MAX_CHARS",
+    "INFO_SUFFIX",
+    "PAGE_KEYS",
+    "PAGE_TITLE",
+    "PAGE_UPLOADER",
+    "PAGE_UPLOAD_DATE",
     "FetchedMix",
     "ScratchUnderLibrary",
     "ScratchUnusable",
@@ -305,6 +362,7 @@ __all__ = [
     "assert_outside_library",
     "fetched",
     "fetcher",
+    "page_of",
     "scratch_for",
     "stem_of",
 ]

@@ -43,7 +43,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -70,6 +70,10 @@ TRACKS = "tracks"
 CALLS = "calls"
 UNREACHED = "unreached"
 PARTS = "parts"
+#: What the page a fetched mix came from said, under :data:`fetch.PAGE_KEYS`,
+#: frozen on the job so a set's playlist can be named from it later (U121).
+#: Empty for a local recording and for a fetch that left no info document.
+PAGE = "page"
 #: The name the account gave the playlist, as the sweep that queued the job
 #: listed it (U113). Recorded at the queue because nothing else keeps it, and
 #: ``sync mark`` later prefixes the account's copy, so a listing taken after the
@@ -515,6 +519,8 @@ class SetRecording:
     stem: str
     shown: str
     leftover: str | None = None
+    #: What the page said, for a fetched mix (U121). Empty for a local file.
+    page: Mapping[str, str] = field(default_factory=dict)
 
     @classmethod
     def local(cls, path: Path) -> SetRecording:
@@ -571,7 +577,11 @@ def _recording(cfg: config.Config, source: str, local: Path | None) -> Iterator[
     try:
         with fetch.fetched(address, Path(cfg.library.root), found) as got:
             held = SetRecording(
-                path=got.path, ref=address, stem=fetch.stem_of(address), shown=address
+                path=got.path,
+                ref=address,
+                stem=fetch.stem_of(address),
+                shown=address,
+                page=dict(got.page),
             )
             try:
                 yield held
@@ -734,6 +744,7 @@ def intake_set(ctx) -> Envelope:
                         CALLS: result.calls,
                         UNREACHED: result.unreached,
                         PARTS: result.parts,
+                        PAGE: dict(held.page),
                     },
                     cfg=cfg,
                     item_ids=tuple(tracks),
@@ -1333,6 +1344,7 @@ __all__ = [
     "HEARTS_WITHHELD",
     "INTAKE_KEYS",
     "MIX_SCRATCH_LEFT",
+    "PAGE",
     "PLAYLIST_NAME",
     "SOURCE",
     "TRACKLISTS_DIR",
