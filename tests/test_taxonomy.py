@@ -836,3 +836,45 @@ def test_a_former_place_whose_id_is_a_sub_of_the_bucket_that_holds_it_is_refused
         _promoted(data)["formerly"][0]["id"] = _holder(data)["sub"][0]["id"]
 
     assert any("where a former place competes as well" in p for p in problems_from(default_raw, mutate))
+
+
+# ---------------------------------------------------------------------------
+# U121: the INSPIRATION folder, an optional root node like the catalog tree
+# ---------------------------------------------------------------------------
+
+
+def test_the_inspiration_folder_is_declared_in_the_shipped_default(default):
+    """U121: the folder a set's permanent playlist is kept in, as data. A
+    library whose author keeps no such playlists can delete the section; one
+    who does gets the folder the source system already used."""
+    assert default.inspiration is not None
+    assert default.inspiration.id == "inspiration"
+    assert default.inspiration.display == "INSPIRATION"
+
+
+def test_a_template_declaring_no_inspiration_folder_loads_clean(default_raw):
+    data = mutated(default_raw, lambda d: d.pop("inspiration"))
+    assert build_taxonomy(data).inspiration is None
+
+
+def test_a_half_declared_inspiration_folder_is_refused_as_strictly_as_a_mandatory_one(
+    default_raw,
+):
+    def no_display(d):
+        d["inspiration"]["display"] = ""
+
+    def bad_id(d):
+        d["inspiration"]["id"] = d["inspiration"]["display"]
+
+    def empty(d):
+        d["inspiration"] = {}
+
+    def not_a_table(d):
+        d["inspiration"] = "INSPIRATION"
+
+    assert any("[inspiration] display" in p for p in problems_from(default_raw, no_display))
+    assert any("[inspiration] id" in p for p in problems_from(default_raw, bad_id))
+    emptied = problems_from(default_raw, empty)
+    assert any("[inspiration] id" in p for p in emptied)
+    assert any("[inspiration] display" in p for p in emptied)
+    assert any("[inspiration] must be a table" in p for p in problems_from(default_raw, not_a_table))

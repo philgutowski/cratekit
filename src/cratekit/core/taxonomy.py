@@ -500,6 +500,15 @@ class Taxonomy:
     # creating a folder from a default nobody saw.
     intake_old: Node | None = None
 
+    # The folder at the playlist root that keeps a set's playlist for good
+    # (U121), ``INSPIRATION`` in the shipped template: a set intake lands its
+    # batch under the intake flow, which the rotation clears, and writes the
+    # whole set once more here, which nothing rotates. OPTIONAL for the
+    # catalog's reason: a library whose active copy predates the section has
+    # no such folder declared, and the set playlist is refused by name rather
+    # than written under a folder nobody declared.
+    inspiration: Node | None = None
+
     # The vocabularies of the sources that have one of their own (R-799), in
     # declared order. EMPTY in a copy written before that unit, and then every
     # source's word is resolved by the buckets' aliases, as it always was.
@@ -893,11 +902,24 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
                 "[intake_old] must differ from [intake] in both id and display; "
                 "it declares a folder inside the intake flow, not the flow itself"
             )
+    # Keyed on PRESENCE, for the catalog section's reason (U121). A folder at
+    # the playlist root and not inside the intake flow, so it shares nothing
+    # with [intake] and [intake_old] except the shape of its declaration.
+    inspiration_raw = data.get("inspiration") if "inspiration" in data else None
+    inspiration: Node | None = None
+    if inspiration_raw is not None and not isinstance(inspiration_raw, Mapping):
+        problems.append("[inspiration] must be a table with an id and a display")
+    elif inspiration_raw is not None:
+        inspiration = Node(
+            str(inspiration_raw.get("id", "")), str(inspiration_raw.get("display", ""))
+        )
     declared_nodes = [(tree, "tree"), (intake, "intake")]
     if catalog is not None:
         declared_nodes.append((catalog, "catalog"))
     if intake_old is not None:
         declared_nodes.append((intake_old, "intake_old"))
+    if inspiration is not None:
+        declared_nodes.append((inspiration, "inspiration"))
     if long_tracks is not None:
         declared_nodes.append((Node(long_tracks.id, long_tracks.display), "long_tracks"))
     for node, label in declared_nodes:
@@ -977,6 +999,7 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
         catalog=catalog,
         long_tracks=long_tracks,
         intake_old=intake_old,
+        inspiration=inspiration,
         vocabularies=vocabularies,
         _by_id=by_id,
         _by_display=by_display,
