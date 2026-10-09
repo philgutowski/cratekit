@@ -35917,3 +35917,22 @@ by a guarded one row write the product has no verb for today.
 **On the board bar.** Every native landing produces unplayable rows; the
 author chose the native path for INBOX on 2026-10-08. Issue #272 carries the
 brief.
+
+**Worked around, and the column named, 2026-10-09, sitting 34.** Every
+native row in INBOX, 207, was removed from the collection in rekordbox and
+its folder dropped back from Finder; rekordbox made 207 rows of its own,
+all analysed, one from each folder loaded to a deck, and adoption placed
+196 of them on an equal digest (`docs/cutover.md` sitting 34). Then `stat`
+answered the question: **`rb_file_id` is the file's inode number at the
+moment rekordbox imports it.** Every row rekordbox made today carries its
+file's inode, as do 459 of 459 rows created in October and 1,851 of 1,851
+in July. Rows whose files were copied since (the March migration, part of
+June) carry the old inode, 1,358 rows carry 0, and those rows load, so the
+value need not match the file today; a random nine digit number, which no
+file on the volume can carry, is what rekordbox refuses. That is why the
+counter was never found: there is no counter. The A8 row (`73894078`,
+random id, inode 1104075) and the sixteen sampler rows still carry random
+ids. What U115 builds is therefore `os.stat(path).st_ino` on the landed
+file, set at creation, and `repair rows` writing the inode onto the rows
+that carry a random one; the one row probe named in #272 should set the
+inode, not a gap value.

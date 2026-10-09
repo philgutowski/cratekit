@@ -1008,6 +1008,31 @@ for every database write.
 | The deck block, found | one native row removed, its file dropped from Finder onto rekordbox | **rekordbox's own row loads at once, unanalysed.** It differs from a native row in the analysis columns and in `rb_file_id` alone: rekordbox allocated 1402671, in sequence after yesterday's 1400905; the binding mints a random nine digit id. The A8 row of 2026-09-29, the binding's, analysed and filed since, does not load either. So the column is the key, allocated from a counter outside `master.db`. A drop of a path already in the collection adds nothing. **U115, issue #272.** Liberian Girl now has rekordbox's row, outside the INBOX playlist, placed by the next adoption. | found |
 | `sync mark --pass` | live, the session approving | **`Phil 10_8_26` renamed `DOWNLOADED Phil 10_8_26`** on the account; `New York Fever Vol. 1` left alone, 21 of its tracks still missing, the unlicensed ones; 1,277 calls, no rate limit. The pass's mark is recorded in the library's mark ledger. | live |
 
+## Sitting 34, 2026-10-09, attended, the 207 native rows replaced by rekordbox's own, and the column named
+
+The author needed playable tracks now, and U115 (#272) is the fix for the
+landing, not for the rows already landed. So the proven route of sitting 33
+was run over every native row in INBOX: remove the row, drop the folder back
+from Finder, let rekordbox make its own. The installed copy stayed at
+`2fb06d8`. Both backup ages had just passed one day, so `crate backup run`
+went first (53 minutes, 1,780 files sent, the database copied), and
+rekordbox was opened only after `doctor` read both under a day.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| Remove from Collection | rekordbox, the session driving, five INBOX playlists | `Phil 9-30-26` 163, `New York Fever Vol. 1` 38, `Phil 10_8_26` 3 (its fourth was in the compilation playlist too), `2026-10-09 Tidal playlists and Favorites` 1, `Phil 9-30-26 2` 1: **207 rows, every native row the landing ever made in INBOX**, each confirmed through rekordbox's own dialog. The five playlists were left in place, empty, since the account playlist names they carry are the sync marks' names; the author deletes them or not. | live |
+| The drops | three folders dragged from a Finder list window onto the INBOX node, `left_mouse_down`, moves with waits, `left_mouse_up` | Each drop made a playlist named for its folder: **`2026-10-08 Tidal playlists and Favorites` 164**, Liberian Girl's existing row joined it, so a drop does add a path already in the collection to the new playlist, it only makes no new row; **`2026-10-09 Tidal playlists and Favorites` 42**, after rekordbox asked to replace the empty native playlist of the same name and the session said yes; **`2026-10-09 Tidal playlists and Favorites 2` 1**. rekordbox read artist, album, genre and key from the tags on import, no Reload Tags. 207 rows created today, 10,479 active rows, the count unchanged. | live |
+| The deck test, before analysis | `Load` on the first new row | **Live at once**, Sade `By Your Side` loaded to deck 1 unanalysed, and rekordbox analysed it on load. | live |
+| Analyze Tracks | the session, per playlist, rekordbox's per batch Analysis Setting dialog each time: BPM / Grid and Phrase ticked, KEY unticked, Normal, 78 to 155 | **207 analysed in about six minutes.** | live |
+| The deck test, after | one row from each folder | Sade `By Your Side` (2026-10-08) on deck 1, Weval `Easier` (2026-10-09) on deck 1, Maxwell `The Urban Theme` (Favorites 2) on deck 2, each with a waveform and a tempo. rekordbox quit with `cmd+q`, `rekordbox` and `rekordboxAgent` both gone before any verb. | live |
+| `adopt scan`, `adopt apply` | rehearsed on a copy (database copied to scratch, `.cratekit` copied to `.cratekit-copyrun` on the volume, config and state dirs redirected), live on an equal digest `61bb3efcc88a5058`, the session approving | Plan text identical between copy and live, 8,998 routed, 1,301 needing a genre, 13 withheld, collisions none. **196 memberships added, 0 removed, no tempo changed**: Med 67, High 60, Low 45, Hip-Hop 11, Pop 8, Rock 3, Jazz 1, Caribbean 1. 588 playlists before and after. The live database read back equal to the copy, 196 ledger entries under the digest on both. The 11 not placed are the rows with no genre on the file. | live |
+| The column, named | `stat` against the new rows | **`rb_file_id` is the file's inode number at import.** Sade's file is inode 1402707 and its row carries 1402707; the same for every row rekordbox made today, and for 459 of 459 rows created in October, 1,851 of 1,851 in July, 33 of 33 in April. Rows from the March migration match in 1,757 of 5,603 and June in 750 of 2,108, their files having been copied since (a copy is a new inode), and 1,358 rows carry 0; those rows load, so a stale or zero value is tolerated and a random nine digit one is not. The ids are not a counter: Maxwell's file, moved to another folder, kept its inode and so got 1402651, below Liberian Girl's 1402671 from the day before. Recorded under R-928 and on #272. | found |
+
+What the sitting leaves: the five emptied INBOX playlists; the twelve hand
+made playlists in INBOX / Old; the sampler rows and the A8 row of
+2026-09-29 (`73894078`, random id, inode 1104075) still carry random ids
+and are outside INBOX, untouched here.
+
 ## What blocks a full sync cycle, stated plainly
 
 **Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
