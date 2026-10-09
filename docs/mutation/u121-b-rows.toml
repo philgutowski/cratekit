@@ -1,0 +1,64 @@
+# U121 author's mutation table, second pass: the four rows the first table
+# refused because the review's fix round had moved their text, retargeted,
+# and the three zero rows re-measured against the tests the zeros bought.
+# S16 is not re-measured: the probe under tests/ showed a question resolves
+# with no paths at all, so the mutated line could never tie a file and the
+# row was inert, not a gap. No new mutation joins; 25 distinct in all.
+name = "u121-b"
+pass_kind = "light"
+
+[[rows]]
+id = "S2r_separator"
+description = "_without_leading: keep the separator after the uploader's name"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''    stripped = re.sub(r"^\s*(?:[-:|–—]+\s*)?", "", rest)'''
+new = '''    stripped = rest.strip()'''
+
+[[rows]]
+id = "S10r_folder_row_removed"
+description = "_folder_row: a folder rekordbox removed since the plan is still written into"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''        if row is None or rb_writer.node_removed(row):'''
+new = '''        if row is None:'''
+
+[[rows]]
+id = "S14r_stale_digest"
+description = "apply_alone: a plan whose digest moved since the approval is written anyway"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''    if again.digest != plan.digest:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "S15r_member_order"
+description = "_members: members in title order rather than set order"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''    return tuple(members), tuple(left)'''
+new = '''    return tuple(sorted(members, key=lambda one: one.title)), tuple(left)'''
+
+[[rows]]
+id = "S20r_bridge_set"
+description = "intake_land: --set on a bridge tree is not refused, the batch lands with no playlist"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''    if ctx.args.set_job:
+        set_playlist.assert_native(medium, landing=True)'''
+new = '''    if False:
+        set_playlist.assert_native(medium, landing=True)'''
+
+[[rows]]
+id = "S25r_bridge_backfill"
+description = "_native_or_refuse: a bridge tree is not refused"
+file = "src/cratekit/intake/inspiration_cli.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''    set_playlist.assert_native(medium, landing=False)'''
+new = '''    pass'''

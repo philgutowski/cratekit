@@ -890,3 +890,81 @@ def test_a_second_write_that_fills_a_gap_mid_set_is_not_a_failed_write(native_li
     assert again["data"]["totals"]["added"] == 1 and again["data"]["totals"]["read back"] == 3
     assert _members(cfg, str(playlist_id)) == ["held-1", "held-2", "held-3"]
     assert [w["code"] for w in again["warnings"]] == [set_playlist.WRITTEN]
+
+
+# ---------------------------------------------------------------------------
+# What the table added: an order that is not alphabetical, and the engine's own stale checks
+# ---------------------------------------------------------------------------
+
+
+def test_members_keep_the_sets_order_when_it_is_not_alphabetical(native_library, silence):
+    """The first table's order row was inert: every set until now played its
+    tracks in title order, so a sort by title changed nothing. This set does not."""
+    cfg, _root_id = native_library
+    cutover_fixtures.add_folder(cfg, FOLDER)
+    _owned(cfg, silence, "Three", content_id="held-3")
+    job_id = set_job(cfg, ("Two", "One", "Three"))
+    _stage(cfg, silence, "One")
+    _stage(cfg, silence, "Two")
+    code, acted, _ = _two_acts(_land("--set", job_id, *WORDS))
+    assert code == int(ExitCode.OK), acted
+    ((playlist_id, *_rest),) = _playlists_named(cfg, NAME)
+    rows = _row_ids_by_name(cfg)
+    assert _members(cfg, str(playlist_id)) == [rows["Two"], rows["One"], "held-3"]
+
+
+def _backfill_inputs(cfg: config.Config, job_id: str):
+    declared = active_taxonomy.load(cfg)
+    with jobs.open_store() as store:
+        job = jobs.get(store, job_id)
+        reports = set_playlist.reports_of(store, job)
+    words = set_playlist.words_for(job, dj="Probe DJ", set_name="Live at Probe", set_date="2026-05")
+    return declared, job, words, reports
+
+
+def test_the_engine_refuses_a_plan_whose_collection_moved_even_with_no_gate_in_front(
+    native_library, silence
+):
+    """The gate re-plans on every drive and catches this first, so the engine's
+    own re-plan on the write handle is reached only by a caller with no gate.
+    Driven here as that caller, since a guard held by another guard is a
+    guard nothing covers."""
+    cfg, _root_id = native_library
+    cutover_fixtures.add_folder(cfg, FOLDER)
+    _owned(cfg, silence, "Three", content_id="held-3")
+    job_id = set_job(cfg, ("Three",))
+    declared, job, words, reports = _backfill_inputs(cfg, job_id)
+    plan = inspiration_cli.planned(cfg, declared, job, words, reports)
+    assert [one.content_id for one in plan.members] == ["held-3"]
+    conn = sqlite3.connect(cfg.library.db_path)
+    conn.execute("UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = 'held-3'")
+    conn.commit()
+    conn.close()
+    with pytest.raises(CratekitError) as caught:
+        inspiration_cli.written(cfg, declared, plan, job, words, reports)
+    assert caught.value.cause.reason == "decision-stale"
+    assert _playlists_named(cfg, NAME) == []
+
+
+def test_the_engine_refuses_a_folder_removed_after_the_plan_even_with_no_gate_in_front(
+    native_library, silence
+):
+    cfg, _root_id = native_library
+    folder_id = cutover_fixtures.add_folder(cfg, FOLDER)
+    _owned(cfg, silence, "Three", content_id="held-3")
+    job_id = set_job(cfg, ("Three",))
+    declared, job, words, reports = _backfill_inputs(cfg, job_id)
+    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
+    try:
+        plan = set_playlist.plan_for_backfill(cfg, db, declared, job, words, reports)
+        assert plan.folder_id == folder_id
+        row = db.get_playlist(ID=folder_id)
+        setattr(row, rb_writer.SOFT_DELETE_COLUMN, 1)
+        db.session.flush()
+        with pytest.raises(CratekitError) as caught:
+            set_playlist.write_members(db, plan)
+        assert caught.value.cause.reason == "decision-stale"
+        db.session.rollback()
+    finally:
+        rb_writer.close_db(db)
+    assert _playlists_named(cfg, NAME) == []
