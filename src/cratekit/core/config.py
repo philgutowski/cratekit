@@ -3975,7 +3975,7 @@ def _write_lock(path: Path) -> _exclusive_lock:
     return _exclusive_lock(path.with_name(path.name + ".migrate.lock"))
 
 
-#: Where a configuration write may land while this process runs under pytest.
+#: Where a state write may land while this process runs under pytest.
 #: The suite's isolation fixture sets it to pytest's base temporary directory
 #: for the life of each test. None under pytest means that fixture never ran
 #: for this test, and then every write is refused.
@@ -3983,11 +3983,11 @@ _TEST_WRITE_ROOT: Path | None = None
 
 
 class WriteOutsideTestRoot(RuntimeError):
-    """A configuration write under pytest aimed outside the test's temporary root."""
+    """A state write under pytest aimed outside the test's temporary root."""
 
 
-def _refuse_write_outside_test_root(path: Path) -> None:
-    """Under pytest, refuse a configuration write that would land outside the test root.
+def _refuse_write_outside_test_root(path: Path, *, system_temporary: bool = False) -> None:
+    """Under pytest, refuse a state write that would land outside the test root.
 
     R-926. On 2026-10-08 a probe test run from a folder outside ``tests/`` wrote
     a pytest library into the real ``config.toml``, because ``tests/conftest.py``
@@ -4001,21 +4001,41 @@ def _refuse_write_outside_test_root(path: Path) -> None:
     Resolved on both sides, unlike ``_is_inside`` alone, because the temporary
     folder is reached through a symlink on macOS and a link inside the root can
     point anywhere. A process without pytest loaded is never checked.
+
+    Called from the three primitives every state writer in the package goes
+    through, ``_write_lock`` for the configuration document, then
+    ``atomic_write_bytes`` and ``_exclusive_lock``, so a ledger, a watermark or
+    a session lock written by an unisolated test is refused the same way, and a
+    link swapped in after the configuration check is caught again at the write.
+
+    ``system_temporary`` is what those two primitives pass. Shipped code writes
+    its own scratch files through them into a folder ``tempfile.mkdtemp`` made,
+    the provider session's token among them, and the user's state never lives
+    there, so the system temporary directory is a second allowed root for them
+    and never for the configuration document. Without it 101 tests were
+    refused, measured 2026-10-09. It holds with no root registered too, because
+    a test's child process that imports a helper from ``tests`` has pytest
+    loaded and no conftest, and writes its locks under the test's own folder.
     """
     if "pytest" not in sys.modules:
         return
     root = _TEST_WRITE_ROOT
+    allowed = [] if root is None else [root.resolve()]
+    if system_temporary:
+        allowed.append(Path(tempfile.gettempdir()).resolve())
+    target = path.resolve()
+    if any(_is_inside(target, each) for each in allowed):
+        return
     if root is None:
         raise WriteOutsideTestRoot(
-            f"refused to write the configuration at {path}: this process is "
+            f"refused to write {path}: this process is "
             f"running under pytest and no test root is registered, so the "
             f"isolation in tests/conftest.py did not run for this test"
         )
-    if not _is_inside(path.resolve(), root.resolve()):
-        raise WriteOutsideTestRoot(
-            f"refused to write the configuration at {path}: this process is "
-            f"running under pytest and the path is outside the test root {root}"
-        )
+    raise WriteOutsideTestRoot(
+        f"refused to write {path}: this process is "
+        f"running under pytest and the path is outside the test root {root}"
+    )
 
 
 def _back_up_version(path: Path, found: int) -> None:
@@ -4318,6 +4338,7 @@ def atomic_write_bytes(payload: bytes, path: Path, *, mode: int = PRIVATE_FILE_M
     take its mode from the umask (see that function for why the obvious
     ``mode=`` argument does not fix it).
     """
+    _refuse_write_outside_test_root(path, system_temporary=True)
     _mkdir_private(path.parent)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
     try:
@@ -4365,6 +4386,7 @@ class _exclusive_lock:
         self.handle = None
 
     def __enter__(self):
+        _refuse_write_outside_test_root(self.path, system_temporary=True)
         _mkdir_private(self.path.parent)
         try:
             import fcntl

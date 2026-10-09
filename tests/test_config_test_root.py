@@ -1,4 +1,4 @@
-"""R-926: under pytest, the config writer refuses a path outside the test root.
+"""R-926: under pytest, a state writer refuses a path outside the test root.
 
 On 2026-10-08 a probe test run from a folder outside ``tests/`` wrote a pytest
 library into the real ``config.toml``. The conftest that redirects HOME, the
@@ -12,6 +12,11 @@ which is the one thing the conftest's absence leaves behind that the guard
 reads. The redirected environment stays in place, so a refusal here can only
 come from the guard and never from a write that happened to land somewhere
 harmless.
+
+The configuration document is held to the test root alone. The two primitives
+every other state writer uses, ``atomic_write_bytes`` and ``_exclusive_lock``,
+also accept the system temporary directory, where shipped code keeps scratch
+files of its own, and nothing else.
 """
 
 from __future__ import annotations
@@ -19,30 +24,17 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
 import tomli_w
 
 from cratekit.core import config
-from tests import doctor_machines
+from tests.test_config_update import document_for
 
 #: A path no machine running this suite has, outside every temporary root.
 OUTSIDE = Path(os.sep, "cratekit-r926-outside-every-test-root")
-
-
-def document_for(root: Path, *, version: int = config.CURRENT_SCHEMA_VERSION) -> dict:
-    return {
-        "schema_version": version,
-        "library": {
-            "root": str(root),
-            "volume_id": doctor_machines.VOLUME,
-            "db_path": str(root / "db" / "master.db"),
-        },
-        "paths": {"download_staging": str(root.parent / "staging")},
-        "profile": {"name": "full"},
-        "rekordbox": {"pinned_app_version": "7.0.1", "validated_on": "2026-08-01"},
-    }
 
 
 @pytest.fixture
@@ -142,8 +134,60 @@ def test_a_path_resolution_that_leaves_the_root_is_refused(library, monkeypatch)
     assert not OUTSIDE.exists()
 
 
-def test_a_process_without_pytest_loaded_is_never_checked():
-    """The guard is inert for the shipped tool, which never imports pytest."""
+def test_a_state_write_outside_every_temporary_folder_is_refused(unisolated):
+    target = OUTSIDE / "ledger.json"
+    with pytest.raises(config.WriteOutsideTestRoot) as refused:
+        config.atomic_write_bytes(b"{}", target)
+    assert str(target) in str(refused.value)
+    assert "no test root is registered" in str(refused.value)
+    assert not OUTSIDE.exists()
+
+
+def test_a_state_write_outside_the_root_is_refused_with_the_isolation_in_place():
+    target = OUTSIDE / "ledger.json"
+    with pytest.raises(config.WriteOutsideTestRoot) as refused:
+        config.atomic_write_bytes(b"{}", target)
+    assert "outside the test root" in str(refused.value)
+    assert not OUTSIDE.exists()
+
+
+def test_a_lock_outside_every_temporary_folder_is_refused(unisolated):
+    lock = config._exclusive_lock(OUTSIDE / "session.lock")
+    with pytest.raises(config.WriteOutsideTestRoot), lock:
+        pass
+    assert not OUTSIDE.exists()
+
+
+def test_a_scratch_write_in_the_system_temporary_folder_lands_without_a_root(unisolated):
+    """Shipped code's own mkdtemp folders, and a test child's locks, still work."""
+    scratch = Path(tempfile.mkdtemp(prefix="cratekit-r926-"))
+    target = scratch / "token.json"
+    config.atomic_write_bytes(b"{}", target)
+    with config._exclusive_lock(scratch / "token.lock"):
+        pass
+    assert target.read_bytes() == b"{}"
+    for each in (target, scratch / "token.lock"):
+        each.unlink()
+    scratch.rmdir()
+
+
+def test_the_configuration_is_not_allowed_the_system_temporary_folder(library):
+    scratch = Path(tempfile.mkdtemp(prefix="cratekit-r926-"))
+    try:
+        with pytest.raises(config.WriteOutsideTestRoot):
+            config.save(config.from_dict(document_for(library)), scratch / "config.toml")
+        assert list(scratch.iterdir()) == []
+    finally:
+        scratch.rmdir()
+
+
+def test_a_process_without_pytest_loaded_is_never_checked(library, tmp_path):
+    """The guard is inert for the shipped tool, which never imports pytest.
+
+    The child saves a real configuration with no root registered, so a check
+    that ran anyway, in the guard or anywhere on the write path, fails it.
+    """
+    target = tmp_path / "shipped" / "config.toml"
     probe = (
         "import sys\n"
         "from pathlib import Path\n"
@@ -151,6 +195,8 @@ def test_a_process_without_pytest_loaded_is_never_checked():
         "assert 'pytest' not in sys.modules, sorted(m for m in sys.modules if 'pytest' in m)\n"
         "assert config._TEST_WRITE_ROOT is None\n"
         f"config._refuse_write_outside_test_root(Path({str(OUTSIDE / 'config.toml')!r}))\n"
+        f"document = {document_for(library)!r}\n"
+        f"config.save(config.from_dict(document), Path({str(target)!r}))\n"
         "print('unchecked')\n"
     )
     done = subprocess.run(
@@ -158,3 +204,4 @@ def test_a_process_without_pytest_loaded_is_never_checked():
     )
     assert done.returncode == 0, done.stderr
     assert done.stdout.strip() == "unchecked"
+    assert target.is_file()
