@@ -73,12 +73,17 @@ def test_human_output_says_the_fetch_then_the_plan_then_the_count(
 
 
 class WatchedFetcher(FakeFetcher):
-    """Notes whether a progress watcher was running while it fetched."""
+    """Notes whether a progress watcher was running while it fetched.
+
+    AT THE SHIPPED INTERVAL, never a shortened one. A watcher started where no
+    progress was handed calls None on its first tick and dies, so a short
+    interval kills it before this looks and the row the mutation table
+    measured as a zero reads as covered (r924 table, row F6).
+    """
 
     watched: bool | None = None
 
     def fetch(self, url: str, directory: Path) -> Path:
-        time.sleep(0.05)
         self.watched = any(one.name == fetch.WATCHER_NAME for one in threading.enumerate())
         return super().fetch(url, directory)
 
@@ -87,7 +92,6 @@ def test_json_output_carries_no_progress_and_stays_one_document(
     cfg, library, recognised, monkeypatch
 ):
     three_tracks(recognised)
-    monkeypatch.setattr(fetch, "FETCH_PROGRESS_SECONDS", 0.01)
     fake = WatchedFetcher()
     monkeypatch.setattr(fetch, "fetcher", lambda: fake)
     out, err = io.StringIO(), io.StringIO()
