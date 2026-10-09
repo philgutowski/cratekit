@@ -35894,10 +35894,26 @@ or Escape from the desktop control tool nor from System Events, so the track
 `Maxwell, The Urban Theme (Remastered 2021)` was removed and not re-imported.
 It was landed again by Cratekit.
 
-**Closes when:** a row rekordbox imports from the same file is diffed
-against a repaired one and the difference is named, or rekordbox's own
-import of the landed files is accepted as the native landing's last step,
-which the XML bridge did by construction.
+**The difference, named the same day.** A file dropped from Finder onto
+rekordbox after its native row was removed made a row that loads at once,
+unanalysed, with tempo, sample rate and bit depth still zero. Against a
+native row it differs in those analysis columns and in one other:
+`rb_file_id`, which rekordbox set to 1402671, next to 1400905 on the row it
+made the day before, where the binding mints a nine digit random value.
+Of 10,272 rows rekordbox made, 10,255 carry an id under two million in one
+sequence; the one other row the binding made, on 2026-09-29 for A8,
+analysed and filed since, carries a random id and will not load either,
+with every column a loadable row has. So the column is the key, rekordbox
+allocates it from a counter kept outside `master.db` (no table and no file
+under its folders names 1402671), and a drop of a path already in the
+collection adds nothing, so the test needs the native row removed first.
+
+**Closes when:** the native landing gives each row an `rb_file_id` rekordbox
+accepts, proven by one row loaded to a deck, or rekordbox's own import of
+the landed files is accepted as the native landing's last step, which the
+XML bridge did by construction. The first needs the allocation rule, found
+by a guarded one row write the product has no verb for today.
 
 **On the board bar.** Every native landing produces unplayable rows; the
-author chose the native path for INBOX on 2026-10-08.
+author chose the native path for INBOX on 2026-10-08. Issue #272 carries the
+brief.
