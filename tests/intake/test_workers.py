@@ -200,7 +200,7 @@ def test_queueing_a_set_identifies_it_and_gives_the_driver_one_item_per_track(
     assert job.payload[intake_cli.SOURCE] == str(path.absolute())
     assert job.payload[intake_cli.CALLS] == 3
     assert job.payload[intake_cli.UNREACHED] == 0
-    assert envelope["warnings"] == []
+    assert [w["code"] for w in envelope["warnings"]] == [intake_cli.TRACKLIST_WRITTEN]
     frozen = job.payload[intake_cli.TRACKS]
     assert {said["title"] for said in frozen.values()} == {"Sun Path", "Tide", "Glass Hour"}
     assert all(said["ref"] == "" for said in frozen.values())
@@ -246,8 +246,11 @@ def test_a_set_identified_over_incomplete_coverage_queues_with_a_warning_and_fre
 ):
     recognised.answers[:] = [hit("Aurora Bloom", "Sun Path", isrc="X1"), ConnectionError("down"), miss()]
     job_id, envelope = queued_set(recording(library))
-    assert [w["code"] for w in envelope["warnings"]] == ["recognition-incomplete"]
-    assert "1 of 3" in envelope["warnings"][0]["message"]
+    assert [w["code"] for w in envelope["warnings"]] == [
+        intake_cli.TRACKLIST_WRITTEN,
+        "recognition-incomplete",
+    ]
+    assert "1 of 3" in envelope["warnings"][1]["message"]
     assert envelope["data"]["progress"]["unreached"] == 1
     assert job_of(job_id).payload[intake_cli.UNREACHED] == 1
     code, resumed = drive(resume_argv(job_id))
@@ -447,6 +450,153 @@ def test_identify_then_set_pays_for_recognition_once_and_the_job_says_it_cost_no
     assert envelope["data"]["progress"]["calls"] == 0
     frozen = job_of(job_id).payload[intake_cli.TRACKS]
     assert [said["title"] for said in frozen.values()] == ["Sun Path", "Tide", "Glass Hour"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-925: a queued set's tracks can be read, in a file and through job show
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_set_writes_the_tracklist_identify_writes_for_the_same_rows(cfg, library, recognised):
+    three_tracks(recognised)
+    path = recording(library, "friday night.mp3")
+
+    job_id, envelope = queued_set(path)
+
+    # The expected name and text are spelled out here, not asked of the code.
+    token = hashlib.sha256(b"ID3").hexdigest()[:12]
+    written = (
+        cfg.paths.download_staging
+        / intake_cli.TRACKLISTS_DIR
+        / f"friday night-{token}.tracklist.txt"
+    )
+    from_set = written.read_bytes()
+    assert from_set == b"Aurora Bloom - Sun Path\nNova Reef - Tide\nMira Vale - Glass Hour\n"
+    assert envelope["data"]["progress"][intake_cli.TRACKLIST] == str(written)
+    note = tracklist_note(envelope)
+    assert str(written) in note["message"] and "3 identified" in note["message"]
+
+    written.unlink()
+    code, identified = drive(["intake", "identify", str(path)])
+    assert code == int(ExitCode.OK), identified
+    assert written.read_bytes() == from_set, "set and identify wrote different tracklists"
+    assert len(recognised.requests) == 3
+
+
+def test_a_set_whose_tracklist_folder_is_a_file_is_refused_before_any_spend(
+    cfg, library, recognised
+):
+    three_tracks(recognised)
+    blocker = cfg.paths.download_staging / intake_cli.TRACKLISTS_DIR
+    blocker.parent.mkdir(parents=True, exist_ok=True)
+    blocker.write_text("x")
+
+    code, envelope = drive(["intake", "set", str(recording(library))])
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    assert recognised.requests == [], "the refusal was paid for"
+    with jobs.open_store() as store:
+        assert jobs.list_jobs(store) == ()
+
+
+def test_a_set_whose_tracklist_cannot_be_written_queues_nothing_and_a_rerun_is_free(
+    cfg, library, recognised, monkeypatch
+):
+    three_tracks(recognised)
+    real = config.atomic_write_bytes
+
+    def failing(payload, path, **kwargs):
+        if str(path).endswith(intake_cli.TRACKLIST_SUFFIX):
+            raise PermissionError(13, "Permission denied", str(path))
+        return real(payload, path, **kwargs)
+
+    monkeypatch.setattr(config, "atomic_write_bytes", failing)
+    path = recording(library)
+    code, envelope = drive(["intake", "set", str(path)])
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert "spends nothing" in envelope["cause"]["message"]
+    with jobs.open_store() as store:
+        assert jobs.list_jobs(store) == (), "a set nobody can read the list of was queued"
+    monkeypatch.setattr(config, "atomic_write_bytes", real)
+    job_id, queued = queued_set(path)
+    assert len(recognised.requests) == 3, "the promise in the refusal was false"
+    assert len(items_of(job_id)) == 3
+
+
+def test_a_resumed_set_writes_no_tracklist(cfg, library, recognised):
+    three_tracks(recognised)
+    job_id, envelope = queued_set(recording(library))
+    written = Path(envelope["data"]["progress"][intake_cli.TRACKLIST])
+    written.unlink()
+    code, resumed = drive(resume_argv(job_id))
+    assert code == int(ExitCode.OK), resumed
+    assert not written.exists()
+    assert intake_cli.TRACKLIST_WRITTEN not in [w["code"] for w in resumed["warnings"]]
+
+
+def test_job_show_lists_every_track_an_intake_set_froze_in_set_order(cfg, library, recognised):
+    recognised.answers[:] = [
+        hit("Aurora Bloom", "Sun Path (Dub Mix)", isrc="X1"),
+        hit("Nova Reef", "Tide"),
+        hit("Mira Vale", "Glass Hour", isrc="X3"),
+    ]
+    job_id, _ = queued_set(recording(library))
+    items = [item.item_id for item in items_of(job_id)]
+
+    code, envelope = drive(["job", "show", job_id])
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["progress"]["tracks"] == [
+        {"item": items[0], "artist": "Aurora Bloom", "title": "Sun Path", "version": "Dub Mix", "isrc": "X1"},
+        {"item": items[1], "artist": "Nova Reef", "title": "Tide", "version": "", "isrc": None},
+        {"item": items[2], "artist": "Mira Vale", "title": "Glass Hour", "version": "", "isrc": "X3"},
+    ]
+    code, text = drive_human(["job", "show", job_id])
+    assert code == int(ExitCode.OK), text
+    assert "  tracks: 3\n" in text
+    assert "    1. Aurora Bloom - Sun Path (Dub Mix), isrc X1\n" in text
+    assert "    2. Nova Reef - Tide, no isrc\n" in text
+    assert "    3. Mira Vale - Glass Hour, isrc X3\n" in text
+
+
+def test_job_show_lists_a_playlist_jobs_tracks_too(cfg, library, monkeypatch):
+    bind_playlist(
+        monkeypatch,
+        "pl-1",
+        [Track("101", "Aurora Bloom", "Sun Path", isrc="X1"), Track("102", "Nova Reef", "Tide")],
+    )
+    code, queued = drive(["intake", "playlist", "pl-1"])
+    assert code == int(ExitCode.OK), queued
+    code, envelope = drive(["job", "show", queued["data"]["job_id"]])
+    assert [(row["item"], row["title"], row["isrc"]) for row in envelope["data"]["progress"]["tracks"]] == [
+        ("101", "Sun Path", "X1"),
+        ("102", "Tide", None),
+    ]
+
+
+def test_job_show_on_a_job_of_another_handler_lists_no_tracks(cfg, library):
+    """The payload carries a ``tracks`` key on purpose, so only the handler
+    gate stands between it and the listing."""
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store,
+            handler_key="master",
+            payload={"source": "x", "tracks": {"x": {"artist": "Aurora Bloom", "title": "Sun Path"}}},
+            cfg=cfg,
+            item_ids=("x",),
+        )
+    code, envelope = drive(["job", "show", job.job_id])
+    assert code == int(ExitCode.OK), envelope
+    assert "tracks" not in envelope["data"]["progress"]
+    code, text = drive_human(["job", "show", job.job_id])
+    assert "tracks:" not in text and "Sun Path" not in text
+
+
+def test_the_job_verbs_spell_the_intake_keys_the_intake_module_spells():
+    """``cli.jobs`` spells these rather than importing the feature module."""
+    assert cli_jobs.INTAKE_HANDLERS == intake_cli.INTAKE_KEYS
+    assert cli_jobs.INTAKE_TRACKS_KEY == intake_cli.TRACKS
 
 
 def test_a_changed_recording_misses_the_cache_and_is_paid_for(cfg, library, recognised):
@@ -1591,8 +1741,11 @@ def test_a_set_longer_than_one_run_is_queued_as_one_job_with_the_parts_said(
     assert envelope["data"]["progress"]["parts"] == 2
     assert envelope["data"]["progress"]["calls"] == 3
     assert len(recognised.requests) == 3
-    assert [w["code"] for w in envelope["warnings"]] == [intake_cli.IN_PARTS]
-    note = envelope["warnings"][0]["message"]
+    assert [w["code"] for w in envelope["warnings"]] == [
+        intake_cli.TRACKLIST_WRITTEN,
+        intake_cli.IN_PARTS,
+    ]
+    note = envelope["warnings"][1]["message"]
     assert "2 even parts" in note and "3 chunk(s)" in note and "one batch" in note
     with jobs.open_store() as store:
         assert len(jobs.list_jobs(store)) == 1, "a split set queued more than one job"
@@ -1622,7 +1775,7 @@ def test_identify_only_says_the_same_parts_note(cfg, library, recognised, monkey
 def test_a_set_that_fits_one_run_carries_no_parts_note(cfg, library, recognised):
     three_tracks(recognised)
     job_id, envelope = queued_set(recording(library))
-    assert envelope["warnings"] == []
+    assert [w["code"] for w in envelope["warnings"]] == [intake_cli.TRACKLIST_WRITTEN]
     assert envelope["data"]["progress"]["parts"] == 1
     assert job_of(job_id).payload[intake_cli.PARTS] == 1
 

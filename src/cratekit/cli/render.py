@@ -422,6 +422,35 @@ def render_job_state(envelope: Envelope, *, drive: Sequence[str] | None = None) 
     lines += _judging_lines(progress)
     if state != "queued":
         lines += _outbound_lines(progress)
+    if envelope.verb == "job.show":
+        lines += _track_lines(progress)
+    return lines
+
+
+def _track_lines(progress: Mapping[str, Any]) -> list[str]:
+    """Every track an intake job froze, in its order, or nothing at all (R-925).
+
+    GATED ON THE VERB AS WELL AS THE FIELD, because ``tracks`` is a word a
+    dozen payloads use for a count, and only ``job show`` puts a list of frozen
+    rows under it. Every row is printed, however many, because the list is
+    what a person reads before acquiring anything from a set; the ISRC is said
+    or said to be absent, since one song under several ISRCs is the thing this
+    list is read for.
+    """
+    rows = progress.get("tracks")
+    if not isinstance(rows, Sequence) or isinstance(rows, str):
+        return []
+    lines = [f"  tracks: {len(rows)}"]
+    for number, row in enumerate(rows, start=1):
+        if not isinstance(row, Mapping):
+            lines.append(f"    {number}. {_one_line(row)}")
+            continue
+        named = " - ".join(_one_line(row[key]) for key in ("artist", "title") if row.get(key))
+        named = named or f"item {_one_line(row.get('item') or '?')}"
+        if row.get("version"):
+            named += f" ({_one_line(row['version'])})"
+        isrc = f"isrc {_one_line(row['isrc'])}" if row.get("isrc") else "no isrc"
+        lines.append(f"    {number}. {named}, {isrc}")
     return lines
 
 

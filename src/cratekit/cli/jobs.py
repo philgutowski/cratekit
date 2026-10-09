@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Sequence
 
 from cratekit.cli import handlers, registry
@@ -162,6 +163,9 @@ def show(ctx: "Context") -> Envelope:
     outcomes = backup_facts.read_outcomes(job.job_id)
     if outcomes is not None:
         summary[backup_facts.OUTCOMES_FIELD] = outcomes
+    tracks = _intake_tracks(job)
+    if tracks is not None:
+        summary[TRACKS_FIELD] = tracks
     return ctx.envelope(
         data={
             "job_id": job.job_id,
@@ -171,6 +175,47 @@ def show(ctx: "Context") -> Envelope:
         },
         warnings=drifted,
     )
+
+
+#: The handlers whose payload freezes the tracks an intake heard or listed,
+#: the payload key it freezes them under, and the field ``job show`` lists
+#: them in (R-925). Spelled here rather than imported from
+#: ``cratekit.intake.cli``, because these verbs must not load a feature module
+#: to report a job (KTD26); a test pins the spellings to that module's own.
+INTAKE_HANDLERS: frozenset[str] = frozenset({"intake.set", "intake.playlist"})
+INTAKE_TRACKS_KEY = "tracks"
+TRACKS_FIELD = "tracks"
+
+
+def _intake_tracks(job: jobs.Job) -> list[dict[str, Any]] | None:
+    """The tracks an intake job froze, in its order, or None for any other job.
+
+    THE PAYLOAD IS THE LIST. ``intake set`` freezes every identified row at the
+    queue and the worker reads nothing else, so what is listed here is what
+    would be resolved, and a person can read a five hour mix's tracks before
+    anything is acquired from it. A job of another handler gains no field, so
+    its report is unchanged. A frozen row that is not a mapping is listed with
+    its item and nothing else, rather than dropped, so the list's length is
+    always the payload's.
+    """
+    if job.handler_key not in INTAKE_HANDLERS:
+        return None
+    frozen = (job.payload or {}).get(INTAKE_TRACKS_KEY)
+    if not isinstance(frozen, Mapping):
+        return []
+    listed = []
+    for item, said in frozen.items():
+        said = said if isinstance(said, Mapping) else {}
+        listed.append(
+            {
+                "item": str(item),
+                "artist": str(said.get("artist") or ""),
+                "title": str(said.get("title") or ""),
+                "version": str(said.get("version") or ""),
+                "isrc": str(said["isrc"]) if said.get("isrc") else None,
+            }
+        )
+    return listed
 
 
 def _drift_warning(job: jobs.Job) -> tuple[dict[str, str], ...]:
@@ -310,7 +355,10 @@ def resume(ctx: "Context") -> Envelope:
 
 
 __all__ = [
+    "INTAKE_HANDLERS",
+    "INTAKE_TRACKS_KEY",
     "NO_SINGLE_JOB",
+    "TRACKS_FIELD",
     "argv_for",
     "build_cancel",
     "build_list",

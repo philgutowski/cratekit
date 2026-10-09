@@ -32,6 +32,25 @@ def job_state(verb: str = "tag.folder", **data) -> output.Envelope:
     return envelope(verb, "job_state", payload)
 
 
+FROZEN_ROWS = [
+    {"item": "rc_1", "artist": "Aurora Bloom", "title": "Sun Path", "version": "", "isrc": "X1"},
+    {"item": "rc_2", "artist": "", "title": "", "version": "", "isrc": None},
+]
+
+
+def test_job_show_lists_the_frozen_tracks_and_another_verb_with_the_same_field_does_not():
+    """R-925. ``tracks`` is a count in a dozen payloads, so the case is gated on the verb."""
+    shown = render.render_job_state(job_state(verb="job.show", progress={"tracks": FROZEN_ROWS}))
+    assert shown[-3:] == ["  tracks: 2", "    1. Aurora Bloom - Sun Path, isrc X1", "    2. item rc_2, no isrc"]
+    other = render.render_job_state(job_state(verb="intake.set", progress={"tracks": FROZEN_ROWS}))
+    assert not any("tracks:" in line or "Sun Path" in line for line in other)
+
+
+def test_a_tracks_count_under_job_show_is_not_a_list_and_prints_nothing():
+    lines = render.render_job_state(job_state(verb="job.show", progress={"tracks": 3}))
+    assert not any("tracks:" in line for line in lines)
+
+
 def test_a_queued_job_names_its_drive_only_when_one_is_handed_in():
     """The drive command comes from the dispatcher; without it no command is guessed."""
     bare = render.render_job_state(job_state())

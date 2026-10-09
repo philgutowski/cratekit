@@ -716,6 +716,16 @@ def intake_set(ctx) -> Envelope:
     the scratch file, which is removed when the ``with`` block ends: the
     worker reads nothing but the job, and a resume returns above this branch,
     so nothing is ever fetched twice for one job.
+
+    THE TRACKLIST IS WRITTEN AS ``intake identify`` WRITES IT (R-925), by the
+    same writer into the same default folder, before the job is queued. A set
+    is the list a person reads before anything is acquired from it, and it
+    used to be readable only by opening the queue by hand. The folder is
+    checked with the free refusals; a file that cannot be written refuses
+    after the spend exactly as identify does, and queues nothing, because the
+    answers are kept and the refusal says what running again costs. The path
+    rides on the envelope twice: the note a person reads, and ``tracklist``
+    under ``progress`` for a consumer.
     """
     cfg = _load()
     with jobs.open_store() as store:
@@ -724,7 +734,9 @@ def intake_set(ctx) -> Envelope:
         source = str(ctx.args.source)
         local = _local_or_none(source)
         recognize.assert_recognition_ready()
+        out = _tracklist_dir(cfg, None, local if local is not None else source.strip())
         job = None
+        written = None
         with _recording(cfg, source, local, ctx.progress) as held:
             result = pipeline.identify_only(
                 held.path,
@@ -739,6 +751,7 @@ def intake_set(ctx) -> Envelope:
             )
             tracks = frozen_rows(result.rows)
             if tracks:
+                written = _tracklist_written(out, held, result)
                 job = jobs.enqueue(
                     store,
                     handler_key=ctx.entry.handler_key,
@@ -772,9 +785,10 @@ def intake_set(ctx) -> Envelope:
                     "calls": result.calls,
                     "unreached": result.unreached,
                     "parts": result.parts,
+                    TRACKLIST: str(out / tracklist_name(held, result.digest)),
                 },
             ),
-            warnings=warnings,
+            warnings=(written, *warnings),
         )
 
 
@@ -793,6 +807,8 @@ TRACKLIST_DIGEST_CHARS = 12
 #: ``match`` surface is closed at three arrays, so the file this verb wrote has
 #: no field to ride in, and the channel is the one a person is shown.
 TRACKLIST_WRITTEN = "tracklist-written"
+#: The ``progress`` field ``intake set`` names its tracklist under (R-925).
+TRACKLIST = "tracklist"
 CACHE_UNWRITTEN = "recognition-cache-unwritten"
 CACHE_SERVED = "recognition-cached"
 
@@ -1352,6 +1368,7 @@ __all__ = [
     "MIX_SCRATCH_LEFT",
     "PLAYLIST_NAME",
     "SOURCE",
+    "TRACKLIST",
     "TRACKLISTS_DIR",
     "TRACKLIST_SUFFIX",
     "TRACKLIST_WRITTEN",
