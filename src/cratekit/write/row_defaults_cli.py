@@ -110,7 +110,7 @@ def _facts(plan: row_defaults.DefaultsPlan) -> dict[str, Any]:
         "columns filled, by rows": {
             column: count for column, count in plan.by_column().items() if count
         },
-        "values written": {
+        "value per column, when filled": {
             column: repr(value) for column, value in rb_writer.CONTENT_ROW_DEFAULTS.items()
         },
         "only into": "a column that is NULL; a value already present is never listed",

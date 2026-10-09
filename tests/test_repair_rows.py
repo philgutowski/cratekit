@@ -278,6 +278,10 @@ def test_the_two_acts_fill_every_null_default_and_move_no_other_column(acknowled
         assert after[content_id] == before[content_id], content_id
     codes = [warning["code"] for warning in acted["warnings"]]
     assert row_defaults_cli.DEFAULTS_WRITTEN in codes
+    # The policy the apply registered is gone again: no later writer in this
+    # process gains a column by it.
+    assert rb_writer.ROW_DEFAULTS_POLICY.owner not in rb_writer.registered_field_policies()
+    assert rb_writer.content_writable_columns() == {"ColorID"}
 
 
 def test_a_library_with_no_row_missing_a_default_still_asks_and_then_writes_nothing(acknowledged):
@@ -297,8 +301,8 @@ def test_a_library_with_no_row_missing_a_default_still_asks_and_then_writes_noth
 
 def test_the_gate_takes_no_inline_answer(acknowledged):
     build(acknowledged)
-    code, envelope = drive([*VERB, "-d", f"{GATE}=apply"])
-    assert code != int(ExitCode.OK), envelope
+    code, envelope = drive(["-d", f"{GATE}=apply", *VERB])
+    assert code == int(ExitCode.DECISION_REQUIRED), envelope
     assert _as_text(_content(acknowledged)["101"]) == dict.fromkeys(DEFAULTS)
 
 
@@ -363,6 +367,8 @@ def test_rekordbox_running_refuses_at_the_apply_and_writes_nothing(acknowledged,
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
     code, acted = drive(["--run", run_id, *VERB])
     assert code != int(ExitCode.OK), acted
+    assert acted["cause"]["reason"] == "rekordbox-running"
+    assert session.records(acknowledged) == ()
     assert _content(acknowledged) == before
 
 
@@ -386,6 +392,41 @@ def test_the_guard_refuses_a_default_column_written_without_the_policy(acknowled
 def test_the_policy_is_registered_by_the_apply_and_not_at_baseline():
     assert rb_writer.ROW_DEFAULTS_POLICY.owner not in rb_writer.registered_field_policies()
     assert not set(DEFAULTS) & rb_writer.content_writable_columns() - {"ColorID"}
+
+
+def test_the_twenty_one_defaults_are_the_values_measured_on_the_live_library():
+    """Pinned as literals, so the table cannot drift under tests that read it."""
+    assert dict(rb_writer.CONTENT_ROW_DEFAULTS) == {
+        "Rating": 0,
+        "ColorID": "0",
+        "DJPlayCount": 0,
+        "DiscNo": 0,
+        "DeliveryControl": "on",
+        "SamplerTrackInfo": 0,
+        "SamplerPlayOffset": 0,
+        "SamplerGain": 0.0,
+        "VideoAssociate": "0",
+        "LyricStatus": 0,
+        "ServiceID": 0,
+        "ExtInfo": "null",
+        "FileNameS": "",
+        "Commnt": "",
+        "Subtitle": "",
+        "ReleaseDate": "",
+        "ModifiedByRBM": "",
+        "DeliveryComment": "",
+        "Lyricist": "",
+        "OrgFolderPath": "",
+        "Reserved1": "",
+    }
+    # 0 == 0.0 to a dict, so the one float is held to its type by name.
+    assert isinstance(rb_writer.CONTENT_ROW_DEFAULTS["SamplerGain"], float)
+    assert all(
+        isinstance(value, int) and not isinstance(value, bool)
+        for column, value in rb_writer.CONTENT_ROW_DEFAULTS.items()
+        if column in ("Rating", "DJPlayCount", "DiscNo", "SamplerTrackInfo",
+                      "SamplerPlayOffset", "LyricStatus", "ServiceID")
+    )
 
 
 def test_every_default_is_a_real_column_and_none_is_an_analysis_column():

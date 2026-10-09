@@ -13,8 +13,8 @@ own empty, so nothing a person could have set is replaced: a value already
 present, a rating or a colour included, is not listed and not written. The
 write goes through :func:`cratekit.core.rb_writer.write_metadata_field` under
 :data:`cratekit.core.rb_writer.ROW_DEFAULTS_POLICY`, registered by the apply
-alone, so the guard's writable columns widen for this commit's process and for
-no other writer.
+for its commit and put back after it, so the guard's writable columns widen for
+this commit and for no other.
 
 A LIVE ROW ONLY. The plan reads ``rb_local_deleted = 0`` from SQL, so a soft
 deleted row, of which a live library holds hundreds with these columns NULL, is
@@ -262,7 +262,10 @@ def judge(
 
     COMPARED AS TEXT. The binding declares some of these columns strings where
     the live table declares integers, and SQLite stores the binding's ``'0'`` as
-    rekordbox's 0 by affinity, so the same value can read back either way.
+    rekordbox's 0 by affinity, so the same value can read back either way. The
+    one float, ``SamplerGain``, was measured stored real on the live table; an
+    integer affinity there would read back ``'0'`` and refuse here, after a
+    durable commit, which the first live run would show at once.
     """
     wrong: list[str] = []
     moved: list[str] = []
@@ -372,35 +375,45 @@ def apply_rows(
     # gives: the fingerprint recorded after the commit must not bless a
     # database recovered out of band.
     convergence.detect_out_of_band_restore(cfg, db, tree_registry.read(cfg))
+    # REGISTERED FOR THIS COMMIT AND THEN PUT BACK. The policy is what admits
+    # these columns, and a registration left behind would widen the guard for
+    # every writer that commits later in the process. The registry as it was
+    # is restored whatever happens inside, the baseline colour policy included.
+    was = rb_writer.registered_field_policies()
     rb_writer.register_field_policy(rb_writer.ROW_DEFAULTS_POLICY)
-    with (
-        session.assert_gates(
-            cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
-        ) as gates,
-        rb_writer.commit_witness(db) as witness,
-    ):
-        record = gates.record
-        capture = snapshot.capture(cfg, db=db)
-        session.attach_capture(record, capture.root, cfg)
-        snapshot.assert_verified(capture)
+    try:
+        with (
+            session.assert_gates(
+                cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
+            ) as gates,
+            rb_writer.commit_witness(db) as witness,
+        ):
+            record = gates.record
+            capture = snapshot.capture(cfg, db=db)
+            session.attach_capture(record, capture.root, cfg)
+            snapshot.assert_verified(capture)
 
-        before = _columns(db, content_ids)
-        written = 0
-        try:
-            written = _fill(plan, mapped)
-            rb_writer.commit_guarded(db)
-        except BaseException:
-            trees._rollback_quietly(db)
-            # AN EXCEPTION IS NOT PROOF NOTHING LANDED. The witness is the
-            # engine's own answer.
-            if witness.landed:
-                _record_commit(record, written, cfg)
-            raise
-        _record_commit(record, written, cfg)
-        convergence.record_fingerprint(cfg, db)
+            before = _columns(db, content_ids)
+            written = 0
+            try:
+                written = _fill(plan, mapped)
+                rb_writer.commit_guarded(db)
+            except BaseException:
+                trees._rollback_quietly(db)
+                # AN EXCEPTION IS NOT PROOF NOTHING LANDED. The witness is the
+                # engine's own answer.
+                if witness.landed:
+                    _record_commit(record, written, cfg)
+                raise
+            _record_commit(record, written, cfg)
+            convergence.record_fingerprint(cfg, db)
 
-        after = _columns(db, content_ids)
-        session_id = record.session_id
+            after = _columns(db, content_ids)
+            session_id = record.session_id
+    finally:
+        rb_writer.reset_field_policies()
+        for policy in was.values():
+            rb_writer.register_field_policy(policy)
 
     wrong, moved = judge(plan, before, after)
     return Written(

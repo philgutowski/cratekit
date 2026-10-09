@@ -1,0 +1,180 @@
+name = "r923"
+pass_kind = "light"
+
+[[rows]]
+id = "N1_landing_sets_nothing"
+description = "The native landing no longer sets rekordbox's defaults on a row it creates"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''        if getattr(content, column, None) is None:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "N2_plan_lists_tombstones"
+description = "The repair plans soft deleted rows beside live ones"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+old = '''            f"WHERE {rb_writer.SOFT_DELETE_COLUMN} = 0"'''
+new = '''            ""'''
+
+[[rows]]
+id = "N3_plan_sees_no_null"
+description = "The repair never finds a NULL default, so it plans nothing"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+old = '''        missing = tuple(column for column in COLUMNS if row[column] is None)'''
+new = '''        missing = tuple(column for column in COLUMNS if False)'''
+
+[[rows]]
+id = "N4_stale_fill_accepted"
+description = "A planned column set since the plan is written over anyway"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+old = '''        if filled:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "N5_stale_tombstone_accepted"
+description = "A row soft deleted since the plan is still written"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+old = '''        if row is None or row[rb_writer.SOFT_DELETE_COLUMN] != 0:'''
+new = '''        if row is None:'''
+
+[[rows]]
+id = "N6_judge_blind_to_wrong"
+description = "The read back no longer names a planned column that did not take its default"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+old = '''        if off:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "N7_judge_blind_to_moved"
+description = "The read back no longer names a column outside the plan that moved"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+old = '''        if changed:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "N8_read_back_never_refuses"
+description = "assert_read_back returns whatever the read back found"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+old = '''    if not written.wrong and not written.moved:
+        return'''
+new = '''    if True:
+        return'''
+
+[[rows]]
+id = "N9_fill_ignores_policy_answer"
+description = "A field policy answer other than WRITE is not refused by the fill"
+file = "src/cratekit/write/row_defaults.py"
+surface = "maintainer"
+old = '''            if decision is not rb_writer.Decision.WRITE:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "N10_policy_never_registered"
+description = "The apply no longer registers the defaults policy before writing"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+old = '''    rb_writer.register_field_policy(rb_writer.ROW_DEFAULTS_POLICY)
+'''
+new = ""
+
+[[rows]]
+id = "N11_digest_drops_items"
+description = "The digest no longer covers the rows and columns the plan fills"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+old = '''                "items": [item.to_json() for item in self.items],'''
+new = '''                "items": [],'''
+
+[[rows]]
+id = "N12_digest_drops_values"
+description = "The digest no longer covers the values written"
+file = "src/cratekit/write/row_defaults.py"
+surface = "maintainer"
+old = '''                "defaults": {column: str(value) for column, value in rb_writer.CONTENT_ROW_DEFAULTS.items()},
+'''
+new = ""
+
+[[rows]]
+id = "N13_judge_compares_raw"
+description = "The read back compares a default by raw value, so the live table's integer reads as wrong against the binding's string"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+old = '''            or str(now[column]) != str(rb_writer.CONTENT_ROW_DEFAULTS[column])'''
+new = '''            or now[column] != rb_writer.CONTENT_ROW_DEFAULTS[column]'''
+
+[[rows]]
+id = "N14_verb_writes_on_abort"
+description = "The verb proceeds to write whatever the gate answered"
+file = "src/cratekit/write/row_defaults_cli.py"
+surface = "user"
+old = '''    if ctx.gate.require(spec, plan=data, context=_facts(plan)) != "apply":'''
+new = '''    if False:'''
+
+[[rows]]
+id = "N15_verb_writes_empty_plan"
+description = "An empty plan opens the database to write instead of ending as a no op"
+file = "src/cratekit/write/row_defaults_cli.py"
+surface = "user"
+old = '''    if not plan.items:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "N16_ack_not_read"
+description = "The verb no longer reads the backup acknowledgment before the plan and the gate"
+file = "src/cratekit/write/row_defaults_cli.py"
+surface = "user"
+old = '''    session.assert_backup_acknowledged(cfg)
+'''
+new = ""
+
+[[rows]]
+id = "N17_write_handle_not_closed"
+description = "The write handle no longer requires rekordbox closed at open"
+file = "src/cratekit/write/row_defaults_cli.py"
+surface = "maintainer"
+old = '''    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)'''
+new = '''    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=False, cfg=cfg)'''
+
+[[rows]]
+id = "N18_policy_owns_the_fields"
+description = "The defaults policy owns its fields outright instead of filling only an empty one"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+old = '''    fields=MappingProxyType(dict.fromkeys(CONTENT_ROW_DEFAULTS, Ownership.FILL_IF_EMPTY)),'''
+new = '''    fields=MappingProxyType(dict.fromkeys(CONTENT_ROW_DEFAULTS, Ownership.OWNED)),'''
+
+[[rows]]
+id = "N19_default_is_an_analysis_column"
+description = "A tempo joins the defaults table, so the landing would declare an analysis column"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+old = '''        "Rating": 0,
+        "ColorID": "0",'''
+new = '''        "Rating": 0,
+        "BPM": 0,
+        "ColorID": "0",'''
+
+[[rows]]
+id = "N20_gate_takes_inline_answer"
+description = "The repair's gate accepts an inline answer, so a flag on the command writes the rows"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+old = '''                name="repair.rows.confirm",
+                options=("apply", "abort"),
+                prompt="Give these rows rekordbox's own defaults?",
+                #: EXPLICIT (R34). A write to rows of a live library is answered
+                #: by a separate recorded act with an actor.
+                explicit=True,'''
+new = '''                name="repair.rows.confirm",
+                options=("apply", "abort"),
+                prompt="Give these rows rekordbox's own defaults?",
+                #: EXPLICIT (R34). A write to rows of a live library is answered
+                #: by a separate recorded act with an actor.
+                explicit=False,'''

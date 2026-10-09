@@ -35709,5 +35709,6 @@ every row it creates, and `crate repair rows` fills them on a live row that
 lacks them, only where NULL, through the fill if empty policy
 `ROW_DEFAULTS_POLICY` the apply alone registers, with a digest that names no
 database path so a copy rehearsal can match, a staleness recheck from SQL,
-and a read back that refuses a moved column. The 165 rows are the live
-verification, in `docs/cutover.md` sitting 32.
+and a read back that refuses a moved column. The live verification, the 165
+rows repaired and one loaded to a deck, is owed to `docs/cutover.md` sitting
+32 and is recorded there when it runs.
