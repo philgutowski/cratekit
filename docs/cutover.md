@@ -1044,6 +1044,16 @@ cycle, is next and is attended.
 
 ## Next sitting
 
+**Owed for U115 (#272), when the library is free:** `crate repair rows`
+rehearsed on a copy and run live. The plan is expected to renumber
+seventeen rows, the A8 row `73894078` and the sixteen sampler rows, and to
+show the volume's inode bound near 1.4 million with the filesystem read as
+`apfs`; a count under seventeen names a random id that fell under the bound
+(R-929), and `unrenumbered` names any row whose file could not be read
+(R-930). Then rekordbox opened and one of the seventeen loaded to a deck,
+which is the proof R-928 closes on. Rebuild the installed copy at the merge
+first, and not while another session's intake job runs.
+
 One thing is left of the genre work, and it is the author's: `crate delete
 review` over the 36 tracks removed from the collection at sitting 29, run
 from his Terminal, since the session's permission check refuses that verb.

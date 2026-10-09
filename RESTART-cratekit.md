@@ -4,6 +4,34 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**U115 built, 2026-10-09, on `unit/u115`, issue #272: a native row carries
+its file's inode as `rb_file_id`, and the rows numbered at random can be
+repaired.** Sitting 34 named the column: rekordbox writes the file's inode
+at import, the binding mints a random 28 bit id, and that is the row
+rekordbox will not load. The landing now sets `os.stat(target).st_ino` on
+the created row before the guarded flush, names the column on the gate
+screen as the sentence it is, reads it back, reports it on every landed
+item, and refuses after the commit if a row does not carry it. `crate
+repair rows` also renumbers: a random id is told from one rekordbox wrote
+by the volume's inode bound, a fresh file's inode in the state directory,
+above every inode an APFS volume ever allocated; a row above it whose file
+reads another inode on the same device is given that inode, owned, through
+`FILE_ID_POLICY`, registered for the commit and only when the plan
+renumbers; stale and zero ids are left, as rekordbox tolerates them; a file
+missing, unresolved or on another volume is listed and left; off APFS or
+past the binding's range the bound decides nothing and the gate says why.
+The bound is shown at the gate and kept out of the digest so a copy
+rehearsal matches. The review drove eight findings, all fixed in one round:
+the device and filesystem checks, the absent root refusal, the strict digit
+rule, one stat per candidate, the matched count, the shared truncation
+rule, the landing's assertion. Battery on the branch: ruff clean, 12,803
+passed and 2 skipped, the scan clean. Twenty four mutation rows, every one killed, no zero (`docs/mutation/u115-notes.md`, which also records the zombie filled process table that cost four resumes). R-929 and R-930
+record the rule's edges. **Owed, the live proof, when the library is free:**
+`crate repair rows` rehearsed on a copy and run live, expected to renumber
+the A8 row `73894078` and the sixteen sampler rows, seventeen in all, and
+one of them loaded to a deck in rekordbox, recorded in `docs/cutover.md`.
+Do not reinstall `~/cratekit` while another session's intake job runs.
+
 **Sitting 34, 2026-10-09, attended. The 207 native rows replaced, and
 `rb_file_id` named.** The author needed playable tracks, so every native
 row in INBOX was removed from the collection in rekordbox and its folder
