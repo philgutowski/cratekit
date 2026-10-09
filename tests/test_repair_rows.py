@@ -284,6 +284,26 @@ def test_the_two_acts_fill_every_null_default_and_move_no_other_column(acknowled
     assert rb_writer.content_writable_columns() == {"ColorID"}
 
 
+def test_a_policy_registered_before_the_apply_survives_it(acknowledged):
+    """The restore puts back what was there, not the baseline: a metadata
+    operation enabled earlier in the process keeps its columns afterwards."""
+    from types import MappingProxyType
+
+    build(acknowledged)
+    plan = _planned(acknowledged)
+    rb_writer.register_field_policy(
+        rb_writer.FieldPolicy(
+            owner="probe", fields=MappingProxyType({"Subtitle": rb_writer.Ownership.OWNED})
+        )
+    )
+
+    written = _apply(acknowledged, plan)
+
+    assert written.written == 2
+    assert set(rb_writer.registered_field_policies()) == {"track-color", "probe"}
+    assert rb_writer.content_writable_columns() == {"ColorID", "Subtitle"}
+
+
 def test_a_library_with_no_row_missing_a_default_still_asks_and_then_writes_nothing(acknowledged):
     build(acknowledged, landed=())
     before = _content(acknowledged)

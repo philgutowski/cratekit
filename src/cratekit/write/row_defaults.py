@@ -380,8 +380,8 @@ def apply_rows(
     # every writer that commits later in the process. The registry as it was
     # is restored whatever happens inside, the baseline colour policy included.
     was = rb_writer.registered_field_policies()
-    rb_writer.register_field_policy(rb_writer.ROW_DEFAULTS_POLICY)
     try:
+        rb_writer.register_field_policy(rb_writer.ROW_DEFAULTS_POLICY)
         with (
             session.assert_gates(
                 cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
