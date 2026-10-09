@@ -731,7 +731,12 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
                     **item,
                     "action": LANDED,
                     "content_id": row.content_id,
-                    "row": {**item["row"], "Title": row.title, "FolderPath": row.folder_path},
+                    "row": {
+                        **item["row"],
+                        "Title": row.title,
+                        "FolderPath": row.folder_path,
+                        rb_writer.FILE_ID_COLUMN: row.file_id,
+                    },
                     "left_empty": sorted(row.empty),
                 }
             )

@@ -59,7 +59,7 @@ from pathlib import Path
 from typing import Any
 
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import analysis_store, config
+from cratekit.core import analysis_store, config, rb_writer
 from cratekit.core.cause import CratekitError, Outcome, Remedy, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import cli as intake_cli
@@ -194,7 +194,12 @@ def _native_reported(payload: dict, landed: native.NativeLanded) -> dict:
             **item,
             "action": ADDED,
             "content_id": row.content_id,
-            "row": {**item["row"], "Title": row.title, "FolderPath": row.folder_path},
+            "row": {
+                **item["row"],
+                "Title": row.title,
+                "FolderPath": row.folder_path,
+                rb_writer.FILE_ID_COLUMN: row.file_id,
+            },
             "left_empty": sorted(row.empty),
         }
     else:

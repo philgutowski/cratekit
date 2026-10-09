@@ -33,6 +33,16 @@ WHAT SITTING 17 SETTLED, and this module obeys (A8, 2026-09-29, rekordbox
 * rekordbox analyses nothing on its own with Auto Analysis off. The answer
   says the rows await analysis. Triggering it is not this engine's.
 
+WHAT SITTING 34 SETTLED (U115, R-928, 2026-10-09): a row the binding makes
+carries a random ``rb_file_id`` and rekordbox will not load it to a deck,
+whatever else the row holds. rekordbox's own value is the file's inode number
+at the moment of import, so each row here is created with
+``os.stat(target).st_ino``, read on the landed file at the moment the row is
+made, never from the plan: staging may sit on another volume, where the inode
+is another number. The screen names the column with
+:data:`FILE_ID_AT_LANDING` rather than a value, so what was approved and what
+was written cannot differ by a number the plan could not know.
+
 THE PLAN IS BUILT AGAINST THE DATABASE AND THE APPLY REBUILDS NOTHING. The
 verb opens the database with write intent, so an open rekordbox refuses before
 anything is shown, plans every row and its columns, and digests them; the
@@ -89,6 +99,11 @@ UNSUPPORTED = "unsupported"
 #: reads and the answer the guard enforces come to differ.
 LEFT_EMPTY: tuple[str, ...] = tuple(sorted(rb_writer.CONTENT_ROW_EMPTY_COLUMNS))
 
+#: What the plan screen shows for :data:`cratekit.core.rb_writer.FILE_ID_COLUMN`
+#: on a row to be added. A sentence and not a number, because the number is
+#: read on the landed file when the row is made (U115).
+FILE_ID_AT_LANDING = "the landed file's inode number, read when the row is made"
+
 #: The session workflow a native landing is recorded under, the intake's own.
 WORKFLOW = ingest.INTAKE_WORKFLOW
 
@@ -134,6 +149,7 @@ class RowPlan:
             "FileNameL": self.file_name,
             "FileSize": self.file_size,
             "FileType": self.file_type,
+            rb_writer.FILE_ID_COLUMN: FILE_ID_AT_LANDING,
         }
 
 
@@ -203,6 +219,8 @@ class AddedRow:
     folder_path: str
     #: The analysis columns and what each holds, every one expected empty.
     empty: dict[str, Any]
+    #: ``rb_file_id`` as the table holds it after the commit, as text (U115).
+    file_id: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -520,14 +538,15 @@ def identity(plan: NativePlan) -> dict[str, Any]:
 
 
 def _restamp(content: Any, row: RowPlan, plan: NativePlan) -> None:
-    """Put the planned path and device, and rekordbox's defaults, on the row the binding made.
+    """Put the planned path and device, the file id, and rekordbox's defaults on the row the binding made.
 
     The binding stores the path it was given to stat and the first device it
     finds. Both are corrected here when they differ from the plan, on the
     object before the flush the guard performs, so the guard judges the row as
     it will be stored. A row the binding got right is left alone. Every column
     of :data:`cratekit.core.rb_writer.CONTENT_ROW_DEFAULTS` the binding left
-    NULL is given rekordbox's own value the same way (R-923).
+    NULL is given rekordbox's own value the same way (R-923), and the random
+    file id the binding minted is replaced by the landed file's inode (U115).
     """
     if str(content.FolderPath) != row.folder_path:
         content.FolderPath = row.folder_path
@@ -535,6 +554,11 @@ def _restamp(content: Any, row: RowPlan, plan: NativePlan) -> None:
         content.DeviceID = plan.device_id
     if str(content.MasterDBID) != plan.master_db_id:
         content.MasterDBID = plan.master_db_id
+    # THE FILE ID IS THE INODE OF THE LANDED FILE, read now (U115). The binding
+    # minted a random one on the row it made, and rekordbox will not load such
+    # a row to a deck, so it is replaced on every row, never kept. It cannot be
+    # handed to ``add_content``, which names the column itself.
+    setattr(content, rb_writer.FILE_ID_COLUMN, file_id_of(row.target))
     # REKORDBOX'S OWN DEFAULTS, ON THE SAME OBJECT BEFORE THE SAME FLUSH (R-923).
     # The binding leaves these NULL, and rekordbox will not load such a row to a
     # deck. Only a NULL is filled, so a value the binding chose stands.
@@ -543,13 +567,21 @@ def _restamp(content: Any, row: RowPlan, plan: NativePlan) -> None:
             setattr(content, column, value)
 
 
-def _read_back(db: Any, content_id: str) -> tuple[dict[str, Any], str, str]:
-    """The analysis columns, title and path of one row, from SQL after the commit."""
+def file_id_of(path: Path) -> int:
+    """The value rekordbox writes to ``rb_file_id`` for a file it imports: its inode (U115)."""
+    return os.stat(path).st_ino
+
+
+def _read_back(db: Any, content_id: str) -> tuple[dict[str, Any], str, str, str]:
+    """The analysis columns, title, path and file id of one row, from SQL after the commit."""
     from sqlalchemy import text
 
     selected = ", ".join(LEFT_EMPTY)
     row = db.session.execute(
-        text(f"SELECT Title, FolderPath, {selected} FROM djmdContent WHERE ID = :id"),
+        text(
+            f"SELECT Title, FolderPath, {rb_writer.FILE_ID_COLUMN}, {selected} "
+            f"FROM djmdContent WHERE ID = :id"
+        ),
         {"id": content_id},
     ).first()
     if row is None:
@@ -561,8 +593,8 @@ def _read_back(db: Any, content_id: str) -> tuple[dict[str, Any], str, str]:
             origin=_ORIGIN,
             detail={"content_id": content_id},
         )
-    values = dict(zip(LEFT_EMPTY, row[2:]))
-    return values, str(row[0] or ""), str(row[1] or "")
+    values = dict(zip(LEFT_EMPTY, row[3:]))
+    return values, str(row[0] or ""), str(row[1] or ""), str(row[2] or "")
 
 
 def _holding(match: trees.RowMatch) -> str | None:
@@ -765,7 +797,7 @@ def apply_rows(
 
         landed = []
         for row, content_id in added_ids:
-            values, title, folder_path = _read_back(db, content_id)
+            values, title, folder_path, file_id = _read_back(db, content_id)
             landed.append(
                 AddedRow(
                     target=row.target,
@@ -773,6 +805,7 @@ def apply_rows(
                     title=title,
                     folder_path=folder_path,
                     empty=values,
+                    file_id=file_id,
                 )
             )
         session_id = record.session_id
@@ -905,6 +938,7 @@ def assert_rows_gridless(landed: NativeLanded) -> None:
 __all__ = [
     "ADD",
     "BATCH_PLAYLIST_KEY",
+    "FILE_ID_AT_LANDING",
     "INBOX_PLAYLISTS_KEY",
     "LEFT_EMPTY",
     "PRESENT",
@@ -921,6 +955,7 @@ __all__ = [
     "assert_names_still_free",
     "assert_rows_gridless",
     "choose_device",
+    "file_id_of",
     "file_type_of",
     "identity",
     "inbox_held",

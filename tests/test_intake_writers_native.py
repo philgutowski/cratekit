@@ -370,7 +370,17 @@ def test_the_gate_screen_names_the_row_its_columns_the_playlist_and_the_database
     (item,) = shown["items"]
     assert item["action"] == native.ADD
     assert item["to"] == str(path.resolve())
-    assert set(item["row"]) == {"Title", "FolderPath", "FileNameL", "FileSize", "FileType"}
+    assert set(item["row"]) == {
+        "Title",
+        "FolderPath",
+        "FileNameL",
+        "FileSize",
+        "FileType",
+        rb_writer.FILE_ID_COLUMN,
+    }
+    # U115: the file id is named as the sentence it is, since the number is
+    # read on the landed file when the row is made and no plan can know it.
+    assert item["row"][rb_writer.FILE_ID_COLUMN] == native.FILE_ID_AT_LANDING
     # Nothing was written for a plan nobody answered.
     _assert_nothing_written(cfg, tmp_path)
     assert _playlists(cfg, path.stem) == []
