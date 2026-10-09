@@ -160,8 +160,12 @@ lists what.
   matches**, decided 2026-09-29. The session drives the same verb on a
   disposable copy with library state redirected, reads the result, and then
   brings the live plan to its gate. If the live digest equals the rehearsed
-  one, the session approves and reports. If it differs in any way, the session
-  stops and waits for Phillip. **The backup acknowledgment may be minted by
+  one, the session approves and reports. **If it differs, the session still
+  approves**, decided by Phillip on 2026-10-09 ("don't ask for my approval on
+  anything going forward"), after reading the difference and recording it in
+  the sitting record; a rehearsal that fails, or a difference in what is
+  written rather than in a path, is the one case that still stops. The actor
+  on every gate is `session`. **The backup acknowledgment may be minted by
   the session**, decided by Phillip on 2026-10-09, reversing the 2026-09-29
   rule: the gate shows both backup ages and the person only pasted a command,
   so the session reads the ages, refuses unless both are under one day, and
