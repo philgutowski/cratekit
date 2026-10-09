@@ -7389,6 +7389,9 @@ def test_the_seed_on_a_read_only_library_volume_is_not_sent_to_full_disk_access(
     # load: without this the configuration built below would name a writable
     # temporary directory and the test would assert about the wrong disk (P2).
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, "/")
+    # The one test that aims a write outside the temporary root on purpose, at a
+    # volume the kernel refuses, so the R-926 guard is widened for it alone.
+    monkeypatch.setattr(config, "_TEST_WRITE_ROOT", Path("/"))
     cfg = config.from_dict(document_for(Path("/")))
     state = config.state_path("taxonomy_active", cfg)
     assert state.parent.parent == Path("/.cratekit"), state

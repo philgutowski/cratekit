@@ -32,6 +32,32 @@ def job_state(verb: str = "tag.folder", **data) -> output.Envelope:
     return envelope(verb, "job_state", payload)
 
 
+FROZEN_ROWS = [
+    {"item": "rc_1", "artist": "Aurora Bloom", "title": "Sun Path", "version": "", "isrc": "X1"},
+    {"item": "rc_2", "artist": "", "title": "", "version": "", "isrc": None},
+]
+
+
+def test_job_show_lists_the_frozen_tracks_and_a_payload_without_them_prints_none():
+    """R-925. Read by field, and the field is not ``tracks``, which counts elsewhere."""
+    shown = render.render_job_state(job_state(verb="job.show", progress={"intake_tracks": FROZEN_ROWS}))
+    assert shown[-3:] == ["  tracks: 2", "    1. Aurora Bloom - Sun Path, isrc X1", "    2. item rc_2, no isrc"]
+    other = render.render_job_state(job_state(verb="job.show", progress={"tracks": FROZEN_ROWS}))
+    assert not any("tracks:" in line or "Sun Path" in line for line in other)
+
+
+def test_an_intake_tracks_field_that_is_not_a_list_prints_nothing():
+    for value in (3, "Aurora Bloom - Sun Path", None):
+        lines = render.render_job_state(job_state(verb="job.show", progress={"intake_tracks": value}))
+        assert not any("tracks:" in line for line in lines), value
+
+
+def test_the_renderer_spells_the_field_cli_jobs_writes():
+    from cratekit.cli import jobs as cli_jobs
+
+    assert render._INTAKE_TRACKS == cli_jobs.TRACKS_FIELD
+
+
 def test_a_queued_job_names_its_drive_only_when_one_is_handed_in():
     """The drive command comes from the dispatcher; without it no command is guessed."""
     bare = render.render_job_state(job_state())
