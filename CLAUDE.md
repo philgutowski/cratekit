@@ -161,8 +161,13 @@ lists what.
   disposable copy with library state redirected, reads the result, and then
   brings the live plan to its gate. If the live digest equals the rehearsed
   one, the session approves and reports. If it differs in any way, the session
-  stops and waits for Phillip. The backup acknowledgment is minted by Phillip
-  from a Terminal window and by nobody else.
+  stops and waits for Phillip. **The backup acknowledgment may be minted by
+  the session**, decided by Phillip on 2026-10-09, reversing the 2026-09-29
+  rule: the gate shows both backup ages and the person only pasted a command,
+  so the session reads the ages, refuses unless both are under one day, and
+  answers with the actor `session`. The verb still wants a controlling
+  terminal, so until a card lets it accept the session, it is run under
+  `script -q /dev/null`.
 - **DJ_tools is read-only for code.** It is the live system until each workflow's
   replacement is proven. Its `docs/` are the exception.
 - **Do not symlink `.venv` into a worktree.** The editable install names the
