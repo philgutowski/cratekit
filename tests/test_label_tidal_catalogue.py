@@ -34,7 +34,7 @@ from cratekit.label import registry as labels
 from cratekit.label.catalogue import AccountPlaylist
 from cratekit.sync import run, watermarks
 from tests.cli_drive import drive
-from tests.label_fakes import FakeArtistLookup
+from tests.label_fakes import FakeArtistLookup, FakeCatalogue, FakePagedPlaylist
 from tests.test_config import valid_data
 from tests.test_label_workers import queued_sweep
 
@@ -1865,7 +1865,7 @@ def test_a_release_is_paged_to_its_declared_count_and_carries_its_year(pauses):
     album = ProviderAlbum("r-1", album_tracks(230), year=2021)
     adapter = tidal_catalogue.TidalCatalogue(AlbumClient(album))
 
-    tracks, year = adapter.release_tracks("r-1")
+    tracks, year, _short = adapter.release_tracks("r-1")
 
     assert year == 2021
     assert len(tracks) == 230, "the release was not paged to exhaustion"
@@ -1900,7 +1900,7 @@ def test_a_rate_limited_album_read_waits_and_is_asked_again(pauses):
     client = AlbumClient(RuntimeError("429 too many requests"), album)
     adapter = tidal_catalogue.TidalCatalogue(client)
 
-    tracks, year = adapter.release_tracks("r-1")
+    tracks, year, _short = adapter.release_tracks("r-1")
 
     assert (len(tracks), year) == (3, 2020)
     assert client.album_reads == ["r-1", "r-1"]
@@ -1935,7 +1935,7 @@ def test_a_short_window_in_the_middle_of_a_release_does_not_end_it(pauses):
             return page[:-1] if offset == 0 else page
 
     album = Withholding("r-1", album_tracks(150), year=2020)
-    tracks, _year = tidal_catalogue.TidalCatalogue(AlbumClient(album)).release_tracks("r-1")
+    tracks, _year, _short = tidal_catalogue.TidalCatalogue(AlbumClient(album)).release_tracks("r-1")
 
     assert len(tracks) == 149
     assert tracks[-1].id == "849"
@@ -1967,7 +1967,7 @@ class Dated:
 )
 def test_the_year_is_read_or_is_none_and_is_never_a_guess(dated, expected, pauses):
     album = ProviderAlbum("r-1", album_tracks(1), **dated)
-    _tracks, year = tidal_catalogue.TidalCatalogue(AlbumClient(album)).release_tracks("r-1")
+    _tracks, year, _short = tidal_catalogue.TidalCatalogue(AlbumClient(album)).release_tracks("r-1")
     assert year == expected
 
 
@@ -2291,3 +2291,42 @@ def test_a_search_for_nothing_is_refused_before_the_provider_is_asked(artist, ti
     with pytest.raises(ValueError):
         tidal_catalogue.TidalCatalogue(client).search_tracks(artist, title)
     assert client.track_searches == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-515: a release listed short of its declared count carries the shortfall
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_release_listed_short_of_its_count_carries_the_shortfall_and_its_rows(pauses):
+    class Withholding(ProviderAlbum):
+        def tracks(self, limit: int | None = None, offset: int = 0) -> list[ProviderTrack]:
+            page = super().tracks(limit, offset)
+            return page[:-2] if offset == 0 else page
+
+    album = Withholding("r-1", album_tracks(10), year=2020)
+    tracks, year, short = tidal_catalogue.TidalCatalogue(AlbumClient(album)).release_tracks("r-1")
+
+    assert (len(tracks), year) == (8, 2020)
+    assert short == catalogue.ListingShortfall(declared=10, listed=8)
+    assert short.summary() == "10 declared, 8 listed, 2 withheld by the provider"
+
+
+def test_a_full_release_carries_no_shortfall(pauses):
+    album = ProviderAlbum("r-1", album_tracks(3), year=2020)
+    _tracks, _year, short = tidal_catalogue.TidalCatalogue(AlbumClient(album)).release_tracks("r-1")
+    assert short is None
+
+
+@pytest.mark.parametrize("declared", [None, 0, -1, True, "10"])
+def test_a_count_that_is_not_a_usable_count_leaves_nothing_to_compare(declared):
+    assert catalogue.ListingShortfall.of([], declared) is None
+
+
+def test_the_playlist_listing_carries_the_shortfall_beside_its_rows():
+    rows = [object() for _ in range(8)]
+    fake = FakeCatalogue(playlists={"p": FakePagedPlaylist(rows, declared=10)})
+    listed, short = label_cli.playlist_listing_or_refuse(fake, "p")
+    assert len(listed) == 8
+    assert short.block() == {"declared": 10, "listed": 8, "withheld": 2}
+    assert label_cli.playlist_tracks_or_refuse(fake, "p") == listed

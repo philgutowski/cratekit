@@ -113,7 +113,7 @@ def read_catalogue(
     for release in confirmed.releases:
         release_id = str(getattr(release, "id", "") or "")
         try:
-            rows, stated = tracks.release_tracks(release_id)
+            rows, stated, _short = tracks.release_tracks(release_id)
         except catalogue.ReleaseUnresolvable:
             gone += 1
             continue

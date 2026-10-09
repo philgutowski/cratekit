@@ -1142,3 +1142,39 @@ def test_the_default_human_output_names_the_question_and_each_release(installed,
     assert "Tide Works: 3 new release(s), 7 track(s), about 277 MB" in text
     assert "Release r3 (2026), 4 track(s)" in text
     assert "crate label sync --answer all --label tide-works" in text
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-515: a release the provider lists short of its declared count
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_short_release_is_counted_over_its_rows_and_the_question_says_the_shortfall(
+    installed, monkeypatch
+):
+    register()
+    fake = three_new(monkeypatch)
+    rows, year = fake.releases["r3"]
+    fake.releases["r3"] = (rows, year, 6)
+
+    question = next_question()
+
+    (short,) = [one for one in question["releases"] if one["identity"] == "r3"]
+    assert short["tracks"] == 4
+    assert short["shortfall"] == {"declared": 6, "listed": 4, "withheld": 2}
+    assert all(one["shortfall"] is None for one in question["releases"] if one is not short)
+    assert question["provider_withheld"] == 2
+    code, envelope = sync("--next")
+    assert code == int(ExitCode.OK), envelope
+    (asked,) = checks(envelope, "question")
+    assert "2 track(s) withheld by the provider on 1 release(s)" in asked["detail"]
+    (line,) = checks(envelope, "release.r3")
+    assert "4 track(s) (6 declared, 4 listed, 2 withheld by the provider)" in line["detail"]
+
+
+def test_full_releases_say_nothing_of_a_shortfall(installed, monkeypatch):
+    register()
+    three_new(monkeypatch)
+    question = next_question()
+    assert question["provider_withheld"] == 0
+    assert all(one["shortfall"] is None for one in question["releases"])

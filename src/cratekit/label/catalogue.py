@@ -251,7 +251,7 @@ class ReleaseTracks:
 
     def __init__(self, catalogue: "Catalogue") -> None:
         self.catalogue = catalogue
-        self._read: dict[str, tuple[tuple[Any, ...], int | None] | Exception] = {}
+        self._read: dict[str, ReleaseRead | Exception] = {}
         self._failed_in_a_row = 0
 
     @property
@@ -273,7 +273,7 @@ class ReleaseTracks:
         """
         self._read.clear()
 
-    def release_tracks(self, release_id: str) -> tuple[tuple[Any, ...], int | None]:
+    def release_tracks(self, release_id: str) -> ReleaseRead:
         held = self._read.get(release_id)
         if isinstance(held, Exception):
             raise held
@@ -285,7 +285,7 @@ class ReleaseTracks:
                 f"the rest were not asked for"
             )
         try:
-            rows, year = self.catalogue.release_tracks(release_id)
+            rows, year, short = self.catalogue.release_tracks(release_id)
         except CratekitError:
             raise
         except ReleaseUnresolvable as exc:
@@ -297,7 +297,7 @@ class ReleaseTracks:
             self._read[release_id] = exc
             raise
         self._failed_in_a_row = 0
-        answer = (tuple(rows), year)
+        answer = (tuple(rows), year, short)
         self._read[release_id] = answer
         return answer
 
@@ -344,6 +344,60 @@ class HeartsShortfall(Exception):
     def block(self) -> dict[str, int]:
         """The three numbers as a report carries them."""
         return {"declared": self.declared, "listed": self.listed, "withheld": self.withheld}
+
+
+@dataclass(frozen=True, slots=True)
+class ListingShortfall:
+    """A playlist or release listing that came back shorter than its declared count (R-515).
+
+    The provider counts tracks it will not serve and leaves them out of every
+    page, so a listing can end where the count says and still hold fewer rows.
+    THIS IS NOT A FAILURE TO READ, and unlike :class:`HeartsShortfall` it is
+    carried beside the rows rather than raised: a short listing is still
+    useful, and a caller that does not know this class must keep working
+    rather than refuse. It only must not be reported as complete.
+
+    Which tracks were withheld is not known and is not guessed at. Only the
+    count is, which is the CONCEPTS entry for **Withheld**.
+    """
+
+    declared: int
+    listed: int
+
+    @property
+    def withheld(self) -> int:
+        return self.declared - self.listed
+
+    @classmethod
+    def of(cls, rows: Any, declared: Any) -> "ListingShortfall | None":
+        """The shortfall of ``rows`` against ``declared``, or ``None`` when there is none.
+
+        ``None`` too when the provider published no usable count, on the rule
+        ``listing.paginate`` applies: a zero, negative or non integer count is
+        not trusted as one, and a missing count leaves nothing to compare.
+        """
+        if isinstance(declared, bool) or not isinstance(declared, int) or declared <= 0:
+            return None
+        listed = len(tuple(rows))
+        if listed >= declared:
+            return None
+        return cls(declared=declared, listed=listed)
+
+    def summary(self) -> str:
+        """The three numbers as a person reads them, one spelling everywhere."""
+        return (
+            f"{self.declared} declared, {self.listed} listed, "
+            f"{self.withheld} withheld by the provider"
+        )
+
+    def block(self) -> dict[str, int]:
+        """The three numbers as a report carries them."""
+        return {"declared": self.declared, "listed": self.listed, "withheld": self.withheld}
+
+
+#: What :meth:`Catalogue.release_tracks` answers: the rows, the year, and the
+#: shortfall when the release listed short of its declared count (R-515).
+ReleaseRead = tuple[tuple[Any, ...], int | None, ListingShortfall | None]
 
 
 class Catalogue(Protocol):
@@ -445,8 +499,8 @@ class Catalogue(Protocol):
         off as the account. A tuple returned is a listing that reached the count.
         """
 
-    def release_tracks(self, release_id: str) -> tuple[tuple[Any, ...], int | None]:
-        """Every track on one release, and the year the provider dates it.
+    def release_tracks(self, release_id: str) -> ReleaseRead:
+        """Every track on one release, the year the provider dates it, and any shortfall.
 
         Consumed by ``label.approved_cli``, which turns an ACCEPTED label release
         into rows for the list document. The release is read again BY IDENTIFIER
@@ -456,11 +510,18 @@ class Catalogue(Protocol):
 
         RAISES :class:`ReleaseUnresolvable` for a release the provider has nothing
         for, and whatever the provider raised for one it could not answer about,
-        and raises rather than returning a short listing. An
+        and raises for a release it refuses whole. An
         empty tuple means the provider answered and the release holds no track,
         never that nobody could ask. The year is ``None`` when the provider dates
         the release with nothing this seam can read as a year, which is unknown
         and is carried as unknown rather than guessed.
+
+        A SHORT LISTING IS NOT A REFUSAL (R-515). The provider counts tracks on
+        a release it will not serve, so the rows can end short of the count
+        with nothing wrong in the walk. The third element is the
+        :class:`ListingShortfall` that says by how much, ``None`` for a release
+        that listed in full or whose count was not published. A caller that
+        reports owned, offered or missing over the rows warns with it.
         """
 
     def release_artist(self, release_id: str) -> str:
@@ -627,6 +688,8 @@ __all__ = [
     "AccountPlaylist",
     "Catalogue",
     "HeartsShortfall",
+    "ListingShortfall",
+    "ReleaseRead",
     "PlaylistReferenceInvalid",
     "READS_FAILED_IN_A_ROW",
     "ReleaseTracks",

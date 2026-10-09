@@ -436,8 +436,9 @@ def judge_rows(
     return judge_words(declared, kind, asking.words(rows, enough=passes))
 
 
-#: Reads one release's rows and its year. ``Catalogue.release_tracks``' shape.
-TrackReader = Callable[[str], tuple[tuple[Any, ...], int | None]]
+#: Reads one release's rows, its year and any shortfall (R-515).
+#: ``Catalogue.release_tracks``' shape.
+TrackReader = Callable[[str], tuple[tuple[Any, ...], int | None, Any]]
 
 
 class StandingHolds:
@@ -530,7 +531,7 @@ class SweepGate:
             return Judged(KindVerdict.NOT_JUDGED, kind, (), why)
 
         try:
-            rows, _year = self._tracks(release_id)
+            rows, _year, _short = self._tracks(release_id)
         except CratekitError:
             raise
         except ReleaseUnresolvable:
