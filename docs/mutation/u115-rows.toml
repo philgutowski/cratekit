@@ -1,0 +1,185 @@
+name = "u115"
+pass_kind = "light"
+
+[[rows]]
+id = "F1_landing_keeps_random_id"
+description = "The native landing keeps the random rb_file_id the binding minted instead of the landed file's inode"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''    setattr(content, rb_writer.FILE_ID_COLUMN, file_id_of(row.target))
+'''
+new = ""
+
+[[rows]]
+id = "F2_landing_reads_back_no_file_id"
+description = "The landing's read back reports an empty file id, so the envelope says nothing about the column"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''    return values, str(row[0] or ""), str(row[1] or ""), str(row[2] or "")'''
+new = '''    return values, str(row[0] or ""), str(row[1] or ""), ""'''
+
+[[rows]]
+id = "F3_file_id_policy_fill_if_empty"
+description = "The file id policy fills only an empty column, so a random id present on the row is never replaced"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+old = '''    fields=MappingProxyType({FILE_ID_COLUMN: Ownership.OWNED}),'''
+new = '''    fields=MappingProxyType({FILE_ID_COLUMN: Ownership.FILL_IF_EMPTY}),'''
+
+[[rows]]
+id = "F4_binding_limit_coefficient"
+description = "The binding's id limit is taken as 32 bits rather than 28"
+file = "src/cratekit/core/rb_writer.py"
+surface = "maintainer"
+old = '''BINDING_ID_LIMIT = 1 << 28'''
+new = '''BINDING_ID_LIMIT = 1 << 32'''
+
+[[rows]]
+id = "F5_bound_boundary"
+description = "An id equal to the bound is judged above it"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+old = '''    return ABOVE if number > bound else WITHIN'''
+new = '''    return ABOVE if number >= bound else WITHIN'''
+
+[[rows]]
+id = "F6_every_id_above"
+description = "Every nonzero id is judged above the bound, so stale rows rekordbox tolerates are renumbered"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+old = '''    return ABOVE if number > bound else WITHIN'''
+new = '''    return ABOVE'''
+
+[[rows]]
+id = "F7_zero_is_not_zero"
+description = "A stored 0 is no longer read as the zero form rekordbox tolerates"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+old = '''    if text in ("", "0"):
+        return ZERO'''
+new = '''    if text == "":
+        return ZERO'''
+
+[[rows]]
+id = "F8_matching_inode_renumbered"
+description = "A row above the bound whose file reads the same inode is renumbered to itself rather than left"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+old = '''            elif str(inode) == str(row[FILE_ID]).strip():
+                within += 1'''
+new = '''            elif False:
+                within += 1'''
+
+[[rows]]
+id = "F9_unreadable_file_dropped_silently"
+description = "A row above the bound whose file cannot be read is neither listed nor written, and the gate says nothing"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+old = '''            if inode is None:
+                unrenumbered.append('''
+new = '''            if False:
+                unrenumbered.append('''
+
+[[rows]]
+id = "F10_tombstones_planned"
+description = "The repair plans soft deleted rows beside live ones (R-923's guard, kept as the sample)"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+old = '''            f"WHERE {rb_writer.SOFT_DELETE_COLUMN} = 0"'''
+new = '''            ""'''
+
+[[rows]]
+id = "F11_stale_file_id_not_checked"
+description = "A file id changed since the plan is written over without a staleness refusal"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+old = '''        if item.renumbers and str(row.get(FILE_ID) or "").strip() != item.file_id_was:
+            moved.append(f"{item.content_id}: {FILE_ID} changed since the plan")'''
+new = '''        if False:
+            moved.append(f"{item.content_id}: {FILE_ID} changed since the plan")'''
+
+[[rows]]
+id = "F12_read_back_ignores_file_id"
+description = "The read back never checks that the inode took, so a renumber that did not land reads as written"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+old = '''        if item.renumbers and str(now.get(FILE_ID) or "").strip() != str(item.file_id):
+            wrong.append(f"{item.content_id}: {FILE_ID} not the file's inode")'''
+new = '''        if False:
+            wrong.append(f"{item.content_id}: {FILE_ID} not the file's inode")'''
+
+[[rows]]
+id = "F13_planned_renumber_read_as_moved"
+description = "The read back forgets the file id was planned, so every renumber is reported as a column the guard let move"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+old = '''        if item.renumbers:
+            planned.add(FILE_ID)'''
+new = '''        if False:
+            planned.add(FILE_ID)'''
+
+[[rows]]
+id = "F14_renumber_never_written"
+description = "The apply fills the defaults and never writes the planned file id"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+old = '''        if item.renumbers:
+            writes.append((file_owner, FILE_ID, item.file_id))'''
+new = '''        if False:
+            writes.append((file_owner, FILE_ID, item.file_id))'''
+
+[[rows]]
+id = "F15_file_id_policy_always_registered"
+description = "The file id policy is registered for every repair commit, renumber or not"
+file = "src/cratekit/write/row_defaults.py"
+surface = "maintainer"
+old = '''        if plan.renumbers:
+            rb_writer.register_field_policy(rb_writer.FILE_ID_POLICY)'''
+new = '''        if True:
+            rb_writer.register_field_policy(rb_writer.FILE_ID_POLICY)'''
+
+[[rows]]
+id = "F16_file_id_policy_never_registered"
+description = "The file id policy is never registered, so the guard refuses the renumber the plan promised"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+old = '''        if plan.renumbers:
+            rb_writer.register_field_policy(rb_writer.FILE_ID_POLICY)'''
+new = '''        if False:
+            rb_writer.register_field_policy(rb_writer.FILE_ID_POLICY)'''
+
+[[rows]]
+id = "F17_bound_is_zero"
+description = "The volume's inode bound is reported as zero rather than measured from a fresh file"
+file = "src/cratekit/write/row_defaults.py"
+surface = "maintainer"
+old = '''        return os.fstat(handle.fileno()).st_ino'''
+new = '''        return 0'''
+
+[[rows]]
+id = "F18_undecidable_unsaid"
+description = "The gate and the envelope say nothing when the volume's counter has passed the binding's range"
+file = "src/cratekit/write/row_defaults_cli.py"
+surface = "user"
+old = '''    if plan.undecidable:
+        notes.append(_undecidable(plan))'''
+new = '''    if False:
+        notes.append(_undecidable(plan))'''
+
+[[rows]]
+id = "F19_unrenumbered_unsaid"
+description = "The envelope says nothing about the rows left with a random id because their file could not be read"
+file = "src/cratekit/write/row_defaults_cli.py"
+surface = "user"
+old = '''    if plan.unrenumbered:
+        notes.append(_unrenumbered(plan))'''
+new = '''    if False:
+        notes.append(_unrenumbered(plan))'''
+
+[[rows]]
+id = "F20_landing_sets_no_defaults"
+description = "The native landing no longer sets rekordbox's defaults on a row it creates (R-923's guard, kept as the sample)"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''        if getattr(content, column, None) is None:'''
+new = '''        if False:'''
