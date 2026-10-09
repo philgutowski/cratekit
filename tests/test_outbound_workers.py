@@ -2465,3 +2465,26 @@ def test_the_files_album_is_read_beside_its_isrc_in_one_read(installed, tmp_path
     ) == source.FileIdentity(isrc="ZZX9A2600043", album="")
     gone = locations.location_url(root / "Music" / "gone.flac")
     assert source.file_identity(_entry(gone), root=root, prefix_map=[]) == source.FileIdentity()
+
+def test_local_tracks_carries_the_files_album_to_the_export_plan(installed, tmp_path):
+    """R-572. local_tracks hands the album through so export.plan can pass it on."""
+    root = Path(installed.library.root)
+    one = _tagged(tmp_path / "one", root / "Music" / "1.flac", "ZZX9A2600042")
+    assert tags.write_tags(one, {"album": "  Tidal Lines "}) is True
+    two = _tagged(tmp_path / "two", root / "Music" / "2.flac", "ZZX9A2600043")
+    exported = outbound_fakes.write_export(
+        root / "outbound-album",
+        locations={
+            1: locations.location_url(one),
+            2: locations.location_url(two),
+        },
+    )
+    source.forget_libraries()
+    library = source.read_library(exported)
+    tracks = source.local_tracks(library, ("1", "2"), cfg=installed)
+    assert [(t.identity, t.isrc, t.album) for t in tracks] == [
+        ("1", "ZZX9A2600042", "Tidal Lines"),
+        ("2", "ZZX9A2600043", ""),
+    ]
+    source.forget_libraries()
+

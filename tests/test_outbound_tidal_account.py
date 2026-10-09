@@ -1661,6 +1661,34 @@ def test_a_file_with_no_album_tag_stays_unmatched_and_says_the_tag_is_missing():
     assert "the file carries no album tag" in reason
 
 
+def test_an_unreadable_track_stops_the_album_from_choosing_the_lone_agreeing_one():
+    """Rule 1 already refuses this shape; the album must not choose the same lone track."""
+    client = releases(
+        on_album(Track("101", "Sun Path", None, ("Nova Reef",)), "Tidal Lines"),
+        on_album(Track("202", "", None, ()), "Tidal Lines"),
+    )
+    found = adapter(client)
+    chosen = found.match_track(
+        identity="7", isrc=CODE, title="Sun Path", artist="Nova Reef", album="Tidal Lines"
+    )
+    assert chosen is None
+    reason = found.unmatched_reason("7")
+    assert "1 could not be read" in reason
+    assert "so none was chosen" in reason
+    client.user.favorites.hearts = ["101"]
+    found = adapter(client)
+    assert (
+        found.match_track(
+            identity="7",
+            isrc=CODE,
+            title="Sun Path",
+            artist="Nova Reef",
+            album="Tidal Lines",
+        )
+        == "101"
+    ), "the heart rule still chooses among agreeing tracks"
+
+
 def test_the_album_never_overrides_a_heart_or_breaks_a_tie_between_two():
     """Out of scope by the brief: how a hearted release breaks a tie is unchanged."""
     client = single_and_album_cut()

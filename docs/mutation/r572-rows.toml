@@ -49,6 +49,16 @@ old = '''            remote for remote in agreeing if match.fold(_album_name(tra
 new = '''            remote for remote in tracks if match.fold(_album_name(tracks[remote])) == wanted'''
 
 [[rows]]
+id = "A6_album_despite_unreadable"
+description = "Let the album choose even when another track could not be read"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''        if unreadable:
+            return None, f"{said}, so none was chosen"'''
+new = ""
+
+[[rows]]
 id = "S1_album_not_read"
 description = "file_identity drops the album it read"
 file = "src/cratekit/modules/outbound/source.py"
@@ -96,3 +106,16 @@ old = '''            isrc=found.isrc,
 new = '''            isrc=found.isrc,
             release_title=release_title(entry, template=template),
         )'''
+
+[[rows]]
+id = "Z1_set_drop_album"
+description = "export set stops passing the album to match_track"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+tests = ["tests/test_export_set.py"]
+old = '''                    remote, said = _isrc_match(
+                        account, identity, one, code, agree=True, album=album
+                    )'''
+new = '''                    remote, said = _isrc_match(
+                        account, identity, one, code, agree=True
+                    )'''

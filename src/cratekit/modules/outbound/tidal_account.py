@@ -395,11 +395,16 @@ class TidalAccount:
            the album tag of the row's own file (R-572). The file says which
            release it was cut from, which is a fact about the row. A file with
            no album tag, or one naming none or several of them, chooses nothing.
+           An unreadable track among the candidates stops this rule too: the
+           album is asked of the agreeing tracks only, and a lone agreeing
+           track the first rule already refused must not come back through the
+           album (R-572).
 
         A TRACK THAT CANNOT BE READ STOPS THE FIRST RULE FROM CHOOSING, on
         ``intake.candidates.sole_exact``'s argument: one agreeing track beside
-        one unreadable one is not known to be the only one that agrees. A track
-        the provider will not play is never a candidate, see :func:`_streamable`.
+        one unreadable one is not known to be the only one that agrees. It
+        stops the album rule the same way. A track the provider will not play
+        is never a candidate, see :func:`_streamable`.
 
         RELEASES SPELLED ALIKE WITH NONE HEARTED AND NO ALBUM TO TELL THEM
         APART STAY UNMATCHED. The first, the earliest or the lowest numbered is
@@ -443,6 +448,8 @@ class TidalAccount:
             f"of those"
         )
         if hearted:
+            return None, f"{said}, so none was chosen"
+        if unreadable:
             return None, f"{said}, so none was chosen"
         wanted = match.fold(album)
         if not wanted:
