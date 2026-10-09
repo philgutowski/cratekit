@@ -305,6 +305,7 @@ def _file_native(ctx, cfg: config.Config, path: Path, plan: dict, medium) -> Env
     if landed is None:
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
     native.assert_rows_gridless(landed)
+    native.assert_rows_identified(landed)
     return ctx.envelope(
         data=_native_reported(payload, landed),
         warnings=land_cli.awaiting_analysis(landed),

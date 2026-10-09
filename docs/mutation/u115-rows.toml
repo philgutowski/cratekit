@@ -153,8 +153,8 @@ id = "F17_bound_is_zero"
 description = "The volume's inode bound is reported as zero rather than measured from a fresh file"
 file = "src/cratekit/write/row_defaults.py"
 surface = "maintainer"
-old = '''        return os.fstat(handle.fileno()).st_ino'''
-new = '''        return 0'''
+old = '''        inode=measured.st_ino, device=measured.st_dev, filesystem=filesystem_of(directory)'''
+new = '''        inode=0, device=measured.st_dev, filesystem=filesystem_of(directory)'''
 
 [[rows]]
 id = "F18_undecidable_unsaid"
@@ -183,3 +183,46 @@ file = "src/cratekit/intake/native.py"
 surface = "user"
 old = '''        if getattr(content, column, None) is None:'''
 new = '''        if False:'''
+
+[[rows]]
+id = "F21_other_volume_compared"
+description = "A file on another volume than the bound is stat'ed and its inode compared, so rekordbox's rows there can be renumbered"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+old = '''    if found.st_dev != device:
+        return None, ON_ANOTHER_VOLUME'''
+new = '''    if False:
+        return None, ON_ANOTHER_VOLUME'''
+
+[[rows]]
+id = "F22_off_apfs_decides"
+description = "The bound is trusted on any filesystem, so an exFAT or HFS+ library has rekordbox's rows renumbered"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+old = '''        if self.filesystem != APFS:
+            named = self.filesystem or "unknown"'''
+new = '''        if False:
+            named = self.filesystem or "unknown"'''
+
+[[rows]]
+id = "F23_loose_digits"
+description = "A signed or underscored text, or a digit from another script, is parsed as a number and judged above the bound"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+old = '''    if not (text.isascii() and text.isdigit()):
+        return WITHIN
+    return ABOVE if int(text) > bound else WITHIN'''
+new = '''    try:
+        number = int(text)
+    except ValueError:
+        return WITHIN
+    return ABOVE if number > bound else WITHIN'''
+
+[[rows]]
+id = "F24_landing_assertion_dropped"
+description = "The landing verb no longer asserts the file id read back after the commit"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''    native.assert_rows_identified(landed.collection)
+'''
+new = ""

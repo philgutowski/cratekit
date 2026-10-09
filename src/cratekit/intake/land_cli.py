@@ -865,6 +865,7 @@ def _land_native(
     if landed is None:
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
     native.assert_rows_gridless(landed.collection)
+    native.assert_rows_identified(landed.collection)
     warnings = [{"code": entry.reason, "message": entry.sentence} for entry in landed.refused]
     warnings.extend(awaiting_analysis(landed.collection))
     return ctx.envelope(data=_native_reported(payload, landed), warnings=warnings)

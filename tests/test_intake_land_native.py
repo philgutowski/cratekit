@@ -456,6 +456,61 @@ def test_the_rows_carry_the_landed_files_inode_as_their_file_id(native_library, 
         assert item["row"][rb_writer.FILE_ID_COLUMN] == by_id[item["content_id"]]
 
 
+def test_a_row_whose_file_id_did_not_take_is_refused_after_the_commit_naming_the_session(
+    native_library, silence, monkeypatch
+):
+    """The restamp reads the inode once per row and the assertion reads it again
+    after the commit. A first reading that lies, standing in for a binding or
+    guard that drops the column, leaves a row rekordbox will not load, and the
+    landing says so with the session to restore rather than exiting OK."""
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    real = native.file_id_of
+    calls: list[Path] = []
+
+    def lying_once(path: Path) -> int:
+        calls.append(path)
+        return real(path) + (1 if len(calls) == 1 else 0)
+
+    monkeypatch.setattr(native, "file_id_of", lying_once)
+    code, acted, _ = _two_acts(_land())
+
+    assert code != int(ExitCode.OK), acted
+    assert acted["cause"]["reason"] == "internal-error"
+    assert rb_writer.FILE_ID_COLUMN in acted["cause"]["message"]
+    (record,) = session.records(cfg)
+    assert record.session_id in " ".join(acted["cause"]["remediation"]["steps"])
+    ((file_id, folder_path),) = _query(
+        cfg, f"SELECT {rb_writer.FILE_ID_COLUMN}, FolderPath FROM djmdContent WHERE FolderPath LIKE ?", f"%{BATCH}%"
+    )
+    assert int(file_id) == Path(folder_path).stat().st_ino + 1, "the write is durable"
+
+
+def test_assert_rows_identified_is_pure_over_what_was_read_back(tmp_path):
+    path = tmp_path / "a.flac"
+    path.write_bytes(b"fLaC")
+    right = native.AddedRow(
+        target=path, content_id="1", title="t", folder_path=str(path), empty={},
+        file_id=str(path.stat().st_ino),
+    )
+    wrong = native.AddedRow(
+        target=path, content_id="2", title="t", folder_path=str(path), empty={}, file_id="73894078"
+    )
+    native.assert_rows_identified(_landed(right))
+    with pytest.raises(CratekitError) as caught:
+        native.assert_rows_identified(_landed(right, wrong))
+    assert caught.value.cause.reason == "internal-error"
+    assert "2: " in caught.value.cause.message and "73894078" in caught.value.cause.message
+    assert "restore session s-1" in " ".join(caught.value.cause.remediation.steps)
+
+
+def _landed(*rows: native.AddedRow) -> native.NativeLanded:
+    return native.NativeLanded(
+        tree_id=INTAKE, playlist="p", playlist_id="9", added=tuple(rows), present=(),
+        memberships_added=len(rows), session_id="s-1",
+    )
+
+
 def test_after_the_write_no_analysis_value_exists_on_the_new_rows_column_by_column(
     native_library, silence
 ):

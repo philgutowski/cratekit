@@ -48,8 +48,9 @@ NOTHING_TO_WRITE = "rows-defaults-nothing-to-write"
 #: What the apply wrote and read back.
 DEFAULTS_WRITTEN = "rows-defaults-written"
 
-#: The volume's inode counter has passed the binding's range, so a random file
-#: id cannot be told from a stale one and none is renumbered (U115).
+#: The bound decides nothing, the volume being off APFS or its inode counter
+#: past the binding's range, so no file id is judged random and none is
+#: renumbered (U115).
 BOUND_UNDECIDABLE = "rows-file-id-undecidable"
 
 #: Rows above the bound whose file could not be read, so they keep their id.
@@ -131,18 +132,18 @@ def _facts(plan: row_defaults.DefaultsPlan) -> dict[str, Any]:
         "only into": "a column that is NULL; a value already present is never listed",
         f"rows given their file's inode as {row_defaults.FILE_ID}": plan.renumbers,
         "the volume's inode bound": plan.bound,
+        "the volume's filesystem": plan.filesystem or "unknown",
         "file ids at or under the bound, left as they are": plan.within_bound,
+        "file ids above the bound that are their file's inode, left as they are": (
+            plan.matched
+        ),
         "file ids of zero, left as they are": plan.zero,
         "file ids above the bound whose file cannot be read, left as they are": len(
             plan.unrenumbered
         ),
     }
-    if plan.undecidable:
-        facts["why no file id is renumbered"] = (
-            f"the volume's inode counter, {plan.bound}, has passed the binding's "
-            f"range of {rb_writer.BINDING_ID_LIMIT}, so a random id cannot be told "
-            f"from one rekordbox wrote by its size"
-        )
+    if plan.why_undecidable:
+        facts["why no file id is renumbered"] = plan.why_undecidable
     return facts
 
 
@@ -160,23 +161,18 @@ def _nothing(plan: row_defaults.DefaultsPlan) -> dict[str, str]:
 def _undecidable(plan: row_defaults.DefaultsPlan) -> dict[str, str]:
     return {
         "code": BOUND_UNDECIDABLE,
-        "message": (
-            f"no file id was judged random: the volume's inode counter, {plan.bound}, "
-            f"has passed the binding's range of {rb_writer.BINDING_ID_LIMIT}, so a "
-            f"random id cannot be told from one rekordbox wrote by its size"
-        ),
+        "message": f"no file id was judged random: {plan.why_undecidable}",
     }
 
 
 def _unrenumbered(plan: row_defaults.DefaultsPlan) -> dict[str, str]:
-    shown = "; ".join(f"{one.content_id} ({one.why})" for one in plan.unrenumbered[:5])
-    more = len(plan.unrenumbered) - 5
+    shown = row_defaults.named([f"{one.content_id} ({one.why})" for one in plan.unrenumbered])
     return {
         "code": UNRENUMBERED,
         "message": (
             f"{len(plan.unrenumbered)} row(s) carry a file id above the volume's "
             f"inode bound and keep it, since their file could not be read for an "
-            f"inode: {shown}" + (f"; and {more} more, all in the data" if more > 0 else "")
+            f"inode on that volume: {shown}"
         ),
     }
 

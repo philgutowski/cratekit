@@ -415,9 +415,11 @@ random id is told from a stale one: APFS allocates inode numbers from a
 counter it never winds back, so the inode of a file created this moment on the
 volume is above every inode any file on it has ever had, and an id above it
 was never an inode here. The bound is a measurement, shown at the gate and
-kept out of the digest, and it has an edge: a random id that happens to fall
-under it reads as stale, and a volume whose counter has passed the binding's
-28 bit range hides every random id, which the gate says.
+kept out of the digest, and it has edges: a random id that happens to fall
+under it reads as stale; a volume whose counter has passed the binding's 28
+bit range hides every random id; a volume that is not APFS promises nothing,
+so the repair renumbers nothing there; and a file a prefix rule places on
+another volume is left, being another volume's number. The gate says each.
 
 ### Account playlist
 A playlist the author made on the streaming account, as distinct from his

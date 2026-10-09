@@ -935,6 +935,32 @@ def assert_rows_gridless(landed: NativeLanded) -> None:
         )
 
 
+def assert_rows_identified(landed: NativeLanded) -> None:
+    """Refuse when a landed row's file id read back is not its file's inode (U115).
+
+    THE RESTAMP SETS IT BEFORE THE COMMIT and the read back reports it after,
+    so reaching here means the binding or a guard dropped the column on the way
+    to the table, and the row carries an id rekordbox will not load. The write
+    is durable, so the refusal names the session whose capture undoes it.
+    """
+    wrong = [
+        f"{row.content_id}: {rb_writer.FILE_ID_COLUMN} = {row.file_id!r}, "
+        f"the file's inode is {file_id_of(row.target)}"
+        for row in landed.added
+        if str(row.file_id) != str(file_id_of(row.target))
+    ]
+    if wrong:
+        raise refuse(
+            "internal-error",
+            "a landed row does not carry its file's inode after the commit, so "
+            "rekordbox will not load it to a deck: " + "; ".join(wrong),
+            remedy=Remedy.REPORT_DEFECT,
+            steps=(f"the write is durable; restore session {landed.session_id} to undo it",),
+            origin=_ORIGIN,
+            detail={"wrong": wrong, "session": landed.session_id},
+        )
+
+
 __all__ = [
     "ADD",
     "BATCH_PLAYLIST_KEY",
@@ -954,6 +980,7 @@ __all__ = [
     "apply_rows",
     "assert_names_still_free",
     "assert_rows_gridless",
+    "assert_rows_identified",
     "choose_device",
     "file_id_of",
     "file_type_of",

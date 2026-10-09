@@ -47,10 +47,13 @@ write over thousands of rows rekordbox made that buys nothing. The bound is a
 measurement, so it is shown at the gate and kept out of the digest: a copy
 rehearsal and the live run each create their own file and read two numbers.
 
-The rule has an edge the gate states: a random id under the bound reads as
-stale, which at this volume's counter is about one in two hundred, and a
-volume whose counter has passed :data:`cratekit.core.rb_writer.BINDING_ID_LIMIT`
-hides every random id, so nothing is renumbered there and the gate says why.
+The rule has edges the gate states: a random id under the bound reads as
+stale, which at this volume's counter is about one in two hundred; a volume
+whose counter has passed :data:`cratekit.core.rb_writer.BINDING_ID_LIMIT`
+hides every random id; and a volume that is not APFS makes no such promise
+about its inode numbers at all. In the last two cases nothing is renumbered
+and the gate says why. A file a prefix rule places on another volume than the
+bound's is left too, since its inode is another volume's number.
 
 Layer: write. It opens no database of its own and names no verb.
 """
@@ -58,6 +61,7 @@ Layer: write. It opens no database of its own and names no verb.
 from __future__ import annotations
 
 import os
+import stat
 import tempfile
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -69,6 +73,7 @@ from cratekit.core import (
     config,
     convergence,
     locations,
+    preflight,
     rb_writer,
     session,
     snapshot,
@@ -94,6 +99,10 @@ FILE_ID = rb_writer.FILE_ID_COLUMN
 #: Why a row with a file id above the bound was not renumbered.
 FILE_MISSING = "the file is not on this machine"
 PATH_UNRESOLVED = "the path does not resolve on this machine"
+ON_ANOTHER_VOLUME = "the file is on another volume than the bound was measured on"
+
+#: The one filesystem whose inode numbers the bound is a statement about.
+APFS = "apfs"
 
 #: How many offending rows a refusal's sentence names. The detail carries all.
 _NAMED_ROWS = 5
@@ -156,6 +165,35 @@ class Unrenumbered:
 
 
 @dataclass(frozen=True, slots=True)
+class InodeBound:
+    """What :func:`inode_bound` measured: a fresh file's inode, and where (U115)."""
+
+    inode: int
+    #: ``st_dev`` of the file, so a candidate on another volume is not compared.
+    device: int
+    #: The filesystem type of the volume, as the mount table names it.
+    filesystem: str | None
+
+    @property
+    def why_undecidable(self) -> str | None:
+        """Why no id can be judged random against this bound, or None when it can."""
+        if self.filesystem != APFS:
+            named = self.filesystem or "unknown"
+            return (
+                f"the library's volume is {named}, not {APFS}, and only {APFS} allocates "
+                f"inode numbers from a counter it never winds back, so a fresh file's "
+                f"inode bounds nothing there"
+            )
+        if self.inode >= rb_writer.BINDING_ID_LIMIT:
+            return (
+                f"the volume's inode counter, {self.inode}, has passed the binding's "
+                f"range of {rb_writer.BINDING_ID_LIMIT}, so a random id cannot be told "
+                f"from one rekordbox wrote by its size"
+            )
+        return None
+
+
+@dataclass(frozen=True, slots=True)
 class DefaultsPlan:
     """Every live row missing a default or carrying a random file id, and what was read."""
 
@@ -163,10 +201,16 @@ class DefaultsPlan:
     rows: int
     #: The volume's inode bound the plan judged file ids against (U115).
     bound: int = 0
+    #: The filesystem of the volume the bound was measured on.
+    filesystem: str | None = None
+    #: Why no file id was judged random, or None when the bound decides.
+    why_undecidable: str | None = None
     #: Rows above the bound whose file could not be read, so they stay as they are.
     unrenumbered: tuple[Unrenumbered, ...] = ()
     #: Live rows whose id is at or under the bound and not zero, left alone.
     within_bound: int = 0
+    #: Live rows above the bound whose file reads the same inode, left alone.
+    matched: int = 0
     #: Live rows whose id is zero or NULL, left alone.
     zero: int = 0
 
@@ -182,8 +226,8 @@ class DefaultsPlan:
 
     @property
     def undecidable(self) -> bool:
-        """The volume's counter has passed the binding's range, so no random id can be told."""
-        return self.bound >= rb_writer.BINDING_ID_LIMIT
+        """No random id could be told against this bound; ``why_undecidable`` says why."""
+        return self.why_undecidable is not None
 
     def by_column(self) -> dict[str, int]:
         """How many rows each column is filled on, every column named, zeros included."""
@@ -238,19 +282,52 @@ class Written:
 # ---------------------------------------------------------------------------
 
 
-def inode_bound(cfg: config.Config) -> int:
+def filesystem_of(path: Path) -> str | None:
+    """The filesystem type of the volume holding ``path``, from the mount table, or None.
+
+    Imported lazily, as :func:`cratekit.core.preflight.local_mount_points` does,
+    so a test that injects its own bound never loads the extension module.
+    """
+    import psutil
+
+    mount = str(preflight.containing_mount(path))
+    for part in psutil.disk_partitions(all=False):
+        if part.mountpoint == mount:
+            return part.fstype.lower() or None
+    return None
+
+
+def inode_bound(cfg: config.Config) -> InodeBound:
     """The inode of a file created this moment in the library's state directory (U115).
 
     ON APFS THIS IS ABOVE EVERY INODE THE VOLUME HAS EVER GIVEN A FILE, because
     the volume allocates them from a counter it never winds back. So an id
     above it was never an inode on this volume, and the binding's random id,
     which is what every native row before U115 carries, is almost always
-    above it. The file is removed again at once.
+    above it. The file is removed again at once. The device and the filesystem
+    are measured with it: a candidate on another device is another volume's
+    number, and a volume that is not APFS promises nothing about its numbers.
+
+    REFUSES WHEN THE LIBRARY ROOT IS ABSENT, in the words ``open_db`` uses,
+    rather than creating it: a root made on the boot volume squats the mount
+    point, and the next mount lands beside it.
     """
+    root = Path(cfg.library.root)
+    if not root.is_dir():
+        raise refuse(
+            "library-directory-missing",
+            f"the library root does not exist: {root}; the library volume is most "
+            f"likely not mounted, so no inode bound can be measured on it",
+            origin=_ORIGIN,
+            detail={"directory": str(root)},
+        )
     directory = config.library_state_dir(cfg)
-    directory.mkdir(parents=True, exist_ok=True)
+    directory.mkdir(exist_ok=True)
     with tempfile.NamedTemporaryFile(dir=directory, prefix=".inode-bound-") as handle:
-        return os.fstat(handle.fileno()).st_ino
+        measured = os.fstat(handle.fileno())
+    return InodeBound(
+        inode=measured.st_ino, device=measured.st_dev, filesystem=filesystem_of(directory)
+    )
 
 
 #: What a file id is, judged against the bound alone. Pure.
@@ -265,38 +342,49 @@ def file_id_state(value: Any, bound: int) -> str:
     ``ZERO`` for NULL, an empty string and 0, which rekordbox tolerates;
     ``ABOVE`` for a number above the bound, which no file on the volume has
     ever carried; ``WITHIN`` for everything else, a value that was an inode on
-    this volume at some time, or a text that is not a number and that this
-    repair makes no claim about.
+    this volume at some time, or a text that is not a plain run of digits and
+    that this repair makes no claim about. ``int`` alone would take a sign, an
+    underscore or a digit from another script, none of which rekordbox or the
+    binding writes.
     """
     if value is None:
         return ZERO
     text = str(value).strip()
     if text in ("", "0"):
         return ZERO
-    try:
-        number = int(text)
-    except ValueError:
+    if not (text.isascii() and text.isdigit()):
         return WITHIN
-    return ABOVE if number > bound else WITHIN
+    return ABOVE if int(text) > bound else WITHIN
 
 
 def _file_inode(
-    recorded: str, *, root: Path | str, prefix_map: Sequence[locations.PrefixRule]
+    recorded: str,
+    *,
+    root: Path | str,
+    prefix_map: Sequence[locations.PrefixRule],
+    device: int,
 ) -> tuple[int | None, str]:
-    """The inode of the file a recorded path names on this machine, or why not."""
+    """The inode of the file a recorded path names on this machine, or why not.
+
+    ONE STAT, and the device is read from it: a file a prefix rule places on
+    another volume carries that volume's inode numbers, which the bound says
+    nothing about, so it is left with its reason rather than compared.
+    """
     try:
         _decoded, resolved = trees.located(recorded, root=root, prefix_map=prefix_map)
     except locations.LocationDecodeError:
         return None, PATH_UNRESOLVED
     if resolved.path is None:
         return None, PATH_UNRESOLVED
-    path = Path(resolved.path)
     try:
-        if not path.is_file():
-            return None, FILE_MISSING
-        return os.stat(path).st_ino, ""
+        found = os.stat(Path(resolved.path))
     except OSError:
         return None, FILE_MISSING
+    if not stat.S_ISREG(found.st_mode):
+        return None, FILE_MISSING
+    if found.st_dev != device:
+        return None, ON_ANOTHER_VOLUME
+    return found.st_ino, ""
 
 
 def plan_rows(
@@ -304,7 +392,7 @@ def plan_rows(
     *,
     root: Path | str,
     prefix_map: Sequence[locations.PrefixRule] = (),
-    bound: int,
+    bound: InodeBound,
 ) -> DefaultsPlan:
     """Every live content row with a default column NULL or a random file id, from SQL.
 
@@ -315,8 +403,10 @@ def plan_rows(
     ONLY A ROW ABOVE THE BOUND HAS ITS FILE READ. A row at or under it is left
     whatever its file says, so the plan stats the handful of candidates and
     not the library. A candidate whose file reads back the same inode is not
-    random after all and is left; one whose file cannot be read is listed
-    apart, unwritten, since there is no inode to give it.
+    random after all and is left; one whose file cannot be read, or sits on
+    another volume, is listed apart, unwritten, since there is no inode to give
+    it. A BOUND THAT DECIDES NOTHING, off APFS or past the binding's range,
+    judges every id as within it, so nothing is renumbered and the plan says why.
     """
     from sqlalchemy import text
 
@@ -329,7 +419,8 @@ def plan_rows(
     )
     items: list[Item] = []
     unrenumbered: list[Unrenumbered] = []
-    rows = within = zero = 0
+    rows = within = matched = zero = 0
+    decides = bound.why_undecidable is None
     for row in result.mappings():
         rows += 1
         content_id = str(row["ID"])
@@ -338,13 +429,15 @@ def plan_rows(
         missing = tuple(column for column in COLUMNS if row[column] is None)
         file_id: int | None = None
         was: str | None = None
-        state = file_id_state(row[FILE_ID], bound)
+        state = file_id_state(row[FILE_ID], bound.inode)
         if state == ZERO:
             zero += 1
-        elif state == WITHIN:
+        elif state == WITHIN or not decides:
             within += 1
         else:
-            inode, why = _file_inode(path, root=root, prefix_map=prefix_map)
+            inode, why = _file_inode(
+                path, root=root, prefix_map=prefix_map, device=bound.device
+            )
             if inode is None:
                 unrenumbered.append(
                     Unrenumbered(
@@ -356,7 +449,7 @@ def plan_rows(
                     )
                 )
             elif str(inode) == str(row[FILE_ID]).strip():
-                within += 1
+                matched += 1
             else:
                 file_id, was = inode, str(row[FILE_ID]).strip()
         if missing or file_id is not None:
@@ -375,9 +468,12 @@ def plan_rows(
     return DefaultsPlan(
         items=tuple(items),
         rows=rows,
-        bound=bound,
+        bound=bound.inode,
+        filesystem=bound.filesystem,
+        why_undecidable=bound.why_undecidable,
         unrenumbered=tuple(unrenumbered),
         within_bound=within,
+        matched=matched,
         zero=zero,
     )
 
@@ -420,7 +516,7 @@ def _mapped(db: Any, content_ids: Sequence[str]) -> dict[str, Any]:
     return found
 
 
-def _named(offenders: Sequence[str]) -> str:
+def named(offenders: Sequence[str]) -> str:
     """The first few offenders as a sentence, and how many more there are."""
     shown = "; ".join(offenders[:_NAMED_ROWS])
     more = len(offenders) - _NAMED_ROWS
@@ -451,7 +547,7 @@ def assert_rows_as_planned(plan: DefaultsPlan, now: Mapping[str, Mapping[str, An
         raise refuse(
             "decision-stale",
             f"{len(moved)} of {len(plan.items)} row(s) to be written are not as the "
-            f"plan read them, so nothing was written: " + _named(moved),
+            f"plan read them, so nothing was written: " + named(moved),
             steps=("run the verb again and approve the plan as it is now",),
             origin=_ORIGIN,
             detail={"moved": moved},
@@ -662,7 +758,7 @@ def assert_read_back(written: Written) -> None:
         raise refuse(
             "whitelist-violation",
             "a repaired row has another column changed after the commit, which "
-            "the guard should have refused before it: " + _named(written.moved),
+            "the guard should have refused before it: " + named(written.moved),
             remedy=Remedy.REPORT_DEFECT,
             steps=undo,
             origin=_ORIGIN,
@@ -671,7 +767,7 @@ def assert_read_back(written: Written) -> None:
     raise refuse(
         "internal-error",
         f"{len(written.wrong)} of {written.written} row(s) written do not read back "
-        f"as planned: " + _named(written.wrong),
+        f"as planned: " + named(written.wrong),
         remedy=Remedy.REPORT_DEFECT,
         steps=undo,
         origin=_ORIGIN,
@@ -681,15 +777,18 @@ def assert_read_back(written: Written) -> None:
 
 __all__ = [
     "ABOVE",
+    "APFS",
     "CHANGE_KEY",
     "COLUMNS",
     "FILE_ID",
     "FILE_MISSING",
+    "ON_ANOTHER_VOLUME",
     "PATH_UNRESOLVED",
     "WITHIN",
     "WORKFLOW",
     "ZERO",
     "DefaultsPlan",
+    "InodeBound",
     "Item",
     "Unrenumbered",
     "Written",
@@ -697,7 +796,9 @@ __all__ = [
     "assert_read_back",
     "assert_rows_as_planned",
     "file_id_state",
+    "filesystem_of",
     "inode_bound",
     "judge",
+    "named",
     "plan_rows",
 ]

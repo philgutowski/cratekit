@@ -16,6 +16,7 @@ exercises the real measurement, and one the undecidable answer.
 
 from __future__ import annotations
 
+import os
 import shutil
 import sqlite3
 from pathlib import Path
@@ -68,10 +69,19 @@ def _field_policies():
     rb_writer.reset_field_policies()
 
 
+def _bound_of(cfg: config.Config, inode: int = BOUND, *, device=None, filesystem=row_defaults.APFS):
+    return row_defaults.InodeBound(
+        inode=inode,
+        device=os.stat(cfg.library.root).st_dev if device is None else device,
+        filesystem=filesystem,
+    )
+
+
 @pytest.fixture(autouse=True)
 def _bound(monkeypatch):
-    """The inode bound, pinned under the binding's range so a random id is seen."""
-    monkeypatch.setattr(row_defaults, "inode_bound", lambda cfg: BOUND)
+    """The inode bound, pinned under the binding's range so a random id is seen,
+    on the library's own device and read as APFS."""
+    monkeypatch.setattr(row_defaults, "inode_bound", lambda cfg: _bound_of(cfg))
 
 
 @pytest.fixture(autouse=True)
@@ -229,11 +239,20 @@ def _inode(cfg: config.Config, content_id: str) -> int:
 
 
 def _planned(
-    cfg: config.Config, path: Path | None = None, *, bound: int = BOUND
+    cfg: config.Config,
+    path: Path | None = None,
+    *,
+    bound: int = BOUND,
+    device=None,
+    filesystem: str | None = row_defaults.APFS,
 ) -> row_defaults.DefaultsPlan:
     db = rb_writer.open_db(path or cfg.library.db_path, unlock=False, cfg=cfg)
     try:
-        return row_defaults.plan_rows(db, root=cfg.library.root, bound=bound)
+        return row_defaults.plan_rows(
+            db,
+            root=cfg.library.root,
+            bound=_bound_of(cfg, bound, device=device, filesystem=filesystem),
+        )
     finally:
         rb_writer.close_db(db)
 
@@ -329,7 +348,7 @@ def test_an_id_above_the_bound_that_is_the_files_inode_is_not_random(machine):
     plan = _planned(machine)
 
     assert plan.items == () and plan.unrenumbered == ()
-    assert plan.within_bound == 3
+    assert plan.within_bound == 2 and plan.matched == 1
 
 
 def test_a_path_that_does_not_resolve_leaves_the_row_and_names_why(machine):
@@ -351,11 +370,41 @@ def test_a_path_that_does_not_resolve_leaves_the_row_and_names_why(machine):
 def test_past_the_bindings_range_nothing_is_judged_random(machine):
     build(machine)
     plan = _planned(machine, bound=rb_writer.BINDING_ID_LIMIT)
-    assert plan.undecidable
+    assert plan.undecidable and str(rb_writer.BINDING_ID_LIMIT) in plan.why_undecidable
     assert plan.renumbers == 0 and plan.unrenumbered == ()
     # The defaults are still planned: the bound governs the file id alone.
     assert [item.content_id for item in plan.items] == ["101", "102"]
     assert all(not item.renumbers for item in plan.items)
+
+
+def test_off_apfs_nothing_is_judged_random_and_the_plan_says_which_filesystem(machine):
+    """exFAT synthesizes inode numbers and HFS+ can wrap them, so a fresh file's
+    inode bounds nothing there and renumbering would rewrite rekordbox's rows."""
+    build(machine)
+    for filesystem in ("exfat", "hfs", None):
+        plan = _planned(machine, filesystem=filesystem)
+        assert plan.undecidable, filesystem
+        assert "not apfs" in plan.why_undecidable and (filesystem or "unknown") in plan.why_undecidable
+        assert plan.filesystem == filesystem
+        assert plan.renumbers == 0 and plan.unrenumbered == ()
+        assert [item.content_id for item in plan.items] == ["101", "102"]
+        # Nothing above the bound had its file read: every id reads as within.
+        assert plan.within_bound == 5 and plan.matched == 0
+
+
+def test_a_file_on_another_volume_than_the_bound_is_left_and_names_why(machine):
+    """A prefix rule can place a row's file on a second volume, whose inode
+    numbers the bound says nothing about."""
+    build(machine)
+    plan = _planned(machine, device=os.stat(machine.library.root).st_dev + 1)
+    assert plan.renumbers == 0
+    assert [(one.content_id, one.why) for one in plan.unrenumbered] == [
+        ("101", row_defaults.ON_ANOTHER_VOLUME),
+        ("102", row_defaults.ON_ANOTHER_VOLUME),
+        ("601", row_defaults.FILE_MISSING),
+    ]
+    # The defaults on those rows are still planned.
+    assert [item.content_id for item in plan.items] == ["101", "102"]
 
 
 def test_a_tombstone_is_never_listed_though_every_default_is_null(machine):
@@ -501,7 +550,9 @@ def test_a_row_whose_file_is_gone_is_named_on_a_run_that_writes_nothing(acknowle
 
 
 def test_past_the_bindings_range_the_gate_says_why_no_id_is_renumbered(acknowledged, monkeypatch):
-    monkeypatch.setattr(row_defaults, "inode_bound", lambda cfg: rb_writer.BINDING_ID_LIMIT + 1)
+    monkeypatch.setattr(
+        row_defaults, "inode_bound", lambda cfg: _bound_of(cfg, rb_writer.BINDING_ID_LIMIT + 1)
+    )
     build(acknowledged)
     before = _content(acknowledged)
 
@@ -538,8 +589,22 @@ def test_the_real_bound_is_a_fresh_files_inode_and_leaves_no_file_behind(machine
 
     bound = REAL_INODE_BOUND(machine)
 
-    assert isinstance(bound, int) and bound > probe.stat().st_ino
+    assert bound.inode > probe.stat().st_ino
+    assert bound.device == probe.stat().st_dev
+    # The filesystem is whatever the mount table says of this machine; it is
+    # read, not assumed, and a machine off APFS reads undecidable rather than wrong.
+    assert bound.filesystem == row_defaults.filesystem_of(state)
     assert sorted(p.name for p in state.iterdir()) == before
+
+
+def test_the_real_bound_refuses_when_the_library_root_is_absent_and_creates_nothing(machine):
+    """A root made on the boot volume would squat the mount point."""
+    root = Path(machine.library.root)
+    shutil.rmtree(root)
+    with pytest.raises(CratekitError) as caught:
+        REAL_INODE_BOUND(machine)
+    assert caught.value.cause.reason == "library-directory-missing"
+    assert not root.exists()
 
 
 def test_the_gate_takes_no_inline_answer(acknowledged):
@@ -763,6 +828,11 @@ def test_the_file_id_is_a_real_column_owned_by_its_policy_and_hidden_from_no_gua
         (BOUND + 1, row_defaults.ABOVE),
         (str(RANDOM_ID), row_defaults.ABOVE),
         (f" {RANDOM_ID} ", row_defaults.ABOVE),
+        # What int() would take and no writer here produces: a sign, an
+        # underscore, a digit from another script. Not a number to this rule.
+        (f"+{RANDOM_ID}", row_defaults.WITHIN),
+        ("300_000_000", row_defaults.WITHIN),
+        ("٣" * 9, row_defaults.WITHIN),
     ],
 )
 def test_a_file_id_is_judged_against_the_bound_alone(value, state):

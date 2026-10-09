@@ -35970,7 +35970,10 @@ tolerates, and is left unrenumbered with no mention. On a volume whose
 counter has passed the binding's range, the boot volume of this machine
 among them at over 1.6 billion, every random id falls under the bound; the
 plan then renumbers nothing and the gate and the envelope say so
-(`rows-file-id-undecidable`).
+(`rows-file-id-undecidable`). The same answer is given on a volume the mount
+table does not name as APFS, since exFAT synthesizes inode numbers and HFS+
+can wrap them, so a fresh file's inode bounds nothing there; the review of
+U115 found both this and the volume check below.
 
 **Measured cost.** On the live library, seventeen rows carry a random id
 (the A8 row `73894078` and the sixteen sampler rows), so the expected miss
@@ -35996,7 +35999,9 @@ workflow is blocked by it beyond what R-928 already records.
 
 **The mechanism.** The inode written is the file's, so a row above the
 bound whose stored path does not decode, does not resolve on this machine,
-or names no file has nothing to be given. `repair rows` lists such a row in
+names no file, or names a file a prefix rule places on another volume than
+the bound was measured on (whose inode numbers the bound says nothing about)
+has nothing to be given. `repair rows` lists such a row in
 `totals.unrenumbered` with the reason, says so in a warning
 (`rows-file-id-unrenumbered`) on every envelope that carries the plan, and
 writes nothing for it. A row whose file is missing would not play from a
@@ -36004,8 +36009,8 @@ deck in any case, so the cost is a row that stays as it was, not a row made
 worse.
 
 **Measured cost.** Driven on the disposable library: a missing file, an
-empty path and a path on another host each listed and left, the rest of the
-plan written. On the live library the count is expected to be zero and the
+empty path, a path on another host and a file on another device each listed
+and left, the rest of the plan written. On the live library the count is expected to be zero and the
 live run's warning says what it is.
 
 **Closes when:** the file returns and the verb is run again, which the
