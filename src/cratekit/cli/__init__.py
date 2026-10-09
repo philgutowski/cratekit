@@ -39,7 +39,7 @@ import argparse
 import dataclasses
 import importlib
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Sequence
 
 from cratekit import __version__
@@ -71,9 +71,10 @@ class Context:
 
     ``progress`` IS THE ONE EXCEPTION, and it is not output. A verb that runs
     for minutes before its envelope exists hands it a line saying which phase
-    it is in and how far along (R-924). The dispatcher writes those lines to
-    standard error in human output and drops them in JSON output, so the
-    envelope is still the only thing on standard output and still the result.
+    it is in and how far along (R-924). The dispatcher sets it to a writer on
+    standard error in human output and leaves it None in JSON output, so the
+    envelope is still the only thing on standard output and still the result,
+    and a verb handed None does none of the work of measuring progress.
     """
 
     entry: Entry
@@ -81,7 +82,7 @@ class Context:
     run: gates.RunState
     gate: gates.Gates
     started: str
-    progress: Callable[[str], None] = field(default=lambda line: None)
+    progress: Callable[[str], None] | None = None
 
     def envelope(
         self,
@@ -346,10 +347,18 @@ def _progress_to(stderr) -> Callable[[str], None]:
     FLUSHED, because standard error is not line buffered everywhere and a
     progress line that sits in a buffer until the verb ends is the silence it
     exists to break.
+
+    A LINE THAT CANNOT BE WRITTEN IS DROPPED. Progress is a hint and never the
+    result, and it is written in the middle of paid work: a reader that closed
+    standard error, ``2>&1 | head`` for one, would otherwise end a pass part
+    way through its calls and lose the job those calls paid for.
     """
 
     def say(line: str) -> None:
-        print(line, file=stderr, flush=True)
+        try:
+            print(line, file=stderr, flush=True)
+        except (OSError, ValueError):
+            pass
 
     return say
 

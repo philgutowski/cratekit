@@ -56,6 +56,7 @@ from urllib.parse import urlsplit
 
 from cratekit.acquire import fallback
 from cratekit.core import binaries, config
+from cratekit.intake import recognize
 
 #: The declared state entry the scratch folders live under.
 SCRATCH_KEY = "mix_scratch"
@@ -91,8 +92,8 @@ FETCH_PROGRESS_SECONDS = 15.0
 #: The watcher thread's name, so a test can see none outlived its fetch.
 WATCHER_NAME = "mix fetch progress"
 
-#: What a progress line is handed. A no op is what JSON output gets.
-Progress = Callable[[str], None]
+#: What a progress line is handed. JSON output hands None.
+Progress = recognize.Progress
 
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
 
@@ -267,13 +268,19 @@ def megabytes(size: int) -> str:
 
 
 def _bytes_in(directory: Path) -> int:
-    """What the download has written so far, partials included. Zero when unreadable.
+    """The size of the largest file in ``directory``. Zero when unreadable.
+
+    THE LARGEST, NOT THE SUM. ``yt-dlp`` keeps more than one file at once: a
+    streamed mix lands as fragments beside the growing partial, and the
+    converted MP3 grows beside the source it is made from until conversion
+    ends. A sum counts those bytes twice and runs backwards when they go. The
+    largest file is the download, then the conversion once it passes it.
 
     A progress line is a hint and never a result, so a file that vanished
     between the listing and the stat, which a downloader renaming its partial
     does, is skipped rather than raised.
     """
-    total = 0
+    largest = 0
     try:
         entries = list(directory.iterdir())
     except OSError:
@@ -281,10 +288,10 @@ def _bytes_in(directory: Path) -> int:
     for one in entries:
         try:
             if one.is_file():
-                total += one.stat().st_size
+                largest = max(largest, one.stat().st_size)
         except OSError:
             continue
-    return total
+    return largest
 
 
 @contextmanager

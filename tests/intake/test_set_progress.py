@@ -72,19 +72,81 @@ def test_human_output_says_the_fetch_then_the_plan_then_the_count(
     assert nothing_left()
 
 
+class WatchedFetcher(FakeFetcher):
+    """Notes whether a progress watcher was running while it fetched."""
+
+    watched: bool | None = None
+
+    def fetch(self, url: str, directory: Path) -> Path:
+        time.sleep(0.05)
+        self.watched = any(one.name == fetch.WATCHER_NAME for one in threading.enumerate())
+        return super().fetch(url, directory)
+
+
 def test_json_output_carries_no_progress_and_stays_one_document(
-    cfg, library, recognised, fetcher
+    cfg, library, recognised, monkeypatch
 ):
     three_tracks(recognised)
+    monkeypatch.setattr(fetch, "FETCH_PROGRESS_SECONDS", 0.01)
+    fake = WatchedFetcher()
+    monkeypatch.setattr(fetch, "fetcher", lambda: fake)
     out, err = io.StringIO(), io.StringIO()
     code = cli.run(["--output", "json", "intake", "set", URL], stdout=out, stderr=err)
     assert code == int(ExitCode.OK), err.getvalue()
     document = json.loads(out.getvalue())
     assert document["data"]["progress"]["calls"] == 3
     assert "fetching" not in out.getvalue() and "identifying" not in out.getvalue()
-    # Human output only: a successful JSON run writes nothing to standard error.
+    # Human output only: a successful JSON run writes nothing to standard error,
+    # and measures nothing it would not say.
     assert err.getvalue() == ""
+    assert fake.watched is False
     assert len(recognised.requests) == 3
+
+
+def test_the_human_fetch_runs_its_watcher(cfg, library, recognised, monkeypatch):
+    """The other side of the JSON row above: the same fetcher sees one."""
+    three_tracks(recognised)
+    fake = WatchedFetcher()
+    monkeypatch.setattr(fetch, "fetcher", lambda: fake)
+    code, _out, err = human(["intake", "set", URL])
+    assert code == int(ExitCode.OK), err
+    assert fake.watched is True
+
+
+class ClosedStream(io.StringIO):
+    """Standard error whose reader has gone, as under ``2>&1 | head``."""
+
+    def write(self, text: str) -> int:
+        raise BrokenPipeError(32, "Broken pipe")
+
+
+def test_a_closed_standard_error_does_not_end_a_paid_pass(cfg, library, recognised):
+    three_tracks(recognised)
+    out = io.StringIO()
+    code = cli.run(["intake", "set", str(recording(library))], stdout=out, stderr=ClosedStream())
+    assert code == int(ExitCode.OK), out.getvalue()
+    assert len(recognised.requests) == 3
+    assert "job" in out.getvalue().lower()
+
+
+def test_a_run_the_month_refuses_is_not_told_it_will_pay(
+    cfg, library, recognised, monkeypatch
+):
+    three_tracks(recognised)
+    monkeypatch.setattr(acrcloud.Budget, "from_config", classmethod(
+        lambda cls, recognition: cls(per_run=acrcloud.MAX_CALLS_PER_RUN, monthly=1)
+    ))
+    code, _out, err = human(["intake", "set", str(recording(library))])
+    assert code != int(ExitCode.OK)
+    assert recognised.requests == []
+    assert not [one for one in err if one.startswith("identifying:")]
+
+
+def test_the_bytes_said_are_the_largest_file_and_not_the_sum(tmp_path):
+    (tmp_path / "source.webm").write_bytes(b"\0" * 500)
+    (tmp_path / "fetched.mp3").write_bytes(b"\0" * 300)
+    assert fetch._bytes_in(tmp_path) == 500
+    assert fetch._bytes_in(tmp_path / "absent") == 0
 
 
 def test_the_planned_count_is_the_chunks_the_carver_is_asked_for(

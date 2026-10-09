@@ -72,7 +72,7 @@ from cratekit.acquire.match import Wanted
 from cratekit.core import binaries, config, secrets
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import Remedy
-from cratekit.intake.recognize import Identified
+from cratekit.intake.recognize import Identified, Progress
 
 # ---------------------------------------------------------------------------
 # The grid, the bound, the endpoint
@@ -109,10 +109,6 @@ MAX_PARTS = 3
 #: call and the last always do. The measured five hour set sent 732 calls in
 #: about nineteen minutes, so twenty calls is a line every half minute or so.
 PROGRESS_EVERY = 20
-
-#: What a progress line is handed. None says nothing, which is what an
-#: injected identifier, a queued job and JSON output all get.
-Progress = Callable[[str], None]
 
 #: How many attempts in a row may get no answer before the run stops. An
 #: answer this build cannot read, an HTTP status that is not 200, a transport
@@ -1014,8 +1010,6 @@ def identify(
     plan, unkept = _plan_for(source, offsets, host=host)
     kept = kept_in.read(plan) if plan is not None and not refresh else {}
     owed = [offset for offset in offsets if offset not in kept]
-    if progress is not None:
-        progress(_plan_line(len(offsets), cached=len(offsets) - len(owed), parts=len(parts)))
     paid: dict[int, Mapping[str, Any]] = {}
     try:
         result = _identified(
@@ -1081,10 +1075,15 @@ def _identified(
     if owed:
         assert_month_within(spend, planned=len(owed), used_this_month=counter.used(month))
         keys = credentials()
+    # AFTER EVERY REFUSAL THAT SPENDS NOTHING, so a run told it is about to pay
+    # is a run that will, and one refused by a bound or a missing key is told
+    # only the refusal.
+    offsets = tuple(offset for part in parts for offset in part)
+    if progress is not None:
+        progress(_plan_line(len(offsets), cached=len(offsets) - len(owed), parts=len(parts)))
 
     found: list[Match] = []
     calls = misses = unreached = streak = 0
-    offsets = tuple(offset for part in parts for offset in part)
     for part in parts:
         for offset in part:
             before = calls
@@ -1315,7 +1314,6 @@ __all__ = [
     "Ledger",
     "Match",
     "Outcome",
-    "Progress",
     "RecognitionCache",
     "Request",
     "Response",
