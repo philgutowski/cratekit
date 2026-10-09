@@ -1,0 +1,185 @@
+name = "r228"
+pass_kind = "light"
+
+[[rows]]
+id = "D1_pink_name_lookup"
+description = "pink_colour_id: hard code ColourID 1 instead of looking up Pink by name"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+tests = ["tests/test_favorites_pink.py"]
+old = '''    for row in db.get_color(Commnt=PINK_COLOUR_NAME):
+        if trees.soft_delete_marker(row):
+            continue
+        return str(row.ID)
+    raise refuse(
+        PINK_COLOUR_MISSING,'''
+new = '''    return "1"
+    raise refuse(
+        PINK_COLOUR_MISSING,'''
+
+[[rows]]
+id = "D2_colour_soft_delete"
+description = "pink_colour_id: keep a soft deleted Pink row as the live ColourID"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+tests = ["tests/test_favorites_pink.py"]
+old = '''        if trees.soft_delete_marker(row):
+            continue
+        return str(row.ID)'''
+new = '''        return str(row.ID)'''
+
+[[rows]]
+id = "D3_content_soft_delete"
+description = "pink_content_ids: keep a soft deleted pink content row in the colour source"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+tests = ["tests/test_favorites_pink.py"]
+old = '''        if trees.soft_delete_marker(row):
+            continue
+        if str(getattr(row, "ColorID", "") or "") == pink:'''
+new = '''        if str(getattr(row, "ColorID", "") or "") == pink:'''
+
+[[rows]]
+id = "D4_union_playlist_first"
+description = "union_with_pink: emit pink only rows before playlist members"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+tests = ["tests/test_favorites_pink.py"]
+old = '''    for track_id in playlist.track_ids:
+        if track_id in seen:
+            continue
+        seen.add(track_id)
+        kept.append(track_id)
+    for track_id in in_export:'''
+new = '''    for track_id in in_export:
+        if track_id in seen:
+            continue
+        seen.add(track_id)
+        kept.append(track_id)
+    for track_id in playlist.track_ids:'''
+
+[[rows]]
+id = "D5_pink_missing_dropped"
+description = "union_with_pink: drop pink rows the export lacks instead of naming them"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+tests = ["tests/test_favorites_pink.py"]
+old = '''        else:
+            missing.append(track_id)'''
+new = '''        else:
+            pass'''
+
+[[rows]]
+id = "D6_empty_after_colour"
+description = "resolve_sweep: read colour before resolving the playlist, so empty All Favorites is rescued by pink"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+tests = ["tests/test_favorites_pink.py"]
+old = '''    library = source.read_library(exported)
+    resolved = source.resolve(library, wanted)
+    if pink_ids is None:
+        loaded = cfg if cfg is not None else shell.load_config("favorites.cli")
+        pink_ids = read_pink_track_ids(loaded)
+    return exported, union_with_pink(library, resolved, pink_ids)'''
+new = '''    library = source.read_library(exported)
+    if pink_ids is None:
+        loaded = cfg if cfg is not None else shell.load_config("favorites.cli")
+        pink_ids = read_pink_track_ids(loaded)
+    try:
+        resolved = source.resolve(library, wanted)
+    except Exception:
+        resolved = source.ResolvedPlaylist(key=wanted, name=wanted, track_ids=())
+    return exported, union_with_pink(library, resolved, pink_ids)'''
+
+[[rows]]
+id = "D7_colour_unread_warned"
+description = "resolve_sweep: swallow a colour read refusal and sweep the playlist alone"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+tests = ["tests/test_favorites_pink.py"]
+old = '''    if pink_ids is None:
+        loaded = cfg if cfg is not None else shell.load_config("favorites.cli")
+        pink_ids = read_pink_track_ids(loaded)
+    return exported, union_with_pink(library, resolved, pink_ids)'''
+new = '''    if pink_ids is None:
+        loaded = cfg if cfg is not None else shell.load_config("favorites.cli")
+        try:
+            pink_ids = read_pink_track_ids(loaded)
+        except Exception:
+            pink_ids = ()
+    return exported, union_with_pink(library, resolved, pink_ids)'''
+
+[[rows]]
+id = "D8_from_colour_zero"
+description = "union_with_pink: always report from_colour as zero"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+tests = ["tests/test_favorites_pink.py"]
+old = '''        from_colour=len(in_export),'''
+new = '''        from_colour=0,'''
+
+[[rows]]
+id = "D9_from_playlist_zero"
+description = "union_with_pink: always report from_playlist as zero"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+tests = ["tests/test_favorites_pink.py"]
+old = '''        from_playlist=len(playlist.track_ids),'''
+new = '''        from_playlist=0,'''
+
+[[rows]]
+id = "D10_pink_warning_gone"
+description = "queue_warnings: drop the pink missing warning"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+tests = ["tests/test_favorites_pink.py"]
+old = '''    if resolved.pink_missing:
+        warnings.append(
+            {
+                "code": "favorites-pink-export-missing",
+                "message": (
+                    f"{len(resolved.pink_missing)} pink row(s) the library "
+                    f"carries are not in the export's collection and are not "
+                    f"queued: {', '.join(resolved.pink_missing)}"
+                ),
+            }
+        )
+'''
+new = ''''''
+
+[[rows]]
+id = "D11_non_pink_outside"
+description = "union_with_pink: queue every export row, not only pink and playlist"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+tests = ["tests/test_favorites_pink.py"]
+old = '''    for track_id in in_export:
+        if track_id in seen:
+            continue
+        seen.add(track_id)
+        kept.append(track_id)
+    return replace(
+'''
+new = '''    for track_id in library.entries:
+        if track_id in seen:
+            continue
+        seen.add(track_id)
+        kept.append(track_id)
+    return replace(
+'''
+
+[[rows]]
+id = "D12_missing_pink_queued"
+description = "union_with_pink: queue pink rows the export lacks"
+file = "src/cratekit/favorites/cli.py"
+surface = "user"
+tests = ["tests/test_favorites_pink.py"]
+old = '''    for track_id in pink_ids:
+        if track_id in library.entries:
+            in_export.append(track_id)
+        else:
+            missing.append(track_id)
+'''
+new = '''    for track_id in pink_ids:
+        in_export.append(track_id)
+'''
