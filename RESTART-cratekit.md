@@ -4,6 +4,49 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**U121 built, 2026-10-09, on `fable/278-set-inspiration-playlist`, issue
+#278, the fable lane's first card: a set intake leaves a permanent playlist
+of the set under INSPIRATION.** The taxonomy declares the folder as
+`[inspiration]`, optional like the catalog tree and refused by name when
+absent, and the shipped template carries it as INSPIRATION. A fetched mix
+keeps its page, uploader, title and upload day from the info document
+`yt-dlp` writes beside the download, frozen on the set job as `page`.
+`intake land --set JOB` writes the set's playlist in the native landing's
+one commit: every report of the job in set order, an owned row resolved to
+its collection row, a downloaded row tied to a staged file by the match rule
+and keyed by its target so the row the landing makes joins the same commit,
+a row offered at review and accepted as a library file read back from the
+item the worker filed, and a row neither owned nor landed listed by position
+and name, never guessed. `crate intake inspiration --job JOB` is the backfill
+for a set already landed, planned on a read handle, the acknowledgment before
+its explicit gate, written on a write handle that takes the plan again, read
+back from SQL. The name is the source system's form, `10_09_26 Public Service
+NYC Live at Vonking 5-26`, the DJ and the set from the page or `--dj`,
+`--set-name`, `--set-date`, the flags winning, a missing word refused by name.
+Both verbs refuse a bridge tree through one helper. Nothing under INBOX
+changes, no content row is written, and the one record counts the set's
+memberships under the folder's own id apart from the intake tree's. The
+review drove ten findings, all fixed in one round: the review answer read
+back at a landing, the plan writing nothing to the review store, a file two
+rows claim left out, a gap filled mid set not refused, a month out of range
+refused, the intake tree recorded only when it changed, a word flag without
+`--set` refused, one bridge refusal, the store passed through, the dashes as
+escapes. Battery on the branch: ruff clean, **12,877 passed and 1 skipped**
+in 146 seconds, scan clean. Twenty five mutation rows over three tables,
+**24 killed and 1 inert** (`docs/mutation/u121-notes.md`). R-931 to R-934
+record the bridge medium refused, a late owned track appended last, the page
+title used whole, and the backfill naming for the day it runs. **Owed, the
+author's:** add `[inspiration]` with id `inspiration` and display
+`INSPIRATION` to the live library's active taxonomy copy, since the copy
+predates the section and both verbs refuse without it; then the rehearsal on
+a database copy and the live backfill of the Vonking set, `crate intake
+inspiration --job <the sitting 35 set job> --dj "Public Service NYC"
+--set-name "Live at Vonking" --set-date 2026-05`, run with the three flags
+because the job predates the page, and run on 2026-10-09 if it is to find
+the hand made playlist by name rather than make a twin (R-934); the sitting
+11 sets the same way, each with its own words. The set job carries no run
+id, so a landing names the set with `--set` and nothing finds it by `--pass`.
+
 **U115 built, 2026-10-09, on `unit/u115`, issue #272: a native row carries
 its file's inode as `rb_file_id`, and the rows numbered at random can be
 repaired.** Sitting 34 named the column: rekordbox writes the file's inode
