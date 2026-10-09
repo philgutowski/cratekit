@@ -35670,3 +35670,35 @@ path outside the digest, and a copy rehearsal matches a live plan.
 
 **Not on the board bar.** The author can always approve; the cost is
 latency, not correctness.
+
+---
+
+## R-923. A row the native landing creates leaves rekordbox's own defaults empty, and rekordbox will not load it to a deck
+
+**Found:** by the author at the attended sitting of 2026-10-09, on the 165
+rows of the first live native landing, after they were analysed and their
+tags reloaded.
+
+**The mechanism.** `native.apply_rows` makes each row with the binding's
+`add_content(path, Title=...)` and sets nothing else beyond the path, device
+and master id. Every column the binding does not default is left NULL. A row
+rekordbox makes for itself never leaves twelve of them NULL: `Rating` 0,
+`ColorID` `'0'`, `DJPlayCount` 0, `DiscNo` 0, `DeliveryControl` `'on'`,
+`SamplerTrackInfo` 0, `SamplerPlayOffset` 0, `SamplerGain` 0.0,
+`VideoAssociate` `'0'`, `LyricStatus` 0, `ServiceID` 0, `ExtInfo` `'null'`,
+and it writes an empty string to nine text columns. Measured on a copy of
+the live database: of 10,272 live rows, the 165 landed ones are the only rows
+with any of the twelve NULL; the other 251 such rows are soft deleted
+placeholders. A8 (sitting 17) proved such a row is accepted, analysed and
+stable, and never tried a deck.
+
+**Measured cost.** Measured live: none of the 165 loads to a deck, dragged or
+otherwise, with no dialog; a track imported through the bridge the same day
+loads at once. Every native landing produces unplayable rows until repaired.
+
+**Closes when:** the native writer sets rekordbox's defaults on every row it
+creates, a repair fills them on rows already landed, fill if empty and
+through the guarded writer, and the 165 rows load to a deck in rekordbox.
+
+**On the board bar.** The author chose a code fix over a re-import on
+2026-10-09; the issue carries the brief.
