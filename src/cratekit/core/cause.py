@@ -1765,6 +1765,10 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # ``export-playlist-ambiguous``, since the remedy is on the account and
         # not in the library. Nothing was written.
         "label-playlists-ambiguous": ExitCode.PRECONDITION,
+        # A label's dated new releases playlist was to be made and the label's
+        # folder is not on the account, since the folder step before it did
+        # not build it (U117). Nothing was written; the folder comes first.
+        "label-new-playlists-no-folder": ExitCode.PRECONDITION,
         # ── R-837's one, appended for the same reason ──────────────────────────
         #
         # A set playlist's archive was planned and the account holds two root

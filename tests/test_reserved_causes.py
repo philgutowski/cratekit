@@ -5166,7 +5166,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # intake root holds two of it. It is in cause.REASONS and not in the
     # reserved table. Population 196 to 197, non-reserved 168 to 169,
     # reserved half UNCHANGED at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (197, 169, 28)
+    # Re-pinned on U117, new label releases kept apart, 2026-10-09. ONE slug,
+    # named rather than counted: label-new-playlists-no-folder, which the
+    # dated playlist's apply refuses with when the label's folder is not on
+    # the account. It is in cause.REASONS and not in the reserved table.
+    # Population 197 to 198, non-reserved 169 to 170, reserved half UNCHANGED
+    # at 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (198, 170, 28)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -6133,7 +6139,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # absent from `main`'s own `src` by git grep. row-file-id is the OWNER of
     # the field policy the repair registers when it renumbers. And
     # rows-file-id-undecidable and rows-file-id-unrenumbered are WARNING codes.
-    assert (len(literals), len(literals - set(causes))) == (647, 451), (
+    # Re-pinned on U117, new label releases kept apart, 2026-10-09: 647 to
+    # 650 distinct, non-keys 451 to 453. THREE joined and nothing left.
+    # label-new-playlists-no-folder is the cause key pinned above.
+    # label-new-playlists is the KIND the dated plan's digest is taken over,
+    # and label-new-playlists-tracks-refused is a WARNING code.
+    assert (len(literals), len(literals - set(causes))) == (650, 453), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6909,7 +6920,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # refuses with decision-stale, internal-error and whitelist-violation, and
     # write/row_defaults_cli.py, which refuses with config-unusable and
     # internal-error. Neither holds an in-range integer.
-    assert (len(literal_holders), len(literal_both)) == (136, 29), (
+    # Re-pinned on U117, new label releases kept apart, 2026-10-09: holders
+    # move 136 to 137, and the also-holds-an-integer half is UNCHANGED at 29.
+    # ONE module joined and none left, a new file: label/dated.py, which
+    # refuses with label-new-playlists-no-folder and internal-error. It holds
+    # no in-range integer.
+    assert (len(literal_holders), len(literal_both)) == (137, 29), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

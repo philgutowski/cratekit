@@ -2831,6 +2831,10 @@ class ProviderConfig:
 #: intake ages give: ``slots=True`` hides a field default from the validator.
 DEFAULT_LABEL_OFFER = 10
 
+#: How many days a dated new releases playlist beside a label's year may sit
+#: before ``crate organize`` reports it (U117). Reported only, never merged.
+DEFAULT_NEW_PLAYLIST_AGE_DAYS = 30
+
 
 @dataclass(frozen=True, slots=True)
 class LabelsConfig:
@@ -2850,6 +2854,9 @@ class LabelsConfig:
     """
 
     offer_per_sweep: int = DEFAULT_LABEL_OFFER
+    #: The age in days past which ``crate organize`` reports a dated
+    #: ``<label> <year> new <date>`` playlist on the account (U117).
+    new_playlist_age_days: int = DEFAULT_NEW_PLAYLIST_AGE_DAYS
 
 
 @dataclass(frozen=True, slots=True)
@@ -3230,6 +3237,13 @@ def _validate_labels(data: Mapping) -> list[str]:
             f"{key} must be a positive whole number of releases one sweep of a "
             f"label may offer for review, found {offer!r}. A label's own "
             f"registry entry can raise it for that label alone."
+        ]
+    key = "labels.new_playlist_age_days"
+    age = _dig(data, key)
+    if age is not None and (not isinstance(age, int) or isinstance(age, bool) or age < 1):
+        return [
+            f"{key} must be a positive whole number of days a dated new releases "
+            f"playlist may sit before organize reports it, found {age!r}."
         ]
     return []
 

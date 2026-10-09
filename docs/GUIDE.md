@@ -638,6 +638,16 @@ removes, never a track. `--report` prints both plans and asks nothing. The
 rekordbox area needs a backup acknowledged under a day old, and like every
 database write it is worth rehearsing on a copy first.
 
+New label releases are kept apart from the ones you have already heard. For
+each followed label, the account area also plans a dated playlist beside the
+year, `<Label> <year> new <YYYY-MM-DD>`, inside the label's folder, holding the
+tracks of the releases a `label sync --go` took that day and that the label's
+record does not list as heard. The date is the local day the go ran, so a
+second go the same day adds to the same playlist and a go on another day makes
+its own. The year playlist is left exactly as it was. A dated playlist older
+than `labels.new_playlist_age_days`, thirty by default, is listed in the plan
+and nothing is moved; merging one into its year is not done yet.
+
 Removing files is deliberately slow. `crate delete review` offers the files behind
 rows you removed in rekordbox, and confirmed ones go to the system Trash and
 nowhere else. `crate tombstone list` shows what was removed and lets you lift one
