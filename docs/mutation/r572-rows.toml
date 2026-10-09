@@ -1,0 +1,98 @@
+name = "r572"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_album_rule_gone"
+description = "Drop the album rule: every none hearted tie stays unmatched"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''        if len(named_album) == 1:
+            return named_album[0], ""'''
+new = ""
+
+[[rows]]
+id = "A2_first_named"
+description = "Take the first release the album names even when several do"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''        if len(named_album) == 1:'''
+new = '''        if len(named_album) >= 1:'''
+
+[[rows]]
+id = "A3_album_over_two_hearts"
+description = "Let the album decide when two releases are hearted"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''        if hearted:
+            return None, f"{said}, so none was chosen"'''
+new = ""
+
+[[rows]]
+id = "A4_no_fold"
+description = "Compare the album raw rather than folded"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''        wanted = match.fold(album)'''
+new = '''        wanted = album'''
+
+[[rows]]
+id = "A5_album_among_all"
+description = "Choose by album among every candidate, not only the agreeing ones"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''            remote for remote in agreeing if match.fold(_album_name(tracks[remote])) == wanted'''
+new = '''            remote for remote in tracks if match.fold(_album_name(tracks[remote])) == wanted'''
+
+[[rows]]
+id = "S1_album_not_read"
+description = "file_identity drops the album it read"
+file = "src/cratekit/modules/outbound/source.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '''        album=str(read["album"] or "").strip(),'''
+new = '''        album="",'''
+
+[[rows]]
+id = "S2_album_not_stripped"
+description = "file_identity keeps surrounding spaces on the album"
+file = "src/cratekit/modules/outbound/source.py"
+tests = ["tests/test_outbound_workers.py"]
+old = '''        album=str(read["album"] or "").strip(),'''
+new = '''        album=str(read["album"] or ""),'''
+
+[[rows]]
+id = "H1_hearts_drop_album"
+description = "The hearts engine stops passing the album to match_track"
+file = "src/cratekit/modules/outbound/hearts.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''            album=item.album,'''
+new = ""
+
+[[rows]]
+id = "E1_export_drop_album"
+description = "The export engine stops passing the album to match_track"
+file = "src/cratekit/modules/outbound/export.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''            album=track.album,'''
+new = ""
+
+[[rows]]
+id = "L1_local_track_drop_album"
+description = "local_tracks stops carrying the file's album"
+file = "src/cratekit/modules/outbound/source.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '''            isrc=found.isrc,
+            album=found.album,
+            release_title=release_title(entry, template=template),
+        )'''
+new = '''            isrc=found.isrc,
+            release_title=release_title(entry, template=template),
+        )'''
