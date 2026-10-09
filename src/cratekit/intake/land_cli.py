@@ -817,7 +817,8 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
     )
     kept = landed.collection.set_playlist
     if kept is not None:
-        items.append(set_playlist_item(kept, session_id=landed.collection.session_id))
+        if kept.playlist_id:
+            items.append(set_playlist_item(kept, session_id=landed.collection.session_id))
         totals = {
             **totals,
             "set playlist tracks": kept.members,
@@ -834,6 +835,7 @@ def set_playlist_item(kept: set_playlist.Written, *, session_id: str) -> dict[st
         "id": kept.playlist_id,
         "folder": kept.folder_id,
         "folder_created": kept.folder_created,
+        "playlist_created": kept.playlist_created,
         "count": kept.members,
         "added": kept.added,
         "left": [one.identity() for one in kept.left],
@@ -960,13 +962,15 @@ def _land_native(
     warnings = [{"code": entry.reason, "message": entry.sentence} for entry in landed.refused]
     warnings.extend(awaiting_analysis(landed.collection))
     kept = landed.collection.set_playlist
-    if kept is not None:
+    if kept is not None and kept.playlist_id:
         set_playlist.assert_read_back(kept)
         warnings.extend(set_playlist.written_note(kept))
         warnings.extend(set_playlist.left_warning(kept.left))
-    elif set_planned:
-        warnings.extend(set_playlist.nothing_note(set_planned[0]))
-        warnings.extend(set_playlist.left_warning(set_planned[0].left))
+    elif kept is not None and set_planned:
+        # NOTHING WRITTEN, and the left rows are the write's own answer: the
+        # members whose files did not land as well as the plan's left rows.
+        warnings.extend(set_playlist.nothing_note(set_planned[0], left=len(kept.left)))
+        warnings.extend(set_playlist.left_warning(kept.left))
     return ctx.envelope(data=_native_reported(payload, landed), warnings=warnings)
 
 

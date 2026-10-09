@@ -420,6 +420,10 @@ class SetPlaylistPlan:
     left: tuple[Left, ...]
     #: The day the name was made on, so a write after midnight keeps it.
     made_on: date | None = None
+    #: The playlist an earlier write for this job made, read off its session
+    #: record and live under the folder, which this write adds to; empty when
+    #: the write finds or makes the playlist by name.
+    playlist_id: str = ""
     digest: str = ""
 
 
@@ -428,10 +432,13 @@ class Written:
     """What a commit wrote for the set, read back from SQL after it."""
 
     name: str
+    #: Empty when nothing was written: no member had a row to add.
     playlist_id: str
     folder_id: str
     folder_created: bool
-    #: The rows the playlist was asked to hold.
+    #: Whether this commit made the playlist row, or found one.
+    playlist_created: bool
+    #: The distinct rows the playlist was asked to hold.
     members: int
     #: The memberships this commit added; fewer when the playlist held some.
     added: int
@@ -451,6 +458,7 @@ def identity(plan: SetPlaylistPlan) -> dict[str, Any]:
         "name": plan.name,
         "tree": plan.tree_id,
         "folder": plan.folder_id,
+        "playlist": plan.playlist_id,
         "folder_display": plan.folder_display,
         "words": plan.words.identity(),
         "made_on": plan.made_on.isoformat() if plan.made_on else "",
@@ -571,6 +579,46 @@ class _LibraryView:
         return tuple(found.paths) if found.state is match.MatchState.MATCHED else ()
 
 
+def recorded_playlist(
+    cfg: config.Config, db: Any, job_id: str, folder_id: str
+) -> tuple[str, str] | None:
+    """The playlist an earlier write made for this job, its id and name, when it is live under the folder.
+
+    THE SESSION RECORD IS THE JOB'S MEMORY OF ITS PLAYLIST. The job's payload is
+    frozen at queue time (KTD9) and is not written to, so what a landing wrote
+    is read where the landing recorded it: a closed record whose set playlist
+    detail names this job and whose source committed, the newest first. A set
+    landed in two parts on two days then has one playlist, named for the first
+    day, and a backfill adds to it rather than making a twin (R-934). A
+    recorded playlist that is gone, removed, or no longer under the declared
+    folder is not an answer, and the write finds or makes one by name.
+    """
+    records, _unreadable = session.scan_log(cfg)
+    found = [
+        record
+        for record in records
+        if record.state is session.SessionState.CLOSED
+        and str(session.SourceState.COMMITTED) in record.sources.values()
+        and isinstance(record.detail.get(RECORD_KEY), Mapping)
+        and record.detail[RECORD_KEY].get("job") == job_id
+    ]
+    for record in sorted(found, key=lambda one: one.session_id, reverse=True):
+        kept = record.detail[RECORD_KEY]
+        playlist_id = str(kept.get("id") or "")
+        if not playlist_id:
+            continue
+        row = db.get_playlist(ID=playlist_id)
+        if (
+            row is None
+            or rb_writer.is_folder(row)
+            or rb_writer.node_removed(row)
+            or str(getattr(row, "ParentID", "") or "") != folder_id
+        ):
+            continue
+        return playlist_id, str(getattr(row, "Name", "") or kept.get("name") or "")
+    return None
+
+
 def _never_suppressed(_recording: str, _address: object) -> bool:
     return False
 
@@ -667,6 +715,7 @@ def plan_for_landing(
     """
     made = on or today()
     folder_id, node = folder_for(db, declared)
+    recorded = recorded_playlist(cfg, db, job.job_id, folder_id)
     staged = [source for source, _target in files]
     targets = {source.resolve(): str(target) for source, target in files}
     index = match.index_paths(staged, template=match_cli.library_template(cfg))
@@ -692,7 +741,7 @@ def plan_for_landing(
     return _digested(
         SetPlaylistPlan(
             job_id=job.job_id,
-            name=playlist_name(words, on=made),
+            name=recorded[1] if recorded else playlist_name(words, on=made),
             tree_id=node.id,
             folder_display=node.display,
             folder_id=folder_id,
@@ -700,6 +749,7 @@ def plan_for_landing(
             members=members,
             left=left,
             made_on=made,
+            playlist_id=recorded[0] if recorded else "",
         )
     )
 
@@ -725,6 +775,7 @@ def plan_for_backfill(
     """
     made = on or today()
     folder_id, node = folder_for(db, declared)
+    recorded = recorded_playlist(cfg, db, job.job_id, folder_id)
     library = _LibraryView(cfg)
 
     members, left = _members(
@@ -736,7 +787,7 @@ def plan_for_backfill(
     return _digested(
         SetPlaylistPlan(
             job_id=job.job_id,
-            name=playlist_name(words, on=made),
+            name=recorded[1] if recorded else playlist_name(words, on=made),
             tree_id=node.id,
             folder_display=node.display,
             folder_id=folder_id,
@@ -744,6 +795,7 @@ def plan_for_backfill(
             members=members,
             left=left,
             made_on=made,
+            playlist_id=recorded[0] if recorded else "",
         )
     )
 
@@ -777,6 +829,11 @@ def facts(plan: SetPlaylistPlan) -> dict[str, Any]:
     return {
         "set playlist": plan.name,
         "under": where,
+        "playlist": (
+            f"adds to the playlist an earlier write made (row {plan.playlist_id})"
+            if plan.playlist_id
+            else "found live by its name under the folder, or made"
+        ),
         "set job": plan.job_id,
         "set tracks": len(plan.members),
         "set left out": len(plan.left),
@@ -806,15 +863,20 @@ WRITTEN = "set-playlist-written"
 NOTHING = "set-playlist-nothing-to-write"
 
 
-def nothing_note(plan: SetPlaylistPlan) -> list[dict[str, str]]:
-    """The one note a write carries when the set has no member to hold."""
+def nothing_note(plan: SetPlaylistPlan, *, left: int | None = None) -> list[dict[str, str]]:
+    """The one note a write carries when the set has no member to hold.
+
+    ``left`` is the write's own count when the write ran and found no row to
+    add, which is more than the plan's when every landed member's file was
+    refused at the move; the plan's count otherwise.
+    """
+    count = len(plan.left) if left is None else left
     return [
         {
             "code": NOTHING,
             "message": (
                 f"no track of the set was owned or landed, so the playlist "
-                f"{plan.name!r} was not written; {len(plan.left)} track(s) are listed "
-                f"as left out"
+                f"{plan.name!r} was not written; {count} track(s) are listed as left out"
             ),
         }
     ]
@@ -823,13 +885,14 @@ def nothing_note(plan: SetPlaylistPlan) -> list[dict[str, str]]:
 def written_note(written: Written) -> list[dict[str, str]]:
     """The one note a write carries naming the playlist it made and what it holds."""
     made = ", created at the playlist root" if written.folder_created else ""
+    which = "made by this write" if written.playlist_created else "found and added to"
     return [
         {
             "code": WRITTEN,
             "message": (
-                f"the set's playlist {written.name!r} holds {written.members} track(s) "
-                f"under the folder (row {written.folder_id}{made}), {written.added} "
-                f"added by this write and read back from the database in set order"
+                f"the set's playlist {written.name!r} ({which}) holds {written.members} "
+                f"track(s) under the folder (row {written.folder_id}{made}), "
+                f"{written.added} added by this write and read back from the database"
             ),
         }
     ]
@@ -856,21 +919,51 @@ def _folder_row(db: Any, plan: SetPlaylistPlan) -> tuple[Any, bool]:
     return db.create_playlist_folder(plan.folder_display), True
 
 
+def _playlist_row(db: Any, plan: SetPlaylistPlan, folder: Any) -> tuple[Any, bool]:
+    """The playlist the members go in: the recorded one, else found live by name, else made.
+
+    A REMOVED PLAYLIST IS NOT FOUND. rekordbox soft deletes a playlist a
+    person removes, and ``ensure_playlist`` matches name and parent alone, so
+    a playlist deleted in rekordbox and written into the same day would hold
+    memberships nobody can see. The live row of the name is taken, and a new
+    one made when none is live. The recorded playlist, when the plan names
+    one, was checked live at the plan and is checked again here.
+    """
+    if plan.playlist_id:
+        row = db.get_playlist(ID=plan.playlist_id)
+        if row is None or rb_writer.is_folder(row) or rb_writer.node_removed(row):
+            raise refuse(
+                "decision-stale",
+                f"the set's playlist {plan.name!r} (row {plan.playlist_id}) the plan "
+                f"adds to is not live any more, so nothing was written",
+                origin=_ORIGIN,
+                detail={"playlist": plan.playlist_id, "name": plan.name},
+            )
+        return row, False
+    parent_id = str(folder.ID)
+    for row in list(db.get_playlist(Name=plan.name)):
+        if rb_writer.is_folder(row) or rb_writer.node_removed(row):
+            continue
+        if str(getattr(row, "ParentID", "") or "") == parent_id:
+            return row, False
+    return db.create_playlist(plan.name, parent=folder), True
+
+
 def write_members(
     db: Any, plan: SetPlaylistPlan, *, by_target: Mapping[str, str] | None = None
-) -> Written | None:
+) -> Written:
     """Make the playlist under its folder and add every member, pending on ``db``.
 
     INSIDE A CALLER'S SESSION, which commits or rolls back. ``by_target`` maps a
     landing's targets to the rows it just made; a member whose target made no
-    row is left, listed, and the rest are added. The playlist is found by its
-    name under the folder when it is there already, so a backfill run twice on
-    one day adds nothing the second time, and ``add_memberships`` adds only
-    what is absent.
+    row is left, listed, and the rest are added. The playlist is the one the
+    plan names, else the live one of its name under the folder, else made, so
+    a backfill run twice adds nothing the second time, and ``add_memberships``
+    adds only what is absent. A row two reports resolved to is one member.
 
-    NOTHING IS WRITTEN FOR A SET OF NO MEMBERS, and the answer is None: a
-    playlist holding nothing under a folder kept for good is not the set, and
-    the caller says so with the left rows listed.
+    NOTHING IS WRITTEN FOR A SET OF NO MEMBERS, and the answer says so with an
+    empty playlist id and every left row listed: a playlist holding nothing
+    under a folder kept for good is not the set.
     """
     rows = dict(by_target or {})
     ids: list[str] = []
@@ -881,20 +974,31 @@ def write_members(
             ids.append(held)
         else:
             left.append(Left(one.position, one.artist, one.title, one.state, NOT_LANDED))
-    if not ids:
-        return None
-    folder, created = _folder_row(db, plan)
-    playlist = rb_writer.ensure_playlist(db, plan.name, folder)
-    added = rb_writer.add_memberships(db, playlist, ids)
+    distinct = tuple(dict.fromkeys(ids))
+    if not distinct:
+        return Written(
+            name=plan.name,
+            playlist_id="",
+            folder_id=plan.folder_id,
+            folder_created=False,
+            playlist_created=False,
+            members=0,
+            added=0,
+            left=(*left, *plan.left),
+        )
+    folder, folder_created = _folder_row(db, plan)
+    playlist, playlist_created = _playlist_row(db, plan, folder)
+    added = rb_writer.add_memberships(db, playlist, distinct)
     return Written(
         name=plan.name,
         playlist_id=str(playlist.ID),
         folder_id=str(folder.ID),
-        folder_created=created,
-        members=len(ids),
+        folder_created=folder_created,
+        playlist_created=playlist_created,
+        members=len(distinct),
         added=len(added),
         left=(*left, *plan.left),
-        ids=tuple(ids),
+        ids=distinct,
     )
 
 
@@ -1016,7 +1120,7 @@ def apply_alone(
         snapshot.assert_verified(capture)
         try:
             written = write_members(db, plan)
-            assert written is not None, "a plan with members writes"
+            assert written.playlist_id, "a plan with members writes"
             rb_writer.commit_guarded(db)
         except BaseException:
             trees._rollback_quietly(db)
@@ -1038,7 +1142,16 @@ def _record_set_commit(
     so the intake tree's entry counts the batch's memberships and this one
     counts the set's, and a restore weighing the session sees both by name.
     Named the way the write session guard reads a commit helper.
+
+    ONLY WHEN SOMETHING WAS ADDED OR MADE, the landing's own rule for its tree:
+    a same day rerun that found the playlist and added nothing changed no
+    row, and a record saying the folder committed would tell a restore
+    otherwise.
     """
+    if not written.playlist_id:
+        return
+    if not (written.added or written.playlist_created or written.folder_created):
+        return
     record_on(record, written, plan)
     changes = (session.TreeChange(tree=plan.tree_id, created=written.added),)
     session.record_commit(record, plan.tree_id, session.ChangeSummary(changes), cfg)
@@ -1088,6 +1201,7 @@ __all__ = [
     "playlist_name",
     "read_back",
     "record_commit",
+    "recorded_playlist",
     "record_on",
     "reports_of",
     "set_job_or_refuse",

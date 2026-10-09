@@ -824,7 +824,7 @@ def apply_rows(
             set_written=set_written,
         )
         convergence.record_fingerprint(cfg, db)
-        if set_written is not None:
+        if set_written is not None and set_written.playlist_id:
             set_written = replace(
                 set_written, read_back=set_playlist.read_back(db, set_written.playlist_id)
             )
@@ -898,7 +898,7 @@ def _record_landing_commit(
     kept apart because a restore that discards them discards tracks, not
     memberships, and a person weighing that should see the difference.
     """
-    if rows <= 0 and memberships <= 0 and set_written is None:
+    if rows <= 0 and memberships <= 0 and not (set_written and set_written.playlist_id):
         return
     # THE BATCH PLAYLIST IS NAMED ON THE RECORD (U111), by identifier as well
     # as by name, so ``inbox rotate`` ages a batch from the day it landed

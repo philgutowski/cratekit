@@ -1,0 +1,73 @@
+# U121 author's mutation table, fourth pass: the guards the watcher's review
+# round added. Six rows, each over tests/test_set_inspiration_playlist.py.
+name = "u121-d"
+pass_kind = "light"
+
+[[rows]]
+id = "D1_record_ignored"
+description = "plan_for_landing: the playlist an earlier landing recorded for the job is never read, so a second day makes a twin"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''    recorded = recorded_playlist(cfg, db, job.job_id, folder_id)
+    staged = [source for source, _target in files]'''
+new = '''    recorded = None
+    staged = [source for source, _target in files]'''
+
+[[rows]]
+id = "D2_removed_namesake"
+description = "_playlist_row: a removed playlist of the name under the folder is written into"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''        if rb_writer.is_folder(row) or rb_writer.node_removed(row):
+            continue
+        if str(getattr(row, "ParentID", "") or "") == parent_id:'''
+new = '''        if rb_writer.is_folder(row):
+            continue
+        if str(getattr(row, "ParentID", "") or "") == parent_id:'''
+
+[[rows]]
+id = "D3_repeated_row_counted_twice"
+description = "write_members: two reports resolving to one row count as two members"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''    distinct = tuple(dict.fromkeys(ids))'''
+new = '''    distinct = tuple(ids)'''
+
+[[rows]]
+id = "D4_record_on_nothing"
+description = "_record_set_commit: a rerun that added nothing still records the folder committed"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''    if not (written.added or written.playlist_created or written.folder_created):
+        return
+'''
+new = ''''''
+
+[[rows]]
+id = "D5_left_dropped_when_nothing_written"
+description = "write_members: the members whose files did not land are dropped from the left list when nothing is written"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''            members=0,
+            added=0,
+            left=(*left, *plan.left),
+        )'''
+new = '''            members=0,
+            added=0,
+            left=tuple(plan.left),
+        )'''
+
+[[rows]]
+id = "D6_recorded_but_removed"
+description = "recorded_playlist: a recorded playlist rekordbox removed is still the one added to"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''            or rb_writer.node_removed(row)
+            or str(getattr(row, "ParentID", "") or "") != folder_id'''
+new = '''            or str(getattr(row, "ParentID", "") or "") != folder_id'''
