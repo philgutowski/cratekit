@@ -98,6 +98,7 @@ import hashlib
 import math
 import os
 import re
+import sys
 import tempfile
 import tomllib
 from collections.abc import Callable, Mapping, Sequence
@@ -3966,8 +3967,55 @@ def _write_lock(path: Path) -> _exclusive_lock:
     the same process blocks on the first for ever, and a load of an unmigrated
     file takes this lock to write back. Code under the lock reads through
     ``_document_on_disk``, which migrates in memory and writes nothing.
+
+    It is also where a write under pytest is checked against the test root
+    (R-926), before the lock file exists, because every writer comes here first.
     """
+    _refuse_write_outside_test_root(path)
     return _exclusive_lock(path.with_name(path.name + ".migrate.lock"))
+
+
+#: Where a configuration write may land while this process runs under pytest.
+#: The suite's isolation fixture sets it to pytest's base temporary directory
+#: for the life of each test. None under pytest means that fixture never ran
+#: for this test, and then every write is refused.
+_TEST_WRITE_ROOT: Path | None = None
+
+
+class WriteOutsideTestRoot(RuntimeError):
+    """A configuration write under pytest aimed outside the test's temporary root."""
+
+
+def _refuse_write_outside_test_root(path: Path) -> None:
+    """Under pytest, refuse a configuration write that would land outside the test root.
+
+    R-926. On 2026-10-08 a probe test run from a folder outside ``tests/`` wrote
+    a pytest library into the real ``config.toml``, because ``tests/conftest.py``
+    loads only for files under ``tests/`` and the isolation it gives is the
+    environment it sets. This check reads no environment variable on purpose. It
+    asks whether pytest is loaded in this process and whether the resolved
+    target sits under the root the isolation fixture registered, so a probe
+    that skips the conftest, a test that undoes its patches, or a mutant of the
+    path resolution all fail loudly here instead of writing the user's file.
+
+    Resolved on both sides, unlike ``_is_inside`` alone, because the temporary
+    folder is reached through a symlink on macOS and a link inside the root can
+    point anywhere. A process without pytest loaded is never checked.
+    """
+    if "pytest" not in sys.modules:
+        return
+    root = _TEST_WRITE_ROOT
+    if root is None:
+        raise WriteOutsideTestRoot(
+            f"refused to write the configuration at {path}: this process is "
+            f"running under pytest and no test root is registered, so the "
+            f"isolation in tests/conftest.py did not run for this test"
+        )
+    if not _is_inside(path.resolve(), root.resolve()):
+        raise WriteOutsideTestRoot(
+            f"refused to write the configuration at {path}: this process is "
+            f"running under pytest and the path is outside the test root {root}"
+        )
 
 
 def _back_up_version(path: Path, found: int) -> None:
@@ -4044,8 +4092,10 @@ def save(config: Config, path: Path | None = None) -> Path:
     problems = validate(config.to_toml_dict())
     if problems:
         raise ConfigInvalid(problems, path=target)
-    _mkdir_private(target.parent)
+    # Created under the lock rather than before it, so a write the test root
+    # refuses (see ``_write_lock``) leaves no directory behind either.
     with _write_lock(target):
+        _mkdir_private(target.parent)
         atomic_write_bytes(config.to_toml_bytes(), target)
     reset_cache()
     return target
