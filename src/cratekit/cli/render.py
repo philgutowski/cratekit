@@ -422,22 +422,26 @@ def render_job_state(envelope: Envelope, *, drive: Sequence[str] | None = None) 
     lines += _judging_lines(progress)
     if state != "queued":
         lines += _outbound_lines(progress)
-    if envelope.verb == "job.show":
-        lines += _track_lines(progress)
+    lines += _track_lines(progress)
     return lines
+
+
+#: The field ``job show`` lists an intake job's frozen tracks under. Spelled
+#: here, for the reason :data:`_RESOLVING_VERBS` gives; a test pins it to
+#: ``cli.jobs.TRACKS_FIELD``.
+_INTAKE_TRACKS = "intake_tracks"
 
 
 def _track_lines(progress: Mapping[str, Any]) -> list[str]:
     """Every track an intake job froze, in its order, or nothing at all (R-925).
 
-    GATED ON THE VERB AS WELL AS THE FIELD, because ``tracks`` is a word a
-    dozen payloads use for a count, and only ``job show`` puts a list of frozen
-    rows under it. Every row is printed, however many, because the list is
-    what a person reads before acquiring anything from a set; the ISRC is said
-    or said to be absent, since one song under several ISRCs is the thing this
-    list is read for.
+    Gated on the payload carrying the list, never on the verb's name, the rule
+    the outbound case follows. Every row is printed, however many, because the
+    list is what a person reads before acquiring anything from a set; the ISRC
+    is said or said to be absent, since one song under several ISRCs is the
+    thing this list is read for.
     """
-    rows = progress.get("tracks")
+    rows = progress.get(_INTAKE_TRACKS)
     if not isinstance(rows, Sequence) or isinstance(rows, str):
         return []
     lines = [f"  tracks: {len(rows)}"]

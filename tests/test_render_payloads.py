@@ -38,17 +38,24 @@ FROZEN_ROWS = [
 ]
 
 
-def test_job_show_lists_the_frozen_tracks_and_another_verb_with_the_same_field_does_not():
-    """R-925. ``tracks`` is a count in a dozen payloads, so the case is gated on the verb."""
-    shown = render.render_job_state(job_state(verb="job.show", progress={"tracks": FROZEN_ROWS}))
+def test_job_show_lists_the_frozen_tracks_and_a_payload_without_them_prints_none():
+    """R-925. Read by field, and the field is not ``tracks``, which counts elsewhere."""
+    shown = render.render_job_state(job_state(verb="job.show", progress={"intake_tracks": FROZEN_ROWS}))
     assert shown[-3:] == ["  tracks: 2", "    1. Aurora Bloom - Sun Path, isrc X1", "    2. item rc_2, no isrc"]
-    other = render.render_job_state(job_state(verb="intake.set", progress={"tracks": FROZEN_ROWS}))
+    other = render.render_job_state(job_state(verb="job.show", progress={"tracks": FROZEN_ROWS}))
     assert not any("tracks:" in line or "Sun Path" in line for line in other)
 
 
-def test_a_tracks_count_under_job_show_is_not_a_list_and_prints_nothing():
-    lines = render.render_job_state(job_state(verb="job.show", progress={"tracks": 3}))
-    assert not any("tracks:" in line for line in lines)
+def test_an_intake_tracks_field_that_is_not_a_list_prints_nothing():
+    for value in (3, "Aurora Bloom - Sun Path", None):
+        lines = render.render_job_state(job_state(verb="job.show", progress={"intake_tracks": value}))
+        assert not any("tracks:" in line for line in lines), value
+
+
+def test_the_renderer_spells_the_field_cli_jobs_writes():
+    from cratekit.cli import jobs as cli_jobs
+
+    assert render._INTAKE_TRACKS == cli_jobs.TRACKS_FIELD
 
 
 def test_a_queued_job_names_its_drive_only_when_one_is_handed_in():

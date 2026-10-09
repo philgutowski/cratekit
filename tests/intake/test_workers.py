@@ -495,14 +495,16 @@ def test_a_set_whose_tracklist_folder_is_a_file_is_refused_before_any_spend(
 
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "intake-list-unusable"
+    assert any("--out" in step for step in envelope["cause"]["remediation"]["steps"])
     assert recognised.requests == [], "the refusal was paid for"
     with jobs.open_store() as store:
         assert jobs.list_jobs(store) == ()
 
 
-def test_a_set_whose_tracklist_cannot_be_written_queues_nothing_and_a_rerun_is_free(
+def test_a_set_whose_tracklist_cannot_be_written_is_queued_and_says_where_to_read_it(
     cfg, library, recognised, monkeypatch
 ):
+    """The job is what the spend bought; a convenience file does not withhold it."""
     three_tracks(recognised)
     real = config.atomic_write_bytes
 
@@ -512,16 +514,24 @@ def test_a_set_whose_tracklist_cannot_be_written_queues_nothing_and_a_rerun_is_f
         return real(payload, path, **kwargs)
 
     monkeypatch.setattr(config, "atomic_write_bytes", failing)
-    path = recording(library)
-    code, envelope = drive(["intake", "set", str(path)])
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert "spends nothing" in envelope["cause"]["message"]
-    with jobs.open_store() as store:
-        assert jobs.list_jobs(store) == (), "a set nobody can read the list of was queued"
-    monkeypatch.setattr(config, "atomic_write_bytes", real)
-    job_id, queued = queued_set(path)
-    assert len(recognised.requests) == 3, "the promise in the refusal was false"
+    job_id, envelope = queued_set(recording(library))
     assert len(items_of(job_id)) == 3
+    assert envelope["data"]["progress"][intake_cli.TRACKLIST] is None
+    assert [w["code"] for w in envelope["warnings"]] == [intake_cli.TRACKLIST_UNWRITTEN]
+    note = envelope["warnings"][0]["message"]
+    assert f"crate job show {job_id}" in note and "PermissionError" in note
+    assert not list(cfg.paths.download_staging.rglob("*" + intake_cli.TRACKLIST_SUFFIX))
+
+
+def test_a_set_writes_its_tracklist_where_out_says(cfg, library, recognised):
+    """The remedy the folder refusal names is a flag this verb takes."""
+    three_tracks(recognised)
+    out = library / "lists"
+    code, envelope = drive(["intake", "set", str(recording(library)), "--out", str(out)])
+    assert code == int(ExitCode.OK), envelope
+    (written,) = list(out.iterdir())
+    assert envelope["data"]["progress"][intake_cli.TRACKLIST] == str(written)
+    assert not (cfg.paths.download_staging / intake_cli.TRACKLISTS_DIR).exists()
 
 
 def test_a_resumed_set_writes_no_tracklist(cfg, library, recognised):
@@ -547,7 +557,7 @@ def test_job_show_lists_every_track_an_intake_set_froze_in_set_order(cfg, librar
     code, envelope = drive(["job", "show", job_id])
 
     assert code == int(ExitCode.OK), envelope
-    assert envelope["data"]["progress"]["tracks"] == [
+    assert envelope["data"]["progress"][cli_jobs.TRACKS_FIELD] == [
         {"item": items[0], "artist": "Aurora Bloom", "title": "Sun Path", "version": "Dub Mix", "isrc": "X1"},
         {"item": items[1], "artist": "Nova Reef", "title": "Tide", "version": "", "isrc": None},
         {"item": items[2], "artist": "Mira Vale", "title": "Glass Hour", "version": "", "isrc": "X3"},
@@ -569,7 +579,7 @@ def test_job_show_lists_a_playlist_jobs_tracks_too(cfg, library, monkeypatch):
     code, queued = drive(["intake", "playlist", "pl-1"])
     assert code == int(ExitCode.OK), queued
     code, envelope = drive(["job", "show", queued["data"]["job_id"]])
-    assert [(row["item"], row["title"], row["isrc"]) for row in envelope["data"]["progress"]["tracks"]] == [
+    assert [(row["item"], row["title"], row["isrc"]) for row in envelope["data"]["progress"][cli_jobs.TRACKS_FIELD]] == [
         ("101", "Sun Path", "X1"),
         ("102", "Tide", None),
     ]
@@ -588,7 +598,7 @@ def test_job_show_on_a_job_of_another_handler_lists_no_tracks(cfg, library):
         )
     code, envelope = drive(["job", "show", job.job_id])
     assert code == int(ExitCode.OK), envelope
-    assert "tracks" not in envelope["data"]["progress"]
+    assert cli_jobs.TRACKS_FIELD not in envelope["data"]["progress"]
     code, text = drive_human(["job", "show", job.job_id])
     assert "tracks:" not in text and "Sun Path" not in text
 

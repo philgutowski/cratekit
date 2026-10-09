@@ -182,9 +182,11 @@ def show(ctx: "Context") -> Envelope:
 #: them in (R-925). Spelled here rather than imported from
 #: ``cratekit.intake.cli``, because these verbs must not load a feature module
 #: to report a job (KTD26); a test pins the spellings to that module's own.
+#: The field is NOT ``tracks``, which a dozen payloads use for a count, so a
+#: renderer can read it by name alone.
 INTAKE_HANDLERS: frozenset[str] = frozenset({"intake.set", "intake.playlist"})
 INTAKE_TRACKS_KEY = "tracks"
-TRACKS_FIELD = "tracks"
+TRACKS_FIELD = "intake_tracks"
 
 
 def _intake_tracks(job: jobs.Job) -> list[dict[str, Any]] | None:
