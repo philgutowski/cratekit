@@ -354,6 +354,18 @@ text moved on, which is INFO, from one a person edited, which is theirs and
 reads OK. A copy with no record is said to be unrecorded rather than guessed
 either way. Doctor never rewrites the copy.
 
+### Genre Favorites
+The playlist named Favorites inside each genre folder of the routing tree,
+planned on 2026-10-09 (`docs/plans/2026-10-09-1214-feat-genre-folders-and-favorites-plan.md`,
+U119). Its members are exactly the tracks in that folder's playlists that are also
+in All Favorites, so it is a derived view and never edited by hand: a track that
+leaves All Favorites leaves it at the next refresh. It is a playlist beside the
+energy bands and "with vox", not a folder, because the tree is three levels deep,
+and its membership is independent of "with vox", so a vocal favourite is in both.
+
+*Avoid:* reading it as a second favourites signal. All Favorites is the one
+signal; a genre Favorites only files it by the folder the track already sits in.
+
 ### Off taxonomy
 A genre that WAS written onto a file and that this template has no place of its
 own for: the catalogue's own word, passed through by the last tier of
