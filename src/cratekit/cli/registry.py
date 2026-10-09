@@ -626,6 +626,44 @@ ENTRIES: tuple[Entry, ...] = (
             ),
         ),
     ),
+    # ── A row's rekordbox defaults (R-923) ──────────────────────────────────
+    Entry(
+        name="repair.rows",
+        summary="give each live library row rekordbox's own defaults where a "
+        "column is empty, so it loads to a deck; writes no file",
+        module="cratekit.write.row_defaults_cli",
+        builder="build",
+        handler_key="repair.rows",
+        # NO FEATURE ROW AND NO SOURCE SCRIPT. The source system never created a
+        # content row, so nothing there left one without rekordbox's defaults.
+        #
+        # GATED BY ``repair``, as ``repair.paths`` and ``tag.rows`` are: a
+        # corrective pass over rows the library already holds.
+        module_id="repair",
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: THE ROW AND ONLY THE ROW, and of it only the columns
+        #: ``rb_writer.CONTENT_ROW_DEFAULTS`` names, each only where NULL.
+        writes=frozenset({"db_metadata"}),
+        destructive=True,
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+        ),
+        gates=(
+            GateSpec(
+                name="repair.rows.confirm",
+                options=("apply", "abort"),
+                prompt="Give these rows rekordbox's own defaults?",
+                #: EXPLICIT (R34). A write to rows of a live library is answered
+                #: by a separate recorded act with an actor.
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
     Entry(
         name="status",
         summary="per-source sync state, open runs, and unconverged trees",

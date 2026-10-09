@@ -4257,6 +4257,11 @@ CITED_RESIDUALS = (
     # at the first double quote inside it, so the full title cannot be written in
     # the form at all. It still resolves to exactly one heading.
     "Five places where",
+    # Declared on the repair rows unit, 2026-10-09, by the unit that closes it.
+    # Cited from the two population re-pins below, both of which moved because
+    # the repair and its verb are new modules with new literals. A LEADING
+    # PHRASE, because the heading's second clause reads badly inline.
+    "A row the native landing creates leaves rekordbox's own defaults empty",
 )
 
 #: WHAT A CITATION LOOKS LIKE, as a form rather than as a convention: the word
@@ -6115,7 +6120,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # `main`'s own `src` by git grep. record-labels is the KEY of the step
     # that names the Record Labels tree no verb files after a landing. And
     # organize-area-refused and organize-step-refused are WARNING codes.
-    assert (len(literals), len(literals - set(causes))) == (640, 444), (
+    # Re-pinned on the residual "A row the native landing creates leaves rekordbox's own defaults empty",
+    # crate repair rows, 2026-10-09: 640 to 644 distinct,
+    # non-keys 444 to 448. FOUR joined and nothing left, each absent from
+    # `main`'s own `src` by git grep. repair-rows is the session WORKFLOW the
+    # repair is recorded under and the plan KIND its digest is taken under.
+    # row-defaults is the OWNER of the field policy the apply registers. And
+    # rows-defaults-nothing-to-write and rows-defaults-written are WARNING
+    # codes.
+    assert (len(literals), len(literals - set(causes))) == (644, 448), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6884,7 +6897,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # config-unusable and internal-error, and organize/rekordbox.py, which
     # refuses an adoption over a bridge tree with tree-unconverged. Neither
     # holds an in-range integer.
-    assert (len(literal_holders), len(literal_both)) == (134, 29), (
+    # Re-pinned on the residual "A row the native landing creates leaves rekordbox's own defaults empty",
+    # crate repair rows, 2026-10-09: holders move 134 to
+    # 136, and the also-holds-an-integer half is UNCHANGED at 29. TWO modules
+    # joined and none left, both new files: write/row_defaults.py, which
+    # refuses with decision-stale, internal-error and whitelist-violation, and
+    # write/row_defaults_cli.py, which refuses with config-unusable and
+    # internal-error. Neither holds an in-range integer.
+    assert (len(literal_holders), len(literal_both)) == (136, 29), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

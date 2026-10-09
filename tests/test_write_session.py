@@ -2622,6 +2622,9 @@ def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recor
         # content genre key as rows updated.
         "tagging/rows.py::apply_rows",
         "write/metadata_cli.py::mytags_vocals",
+        # R-923. rekordbox's defaults filled on rows a landing left bare,
+        # recorded under the content defaults key as rows updated.
+        "write/row_defaults.py::apply_rows",
         # R-758. One capture before two commits, and both are recorded.
         "write/trees.py::move_tree_membership",
         "write/trees.py::write_tree_membership",

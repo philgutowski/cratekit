@@ -35702,3 +35702,12 @@ through the guarded writer, and the 165 rows load to a deck in rekordbox.
 
 **On the board bar.** The author chose a code fix over a re-import on
 2026-10-09; the issue carries the brief.
+
+**Closed 2026-10-09, issue #267.** `rb_writer.CONTENT_ROW_DEFAULTS` names
+the twenty one columns and their values, measured; the landing sets them on
+every row it creates, and `crate repair rows` fills them on a live row that
+lacks them, only where NULL, through the fill if empty policy
+`ROW_DEFAULTS_POLICY` the apply alone registers, with a digest that names no
+database path so a copy rehearsal can match, a staleness recheck from SQL,
+and a read back that refuses a moved column. The 165 rows are the live
+verification, in `docs/cutover.md` sitting 32.

@@ -358,7 +358,10 @@ make until you ask, so open it, select the batch playlist and run Analyze
 Track with KEY unticked, then Reload Tags on the same selection. **The rows
 carry no artist, album, genre or key until Reload Tags reads them from the
 files** (R-921), and adoption places a track by the genre on its row, so
-skipping it leaves nameless rows that file nowhere. There is no import, no drag and no `intake imported` on this path.
+skipping it leaves nameless rows that file nowhere. A row landed before
+2026-10-09 also lacks the defaults rekordbox writes on every row it makes, and
+will not load to a deck until `crate repair rows` fills them (R-923); a row
+landed since carries them from the start. There is no import, no drag and no `intake imported` on this path.
 Filing the batch into your genre tree is `adopt scan` and `adopt apply`.
 
 Once you have imported the landed file, quit rekordbox, take a new export with

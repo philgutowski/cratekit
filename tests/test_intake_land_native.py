@@ -397,6 +397,33 @@ def test_the_rows_carry_the_library_device_and_not_the_bindings_first(native_lib
     assert (str(device_id), str(master)) == MY_DEVICE
 
 
+def test_the_rows_carry_every_default_rekordbox_writes_on_a_row_it_makes(native_library, silence):
+    """R-923: a row the binding leaves NULL in these columns will not load to a
+    deck. Read from SQL, every one carries rekordbox's own value, exactly."""
+    cfg, _root = native_library
+    for name in ("One.flac", "Two.flac"):
+        _stage(cfg, silence, name)
+    code, acted, _ = _two_acts(_land())
+    assert code == int(ExitCode.OK), acted
+
+    columns = list(rb_writer.CONTENT_ROW_DEFAULTS)
+    rows = _query(
+        cfg,
+        f"SELECT ID, {', '.join(columns)} FROM djmdContent WHERE FolderPath LIKE ?",
+        f"%{BATCH}%",
+    )
+    assert len(rows) == 2
+    # COMPARED AS TEXT. The binding declares ``DJPlayCount`` a string and the
+    # disposable schema is the binding's, where the live table declares an
+    # integer and stores the binding's ``'0'`` as rekordbox's 0 by affinity.
+    wanted = {column: str(value) for column, value in rb_writer.CONTENT_ROW_DEFAULTS.items()}
+    for content_id, *values in rows:
+        found = {column: str(value) for column, value in zip(columns, values)}
+        assert found == wanted, content_id
+        assert None not in values, content_id
+    assert not set(rb_writer.CONTENT_ROW_DEFAULTS) & rb_writer.CONTENT_ROW_EMPTY_COLUMNS
+
+
 def test_after_the_write_no_analysis_value_exists_on_the_new_rows_column_by_column(
     native_library, silence
 ):
