@@ -12241,6 +12241,14 @@ unannounced leak.
 **Closes when:** the ingest erases its source, or doctor reports a provider token
 found on disk outside a live invocation.
 
+
+**Measured again, 2026-10-09, sitting 33.** The author minted a PKCE session
+at 10:20Z, recorded it and erased `~/.config/tidal-dl-ng/token.json` as
+`docs/adapters.md` says. A download driver started 22 seconds later wrote
+the file back, 125 bytes, access and refresh token in plain text, from the
+session it had read out of the keychain. The erase is undone by the next
+invocation, so R4's promise holds for the gap between two runs and not
+across one. The session erased it by hand after the run.
 ---
 
 ## R-213. The alternative adapter never reads the file it landed
@@ -35817,3 +35825,37 @@ is the folder name in the clobbered copy. Nothing else under the state
 folder was touched in that window and no acknowledgment was minted. The
 guard the closing line asks for would have refused this write wherever the
 probe ran from. Until it lands, a probe goes under `tests/` or does not run.
+
+
+---
+
+## R-927. One unlicensed track reads as a dead session and blocks the whole download
+
+**Found:** at the attended sitting of 2026-10-09, downloading the 67 tracks a
+`sync all` pass found missing.
+
+**The mechanism.** `vendored.py` classifies a failed acquisition as
+`auth-failed` when the error text holds `401`, `OAuth` or `token`, ported from
+the wrapped tool's own check, and that test runs before the per track
+unavailability classification. The provider answers a track the account may
+not stream with `401 Unauthorized` on `playbackinfopostpaywall`, the same
+status as a rejected session. So one such track blocks the job as
+`UPSTREAM_AUTH`, the remedy sends the author to a browser to mint a new
+session, and the new session meets the same 401 on the same track. Measured:
+the 2016 compilation `New York Fever Vol.1` had 58 of its 60 tracks in the
+list; the catalogue read 33 as streamable and 25 not, and the two that
+blocked, 63466200 and 63466203, are both in the 25. A session that is dead
+fails every track; a track that is unlicensed fails alone.
+
+**Measured cost.** Measured live: three blocked jobs, one browser login the
+author did not need, and a read only probe through the catalogue to find the
+25 before a fourth list could be queued. Without the probe the job would
+block once per unlicensed track, 25 times.
+
+**Closes when:** the adapter tells the two apart, a 401 on one track after
+another track streamed in the same session is that track's unavailability
+and the job skips it as it skips a lossy only track, and the remedy names a
+login only when the first request of a run is refused.
+
+**On the board bar.** Every pass over a playlist holding one such track
+stops with a wrong remedy; the author chose the sync as daily use.
