@@ -36015,3 +36015,86 @@ live run's warning says what it is.
 
 **Closes when:** the file returns and the verb is run again, which the
 plan handles with no change. Ledger only.
+
+## R-931. A set playlist is refused on a library whose intake tree is on the xml bridge
+
+**Found:** by the author of U121, 2026-10-09, choosing the medium.
+
+**The mechanism.** The set's permanent playlist is a database node under the
+declared INSPIRATION folder, written through the guarded writer, and the
+bridge landing splices an export and opens no database. Both `intake land
+--set` and `crate intake inspiration` refuse a bridge tree by name,
+`tree-unconverged`, through one helper, the landing told it can land without
+`--set` and backfill after the cutover. Nothing writes the playlist into an
+export.
+
+**Measured cost.** Driven on the bridge fixture: both verbs refuse before
+anything moves. A library still on the bridge gets no permanent playlist from
+a set intake until its intake tree cuts over. The author's library cut over
+on 2026-09-29, so the cost is nobody's today.
+
+**Closes when:** a bridge writer for the folder is wanted, or every library
+this product serves has cut over. Ledger only.
+
+## R-932. A track that becomes owned after the set's playlist was written joins it last, not in set order
+
+**Found:** by the review of U121, 2026-10-09, reading the read back.
+
+**The mechanism.** The playlist is found by its name under the folder, so a
+second write on the same day adds what the playlist lacked, and
+`add_memberships` appends: rekordbox numbers an added track after every
+track the playlist holds. A track that was a question at the first write
+and owned at the second therefore sits last. The read back holds every asked
+id live and holds the order only for a playlist this commit filled, so the
+second write is reported as what it was, one track added, and not refused.
+
+**Measured cost.** Driven on the disposable library:
+`test_a_second_write_that_fills_a_gap_mid_set_is_not_a_failed_write`, three
+tracks, the middle one owned between two writes, read back One, Two, Three
+for a set that played One, Three, Two. Order only; nothing is lost.
+
+**Closes when:** the write re-sorts the memberships to set order, a
+`TrackNo` rewrite the guarded writer does not make today. Ledger only.
+
+## R-933. The page title is used whole as the set's name when no flag abbreviates it
+
+**Found:** by the author of U121, 2026-10-09, naming the Vonking set.
+
+**The mechanism.** The form asks for an abbreviated set name, and the page
+title is what the uploader typed: `Public Service NYC - Live at Vonking
+05.03.26` gives, less the uploader's name in front, `Live at Vonking
+05.03.26`, so the playlist would read `10_09_26 Public Service NYC Live at
+Vonking 05.03.26 5-26`, the date twice. The strip rule takes the uploader's
+name off the front with its separator and nothing else; a title that names
+the uploader elsewhere, or a date, keeps it. `--set-name` is the abbreviation
+and wins.
+
+**Measured cost.** A longer playlist name than the author would type, for a
+set landed from an address with no `--set-name`. Driven by
+`test_the_words_come_from_the_page_with_the_uploader_taken_off_the_title`.
+No playlist is misnamed in a way that loses it.
+
+**Closes when:** the author decides a rule for abbreviating, which the brief
+left to the flag. Ledger only.
+
+## R-934. A backfill names the playlist for the day it runs, not the day the set landed
+
+**Found:** by the author of U121, 2026-10-09, planning the Vonking backfill.
+
+**The mechanism.** The form's first word is the naming day,
+`batch_name.today()`, and the brief says today. `crate intake inspiration`
+run on a later day for a set that landed earlier names the playlist for the
+later day, and the Vonking playlist the author made by hand on 2026-10-09 is
+`10_09_26 Public Service NYC Live at Vonking 5-26`: a backfill run that day
+with `--dj "Public Service NYC" --set-name "Live at Vonking" --set-date
+2026-05` finds it by name and adds only what it lacks, and a backfill run any
+later day makes a second playlist beside it. No flag names the day.
+
+**Measured cost.** For the sitting 11 sets and any set backfilled after the
+day it landed, a first word that says when the playlist was made rather than
+when the set came in, and for the Vonking set a twin unless run on
+2026-10-09. The hand made playlist is the author's to keep or remove.
+
+**Closes when:** the author decides whether the first word is the naming
+day, the brief's form, or the landing day read off the landing's record, in
+which case the backfill gains that read. Ledger only.

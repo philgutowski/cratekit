@@ -1,0 +1,72 @@
+{
+  "name": "u121-c",
+  "pass_kind": "light",
+  "branch": "fable/278-set-inspiration-playlist",
+  "head": "1c6a0ae",
+  "when": "2026-10-09 21:40 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 12878,
+  "baseline_exit": 0,
+  "pytest_runs": 4,
+  "state_guarded": "~/Library/Application Support/cratekit (365158 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/set_playlist.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/set_playlist.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "62ece9fc21ff152b",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 12878,
+    "baseline_collected": 12878,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "S2c_separator",
+      "description": "_without_leading: keep the separator after the uploader's name",
+      "file": "src/cratekit/intake/set_playlist.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "57111741313882f3",
+      "subset": [
+        "tests/test_set_inspiration_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 43,
+      "baseline_collected": 43,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_set_inspiration_playlist.py::test_the_words_come_from_the_page_with_the_uploader_taken_off_the_title",
+        "tests/test_set_inspiration_playlist.py::test_the_words_come_off_the_jobs_page_when_no_flag_is_given"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    stripped = re.sub(r\"^\\s*(?:[-:|\\u2013\\u2014]+\\s*)?\", \"\", rest)",
+      "new": "    stripped = rest.strip()"
+    }
+  ],
+  "dropped": []
+}
