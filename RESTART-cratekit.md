@@ -31,21 +31,28 @@ back at a landing, the plan writing nothing to the review store, a file two
 rows claim left out, a gap filled mid set not refused, a month out of range
 refused, the intake tree recorded only when it changed, a word flag without
 `--set` refused, one bridge refusal, the store passed through, the dashes as
-escapes. Battery on the branch: ruff clean, **12,877 passed and 1 skipped**
-in 146 seconds, scan clean. Twenty five mutation rows over three tables,
-**24 killed and 1 inert** (`docs/mutation/u121-notes.md`). R-931 to R-934
-record the bridge medium refused, a late owned track appended last, the page
-title used whole, and the backfill naming for the day it runs. **Owed, the
-author's:** add `[inspiration]` with id `inspiration` and display
-`INSPIRATION` to the live library's active taxonomy copy, since the copy
-predates the section and both verbs refuse without it; then the rehearsal on
-a database copy and the live backfill of the Vonking set, `crate intake
-inspiration --job <the sitting 35 set job> --dj "Public Service NYC"
---set-name "Live at Vonking" --set-date 2026-05`, run with the three flags
-because the job predates the page, and run on 2026-10-09 if it is to find
-the hand made playlist by name rather than make a twin (R-934); the sitting
-11 sets the same way, each with its own words. The set job carries no run
-id, so a landing names the set with `--set` and nothing finds it by `--pass`.
+escapes. The watcher's independent review drove six more, fixed in a second
+round: a set landed on two days is one playlist, since every later write
+reads the playlist a landing recorded for the job off its session record and
+adds to it under its first name; a removed namesake is not written into; a
+row two reports resolved to is one member; a rerun that added nothing
+records no commit; the left list is carried when nothing is written; the
+backfill is driven making the folder itself. Battery on the branch: ruff
+clean, **12,884 passed and 1 skipped** in 99 seconds, scan clean. Thirty one
+distinct mutation rows over four tables, **30 killed and 1 inert**
+(`docs/mutation/u121-notes.md`). R-931 to R-934 record the bridge medium
+refused, a late owned track appended last, the page title used whole, and a
+playlist a person made named for the day it was made. **Owed, the author's:**
+add `[inspiration]` with id `inspiration` and display `INSPIRATION` to the
+live library's active taxonomy copy, since the copy predates the section and
+both verbs refuse without it; then the rehearsal on a database copy and the
+live backfill of the Vonking set, `crate intake inspiration --job <the
+sitting 35 set job> --dj "Public Service NYC" --set-name "Live at Vonking"
+--set-date 2026-05`, run with the three flags because the job predates the
+page, and run on 2026-10-09 if it is to find the hand made playlist by name
+rather than make a twin beside it (R-934); the sitting 11 sets the same way,
+each with its own words. The set job carries no run id, so a landing names
+the set with `--set` and nothing finds it by `--pass`.
 
 **U115 built, 2026-10-09, on `unit/u115`, issue #272: a native row carries
 its file's inode as `rb_file_id`, and the rows numbered at random can be
