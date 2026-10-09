@@ -786,7 +786,8 @@ def test_a_mark_put_back_is_no_mark_and_the_playlist_stays(world):
     _marked(cfg, fake, held)
     mark_record.MarkRecord(cfg).record_unmarked("Phil 10_8_26", MARKED_ID)
 
-    assert _file_rows(_report())[MARKED_ID]["why"] == filing.UNMARKED
+    # The name still carries the prefix; only the mark record was put back.
+    assert _file_rows(_report())[MARKED_ID]["why"] == filing.PREFIXED_UNMARKED
 
 
 def test_a_marked_playlist_already_in_a_folder_is_left_where_it_is(world):
@@ -855,8 +856,10 @@ def test_a_provider_refusal_mid_pass_stops_and_names_what_moved(world):
     assert f"custom-a into {held.placed['custom-a']}" in done["cause"]["message"]
 
 
-def test_a_mark_with_no_year_is_left_and_the_year_is_the_marks():
+def test_a_mark_with_no_year_is_left_and_the_year_is_local():
     assert filing.year_of_mark("2025-12-31T23:00:00+00:00") == "2025"
+    # 20:00 Eastern on 31 Dec is 01:00 UTC on 1 Jan; local year must win.
+    assert filing.year_of_mark("2026-01-01T01:00:00+00:00") == "2025"
     assert filing.year_of_mark("") == ""
     assert filing.year_of_mark("soon") == ""
 
@@ -888,3 +891,68 @@ def test_a_playlist_marked_twice_is_filed_by_its_latest_mark(seams):
 
     assert code == int(ExitCode.OK), done
     assert held.folder_names[held.placed[MARKED_ID]] == "2026"
+
+def test_a_playlist_two_folders_down_is_left_where_it_is(world):
+    cfg, fake, held, _inbox, _ids = world
+    _marked(cfg, fake, held)
+    archive = held.create_folder("Archive")
+    nested = held.nest_folder("2025", archive)
+    held.placed[MARKED_ID] = nested
+
+    assert MARKED_ID not in _file_rows(_report())
+    code, done, _first = _answered()
+    assert code == int(ExitCode.OK), done
+    assert held.placed[MARKED_ID] == nested
+    assert all(playlist_id != MARKED_ID for playlist_id, _folder in held.moves)
+
+
+def test_a_provider_cratekit_refusal_mid_pass_carries_the_moved_list(world):
+    cfg, fake, held, _inbox, _ids = world
+    _marked(cfg, fake, held, "custom-a", "DOWNLOADED A pass")
+    _marked(cfg, fake, held, "custom-b", "DOWNLOADED B pass")
+    held.fail_on = frozenset({"custom-b"})
+    held.provider_error = True
+
+    code, done, _first = _answered()
+
+    assert code != int(ExitCode.OK)
+    assert "custom-a" in held.placed and "custom-b" not in held.placed
+    detail = done["cause"]["detail"]
+    assert detail["moved"] == [["custom-a", held.placed["custom-a"]]]
+    assert "1 playlist(s) were moved" in done["cause"]["message"]
+
+
+def test_a_folder_made_before_a_failed_ledger_write_is_named(seams, monkeypatch):
+    from cratekit.modules.outbound import ledger, sets
+
+    cfg, fake, held = seams
+    _marked(cfg, fake, held)
+    planned = filing.FilePlan(
+        rows=(filing.Placement(MARKED_ID, MARKED_NAME, filing.MOVE, year=MARKED_YEAR),),
+        years={MARKED_YEAR: filing.YearFolder(year=MARKED_YEAR, action=sets.CREATE)},
+    )
+
+    def boom(cfg_arg, document):
+        raise OSError("ledger write failed")
+
+    monkeypatch.setattr(ledger, "_write", boom)
+
+    with pytest.raises(RuntimeError) as raised:
+        filing.apply(cfg, held, planned)
+
+    assert MARKED_YEAR in held.folders_created
+    assert "1 year folder(s) were created" in str(raised.value)
+    assert MARKED_ID not in held.placed
+
+
+def test_a_prefixed_but_unmarked_playlist_has_its_own_reason(world):
+    _cfg, fake, held, _inbox, _ids = world
+    fake.account.append(AccountPlaylist("hand-1", "DOWNLOADED Hand marked", 2))
+    held.titles["hand-1"] = "DOWNLOADED Hand marked"
+
+    row = _file_rows(_report())["hand-1"]
+
+    assert row["action"] == filing.LEFT and row["why"] == filing.PREFIXED_UNMARKED
+    code, done, _first = _answered()
+    assert code == int(ExitCode.OK), done
+    assert "hand-1" not in held.placed

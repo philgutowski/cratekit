@@ -31,6 +31,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from cratekit.core import config
@@ -38,6 +39,7 @@ from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.modules.outbound import ledger, sets
 from cratekit.modules.outbound.service import RemoteAccount
 from cratekit.organize import own
+from cratekit.sync.playlists import is_swept_name
 
 _ORIGIN = ("organize.filing",)
 
@@ -51,6 +53,9 @@ SET_STEP = "a set playlist, which the set archive files"
 WORKING = "one of the product's own working playlists, kept at the root"
 PRODUCT_MADE = "made by the product and not a custom playlist"
 UNMARKED = "not marked by a sync, so nothing says it was downloaded"
+PREFIXED_UNMARKED = (
+    "its name says downloaded but no sync recorded when, so no year can be chosen"
+)
 UNDATED = "its mark carries no year, so no year folder is its own"
 
 
@@ -157,9 +162,22 @@ class Filed:
 
 
 def year_of_mark(marked: str) -> str:
-    """The year a mark landed, off its recorded instant, or ``""``."""
-    head = str(marked or "")[:4]
-    return head if len(head) == 4 and head.isdigit() else ""
+    """The year a mark landed in local time, or ``""``.
+
+    The stamp is stored in UTC. A mark at 20:00 Eastern on 31 December is the
+    next day's UTC year, and filing by the UTC digits would put it in the wrong
+    year folder. Local time is the year the person meant.
+    """
+    text = str(marked or "").strip()
+    if not text:
+        return ""
+    try:
+        when = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return ""
+    if when.tzinfo is not None:
+        when = when.astimezone()
+    return f"{when.year:04d}"
 
 
 def _year_folder(cfg: config.Config, year: str, root: Mapping[str, str]) -> YearFolder:
@@ -187,6 +205,28 @@ def _standing_marks(marks: Iterable[Any]) -> dict[str, str]:
     return standing
 
 
+
+def playlists_in_folders(remote: RemoteAccount) -> set[str]:
+    """Every playlist any folder on the account holds, nested folders included.
+
+    Root folders alone are not enough: a playlist two folders down (for example
+    under Archive then 2025) is never listed by ``folder_playlists`` of a root
+    folder, and treating it as at the root would move it out. Walk every folder
+    the account reports, and every folder those hold.
+    """
+    held: set[str] = set()
+    pending = list(remote.folders())
+    seen: set[str] = set()
+    while pending:
+        folder_id = pending.pop()
+        if folder_id in seen:
+            continue
+        seen.add(folder_id)
+        held.update(remote.folder_playlists(folder_id))
+        pending.extend(remote.folder_folders(folder_id))
+    return held
+
+
 def plan(
     cfg: config.Config,
     *,
@@ -205,9 +245,7 @@ def plan(
     """
     labels = tuple(labels)
     root = remote.folders()
-    in_folders: set[str] = set()
-    for folder_id in root:
-        in_folders.update(remote.folder_playlists(folder_id))
+    in_folders = playlists_in_folders(remote)
     label_built = ledger.label_playlist_ids(cfg)
     set_built = ledger.set_playlist_ids(cfg)
     at_root = [one for one in listed if one.playlist_id not in in_folders]
@@ -227,7 +265,12 @@ def plan(
             rows.append(Placement(identity, name, LEFT, why=WORKING))
             continue
         if identity not in standing:
-            why = PRODUCT_MADE if identity in made else UNMARKED
+            if identity in made:
+                why = PRODUCT_MADE
+            elif is_swept_name(name):
+                why = PREFIXED_UNMARKED
+            else:
+                why = UNMARKED
             rows.append(Placement(identity, name, LEFT, why=why))
             continue
         year = year_of_mark(standing[identity])
@@ -285,16 +328,23 @@ def apply(cfg: config.Config, remote: RemoteAccount, planned: FilePlan) -> Filed
         for row in planned.moves:
             folder = planned.years[row.year]
             if row.year not in done.folders:
-                folder_id, made = ledger.reserve_set_folder(
+
+                def create(year: str = row.year) -> str:
+                    folder_id = remote.create_folder(year)
+                    # Record as soon as the provider answers, before the ledger
+                    # write: a write that raises must still name the folder made.
+                    done.folders[year] = folder_id
+                    done.created.append(year)
+                    return folder_id
+
+                folder_id, _made = ledger.reserve_set_folder(
                     cfg,
                     row.year,
-                    lambda year=row.year: remote.create_folder(year),
+                    create,
                     adopt=folder.folder_id if folder.action == sets.ADOPT else "",
                     stale=folder.stale,
                 )
                 done.folders[row.year] = folder_id
-                if made:
-                    done.created.append(row.year)
             remote.move_to_folder(row.playlist_id, done.folders[row.year])
             done.moved.append([row.playlist_id, done.folders[row.year]])
     except Exception as exc:
@@ -306,6 +356,7 @@ __all__ = [
     "LABEL_STEP",
     "LEFT",
     "MOVE",
+    "PREFIXED_UNMARKED",
     "PRODUCT_MADE",
     "SET_STEP",
     "UNDATED",
@@ -317,5 +368,6 @@ __all__ = [
     "YearFolder",
     "apply",
     "plan",
+    "playlists_in_folders",
     "year_of_mark",
 ]

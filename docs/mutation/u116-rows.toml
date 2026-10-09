@@ -92,12 +92,14 @@ new = '''
 
 [[rows]]
 id = "M10_year_check"
-description = "year_of_mark: any four characters are a year"
+description = "year_of_mark: a stamp that is not a date is accepted as a year"
 file = "src/cratekit/organize/filing.py"
 surface = "user"
 tests = ["tests/test_organize.py"]
-old = '''    return head if len(head) == 4 and head.isdigit() else ""'''
-new = '''    return head'''
+old = '''    except ValueError:
+        return ""'''
+new = '''    except ValueError:
+        return "2026"'''
 
 [[rows]]
 id = "M11_latest_mark"
@@ -107,3 +109,23 @@ surface = "user"
 tests = ["tests/test_organize.py"]
 old = '''        if held is None or str(entry.marked) > held:'''
 new = '''        if held is None:'''
+
+[[rows]]
+id = "M12_nested_folders_ignored"
+description = "playlists_in_folders: nested folders are not walked, so a playlist two deep is read as at the root"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''        pending.extend(remote.folder_folders(folder_id))'''
+new = '''        pass'''
+
+[[rows]]
+id = "M13_utc_year"
+description = "year_of_mark: the year is taken from the UTC stamp digits rather than local time"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''    if when.tzinfo is not None:
+        when = when.astimezone()
+    return f"{when.year:04d}"'''
+new = '''    return str(marked or "")[:4]'''

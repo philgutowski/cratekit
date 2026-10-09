@@ -1,6 +1,6 @@
 # U116 mutation notes
 
-Rows in `docs/mutation/u116-rows.toml`, 11 rows, the author's own.
+Rows in `docs/mutation/u116-rows.toml`, 13 rows, the author's own.
 
 `scripts/mutate.py` refused on this machine before any row ran: its baseline is
 the full suite, and the full suite is a macOS proof (123 failures on Linux,
@@ -19,8 +19,11 @@ run with `-x`, the file restored, on grok-2's Linux box, 2026-10-09.
 | M7 folder reserved per playlist | survived, equivalent: `ledger.reserve_set_folder` answers the recorded folder on a second call, so a second reservation writes nothing and changes no outcome |
 | M8 failure names nothing | killed |
 | M9 yours lists a moved playlist | killed |
-| M10 any four characters a year | killed |
+| M10 year check | killed |
 | M11 earliest mark wins | killed, after a test of a playlist marked in two years was added |
+| M12 nested folders ignored | killed |
+| M13 utc year | killed |
 
-10 of 11 killed, the eleventh equivalent. The watcher's run of `scripts/mutate.py`
-on macOS is the measurement of record.
+12 of 13 killed, the seventh equivalent. M12 and M13 are the review's guards for
+nested leave and local year. The watcher's run of `scripts/mutate.py` on macOS
+is the measurement of record.

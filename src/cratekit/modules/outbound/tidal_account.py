@@ -727,6 +727,17 @@ class TidalAccount:
             if str(getattr(playlist, "id", "") or "")
         }
 
+    def folder_folders(self, folder_id: str) -> dict[str, str]:
+        handle = self._folder(folder_id)
+        found = self._read(
+            f"read the folders in {folder_id}", lambda: listing.folder_folders(handle)
+        )
+        return {
+            str(getattr(folder, "id", "") or ""): str(getattr(folder, "name", "") or "")
+            for folder in found
+            if str(getattr(folder, "id", "") or "")
+        }
+
     def create_folder(self, name: str) -> str:
         """Create one root folder and return its identifier. NEVER RETRIED.
 

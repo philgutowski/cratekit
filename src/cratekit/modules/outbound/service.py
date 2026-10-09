@@ -123,6 +123,9 @@ class RemoteAccount(Protocol):
     def folder_playlists(self, folder_id: str) -> dict[str, str]:
         """Every playlist one folder holds, identifier to name."""
 
+    def folder_folders(self, folder_id: str) -> dict[str, str]:
+        """Every folder one folder holds, identifier to name."""
+
     def create_folder(self, name: str) -> str:
         """Create one folder at the root of the account's playlists, and return its id.
 

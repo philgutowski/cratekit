@@ -362,9 +362,7 @@ def _yours(
     try:
         listed = catalogue_of.get().account_playlists()
         remote = remote_of.get()
-        in_folders: set[str] = set()
-        for folder_id in remote.folders():
-            in_folders.update(remote.folder_playlists(folder_id))
+        in_folders = filing.playlists_in_folders(remote)
         label_built = ledger.label_playlist_ids(cfg)
         set_built = ledger.set_playlist_ids(cfg)
         made = (
