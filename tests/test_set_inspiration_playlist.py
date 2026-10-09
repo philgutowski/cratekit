@@ -671,3 +671,76 @@ def test_a_folder_that_went_between_the_plan_and_the_write_is_refused_as_stale(
     code, acted = drive(["--run", run_id, *verb])
     assert acted["cause"]["reason"] == "decision-stale", acted
     assert _playlists_named(cfg, NAME) == []
+
+
+# ---------------------------------------------------------------------------
+# What the hunt after the suite added: a guess, a moved collection, a gone folder
+# ---------------------------------------------------------------------------
+
+
+def test_a_row_that_resolves_only_to_a_different_version_is_not_guessed(native_library, silence):
+    """The account playlists' rule (U113): a file that is only close, a different
+    version, claims nothing. The set wants the original and staging holds the
+    extended mix, so the batch lands the file and the set playlist leaves the
+    row out, written for nobody rather than for a guess."""
+    cfg, _root_id = native_library
+    cutover_fixtures.add_folder(cfg, FOLDER)
+    job_id = set_job(cfg, ("One",))
+    _stage(cfg, silence, "One (Extended Mix)")
+    code, acted, refused = _two_acts(_land("--set", job_id, *WORDS))
+    assert code == int(ExitCode.OK), acted
+    assert refused["cause"]["detail"]["shown"]["set tracks"] == 0
+    assert acted["data"]["totals"]["added"] == 1, "the batch did not land the file"
+    assert _playlists_named(cfg, NAME) == []
+    (left,) = [w for w in acted["warnings"] if w["code"] == set_playlist.LEFT_OUT]
+    assert "1. Probe - One" in left["message"]
+
+
+def test_a_collection_that_moved_between_the_plan_and_the_write_is_refused_as_stale(
+    native_library, silence
+):
+    cfg, _root_id = native_library
+    cutover_fixtures.add_folder(cfg, FOLDER)
+    _owned(cfg, silence, "Three", content_id="held-3")
+    job_id = set_job(cfg, ("Three",))
+    verb = _inspiration(job_id, *WORDS)
+    code, refused = drive(verb)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    decided, _ = drive(["run", "decide", run_id, APPROVE, "apply", "--actor", "a-person"])
+    assert decided == int(ExitCode.OK)
+    conn = sqlite3.connect(cfg.library.db_path)
+    conn.execute("UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = 'held-3'")
+    conn.commit()
+    conn.close()
+    code, acted = drive(["--run", run_id, *verb])
+    assert acted["cause"]["reason"] == "decision-stale", acted
+    assert _playlists_named(cfg, NAME) == []
+    assert not [r for r in session.records(cfg) if r.workflow == set_playlist.WORKFLOW]
+
+
+def test_a_landing_whose_folder_went_between_the_two_acts_moves_nothing(native_library, silence):
+    """The acting drive plans again on the write handle and the gate compares
+    the digest, so a folder rekordbox removed after the approval is a changed
+    plan: refused before the first move, the files still in staging."""
+    cfg, _root_id = native_library
+    folder_id = cutover_fixtures.add_folder(cfg, FOLDER)
+    job_id = set_job(cfg, ("One",))
+    _stage(cfg, silence, "One")
+    verb = _land("--set", job_id, *WORDS)
+    code, refused = drive(verb)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    gate = refused["cause"]["detail"]["gate"]
+    decided, _ = drive(["run", "decide", run_id, gate, "apply", "--actor", "a-person"])
+    assert decided == int(ExitCode.OK)
+    conn = sqlite3.connect(cfg.library.db_path)
+    conn.execute("UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE ID = ?", (folder_id,))
+    conn.commit()
+    conn.close()
+    code, acted = drive(["--run", run_id, *verb])
+    assert acted["cause"]["reason"] == "decision-stale", acted
+    assert "has since changed" in acted["cause"]["message"]
+    assert _playlists_named(cfg, NAME) == []
+    assert (Path(cfg.paths.download_staging) / "One.flac").is_file()
+    assert _query(cfg, "SELECT COUNT(*) FROM djmdContent WHERE FolderPath LIKE ?", f"%{BATCH}%") == [(0,)]

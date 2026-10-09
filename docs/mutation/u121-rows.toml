@@ -1,0 +1,243 @@
+# U121 author's mutation table: the set's permanent playlist under INSPIRATION.
+# Scoped to the unit's own diff. Twenty five rows, the cap. Rows considered and
+# dropped below the cap, each ranked below because a neighbour measures the
+# same surface or the mutation dies on a traceback rather than on a rule:
+#   the --set-date regex refusal (a traceback follows the dropped refusal);
+#   the [inspiration] undeclared refusal (the same, node.display on None);
+#   the suppressed row's own left word (no test queues a suppressed row);
+#   page_of's string check (the page tests pin it, same family as S23);
+#   the [inspiration] must be a table problem (S24 pins the declared node).
+name = "u121"
+pass_kind = "light"
+
+[[rows]]
+id = "S1_uploader_prefix"
+description = "_without_leading: never take the uploader's name off the front of the page title"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''    if head.casefold() != dj.casefold():'''
+new = '''    if True:'''
+
+[[rows]]
+id = "S2_separator"
+description = "_without_leading: keep the separator after the uploader's name"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''    stripped = re.sub(r"^\s*(?:[-:|–—]+\s*)?", "", rest)'''
+new = '''    stripped = rest.strip()'''
+
+[[rows]]
+id = "S3_page_date_month"
+description = "_month_of: read the page's upload day as its month"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''            return date(int(found.group(1)), int(found.group(2)), 1)'''
+new = '''            return date(int(found.group(1)), int(found.group(3)), 1)'''
+
+[[rows]]
+id = "S4_page_beats_flag"
+description = "words_for: the page's uploader wins over --dj"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''    who = (dj if dj is not None else str(page.get(fetch.PAGE_UPLOADER) or "")).strip()'''
+new = '''    who = str(page.get(fetch.PAGE_UPLOADER) or dj or "").strip()'''
+
+[[rows]]
+id = "S5_missing_word"
+description = "words_for: a missing word is not refused, the name is made with a hole"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''    if missing:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "S6_name_padding"
+description = "playlist_name: pad the month and not the day"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''        f"{made.month}_{made.day:02d}_{made.year % 100:02d} {words.dj} {words.name} "'''
+new = '''        f"{made.month:02d}_{made.day}_{made.year % 100:02d} {words.dj} {words.name} "'''
+
+[[rows]]
+id = "S7_job_handler"
+description = "set_job_or_refuse: accept a playlist job as a set"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''    if job.handler_key != SET_KEY:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "S8_job_state"
+description = "set_job_or_refuse: accept a job that has not finished"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''    if job.state is not jobs.JobState.SUCCEEDED:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "S9_two_folders"
+description = "folder_for: two root folders of the name pass, the first is taken"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''    if len(live) > 1:'''
+new = '''    if len(live) > 2:'''
+
+[[rows]]
+id = "S10_folder_row_removed"
+description = "_folder_row: a folder rekordbox removed since the plan is still written into"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''        if row is None or rb_writer.node_removed(row):'''
+new = '''        if row is None:'''
+
+[[rows]]
+id = "S11_landed_by_target"
+description = "write_members: a landed member's row is not looked up by its target"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''        held = one.content_id or rows.get(one.target, "")'''
+new = '''        held = one.content_id'''
+
+[[rows]]
+id = "S12_empty_playlist"
+description = "write_members: a set of no members writes an empty playlist"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''    if not ids:
+        return None
+'''
+new = ''''''
+
+[[rows]]
+id = "S13_create_not_find"
+description = "write_members: the playlist is created rather than found by its name under the folder"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''    playlist = rb_writer.ensure_playlist(db, plan.name, folder)'''
+new = '''    playlist = db.create_playlist(plan.name, parent=folder)'''
+
+[[rows]]
+id = "S14_stale_digest"
+description = "apply_alone: a plan whose digest moved since the approval is written anyway"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''    if again.digest != plan.digest:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "S15_member_order"
+description = "_members: members in title order rather than set order"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''    return tuple(members), tuple(left)'''
+new = '''    return tuple(sorted(members, key=lambda one: one.title)), tuple(left)'''
+
+[[rows]]
+id = "S16_near_match_guessed"
+description = "plan_for_landing: a row that resolves only to something close claims the file"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''        if found.state is not match.MatchState.MATCHED:'''
+new = '''        if found.state is match.MatchState.MISSING:'''
+
+[[rows]]
+id = "S17_unresolved_dropped"
+description = "_members: a downloaded row tied to nothing is dropped silently rather than listed"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''        if not paths:
+            left.append(Left(position, artist, title, state, NOT_RESOLVED))
+            continue
+        if how == LANDED:'''
+new = '''        if not paths:
+            continue
+        if how == LANDED:'''
+
+[[rows]]
+id = "S18_info_json_flag"
+description = "_MixDownload.argv: do not ask yt-dlp for the info document"
+file = "src/cratekit/intake/fetch.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py"]
+old = '''        argv[1:1] = ["--playlist-end", str(PLAYLIST_PROBE), "--write-info-json"]'''
+new = '''        argv[1:1] = ["--playlist-end", str(PLAYLIST_PROBE)]'''
+
+[[rows]]
+id = "S19_page_not_frozen"
+description = "intake_set: freeze an empty page on every job"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py"]
+old = '''                        PAGE: dict(held.page),'''
+new = '''                        PAGE: {},'''
+
+[[rows]]
+id = "S20_bridge_set"
+description = "intake_land: --set on a bridge tree is not refused, the batch lands with no playlist"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''    if ctx.args.set_job and not medium.native:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "S21_landing_skips_set"
+description = "apply_rows: the landing's commit never writes the set playlist"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''            if plan.set_playlist is not None:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "S22_record_unnamed"
+description = "_record_landing_commit: the set playlist is not named on the record"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''    if set_written is not None and plan.set_playlist is not None:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "S23_declared_node"
+description = "build_taxonomy: the inspiration node is not validated with the declared nodes"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_set_inspiration_playlist.py"]
+old = '''        declared_nodes.append((inspiration, "inspiration"))'''
+new = '''        pass'''
+
+[[rows]]
+id = "S24_ack_before_gate"
+description = "intake_inspiration: the backup acknowledgment is not read before the gate"
+file = "src/cratekit/intake/inspiration_cli.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''    session.assert_backup_acknowledged(cfg)'''
+new = '''    pass'''
+
+[[rows]]
+id = "S25_bridge_backfill"
+description = "_native_or_refuse: a bridge tree is not refused"
+file = "src/cratekit/intake/inspiration_cli.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''    if medium.native:'''
+new = '''    if True:'''
