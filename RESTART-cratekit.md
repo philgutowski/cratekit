@@ -4,6 +4,20 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**R-926 built, 2026-10-09, on `relay/270`, issue #270: under pytest a state
+write outside the test root is refused.** The 2026-10-08 clobber of the live
+config was a review subagent's probe run from outside `tests/`, where the
+conftest never loads. The config writer now refuses, under pytest, any path
+outside the base temporary root the conftest registers, and everything when
+none is registered; `atomic_write_bytes` and `_exclusive_lock` run the same
+check and also accept the system temporary directory. The review drove nine
+findings, one fix round: the guard widened to the shared primitives, the
+tests reworked. Battery on the branch: ruff clean, 12,835 passed and 1
+skipped, the scan clean. Fifteen mutation rows, all killed
+(`docs/mutation/r926-notes.md`), the live config's modification time
+unchanged throughout. R-931 records what it cannot see. The rule for
+writers is `docs/solutions/workflow-issues/under-pytest-a-state-write-outside-the-test-root-is-refused.md`.
+
 **Sitting 35, 2026-10-09, attended. The first set intake end to end on the
 native tree.** A 5 hour SoundCloud mix: 54 identified, 36 kept, 20
 downloaded, 19 landed natively under `INBOX / 2026-10-09 Set Public Service

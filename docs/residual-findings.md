@@ -35826,6 +35826,18 @@ folder was touched in that window and no acknowledgment was minted. The
 guard the closing line asks for would have refused this write wherever the
 probe ran from. Until it lands, a probe goes under `tests/` or does not run.
 
+**Closed by #270, 2026-10-09, on `relay/270`.** Under pytest the
+configuration writer refuses any path outside the root the suite's
+isolation registers, pytest's base temporary directory, and refuses every
+write when no root is registered, which is the state a probe outside
+`tests/` runs in. The check reads no environment variable. It sits in
+`_write_lock`, which every configuration writer takes first, and the same
+check runs in `atomic_write_bytes` and `_exclusive_lock`, which also accept
+the system temporary directory, where shipped code keeps scratch files of
+its own; the configuration never gets that allowance. Fifteen mutation rows,
+all killed (`docs/mutation/r926-notes.md`), the live config's modification
+time unchanged across the branch's suites and the table. R-931 records what
+the guard cannot see.
 
 ---
 
@@ -36015,3 +36027,28 @@ live run's warning says what it is.
 
 **Closes when:** the file returns and the verb is run again, which the
 plan handles with no change. Ledger only.
+
+---
+
+## R-931. The test root guard keys on pytest being loaded in the process
+
+**Found:** by the review of #270, 2026-10-09.
+
+**The mechanism.** `_refuse_write_outside_test_root` asks whether pytest
+is in `sys.modules`. Two edges follow. A child process a test starts that
+imports nothing from `tests`, a `crate` subprocess or a `python -c` over
+cratekit alone, has no pytest loaded and is never checked, so it relies on
+the environment it inherited, exactly as before #270. A probe outside
+`tests/` that shells out to `crate setup` would still write the real
+config. The other edge is a process that is not a test and has pytest
+loaded for its own reasons: every configuration write it makes is refused,
+with a message that blames `tests/conftest.py`.
+
+**Measured cost.** The first edge needs the R-926 probe shape plus a
+subprocess; no such test was driven. The second: one candidate considered,
+`scripts/mutate.py`, which imports pytest in its plugin but never calls a
+cratekit writer in that process, so none driven produces it.
+
+**Closes when:** a child process can tell it was started by a test without
+reading the environment, or the edges are judged acceptable. Ledger only:
+both are maintainer facing, and the shipped tool never imports pytest.

@@ -1,0 +1,162 @@
+name = "r926"
+pass_kind = "light"
+
+[[rows]]
+id = "G1_never_checks"
+description = "The guard returns at once whether or not pytest is loaded, so nothing is ever refused"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''    if "pytest" not in sys.modules:
+        return
+    root = _TEST_WRITE_ROOT'''
+new = '''    if True:
+        return
+    root = _TEST_WRITE_ROOT'''
+
+[[rows]]
+id = "G2_checks_the_shipped_tool"
+description = "The guard runs in a process without pytest too, so the shipped tool refuses every configuration save"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''    if "pytest" not in sys.modules:
+        return
+    root = _TEST_WRITE_ROOT'''
+new = '''    if False:
+        return
+    root = _TEST_WRITE_ROOT'''
+
+[[rows]]
+id = "G3_document_check_dropped"
+description = "_write_lock no longer checks, so the configuration document is held only by the primitives' temporary allowance"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''    _refuse_write_outside_test_root(path)
+    return _exclusive_lock(path.with_name(path.name + ".migrate.lock"))'''
+new = '''    return _exclusive_lock(path.with_name(path.name + ".migrate.lock"))'''
+
+[[rows]]
+id = "G4_document_gets_temporary"
+description = "The configuration document is given the system temporary allowance the primitives have"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''    _refuse_write_outside_test_root(path)
+    return _exclusive_lock(path.with_name(path.name + ".migrate.lock"))'''
+new = '''    _refuse_write_outside_test_root(path, system_temporary=True)
+    return _exclusive_lock(path.with_name(path.name + ".migrate.lock"))'''
+
+[[rows]]
+id = "G5_atomic_write_unchecked"
+description = "atomic_write_bytes no longer checks, so a ledger or token write from an unisolated test lands anywhere"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''    _refuse_write_outside_test_root(path, system_temporary=True)
+    _mkdir_private(path.parent)
+    fd, tmp = tempfile.mkstemp('''
+new = '''    _mkdir_private(path.parent)
+    fd, tmp = tempfile.mkstemp('''
+
+[[rows]]
+id = "G6_lock_unchecked"
+description = "_exclusive_lock no longer checks, so a session lock from an unisolated test is created anywhere"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''        _refuse_write_outside_test_root(self.path, system_temporary=True)
+        _mkdir_private(self.path.parent)'''
+new = '''        _mkdir_private(self.path.parent)'''
+
+[[rows]]
+id = "G7_no_root_allows_all"
+description = "With no root registered the allowed set is the filesystem root, so the R-926 probe writes the live config again"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''    allowed = [] if root is None else [root.resolve()]'''
+new = '''    allowed = [Path(os.sep)] if root is None else [root.resolve()]'''
+
+[[rows]]
+id = "G8_target_unresolved"
+description = "The target is compared as spelled, so a link inside the root aimed outside it passes"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''    target = path.resolve()
+    if any(_is_inside(target, each) for each in allowed):'''
+new = '''    target = path
+    if any(_is_inside(target, each) for each in allowed):'''
+
+[[rows]]
+id = "G9_temporary_unresolved"
+description = "The system temporary directory is compared as spelled, /var against /private/var on macOS, so every scratch write is refused"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_provider_gate.py"]
+old = '''        allowed.append(Path(tempfile.gettempdir()).resolve())'''
+new = '''        allowed.append(Path(tempfile.gettempdir()))'''
+
+[[rows]]
+id = "G10_no_temporary_allowance"
+description = "The primitives lose the system temporary allowance, the strict rule the review round measured at 101 refusals"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_provider_gate.py"]
+old = '''    if system_temporary:
+        allowed.append('''
+new = '''    if False:
+        allowed.append('''
+
+[[rows]]
+id = "G11_mkdir_before_check"
+description = "save creates the configuration directory before the lock is built, so a refused write leaves a directory behind"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''    with _write_lock(target):
+        _mkdir_private(target.parent)
+        atomic_write_bytes(config.to_toml_bytes(), target)'''
+new = '''    _mkdir_private(target.parent)
+    with _write_lock(target):
+        atomic_write_bytes(config.to_toml_bytes(), target)'''
+
+[[rows]]
+id = "G12_message_drops_path"
+description = "The no root refusal stops naming the path it refused"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py"]
+old = '''            f"refused to write {path}: this process is "
+            f"running under pytest and no test root is registered, so the "'''
+new = '''            f"refused to write the file: this process is "
+            f"running under pytest and no test root is registered, so the "'''
+
+[[rows]]
+id = "P1_config_path_leaves_root"
+description = "The brief's path resolution mutant: config_path answers a folder outside every temporary root, as a missed redirect would"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''    return state_path("config")'''
+new = '''    return Path(os.sep, "cratekit-r926-mutant", "config.toml")'''
+
+[[rows]]
+id = "C1_root_is_state_roots_only"
+description = "The conftest registers its own state_roots folder rather than the base temp, so a save to a test's tmp_path is refused"
+file = "tests/conftest.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''                config, "_TEST_WRITE_ROOT", tmp_path_factory.getbasetemp()'''
+new = '''                config, "_TEST_WRITE_ROOT", root'''
+
+[[rows]]
+id = "C2_root_never_registered"
+description = "The conftest never registers a root, the state a probe outside tests/ is in, for every test"
+file = "tests/conftest.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''                config, "_TEST_WRITE_ROOT", tmp_path_factory.getbasetemp()'''
+new = '''                config, "_TEST_WRITE_ROOT", None'''
