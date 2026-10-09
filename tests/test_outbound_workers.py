@@ -2447,3 +2447,21 @@ def test_the_unmatched_warning_reads_only_whole_counts(counts, said):
         (warning,) = warned
         assert warning["code"] == export_cli.UNMATCHED_WARNING
         assert said in warning["message"]
+
+
+def test_the_files_album_is_read_beside_its_isrc_in_one_read(installed, tmp_path):
+    """R-572: the album tag rides with the ISRC, stripped, and is empty when absent."""
+    root = Path(installed.library.root)
+    tagged = _tagged(tmp_path / "a", root / "Music" / "a.flac", "ZZX9A2600042")
+    assert tags.write_tags(tagged, {"album": "  Tidal Lines "}) is True
+    bare = _tagged(tmp_path / "b", root / "Music" / "b.flac", "ZZX9A2600043")
+
+    found = source.file_identity(
+        _entry(locations.location_url(tagged)), root=root, prefix_map=[]
+    )
+    assert found == source.FileIdentity(isrc="ZZX9A2600042", album="Tidal Lines")
+    assert source.file_identity(
+        _entry(locations.location_url(bare)), root=root, prefix_map=[]
+    ) == source.FileIdentity(isrc="ZZX9A2600043", album="")
+    gone = locations.location_url(root / "Music" / "gone.flac")
+    assert source.file_identity(_entry(gone), root=root, prefix_map=[]) == source.FileIdentity()
