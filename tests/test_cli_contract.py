@@ -1893,6 +1893,12 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # The residual on stale row genres. No argument: it reads the whole
         # collection of the configured database.
         "tag.rows": [],
+        # R-923. No argument, and a CALLABLE because the fixture's seeded rows
+        # lack rekordbox's defaults, so the verb would plan a write and the
+        # write would meet the pin the fixture never records. Made whole, the
+        # plan is empty, the explicit gate still asks, and the apply is a no op,
+        # the shape tag.rows has on this fixture.
+        "repair.rows": lambda: _rows_whole(),
         # R-799. No argument: it reads every tagging record this installation
         # committed, which on the fixture's machine is none.
         "tag.remap": [],
@@ -1963,6 +1969,23 @@ def _ready_to_cut_over() -> list[str]:
     tree_id, display = _routing_tree()
     export, _root = cutover_fixtures.ready(config.load(), display)
     return [tree_id, "--export", str(export)]
+
+
+def _rows_whole() -> list[str]:
+    """Every content row given rekordbox's defaults, as rekordbox would have made it."""
+    import sqlite3
+
+    from cratekit.core import rb_writer
+
+    defaults = rb_writer.CONTENT_ROW_DEFAULTS
+    sets = ", ".join(f"{column} = ?" for column in defaults)
+    connection = sqlite3.connect(config.load().library.db_path)
+    try:
+        connection.execute(f"UPDATE {rb_writer.CONTENT_TABLE} SET {sets}", tuple(defaults.values()))
+        connection.commit()
+    finally:
+        connection.close()
+    return []
 
 
 def _already_cut_over() -> list[str]:
@@ -2128,6 +2151,10 @@ ACKNOWLEDGED_BEFORE_THE_GATE = {
     ),
     "tag.rows": (
         "tests/test_tag_rows.py::"
+        "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
+    ),
+    "repair.rows": (
+        "tests/test_repair_rows.py::"
         "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
     ),
     # U112. Only its database area is refused without one; the account area

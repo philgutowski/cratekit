@@ -35703,6 +35703,17 @@ through the guarded writer, and the 165 rows load to a deck in rekordbox.
 **On the board bar.** The author chose a code fix over a re-import on
 2026-10-09; the issue carries the brief.
 
+**Closed 2026-10-09, issue #267.** `rb_writer.CONTENT_ROW_DEFAULTS` names
+the twenty one columns and their values, measured; the landing sets them on
+every row it creates, and `crate repair rows` fills them on a live row that
+lacks them, only where NULL, through the fill if empty policy
+`ROW_DEFAULTS_POLICY` the apply alone registers, with a digest that names no
+database path so a copy rehearsal can match, a staleness recheck from SQL,
+and a read back that refuses a moved column. Twenty mutation rows, nineteen
+killed and one maintainer zero, `docs/mutation/r923-notes.md`. The live
+verification, the 165 rows repaired and one loaded to a deck, is owed to
+`docs/cutover.md` sitting 32 and is recorded there when it runs.
+
 ---
 
 ## R-924. intake set on a mix URL says nothing until it ends, through a download and a paid identification of an hour
@@ -35794,3 +35805,15 @@ write with the isolation removed is refused.
 
 **On the board bar.** The live library's config is the one file every verb
 trusts, and a silent overwrite of it is a correctness failure.
+
+**The cause, named 2026-10-09.** Not the mutation run. The adversarial
+review subagent for #267 wrote a probe test in its session's scratchpad,
+outside the repository, imported the `machine` and `acknowledged` fixtures
+from `tests/test_repair_rows.py`, and ran the worktree's pytest on it from
+there. `tests/conftest.py` loads only for files under `tests/`, so the
+fixture's `config.save` wrote the tmp library into the real file at
+22:33:06; the probe's test `test_at_baseline_the_same_bare_write_is_refused`
+is the folder name in the clobbered copy. Nothing else under the state
+folder was touched in that window and no acknowledgment was minted. The
+guard the closing line asks for would have refused this write wherever the
+probe ran from. Until it lands, a probe goes under `tests/` or does not run.

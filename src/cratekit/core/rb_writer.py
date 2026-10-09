@@ -2434,6 +2434,49 @@ CONTENT_ROW_EMPTY_COLUMNS = GRIDLESS_ON_CREATE_COLUMNS | frozenset(
     }
 )
 
+#: What rekordbox writes on every content row it makes for itself and the
+#: binding's ``add_content`` leaves NULL, by column (R-923). A row without them
+#: is accepted, analysed and stable, which is all A8 tried, and will not load to
+#: a deck: measured on the live library on 2026-10-09, 165 native rows refused a
+#: deck with no dialog while a bridge imported row loaded at once. Of 10,272
+#: live rows rekordbox made, none leaves any of the first twelve NULL, and it
+#: writes an empty string to the nine text columns after them.
+#:
+#: EVERY VALUE IS THE COLUMN'S OWN EMPTY. A rating of 0 is no stars, a colour of
+#: ``'0'`` is no colour, an empty string is no text, so writing one over a NULL
+#: says nothing a person could have meant otherwise, and a fill if empty
+#: operation that comes later, the rating backfill among them, still reads the
+#: column as unset. None of them is an analysis column: the landing sets them on
+#: the row it creates and the guard's creation policy admits them.
+#:
+#: The same honest list, measured rather than derived, and the same schema test
+#: holds it to real column names.
+CONTENT_ROW_DEFAULTS: Mapping[str, Any] = MappingProxyType(
+    {
+        "Rating": 0,
+        "ColorID": "0",
+        "DJPlayCount": 0,
+        "DiscNo": 0,
+        "DeliveryControl": "on",
+        "SamplerTrackInfo": 0,
+        "SamplerPlayOffset": 0,
+        "SamplerGain": 0.0,
+        "VideoAssociate": "0",
+        "LyricStatus": 0,
+        "ServiceID": 0,
+        "ExtInfo": "null",
+        "FileNameS": "",
+        "Commnt": "",
+        "Subtitle": "",
+        "ReleaseDate": "",
+        "ModifiedByRBM": "",
+        "DeliveryComment": "",
+        "Lyricist": "",
+        "OrgFolderPath": "",
+        "Reserved1": "",
+    }
+)
+
 #: The tables an analysis pass writes rows into FOR a content row, keyed on the
 #: content identifier. A content row this product creates must own none of
 #: them: a cue is grid relative, the mixer parameters are gain and peak, and the
@@ -2565,6 +2608,21 @@ class FieldPolicy:
 TRACK_COLOR_POLICY = FieldPolicy(
     owner="track-color",
     fields=MappingProxyType({"ColorID": Ownership.OWNED}),
+)
+
+#: The repair of a row a landing created without rekordbox's defaults (R-923).
+#: Registered by that repair alone and never at baseline, so no other writer
+#: gains a column by its existing.
+#:
+#: FILL IF EMPTY ON EVERY FIELD, and the value it fills is the column's own
+#: empty, :data:`CONTENT_ROW_DEFAULTS`. Two of its fields have owners elsewhere,
+#: the colour here and the rating in the metadata operations, and neither is
+#: overwritten: a colour or a rating a person set reads as present and is
+#: skipped, and what a NULL becomes is the value both owners already read as
+#: unset.
+ROW_DEFAULTS_POLICY = FieldPolicy(
+    owner="row-defaults",
+    fields=MappingProxyType(dict.fromkeys(CONTENT_ROW_DEFAULTS, Ownership.FILL_IF_EMPTY)),
 )
 
 _REGISTERED: dict[str, FieldPolicy] = {}
@@ -3398,6 +3456,7 @@ __all__ = [
     "ADMITTABLE_ROW_TABLES",
     "BOOKKEEPING_COLUMNS",
     "CONTENT_ANALYSIS_TABLES",
+    "CONTENT_ROW_DEFAULTS",
     "CONTENT_ROW_EMPTY_COLUMNS",
     "CONTENT_TABLE",
     "EMPTY_ON_CREATE",
@@ -3412,6 +3471,7 @@ __all__ = [
     "PERMITTED_ROW_TABLES",
     "PLAYLIST_TABLE",
     "REMOVABLE_TABLES",
+    "ROW_DEFAULTS_POLICY",
     "ROOT_PARENT_SENTINELS",
     "SETTINGS_APP_DIRNAME",
     "SOFT_DELETE_COLUMN",

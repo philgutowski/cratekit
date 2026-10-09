@@ -17,6 +17,28 @@ rotated as of 2026-11-01 on an equal digest, 7 batches into Old, R-902
 closed. **Owed, the author's:** the three reviews, #178 lines 7, 8, 9, the
 twelve hand made playlists in INBOX / Old.
 
+**R-923 built, 2026-10-09, on `unit/issue267`, issue #267: a row the native
+landing creates loads to a deck, and the ones already landed can be
+repaired.** The author found none of the 165 landed rows would load; the
+binding's `add_content` leaves twenty one columns NULL that rekordbox fills on
+every row it makes, measured on the live library and pinned as literals in
+`rb_writer.CONTENT_ROW_DEFAULTS`. The landing sets them on creation, in
+`_restamp`, none an analysis column. `crate repair rows` plans every live row
+with any of them NULL from SQL, asks its explicit gate over a digest that
+names no database path, rechecks each row from SQL before the session, fills
+only a NULL through the fill if empty `ROW_DEFAULTS_POLICY`, registered for
+the commit and put back after it, commits behind the guard and reads every
+row back, refusing a moved column. Battery on the merged branch: ruff clean,
+12,768 passed and 1 skipped, the scan clean. Twenty mutation rows, nineteen
+killed, one maintainer zero (`docs/mutation/r923-notes.md`). The review drove
+a second commit in one process and found the registry left widened, fixed;
+its probe, run from a scratchpad outside `tests/`, overwrote the live config
+at 22:33, restored by another session at 23:03, the cause named under R-926
+and issue #270. **Owed:** the live run, `repair rows` rehearsed on a copy,
+applied on an equal digest, and one of the 165 loaded to a deck, recorded in
+`docs/cutover.md` sitting 32; and the installed copy rebuilt from `main`
+first.
+
 **Sitting 31, 2026-10-07 to 2026-10-08, attended.** The first guided `crate
 label sync` ran live over 46 labels: 22 picks under the author's 50 track cap,
 36 tracks downloaded, landed on the bridge, imported, adopted on an equal digest

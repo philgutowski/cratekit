@@ -520,12 +520,14 @@ def identity(plan: NativePlan) -> dict[str, Any]:
 
 
 def _restamp(content: Any, row: RowPlan, plan: NativePlan) -> None:
-    """Put the planned path and device on the row the binding made.
+    """Put the planned path and device, and rekordbox's defaults, on the row the binding made.
 
     The binding stores the path it was given to stat and the first device it
     finds. Both are corrected here when they differ from the plan, on the
     object before the flush the guard performs, so the guard judges the row as
-    it will be stored. A row the binding got right is left alone.
+    it will be stored. A row the binding got right is left alone. Every column
+    of :data:`cratekit.core.rb_writer.CONTENT_ROW_DEFAULTS` the binding left
+    NULL is given rekordbox's own value the same way (R-923).
     """
     if str(content.FolderPath) != row.folder_path:
         content.FolderPath = row.folder_path
@@ -533,6 +535,12 @@ def _restamp(content: Any, row: RowPlan, plan: NativePlan) -> None:
         content.DeviceID = plan.device_id
     if str(content.MasterDBID) != plan.master_db_id:
         content.MasterDBID = plan.master_db_id
+    # REKORDBOX'S OWN DEFAULTS, ON THE SAME OBJECT BEFORE THE SAME FLUSH (R-923).
+    # The binding leaves these NULL, and rekordbox will not load such a row to a
+    # deck. Only a NULL is filled, so a value the binding chose stands.
+    for column, value in rb_writer.CONTENT_ROW_DEFAULTS.items():
+        if getattr(content, column, None) is None:
+            setattr(content, column, value)
 
 
 def _read_back(db: Any, content_id: str) -> tuple[dict[str, Any], str, str]:
