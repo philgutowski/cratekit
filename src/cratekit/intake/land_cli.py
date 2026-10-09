@@ -508,21 +508,31 @@ def intake_land(ctx) -> Envelope:
     # THE SET PLAYLIST IS A DATABASE WRITE (U121), one more node in the native
     # landing's commit, and the bridge landing splices an export and opens no
     # database. Refused by name before the gate rather than landing the batch
-    # and quietly writing no playlist.
-    if ctx.args.set_job and not medium.native:
+    # and quietly writing no playlist. AND A WORD WITHOUT THE SET IS REFUSED
+    # TOO, since nothing would read it and the person would find no playlist.
+    words_given = [
+        flag
+        for flag, value in (
+            ("--dj", ctx.args.dj),
+            ("--set-name", ctx.args.set_name),
+            ("--set-date", ctx.args.set_date),
+        )
+        if value is not None
+    ]
+    if words_given and not ctx.args.set_job:
         raise refuse(
             "intake-list-unusable",
-            f"--set names a set job whose permanent playlist is written through "
-            f"the database, and this library's intake tree is "
-            f"{'on the xml bridge' if declared is not None else 'unreadable'}, so "
-            f"a landing here cannot write it; land without --set, nothing was moved",
+            f"{', '.join(words_given)} name{'s' if len(words_given) == 1 else ''} the "
+            f"set's playlist and --set names the set it is made from, so without "
+            f"--set nothing would read {'it' if len(words_given) == 1 else 'them'}; "
+            f"pass --set JOB or drop {'it' if len(words_given) == 1 else 'them'}, "
+            f"nothing was moved",
             remedy=Remedy.FIX_COMMAND_LINE,
-            steps=(
-                "land without --set, or cut the intake tree over and land with it",
-            ),
             origin=_ORIGIN,
-            detail={"set_job": str(ctx.args.set_job)},
+            detail={"given": words_given},
         )
+    if ctx.args.set_job:
+        set_playlist.assert_native(medium, landing=True)
     if medium.native:
         return _land_native(
             ctx,
@@ -898,10 +908,10 @@ def _land_native(
     if ctx.args.set_job:
         with jobs.open_store() as store:
             set_job = set_playlist.set_job_or_refuse(store, str(ctx.args.set_job))
-        words = set_playlist.words_for(
-            set_job, dj=ctx.args.dj, set_name=ctx.args.set_name, set_date=ctx.args.set_date
-        )
-        reports = set_playlist.reports_of(cfg, set_job)
+            words = set_playlist.words_for(
+                set_job, dj=ctx.args.dj, set_name=ctx.args.set_name, set_date=ctx.args.set_date
+            )
+            reports = set_playlist.reports_of(store, set_job)
 
     set_planned: list[set_playlist.SetPlaylistPlan] = []
 

@@ -61,12 +61,13 @@ from cratekit.core import (
     jobs,
     locations,
     rb_writer,
+    review,
     session,
     snapshot,
     taxonomy,
 )
 from cratekit.core.cause import Remedy, refuse
-from cratekit.intake import batch_name, fetch
+from cratekit.intake import batch_name, fetch, ingest
 from cratekit.intake import cli as intake_cli
 from cratekit.write import routing_pass, trees
 
@@ -90,6 +91,7 @@ LANDED = "landed"
 #: Why a row of the set is not in the playlist, in the words the screen shows.
 NOT_RESOLVED = "neither owned nor landed"
 NO_ROW = "owned on disk and not in the collection"
+AMBIGUOUS_ROWS = "two collection rows claim its file"
 SUPPRESSED = "suppressed"
 NOT_LANDED = "its file did not land"
 
@@ -168,7 +170,7 @@ def _without_leading(title: str, dj: str) -> str:
     if head.casefold() != dj.casefold():
         return title
     rest = title[len(dj) :]
-    stripped = re.sub(r"^\s*(?:[-:|–—]+\s*)?", "", rest)
+    stripped = re.sub(r"^\s*(?:[-:|\u2013\u2014]+\s*)?", "", rest)
     return stripped if stripped else title
 
 
@@ -185,11 +187,28 @@ def _month_of(flag: str | None, page_date: str | None) -> date | None:
                 origin=_ORIGIN,
                 detail={"set_date": flag},
             )
-        return date(int(found.group(1)), int(found.group(2)), 1)
+        try:
+            # The day, when given, is checked as a day and then dropped.
+            given = date(int(found.group(1)), int(found.group(2)), int(found.group(3) or 1))
+            return given.replace(day=1)
+        except ValueError as exc:
+            raise refuse(
+                UNNAMED,
+                f"--set-date {flag!r} is not a month ({exc}), so the set's playlist "
+                f"cannot be named; give it as YYYY-MM or YYYY-MM-DD",
+                remedy=Remedy.FIX_COMMAND_LINE,
+                origin=_ORIGIN,
+                detail={"set_date": flag},
+            ) from exc
     if page_date:
         found = _PAGE_DATE.match(page_date.strip())
         if found is not None:
-            return date(int(found.group(1)), int(found.group(2)), 1)
+            try:
+                return date(int(found.group(1)), int(found.group(2)), 1)
+            except ValueError:
+                # A page date that is not a date names no month, and the flag
+                # is asked for, exactly as a page with no date.
+                return None
     return None
 
 
@@ -281,12 +300,55 @@ def set_job_or_refuse(store: jobs.JobStore, job_id: str) -> jobs.Job:
     return job
 
 
-def reports_of(cfg: config.Config, job: jobs.Job) -> tuple[dict[str, Any], ...]:
+def reports_of(store: jobs.JobStore, job: jobs.Job) -> tuple[dict[str, Any], ...]:
     """The job's committed reports in item order, through the one reader ``intake missing`` uses."""
     from cratekit.intake import missing_cli
 
-    with jobs.open_store() as store:
-        return missing_cli.job_reports(store, job)
+    return missing_cli.job_reports(store, job)
+
+
+def assert_native(medium: ingest.IntakeMedium, *, landing: bool) -> None:
+    """Refuse a set playlist on a library whose intake tree is not database native.
+
+    ONE REFUSAL FOR BOTH VERBS. The playlist is a database node and the
+    bridge's writers emit an export, so the fact is the same whichever verb
+    meets it, and so are the reason and the remedy. The landing is told it
+    can land without ``--set`` and backfill after the cutover.
+    """
+    if medium.native:
+        return
+    declared = medium.declared
+    tree_id = declared.intake.id if declared is not None else ""
+    if declared is None:
+        message = (
+            "the library root is not reachable, so its taxonomy and its intake tree "
+            "could not be read and the set's playlist cannot be written; nothing was "
+            "written"
+        )
+        steps = ["mount the library volume and run it again"]
+    else:
+        message = (
+            f"the intake tree {tree_id!r} is still on the xml bridge, so the set's "
+            f"playlist, a database node, is not this product's to write here; cut the "
+            f"intake tree over first, nothing was written"
+        )
+        steps = [
+            f"run crate tree cutover {tree_id} --export with a Fresh Export to move the "
+            f"intake tree to the database",
+        ]
+    if landing:
+        steps.insert(
+            0, "land without --set, and run crate intake inspiration --job after the cutover"
+        )
+        message = message.replace("nothing was written", "nothing was moved")
+    raise refuse(
+        "tree-unconverged",
+        message,
+        remedy=Remedy.COMPLETE_PENDING_ACTION,
+        steps=tuple(steps),
+        origin=_ORIGIN,
+        detail={"tree_id": tree_id, "landing": landing},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -433,15 +495,6 @@ def folder_for(db: Any, declared: taxonomy.Taxonomy) -> tuple[str, taxonomy.Node
     return (str(live[0].ID) if live else ""), node
 
 
-def _holding(found: trees.RowMatch) -> str | None:
-    """The active row a match names, the first of several when two claim it."""
-    if found.content_id:
-        return str(found.content_id)
-    if found.content_ids:
-        return str(found.content_ids[0])
-    return None
-
-
 class _Collection:
     """The collection's active rows, indexed once on this handle, asked by path."""
 
@@ -452,17 +505,70 @@ class _Collection:
             routing_pass.content_rows(db), root=cfg.library.root, prefix_map=self._prefix_map
         )
 
-    def row_for(self, paths: Sequence[str]) -> str | None:
-        """The first row any of ``paths`` resolves to, or None."""
+    def row_for(self, paths: Sequence[str]) -> tuple[str | None, str]:
+        """The one row the first of ``paths`` resolves to, or None and why not.
+
+        A PATH TWO ACTIVE ROWS CLAIM IS NOT A ROW, the native landing's own
+        rule: the playlist would hold whichever the index yielded first, and
+        one of a duplicate pair is the row that does not play. Such a track is
+        left and the screen says two rows claim its file.
+        """
         if not paths:
-            return None
+            return None, NO_ROW
+        ambiguous = False
         for found in trees.match_indexed_rows(
             paths, self._index, root=self._cfg.library.root, prefix_map=self._prefix_map
         ):
-            held = _holding(found)
-            if held is not None:
-                return held
-        return None
+            if found.outcome is trees.MatchOutcome.AMBIGUOUS:
+                ambiguous = True
+                continue
+            if found.content_id:
+                return str(found.content_id), ""
+        return None, (AMBIGUOUS_ROWS if ambiguous else NO_ROW)
+
+
+class _LibraryView:
+    """The library as the match engine sees it, a person's answers read back, nothing written.
+
+    THE WORKER'S RESOLVE WITHOUT THE WORKER'S WRITES. ``intake set`` resolves a
+    row through ``adjudicate``, which offers a review item for a question and
+    retires one a rule has settled, and a PLAN may do neither: a plan the
+    person aborts has written nothing, and the gate is asked over exactly
+    what the screen showed. So the row is resolved against the same index and
+    tombstone view the worker reads, and a question is answered only by the
+    item the worker already filed, found by the question's own identity and
+    read as the worker reads it, a person's verdict and nothing else.
+    """
+
+    def __init__(self, cfg: config.Config) -> None:
+        self._cfg = cfg
+        self._index, self._suppresses, self._suppression_id = match_cli.library_view(cfg)
+
+    def resolve(self, wanted: match.Wanted) -> match.TrackMatch:
+        found = match.resolve_one(
+            wanted, self._index, suppresses=self._suppresses, suppression_id=self._suppression_id
+        )
+        if found.state is not match.MatchState.NEEDS_REVIEW:
+            return found
+        item_id = review.item_id_for(match_cli.QUEUE, match.QUESTION_KIND, found.question_identity)
+        with review.open_store(self._cfg) as items:
+            held = review.find(items, item_id)
+        if held is None or held.verdict not in review.PERSON_VERDICTS:
+            return found
+        return match.apply_verdict(
+            found,
+            accepted=held.verdict is review.Verdict.ACCEPTED,
+            option=held.option,
+            offered=tuple(one.option_id for one in held.options),
+            item_id=held.item_id,
+            suppresses=self._suppresses,
+            suppression_id=self._suppression_id,
+        )
+
+    def paths(self, wanted: match.Wanted) -> tuple[str, ...]:
+        """The library files the row is tied to, or nothing when it is a question or missing."""
+        found = self.resolve(wanted)
+        return tuple(found.paths) if found.state is match.MatchState.MATCHED else ()
 
 
 def _never_suppressed(_recording: str, _address: object) -> bool:
@@ -505,11 +611,11 @@ def _members(
         state = str(report.get("state") or "")
         if state == "owned":
             paths = tuple(str(path) for path in (report.get("paths") or ()))
-            held = collection.row_for(paths)
+            held, why = collection.row_for(paths)
             if held is None and owned_again is not None:
-                held = collection.row_for(owned_again(_wanted(report)))
+                held, why = collection.row_for(owned_again(_wanted(report)))
             if held is None:
-                left.append(Left(position, artist, title, state, NO_ROW))
+                left.append(Left(position, artist, title, state, why))
             else:
                 members.append(Member(position, artist, title, OWNED, content_id=held))
             continue
@@ -526,9 +632,9 @@ def _members(
         if how == LANDED:
             members.append(Member(position, artist, title, LANDED, target=paths[0]))
             continue
-        held = collection.row_for(paths)
+        held, why = collection.row_for(paths)
         if held is None:
-            left.append(Left(position, artist, title, state, NO_ROW))
+            left.append(Left(position, artist, title, state, why))
         else:
             members.append(Member(position, artist, title, OWNED, content_id=held))
     return tuple(members), tuple(left)
@@ -555,21 +661,30 @@ def plan_for_landing(
     pairs. A downloaded row is tied to a staged file by the match rule over
     exactly those files, as an account playlist is (U113), and the member
     carries the TARGET, since the row is made at the apply and keyed by it.
+    A row no staged file answers is asked of the library next, with the
+    person's review answers read back, since a track offered at review and
+    accepted as a library file was never downloaded and is owned.
     """
     made = on or today()
     folder_id, node = folder_for(db, declared)
     staged = [source for source, _target in files]
     targets = {source.resolve(): str(target) for source, target in files}
     index = match.index_paths(staged, template=match_cli.library_template(cfg))
+    library = _LibraryView(cfg)
 
     def downloaded(wanted: match.Wanted) -> tuple[tuple[str, ...], str]:
         found = match.resolve_one(
             wanted, index, suppresses=_never_suppressed, suppression_id=_no_suppression_id
         )
-        if found.state is not match.MatchState.MATCHED:
-            return (), LANDED
-        tied = [targets[Path(path).resolve()] for path in found.paths if Path(path).resolve() in targets]
-        return tuple(tied), LANDED
+        if found.state is match.MatchState.MATCHED:
+            tied = [
+                targets[Path(path).resolve()]
+                for path in found.paths
+                if Path(path).resolve() in targets
+            ]
+            if tied:
+                return tuple(tied), LANDED
+        return library.paths(wanted), OWNED
 
     members, left = _members(
         reports, collection=_Collection(cfg, db), downloaded=downloaded, owned_again=None
@@ -601,25 +716,22 @@ def plan_for_backfill(
 ) -> SetPlaylistPlan:
     """The playlist for a set whose files already landed, every row resolved against the library now.
 
-    THE WORKER'S OWN RESOLVE, :func:`intake_cli.resolve_track`, which reads
-    the library the job froze and reads back every answer a person gave about
-    a row, so a track accepted at review is the file they accepted. A row the
-    report called owned keeps its report paths first, and is resolved again
-    only when those paths hold no row any more.
+    THE WORKER'S VIEW WITHOUT ITS WRITES, :class:`_LibraryView`: the library
+    as the match engine sees it now, every answer a person gave about a row
+    read back, so a track accepted at review is the file they accepted, and
+    no question offered or retired by a plan. A row the report called owned
+    keeps its report paths first, and is resolved again only when those paths
+    hold no row any more.
     """
     made = on or today()
     folder_id, node = folder_for(db, declared)
-    intake_cli.reset_cache()
-
-    def resolved(wanted: match.Wanted) -> tuple[str, ...]:
-        found = intake_cli.resolve_track(wanted, job, cfg)
-        return tuple(found.paths) if found.state is match.MatchState.MATCHED else ()
+    library = _LibraryView(cfg)
 
     members, left = _members(
         reports,
         collection=_Collection(cfg, db),
-        downloaded=lambda wanted: (resolved(wanted), OWNED),
-        owned_again=resolved,
+        downloaded=lambda wanted: (library.paths(wanted), OWNED),
+        owned_again=library.paths,
     )
     return _digested(
         SetPlaylistPlan(
@@ -813,24 +925,33 @@ def read_back(db: Any, playlist_id: str) -> tuple[str, ...]:
 def assert_read_back(written: Written) -> None:
     """Refuse an answer the database does not hold: every member read back, in set order.
 
-    A playlist found by its name may hold rows from an earlier run, so what is
-    compared is the read back FILTERED to the ids this commit asked for, which
-    must come back as all of them in the order the set played them. A member
-    named twice in the set is one membership and counted once.
+    EVERY ID ASKED FOR IS READ BACK LIVE, whatever the playlist held before. THE
+    ORDER IS HELD ONLY FOR A PLAYLIST THIS COMMIT FILLED, one whose every
+    membership it added: a playlist found by its name from an earlier write
+    appends what it lacked after what it held, rekordbox's own order for an
+    added track, and a second write that fills a gap mid set is not a write
+    that failed. A member named twice in the set is one membership and
+    counted once.
     """
     wanted = list(dict.fromkeys(written.ids))
-    if wanted and [one for one in written.read_back if one in set(wanted)] != wanted:
+    live = set(written.read_back)
+    missing = [one for one in wanted if one not in live]
+    filled = written.added == len(wanted)
+    in_order = [one for one in written.read_back if one in set(wanted)] == wanted
+    if missing or (filled and not in_order):
         raise refuse(
             "session-committed-unverified",
             f"the set playlist {written.name!r} ({written.playlist_id}) read back from "
-            f"the database holds {len(written.read_back)} track(s) and not the "
-            f"{len(wanted)} the plan named, in that order; the commit landed and this "
-            f"answer cannot be vouched for",
+            f"the database holds {len(written.read_back)} live track(s), "
+            f"{len(missing)} of the {len(wanted)} the plan named not among them"
+            + ("" if missing else " and not in the order the set played them")
+            + "; the commit landed and this answer cannot be vouched for",
             origin=_ORIGIN,
             detail={
                 "playlist_id": written.playlist_id,
                 "planned": wanted,
                 "read": list(written.read_back),
+                "missing": missing,
             },
         )
 
@@ -931,6 +1052,7 @@ def record_commit(
 
 
 __all__ = [
+    "AMBIGUOUS_ROWS",
     "DOWNLOADED_STATES",
     "FOLDER_UNDECLARED",
     "LANDED",
@@ -953,6 +1075,7 @@ __all__ = [
     "Written",
     "add_word_arguments",
     "apply_alone",
+    "assert_native",
     "assert_read_back",
     "facts",
     "folder_for",

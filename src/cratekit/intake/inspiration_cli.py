@@ -24,7 +24,7 @@ from typing import Any
 
 from cratekit.cli.output import Envelope
 from cratekit.core import analysis_store, config, jobs, rb_writer, session
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Remedy, refuse
+from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Remedy
 from cratekit.intake import ingest, land_cli, set_playlist
 
 #: The gate, explicit: a playlist the library keeps for good is a new node
@@ -63,29 +63,8 @@ def build(parser, entry) -> None:
 
 def _native_or_refuse(cfg: config.Config) -> ingest.IntakeMedium:
     medium = ingest.intake_medium(cfg)
-    if medium.native:
-        return medium
-    tree_id = medium.declared.intake.id if medium.declared is not None else ""
-    raise refuse(
-        "tree-unconverged",
-        (
-            f"the intake tree {tree_id!r} is still on the xml bridge, so the set's "
-            f"playlist, a database node, is not this product's to write here; cut "
-            f"the intake tree over first, nothing was read or written"
-            if medium.declared is not None
-            else "the library root is not reachable, so its taxonomy and its intake "
-            "tree could not be read and nothing was written"
-        ),
-        remedy=Remedy.COMPLETE_PENDING_ACTION,
-        steps=(
-            f"run crate tree cutover {tree_id} --export with a Fresh Export to move "
-            f"the intake tree to the database",
-        )
-        if medium.declared is not None
-        else ("mount the library volume and run it again",),
-        origin=_ORIGIN,
-        detail={"tree_id": tree_id},
-    )
+    set_playlist.assert_native(medium, landing=False)
+    return medium
 
 
 def planned(
@@ -143,10 +122,10 @@ def intake_inspiration(ctx) -> Envelope:
     declared = medium.declared
     with jobs.open_store() as store:
         job = set_playlist.set_job_or_refuse(store, str(ctx.args.job))
-    words = set_playlist.words_for(
-        job, dj=ctx.args.dj, set_name=ctx.args.set_name, set_date=ctx.args.set_date
-    )
-    reports = set_playlist.reports_of(cfg, job)
+        words = set_playlist.words_for(
+            job, dj=ctx.args.dj, set_name=ctx.args.set_name, set_date=ctx.args.set_date
+        )
+        reports = set_playlist.reports_of(store, job)
     spec = land_cli.gate_named(ctx.entry, APPROVE_GATE)
     plan = planned(cfg, declared, job, words, reports)
     payload = set_playlist.payload(plan)

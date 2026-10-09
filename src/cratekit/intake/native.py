@@ -920,7 +920,12 @@ def _record_landing_commit(
         changes.append(session.TreeChange(tree=plan.tree_id, created=memberships))
     if rows > 0:
         changes.append(session.TreeChange(tree=rb_writer.CONTENT_TABLE, created=rows))
-    session.record_commit(record, plan.tree_id, session.ChangeSummary(tuple(changes)), cfg)
+    # ONLY A TREE THAT CHANGED IS RECORDED COMMITTED. A landing whose every
+    # file was present and in the batch already, with only the set's playlist
+    # written, leaves the intake tree as it was, and a record saying the tree
+    # committed with no change would tell a restore and a revert otherwise.
+    if changes:
+        session.record_commit(record, plan.tree_id, session.ChangeSummary(tuple(changes)), cfg)
     # AND THE SET'S PLAYLIST (U121), under the declared folder's own id, so
     # the record counts the batch's memberships and the set's apart.
     if set_written is not None and plan.set_playlist is not None:

@@ -21,9 +21,9 @@ import pytest
 
 from cratekit.acquire import match
 from cratekit.cli import jobs as cli_jobs
-from cratekit.core import active_taxonomy, config, jobs, preflight, rb_writer, session, tags
+from cratekit.core import active_taxonomy, config, jobs, preflight, rb_writer, review, session, tags
 from cratekit.core.cause import CratekitError
-from cratekit.core.exit_codes import ExitCode
+from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.intake import batch_name, inspiration_cli, land_cli, set_playlist
 from cratekit.intake import cli as intake_cli
 from tests import adopt_fixtures, cutover_fixtures
@@ -295,10 +295,18 @@ def test_a_word_neither_the_page_nor_a_flag_gives_is_refused_naming_the_flag(pag
     assert list(cause.remediation.steps) == [f"pass {flag}" for flag in missing]
 
 
-def test_a_set_date_that_is_not_a_month_is_refused_by_name():
+@pytest.mark.parametrize("given", ["May 2026", "2026-13", "2026-00", "2026-02-30"])
+def test_a_set_date_that_is_not_a_month_is_refused_by_name(given):
     with pytest.raises(CratekitError) as caught:
-        set_playlist.words_for(_job_with(PAGE), set_date="May 2026")
+        set_playlist.words_for(_job_with(PAGE), set_date=given)
     assert caught.value.cause.reason == set_playlist.UNNAMED
+    assert caught.value.cause.remediation.remedy is Remedy.FIX_COMMAND_LINE
+
+
+def test_a_page_date_that_is_not_a_date_names_no_month_and_the_flag_is_asked_for():
+    with pytest.raises(CratekitError) as caught:
+        set_playlist.words_for(_job_with({**PAGE, "upload_date": "20261300"}))
+    assert caught.value.cause.detail["missing"] == ["--set-date"]
 
 
 # ---------------------------------------------------------------------------
@@ -501,12 +509,27 @@ def test_a_set_with_nothing_owned_or_landed_writes_no_playlist_and_says_so(nativ
 def test_a_landing_on_the_bridge_given_set_is_refused_by_name_before_anything_moves(
     acknowledged, silence
 ):
+    """The one refusal both verbs make for a bridge tree, the landing told it
+    can land without --set and backfill after the cutover."""
     cfg = acknowledged
     _stage(cfg, silence, "One")
     code, envelope = drive(_land("--set", "any-job", *WORDS))
     assert code != int(ExitCode.DECISION_REQUIRED), envelope
+    assert envelope["cause"]["reason"] == "tree-unconverged"
+    steps = envelope["cause"]["remediation"]["steps"]
+    assert any("without --set" in step for step in steps)
+    assert any("tree cutover" in step for step in steps)
+    assert (Path(cfg.paths.download_staging) / "One.flac").is_file()
+
+
+def test_a_word_flag_without_set_is_refused_rather_than_ignored(native_library, silence):
+    cfg, _root_id = native_library
+    _stage(cfg, silence, "One")
+    code, envelope = drive(_land("--dj", "Probe DJ", "--set-date", "2026-05"))
+    assert code != int(ExitCode.DECISION_REQUIRED), envelope
     assert envelope["cause"]["reason"] == "intake-list-unusable"
-    assert "--set" in envelope["cause"]["message"]
+    assert envelope["cause"]["detail"]["given"] == ["--dj", "--set-date"]
+    assert "--set JOB" in envelope["cause"]["message"]
     assert (Path(cfg.paths.download_staging) / "One.flac").is_file()
 
 
@@ -744,3 +767,126 @@ def test_a_landing_whose_folder_went_between_the_two_acts_moves_nothing(native_l
     assert _playlists_named(cfg, NAME) == []
     assert (Path(cfg.paths.download_staging) / "One.flac").is_file()
     assert _query(cfg, "SELECT COUNT(*) FROM djmdContent WHERE FolderPath LIKE ?", f"%{BATCH}%") == [(0,)]
+
+
+# ---------------------------------------------------------------------------
+# What the review added: answers read back, nothing offered, a pair of rows, a gap filled
+# ---------------------------------------------------------------------------
+
+
+def _offered_item(cfg: config.Config, job_id: str, title: str) -> tuple[str, str]:
+    """The review item the worker offered for ``title`` and its first option."""
+    with jobs.open_store() as store:
+        job = jobs.get(store, job_id)
+        reports = set_playlist.reports_of(store, job)
+    (report,) = [r for r in reports if r["track"]["title"] == title]
+    assert report["state"] == "offered", report
+    with review.open_store(cfg) as items:
+        held = review.find(items, report["review_item"])
+    assert held is not None
+    return held.item_id, held.options[0].option_id
+
+
+def _unresolved(cfg: config.Config) -> int:
+    with review.open_store(cfg) as items:
+        return review.count_unresolved(items)
+
+
+def test_a_track_accepted_at_review_as_a_library_file_joins_the_playlist_at_a_landing(
+    native_library, silence
+):
+    """A row the report called offered was never downloaded: the person
+    answered that the library's other version is the one, so it is owned and
+    the landing reads that answer back rather than leaving it out."""
+    cfg, _root_id = native_library
+    cutover_fixtures.add_folder(cfg, FOLDER)
+    _owned(cfg, silence, "One (Extended Mix)", content_id="held-1x")
+    job_id = set_job(cfg, ("One", "Two"))
+    item_id, option = _offered_item(cfg, job_id, "One")
+    code, answered = drive(["review", "resolve", item_id, "--verdict", "accepted", "--option", option])
+    assert code == int(ExitCode.OK), answered
+    _stage(cfg, silence, "Two")
+
+    code, acted, refused = _two_acts(_land("--set", job_id, *WORDS))
+
+    assert code == int(ExitCode.OK), acted
+    assert refused["cause"]["detail"]["shown"]["set tracks"] == 2
+    ((playlist_id, *_rest),) = _playlists_named(cfg, NAME)
+    rows = _row_ids_by_name(cfg)
+    assert _members(cfg, str(playlist_id)) == ["held-1x", rows["Two"]]
+
+
+def test_an_unanswered_question_is_left_out_and_the_plan_offers_nothing(native_library, silence):
+    """The plan reads the worker's item and writes none of its own: a question
+    nobody answered leaves the row out, and the review queue is as it was
+    before the plan, before the gate and after an abort alike."""
+    cfg, _root_id = native_library
+    cutover_fixtures.add_folder(cfg, FOLDER)
+    _owned(cfg, silence, "One (Extended Mix)", content_id="held-1x")
+    job_id = set_job(cfg, ("One",))
+    _offered_item(cfg, job_id, "One")
+    before = _unresolved(cfg)
+    assert before == 1
+
+    code, refused = drive(_inspiration(job_id, *WORDS))
+
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["set tracks"] == 0 and shown["set left out"] == 1
+    assert _unresolved(cfg) == before
+    run_id = refused["run_id"]
+    decided, _ = drive(["run", "decide", run_id, APPROVE, "abort", "--actor", "a-person"])
+    assert decided == int(ExitCode.OK)
+    code, acted = drive(["--run", run_id, *_inspiration(job_id, *WORDS)])
+    assert code == int(ExitCode.OK) and acted["outcome"] == "no_op", acted
+    assert _unresolved(cfg) == before
+    assert _playlists_named(cfg, NAME) == []
+
+
+def test_a_file_two_collection_rows_claim_is_left_out_rather_than_one_row_picked(
+    native_library, silence
+):
+    cfg, _root_id = native_library
+    cutover_fixtures.add_folder(cfg, FOLDER)
+    path = _owned(cfg, silence, "Three", content_id="held-3a")
+    conn = sqlite3.connect(cfg.library.db_path)
+    conn.execute(
+        "INSERT INTO djmdContent (ID, Title, FolderPath, rb_local_deleted, created_at, "
+        "updated_at) VALUES ('held-3b', 'Three', ?, 0, '2026-01-01', '2026-01-01')",
+        (str(path),),
+    )
+    conn.commit()
+    conn.close()
+    job_id = set_job(cfg, ("Three", "One"))
+    _stage(cfg, silence, "One")
+
+    code, acted, _ = _two_acts(_land("--set", job_id, *WORDS))
+
+    assert code == int(ExitCode.OK), acted
+    ((playlist_id, *_rest),) = _playlists_named(cfg, NAME)
+    assert _members(cfg, str(playlist_id)) == [_row_ids_by_name(cfg)["One"]]
+    (item,) = [i for i in acted["data"]["items"] if i.get("playlist") == NAME]
+    assert [one["why"] for one in item["left"]] == [set_playlist.AMBIGUOUS_ROWS]
+
+
+def test_a_second_write_that_fills_a_gap_mid_set_is_not_a_failed_write(native_library, silence):
+    """The playlist is found by its name and rekordbox appends what it lacked,
+    so the track that became owned since sits last; every asked id is read
+    back live and the write is reported as what it was, one track added."""
+    cfg, _root_id = native_library
+    cutover_fixtures.add_folder(cfg, FOLDER)
+    _owned(cfg, silence, "One", content_id="held-1")
+    _owned(cfg, silence, "Two", content_id="held-2")
+    job_id = set_job(cfg, ("One", "Three", "Two"))
+    code, first, _ = _two_acts_approve(_inspiration(job_id, *WORDS))
+    assert code == int(ExitCode.OK), first
+    ((playlist_id, *_rest),) = _playlists_named(cfg, NAME)
+    assert _members(cfg, str(playlist_id)) == ["held-1", "held-2"]
+
+    _owned(cfg, silence, "Three", content_id="held-3")
+    code, again, _ = _two_acts_approve(_inspiration(job_id, *WORDS))
+
+    assert code == int(ExitCode.OK), again
+    assert again["data"]["totals"]["added"] == 1 and again["data"]["totals"]["read back"] == 3
+    assert _members(cfg, str(playlist_id)) == ["held-1", "held-2", "held-3"]
+    assert [w["code"] for w in again["warnings"]] == [set_playlist.WRITTEN]

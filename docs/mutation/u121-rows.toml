@@ -2,7 +2,8 @@
 # Scoped to the unit's own diff. Twenty five rows, the cap. Rows considered and
 # dropped below the cap, each ranked below because a neighbour measures the
 # same surface or the mutation dies on a traceback rather than on a rule:
-#   the --set-date regex refusal (a traceback follows the dropped refusal);
+#   the --set-date regex refusal and the page date's month (the parametrized
+#   refusal test pins both, and S5 measures the same unnamed surface);
 #   the [inspiration] undeclared refusal (the same, node.display on None);
 #   the suppressed row's own left word (no test queues a suppressed row);
 #   page_of's string check (the page tests pin it, same family as S23);
@@ -29,13 +30,15 @@ old = '''    stripped = re.sub(r"^\s*(?:[-:|–—]+\s*)?", "", rest)'''
 new = '''    stripped = rest.strip()'''
 
 [[rows]]
-id = "S3_page_date_month"
-description = "_month_of: read the page's upload day as its month"
+id = "S3_answer_not_read"
+description = "_LibraryView.resolve: a person's review answer is never read back, a question stays one"
 file = "src/cratekit/intake/set_playlist.py"
 surface = "user"
 tests = ["tests/test_set_inspiration_playlist.py"]
-old = '''            return date(int(found.group(1)), int(found.group(2)), 1)'''
-new = '''            return date(int(found.group(1)), int(found.group(3)), 1)'''
+old = '''        if found.state is not match.MatchState.NEEDS_REVIEW:
+            return found'''
+new = '''        if True:
+            return found'''
 
 [[rows]]
 id = "S4_page_beats_flag"
@@ -153,8 +156,8 @@ description = "plan_for_landing: a row that resolves only to something close cla
 file = "src/cratekit/intake/set_playlist.py"
 surface = "user"
 tests = ["tests/test_set_inspiration_playlist.py"]
-old = '''        if found.state is not match.MatchState.MATCHED:'''
-new = '''        if found.state is match.MatchState.MISSING:'''
+old = '''        if found.state is match.MatchState.MATCHED:'''
+new = '''        if found.state is not match.MatchState.MISSING:'''
 
 [[rows]]
 id = "S17_unresolved_dropped"
