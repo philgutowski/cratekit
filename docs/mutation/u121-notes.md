@@ -1,6 +1,6 @@
 # U121 mutation tables, read
 
-Three tables, all the author's and not independent, measured by
+Four tables, all the author's and not independent, measured by
 `scripts/mutate.py` on `fable/278-set-inspiration-playlist`. Every row's subset
 was `tests/test_set_inspiration_playlist.py`, with `tests/test_taxonomy.py`
 beside it for the taxonomy row and `tests/intake/test_set_fetch.py` for the two
@@ -20,7 +20,14 @@ source carries them as backslash escapes.
 **`u121-c.md`**, 1 row at `1c6a0ae`, the separator row written through Python
 with its escapes as text. Null control 0 of 12,878. Killed, 2.
 
-25 distinct mutations in all, under the cap of 25: **24 killed, 1 zero**. Five
+**`u121-d.md`**, 6 rows at `3c00531`, the guards the watcher's review round
+added: the recorded playlist read and checked live (D1, D6), a removed
+namesake not written into (D2, 3 kills), a repeated row counted once (D3), no
+record on a rerun that added nothing (D4), the left list carried when nothing
+is written (D5). Null control 0 of 12,885. All 6 killed.
+
+31 distinct mutations in all, 25 in the author's first pass under the cap of
+25 and 6 for the watcher's round: **30 killed, 1 zero**. Five
 more were considered and logged as dropped in `u121-rows.toml`: the
 `--set-date` regex refusal and the page date's month (the parametrized refusal
 test pins both and S5 measures the same unnamed surface), the undeclared folder

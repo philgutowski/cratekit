@@ -1,0 +1,218 @@
+{
+  "name": "u121-d",
+  "pass_kind": "light",
+  "branch": "fable/278-set-inspiration-playlist",
+  "head": "3c00531",
+  "when": "2026-10-09 22:19 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 12885,
+  "baseline_exit": 0,
+  "pytest_runs": 9,
+  "state_guarded": "~/Library/Application Support/cratekit (365158 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/set_playlist.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/set_playlist.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "62ece9fc21ff152b",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 12885,
+    "baseline_collected": 12885,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "D1_record_ignored",
+      "description": "plan_for_landing: the playlist an earlier landing recorded for the job is never read, so a second day makes a twin",
+      "file": "src/cratekit/intake/set_playlist.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c4085ee2455e91ac",
+      "subset": [
+        "tests/test_set_inspiration_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_set_inspiration_playlist.py::test_two_landings_of_one_set_on_two_days_make_one_playlist"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    recorded = recorded_playlist(cfg, db, job.job_id, folder_id)\n    staged = [source for source, _target in files]",
+      "new": "    recorded = None\n    staged = [source for source, _target in files]"
+    },
+    {
+      "id": "D2_removed_namesake",
+      "description": "_playlist_row: a removed playlist of the name under the folder is written into",
+      "file": "src/cratekit/intake/set_playlist.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "df6893cf6756c7d4",
+      "subset": [
+        "tests/test_set_inspiration_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_set_inspiration_playlist.py::test_a_recorded_playlist_that_was_removed_is_not_added_to_and_a_live_one_is_made",
+        "tests/test_set_inspiration_playlist.py::test_a_removed_namesake_under_the_folder_is_not_written_into",
+        "tests/test_set_inspiration_playlist.py::test_a_rerun_that_adds_nothing_records_no_commit"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if rb_writer.is_folder(row) or rb_writer.node_removed(row):\n            continue\n        if str(getattr(row, \"ParentID\", \"\") or \"\") == parent_id:",
+      "new": "        if rb_writer.is_folder(row):\n            continue\n        if str(getattr(row, \"ParentID\", \"\") or \"\") == parent_id:"
+    },
+    {
+      "id": "D3_repeated_row_counted_twice",
+      "description": "write_members: two reports resolving to one row count as two members",
+      "file": "src/cratekit/intake/set_playlist.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1d5043705f1f7eba",
+      "subset": [
+        "tests/test_set_inspiration_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_set_inspiration_playlist.py::test_two_rows_of_the_set_resolving_to_one_track_are_one_member"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    distinct = tuple(dict.fromkeys(ids))",
+      "new": "    distinct = tuple(ids)"
+    },
+    {
+      "id": "D4_record_on_nothing",
+      "description": "_record_set_commit: a rerun that added nothing still records the folder committed",
+      "file": "src/cratekit/intake/set_playlist.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b90f755e104baca9",
+      "subset": [
+        "tests/test_set_inspiration_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_set_inspiration_playlist.py::test_a_rerun_that_adds_nothing_records_no_commit"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not (written.added or written.playlist_created or written.folder_created):\n        return\n",
+      "new": ""
+    },
+    {
+      "id": "D5_left_dropped_when_nothing_written",
+      "description": "write_members: the members whose files did not land are dropped from the left list when nothing is written",
+      "file": "src/cratekit/intake/set_playlist.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fcd47c43f031e494",
+      "subset": [
+        "tests/test_set_inspiration_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_set_inspiration_playlist.py::test_when_every_landed_members_file_is_refused_the_left_list_names_them"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            members=0,\n            added=0,\n            left=(*left, *plan.left),\n        )",
+      "new": "            members=0,\n            added=0,\n            left=tuple(plan.left),\n        )"
+    },
+    {
+      "id": "D6_recorded_but_removed",
+      "description": "recorded_playlist: a recorded playlist rekordbox removed is still the one added to",
+      "file": "src/cratekit/intake/set_playlist.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "481f6383995063ac",
+      "subset": [
+        "tests/test_set_inspiration_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_set_inspiration_playlist.py::test_a_recorded_playlist_that_was_removed_is_not_added_to_and_a_live_one_is_made"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            or rb_writer.node_removed(row)\n            or str(getattr(row, \"ParentID\", \"\") or \"\") != folder_id",
+      "new": "            or str(getattr(row, \"ParentID\", \"\") or \"\") != folder_id"
+    }
+  ],
+  "dropped": []
+}
