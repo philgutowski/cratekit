@@ -1073,6 +1073,18 @@ def list_playlist(found: catalogue.Catalogue, reference: str) -> dict[str, dict[
     return frozen_rows(_read_rows(label_cli.playlist_tracks_or_refuse(found, reference), reference))
 
 
+def list_playlist_declared(
+    found: catalogue.Catalogue, reference: str
+) -> tuple[dict[str, dict[str, Any]], catalogue.ListingShortfall | None]:
+    """:func:`list_playlist`, and the shortfall when it listed short (R-515).
+
+    The shortfall rides beside the rows as R-504's does for hearts: what came
+    back is listed, and the caller reports the count withheld.
+    """
+    rows, short = label_cli.playlist_listing_or_refuse(found, reference)
+    return frozen_rows(_read_rows(rows, reference)), short
+
+
 def list_favorites(
     found: catalogue.Catalogue,
 ) -> tuple[dict[str, dict[str, Any]], catalogue.HeartsShortfall | None]:
@@ -1110,6 +1122,24 @@ def withheld_warning(short: catalogue.HeartsShortfall) -> dict[str, str]:
             f"the account's hearts listed short: {short.summary()}. The provider "
             f"counts hearts it will not serve and does not say which, so the "
             f"{short.withheld} withheld are in no report this job makes"
+        ),
+    }
+
+
+#: The warning code a playlist listing carries when it came back short (R-515).
+PLAYLIST_WITHHELD = "intake-playlist-withheld"
+
+
+def playlist_withheld_warning(
+    short: catalogue.ListingShortfall, reference: str
+) -> dict[str, str]:
+    """The words a person reads for a short playlist listing, one spelling of them."""
+    return {
+        "code": PLAYLIST_WITHHELD,
+        "message": (
+            f"the playlist {reference!r} listed short: {short.summary()}. The "
+            f"provider counts tracks it will not serve and does not say which, so "
+            f"the {short.withheld} withheld are in no report this job makes"
         ),
     }
 
@@ -1180,12 +1210,17 @@ def intake_playlist(ctx) -> Envelope:
         short = None
         if hearts:
             tracks, short = list_favorites(found)
+            warned = withheld_warning
         else:
-            tracks = list_playlist(found, reference)
-        # A SHORT HEARTS LISTING IS SAID, whatever else the run does, and an
-        # empty one that the account says is not empty most of all (R-504).
+            tracks, short = list_playlist_declared(found, reference)
+
+            def warned(short):
+                return playlist_withheld_warning(short, reference)
+
+        # A SHORT LISTING IS SAID, whatever else the run does, and an empty one
+        # that the provider says is not empty most of all (R-504, R-515).
         extra = {"shortfall": short.block()} if short is not None else {}
-        warnings = (withheld_warning(short),) if short is not None else ()
+        warnings = (warned(short),) if short is not None else ()
         if not tracks:
             return ctx.envelope(
                 data=_no_op("no-tracks", source=reference, **extra),
@@ -1354,6 +1389,9 @@ __all__ = [
     "item_key",
     "list_favorites",
     "list_playlist",
+    "list_playlist_declared",
+    "playlist_withheld_warning",
+    "PLAYLIST_WITHHELD",
     "playlist_argv",
     "queue_playlist",
     "reset_cache",

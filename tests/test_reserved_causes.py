@@ -6133,7 +6133,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # absent from `main`'s own `src` by git grep. row-file-id is the OWNER of
     # the field policy the repair registers when it renumbers. And
     # rows-file-id-undecidable and rows-file-id-unrenumbered are WARNING codes.
-    assert (len(literals), len(literals - set(causes))) == (647, 451), (
+    # Re-pinned on the residual "A playlist or release listing returns short
+    # with no error when the provider withholds unservable tracks",
+    # 2026-10-09: 647 to 650 distinct, non-keys 451 to 454. THREE joined and nothing left, each
+    # absent from `main`'s own `src` by git grep. intake-playlist-withheld,
+    # label-harvest-playlist-withheld and sync-playlists-withheld are WARNING
+    # codes.
+    assert (len(literals), len(literals - set(causes))) == (650, 454), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

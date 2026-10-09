@@ -2181,7 +2181,7 @@ def test_a_track_read_that_succeeds_breaks_the_run_of_failed_reads(
         def release_tracks(self, release_id: str):
             self.releases_asked_for.append(release_id)
             if release_id in {"hf-3", "hf-6"}:
-                return (Row(release_id, "Lumen Drift", release_id),), 2026
+                return (Row(release_id, "Lumen Drift", release_id),), 2026, None
             raise RuntimeError("the provider answered 503 after the retry ladder")
 
     register(LABELS[0])
@@ -2481,3 +2481,51 @@ def test_a_rate_limit_at_every_other_sweep_boundary_is_retryable(
     assert cause.reason == "sync-source-lookups-failed"
     assert cause.retryable is True
     assert "TooManyRequests: Artist unavailable" in cause.message
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-515: a harvest over a playlist the provider lists short
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_harvest_over_a_short_playlist_offers_what_it_read_and_warns(
+    installed, monkeypatch
+):
+    bind(
+        monkeypatch,
+        FakeCatalogue(
+            playlists={
+                PLAYLIST: FakePagedPlaylist(
+                    [FakeTrack("t1", copyright="2026 Anjunadeep")], declared=3
+                )
+            },
+            known_labels={CONFIRMED},
+        ),
+    )
+    code, envelope = run_harvest()
+
+    assert code == int(ExitCode.OK), envelope
+    assert harvested(installed) == [CONFIRMED]
+    assert set(envelope["data"]) == {"queue", "items", "unresolved"}
+    (warning,) = [
+        w for w in envelope["warnings"] if w["code"] == "label-harvest-playlist-withheld"
+    ]
+    assert "3 declared, 1 listed, 2 withheld by the provider" in warning["message"]
+
+
+def test_a_harvest_over_a_full_playlist_warns_nothing(installed, monkeypatch):
+    del installed
+    bind(
+        monkeypatch,
+        FakeCatalogue(
+            playlists={
+                PLAYLIST: FakePagedPlaylist(
+                    [FakeTrack("t1", copyright="2026 Anjunadeep")], declared=1
+                )
+            },
+            known_labels={CONFIRMED},
+        ),
+    )
+    code, envelope = run_harvest()
+    assert code == int(ExitCode.OK), envelope
+    assert envelope.get("warnings", []) == []

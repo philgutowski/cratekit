@@ -379,16 +379,39 @@ def _plan_playlists(spec: sources.SourceSpec, ctx) -> _Plan:
         return playlists.report(sweep, filed)
 
     plan = _Plan(spec=spec, describe=describe, detail=describe([]), note=playlists.said)
+    warnings: list[dict[str, str]] = []
     if sweep.unreadable:
-        plan.warnings = (
+        warnings.append(
             {
                 "code": "sync-playlists-unreadable",
                 "message": (
                     f"{len(sweep.unreadable)} account playlist(s) could not be "
                     f"listed and were not queued; the next sync offers them again"
                 ),
-            },
+            }
         )
+    if sweep.short:
+        # A SHORT LISTING IS SAID PER PLAYLIST (R-515), never passed off as
+        # the playlist: the provider counts tracks it will not serve.
+        names = sweep.names()
+        warnings.append(
+            {
+                "code": "sync-playlists-withheld",
+                "message": (
+                    f"{len(sweep.short)} account playlist(s) listed short of the "
+                    f"count the provider declares: "
+                    + "; ".join(
+                        f"{names.get(identity) or identity}: {block['declared']} "
+                        f"declared, {block['listed']} listed, {block['withheld']} "
+                        f"withheld by the provider"
+                        for identity, block in sweep.short.items()
+                    )
+                    + ". The withheld tracks are in no report this pass makes"
+                ),
+            }
+        )
+    if warnings:
+        plan.warnings = tuple(warnings)
     if not sweep.ready:
         plan.not_queued = NOTHING_NEW
         return plan

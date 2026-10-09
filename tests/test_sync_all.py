@@ -2241,3 +2241,42 @@ def test_a_declined_pass_whose_hearts_refused_is_a_refusal_not_a_no_op(
     assert code != int(ExitCode.OK), refused
     assert refused["cause"]["reason"] == "label-playlist-unreadable"
     assert _jobs() == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-515: the sweep carries a short playlist listing per playlist
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_the_sweep_summary_carries_the_shortfall_per_playlist(slim, monkeypatch):
+    del slim
+    fake = FakeCatalogue(
+        playlists={
+            "pl-a": FakePagedPlaylist(_tracks("101", "102"), declared=5),
+            "pl-b": FakePagedPlaylist(_tracks("201"), declared=1),
+        },
+        account=[_playlist("pl-a", "Warmup"), _playlist("pl-b", "Peak")],
+    )
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+
+    queued = {job.payload[intake_cli.SOURCE]: job for job in _playlist_jobs()}
+    assert set(queued) == {"pl-a", "pl-b"}, "a short playlist is queued, never refused"
+    assert _items(queued["pl-a"].job_id) == ["101", "102"]
+    block = passed["data"]["summary"]["playlists"]
+    assert block["withheld"] == {
+        "pl-a": {"declared": 5, "listed": 2, "withheld": 3, "name": "Warmup"},
+    }
+    (warning,) = [w for w in passed["warnings"] if w["code"] == "sync-playlists-withheld"]
+    assert "Warmup: 5 declared, 2 listed, 3 withheld by the provider" in warning["message"]
+    assert "Peak" not in warning["message"]
+
+
+def test_a_sweep_of_full_playlists_carries_no_shortfall(slim, monkeypatch):
+    del slim
+    bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert passed["data"]["summary"]["playlists"]["withheld"] == {}
+    assert "sync-playlists-withheld" not in {w["code"] for w in passed["warnings"]}
