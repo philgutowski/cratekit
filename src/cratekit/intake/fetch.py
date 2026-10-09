@@ -45,6 +45,8 @@ import hashlib
 import re
 import shutil
 import subprocess
+import threading
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -80,6 +82,14 @@ STEM_MAX_CHARS = 80
 #: Entries asked of an address that turns out to be a playlist. TWO, because
 #: two is enough to know there is more than one and a whole set page is hours.
 PLAYLIST_PROBE = 2
+
+#: Seconds between two progress lines while a mix downloads (R-924). The
+#: measured first address took about seven minutes for 557 MB, so fifteen
+#: seconds is a line a person sees move without a screen of them.
+FETCH_PROGRESS_SECONDS = 15.0
+
+#: What a progress line is handed. A no op is what JSON output gets.
+Progress = Callable[[str], None]
 
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
 
@@ -248,8 +258,73 @@ class FetchedMix:
     leftover: str | None = None
 
 
+def megabytes(size: int) -> str:
+    """A byte count the way a progress line says it."""
+    return f"{size / 1_000_000:.1f} MB"
+
+
+def _bytes_in(directory: Path) -> int:
+    """What the download has written so far, partials included. Zero when unreadable.
+
+    A progress line is a hint and never a result, so a file that vanished
+    between the listing and the stat, which a downloader renaming its partial
+    does, is skipped rather than raised.
+    """
+    total = 0
+    try:
+        entries = list(directory.iterdir())
+    except OSError:
+        return 0
+    for one in entries:
+        try:
+            if one.is_file():
+                total += one.stat().st_size
+        except OSError:
+            continue
+    return total
+
+
 @contextmanager
-def fetched(url: str, library_root: Path, found: SetFetcher) -> Iterator[FetchedMix]:
+def _watched(directory: Path, progress: Progress | None) -> Iterator[None]:
+    """Report the bytes in ``directory`` every :data:`FETCH_PROGRESS_SECONDS`.
+
+    THE FOLDER IS WATCHED, NOT THE TOOL. ``yt-dlp`` runs with its output
+    captured, because its last line of standard error is how a failed download
+    is named, and any fetcher behind the seam writes into the folder it was
+    handed. So the folder's size is a progress reading every fetcher gives,
+    and nothing about the download changes to give it.
+
+    The watcher is stopped and joined before this returns, however the block
+    ends, so no line is written after the fetch has been reported done.
+    """
+    if progress is None:
+        yield
+        return
+    stop = threading.Event()
+    started = time.monotonic()
+
+    def watch() -> None:
+        while not stop.wait(FETCH_PROGRESS_SECONDS):
+            elapsed = int(time.monotonic() - started)
+            progress(f"fetching: {megabytes(_bytes_in(directory))} so far, {elapsed}s")
+
+    watcher = threading.Thread(target=watch, name="mix-fetch-progress", daemon=True)
+    watcher.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        watcher.join()
+
+
+@contextmanager
+def fetched(
+    url: str,
+    library_root: Path,
+    found: SetFetcher,
+    *,
+    progress: Progress | None = None,
+) -> Iterator[FetchedMix]:
     """Fetch ``url`` into its scratch folder, lend the file, and remove the folder.
 
     THE LANDING IS CHECKED, NOT TRUSTED. The fetcher is a seam, and a seam can
@@ -258,6 +333,10 @@ def fetched(url: str, library_root: Path, found: SetFetcher) -> Iterator[Fetched
 
     ``leftover`` is set on the way out, so it is read AFTER the ``with`` block,
     and only a pass that returned can report it.
+
+    ``progress``, when given, is told the download started, how many bytes it
+    has written while it runs, and what landed (R-924). A download is minutes
+    with nothing else on the screen.
     """
     address = url.strip()
     scratch = scratch_for(address)
@@ -273,12 +352,19 @@ def fetched(url: str, library_root: Path, found: SetFetcher) -> Iterator[Fetched
                 f"the scratch folder {scratch} could not be prepared "
                 f"({type(exc).__name__}: {exc.strerror or exc})"
             ) from exc
-        landed = Path(found.fetch(address, scratch))
+        if progress is not None:
+            progress(f"fetching: {address}")
+        started = time.monotonic()
+        with _watched(scratch, progress):
+            landed = Path(found.fetch(address, scratch))
         if not landed.is_file() or scratch.resolve() not in landed.resolve().parents:
             raise SetFetchFailed(
                 f"the download answered with {landed}, which is not a file inside "
                 f"the folder it was given"
             )
+        if progress is not None:
+            elapsed = int(time.monotonic() - started)
+            progress(f"fetched: {megabytes(landed.stat().st_size)} in {elapsed}s")
         held.path = landed
         yield held
     finally:
@@ -289,12 +375,14 @@ def fetched(url: str, library_root: Path, found: SetFetcher) -> Iterator[Fetched
 
 __all__ = [
     "DEFAULT_STEM",
+    "FETCH_PROGRESS_SECONDS",
     "PLAYLIST_PROBE",
     "SCRATCH_DIGEST_CHARS",
     "SCRATCH_KEY",
     "SET_FETCH_TIMEOUT_SECONDS",
     "STEM_MAX_CHARS",
     "FetchedMix",
+    "Progress",
     "ScratchUnderLibrary",
     "ScratchUnusable",
     "SetFetchFailed",
@@ -305,6 +393,7 @@ __all__ = [
     "assert_outside_library",
     "fetched",
     "fetcher",
+    "megabytes",
     "scratch_for",
     "stem_of",
 ]

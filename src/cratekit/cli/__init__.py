@@ -39,7 +39,7 @@ import argparse
 import dataclasses
 import importlib
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Sequence
 
 from cratekit import __version__
@@ -68,6 +68,12 @@ class Context:
     A verb never prints, never exits, and never reads input. It returns an
     envelope. That is what lets the conformance suite drive every verb the same
     way and assert the same properties about each of them.
+
+    ``progress`` IS THE ONE EXCEPTION, and it is not output. A verb that runs
+    for minutes before its envelope exists hands it a line saying which phase
+    it is in and how far along (R-924). The dispatcher writes those lines to
+    standard error in human output and drops them in JSON output, so the
+    envelope is still the only thing on standard output and still the result.
     """
 
     entry: Entry
@@ -75,6 +81,7 @@ class Context:
     run: gates.RunState
     gate: gates.Gates
     started: str
+    progress: Callable[[str], None] = field(default=lambda line: None)
 
     def envelope(
         self,
@@ -333,6 +340,20 @@ def _emit(envelope: Envelope, *, as_json: bool, stdout, stderr) -> None:
         print(render.render_gate(envelope.cause), end="", file=stderr)
 
 
+def _progress_to(stderr) -> Callable[[str], None]:
+    """A verb's progress lines, one per call, on standard error.
+
+    FLUSHED, because standard error is not line buffered everywhere and a
+    progress line that sits in a buffer until the verb ends is the silence it
+    exists to break.
+    """
+
+    def say(line: str) -> None:
+        print(line, file=stderr, flush=True)
+
+    return say
+
+
 def _run_state_for(entry: Entry, args: argparse.Namespace) -> gates.RunState:
     if args.run:
         state = gates.load(args.run)
@@ -484,6 +505,8 @@ def run(argv: list[str], *, stdout, stderr) -> int:
             gate=gates.Gates(state=state, supplied=supplied),
             started=started,
         )
+        if not as_json:
+            context.progress = _progress_to(stderr)
         envelope = args._handler(context)
         gates.save(state)
     except CratekitError as exc:

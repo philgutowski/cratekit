@@ -541,7 +541,12 @@ def _fetch_notes(held: SetRecording) -> tuple[dict[str, str], ...]:
 
 
 @contextmanager
-def _recording(cfg: config.Config, source: str, local: Path | None) -> Iterator[SetRecording]:
+def _recording(
+    cfg: config.Config,
+    source: str,
+    local: Path | None,
+    progress: fetch.Progress | None = None,
+) -> Iterator[SetRecording]:
     """Lend the recording for one pass, fetching it first when it is a mix URL.
 
     A LOCAL RECORDING IS LENT AS IT IS and nothing about it changes.
@@ -554,6 +559,10 @@ def _recording(cfg: config.Config, source: str, local: Path | None) -> Iterator[
     ``unavailable-transient`` and retryable, and a scratch root that resolves
     under the library is refused before anything is fetched, because a mix must
     never land beside the music.
+
+    ``progress`` is the verb's, and a fetch says on it that it started, how
+    far it has got and what landed (R-924). A local recording fetches nothing
+    and says nothing.
     """
     if local is not None:
         yield SetRecording.local(local)
@@ -569,7 +578,9 @@ def _recording(cfg: config.Config, source: str, local: Path | None) -> Iterator[
             origin=("intake.cli",),
         ) from exc
     try:
-        with fetch.fetched(address, Path(cfg.library.root), found) as got:
+        with fetch.fetched(
+            address, Path(cfg.library.root), found, progress=progress
+        ) as got:
             held = SetRecording(
                 path=got.path, ref=address, stem=fetch.stem_of(address), shown=address
             )
@@ -714,9 +725,12 @@ def intake_set(ctx) -> Envelope:
         local = _local_or_none(source)
         recognize.assert_recognition_ready()
         job = None
-        with _recording(cfg, source, local) as held:
+        with _recording(cfg, source, local, ctx.progress) as held:
             result = pipeline.identify_only(
-                held.path, refresh=bool(ctx.args.refresh), recognition=cfg.recognition
+                held.path,
+                refresh=bool(ctx.args.refresh),
+                recognition=cfg.recognition,
+                progress=ctx.progress,
             )
             warnings = (
                 _coverage_or_refuse(result, held)
@@ -997,9 +1011,12 @@ def intake_identify(ctx) -> Envelope:
     out = _tracklist_dir(cfg, ctx.args.out, shown)
     _library_or_refuse(cfg, shown)
     written = None
-    with _recording(cfg, source, local) as held:
+    with _recording(cfg, source, local, ctx.progress) as held:
         result = pipeline.identify_only(
-            held.path, refresh=bool(ctx.args.refresh), recognition=cfg.recognition
+            held.path,
+            refresh=bool(ctx.args.refresh),
+            recognition=cfg.recognition,
+            progress=ctx.progress,
         )
         warnings = (
             _coverage_or_refuse(result, held)
