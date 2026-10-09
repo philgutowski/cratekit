@@ -29,7 +29,7 @@ names no database path, rechecks each row from SQL before the session, fills
 only a NULL through the fill if empty `ROW_DEFAULTS_POLICY`, registered for
 the commit and put back after it, commits behind the guard and reads every
 row back, refusing a moved column. Battery on the merged branch: ruff clean,
-12,767 passed and 1 skipped, the scan clean. Twenty mutation rows, nineteen
+12,768 passed and 1 skipped, the scan clean. Twenty mutation rows, nineteen
 killed, one maintainer zero (`docs/mutation/r923-notes.md`). The review drove
 a second commit in one process and found the registry left widened, fixed;
 its probe, run from a scratchpad outside `tests/`, overwrote the live config
