@@ -4,6 +4,22 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**R-925 built, 2026-10-09, on `relay/269`, issue #269: a queued set's
+tracks can be read.** `intake set` writes the tracklist `intake identify`
+writes, through the same writer, into download staging's tracklists folder
+or the folder its new `--out` names, after the job is queued, and names the
+path in the `tracklist-written` note and under `progress.tracklist`. A
+write that fails is the `tracklist-unwritten` warning naming `crate job
+show`, and the job stays queued. `job show` on an intake job lists every
+frozen track under `progress.intake_tracks` and one line per track in human
+output, artist, title, version and ISRC or `no isrc`. The review drove eight
+findings in one fix round: the folder refusal named an `--out` the verb did
+not take, a write failure withheld a paid job, the field collided with the
+`tracks` counts a dozen payloads carry. Twenty mutation rows, eighteen
+killed, two maintainer facing zeros (`docs/mutation/r925-notes.md`). R-933
+records identify's rerun wording over a fetched mix. One song under several
+ISRCs is still listed once per ISRC.
+
 **R-924 built, 2026-10-09, on `relay/268`, issue #268: `intake set` says
 its phase and progress while it runs.** The first five hour mix fetched 557
 MB and paid 732 calls with nothing on the screen. The dispatcher now hands a

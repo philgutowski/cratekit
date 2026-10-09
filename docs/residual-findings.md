@@ -36123,5 +36123,5 @@ reaches this sentence, since #269 made its write failure a warning.
 
 **Closes when:** the refusal over a fetched mix says the mix is fetched
 again on a rerun, or the verb points at a folder `--out` can name before
-the fetch.
-
+the fetch. Ledger only: a wording over a rerun's time, no file or row is
+lost and no call is paid twice.
