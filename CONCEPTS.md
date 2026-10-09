@@ -402,6 +402,23 @@ mark` finds a bridge pass by its intake file's name and a native pass by
 `--pass`, since R-777, and the engine waits on a `marks.NativeLanding` there in
 place of the file.
 
+### File id
+The column rekordbox keys a row's file by, `rb_file_id`, and what it holds:
+the file's inode number at the moment rekordbox imported it, found at sitting
+34 (R-928). A row whose file was copied since carries the old inode and loads;
+a row carrying 0 loads; a row carrying a value no file on the volume has ever
+had, which is what the binding's `add_content` mints at random, shows every
+column and never loads to a deck. Since U115 the native landing sets the
+landed file's inode on the row it makes, and `repair rows` writes the inode
+onto a row that carries a random one. "The volume's inode bound" is how a
+random id is told from a stale one: APFS allocates inode numbers from a
+counter it never winds back, so the inode of a file created this moment on the
+volume is above every inode any file on it has ever had, and an id above it
+was never an inode here. The bound is a measurement, shown at the gate and
+kept out of the digest, and it has an edge: a random id that happens to fall
+under it reads as stale, and a volume whose counter has passed the binding's
+28 bit range hides every random id, which the gate says.
+
 ### Account playlist
 A playlist the author made on the streaming account, as distinct from his
 hearts, a set or a label's releases. A sweep records the account's name for it

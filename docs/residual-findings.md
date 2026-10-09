@@ -35936,3 +35936,77 @@ ids. What U115 builds is therefore `os.stat(path).st_ino` on the landed
 file, set at creation, and `repair rows` writing the inode onto the rows
 that carry a random one; the one row probe named in #272 should set the
 inode, not a gap value.
+
+**Built, 2026-10-09, U115, issue #272, on `unit/u115`.** The landing sets
+`os.stat(target).st_ino` on every row it makes, on the created row before
+the guarded flush, beside the path and device the restamp corrects; it
+cannot be handed to `add_content`, which names the column itself. `crate
+repair rows` plans every live row whose file id is above the volume's inode
+bound and whose file reads back another inode, and writes the inode onto
+it, owned, through `FILE_ID_POLICY`, registered for that commit alone and
+only when the plan renumbers. The bound is the inode of a file created that
+moment in the library's state directory, above every inode the APFS volume
+has ever allocated, shown at the gate and kept out of the digest so a copy
+rehearsal matches. Rows at or under the bound, stale or zero, are left, as
+rekordbox tolerates them. The column is deliberately not a bookkeeping
+column. The live proof, `repair rows` over the A8 row and the sixteen
+sampler rows and one of them loaded to a deck, is owed to `docs/cutover.md`
+and waits for the library to be free; R-929 and R-930 record the rule's
+edges.
+
+---
+
+## R-929. A random file id that falls under the volume's inode bound reads as stale and is left
+
+**Found:** by the author of U115 while writing the rule, 2026-10-09.
+
+**The mechanism.** `repair rows` tells a random `rb_file_id` from one
+rekordbox wrote by size alone: above the volume's inode bound, the inode of a
+file created that moment, no file has ever carried the value. The binding's
+random id is uniform under 2 to the 28th, 268,435,456, and the bound on the
+library's volume read 1,415,747 on 2026-10-09, so about one random id in
+190 falls under the bound and is judged `WITHIN`, the class rekordbox
+tolerates, and is left unrenumbered with no mention. On a volume whose
+counter has passed the binding's range, the boot volume of this machine
+among them at over 1.6 billion, every random id falls under the bound; the
+plan then renumbers nothing and the gate and the envelope say so
+(`rows-file-id-undecidable`).
+
+**Measured cost.** On the live library, seventeen rows carry a random id
+(the A8 row `73894078` and the sixteen sampler rows), so the expected miss
+is under a tenth of a row; the live run's `renumbered` count against
+seventeen says whether any was missed, and one left reads as stale and
+plays no better than before. On a volume past the binding's range the
+repair cannot help at all, and says so rather than guessing. No other
+discriminator was found: the volume's files cannot be walked for the id,
+since a stale id's inode has usually been freed and would read as absent
+too.
+
+**Closes when:** a row the landing made is told by a record rather than by
+size, or the live run reports seventeen and the count is accepted as the
+whole population. Ledger only: the rows at risk are few and named, every
+row the landing makes from this unit on carries its inode, and no DJ
+workflow is blocked by it beyond what R-928 already records.
+
+---
+
+## R-930. A row with a random file id whose file cannot be read keeps the id
+
+**Found:** by the author of U115, 2026-10-09, writing the plan's file read.
+
+**The mechanism.** The inode written is the file's, so a row above the
+bound whose stored path does not decode, does not resolve on this machine,
+or names no file has nothing to be given. `repair rows` lists such a row in
+`totals.unrenumbered` with the reason, says so in a warning
+(`rows-file-id-unrenumbered`) on every envelope that carries the plan, and
+writes nothing for it. A row whose file is missing would not play from a
+deck in any case, so the cost is a row that stays as it was, not a row made
+worse.
+
+**Measured cost.** Driven on the disposable library: a missing file, an
+empty path and a path on another host each listed and left, the rest of the
+plan written. On the live library the count is expected to be zero and the
+live run's warning says what it is.
+
+**Closes when:** the file returns and the verb is run again, which the
+plan handles with no change. Ledger only.
