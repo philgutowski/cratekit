@@ -6133,7 +6133,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # absent from `main`'s own `src` by git grep. row-file-id is the OWNER of
     # the field policy the repair registers when it renumbers. And
     # rows-file-id-undecidable and rows-file-id-unrenumbered are WARNING codes.
-    assert (len(literals), len(literals - set(causes))) == (647, 451), (
+    # Re-pinned on the residual "A queued set's tracks are shown nowhere, only
+    # their count", 2026-10-09: 647 to 648 distinct, non-keys 451 to 452. ONE
+    # joined and nothing left, absent from `main`'s own `src` by git grep.
+    # tracklist-unwritten is a WARNING code: intake set queued its job and
+    # could not write the tracklist.
+    assert (len(literals), len(literals - set(causes))) == (648, 452), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
