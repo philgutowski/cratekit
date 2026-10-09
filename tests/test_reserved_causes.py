@@ -5166,7 +5166,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # intake root holds two of it. It is in cause.REASONS and not in the
     # reserved table. Population 196 to 197, non-reserved 168 to 169,
     # reserved half UNCHANGED at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (197, 169, 28)
+    # Re-pinned on R-228, pink rows outside All Favorites join the sweep,
+    # 2026-10-09. ONE slug, named rather than counted: favorites-pink-colour-missing,
+    # which the favourites colour lookup refuses with when djmdColor has no live
+    # Pink row. It is in cause.REASONS and not in the reserved table. Population
+    # 197 to 198, non-reserved 169 to 170, reserved half UNCHANGED at 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (198, 170, 28)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -6133,7 +6138,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # absent from `main`'s own `src` by git grep. row-file-id is the OWNER of
     # the field policy the repair registers when it renumbers. And
     # rows-file-id-undecidable and rows-file-id-unrenumbered are WARNING codes.
-    assert (len(literals), len(literals - set(causes))) == (647, 451), (
+    # Re-pinned on R-228, pink rows outside All Favorites join the sweep,
+    # 2026-10-09: 647 to 649 distinct, non-keys 451 to 452. TWO joined and
+    # nothing left, each absent from `main`'s own `src` by git grep.
+    # favorites-pink-colour-missing is the key named in the pin above. And
+    # favorites-pink-export-missing is the WARNING code naming pink rows the
+    # export lacks, beside dangling.
+    assert (len(literals), len(literals - set(causes))) == (649, 452), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6250,7 +6261,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # release the gate's kind rule could not judge, declared in the file that
     # gives it. It names no cause declared elsewhere, so THE WITHOUT-OWN HALF
     # IS STILL 11, and the integer half did not move.
-    assert (len(without), len(with_own), len(both)) == (11, 26, 13), (
+    #
+    # Re-pinned on R-228, pink rows outside All Favorites join the sweep,
+    # 2026-10-09: without-own 11 to 12, with-own 26 to 27, the integer half
+    # unchanged at 13. Named from this derivation's own output:
+    # `favorites/cli.py` joined the without-own half for the searcher's reason:
+    # it names the new slug once as `PINK_COLOUR_MISSING`, resolving to the
+    # cause `cause.py` declares, so the colour lookup and the tests spell it
+    # from one place. It holds no new in-range integer.
+    assert (len(without), len(with_own), len(both)) == (12, 27, 13), (
         f"the named at-risk population moved: {len(without)} modules hold a name "
         f"resolving to a cause declared elsewhere, {len(with_own)} once each "
         f"file's own enum declarations count, {len(both)} of those also hold an "

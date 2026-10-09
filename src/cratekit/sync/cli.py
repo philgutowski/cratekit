@@ -278,12 +278,15 @@ def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
         plan.inbound = _plan_inbound(spec, cfg)
     try:
         exported, resolved = favorites_cli.resolve_sweep(
-            getattr(ctx.args, "export", None), getattr(ctx.args, "favorites_playlist", None)
+            getattr(ctx.args, "export", None),
+            getattr(ctx.args, "favorites_playlist", None),
+            cfg=cfg,
         )
     except CratekitError as exc:
         # THE WRITE HALF'S OWN PRECONDITION, recorded here rather than raised to
         # ``_plan``, which would build a fresh plan and drop the read half with
-        # it. A missing export is no reason not to list the hearts.
+        # it. A missing export, or a colour read that cannot finish (R-228), is
+        # no reason not to list the hearts.
         plan.refused, plan.not_queued = exc.cause, exc.cause.reason
         return plan
     # THE FAVOURITES VERB'S STANDING WARNING TRAVELS WITH THE COMPOSITION
@@ -317,6 +320,7 @@ def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
                 shell.PLAYLIST: resolved.key,
                 shell.EXPORT_PATH: str(exported),
                 **shell.shown_export(age),
+                **favorites_cli.sweep_source_facts(resolved),
             },
         )
         if option == "abort":

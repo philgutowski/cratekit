@@ -83,6 +83,11 @@ class ResolvedPlaylist:
     are things the document said that this build declined to act on, and a person
     who exports twenty nine of thirty tracks should be told which one is missing
     and why.
+
+    ``from_playlist``, ``from_colour`` and ``pink_missing`` are the favourites
+    sweep's union fields (R-228). ``resolve`` leaves them at their defaults of
+    zero and empty; ``favorites.cli`` always fills them after reading pink rows
+    from a read only open. An export verb never shows these fields.
     """
 
     key: str
@@ -90,6 +95,9 @@ class ResolvedPlaylist:
     track_ids: tuple[str, ...]
     dangling: tuple[str, ...] = ()
     repeated: tuple[str, ...] = ()
+    from_playlist: int = 0
+    from_colour: int = 0
+    pink_missing: tuple[str, ...] = ()
 
 
 #: How far ahead of the clock a file may be dated and still be read as written
