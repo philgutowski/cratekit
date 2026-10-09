@@ -1,0 +1,241 @@
+name = "r924"
+pass_kind = "light"
+
+[[rows]]
+id = "D1_json_gets_progress"
+description = "The dispatcher hands the progress writer to JSON output too, so standard error carries progress under --output json"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/intake/test_set_progress.py", "tests/intake/test_set_fetch.py"]
+old = '''        if not as_json:
+            context.progress = _progress_to(stderr)'''
+new = '''        if True:
+            context.progress = _progress_to(stderr)'''
+
+[[rows]]
+id = "D2_human_gets_none"
+description = "The dispatcher never hands a writer, so human output is silent again"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/intake/test_set_progress.py", "tests/intake/test_set_fetch.py"]
+old = '''        if not as_json:
+            context.progress = _progress_to(stderr)'''
+new = '''        if False:
+            context.progress = _progress_to(stderr)'''
+
+[[rows]]
+id = "D3_write_failure_raises"
+description = "A progress line that cannot be written raises out of the paid pass"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/intake/test_set_progress.py"]
+old = '''        except (OSError, ValueError):
+            pass'''
+new = '''        except ValueError:
+            pass'''
+
+[[rows]]
+id = "D4_unflushed"
+description = "Progress lines are not flushed, so a buffered standard error holds them until the verb ends"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/intake/test_set_progress.py"]
+old = '''            print(line, file=stderr, flush=True)'''
+new = '''            print(line, file=stderr, flush=False)'''
+
+[[rows]]
+id = "F1_no_start_line"
+description = "The fetch never says it started"
+file = "src/cratekit/intake/fetch.py"
+surface = "user"
+tests = ["tests/intake/test_set_progress.py", "tests/intake/test_set_fetch.py"]
+old = '''            progress(f"fetching: {address}")'''
+new = '''            pass'''
+
+[[rows]]
+id = "F2_no_landed_line"
+description = "The fetch never says what landed"
+file = "src/cratekit/intake/fetch.py"
+surface = "user"
+tests = ["tests/intake/test_set_progress.py", "tests/intake/test_set_fetch.py"]
+old = '''            progress(f"fetched: {megabytes(landed.stat().st_size)} in {elapsed}s")'''
+new = '''            pass'''
+
+[[rows]]
+id = "F3_watcher_silent"
+description = "The watcher runs and never reports the bytes"
+file = "src/cratekit/intake/fetch.py"
+surface = "user"
+tests = ["tests/intake/test_set_progress.py", "tests/intake/test_set_fetch.py"]
+old = '''            progress(f"fetching: {megabytes(_bytes_in(directory))} so far, {elapsed}s")'''
+new = '''            pass'''
+
+[[rows]]
+id = "F4_sum_not_largest"
+description = "The bytes said are the sum of every file in the folder rather than the largest"
+file = "src/cratekit/intake/fetch.py"
+surface = "user"
+tests = ["tests/intake/test_set_progress.py"]
+old = '''                largest = max(largest, one.stat().st_size)'''
+new = '''                largest += one.stat().st_size'''
+
+[[rows]]
+id = "F5_watcher_not_joined"
+description = "The watcher is told to stop and not waited for, so it can outlive the fetch"
+file = "src/cratekit/intake/fetch.py"
+surface = "maintainer"
+tests = ["tests/intake/test_set_progress.py"]
+old = '''        stop.set()
+        watcher.join()'''
+new = '''        stop.set()'''
+
+[[rows]]
+id = "F6_watcher_without_progress"
+description = "The watcher starts in JSON output too, measuring what nothing will say"
+file = "src/cratekit/intake/fetch.py"
+surface = "maintainer"
+tests = ["tests/intake/test_set_progress.py", "tests/intake/test_set_fetch.py"]
+old = '''    if progress is None:
+        yield
+        return
+    stop = threading.Event()'''
+new = '''    if False:
+        yield
+        return
+    stop = threading.Event()'''
+
+[[rows]]
+id = "F7_interval_halved"
+description = "The watcher interval constant is halved"
+file = "src/cratekit/intake/fetch.py"
+surface = "maintainer"
+tests = ["tests/intake/test_set_progress.py"]
+old = '''FETCH_PROGRESS_SECONDS = 15.0'''
+new = '''FETCH_PROGRESS_SECONDS = 7.5'''
+
+[[rows]]
+id = "A1_no_plan_line"
+description = "Identification never states its plan before the first call"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+tests = ["tests/intake/test_set_progress.py", "tests/intake/test_workers.py", "tests/intake/test_recognition.py"]
+old = '''    if progress is not None:
+        progress(_plan_line(len(offsets), cached=len(offsets) - len(owed), parts=len(parts)))'''
+new = '''    if False:
+        progress(_plan_line(len(offsets), cached=len(offsets) - len(owed), parts=len(parts)))'''
+
+[[rows]]
+id = "A2_plan_before_the_bounds"
+description = "The plan line is said before the month bound and the credential read, so a refused run is told it will pay"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+tests = ["tests/intake/test_set_progress.py", "tests/intake/test_workers.py", "tests/intake/test_recognition.py"]
+old = '''    keys = ("", "")
+    if owed:
+        assert_month_within(spend, planned=len(owed), used_this_month=counter.used(month))
+        keys = credentials()
+    # AFTER EVERY REFUSAL THAT SPENDS NOTHING, so a run told it is about to pay
+    # is a run that will, and one refused by a bound or a missing key is told
+    # only the refusal.
+    offsets = tuple(offset for part in parts for offset in part)
+    if progress is not None:
+        progress(_plan_line(len(offsets), cached=len(offsets) - len(owed), parts=len(parts)))'''
+new = '''    keys = ("", "")
+    offsets = tuple(offset for part in parts for offset in part)
+    if progress is not None:
+        progress(_plan_line(len(offsets), cached=len(offsets) - len(owed), parts=len(parts)))
+    if owed:
+        assert_month_within(spend, planned=len(owed), used_this_month=counter.used(month))
+        keys = credentials()'''
+
+[[rows]]
+id = "A3_cached_count_zero"
+description = "The plan line is told nothing was cached"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+tests = ["tests/intake/test_set_progress.py", "tests/intake/test_workers.py"]
+old = '''        progress(_plan_line(len(offsets), cached=len(offsets) - len(owed), parts=len(parts)))'''
+new = '''        progress(_plan_line(len(offsets), cached=0, parts=len(parts)))'''
+
+[[rows]]
+id = "A4_split_on_one_part"
+description = "A set identified in one part is said to be in parts"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+tests = ["tests/intake/test_set_progress.py"]
+old = '''    split = f" in {parts} parts" if parts > 1 else ""'''
+new = '''    split = f" in {parts} parts" if parts >= 1 else ""'''
+
+[[rows]]
+id = "A5_cadence_halved"
+description = "The counter speaks every tenth call rather than every twentieth"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+tests = ["tests/intake/test_set_progress.py"]
+old = '''    return calls == 1 or calls == owed or calls % PROGRESS_EVERY == 0'''
+new = '''    return calls == 1 or calls == owed or calls % (PROGRESS_EVERY // 2) == 0'''
+
+[[rows]]
+id = "A6_last_call_unsaid"
+description = "The counter does not say the last call"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+tests = ["tests/intake/test_set_progress.py"]
+old = '''    return calls == 1 or calls == owed or calls % PROGRESS_EVERY == 0'''
+new = '''    return calls == 1 or calls % PROGRESS_EVERY == 0'''
+
+[[rows]]
+id = "A7_kept_chunks_counted"
+description = "A chunk the cache answered speaks the counter as if it were paid"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+tests = ["tests/intake/test_set_progress.py", "tests/intake/test_workers.py"]
+old = '''            if progress is not None and calls > before and _worth_saying(calls, len(owed)):'''
+new = '''            if progress is not None and _worth_saying(calls, len(owed)):'''
+
+[[rows]]
+id = "R1_bound_identifier_not_told"
+description = "recognize does not hand progress to the bound identifier"
+file = "src/cratekit/intake/recognize.py"
+surface = "user"
+tests = ["tests/intake/test_set_progress.py", "tests/intake/test_workers.py"]
+old = '''            recognition, refresh=refresh, progress=progress'''
+new = '''            recognition, refresh=refresh'''
+
+[[rows]]
+id = "C1_set_identify_not_told"
+description = "intake set does not hand its progress to identification"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_set_progress.py", "tests/intake/test_set_fetch.py", "tests/intake/test_workers.py"]
+old = '''            result = pipeline.identify_only(
+                held.path,
+                refresh=bool(ctx.args.refresh),
+                recognition=cfg.recognition,
+                progress=ctx.progress,
+            )'''
+new = '''            result = pipeline.identify_only(
+                held.path,
+                refresh=bool(ctx.args.refresh),
+                recognition=cfg.recognition,
+            )'''
+
+[[rows]]
+id = "C2_set_fetch_not_told"
+description = "intake set does not hand its progress to the fetch"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_set_progress.py", "tests/intake/test_set_fetch.py", "tests/intake/test_workers.py"]
+old = '''        with _recording(cfg, source, local, ctx.progress) as held:
+            result = pipeline.identify_only('''
+new = '''        with _recording(cfg, source, local) as held:
+            result = pipeline.identify_only('''
+
+[[rows]]
+id = "C3_recording_drops_progress"
+description = "_recording does not pass its progress to the fetch"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_set_progress.py", "tests/intake/test_set_fetch.py", "tests/intake/test_workers.py"]
+old = '''            address, Path(cfg.library.root), found, progress=progress'''
+new = '''            address, Path(cfg.library.root), found'''
