@@ -14354,6 +14354,15 @@ contradiction is gone, so this drift is the whole of the audit's output at the
 end of a relay run, and the printed remedy is a `sync` that would undo the
 runner's first tracker write.
 
+**Closed by #280, U122, 2026-10-10, on `relay/280`.** `derive_status` keeps
+In Progress and In review, the pair `UNDERWAY` in `scripts/board.py`, for any
+open card, unit, residual or attended, after the closure check, and `next`
+counts either as busy and prints which. The name is the runner manifest's
+`in_review_status`, written into the script rather than read from the
+manifest, which lives outside this repository. `tests/test_board_status.py`
+is the first test of `derive_status`; ten mutation rows, all killed
+(`docs/mutation/u122.md`).
+
 ---
 
 ## R-266. Every label job in this build ends `no-evidence`, retryable, over a refusal that says never retry
