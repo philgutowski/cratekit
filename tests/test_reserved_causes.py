@@ -5224,7 +5224,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # than carry the row's own value, found by the review). All four are in
     # cause.REASONS and none is in the reserved table. Population 210 to 214,
     # non-reserved 182 to 186, reserved half UNCHANGED at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (214, 186, 28)
+    # Re-pinned on U126, the native landing writes the library's ContentLink,
+    # 2026-10-10. ONE slug, named rather than counted: link-majority-unclear,
+    # which the landing's plan refuses with when no ContentLink is carried by
+    # more than half the library's live rows. It is in cause.REASONS and not
+    # in the reserved table. Population 214 to 215, non-reserved 186 to 187,
+    # reserved half UNCHANGED at 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (215, 187, 28)
     # Re-pinned on U117, new label releases kept apart, 2026-10-09. ONE slug,
     # named rather than counted: label-new-playlists-no-folder, which the
     # dated playlist's apply refuses with when the label's folder is not on
@@ -6302,7 +6308,11 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # recorded under and the plan KIND its digest is taken under. row-probe is
     # the OWNER of the field policy the apply builds for its commit. And
     # rows-link-written and rows-link-nothing-to-write are WARNING codes.
-    assert (len(literals), len(literals - set(causes))) == (710, 497), (
+    # Re-pinned on U126, the native landing writes the library's ContentLink,
+    # 2026-10-10: 710 to 711 distinct, non-keys UNCHANGED at 497. ONE joined,
+    # link-majority-unclear, absent from `main`'s own `src` by git grep, and it
+    # is the key pinned above.
+    assert (len(literals), len(literals - set(causes))) == (711, 497), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

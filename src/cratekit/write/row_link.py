@@ -82,6 +82,10 @@ VALUE_UNHELD = "link-value-unheld"
 #: Fewer live rows carry the value asked for than carry the row's own value.
 VALUE_MINORITY = "link-value-minority"
 
+#: No single ContentLink value is carried by more than half the library's live
+#: rows, so a landing has no value of rekordbox's to give the row it makes (U126).
+MAJORITY_UNCLEAR = "link-majority-unclear"
+
 _ORIGIN = ("write", "row_link")
 
 
@@ -236,6 +240,68 @@ def _holding(db: Any, column: str, value: Any, *, excluding: str) -> int:
         {"value": value, "id": excluding},
     )
     return int(found.scalar() or 0)
+
+
+@dataclass(frozen=True, slots=True)
+class LibraryLink:
+    """The ContentLink the library's live rows mostly carry, and how many carry it (U126)."""
+
+    value: int
+    #: Live rows carrying ``value``.
+    carriers: int
+    #: Live rows read, NULL included.
+    rows: int
+
+
+def library_link(db: Any) -> LibraryLink:
+    """The ContentLink more than half the live rows carry, or a refusal by name (U126).
+
+    WHAT A ROW THE NATIVE LANDING MAKES IS GIVEN, read from the library rather
+    than written down. The binding sets the column from a menu item's counter,
+    and rekordbox refuses such a row a deck (R-928); rekordbox writes one value
+    on nearly every row it makes, ``2950670`` on 10,312 of 10,498 live rows of
+    the library measured on 2026-10-10. That number is a measurement of one
+    library and not a constant of rekordbox, so it is read here on every plan.
+
+    MORE THAN HALF, NULL COUNTED AS ITS OWN VALUE, and the value a whole
+    number. A library with no rows, or whose rows split so that no value holds
+    a majority, or whose majority is NULL, has nothing to copy, and the landing
+    refuses before its gate rather than choose: a plurality is a guess about
+    which value rekordbox will load, and a wrong guess is a row nobody can play.
+    """
+    from sqlalchemy import text
+
+    counted = db.session.execute(
+        text(
+            f"SELECT {LINK}, COUNT(*) FROM {rb_writer.CONTENT_TABLE} "
+            f"WHERE {rb_writer.SOFT_DELETE_COLUMN} = 0 GROUP BY {LINK} "
+            f"ORDER BY COUNT(*) DESC"
+        )
+    ).all()
+    rows = sum(int(count) for _value, count in counted)
+    value, carriers = counted[0] if counted else (None, 0)
+    whole = _text(value)
+    if whole is not None and whole.lstrip("-").isdigit() and carriers * 2 > rows:
+        return LibraryLink(value=int(whole), carriers=int(carriers), rows=rows)
+    shown = "no value" if not counted else ("NULL" if whole is None else repr(whole))
+    raise refuse(
+        MAJORITY_UNCLEAR,
+        f"the most common {LINK} on the library's {rows} live row(s) is {shown}, "
+        f"carried by {carriers}, which is not a whole number held by more than "
+        f"half of them; a row this landing makes takes the value rekordbox "
+        f"writes on its own rows, and with no clear majority there is none to take",
+        steps=(
+            "import a few files through rekordbox so its own rows carry its value, "
+            "then plan the landing again",
+        ),
+        origin=_ORIGIN,
+        detail={
+            "column": LINK,
+            "value": whole,
+            "carriers": int(carriers),
+            "rows": rows,
+        },
+    )
 
 
 def plan_probes(db: Any, triples: Sequence[Triple]) -> ProbePlan:
@@ -536,11 +602,13 @@ __all__ = [
     "CHANGE_KEY",
     "ISRC",
     "LINK",
+    "MAJORITY_UNCLEAR",
     "PROBE_INVALID",
     "ROW_UNKNOWN",
     "VALUE_MINORITY",
     "VALUE_UNHELD",
     "WORKFLOW",
+    "LibraryLink",
     "Probe",
     "ProbePlan",
     "Triple",

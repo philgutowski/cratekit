@@ -45,6 +45,7 @@ from tests.test_config import valid_data
 from tests.test_intake_land_native import (
     DECLARED,
     INTAKE,
+    LIBRARY_LINK,
     MY_DEVICE,
     TODAY,
     _cut_over_intake,
@@ -377,7 +378,13 @@ def test_the_gate_screen_names_the_row_its_columns_the_playlist_and_the_database
         "FileSize",
         "FileType",
         rb_writer.FILE_ID_COLUMN,
+        rb_writer.CONTENT_LINK_COLUMN,
     }
+    # THE LIBRARY'S VALUE, shown with its count, never the binding's (U126).
+    assert item["row"][rb_writer.CONTENT_LINK_COLUMN] == LIBRARY_LINK
+    assert shown["content link"] == (
+        f"{LIBRARY_LINK}, carried by 2 of the library's 2 live rows"
+    )
     # U115: the file id is named as the sentence it is, since the number is
     # read on the landed file when the row is made and no plan can know it.
     assert item["row"][rb_writer.FILE_ID_COLUMN] == native.FILE_ID_AT_LANDING
