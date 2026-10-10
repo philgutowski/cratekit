@@ -941,6 +941,11 @@ def test_a_file_already_in_the_collection_is_present_and_not_added_twice(native_
     assert shown["adds"] == 1 and shown["already present"] == 1
     present = [item for item in shown["items"] if item["action"] == native.PRESENT]
     assert [item["content_id"] for item in present] == ["held-2"]
+    # THE LINK ONLY WHERE A ROW IS ADDED (U126): the held row is not written,
+    # so it claims no value, and the added one carries the library's.
+    assert rb_writer.CONTENT_LINK_COLUMN not in present[0]["row"]
+    (added,) = [item for item in shown["items"] if item["action"] == native.ADD]
+    assert added["row"][rb_writer.CONTENT_LINK_COLUMN] == LIBRARY_LINK
 
     code, acted, _ = _two_acts(_land())
     assert code == int(ExitCode.OK), acted

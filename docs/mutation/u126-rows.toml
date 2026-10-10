@@ -190,7 +190,7 @@ new = '''        row_link.library_link(db)'''
 
 [[rows]]
 id = "F2_every_row_shows"
-description = "Give the link to every planned row, held and unsupported too, so the screen claims a value never written"
+description = "Give the link to every planned row, held and unsupported too, so the screen claims a value never written on them"
 file = "src/cratekit/intake/native.py"
 surface = "user"
 old = '''            replace(row, content_link=link.value) if row.action == ADD else row for row in rows'''
@@ -203,3 +203,27 @@ file = "src/cratekit/intake/native.py"
 surface = "user"
 old = '''            {"value": plan.link.value, "carriers": plan.link.carriers, "rows": plan.link.rows}'''
 new = '''            {"value": plan.link.value}'''
+
+# ── Composites for the answer's two zeros ──────────────────────────────────
+# R6 and R7 start each landed row from the planned row, which already carries
+# the planned link, so dropping the read back value changes nothing an OK
+# answer can show. What makes that true is the read back check: an answer is
+# OK only when every row holds the planned value. Each composite removes that.
+
+[[rows]]
+id = "C1_land_answer_unchecked"
+description = "What R6 does hold: skip the read back check, so intake land answers OK over a row whose link did not take"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+pairs_with = "R6_answer_land"
+old = '''        if landed.content_link is None or row.content_link != landed.content_link'''
+new = '''        if False'''
+
+[[rows]]
+id = "C2_file_answer_unchecked"
+description = "What R7 does hold: let a row added with no planned link pass, so intake file answers OK with nothing to hold the row to"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+pairs_with = "R7_answer_file"
+old = '''        if landed.content_link is None or row.content_link != landed.content_link'''
+new = '''        if landed.content_link is not None and row.content_link != landed.content_link'''
