@@ -6316,7 +6316,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # 2026-10-10: 711 to 712 distinct, non-keys 497 to 498. ONE joined and
     # nothing left, account-playlist-left-out, absent from `main`'s own `src`
     # by git grep, the WARNING code naming the tracks no mirror holds.
-    assert (len(literals), len(literals - set(causes))) == (712, 498), (
+    # Re-pinned on U127, every native landing writes the vox My Tag,
+    # 2026-10-10: 712 to 714 distinct, non-keys 498 to 500. TWO joined and
+    # nothing left, vox-unscored and vox-not-written, each absent from
+    # `main`'s own `src` by git grep, the WARNING codes a native write gives
+    # for a file with no score and for a landing that could tag no row.
+    assert (len(literals), len(literals - set(causes))) == (714, 500), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

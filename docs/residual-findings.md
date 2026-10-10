@@ -33537,6 +33537,15 @@ live run shows how many tracks the two disagree on.
 
 **Not on the board bar.** It closes at an attended sitting.
 
+**Closed 2026-10-10, U127 (issue #296).** The author decided the `vox` My Tag
+owns the vocal sub, after a copy of the live database showed 266 of 590 rows
+created since 2026-09-01 at or above the cut and none of them tagged. Every
+native landing, `intake land` and `intake file`, now writes the tag in its own
+gated commit from the file's `voxlevel` against the calibrated cut, additive
+only, and names a file with no score; the bridge's gate screen names
+`metadata mytags-vocals` as the step owed. Tagging the rows already in the
+library is A37's.
+
 ---
 
 ## R-842. A withheld vox tagged track gains no vocal sub from adoption
@@ -33588,6 +33597,14 @@ category or deletes the row was not observed, and no candidate was driven.
 **Closes when:** the find or create reads the marker, as R-762 asks of the
 playlist one, or a read of a real database shows rekordbox never leaves a
 removed My Tag row.
+
+**Driven on U127, 2026-10-10, on a disposable database.** With the `Vocals`
+category's marker set, the native landing's write went under it exactly as
+read here, and adoption's reader did not answer the row. The landing reads
+its tags back through that reader, so it names the row as untagged rather
+than counting it
+(`test_a_tag_written_under_a_removed_category_is_said_and_never_counted`).
+Whether rekordbox leaves such a row on a real library is still unmeasured.
 
 **Not on the board bar.** The reachability is unmeasured.
 

@@ -2280,6 +2280,8 @@ def _mytag_templates(db: Any) -> tuple[Any, Any, Any]:
         elif value_attr is None:
             value_attr = getattr(tag, "Attribute", 0)
     if category_attr is None:
+        # :func:`my_tag_writable` reads this reason by the same literal, and the
+        # native landing's no category test holds the two together.
         raise _unavailable(
             "mytag-category-template-missing",
             "the library has no tag category to mirror, so there is nothing to "
@@ -2288,6 +2290,23 @@ def _mytag_templates(db: Any) -> tuple[Any, Any, Any]:
     if value_attr is None:
         value_attr = category_attr
     return root_parent, category_attr, value_attr
+
+
+def my_tag_writable(db: Any) -> bool:
+    """Whether :func:`ensure_my_tag_value` could make a row here, asked before a plan promises one.
+
+    THE WRITER'S OWN QUESTION, not a second reading of the table. A planner
+    that promises a tag the writer then refuses fails after its other work,
+    the native landing's file moves among them (U127). Any other refusal is
+    the caller's as it would be the writer's.
+    """
+    try:
+        _mytag_templates(db)
+    except RekordboxUnavailable as exc:
+        if exc.cause.reason != "mytag-category-template-missing":
+            raise
+        return False
+    return True
 
 
 def ensure_my_tag_value(db: Any, category_name: str, value_name: str) -> Any:
@@ -3640,6 +3659,7 @@ __all__ = [
     "ensure_folder",
     "top_level_folders",
     "ensure_my_tag_value",
+    "my_tag_writable",
     "ensure_playlist",
     "MOVED",
     "UNINSPECTABLE",

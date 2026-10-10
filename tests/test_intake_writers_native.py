@@ -304,9 +304,13 @@ def test_one_file_becomes_one_row_and_one_playlist_under_the_adopted_root(
         "already present": 0,
         "memberships": 1,
     }
-    (warning,) = acted["warnings"]
+    # U127: the machine records no vocal calibration, so the row joins with
+    # no vox My Tag and the second warning says why.
+    warning, vox = acted["warnings"]
     assert warning["code"] == land_cli.AWAITING_ANALYSIS
     assert path.stem in warning["message"] and "Analyze" in warning["message"]
+    assert vox["code"] == land_cli.VOX_NOT_WRITTEN
+    assert native.VOX_UNCALIBRATED in vox["message"]
 
     # What a restore reads and what a revert of the intake cutover refuses over.
     (record,) = session.records(cfg)
@@ -471,6 +475,32 @@ def test_an_answer_is_stale_once_the_artist_the_plan_showed_changed(
 
     assert envelope["cause"]["reason"] == "decision-stale", envelope
     _assert_nothing_written(cfg, tmp_path)
+
+
+def test_intake_file_tags_its_row_vox_from_the_files_score(native_library, silence):
+    """U127 on the other native route: ``intake file`` plans through the same
+    engine, so a file scoring at the cut joins carrying the vox My Tag, the
+    screen says so, and adoption's reader answers the row."""
+    from cratekit.adopt import placements as adopt_placements
+    from tests.test_intake_land_vox_native import _calibrate, _seed_vocals
+
+    cfg, _root = native_library
+    _calibrate(cfg)
+    _seed_vocals(cfg)
+    path = _single(cfg, silence)
+    assert tags.write_tags(path, {"voxlevel": "5"})
+
+    code, acted, refused = _two_acts(_file(path))
+
+    assert code == int(ExitCode.OK), acted
+    assert refused["cause"]["detail"]["shown"]["vox My Tag"].startswith("1 of 1 added row(s)")
+    ((content_id, _title, _folder),) = _rows(cfg)
+    db = rb_writer.open_db(Path(cfg.library.db_path), cfg=cfg)
+    try:
+        assert adopt_placements.vox_tagged(db) == {str(content_id)}
+    finally:
+        rb_writer.close_db(db)
+    assert [w["code"] for w in acted["warnings"]] == [land_cli.AWAITING_ANALYSIS]
 
 
 def test_a_file_already_in_the_collection_gains_a_membership_and_no_second_row(
