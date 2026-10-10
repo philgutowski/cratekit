@@ -677,7 +677,7 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
         summary = _summary(cfg, job.job_id)
         return ctx.envelope(
             data=shell.reported(store, job, {"adoption": summary}),
-            warnings=[*warnings, *favorites_warnings(summary)],
+            warnings=[*warnings, *favorites_warnings(summary, declared)],
         )
 
 
@@ -698,6 +698,7 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
         "created": [],
         "disagreements": [],
         "skipped": "",
+        "cause": "",
     }
     for report in artifacts.committed(cfg, job_id):
         applied.extend(str(entry) for entry in report.get("applied") or ())
@@ -720,6 +721,7 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
                 *(str(one) for one in kept.get("disagreements") or ()),
             ]
             favorites["skipped"] = str(kept.get("skipped") or "")
+            favorites["cause"] = str(kept.get("cause") or "")
     return {
         "applied": sorted(set(applied)),
         "failed": failed,
@@ -738,8 +740,14 @@ FAVORITES_UNVERIFIED = "favorites-unverified"
 FAVORITES_SKIPPED = "favorites-skipped"
 
 
-def favorites_warnings(summary: Mapping[str, object]) -> list[dict[str, str]]:
-    """The one note an adoption carries when its additive refresh left removals owed."""
+def favorites_warnings(
+    summary: Mapping[str, object], declared: taxonomy.Taxonomy | None = None
+) -> list[dict[str, str]]:
+    """The notes an adoption carries about its additive refresh: owed, skipped, unverified.
+
+    ``declared`` is the resume's own declaration, read only to state its schema
+    version in the note a skip over an undeclared class carries.
+    """
     kept = summary.get("favorites") or {}
     if not isinstance(kept, Mapping):
         return []
@@ -757,7 +765,16 @@ def favorites_warnings(summary: Mapping[str, object]) -> list[dict[str, str]]:
             }
         )
     skipped = str(kept.get("skipped") or "")
-    if skipped:
+    cause = str(kept.get("cause") or "")
+    if skipped and cause == genre_favorites.CLASS_UNDECLARED:
+        # THE CAUSE CODE IS THE NOTE'S CODE (U132), in the one wording the
+        # rebuild carries too.
+        notes.append(
+            genre_favorites.undeclared_note(
+                declared.schema_version if declared is not None else None
+            )
+        )
+    elif skipped:
         added = int(kept.get("added") or 0)
         notes.append(
             {
@@ -766,6 +783,7 @@ def favorites_warnings(summary: Mapping[str, object]) -> list[dict[str, str]]:
                     "the genre Favorites were not refreshed at the end of this adoption"
                     + (f" past {added} addition(s) that committed" if added else "")
                     + f": {skipped}"
+                    + (f" ({cause})" if cause else "")
                 ),
             }
         )
@@ -876,8 +894,14 @@ def handle(job, item, cfg) -> jobs.Produced:
     # owed to crate favorites refresh, which is the one path that removes. A
     # library with no class, no source or a tree on the bridge is a skip with
     # its reason, never a failure of the adoption that ran.
+    #
+    # A LIBRARY THAT DECLARES NO CLASS IS TOLD SO ON EVERY APPLY (U132), not
+    # only on one that filed a track: the step passes over it either way, and
+    # the live library went without a Favorites in any genre folder while
+    # every apply said nothing. The engine answers that case before it opens
+    # anything.
     favorites: dict[str, object] = {}
-    if membership.added:
+    if membership.added or genre_favorites.favorites_class(declared) is None:
         outcome = genre_favorites.refresh_additive(
             cfg, declared, analysis_roots=analysis_store.watch_roots(cfg)
         )
@@ -890,6 +914,7 @@ def handle(job, item, cfg) -> jobs.Produced:
             # has landed reports it, since its own writes are already true.
             "disagreements": list(refreshed.disagreements) if refreshed else [],
             "skipped": outcome.skipped,
+            "cause": outcome.cause,
         }
 
     produced = artifacts.produced(
