@@ -78,8 +78,9 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import TYPE_CHECKING, Any, Iterable, Sequence
 
+from cratekit.adopt import placements as adopt_placements
 from cratekit.cli.output import digest_of
 from cratekit.core import (
     config,
@@ -88,12 +89,18 @@ from cratekit.core import (
     rb_writer,
     session,
     snapshot,
+    tags,
     tree_registry,
 )
 from cratekit.core.cause import CratekitError, Remedy, refuse
 from cratekit.favorites import placement
 from cratekit.intake import ingest, set_playlist
-from cratekit.write import routing_pass, row_link, trees
+from cratekit.write import metadata_cli, routing_pass, row_link, trees
+
+if TYPE_CHECKING:
+    # The landing's own types, imported for annotation only: the module that
+    # defines them reaches this one through the batch name and the landing.
+    from cratekit.intake.account_playlists import Left, Member
 
 #: What a planned row will do. A file whose suffix the binding has no file
 #: type for is planned as UNSUPPORTED and left in staging by the landing, the
@@ -130,6 +137,35 @@ PASS_KEY = "pass"
 #: intake file's record.
 INBOX_PLAYLISTS_KEY = ingest.INBOX_PLAYLISTS_KEY
 
+#: Why a playlist member is not in its INBOX playlist when its file made no
+#: row (U128), the words the landing's warning names it with on both media.
+NOT_LANDED = "its file did not land"
+
+#: Why a landing plans no vox My Tag on any row it adds (U127), each a
+#: sentence the screen and the warning say. The library recorded no vocal
+#: calibration, so there is no cut to read a score against: the routing
+#: passes leave the vocal dimension uncompared on the same reading (R-276),
+#: and a tag written from the default cut would file a vocal sub the
+#: derivation never would.
+VOX_UNCALIBRATED = (
+    "the library has no vocal calibration, so no score can be read against a cut; "
+    "run crate analyze calibrate and then crate metadata mytags-vocals --apply"
+)
+#: The library holds no My Tag category for the writer to copy a row's shape
+#: from, which :func:`cratekit.core.rb_writer.ensure_my_tag_value` refuses.
+VOX_NO_CATEGORY = (
+    "the library holds no My Tag category to copy a new one's shape from, so the "
+    "Vocals category cannot be made; make any My Tag in rekordbox and then run "
+    "crate metadata mytags-vocals --apply"
+)
+
+#: The calibration is there and cannot be read, so it refuses on every
+#: surface that reads it; the landing names that refusal and writes no tag.
+VOX_UNREADABLE = (
+    "the vocal calibration could not be read ({why}), so no score can be read against "
+    "a cut; run crate analyze calibrate again and then crate metadata mytags-vocals --apply"
+)
+
 _ORIGIN = ("intake.native",)
 
 
@@ -153,6 +189,12 @@ class RowPlan:
     content_id: str | None = None
     #: Why the file is planned as ``UNSUPPORTED``, in a sentence, else empty.
     why: str = ""
+    #: The file's ``voxlevel``, read off the source for a row to be added
+    #: against a calibrated cut (U127). None for a file with no readable score
+    #: and for every row the vox tag is not planned on.
+    voxlevel: int | None = None
+    #: Whether the row is given the vox My Tag, its score clearing the cut.
+    vox: bool = False
 
     def columns(self) -> dict[str, Any]:
         """Every column the writer sets on the row, by name, for the screen."""
@@ -172,6 +214,24 @@ class RowPlan:
 
 
 @dataclass(frozen=True, slots=True)
+class PlaylistMember:
+    """One track an account playlist's INBOX playlist holds (U128).
+
+    A planned ``target``, whose row the apply makes or finds, or the
+    ``content_id`` of a row the library held, found by path at plan time.
+    ``member`` is what the landing planned it from, for the warning when its
+    file does not land.
+    """
+
+    target: Path | None = None
+    content_id: str = ""
+    member: Member | None = None
+
+    def identity(self) -> str:
+        return str(self.target) if self.target is not None else f"row {self.content_id}"
+
+
+@dataclass(frozen=True, slots=True)
 class PlaylistPlan:
     """One INBOX playlist a landing writes for a playlist the author made on the account (U113)."""
 
@@ -179,10 +239,22 @@ class PlaylistPlan:
     name: str
     #: The account's identifier for the playlist it carries.
     account: str
-    #: The planned targets it holds, in the order the landing planned them.
-    targets: tuple[Path, ...]
+    #: Every member, the planned targets and the owned rows, in the account
+    #: playlist's order (U128).
+    members: tuple[PlaylistMember, ...]
     #: The account's own name for it, which ``name`` differs from only by a count.
     account_name: str = ""
+    #: The account playlist's rows it does not hold, each with why (U128).
+    left: tuple[Left, ...] = ()
+
+    @property
+    def targets(self) -> tuple[Path, ...]:
+        """The planned targets it holds, in the account playlist's order."""
+        return tuple(one.target for one in self.members if one.target is not None)
+
+    @property
+    def owned(self) -> int:
+        return sum(1 for one in self.members if one.target is None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -295,9 +367,32 @@ class NativePlan:
     #: the declared INSPIRATION folder, for a landing given ``--set``. None
     #: for every other landing.
     set_playlist: set_playlist.SetPlaylistPlan | None = None
+    #: The left rows of each account playlist that holds nothing here and so
+    #: is not planned (U128), by its name, which the screen counts, the digest
+    #: covers and the landing names.
+    unplanned_left: tuple[tuple[str, Left], ...] = ()
+    #: The calibrated with vox cut the scores were read against (U127), the one
+    #: :func:`cratekit.write.metadata_cli.load_vocal_threshold` reads. None
+    #: when the plan adds no row or the library recorded no calibration.
+    vox_cut: float | None = None
+    #: Why no added row is given the vox My Tag at all, a sentence, else empty.
+    vox_blocked: str = ""
 
     def to_add(self) -> tuple[RowPlan, ...]:
         return tuple(row for row in self.rows if row.action == ADD)
+
+    def vox_tagged(self) -> tuple[RowPlan, ...]:
+        """The rows to be added that are given the vox My Tag (U127)."""
+        return tuple(row for row in self.to_add() if row.vox)
+
+    def vox_unscored(self) -> tuple[RowPlan, ...]:
+        """The rows to be added whose file gave no score to read, and so no tag.
+
+        Empty when no score was read at all, which ``vox_blocked`` says why.
+        """
+        if self.vox_cut is None or self.vox_blocked:
+            return ()
+        return tuple(row for row in self.to_add() if row.voxlevel is None)
 
     def present(self) -> tuple[RowPlan, ...]:
         return tuple(row for row in self.rows if row.action == PRESENT)
@@ -320,6 +415,8 @@ class AddedRow:
     file_id: str = ""
     #: ``ContentLink`` as the table holds it after the commit (U126), None for NULL.
     content_link: int | None = None
+    #: Whether the row carries the vox My Tag as adoption reads it, after the commit (U127).
+    vox: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -344,6 +441,20 @@ class NativeLanded:
     #: The ContentLink the plan gave every added row (U126), which the read
     #: back is held to. None when the plan added no row.
     content_link: int | None = None
+    #: Each account playlist track no INBOX playlist holds, by playlist name
+    #: (U128): the plan's left rows and the members whose file did not land.
+    left: tuple[tuple[str, Left], ...] = ()
+    #: How many vox My Tag associations the commit wrote (U127).
+    vox_written: int = 0
+    #: Each added row's file that gave no score, so carries no tag (U127).
+    vox_unscored: tuple[Path, ...] = ()
+    #: Why no added row was given the tag at all, else empty (U127).
+    vox_blocked: str = ""
+    #: Each added row the plan tagged that adoption's reader does not answer
+    #: after the commit (U127), so it reaches no with vox playlist.
+    vox_missing: tuple[Path, ...] = ()
+    #: Why adoption's reader could not answer after the commit, else empty.
+    vox_unread: str = ""
 
     def names(self) -> tuple[str, ...]:
         """Every INBOX playlist the commit wrote, the batch's first when it wrote one."""
@@ -471,6 +582,7 @@ def plan_rows(
     batch: str,
     files: Sequence[tuple[Path, Path]],
     split: Sequence[PlaylistPlan] = (),
+    unplanned_left: Sequence[tuple[str, Left]] = (),
     pass_name: str | None = None,
     hearts: Sequence[HeartItem] = (),
     favorites_source: str | None = None,
@@ -490,7 +602,9 @@ def plan_rows(
 
     ``split`` is a landing's account playlists (U113), named by the caller
     against :func:`inbox_held` on this same handle, each holding targets of
-    ``files``. They are part of the plan and of its digest. ``set_plan`` is the
+    ``files``. They are part of the plan and of its digest, and so are
+    ``unplanned_left``, the left rows of the account playlists the caller found
+    holding nothing (U128). ``set_plan`` is the
     set's permanent playlist (U121), planned by the caller on this same handle
     over the same targets, and part of the digest the same way.
 
@@ -569,6 +683,8 @@ def plan_rows(
         rows = [
             replace(row, content_link=link.value) if row.action == ADD else row for row in rows
         ]
+    rows, vox_cut, vox_blocked = _vox_plan(cfg, db, rows)
+    kept, dropped = _supported_only(split, rows)
     planned = NativePlan(
         tree_id=tree_id,
         root_id=str(root_id),
@@ -582,12 +698,61 @@ def plan_rows(
         rows=tuple(rows),
         link=link,
         digest="",
-        playlists=_supported_only(split, rows),
+        playlists=kept,
+        unplanned_left=(*unplanned_left, *dropped),
         pass_name=pass_name,
         favorites=_favorites_plan(db, hearts, rows, source=favorites_source),
         set_playlist=set_plan,
+        vox_cut=vox_cut,
+        vox_blocked=vox_blocked,
     )
     return replace(planned, digest=digest_of(identity(planned)))
+
+
+def _vox_plan(
+    cfg: config.Config, db: Any, rows: list[RowPlan]
+) -> tuple[list[RowPlan], float | None, str]:
+    """Each row to be added with its file's score and whether it is given the vox My Tag (U127).
+
+    R-841'S DECISION: THE TAG OWNS THE VOCAL SUB, so a landing writes it from
+    the same score and the same cut the routing passes read, and the tag a
+    person filters by agrees with ``voxlevel`` from the moment the row exists.
+    The cut is :func:`cratekit.write.metadata_cli.load_vocal_threshold`'s and
+    the comparison is :func:`cratekit.write.metadata_cli.vocal_tag_values`',
+    so a score exactly at the cut is tagged, as the vocals verb tags it.
+
+    ONLY A ROW THIS LANDING ADDS. A row the collection already held is the
+    repair's (A37), and a landing never removes a tag.
+
+    NEVER A GUESS. No calibration recorded, or no My Tag category for the
+    writer to copy, plans no tag on any row and says why in ``vox_blocked``.
+    A file whose score cannot be read is planned with no score and no tag,
+    and the landing names it. Read off the source, since the tags do not move.
+    Answers the rows, the cut and the reason, in that order.
+    """
+    if not any(row.action == ADD for row in rows):
+        return rows, None, ""
+    try:
+        cut = metadata_cli.load_vocal_threshold(cfg)
+    except CratekitError as exc:
+        # AN UNREADABLE CALIBRATION BLOCKS THE TAG, NOT THE LANDING. The
+        # routing passes refuse over it, and so does the vocals verb, which is
+        # where the person repairs it; a batch held in staging over a tag the
+        # landing can say it did not write would cost the whole intake.
+        return rows, None, VOX_UNREADABLE.format(why=exc.cause.message)
+    if cut is None:
+        return rows, None, VOX_UNCALIBRATED
+    if not rb_writer.my_tag_writable(db):
+        return rows, cut, VOX_NO_CATEGORY
+    scored: list[RowPlan] = []
+    for row in rows:
+        if row.action != ADD:
+            scored.append(row)
+            continue
+        level = tags.read_vox_from_file(row.source)
+        values = metadata_cli.vocal_tag_values(level, None, cut)
+        scored.append(replace(row, voxlevel=level, vox=metadata_cli.VALUE_VOX in values))
+    return scored, cut, ""
 
 
 def _favorites_plan(
@@ -627,19 +792,39 @@ def _favorites_plan(
 
 def _supported_only(
     split: Sequence[PlaylistPlan], rows: Sequence[RowPlan]
-) -> tuple[PlaylistPlan, ...]:
-    """The account playlists over only the targets a row can be written for.
+) -> tuple[tuple[PlaylistPlan, ...], tuple[tuple[str, Left], ...]]:
+    """The account playlists over only the targets a row can be written for, and what was dropped.
 
     A file planned ``UNSUPPORTED`` stays in staging and no playlist can hold it,
-    so it is not counted on the screen as one of a playlist's, and a playlist
-    holding nothing else is not planned.
+    so it is not counted on the screen as one of a playlist's but listed as
+    left. A playlist holding nothing else, new or owned, is not planned, and
+    every left row it had is answered beside the kept ones by its name, so the
+    landing still names it.
     """
     unsupported = {str(row.target) for row in rows if row.action == UNSUPPORTED}
-    kept = (
-        replace(one, targets=tuple(t for t in one.targets if str(t) not in unsupported))
-        for one in split
-    )
-    return tuple(one for one in kept if one.targets)
+    kept: list[PlaylistPlan] = []
+    dropped: list[tuple[str, Left]] = []
+    for one in split:
+        members = tuple(
+            member
+            for member in one.members
+            if member.target is None or str(member.target) not in unsupported
+        )
+        left = (
+            *one.left,
+            *(
+                member.member.left(NOT_LANDED)
+                for member in one.members
+                if member.target is not None
+                and str(member.target) in unsupported
+                and member.member is not None
+            ),
+        )
+        if members:
+            kept.append(replace(one, members=members, left=left))
+        else:
+            dropped.extend((one.name, row) for row in left)
+    return tuple(kept), tuple(dropped)
 
 
 def inbox_held(db: Any, root_id: str) -> tuple[str, ...]:
@@ -665,20 +850,35 @@ def inbox_held(db: Any, root_id: str) -> tuple[str, ...]:
     return tuple(names)
 
 
+def _playlist_identity(one: PlaylistPlan) -> dict[str, Any]:
+    """One account playlist as the digest covers it, the owned rows and the left ones too.
+
+    KEYS ADDED ONLY WHEN THERE ARE ANY, so a playlist of new files alone keeps
+    the keys it had before U128; its targets are in the account playlist's
+    order since then.
+    """
+    identity: dict[str, Any] = {
+        "name": one.name,
+        "account": one.account,
+        "targets": [str(target) for target in one.targets],
+    }
+    if one.owned:
+        identity["members"] = [member.identity() for member in one.members]
+    if one.left:
+        identity["left"] = [row.identity() for row in one.left]
+    return identity
+
+
 def identity(plan: NativePlan) -> dict[str, Any]:
     """What the digest covers: every fact the screen shows and the apply writes."""
     split = (
-        {
-            "playlists": [
-                {
-                    "name": one.name,
-                    "account": one.account,
-                    "targets": [str(target) for target in one.targets],
-                }
-                for one in plan.playlists
-            ]
-        }
+        {"playlists": [_playlist_identity(one) for one in plan.playlists]}
         if plan.playlists
+        else {}
+    )
+    unplanned = (
+        {"unplanned_left": [[name, row.identity()] for name, row in plan.unplanned_left]}
+        if plan.unplanned_left
         else {}
     )
     favorites = {"favorites": plan.favorites.identity()} if plan.favorites is not None else {}
@@ -687,10 +887,26 @@ def identity(plan: NativePlan) -> dict[str, Any]:
         if plan.set_playlist is not None
         else {}
     )
+    # THE VOX TAG ONLY WHEN A ROW IS ADDED (U127), the cut, why none, and each
+    # added row's score and answer, so an approval given before a file was
+    # rescored or the library recalibrated is stale for the tags it would write.
+    vox = (
+        {
+            "vox": {
+                "cut": plan.vox_cut,
+                "blocked": plan.vox_blocked,
+                "rows": [[str(row.target), row.voxlevel, row.vox] for row in plan.to_add()],
+            }
+        }
+        if plan.to_add()
+        else {}
+    )
     return {
         **split,
+        **unplanned,
         **favorites,
         **kept,
+        **vox,
         "kind": "land-native",
         "tree": plan.tree_id,
         "root": plan.root_id,
@@ -799,7 +1015,7 @@ def _holding(match: trees.RowMatch) -> str | None:
     return None
 
 
-def _candidate_rows(db: Any, names: Iterable[str]) -> list[trees.ContentRow]:
+def candidate_rows(db: Any, names: Iterable[str]) -> list[trees.ContentRow]:
     """The active rows whose stored path ends in one of ``names``, as the matcher reads them.
 
     A CANDIDATE SET, NOT THE ANSWER. The rows are found by the file name at
@@ -839,7 +1055,7 @@ def content_ids_for(db: Any, cfg: config.Config, paths: Sequence[Path]) -> dict[
     prefix_map = [locations.PrefixRule(a, b) for a, b in cfg.resolved_prefix_map()]
     matches = trees.match_active_rows(
         list(paths),
-        _candidate_rows(db, (path.name for path in paths)),
+        candidate_rows(db, (path.name for path in paths)),
         root=cfg.library.root,
         prefix_map=prefix_map,
     )
@@ -910,6 +1126,7 @@ def apply_rows(
     added_ids: list[tuple[RowPlan, str]] = []
     present: list[RowPlan] = list(plan.present())
     memberships = 0
+    vox_written = 0
     with (
         session.assert_gates(
             cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
@@ -932,6 +1149,10 @@ def apply_rows(
             )
         playlist_id = ""
         written: list[WrittenPlaylist] = []
+        left: list[tuple[str, Left]] = [
+            *plan.unplanned_left,
+            *((one.name, row) for one in plan.playlists for row in one.left),
+        ]
         placed: placement.Placed | None = None
         set_written: set_playlist.Written | None = None
         try:
@@ -949,16 +1170,33 @@ def apply_rows(
                 content = db.add_content(row.target, Title=row.title)
                 _restamp(content, row, plan)
                 added_ids.append((row, str(content.ID)))
+            # THE VOX MY TAG, IN THE SAME COMMIT (U127), on the rows this
+            # landing made and only those the plan tagged. Additive: the writer
+            # adds an association it does not find and removes none.
+            vox_written = _tag_vox(db, added_ids)
             # In listing order: the files the plan named, in the order it named
             # them, whether the row is new or was already there.
             by_target = {str(row.target): content_id for row, content_id in added_ids}
             by_target.update({str(row.target): row.content_id for row in present if row.content_id})
             claimed = {str(target) for one in plan.playlists for target in one.targets}
-            accounts = [
-                (one, [by_target[str(t)] for t in one.targets if str(t) in by_target])
-                for one in plan.playlists
-            ]
-            accounts = [(one, ids) for one, ids in accounts if ids]
+            # IN THE ACCOUNT PLAYLIST'S ORDER (U128), a new row by its target and
+            # an owned row by the id the plan found for it. A member whose file
+            # made no row is left, and named, rather than silently absent.
+            accounts = []
+            for one in plan.playlists:
+                ids: list[str] = []
+                for member in one.members:
+                    held = (
+                        member.content_id
+                        if member.target is None
+                        else by_target.get(str(member.target), "")
+                    )
+                    if held:
+                        ids.append(held)
+                    elif member.member is not None:
+                        left.append((one.name, member.member.left(NOT_LANDED)))
+                if ids:
+                    accounts.append((one, ids))
             ordered = [
                 by_target[str(row.target)]
                 for row in plan.rows
@@ -1011,6 +1249,7 @@ def apply_rows(
                     written=written,
                     placed=placed,
                     set_written=set_written,
+                    vox_written=vox_written,
                 )
             raise
 
@@ -1024,6 +1263,7 @@ def apply_rows(
             written=written,
             placed=placed,
             set_written=set_written,
+            vox_written=vox_written,
         )
         convergence.record_fingerprint(cfg, db)
         if set_written is not None and set_written.playlist_id:
@@ -1032,6 +1272,11 @@ def apply_rows(
             )
 
         landed = []
+        # ONLY WHEN A TAG WAS PLANNED: a row this landing just made carries no
+        # tag it did not write, so there is nothing else to read back.
+        voxed, vox_unread = (
+            _vox_read_back(db) if any(row.vox for row, _ in added_ids) else (frozenset(), "")
+        )
         for row, content_id in added_ids:
             values, title, folder_path, file_id, link = _read_back(db, content_id)
             landed.append(
@@ -1043,10 +1288,12 @@ def apply_rows(
                     empty=values,
                     file_id=file_id,
                     content_link=link,
+                    vox=content_id in voxed,
                 )
             )
         session_id = record.session_id
 
+    unscored = {row.target for row in plan.vox_unscored()}
     return NativeLanded(
         tree_id=plan.tree_id,
         playlist=plan.playlist,
@@ -1059,7 +1306,50 @@ def apply_rows(
         favorites=placed,
         set_playlist=set_written,
         content_link=plan.link.value if plan.link is not None else None,
+        left=tuple(left),
+        vox_written=vox_written,
+        vox_unscored=tuple(
+            row.target for row, _content_id in added_ids if row.target in unscored
+        ),
+        vox_blocked=plan.vox_blocked if added_ids else "",
+        vox_missing=tuple(
+            row.target for row, content_id in added_ids if row.vox and content_id not in voxed
+        ),
+        vox_unread=vox_unread,
     )
+
+
+def _tag_vox(db: Any, added: Sequence[tuple[RowPlan, str]]) -> int:
+    """Give each added row the plan tagged the vox My Tag. Answers how many were written.
+
+    THE VOCALS VERB'S OWN WRITER (U127), so the category and the value are
+    found or made exactly as ``metadata mytags-vocals`` makes them, and an
+    association already there is left as it is. Pending on the landing's
+    handle, committed or rolled back with its rows.
+    """
+    content_ids = [content_id for row, content_id in added if row.vox]
+    if not content_ids:
+        return 0
+    value = rb_writer.ensure_my_tag_value(db, metadata_cli.CATEGORY, metadata_cli.VALUE_VOX)
+    return sum(1 for content_id in content_ids if rb_writer.add_my_tag(db, value, content_id))
+
+
+def _vox_read_back(db: Any) -> tuple[frozenset[str], str]:
+    """Every row carrying the vox My Tag as adoption reads it, after the commit (U127).
+
+    ADOPTION'S OWN READER, :func:`cratekit.adopt.placements.vox_tagged`, and
+    not a second reading of the table, because what the landing promises is
+    that the next ``adopt apply`` files the row, and a tag the writer put under
+    a category rekordbox removed is one that reader does not answer. A
+    refusal it raises, a marker no row can state, is the answer's reason and
+    not the landing's failure: the commit has landed by now. Answers the rows
+    and the reason, empty when it read.
+    """
+    try:
+        tagged = adopt_placements.vox_tagged(db)
+    except CratekitError as exc:
+        return frozenset(), exc.cause.message
+    return tagged or frozenset(), ""
 
 
 def assert_names_still_free(db: Any, plan: NativePlan) -> None:
@@ -1095,6 +1385,7 @@ def _record_landing_commit(
     written: Sequence[WrittenPlaylist] = (),
     placed: placement.Placed | None = None,
     set_written: set_playlist.Written | None = None,
+    vox_written: int = 0,
 ) -> None:
     """Record the commit on the session, once anything landed.
 
@@ -1125,7 +1416,13 @@ def _record_landing_commit(
     # AND EACH ACCOUNT PLAYLIST (U113), whose name carries no date to age it by.
     if written:
         record.detail[INBOX_PLAYLISTS_KEY] = [
-            {"id": one.playlist_id, "name": one.name} for one in written
+            {
+                "id": one.playlist_id,
+                "name": one.name,
+                ingest.INBOX_ACCOUNT_KEY: one.account,
+                ingest.INBOX_PASS_KEY: plan.pass_name or "",
+            }
+            for one in written
         ]
     # AND THE HEARTS PLACED (U120), under their own key, since the Favorites
     # folder is nobody's registered tree and a restore weighing the intake
@@ -1160,6 +1457,17 @@ def _record_landing_commit(
     # the record counts the batch's memberships and the set's apart.
     if set_written is not None and plan.set_playlist is not None:
         set_playlist.record_commit(record, set_written, plan.set_playlist, cfg)
+    # AND THE VOX TAGS (U127), under the vocals verb's own key, so a restore
+    # counts the tag associations apart from the rows they hang on.
+    if vox_written > 0:
+        session.record_commit(
+            record,
+            metadata_cli.CHANGE_KEY,
+            session.ChangeSummary(
+                (session.TreeChange(tree=metadata_cli.CHANGE_KEY, created=vox_written),)
+            ),
+            cfg,
+        )
 
 
 def landings_of_pass(cfg: config.Config, name: str) -> tuple[str, ...]:

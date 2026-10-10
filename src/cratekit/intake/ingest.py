@@ -57,8 +57,38 @@ VERIFY_VERB = "intake.imported"
 #: each from the day it landed, since its name carries no date. A native
 #: landing lists each by ``id`` and ``name``; an intake file's playlist has no
 #: identifier until rekordbox imports it, so its entry is the ``name`` and the
-#: ``batch`` folder it landed in.
+#: ``batch`` folder it landed in. Both media add the account's identifier and
+#: the pass since U128, which is how a rerun of a pass finds what it mirrored.
 INBOX_PLAYLISTS_KEY = "inbox_playlists"
+#: The keys each entry carries since U128, the one spelling both media write.
+INBOX_ACCOUNT_KEY = "account"
+INBOX_PASS_KEY = "pass"
+
+
+@dataclass(frozen=True, slots=True)
+class InboxPlaylist:
+    """One account playlist an intake file writes (U113, U128).
+
+    ``members`` are in the account playlist's order: a :class:`Path` is a file
+    this call places, and a string is the TrackID of the export's own entry
+    for a track the library already held, found by path before the call.
+    """
+
+    name: str
+    members: tuple[Path | str, ...]
+    account: str = ""
+    pass_name: str = ""
+
+    def track_ids(self, ids_by_path: dict[Path, int]) -> list[int | str]:
+        """The TrackIDs it holds, each once, a file this call did not place left out."""
+        held: list[int | str] = []
+        for member in self.members:
+            if isinstance(member, Path):
+                if member in ids_by_path:
+                    held.append(ids_by_path[member])
+            else:
+                held.append(member)
+        return list(dict.fromkeys(held))
 
 
 @dataclass(frozen=True, slots=True)
@@ -367,7 +397,7 @@ def place_files(
     declared: taxonomy.Taxonomy | None = None,
     registry: tree_registry.Registry | None = None,
     playlist: str | None = None,
-    split: Sequence[tuple[str, Sequence[Path]]] = (),
+    split: Sequence[InboxPlaylist] = (),
 ) -> list[PlacedTrack]:
     """Splice each file into ``destination`` and record routing intents.
 
@@ -375,12 +405,13 @@ def place_files(
     for its batch (U110); with none it is the intake file's stem, which is what
     a single file's intake has always called it.
 
-    ``split`` is a landing's account playlists (U113): each name and the paths
-    of ``paths`` it holds. Each is its own playlist under the intake tree, the
-    batch playlist keeps only the files none of them holds, and a batch
-    playlist that would hold nothing is not written. A playlist none of whose
-    files is here is not written either. The session record lists each one
-    written under :data:`INBOX_PLAYLISTS_KEY`.
+    ``split`` is a landing's account playlists (U113): each name and its
+    members, files of ``paths`` and the TrackIDs of owned tracks already in the
+    export (U128), in the account playlist's order. Each is its own playlist
+    under the intake tree, the batch playlist keeps only the files none of them
+    holds, and a batch playlist that would hold nothing is not written. A
+    playlist holding nothing here is not written either. The session record
+    lists each one written under :data:`INBOX_PLAYLISTS_KEY`.
 
     The Fresh Export is a path the caller names. This function does not hunt
     for one: a hunt that picked the newest XML would pick a pending intake
@@ -473,14 +504,16 @@ def place_files(
     named = playlist if playlist is not None else destination.stem
     ids_by_path = {item.path: item.track_id for item in placed}
     claimed: set[Path] = set()
-    accounts: list[tuple[str, list[int]]] = []
-    for name, members in split:
-        claimed.update(members)
-        held = [ids_by_path[path] for path in members if path in ids_by_path]
+    accounts: list[tuple[InboxPlaylist, list[int | str]]] = []
+    for one in split:
+        claimed.update(member for member in one.members if isinstance(member, Path))
+        held = one.track_ids(ids_by_path)
         if held:
-            accounts.append((name, held))
+            accounts.append((one, held))
     rest = [item.track_id for item in placed if item.path not in claimed]
-    written = ([(named, rest)] if rest or not accounts else []) + accounts
+    written = ([(named, rest)] if rest or not accounts else []) + [
+        (one.name, held) for one, held in accounts
+    ]
     for name, track_ids in written:
         playlist_error = rbxml.insert_intake_playlist(content, name, track_ids, tree=tree)
         if playlist_error:
@@ -505,7 +538,13 @@ def place_files(
     if accounts:
         # PERSISTED WITH THE AWAITING STATE BELOW, by the write that persists it.
         record.detail[INBOX_PLAYLISTS_KEY] = [
-            {"name": name, "batch": named} for name, _ids in accounts
+            {
+                "name": one.name,
+                "batch": named,
+                INBOX_ACCOUNT_KEY: one.account,
+                INBOX_PASS_KEY: one.pass_name,
+            }
+            for one, _ids in accounts
         ]
     # WHAT THE ROLLBACK MAY REMOVE IS DECIDED BEFORE THE WRITE. The write is a
     # plain overwrite, and a file already here is an earlier run's intake file

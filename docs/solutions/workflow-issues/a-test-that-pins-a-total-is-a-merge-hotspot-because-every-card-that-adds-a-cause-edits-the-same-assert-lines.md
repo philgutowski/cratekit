@@ -28,9 +28,9 @@ The trail it leaves is visible in the file itself: the comment above each pinned
 
 ## Guidance
 
-**Lasting fix (not built as of this writing): do not pin totals.** Pin per module, or derive the total from the per module counts. A new cause then adds a line to its own module's pin, or changes no pin at all, and two cards that add causes in different modules touch different lines and merge cleanly. This is the same shape as U124: the shared register was one file every unit edited, and the fix was one file per unit.
+**Lasting fix (built by U125): do not pin totals.** `tests/_pinned_reserved_populations.py` pins per module (kebab literals, named holders, literal holders) and one slug per line for the non-reserved cause set. Totals are derived from those pins. A new cause then adds a line to its own module's pin, or one slug line, and two cards that add causes in different modules touch different lines and merge cleanly. This is the same shape as U124: the shared register was one file every unit edited, and the fix was one file per unit (here, one pin entry per module).
 
-**Interim fix (what to do until then):**
+**Interim fix (what to do if a total pin is reintroduced, or for an older branch still carrying one):**
 
 1. Merge main into the branch with a merge commit, never a rebase. Expect the conflict in this file and only in this file when the cards are otherwise independent.
 2. Keep both sides' pin comments. Resolve the conflict by keeping the comment blocks of both and one copy of the assert.
