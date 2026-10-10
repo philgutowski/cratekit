@@ -318,6 +318,19 @@ Not a **held release**, which is a label release the genre gate keeps out of
 review, and not **withheld**, which is adoption's word for a track it will not
 file over a place it already holds.
 
+### Suggestion band
+How far the votes for a suggested genre agree, in `crate tag suggest` (U114).
+A row with no genre on the row or the file gets weighted votes from its
+artist's other tracks, its folder's, and with `--catalogue` the catalogue
+lookup `tag folder` makes. **High** is at least 80 percent of the votes over
+six or more, **medium** at least 60 percent over three or more, **low** any
+other suggestion. **Split** is a tie at the top between declared genres, with
+no default, and **none** is a row nothing voted for. Only a high suggestion is
+written unless `--band` widens it, and `--set` picks a genre for one row.
+
+Not a **stale row**, whose row and file both carry a genre and disagree: a
+row whose file carries a genre its row lacks is left to `tag rows`.
+
 ### Provider gate
 The one seam every call to the streaming provider passes, `core/provider_gate`,
 attached to the transport of each client the product builds so nothing above
