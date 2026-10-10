@@ -5166,13 +5166,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # intake root holds two of it. It is in cause.REASONS and not in the
     # reserved table. Population 196 to 197, non-reserved 168 to 169,
     # reserved half UNCHANGED at 28.
+    # Re-pinned on U114, the genre suggestion, 2026-10-09. ONE slug, named
+    # rather than counted: tag-suggest-unwritten, which the verb refuses with
+    # when an approved file did not take its suggested genre. It is in
+    # cause.REASONS and not in the reserved table. Population 197 to 198,
+    # non-reserved 169 to 170, reserved half UNCHANGED at 28.
     # Re-pinned on U117, new label releases kept apart, 2026-10-09. ONE slug,
     # named rather than counted: label-new-playlists-no-folder, which the
     # dated playlist's apply refuses with when the label's folder is not on
     # the account. It is in cause.REASONS and not in the reserved table.
-    # Population 197 to 198, non-reserved 169 to 170, reserved half UNCHANGED
+    # Population 198 to 199, non-reserved 170 to 171, reserved half UNCHANGED
     # at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (198, 170, 28)
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (199, 171, 28)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -6139,12 +6144,27 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # absent from `main`'s own `src` by git grep. row-file-id is the OWNER of
     # the field policy the repair registers when it renumbers. And
     # rows-file-id-undecidable and rows-file-id-unrenumbered are WARNING codes.
-    # Re-pinned on U117, new label releases kept apart, 2026-10-09: 647 to
-    # 650 distinct, non-keys 451 to 453. THREE joined and nothing left.
+    # Re-pinned on the residual "A queued set's tracks are shown nowhere, only
+    # their count", 2026-10-09: 647 to 648 distinct, non-keys 451 to 452. ONE
+    # joined and nothing left, absent from `main`'s own `src` by git grep.
+    # tracklist-unwritten is a WARNING code: intake set queued its job and
+    # could not write the tracklist.
+    # Re-pinned on U114, the genre suggestion, 2026-10-09: 648 to 661
+    # distinct, non-keys 452 to 464. THIRTEEN joined and nothing left, each
+    # absent from `main`'s own `src` by git grep. One is a key,
+    # tag-suggest-unwritten, pinned above. tag-suggest is the session
+    # WORKFLOW the write is recorded under and the plan KIND its digest is
+    # taken under. below-band, row-has-genre, file-has-genre and no-votes are
+    # outcomes `tagging/suggest.py` counts a row under that the tree did not
+    # already spell; no-votes and not no-evidence, which is a cause. suggest-nothing-to-write, suggest-genre-written, suggest-left,
+    # suggest-file-has-genre, suggest-file-not-read, suggest-catalogue-unread
+    # and suggest-unmatched are WARNING codes `tagging/suggest_cli.py` gives.
+    # Re-pinned on U117, new label releases kept apart, 2026-10-09: 661 to
+    # 664 distinct, non-keys 464 to 466. THREE joined and nothing left.
     # label-new-playlists-no-folder is the cause key pinned above.
     # label-new-playlists is the KIND the dated plan's digest is taken over,
     # and label-new-playlists-tracks-refused is a WARNING code.
-    assert (len(literals), len(literals - set(causes))) == (650, 453), (
+    assert (len(literals), len(literals - set(causes))) == (664, 466), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6920,12 +6940,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # refuses with decision-stale, internal-error and whitelist-violation, and
     # write/row_defaults_cli.py, which refuses with config-unusable and
     # internal-error. Neither holds an in-range integer.
+    # Re-pinned on U114, the genre suggestion, 2026-10-09: holders move 136
+    # to 137, and the also-holds-an-integer half is UNCHANGED at 29. ONE
+    # module joined and none left, a new file: tagging/suggest_cli.py, which
+    # refuses with config-unusable, internal-error, review-selection-invalid
+    # and tag-suggest-unwritten and holds no in-range integer.
+    # tagging/suggest.py holds no cause.
     # Re-pinned on U117, new label releases kept apart, 2026-10-09: holders
-    # move 136 to 137, and the also-holds-an-integer half is UNCHANGED at 29.
+    # move 137 to 138, and the also-holds-an-integer half is UNCHANGED at 29.
     # ONE module joined and none left, a new file: label/dated.py, which
     # refuses with label-new-playlists-no-folder and internal-error. It holds
     # no in-range integer.
-    assert (len(literal_holders), len(literal_both)) == (137, 29), (
+    assert (len(literal_holders), len(literal_both)) == (138, 29), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

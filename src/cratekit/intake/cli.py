@@ -166,8 +166,17 @@ _SOURCE_HELP = (
 )
 
 
+#: The help text both identifying verbs give ``--out``. One string, because
+#: ``intake set`` writes the same tracklist ``intake identify`` writes (R-925).
+_OUT_HELP = (
+    "folder the tracklist is written into; defaults to a tracklists "
+    "folder under download staging"
+)
+
+
 def build_set(parser, entry) -> None:
     parser.add_argument("source", help=_SOURCE_HELP)
+    parser.add_argument("--out", default=None, metavar="DIR", help=_OUT_HELP)
     parser.add_argument(
         "--job",
         default=None,
@@ -191,10 +200,7 @@ def build_identify(parser, entry) -> None:
         "--out",
         default=None,
         metavar="DIR",
-        help=(
-            "folder the tracklist is written into; defaults to a tracklists "
-            "folder under download staging"
-        ),
+        help=_OUT_HELP,
     )
     parser.add_argument(
         "--refresh",
@@ -541,7 +547,12 @@ def _fetch_notes(held: SetRecording) -> tuple[dict[str, str], ...]:
 
 
 @contextmanager
-def _recording(cfg: config.Config, source: str, local: Path | None) -> Iterator[SetRecording]:
+def _recording(
+    cfg: config.Config,
+    source: str,
+    local: Path | None,
+    progress: fetch.Progress | None = None,
+) -> Iterator[SetRecording]:
     """Lend the recording for one pass, fetching it first when it is a mix URL.
 
     A LOCAL RECORDING IS LENT AS IT IS and nothing about it changes.
@@ -554,6 +565,10 @@ def _recording(cfg: config.Config, source: str, local: Path | None) -> Iterator[
     ``unavailable-transient`` and retryable, and a scratch root that resolves
     under the library is refused before anything is fetched, because a mix must
     never land beside the music.
+
+    ``progress`` is the verb's, and a fetch says on it that it started, how
+    far it has got and what landed (R-924). A local recording fetches nothing
+    and says nothing.
     """
     if local is not None:
         yield SetRecording.local(local)
@@ -569,7 +584,9 @@ def _recording(cfg: config.Config, source: str, local: Path | None) -> Iterator[
             origin=("intake.cli",),
         ) from exc
     try:
-        with fetch.fetched(address, Path(cfg.library.root), found) as got:
+        with fetch.fetched(
+            address, Path(cfg.library.root), found, progress=progress
+        ) as got:
             held = SetRecording(
                 path=got.path, ref=address, stem=fetch.stem_of(address), shown=address
             )
@@ -705,6 +722,19 @@ def intake_set(ctx) -> Envelope:
     the scratch file, which is removed when the ``with`` block ends: the
     worker reads nothing but the job, and a resume returns above this branch,
     so nothing is ever fetched twice for one job.
+
+    THE TRACKLIST IS WRITTEN AS ``intake identify`` WRITES IT (R-925), by the
+    same writer into the same folder, ``--out`` or the default. A set is the
+    list a person reads before anything is acquired from it, and it used to
+    be readable only by opening the queue by hand. The folder is checked with
+    the free refusals. The file is written AFTER the job is queued, so a
+    queue that refuses leaves no list of a job that does not exist, and a
+    file that cannot be written is a warning rather than a refusal: the job
+    is the thing the spend bought, and ``job show`` lists the same tracks
+    from it, so withholding it over a convenience file would make a person
+    pay a refetch to get it back. The path rides on the envelope twice: the
+    note a person reads, and ``tracklist`` under ``progress`` for a consumer,
+    None when nothing was written.
     """
     cfg = _load()
     with jobs.open_store() as store:
@@ -713,10 +743,14 @@ def intake_set(ctx) -> Envelope:
         source = str(ctx.args.source)
         local = _local_or_none(source)
         recognize.assert_recognition_ready()
+        out = _tracklist_dir(cfg, ctx.args.out, local if local is not None else source.strip())
         job = None
-        with _recording(cfg, source, local) as held:
+        with _recording(cfg, source, local, ctx.progress) as held:
             result = pipeline.identify_only(
-                held.path, refresh=bool(ctx.args.refresh), recognition=cfg.recognition
+                held.path,
+                refresh=bool(ctx.args.refresh),
+                recognition=cfg.recognition,
+                progress=ctx.progress,
             )
             warnings = (
                 _coverage_or_refuse(result, held)
@@ -750,6 +784,7 @@ def intake_set(ctx) -> Envelope:
                 outcome=Outcome.NO_OP,
                 warnings=warnings,
             )
+        listed, note = _set_tracklist(out, held, result, job.job_id)
         return ctx.envelope(
             data=_reported(
                 store,
@@ -758,9 +793,10 @@ def intake_set(ctx) -> Envelope:
                     "calls": result.calls,
                     "unreached": result.unreached,
                     "parts": result.parts,
+                    TRACKLIST: str(listed) if listed is not None else None,
                 },
             ),
-            warnings=warnings,
+            warnings=(note, *warnings),
         )
 
 
@@ -779,6 +815,11 @@ TRACKLIST_DIGEST_CHARS = 12
 #: ``match`` surface is closed at three arrays, so the file this verb wrote has
 #: no field to ride in, and the channel is the one a person is shown.
 TRACKLIST_WRITTEN = "tracklist-written"
+#: The ``progress`` field ``intake set`` names its tracklist under (R-925).
+TRACKLIST = "tracklist"
+#: The note ``intake set`` carries when its job is queued and its tracklist
+#: could not be written (R-925).
+TRACKLIST_UNWRITTEN = "tracklist-unwritten"
 CACHE_UNWRITTEN = "recognition-cache-unwritten"
 CACHE_SERVED = "recognition-cached"
 
@@ -935,10 +976,10 @@ def _tracklist_written(
     truthfully: nothing when every answer was kept, the unanswered chunks when
     some got none, and all of it when nothing could be kept.
     """
-    path = out / tracklist_name(held, result.digest)
     try:
-        config.atomic_write_bytes(result.tracklist.encode("utf-8"), path)
+        path = _write_tracklist(out, held, result)
     except OSError as exc:
+        path = _tracklist_path(out, held, result)
         if result.cache_unwritten:
             kept = "the recognition answers could not be kept either, so running again pays again"
         elif result.unreached:
@@ -955,10 +996,55 @@ def _tracklist_written(
             path=str(path),
             source=held.ref,
         ) from exc
+    return _written_note(path, result)
+
+
+def _write_tracklist(out: Path, held: SetRecording, result: pipeline.IdentifyResult) -> Path:
+    """The one writer both identifying verbs use, and the path it wrote.
+
+    Raises the ``OSError`` a write ends on, because what that costs is each
+    verb's own to say: ``intake identify`` refuses, ``intake set`` warns.
+    """
+    path = _tracklist_path(out, held, result)
+    config.atomic_write_bytes(result.tracklist.encode("utf-8"), path)
+    return path
+
+
+def _tracklist_path(out: Path, held: SetRecording, result: pipeline.IdentifyResult) -> Path:
+    """Where the writer puts this recording's tracklist, one spelling for all."""
+    return out / tracklist_name(held, result.digest)
+
+
+def _written_note(path: Path, result: pipeline.IdentifyResult) -> dict[str, str]:
     return {
         "code": TRACKLIST_WRITTEN,
         "message": f"{len(result.rows)} identified track(s) written in order to {path}",
     }
+
+
+def _set_tracklist(
+    out: Path, held: SetRecording, result: pipeline.IdentifyResult, job_id: str
+) -> tuple[Path | None, dict[str, str]]:
+    """``intake set``'s tracklist: the path and the note, or None and why not.
+
+    A WRITE THAT FAILS IS SAID, NOT RAISED. The job is already queued and is
+    the thing the spend bought; the note names the folder that failed and the
+    verb that lists the same tracks from the job, so a person can still read
+    the set before acquiring anything from it.
+    """
+    try:
+        path = _write_tracklist(out, held, result)
+    except OSError as exc:
+        failed = _tracklist_path(out, held, result)
+        return None, {
+            "code": TRACKLIST_UNWRITTEN,
+            "message": (
+                f"the tracklist could not be written to {failed} ({type(exc).__name__}: "
+                f"{exc.strerror or exc}); the job is queued, and its tracks are listed "
+                f"by: crate job show {job_id}"
+            ),
+        }
+    return path, _written_note(path, result)
 
 
 def intake_identify(ctx) -> Envelope:
@@ -997,9 +1083,12 @@ def intake_identify(ctx) -> Envelope:
     out = _tracklist_dir(cfg, ctx.args.out, shown)
     _library_or_refuse(cfg, shown)
     written = None
-    with _recording(cfg, source, local) as held:
+    with _recording(cfg, source, local, ctx.progress) as held:
         result = pipeline.identify_only(
-            held.path, refresh=bool(ctx.args.refresh), recognition=cfg.recognition
+            held.path,
+            refresh=bool(ctx.args.refresh),
+            recognition=cfg.recognition,
+            progress=ctx.progress,
         )
         warnings = (
             _coverage_or_refuse(result, held)
@@ -1335,8 +1424,10 @@ __all__ = [
     "MIX_SCRATCH_LEFT",
     "PLAYLIST_NAME",
     "SOURCE",
+    "TRACKLIST",
     "TRACKLISTS_DIR",
     "TRACKLIST_SUFFIX",
+    "TRACKLIST_UNWRITTEN",
     "TRACKLIST_WRITTEN",
     "TRACKS",
     "UNREACHED",

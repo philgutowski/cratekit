@@ -684,7 +684,8 @@ def test_the_catalogues_catch_all_words_for_dance_music_are_declined(word):
 
 
 def test_the_aliased_word_for_a_style_resolves_to_a_sub_and_routes_into_it():
-    suggestion = routing.suggest_tag(TAXONOMY, "Rap/Hip Hop")
+    """Reggae, since U118 gave Hip-Hop, the word this asked of first, a folder."""
+    suggestion = routing.suggest_tag(TAXONOMY, "Reggae")
     assert suggestion.sub_id is not None
     landed = routing.resolve_bucket(TAXONOMY, suggestion.tag)
     assert landed.bucket_id == suggestion.bucket_id
@@ -692,12 +693,15 @@ def test_the_aliased_word_for_a_style_resolves_to_a_sub_and_routes_into_it():
     assert sub is not None and sub.id == suggestion.sub_id
 
 
-def test_the_aliased_word_for_soul_resolves_to_the_folder_r797_gave_it():
-    """It resolved to a style sub until R-797 moved that sub to a folder of its
-    own, split by energy. The word is the bucket's now, the tag written is the
-    folder's name, and that name routes back into the same folder's bands."""
-    suggestion = routing.suggest_tag(TAXONOMY, "Soul & Funk")
-    promoted = next(bucket for bucket in TAXONOMY.buckets if bucket.formerly)
+@pytest.mark.parametrize(("word", "folder"), [("Soul & Funk", "Soul"), ("Rap/Hip Hop", "Hip-Hop")])
+def test_the_aliased_word_for_soul_or_hip_hop_resolves_to_the_folder_u118_gave_it(word, folder):
+    """Each resolved to a style sub until R-797 and U118 moved those subs to
+    folders of their own, split by energy, and "Soul & Funk" to Soul by its
+    first word. The word is the bucket's now, the tag written is the folder's
+    name, and that name routes back into the same folder's bands."""
+    suggestion = routing.suggest_tag(TAXONOMY, word)
+    promoted = next(bucket for bucket in TAXONOMY.buckets if bucket.display == folder)
+    assert promoted.formerly or promoted.split_from
     assert (suggestion.bucket_id, suggestion.sub_id, suggestion.tag) == (
         promoted.id, None, promoted.display
     )

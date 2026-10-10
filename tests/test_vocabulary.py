@@ -49,8 +49,8 @@ SHIPPED = {
     "Country": ("Folk", "non_electronic", "folk"),
     "Folk": ("Folk", "non_electronic", "folk"),
     "R&B": ("R&B", "rnb", None),
-    "Soul & Funk": ("R&B", "rnb", None),
-    "Rap/Hip Hop": ("Hip-Hop", "non_electronic", "hip_hop"),
+    "Soul & Funk": ("Soul", "soul", None),
+    "Rap/Hip Hop": ("Hip-Hop", "hip_hop", None),
     "Jazz": ("Jazz", "non_electronic", "jazz"),
     "Classical": ("Classical", "non_electronic", "classical"),
     "Reggae": ("Caribbean", "non_electronic", "caribbean"),
@@ -303,7 +303,8 @@ def test_a_word_with_no_row_is_declined_and_the_record_says_what_was_answered():
 
 #: What the shared resolver chose for the catalogue's words before this unit,
 #: measured on the shipped template on 2026-10-02 and written out. A copy with
-#: no table must go on answering exactly this.
+#: no table must go on answering exactly this, less the one word U118 moved:
+#: "Soul & Funk" files under its first word, Soul, by the author's decision.
 BEFORE = {
     "Pop": "Dance / Pop",
     "Alternative": "NonElectronic",
@@ -311,7 +312,7 @@ BEFORE = {
     "Rock": "Rock",
     "Folk": "Folk",
     "R&B": "R&B",
-    "Soul & Funk": "R&B",
+    "Soul & Funk": "Soul",
     "Rap/Hip Hop": "Hip-Hop",
     "Jazz": "Jazz",
     "Classical": "Classical",
@@ -587,5 +588,6 @@ def test_a_template_at_schema_version_1_may_declare_a_vocabulary(default_raw):
         data["schema_version"] = 1
         for bucket in data["bucket"]:
             bucket.pop("formerly", None)
+            bucket.pop("split_from", None)
 
     assert built(default_raw, mutate).vocabulary(CATALOGUE)["pop"].tag == "NonElectronic / Pop"

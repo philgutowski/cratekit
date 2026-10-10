@@ -1,0 +1,112 @@
+name = "u118-c"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_declarer_settles"
+description = "The declaring bucket's tree path decides on split places, so R&B tracks in two R&B bands are listed under Soul"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_adopt_move.py"]
+old = '''        if declarer == bucket:
+            settled.add(place.id)'''
+new = '''        if declarer == bucket:
+            pass'''
+
+[[rows]]
+id = "M2_holder_genre_leg"
+description = "The holder settles its places only for an entry claiming Soul, not for one whose genre names it"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_adopt_move.py"]
+old = '''        elif claims(entry, declarer) or genre_names(entry, declarer, declared):'''
+new = '''        elif claims(entry, declarer):'''
+
+[[rows]]
+id = "M4_held_split_none"
+description = "No unclaimed Soul track in a split place is listed"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_adopt_move.py"]
+old = '''    if not split or claims(entry, bucket) or not genre_names(entry, bucket, declared):
+        return ()'''
+new = '''    if True:
+        return ()'''
+
+[[rows]]
+id = "M6_verdict_reason"
+description = "A Soul track a verdict refused is listed as no reading"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_split_place.py"]
+old = '''    elif bucket in refused:
+        reason = LEFT_VERDICT
+    else:
+        reason = LEFT_NO_READING'''
+new = '''    elif bucket in refused:
+        reason = LEFT_NO_READING
+    else:
+        reason = LEFT_NO_READING'''
+
+[[rows]]
+id = "M7_unnamed_reason"
+description = "An unclaimed Soul track in a renamed R&B band is listed as no reading"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_split_place.py"]
+old = '''    if unnamed:
+        reason = LEFT_UNNAMED
+    elif bucket in refused:
+        reason = LEFT_VERDICT
+    else:'''
+new = '''    if False:
+        reason = LEFT_UNNAMED
+    elif bucket in refused:
+        reason = LEFT_VERDICT
+    else:'''
+
+[[rows]]
+id = "M8_asked_split"
+description = "The plan never asks about a bucket where the track is only in a split place nobody claims"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_adopt_move.py"]
+old = '''        if held_in_split_place(entry, bucket.id, placements, declared):
+            asked.append(bucket.id)
+            continue
+'''
+new = ''''''
+
+[[rows]]
+id = "M9_standing_split_target"
+description = "An entry naming a split place as its sub may be a move"
+file = "src/cratekit/adopt/move.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_split_place.py"]
+old = '''        or routing.split_place(declared, entry.bucket, entry.sub) is not None
+'''
+new = ''''''
+
+[[rows]]
+id = "M10_no_reading_leaves_split"
+description = "A Soul track with no reading is left in R&B rather than moved to Soul Unsorted"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py"]
+old = '''        return "" if set(stale) <= routing.left_only(declared, entry.bucket) else LEFT_NO_READING'''
+new = '''        former = {place.id for _declarer, place in routing.former_places(declared, entry.bucket)}
+        return "" if set(stale) <= former else LEFT_NO_READING'''
+
+[[dropped]]
+id = "M3_holder_claims_leg"
+description = "The holder settles only on the genre leg, dropping the claims leg"
+reason = "an entry that claims a bucket was routed there by its genre, so the leg is covered by M2's; ranked below the cap"
+
+[[dropped]]
+id = "M5_held_split_claims"
+description = "held_in_split_place drops its claims check"
+reason = "every caller asks claims first and continues, so the check is belt and braces; ranked below the cap"
+
+[[dropped]]
+id = "M11_genre_names_fallback"
+description = "genre_names counts the fallback tier as naming a bucket"
+reason = "moved to batch u118-d, which needed a Python row for its null control"
