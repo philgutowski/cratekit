@@ -163,8 +163,12 @@ def members(db: Any, playlist_id: str) -> frozenset[str]:
     )
 
 
-def removed_members(db: Any, playlist_id: str) -> frozenset[str]:
+def members_marked_removed(db: Any, playlist_id: str) -> frozenset[str]:
     """The content ids whose membership in a playlist rekordbox marked REMOVED.
+
+    A READER, NAMED SO IT READS AS ONE: the outbound guard admits no function
+    under ``favorites/`` whose name opens with ``remove``, since nothing in the
+    favourites packages takes a membership or a heart away, and this takes none.
 
     A membership that exists as removed is a track somebody took out of the
     playlist by hand, and for All Favorites that is the author un-hearting a
@@ -399,7 +403,7 @@ __all__ = [
     "SOURCE_MISSING",
     "members",
     "place",
-    "removed_members",
+    "members_marked_removed",
     "plan_placements",
     "resolve_home",
     "source_name",

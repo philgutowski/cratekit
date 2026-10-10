@@ -288,7 +288,7 @@ def test_placing_the_same_heart_twice_adds_nothing_twice(cfg, db):
     assert len([s for s in db.get_playlist_songs(PlaylistID=quarter_id)]) == 1
 
 
-def test_a_removed_membership_in_the_quarter_is_added_again_live(cfg, db):
+def test_a_members_marked_removedhip_in_the_quarter_is_added_again_live(cfg, db):
     """R-758: a soft deleted membership is not present, so the heart comes back."""
     folder, _source = _home(db, "1")
     q4 = _quarter(db, folder, "2026-Q4", "1")
@@ -351,13 +351,13 @@ def test_no_content_row_tempo_or_rating_is_written(cfg, db):
         conn.close()
 
 
-def test_removed_memberships_are_read_apart_from_live_ones(cfg, db):
+def test_members_marked_removedhips_are_read_apart_from_live_ones(cfg, db):
     folder, source = _home(db, "1", "2")
     (entry,) = [row for row in db.get_playlist_songs(PlaylistID=str(source.ID)) if str(row.ContentID) == "2"]
     entry.rb_local_deleted = 1
     db.session.commit()
     assert placement.members(db, source.ID) == {"1"}
-    assert placement.removed_members(db, source.ID) == {"2"}
+    assert placement.members_marked_removed(db, source.ID) == {"2"}
     del folder
 
 

@@ -234,7 +234,7 @@ def gather(cfg: config.Config, db: Any, *, source_id: str) -> Gathered:
     # source exists as removed was taken out by hand, and the backfill never
     # puts it back, run after run, where the next outbound sync would then
     # heart it on the account again.
-    removed = placement.removed_members(db, source_id)
+    removed = placement.members_marked_removed(db, source_id)
     hearts: list[LandedHeart] = []
     held: list[LandedHeart] = []
     taken: list[LandedHeart] = []
