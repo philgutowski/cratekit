@@ -87,3 +87,62 @@ def test_an_adoption_with_no_source_playlist_files_its_tracks_and_says_the_refre
     assert _favorites_playlists(cfg) == {}
     kept = resumed["data"]["progress"]["adoption"]["favorites"]
     assert kept["added"] == 0 and "no live playlist" in kept["skipped"]
+
+
+# ---------------------------------------------------------------------------
+# U132: a library without the class is told so, with the cause's own code
+# ---------------------------------------------------------------------------
+
+
+def _without_the_class(monkeypatch) -> None:
+    import dataclasses
+
+    from cratekit.core import active_taxonomy
+
+    real = active_taxonomy.load
+
+    def narrowed(cfg):
+        declared = real(cfg)
+        kept = tuple(e for e in declared.sub_classes if e.signal != taxonomy.SIGNAL_PLAYLIST)
+        assert len(kept) == len(declared.sub_classes) - 1
+        return dataclasses.replace(declared, sub_classes=kept)
+
+    monkeypatch.setattr(active_taxonomy, "load", narrowed)
+
+
+def test_an_adoption_over_a_taxonomy_without_the_class_names_the_skipped_step(ready, monkeypatch):
+    from cratekit.write import genre_favorites
+
+    cfg, export, _root_id = ready
+    _heart(cfg, "r-one")
+    _cut_over(export)
+    _without_the_class(monkeypatch)
+
+    code, resumed = _adopt()
+
+    assert code == int(ExitCode.OK), resumed
+    assert _favorites_playlists(cfg) == {}
+    kept = resumed["data"]["progress"]["adoption"]["favorites"]
+    assert kept["cause"] == genre_favorites.CLASS_UNDECLARED and kept["skipped"]
+    codes = [w["code"] for w in resumed["warnings"]]
+    assert codes == [genre_favorites.CLASS_UNDECLARED], resumed["warnings"]
+    message = resumed["warnings"][0]["message"]
+    assert "genre Favorites step was skipped" in message
+    assert f"schema_version {DECLARED.schema_version}" in message
+    assert "crate taxonomy upgrade" in message
+
+
+def test_a_skip_for_another_cause_carries_that_cause_in_its_note(ready):
+    from cratekit.adopt import apply_cli
+    from cratekit.write import genre_favorites
+
+    cfg, export, _root_id = ready
+    _cut_over(export)
+
+    code, resumed = _adopt()
+
+    assert code == int(ExitCode.OK), resumed
+    kept = resumed["data"]["progress"]["adoption"]["favorites"]
+    assert kept["cause"] == genre_favorites.SOURCE_MISSING
+    (note,) = [w for w in resumed["warnings"] if w["code"] == apply_cli.FAVORITES_SKIPPED]
+    assert note["message"].endswith(f"({genre_favorites.SOURCE_MISSING})")

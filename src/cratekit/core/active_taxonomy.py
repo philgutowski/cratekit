@@ -24,6 +24,8 @@ declaration that is not theirs while their own sits on a disk nobody read.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from cratekit.core import config, taxonomy
 from cratekit.core.cause import access_remedy, refuse
 from cratekit.core.exit_codes import Remedy
@@ -31,17 +33,17 @@ from cratekit.core.exit_codes import Remedy
 _ORIGIN = ("core", "active_taxonomy")
 
 
-def load(cfg: config.Config) -> taxonomy.Taxonomy:
-    """The taxonomy this library declares, from its active copy on the volume.
+def read_text(cfg: config.Config) -> tuple[Path, str | None]:
+    """The active copy's path and text, or None for the text when the library holds none.
 
-    The shipped template ``taxonomy.template`` names is the answer only when the
-    library root is a directory and no active copy exists under it. Raises a
-    refusal for an unmounted library, an active copy that could not be read,
-    and one that does not parse, with the remedy doctor gives for each.
+    ONE READ AND ONE REFUSAL LADDER for the loader and for the upgrade (U132),
+    which both read the copy and must refuse its absence, its disk and its
+    bytes the same way. None means the library root is a directory and no copy
+    is under it; every other way of not reading the copy refuses.
     """
     path = config.state_path("taxonomy_active", cfg)
     try:
-        text = path.read_text(encoding="utf-8")
+        return path, path.read_text(encoding="utf-8")
     except (FileNotFoundError, NotADirectoryError) as exc:
         if not cfg.library.root.is_dir():
             raise refuse(
@@ -53,7 +55,7 @@ def load(cfg: config.Config) -> taxonomy.Taxonomy:
                 origin=_ORIGIN,
                 detail={"path": str(path)},
             ) from exc
-        return _shipped(cfg.taxonomy.template)
+        return path, None
     except (OSError, UnicodeDecodeError) as exc:
         raise refuse(
             "config-unusable",
@@ -64,6 +66,19 @@ def load(cfg: config.Config) -> taxonomy.Taxonomy:
             origin=_ORIGIN,
             detail={"path": str(path)},
         ) from exc
+
+
+def load(cfg: config.Config) -> taxonomy.Taxonomy:
+    """The taxonomy this library declares, from its active copy on the volume.
+
+    The shipped template ``taxonomy.template`` names is the answer only when the
+    library root is a directory and no active copy exists under it. Raises a
+    refusal for an unmounted library, an active copy that could not be read,
+    and one that does not parse, with the remedy doctor gives for each.
+    """
+    path, text = read_text(cfg)
+    if text is None:
+        return _shipped(cfg.taxonomy.template)
     try:
         return taxonomy.load_taxonomy(text)
     except taxonomy.TaxonomyError as exc:
@@ -95,4 +110,4 @@ def _shipped(name: str) -> taxonomy.Taxonomy:
     return taxonomy.load_taxonomy(text)
 
 
-__all__ = ["load"]
+__all__ = ["load", "read_text"]

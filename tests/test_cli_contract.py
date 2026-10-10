@@ -1933,6 +1933,11 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # gate still asks, and the apply is a no op, the shape repair.rows has
         # on this fixture, which records no pin for a write to meet.
         "repair.link": lambda: _link_rows(),
+        # U132. A CALLABLE, because the fixture's library holds no taxonomy
+        # copy and the verb refuses one it cannot read: the shipped template
+        # without its genre Favorites class is written as the copy, so the
+        # plan adds it, the explicit gate asks, and the apply writes.
+        "taxonomy.upgrade": lambda: _taxonomy_behind(),
         # R-799. No argument: it reads every tagging record this installation
         # committed, which on the fixture's machine is none.
         "tag.remap": [],
@@ -2135,6 +2140,20 @@ def _link_rows() -> list[str]:
     finally:
         connection.close()
     return ["--set", f"1:{link}={HOUSE}", "--set", f"1:{isrc}="]
+
+
+def _taxonomy_behind() -> list[str]:
+    """The library's taxonomy copy made without the genre Favorites class."""
+    from cratekit.core import taxonomy
+
+    text = taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME)
+    head, _, tail = text.partition('[[sub_class]]\nid = "favorites"')
+    assert tail, "the shipped template no longer declares the favorites class"
+    _, _, rest = tail.partition("\n[")
+    path = config.state_path("taxonomy_active", config.load())
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(head + "[" + rest, encoding="utf-8")
+    return []
 
 
 def _already_cut_over() -> list[str]:

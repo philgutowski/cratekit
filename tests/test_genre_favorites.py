@@ -1029,3 +1029,18 @@ def test_a_skipped_refresh_at_an_adoptions_end_is_said():
     summary = {"favorites": {"added": 2, "skipped": "the record went away"}}
     (note,) = apply_cli.favorites_warnings(summary)
     assert "past 2 addition(s) that committed" in note["message"]
+
+
+def test_the_undeclared_note_states_the_version_the_skip_saw():
+    """U132. Read back from the job's report, so an upgrade between the drive and
+    the report does not make the note say the upgraded copy lacks the class."""
+    summary = {
+        "favorites": {
+            "skipped": "the taxonomy declares no sub class derived from a playlist",
+            "cause": genre_favorites.CLASS_UNDECLARED,
+            "schema_version": 2,
+        }
+    }
+    (note,) = apply_cli.favorites_warnings(summary)
+    assert note["code"] == genre_favorites.CLASS_UNDECLARED
+    assert "states schema_version 2 and declares no sub class" in note["message"]

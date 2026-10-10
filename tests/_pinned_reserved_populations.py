@@ -406,10 +406,16 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'internal-error',
         'revert-nothing-recorded',
     ],
+    # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
+    # ONE kebab literal joined in cli/doctor.py and nothing left, internal-error,
+    # the cause the taxonomy.schema check reads to tell a shipped template defect
+    # from the copy's. Measured on the merged tree; do not bring back a
+    # package-wide total tuple.
     'cli/doctor.py': [
         'commit-msg',
         'doctor-check-failed',
         'hook-impl',
+        'internal-error',
         'merge-commit',
         'post-checkout',
         'post-commit',
@@ -528,6 +534,18 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'cli/verbs/login.py': ['credential-missing', 'utf-8'],
     'cli/verbs/profile.py': ['config-unusable'],
     'cli/verbs/runs.py': ['decision-unknown-gate'],
+    # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
+    # a new module, crate taxonomy upgrade (U132). Its three WARNING codes are
+    # the literals new to the package; the rest were already declared.
+    # Measured on the merged tree; do not bring back a package-wide total tuple.
+    'cli/verbs/taxonomy.py': [
+        'config-unusable',
+        'internal-error',
+        'taxonomy-nothing-to-upgrade',
+        'taxonomy-upgrade-held',
+        'taxonomy-upgraded',
+        'utf-8',
+    ],
     'core/active_taxonomy.py': ['config-unusable', 'library-volume-unmounted', 'utf-8'],
     'core/artifacts.py': ['utf-8'],
     'core/backup_facts.py': [
@@ -950,6 +968,10 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     'core/tags.py': ['utf-8'],
     'core/taxonomy.py': ['utf-8'],
+    # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
+    # a new module, the taxonomy upgrade planner (U132), holding two causes
+    # already declared. Measured on the merged tree.
+    'core/taxonomy_upgrade.py': ['config-unusable', 'internal-error'],
     'core/tombstone.py': ['removed-file', 'review-selection-invalid', 'version-uncredited'],
     'core/tree_registry.py': [
         'catalogue-crawl',
@@ -2035,7 +2057,9 @@ PINNED_LITERAL_HOLDERS = {
         'cutover-tree-undeclared',
         'internal-error',
     ],
-    'cli/doctor.py': ['doctor-check-failed'],
+    # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
+    # internal-error joined, read by the taxonomy.schema check (U132).
+    'cli/doctor.py': ['doctor-check-failed', 'internal-error'],
     'cli/export_collection.py': ['library-export-unusable', 'output-exists', 'path-permission-denied'],
     'cli/gates.py': [
         'blocked-by-pending-action',
@@ -2065,6 +2089,9 @@ PINNED_LITERAL_HOLDERS = {
     'cli/verbs/login.py': ['credential-missing'],
     'cli/verbs/profile.py': ['config-unusable'],
     'cli/verbs/runs.py': ['decision-unknown-gate'],
+    # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
+    # a new module, crate taxonomy upgrade (U132). Measured on the merged tree.
+    'cli/verbs/taxonomy.py': ['config-unusable', 'internal-error'],
     'core/active_taxonomy.py': ['config-unusable', 'library-volume-unmounted'],
     'core/backup_facts.py': ['grant-path-access', 'repair-backup-facts', 'upgrade-cratekit'],
     'core/binaries.py': [
@@ -2157,6 +2184,9 @@ PINNED_LITERAL_HOLDERS = {
         'snapshot-integrity-failed',
         'snapshot-store-full',
     ],
+    # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
+    # a new module, the taxonomy upgrade planner (U132). Measured on the merged tree.
+    'core/taxonomy_upgrade.py': ['config-unusable', 'internal-error'],
     'core/tombstone.py': ['review-selection-invalid'],
     'core/tree_registry.py': [
         'cutover-already-recorded',
