@@ -1054,6 +1054,17 @@ def _inspiration_playlists(cfg) -> list[tuple[str, str]]:
         rb_writer.close_db(db)
 
 
+def _naming_day(job) -> datetime | None:
+    """The calendar day the set job was queued, or None when the stamp is unreadable."""
+    raw = str(getattr(job, "created", "") or "")
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+
+
 def _job_for_inspiration_name(cfg, name: str):
     """The succeeded set job whose frozen or recorded playlist name is ``name``, or None."""
     from cratekit.core import jobs, session
@@ -1074,8 +1085,11 @@ def _job_for_inspiration_name(cfg, name: str):
             except Exception:
                 continue
             # A job queued before the freeze may still match by recomputing the
-            # name for today, which is wrong across days; prefer session record.
-            if set_name(set_playlist.playlist_name(words)) == wanted:
+            # name for the day it was queued, never for today (U129): a set from
+            # another day would otherwise never match.
+            made = _naming_day(job)
+            on = made.date() if made is not None else None
+            if set_name(set_playlist.playlist_name(words, on=on)) == wanted:
                 return job
     # Session records from a landing name the playlist and the job.
     records, _unreadable = session.scan_log(cfg)
@@ -1211,14 +1225,35 @@ def _export_set_backfill(ctx, cfg) -> Envelope:
     if option != "apply" or not writes:
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP, warnings=warnings)
 
-    applied = []
-    for one in planned_rows:
-        if not one.writes:
-            continue
-        data, more, wrote = apply_planned(cfg, one)
-        warnings.extend(more)
-        if wrote:
-            applied.append(one.name)
+    applied: list[str] = []
+    try:
+        for one in planned_rows:
+            if not one.writes:
+                continue
+            data, more, wrote = apply_planned(cfg, one)
+            warnings.extend(more)
+            if wrote:
+                applied.append(one.name)
+    except CratekitError as exc:
+        # Name what already landed so a mid-loop failure does not hide it (U129).
+        if applied:
+            made = ", ".join(applied)
+            raise refuse(
+                exc.cause.reason,
+                f"before this failed the backfill already made {made}. {exc.cause.message}",
+                remedy=exc.cause.remediation.remedy,
+                steps=(
+                    *exc.cause.remediation.steps,
+                    "the playlists named above are on the account; resume or "
+                    "run crate export set again for the rest",
+                ),
+                scope=Scope.RUN,
+                retryable=exc.cause.retryable,
+                origin=_SET,
+                detail={**dict(exc.cause.detail), "applied": list(applied)},
+                inner=exc.cause,
+            ) from exc
+        raise
     totals = {**payload["totals"], "applied": {"playlists": applied}}
     return ctx.envelope(
         data={**payload, "totals": totals},
@@ -1255,11 +1290,13 @@ def _export_archive_backfill(ctx, cfg) -> Envelope:
             continue
         try:
             archived = plan_archive(cfg, name, xml)
-        except Exception as exc:
+        except CratekitError as exc:
+            # Soft skip per set, as a landing's _plan_set_archive does. A
+            # CredentialError (not a CratekitError) still refuses the verb.
             warnings.append(
                 {
                     "code": "export-archive-backfill-refused",
-                    "message": f"{name}: {exc}",
+                    "message": f"{name}: {exc.cause.message}",
                 }
             )
             continue

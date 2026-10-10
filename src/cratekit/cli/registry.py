@@ -2330,7 +2330,9 @@ ENTRIES: tuple[Entry, ...] = (
         #: on ``export.playlist``'s precedent: every write adds to the account.
         #: A provider candidate accepted in review is READ, never offered.
         writes=frozenset({"remote"}),
-        doctor_checks=("credential.provider",),
+        # library.mounted: the no-name backfill opens the rekordbox database
+        # over INSPIRATION (U129).
+        doctor_checks=("library.mounted", "credential.provider"),
         gates=(
             GateSpec(
                 name="export.set.confirm",
@@ -2362,7 +2364,9 @@ ENTRIES: tuple[Entry, ...] = (
         #: title a person can see.
         writes=frozenset({"remote"}),
         destructive=True,
-        doctor_checks=("credential.provider",),
+        # library.mounted: the no-name backfill opens the rekordbox database
+        # when it looks up intake proofs under the library (U129).
+        doctor_checks=("library.mounted", "credential.provider"),
         gates=(
             GateSpec(
                 name="export.archive.confirm",
@@ -2576,17 +2580,21 @@ ENTRIES: tuple[Entry, ...] = (
         #: one batch playlist under the adopted intake root through the guarded
         #: writer, behind the explicit gate below. The intake tree's mode
         #: chooses, the way the routing verbs choose.
-        writes=frozenset({"xml", "files", "db_tree"}),
+        # U129. A set landing may also archive the account playlist, a remote
+        # write, so the surface and the provider check join the landing's own.
+        writes=frozenset({"xml", "files", "db_tree", "remote"}),
         destructive=True,
         #: The database checks hold for the native medium only, and declaring
         #: them here changes nothing doctor reports: it requires a check when
         #: ANY enabled verb declares it, and adoption, which every profile
-        #: carries, already declares these three.
+        #: carries, already declares these three. ``credential.provider`` is
+        #: for the account archive a set landing may perform (U129).
         doctor_checks=(
             "library.mounted",
             "rekordbox.closed",
             "rekordbox.pins",
             "library.paths_resolved",
+            "credential.provider",
         ),
         gates=(
             GateSpec(

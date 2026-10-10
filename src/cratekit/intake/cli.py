@@ -775,15 +775,17 @@ def _set_playlist_name(
     return _PlaylistName(name=set_cli.set_name(set_playlist.playlist_name(words)))
 
 
-def _save_account_playlist(ctx, cfg, *, name: str, rows) -> tuple[tuple[dict[str, str], ...], dict | None]:
-    """Plan and, on approval, make the account playlist. Soft on provider gaps.
+def _ask_account_playlist(ctx, cfg, *, name: str, rows):
+    """Plan the account playlist and ask its gate BEFORE the set is queued.
 
-    THE SET IS ALREADY QUEUED. A missing credential or a matching failure must
-    not take the job away; it becomes a warning and a later ``crate export set``
-    or the backfill covers it. The gate is asked only when a plan was made.
+    Soft on a missing credential or a matching failure: those become a warning
+    and a later ``crate export set`` or the backfill covers them. The gate is
+    asked only when a plan was made, and it is asked before ``jobs.enqueue`` so
+    an explicit first refusal does not leave a job that a resume would queue
+    again (U129).
     """
     if not name or not rows:
-        return (), None
+        return (), None, None
     from cratekit.export import set_cli
 
     try:
@@ -795,12 +797,13 @@ def _save_account_playlist(ctx, cfg, *, name: str, rows) -> tuple[tuple[dict[str
                     "code": ACCOUNT_UNREACHABLE,
                     "message": (
                         f"the account playlist {name!r} was not planned "
-                        f"({exc.cause.reason}: {exc.cause.message}); the set is "
-                        f"queued, run crate export set over its tracklist once "
-                        f"the account is reachable"
+                        f"({exc.cause.reason}: {exc.cause.message}); the set will "
+                        f"still be queued, run crate export set over its "
+                        f"tracklist once the account is reachable"
                     ),
                 },
             ),
+            None,
             None,
         )
     # Find the account gate by name so a resume path without gates stays quiet.
@@ -817,13 +820,24 @@ def _save_account_playlist(ctx, cfg, *, name: str, rows) -> tuple[tuple[dict[str
                 },
             ),
             None,
+            None,
         )
     option = ctx.gate.require(spec, plan=built.payload, context=built.shown)
     notes = tuple(set_cli._unmatched_warnings(built.planned))
+    return notes, built, option
+
+
+def _apply_account_playlist(cfg, built, option: str | None):
+    """Write the planned account playlist after the set is queued, or leave it."""
+    from cratekit.export import set_cli
+
+    if built is None:
+        return (), None
+    notes = ()
     if option != "apply" or not built.writes:
         return notes, built.payload
     data, more, _wrote = set_cli.apply_planned(cfg, built)
-    return (*notes, *more), data
+    return tuple(more), data
 
 
 
@@ -885,6 +899,17 @@ def intake_set(ctx) -> Envelope:
                 set_name=getattr(ctx.args, "set_name", None),
                 set_date=getattr(ctx.args, "set_date", None),
             )
+            if playlist.warning:
+                warnings = list(warnings) + [playlist.warning]
+            # THE ACCOUNT GATE BEFORE THE QUEUE (U129). An explicit gate always
+            # stops the first run; asking it after enqueue left a job that the
+            # resume queued a second time with the same tracks.
+            account_notes, built, option = _ask_account_playlist(
+                ctx,
+                cfg,
+                name=playlist.name if playlist.name else "",
+                rows=result.rows if tracks else (),
+            )
             if tracks:
                 payload = {
                     SOURCE: held.ref,
@@ -898,8 +923,6 @@ def intake_set(ctx) -> Envelope:
                 # the landing's playlist agree, even when they run on different days.
                 if playlist.name:
                     payload[PLAYLIST_NAME] = playlist.name
-                if playlist.warning:
-                    warnings = list(warnings) + [playlist.warning]
                 job = jobs.enqueue(
                     store,
                     handler_key=ctx.entry.handler_key,
@@ -917,12 +940,10 @@ def intake_set(ctx) -> Envelope:
                     source=held.ref,
                 ),
                 outcome=Outcome.NO_OP,
-                warnings=warnings,
+                warnings=(*warnings, *account_notes),
             )
         listed, note = _set_tracklist(out, held, result, job.job_id)
-        account_notes, account_data = _save_account_playlist(
-            ctx, cfg, name=playlist.name if playlist.name else "", rows=result.rows
-        )
+        apply_notes, account_data = _apply_account_playlist(cfg, built, option)
         extra = {
             "calls": result.calls,
             "unreached": result.unreached,
@@ -933,7 +954,7 @@ def intake_set(ctx) -> Envelope:
             extra["account_playlist"] = account_data
         return ctx.envelope(
             data=_reported(store, job, extra=extra),
-            warnings=(note, *warnings, *account_notes),
+            warnings=(note, *warnings, *account_notes, *apply_notes),
         )
 
 

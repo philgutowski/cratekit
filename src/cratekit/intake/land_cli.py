@@ -1024,6 +1024,8 @@ def _land_native(
         set_planned.append(made)
         return made
 
+    archive_notes: list[dict[str, str]] = []
+
     def write(db, rows: native.NativePlan) -> landing.LandedNative:
         # ONE LANDING PER BATCH NAME, HELD ACROSS THE WHOLE APPLY (R-432), as on
         # the bridge: the engine checks a target free and then renames over it.
@@ -1033,12 +1035,11 @@ def _land_native(
             landed_native = landing.apply_native(
                 planned, cfg=cfg, db=db, rows=rows, declared=declared
             )
-        # THE LANDING IS THE PROOF. Archive after the batch is in the library,
-        # still inside the approved gate, paced under the provider gate.
-        if archive_planned is not None and archive_planned.writes:
-            from cratekit.export import set_cli
-
-            set_cli.apply_archive(cfg, archive_planned)
+        # THE LANDING IS THE PROOF. Archive after the batch is in the library.
+        # A failure here must not fail a landing that already wrote: it becomes
+        # a warning on the landed envelope, and so does apply_archive's own
+        # "not renamed" return (U129).
+        archive_notes.extend(_apply_landing_archive(cfg, archive_planned))
         return landed_native
 
     def payload_of(rows: native.NativePlan) -> dict:
@@ -1084,6 +1085,7 @@ def _land_native(
     warnings = [{"code": entry.reason, "message": entry.sentence} for entry in landed.refused]
     warnings.extend(awaiting_analysis(landed.collection))
     warnings.extend(favorites_notes(payload, landed.collection))
+    warnings.extend(archive_notes)
     kept = landed.collection.set_playlist
     if kept is not None and kept.playlist_id:
         set_playlist.assert_read_back(kept)
@@ -1163,6 +1165,41 @@ def _native_split(
         for claimed in account_playlists.named(claims, held, batch=batch)
     )
 
+
+
+
+#: Why a set landing's account archive did not finish after the rows wrote (U129).
+LAND_ARCHIVE_FAILED = "intake-land-archive-failed"
+
+
+def _apply_landing_archive(cfg, archived) -> list[dict[str, str]]:
+    """Apply the account archive after the landing wrote. Failures are warnings.
+
+    The landing's rows are already in the library. An account call that raises,
+    or an apply that leaves the playlist unrenamed, must not turn the landing
+    into a failure: both ride the warnings channel on the landed envelope.
+    """
+    if archived is None or not archived.writes:
+        return []
+    from cratekit.export import set_cli
+
+    try:
+        _data, warnings, _wrote = set_cli.apply_archive(cfg, archived)
+    except Exception as exc:
+        message = (
+            exc.cause.message if isinstance(exc, CratekitError) else f"{type(exc).__name__}: {exc}"
+        )
+        return [
+            {
+                "code": LAND_ARCHIVE_FAILED,
+                "message": (
+                    f"the account archive could not finish after the landing wrote "
+                    f"({message}); the batch is in the library, run crate export "
+                    f"archive over the set once the account can be reached"
+                ),
+            }
+        ]
+    return list(warnings)
 
 
 def _plan_set_archive(cfg, *, set_job, words, pass_name: str):
@@ -1274,6 +1311,7 @@ def awaiting_analysis(collection: native.NativeLanded) -> list[dict[str, str]]:
 
 __all__ = [
     "AWAITING_ANALYSIS",
+    "LAND_ARCHIVE_FAILED",
     "INTAKE_SUFFIX",
     "NATIVE_GATE",
     "RETIRED_SUFFIX",
