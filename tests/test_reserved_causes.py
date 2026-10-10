@@ -6312,7 +6312,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # 2026-10-10: 710 to 711 distinct, non-keys UNCHANGED at 497. ONE joined,
     # link-majority-unclear, absent from `main`'s own `src` by git grep, and it
     # is the key pinned above.
-    assert (len(literals), len(literals - set(causes))) == (711, 497), (
+    # Re-pinned on U132, a taxonomy behind the shipped schema, 2026-10-10: 711
+    # to 714 distinct, non-keys 497 to 500. THREE joined and nothing left, each
+    # absent from `main`'s own `src` by git grep, and all three are WARNING
+    # codes crate taxonomy upgrade carries: taxonomy-upgraded,
+    # taxonomy-upgrade-held and taxonomy-nothing-to-upgrade.
+    assert (len(literals), len(literals - set(causes))) == (714, 500), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -7187,7 +7192,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # refuses with decision-stale, internal-error and whitelist-violation, and
     # write/row_link_cli.py, which refuses with config-unusable and
     # internal-error. Neither holds an in-range integer.
-    assert (len(literal_holders), len(literal_both)) == (148, 29), (
+    # Re-pinned on U132, a taxonomy behind the shipped schema, 2026-10-10:
+    # holders move 148 to 150, and the also-holds-an-integer half is UNCHANGED
+    # at 29. TWO modules joined and none left, both new files:
+    # core/taxonomy_upgrade.py, which refuses with library-volume-unmounted and
+    # config-unusable, and cli/verbs/taxonomy.py, which refuses with
+    # config-unusable and internal-error. Neither holds an in-range integer.
+    assert (len(literal_holders), len(literal_both)) == (150, 29), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
