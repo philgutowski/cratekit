@@ -1,0 +1,256 @@
+name = "u123"
+pass_kind = "light"
+
+# U123, crate label heard. A unit that writes and removes on the account, so
+# its full 25 rows: the engine's refusals and its merge order, the adapter's
+# playlist removal, the ledger's vouching, and the one call the dated plan
+# gained. Ledger and adapter rows name their subset, since every outbound
+# suite imports the ledger and the derived subset would be most of the tree.
+
+[[rows]]
+id = "H1_outside_refusal"
+description = "Drop the refusal of a --release that is not one of the dated playlist's"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+old = '''    if outside:
+        raise _refused('''
+new = '''    if False:
+        raise _refused('''
+
+[[rows]]
+id = "H2_no_releases_refusal"
+description = "Drop the refusal when no go took a release that year on that day"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+old = '''    releases = releases_of(document, catalogue, year, day)
+    if not releases:'''
+new = '''    releases = releases_of(document, catalogue, year, day)
+    if False:'''
+
+[[rows]]
+id = "H3_vouched_before_a_write"
+description = "Drop the ledger's vouching before a removal or a take off"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+old = '''    if action in (REMOVE, TAKE_OFF) and not ledger.product_made(cfg, dated_id):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "H4_unheard_tracks_stay"
+description = "Take off every track of the named releases, a shared one with an unheard release too"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+old = '''        leaving = tracks_of(target) - tracks_of(unheard)'''
+new = '''        leaving = tracks_of(target)'''
+
+[[rows]]
+id = "H5_missing_holds_the_removal"
+description = "Remove the dated playlist even when a track did not reach the year"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+old = '''            if done.missing:
+                done.kept = True'''
+new = '''            if False:
+                done.kept = True'''
+
+[[rows]]
+id = "H6_heard_recorded"
+description = "Never write the heard list"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+old = '''        done.recorded = record_heard(cfg, planned.label_id, planned.newly)'''
+new = '''        done.recorded = 0'''
+
+[[rows]]
+id = "H7_year_adds_recorded"
+description = "Do not record the merge's adds on the recorded year"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+old = '''            if planned.year_recorded:
+                ledger.record_label_tracks('''
+new = '''            if False:
+                ledger.record_label_tracks('''
+
+[[rows]]
+id = "H8_prefixed_year"
+description = "Drop the mark's prefixed name from the year fallback"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+old = '''    year_id = year_id or _one_named(inside, year_name, folders.MARK_PREFIX + year_name)'''
+new = '''    year_id = year_id or _one_named(inside, year_name)'''
+
+[[rows]]
+id = "H9_stray_said"
+description = "Never name a dated playlist the ledger records outside the folder"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+old = '''        return replace(base, stray_id=shape.dated.get(name, ""))'''
+new = '''        return replace(base, stray_id="")'''
+
+[[rows]]
+id = "H10_year_filter"
+description = "Read a release of any year as the dated playlist's"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+old = '''            if taken_on == day and (catalogue.by_release.get(identity) or ("",))[0] == year'''
+new = '''            if taken_on == day and identity in catalogue.by_release'''
+
+[[rows]]
+id = "H11_day_filter"
+description = "Read a release taken on any day as the dated playlist's"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+old = '''            if taken_on == day and (catalogue.by_release.get(identity) or ("",))[0] == year'''
+new = '''            if (catalogue.by_release.get(identity) or ("",))[0] == year'''
+
+[[rows]]
+id = "H12_newly_excludes_heard"
+description = "Count a release already heard as newly heard, so a second run writes"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+old = '''    newly = tuple(one for one in target if one not in heard)'''
+new = '''    newly = tuple(target)'''
+
+[[rows]]
+id = "H13_year_shape"
+description = "Accept a two digit year"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+old = '''_YEAR = re.compile(r"^\d{4}$")'''
+new = '''_YEAR = re.compile(r"^\d{2,4}$")'''
+
+[[rows]]
+id = "H14_ambiguous_bound"
+description = "Let two playlists with one name through as one, mutate the bound"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+old = '''    if len(matching) > 1:'''
+new = '''    if len(matching) > 2:'''
+
+[[rows]]
+id = "H15_no_year_refusal"
+description = "Drop the refusal when there are tracks to add and no year playlist"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+old = '''    if not year_id:
+        raise _refused('''
+new = '''    if False:
+        raise _refused('''
+
+[[rows]]
+id = "C1_declined_writes_nothing"
+description = "Write on any answer, not only apply"
+file = "src/cratekit/label/heard_cli.py"
+surface = "user"
+old = '''    if option != "apply" or not planned.writes:'''
+new = '''    if not planned.writes:'''
+
+[[rows]]
+id = "T1_adapter_vouching"
+description = "Drop the adapter's ledger check before a playlist removal"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_label_heard.py", "tests/test_outbound_tidal_account.py"]
+old = '''        if self._cfg is None or not ledger.product_made(self._cfg, identifier):
+            raise refuse(
+                "outbound-remove-refused",
+                f"the outbound ledger does not record the playlist {identifier} as "
+                f"one this product created, so it was not removed and the provider "'''
+new = '''        if False:
+            raise refuse(
+                "outbound-remove-refused",
+                f"the outbound ledger does not record the playlist {identifier} as "
+                f"one this product created, so it was not removed and the provider "'''
+
+[[rows]]
+id = "T2_read_back"
+description = "Trust the delete and never read the playlist back"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_label_heard.py", "tests/test_outbound_tidal_account.py"]
+old = '''        if again is not _ABSENT and again is not None:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "T3_already_gone"
+description = "Ask the delete of a playlist the provider no longer has"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_label_heard.py", "tests/test_outbound_tidal_account.py"]
+old = '''        if found is _ABSENT or found is None:
+            self._members.pop(identifier, None)
+            return'''
+new = '''        if found is None:
+            self._members.pop(identifier, None)
+            return'''
+
+[[rows]]
+id = "T4_refused_delete"
+description = "Read a delete the client answered False as one that landed"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_label_heard.py", "tests/test_outbound_tidal_account.py"]
+old = '''        if accepted is False:'''
+new = '''        if accepted is None:'''
+
+[[rows]]
+id = "T5_not_owned"
+description = "Drop the refusal of a playlist the client serves with no delete"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_label_heard.py", "tests/test_outbound_tidal_account.py"]
+old = '''        if not callable(remove):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "L1_dated_vouched"
+description = "Stop the ledger vouching for a dated playlist it records"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_label_heard.py", "tests/test_label_dated.py", "tests/test_prune.py"]
+old = '''        if wanted in (record.get("dated") or {}).values():
+            made = True'''
+new = '''        if False:
+            made = True'''
+
+[[rows]]
+id = "L2_forget_drops_the_entry"
+description = "Keep a removed dated playlist's ledger entry"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_label_heard.py", "tests/test_label_dated.py", "tests/test_prune.py"]
+old = '''        kept = {name: pid for name, pid in held.items() if pid != str(remote_id)}'''
+new = '''        kept = dict(held)'''
+
+[[rows]]
+id = "L3_malformed_entry_dropped"
+description = "Keep a dated entry with an empty name or identifier"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "maintainer"
+tests = ["tests/test_label_heard.py", "tests/test_label_dated.py", "tests/test_prune.py"]
+old = '''            {"dated": {str(name): str(pid) for name, pid in dated.items() if name and pid}}'''
+new = '''            {"dated": {str(name): str(pid) for name, pid in dated.items()}}'''
+
+[[rows]]
+id = "D1_dated_create_vouched"
+description = "Create a dated playlist without recording it in the ledger"
+file = "src/cratekit/label/dated.py"
+surface = "user"
+tests = ["tests/test_label_heard.py", "tests/test_label_dated.py"]
+old = '''                remote_id = ledger.reserve_label_dated(
+                    cfg,
+                    planned.label_id,
+                    step.name,
+                    lambda name=step.name: account.create_playlist(name),
+                )'''
+new = '''                remote_id = account.create_playlist(step.name)'''
+
+[[dropped]]
+id = "H16_kept_on_keep"
+description = "Read the year on a KEEP plan"
+reason = "efficiency, not a guard: a KEEP plan reading the year writes nothing different"
+
+[[dropped]]
+id = "L4_lock_before_create"
+description = "Create before the ledger is loaded in reserve_label_dated"
+reason = "ranked below the cap: driven directly by the unreadable ledger test, and a reorder of two statements is not a single text swap the driver can make"
