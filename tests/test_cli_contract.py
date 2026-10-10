@@ -1633,11 +1633,13 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         "login": ["provider-session"],
         # U37. Identify is driven against a missing recording so it must refuse
         # with a vocabulary code before any paid call (no recognition keys on
-        # a fresh install). Set and playlist queue a job, so the source string
-        # is frozen and never fetched. File and tag take a path under the
-        # configured library. Repair and name.apply take no positional: an
-        # empty library is the state a fresh install is genuinely in.
-        "intake.set": ["https://example.invalid/mix"],
+        # a fresh install). Playlist freezes a source string and never fetches.
+        # Set (U129) declares an account gate that sits after recognition, so
+        # its sample is LAZY and provides recognition, a named local recording,
+        # and a fake account so the gate is reached. File and tag take a path
+        # under the configured library. Repair and name.apply take no
+        # positional: an empty library is the state a fresh install is in.
+        "intake.set": _intake_set_reaching_account_gate,
         "intake.identify": [str(library / "no-such-set.mp3")],
         "intake.playlist": ["https://example.invalid/playlist"],
         # U69. The job verbs' convention: an identifier deliberately absent,
@@ -1954,6 +1956,79 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         "organize": [],
     }[entry.name]
     return sample() if callable(sample) else sample
+
+
+def _intake_set_reaching_account_gate() -> list[str]:
+    """Recognition ready, one identified track, and a name, so the account gate fires.
+
+    U129 put ``intake.set.account.confirm`` after the recognition preflight. On a
+    bare conformance machine the verb refuses with ``intake-recognition-unready``
+    before the gate, so this sample records the identify keys, injects the
+    recognition and account fakes every other intake set test uses, and hands
+    a local recording plus the three name flags. The writing path is driven in
+    tests/test_u129_set_account_playlist.py.
+    """
+    from cratekit.core import secrets
+    from cratekit.intake import acrcloud
+    from cratekit.label import catalogue
+    from tests import outbound_fakes
+    from tests.intake.test_recognition import FakeCarver, hit
+    from tests.label_fakes import FakeCatalogue, catalogue_factory
+    from tests.test_intake_missing_search import Hit
+    from tests.test_outbound_workers import bind as bind_account
+
+    secrets.set(str(secrets.Credential.IDENTIFY_KEY), "k-conformance")
+    secrets.set(str(secrets.Credential.IDENTIFY_SIGNING_KEY), "s-conformance")
+
+    class _Repeating:
+        """One hit for every chunk, across every conformance drive of this verb."""
+
+        def __init__(self) -> None:
+            self.requests = []
+
+        def __call__(self, request):
+            import json
+
+            from cratekit.intake.acrcloud import Response
+
+            self.requests.append(request)
+            body = hit("Aurora Bloom", "Sun Path")
+            return Response(status=200, body=json.dumps(body).encode())
+
+    acrcloud.http_transport = _Repeating()
+    acrcloud.FfmpegCarver = lambda: FakeCarver(25.0)
+    fake = FakeCatalogue(
+        searches={("Aurora Bloom", "Sun Path"): [Hit("tid-1", "Aurora Bloom", "Sun Path")]}
+    )
+    catalogue.resolve = catalogue_factory(fake)
+    bind_account(_NullPatch(), outbound_fakes.StrictAccount())
+
+    path = Path(config.load().library.root) / "Music" / "conformance-set.mp3"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"ID3")
+    return [
+        str(path),
+        "--dj",
+        "Probe",
+        "--set-name",
+        "Friday Night",
+        "--set-date",
+        "2026-05",
+    ]
+
+
+class _NullPatch:
+    """Stand-in for pytest's monkeypatch when a sample argument must bind an account.
+
+    ``bind`` only needs ``setattr``; the conformance autouse fixtures restore
+    the real account seam when the test ends.
+    """
+
+    def setattr(self, target, name, value=..., raising=True):
+        del raising
+        if value is ...:
+            raise TypeError("string-target setattr unused here")
+        setattr(target, name, value)
 
 
 def _a_source_playlist() -> list[str]:

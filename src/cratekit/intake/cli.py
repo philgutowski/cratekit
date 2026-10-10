@@ -244,8 +244,24 @@ def build_playlist(parser, entry) -> None:
 
 
 def set_argv(job) -> list[str]:
-    source = job.payload.get(SOURCE, "")
-    return ["intake", "set", source, "--job", job.job_id]
+    """The command line that continues one queued set.
+
+    IT CARRIES ``--run`` WHEN THE ACCOUNT GATE WAS ASKED. The account confirm
+    gate is ``explicit``, so R34 makes it answerable only by a separate act
+    recorded against a run. The child :mod:`cratekit.core.jobs` spawns is a
+    fresh process, and ``cli.run`` mints a NEW run whenever ``--run`` is absent,
+    so a resume naming only the job meets the gate with nothing recorded and
+    exits DECISION_REQUIRED on every respawn. The flag goes BEFORE the verb
+    path because ``--run`` belongs to the root parser.
+
+    A job frozen by a build older than the gate, or one whose account step soft
+    skipped, carries no gate run and resumes without the flag.
+    """
+    payload = job.payload or {}
+    source = str(payload.get(SOURCE) or "")
+    gate_run = payload.get(jobs.GATE_RUN_KEY)
+    resume = ["--run", str(gate_run)] if gate_run else []
+    return [*resume, "intake", "set", source, "--job", job.job_id]
 
 
 def playlist_argv(job) -> list[str]:
@@ -751,7 +767,14 @@ def _set_playlist_name(
     set_name: str | None,
     set_date: str | None,
 ) -> _PlaylistName:
-    """The INSPIRATION form of the name, or a warning when the words are missing."""
+    """The INSPIRATION form of the name, or a warning when naming was expected.
+
+    A local recording with no page and no name flags never asked for an account
+    playlist, so the skip is silent. A fetched page that left a word out, or a
+    command that passed some of ``--dj`` / ``--set-name`` / ``--set-date`` and
+    still cannot name the set, is the case the warning is for: the account step
+    was expected and did not run.
+    """
     from cratekit.export import set_cli
     from cratekit.intake import set_playlist
 
@@ -762,6 +785,10 @@ def _set_playlist_name(
     except CratekitError as exc:
         if exc.cause.reason != set_playlist.UNNAMED:
             raise
+        page = page if isinstance(page, Mapping) else {}
+        asked = bool(page) or any(v is not None for v in (dj, set_name, set_date))
+        if not asked:
+            return _PlaylistName()
         return _PlaylistName(
             warning={
                 "code": ACCOUNT_UNNAMED,
@@ -923,6 +950,10 @@ def intake_set(ctx) -> Envelope:
                 # the landing's playlist agree, even when they run on different days.
                 if playlist.name:
                     payload[PLAYLIST_NAME] = playlist.name
+                # Freeze the gate run only when the account gate was asked, so a
+                # resume can restore the decision. Soft skips leave it out.
+                if built is not None:
+                    payload[jobs.GATE_RUN_KEY] = ctx.run.run_id
                 job = jobs.enqueue(
                     store,
                     handler_key=ctx.entry.handler_key,

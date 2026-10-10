@@ -162,13 +162,18 @@ def test_a_set_with_no_matches_makes_nothing_and_says_so(account, recognised, mo
 def test_a_local_set_without_name_words_queues_and_skips_the_account_playlist(
     account, recognised
 ):
+    """No page and no name flags means the account step was never expected, so
+    the skip is silent rather than a ``set-account-unnamed`` warning."""
     cfg, _fake, held = account
     three_tracks(recognised)
     path = recording(cfg.library.root)
     code, done = drive(["intake", "set", str(path)])
     assert code == int(ExitCode.OK), done
     assert held.created == []
-    assert any(w["code"] == intake_cli.ACCOUNT_UNNAMED for w in done["warnings"])
+    assert intake_cli.ACCOUNT_UNNAMED not in [w["code"] for w in done["warnings"]], (
+        "a local set that never asked for a name must not warn set-account-unnamed; "
+        "the account playlist step was not expected"
+    )
     assert intake_cli.PLAYLIST_NAME not in job_of(done["data"]["job_id"]).payload
 
 
