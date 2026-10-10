@@ -5172,6 +5172,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # when an approved file did not take its suggested genre. It is in
     # cause.REASONS and not in the reserved table. Population 197 to 198,
     # non-reserved 169 to 170, reserved half UNCHANGED at 28.
+    # Re-pinned on U121, the set's permanent playlist under INSPIRATION,
+    # 2026-10-09. TWO slugs, named rather than counted:
+    # inspiration-folder-undeclared, which both the landing given --set and
+    # crate intake inspiration refuse with when the active taxonomy declares
+    # no [inspiration] folder or the playlist root holds two of it, and
+    # set-playlist-unnamed, which both refuse with when the job's page and the
+    # flags together do not name the DJ, the set and its month. Both are in
+    # cause.REASONS and neither is in the reserved table. Population 198 to
+    # 200, non-reserved 170 to 172, reserved half UNCHANGED at 28.
     # Re-pinned on the residual
     # "A pink row outside the named playlist is not swept", 2026-10-09. ONE slug, named rather than counted: favorites-pink-colour-missing,
     # which the favourites colour lookup refuses with when djmdColor has no live
@@ -5185,11 +5194,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Both are in cause.REASONS and neither is in the reserved table.
     # Population 198 to 200, non-reserved 170 to 172, reserved half UNCHANGED
     # at 28.
+    # Re-measured on the merge of main at 07c3ea0 into fable/278, 2026-10-10:
+    # U119's two slugs and U121's two slugs are both in the tree, so the
+    # population is 202, non-reserved 174, reserved half UNCHANGED at 28.
     # Re-measured on the merge of origin/main into grok/263-pink-rows-swept,
     # 2026-10-10: both the pink residual and U119 are on the tree. Population
     # 201, non-reserved 173, reserved half UNCHANGED at 28 (measured on the
     # merged tree, not either side alone).
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (201, 173, 28)
+    # Re-measured on the merge of main at 1e93ee7 into fable/278, 2026-10-10:
+    # U121's two slugs beside the pink residual's one and U119's two, so the
+    # population is 203, non-reserved 175, reserved half UNCHANGED at 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (203, 175, 28)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -6171,6 +6186,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # already spell; no-votes and not no-evidence, which is a cause. suggest-nothing-to-write, suggest-genre-written, suggest-left,
     # suggest-file-has-genre, suggest-file-not-read, suggest-catalogue-unread
     # and suggest-unmatched are WARNING codes `tagging/suggest_cli.py` gives.
+    # Re-pinned on U121, the set's permanent playlist under INSPIRATION,
+    # 2026-10-09: 661 to 666 distinct, non-keys 464 to 467. FIVE joined and
+    # nothing left, each absent from `main`'s own `src` by git grep.
+    # inspiration-folder-undeclared and set-playlist-unnamed are the keys named
+    # in the pin above. set-playlist-written, set-playlist-left-out and
+    # set-playlist-nothing-to-write are WARNING codes. The session WORKFLOW
+    # the backfill is recorded under and the plan KIND its digest is taken
+    # under, set-playlist, was a literal already, the account's exclusion.
     # Re-pinned on the residual
     # "A pink row outside the named playlist is not swept", 2026-10-09: 661 to 663 distinct after U114, non-keys 464 to 465. TWO joined and
     # nothing left, each absent from `main`'s own `src` by git grep.
@@ -6191,6 +6214,9 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # And again on the watcher's round: 669 to 670 distinct, non-keys 470 to
     # 471. ONE joined, favorites-skipped, the resume's third WARNING code, for
     # a refresh that did not run at an adoption's end.
+    # Re-measured on the merge of main at 07c3ea0 into fable/278, 2026-10-10:
+    # U121's five literals join U119's nine on one tree, 675 distinct and 474
+    # that are not keys, each side's additions as its own pin names them.
     # Re-pinned on the residual "A playlist or release listing returns short
     # with no error when the provider withholds unservable tracks",
     # 2026-10-10: 670 to 673 distinct, non-keys 471 to 474. THREE joined, each absent from
@@ -6202,7 +6228,10 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # non-keys 472 (measured on the merged tree, not either side alone).
     # Re-measured by the watcher on the landing join of #263 onto main after #264,
     # 2026-10-10: 675 distinct, non-keys 475, measured on the merged tree.
-    assert (len(literals), len(literals - set(causes))) == (675, 475), (
+    # Re-measured on the merge of main at 1e93ee7 into fable/278, 2026-10-10:
+    # U121's five literals join main's, 680 distinct and 478 that are not keys,
+    # measured on the merged tree and not either side alone.
+    assert (len(literals), len(literals - set(causes))) == (680, 478), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6320,6 +6349,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # gives it. It names no cause declared elsewhere, so THE WITHOUT-OWN HALF
     # IS STILL 11, and the integer half did not move.
     #
+    # Re-pinned on U121, the set's permanent playlist under INSPIRATION,
+    # 2026-10-09: without-own 11 to 12, with-own 26 to 27, the integer half
+    # unchanged at 13. Named from this derivation's own output:
+    # `intake/set_playlist.py` joined, and it joined the without-own half for
+    # the searcher's reason above. It names its two slugs once each, as
+    # `FOLDER_UNDECLARED` and `UNNAMED`, resolving to the causes `cause.py`
+    # declares, and both the landing and the backfill verb raise them through
+    # `cause.refuse` from that one module, so the two verbs spell each slug
+    # from one line. It holds no in-range integer.
     # Re-pinned on the residual
     # "A pink row outside the named playlist is not swept",
     # 2026-10-09: without-own 11 to 12, with-own 26 to 27, the integer half
@@ -6336,11 +6374,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # the causes `cause.py` declares, and raises each through `cause.refuse`
     # from one function, so the verb, the adoption's end and the rebuild spell
     # each slug from one line. It holds no in-range integer.
+    # Re-measured on the merge of main at 07c3ea0 into fable/278, 2026-10-10:
+    # both new modules are in the tree, without-own 13, with-own 28, the
+    # integer half unchanged at 13.
     # Re-measured on the merge of origin/main into grok/263-pink-rows-swept,
     # 2026-10-10: both favorites/cli.py and write/genre_favorites.py are on
     # the tree. without-own 13, with-own 28, integer half UNCHANGED at 13
     # (measured on the merged tree, not either side alone).
-    assert (len(without), len(with_own), len(both)) == (13, 28, 13), (
+    # Re-measured on the merge of main at 1e93ee7 into fable/278, 2026-10-10:
+    # intake/set_playlist.py beside favorites/cli.py and write/genre_favorites.py,
+    # without-own 14, with-own 29, the integer half unchanged at 13.
+    assert (len(without), len(with_own), len(both)) == (14, 29, 13), (
         f"the named at-risk population moved: {len(without)} modules hold a name "
         f"resolving to a cause declared elsewhere, {len(with_own)} once each "
         f"file's own enum declarations count, {len(both)} of those also hold an "
@@ -7005,6 +7049,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # refuses with config-unusable, internal-error, review-selection-invalid
     # and tag-suggest-unwritten and holds no in-range integer.
     # tagging/suggest.py holds no cause.
+    # Re-pinned on U121, the set's permanent playlist under INSPIRATION,
+    # 2026-10-09: holders move 137 to 139, and the also-holds-an-integer half
+    # is UNCHANGED at 29. TWO modules joined and none left, both new files:
+    # intake/set_playlist.py, which refuses with inspiration-folder-undeclared,
+    # set-playlist-unnamed, job-unknown, intake-list-unusable, decision-stale
+    # and session-committed-unverified, and intake/inspiration_cli.py, which
+    # refuses with config-unusable and tree-unconverged. Neither holds an
+    # in-range integer.
     # Re-pinned on U119, the genre Favorites, 2026-10-09: holders move 137 to
     # 139, and the also-holds-an-integer half is UNCHANGED at 29. TWO modules
     # joined and none left, both new files: write/genre_favorites.py, which
@@ -7012,7 +7064,10 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # decision-stale and session-committed-unverified, and
     # favorites/refresh_cli.py, which refuses with config-unusable. Neither
     # holds an in-range integer.
-    assert (len(literal_holders), len(literal_both)) == (139, 29), (
+    # Re-measured on the merge of main at 07c3ea0 into fable/278, 2026-10-10:
+    # U121's two modules and U119's two are all in the tree, holders 141, the
+    # also-holds-an-integer half UNCHANGED at 29.
+    assert (len(literal_holders), len(literal_both)) == (141, 29), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

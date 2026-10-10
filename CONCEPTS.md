@@ -1301,6 +1301,26 @@ prefixed `DOWNLOADED ` through the mark record.
 *Avoid:* reading it as intake, or keying it by anything a person can retype
 differently, such as the tracklist's path.
 
+### Inspiration playlist
+The permanent playlist of an identified set in rekordbox (U121), under the
+folder the taxonomy declares as `[inspiration]`, INSPIRATION in the shipped
+template, where the source system left its own. It is named the source
+system's way, `{M_DD_YY today} {DJ} {set name} {M-YY of the set}`, for
+example `10_09_26 Public Service NYC Live at Vonking 5-26`, the DJ and the
+set from the page the mix was fetched from (frozen on the set job as its
+`page`) or from the `--dj`, `--set-name` and `--set-date` flags, the flags
+winning, a missing word refused by name. It holds every identified track the
+library owns, the ones it already had and the ones the intake downloaded, in
+set order, each tied to its collection row by the product's own match rule
+and never guessed; a row neither owned nor landed is listed as left out. A
+landing given `--set` writes it in the same commit as the batch, and `crate
+intake inspiration --job` writes it for a set already landed. Database native
+intake trees only. Nothing rotates it, nothing under INBOX changes for it,
+and no content row is written for it.
+
+*Avoid:* reading it as the INBOX batch, which is the 30 and 90 day flow, or as
+the Set playlist above, which is the account's and is archived there.
+
 ### Product made
 A playlist on the streaming account that this product itself created, as the
 outbound ledger records it: an exported playlist, a set playlist, or a label

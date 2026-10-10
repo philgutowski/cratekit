@@ -1,0 +1,15 @@
+# U121 author's mutation table, third pass: the one row the first two tables
+# refused. The rows file is written through Python so the separator class
+# carries its two dash escapes as backslash text, the way the source does;
+# a shell heredoc turned them into the characters themselves twice.
+name = "u121-c"
+pass_kind = "light"
+
+[[rows]]
+id = "S2c_separator"
+description = "_without_leading: keep the separator after the uploader's name"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''    stripped = re.sub(r"^\s*(?:[-:|\u2013\u2014]+\s*)?", "", rest)'''
+new = '''    stripped = rest.strip()'''
