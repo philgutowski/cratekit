@@ -1,0 +1,452 @@
+{
+  "name": "r515-operator",
+  "pass_kind": "light",
+  "branch": "HEAD",
+  "head": "e8d46aa",
+  "when": "2026-10-10 05:19 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 13016,
+  "baseline_exit": 0,
+  "pytest_runs": 22,
+  "state_guarded": "~/Library/Application Support/cratekit (365158 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/label/catalogue.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/label/catalogue.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "c1cc0f70c5027626",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 13016,
+    "baseline_collected": 13016,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "S1_of_takes_bool",
+      "description": "Let ListingShortfall.of trust a bool as a declared count",
+      "file": "src/cratekit/label/catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0ac7c76e1b24b94b",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 172,
+      "baseline_collected": 172,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_count_that_is_not_a_usable_count_leaves_nothing_to_compare[True]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if isinstance(declared, bool) or not isinstance(declared, int) or declared <= 0:",
+      "new": "        if not isinstance(declared, int) or declared <= 0:"
+    },
+    {
+      "id": "S2_of_takes_non_int",
+      "description": "Let ListingShortfall.of trust a count that is not an integer",
+      "file": "src/cratekit/label/catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "55a7f3dec4970682",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 172,
+      "baseline_collected": 172,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_count_that_is_not_a_usable_count_leaves_nothing_to_compare[10]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if isinstance(declared, bool) or not isinstance(declared, int) or declared <= 0:",
+      "new": "        if isinstance(declared, bool) or declared is None or declared <= 0:"
+    },
+    {
+      "id": "S3_of_takes_non_positive",
+      "description": "Let ListingShortfall.of trust a zero or negative count",
+      "file": "src/cratekit/label/catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "18962ab8261e7352",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 13016,
+      "baseline_collected": 13016,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "        if isinstance(declared, bool) or not isinstance(declared, int) or declared <= 0:",
+      "new": "        if isinstance(declared, bool) or not isinstance(declared, int):"
+    },
+    {
+      "id": "S4_of_short_at_count",
+      "description": "Mint a shortfall when the listing reaches the count exactly",
+      "file": "src/cratekit/label/catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "22a90eb07440124e",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 172,
+      "baseline_collected": 172,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_full_release_carries_no_shortfall"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if listed >= declared:",
+      "new": "        if listed > declared:"
+    },
+    {
+      "id": "S5_of_short_over_count",
+      "description": "Mint a shortfall when the listing runs past the count",
+      "file": "src/cratekit/label/catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c4f1c290da9a5368",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 172,
+      "baseline_collected": 172,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_listing_that_serves_more_than_its_declared_count_carries_no_shortfall"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if listed >= declared:",
+      "new": "        if listed == declared:"
+    },
+    {
+      "id": "S6_cache_drops_short",
+      "description": "The caching release reader stores the rows and year but drops the shortfall",
+      "file": "src/cratekit/label/catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e30584efdff6563f",
+      "subset": [
+        "tests/test_label_sync.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 55,
+      "baseline_collected": 55,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_a_short_release_is_counted_over_its_rows_and_the_question_says_the_shortfall"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        answer = (tuple(rows), year, short)",
+      "new": "        answer = (tuple(rows), year, None)"
+    },
+    {
+      "id": "S7_adapter_no_count",
+      "description": "The release adapter ignores the album's num_tracks",
+      "file": "src/cratekit/label/tidal_catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "70953ee9f910a42d",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 172,
+      "baseline_collected": 172,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_tidal_catalogue.py::test_a_release_listed_short_of_its_count_carries_the_shortfall_and_its_rows"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        short = ListingShortfall.of(tracks, getattr(album, \"num_tracks\", None))",
+      "new": "        short = None"
+    },
+    {
+      "id": "S8_short_of_keeps_zero",
+      "description": "Read a saved shortfall block back even when it withheld nothing",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8be67fb7555330d8",
+      "subset": [
+        "tests/test_label_sync.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 55,
+      "baseline_collected": 55,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_a_saved_shortfall_that_withheld_nothing_reads_back_as_no_shortfall"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if any(value is None for value in block.values()) or not block[\"withheld\"]:",
+      "new": "    if any(value is None for value in block.values()):"
+    },
+    {
+      "id": "S9_question_no_short",
+      "description": "The label sync question drops the release shortfall",
+      "file": "src/cratekit/label/sync_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1e66985328a7f29e",
+      "subset": [
+        "tests/test_label_sync.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 55,
+      "baseline_collected": 55,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_a_short_release_is_counted_over_its_rows_and_the_question_says_the_shortfall"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if question.provider_withheld:",
+      "new": "    if False:"
+    },
+    {
+      "id": "S10_intake_all_withheld_quiet",
+      "description": "An intake playlist with every track withheld is a quiet no op",
+      "file": "src/cratekit/intake/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4d8f1e16a1a7825d",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_a_playlist_whose_every_track_is_withheld_is_not_a_quiet_no_op",
+        "tests/test_intake_missing.py::test_hearts_all_withheld_are_not_read_as_an_account_with_none"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not tracks:\n            return ctx.envelope(\n                data=_no_op(\"no-tracks\", source=reference, **extra),\n                outcome=Outcome.NO_OP,\n                warnings=warnings,",
+      "new": "        if not tracks:\n            return ctx.envelope(\n                data=_no_op(\"no-tracks\", source=reference, **extra),\n                outcome=Outcome.NO_OP,"
+    },
+    {
+      "id": "S11_intake_playlist_no_warning",
+      "description": "An intake playlist listed short carries no warning",
+      "file": "src/cratekit/intake/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8c69aa80e434d69e",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_a_playlist_declaring_ten_with_two_withheld_queues_eight_and_warns",
+        "tests/test_intake_missing.py::test_a_playlist_whose_every_track_is_withheld_is_not_a_quiet_no_op",
+        "tests/test_intake_missing.py::test_a_short_hearts_listing_is_queued_and_says_by_how_much",
+        "tests/test_intake_missing.py::test_hearts_all_withheld_are_not_read_as_an_account_with_none",
+        "tests/test_intake_missing.py::test_the_default_human_output_names_the_playlist_shortfall",
+        "tests/test_intake_missing.py::test_the_default_human_output_names_the_shortfall"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        warnings = (warned(short),) if short is not None else ()",
+      "new": "        warnings = ()"
+    },
+    {
+      "id": "S12_sweep_no_withheld_block",
+      "description": "The sync all sweep records no shortfall per playlist",
+      "file": "src/cratekit/sync/playlists.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fb7e0127c6665887",
+      "subset": [
+        "tests/test_sync_all.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 106,
+      "baseline_collected": 106,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_all.py::test_the_sweep_summary_carries_the_shortfall_per_playlist"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            sweep.short[playlist.playlist_id] = short.block()",
+      "new": "            pass"
+    },
+    {
+      "id": "S13_sweep_no_warning",
+      "description": "The sync all sweep says nothing of a short playlist",
+      "file": "src/cratekit/sync/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b6d668e87e21e93a",
+      "subset": [
+        "tests/test_sync_all.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 106,
+      "baseline_collected": 106,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_all.py::test_the_sweep_summary_carries_the_shortfall_per_playlist"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if sweep.short:",
+      "new": "    if False:"
+    },
+    {
+      "id": "S14_harvest_no_warning",
+      "description": "A harvest over a short playlist carries no warning",
+      "file": "src/cratekit/label/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "444fe69bf6e20680",
+      "subset": [
+        "tests/test_label_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 82,
+      "baseline_collected": 82,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_workers.py::test_a_harvest_over_a_short_playlist_offers_what_it_read_and_warns"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        warnings=(harvest_withheld_warning(short, reference),) if short is not None else (),",
+      "new": "        warnings=(),"
+    }
+  ],
+  "dropped": []
+}

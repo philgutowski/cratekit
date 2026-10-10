@@ -6,6 +6,6 @@ The watcher runs the table on macOS. `scripts/mutate.py` refuses a red full suit
 
 As a preview only, the build lane applied each row by hand on Linux and ran its named test file. Eleven killed. Three survived on that first pass; the two real gaps are closed on this branch, and the third is inert:
 
-* `S3_of_takes_non_positive` is equivalent: with a zero or negative count `listed >= declared` holds for any listing and the next guard answers None.
+* `S3_of_takes_non_positive` is inert (equivalent), confirmed by the watcher's macOS run on the full suite: with a zero or negative count `listed >= declared` holds for any listing and the next guard answers None.
 * `S5_of_short_over_count`: closed by `test_a_listing_that_serves_more_than_its_declared_count_carries_no_shortfall` in `tests/test_label_tidal_catalogue.py`.
 * `S8_short_of_keeps_zero`: closed by `test_a_saved_shortfall_that_withheld_nothing_reads_back_as_no_shortfall` in `tests/test_label_sync.py`.
