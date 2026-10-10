@@ -815,7 +815,7 @@ class TidalAccount:
                 doing,
             )
 
-    # ── the one removal (R-836) ─────────────────────────────────────────────
+    # ── the removals (R-836, U123) ──────────────────────────────────────────
 
     def track_names(self, playlist_id: str) -> dict[str, tuple[str, str]]:
         """Every track on the playlist, identifier to ``(artist, title)``, read now.
@@ -956,6 +956,60 @@ class TidalAccount:
                 )
         held = set(self._members.get(identifier, ()))
         return tuple(one for one in wanted if one not in held)
+
+    def remove_playlist(self, playlist_id: str) -> None:
+        """Remove one playlist the product made (U123). NEVER RETRIED.
+
+        THE LEDGER IS ASKED FIRST, as :meth:`remove_tracks` asks it: a
+        playlist ``ledger.product_made`` does not vouch for is refused with no
+        provider call at all.
+
+        A PLAYLIST THE PROVIDER NO LONGER HAS IS ALREADY REMOVED, so a resume
+        that asks again after a removal landed and its answer was lost ends
+        here and removes nothing.
+
+        NOT RETRIED, on ``create_playlist``'s argument: the outcome of a
+        request that timed out is read back below rather than sent again.
+
+        READ BACK, NOT TRUSTED. The playlist is opened again after the
+        request and must be gone; one the provider still serves is refused,
+        ``outbound-remove-refused``, so a removal that did not happen is never
+        reported as one that did.
+        """
+        identifier = str(playlist_id)
+        if self._cfg is None or not ledger.product_made(self._cfg, identifier):
+            raise refuse(
+                "outbound-remove-refused",
+                f"the outbound ledger does not record the playlist {identifier} as "
+                f"one this product created, so it was not removed and the provider "
+                f"was not asked",
+                steps=("remove the playlist by hand in the provider's own player",),
+                scope=Scope.SOURCE,
+                origin=("outbound", "account"),
+                detail={"playlist_id": identifier, "problem": "not-product-made"},
+            )
+        doing = f"remove the playlist {identifier}"
+        found = self._call(doing, lambda: self._session.playlist(identifier))
+        if found is _ABSENT or found is None:
+            self._members.pop(identifier, None)
+            return
+        accepted = self._call(doing, found.delete, retries=0)
+        if accepted is False:
+            raise account.provider_failure(
+                RuntimeError("the provider did not accept the removal"), doing
+            )
+        again = self._call(doing, lambda: self._session.playlist(identifier))
+        if again is not _ABSENT and again is not None:
+            raise refuse(
+                "outbound-remove-refused",
+                f"the playlist {identifier} is still served by the provider after "
+                f"it was asked to remove it, so it was not removed",
+                steps=("check the playlist by hand in the provider's own player",),
+                scope=Scope.RUN,
+                origin=("outbound", "account"),
+                detail={"playlist_id": identifier, "problem": "read-back-differs"},
+            )
+        self._members.pop(identifier, None)
 
 
 def open_account(cfg: Any = None) -> TidalAccount:

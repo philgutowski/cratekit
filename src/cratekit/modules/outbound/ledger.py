@@ -20,6 +20,12 @@ SINCE R-836 IT SAYS WHICH PLAYLISTS THE PRODUCT MADE, because that is the one
 kind of playlist a track may be taken off. :func:`product_made` is the answer,
 and a track taken off moves from ``added`` to ``pruned`` on its record, so a
 resume takes nothing off twice and a second prune plans nothing.
+
+SINCE U123 A LABEL'S RECORD HOLDS ITS DATED PLAYLISTS, under ``dated``, name to
+identifier, each one a playlist :mod:`cratekit.label.dated` CREATED. One reused
+by its name was made by somebody else and is never written here, so
+``label heard`` may remove a dated playlist only when this map vouches for it,
+and drops the entry once it has.
 """
 
 from __future__ import annotations
@@ -143,6 +149,14 @@ def _label_document(path, raw: Mapping[str, Any]) -> dict[str, Any]:
             }
             for year, record in years.items()
         },
+        # U123. Only a created dated playlist is ever written here, so an
+        # entry that is not a name to an identifier is dropped rather than
+        # read as one this product made.
+        **(
+            {"dated": {str(name): str(pid) for name, pid in dated.items() if name and pid}}
+            if isinstance(dated := raw.get("dated"), Mapping)
+            else {}
+        ),
     }
 
 
@@ -1093,7 +1107,9 @@ def product_made(cfg: config.Config, playlist_id: str) -> bool:
       already held rather than taking in one it did not make;
     * a set playlist's, since ``reserve_set_playlist`` only creates;
     * a label year's, only when it was written ``created``. A year adopted by
-      its name under the folder was made by the source system or a person.
+      its name under the folder was made by the source system or a person;
+    * a label's dated playlist (U123), since :func:`record_label_dated` is
+      called only for one the dated plan created.
 
     ADOPTED ANYWHERE WINS. A playlist a label record holds as adopted is not
     made here, whatever another record says about the same identifier.
@@ -1126,12 +1142,53 @@ def _made_in(document: dict, wanted: str) -> bool:
                 if entry.get("created") is not True:
                     return False
                 made = True
+        if wanted in (record.get("dated") or {}).values():
+            made = True
     if made:
         return True
     for record in (*document["playlists"].values(), *document["sets"].values()):
         if str(record.get("remote_id") or "") == wanted:
             return True
     return False
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# A label's dated playlists (U123)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def record_label_dated(cfg: config.Config, label_id: str, name: str, remote_id: str) -> None:
+    """Record one dated playlist the dated plan CREATED, by its name.
+
+    Called the moment the create returns, before the move into the folder, so
+    a refusal between the two still leaves the playlist vouched for.
+    """
+    lock = _locked(cfg)
+    try:
+        document = _load(cfg)
+        record = _label_entry(document, label_id, "")
+        record.setdefault("dated", {})[str(name)] = str(remote_id)
+        _write(cfg, document)
+    finally:
+        lock.__exit__(None, None, None)
+
+
+def forget_label_dated(cfg: config.Config, label_id: str, remote_id: str) -> None:
+    """Drop a dated playlist's entry once ``label heard`` removed the playlist."""
+    lock = _locked(cfg)
+    try:
+        document = _load(cfg)
+        record = document["labels"].get(label_id)
+        held = record.get("dated") if record is not None else None
+        if not held:
+            return
+        kept = {name: pid for name, pid in held.items() if pid != str(remote_id)}
+        if kept == held:
+            return
+        record["dated"] = kept
+        _write(cfg, document)
+    finally:
+        lock.__exit__(None, None, None)
 
 
 @dataclass(frozen=True, slots=True)

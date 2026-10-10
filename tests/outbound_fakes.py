@@ -10,10 +10,11 @@ rather than absent in three.
 
 **IT REFUSES ANYTHING OUTSIDE THE PROTOCOL, AND THAT IS A GUARD RATHER THAN
 TIDINESS.** ``modules/outbound/service.RemoteAccount`` declares no un-heart and
-no playlist delete, and one removal only, ``remove_tracks``, from a playlist the
-product made (R-836). :class:`StrictAccount` raises on any other attribute, so a
-worker that reached for one fails the suite instead of failing silently against
-a fake permissive enough to answer.
+no folder delete, and two removals only, ``remove_tracks`` (R-836) and
+``remove_playlist`` (U123), each of a playlist the product made.
+:class:`StrictAccount` raises on any other attribute, so a worker that reached
+for one fails the suite instead of failing silently against a fake permissive
+enough to answer.
 
 Not a test module: pytest does not collect it.
 """
@@ -49,6 +50,8 @@ PROTOCOL_METHODS = frozenset(
         # R-836. A read that names a playlist's tracks, and the one removal.
         "track_names",
         "remove_tracks",
+        # U123. The one playlist removal, of a dated playlist heard.
+        "remove_playlist",
     }
 )
 
@@ -125,6 +128,8 @@ class FakeAccount:
         #: every removal asked, in order, as ``(playlist_id, ids)``.
         self.names: dict[str, tuple[str, str]] = {}
         self.taken: list[tuple[str, tuple[str, ...]]] = []
+        #: U123. Every playlist removed, in order, and what it held.
+        self.deleted: list[tuple[str, tuple[str, ...]]] = []
 
     def match_track(
         self,
@@ -255,6 +260,18 @@ class FakeAccount:
         members[:] = [one for one in members if one not in asked]
         self.taken.append((playlist_id, tuple(remote_ids)))
         return tuple(one for one in remote_ids if one not in members)
+
+    def remove_playlist(self, playlist_id: str) -> None:
+        """Remove the playlist and its place. One write, so ``fail_on`` names it.
+
+        A playlist this account does not hold is already removed, as the
+        adapter answers it, and is recorded with nothing in it.
+        """
+        self._bump(playlist_id)
+        held = tuple(self.playlists.pop(playlist_id, ()))
+        self.titles.pop(playlist_id, None)
+        self.placed.pop(playlist_id, None)
+        self.deleted.append((playlist_id, held))
 
     def _bump(self, subject: str = "") -> None:
         self._writes += 1
