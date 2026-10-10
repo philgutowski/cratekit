@@ -803,3 +803,44 @@ def test_the_additive_half_turns_any_refusal_into_a_skip_once_the_adoption_has_l
         cfg, DECLARED, analysis_roots=[Path(cfg.library.root)]
     )
     assert outcome.refreshed is None and outcome.skipped == "the plan moved"
+
+
+# ---------------------------------------------------------------------------
+# What the table added
+# ---------------------------------------------------------------------------
+
+
+def test_a_favourite_sitting_only_in_favorites_after_leaving_its_band_is_removed(
+    cfg, gates_pass, db
+):
+    """The folder's own Favorites is not among the folder's members, so a
+    favourite moved out of its band by hand is no longer the folder's and
+    leaves its Favorites, rather than keeping itself there for ever."""
+    tree = Tree(cfg, db)
+    tree.playlist(DEEP, "Med", "1")
+    favorites = tree.playlist(DEEP, FAVORITES.display, "1", "2")
+    tree.source("1", "2")
+
+    plan = _plan(cfg, db, tree)
+    (folder,) = plan.folders
+    assert folder.members == ("1",) and folder.removes == ("2",)
+    refreshed = _apply(cfg, db, tree, plan)
+
+    assert (refreshed.added, refreshed.removed) == (0, 1)
+    assert _members(db, favorites.ID) == {"1"}
+
+
+def test_a_removed_favorites_under_the_folder_is_not_written_into(cfg, gates_pass, db):
+    tree = Tree(cfg, db)
+    tree.playlist(DEEP, "Med", "1")
+    gone = tree.playlist(DEEP, FAVORITES.display)
+    setattr(gone, rb_writer.SOFT_DELETE_COLUMN, 1)
+    db.session.commit()
+    tree.source("1")
+
+    refreshed = _refresh(cfg, db, tree)
+
+    assert refreshed.created == (DEEP.display,) and refreshed.added == 1
+    live = _favorites_of(db, tree, DEEP)
+    assert live is not None and str(live.ID) != str(gone.ID)
+    assert _members(db, live.ID) == {"1"} and _members(db, gone.ID) == set()
