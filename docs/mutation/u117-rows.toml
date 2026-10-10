@@ -23,9 +23,9 @@ new = '''        if not isinstance(settled, Mapping):
 
 [[rows]]
 id = "D3_not_now_taken"
-description = "taken_by_goes: drop the taking answer check, so a not now answer files releases"
+description = "taken_by_goes: drop the taking answer check. Driven with the shape sync_cli writes, where a not now or stop answer records taken as an empty list, so this row is expected to kill nothing: the check is defence over a record no producer writes, a maintainer facing zero"
 file = "src/cratekit/label/dated.py"
-surface = "user"
+surface = "maintainer"
 tests = ["tests/test_label_dated.py"]
 old = '''        if entry.get("answer") not in TAKING:
             continue'''
@@ -33,7 +33,7 @@ new = ''
 
 [[rows]]
 id = "D4_local_day"
-description = "_local_day: keep the recorded UTC day instead of the local one, so a go late in the evening is filed under tomorrow"
+description = "_local_day: keep the recorded UTC day instead of the local one, so a go at 22:00 local west of UTC is filed under tomorrow; killed by the evening instant test"
 file = "src/cratekit/label/dated.py"
 surface = "user"
 tests = ["tests/test_label_dated.py"]
@@ -134,3 +134,23 @@ old = '''        dated.add_step(cfg, area, entry, planned, remote_of)
 '''
 new = '''        pass
 '''
+
+[[rows]]
+id = "D15_playable_only"
+description = "plan: take every track of a release, playable or not, so an unplayable track is planned on every run"
+file = "src/cratekit/label/dated.py"
+surface = "user"
+tests = ["tests/test_label_dated.py"]
+old = '''        held.extend(one for one in tracks if one in playable and one not in held)'''
+new = '''        held.extend(one for one in tracks if one not in held)'''
+
+[[rows]]
+id = "D16_recorded_before_move"
+description = "apply: record the created playlist only after the move, so a move refused after the create reports nothing written"
+file = "src/cratekit/label/dated.py"
+surface = "user"
+tests = ["tests/test_label_dated.py"]
+old = '''                done.unplaced.append(step.name)
+                account.move_to_folder(remote_id, folder_id)'''
+new = '''                account.move_to_folder(remote_id, folder_id)
+                done.unplaced.append(step.name)'''

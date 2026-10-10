@@ -234,6 +234,11 @@ class DatedApplied:
     """What an apply wrote, for the report and for a failure part way."""
 
     created: list[str] = field(default_factory=list)
+    #: Each created dated playlist's identifier by its name, recorded the
+    #: moment the create returns, before the move into the folder.
+    ids: dict[str, str] = field(default_factory=dict)
+    #: Created playlists not yet in the label's folder.
+    unplaced: list[str] = field(default_factory=list)
     added: dict[str, int] = field(default_factory=dict)
     refused: dict[str, int] = field(default_factory=dict)
 
@@ -291,8 +296,13 @@ def plan(
         if not year:
             left_out["undated"] += 1
             continue
+        # ONLY WHAT THE YEAR PATH WOULD ASK FOR. ``by_release`` carries every
+        # track, playable or not, for the prune; ``years`` holds only the ones
+        # the provider will play. A track it will not play would be refused
+        # on every add, so the step would read planned on every run.
+        playable = set(catalogue.years.get(year, ()))
         held = wanted.setdefault((year, day), [])
-        held.extend(one for one in tracks if one not in held)
+        held.extend(one for one in tracks if one in playable and one not in held)
 
     inside = account.folder_playlists(folder_id) if folder_id else {}
     steps: list[DatedStep] = []
@@ -365,9 +375,20 @@ def _failed_part_way(exc: Exception, done: DatedApplied, planned: DatedPlan) -> 
     detail = {
         "label_id": planned.label_id,
         "created": list(done.created),
+        "ids": dict(done.ids),
+        "unplaced": [[name, done.ids[name]] for name in done.unplaced],
         "added": dict(done.added),
     }
     again = "run crate organize again; a dated playlist is found by its name and only the rest is added"
+    if done.unplaced:
+        wrote += ", and " + ", ".join(
+            f"{name!r} ({done.ids[name]}) was created and is not in the label's folder"
+            for name in done.unplaced
+        )
+        again = (
+            "move each playlist named above into the label's folder on the account "
+            "before running crate organize again, or the next run makes a second one"
+        )
     if isinstance(exc, CratekitError):
         cause = exc.cause
         return refuse(
@@ -385,6 +406,7 @@ def _failed_part_way(exc: Exception, done: DatedApplied, planned: DatedPlan) -> 
         "internal-error",
         f"{wrote}. The dated playlists failed in a way this build does not expect "
         f"({type(exc).__name__}: {exc})",
+        steps=(again,),
         scope=Scope.RUN,
         origin=_ORIGIN,
         detail={**detail, "kind": type(exc).__name__},
@@ -404,8 +426,13 @@ def apply(cfg: config.Config, account, planned: DatedPlan) -> DatedApplied:
             remote_id = step.remote_id
             if step.action == CREATE:
                 remote_id = account.create_playlist(step.name)
-                account.move_to_folder(remote_id, folder_id)
+                # RECORDED BEFORE THE MOVE, so a refusal between the two
+                # names the playlist now at the account root and its id.
                 done.created.append(step.name)
+                done.ids[step.name] = remote_id
+                done.unplaced.append(step.name)
+                account.move_to_folder(remote_id, folder_id)
+                done.unplaced = [one for one in done.unplaced if one != step.name]
             for start in range(0, len(step.add), CHUNK):
                 chunk = step.add[start : start + CHUNK]
                 held = set(account.add_tracks(remote_id, chunk))
@@ -468,7 +495,12 @@ def add_step(cfg, area, entry, year_plan: folders.Plan, remote_of) -> None:
                         ),
                     }
                 )
-            return {"created": list(done.created), "added": dict(done.added), "refused": dict(done.refused)}
+            return {
+                "created": list(done.created),
+                "ids": dict(done.ids),
+                "added": dict(done.added),
+                "refused": dict(done.refused),
+            }
 
         step.apply = run
     area.steps.append(step)

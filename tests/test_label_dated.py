@@ -23,6 +23,7 @@ from cratekit.label import dated, playlists_cli, sync_cli
 from cratekit.modules.outbound import folders
 from cratekit.organize import account as organize_account
 from cratekit.organize.steps import NOTHING, PLANNED, REFUSED, Area
+from tests.label_fakes import FakeTrack
 from tests.test_label_playlists import LABEL, LABEL_ID, _entry, _years
 from tests.test_label_playlists import followed as followed  # noqa: PLC0414 - fixture
 from tests.test_label_workers import installed as installed  # noqa: PLC0414 - fixture
@@ -37,16 +38,27 @@ def _instant(day: str, hour: int = 12) -> str:
 
 
 def _answer(taken: list[str], day: str, *, answer: str = sync_cli.ALL, settled: bool = True):
+    """A saved answer in the shape ``sync_cli`` writes it, ``Answered.to_json``.
+
+    Settled at 22:00 local, an evening instant, so a reading that kept the
+    recorded UTC day instead of the local one files it under the wrong day
+    in any zone west of UTC.
+    """
+    taking = answer in (sync_cli.ALL, sync_cli.PICK)
     entry = {
         "label_id": LABEL_ID,
         "label_name": LABEL,
         "answer": answer,
+        "offered": len(taken),
+        "taken": list(taken) if taking else [],
+        "left": [] if taking else list(taken),
+        "removed": False,
+        "run": "ask-1",
         "answered_at": _instant(day, 9),
-        "taken": list(taken),
-        "releases": [{"identity": one} for one in taken],
+        "releases": [{"identity": one} for one in taken] if taking else [],
     }
     if settled:
-        entry[sync_cli.SETTLED] = {"run": "go-1", "at": _instant(day)}
+        entry[sync_cli.SETTLED] = {"run": "go-1", "at": _instant(day, 22)}
     return entry
 
 
@@ -84,6 +96,20 @@ def _plan(cfg, fake, account, *, today=TODAY) -> dated.DatedPlan:
 def test_the_go_day_is_the_local_day_of_the_settling():
     document = {"answers": [_answer(["r3"], "2026-10-08")], "labels": {}}
     assert dated.taken_by_goes(document, LABEL_ID) == {"r3": "2026-10-08"}
+
+
+def test_an_evening_go_west_of_utc_keeps_its_local_day(monkeypatch):
+    import time
+
+    monkeypatch.setenv("TZ", "America/New_York")
+    time.tzset()
+    try:
+        document = {"answers": [_answer(["r3"], "2026-10-08")], "labels": {}}
+        assert document["answers"][0][sync_cli.SETTLED]["at"].startswith("2026-10-09T02:00")
+        assert dated.taken_by_goes(document, LABEL_ID) == {"r3": "2026-10-08"}
+    finally:
+        monkeypatch.undo()
+        time.tzset()
 
 
 def test_an_unsettled_or_not_now_answer_took_nothing():
@@ -189,6 +215,19 @@ def test_two_playlists_with_the_dated_name_are_left_alone(followed):
     assert step.action == dated.AMBIGUOUS and not step.writes
 
 
+def test_a_track_the_provider_will_not_play_is_never_planned_on_the_dated_path(followed):
+    cfg, fake, account = followed
+    withdrawn = FakeTrack("t12")
+    withdrawn.available = False
+    fake.releases["r3"] = ([FakeTrack("t4"), FakeTrack("t5"), withdrawn], 2023)
+    _built(cfg, fake, account)
+    _record(cfg, [_answer(["r3"], "2026-10-09")])
+    (step,) = _plan(cfg, fake, account).steps
+    assert step.add == ("t4", "t5")
+    dated.apply(cfg, account, _plan(cfg, fake, account))
+    assert not _plan(cfg, fake, account).writes
+
+
 # 3. The age report
 
 
@@ -258,6 +297,31 @@ def test_the_account_refusing_mid_pass_names_what_was_written_and_a_rerun_finish
     held = _years(account, folder_id)
     assert held["Kompakt 2021 new 2026-10-08"] == ["t1", "t2"]
     assert held["Kompakt 2023 new 2026-10-09"] == ["t4", "t5"]
+
+
+def test_a_move_refused_after_the_create_names_the_playlist_left_at_the_root(
+    followed, monkeypatch
+):
+    cfg, fake, account = followed
+    _built(cfg, fake, account)
+    _record(cfg, [_answer(["r3"], "2026-10-09")])
+    planned = _plan(cfg, fake, account)
+
+    def refuse_move(playlist_id, folder_id):
+        raise RuntimeError("the provider dropped the connection")
+
+    monkeypatch.setattr(account, "move_to_folder", refuse_move)
+    with pytest.raises(CratekitError) as raised:
+        dated.apply(cfg, account, planned)
+    cause = raised.value.cause
+    name = "Kompakt 2023 new 2026-10-09"
+    remote_id = next(pid for pid, title in account.titles.items() if title == name)
+    assert "nothing was written" not in cause.message
+    assert name in cause.message and remote_id in cause.message
+    assert cause.detail["created"] == [name]
+    assert cause.detail["ids"] == {name: remote_id}
+    assert cause.detail["unplaced"] == [[name, remote_id]]
+    assert any("into the label's folder" in one for one in cause.remediation.steps)
 
 
 def test_a_label_with_no_folder_yet_refuses_the_apply_before_any_write(followed):
