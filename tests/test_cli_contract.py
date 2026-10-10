@@ -1961,7 +1961,8 @@ def _routing_tree_cut_over_with_a_source() -> list[str]:
         # a refresh over it would empty every Favorites. The fixture's first
         # content row, which sits in no genre folder, so the plan still holds
         # no folder and writes nothing.
-        if not handle.get_playlist_songs(PlaylistID=str(playlist.ID)):
+        # A LIST, since the binding's query object is truthy with no rows in it.
+        if not list(handle.get_playlist_songs(PlaylistID=str(playlist.ID))):
             handle.add_to_playlist(playlist, "1")
         handle.session.commit()
     finally:
