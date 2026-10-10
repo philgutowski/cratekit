@@ -842,6 +842,7 @@ the same gate with nothing recorded and refuses again. Gates you will meet:
 | `intake.file.native` | apply | `intake file`, intake tree database native; explicit, `crate run decide` only |
 | `tag.retag.confirm` | apply | `tag retag` |
 | `tag.remap.confirm` | apply | `tag remap`; explicit, `crate run decide` only |
+| `tag.suggest.confirm` | apply | `tag suggest`; explicit, `crate run decide` only |
 | `sync.favorites.confirm` | sync | `sync favorites` |
 | `sync.all.favorites.confirm` | sync | `sync all` |
 | `sync.mark.confirm` | apply | `sync mark` |

@@ -4,6 +4,27 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**U114 built, 2026-10-09, on `relay/266`, issue #266: `crate tag suggest`
+offers a genre for a row with none.** A live row with no genre on the row or
+the file gets weighted votes: its artist's other tracks 2 each, its folder's
+1, a neighbour voting once, and with `--catalogue` the lookup `tag folder`
+makes at 6, asked again on a plain miss only, three unread rows in a row
+stopping the walk, answers kept a week in the new library state entry
+`tag_suggest_catalogue` and an unread one for the day. Only a genre adoption
+routes and the taxonomy names exactly is suggested. One explicit gate,
+`tag.suggest.confirm`, shows the plan grouped by genre and band; `--band`
+(high by default), `--leave` and `--set` choose what is written. The apply
+opens with write intent first, checks the rows, then writes and reads back
+each file inside the row engine's session through a new `narrow` step on
+`rows.apply_rows`, and writes the rows whose file took the genre, recorded
+as `tag-suggest`. A row whose file carries a genre is counted
+`file-has-genre` and left to `tag rows`. The review drove ten findings in
+one fix round, eight applied. Battery on the branch: ruff clean, 12,918
+passed and 1 skipped, the scan clean. Twenty five mutation rows, twenty four
+killed, one maintainer facing zero (`docs/mutation/u114-notes.md`). R-934
+to R-938 record what is left, the undo that covers rows and not files first.
+Not yet run on the live library.
+
 **R-925 built, 2026-10-09, on `relay/269`, issue #269: a queued set's
 tracks can be read.** `intake set` writes the tracklist `intake identify`
 writes, through the same writer, into download staging's tracklists folder
