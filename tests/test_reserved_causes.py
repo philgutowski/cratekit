@@ -4698,24 +4698,68 @@ def test_pinned_populations_derive_totals_and_key_by_module():
     different lines of `_pinned_reserved_populations.py` and merge with no
     conflict in that file. The suite still fails when a module's measured set
     disagrees with its pin, naming the module. The derived totals equal the
-    sums and unions of the pinned parts.
+    sums and unions of the pinned parts, and those totals equal the figures
+    measured on the tree.
     """
-    assert PINNED_RESERVED_CAUSE_COUNT + len(PINNED_NON_RESERVED_CAUSES) == (
-        PINNED_RESERVED_CAUSE_COUNT + len(PINNED_NON_RESERVED_CAUSES)
+    causes = declared_causes()
+    non_reserved = causes - CAUSES
+    by_module = kebab_literals_by_module()
+    literals = (
+        frozenset().union(*(frozenset(v) for v in by_module.values()))
+        if by_module
+        else frozenset()
     )
-    pinned_literals = frozenset().union(
-        *(frozenset(v) for v in PINNED_KEBAB_LITERALS_BY_MODULE.values())
+    without = modules_holding_a_named_cause(own_declarations=False)
+    with_own = modules_holding_a_named_cause(own_declarations=True)
+    literal_holders = modules_holding_a_cause_literal()
+    sources = dict(package_sources())
+    both = [
+        relative
+        for relative in with_own
+        if holds_an_in_range_integer(sources[relative])
+    ]
+    literal_both = [
+        relative
+        for relative in literal_holders
+        if holds_an_in_range_integer(sources[relative])
+    ]
+    pinned_literals = (
+        frozenset().union(
+            *(frozenset(v) for v in PINNED_KEBAB_LITERALS_BY_MODULE.values())
+        )
+        if PINNED_KEBAB_LITERALS_BY_MODULE
+        else frozenset()
     )
-    assert len(pinned_literals) == sum(
-        1 for _ in pinned_literals
-    )  # distinct union, not a sum of per-module sizes
-    assert len(PINNED_NAMED_WITHOUT_OWN) + len(PINNED_NAMED_WITH_OWN) >= len(
-        PINNED_NAMED_WITH_INTEGER
+
+    # Derived totals from the pins equal the figures measured on the tree.
+    assert (
+        PINNED_RESERVED_CAUSE_COUNT + len(PINNED_NON_RESERVED_CAUSES),
+        len(PINNED_NON_RESERVED_CAUSES),
+        PINNED_RESERVED_CAUSE_COUNT,
+    ) == (len(causes), len(non_reserved), len(CAUSES)), (
+        "derived cause totals from the pins disagree with the tree"
     )
-    # Every integer-holder is a named-with-own module.
+    assert len(pinned_literals) == len(literals), (
+        f"derived kebab-literal total {len(pinned_literals)} disagrees with "
+        f"the tree's {len(literals)}"
+    )
+    assert (
+        len(PINNED_NAMED_WITHOUT_OWN),
+        len(PINNED_NAMED_WITH_OWN),
+        len(PINNED_NAMED_WITH_INTEGER),
+    ) == (len(without), len(with_own), len(both)), (
+        "derived named at-risk totals from the pins disagree with the tree"
+    )
+    assert (
+        len(PINNED_LITERAL_HOLDERS),
+        len(PINNED_LITERAL_HOLDERS_WITH_INTEGER),
+    ) == (len(literal_holders), len(literal_both)), (
+        "derived literal-holder totals from the pins disagree with the tree"
+    )
+
+    # Structural: integer-holders are subsets; pin keys are module paths.
     assert PINNED_NAMED_WITH_INTEGER <= frozenset(PINNED_NAMED_WITH_OWN)
     assert PINNED_LITERAL_HOLDERS_WITH_INTEGER <= frozenset(PINNED_LITERAL_HOLDERS)
-    # Pin keys are module paths (or slug lines for causes), never a total tuple.
     assert all(key.endswith(".py") for key in PINNED_KEBAB_LITERALS_BY_MODULE)
     assert all(isinstance(slug, str) and slug for slug in PINNED_NON_RESERVED_CAUSES)
 
