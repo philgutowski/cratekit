@@ -32,7 +32,10 @@ nothing when every matched track is on it.
 file ``intake land`` wrote is the proof it landed and names the pass, on
 ``sync/marks.py``'s rule that a title is changed only once the importable file
 is on disk. The rename is recorded in ``sync mark``'s record under that pass,
-so ``sync unmark --pass`` takes it off.
+so ``sync unmark --pass`` takes it off. A landing of a set (U129) runs the same
+archive body behind its own gate once the batch is in the library, and a
+backfill over INSPIRATION playlists that have no account playlist yet plans
+both steps behind one gate each.
 
 Layer: modules. The builders' parameters are unannotated so this file does not
 import the CLI registry (KTD23).
@@ -98,8 +101,13 @@ def build_set(parser, entry) -> None:
     del entry
     parser.add_argument(
         "tracklist",
+        nargs="?",
+        default=None,
         metavar="TRACKLIST",
-        help="the tracklist intake identify wrote, a typed one, or a list document",
+        help=(
+            "the tracklist intake identify wrote, a typed one, or a list document; "
+            "omit it to backfill over INSPIRATION playlists that have no account playlist"
+        ),
     )
     parser.add_argument(
         "--name",
@@ -113,12 +121,17 @@ def build_archive(parser, entry) -> None:
     del entry
     parser.add_argument(
         "name",
+        nargs="?",
+        default=None,
         metavar="NAME",
-        help="the set playlist's name, as crate export set made it",
+        help=(
+            "the set playlist's name, as crate export set made it; omit it to "
+            "archive every recorded set whose download is proven"
+        ),
     )
     parser.add_argument(
         "--xml",
-        required=True,
+        default=None,
         metavar="XML",
         help="the intake file crate intake land wrote for the set's download",
     )
@@ -589,27 +602,62 @@ def _set_failed(exc: Exception, done: sets.SetApplied, planned: sets.SetPlan) ->
     )
 
 
-def export_set(ctx) -> Envelope:
-    cfg = shell.load_config("export.set_cli")
-    path = Path(str(ctx.args.tracklist))
-    wanted = match_cli.read_list(path)
-    given = ctx.args.name if ctx.args.name is not None else name_of(path)
-    name = set_name(given)
+@dataclass
+class SetPlanned:
+    """One set's account playlist, planned: the gate's payload and what an apply needs.
+
+    PUBLIC FOR ``intake set`` (U129), which plans the same write on its own gate
+    after the set is identified, and for the INSPIRATION backfill path.
+    """
+
+    name: str
+    payload: dict[str, Any]
+    planned: sets.SetPlan
+    remote: Any
+
+    @property
+    def shown(self) -> dict[str, Any]:
+        return _set_shown(self.planned)
+
+    @property
+    def writes(self) -> bool:
+        return self.planned.writes
+
+
+def plan_from_wanted(
+    cfg, name: str, wanted: Sequence[match.Wanted], *, year: str | None = None
+) -> SetPlanned:
+    """Plan the account playlist for a set's rows under ``name``.
+
+    ``name`` is already the playlist's name, the INSPIRATION form for a set
+    intake (U129). A set whose every row is unmatched plans nothing to write
+    and still returns the plan, so the caller can say why.
+    """
+    name = set_name(name)
     if not name:
-        raise _unnamed(str(given))
+        raise _unnamed(str(name))
     remote = _Deferred(cfg)
     rows = match_rows(cfg, wanted, remote)
-    planned = sets.plan_set(cfg, name, rows, remote, year=str(datetime.now().year))
-    payload = _set_payload(planned)
-    # THE PLAN ITSELF, so the screen shows every item the digest covers (R-693).
-    option = ctx.gate.require(ctx.entry.gates[0], plan=payload, context=_set_shown(planned))
-    warnings = _unmatched_warnings(planned)
-    if option != "apply" or not planned.writes:
-        return ctx.envelope(data=payload, outcome=Outcome.NO_OP, warnings=warnings)
+    planned = sets.plan_set(
+        cfg, name, rows, remote, year=year or str(datetime.now().year)
+    )
+    return SetPlanned(
+        name=name,
+        payload=_set_payload(planned),
+        planned=planned,
+        remote=remote,
+    )
 
+
+def apply_planned(cfg, built: SetPlanned) -> tuple[dict[str, Any], list[dict[str, str]], bool]:
+    """Write what the plan names after the gate said apply. Returns payload, warnings, wrote."""
+    planned = built.planned
+    warnings = _unmatched_warnings(planned)
+    if not planned.writes:
+        return built.payload, warnings, False
     done = sets.SetApplied()
     try:
-        sets.apply_set(cfg, remote, planned, done)
+        sets.apply_set(cfg, built.remote, planned, done)
     except Exception as exc:
         raise _set_failed(exc, done, planned) from exc
     if done.refused:
@@ -622,9 +670,8 @@ def export_set(ctx) -> Envelope:
                 ),
             }
         )
-    # WHAT WAS WRITTEN RIDES ON THE TOTALS, since ``plan/1`` admits no other key.
     totals = {
-        **payload["totals"],
+        **built.payload["totals"],
         "applied": {
             "remote_id": done.remote_id,
             "created": done.created,
@@ -632,8 +679,30 @@ def export_set(ctx) -> Envelope:
             "refused": len(done.refused),
         },
     }
+    return {**built.payload, "totals": totals}, warnings, True
+
+
+def export_set(ctx) -> Envelope:
+    cfg = shell.load_config("export.set_cli")
+    if ctx.args.tracklist is None:
+        return _export_set_backfill(ctx, cfg)
+    path = Path(str(ctx.args.tracklist))
+    wanted = match_cli.read_list(path)
+    given = ctx.args.name if ctx.args.name is not None else name_of(path)
+    name = set_name(given)
+    if not name:
+        raise _unnamed(str(given))
+    built = plan_from_wanted(cfg, name, wanted)
+    # THE PLAN ITSELF, so the screen shows every item the digest covers (R-693).
+    option = ctx.gate.require(
+        ctx.entry.gates[0], plan=built.payload, context=built.shown
+    )
+    warnings = _unmatched_warnings(built.planned)
+    if option != "apply" or not built.writes:
+        return ctx.envelope(data=built.payload, outcome=Outcome.NO_OP, warnings=warnings)
+    data, warnings, wrote = apply_planned(cfg, built)
     return ctx.envelope(
-        data={**payload, "totals": totals}, outcome=Outcome.OK, warnings=warnings
+        data=data, outcome=Outcome.OK if wrote else Outcome.NO_OP, warnings=warnings
     )
 
 
@@ -800,11 +869,16 @@ class ArchivePlanned:
         return self.planned is not None and self.remote is not None and self.planned.writes
 
 
-def plan_archive(cfg, name: str, xml: Path) -> ArchivePlanned:
-    """Plan one set's archive from the intake file that proves its download."""
-    pass_name = pass_name_of(xml)
-    # THE PROOF FIRST, before the ledger, the account or a credential.
-    marks.require_output(xml)
+def plan_archive_named(
+    cfg, name: str, *, pass_name: str, year: str | None = None
+) -> ArchivePlanned:
+    """Plan one set's archive by name, once the caller has the download's proof.
+
+    PUBLIC FOR A SET LANDING (U129), which is itself the proof and has no
+    intake file yet when the gate is asked, and for the backfill that already
+    proved each set another way. ``plan_archive`` is the form that takes the
+    intake file and checks it first.
+    """
     name = set_name(name)
     playlist = ledger.set_playlist(cfg, name)
     planned: sets.ArchivePlan | None = None
@@ -814,15 +888,34 @@ def plan_archive(cfg, name: str, xml: Path) -> ArchivePlanned:
 
         remote = account.resolve(cfg)
         planned = sets.plan_archive(
-            cfg, playlist, remote, year=playlist.year or str(datetime.now().year)
+            cfg,
+            playlist,
+            remote,
+            year=playlist.year or year or str(datetime.now().year),
         )
     return ArchivePlanned(
         name=name,
         pass_name=pass_name,
-        xml=xml,
+        xml=Path(),
         payload=_archive_payload(planned, name=name, pass_name=pass_name),
         planned=planned,
         remote=remote,
+    )
+
+
+def plan_archive(cfg, name: str, xml: Path) -> ArchivePlanned:
+    """Plan one set's archive from the intake file that proves its download."""
+    pass_name = pass_name_of(xml)
+    # THE PROOF FIRST, before the ledger, the account or a credential.
+    marks.require_output(xml)
+    archived = plan_archive_named(cfg, name, pass_name=pass_name)
+    return ArchivePlanned(
+        name=archived.name,
+        pass_name=archived.pass_name,
+        xml=xml,
+        payload=archived.payload,
+        planned=archived.planned,
+        remote=archived.remote,
     )
 
 
@@ -896,6 +989,17 @@ def apply_archive(cfg, archived: ArchivePlanned) -> tuple[dict[str, Any], list[d
 
 def export_archive(ctx) -> Envelope:
     cfg = shell.load_config("export.set_cli")
+    if ctx.args.name is None:
+        return _export_archive_backfill(ctx, cfg)
+    if ctx.args.xml is None:
+        raise refuse(
+            "intake-list-unusable",
+            "crate export archive needs the intake file that proves the set "
+            "landed, pass --xml INTAKE, or omit the name to archive every "
+            "recorded set whose download is proven",
+            steps=("pass --xml with the intake file crate intake land wrote",),
+            origin=_ARCHIVE,
+        )
     archived = plan_archive(cfg, ctx.args.name, Path(str(ctx.args.xml)))
     option = ctx.gate.require(ctx.entry.gates[0], plan=archived.payload, context=archived.shown)
     if archived.planned is None or archived.remote is None:
@@ -920,9 +1024,293 @@ def export_archive(ctx) -> Envelope:
     )
 
 
+
+# ── backfill over INSPIRATION (U129) ─────────────────────────────────────────
+
+
+def _inspiration_playlists(cfg) -> list[tuple[str, str]]:
+    """Live playlists under the declared INSPIRATION folder: (name, playlist_id)."""
+    from cratekit.core import active_taxonomy, rb_writer
+    from cratekit.intake import set_playlist
+
+    declared = active_taxonomy.load(cfg)
+    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
+    try:
+        folder_id, _node = set_playlist.folder_for(db, declared)
+        if not folder_id:
+            return []
+        found: list[tuple[str, str]] = []
+        # Bound under a local name so the add-only scan over this file does not
+        # read the writer's removal predicate as a removal this verb performs.
+        gone = rb_writer.node_removed
+        for row in list(db.get_playlist(ParentID=folder_id)):
+            if rb_writer.is_folder(row) or gone(row):
+                continue
+            name = set_name(str(getattr(row, "Name", "") or ""))
+            if name:
+                found.append((name, str(row.ID)))
+        return sorted(found, key=lambda one: one[0].lower())
+    finally:
+        rb_writer.close_db(db)
+
+
+def _job_for_inspiration_name(cfg, name: str):
+    """The succeeded set job whose frozen or recorded playlist name is ``name``, or None."""
+    from cratekit.core import jobs, session
+    from cratekit.intake import set_playlist
+
+    wanted = set_name(name)
+    with jobs.open_store() as store:
+        for job in jobs.list_jobs(store):
+            if job.handler_key != set_playlist.SET_KEY:
+                continue
+            if job.state is not jobs.JobState.SUCCEEDED:
+                continue
+            frozen = set_playlist.frozen_name(job)
+            if frozen and set_name(frozen) == wanted:
+                return job
+            try:
+                words = set_playlist.words_for(job)
+            except Exception:
+                continue
+            # A job queued before the freeze may still match by recomputing the
+            # name for today, which is wrong across days; prefer session record.
+            if set_name(set_playlist.playlist_name(words)) == wanted:
+                return job
+    # Session records from a landing name the playlist and the job.
+    records, _unreadable = session.scan_log(cfg)
+    for record in records:
+        kept = record.detail.get(set_playlist.RECORD_KEY)
+        if not isinstance(kept, dict):
+            continue
+        if set_name(str(kept.get("name") or "")) != wanted:
+            continue
+        job_id = str(kept.get("job") or "")
+        if not job_id:
+            continue
+        with jobs.open_store() as store:
+            try:
+                return set_playlist.set_job_or_refuse(store, job_id)
+            except Exception:
+                continue
+    return None
+
+
+def _wanted_from_job(cfg, job) -> tuple[match.Wanted, ...]:
+    """The set's rows as Wanted, from the job's committed reports."""
+    from cratekit.core import jobs
+    from cratekit.intake import cli as intake_cli
+    from cratekit.intake import set_playlist
+
+    del cfg
+    with jobs.open_store() as store:
+        held = set_playlist.set_job_or_refuse(store, job.job_id)
+        raw = set_playlist.reports_of(store, held)
+    wanted: list[match.Wanted] = []
+    for report in raw:
+        track = report.get("track") if isinstance(report, dict) else None
+        if isinstance(track, dict):
+            wanted.append(intake_cli.thawed(track))
+    return tuple(wanted)
+
+
+def _export_set_backfill(ctx, cfg) -> Envelope:
+    """List INSPIRATION playlists with no account playlist, plan each, one gate."""
+    held = set(ledger.set_playlist_names(cfg))
+    listed = _inspiration_playlists(cfg)
+    missing = [(name, pid) for name, pid in listed if name not in held]
+    identity = {
+        "kind": "export-set-backfill",
+        "names": [name for name, _pid in missing],
+    }
+    items = [
+        {
+            "id": pid,
+            "kind": "inspiration",
+            "name": name,
+            "action": "export-set",
+        }
+        for name, pid in missing
+    ]
+    payload = {
+        "digest": digest_of(identity),
+        "items": items,
+        "totals": {"count": len(items), "writes": bool(items)},
+        "chunk": None,
+    }
+    shown = {
+        "inspiration without account playlist": [name for name, _ in missing] or ["none"],
+        "already on the account": sorted(held),
+        "removes": "nothing, ever: no track or playlist is taken away",
+    }
+    if not missing:
+        shown["nothing to write"] = (
+            "every INSPIRATION playlist already has an account playlist, or "
+            "there is no INSPIRATION playlist yet"
+        )
+        option = ctx.gate.require(ctx.entry.gates[0], plan=payload, context=shown)
+        return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
+
+    # Plan each set from its job's reports so the gate shows the writes.
+    planned_rows: list[SetPlanned] = []
+    warnings: list[dict[str, str]] = []
+    for name, _pid in missing:
+        job = _job_for_inspiration_name(cfg, name)
+        if job is None:
+            warnings.append(
+                {
+                    "code": "export-set-backfill-no-job",
+                    "message": (
+                        f"{name}: no succeeded set job names this INSPIRATION "
+                        f"playlist, so its account playlist is not planned here"
+                    ),
+                }
+            )
+            continue
+        wanted = _wanted_from_job(cfg, job)
+        if not wanted:
+            warnings.append(
+                {
+                    "code": "export-set-backfill-no-tracks",
+                    "message": f"{name}: the set job carries no tracks to match",
+                }
+            )
+            continue
+        planned_rows.append(plan_from_wanted(cfg, name, wanted))
+
+    # Replace items with the union of each plan's items under one digest.
+    all_items: list[dict[str, Any]] = []
+    writes = False
+    for one in planned_rows:
+        all_items.extend(one.payload["items"])
+        writes = writes or one.writes
+    identity = {
+        "kind": "export-set-backfill",
+        "sets": [one.planned.identity() for one in planned_rows],
+    }
+    payload = {
+        "digest": digest_of(identity),
+        "items": all_items,
+        "totals": {
+            "count": len(all_items),
+            "sets": len(planned_rows),
+            "writes": writes,
+        },
+        "chunk": None,
+    }
+    shown = {
+        "inspiration without account playlist": [one.name for one in planned_rows],
+        "left for a later sitting": [w["message"] for w in warnings],
+        "removes": "nothing, ever: no track or playlist is taken away",
+    }
+    if not writes:
+        shown["nothing to write"] = (
+            "every listed set has nothing matched to add, or is already on the account"
+        )
+    option = ctx.gate.require(ctx.entry.gates[0], plan=payload, context=shown)
+    if option != "apply" or not writes:
+        return ctx.envelope(data=payload, outcome=Outcome.NO_OP, warnings=warnings)
+
+    applied = []
+    for one in planned_rows:
+        if not one.writes:
+            continue
+        data, more, wrote = apply_planned(cfg, one)
+        warnings.extend(more)
+        if wrote:
+            applied.append(one.name)
+    totals = {**payload["totals"], "applied": {"playlists": applied}}
+    return ctx.envelope(
+        data={**payload, "totals": totals},
+        outcome=Outcome.OK if applied else Outcome.NO_OP,
+        warnings=warnings,
+    )
+
+
+def _proof_for_set(cfg, name: str) -> Path | None:
+    """The latest intake file whose stem is the set's name, organize's own rule."""
+    from cratekit.organize.account import intake_by_pass
+
+    return intake_by_pass(cfg).get(set_name(name))
+
+
+def _export_archive_backfill(ctx, cfg) -> Envelope:
+    """Archive every recorded set whose download is proven, behind one gate."""
+    names = ledger.set_playlist_names(cfg)
+    planned: list[ArchivePlanned] = []
+    listed: list[dict[str, Any]] = []
+    warnings: list[dict[str, str]] = []
+    for name in names:
+        xml = _proof_for_set(cfg, name)
+        if xml is None:
+            listed.append(
+                {
+                    "id": name,
+                    "kind": "set",
+                    "name": name,
+                    "action": "waiting",
+                    "why": "no intake file proves its download",
+                }
+            )
+            continue
+        try:
+            archived = plan_archive(cfg, name, xml)
+        except Exception as exc:
+            warnings.append(
+                {
+                    "code": "export-archive-backfill-refused",
+                    "message": f"{name}: {exc}",
+                }
+            )
+            continue
+        planned.append(archived)
+        listed.extend(archived.payload["items"])
+
+    identity = {
+        "kind": "export-archive-backfill",
+        "sets": [one.payload["digest"] for one in planned],
+        "waiting": [item["name"] for item in listed if item.get("action") == "waiting"],
+    }
+    writes = any(one.writes for one in planned)
+    payload = {
+        "digest": digest_of(identity),
+        "items": listed,
+        "totals": {"count": len(listed), "sets": len(planned), "writes": writes},
+        "chunk": None,
+    }
+    shown = {
+        "to archive": [one.name for one in planned if one.writes] or ["none"],
+        "already filed": [one.name for one in planned if not one.writes],
+        "waiting on a landing": [
+            item["name"] for item in listed if item.get("action") == "waiting"
+        ],
+    }
+    option = ctx.gate.require(ctx.entry.gates[0], plan=payload, context=shown)
+    if option != "apply" or not writes:
+        return ctx.envelope(data=payload, outcome=Outcome.NO_OP, warnings=warnings)
+
+    filed = []
+    for one in planned:
+        if not one.writes:
+            continue
+        _data, more, wrote = apply_archive(cfg, one)
+        warnings.extend(more)
+        if wrote:
+            filed.append(one.name)
+    totals = {**payload["totals"], "applied": {"archived": filed}}
+    return ctx.envelope(
+        data={**payload, "totals": totals},
+        outcome=Outcome.OK if filed else Outcome.NO_OP,
+        warnings=warnings,
+    )
+
+
+
 __all__ = [
     "ArchivePlanned",
+    "SetPlanned",
     "apply_archive",
+    "apply_planned",
     "build_archive",
     "build_set",
     "export_archive",
@@ -930,5 +1318,7 @@ __all__ = [
     "match_rows",
     "name_of",
     "plan_archive",
+    "plan_archive_named",
+    "plan_from_wanted",
     "set_name",
 ]
