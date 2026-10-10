@@ -69,7 +69,15 @@ def named_place(declared: taxonomy.Taxonomy, bucket_id: str, sub_id: str) -> tup
     a caller about to add a membership keeps asking ``destination`` and is
     refused. The folder is the declared bucket's own name as it is now, so a
     folder renamed in the taxonomy is still found.
+
+    A SPLIT PLACE IS THE HOLDER'S OWN BAND (U118), so it resolves as that band
+    does, through ``destination`` asked of the holder. The track leaves the
+    very playlist the holder files into, and a move cannot find a second
+    spelling of it.
     """
+    split = routing.split_place(declared, bucket_id, sub_id)
+    if split is not None:
+        return destination(declared, split.bucket, split.sub)
     former = routing.former_place(declared, bucket_id, sub_id)
     if former is None:
         return destination(declared, bucket_id, sub_id)
@@ -84,9 +92,12 @@ def recorded_under(
     A former place was written while it was a sub of the bucket whose folder
     holds it, so its node is recorded under that bucket and that sub, and
     asking for it under the bucket that now declares it would find nothing
-    and read a renamed playlist as absent.
+    and read a renamed playlist as absent. A split place is the holder's band
+    and its node is recorded under the holder and the band (U118).
     """
-    former = routing.former_place(declared, bucket_id, sub_id)
+    former = routing.former_place(declared, bucket_id, sub_id) or routing.split_place(
+        declared, bucket_id, sub_id
+    )
     if former is None:
         return bucket_id, sub_id
     return former.bucket, former.sub
@@ -124,6 +135,10 @@ def placements_from(
     that declares it and the one whose folder holds it. A track in it holds
     that competing sub of each, found by the old folder's name and the old
     playlist's, or by the node recorded while the playlist was still a sub.
+    A SPLIT PLACE IS READ UNDER BOTH TOO (U118): every track in the holder's
+    band holds that band in the holder and the split place in the declaring
+    bucket, whatever its genre. Which of the two a track leaves is the move's
+    question, asked of the genre, and not this reader's.
 
     A PLAYLIST REKORDBOX REMOVED IS NOT A PLACE EITHER (R-758). It shows no
     track, and the move finds the playlists it removes from among the live

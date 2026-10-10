@@ -56,7 +56,7 @@ from cratekit.core import config
 # next rename (R19).
 _ID = re.compile(r"^[a-z][a-z0-9_]*$")
 
-SUPPORTED_SCHEMA_VERSIONS = frozenset({1, 2})
+SUPPORTED_SCHEMA_VERSIONS = frozenset({1, 2, 3})
 
 # The schema version a template has to state before it may declare a former
 # place (R-797). A former place changes what competes, and a loader ignores a
@@ -67,6 +67,12 @@ SUPPORTED_SCHEMA_VERSIONS = frozenset({1, 2})
 # it: version 1 with a former place is refused here, and version 2 is refused
 # there.
 FORMER_PLACE_SCHEMA_VERSION = 2
+
+# The schema version a template has to state before it may declare a split
+# place (U118), for the former place's reason: a build that reads version 2
+# ignores the key, sees no competing place in the folder the genre left, and
+# files every track into the new folder while it still sits in the old one.
+SPLIT_PLACE_SCHEMA_VERSION = 3
 
 # The sources whose words are read through a table of their own (R-799), by the
 # name a file's record gives each. ONE, the general catalogue. The record shops
@@ -241,6 +247,38 @@ class FormerPlace:
 
 
 @dataclass(frozen=True)
+class SplitPlace:
+    """A band of another bucket that this bucket's tracks still sit in (U118).
+
+    WHY IT IS NOT A FORMER PLACE. Soul was filed under R&B's energy bands as
+    one folder until the author split it out. Those bands are still R&B's, so
+    a former place naming one is refused by design: leaving it would take
+    R&B's own tracks out of a playlist that is theirs. A split place is the
+    other half of that rule. It names a playlist the holder still files into,
+    and a track leaves it only when its genre names the bucket that declares
+    the place, so an R&B track in ``R&B / Med`` is never touched and a Soul
+    track there moves to ``Soul / Med``.
+
+    IT COMPETES IN THE DECLARING BUCKET ONLY. In the holder it is already one
+    of the holder's own bands, and competing a second time there would read
+    every track in it as holding two places.
+
+    ``id`` is the identifier it competes under in the declaring bucket.
+    ``bucket`` is the holder, ``sub`` the band's identifier there, which is
+    what a previous write recorded its node under, and ``display`` the name
+    the holder gives that band, which the loader checks.
+
+    A SPLIT PLACE IS ONLY EVER LEFT. No resolver answers with one, so nothing
+    is filed into it through the declaring bucket.
+    """
+
+    id: str
+    bucket: str
+    sub: str
+    display: str
+
+
+@dataclass(frozen=True)
 class Bucket:
     """One folder in the tree, with everything that varies about it declared."""
 
@@ -256,6 +294,7 @@ class Bucket:
     sub_by_source: SubBySource | None = None
     rates: bool = True
     formerly: tuple[FormerPlace, ...] = ()
+    split_from: tuple[SplitPlace, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -516,6 +555,9 @@ class Taxonomy:
     _former_places: Mapping[str, tuple[tuple[str, "FormerPlace"], ...]] = field(
         repr=False, default_factory=dict
     )
+    _split_places: Mapping[str, tuple[tuple[str, "SplitPlace"], ...]] = field(
+        repr=False, default_factory=dict
+    )
     _vocabulary: Mapping[str, Mapping[str, VocabularyWord]] = field(
         repr=False, default_factory=dict
     )
@@ -554,6 +596,15 @@ class Taxonomy:
         asked per track and per bucket.
         """
         return self._former_places.get(bucket_id, ())
+
+    def split_places(self, bucket_id: str) -> tuple[tuple[str, "SplitPlace"], ...]:
+        """Every split place one bucket declares or holds, with its declarer.
+
+        BOTH SIDES, as :meth:`former_places` answers, though a split place
+        competes only where it is declared: the holder's side is what the move
+        asks to know a band of its own is settled by the declaring bucket.
+        """
+        return self._split_places.get(bucket_id, ())
 
     def bucket(self, bucket_id: str) -> Bucket:
         try:
@@ -930,6 +981,7 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
     problems += sub_class_problems
 
     problems += _check_former_places(buckets, energy, sub_classes, int(version))
+    problems += _check_split_places(buckets, energy, sub_classes, int(version))
 
     fuzzy, fuzzy_problems = _build_fuzzy(data.get("fuzzy") or [], by_id)
     problems += fuzzy_problems
@@ -983,6 +1035,7 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
         _routing_alias=routing_alias,
         _tagging_alias=tagging_alias,
         _former_places=_index_former_places(buckets),
+        _split_places=_index_split_places(buckets),
         _vocabulary={
             table.source: {row.word.lower(): row for row in table.words}
             for table in vocabularies
@@ -997,6 +1050,18 @@ def _index_former_places(
     found: dict[str, list[tuple[str, FormerPlace]]] = {}
     for declarer in buckets:
         for place in declarer.formerly:
+            for bucket_id in dict.fromkeys((declarer.id, place.bucket)):
+                found.setdefault(bucket_id, []).append((declarer.id, place))
+    return {bucket_id: tuple(places) for bucket_id, places in found.items()}
+
+
+def _index_split_places(
+    buckets: Sequence[Bucket],
+) -> dict[str, tuple[tuple[str, SplitPlace], ...]]:
+    """Each bucket's split places, its own and the ones its bands are for another."""
+    found: dict[str, list[tuple[str, SplitPlace]]] = {}
+    for declarer in buckets:
+        for place in declarer.split_from:
             for bucket_id in dict.fromkeys((declarer.id, place.bucket)):
                 found.setdefault(bucket_id, []).append((declarer.id, place))
     return {bucket_id: tuple(places) for bucket_id, places in found.items()}
@@ -1221,6 +1286,25 @@ def _build_buckets(
             )
             for row in formerly_raw
         )
+        # THE SAME SHAPE CHECK, for the same hand edit (U118).
+        split_raw = entry.get("split_from") or []
+        if not isinstance(split_raw, list) or not all(
+            isinstance(row, Mapping) for row in split_raw
+        ):
+            problems.append(
+                f"{where}: split_from must be an array of tables, written "
+                f"[[bucket.split_from]] with an id, a bucket, a sub and a display"
+            )
+            split_raw = []
+        split_from = tuple(
+            SplitPlace(
+                id=str(row.get("id", "")),
+                bucket=str(row.get("bucket", "")),
+                sub=str(row.get("sub", "")),
+                display=str(row.get("display", "")),
+            )
+            for row in split_raw
+        )
 
         buckets.append(
             Bucket(
@@ -1236,6 +1320,7 @@ def _build_buckets(
                 sub_by_source=sub_by_source,
                 rates=bool(entry.get("rates", True)),
                 formerly=formerly,
+                split_from=split_from,
             )
         )
 
@@ -1366,6 +1451,110 @@ def _check_former_places(
                     )
                 else:
                     claimed[key] = bucket.id
+    return problems
+
+
+def _band_names(bucket: Bucket, energy: Energy) -> dict[str, str]:
+    """The bands and the no reading sub one bucket files into, by identifier.
+
+    EMPTY FOR A BUCKET THAT DOES NOT SPLIT BY ENERGY, by
+    :func:`live_places`'s own test, so the two cannot disagree about which
+    buckets have bands. Each under the bucket's own label for it.
+    """
+    if bucket.sub_by_source is not None or not energy.enabled or not bucket.energy.enabled:
+        return {}
+    names = {
+        band.id: bucket.energy.band_display.get(band.id, band.display) for band in energy.bands
+    }
+    if energy.no_energy_sub is not None:
+        names[energy.no_energy_sub.id] = energy.no_energy_sub.display
+    return names
+
+
+def _check_split_places(
+    buckets: Sequence[Bucket],
+    energy: Energy,
+    sub_classes: Sequence[SubClass],
+    version: int,
+) -> list[str]:
+    """Refuse a split place that is not one of its holder's live bands (U118).
+
+    THE REVERSE OF :func:`_check_former_places`. A split place is left by the
+    tracks whose genre names the declaring bucket and stays the holder's for
+    every other track, so it has to be a band the holder still files into,
+    under the name the holder gives it, or a move would leave a playlist the
+    writer cannot find. Both buckets have to split by energy, since a track
+    leaves the holder's band for the declaring bucket's band its reading
+    names. Its identifier is its own: not a place the declaring bucket
+    already holds, and not shared with any other former or split place. And
+    one band is split out by one bucket, since a track leaving it would
+    otherwise be claimed twice.
+
+    THE TEMPLATE HAS TO STATE THE VERSION THAT KNOWS ONE. See
+    :data:`SPLIT_PLACE_SCHEMA_VERSION`.
+    """
+    problems: list[str] = []
+    by_id = {bucket.id: bucket for bucket in buckets}
+    seen = {former.id: bucket.id for bucket in buckets for former in bucket.formerly}
+    claimed: dict[tuple[str, str], str] = {}
+    for bucket in buckets:
+        if bucket.split_from and version < SPLIT_PLACE_SCHEMA_VERSION:
+            problems.append(
+                f"[[bucket]] {bucket.id}: declares a split place under schema_version "
+                f"{version}; write schema_version = {SPLIT_PLACE_SCHEMA_VERSION}, since a "
+                f"build that reads version {version} ignores the declaration and files a "
+                f"track into its new place while it still sits in the old one"
+            )
+        if bucket.split_from and not _band_names(bucket, energy):
+            problems.append(
+                f"[[bucket]] {bucket.id}: declares a split place and does not split by "
+                f"energy; a track leaves the band it was split from for the band its "
+                f"reading names here"
+            )
+        own_ids, _own_displays = live_places(bucket, energy, sub_classes)
+        for place in bucket.split_from:
+            where = f"[[bucket]] {bucket.id} split_from {place.id or place.display!r}"
+            if not _ID.match(place.id):
+                problems.append(f"{where}: id {place.id!r} must match {_ID.pattern}")
+            if place.id in own_ids:
+                problems.append(
+                    f"{where}: id {place.id!r} is already a sub of this bucket; a split "
+                    f"place competes under an identifier of its own"
+                )
+            if place.id in seen:
+                problems.append(
+                    f"{where}: id {place.id!r} is already a former or split place of "
+                    f"{seen[place.id]!r}"
+                )
+            seen.setdefault(place.id, bucket.id)
+            holder = by_id.get(place.bucket)
+            if holder is None or holder.id == bucket.id:
+                problems.append(
+                    f"{where}: names bucket {place.bucket!r}, which is not another declared "
+                    f"bucket; a split place is a band of the folder the genre was split from"
+                )
+                continue
+            bands = _band_names(holder, energy)
+            if place.sub not in bands:
+                problems.append(
+                    f"{where}: {place.sub!r} is not a band {place.bucket!r} files into "
+                    f"({sorted(bands)}); a split place is a playlist its holder still "
+                    f"keeps, and one it stopped declaring is a former place"
+                )
+            elif place.display != bands[place.sub]:
+                problems.append(
+                    f"{where}: display {place.display!r} is not {bands[place.sub]!r}, the "
+                    f"name {place.bucket!r} gives {place.sub!r}; a move finds the playlist "
+                    f"it leaves by that name"
+                )
+            key = (place.bucket, place.sub)
+            if key in claimed:
+                problems.append(
+                    f"{where}: {place.sub!r} under {place.bucket!r} is already split out by "
+                    f"{claimed[key]!r}; one band is left by one bucket"
+                )
+            else:
+                claimed[key] = bucket.id
     return problems
 
 
@@ -1832,10 +2021,20 @@ def _build_alias_indexes(
                 )
             routing[alias] = bucket.id
 
+    # Bucket-level first, sub-level second: a sub alias is the more specific
+    # statement, and the tagger's own table answers with the sub's name.
+    #
+    # AND WITHIN THE BUCKET LEVEL, ROUTING ALIASES FIRST AND TAGGING-ONLY ONES
+    # SECOND (U118), for the same reason one level up: a word a bucket lists
+    # for tagging alone is the more specific statement about what to write.
+    # "Trap / Wave" routes to the breaks bucket and has always tagged as
+    # Hip-Hop, through a sub alias while Hip-Hop was a sub. Hip-Hop is a bucket
+    # now, so its word is a bucket's tagging alias and must still win over the
+    # routing alias. Two routing aliases, or two tagging-only aliases, of two
+    # buckets still refuse.
+    tagged: dict[str, str] = {}
     for bucket in buckets:
-        # Bucket-level first, sub-level second: a sub alias is the more specific
-        # statement, and the tagger's own table answers with the sub's name.
-        for alias in (*bucket.aliases, *bucket.tag_aliases):
+        for alias in bucket.aliases:
             key = alias.lower().strip()
             existing = tagging.get(key)
             if existing is not None and existing != (bucket.id, None):
@@ -1843,6 +2042,17 @@ def _build_alias_indexes(
                     f"tagging alias {alias!r} is claimed by both {existing} and "
                     f"({bucket.id!r}, None)"
                 )
+            tagging[key] = (bucket.id, None)
+    for bucket in buckets:
+        for alias in bucket.tag_aliases:
+            key = alias.lower().strip()
+            claimer = tagged.get(key)
+            if claimer is not None and claimer != bucket.id:
+                problems.append(
+                    f"tagging alias {alias!r} is claimed by both ({claimer!r}, None) and "
+                    f"({bucket.id!r}, None)"
+                )
+            tagged[key] = bucket.id
             tagging[key] = (bucket.id, None)
     for bucket in buckets:
         for sub in bucket.subs:

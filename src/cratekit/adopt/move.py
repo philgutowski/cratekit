@@ -58,6 +58,14 @@ moved INTO a former place. A track sitting only in one, claimed by neither
 bucket, is listed once and not moved, so the old playlist is never read as
 empty while it still holds tracks.
 
+A SPLIT PLACE IS LEFT THROUGH THE SAME RULE TOO (U118). A genre split out of
+a folder that keeps its bands, Soul out of R&B, declares those bands as split
+places, and each is a competing sub of the declaring bucket alone. So a track
+whose genre names Soul and that sits in ``R&B / Med`` is a move like any
+other, ``Soul / Med`` added and ``R&B / Med`` left, while a track whose genre
+names R&B is never asked about it. Only an entry that claims the declaring
+bucket decides on one; the tree path in either bucket does not.
+
 Layer: modules. It performs no input. Everything it reads is handed in.
 """
 
@@ -301,6 +309,10 @@ def _left_reason(
     track that holds a stale BAND as well is still left, since which band is
     right is the question a reading answers. A default STYLE is not treated
     this way: it would file a track as a style nobody said it was.
+
+    A SPLIT PLACE IS LEFT THE SAME WAY (U118). What sends a track out of the
+    holder's band is its genre naming the declaring bucket, so a track there
+    with no reading goes to this bucket's no reading sub.
     """
     if unnamed:
         return LEFT_UNNAMED
@@ -308,6 +320,7 @@ def _left_reason(
         if entry.energy is not None:
             return ""
         former = {place.id for _declarer, place in routing.former_places(declared, entry.bucket)}
+        former |= {place.id for place in declared.bucket(entry.bucket).split_from}
         return "" if set(stale) <= former else LEFT_NO_READING
     by_source = declared.bucket(entry.bucket).sub_by_source
     if by_source is None:
@@ -351,8 +364,12 @@ def standing(
         return None
     # A FORMER PLACE IS NEVER A TARGET (R-797). No resolver answers with one,
     # so this is an entry somebody built by hand, and a move made on it would
-    # file a track into a playlist the taxonomy stopped declaring.
-    if routing.former_place(declared, entry.bucket, entry.sub) is not None:
+    # file a track into a playlist the taxonomy stopped declaring. A split
+    # place is never one either (U118): it is another bucket's band.
+    if (
+        routing.former_place(declared, entry.bucket, entry.sub) is not None
+        or routing.split_place(declared, entry.bucket, entry.sub) is not None
+    ):
         return None
     held = tuple(sorted(set(placements.holds(entry.bucket, entry.content_id)) & competing))
     stale = tuple(sub for sub in held if sub != entry.sub)
@@ -569,12 +586,27 @@ def settled_in_the_other_bucket(
     a track in the old playlist and in a band whose genre names a style of the
     old folder: both buckets planned leaving the one membership, or one moved
     the track while the other listed it as left.
+
+    A SPLIT PLACE IS NEVER THE TREE PATH'S IN EITHER BUCKET (U118). In the
+    bucket that declares it, every track in the holder's band reads as holding
+    it, R&B's own tracks included, so the tree path there would plan over
+    tracks the genre never sent; only :func:`standing` decides on it, for an
+    entry claiming the declarer. In the holder, the band is settled by the
+    declaring bucket when the entry claims that bucket, so a track in two of
+    the holder's bands is not moved between them by the holder while the
+    declaring bucket moves it out of both.
     """
-    return frozenset(
+    settled = {
         place.id
         for declarer, place in routing.former_places(declared, bucket)
         if claims(entry, place.bucket if declarer == bucket else declarer)
-    )
+    }
+    for declarer, place in routing.split_places(declared, bucket):
+        if declarer == bucket:
+            settled.add(place.id)
+        elif claims(entry, declarer):
+            settled.add(place.sub)
+    return frozenset(settled)
 
 
 def held_in_tree(

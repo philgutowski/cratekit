@@ -71,8 +71,9 @@ def problems_from(raw: dict, mutate) -> tuple[str, ...]:
 
 def test_the_shipped_default_loads(default):
     # 2 since R-797: the shipped template declares a former place, and a
-    # template has to state the version that knows one.
-    assert default.schema_version == 2
+    # template has to state the version that knows one. 3 since U118, for a
+    # split place, the same way.
+    assert default.schema_version == 3
     assert default.buckets
     assert default.fallback.bucket in default.bucket_ids()
 
@@ -643,14 +644,19 @@ def _holder(data: dict) -> dict:
     return next(bucket for bucket in data["bucket"] if bucket["id"] == former["bucket"])
 
 
-def test_the_shipped_template_declares_one_former_place_and_it_loads(default, default_raw):
-    declared = [place for bucket in default.buckets for place in bucket.formerly]
-    assert len(declared) == 1
-    (former,) = declared
-    raw = _promoted(default_raw)["formerly"][0]
-    assert (former.id, former.bucket, former.sub, former.display) == (
-        raw["id"], raw["bucket"], raw["sub"], raw["display"]
-    )
+def test_the_shipped_template_declares_two_former_places_and_they_load(default, default_raw):
+    """R&B's since R-797 and Hip-Hop's since U118, each read as written."""
+    declared = [
+        (bucket.id, place) for bucket in default.buckets for place in bucket.formerly
+    ]
+    raw = [
+        (bucket["id"], row) for bucket in default_raw["bucket"] for row in bucket.get("formerly", [])
+    ]
+    assert len(declared) == len(raw) == 2
+    for (bucket_id, former), (raw_id, row) in zip(declared, raw):
+        assert (bucket_id, former.id, former.bucket, former.sub, former.display) == (
+            raw_id, row["id"], row["bucket"], row["sub"], row["display"]
+        )
 
 
 def test_a_former_place_in_a_bucket_nobody_declares_is_refused(default_raw):
@@ -778,7 +784,8 @@ def test_a_former_place_short_of_a_field_is_refused(default_raw, field, value, m
 
 def test_a_template_with_no_former_place_loads_as_it_always_did(default_raw):
     def mutate(data):
-        del _promoted(data)["formerly"]
+        for bucket in data["bucket"]:
+            bucket.pop("formerly", None)
 
     loaded = build_taxonomy(mutated(default_raw, mutate))
     assert all(bucket.formerly == () for bucket in loaded.buckets)
@@ -801,7 +808,9 @@ def test_a_former_place_under_schema_version_1_is_refused(default_raw):
 def test_a_version_1_template_with_no_former_place_still_loads(default_raw, second):
     def mutate(data):
         data["schema_version"] = 1
-        del _promoted(data)["formerly"]
+        for bucket in data["bucket"]:
+            bucket.pop("formerly", None)
+            bucket.pop("split_from", None)
 
     assert build_taxonomy(mutated(default_raw, mutate)).schema_version == 1
     assert second.schema_version == 1
@@ -836,3 +845,184 @@ def test_a_former_place_whose_id_is_a_sub_of_the_bucket_that_holds_it_is_refused
         _promoted(data)["formerly"][0]["id"] = _holder(data)["sub"][0]["id"]
 
     assert any("where a former place competes as well" in p for p in problems_from(default_raw, mutate))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# A split place (U118): the loader refuses one that is not a live band
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _splitter(data: dict) -> dict:
+    """The bucket of the shipped template that declares split places."""
+    return next(bucket for bucket in data["bucket"] if bucket.get("split_from"))
+
+
+def _split_holder(data: dict) -> dict:
+    """The bucket whose bands those split places are."""
+    place = _splitter(data)["split_from"][0]
+    return next(bucket for bucket in data["bucket"] if bucket["id"] == place["bucket"])
+
+
+def test_the_shipped_template_splits_one_bucket_out_of_every_band_of_another(default, default_raw):
+    """Soul out of R&B: every band and the no reading sub, each read as written."""
+    (splitter,) = [bucket for bucket in default.buckets if bucket.split_from]
+    holder = default.bucket(splitter.split_from[0].bucket)
+    raw = _splitter(default_raw)["split_from"]
+    assert [(p.id, p.bucket, p.sub, p.display) for p in splitter.split_from] == [
+        (row["id"], row["bucket"], row["sub"], row["display"]) for row in raw
+    ]
+    assert {place.bucket for place in splitter.split_from} == {holder.id}
+    assert {place.sub for place in splitter.split_from} == {
+        *(band.id for band in default.energy.bands),
+        default.energy.no_energy_sub.id,
+    }
+
+
+def test_a_split_place_naming_a_band_the_holder_does_not_file_into_is_refused(default_raw):
+    """The guard that stops a former place being written as a split place."""
+
+    def mutate(data):
+        _splitter(data)["split_from"][0]["sub"] = "no_such_band"
+
+    assert any("is not a band" in p for p in problems_from(default_raw, mutate))
+
+
+def test_a_split_place_out_of_a_bucket_with_no_bands_is_refused(default_raw):
+    def mutate(data):
+        holder = next(bucket for bucket in data["bucket"] if bucket.get("sub_by_source"))
+        _splitter(data)["split_from"][0]["bucket"] = holder["id"]
+
+    assert any("is not a band" in p for p in problems_from(default_raw, mutate))
+
+
+def test_a_split_place_under_another_name_than_the_holders_is_refused(default_raw):
+    def mutate(data):
+        _splitter(data)["split_from"][0]["display"] = "Renamed by hand"
+
+    assert any("the name" in p and "gives" in p for p in problems_from(default_raw, mutate))
+
+
+def test_a_split_place_of_a_band_under_its_own_label_is_checked_against_that_label(default_raw):
+    """A holder that labels its bands differently is asked for its label."""
+
+    def mutate(data):
+        holder = next(
+            bucket for bucket in data["bucket"] if (bucket.get("energy") or {}).get("band_display")
+        )
+        band, label = next(iter(holder["energy"]["band_display"].items()))
+        place = _splitter(data)["split_from"][0]
+        place.update(bucket=holder["id"], sub=band, display=label)
+        for other in _splitter(data)["split_from"][1:]:
+            other["bucket"] = holder["id"]
+            other["display"] = holder["energy"]["band_display"].get(other["sub"], other["display"])
+
+    assert build_taxonomy(mutated(default_raw, mutate)).buckets
+
+    def plain_name(data):
+        mutate(data)
+        place = _splitter(data)["split_from"][0]
+        place["display"] = next(
+            band["display"] for band in data["energy"]["bands"] if band["id"] == place["sub"]
+        )
+
+    assert any("gives" in p for p in problems_from(default_raw, plain_name))
+
+
+def test_a_split_place_out_of_itself_or_a_bucket_nobody_declares_is_refused(default_raw):
+    for name in ("no_such_bucket", None):
+
+        def mutate(data, name=name):
+            _splitter(data)["split_from"][0]["bucket"] = name or _splitter(data)["id"]
+
+        assert any("not another declared bucket" in p for p in problems_from(default_raw, mutate))
+
+
+def test_one_band_split_out_by_two_buckets_is_refused(default_raw):
+    def mutate(data):
+        other = next(
+            bucket
+            for bucket in data["bucket"]
+            if bucket["id"] not in (_splitter(data)["id"], _split_holder(data)["id"])
+            and not bucket.get("sub_by_source")
+            and (bucket.get("energy") or {}).get("enabled", True)
+        )
+        other["split_from"] = [dict(_splitter(data)["split_from"][0], id="another_id")]
+
+    assert any("already split out by" in p for p in problems_from(default_raw, mutate))
+
+
+def test_a_split_place_id_shared_with_a_former_place_is_refused(default_raw):
+    def mutate(data):
+        _splitter(data)["split_from"][0]["id"] = _promoted(data)["formerly"][0]["id"]
+
+    assert any("already a former or split place" in p for p in problems_from(default_raw, mutate))
+
+
+def test_a_split_place_whose_id_is_a_band_is_refused(default_raw):
+    def mutate(data):
+        _splitter(data)["split_from"][0]["id"] = data["energy"]["bands"][0]["id"]
+
+    assert any("already a sub of this bucket" in p for p in problems_from(default_raw, mutate))
+
+
+def test_a_bucket_that_does_not_split_by_energy_cannot_declare_a_split_place(default_raw):
+    def mutate(data):
+        _splitter(data)["energy"] = {"enabled": False}
+        _splitter(data)["single_sub"] = {"id": "everything", "display": "Everything"}
+
+    assert any("does not split by energy" in p for p in problems_from(default_raw, mutate))
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_a_split_place_under_an_older_schema_version_is_refused(default_raw, version):
+    """A build that reads version 2 ignores the key and files every track of
+    the split genre into its new folder while it sits in the old band."""
+
+    def mutate(data):
+        data["schema_version"] = version
+
+    assert any(
+        f"declares a split place under schema_version {version}" in p
+        for p in problems_from(default_raw, mutate)
+    )
+
+
+def test_a_version_2_template_with_no_split_place_still_loads(default_raw):
+    def mutate(data):
+        data["schema_version"] = 2
+        del _splitter(data)["split_from"]
+
+    assert build_taxonomy(mutated(default_raw, mutate)).schema_version == 2
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [{"id": "x", "bucket": "y", "sub": "z", "display": "One table"}, "a bare name"],
+    ids=["one-table", "string"],
+)
+def test_a_split_place_in_the_wrong_shape_is_a_problem_and_not_a_crash(default_raw, shape):
+    def mutate(data):
+        _splitter(data)["split_from"] = shape
+
+    assert any(
+        "split_from must be an array of tables" in p for p in problems_from(default_raw, mutate)
+    )
+
+
+def test_a_tagging_only_word_wins_over_another_buckets_routing_alias(default):
+    """"Trap / Wave" routes to one bucket and tags as Hip-Hop, as it did while
+    Hip-Hop was a sub. A tagging-only word is the more specific statement."""
+    routed = default.routing_alias("Trap / Wave")
+    tagged = default.tagging_alias("trap / wave")
+    assert routed is not None and tagged is not None
+    assert tagged == (next(b.id for b in default.buckets if b.display == "Hip-Hop"), None)
+    assert routed != tagged[0]
+
+
+def test_two_buckets_listing_one_tagging_only_word_is_refused(default_raw):
+    def mutate(data):
+        first = _splitter(data)
+        other = next(bucket for bucket in data["bucket"] if bucket.get("tag_aliases") and bucket is not first)
+        first.setdefault("tag_aliases", []).append(other["tag_aliases"][0])
+
+    assert any("is claimed by both" in p for p in problems_from(default_raw, mutate))
