@@ -1006,6 +1006,14 @@ def _land_native(
             reports = set_playlist.reports_of(store, set_job)
 
     set_planned: list[set_playlist.SetPlaylistPlan] = []
+    # U129. The account playlist's archive rides on this landing's gate when the
+    # set already has one recorded under the frozen INSPIRATION name.
+    archive_planned = _plan_set_archive(
+        cfg,
+        set_job=set_job,
+        words=words,
+        pass_name=ctx.args.pass_name or planned.batch,
+    )
 
     def set_plan(db) -> set_playlist.SetPlaylistPlan | None:
         if set_job is None or words is None:
@@ -1022,7 +1030,26 @@ def _land_native(
         with landing.batch_lock(planned.batch):
             if ctx.args.name is None:
                 _still_free(cfg, planned.batch)
-            return landing.apply_native(planned, cfg=cfg, db=db, rows=rows, declared=declared)
+            landed_native = landing.apply_native(
+                planned, cfg=cfg, db=db, rows=rows, declared=declared
+            )
+        # THE LANDING IS THE PROOF. Archive after the batch is in the library,
+        # still inside the approved gate, paced under the provider gate.
+        if archive_planned is not None and archive_planned.writes:
+            from cratekit.export import set_cli
+
+            set_cli.apply_archive(cfg, archive_planned)
+        return landed_native
+
+    def payload_of(rows: native.NativePlan) -> dict:
+        data = _native_payload(planned, rows, target=target)
+        return _with_archive(data, archive_planned)
+
+    def shown_of(rows: native.NativePlan) -> dict[str, Any]:
+        shown = _native_shown(rows, folder=planned.folder, target=target)
+        if archive_planned is not None:
+            shown["account archive"] = archive_planned.shown
+        return shown
 
     payload, landed = ask_then_write(
         ctx,
@@ -1046,8 +1073,8 @@ def _land_native(
             favorites_source=placement.source_name(declared),
             set_plan=set_plan(db),
         ),
-        payload=lambda rows: _native_payload(planned, rows, target=target),
-        shown=lambda rows: _native_shown(rows, folder=planned.folder, target=target),
+        payload=payload_of,
+        shown=shown_of,
         write=write,
     )
     if landed is None:
@@ -1135,6 +1162,48 @@ def _native_split(
         )
         for claimed in account_playlists.named(claims, held, batch=batch)
     )
+
+
+
+def _plan_set_archive(cfg, *, set_job, words, pass_name: str):
+    """The account archive for this set landing, or None when there is none to file (U129)."""
+    if set_job is None:
+        return None
+    from cratekit.export import set_cli
+    from cratekit.modules.outbound import ledger
+
+    name = set_playlist.frozen_name(set_job)
+    if not name and words is not None:
+        name = set_cli.set_name(set_playlist.playlist_name(words))
+    if not name or ledger.set_playlist(cfg, name) is None:
+        return None
+    try:
+        return set_cli.plan_archive_named(cfg, name, pass_name=pass_name)
+    except CratekitError:
+        # Soft: the landing still lands; archive can run later via export archive.
+        return None
+
+
+def _with_archive(payload: dict, archived) -> dict:
+    """Fold the archive plan into the landing's digest and items so one approval covers both."""
+    if archived is None:
+        return payload
+    identity = {
+        "land": payload["digest"],
+        "archive": archived.payload["digest"],
+    }
+    items = list(payload.get("items") or [])
+    for item in archived.payload.get("items") or []:
+        items.append({**item, "area": "account-archive"})
+    totals = dict(payload.get("totals") or {})
+    totals["archive_writes"] = bool(archived.writes)
+    return {
+        **payload,
+        "digest": digest_of(identity),
+        "items": items,
+        "totals": totals,
+    }
+
 
 
 def ask_then_write(
