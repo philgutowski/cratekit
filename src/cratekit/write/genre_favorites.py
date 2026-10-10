@@ -330,16 +330,19 @@ def plan_refresh(
     for node in nodes:
         by_folder.setdefault(node.folder_id, []).append(node)
         display_of[node.folder_id] = node.folder_display
-    # THE BAND ENTRIES BIND THE FOLDER, THE FAVORITES ENTRY LAST. The record
-    # sorts by (bucket, sub) and "favorites" sorts before every band, so taking
-    # the first entry per bucket would let a Favorites a rebuild made beside a
+    # ONE FOLDER PER BUCKET IN THE RECORD, OR NONE. The record sorts by
+    # (bucket, sub) and "favorites" sorts before every band, so taking the
+    # first entry per bucket would let a Favorites a rebuild made beside a
     # renamed folder claim the bucket and plan every favourite in the real
-    # folder as a removal. Two live folders named by one bucket's record are
-    # listed as that bucket's and nothing is written there.
+    # folder as a removal. So no entry is taken over another: a bucket whose
+    # live entries name two folders is torn, listed as that bucket's, and
+    # nothing is written there. The order of the entries no longer decides
+    # anything, which the mutation table showed by killing nothing when it was
+    # reversed.
     recorded_folder: dict[str, str] = {}
     recorded_playlist: dict[str, str] = {}
     torn: set[str] = set()
-    entries = () if record is None else sorted(record.nodes, key=lambda e: e.sub == sub.id)
+    entries = () if record is None else tuple(record.nodes)
     for entry in entries:
         if entry.folder_id not in by_folder:
             continue

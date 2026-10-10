@@ -1,6 +1,6 @@
 # U119 mutation tables, read
 
-Two tables, both the author's and not independent, measured by
+Three tables, both the author's and not independent, measured by
 `scripts/mutate.py` on `fable/276-every-genre-folder-has`. Every row's subset
 was `tests/test_genre_favorites.py`, with `tests/test_taxonomy.py` beside it for
 the loader rows, `tests/test_rebuild.py` for the rebuild row, and
@@ -19,10 +19,29 @@ launch found the binding's query object truthy with no rows in it.
 **`u119-b.md`**, 3 rows at `b086709`: the three zeros measured again against
 the tests they bought. Null control 0 of 13,049. All 3 killed.
 
-25 distinct mutations in all, the cap: **24 killed outright and 1 killed at
-collection**. Three more were considered and logged as dropped in
+**`u119-c.md`**, 7 rows at `7ea30f8`, the guards the watcher's review round
+added: a torn record listed (C2), the uncompared playlist dimension's
+differences dropped (C3), a first Favorites under the recorded folder (C4),
+the interruption carrying what landed (C5, 3 kills), the skip said (C6), the
+partial carried by the additive half (C7). Null control 0 of 13,056. 6
+killed, 1 zero.
+
+32 distinct mutations in all, 25 in the author's first pass under the cap of
+25 and 7 for the watcher's round: **30 killed outright, 1 killed at
+collection, 1 zero**. Three more were considered and logged as dropped in
 `u119-rows.toml`: the verb's nothing to refresh note and its left alone note,
 both wordings, and the CONCEPTS text.
+
+## The third table's zero
+
+- **C1, the record's Favorites entry binds the bucket before its band
+  entries.** The first fix sorted the record's entries so the band entries
+  bound the folder first; the same fix also marks a bucket torn when two of
+  its live entries name different folders, and a torn bucket is listed and
+  skipped whichever entry came first. So the order decided nothing, the
+  reversal killed nothing, and the sort was dead logic beside the guard that
+  holds (C2, 1 kill). The sort is removed and the comment says why; nothing
+  is left to measure.
 
 ## The collection error
 
