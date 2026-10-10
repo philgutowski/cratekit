@@ -8084,6 +8084,30 @@ def test_the_schema_is_not_compared_when_the_library_disk_is_absent(configured):
     assert "schema_version" not in finding.detail
 
 
+def test_a_library_with_no_copy_routes_by_the_shipped_template_and_is_current(configured):
+    assert not config.state_path("taxonomy_active", configured).exists()
+    finding = _schema_finding(configured)
+    assert finding.status is doctor.Status.OK
+    assert "no active taxonomy copy" in finding.detail
+    assert "'default' template, which is current" in finding.detail
+
+
+def test_a_shipped_template_that_cannot_be_read_is_named_and_not_the_copy(
+    configured, monkeypatch
+):
+    seed_taxonomy(configured)
+
+    def unreadable(_name):
+        raise OSError("the package data is missing")
+
+    monkeypatch.setattr(taxonomy, "shipped_template_text", unreadable)
+    finding = _schema_finding(configured)
+    assert finding.status is doctor.Status.INFO
+    assert "shipped template 'default' could not be read" in finding.detail
+    assert "taxonomy.template" in finding.detail
+    assert "taxonomy.active" not in finding.detail
+
+
 def test_a_shipped_template_that_does_not_load_is_a_defect_and_not_the_copy(
     configured, monkeypatch
 ):

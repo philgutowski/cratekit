@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from cratekit.core import active_taxonomy, config, taxonomy
-from cratekit.core.cause import refuse
+from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import Remedy
 
 _ORIGIN = ("core", "taxonomy_upgrade")
@@ -258,8 +258,18 @@ def _loads(text: str) -> taxonomy.Taxonomy | list[str]:
 
 
 def _kept_whole(before: str, after: str, kind: str, entry: Mapping[str, Any]) -> bool:
-    """True when ``after`` is ``before`` with ``entry`` added to ``kind`` and nothing else moved."""
-    old, new = tomllib.loads(before), tomllib.loads(after)
+    """True when ``after`` is ``before`` with ``entry`` added to ``kind`` and nothing else moved.
+
+    False when ``after`` does not parse: a copy that declares its entries
+    inline cannot take an ``[[entry]]`` table at its end, and that is a hold
+    for the person's hand, not a defect in the shipped template, which is what
+    a ``ValueError`` escaping the planner is read as.
+    """
+    old = tomllib.loads(before)
+    try:
+        new = tomllib.loads(after)
+    except tomllib.TOMLDecodeError:
+        return False
     if {k: v for k, v in old.items() if k != kind} != {k: v for k, v in new.items() if k != kind}:
         return False
     listed = list(new.get(kind) or ())
@@ -450,6 +460,19 @@ def remedy(found: Plan) -> str:
 # ---------------------------------------------------------------------------
 
 
+class NoCopy(CratekitError):
+    """The library holds no active copy, so there is nothing to upgrade.
+
+    Its own type so doctor can tell an absent copy, which routes by the
+    shipped template and so is current, from one that is behind or unusable,
+    without reading the cause's detail, which is never read for control flow.
+    """
+
+
+class ShippedUnreadable(CratekitError):
+    """The shipped template the configuration names could not be read."""
+
+
 def read(cfg: config.Config) -> tuple[Path, str, str]:
     """The active copy's path and text, and the shipped text the configuration names.
 
@@ -460,24 +483,28 @@ def read(cfg: config.Config) -> tuple[Path, str, str]:
     """
     path, active_text = active_taxonomy.read_text(cfg)
     if active_text is None:
-        raise refuse(
-            "config-unusable",
-            f"this library has no active taxonomy copy at {path}, so there is nothing to "
-            f"upgrade; setup makes one from the shipped template",
-            remedy=Remedy.RUN_SETUP,
-            origin=_ORIGIN,
-            detail={"path": str(path)},
+        raise NoCopy(
+            refuse(
+                "config-unusable",
+                f"this library has no active taxonomy copy at {path}, so there is nothing "
+                f"to upgrade; setup makes one from the shipped template",
+                remedy=Remedy.RUN_SETUP,
+                origin=_ORIGIN,
+                detail={"path": str(path)},
+            ).cause
         )
     name = cfg.taxonomy.template
     try:
         shipped_text = taxonomy.shipped_template_text(name)
     except (OSError, ValueError) as exc:
-        raise refuse(
-            "config-unusable",
-            f"the shipped template {name!r} could not be read ({exc}), so there is "
-            f"nothing to compare the copy with",
-            remedy=Remedy.RUN_SETUP,
-            origin=_ORIGIN,
+        raise ShippedUnreadable(
+            refuse(
+                "config-unusable",
+                f"the shipped template {name!r} could not be read ({exc}), so there is "
+                f"nothing to compare the copy with",
+                remedy=Remedy.RUN_SETUP,
+                origin=_ORIGIN,
+            ).cause
         ) from exc
     return path, active_text, shipped_text
 
@@ -516,7 +543,9 @@ __all__ = [
     "SUB_CLASS",
     "VERB",
     "Held",
+    "NoCopy",
     "Plan",
+    "ShippedUnreadable",
     "cut",
     "gap",
     "plan",

@@ -1256,6 +1256,28 @@ def _check_taxonomy_schema(inputs: _Inputs) -> Finding:
         return Finding(key=key, title=title, status=Status.INFO, detail=unreadable)
     try:
         _, found = taxonomy_upgrade.planned(inputs.cfg)
+    except taxonomy_upgrade.NoCopy:
+        # No copy is not a copy behind: every verb then routes by the shipped
+        # template, which is the shipped schema by definition.
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.OK,
+            detail=(
+                f"this library holds no active taxonomy copy, so every verb routes by the "
+                f"shipped {inputs.cfg.taxonomy.template!r} template, which is current"
+            ),
+        )
+    except taxonomy_upgrade.ShippedUnreadable as exc:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"not compared: {exc.cause.message}. The shipped template is the one "
+                f"taxonomy.template names in the configuration"
+            ),
+        )
     except CratekitError as exc:
         if exc.cause.reason == "internal-error":
             # The shipped text could not be compared, which is packaged data
