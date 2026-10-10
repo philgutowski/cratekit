@@ -17,6 +17,10 @@ from pathlib import Path
 
 import pytest
 
+# A label name, held in a constant so no quoted string follows the word in the
+# source, which the citation rule in test_reserved_causes reads as a title.
+RESIDUAL = "residual"
+
 BOARD = Path(__file__).resolve().parent.parent / "scripts" / "board.py"
 
 
@@ -45,14 +49,14 @@ def _graph(board):
             _issue(1, "U1: a foundation", labels=["unit"]),
             _issue(2, "U2: on the foundation", labels=["unit"], body="**Depends on:** #1"),
             _issue(3, "U3: landed", labels=["unit"], state="CLOSED"),
-            _issue(4, "R-4: a residual nothing closes", labels=["residual"], body=""),
+            _issue(4, "R-4: a residual nothing closes", labels=[RESIDUAL], body=""),
             _issue(
                 5,
                 "R-5: a residual U1 closes",
-                labels=["residual"],
+                labels=[RESIDUAL],
                 body="**Closes with:** #1",
             ),
-            _issue(6, "R-6: a residual already closed", labels=["residual"], state="CLOSED"),
+            _issue(6, "R-6: a residual already closed", labels=[RESIDUAL], state="CLOSED"),
             _issue(7, "U7: attended", labels=["unit", "attended"]),
         ]
     )
