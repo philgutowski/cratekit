@@ -1,0 +1,278 @@
+# U120 author's mutation table: a landed heart joins All Favorites and its quarter.
+# Twenty five rows, the cap, over the quarter rule, the engine's home, plan and
+# write, the frozen date, the claims, the landing's plan, commit, record and
+# screen, the backfill's gathering and write, and the verb's order.
+# Considered and dropped below the cap: parse_hearted on junk (a one line
+# contract the engine test pins), the smart playlist of a quarter's name
+# (same guard as P1), the screen's "made" word (a wording), the report's
+# hearts placed total (a count the record row covers), and the verb's
+# nothing to place branch (a NO_OP wording the second run test pins).
+name = "u120"
+pass_kind = "light"
+
+[[rows]]
+id = "T1_quarter_month"
+description = "quarter_of: the month to quarter division is off by one"
+file = "src/cratekit/favorites/placeholders.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py"]
+old = '''return f"{utc.year}-Q{(utc.month - 1) // 3 + 1}"'''
+new = '''return f"{utc.year}-Q{utc.month // 3 + 1}"'''
+
+[[rows]]
+id = "T2_naive_is_utc"
+description = "as_utc: a naive moment is returned as it is rather than taken as UTC"
+file = "src/cratekit/favorites/placeholders.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py"]
+old = '''    if moment.tzinfo is None:
+        return moment.replace(tzinfo=timezone.utc)'''
+new = '''    if moment.tzinfo is None:
+        return moment'''
+
+[[rows]]
+id = "P1_live_plain_attribute"
+description = "_live_plain: a folder or a smart playlist counts as plain"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py"]
+old = '''if int(getattr(row, "Attribute", -1) or 0) == 0 and not rb_writer.node_removed(row)'''
+new = '''if int(getattr(row, "Attribute", -1) or 0) >= 0 and not rb_writer.node_removed(row)'''
+
+[[rows]]
+id = "P2_two_sources_accepted"
+description = "resolve_home: two live sources are accepted and the first chosen"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py"]
+old = '''    if len(live) != 1:
+        count ='''
+new = '''    if len(live) < 1:
+        count ='''
+
+[[rows]]
+id = "P3_root_parent"
+description = "_under: the playlist root is compared as an identifier, so a source at the root sees no neighbour"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py"]
+old = '''        here = held in rb_writer.ROOT_PARENT_SENTINELS if at_root else held == parent_id'''
+new = '''        here = held == parent_id'''
+
+[[rows]]
+id = "P4_into_source_always"
+description = "plan_placements: every heart is planned into the source whether it is there or not"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py"]
+old = '''                into_source=key not in in_source,'''
+new = '''                into_source=True,'''
+
+[[rows]]
+id = "P5_no_dedupe"
+description = "plan_placements: a row named twice is planned twice"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py"]
+old = '''        if key in seen:
+            continue
+        seen.add(key)
+        quarter = placeholders.quarter_label(hearted)'''
+new = '''        seen.add(key)
+        quarter = placeholders.quarter_label(hearted)'''
+
+[[rows]]
+id = "P6_always_create_quarter"
+description = "_quarter_row: a quarter playlist already under the folder is made again"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_intake_land_hearts_native.py"]
+old = '''        if parent is not None and held == parent_id:
+            return row, False
+    del home'''
+new = '''    del home'''
+
+[[rows]]
+id = "P7_bypass_only_when_absent"
+description = "place: the source memberships are inserted directly rather than through add_memberships"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py"]
+old = '''    added_source = len(rb_writer.add_memberships(db, source, ordered))'''
+new = '''    added_source = 0
+    for content_id in ordered:
+        db.add_to_playlist(source, content_id)
+        added_source += 1'''
+
+[[rows]]
+id = "P8_source_name_default"
+description = "source_name: the outbound default is answered whatever the class declares"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py"]
+old = '''    if sub is not None and sub.signal_playlist:
+        return sub.signal_playlist
+    return outbound_source.DEFAULT_FAVORITES_PLAYLIST'''
+new = '''    del sub
+    return outbound_source.DEFAULT_FAVORITES_PLAYLIST'''
+
+[[rows]]
+id = "L1_date_frozen_when_none"
+description = "list_favorites: a heart with no date is frozen with the key and no value"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py"]
+old = '''        if when and key in frozen and HEARTED not in frozen[key]:'''
+new = '''        if key in frozen and HEARTED not in frozen[key]:'''
+
+[[rows]]
+id = "L2_date_added_ignored"
+description = "hearted_on: the older client's date_added is not read"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py"]
+old = '''    for name in ("user_date_added", "date_added"):'''
+new = '''    for name in ("user_date_added",):'''
+
+[[rows]]
+id = "A1_owned_carried"
+description = "carried_hearts: an owned heart counts as carried"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''        if report.get("state") not in CARRIED_STATES:
+            continue
+        said = report.get("track") or {}'''
+new = '''        said = report.get("track") or {}'''
+
+[[rows]]
+id = "A2_playlist_jobs_are_hearts"
+description = "hearts: a playlist job of the pass is read as a hearts job"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+tests = ["tests/test_intake_land_hearts_native.py"]
+old = '''            if not is_hearts_job(job):
+                continue
+            for row in carried_hearts(store, job):'''
+new = '''            for row in carried_hearts(store, job):'''
+
+[[rows]]
+id = "N1_place_skipped"
+description = "apply_rows: the hearts are never placed"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_hearts_native.py"]
+old = '''                placed = placement.place(db, plan.favorites.home(), pairs)'''
+new = '''                placed = None'''
+
+[[rows]]
+id = "N2_record_no_hearts"
+description = "_record_landing_commit: the hearts placed are not recorded as a change"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_hearts_native.py"]
+old = '''    if hearts > 0:
+        changes.append(session.TreeChange(tree=placement.RECORD_KEY, created=hearts))'''
+new = '''    pass'''
+
+[[rows]]
+id = "N3_identity_without_hearts"
+description = "identity: the digest leaves the hearts out"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_hearts_native.py"]
+old = '''    favorites = {"favorites": plan.favorites.identity()} if plan.favorites is not None else {}'''
+new = '''    favorites = {}'''
+
+[[rows]]
+id = "N4_skipped_is_raised"
+description = "_favorites_plan: a home that cannot be resolved raises through the landing"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_hearts_native.py"]
+old = '''    try:
+        home = placement.resolve_home(db, source)
+    except CratekitError as exc:'''
+new = '''    try:
+        home = placement.resolve_home(db, source)
+    except ValueError as exc:'''
+
+[[rows]]
+id = "C1_no_skip_note"
+description = "favorites_notes: a skipped placement is not said"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_hearts_native.py"]
+old = '''    if skipped:
+        return [
+            {
+                "code": FAVORITES_SKIPPED,'''
+new = '''    if False:
+        return [
+            {
+                "code": FAVORITES_SKIPPED,'''
+
+[[rows]]
+id = "C2_hearts_not_claimed"
+description = "intake_land: no file is a heart"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_hearts_native.py"]
+old = '''    hearted = account_playlists.hearted(cfg, pass_name, planned.items)'''
+new = '''    hearted = ()'''
+
+[[rows]]
+id = "B1_any_path_is_landed"
+description = "landed_paths: a heart's file anywhere in the library counts as landed"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''            if landing.is_landed_path(cfg, path):
+                found.append((row, path))'''
+new = '''            found.append((row, path))'''
+
+[[rows]]
+id = "B2_first_mention_wins"
+description = "carried: a dated later mention does not replace an undated first one"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''                if held is None or (held.hearted is None and row.hearted is not None):'''
+new = '''                if held is None:'''
+
+[[rows]]
+id = "B3_account_always_asked"
+description = "dated: the account is listed even when every heart has a date"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''    if not undated:
+        return dates, 0
+    found = catalogue.resolve(cfg)'''
+new = '''    found = catalogue.resolve(cfg)'''
+
+[[rows]]
+id = "B4_stale_not_refused"
+description = "apply: a plan whose digest moved is written anyway"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''    if again.digest != approved.digest:
+        raise refuse(
+            "decision-stale",
+            "the favourites are not as the approved plan read them, so no heart was "'''
+new = '''    if False:
+        raise refuse(
+            "decision-stale",
+            "the favourites are not as the approved plan read them, so no heart was "'''
+
+[[rows]]
+id = "V1_no_ack"
+description = "favorites_backfill: the acknowledgment is not read before the gate"
+file = "src/cratekit/favorites/backfill_cli.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''    session.assert_backup_acknowledged(cfg)
+
+    plan = planned(cfg, source=source)'''
+new = '''    plan = planned(cfg, source=source)'''
