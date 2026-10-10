@@ -2,9 +2,9 @@
 
 A pass sweeps the playlists the author made on the streaming account, and each
 one becomes an INBOX playlist of its own, named exactly as the account names
-it, holding the tracks that playlist brought in. This module answers the one
-question that needs: which of the files about to land did which playlist ask
-for. The name itself is chosen by :func:`cratekit.intake.batch_name.inbox_names`
+it, holding every track of it the library holds (U128). This module answers the
+one question that needs: which of the files about to land did which playlist
+ask for, and which tracks it already owned. The name itself is chosen by :func:`cratekit.intake.batch_name.inbox_names`
 and written by whichever medium lands the batch.
 
 WHAT A PLAYLIST ASKED FOR IS READ FROM ITS JOB, never from the account again.
@@ -27,13 +27,23 @@ and the file stays in the batch's playlist rather than being filed by a guess.
 A TRACK TWO PLAYLISTS BOTH ASKED FOR IS A MEMBER OF BOTH. The download fetched
 it once, and each playlist's rows resolve to that one file.
 
-TRACKS THE LIBRARY ALREADY OWNED ARE NOT ADDED, decided 2026-10-03 and recorded
-as R-905. An owned row was resolved to a file already in the library and was
-not downloaded, so it is not part of what this landing brought in. INBOX is the
-listening queue that ``route inbox`` and the rotation work over, and a track
-already filed under BY GENRE put back in it would be queued a second time.
-Mirroring the whole account playlist would also need each owned file's row in
-the collection, found by path, on both media, which no verb does yet.
+THE INBOX PLAYLIST MIRRORS THE WHOLE ACCOUNT PLAYLIST, OWNED TRACKS INCLUDED
+(U128), the author's decision of R-905 on 2026-10-10, reversing the 2026-10-03
+choice of new tracks only, which left a playlist the library mostly owned thin
+or empty in INBOX. Every report of the playlist's job is read in item order,
+which is the account playlist's order. A carried row tied to a planned file is
+a NEW member; a row the report called owned is an OWNED member, carrying the
+library files the report resolved it to, and each medium finds that file's row
+by path, the database's on the native medium and the export's entry on the
+bridge. A row that is neither is LEFT, and the landing names it in a warning
+rather than leaving it silently absent: a download refused as lossy, a row only
+something close answered, a suppressed track.
+
+A RERUN OF THE SAME PASS ADDS NOTHING TWICE. Each landing records, beside every
+account playlist it wrote, the account's identifier and the pass. A later
+landing of the same pass finds that record and holds, for that playlist, only
+the new files it brings, U113's rule, so an owned track already mirrored is not
+mirrored a second time under the next free name.
 
 THE HEARTS ARE TIED TO THEIR FILES THE SAME WAY, SINCE U120, and for another
 purpose: a file the pass's hearts job asked for is a heart, and the landing
@@ -55,7 +65,7 @@ from typing import Any, Iterable, Sequence
 from cratekit.acquire import match, match_cli
 from cratekit.core import config, jobs, session
 from cratekit.favorites import placeholders
-from cratekit.intake import batch_name, ingest
+from cratekit.intake import batch_name, ingest, native
 from cratekit.intake import cli as intake_cli
 
 #: The report states a landing's files were downloaded for. ``owned`` and
@@ -65,16 +75,111 @@ CARRIED_STATES = frozenset({"missing", "offered"})
 #: The job key a playlist of the account is queued under.
 PLAYLIST_KEY = "intake.playlist"
 
+#: The report state of a row the library already held when the job ran.
+OWNED = "owned"
+
+#: The keys an ``inbox_playlists`` record entry carries since U128, beside its
+#: name: the account's identifier for the playlist and the pass that landed it.
+ACCOUNT_KEY = ingest.INBOX_ACCOUNT_KEY
+PASS_KEY = ingest.INBOX_PASS_KEY
+
+#: Why a row of an account playlist is not in its INBOX playlist, as a person reads it.
+NOT_BROUGHT = "neither owned nor landed by this landing"
+SUPPRESSED = "suppressed"
+NO_PATH = "owned, with no library file recorded for it"
+NO_ROW = "owned on disk, and the collection holds no row for its file"
+AMBIGUOUS_ROWS = "owned on disk, and two collection rows claim its file"
+NOT_LANDED = native.NOT_LANDED
+
+#: The warning code a landing names its left rows under.
+LEFT_OUT = "account-playlist-left-out"
+
+
+@dataclass(frozen=True, slots=True)
+class Row:
+    """One report of a playlist's job, in the account playlist's order (U128)."""
+
+    position: int
+    state: str
+    wanted: match.Wanted
+    #: The library files an owned report resolved the row to, the report's own.
+    paths: tuple[str, ...] = ()
+
+    @property
+    def carried(self) -> bool:
+        return self.state in CARRIED_STATES
+
 
 @dataclass(frozen=True, slots=True)
 class Source:
-    """One playlist on the account a pass swept, and the rows it asked for."""
+    """One playlist on the account a pass swept, and every row its job reported."""
 
     playlist_id: str
     #: The account's name for it, exactly as the sweep listed it.
     name: str
     job_id: str
-    wanted: tuple[match.Wanted, ...]
+    rows: tuple[Row, ...]
+
+    @property
+    def wanted(self) -> tuple[match.Wanted, ...]:
+        """The rows a download was made from, the ones a planned file can answer."""
+        return tuple(row.wanted for row in self.rows if row.carried)
+
+
+@dataclass(frozen=True, slots=True)
+class Member:
+    """One track an INBOX playlist holds, in the account playlist's order (U128).
+
+    ``file`` is a planned file this landing brings, a NEW member; ``paths`` are
+    the library files an owned row resolved to, an OWNED member, whose row each
+    medium finds by path.
+    """
+
+    position: int
+    file: Path | None = None
+    paths: tuple[str, ...] = ()
+    #: The row's words and report state, for the warning when no row is found.
+    artist: str = ""
+    title: str = ""
+    state: str = ""
+
+    def left(self, why: str) -> Left:
+        """This member as a row its playlist does not hold, because ``why``."""
+        return Left(self.position, self.artist, self.title, self.state, why)
+
+
+@dataclass(frozen=True, slots=True)
+class Left:
+    """One row of an account playlist its INBOX playlist does not hold, and why."""
+
+    position: int
+    artist: str
+    title: str
+    state: str
+    why: str
+
+    def identity(self) -> dict[str, Any]:
+        return {
+            "position": self.position,
+            "artist": self.artist,
+            "title": self.title,
+            "state": self.state,
+            "why": self.why,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class Claim:
+    """What one playlist on the account claims of a landing, before it is named."""
+
+    source: Source
+    members: tuple[Member, ...]
+    left: tuple[Left, ...] = ()
+
+    @property
+    def files(self) -> tuple[Path, ...]:
+        """The planned files among the members, in the account playlist's order."""
+        return tuple(one.file for one in self.members if one.file is not None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,16 +191,32 @@ class Claimed:
     #: The account's name for it, which ``name`` differs from only by a count.
     account_name: str
     playlist_id: str
-    #: The planned files it holds, in the order the landing planned them.
+    #: The planned files it holds, in the account playlist's order.
     files: tuple[Path, ...]
+    #: Every member, new and owned, in the account playlist's order (U128).
+    members: tuple[Member, ...] = ()
+    #: The rows of the account playlist it does not hold, each with why.
+    left: tuple[Left, ...] = ()
 
     def identity(self) -> dict[str, Any]:
-        """What a gate's digest covers for it, so another split is another plan."""
-        return {
+        """What a gate's digest covers for it, so another split is another plan.
+
+        THE OWNED MEMBERS AND THE LEFT ROWS ONLY WHEN THERE ARE ANY, so a claim
+        of new files alone is digested exactly as it was before U128.
+        """
+        identity: dict[str, Any] = {
             "name": self.name,
             "account": self.playlist_id,
             "files": [path.name for path in self.files],
         }
+        if any(one.file is None for one in self.members):
+            identity["members"] = [
+                one.file.name if one.file is not None else list(one.paths)
+                for one in self.members
+            ]
+        if self.left:
+            identity["left"] = [one.identity() for one in self.left]
+        return identity
 
 
 @dataclass(frozen=True, slots=True)
@@ -270,14 +391,48 @@ def sources(cfg: config.Config, pass_name: str) -> tuple[Source, ...]:
                     playlist_id=str((job.payload or {}).get(intake_cli.SOURCE) or ""),
                     name=name,
                     job_id=job.job_id,
-                    wanted=tuple(
-                        intake_cli.thawed(report["track"])
-                        for report in reports
-                        if report.get("state") in CARRIED_STATES
+                    # EVERY REPORT, IN ITEM ORDER, which is the order the sweep
+                    # froze the account playlist's tracks in (U128).
+                    rows=tuple(
+                        Row(
+                            position=position,
+                            state=str(report.get("state") or ""),
+                            wanted=intake_cli.thawed(report["track"]),
+                            paths=tuple(str(path) for path in (report.get("paths") or ())),
+                        )
+                        for position, report in enumerate(reports, start=1)
                     ),
                 )
             )
     return tuple(found)
+
+
+def mirrored(cfg: config.Config, pass_name: str) -> frozenset[str]:
+    """The account playlists an earlier landing of ``pass_name`` already gave an INBOX playlist.
+
+    READ FROM THE LANDING RECORDS, both media's, which name each account
+    playlist they wrote with the account's identifier and the pass since U128.
+    A record counts while its landing stands: an intake file waiting on its
+    import, a commit not yet vouched for, or a closed record. An abandoned one
+    does not, since the person discarded what it would have written. An entry
+    written before U128 names no account and counts for nothing, which is
+    right, since it never held an owned track.
+    """
+    standing = {
+        session.SessionState.AWAITING_IMPORT,
+        session.SessionState.COMMITTED_UNVERIFIED,
+        session.SessionState.CLOSED,
+    }
+    records, _unreadable = session.scan_log(cfg)
+    return frozenset(
+        str(entry[ACCOUNT_KEY])
+        for record in records
+        if record.workflow == ingest.INTAKE_WORKFLOW and record.state in standing
+        for entry in record.detail.get(ingest.INBOX_PLAYLISTS_KEY) or ()
+        if isinstance(entry, dict)
+        and entry.get(ACCOUNT_KEY)
+        and entry.get(PASS_KEY) == pass_name
+    )
 
 
 def _never_suppressed(_recording: str, _address: object) -> bool:
@@ -289,45 +444,101 @@ def _no_suppression_id(_recording: str, _address: object) -> str:
     return ""
 
 
-def claims(
-    found: Sequence[Source], files: Sequence[Path], *, template: Any = None
-) -> tuple[tuple[Source, tuple[Path, ...]], ...]:
-    """Each source and the planned files its rows resolve to, sources that claim none left out.
+def _member(row: Row, *, file: Path | None = None) -> Member:
+    return Member(
+        position=row.position,
+        file=file,
+        paths=() if file is not None else row.paths,
+        artist=row.wanted.artist,
+        title=row.wanted.spelled or row.wanted.title,
+        state=row.state,
+    )
 
-    ``files`` are the landing's planned files, and the order each source's
-    files are given in is theirs. ``template`` is the library's naming template,
-    which is ``match_cli.library_view``'s builder rule.
+
+def _left(row: Row, why: str) -> Left:
+    return _member(row).left(why)
+
+
+def claims(
+    found: Sequence[Source],
+    files: Sequence[Path],
+    *,
+    template: Any = None,
+    mirrored: Iterable[str] = (),
+) -> tuple[Claim, ...]:
+    """Each source's members in the account playlist's order, sources that hold none left out.
+
+    ``files`` are the landing's planned files. A carried row is a NEW member
+    for each planned file the match rule ties it to, an owned row an OWNED
+    member carrying its report's library files, and every other row is LEFT
+    with why (U128). A file two rows answer, or a library file two owned rows
+    name, is one member, at the first row's place.
+
+    ``mirrored`` names the account playlists an earlier landing of the same
+    pass already mirrored (:func:`mirrored`): each holds only the new files
+    here, U113's rule, and lists nothing as left, since that landing named
+    them. ``template`` is the library's naming template, which is
+    ``match_cli.library_view``'s builder rule.
     """
     if not found or not files:
         return ()
     index = match.index_paths(files, template=template)
     planned = {path.resolve(): path for path in files}
     order = {path: position for position, path in enumerate(files)}
-    claimed: list[tuple[Source, tuple[Path, ...]]] = []
+    again = set(mirrored)
+    claimed: list[Claim] = []
     for source in found:
-        members: set[Path] = set()
-        for wanted in source.wanted:
-            resolved = match.resolve_one(
-                wanted,
-                index,
-                suppresses=_never_suppressed,
-                suppression_id=_no_suppression_id,
-            )
-            if resolved.state is not match.MatchState.MATCHED:
+        rerun = source.playlist_id in again
+        members: list[Member] = []
+        seen: set[Path | tuple[str, ...]] = set()
+        left: list[Left] = []
+        for row in source.rows:
+            if row.carried:
+                resolved = match.resolve_one(
+                    row.wanted,
+                    index,
+                    suppresses=_never_suppressed,
+                    suppression_id=_no_suppression_id,
+                )
+                tied = (
+                    sorted(
+                        {
+                            planned[Path(path).resolve()]
+                            for path in resolved.paths
+                            if Path(path).resolve() in planned
+                        },
+                        key=order.__getitem__,
+                    )
+                    if resolved.state is match.MatchState.MATCHED
+                    else []
+                )
+                if not tied:
+                    left.append(_left(row, NOT_BROUGHT))
+                for path in tied:
+                    if path not in seen:
+                        seen.add(path)
+                        members.append(_member(row, file=path))
                 continue
-            for path in resolved.paths:
-                held = planned.get(Path(path).resolve())
-                if held is not None:
-                    members.add(held)
+            if rerun:
+                continue
+            if row.state != OWNED:
+                left.append(_left(row, SUPPRESSED if row.state == SUPPRESSED else NOT_BROUGHT))
+                continue
+            if not row.paths:
+                left.append(_left(row, NO_PATH))
+                continue
+            if row.paths not in seen:
+                seen.add(row.paths)
+                members.append(_member(row))
         if members:
-            claimed.append((source, tuple(sorted(members, key=order.__getitem__))))
+            claimed.append(
+                Claim(source=source, members=tuple(members), left=() if rerun else tuple(left))
+            )
     return tuple(claimed)
 
 
-def split(
-    cfg: config.Config, pass_name: str | None, files: Sequence[Path]
-) -> tuple[tuple[Source, tuple[Path, ...]], ...]:
-    """What each playlist of the account the pass swept claims of ``files``.
+def split(cfg: config.Config, pass_name: str | None, files: Sequence[Path]) -> tuple[Claim, ...]:
+    """What each playlist of the account the pass swept holds of this landing.
 
     Nothing for a landing given no pass, which is a landing of files nobody
     can trace to a playlist, and nothing for a plan of no files.
@@ -337,25 +548,84 @@ def split(
     found = sources(cfg, pass_name)
     if not found:
         return ()
-    return claims(found, files, template=match_cli.library_template(cfg))
-
-
-def named(
-    claimed: Sequence[tuple[Source, tuple[Path, ...]]], held: Iterable[str], *, batch: str
-) -> tuple[Claimed, ...]:
-    """Each claim with the INBOX name it lands as, given the names INBOX holds."""
-    names = batch_name.inbox_names(
-        (source.name for source, _files in claimed), held, batch=batch
+    return claims(
+        found,
+        files,
+        template=match_cli.library_template(cfg),
+        mirrored=mirrored(cfg, pass_name),
     )
+
+
+def named(claimed: Sequence[Claim], held: Iterable[str], *, batch: str) -> tuple[Claimed, ...]:
+    """Each claim with the INBOX name it lands as, given the names INBOX holds."""
+    names = batch_name.inbox_names((one.source.name for one in claimed), held, batch=batch)
     return tuple(
         Claimed(
             name=name,
-            account_name=source.name,
-            playlist_id=source.playlist_id,
-            files=files,
+            account_name=one.source.name,
+            playlist_id=one.source.playlist_id,
+            files=one.files,
+            members=one.members,
+            left=one.left,
         )
-        for name, (source, files) in zip(names, claimed, strict=True)
+        for name, one in zip(names, claimed, strict=True)
     )
+
+
+def owned_rows(
+    cfg: config.Config, claimed: Iterable[Claimed], rows: Iterable[Any]
+) -> dict[tuple[str, ...], tuple[str | None, str]]:
+    """Each owned member's library files and the one row they resolve to, or None and why.
+
+    ONE RULE FOR BOTH MEDIA, ``rows`` being the database's content rows on the
+    native medium and the export's collection entries on the bridge, each as a
+    :class:`cratekit.write.trees.ContentRow`. The member's files are tried in
+    the report's order and the first one active row holds is the answer. A
+    file two active rows claim is not an answer, the set playlist's rule
+    (U121): the playlist would hold whichever the index yielded first.
+    """
+    from cratekit.core import locations
+    from cratekit.write import trees
+
+    wanted = {one.paths for each in claimed for one in each.members if one.file is None}
+    if not wanted:
+        return {}
+    prefix_map = [locations.PrefixRule(a, b) for a, b in cfg.resolved_prefix_map()]
+    index = trees.index_active_rows(rows, root=cfg.library.root, prefix_map=prefix_map)
+    found: dict[tuple[str, ...], tuple[str | None, str]] = {}
+    for paths in wanted:
+        answer: tuple[str | None, str] = (None, NO_ROW)
+        for match_ in trees.match_indexed_rows(
+            paths, index, root=cfg.library.root, prefix_map=prefix_map
+        ):
+            if match_.outcome is trees.MatchOutcome.AMBIGUOUS:
+                answer = (None, AMBIGUOUS_ROWS)
+                continue
+            if match_.outcome is trees.MatchOutcome.MATCHED and match_.content_id:
+                answer = (str(match_.content_id), "")
+                break
+        found[paths] = answer
+    return found
+
+
+def left_warning(left: Sequence[tuple[str, Left]]) -> list[dict[str, str]]:
+    """The one warning naming every account playlist track its INBOX playlist does not hold."""
+    if not left:
+        return []
+    named_rows = "; ".join(
+        f"{playlist} {one.position}. {one.artist} - {one.title} ({one.why})"
+        for playlist, one in left
+    )
+    return [
+        {
+            "code": LEFT_OUT,
+            "message": (
+                f"{len(left)} track(s) of the account playlists are not in their INBOX "
+                f"playlist, because nothing the library holds or this landing brought "
+                f"was tied to them: {named_rows}"
+            ),
+        }
+    ]
 
 
 def pending_names(cfg: config.Config) -> tuple[str, ...]:
@@ -383,16 +653,28 @@ def unclaimed(files: Sequence[Path], claimed: Iterable[Claimed]) -> tuple[Path, 
 
 
 __all__ = [
+    "ACCOUNT_KEY",
     "CARRIED_STATES",
+    "LEFT_OUT",
+    "NOT_LANDED",
+    "NO_ROW",
+    "AMBIGUOUS_ROWS",
+    "PASS_KEY",
+    "Claim",
     "Claimed",
     "HeartRow",
     "Hearted",
+    "Left",
+    "Member",
+    "Row",
     "Source",
     "carried_hearts",
     "claims",
     "hearted",
     "hearts",
     "is_hearts_job",
+    "left_warning",
+    "mirrored",
     "named",
     "pending_names",
     "prefer_dated",

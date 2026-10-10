@@ -311,8 +311,17 @@ def _shown(
     if split:
         shown.update(
             split_facts(
-                [(one.name, one.account_name, len(one.files)) for one in split],
+                [
+                    (
+                        one.name,
+                        one.account_name,
+                        len(one.members),
+                        sum(1 for member in one.members if member.file is None),
+                    )
+                    for one in split
+                ],
                 len(account_playlists.unclaimed(planned.items, split)),
+                left=sum(len(one.left) for one in split),
             )
         )
     if manifest is not None:
@@ -325,18 +334,24 @@ def _shown(
     return shown
 
 
-def split_facts(entries: list[tuple[str, str, int]], rest: int) -> dict[str, Any]:
+def split_facts(
+    entries: list[tuple[str, str, int, int]], rest: int, *, left: int = 0
+) -> dict[str, Any]:
     """The account playlists on a gate screen, each by the name it lands as (U113).
 
-    ``entries`` are each playlist's name, the account's own name for it and how
-    many files it holds; ``rest`` is how many the batch playlist keeps. ONE
+    ``entries`` are each playlist's name, the account's own name for it, how
+    many tracks it holds and how many of those the library already owned
+    (U128); ``rest`` is how many files the batch playlist keeps and ``left``
+    how many rows of the account playlists no INBOX playlist holds. ONE
     WORDING FOR BOTH MEDIA, so the same split reads the same on either screen.
     """
-    return {
+    facts: dict[str, Any] = {
         "account playlists": [
-            f"{name} ({count} file(s))"
+            f"{name} ({count} file(s)"
+            + (f", {owned} already in the library" if owned else "")
+            + ")"
             + (f", the account's {account}" if account and name != account else "")
-            for name, account, count in entries
+            for name, account, count, owned in entries
         ],
         "batch playlist holds": (
             f"{rest} file(s) no account playlist claimed"
@@ -344,6 +359,12 @@ def split_facts(entries: list[tuple[str, str, int]], rest: int) -> dict[str, Any
             else "nothing, so it is not written"
         ),
     }
+    if left:
+        facts["account playlist tracks left out"] = (
+            f"{left} the library does not hold and this landing does not bring, "
+            f"named after the landing"
+        )
+    return facts
 
 
 def _split_items(split: tuple[tuple[account_playlists.Claimed, int], ...]) -> list[dict[str, Any]]:
@@ -427,7 +448,7 @@ def _reported(payload: dict, landed: landing.Landed) -> dict:
 
 def _xml_split(
     cfg: config.Config,
-    claims: tuple[tuple[account_playlists.Source, tuple[Path, ...]], ...],
+    claims: tuple[account_playlists.Claim, ...],
     export: Path,
     *,
     batch: str,
@@ -652,6 +673,7 @@ def intake_land(ctx) -> Envelope:
             manifest=manifest.path if manifest is not None else None,
             manifest_digest=manifest.digest if manifest is not None else None,
             split=split,
+            pass_name=pass_name,
         )
     return ctx.envelope(
         data=_reported(payload, landed),
@@ -659,8 +681,11 @@ def intake_land(ctx) -> Envelope:
         code=ExitCode.PENDING_HUMAN,
         pending=ingest.persisted_pending(cfg, landed.placed),
         warnings=[
-            {"code": entry.reason, "message": entry.sentence}
-            for entry in (*landed.refused, *landed.unlabelled)
+            *(
+                {"code": entry.reason, "message": entry.sentence}
+                for entry in (*landed.refused, *landed.unlabelled)
+            ),
+            *account_playlists.left_warning(landed.left),
         ],
     )
 
@@ -806,8 +831,12 @@ def _native_shown(rows: native.NativePlan, *, folder: Path, target: Path) -> dic
         written = [row for row in rows.rows if row.action != native.UNSUPPORTED]
         shown.update(
             split_facts(
-                [(one.name, one.account_name, len(one.targets)) for one in rows.playlists],
+                [
+                    (one.name, one.account_name, len(one.ordered()), one.owned)
+                    for one in rows.playlists
+                ],
                 sum(1 for row in written if str(row.target) not in claimed),
+                left=sum(len(one.left) for one in rows.playlists),
             )
         )
     if rows.favorites is not None:
@@ -941,7 +970,7 @@ def _land_native(
     declared,
     registry,
     manifest: landing.LabelManifest | None,
-    claims: tuple[tuple[account_playlists.Source, tuple[Path, ...]], ...] = (),
+    claims: tuple[account_playlists.Claim, ...] = (),
     hearted: tuple[account_playlists.Hearted, ...] = (),
 ) -> Envelope:
     """Plan the rows against the database, ask, then move and write.
@@ -1036,7 +1065,13 @@ def _land_native(
             batch=planned.batch,
             files=files,
             split=_native_split(
-                db, claims, tree_id=tree_id, registry=registry, batch=planned.batch, target=target
+                db,
+                cfg,
+                claims,
+                tree_id=tree_id,
+                registry=registry,
+                batch=planned.batch,
+                target=target,
             ),
             pass_name=ctx.args.pass_name,
             hearts=tuple(
@@ -1055,6 +1090,7 @@ def _land_native(
     native.assert_rows_gridless(landed.collection)
     native.assert_rows_identified(landed.collection)
     warnings = [{"code": entry.reason, "message": entry.sentence} for entry in landed.refused]
+    warnings.extend(account_playlists.left_warning(landed.collection.left))
     warnings.extend(awaiting_analysis(landed.collection))
     warnings.extend(favorites_notes(payload, landed.collection))
     kept = landed.collection.set_playlist
@@ -1115,26 +1151,56 @@ def favorites_notes(payload: dict, collection: native.NativeLanded) -> list[dict
 
 def _native_split(
     db,
-    claims: tuple[tuple[account_playlists.Source, tuple[Path, ...]], ...],
+    cfg: config.Config,
+    claims: tuple[account_playlists.Claim, ...],
     *,
     tree_id: str,
     registry,
     batch: str,
     target: Path,
 ) -> tuple[native.PlaylistPlan, ...]:
-    """Each account playlist named against what the database's INBOX holds, on the write handle."""
+    """Each account playlist named against what the database's INBOX holds, on the write handle.
+
+    AND EACH OWNED TRACK'S ROW FOUND BY PATH ON THE SAME HANDLE (U128), at plan
+    time, so the screen and the digest name the rows the apply adds and the
+    apply finds nothing again. Asked of the candidate rows whose stored path
+    ends in the file's name, the native landing's own lookup, rather than of
+    the whole collection. An owned track no row holds is left and named.
+    """
     if not claims:
         return ()
     held = native.inbox_held(db, native.anchored_intake_root(db, tree_id, registry))
-    return tuple(
-        native.PlaylistPlan(
-            name=claimed.name,
-            account=claimed.playlist_id,
-            targets=tuple(target / path.name for path in claimed.files),
-            account_name=claimed.account_name,
+    named = account_playlists.named(claims, held, batch=batch)
+    names = {
+        Path(path).name for one in named for member in one.members for path in member.paths
+    }
+    owned = account_playlists.owned_rows(cfg, named, native.candidate_rows(db, names))
+    planned: list[native.PlaylistPlan] = []
+    for claimed in named:
+        members: list[native.PlaylistMember] = []
+        left = list(claimed.left)
+        for member in claimed.members:
+            if member.file is not None:
+                members.append(
+                    native.PlaylistMember(target=target / member.file.name, member=member)
+                )
+                continue
+            row, why = owned.get(member.paths, (None, account_playlists.NO_ROW))
+            if row is None:
+                left.append(member.left(why))
+            else:
+                members.append(native.PlaylistMember(content_id=row, member=member))
+        planned.append(
+            native.PlaylistPlan(
+                name=claimed.name,
+                account=claimed.playlist_id,
+                targets=tuple(target / path.name for path in claimed.files),
+                account_name=claimed.account_name,
+                members=tuple(members),
+                left=tuple(left),
+            )
         )
-        for claimed in account_playlists.named(claims, held, batch=batch)
-    )
+    return tuple(planned)
 
 
 def ask_then_write(

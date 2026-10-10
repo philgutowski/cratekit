@@ -262,9 +262,10 @@ def test_a_landing_with_no_pass_splits_nothing(cfg, silence, export):
     assert _inbox(_intake(envelope)) == {"by hand": ["One"]}
 
 
-def test_a_row_the_library_owned_adds_nothing_to_the_playlist(cfg, silence, export):
-    # OWNED IS NOT CARRIED (R-905): a row resolved to a file the library holds
-    # was not downloaded, so no file of the landing is its.
+def test_an_owned_track_whose_row_the_export_does_not_hold_is_warned(cfg, silence, export):
+    # The library holds the file and the export the batch is spliced into has
+    # no entry for it, so there is no TrackID for the playlist to name: the
+    # track is left, and the landing names it rather than dropping it (U128).
     owned = _music(cfg, "older batch")
     owned.mkdir(parents=True)
     _stage(cfg, silence, "Held.flac").rename(owned / "Held.flac")
@@ -274,6 +275,111 @@ def test_a_row_the_library_owned_adds_nothing_to_the_playlist(cfg, silence, expo
     envelope = _applied(export, "--pass", PASS)
 
     assert _inbox(_intake(envelope)) == {"Sunset Warmup": ["One"]}
+    (warning,) = [w for w in envelope["warnings"] if w["code"] == account_playlists.LEFT_OUT]
+    assert "Sunset Warmup 2. Probe - Held" in warning["message"]
+    assert account_playlists.NO_ROW in warning["message"]
+
+
+# ---------------------------------------------------------------------------
+# U128: the INBOX playlist mirrors the whole account playlist
+# ---------------------------------------------------------------------------
+
+
+def _owned_export(cfg, silence, export: Path, titles: tuple[str, ...]) -> Path:
+    """An export whose collection holds ``titles``, landed earlier into the library.
+
+    Landed by the product itself under a name of its own and no pass, so each
+    is a file under the music folder and an entry of the intake file, which is
+    then the export the next landing is spliced into, as one taken after the
+    import is.
+    """
+    for title in titles:
+        _stage(cfg, silence, f"{title}.flac")
+    return _intake(_applied(export, "--name", "older batch"))
+
+
+def test_a_playlist_of_three_owned_and_two_new_lands_all_five_in_account_order(
+    cfg, silence, export
+):
+    held = _owned_export(cfg, silence, export, ("Held1", "Held2", "Held3"))
+    swept(
+        cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New1", "Held2", "New2", "Held3"))}
+    )
+    for name in ("New1.flac", "New2.flac"):
+        _stage(cfg, silence, name)
+
+    envelope = _applied(held, "--pass", PASS)
+
+    inbox = _inbox(_intake(envelope))
+    assert inbox["Sunset Warmup"] == ["Held1", "New1", "Held2", "New2", "Held3"]
+    # The owned tracks are the export's own entries, not spliced a second time.
+    body = _intake(envelope).read_text(encoding="utf-8")
+    assert body.count('Name="Held1"') == 1
+    split = [item for item in envelope["data"]["items"] if item["action"] == "playlist"]
+    assert split == [
+        {"action": "playlist", "playlist": "Sunset Warmup", "account": "pl-a", "count": 5}
+    ]
+    assert not [w for w in envelope["warnings"] if w["code"] == account_playlists.LEFT_OUT]
+
+
+def test_the_gate_screen_counts_the_owned_tracks_beside_the_new(cfg, silence, export):
+    held = _owned_export(cfg, silence, export, ("Held1",))
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New1"))})
+    _stage(cfg, silence, "New1.flac")
+
+    code, refused = _drive(_land(held, "--pass", PASS))
+
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["account playlists"] == ["Sunset Warmup (2 file(s), 1 already in the library)"]
+
+
+def test_an_owned_track_in_two_account_playlists_is_in_both(cfg, silence, export):
+    held = _owned_export(cfg, silence, export, ("Held1",))
+    swept(
+        cfg,
+        {
+            "pl-a": ("Sunset Warmup", ("Held1", "New1")),
+            "pl-b": ("Deep Cuts", ("New1", "Held1")),
+        },
+    )
+    _stage(cfg, silence, "New1.flac")
+
+    envelope = _applied(held, "--pass", PASS)
+
+    inbox = _inbox(_intake(envelope))
+    assert inbox["Sunset Warmup"] == ["Held1", "New1"]
+    assert inbox["Deep Cuts"] == ["New1", "Held1"]
+
+
+def test_a_track_neither_owned_nor_brought_is_named_in_the_warnings(cfg, silence, export):
+    # The download for Gone never arrived, a lossy file refused or a row
+    # nothing answered, so the library does not hold it and the landing did
+    # not bring it.
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("One", "Gone"))})
+    _stage(cfg, silence, "One.flac")
+
+    envelope = _applied(export, "--pass", PASS)
+
+    assert _inbox(_intake(envelope)) == {"Sunset Warmup": ["One"]}
+    (warning,) = [w for w in envelope["warnings"] if w["code"] == account_playlists.LEFT_OUT]
+    assert "Sunset Warmup 2. Probe - Gone" in warning["message"]
+    assert account_playlists.NOT_BROUGHT in warning["message"]
+
+
+def test_a_rerun_of_the_same_pass_is_a_no_op(cfg, silence, export):
+    held = _owned_export(cfg, silence, export, ("Held1",))
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New1"))})
+    _stage(cfg, silence, "New1.flac")
+    first = _intake(_applied(held, "--pass", PASS))
+    before = first.read_bytes()
+
+    code, again = _drive(["-d", f"{GATE}=apply", *_land(first, "--pass", PASS)])
+
+    assert code == int(ExitCode.OK), again
+    assert again["outcome"] == "no_op", again
+    assert again["data"]["items"] == []
+    assert first.read_bytes() == before
 
 
 def test_a_row_that_only_resembles_a_file_does_not_claim_it(cfg, silence, export, monkeypatch):
@@ -350,8 +456,10 @@ def test_the_intake_record_names_each_playlist_and_its_batch_folder(cfg, silence
 
     assert envelope["outcome"] == "pending"
     (record,) = session.records(cfg)
+    # The account and the pass beside the name since U128, which a rerun of
+    # the pass reads to find what it already mirrored.
     assert record.detail[ingest.INBOX_PLAYLISTS_KEY] == [
-        {"name": "Sunset Warmup", "batch": BATCH}
+        {"name": "Sunset Warmup", "batch": BATCH, "account": "pl-a", "pass": PASS}
     ]
 
 
