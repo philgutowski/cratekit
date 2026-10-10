@@ -1,6 +1,6 @@
 """Suite-wide isolation. Every test runs against redirected state, always.
 
-Three autouse fixtures, ported in spirit from the source system's three, redirect
+Four autouse fixtures. Three, ported in spirit from the source system's three, redirect
 every root a test could reach into a temporary directory. They are autouse rather
 than opt-in for one reason: opt-in isolation protects the tests that remembered,
 and the tests that forget are exactly the ones that corrupt real state. The
@@ -27,6 +27,12 @@ What each fixture covers:
    neutralizes the mount precondition. The library root is the one path that
    names real music files and a real rekordbox database, so it gets its own
    fixture rather than riding along with the state roots.
+
+4. ``_favourites_without_pink`` makes ``favorites.cli.read_pink_track_ids``
+   return no pink rows. R-228's favourites sweep opens a read only copy of the
+   configured database for colour; almost every outbound drive has no library
+   to open, and would refuse with the colour read's own cause. Tests that care
+   about pink override the attribute on the test's own ``monkeypatch``.
 
 A test that reaches real config, a real library, a real keychain, or a real
 rekordbox database is a bug, not a slow test.
@@ -309,3 +315,25 @@ def _block_real_library_paths(request, tmp_path_factory):
             monkeypatch.setattr(preflight, "assert_library_mounted", lambda *a, **k: None)
 
         yield library
+
+@pytest.fixture(autouse=True)
+def _favourites_without_pink(request):
+    """Default the favourites colour read to no pink rows (R-228).
+
+    A test that wants pink rows, or a colour refusal, patches
+    ``favorites.cli.read_pink_track_ids`` on its own ``monkeypatch``. This
+    fixture uses its own MonkeyPatch instance for the reason the module
+    docstring gives. A test marked ``real_pink_read`` keeps the real read, so
+    the one function that opens the library is exercised somewhere.
+    """
+    favorites_cli = _module_if_present("cratekit.favorites.cli")
+    if request.node.get_closest_marker("real_pink_read") is not None:
+        yield
+        return
+    if favorites_cli is None or not hasattr(favorites_cli, "read_pink_track_ids"):
+        yield
+        return
+    with _own_patch() as monkeypatch:
+        monkeypatch.setattr(favorites_cli, "read_pink_track_ids", lambda cfg: ())
+        yield
+

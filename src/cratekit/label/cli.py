@@ -779,7 +779,21 @@ def import_label(ctx) -> Envelope:
 
 
 def playlist_tracks_or_refuse(found: catalogue.Catalogue, reference: str) -> list:
+    """The rows of :func:`playlist_listing_or_refuse`, for a caller that reports no shortfall."""
+    return playlist_listing_or_refuse(found, reference)[0]
+
+
+def playlist_listing_or_refuse(
+    found: catalogue.Catalogue, reference: str
+) -> tuple[list, catalogue.ListingShortfall | None]:
     """Resolve and list one playlist, translating a provider failure at the boundary.
+
+    Returns the rows and, when they came back fewer than the playlist's
+    declared count, the :class:`~cratekit.label.catalogue.ListingShortfall`
+    that says by how much (R-515). The count is ``num_tracks``, which the
+    client already parsed onto the playlist and which the walk ended on, so
+    the comparison costs no request. A short listing is never refused: the
+    rows are real tracks of the playlist, and the caller warns with the count.
 
     THIS IS ONE OF THE TWO PLACES ``label-playlist-unreadable`` IS EARNED, and
     :func:`_label_verifier` is the other. The cause means one thing across both:
@@ -819,7 +833,8 @@ def playlist_tracks_or_refuse(found: catalogue.Catalogue, reference: str) -> lis
     """
     try:
         playlist = found.playlist_for(reference)
-        return harvest.playlist_tracks(playlist)
+        rows = harvest.playlist_tracks(playlist)
+        return rows, catalogue.ListingShortfall.of(rows, getattr(playlist, "num_tracks", None))
     except CratekitError:
         raise
     except Exception as exc:
@@ -832,6 +847,24 @@ def playlist_tracks_or_refuse(found: catalogue.Catalogue, reference: str) -> lis
             origin=("label.cli",),
             detail={"playlist": reference, "kind": type(exc).__name__},
         ) from exc
+
+
+#: The warning code a harvest carries when its playlist listed short (R-515).
+HARVEST_WITHHELD = "label-harvest-playlist-withheld"
+
+
+def harvest_withheld_warning(
+    short: catalogue.ListingShortfall, reference: str
+) -> dict[str, str]:
+    """The words a person reads for a harvest over a short playlist listing."""
+    return {
+        "code": HARVEST_WITHHELD,
+        "message": (
+            f"the playlist {reference!r} listed short: {short.summary()}. The "
+            f"provider counts tracks it will not serve and does not say which, so "
+            f"no label was read off the {short.withheld} withheld"
+        ),
+    }
 
 
 def favourite_tracks_or_refuse(
@@ -1002,7 +1035,7 @@ def harvest_playlist(ctx) -> Envelope:
     # would be about a provider it never had.
     found = catalogue.resolve(cfg)
     reference = str(ctx.args.playlist)
-    tracks = playlist_tracks_or_refuse(found, reference)
+    tracks, short = playlist_listing_or_refuse(found, reference)
     # ONE EXTRACTOR, RUN ONCE PER TRACK. ``from_tracks`` defaults to this same
     # function, and taking the default while counting the nameless tracks with a
     # second reference to it is how the two silently come to disagree about what
@@ -1031,12 +1064,16 @@ def harvest_playlist(ctx) -> Envelope:
             extract=extract,
         )
     unresolved = len(report.dropped) + nameless
+    # A SHORT PLAYLIST IS SAID, never refused (R-515): the labels were read
+    # off the tracks the provider served, and the withheld ones offered none.
+    # On the warnings channel only, since ``review_set/1`` closes its data.
     return ctx.envelope(
         data={
             "queue": str(review.Queue.LABEL_RELEASE),
             "items": [_offered(item) for item in report.offered],
             "unresolved": unresolved,
         },
+        warnings=(harvest_withheld_warning(short, reference),) if short is not None else (),
         # AN EMPTY PLAYLIST IS A SUCCESS, and NO_OP is how it says so without
         # pretending it found something. A build that refused here would make a
         # playlist with nothing in it indistinguishable from one that could not
@@ -1396,6 +1433,9 @@ __all__ = [
     "favourite_tracks_or_refuse",
     "handle",
     "harvest_playlist",
+    "harvest_withheld_warning",
+    "HARVEST_WITHHELD",
+    "playlist_listing_or_refuse",
     "playlist_tracks_or_refuse",
     "import_label",
     "label_import_argv",

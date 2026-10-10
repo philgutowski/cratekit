@@ -1,0 +1,135 @@
+name = "r515"
+pass_kind = "light"
+
+[[rows]]
+id = "S1_of_takes_bool"
+description = "Let ListingShortfall.of trust a bool as a declared count"
+file = "src/cratekit/label/catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''        if isinstance(declared, bool) or not isinstance(declared, int) or declared <= 0:'''
+new = '''        if not isinstance(declared, int) or declared <= 0:'''
+
+[[rows]]
+id = "S2_of_takes_non_int"
+description = "Let ListingShortfall.of trust a count that is not an integer"
+file = "src/cratekit/label/catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''        if isinstance(declared, bool) or not isinstance(declared, int) or declared <= 0:'''
+new = '''        if isinstance(declared, bool) or declared is None or declared <= 0:'''
+
+[[rows]]
+id = "S3_of_takes_non_positive"
+description = "Let ListingShortfall.of trust a zero or negative count"
+file = "src/cratekit/label/catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''        if isinstance(declared, bool) or not isinstance(declared, int) or declared <= 0:'''
+new = '''        if isinstance(declared, bool) or not isinstance(declared, int):'''
+
+[[rows]]
+id = "S4_of_short_at_count"
+description = "Mint a shortfall when the listing reaches the count exactly"
+file = "src/cratekit/label/catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''        if listed >= declared:'''
+new = '''        if listed > declared:'''
+
+[[rows]]
+id = "S5_of_short_over_count"
+description = "Mint a shortfall when the listing runs past the count"
+file = "src/cratekit/label/catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''        if listed >= declared:'''
+new = '''        if listed == declared:'''
+
+[[rows]]
+id = "S6_cache_drops_short"
+description = "The caching release reader stores the rows and year but drops the shortfall"
+file = "src/cratekit/label/catalogue.py"
+surface = "user"
+tests = ["tests/test_label_sync.py"]
+old = '''        answer = (tuple(rows), year, short)'''
+new = '''        answer = (tuple(rows), year, None)'''
+
+[[rows]]
+id = "S7_adapter_no_count"
+description = "The release adapter ignores the album's num_tracks"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''        short = ListingShortfall.of(tracks, getattr(album, "num_tracks", None))'''
+new = '''        short = None'''
+
+[[rows]]
+id = "S8_short_of_keeps_zero"
+description = "Read a saved shortfall block back even when it withheld nothing"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py"]
+old = '''    if any(value is None for value in block.values()) or not block["withheld"]:'''
+new = '''    if any(value is None for value in block.values()):'''
+
+[[rows]]
+id = "S9_question_no_short"
+description = "The label sync question drops the release shortfall"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py"]
+old = '''    if question.provider_withheld:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "S10_intake_all_withheld_quiet"
+description = "An intake playlist with every track withheld is a quiet no op"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '''        if not tracks:
+            return ctx.envelope(
+                data=_no_op("no-tracks", source=reference, **extra),
+                outcome=Outcome.NO_OP,
+                warnings=warnings,'''
+new = '''        if not tracks:
+            return ctx.envelope(
+                data=_no_op("no-tracks", source=reference, **extra),
+                outcome=Outcome.NO_OP,'''
+
+[[rows]]
+id = "S11_intake_playlist_no_warning"
+description = "An intake playlist listed short carries no warning"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '''        warnings = (warned(short),) if short is not None else ()'''
+new = '''        warnings = ()'''
+
+[[rows]]
+id = "S12_sweep_no_withheld_block"
+description = "The sync all sweep records no shortfall per playlist"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''            sweep.short[playlist.playlist_id] = short.block()'''
+new = '''            pass'''
+
+[[rows]]
+id = "S13_sweep_no_warning"
+description = "The sync all sweep says nothing of a short playlist"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py"]
+old = '''    if sweep.short:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "S14_harvest_no_warning"
+description = "A harvest over a short playlist carries no warning"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_workers.py"]
+old = '''        warnings=(harvest_withheld_warning(short, reference),) if short is not None else (),'''
+new = '''        warnings=(),'''

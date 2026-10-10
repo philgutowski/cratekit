@@ -343,6 +343,9 @@ class Sweep:
     ready: dict[str, dict[str, Any]] = field(default_factory=dict)
     excluded: dict[str, Excluded] = field(default_factory=dict)
     unreadable: dict[str, str] = field(default_factory=dict)
+    #: Playlists that listed short of the count the provider declares, as
+    #: ``ListingShortfall.block`` carries it (R-515). Queued all the same.
+    short: dict[str, dict[str, int]] = field(default_factory=dict)
     recorded_now: tuple[str, ...] = ()
     #: THE WHOLE CURSOR after this pass reconciled, not only what it added. It
     #: is what :func:`mark_swept` marks from, for the reason that function
@@ -422,13 +425,17 @@ def plan(
             sweep.excluded[playlist.playlist_id] = reason
             continue
         try:
-            tracks = intake_cli.list_playlist(found, playlist.playlist_id)
+            tracks, short = intake_cli.list_playlist_declared(found, playlist.playlist_id)
         except CratekitError as exc:
             if exc.cause.reason not in PER_PLAYLIST_REASONS:
                 raise
             sweep.excluded[playlist.playlist_id] = Excluded.UNREADABLE
             sweep.unreadable[playlist.playlist_id] = exc.cause.message
             continue
+        if short is not None:
+            # SAID, NEVER REFUSED (R-515): the rows served are queued, and the
+            # summary carries how many the provider counted and withheld.
+            sweep.short[playlist.playlist_id] = short.block()
         if not tracks:
             # THE COUNT WAS UNKNOWN OR STALE, and the listing is what answers.
             sweep.excluded[playlist.playlist_id] = Excluded.EMPTY
@@ -635,6 +642,10 @@ def report(
             for identity, reason in sweep.excluded.items()
         },
         "unreadable": dict(sweep.unreadable),
+        "withheld": {
+            identity: {**block, "name": names.get(identity, "")}
+            for identity, block in sweep.short.items()
+        },
         "recorded_now": list(sweep.recorded_now),
         "swept_means": SWEPT_MEANS,
         "mark": MARK_UNBOUND if marked is None else MARK_APPLIED,

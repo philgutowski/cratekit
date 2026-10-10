@@ -797,6 +797,16 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # reason: the remedy is a declaration or a folder, never this
         # installation's configuration.
         "intake-old-undeclared": ExitCode.LIBRARY_PREREQUISITE,
+        # U121. A set's playlist was asked for under a folder this library's
+        # taxonomy does not declare, ``[inspiration]``, or the playlist root
+        # holds that folder twice. The catalog's code and its reason.
+        "inspiration-folder-undeclared": ExitCode.LIBRARY_PREREQUISITE,
+        # U121. The set's playlist could not be named: the job's page carried
+        # no uploader, no title or no upload date, and the flag that stands in
+        # for the missing one was not given. PRECONDITION rather than USAGE,
+        # since the parser accepted the command line and what is missing is a
+        # fact about the recording, which the flag supplies.
+        "set-playlist-unnamed": ExitCode.PRECONDITION,
         # U119. The genre Favorites were asked for on a library whose taxonomy
         # declares no sub class derived from a playlist, or the playlist that
         # class mirrors, All Favorites in the shipped template, is not in the
@@ -1783,6 +1793,10 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # ``export-playlist-ambiguous``, since the remedy is on the account and
         # not in the library. Nothing was written.
         "label-playlists-ambiguous": ExitCode.PRECONDITION,
+        # A label's dated new releases playlist was to be made and the label's
+        # folder is not on the account, since the folder step before it did
+        # not build it (U117). Nothing was written; the folder comes first.
+        "label-new-playlists-no-folder": ExitCode.PRECONDITION,
         # ── R-837's one, appended for the same reason ──────────────────────────
         #
         # A set playlist's archive was planned and the account holds two root
@@ -1800,6 +1814,14 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # the remedy is on the account, by hand, and the same ask refuses the
         # same way.
         "outbound-remove-refused": ExitCode.PRECONDITION,
+        # ── R-228's one, appended for the same reason ──────────────────────────
+        #
+        # The favourites sweep looks up the ColourID whose name is Pink inside a
+        # read only open, and the colour table has no live row of that name, so
+        # the sweep cannot tell which rows are pink. PRECONDITION: restoring the
+        # Pink colour in rekordbox is the person's act, and reporting complete
+        # over unread colour is the cost this residual named.
+        "favorites-pink-colour-missing": ExitCode.PRECONDITION,
     }
 )
 

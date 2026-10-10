@@ -336,6 +336,20 @@ def queue_warnings(
                 ),
             }
         )
+    # Beside dangling (R-228): pink rows the live library carries that this
+    # export does not, so they cannot become heart candidates. Named rather
+    # than dropped silently, for the same reason dangling is.
+    if resolved.pink_missing:
+        warnings.append(
+            {
+                "code": "favorites-pink-export-missing",
+                "message": (
+                    f"{len(resolved.pink_missing)} pink row(s) the library "
+                    f"carries are not in the export's collection and are not "
+                    f"queued: {', '.join(resolved.pink_missing)}"
+                ),
+            }
+        )
     return tuple(warnings)
 
 

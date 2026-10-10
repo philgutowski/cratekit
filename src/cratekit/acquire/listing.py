@@ -121,6 +121,7 @@ PAGE_SIZES: dict[str, int] = {
     # folder shapes below read: the client documents it as "Cannot exceed 50".
     "account_folders": 50,
     "folder_playlists": 50,
+    "folder_folders": 50,
 }
 
 #: The stop rule each listing shape declares. Nothing here reads the end of a
@@ -137,6 +138,7 @@ STOP_RULES: dict[str, StopRule] = {
     # page at every one, so both folder listings walk its cursor instead.
     "account_folders": StopRule.CURSOR,
     "folder_playlists": StopRule.CURSOR,
+    "folder_folders": StopRule.CURSOR,
 }
 
 #: REQUEST budgets, per listing shape, not item budgets. A walk that spends its
@@ -170,6 +172,7 @@ PAGE_CAPS: dict[str, int] = {
     # 30 (R-878), and a label folder holds one playlist per release year.
     "account_folders": 100,  # reaches 4,950 folders.
     "folder_playlists": 20,  # reaches 950 year playlists in one folder.
+    "folder_folders": 20,  # reaches 950 nested folders in one folder.
 }
 
 DEFAULT_MAX_RETRIES = 5
@@ -843,6 +846,30 @@ def folder_playlists(folder: Any, **kwargs: Any) -> list[Any]:
     )
 
 
+def folder_folders(folder: Any, **kwargs: Any) -> list[Any]:
+    """Every folder one account folder holds, across pages.
+
+    Stops on the **exhausted cursor**, for the reason :func:`account_folders`
+    gives: the same endpoint that lists a folder's playlists also lists the
+    folders it holds, and the walk that ignores offset must walk the cursor
+    (R-878). ``folder`` is the client's folder object; the walk keeps folders
+    and parses each with the client's ``parse_folder``. Deduplicated by
+    identifier on the same argument.
+    """
+    kwargs.setdefault("key", lambda nested: str(getattr(nested, "id", "")))
+    fetch = _folder_endpoint(
+        _client_part(folder, "request"),
+        _client_part(folder, "session", "config", "api_v2_location"),
+        str(_client_part(folder, "id")),
+    )
+    return paginate_cursor(
+        fetch,
+        keep=_item_type("FOLDER"),
+        parse=_client_part(folder, "session", "parse_folder"),
+        **_shape("folder_folders", **kwargs),
+    )
+
+
 #: The two release listings a provider artist exposes, and the ones
 #: :func:`artist_releases` reads by default. Owned here so a caller that has to
 #: ask "can this object be listed at all" (``label.crawl.can_list``) checks the
@@ -940,6 +967,7 @@ WRAPPERS: dict[str, Callable[..., list[Any]]] = {
     "artist_releases": artist_releases,
     "account_folders": account_folders,
     "folder_playlists": folder_playlists,
+    "folder_folders": folder_folders,
 }
 
 #: The provider listing methods that must not be called outside this module.
@@ -982,6 +1010,7 @@ __all__ = [
     "favorite_tracks",
     "favorite_tracks_declared",
     "fetch_with_retry",
+    "folder_folders",
     "folder_playlists",
     "paginate",
     "paginate_cursor",

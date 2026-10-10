@@ -486,7 +486,7 @@ def _tracks_or_failure(found: catalogue.Catalogue, release: _Release) -> _Read |
     if not release.release_id:
         return _Failed(release, NO_IDENTIFIER, "the review item names no release identifier")
     try:
-        rows, year = found.release_tracks(release.release_id)
+        rows, year, _short = found.release_tracks(release.release_id)
     except CratekitError:
         raise
     except catalogue.ReleaseUnresolvable as exc:

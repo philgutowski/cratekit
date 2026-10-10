@@ -1643,6 +1643,15 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # U69. The job verbs' convention: an identifier deliberately absent,
         # so the verb must refuse from the vocabulary rather than trace back.
         "intake.missing": ["--job", "no-such-job"],
+        # U121. LAZY, for the rotation's reason: the verb refuses a bridge tree
+        # by name before it reads the job, so the sample cuts the intake tree
+        # over and queues one finished set job whose page names the DJ, the set
+        # and the day it went up. Its one track is missing from the fixture's
+        # empty library, so the plan holds no member, the explicit gate is
+        # still asked over it, and the verb ends NO_OP writing nothing, as the
+        # rotation's empty plan does. The writing path is driven in
+        # tests/test_set_inspiration_playlist.py.
+        "intake.inspiration": _finished_set_job_on_a_native_tree,
         # R-770. A FILE THAT IS THERE, since the verb declares a gate now and
         # conformance 3 holds a gated verb to ending OK. On the conformance
         # fixture the intake tree is on the xml bridge and no export is named,
@@ -1954,6 +1963,38 @@ def _a_source_playlist() -> list[str]:
     return []
 
 
+def _finished_set_job_on_a_native_tree() -> list[str]:
+    """The intake tree native, and one set job run to the end. Answers ``--job`` and its id."""
+    from cratekit.acquire import match
+    from cratekit.cli import jobs as cli_jobs
+    from cratekit.core import jobs
+    from cratekit.intake import cli as intake_cli
+    from tests.cli_drive import drive as drive_json
+
+    _intake_cut_over()
+    cfg = config.load()
+    tracks = {
+        "rc_one": {"artist": "Probe", "title": "One", "origin": match.TEXT, "spelled": "Probe - One"}
+    }
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store,
+            handler_key="intake.set",
+            payload={
+                intake_cli.SOURCE: "https://example.invalid/a-set",
+                intake_cli.TRACKS: tracks,
+                intake_cli.CALLS: 1,
+                intake_cli.UNREACHED: 0,
+                intake_cli.PARTS: 1,
+                intake_cli.PAGE: {"title": "Probe - A Set", "uploader": "Probe", "upload_date": "20260503"},
+            },
+            cfg=cfg,
+            item_ids=tuple(tracks),
+        )
+    code, resumed = drive_json(cli_jobs.argv_for(job))
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), resumed
+    return ["--job", job.job_id]
 def _routing_tree_cut_over_with_a_source() -> list[str]:
     """The routing tree database native and the favourites source present. Answers no arguments."""
     from datetime import date
@@ -2243,6 +2284,10 @@ ACKNOWLEDGED_BEFORE_THE_GATE = {
     ),
     "tag.suggest": (
         "tests/test_tag_suggest.py::"
+        "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
+    ),
+    "intake.inspiration": (
+        "tests/test_set_inspiration_playlist.py::"
         "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
     ),
     # U112. Only its database area is refused without one; the account area
@@ -2734,6 +2779,7 @@ TAXONOMY_IDS = frozenset(
         taxonomy.default_taxonomy().tree.id,
         taxonomy.default_taxonomy().intake.id,
         taxonomy.default_taxonomy().intake_old.id,
+        taxonomy.default_taxonomy().inspiration.id,
     }
     | set(taxonomy.default_taxonomy().bucket_ids())
     | {band.id for band in taxonomy.default_taxonomy().energy.bands}
@@ -2745,6 +2791,7 @@ TAXONOMY_DISPLAY_NAMES = frozenset(
         taxonomy.default_taxonomy().tree.display,
         taxonomy.default_taxonomy().intake.display,
         taxonomy.default_taxonomy().intake_old.display,
+        taxonomy.default_taxonomy().inspiration.display,
     }
     | {bucket.display for bucket in taxonomy.default_taxonomy().buckets}
     | {band.display for band in taxonomy.default_taxonomy().energy.bands}

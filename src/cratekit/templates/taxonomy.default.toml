@@ -79,6 +79,16 @@ display = "INBOX"
 id = "inbox_old"
 display = "Old"
 
+# The folder at the playlist root a set's playlist is kept in for good (U121).
+# A set intake lands its downloads as one batch under the intake flow, which
+# the rotation clears after 90 days, and writes every identified track the
+# library owns, downloaded or not, as one more playlist here, named the source
+# system's way: `10_09_26 Public Service NYC Live at Vonking 5-26`. Optional;
+# delete the section and the set playlist refuses by name.
+[inspiration]
+id = "inspiration"
+display = "INSPIRATION"
+
 # The catalog tree (R19): where a whole-catalog import lands, one folder per
 # catalogued source holding one playlist per release year. Optional, unlike the
 # two above. Delete this section and a catalog import refuses by name instead of

@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from cratekit.label.catalogue import TRACK_SEARCH_PAGE, ReleaseUnresolvable
+from cratekit.label.catalogue import TRACK_SEARCH_PAGE, ListingShortfall, ReleaseUnresolvable
 
 #: Every method the ``Catalogue`` protocol declares. Derived once here rather
 #: than remembered at each assertion site.
@@ -152,8 +152,12 @@ class FakePagedPlaylist:
 
     page_size = 100
 
-    def __init__(self, tracks: list[Any]) -> None:
+    def __init__(self, tracks: list[Any], *, declared: int | None = None) -> None:
         self._tracks = list(tracks)
+        if declared is not None:
+            # THE COUNT THE PROVIDER DECLARES, as the client parses it (R-515).
+            # Absent unless given, as on a client that publishes none.
+            self.num_tracks = declared
 
     def tracks(self, limit: int | None = None, offset: int = 0) -> list[Any]:
         size = self.page_size if limit is None else limit
@@ -287,15 +291,18 @@ class FakeCatalogue:
         self.heart_listings += 1
         return tuple(self.hearts)
 
-    def release_tracks(self, release_id: str) -> tuple[tuple[Any, ...], int | None]:
+    def release_tracks(self, release_id: str) -> tuple[tuple[Any, ...], int | None, Any]:
         self.releases_asked_for.append(release_id)
         try:
-            tracks, year = self.releases[release_id]
+            tracks, year, *declared = self.releases[release_id]
         except KeyError as exc:
             # The seam's own exception, which is the protocol's contract for a
             # release the provider has nothing for, and never an empty listing.
             raise ReleaseUnresolvable(f"no catalogue release {release_id!r}") from exc
-        return tuple(tracks), year
+        # A THIRD ELEMENT IS THE COUNT THE PROVIDER DECLARES (R-515), so a
+        # test can list a release short of it. Two elements list in full.
+        short = ListingShortfall.of(tracks, declared[0]) if declared else None
+        return tuple(tracks), year, short
 
     def release_artist(self, release_id: str) -> str:
         self.artists_asked_for.append(release_id)
@@ -370,7 +377,7 @@ class UnreadableCatalogue(FakeCatalogue):
         self.heart_listings += 1
         raise RuntimeError("the catalogue could not list the account's favourites")
 
-    def release_tracks(self, release_id: str) -> tuple[tuple[Any, ...], int | None]:
+    def release_tracks(self, release_id: str) -> tuple[tuple[Any, ...], int | None, Any]:
         self.releases_asked_for.append(release_id)
         raise RuntimeError(f"the catalogue could not read the release {release_id!r}")
 

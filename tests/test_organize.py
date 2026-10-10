@@ -26,7 +26,7 @@ from cratekit.label import catalogue
 from cratekit.label.catalogue import AccountPlaylist
 from cratekit.organize import account as account_area
 from cratekit.organize import cli as organize_cli
-from cratekit.organize import own, rekordbox
+from cratekit.organize import filing, own, rekordbox
 from tests import adopt_fixtures, cutover_fixtures, outbound_fakes
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, FakePagedArtist, catalogue_factory
@@ -360,6 +360,12 @@ def test_what_the_author_made_is_listed_with_a_home_and_never_a_write(world):
     assert _parent(cfg, ids["listen later"]) == inbox
     for area in done["data"]["summary"]["areas"].values():
         for step in area["steps"]:
+            if step["step"] == account_area.FILE:
+                # THE FILING STEP NAMES EVERY PLAYLIST AT THE ROOT (U116), and an
+                # unmarked one of the author's only ever as left, with why.
+                (row,) = [one for one in step["plan"] if one["name"] == MINE_ON_ACCOUNT]
+                assert row["action"] == filing.LEFT and row["why"] == filing.UNMARKED
+                continue
             assert MINE_ON_ACCOUNT not in str(step["plan"])
             assert MINE_IN_REKORDBOX not in str(step["plan"])
 
@@ -685,3 +691,268 @@ def test_an_exported_playlist_the_product_made_is_not_listed_as_yours(world):
 
     assert "Exported 2025" not in mine
     assert MINE_ON_ACCOUNT in mine
+
+
+# ---------------------------------------------------------------------------
+# U116: a marked custom playlist is filed into its year folder
+# ---------------------------------------------------------------------------
+
+#: A custom playlist a sync swept and marked, and its mark's year.
+MARKED_ID = "custom-1"
+MARKED_NAME = "DOWNLOADED Phil 10_8_26"
+MARKED_YEAR = "2026"
+
+
+def _marked(cfg, fake, held, playlist_id=MARKED_ID, name=MARKED_NAME, *, when="2026-10-08T21:00:00+00:00"):
+    from cratekit.sync import mark_record
+
+    fake.account.append(AccountPlaylist(playlist_id, name, 3))
+    held.titles[playlist_id] = name
+    mark_record.MarkRecord(cfg).record_marked(
+        "Phil 10_8_26", {playlist_id: (name.removeprefix("DOWNLOADED "), name)}, now=when
+    )
+
+
+def _file_rows(envelope: dict) -> dict[str, dict]:
+    step = _steps(envelope, account_area.AREA)[account_area.FILE]
+    return {row["id"]: row for row in step["plan"]}
+
+
+def test_a_marked_playlist_at_the_root_moves_into_its_year_folder(world):
+    cfg, fake, held, _inbox, _ids = world
+    _marked(cfg, fake, held)
+
+    step = _steps(_report(), account_area.AREA)[account_area.FILE]
+    assert step["state"] == "planned"
+    assert _file_rows({"data": {"summary": {"areas": {account_area.AREA: {"steps": [step]}}}}})[
+        MARKED_ID
+    ]["action"] == filing.MOVE
+
+    code, done, _first = _answered()
+
+    assert code == int(ExitCode.OK), done
+    folder = held.placed[MARKED_ID]
+    assert held.folder_names[folder] == MARKED_YEAR
+    applied = _steps(done, account_area.AREA)[account_area.FILE]["applied"]
+    assert applied["moved"] == [[MARKED_ID, folder]]
+    mine = {one["name"] for one in done["data"]["summary"]["areas"][account_area.AREA]["yours"]}
+    assert MARKED_NAME not in mine
+
+
+def test_a_missing_year_folder_is_created_once_and_reused(world):
+    cfg, fake, held, _inbox, _ids = world
+    _marked(cfg, fake, held)
+    _marked(cfg, fake, held, "custom-2", "DOWNLOADED Phil 10_9_26")
+
+    code, done, _first = _answered()
+
+    assert code == int(ExitCode.OK), done
+    assert held.folders_created.count(MARKED_YEAR) == 1
+    assert held.placed[MARKED_ID] == held.placed["custom-2"]
+    # A second pass reads the folder the first made, and moves nothing again.
+    step = _steps(_report(), account_area.AREA)[account_area.FILE]
+    assert step["state"] == "nothing"
+    assert MARKED_ID not in _file_rows(_report())
+
+
+def test_an_existing_year_folder_on_the_account_is_adopted_not_made_again(world):
+    cfg, fake, held, _inbox, _ids = world
+    existing = held.create_folder(MARKED_YEAR)
+    held.folders_created.clear()
+    _marked(cfg, fake, held)
+
+    code, done, _first = _answered()
+
+    assert code == int(ExitCode.OK), done
+    assert held.placed[MARKED_ID] == existing
+    assert MARKED_YEAR not in held.folders_created
+
+
+def test_an_unmarked_playlist_is_reported_and_not_moved(world):
+    _cfg, _fake, held, _inbox, _ids = world
+
+    row = _file_rows(_report())["mine-1"]
+
+    assert row["action"] == filing.LEFT and row["why"] == filing.UNMARKED
+    code, done, _first = _answered()
+    assert code == int(ExitCode.OK), done
+    assert "mine-1" not in held.placed
+
+
+def test_a_mark_put_back_is_no_mark_and_the_playlist_stays(world):
+    from cratekit.sync import mark_record
+
+    cfg, fake, held, _inbox, _ids = world
+    _marked(cfg, fake, held)
+    mark_record.MarkRecord(cfg).record_unmarked("Phil 10_8_26", MARKED_ID)
+
+    # The name still carries the prefix; only the mark record was put back.
+    assert _file_rows(_report())[MARKED_ID]["why"] == filing.PREFIXED_UNMARKED
+
+
+def test_a_marked_playlist_already_in_a_folder_is_left_where_it_is(world):
+    cfg, fake, held, _inbox, _ids = world
+    _marked(cfg, fake, held)
+    elsewhere = held.create_folder("Old faves")
+    held.placed[MARKED_ID] = elsewhere
+
+    assert MARKED_ID not in _file_rows(_report())
+    code, done, _first = _answered()
+    assert code == int(ExitCode.OK), done
+    assert held.placed[MARKED_ID] == elsewhere
+
+
+def test_a_label_playlist_is_the_label_steps_and_a_set_the_archives(world):
+    from cratekit.modules.outbound import ledger
+
+    cfg, fake, held, _inbox, _ids = world
+    # Marked as well, so only the label rule can be what leaves it.
+    _marked(cfg, fake, held, "label-1", f"{LABEL} 2026")
+
+    rows = _file_rows(_report())
+
+    assert rows["label-1"]["action"] == filing.LEFT
+    assert rows["label-1"]["why"] == filing.LABEL_STEP
+    set_id = ledger.set_playlist(cfg, SET_NAME).remote_id
+    assert rows[set_id]["why"] == filing.SET_STEP
+
+
+def test_the_plan_is_empty_and_still_asks_when_the_root_is_clean(seams):
+    _cfg, fake, _held = seams
+    fake.account.clear()
+
+    code, first = drive(VERB)
+
+    # No acknowledgment, so the database area is refused and the account asks first.
+    assert code == int(ExitCode.DECISION_REQUIRED), first
+    assert first["cause"]["detail"]["gate"] == ACCOUNT_GATE
+    items = first["cause"]["detail"]["shown"]["items"]
+    (item,) = [one for one in items if one["step"] == account_area.FILE]
+    assert item["state"] == "nothing" and item["plan"] == []
+
+
+def test_two_root_folders_named_as_the_year_leave_its_playlists_reported(world):
+    cfg, fake, held, _inbox, _ids = world
+    held.create_folder(MARKED_YEAR)
+    held.create_folder(MARKED_YEAR)
+    _marked(cfg, fake, held)
+
+    row = _file_rows(_report())[MARKED_ID]
+
+    assert row["action"] == filing.LEFT and "2 root folders" in row["why"]
+
+
+def test_a_provider_refusal_mid_pass_stops_and_names_what_moved(world):
+    cfg, fake, held, _inbox, _ids = world
+    _marked(cfg, fake, held, "custom-a", "DOWNLOADED A pass")
+    _marked(cfg, fake, held, "custom-b", "DOWNLOADED B pass")
+    held.fail_on = frozenset({"custom-b"})
+
+    code, done, _first = _answered()
+
+    assert code != int(ExitCode.OK)
+    assert "custom-a" in held.placed and "custom-b" not in held.placed
+    assert "1 playlist(s) were moved" in done["cause"]["message"]
+    assert f"custom-a into {held.placed['custom-a']}" in done["cause"]["message"]
+
+
+def test_a_mark_with_no_year_is_left_and_the_year_is_local():
+    assert filing.year_of_mark("2025-12-31T23:00:00+00:00") == "2025"
+    # 20:00 Eastern on 31 Dec is 01:00 UTC on 1 Jan; local year must win.
+    assert filing.year_of_mark("2026-01-01T01:00:00+00:00") == "2025"
+    assert filing.year_of_mark("") == ""
+    assert filing.year_of_mark("soon") == ""
+
+
+def test_a_year_folder_already_on_the_account_is_adopted_with_no_set_to_make_it(seams):
+    """No set archive runs here, so only the filing step can have found the folder."""
+    cfg, fake, held = seams
+    existing = held.create_folder(MARKED_YEAR)
+    held.folders_created.clear()
+    _marked(cfg, fake, held)
+
+    code, done = _two_acts(VERB, ACCOUNT_GATE, "apply")
+
+    assert code == int(ExitCode.OK), done
+    assert held.placed[MARKED_ID] == existing
+    assert held.folders_created == []
+
+
+def test_a_playlist_marked_twice_is_filed_by_its_latest_mark(seams):
+    from cratekit.sync import mark_record
+
+    cfg, fake, held = seams
+    _marked(cfg, fake, held, when="2025-12-30T10:00:00+00:00")
+    mark_record.MarkRecord(cfg).record_marked(
+        "a later pass", {MARKED_ID: ("Phil 10_8_26", MARKED_NAME)}, now="2026-01-02T10:00:00+00:00"
+    )
+
+    code, done = _two_acts(VERB, ACCOUNT_GATE, "apply")
+
+    assert code == int(ExitCode.OK), done
+    assert held.folder_names[held.placed[MARKED_ID]] == "2026"
+
+def test_a_playlist_two_folders_down_is_left_where_it_is(world):
+    cfg, fake, held, _inbox, _ids = world
+    _marked(cfg, fake, held)
+    archive = held.create_folder("Archive")
+    nested = held.nest_folder("2025", archive)
+    held.placed[MARKED_ID] = nested
+
+    assert MARKED_ID not in _file_rows(_report())
+    code, done, _first = _answered()
+    assert code == int(ExitCode.OK), done
+    assert held.placed[MARKED_ID] == nested
+    assert all(playlist_id != MARKED_ID for playlist_id, _folder in held.moves)
+
+
+def test_a_provider_cratekit_refusal_mid_pass_carries_the_moved_list(world):
+    cfg, fake, held, _inbox, _ids = world
+    _marked(cfg, fake, held, "custom-a", "DOWNLOADED A pass")
+    _marked(cfg, fake, held, "custom-b", "DOWNLOADED B pass")
+    held.fail_on = frozenset({"custom-b"})
+    held.provider_error = True
+
+    code, done, _first = _answered()
+
+    assert code != int(ExitCode.OK)
+    assert "custom-a" in held.placed and "custom-b" not in held.placed
+    detail = done["cause"]["detail"]
+    assert detail["moved"] == [["custom-a", held.placed["custom-a"]]]
+    assert "1 playlist(s) were moved" in done["cause"]["message"]
+
+
+def test_a_folder_made_before_a_failed_ledger_write_is_named(seams, monkeypatch):
+    from cratekit.modules.outbound import ledger, sets
+
+    cfg, fake, held = seams
+    _marked(cfg, fake, held)
+    planned = filing.FilePlan(
+        rows=(filing.Placement(MARKED_ID, MARKED_NAME, filing.MOVE, year=MARKED_YEAR),),
+        years={MARKED_YEAR: filing.YearFolder(year=MARKED_YEAR, action=sets.CREATE)},
+    )
+
+    def boom(cfg_arg, document):
+        raise OSError("ledger write failed")
+
+    monkeypatch.setattr(ledger, "_write", boom)
+
+    with pytest.raises(RuntimeError) as raised:
+        filing.apply(cfg, held, planned)
+
+    assert MARKED_YEAR in held.folders_created
+    assert "1 year folder(s) were created" in str(raised.value)
+    assert MARKED_ID not in held.placed
+
+
+def test_a_prefixed_but_unmarked_playlist_has_its_own_reason(world):
+    _cfg, fake, held, _inbox, _ids = world
+    fake.account.append(AccountPlaylist("hand-1", "DOWNLOADED Hand marked", 2))
+    held.titles["hand-1"] = "DOWNLOADED Hand marked"
+
+    row = _file_rows(_report())["hand-1"]
+
+    assert row["action"] == filing.LEFT and row["why"] == filing.PREFIXED_UNMARKED
+    code, done, _first = _answered()
+    assert code == int(ExitCode.OK), done
+    assert "hand-1" not in held.placed

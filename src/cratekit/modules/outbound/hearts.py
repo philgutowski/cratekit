@@ -61,6 +61,9 @@ class HeartCandidate:
     isrc: str = ""
     release_title: str = ""
     artist: str = ""
+    #: The album tag of the row's own file, which chooses among releases
+    #: spelled alike under one ISRC when none is hearted (R-572).
+    album: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,6 +120,7 @@ def heart_back(
             isrc=item.isrc,
             title=item.release_title,
             artist=item.artist,
+            album=item.album,
         )
         if not remote:
             unmatched.append(item.row_id)
