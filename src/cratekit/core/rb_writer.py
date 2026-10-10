@@ -2671,6 +2671,32 @@ FILE_ID_POLICY = FieldPolicy(
     fields=MappingProxyType({FILE_ID_COLUMN: Ownership.OWNED}),
 )
 
+#: The column the binding's ``add_content`` sets from the TRACK menu item's
+#: ``rb_local_usn`` and rekordbox sets to one value on nearly every row it
+#: makes (A32, R-928). Measured on the live library on 2026-10-10: every row
+#: the native landing made carries ``2973454`` and no other row does, while
+#: 10,292 rows rekordbox made carry ``2950670``, every row since 2026-03 but a
+#: few dozen. It keys no table in the database and what it means is unknown.
+#: After the file id was ruled out at sitting 36 it is the one content column
+#: still differing between a binding row that will not load and a rekordbox
+#: row that does, so ``repair link`` writes it onto one row to learn whether
+#: it is the block.
+#:
+#: NOT A BOOKKEEPING COLUMN, for the reason the file id is not: the guard
+#: would go blind to it for every writer. The creation policy admits it on the
+#: row the binding makes, and the probe below owns it for its one commit.
+CONTENT_LINK_COLUMN = "ContentLink"
+
+#: The probe that writes a chosen ``ContentLink`` onto one live row (A32).
+#: Registered by that probe alone and never at baseline, as the two above are.
+#:
+#: OWNED, because the value it replaces is present and the binding's, never a
+#: person's: nothing in rekordbox edits this column.
+CONTENT_LINK_POLICY = FieldPolicy(
+    owner="row-content-link",
+    fields=MappingProxyType({CONTENT_LINK_COLUMN: Ownership.OWNED}),
+)
+
 _REGISTERED: dict[str, FieldPolicy] = {}
 
 
@@ -3503,6 +3529,8 @@ __all__ = [
     "BINDING_ID_LIMIT",
     "BOOKKEEPING_COLUMNS",
     "CONTENT_ANALYSIS_TABLES",
+    "CONTENT_LINK_COLUMN",
+    "CONTENT_LINK_POLICY",
     "CONTENT_ROW_DEFAULTS",
     "CONTENT_ROW_EMPTY_COLUMNS",
     "CONTENT_TABLE",

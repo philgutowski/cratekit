@@ -816,6 +816,13 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # one in the template and one in rekordbox.
         "favorites-class-undeclared": ExitCode.LIBRARY_PREREQUISITE,
         "favorites-source-missing": ExitCode.LIBRARY_PREREQUISITE,
+        # A32. The ContentLink probe refuses before its gate: the identifier
+        # names no live content row, or no other live row carries the value
+        # asked for. PRECONDITION on both, since the parser accepted the
+        # command line and what is wrong is the choice of row or value, which
+        # the person changes.
+        "link-row-unknown": ExitCode.PRECONDITION,
+        "link-value-unheld": ExitCode.PRECONDITION,
         # ── This installation ───────────────────────────────────────────────
         "doctor-check-failed": ExitCode.PRECONDITION,
         # One slug for every way configuration can be unusable, because the

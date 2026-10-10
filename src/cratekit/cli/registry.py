@@ -666,6 +666,45 @@ ENTRIES: tuple[Entry, ...] = (
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
+    # ── The ContentLink probe (A32, R-928) ──────────────────────────────────
+    Entry(
+        name="repair.link",
+        summary="write a chosen ContentLink onto one live library row, the "
+        "experiment that asks whether that column keeps a landed row off a "
+        "deck; one row, one column, writes no file",
+        module="cratekit.write.row_link_cli",
+        builder="build",
+        handler_key="repair.link",
+        # NO FEATURE ROW AND NO SOURCE SCRIPT. The source system never created a
+        # content row, so it never had a column to probe.
+        #
+        # GATED BY ``repair``, as ``repair.rows`` is: a write over a row the
+        # library already holds.
+        module_id="repair",
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: THE ROW AND ONLY THE ROW, and of it only
+        #: ``rb_writer.CONTENT_LINK_COLUMN``.
+        writes=frozenset({"db_metadata"}),
+        destructive=True,
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+        ),
+        gates=(
+            GateSpec(
+                name="repair.link.confirm",
+                options=("apply", "abort"),
+                prompt="Write this value onto this one row?",
+                #: EXPLICIT (R34). A write to a row of a live library is
+                #: answered by a separate recorded act with an actor.
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
     Entry(
         name="status",
         summary="per-source sync state, open runs, and unconverged trees",
