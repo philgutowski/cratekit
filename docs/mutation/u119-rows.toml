@@ -1,0 +1,275 @@
+# U119 author's mutation table: the genre Favorites. Twenty five rows, the cap,
+# over the taxonomy's new rules, the engine's plan and write, the rebuild's
+# wiring, the adoption's end and the verb's order. Considered and dropped
+# below the cap: the verb's nothing-to-refresh note (a wording), the unclaimed
+# folder note (listed in G7's family), and the CONCEPTS text (prose).
+name = "u119"
+pass_kind = "light"
+
+[[rows]]
+id = "T1_two_on_one_signal"
+description = "_build_sub_classes: two additive classes on one signal load"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py"]
+old = '''        if len(ids) > 1:
+            # ONE ADDITIVE CLASS PER SIGNAL'''
+new = '''        if len(ids) > 9:
+            # ONE ADDITIVE CLASS PER SIGNAL'''
+
+[[rows]]
+id = "T2_playlist_without_name"
+description = "_build_sub_classes: a playlist signal with no signal_playlist loads"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py"]
+old = '''            if not signal_playlist:
+                problems.append('''
+new = '''            if False:
+                problems.append('''
+
+[[rows]]
+id = "T3_version_gate"
+description = "_build_sub_classes: a playlist signal under version 3 loads"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py"]
+old = '''            if version < PLAYLIST_SIGNAL_SCHEMA_VERSION:'''
+new = '''            if version < 1:'''
+
+[[rows]]
+id = "T4_signal_default"
+description = "_build_sub_classes: a class with no signal key is read as a playlist class"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_genre_favorites.py"]
+old = '''        signal = str(entry.get("signal", SIGNAL_VOX))'''
+new = '''        signal = str(entry.get("signal", SIGNAL_PLAYLIST))'''
+
+[[rows]]
+id = "G1_class_undeclared"
+description = "require_class: a taxonomy with no playlist class is not refused"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''    found = favorites_class(declared)
+    if found is None:
+        raise refuse(
+            CLASS_UNDECLARED,'''
+new = '''    found = favorites_class(declared)
+    if False:
+        raise refuse(
+            CLASS_UNDECLARED,'''
+
+[[rows]]
+id = "G2_source_folder_counts"
+description = "source_playlist: a source playlist holding no live track is mirrored, emptying every Favorites"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''        if not _live_members(db, str(live[0].ID)):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "G3_two_sources_first_wins"
+description = "source_playlist: two live sources, the first is taken"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''    if len(live) == 1:
+        if not _live_members(db, str(live[0].ID)):'''
+new = '''    if len(live) >= 1:
+        if not _live_members(db, str(live[0].ID)):'''
+
+[[rows]]
+id = "G4_removed_membership_live"
+description = "_live_members: a membership rekordbox removed still counts as held"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''        if not rb_writer.membership_removed(song)
+    )'''
+new = '''    )'''
+
+[[rows]]
+id = "G5_favorites_counted_as_members"
+description = "plan_refresh: the folder's own Favorites counts among the folder's members"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''            if favorites_node is not None and node.playlist_id == favorites_node.playlist_id:
+                continue
+            members.update(node.content_ids)'''
+new = '''            members.update(node.content_ids)'''
+
+[[rows]]
+id = "G6_wanted_is_members"
+description = "plan_refresh: every member of the folder is wanted, favourite or not"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''                wanted=tuple(sorted(members & favourites)),'''
+new = '''                wanted=tuple(sorted(members)),'''
+
+[[rows]]
+id = "G7_twin_folders_first_taken"
+description = "plan_refresh: two folders of one bucket's name, the first is taken"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''        if len(named) > 1:
+            unclaimed.extend('''
+new = '''        if len(named) > 9:
+            unclaimed.extend('''
+
+[[rows]]
+id = "G8_record_ignored"
+description = "plan_refresh: the folder a previous write recorded for the bucket is not read"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''    bound: dict[str, str] = {
+        bucket.id: recorded_folder[bucket.id] for bucket in buckets if bucket.id in recorded_folder
+    }'''
+new = '''    bound: dict[str, str] = {}'''
+
+[[rows]]
+id = "G9_digest_over_adds"
+description = "identity: the digest covers the adds rather than the target"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''            "wanted": list(self.wanted),
+            "removes": list(self.removes),'''
+new = '''            "wanted": list(self.adds),
+            "removes": list(self.removes),'''
+
+[[rows]]
+id = "G10_placements_no_gap"
+description = "placements: a source that cannot be read names no dimension as not compared"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''        return (), (FAVORITES_DIMENSION,)'''
+new = '''        return (), ()'''
+
+[[rows]]
+id = "G11_stale_digest"
+description = "apply_refresh: a plan whose digest moved since the approval is written anyway"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''    if again.digest != plan.digest:
+        raise refuse(
+            "decision-stale",
+            "the genre Favorites are not as the approved plan read them'''
+new = '''    if False:
+        raise refuse(
+            "decision-stale",
+            "the genre Favorites are not as the approved plan read them'''
+
+[[rows]]
+id = "G12_removed_namesake_written_into"
+description = "_playlist_row: a removed Favorites of the name under the folder is written into"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''    for row in list(db.get_playlist(Name=folder.playlist_display)):
+        if rb_writer.is_folder(row) or rb_writer.node_removed(row):
+            continue'''
+new = '''    for row in list(db.get_playlist(Name=folder.playlist_display)):
+        if rb_writer.is_folder(row):
+            continue'''
+
+[[rows]]
+id = "G13_removals_when_not_asked"
+description = "apply_refresh: the removals are made whether or not the caller was approved for them"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''        if remove and owed:'''
+new = '''        if owed:'''
+
+[[rows]]
+id = "G14_owed_not_counted"
+description = "apply_refresh: the removals an additive run left are reported as none owed"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''        owed = plan.removes
+        if remove and owed:'''
+new = '''        owed = 0
+        if remove and plan.removes:'''
+
+[[rows]]
+id = "G15_removal_commit_admits_nothing"
+description = "apply_refresh: the second commit does not admit the membership table"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''                    rb_writer.commit_guarded(db, removals=(rb_writer.MEMBERSHIP_TABLE,))'''
+new = '''                    rb_writer.commit_guarded(db)'''
+
+[[rows]]
+id = "G16_read_back_blind_to_leftovers"
+description = "_read_back: a track still in Favorites after the removals is not a disagreement"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''        if removed_too and live - wanted:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "G17_nodes_unrecorded"
+description = "apply_refresh: the Favorites node is not recorded for the bucket"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''        if nodes:
+            convergence.record_nodes(cfg, plan.tree_id, nodes)'''
+new = '''        if False:
+            convergence.record_nodes(cfg, plan.tree_id, nodes)'''
+
+[[rows]]
+id = "R1_vox_unknown_by_id"
+description = "derive_from_taxonomy: a playlist class is asked of the vocal derivation and refused"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_genre_favorites.py"]
+old = '''        if entry.additive and entry.signal == taxonomy.SIGNAL_VOX
+    )
+    unknown = sorted('''
+new = '''        if entry.additive
+    )
+    unknown = sorted('''
+
+[[rows]]
+id = "R2_with_favorites_every_tree"
+description = "with_favorites: the favourites are added to every governed tree, not only the routing tree"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''    if tree_id != declared.tree.id or genre_favorites.favorites_class(declared) is None:'''
+new = '''    if genre_favorites.favorites_class(declared) is None:'''
+
+[[rows]]
+id = "A1_adoption_skips_refresh"
+description = "handle: an adoption that filed a track runs no additive refresh"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py", "tests/test_adopt_apply_cli.py"]
+old = '''    if membership.added:
+        outcome = genre_favorites.refresh_additive('''
+new = '''    if False:
+        outcome = genre_favorites.refresh_additive('''
+
+[[rows]]
+id = "V1_ack_after_plan"
+description = "favorites_refresh: the backup acknowledgment is not read before the gate"
+file = "src/cratekit/favorites/refresh_cli.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''    session.assert_backup_acknowledged(cfg)
+
+    plan = planned(cfg, declared, registry)'''
+new = '''    plan = planned(cfg, declared, registry)'''

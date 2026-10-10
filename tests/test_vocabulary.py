@@ -589,5 +589,7 @@ def test_a_template_at_schema_version_1_may_declare_a_vocabulary(default_raw):
         for bucket in data["bucket"]:
             bucket.pop("formerly", None)
             bucket.pop("split_from", None)
+        # And the one class that needs version 4 (U119), for the same reason.
+        data["sub_class"] = [c for c in data["sub_class"] if c.get("signal") != "playlist"]
 
     assert built(default_raw, mutate).vocabulary(CATALOGUE)["pop"].tag == "NonElectronic / Pop"
