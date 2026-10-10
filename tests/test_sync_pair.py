@@ -735,3 +735,119 @@ def test_the_sync_pass_hands_the_pairs_to_the_sweep(world, cfg, monkeypatch):
     assert seen and ACCOUNT in seen[0]
     excluded = planned.detail["excluded"]
     assert excluded[ACCOUNT]["reason"] == str(playlists.Excluded.PAIRED)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The review's findings, each driven
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_first_sync_with_a_side_skipped_records_no_snapshot_and_stays_first(world, cfg):
+    """With one side's snapshot alone, the other side would read every track as added."""
+    w = world(account=("1", "2"), rekordbox=("1", "2"))
+    code, envelope = sync(w.args(), account="skip")
+    assert code == int(ExitCode.OK), envelope
+    held = _pair(cfg)
+    assert held.first is True and held.account is None and held.rekordbox is None
+
+
+def test_a_whole_sync_after_a_skipped_one_finishes_both_sides_from_the_old_base(world):
+    w = world(account=("1", "2", "3"), rekordbox=("1", "2", "3"))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    w.rekordbox_remove("2")
+    assert sync([*VERB, ACCOUNT], account="skip")[0] == int(ExitCode.OK)
+    w.rekordbox_order("3", "1")
+    code, envelope = sync([*VERB, ACCOUNT])
+    assert code == int(ExitCode.OK), envelope
+    assert w.on_account() == ["t3", "t1"]
+    assert w.held() == ["3", "1"]
+
+
+def test_a_track_the_account_already_holds_by_isrc_is_linked_without_asking_the_provider(world, cfg):
+    w = world(account=("1", "2"), rekordbox=("1", "2"))
+    # The provider would name another release of row 2's recording.
+    w.account.catalog["2"] = "t2-album"
+    code, envelope = sync(w.args())
+    assert code == int(ExitCode.OK), envelope
+    assert [one["identity"] for one in w.account.matches] == []
+    assert w.on_account() == ["t1", "t2"]
+    assert _pair(cfg).links.get("t2") == "2"
+
+
+def test_a_row_with_no_isrc_anywhere_is_named_and_the_provider_is_not_asked(world, cfg):
+    w = world(account=("1",), rekordbox=("1", "6"))
+    conn = sqlite3.connect(cfg.library.db_path)
+    try:
+        conn.execute("UPDATE djmdContent SET ISRC = '' WHERE ID = '6'")
+        conn.commit()
+    finally:
+        conn.close()
+    code, envelope = sync(w.args())
+    assert code == int(ExitCode.OK), envelope
+    assert "6" not in [one["identity"] for one in w.account.matches]
+    warning = next(one for one in envelope["warnings"] if one["code"] == pair_cli.UNMATCHED)
+    assert pair_cli.NO_ISRC in warning["message"]
+    assert w.on_account() == ["t1"]
+
+
+def test_a_short_listing_leaves_the_snapshot_so_a_withheld_track_is_not_read_as_added(world, cfg):
+    w = world(account=("1", "2"), rekordbox=("1", "2"))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    before = _pair(cfg)
+    w.account.playlists[ACCOUNT] = ["t1"]
+    w.declared = 2
+    assert sync([*VERB, ACCOUNT])[0] == int(ExitCode.OK)
+    assert _pair(cfg).account == before.account
+    # The provider serves t2 again, and the author took it out of rekordbox.
+    w.account.playlists[ACCOUNT] = ["t1", "t2"]
+    w.declared = None
+    w.rekordbox_remove("2")
+    code, envelope = sync([*VERB, ACCOUNT])
+    assert code == int(ExitCode.OK), envelope
+    assert w.held() == ["1"]
+    assert w.on_account() == ["t1"]
+
+
+def test_a_pair_whose_playlist_is_gone_does_not_hold_every_other_pair(world, cfg, monkeypatch):
+    w = world(account=("1",), rekordbox=("1",))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    pairs.PairStore(cfg).mark("acc-gone", "no-such-rekordbox-playlist", name="Gone")
+    w.catalogue.account.append(AccountPlaylist(playlist_id="acc-gone", name="Gone"))
+    w.account.playlists[ACCOUNT].append("t2")
+    code, envelope = sync(VERB)
+    assert code == int(ExitCode.OK), envelope
+    assert w.held() == ["1", "2"]
+    assert pair_cli.LEFT_OUT in _codes(envelope)
+    code, refused = drive([*VERB, "acc-gone"])
+    assert refused["cause"]["reason"] == "sync-pair-unknown", refused
+
+
+def test_a_track_held_twice_that_lost_one_copy_is_not_read_as_put_back(world):
+    w = world(account=("1", "2"), rekordbox=("1", "2", "2"))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    conn = sqlite3.connect(w.cfg.library.db_path)
+    try:
+        first = conn.execute(
+            "SELECT ID FROM djmdSongPlaylist WHERE PlaylistID = ? AND ContentID = '2' "
+            "AND COALESCE(rb_local_deleted, 0) = 0 ORDER BY TrackNo LIMIT 1",
+            (w.rekordbox_id,),
+        ).fetchone()[0]
+        conn.execute("UPDATE djmdSongPlaylist SET rb_local_deleted = 1 WHERE ID = ?", (first,))
+        conn.commit()
+    finally:
+        conn.close()
+    w.account.playlists[ACCOUNT] = ["t1"]
+    code, envelope = sync([*VERB, ACCOUNT])
+    assert code == int(ExitCode.OK), envelope
+    assert w.held() == ["1"]
+    assert w.on_account() == ["t1"]
+
+
+def test_skipping_the_only_side_with_changes_answers_no_op(world):
+    w = world(account=("1",), rekordbox=("1",))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    w.account.playlists[ACCOUNT].append("t2")
+    code, envelope = sync([*VERB, ACCOUNT], rekordbox="skip")
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert w.held() == ["1"]

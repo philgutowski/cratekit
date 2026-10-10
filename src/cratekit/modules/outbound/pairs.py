@@ -12,12 +12,13 @@ sharing a name are never mistaken for one. One account playlist pairs with one
 rekordbox playlist and the reverse: :meth:`PairStore.mark` refuses an
 identifier already paired with something else.
 
-**A MARK IS WRITTEN WHEN THE FIRST SYNC IS APPROVED, A SNAPSHOT WHEN A SIDE IS
-WRITTEN.** The two are separate on purpose. A first sync that is approved and
-then fails part way leaves the pair marked with no snapshot, so the next sync
-is still a first one, which adds only. Each side's snapshot is recorded on its
-own, after that side was written and read back, because a sync whose account
-half was declined has not changed the account and its base must say so.
+**A MARK IS WRITTEN WHEN THE FIRST SYNC IS APPROVED, A SNAPSHOT WHEN THE WHOLE
+PAIR WAS WRITTEN.** The two are separate on purpose. A first sync that is
+approved and then fails part way leaves the pair marked with no snapshot, so
+the next sync is still a first one, which adds only. Both sides' snapshots are
+recorded together and only after both were written and read back from a whole
+listing, because a snapshot of one side taken while the other still owes it a
+change would read that change as never having happened.
 
 **IT IS ALSO THE ACCOUNT'S PERMISSION TO TAKE A TRACK OFF.** The account seam
 removes tracks only from a playlist the outbound ledger says the product made
@@ -271,7 +272,8 @@ class PairStore:
 
         ``links`` is MERGED into the links held, never replacing them: a link
         is what one sync learned about one track, and a later sync that did not
-        need to ask about that track has learned nothing that undoes it.
+        need to ask about that track has learned nothing that undoes it. The
+        time of the sync moves only when a side is recorded.
         """
         with self._locked():
             pairs = self._load()
@@ -280,9 +282,10 @@ class PairStore:
                 raise self._unusable(f"the pair {account_id!r} is not marked")
             merged = dict(held.links)
             merged.update({str(k): str(v) for k, v in (links or {}).items() if k and v})
+            moved = account is not None or rekordbox is not None
             pair = replace(
                 held,
-                synced=timestamp(),
+                synced=timestamp() if moved else held.synced,
                 account=tuple(account) if account is not None else held.account,
                 rekordbox=tuple(rekordbox) if rekordbox is not None else held.rekordbox,
                 links=MappingProxyType(merged),

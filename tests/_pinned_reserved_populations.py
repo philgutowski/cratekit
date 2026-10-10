@@ -1477,6 +1477,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'playlist-pair',
         'sync-pair-ambiguous',
         'sync-pair-awaiting',
+        'sync-pair-left-out',
         'sync-pair-nothing',
         'sync-pair-out-of-scope',
         'sync-pair-skipped',

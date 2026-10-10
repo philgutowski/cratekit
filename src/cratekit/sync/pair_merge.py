@@ -14,12 +14,11 @@ account carries its remote identifier, and a rekordbox row the account has no
 match for a key of its own, so such a row is kept in rekordbox and is never
 something the account could be asked to take off.
 
-**EACH SIDE HAS ITS OWN BASE.** One shared snapshot would say what the list was,
-and a sync whose account half was declined, or failed after the rekordbox half
-landed, leaves the two sides holding different lists. Compared with one base,
-the side that was not written would read as having removed what the other side
-gained. Compared each with its own, a side that was not written simply has not
-changed, and the next sync finishes the job.
+**EACH SIDE HAS ITS OWN BASE.** The two sides can rightly hold different lists
+after a sync: a rekordbox row the account has no match for stays in rekordbox
+only, and an account track waiting to be acquired is on the account only. So
+each side's changes are measured against what that side itself held, and a
+track one side never held is never read as one it removed.
 
 **THE RULE.** A track is kept when a side holds it now and no side removed it,
 or when a side added it, whatever the other side did. Added means held now and

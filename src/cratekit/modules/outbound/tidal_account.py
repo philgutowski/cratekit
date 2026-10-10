@@ -937,7 +937,8 @@ class TidalAccount:
             for one in dict.fromkeys(remote_ids)
             if str(one) and counts.get(str(one)) == 1
         ]
-        standing = [one for one in before if one in set(wanted)]
+        asked = set(wanted)
+        standing = [one for one in before if one in asked]
         keep = 0
         for one in standing:
             if keep < len(wanted) and one == wanted[keep]:

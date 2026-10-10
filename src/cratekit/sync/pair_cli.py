@@ -50,10 +50,15 @@ seam, whose removals and orders a pair vouches for. A side whose gate is
 answered ``skip`` is not written and its snapshot is not moved, so the next sync
 finishes it.
 
-**A REMOVAL OWED IS REMEMBERED.** When a removal one side made is not applied
-on the other, because that side was skipped or the account could not take it,
-the snapshot of the side that removed it keeps the track, so the next sync still
-reads it as removed there rather than adding it back.
+**THE SNAPSHOT MOVES ONLY WHEN THE WHOLE PAIR WAS WRITTEN.** Both gates
+applied, every write landed, and the account listed the whole playlist: only
+then are both sides' snapshots recorded, together. Anything less, a side
+skipped, a write that failed part way or a short listing, records the links the
+plan made and leaves the snapshot where it was, so the next sync merges against
+the same last sync and finishes what this one did not. A side's removal that
+the other side never took is still a removal then, because the base that saw
+the track is still the base. A first sync that did not finish is still a first
+sync, and adds only.
 
 **A SHORT ACCOUNT LISTING REMOVES NOTHING.** The provider counts tracks it will
 not serve. A track it withheld would read as one the author removed, so when the
@@ -67,6 +72,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from functools import cached_property
 from pathlib import Path
 from typing import Any
 
@@ -104,6 +110,11 @@ ROW = "c:"
 #: What an unmatched row is said to be when the account gave no reason.
 NO_MATCH = "the account has no track this row's ISRC names"
 
+#: What a row with no ISRC anywhere is said to be. The account is not asked:
+#: the seam matches on a code or on an exact provider reference, and a row with
+#: neither has nothing it could match on.
+NO_ISRC = "the row carries no ISRC, in the database or in its file"
+
 #: The warning codes the answer carries.
 UNMATCHED = "sync-pair-unmatched"
 AWAITING = "sync-pair-awaiting"
@@ -111,11 +122,12 @@ AMBIGUOUS = "sync-pair-ambiguous"
 WITHHELD = "sync-pair-withheld"
 SKIPPED = "sync-pair-skipped"
 NOTHING = "sync-pair-nothing"
+LEFT_OUT = "sync-pair-left-out"
 WRITTEN = "sync-pair-written"
 
-#: The row a snapshot gives a membership it keeps only as an owed removal. No
-#: membership row carries it, so a track put back in rekordbox reads as added.
-OWED_ROW = "owed"
+#: The refusals that are about one pair's own playlists, which a sync of every
+#: pair names and passes over rather than stopping at.
+PER_PAIR_REASONS = frozenset({"sync-pair-unknown", "sync-pair-out-of-scope"})
 
 #: The item states an intake job's report gives a track the library holds.
 OWNED_STATE = "owned"
@@ -293,8 +305,6 @@ class PairPlan:
     names: dict[str, Named] = field(default_factory=dict)
     #: Remote id to content id for every key the plan resolved.
     content_of: dict[str, str] = field(default_factory=dict)
-    #: The memberships the rekordbox snapshot held, by key, for owed removals.
-    base_members: dict[str, tuple[str, str]] = field(default_factory=dict)
     #: ``ListingShortfall.block()`` when the account listing was short.
     withheld: dict[str, int] | None = None
 
@@ -423,21 +433,57 @@ class _Reader:
     set_built: frozenset[str]
     tops: tuple[frozenset[str], frozenset[str]]
     store: Any
-    _remote: list[Any] = field(default_factory=list)
-    _by_isrc: list[dict[str, tuple[str, ...]]] = field(default_factory=list)
 
+    @cached_property
     def remote(self):
         """The account, resolved on first use, so a plan with nothing to match asks nothing."""
-        if not self._remote:
-            from cratekit.modules.outbound import account
+        from cratekit.modules.outbound import account
 
-            self._remote.append(account.resolve(self.cfg))
-        return self._remote[0]
+        return account.resolve(self.cfg)
 
+    @cached_property
     def by_isrc(self) -> dict[str, tuple[str, ...]]:
-        if not self._by_isrc:
-            self._by_isrc.append(playlist_pair.rows_by_isrc(self.db, match.isrc_token))
-        return self._by_isrc[0]
+        return playlist_pair.rows_by_isrc(self.db, match.isrc_token)
+
+    @cached_property
+    def pair_jobs(self) -> tuple[jobs.Job, ...]:
+        """Every intake job this verb queued on this library that did not fail, newest first."""
+        return tuple(
+            job
+            for job in jobs.list_jobs(self.store)
+            if job.handler_key == INTAKE_HANDLER
+            and job.library_id == self.cfg.library.volume_id
+            and (job.payload or {}).get("source_id") == PAIR_SOURCE
+            and job.state not in (jobs.JobState.FAILED, jobs.JobState.CANCELLED)
+        )
+
+    @cached_property
+    def mirrors(self) -> dict[str, frozenset[str]]:
+        """Each account playlist's INBOX playlists, as the landing records name them (U128)."""
+        standing = {
+            session.SessionState.AWAITING_IMPORT,
+            session.SessionState.COMMITTED_UNVERIFIED,
+            session.SessionState.CLOSED,
+        }
+        records, _unreadable = session.scan_log(self.cfg)
+        found: dict[str, set[str]] = {}
+        for record in records:
+            if record.workflow != ingest.INTAKE_WORKFLOW or record.state not in standing:
+                continue
+            for entry in record.detail.get(ingest.INBOX_PLAYLISTS_KEY) or ():
+                if not isinstance(entry, dict) or not entry.get("id"):
+                    continue
+                account_id = str(entry.get(ingest.INBOX_ACCOUNT_KEY) or "")
+                if account_id:
+                    found.setdefault(account_id, set()).add(str(entry["id"]))
+        return {account_id: frozenset(ids) for account_id, ids in found.items()}
+
+    def jobs_for(self, account_id: str) -> tuple[jobs.Job, ...]:
+        return tuple(
+            job
+            for job in self.pair_jobs
+            if str((job.payload or {}).get(intake_cli.SOURCE) or "") == account_id
+        )
 
 
 def file_identity(cfg: config.Config, recorded: str) -> tuple[str, str]:
@@ -462,19 +508,6 @@ def file_identity(cfg: config.Config, recorded: str) -> tuple[str, str]:
         return "", ""
     read = tags.read_tags(path, ("isrc", "album"))
     return match.isrc_token(read["isrc"]), str(read["album"] or "").strip()
-
-
-def _pair_jobs(store, cfg: config.Config, account_id: str) -> tuple[jobs.Job, ...]:
-    """Every intake job this verb queued for this pair on this library, newest first."""
-    return tuple(
-        job
-        for job in jobs.list_jobs(store)
-        if job.handler_key == INTAKE_HANDLER
-        and job.library_id == cfg.library.volume_id
-        and (job.payload or {}).get("source_id") == PAIR_SOURCE
-        and str((job.payload or {}).get(intake_cli.SOURCE) or "") == account_id
-        and job.state not in (jobs.JobState.FAILED, jobs.JobState.CANCELLED)
-    )
 
 
 def _owned_by_jobs(
@@ -508,7 +541,7 @@ def _owned_by_jobs(
     }
 
 
-def _mirror_isrcs(reader: _Reader, account_id: str, skip: set[str]) -> dict[str, tuple[str, ...]]:
+def _mirror_isrcs(reader: _Reader, account_id: str) -> dict[str, tuple[str, ...]]:
     """ISRC to content ids, read from the files of the INBOX playlists landed for this account.
 
     U128 records each INBOX playlist a landing made for an account playlist
@@ -516,26 +549,9 @@ def _mirror_isrcs(reader: _Reader, account_id: str, skip: set[str]) -> dict[str,
     a landing brought sits there, and its row may carry no ISRC of its own,
     since a landed row's code is in its file. Only those rows' files are read.
     """
-    standing = {
-        session.SessionState.AWAITING_IMPORT,
-        session.SessionState.COMMITTED_UNVERIFIED,
-        session.SessionState.CLOSED,
-    }
-    records, _unreadable = session.scan_log(reader.cfg)
-    mirrors = {
-        str(entry.get("id"))
-        for record in records
-        if record.workflow == ingest.INTAKE_WORKFLOW and record.state in standing
-        for entry in record.detail.get(ingest.INBOX_PLAYLISTS_KEY) or ()
-        if isinstance(entry, dict)
-        and str(entry.get(ingest.INBOX_ACCOUNT_KEY) or "") == account_id
-        and entry.get("id")
-    }
     found: dict[str, list[str]] = {}
-    for mirror in sorted(mirrors):
+    for mirror in sorted(reader.mirrors.get(account_id, ())):
         for row in playlist_pair.members(reader.db, mirror):
-            if row.content_id in skip:
-                continue
             code = match.isrc_token(row.isrc) or file_identity(reader.cfg, row.path)[0]
             if code and row.content_id not in found.setdefault(code, []):
                 found[code].append(row.content_id)
@@ -569,6 +585,16 @@ def plan_pair(reader: _Reader, target: Target, held) -> PairPlan:
     content_of: dict[str, str] = {}
     unmatched: list[Named] = []
     rows = playlist_pair.by_content(rekordbox.rows)
+    # THE ACCOUNT PLAYLIST'S OWN TRACKS FIRST, by ISRC, when exactly one of
+    # them carries the row's code: the account already holds that recording,
+    # and asking the provider would choose among its releases and could name
+    # another one, which the account would then gain beside the first.
+    on_account: dict[str, list[str]] = {}
+    for remote_id in account_now:
+        code = match.isrc_token(tracks[remote_id].get("isrc"))
+        if code:
+            on_account.setdefault(code, []).append(remote_id)
+    linked = set(links)
     for row in rows.values():
         remote_id = by_row.get(row.content_id, "")
         reason = ""
@@ -582,19 +608,25 @@ def plan_pair(reader: _Reader, target: Target, held) -> PairPlan:
             album = ""
             if not isrc:
                 isrc, album = file_identity(cfg, row.path)
-            remote = reader.remote()
-            remote_id = str(
-                remote.match_track(
-                    identity=row.content_id,
-                    isrc=isrc,
-                    title=naming.strip_heads(row.title, template=template),
-                    artist=row.artist,
-                    album=album,
+            held_there = [one for one in on_account.get(isrc, ()) if one not in linked]
+            if isrc and len(held_there) == 1:
+                remote_id = held_there[0]
+            elif not isrc:
+                reason = NO_ISRC
+            else:
+                remote = reader.remote
+                remote_id = str(
+                    remote.match_track(
+                        identity=row.content_id,
+                        isrc=isrc,
+                        title=naming.strip_heads(row.title, template=template),
+                        artist=row.artist,
+                        album=album,
+                    )
+                    or ""
                 )
-                or ""
-            )
-            if not remote_id:
-                reason = remote.unmatched_reason(row.content_id) or NO_MATCH
+                if not remote_id:
+                    reason = remote.unmatched_reason(row.content_id) or NO_MATCH
         if remote_id and remote_id in seen_remote:
             other = rows[seen_remote[remote_id]]
             remote_id = ""
@@ -640,7 +672,6 @@ def plan_pair(reader: _Reader, target: Target, held) -> PairPlan:
     # ── the bases ───────────────────────────────────────────────────────────
     base: pair_merge.Base | None = None
     readded: set[str] = set()
-    base_members: dict[str, tuple[str, str]] = {}
     row_to_remote = {**by_row, **{row: remote for remote, row in made.items()}}
 
     def as_key(content_id: str) -> str:
@@ -653,17 +684,20 @@ def plan_pair(reader: _Reader, target: Target, held) -> PairPlan:
             # A WITHHELD TRACK IS NOT A REMOVED ONE. Which tracks the provider
             # left out is not known, so no track the base held is read as gone.
             base_account = tuple(key for key in base_account if key in set(account_keys))
-        base_rows = {member.content_id: member.row_id for member in held.rekordbox or ()}
-        base_members = {
-            as_key(member.content_id): (member.content_id, member.row_id)
-            for member in held.rekordbox or ()
-        }
+        # A RE-ADD IS A TRACK NONE OF WHOSE BASE MEMBERSHIPS SURVIVES. A track
+        # the playlist holds twice that lost one copy still holds the other,
+        # which the base saw, so it was not taken out and put back.
+        base_rows: dict[str, set[str]] = {}
+        for member in held.rekordbox or ():
+            base_rows.setdefault(member.content_id, set()).add(member.row_id)
+        current_rows: dict[str, set[str]] = {}
+        for row in rekordbox.rows:
+            current_rows.setdefault(row.content_id, set()).add(row.row_id)
         base_rekordbox = tuple(as_key(member.content_id) for member in held.rekordbox or ())
-        current_rows = {row.content_id: row.row_id for row in rows.values()}
         readded = {
             as_key(content_id)
-            for content_id, row_id in current_rows.items()
-            if content_id in base_rows and base_rows[content_id] != row_id
+            for content_id, row_ids in current_rows.items()
+            if content_id in base_rows and not (row_ids & base_rows[content_id])
         }
         base = pair_merge.Base(account=base_account, rekordbox=base_rekordbox)
 
@@ -683,6 +717,11 @@ def plan_pair(reader: _Reader, target: Target, held) -> PairPlan:
         remote_of(key) for key in merged.add_rekordbox if remote_of(key) not in known
     ]
     found_rows = _owned(reader, target.account_id, tracks, lacking)
+    # Held live and staying: a track matched under another key already has its
+    # membership, and a second would be the same track twice.
+    live_here = {
+        content_of[key] for key in rekordbox_keys if key in rekordbox_held and key in content_of
+    }
     queued_before = _queued(reader, target.account_id)
     for key in merged.add_rekordbox:
         remote_id = remote_of(key)
@@ -700,8 +739,9 @@ def plan_pair(reader: _Reader, target: Target, held) -> PairPlan:
                 continue
         if content_id:
             content_of[key] = content_id
-            adds.append(content_id)
             rekordbox_held.add(key)
+            if content_id not in live_here:
+                adds.append(content_id)
             continue
         if remote_id in queued_before:
             awaiting.append(names[key])
@@ -753,7 +793,6 @@ def plan_pair(reader: _Reader, target: Target, held) -> PairPlan:
         links=made,
         names=names,
         content_of=content_of,
-        base_members=base_members,
         withheld=short.block() if short is not None else None,
     )
 
@@ -783,19 +822,19 @@ def _owned(
         remote_id: match.isrc_token((tracks.get(remote_id) or {}).get("isrc"))
         for remote_id in lacking
     }
-    by_isrc = reader.by_isrc()
+    by_isrc = reader.by_isrc
     for remote_id, code in codes.items():
         if code and by_isrc.get(code):
             found[remote_id] = by_isrc[code]
     rest = {remote_id for remote_id in lacking if remote_id not in found}
     if rest:
         for remote_id, content_id in _owned_by_jobs(
-            reader, _pair_jobs(reader.store, reader.cfg, account_id), rest
+            reader, reader.jobs_for(account_id), rest
         ).items():
             found[remote_id] = (content_id,)
     rest = {remote_id for remote_id in lacking if remote_id not in found and codes.get(remote_id)}
     if rest:
-        landed = _mirror_isrcs(reader, account_id, skip=set())
+        landed = _mirror_isrcs(reader, account_id)
         for remote_id in rest:
             if landed.get(codes[remote_id]):
                 found[remote_id] = landed[codes[remote_id]]
@@ -806,16 +845,18 @@ def _queued(reader: _Reader, account_id: str) -> frozenset[str]:
     """Every track an intake job this verb queued for the pair still holds or resolved."""
     return frozenset(
         str(item)
-        for job in _pair_jobs(reader.store, reader.cfg, account_id)
+        for job in reader.jobs_for(account_id)
         for item in (job.payload or {}).get(intake_cli.TRACKS) or {}
     )
 
 
 @dataclass
 class Plan:
-    """Every pair this invocation syncs, decided."""
+    """Every pair this invocation syncs, decided, and the marked pairs it could not."""
 
     pairs: tuple[PairPlan, ...] = ()
+    #: A marked pair a sync of every pair could not plan, account id to why.
+    left_out: dict[str, str] = field(default_factory=dict)
 
     @property
     def digest(self) -> str:
@@ -829,8 +870,15 @@ class Plan:
         )
 
 
-def plan(cfg: config.Config, wanted: Sequence[Target], *, store) -> Plan:
-    """Read the account and the database once, and plan every pair."""
+def plan(
+    cfg: config.Config, wanted: Sequence[Target], *, store, every: bool = False
+) -> Plan:
+    """Read the account and the database once, and plan every pair.
+
+    ``every`` says the pairs are every marked pair rather than one named, and
+    then a pair whose own playlist is gone is left out and named rather than
+    refusing the rest.
+    """
     if not wanted:
         return Plan()
     from cratekit.core import active_taxonomy, tree_registry
@@ -857,9 +905,20 @@ def plan(cfg: config.Config, wanted: Sequence[Target], *, store) -> Plan:
             tops=tops,
             store=store,
         )
-        return Plan(
-            tuple(plan_pair(reader, target, held.get(target.account_id)) for target in wanted)
-        )
+        planned: list[PairPlan] = []
+        left_out: dict[str, str] = {}
+        for target in wanted:
+            try:
+                planned.append(plan_pair(reader, target, held.get(target.account_id)))
+            except CratekitError as exc:
+                # ONE PAIR WHOSE PLAYLIST IS GONE DOES NOT HOLD EVERY OTHER. Only
+                # when every marked pair was asked for, and only for the two
+                # refusals that are about that pair's own playlists; a pair
+                # named on the command line refuses as itself.
+                if not every or exc.cause.reason not in PER_PAIR_REASONS:
+                    raise
+                left_out[target.account_id] = exc.cause.message
+        return Plan(tuple(planned), left_out)
     finally:
         rb_writer.close_db(db)
 
@@ -948,7 +1007,12 @@ def facts(planned: Plan) -> dict[str, Any]:
         shown[f"pair {one.target.account_id}"] = (
             f"{one.name!r} on the account with {one.rekordbox_name!r} "
             f"({one.target.rekordbox_id}) in rekordbox; "
-            + ("first sync, additions only; " if one.first else "")
+            + (
+                "first sync, additions only, and it completes only when both sides "
+                "are applied; "
+                if one.first
+                else ""
+            )
             + ("not yet marked, approving marks it; " if not one.target.marked else "")
             + f"order follows {lead}"
             + (
@@ -977,6 +1041,20 @@ class Done:
     account_ordered: bool = False
     queued: str = ""
     marked: bool = False
+    #: Whether both sides' snapshots moved, which only a whole pair does.
+    snapshot: bool = False
+
+    @property
+    def wrote(self) -> bool:
+        written = self.rekordbox
+        return bool(
+            (written and (written.added or written.removed or written.renumbered))
+            or self.account_added
+            or self.account_removed
+            or self.account_ordered
+            or self.queued
+            or self.marked
+        )
 
 
 def _record(
@@ -985,57 +1063,28 @@ def _record(
     *,
     rekordbox_after: Sequence[playlist_pair.Row] | None,
     account_after: Sequence[str] | None,
-) -> None:
-    """Record each written side's snapshot, keeping the removals the other side owes.
+) -> bool:
+    """Record both sides' snapshots when the whole pair was written, else the links alone.
 
-    A side passed None was not written and keeps the snapshot it had. A track
-    the merge removed that this side no longer holds and the other side still
-    does is kept in this side's snapshot, so the next sync reads it as removed
-    here again and takes it off the other side then.
+    Returns whether the snapshot moved. Every live rekordbox membership is
+    recorded, a track held twice with both its rows, so a later sync can tell
+    a copy that was removed from a track that was taken out and put back.
     """
     from cratekit.modules.outbound import pairs
 
-    removed = sorted(set(one.merged.remove_account) | set(one.merged.remove_rekordbox))
-    to_key = {content_id: key for key, content_id in one.content_of.items()}
-    held_rekordbox = (
-        {to_key.get(row.content_id, row_key(row.content_id)) for row in rekordbox_after}
-        if rekordbox_after is not None
-        else {
-            to_key.get(content_id, row_key(content_id))
-            for content_id, _row in one.rekordbox_before
-        }
-    )
-    held_account = {
-        remote_key(remote_id)
-        for remote_id in (account_after if account_after is not None else one.account_now)
-    }
-
-    rekordbox_base: list[pairs.Membership] | None = None
-    if rekordbox_after is not None:
-        rekordbox_base = [
-            pairs.Membership(row.content_id, row.row_id)
-            for row in playlist_pair.by_content(rekordbox_after).values()
-        ]
-        for key in removed:
-            if key in held_rekordbox or key not in held_account:
-                continue
-            content_id, row_id = one.base_members.get(key) or (one.content_of.get(key, ""), "")
-            if content_id:
-                rekordbox_base.append(pairs.Membership(content_id, row_id or OWED_ROW))
-    account_base: list[str] | None = None
-    if account_after is not None:
-        account_base = list(pair_merge.distinct(account_after))
-        for key in removed:
-            if key in held_account or key not in held_rekordbox or not remote_of(key):
-                continue
-            account_base.append(remote_of(key))
+    whole = rekordbox_after is not None and account_after is not None and not one.withheld
     pairs.PairStore(cfg).record(
         one.target.account_id,
-        account=account_base,
-        rekordbox=rekordbox_base,
+        account=list(pair_merge.distinct(account_after)) if whole else None,
+        rekordbox=(
+            [pairs.Membership(row.content_id, row.row_id) for row in rekordbox_after]
+            if whole
+            else None
+        ),
         links=one.links,
         name=one.name,
     )
+    return whole
 
 
 def apply_pair(
@@ -1051,6 +1100,7 @@ def apply_pair(
     done.marked = not one.target.marked
 
     rekordbox_after: tuple[playlist_pair.Row, ...] | None = None
+    account_after: tuple[str, ...] | None = None
     if rekordbox:
         db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
         try:
@@ -1080,9 +1130,6 @@ def apply_pair(
                 name=one.name,
             )
             done.queued = job.job_id
-        # THE REKORDBOX SNAPSHOT IS RECORDED NOW, before the account is asked,
-        # so an account that fails leaves the rekordbox side recorded as written.
-        _record(cfg, one, rekordbox_after=rekordbox_after, account_after=None)
 
     if account:
         from cratekit.modules.outbound import account as outbound_account
@@ -1094,17 +1141,31 @@ def apply_pair(
         if one.account_adds:
             done.account_added = len(set(remote.add_tracks(playlist_id, one.account_adds)))
         if one.account_order:
-            after = tuple(remote.order_tracks(playlist_id, one.account_order))
+            account_after = tuple(remote.order_tracks(playlist_id, one.account_order))
             done.account_ordered = True
         else:
-            after = tuple(remote.playlist_tracks(playlist_id))
-        _record(cfg, one, rekordbox_after=rekordbox_after, account_after=after)
+            account_after = tuple(remote.playlist_tracks(playlist_id))
+    done.snapshot = _record(
+        cfg, one, rekordbox_after=rekordbox_after, account_after=account_after
+    )
     return done
 
 
 def _warnings(planned: Plan) -> list[dict[str, str]]:
     """What the plan could not do, said by name, one warning per kind."""
     said: list[dict[str, str]] = []
+    if planned.left_out:
+        said.append(
+            {
+                "code": LEFT_OUT,
+                "message": (
+                    f"{len(planned.left_out)} marked pair(s) were not synced: "
+                    + "; ".join(
+                        f"{account_id}: {why}" for account_id, why in planned.left_out.items()
+                    )
+                ),
+            }
+        )
 
     def listed(rows: Sequence[Named]) -> str:
         return "; ".join(
@@ -1176,7 +1237,8 @@ def sync_pair(ctx) -> Envelope:
         store_of_pairs, getattr(ctx.args, "account", None), getattr(ctx.args, "rekordbox", None)
     )
     with jobs.open_store() as store:
-        planned = plan(cfg, wanted, store=store)
+        every = not getattr(ctx.args, "account", None)
+        planned = plan(cfg, wanted, store=store, every=every)
         data = payload(planned)
         shown = facts(planned)
         warnings = _warnings(planned)
@@ -1234,7 +1296,7 @@ def sync_pair(ctx) -> Envelope:
         f"collection or the account"
         + (f"; {' and '.join(skipped)} skipped, its snapshot unchanged" if skipped else "")
     )
-    wrote = planned.writes or any(d.marked for d in done)
+    wrote = any(d.wrote for d in done)
     return ctx.envelope(
         data={**data, "totals": totals},
         outcome=Outcome.OK if wrote else Outcome.NO_OP,
