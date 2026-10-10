@@ -160,7 +160,8 @@ def test_the_number_given_at_landing_is_one_past_the_ledgers_highest(tmp_path):
 @pytest.mark.parametrize(
     ("text", "reason"),
     [
-        ("**The mechanism.** No frontmatter at all.\n", "frontmatter fence"),
+        ("**The mechanism.** No frontmatter at all.\n", "does not open"),
+        ("title: T\nfound: today.\n---\n\nBody.\n", "does not open"),
         ("---\ntitle: Never closed\nfound: today.\n", "never closed"),
         ("---\nfound: today.\n---\n\nBody.\n", "no title"),
         ("---\ntitle: No found line\n---\n\nBody.\n", "no found"),
