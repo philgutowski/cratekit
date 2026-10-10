@@ -5177,7 +5177,19 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # which the favourites colour lookup refuses with when djmdColor has no live
     # Pink row. It is in cause.REASONS and not in the reserved table. Population
     # 198 to 199 after U114, non-reserved 170 to 171, reserved half UNCHANGED at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (199, 171, 28)
+    # Re-pinned on U119, the genre Favorites, 2026-10-09. TWO slugs, named
+    # rather than counted: favorites-class-undeclared, which the refresh
+    # refuses with when the active taxonomy declares no sub class derived from
+    # a playlist, and favorites-source-missing, which it refuses with when the
+    # playlist that class mirrors is not in the library live or is there twice.
+    # Both are in cause.REASONS and neither is in the reserved table.
+    # Population 198 to 200, non-reserved 170 to 172, reserved half UNCHANGED
+    # at 28.
+    # Re-measured on the merge of origin/main into grok/263-pink-rows-swept,
+    # 2026-10-10: both the pink residual and U119 are on the tree. Population
+    # 201, non-reserved 173, reserved half UNCHANGED at 28 (measured on the
+    # merged tree, not either side alone).
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (201, 173, 28)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -6165,7 +6177,24 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # favorites-pink-colour-missing is the key named in the pin above. And
     # favorites-pink-export-missing is the WARNING code naming pink rows the
     # export lacks, beside dangling.
-    assert (len(literals), len(literals - set(causes))) == (663, 465), (
+    # Re-pinned on U119, the genre Favorites, 2026-10-09: 661 to 668 distinct,
+    # non-keys 464 to 469. SEVEN joined and nothing left, each absent from
+    # `main`'s own `src` by git grep. favorites-class-undeclared and
+    # favorites-source-missing are the keys named in the pin above.
+    # genre-favorites is the session WORKFLOW the refresh is recorded under and
+    # the plan KIND its digest is taken under. favorites-nothing-to-refresh,
+    # favorites-refreshed and favorites-folders-left-alone are the verb's
+    # WARNING codes, and favorites-removals-owed is the adoption resume's.
+    # Re-pinned once more on the same unit's review round: 668 to 669
+    # distinct, non-keys 469 to 470. ONE joined, favorites-unverified, the
+    # adoption resume's second WARNING code, for a read back that disagreed.
+    # And again on the watcher's round: 669 to 670 distinct, non-keys 470 to
+    # 471. ONE joined, favorites-skipped, the resume's third WARNING code, for
+    # a refresh that did not run at an adoption's end.
+    # Re-measured on the merge of origin/main into grok/263-pink-rows-swept,
+    # 2026-10-10: both the pink residual and U119 are on the tree. 672 distinct,
+    # non-keys 472 (measured on the merged tree, not either side alone).
+    assert (len(literals), len(literals - set(causes))) == (672, 472), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6291,7 +6320,19 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # it names the new slug once as `PINK_COLOUR_MISSING`, resolving to the
     # cause `cause.py` declares, so the colour lookup and the tests spell it
     # from one place. It holds no new in-range integer.
-    assert (len(without), len(with_own), len(both)) == (12, 27, 13), (
+    # Re-pinned on U119, the genre Favorites, 2026-10-09: without-own 11 to 12,
+    # with-own 26 to 27, the integer half unchanged at 13. Named from this
+    # derivation's own output: `write/genre_favorites.py` joined, and it joined
+    # the without-own half for the searcher's reason above. It names its two
+    # slugs once each, as `CLASS_UNDECLARED` and `SOURCE_MISSING`, resolving to
+    # the causes `cause.py` declares, and raises each through `cause.refuse`
+    # from one function, so the verb, the adoption's end and the rebuild spell
+    # each slug from one line. It holds no in-range integer.
+    # Re-measured on the merge of origin/main into grok/263-pink-rows-swept,
+    # 2026-10-10: both favorites/cli.py and write/genre_favorites.py are on
+    # the tree. without-own 13, with-own 28, integer half UNCHANGED at 13
+    # (measured on the merged tree, not either side alone).
+    assert (len(without), len(with_own), len(both)) == (13, 28, 13), (
         f"the named at-risk population moved: {len(without)} modules hold a name "
         f"resolving to a cause declared elsewhere, {len(with_own)} once each "
         f"file's own enum declarations count, {len(both)} of those also hold an "
@@ -6956,7 +6997,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # refuses with config-unusable, internal-error, review-selection-invalid
     # and tag-suggest-unwritten and holds no in-range integer.
     # tagging/suggest.py holds no cause.
-    assert (len(literal_holders), len(literal_both)) == (137, 29), (
+    # Re-pinned on U119, the genre Favorites, 2026-10-09: holders move 137 to
+    # 139, and the also-holds-an-integer half is UNCHANGED at 29. TWO modules
+    # joined and none left, both new files: write/genre_favorites.py, which
+    # refuses with favorites-class-undeclared, favorites-source-missing,
+    # decision-stale and session-committed-unverified, and
+    # favorites/refresh_cli.py, which refuses with config-unusable. Neither
+    # holds an in-range integer.
+    assert (len(literal_holders), len(literal_both)) == (139, 29), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

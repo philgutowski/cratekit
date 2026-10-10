@@ -42,6 +42,7 @@ class RemoteAccount(Protocol):
         title: str = "",
         artist: str = "",
         agree: bool = False,
+        album: str = "",
     ) -> str | None:
         """The remote track id for this library identity, or None if unmatched.
 
@@ -56,6 +57,10 @@ class RemoteAccount(Protocol):
         from the provider. A code read off a library file's own tag did not, and
         a file tagged with another recording's code would name the wrong track,
         so with ``agree`` even a single track must agree with the row (R-879).
+
+        ``album`` is the album tag of the row's own file. Among several releases
+        that agree with the row and that the account hearts none of, the one
+        whose album name is the file's is the match (R-572). Never a search.
         """
 
     def unmatched_reason(self, identity: str) -> str:
@@ -122,6 +127,9 @@ class RemoteAccount(Protocol):
 
     def folder_playlists(self, folder_id: str) -> dict[str, str]:
         """Every playlist one folder holds, identifier to name."""
+
+    def folder_folders(self, folder_id: str) -> dict[str, str]:
+        """Every folder one folder holds, identifier to name."""
 
     def create_folder(self, name: str) -> str:
         """Create one folder at the root of the account's playlists, and return its id.

@@ -56,7 +56,7 @@ from cratekit.core import config
 # next rename (R19).
 _ID = re.compile(r"^[a-z][a-z0-9_]*$")
 
-SUPPORTED_SCHEMA_VERSIONS = frozenset({1, 2, 3})
+SUPPORTED_SCHEMA_VERSIONS = frozenset({1, 2, 3, 4})
 
 # The schema version a template has to state before it may declare a former
 # place (R-797). A former place changes what competes, and a loader ignores a
@@ -73,6 +73,23 @@ FORMER_PLACE_SCHEMA_VERSION = 2
 # ignores the key, sees no competing place in the folder the genre left, and
 # files every track into the new folder while it still sits in the old one.
 SPLIT_PLACE_SCHEMA_VERSION = 3
+
+# The schema version a template has to state before it may declare a sub class
+# derived from a PLAYLIST (U119), the genre Favorites, for the same reason one
+# version on: a build that reads version 3 refuses two additive classes by
+# count, loudly, and a build that knows only one signal would otherwise read
+# the second class as a vocal one and ask the rebuild to derive it from a
+# reading it does not have.
+PLAYLIST_SIGNAL_SCHEMA_VERSION = 4
+
+# What a derived sub class is derived FROM (U119). The vocal class reads the
+# file's vocal prominence against the calibrated cut; a playlist class mirrors
+# another playlist's membership into every genre folder, which is the genre
+# Favorites. ONE additive class per signal: two classes on one signal would be
+# one dimension declared twice.
+SIGNAL_VOX = "vox"
+SIGNAL_PLAYLIST = "playlist"
+SIGNALS = frozenset({SIGNAL_VOX, SIGNAL_PLAYLIST})
 
 # The sources whose words are read through a table of their own (R-799), by the
 # name a file's record gives each. ONE, the general catalogue. The record shops
@@ -180,13 +197,21 @@ class BpmPrior:
 
 @dataclass(frozen=True)
 class SubClass:
-    """A sub-playlist that exists under many buckets and carries a write policy."""
+    """A sub-playlist that exists under many buckets and carries a write policy.
+
+    ``signal`` says what a derived class is derived from, :data:`SIGNAL_VOX` or
+    :data:`SIGNAL_PLAYLIST`, and ``signal_playlist`` names the playlist a
+    playlist class mirrors, by the display name rekordbox shows, since that
+    playlist is the author's and has no stable id of this product's (U119).
+    """
 
     id: str
     display: str
     policy: SubPolicy
     additive: bool = False
     present_in: str = "all_buckets"
+    signal: str = SIGNAL_VOX
+    signal_playlist: str = ""
 
 
 @dataclass(frozen=True)
@@ -978,7 +1003,7 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
     fallback, fallback_problems = _build_fallback(data.get("fallback") or {}, by_id)
     problems += fallback_problems
 
-    sub_classes, sub_class_problems = _build_sub_classes(data.get("sub_class") or [])
+    sub_classes, sub_class_problems = _build_sub_classes(data.get("sub_class") or [], int(version))
     problems += sub_class_problems
 
     problems += _check_former_places(buckets, energy, sub_classes, int(version))
@@ -1591,10 +1616,12 @@ def _build_fallback(
     )
 
 
-def _build_sub_classes(raw: Sequence[Mapping[str, Any]]) -> tuple[tuple[SubClass, ...], list[str]]:
+def _build_sub_classes(
+    raw: Sequence[Mapping[str, Any]], version: int
+) -> tuple[tuple[SubClass, ...], list[str]]:
     problems: list[str] = []
     out: list[SubClass] = []
-    additive_seen = 0
+    additive_by_signal: dict[str, list[str]] = {}
     for entry in raw:
         entry_id = str(entry.get("id", ""))
         policy_raw = str(entry.get("policy", ""))
@@ -1609,13 +1636,48 @@ def _build_sub_classes(raw: Sequence[Mapping[str, Any]]) -> tuple[tuple[SubClass
             )
             continue
         additive = bool(entry.get("additive", False))
-        if additive:
-            additive_seen += 1
         if additive and policy is not SubPolicy.DERIVED:
             problems.append(
                 f"[[sub_class]] {entry_id!r}: additive is only meaningful for a derived sub, "
                 f"which coexists with the sub a track is already in"
             )
+        # THE SIGNAL (U119). Absent, it is the vocal reading, which is what
+        # every class declared before the key existed meant. A playlist signal
+        # names the playlist it mirrors and is only ever derived and additive,
+        # and it needs the schema version that knows it, so a build that does
+        # not refuses the copy by name rather than reading it as a vocal class.
+        signal = str(entry.get("signal", SIGNAL_VOX))
+        signal_playlist = str(entry.get("signal_playlist", "") or "").strip()
+        if signal not in SIGNALS:
+            problems.append(
+                f"[[sub_class]] {entry_id!r}: signal {signal!r} must be one of "
+                f"{sorted(SIGNALS)}"
+            )
+        elif signal == SIGNAL_PLAYLIST:
+            if not signal_playlist:
+                problems.append(
+                    f"[[sub_class]] {entry_id!r}: a playlist signal names the playlist it "
+                    f"mirrors in signal_playlist, and none is given"
+                )
+            if not (additive and policy is SubPolicy.DERIVED):
+                problems.append(
+                    f"[[sub_class]] {entry_id!r}: a playlist signal is derived and additive, "
+                    f"since it mirrors another playlist beside the sub a track is already in"
+                )
+            if version < PLAYLIST_SIGNAL_SCHEMA_VERSION:
+                problems.append(
+                    f"[[sub_class]] {entry_id!r}: declares a playlist signal under "
+                    f"schema_version {version}; write schema_version = "
+                    f"{PLAYLIST_SIGNAL_SCHEMA_VERSION}, since a build that reads version "
+                    f"{version} would take the class for a vocal one"
+                )
+        elif signal_playlist:
+            problems.append(
+                f"[[sub_class]] {entry_id!r}: signal_playlist is only meaningful for a "
+                f"playlist signal"
+            )
+        if additive:
+            additive_by_signal.setdefault(signal, []).append(entry_id)
         out.append(
             SubClass(
                 id=entry_id,
@@ -1623,15 +1685,20 @@ def _build_sub_classes(raw: Sequence[Mapping[str, Any]]) -> tuple[tuple[SubClass
                 policy=policy,
                 additive=additive,
                 present_in=str(entry.get("present_in", "all_buckets")),
+                signal=signal,
+                signal_playlist=signal_playlist,
             )
         )
-    if additive_seen > 1:
-        # KTD14 pins the tree at three levels, so a track can hold at most one
-        # additional membership per bucket without a fourth level to hold it.
-        problems.append(
-            f"{additive_seen} additive sub classes declared; only one is supported at the "
-            f"pinned tree depth"
-        )
+    for signal, ids in additive_by_signal.items():
+        if len(ids) > 1:
+            # ONE ADDITIVE CLASS PER SIGNAL (U119, lifting the one class limit
+            # the pinned tree depth was once said to need): a second class on
+            # one signal is one dimension declared twice, so the rebuild would
+            # file every vocal track into two playlists for one reading.
+            problems.append(
+                f"{len(ids)} additive sub classes declared on the {signal!r} signal "
+                f"({', '.join(ids)}); only one is supported per signal"
+            )
     return tuple(out), problems
 
 

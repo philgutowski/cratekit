@@ -797,6 +797,15 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # reason: the remedy is a declaration or a folder, never this
         # installation's configuration.
         "intake-old-undeclared": ExitCode.LIBRARY_PREREQUISITE,
+        # U119. The genre Favorites were asked for on a library whose taxonomy
+        # declares no sub class derived from a playlist, or the playlist that
+        # class mirrors, All Favorites in the shipped template, is not in the
+        # library or is there more than once. The catalog's code and its
+        # reason: the remedy is a declaration or a playlist, never this
+        # installation's configuration. Two slugs because the two acts differ,
+        # one in the template and one in rekordbox.
+        "favorites-class-undeclared": ExitCode.LIBRARY_PREREQUISITE,
+        "favorites-source-missing": ExitCode.LIBRARY_PREREQUISITE,
         # ── This installation ───────────────────────────────────────────────
         "doctor-check-failed": ExitCode.PRECONDITION,
         # One slug for every way configuration can be unusable, because the

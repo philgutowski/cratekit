@@ -781,6 +781,10 @@ def test_only_the_rotation_asks_its_commit_to_admit_a_removed_playlist():
         "core/rb_writer.py": ["removals", "removals"],
         "intake/rotate.py": ["REMOVALS"],
         "write/trees.py": ["(rb_writer.MEMBERSHIP_TABLE,)"],
+        # U119. The genre Favorites refresh takes a favourite out of a folder's
+        # Favorites in its second commit, the membership table alone, as the
+        # move does, behind its own explicit gate.
+        "write/genre_favorites.py": ["(rb_writer.MEMBERSHIP_TABLE,)"],
     }
     assert set(rotate.REMOVALS) == {rb_writer.PLAYLIST_TABLE, rb_writer.MEMBERSHIP_TABLE}
 

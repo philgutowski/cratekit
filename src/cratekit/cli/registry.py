@@ -2879,6 +2879,47 @@ ENTRIES: tuple[Entry, ...] = (
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
+    # ── The genre Favorites (U119) ──────────────────────────────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives. The one
+    # path that removes a genre Favorites membership; the additive half runs at
+    # the end of an adoption that files a track and inside the tree rebuild.
+    Entry(
+        name="favorites.refresh",
+        summary="make every genre folder's Favorites playlist mirror All Favorites, "
+        "adding what the folder holds that is a favourite and removing what is not",
+        module="cratekit.favorites.refresh_cli",
+        builder="build",
+        handler_key="favorites.refresh",
+        # NO FEATURE ROW. The source system never kept a Favorites per genre;
+        # the author decided it on 2026-10-09.
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: The database tree and nothing else: one Favorites playlist under
+        #: each genre folder, and memberships added to it and marked removed
+        #: from it. No content row, no file, no node removed.
+        writes=frozenset({"db_tree"}),
+        destructive=True,
+        taxonomy_terms=("genre_energy", "favorites"),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+        ),
+        gates=(
+            GateSpec(
+                name="favorites.refresh.approve",
+                options=("approve", "abort"),
+                prompt="Make each genre folder's Favorites mirror All Favorites, adding "
+                "these and removing those?",
+                #: EXPLICIT (R34). A removal takes a membership away, so no
+                #: blanket affirmative satisfies it.
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
     # ── The retroactive tidy (U112) ─────────────────────────────────────────
     #
     # Appended, for the reason the deferred routing block above gives. A
@@ -2925,7 +2966,8 @@ ENTRIES: tuple[Entry, ...] = (
                 name="organize.account.apply",
                 options=("apply", "abort"),
                 prompt="Apply these steps to the streaming account? Nothing is "
-                "removed and nothing you made is moved.",
+                "removed, and nothing you made is moved unless a sync marked it "
+                "downloaded, which files it in its year folder.",
                 #: EXPLICIT, as every other write to the account is (R34).
                 explicit=True,
                 digest_source="plan",

@@ -33,6 +33,9 @@ class LocalTrack:
     artist: str = ""
     isrc: str = ""
     release_title: str = ""
+    #: The album tag of the row's own file, which chooses among releases
+    #: spelled alike under one ISRC when none is hearted (R-572).
+    album: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,6 +117,7 @@ def plan(
             isrc=track.isrc,
             title=track.release_title,
             artist=track.artist,
+            album=track.album,
         )
         if remote:
             matched.append((track.identity, remote))

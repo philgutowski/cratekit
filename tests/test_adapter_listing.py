@@ -778,6 +778,7 @@ def test_every_shape_declares_the_rule_its_provider_can_actually_support():
         # R-878. The folder endpoint ignores offset and pages by its cursor.
         "account_folders": listing.StopRule.CURSOR,
         "folder_playlists": listing.StopRule.CURSOR,
+        "folder_folders": listing.StopRule.CURSOR,
     }
     assert listing.StopRule.SHORT_PAGE not in listing.STOP_RULES.values()
 
@@ -834,6 +835,7 @@ def test_every_budget_clears_the_largest_collection_this_project_has_measured():
         # and one year playlist per release year, under forty on any label.
         "account_folders": 47,
         "folder_playlists": 40,
+        "folder_folders": 10,
     }
     assert set(measured) == set(listing.PAGE_CAPS)
     for name, largest in measured.items():

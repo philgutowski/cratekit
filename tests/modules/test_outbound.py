@@ -147,6 +147,37 @@ def test_the_export_plan_hands_the_account_the_release_title_and_not_the_display
             "isrc": "AA0000000001",
             "title": "Sun Path",
             "artist": "Nova Reef",
+            "album": "",
+        }
+    ]
+
+
+def test_the_export_plan_hands_the_account_the_files_album_tag():
+    """R-572. The album rides with the ISRC so releases spelled alike can be told apart."""
+    account = FakeAccount(catalog={"7": "tid-7"})
+    planned = export.plan(
+        [
+            export.LocalTrack(
+                identity="7",
+                title="08A - 124 - Sun Path",
+                artist="Nova Reef",
+                isrc="AA0000000001",
+                release_title="Sun Path",
+                album="Tidal Lines",
+            )
+        ],
+        playlist_key="crate-one",
+        name="Crate One",
+        account=account,
+    )
+    assert planned.matched == (("7", "tid-7"),)
+    assert account.matches == [
+        {
+            "identity": "7",
+            "isrc": "AA0000000001",
+            "title": "Sun Path",
+            "artist": "Nova Reef",
+            "album": "Tidal Lines",
         }
     ]
 
@@ -188,6 +219,7 @@ def test_a_heart_back_hands_the_account_the_names_and_reports_its_reasons(cfg):
         "isrc": "X",
         "title": "Sun Path",
         "artist": "Nova Reef",
+        "album": "",
     }
     assert report.unmatched == ("several", "unknown")
     assert report.reasons == (("several", "the ISRC X names 2 provider tracks"),)

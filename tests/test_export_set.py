@@ -365,11 +365,15 @@ def test_a_candidate_accepted_in_review_is_used_and_not_searched_for_again(accou
 SEVEN = ("Artist Seven", "Title Seven")
 
 
-def _held(tmp_path, cfg, isrc: str = "", name: str = "Title Seven") -> Path:
-    """A real file the library holds for ``SEVEN``, carrying ``isrc`` when given."""
+def _held(
+    tmp_path, cfg, isrc: str = "", name: str = "Title Seven", album: str = ""
+) -> Path:
+    """A real file the library holds for ``SEVEN``, carrying ``isrc`` and ``album`` when given."""
     fields = {"artist": SEVEN[0], "title": f"04A - 126 - {name}"}
     if isrc:
         fields["isrc"] = isrc
+    if album:
+        fields["album"] = album
     target = cfg.library.root / cfg.library.music_dir / f"04A - 126 - {SEVEN[0]} - {name}.flac"
     return tagged_container(tmp_path, target, **fields)
 
@@ -390,9 +394,37 @@ def test_a_row_the_library_holds_is_listed_by_its_files_isrc_with_no_search(
     (row,) = _tracks(done)
     assert (row["id"], row["how"], row["action"]) == ("tid-by-file", "library-isrc", "add")
     # Twice, once at the gate's refusal and once on the run that carries it out.
-    asked = {"identity": "set-row-1", "isrc": "QZABC2600007", "title": "Title Seven", "artist": "Artist Seven"}
+    asked = {
+        "identity": "set-row-1",
+        "isrc": "QZABC2600007",
+        "title": "Title Seven",
+        "artist": "Artist Seven",
+        "album": "",
+    }
     assert held.matches == [asked, asked]
     assert held.agreeing == ["set-row-1", "set-row-1"], "a file's tag was trusted alone"
+    assert fake.searched_for == []
+
+
+def test_a_held_files_album_tag_is_handed_to_the_account_with_its_isrc(
+    account, tmp_path
+):
+    """R-572. The set path reads the album beside the ISRC the way file_identity does."""
+    cfg, fake, held = account
+    _held(tmp_path, cfg, isrc="QZABC2600007", album="  Tidal Lines ")
+    held.catalog["set-row-1"] = "tid-by-file"
+    code, done = _build(_tracklist(cfg, rows=(SEVEN,), name="held-album.txt"), "abort")
+    assert code == int(ExitCode.OK), done
+    (row,) = _tracks(done)
+    assert (row["id"], row["how"], row["action"]) == ("tid-by-file", "library-isrc", "add")
+    asked = {
+        "identity": "set-row-1",
+        "isrc": "QZABC2600007",
+        "title": "Title Seven",
+        "artist": "Artist Seven",
+        "album": "Tidal Lines",
+    }
+    assert held.matches == [asked, asked]
     assert fake.searched_for == []
 
 

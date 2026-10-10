@@ -23,7 +23,7 @@ refuses a unit's paragraph anywhere in it.
     git status -sb                              # no ahead or behind count
     git status --porcelain                      # empty
     .venv/bin/pytest --tb=no                    # run it; do not trust a count here
-    .venv/bin/python scripts/board.py audit     # exit 1 on the In review card, R-265
+    .venv/bin/python scripts/board.py audit     # read what it prints; an In review card is no longer drift
 
 ## What is open
 
