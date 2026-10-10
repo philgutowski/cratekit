@@ -35,17 +35,26 @@ already filed under BY GENRE put back in it would be queued a second time.
 Mirroring the whole account playlist would also need each owned file's row in
 the collection, found by path, on both media, which no verb does yet.
 
+THE HEARTS ARE TIED TO THEIR FILES THE SAME WAY, SINCE U120, and for another
+purpose: a file the pass's hearts job asked for is a heart, and the landing
+puts it into All Favorites and its quarter beside its INBOX playlist. The
+hearts claim no INBOX playlist of their own, as before. The quarter is read
+from the date the job froze on the row (``intake_cli.HEARTED``), never from
+the account again, and a row frozen with no date is an undated heart.
+
 Layer: modules.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
 from cratekit.acquire import match, match_cli
 from cratekit.core import config, jobs, session
+from cratekit.favorites import placeholders
 from cratekit.intake import batch_name, ingest
 from cratekit.intake import cli as intake_cli
 
@@ -87,6 +96,123 @@ class Claimed:
             "account": self.playlist_id,
             "files": [path.name for path in self.files],
         }
+
+
+@dataclass(frozen=True, slots=True)
+class HeartRow:
+    """One heart a hearts job carried: the row, and when the account said it was made."""
+
+    wanted: match.Wanted
+    hearted: datetime | None
+    #: The provider's identifier, the job's item key.
+    ref: str
+    job_id: str
+
+    @property
+    def title(self) -> str:
+        return f"{self.wanted.artist} - {self.wanted.spelled or self.wanted.title}"
+
+
+@dataclass(frozen=True, slots=True)
+class Hearted:
+    """One planned file that is a heart, and the quarter playlist it goes to (U120)."""
+
+    path: Path
+    hearted: datetime | None
+    ref: str
+
+    @property
+    def quarter(self) -> str:
+        return placeholders.quarter_label(self.hearted)
+
+
+def is_hearts_job(job: jobs.Job) -> bool:
+    """Whether ``job`` listed the account's hearts, whatever queued it."""
+    return (
+        job.handler_key in intake_cli.INTAKE_KEYS
+        and str((job.payload or {}).get("source_id") or "") == intake_cli.FAVORITES_SOURCE_ID
+    )
+
+
+def carried_hearts(store, job: jobs.Job) -> tuple[HeartRow, ...]:
+    """The rows a hearts job's download was made from, each with its frozen date.
+
+    THE SAME STATES A PLAYLIST'S CLAIM READS, ``missing`` and ``offered``: an
+    owned heart was never downloaded, so it is not a heart this build lands,
+    which is the brief's conservative answer to the owned hearts not in All
+    Favorites. The date is the row's own frozen key, read as the job froze it.
+    """
+    from cratekit.intake import missing_cli
+
+    found: list[HeartRow] = []
+    for report in missing_cli.job_reports(store, job):
+        if report.get("state") not in CARRIED_STATES:
+            continue
+        said = report.get("track") or {}
+        wanted = intake_cli.thawed(said)
+        found.append(
+            HeartRow(
+                wanted=wanted,
+                hearted=placeholders.parse_hearted(said.get(intake_cli.HEARTED)),
+                ref=str(said.get("ref") or report.get("item_id") or ""),
+                job_id=job.job_id,
+            )
+        )
+    return tuple(found)
+
+
+def hearts(cfg: config.Config, pass_name: str) -> tuple[HeartRow, ...]:
+    """Every heart the pass's hearts jobs carried, in queue order, a row once."""
+    found: list[HeartRow] = []
+    seen: set[str] = set()
+    with jobs.open_store() as store:
+        queued = sorted(
+            batch_name.pass_jobs(cfg, pass_name), key=lambda job: (job.created, job.job_id)
+        )
+        for job in queued:
+            if not is_hearts_job(job):
+                continue
+            for row in carried_hearts(store, job):
+                if row.ref in seen:
+                    continue
+                seen.add(row.ref)
+                found.append(row)
+    return tuple(found)
+
+
+def hearted(
+    cfg: config.Config, pass_name: str | None, files: Sequence[Path]
+) -> tuple[Hearted, ...]:
+    """Which of the planned ``files`` the pass's hearts asked for, with each one's quarter.
+
+    THE ONE MATCH RULE :func:`claims` USES, over the planned files only, and
+    the same answer for a landing of no pass: nothing, since no job ties a
+    file to a heart then (a residual of U120, placed later by the backfill).
+    A heart two rows resolve to one file for is one heart, the first row's.
+    """
+    if not pass_name or not files:
+        return ()
+    rows = hearts(cfg, pass_name)
+    if not rows:
+        return ()
+    index = match.index_paths(files, template=match_cli.library_template(cfg))
+    planned = {path.resolve(): path for path in files}
+    order = {path: position for position, path in enumerate(files)}
+    found: dict[Path, Hearted] = {}
+    for row in rows:
+        resolved = match.resolve_one(
+            row.wanted,
+            index,
+            suppresses=_never_suppressed,
+            suppression_id=_no_suppression_id,
+        )
+        if resolved.state is not match.MatchState.MATCHED:
+            continue
+        for path in resolved.paths:
+            held = planned.get(Path(path).resolve())
+            if held is not None and held not in found:
+                found[held] = Hearted(path=held, hearted=row.hearted, ref=row.ref)
+    return tuple(sorted(found.values(), key=lambda one: order[one.path]))
 
 
 def _named(job: jobs.Job) -> str | None:
@@ -244,8 +370,14 @@ def unclaimed(files: Sequence[Path], claimed: Iterable[Claimed]) -> tuple[Path, 
 __all__ = [
     "CARRIED_STATES",
     "Claimed",
+    "HeartRow",
+    "Hearted",
     "Source",
+    "carried_hearts",
     "claims",
+    "hearted",
+    "hearts",
+    "is_hearts_job",
     "named",
     "pending_names",
     "sources",
