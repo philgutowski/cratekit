@@ -304,7 +304,12 @@ def test_three_files_become_three_rows_and_one_playlist_under_the_adopted_root(
         "already present": 0,
         "memberships": 3,
     }
-    assert [w["code"] for w in acted["warnings"]] == [land_cli.AWAITING_ANALYSIS]
+    # U127: no vocal calibration on this machine, so no row is tagged vox and
+    # the landing says why rather than leaving the tag silently absent.
+    assert [w["code"] for w in acted["warnings"]] == [
+        land_cli.AWAITING_ANALYSIS,
+        land_cli.VOX_NOT_WRITTEN,
+    ]
     assert "Analyze" in acted["warnings"][0]["message"]
     assert "pending_human_action" not in acted or acted["pending_human_action"] is None
 

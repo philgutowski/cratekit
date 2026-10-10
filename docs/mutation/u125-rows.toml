@@ -1,0 +1,109 @@
+name = "u125"
+pass_kind = "light"
+
+# U125: per-module reserved-cause pins. Rows cover the pin file's guards and the
+# fixed derive test. Maintainer facing: a surviving mutant lets a parallel card
+# land with a wrong pin or a total that no longer matches the tree.
+
+[[rows]]
+id = "P1_drop_module_entry"
+description = "Delete the core/backup_facts.py entry from PINNED_KEBAB_LITERALS_BY_MODULE"
+file = "tests/_pinned_reserved_populations.py"
+surface = "maintainer"
+tests = ["tests/test_reserved_causes.py::test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned", "tests/test_reserved_causes.py::test_pinned_populations_derive_totals_and_key_by_module"]
+old = """    'core/backup_facts.py': [
+        'grant-path-access',
+        'never-recorded',
+        'recorded-in-the-future',
+        'repair-backup-facts',
+        'upgrade-cratekit',
+        'utf-8',
+    ],
+"""
+new = """"""
+
+[[rows]]
+id = "P2_drop_slug"
+description = "Remove cancelled from PINNED_NON_RESERVED_CAUSES while the tree still declares it"
+file = "tests/_pinned_reserved_populations.py"
+surface = "maintainer"
+tests = ["tests/test_reserved_causes.py::test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned", "tests/test_reserved_causes.py::test_pinned_populations_derive_totals_and_key_by_module"]
+old = """    'canary-read-failed',
+    'cancelled',
+    'catalog-tree-undeclared',
+"""
+new = """    'canary-read-failed',
+    'catalog-tree-undeclared',
+"""
+
+[[rows]]
+id = "P3_pin_without_tree_member"
+description = "Add a fake module pin the tree does not hold"
+file = "tests/_pinned_reserved_populations.py"
+surface = "maintainer"
+tests = ["tests/test_reserved_causes.py::test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned", "tests/test_reserved_causes.py::test_pinned_populations_derive_totals_and_key_by_module"]
+old = """    'core/artifacts.py': ['utf-8'],
+    'core/backup_facts.py': [
+"""
+new = """    'core/artifacts.py': ['utf-8'],
+    'zz_fake_u125.py': ['not-a-real-cause'],
+    'core/backup_facts.py': [
+"""
+
+[[rows]]
+id = "P4_literal_added_to_pinned_module"
+description = "Add a kebab literal to acquire/adapter.py that the module does not carry"
+file = "tests/_pinned_reserved_populations.py"
+surface = "maintainer"
+tests = ["tests/test_reserved_causes.py::test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned", "tests/test_reserved_causes.py::test_pinned_populations_derive_totals_and_key_by_module"]
+old = """    'acquire/adapter.py': [
+        'adapter-broken',
+        'auth-failed',
+        'choose-known-adapter',
+        'install-adapter',
+"""
+new = """    'acquire/adapter.py': [
+        'adapter-broken',
+        'auth-failed',
+        'zz-fake-literal-u125',
+        'choose-known-adapter',
+        'install-adapter',
+"""
+
+[[rows]]
+id = "P5_changed_reserved_count"
+description = "Raise PINNED_RESERVED_CAUSE_COUNT without a reservation joining"
+file = "tests/_pinned_reserved_populations.py"
+surface = "maintainer"
+tests = ["tests/test_reserved_causes.py::test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned", "tests/test_reserved_causes.py::test_pinned_populations_derive_totals_and_key_by_module"]
+old = """PINNED_RESERVED_CAUSE_COUNT = 28
+"""
+new = """PINNED_RESERVED_CAUSE_COUNT = 29
+"""
+
+[[rows]]
+id = "D1_derive_test_tautology"
+description = "Restore the derive test's cause-total assert to x == x so a broken reserved count stays green there"
+file = "tests/test_reserved_causes.py"
+surface = "maintainer"
+tests = ["tests/test_reserved_causes.py::test_pinned_populations_derive_totals_and_key_by_module"]
+old = """    assert (
+        PINNED_RESERVED_CAUSE_COUNT + len(PINNED_NON_RESERVED_CAUSES),
+        len(PINNED_NON_RESERVED_CAUSES),
+        PINNED_RESERVED_CAUSE_COUNT,
+    ) == (len(causes), len(non_reserved), len(CAUSES)), (
+        "derived cause totals from the pins disagree with the tree"
+    )
+"""
+new = """    assert (
+        PINNED_RESERVED_CAUSE_COUNT + len(PINNED_NON_RESERVED_CAUSES),
+        len(PINNED_NON_RESERVED_CAUSES),
+        PINNED_RESERVED_CAUSE_COUNT,
+    ) == (
+        PINNED_RESERVED_CAUSE_COUNT + len(PINNED_NON_RESERVED_CAUSES),
+        len(PINNED_NON_RESERVED_CAUSES),
+        PINNED_RESERVED_CAUSE_COUNT,
+    ), (
+        "derived cause totals from the pins disagree with the tree"
+    )
+"""

@@ -1135,8 +1135,10 @@ A pin of a whole total is a shared edit point: every unit that adds a member
 rewrites the same figure and the same ledger comment, so two units built in
 parallel conflict when either lands. The merge resolves it by keeping both
 sides' comments and re-measuring on the merged tree, never by taking one side's
-figure or adding the two sides' changes. Pinning per area, or deriving the
-total from the areas, removes the shared edit point.
+figure or adding the two sides' changes. Pinning per module, or deriving the
+total from the modules, removes the shared edit point. U125 moved the reserved
+cause suite onto that shape: each module (or slug) has its own pin line, and the
+totals are derived.
 
 ## Queued work
 

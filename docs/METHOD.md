@@ -352,6 +352,15 @@ it.
   before U124 that conflicts there moves its own paragraph into its fragment
   and takes `main`'s `RESTART-cratekit.md` as it is.
 
+- **Reserved-cause pins are per module, decided by U125.** The populations in
+  `tests/test_reserved_causes.py` are pinned in
+  `tests/_pinned_reserved_populations.py`: kebab literals and holders by module,
+  non-reserved causes one slug per line. Totals are derived from those pins,
+  never hand-edited. When a merge moves a pin, update only the modules (or
+  slugs) that joined or left, measured on the merged tree, and put a dated
+  comment on those entries. Do not reintroduce a whole-repository total tuple;
+  that was the shared edit point U125 removed.
+
 ## Learnings, filed directly
 
 A learning goes to `docs/solutions/<category>/<slug>.md` with the frontmatter the
