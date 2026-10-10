@@ -36308,3 +36308,333 @@ is filed in a playlist of the wrong style, and nothing is lost.
 **Closes when:** the author decides the keyword rules for these genres, the
 decision R-797 records for R&B and Soul, and the rules are repointed or the
 words made aliases. Ledger only, it is the author's decision.
+
+---
+
+## R-942. The approved list document is written from the served rows of a short release
+
+**Found:** at the review of #284, R-515, 2026-10-10.
+
+**The mechanism.** `approved_cli.py` writes the list document from the
+rows the provider served, so an accepted release of 12 with 3 withheld
+produces a 9 row document that reads as the whole release.
+
+**Measured cost.** Not driven. The document undercounts a short release with
+nothing in it saying so.
+
+**Closes when:** the document carries the shortfall beside the rows, or
+`label approved` warns over a short release. Ledger only; out of scope per the
+watcher's answer on #264.
+
+---
+
+## R-943. The outbound account's own playlist listing carries no shortfall
+
+**Found:** at the review of #284, R-515, 2026-10-10.
+
+**The mechanism.** The outbound account's own `playlist_tracks`, read by
+export, prune, sets and folders, still lists without a shortfall, so a
+playlist the provider returns short there reads as whole.
+
+**Measured cost.** Not driven. Those verbs act on the served rows of a short
+playlist with nothing said.
+
+**Closes when:** that listing carries a `ListingShortfall` and its verbs warn
+as the intake, harvest and sweep verbs do. Ledger only; out of the card's
+verbs on #264.
+
+---
+
+## R-944. The label sweep decides a release owned over the rows the provider served
+
+**Found:** at the review of #284, R-515, 2026-10-10.
+
+**The mechanism.** `sweep.py` `OwnedReleases._holds` decides owned over the
+served rows and drops the shortfall `release_tracks` now carries, so a release
+whose unowned tracks the provider withholds reads as owned and is never
+offered, with nothing said.
+
+**Measured cost.** Not driven. A short release whose missing tracks are the
+unowned ones is never offered by the sweep.
+
+**Closes when:** the sweep keeps the shortfall and either offers such a
+release or says it was left. Ledger only; the watcher chose to leave this
+surface on #264.
+
+---
+
+## R-945. A genre folder no record binds that carries another bucket's name, or a name two folders carry, gets no Favorites
+
+**Found:** at the review of #276, U119, 2026-10-09, reading the folder binding.
+
+**The mechanism.** The refresh binds a bucket to its folder through the node a
+previous write recorded first and by the bucket's display name only among the
+folders no record claims. A folder renamed in rekordbox before any write
+recorded it is bound by nothing and is listed as left alone, and so are two
+live folders carrying one bucket's name, since whichever the query yielded
+first is not an answer. No Favorites is written there and no track is
+removed; the gate screen and the verb's note list each by name and row.
+
+**Measured cost.** Driven by `test_a_folder_nobody_declares_and_a_name_two_folders_carry_are_left_alone`
+and `test_a_folder_the_record_binds_to_one_bucket_is_not_bound_to_another_by_its_new_name`.
+The author's library has every genre folder under its declared name and one
+of each, so the cost is nobody's today; a rename before the first refresh
+costs that folder its Favorites until a rebuild records its node.
+
+**Closes when:** the tree rebuild, which records every node it writes, has
+run once after the rename, or a person renames the folder back. Ledger
+only.
+
+---
+
+## R-946. An adoption's end adds favourites to the genre Favorites and leaves the removals owed to the refresh verb
+
+**Found:** by the author of U119, 2026-10-09, choosing where a removal may happen.
+
+**The mechanism.** Every writer in this product that takes a membership away
+stands behind its own explicit approval, and adoption is additive by contract.
+So the refresh the end of an adoption runs adds only: a favourite the apply
+just filed joins its folder's Favorites, and a track that left All Favorites,
+or was dragged into a genre Favorites by hand, stays until `crate favorites
+refresh` asks and removes it. The adoption's resume says how many removals
+are owed.
+
+**Measured cost.** Driven by `test_the_additive_half_adds_and_counts_what_it_leaves_owed`
+and the adoption end to end test: the owed count is right and the note names
+the verb. Until the person runs it, a genre Favorites can hold a track that is
+no favourite. The brief asked the mirror to clear at "the next refresh", and
+an adoption is half a refresh.
+
+**Closes when:** the author decides the adoption's own approve gate may cover
+the mirror's removals, listed on its screen and digested with its plan, or
+the sync favorites verb runs the whole refresh at its end (U120's area).
+Ledger only.
+
+---
+
+## R-947. The present_in key of a sub class is read by no writer, so it constrains nothing
+
+**Found:** at the review of #276, U119, 2026-10-10, when the engine gave the key a meaning.
+
+**The mechanism.** Every sub class in the shipped template declares
+`present_in`, `energy_buckets` for the manual class and `all_buckets` for the
+two derived ones, and no tree writer, the routing pass, adoption, the rebuild
+or the genre favorites engine, reads it: the vocal sub is written under every
+bucket whatever its entry says. The loader accepts any string for it. The
+favorites engine first gave the key a meaning of its own and the review
+caught it; it now leaves the key unread, as the writers do, so there is one
+answer to where a class sits.
+
+**Measured cost.** None to a person: the key describes what the writers
+already do for the derived classes. A template that misspells the value loads
+clean and changes nothing, which is the shape of a key that should either be
+validated as an enum every writer honours or dropped.
+
+**Closes when:** the loader validates `present_in` and the writers read it, or
+the key leaves the template and the dataclass together. Ledger only,
+maintainer facing.
+
+---
+
+## R-948. The rebuild writes the genre Favorites in a second membership session, after the bands and the vocal sub
+
+**Found:** at the review of #276, U119, 2026-10-10, reading where the favourites are derived.
+
+**The mechanism.** The favourites are derived from the tree, not from the
+files, so a favourite the rebuild moves to another folder is in that folder's
+Favorites only once the first write has moved it. The rebuild therefore
+writes its derived placements first, derives the favourites off the tree it
+left, and writes them through the same writer in a second session of their
+own, each with its own capture, record and commit.
+
+**Measured cost.** Two captures and two records per rebuilt routing tree
+rather than one, driven by `test_the_rebuild_files_a_favourite_into_the_folder_it_moves_it_to`.
+A run stopped between the two leaves the bands and the vocal sub written and
+the favourites not, which the next rebuild finishes, and the convergence
+check reports the gap in between as missing memberships rather than as a
+converged tree.
+
+**Closes when:** the membership writer takes two plans in one session, which
+R29's one source per run rule does not offer today. Ledger only.
+
+---
+
+## R-949. A backfill names the playlist for the day it runs, not the day the set landed
+
+**Found:** by the author of U121, 2026-10-09, planning the Vonking backfill.
+
+**The mechanism.** The form's first word is the naming day,
+`batch_name.today()`, and the brief says today. A playlist this product
+wrote for a job is named on the landing's session record, and every later
+landing and backfill for that job reads the record, checks the row live under
+the folder and adds to it under its first name, so a set landed in two parts
+on two days is one playlist (the watcher's review of U121). What the record
+cannot name is a playlist a PERSON made: the Vonking playlist the author made
+by hand on 2026-10-09 is `10_09_26 Public Service NYC Live at Vonking 5-26`,
+and a backfill run that day with `--dj "Public Service NYC" --set-name "Live
+at Vonking" --set-date 2026-05` finds it live by name and adds only what it
+lacks, while a backfill run any later day makes a second playlist beside it.
+No flag names the day.
+
+**Measured cost.** For a set whose playlist a person made, or for a set
+backfilled after the day it landed with no record of a playlist, a first
+word that says when the playlist was made rather than when the set came in,
+and for the Vonking set a twin unless run on 2026-10-09. The hand made
+playlist is the author's to keep or remove. Driven:
+`test_two_landings_of_one_set_on_two_days_make_one_playlist`.
+
+**Closes when:** the author decides whether the first word is the naming
+day, the brief's form, or the landing day read off the landing's record, in
+which case the backfill gains that read. Ledger only.
+
+---
+
+## R-950. A track that becomes owned after the set's playlist was written joins it last, not in set order
+
+**Found:** by the review of U121, 2026-10-09, reading the read back.
+
+**The mechanism.** The playlist is found by its name under the folder, so a
+second write on the same day adds what the playlist lacked, and
+`add_memberships` appends: rekordbox numbers an added track after every
+track the playlist holds. A track that was a question at the first write
+and owned at the second therefore sits last. The read back holds every asked
+id live and holds the order only for a playlist this commit filled, so the
+second write is reported as what it was, one track added, and not refused.
+
+**Measured cost.** Driven on the disposable library:
+`test_a_second_write_that_fills_a_gap_mid_set_is_not_a_failed_write`, three
+tracks, the middle one owned between two writes, read back One, Two, Three
+for a set that played One, Three, Two. Order only; nothing is lost.
+
+**Closes when:** the write re-sorts the memberships to set order, a
+`TrackNo` rewrite the guarded writer does not make today. Ledger only.
+
+---
+
+## R-951. A set playlist is refused on a library whose intake tree is on the xml bridge
+
+**Found:** by the author of U121, 2026-10-09, choosing the medium.
+
+**The mechanism.** The set's permanent playlist is a database node under the
+declared INSPIRATION folder, written through the guarded writer, and the
+bridge landing splices an export and opens no database. Both `intake land
+--set` and `crate intake inspiration` refuse a bridge tree by name,
+`tree-unconverged`, through one helper, the landing told it can land without
+`--set` and backfill after the cutover. Nothing writes the playlist into an
+export.
+
+**Measured cost.** Driven on the bridge fixture: both verbs refuse before
+anything moves. A library still on the bridge gets no permanent playlist from
+a set intake until its intake tree cuts over. The author's library cut over
+on 2026-09-29, so the cost is nobody's today.
+
+**Closes when:** a bridge writer for the folder is wanted, or every library
+this product serves has cut over. Ledger only.
+
+---
+
+## R-952. The page title is used whole as the set's name when no flag abbreviates it
+
+**Found:** by the author of U121, 2026-10-09, naming the Vonking set.
+
+**The mechanism.** The form asks for an abbreviated set name, and the page
+title is what the uploader typed: `Public Service NYC - Live at Vonking
+05.03.26` gives, less the uploader's name in front, `Live at Vonking
+05.03.26`, so the playlist would read `10_09_26 Public Service NYC Live at
+Vonking 05.03.26 5-26`, the date twice. The strip rule takes the uploader's
+name off the front with its separator and nothing else; a title that names
+the uploader elsewhere, or a date, keeps it. `--set-name` is the abbreviation
+and wins.
+
+**Measured cost.** A longer playlist name than the author would type, for a
+set landed from an address with no `--set-name`. Driven by
+`test_the_words_come_from_the_page_with_the_uploader_taken_off_the_title`.
+No playlist is misnamed in a way that loses it.
+
+**Closes when:** the author decides a rule for abbreviating, which the brief
+left to the flag. Ledger only.
+
+---
+
+## R-953. A held card has no release, and only its board status knows it is held
+
+**Found:** at the review of #280, U122, 2026-10-10.
+
+**The mechanism.** U122 made `derive_status` keep In Progress and In review
+for any open card, so a hold is now read from the card's own status and
+nothing else. Four things follow, each raised by the review and each older
+than the unit or asked for by the brief. Nothing in this repository releases
+a stale hold. The runner's closeout does, in the normal flow: a landed task's
+issue is closed before its card is set Done, and a blocked or halted one is
+moved back to the status it read before the run. A card the closeout never
+reaches, a run that dies first or a closeout that fails its write, keeps In
+review, and now `sync` no longer moves it back, `audit` no longer reports it,
+and `next` lists it as underway and never offers it, the same treatment In
+Progress always had. `board.py start` checks closure and dependencies but not the hold,
+so it will branch and overwrite a card the runner or a lane holds. The
+`ready` and `blocked` labels ignore the hold, and the feeder's ready source
+reads labels only, so a lane held unit still reads ready to the feeder;
+the lane deny set is what keeps it out today. The audit's summary line counts
+a held unit among the ready ones, so it can say more are ready than `next`
+offers.
+
+**Measured cost.** Not driven against a live board. A stale hold costs a card
+that sits unoffered until somebody moves it by hand. `start` on a held card
+costs two builders on one card, and it needs a person to type the number of a
+card `next` did not offer. The review also raised a landed card reading Done
+on an open issue; the runner's closeout closes the issue first, so that
+window was read from its code and not found, and nothing here records it.
+
+**Closes when:** a hold carries something that can age, such as the runner's
+cycle or the lane's branch, so `audit` can tell a live hold from an abandoned
+one; `start` refuses a card held by anyone else; and either the labels or the
+feeder's ready source read the hold. Ledger only, it is operator tooling.
+
+---
+
+## R-954. Nothing numbers a landed residual file on its own, and the lane instructions still name the old places
+
+**Found:** building #287, U124, 2026-10-09.
+
+**The mechanism.** `board.py residuals --land` numbers a residual file on
+main, and nothing runs it: the Relay runner merges a task's branch with its
+residual files unnumbered, and the post cycle landing hook and the watcher
+are outside this repository. Two instruction surfaces outside it also still
+tell a builder to write a paragraph at the head of `RESTART-cratekit.md` and
+number residuals in the ledger: the board-lanes skill in the agent-config
+repository, and the Grokbot standing instructions on #279, which only the
+watcher edits by adding a version. A builder following either writes the
+paragraph `scan_repo.py` now refuses, so its branch fails the battery
+rather than conflicting.
+
+**Measured cost.** Files wait on main until somebody numbers them;
+`board.py audit` names them on every run, so they are seen. A builder
+following the old instructions is refused by the scan with the remedy in
+the message, and loses one fix round.
+
+**Closes when:** the watcher's landing runs `board.py residuals --land`
+after each merge that carries a residual file, and both instruction
+surfaces say `docs/restart/<unit>.md` and `docs/residuals/<unit>-<slug>.md`.
+Ledger only, it closes in an attended session; the follow up card filed by
+this unit carries it.
+
+---
+
+## R-955. The closing hook judges the working copy of a residual file, not the staged one
+
+**Found:** at the review of #287, U124, 2026-10-09.
+
+**The mechanism.** `board.py closing` reads every residual file git knows
+from the working tree. In the commit-msg hook the commit is made from the
+index, so a malformed file staged with a fixed working copy passes the hook,
+and a good staged file with a broken working copy is refused.
+
+**Measured cost.** Not driven past the review's reading. CI runs the same
+check over the pushed range on a clean checkout, where the working tree is
+the commit, so a malformed file that slips the hook is refused there before
+anything numbers it, and `residuals --land` validates every file before it
+writes.
+
+**Closes when:** the hook path reads each file's staged blob with `git show
+:<path>` and the range path keeps the working tree. Ledger only,
+maintainer facing.
