@@ -211,6 +211,7 @@ def test_every_check_key_and_its_place_in_the_run_order_is_written_out():
         "library.db_containment",
         "library.trash",
         "taxonomy.active",
+        "taxonomy.schema",
         "rekordbox.closed",
         "rekordbox.pins",
         "library.paths_resolved",
@@ -8031,3 +8032,53 @@ def test_the_driver_path_to_the_write_probe_is_driven_on_a_real_read_only_volume
         )
         assert refusal.path == str(database)
         assert refusal.remedy is Remedy.REMOUNT_WRITABLE
+
+
+# ── taxonomy.schema: the copy against the shipped schema (U132) ─────────────
+#
+# The live library's copy stated schema_version 2 with no genre Favorites class
+# after one shipped, and doctor said only that it parsed. These name the gap,
+# what the upgrade would add, and the hand edit for what it holds.
+
+
+def _schema_finding(cfg: config.Config) -> doctor.Finding:
+    return find(doctor.run(cfg, probes=probes()), "taxonomy.schema")
+
+
+def test_a_version_2_copy_without_favorites_is_named_with_both_versions(configured):
+    from tests.test_taxonomy_upgrade import live_shaped
+
+    write_active(configured, live_shaped())
+    finding = _schema_finding(configured)
+    assert finding.status is doctor.Status.INFO
+    assert "schema_version 2" in finding.detail
+    assert "'default' template states 4" in finding.detail
+    assert "lacks the class(es) favorites" in finding.detail
+    assert "lacks the bucket(s) soul" in finding.detail
+    assert "crate taxonomy upgrade raises schema_version to 4 and adds favorites" in finding.detail
+    assert "soul is held" in finding.detail and "'Soul'" in finding.detail
+    # Reported, never repaired.
+    assert config.state_path("taxonomy_active", configured).read_text(encoding="utf-8") == live_shaped()
+
+
+def test_a_current_copy_with_every_entry_is_ok(configured):
+    seed_taxonomy(configured)
+    finding = _schema_finding(configured)
+    assert finding.status is doctor.Status.OK
+    assert "schema_version 4" in finding.detail
+
+
+def test_a_copy_that_does_not_parse_is_left_to_taxonomy_active(configured):
+    write_active(configured, "schema_version = 2\n[tree\n")
+    finding = _schema_finding(configured)
+    assert finding.status is doctor.Status.INFO
+    assert finding.detail.startswith("not compared")
+    assert find(doctor.run(configured, probes=probes()), "taxonomy.active").status is doctor.Status.FAIL
+
+
+def test_the_schema_is_not_compared_when_the_library_disk_is_absent(configured):
+    seed_taxonomy(configured)
+    gone = probes(identity_provider=lambda _p: "0000-0000", mount_enumerator=lambda: ())
+    finding = find(doctor.run(configured, probes=gone), "taxonomy.schema")
+    assert finding.status is doctor.Status.INFO
+    assert "schema_version" not in finding.detail

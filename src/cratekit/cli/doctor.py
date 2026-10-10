@@ -110,6 +110,7 @@ from cratekit.core import (
     secrets,
     session,
     taxonomy,
+    taxonomy_upgrade,
     tree_registry,
 )
 from cratekit.core.cause import (
@@ -1229,6 +1230,74 @@ def _check_taxonomy(inputs: _Inputs) -> Finding:
     )
 
 
+def _check_taxonomy_schema(inputs: _Inputs) -> Finding:
+    """The active copy's schema version against the shipped one, and each entry it lacks (U132).
+
+    THE CHECK THE LIVE LIBRARY NEEDED. Its copy stated ``schema_version = 2``
+    with no genre Favorites class long after one shipped, and every Favorites
+    step refused or skipped over it while doctor read the copy as parsing and
+    said nothing more. This names both versions, every shipped class and bucket
+    the copy lacks, what ``crate taxonomy upgrade`` would add, and the hand edit
+    each entry it holds needs.
+
+    INFO, NEVER FAIL. A copy without a bucket the shipped template has may be a
+    person's decision, and a red line over it trains people to ignore red. A
+    copy that does not load or cannot be read is ``taxonomy.active``'s failure
+    and is not reported a second time here.
+
+    THE SHIPPED TEXT STAYS OUT OF THIS MODULE. The planner reads it and answers
+    in names and sentences, so doctor still holds no parsed shipped taxonomy.
+    """
+    key, title = "taxonomy.schema", "active taxonomy against the shipped schema"
+    if inputs.cfg is None:
+        return _unchecked(key, title)
+    unreadable = _library_state_unreadable(inputs, "the active template")
+    if unreadable is not None:
+        return Finding(key=key, title=title, status=Status.INFO, detail=unreadable)
+    try:
+        _, found = taxonomy_upgrade.planned(inputs.cfg)
+    except CratekitError as exc:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"not compared: {exc.cause.message}. taxonomy.active reports the copy "
+                f"itself"
+            ),
+        )
+    except ValueError as exc:
+        # The shipped text could not be cut, which is packaged data this
+        # repository wrote, so it is a defect to report and not the person's.
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=(
+                f"the shipped {inputs.cfg.taxonomy.template!r} template could not be "
+                f"compared with the copy ({exc})"
+            ),
+            remedy=Remedy.REPORT_DEFECT,
+        )
+    if not found.behind:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.OK,
+            detail=(
+                f"the active copy states schema_version {found.from_version}, as the "
+                f"shipped {found.template!r} template does, and declares every class and "
+                f"bucket it ships"
+            ),
+        )
+    return Finding(
+        key=key,
+        title=title,
+        status=Status.INFO,
+        detail=f"{taxonomy_upgrade.gap(found)}. {taxonomy_upgrade.remedy(found)}",
+    )
+
+
 def _origin_verdict(cfg: config.Config, active_text: str, named: str) -> tuple[Status, str]:
     """Whether the active copy fell behind the shipped template, or was edited (R-689).
 
@@ -1332,7 +1401,8 @@ def _origin_verdict(cfg: config.Config, active_text: str, named: str) -> tuple[S
         f"the copy is the one setup made from the shipped {record.template!r}, "
         f"unedited, and that template has changed since: {change}. Every verb "
         f"reads the copy, so nothing the shipped template changed applies to this "
-        f"library until it is copied in by hand; doctor does not rewrite the copy"
+        f"library until it is copied in, by hand or, for a class or a bucket, by "
+        f"{taxonomy_upgrade.VERB}; doctor does not rewrite the copy"
     )
 
 
@@ -2869,6 +2939,8 @@ CHECKS: tuple[Check, ...] = (
     Check("library.db_containment", _check_db_containment),
     Check("library.trash", _check_trash),
     Check("taxonomy.active", _check_taxonomy),
+    # U132. After the copy is known to parse, which it reports on.
+    Check("taxonomy.schema", _check_taxonomy_schema),
     Check("rekordbox.closed", _check_rekordbox_closed),
     Check("rekordbox.pins", _check_rekordbox_pins),
     # After the pins rather than beside the other library checks, because its
