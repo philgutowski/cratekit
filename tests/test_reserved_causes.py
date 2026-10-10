@@ -4205,6 +4205,7 @@ def package_of(relative: str) -> str:
 #: direction that matters: seven citations existed, all seven resolved, and an
 #: eighth with a typo would not have failed.
 CITED_RESIDUALS = (
+    "A pink row outside the named playlist is not swept",
     "Five accepted findings from the U38 reviews",
     "Two copies of one import walk still carry a relative-import defect",
     "One check in this unit is unreachable",
@@ -5171,6 +5172,11 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # when an approved file did not take its suggested genre. It is in
     # cause.REASONS and not in the reserved table. Population 197 to 198,
     # non-reserved 169 to 170, reserved half UNCHANGED at 28.
+    # Re-pinned on the residual
+    # "A pink row outside the named playlist is not swept", 2026-10-09. ONE slug, named rather than counted: favorites-pink-colour-missing,
+    # which the favourites colour lookup refuses with when djmdColor has no live
+    # Pink row. It is in cause.REASONS and not in the reserved table. Population
+    # 198 to 199 after U114, non-reserved 170 to 171, reserved half UNCHANGED at 28.
     # Re-pinned on U119, the genre Favorites, 2026-10-09. TWO slugs, named
     # rather than counted: favorites-class-undeclared, which the refresh
     # refuses with when the active taxonomy declares no sub class derived from
@@ -5179,7 +5185,11 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Both are in cause.REASONS and neither is in the reserved table.
     # Population 198 to 200, non-reserved 170 to 172, reserved half UNCHANGED
     # at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (200, 172, 28)
+    # Re-measured on the merge of origin/main into grok/263-pink-rows-swept,
+    # 2026-10-10: both the pink residual and U119 are on the tree. Population
+    # 201, non-reserved 173, reserved half UNCHANGED at 28 (measured on the
+    # merged tree, not either side alone).
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (201, 173, 28)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -6161,6 +6171,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # already spell; no-votes and not no-evidence, which is a cause. suggest-nothing-to-write, suggest-genre-written, suggest-left,
     # suggest-file-has-genre, suggest-file-not-read, suggest-catalogue-unread
     # and suggest-unmatched are WARNING codes `tagging/suggest_cli.py` gives.
+    # Re-pinned on the residual
+    # "A pink row outside the named playlist is not swept", 2026-10-09: 661 to 663 distinct after U114, non-keys 464 to 465. TWO joined and
+    # nothing left, each absent from `main`'s own `src` by git grep.
+    # favorites-pink-colour-missing is the key named in the pin above. And
+    # favorites-pink-export-missing is the WARNING code naming pink rows the
+    # export lacks, beside dangling.
     # Re-pinned on U119, the genre Favorites, 2026-10-09: 661 to 668 distinct,
     # non-keys 464 to 469. SEVEN joined and nothing left, each absent from
     # `main`'s own `src` by git grep. favorites-class-undeclared and
@@ -6181,7 +6197,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # `main`'s own `src` by git grep. intake-playlist-withheld,
     # label-harvest-playlist-withheld and sync-playlists-withheld are WARNING
     # codes.
-    assert (len(literals), len(literals - set(causes))) == (673, 474), (
+    # Re-measured on the merge of origin/main into grok/263-pink-rows-swept,
+    # 2026-10-10: both the pink residual and U119 are on the tree. 672 distinct,
+    # non-keys 472 (measured on the merged tree, not either side alone).
+    # Re-measured by the watcher on the landing join of #263 onto main after #264,
+    # 2026-10-10: 675 distinct, non-keys 475, measured on the merged tree.
+    assert (len(literals), len(literals - set(causes))) == (675, 475), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6299,6 +6320,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # gives it. It names no cause declared elsewhere, so THE WITHOUT-OWN HALF
     # IS STILL 11, and the integer half did not move.
     #
+    # Re-pinned on the residual
+    # "A pink row outside the named playlist is not swept",
+    # 2026-10-09: without-own 11 to 12, with-own 26 to 27, the integer half
+    # unchanged at 13. Named from this derivation's own output:
+    # `favorites/cli.py` joined the without-own half for the searcher's reason:
+    # it names the new slug once as `PINK_COLOUR_MISSING`, resolving to the
+    # cause `cause.py` declares, so the colour lookup and the tests spell it
+    # from one place. It holds no new in-range integer.
     # Re-pinned on U119, the genre Favorites, 2026-10-09: without-own 11 to 12,
     # with-own 26 to 27, the integer half unchanged at 13. Named from this
     # derivation's own output: `write/genre_favorites.py` joined, and it joined
@@ -6307,7 +6336,11 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # the causes `cause.py` declares, and raises each through `cause.refuse`
     # from one function, so the verb, the adoption's end and the rebuild spell
     # each slug from one line. It holds no in-range integer.
-    assert (len(without), len(with_own), len(both)) == (12, 27, 13), (
+    # Re-measured on the merge of origin/main into grok/263-pink-rows-swept,
+    # 2026-10-10: both favorites/cli.py and write/genre_favorites.py are on
+    # the tree. without-own 13, with-own 28, integer half UNCHANGED at 13
+    # (measured on the merged tree, not either side alone).
+    assert (len(without), len(with_own), len(both)) == (13, 28, 13), (
         f"the named at-risk population moved: {len(without)} modules hold a name "
         f"resolving to a cause declared elsewhere, {len(with_own)} once each "
         f"file's own enum declarations count, {len(both)} of those also hold an "
