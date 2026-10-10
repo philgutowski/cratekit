@@ -6253,8 +6253,11 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # absent from `main`'s own `src` by git grep. The six label-heard refusal
     # slugs are the keys named in the pin above. label-heard is the KIND the
     # plan's digest is taken over, and label-heard-tracks-refused and
-    # label-heard-tree-unchanged are the verb's WARNING codes.
-    assert (len(literals), len(literals - set(causes))) == (692, 483), (
+    # label-heard-tree-unchanged are the verb's WARNING codes. And once more
+    # on the same unit's review round: 692 to 693 distinct, non-keys 483 to
+    # 484. ONE joined, not-owned, the detail problem the adapter's playlist
+    # removal refuses with for a playlist the client does not serve as owned.
+    assert (len(literals), len(literals - set(causes))) == (693, 484), (
     # Re-pinned on U117, new label releases kept apart, 2026-10-09: 661 to
     # 664 distinct, non-keys 464 to 466. THREE joined and nothing left.
     # label-new-playlists-no-folder is the cause key pinned above.

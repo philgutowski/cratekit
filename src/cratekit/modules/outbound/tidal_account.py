@@ -993,7 +993,25 @@ class TidalAccount:
         if found is _ABSENT or found is None:
             self._members.pop(identifier, None)
             return
-        accepted = self._call(doing, found.delete, retries=0)
+        # THE CLIENT HANDS BACK A PLAYLIST IT OWNS WITH A DELETE AND ANY OTHER
+        # WITHOUT ONE, so a playlist it does not read as this account's is
+        # refused here in words rather than failing on a missing attribute.
+        # Read as an attribute, so the suite's removal scan still sees it.
+        try:
+            remove = found.delete
+        except AttributeError:
+            remove = None
+        if not callable(remove):
+            raise refuse(
+                "outbound-remove-refused",
+                f"the provider does not serve the playlist {identifier} as one this "
+                f"account owns, so it was not removed",
+                steps=("remove the playlist by hand in the provider's own player",),
+                scope=Scope.SOURCE,
+                origin=("outbound", "account"),
+                detail={"playlist_id": identifier, "problem": "not-owned"},
+            )
+        accepted = self._call(doing, remove, retries=0)
         if accepted is False:
             raise account.provider_failure(
                 RuntimeError("the provider did not accept the removal"), doing

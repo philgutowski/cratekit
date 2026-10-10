@@ -23,9 +23,9 @@ into the year and no removal happen here; ``label heard`` does both. A dated
 playlist older than ``labels.new_playlist_age_days`` is reported and nothing
 moves.
 
-ONE THIS PLAN CREATES IS RECORDED IN THE OUTBOUND LEDGER (U123) the moment the
-create returns, because a removal is asked of a playlist the ledger vouches
-for and of no other. One reused by its name is never recorded.
+ONE THIS PLAN CREATES IS RECORDED IN THE OUTBOUND LEDGER (U123), the ledger's
+lock taken before the create, because a removal is asked of a playlist the
+ledger vouches for and of no other. One reused by its name is never recorded.
 
 A WRITE THE ACCOUNT REFUSES PART WAY is raised naming what was written first,
 and the next plan finds the dated playlist by its name and adds only the rest.
@@ -431,12 +431,18 @@ def apply(cfg: config.Config, account, planned: DatedPlan) -> DatedApplied:
                 continue
             remote_id = step.remote_id
             if step.action == CREATE:
-                remote_id = account.create_playlist(step.name)
+                # VOUCHED FOR IN THE LEDGER AS IT IS MADE (U123), the lock
+                # taken before the create, so ``label heard`` may remove it.
+                remote_id = ledger.reserve_label_dated(
+                    cfg,
+                    planned.label_id,
+                    step.name,
+                    lambda name=step.name: account.create_playlist(name),
+                )
                 # RECORDED BEFORE THE MOVE, so a refusal between the two
                 # names the playlist now at the account root and its id.
                 done.created.append(step.name)
                 done.ids[step.name] = remote_id
-                ledger.record_label_dated(cfg, planned.label_id, step.name, remote_id)
                 done.unplaced.append(step.name)
                 account.move_to_folder(remote_id, folder_id)
                 done.unplaced = [one for one in done.unplaced if one != step.name]

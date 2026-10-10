@@ -777,6 +777,8 @@ class LabelShape:
     name: str = ""
     folder_id: str = ""
     years: Mapping[str, LabelYear] = field(default_factory=dict)
+    #: U123. Each dated playlist the dated plan created, name to identifier.
+    dated: Mapping[str, str] = field(default_factory=dict)
 
 
 def _shape_of(label_id: str, record: Mapping[str, Any] | None) -> LabelShape:
@@ -799,6 +801,7 @@ def _shape_of(label_id: str, record: Mapping[str, Any] | None) -> LabelShape:
             for year, entry in (record.get("years") or {}).items()
             if entry.get("remote_id")
         },
+        dated=dict(record.get("dated") or {}),
     )
 
 
@@ -1108,8 +1111,8 @@ def product_made(cfg: config.Config, playlist_id: str) -> bool:
     * a set playlist's, since ``reserve_set_playlist`` only creates;
     * a label year's, only when it was written ``created``. A year adopted by
       its name under the folder was made by the source system or a person;
-    * a label's dated playlist (U123), since :func:`record_label_dated` is
-      called only for one the dated plan created.
+    * a label's dated playlist (U123), since :func:`reserve_label_dated` is
+      called only for one the dated plan creates.
 
     ADOPTED ANYWHERE WINS. A playlist a label record holds as adopted is not
     made here, whatever another record says about the same identifier.
@@ -1157,18 +1160,26 @@ def _made_in(document: dict, wanted: str) -> bool:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def record_label_dated(cfg: config.Config, label_id: str, name: str, remote_id: str) -> None:
-    """Record one dated playlist the dated plan CREATED, by its name.
+def reserve_label_dated(
+    cfg: config.Config, label_id: str, name: str, create: Callable[[], str]
+) -> str:
+    """Create one dated playlist and record it as made here, the lock taken first.
 
-    Called the moment the create returns, before the move into the folder, so
-    a refusal between the two still leaves the playlist vouched for.
+    THE LOCK IS TAKEN BEFORE THE CREATE, on :func:`reserve_label_year`'s
+    argument: an unreadable or unlockable ledger refuses before anything
+    exists on the account, rather than leaving a dated playlist nothing
+    vouches for, which ``label heard`` could then never remove. ALWAYS
+    CREATES, since the dated plan asks only when the label's folder holds no
+    playlist by the name; a record of the same name is replaced.
     """
     lock = _locked(cfg)
     try:
         document = _load(cfg)
         record = _label_entry(document, label_id, "")
+        remote_id = create()
         record.setdefault("dated", {})[str(name)] = str(remote_id)
         _write(cfg, document)
+        return remote_id
     finally:
         lock.__exit__(None, None, None)
 

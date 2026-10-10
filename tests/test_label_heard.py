@@ -13,6 +13,7 @@ rekordbox. Nothing here names a real volume, a real person or a real track.
 from __future__ import annotations
 
 import ast
+import json
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,7 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.label import dated, heard, heard_cli, playlists_cli, sync_cli
 from cratekit.modules.outbound import ledger, tidal_account
 from tests.cli_drive import drive
+from tests.label_fakes import FakeTrack
 from tests.test_label_dated import _answer, _built, _plan, _record
 from tests.test_label_playlists import LABEL, LABEL_ID, _entry, _years
 from tests.test_label_playlists import followed as followed  # noqa: PLC0414 - fixture
@@ -390,9 +392,9 @@ def test_a_dated_playlist_made_by_the_dated_plan_is_vouched_for_and_one_reused_i
 def test_an_adopted_year_still_wins_over_a_dated_entry_for_the_same_identifier(installed):
     cfg = installed
     ledger.reserve_label_year(cfg, LABEL_ID, "2023", YEAR, lambda: "never", adopt="pl-9")
-    ledger.record_label_dated(cfg, LABEL_ID, DATED, "pl-9")
+    assert ledger.reserve_label_dated(cfg, LABEL_ID, DATED, lambda: "pl-9") == "pl-9"
     assert not ledger.product_made(cfg, "pl-9")
-    ledger.record_label_dated(cfg, LABEL_ID, DATED, "pl-10")
+    ledger.reserve_label_dated(cfg, LABEL_ID, DATED, lambda: "pl-10")
     assert ledger.product_made(cfg, "pl-10")
 
 
@@ -454,7 +456,7 @@ class _Client:
 
 
 def _vouched(cfg, playlist_id: str) -> None:
-    ledger.record_label_dated(cfg, LABEL_ID, DATED, playlist_id)
+    ledger.reserve_label_dated(cfg, LABEL_ID, DATED, lambda: playlist_id)
 
 
 def test_the_adapter_refuses_a_playlist_the_ledger_does_not_vouch_for_unasked(installed):
@@ -504,3 +506,117 @@ def test_a_playlist_still_served_after_its_delete_is_refused_not_reported_remove
         )
     assert caught.value.cause.detail["problem"] == "read-back-differs"
     assert client.deletes == ["pl-1"]
+
+
+class _NotOwned(_Client):
+    """The client hands back a playlist it does not read as this account's."""
+
+    def playlist(self, playlist_id: str) -> object:
+        self.opened.append(playlist_id)
+        return object()
+
+
+def test_a_playlist_the_client_does_not_serve_as_owned_is_refused_in_words(installed):
+    _vouched(installed, "pl-1")
+    client = _NotOwned({"pl-1"})
+    with pytest.raises(CratekitError) as caught:
+        tidal_account.TidalAccount(client, sleep=lambda seconds: None, cfg=installed).remove_playlist(
+            "pl-1"
+        )
+    assert caught.value.cause.detail["problem"] == "not-owned"
+    assert client.deletes == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 7. The review round's findings, each driven
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_an_unreadable_ledger_refuses_a_dated_create_before_anything_exists(installed):
+    cfg = installed
+    path = config.state_path("outbound_writes", cfg)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("not json", encoding="utf-8")
+
+    def create() -> str:
+        raise AssertionError("the playlist was created before the ledger was read")
+
+    with pytest.raises(CratekitError) as caught:
+        ledger.reserve_label_dated(cfg, LABEL_ID, DATED, create)
+    assert caught.value.cause.reason == "outbound-ledger-unusable"
+
+
+def test_marking_heard_with_nothing_to_write_on_a_playlist_made_by_hand_is_not_refused(followed):
+    cfg, fake, account = followed
+    _built(cfg, fake, account)
+    (folder_id,) = account.folder_names
+    by_hand = account.create_playlist(DATED)
+    account.move_to_folder(by_hand, folder_id)
+    account.playlists[by_hand] = ["t6", "t7"]
+    _record(cfg, [_answer(["r3", "r4"], DAY)])
+    before = _writes(account)
+
+    code, envelope = _two_acts([*VERB, "--release", "r3"])
+    assert code == int(ExitCode.OK), envelope
+    (playlist,) = [one for one in envelope["data"]["items"] if one["kind"] == "playlist"]
+    assert playlist["action"] == heard.KEEP
+    assert _writes(account) == before
+    assert _heard(cfg) == ["r3"]
+
+
+def test_a_dated_playlist_the_ledger_records_outside_the_folder_is_said(followed):
+    cfg, fake, account = followed
+    _built(cfg, fake, account)
+    _record(cfg, [_answer(["r3"], DAY)])
+    ledger.reserve_label_dated(cfg, LABEL_ID, DATED, lambda: "pl-at-root")
+
+    code, refused = drive(VERB)
+    (playlist,) = [one for one in refused["cause"]["detail"]["shown"]["items"] if one["kind"] == "playlist"]
+    assert playlist["action"] == heard.ABSENT and playlist["id"] == "pl-at-root"
+    assert "outside the folder" in playlist["why"]
+
+
+def test_a_track_an_unheard_release_also_carries_stays_on_the_dated_playlist(followed):
+    cfg, fake, account = followed
+    tracks, year = fake.releases["r4"]
+    fake.releases["r4"] = ([FakeTrack("t5"), *tracks], year)
+    folder_id = _made(cfg, fake, account, [_answer(["r3", "r4"], DAY)])
+    dated_id = _ids(account, folder_id)[DATED]
+    assert account.playlists[dated_id] == ["t4", "t5", "t6", "t7"]
+
+    code, envelope = _two_acts([*VERB, "--release", "r3"])
+    assert code == int(ExitCode.OK), envelope
+    assert account.taken == [(dated_id, ("t4",))]
+    assert account.playlists[dated_id] == ["t5", "t6", "t7"]
+
+
+def test_what_the_merge_adds_to_a_recorded_year_is_recorded_on_it(followed):
+    cfg, fake, account = followed
+    folder_id = _made(cfg, fake, account, [_answer(["r3"], DAY)])
+    year_id = _ids(account, folder_id)[YEAR]
+    account.playlists[year_id].remove("t4")
+    shape = ledger.label_shape(cfg, LABEL_ID)
+    ledger_path = config.state_path("outbound_writes", cfg)
+    document = json.loads(ledger_path.read_text(encoding="utf-8"))
+    document["labels"][LABEL_ID]["years"]["2023"]["added"].remove("t4")
+    ledger_path.write_text(json.dumps(document), encoding="utf-8")
+    assert "t4" not in ledger.label_shape(cfg, LABEL_ID).years["2023"].added
+    assert shape.years["2023"].remote_id == year_id
+
+    code, envelope = _two_acts(VERB)
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["totals"]["applied"]["added"] == 1
+    assert "t4" in ledger.label_shape(cfg, LABEL_ID).years["2023"].added
+
+
+def test_a_year_known_only_by_the_marks_prefixed_name_is_the_year(followed):
+    cfg, fake, account = followed
+    folder_id = _made(cfg, fake, account, [_answer(["r3"], DAY)])
+    old_year = _ids(account, folder_id)[YEAR]
+    account.placed.pop(old_year)
+    marked = account.create_playlist(f"DOWNLOADED {YEAR}")
+    account.move_to_folder(marked, folder_id)
+
+    code, envelope = _two_acts(VERB)
+    assert code == int(ExitCode.OK), envelope
+    assert account.playlists[marked] == ["t4", "t5"]

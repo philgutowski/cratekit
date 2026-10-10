@@ -30,7 +30,7 @@ tracks are taken off the dated playlist, after the adds, and the playlist
 stays; the run that hears the last one removes it.
 
 A REMOVAL IS ASKED ONLY OF A PLAYLIST THE OUTBOUND LEDGER VOUCHES FOR, which is
-one the dated plan created (``ledger.record_label_dated``). One reused by its
+one the dated plan created (``ledger.reserve_label_dated``). One reused by its
 name was made by somebody else and the plan refuses it before the gate.
 
 THE RECORD LABELS TREE IN REKORDBOX IS NOT WRITTEN, and the verb says so on
@@ -153,6 +153,10 @@ class HeardPlan:
     merging: tuple[str, ...] = ()
     #: Those of ``merging`` the year does not hold yet.
     add: tuple[str, ...] = ()
+    #: The year is the one the ledger records, so what is added is recorded on it.
+    year_recorded: bool = False
+    #: A dated playlist the ledger records by this name and the folder does not hold.
+    stray_id: str = ""
 
     @property
     def writes(self) -> bool:
@@ -188,7 +192,7 @@ class HeardPlan:
         ]
         items.append(
             {
-                "id": self.dated_id,
+                "id": self.dated_id or self.stray_id,
                 "kind": "playlist",
                 "name": self.name,
                 "action": self.action,
@@ -227,6 +231,12 @@ class HeardPlan:
 
 
 def _why(planned: HeardPlan) -> str:
+    if planned.action == ABSENT and planned.stray_id:
+        return (
+            f"the label's folder holds no playlist by this name and the ledger records "
+            f"one made here, {planned.stray_id}: if it is still on the account it is "
+            f"outside the folder, and is left for you to remove by hand"
+        )
     if planned.action == ABSENT:
         return "the label's folder on the account holds no playlist by this name"
     if planned.action == KEEP:
@@ -253,9 +263,10 @@ def _refused(reason: str, message: str, *steps: str, **detail: Any) -> CratekitE
     )
 
 
-def _one_named(inside: Mapping[str, str], name: str) -> str:
-    """The one playlist in the folder carrying ``name``, empty for none, refused for two."""
-    matching = sorted(pid for pid, title in inside.items() if title == name)
+def _one_named(inside: Mapping[str, str], name: str, *also: str) -> str:
+    """The one playlist in the folder carrying ``name`` or ``also``, empty for none,
+    refused for two."""
+    matching = sorted(pid for pid, title in inside.items() if title in (name, *also))
     if len(matching) > 1:
         raise _refused(
             "label-heard-ambiguous",
@@ -323,18 +334,30 @@ def plan(
     inside = account.folder_playlists(shape.folder_id) if shape.folder_id else {}
     dated_id = _one_named(inside, name)
     if not dated_id:
-        return base
+        # A DATED PLAYLIST THE LEDGER RECORDS AND THE FOLDER DOES NOT HOLD is
+        # one whose move into the folder failed, or one a person moved or
+        # removed. The protocol lists no playlist at the root, so which of
+        # those it is cannot be read; the releases are still heard, and the
+        # run says where the playlist may be rather than reporting nothing.
+        return replace(base, stray_id=shape.dated.get(name, ""))
     tracks = tuple(account.playlist_tracks(dated_id))
     if unheard:
-        named_tracks = {
-            track for release in target for track in (catalogue.by_release.get(release) or ("", ()))[1]
-        }
-        merging = tuple(one for one in dict.fromkeys(tracks) if one in named_tracks)
+        # A TRACK AN UNHEARD RELEASE ALSO CARRIES STAYS, so the dated plan
+        # does not put it back on its next run for that release.
+        def tracks_of(releases: Sequence[str]) -> set[str]:
+            return {
+                track
+                for release in releases
+                for track in (catalogue.by_release.get(release) or ("", ()))[1]
+            }
+
+        leaving = tracks_of(target) - tracks_of(unheard)
+        merging = tuple(one for one in dict.fromkeys(tracks) if one in leaving)
         action = TAKE_OFF if merging else KEEP
     else:
         merging = tuple(dict.fromkeys(tracks))
         action = REMOVE
-    if not ledger.product_made(cfg, dated_id):
+    if action in (REMOVE, TAKE_OFF) and not ledger.product_made(cfg, dated_id):
         raise _refused(
             "label-heard-not-product-made",
             f"the outbound ledger does not record {name!r} ({dated_id}) as a playlist "
@@ -345,13 +368,16 @@ def plan(
             playlist_id=dated_id,
             name=name,
         )
+    planned = replace(base, action=action, dated_id=dated_id, tracks=tracks, merging=merging)
+    if not merging:
+        return planned
     year_name = folders.year_name(catalogue.name, year)
-    # THE RECORDED YEAR FIRST, when the folder still holds it, so a year the
-    # mark retitled with the source system's prefix is still the year.
+    # THE RECORDED YEAR FIRST, when the folder still holds it, then one by its
+    # name or by the name the mark gives it, as the year build adopts one.
     recorded = shape.years.get(year)
     year_id = recorded.remote_id if recorded is not None and recorded.remote_id in inside else ""
-    year_id = year_id or _one_named(inside, year_name)
-    if merging and not year_id:
+    year_id = year_id or _one_named(inside, year_name, folders.MARK_PREFIX + year_name)
+    if not year_id:
         raise _refused(
             "label-heard-no-year-playlist",
             f"the label's folder holds no {year_name!r}, so the tracks of {name!r} have "
@@ -360,14 +386,11 @@ def plan(
             f"label heard again",
             name=year_name,
         )
-    have = set(account.playlist_tracks(year_id)) if year_id else set()
+    have = set(account.playlist_tracks(year_id))
     return replace(
-        base,
-        action=action,
-        dated_id=dated_id,
+        planned,
         year_id=year_id,
-        tracks=tracks,
-        merging=merging,
+        year_recorded=recorded is not None and recorded.remote_id == year_id,
         add=tuple(one for one in merging if one not in have),
     )
 
@@ -438,15 +461,11 @@ def record_heard(cfg: config.Config, label_id: str, releases: Sequence[str]) -> 
         return 0
     with sync_cli.record_lock(cfg, "marking releases heard"):
         document = sync_cli.load_record(cfg)
-        held = document["labels"].setdefault(label_id, {})
-        listed = held.get(HEARD)
-        before = [one for one in listed if isinstance(one, str) and one] if isinstance(
-            listed, list
-        ) else []
-        fresh = [one for one in releases if one not in before]
+        before = dated.heard(document, label_id)
+        fresh = [one for one in dict.fromkeys(releases) if one not in before]
         if not fresh:
             return 0
-        held[HEARD] = sorted({*before, *fresh})
+        document["labels"].setdefault(label_id, {})[HEARD] = sorted({*before, *fresh})
         sync_cli.write_record(cfg, document)
     return len(fresh)
 
@@ -461,6 +480,16 @@ def apply(cfg: config.Config, account, planned: HeardPlan) -> Heard:
             answered = set(account.add_tracks(planned.year_id, chunk))
             done.added += sum(1 for one in chunk if one in answered)
             held |= answered
+            # RECORDED ON THE YEAR as the year build records its own adds, so
+            # a prune can take one off and a person's removal is not undone.
+            if planned.year_recorded:
+                ledger.record_label_tracks(
+                    cfg,
+                    planned.label_id,
+                    planned.year,
+                    added=[one for one in chunk if one in answered],
+                    refused=[one for one in chunk if one not in answered],
+                )
         done.missing = [one for one in planned.merging if one not in held]
         if planned.action == REMOVE:
             if done.missing:
