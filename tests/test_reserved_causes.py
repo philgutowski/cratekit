@@ -5172,8 +5172,8 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # when an approved file did not take its suggested genre. It is in
     # cause.REASONS and not in the reserved table. Population 197 to 198,
     # non-reserved 169 to 170, reserved half UNCHANGED at 28.
-    # Re-pinned on the residual finding "A pink row outside the named playlist
-    # is not swept", 2026-10-09. ONE slug, named rather than counted: favorites-pink-colour-missing,
+    # Re-pinned on the residual
+    # "A pink row outside the named playlist is not swept", 2026-10-09. ONE slug, named rather than counted: favorites-pink-colour-missing,
     # which the favourites colour lookup refuses with when djmdColor has no live
     # Pink row. It is in cause.REASONS and not in the reserved table. Population
     # 198 to 199 after U114, non-reserved 170 to 171, reserved half UNCHANGED at 28.
@@ -6159,8 +6159,8 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # already spell; no-votes and not no-evidence, which is a cause. suggest-nothing-to-write, suggest-genre-written, suggest-left,
     # suggest-file-has-genre, suggest-file-not-read, suggest-catalogue-unread
     # and suggest-unmatched are WARNING codes `tagging/suggest_cli.py` gives.
-    # Re-pinned on the residual finding "A pink row outside the named playlist
-    # is not swept", 2026-10-09: 661 to 663 distinct after U114, non-keys 464 to 465. TWO joined and
+    # Re-pinned on the residual
+    # "A pink row outside the named playlist is not swept", 2026-10-09: 661 to 663 distinct after U114, non-keys 464 to 465. TWO joined and
     # nothing left, each absent from `main`'s own `src` by git grep.
     # favorites-pink-colour-missing is the key named in the pin above. And
     # favorites-pink-export-missing is the WARNING code naming pink rows the
@@ -6283,8 +6283,8 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # gives it. It names no cause declared elsewhere, so THE WITHOUT-OWN HALF
     # IS STILL 11, and the integer half did not move.
     #
-    # Re-pinned on the residual finding "A pink row outside the named playlist
-    # is not swept",
+    # Re-pinned on the residual
+    # "A pink row outside the named playlist is not swept",
     # 2026-10-09: without-own 11 to 12, with-own 26 to 27, the integer half
     # unchanged at 13. Named from this derivation's own output:
     # `favorites/cli.py` joined the without-own half for the searcher's reason:
