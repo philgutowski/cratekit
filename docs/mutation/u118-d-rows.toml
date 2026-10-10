@@ -27,15 +27,6 @@ old = '''  "Hip-hop & Rap",
 new = ''''''
 
 [[rows]]
-id = "T3_soul_and_funk_word"
-description = "The general catalogue's Soul & Funk writes R&B again"
-file = "src/cratekit/templates/taxonomy.default.toml"
-surface = "user"
-tests = ["tests/test_vocabulary.py", "tests/test_published_genre.py"]
-old = '''{ word = "Soul & Funk", tag = "Soul" }'''
-new = '''{ word = "Soul & Funk", tag = "R&B" }'''
-
-[[rows]]
 id = "T4_hip_hop_former"
 description = "Hip-Hop declares no former place, so its tracks are never moved out of the old playlist"
 file = "src/cratekit/templates/taxonomy.default.toml"
@@ -48,3 +39,17 @@ sub = "hip_hop"
 display = "Hip-Hop"
 '''
 new = ''''''
+
+[[rows]]
+id = "M11_genre_names_fallback"
+description = "genre_names counts the fallback tier as naming a bucket"
+file = "src/cratekit/adopt/move.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py"]
+old = '''    return resolution.match is not routing.Match.FALLBACK and resolution.bucket_id == bucket'''
+new = '''    return resolution.bucket_id == bucket'''
+
+[[dropped]]
+id = "T3_soul_and_funk_word"
+description = "The general catalogue's Soul & Funk writes R&B again"
+reason = "the vocabulary suite's shipped table pins this row by name; ranked below the cap when M11 moved here for the null control"

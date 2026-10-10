@@ -109,4 +109,4 @@ reason = "every caller asks claims first and continues, so the check is belt and
 [[dropped]]
 id = "M11_genre_names_fallback"
 description = "genre_names counts the fallback tier as naming a bucket"
-reason = "only reachable with a taxonomy whose fallback is a bucket that declares split places, which the shipped one is not; maintainer facing, ranked below the cap"
+reason = "moved to batch u118-d, which needed a Python row for its null control"
