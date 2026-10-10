@@ -150,8 +150,9 @@ still `halted`.
 ## Standing decisions
 
 - **The board is the BUILD, the ledger is the LEDGER.** Do not backfill.
-- **Residual numbers are APPEND ONLY.** Take numbers above main's highest at
-  branch time, and renumber the incoming branch's at the merge, never main's.
+- **Residual numbers are APPEND ONLY.** A residual is filed unnumbered in
+  `docs/residuals/` and `board.py residuals --land` numbers it on main at
+  landing (U124), so no branch is renumbered and main's never are.
 - **The pending register is empty.** Re-opening any countdown re-arms it.
 - **CI does not run the suite.** A step in the workflow must be able to pass.
 - **Use `scripts/mutate.py`**, cap 25 rows, author's table, gap recorded in one
