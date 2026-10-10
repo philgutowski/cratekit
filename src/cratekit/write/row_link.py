@@ -18,13 +18,17 @@ WHAT IT WRITES IS ONE COLUMN ON ONE ROW AND NOTHING ELSE, through
 for its commit and put back after it, so the guard's writable columns widen for
 this commit and no other.
 
-A LIVE ROW ONLY, AND A VALUE OTHER ROWS CARRY. The plan reads the row from SQL
-with ``rb_local_deleted = 0`` and refuses a tombstone or an unknown id by name.
-It counts the live rows carrying the value asked for and refuses when none
-does: the probe copies a value rekordbox wrote onto a row it did not, and a
-value nothing carries is a typo and not an experiment. A row already at the
-value plans nothing, as ``repair rows`` does over a whole library: the gate
-still asks and the apply is a no op.
+A LIVE ROW ONLY, AND A VALUE MORE ROWS CARRY THAN CARRY THE ROW'S OWN. The
+plan reads the row from SQL with ``rb_local_deleted = 0`` and refuses a
+tombstone or an unknown id by name. It counts the other live rows carrying the
+value asked for and the other live rows carrying the value the row holds now,
+and refuses when the first is zero or not above the second: the probe copies
+a value rekordbox wrote onto a row it did not, so the write moves a row toward
+the value the library's rows mostly carry, never away from it. A value nothing
+carries is a typo and not an experiment, and the binding's value written onto
+a row rekordbox made would take a loadable row and make the question worse.
+A row already at the value plans nothing, as ``repair rows`` does over a whole
+library: the gate still asks and the apply is a no op.
 
 THE ROW IS READ AGAIN FROM SQL AFTER THE COMMIT. The column must read as the
 value, and no column outside it and the binding's bookkeeping may have moved.
@@ -66,6 +70,10 @@ ROW_UNKNOWN = "link-row-unknown"
 #: No other live row carries the value asked for.
 VALUE_UNHELD = "link-value-unheld"
 
+#: Fewer live rows carry the value asked for than carry the row's own value,
+#: so the write would move the row away from the library's majority value.
+VALUE_MINORITY = "link-value-minority"
+
 _ORIGIN = ("write", "row_link")
 
 
@@ -76,7 +84,7 @@ class LinkPlan:
     content_id: str
     title: str
     path: str
-    #: The value to write, as the live table stores it.
+    #: The value to write.
     value: int
     #: The value the row carries now, as text, so the apply can see it moved.
     was: str
@@ -100,7 +108,7 @@ class LinkPlan:
             "path": self.path,
             "column": LINK,
             "from": self.was,
-            "to": self.value,
+            "to": str(self.value),
         }
 
     @property
@@ -154,10 +162,10 @@ def plan_link(db: Any, *, content_id: str, value: int) -> LinkPlan:
     """The one live row named, what it carries, and how many rows carry the value.
 
     FROM SQL AND NOT FROM THE MAPPED ROW, so the value read is what the table
-    holds and not what the binding substitutes on load. The two refusals are
+    holds and not what the binding substitutes on load. The three refusals are
     the plan's and not the gate's, so a person is told before being asked. A
     row already at the value is not one of them: it is a plan that writes
-    nothing, and the unheld value is not judged on it since nothing is copied.
+    nothing, and the value is not judged on it since nothing is copied.
     """
     from sqlalchemy import text
 
@@ -183,7 +191,9 @@ def plan_link(db: Any, *, content_id: str, value: int) -> LinkPlan:
         )
     was = "" if row[LINK] is None else str(row[LINK]).strip()
     carriers = _count(db, value, excluding=content_id)
-    if carriers == 0 and was != str(value):
+    fellows = _count(db, row[LINK], excluding=content_id) if was else 0
+    writes = was != str(value)
+    if writes and carriers == 0:
         raise refuse(
             VALUE_UNHELD,
             f"no other live row carries {LINK} {value}; the probe copies a value "
@@ -193,7 +203,23 @@ def plan_link(db: Any, *, content_id: str, value: int) -> LinkPlan:
             origin=_ORIGIN,
             detail={"content_id": content_id, "value": value},
         )
-    fellows = _count(db, row[LINK], excluding=content_id) if was else 0
+    if writes and carriers <= fellows:
+        raise refuse(
+            VALUE_MINORITY,
+            f"{carriers} other live row(s) carry {LINK} {value} and {fellows} carry "
+            f"the row's own {was}, so the write would move the row {content_id} "
+            f"away from the value the library's rows mostly carry; the probe only "
+            f"moves a row toward it",
+            steps=("name a row that carries the minority value, and the majority value to write",),
+            origin=_ORIGIN,
+            detail={
+                "content_id": content_id,
+                "value": value,
+                "carriers": carriers,
+                "replaced": was,
+                "fellows": fellows,
+            },
+        )
     rows = int(
         db.session.execute(
             text(
@@ -261,13 +287,7 @@ def judge(
     wrong: list[str] = []
     if now.get(LINK) is None or str(now[LINK]).strip() != str(plan.value):
         wrong.append(f"{plan.content_id}: {LINK} not {plan.value}")
-    changed = sorted(
-        column
-        for column in now
-        if column != LINK
-        and column not in rb_writer.BOOKKEEPING_COLUMNS
-        and now[column] != was.get(column)
-    )
+    changed = row_defaults.moved_columns(was, now, planned=(LINK,))
     moved = (f"{plan.content_id}: {', '.join(changed)}",) if changed else ()
     return tuple(wrong), moved
 
@@ -317,15 +337,12 @@ def apply_link(
             detail={"content_id": plan.content_id, "value": plan.value},
         )
     ids = [plan.content_id]
-    assert_row_as_planned(plan, row_defaults._columns(db, ids))
-    mapped = row_defaults._mapped(db, ids)
+    assert_row_as_planned(plan, row_defaults.read_columns(db, ids))
+    mapped = row_defaults.read_mapped(db, ids)
     convergence.detect_out_of_band_restore(cfg, db, tree_registry.read(cfg))
     # REGISTERED FOR THIS COMMIT AND THEN PUT BACK, as the repair's two
-    # policies are: a registration left behind would widen the guard for every
-    # writer that commits later in the process.
-    was = rb_writer.registered_field_policies()
-    try:
-        rb_writer.register_field_policy(rb_writer.CONTENT_LINK_POLICY)
+    # policies are, by the same context manager.
+    with rb_writer.field_policies_for_commit(rb_writer.CONTENT_LINK_POLICY):
         with (
             session.assert_gates(
                 cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
@@ -337,7 +354,7 @@ def apply_link(
             session.attach_capture(record, capture.root, cfg)
             snapshot.assert_verified(capture)
 
-            before = row_defaults._columns(db, ids)
+            before = row_defaults.read_columns(db, ids)
             written = 0
             try:
                 decision = rb_writer.write_metadata_field(
@@ -367,12 +384,8 @@ def apply_link(
             _record_commit(record, written, cfg)
             convergence.record_fingerprint(cfg, db)
 
-            after = row_defaults._columns(db, ids)
+            after = row_defaults.read_columns(db, ids)
             session_id = record.session_id
-    finally:
-        rb_writer.reset_field_policies()
-        for policy in was.values():
-            rb_writer.register_field_policy(policy)
 
     wrong, moved = judge(plan, before, after)
     return Written(
@@ -419,6 +432,7 @@ __all__ = [
     "CHANGE_KEY",
     "LINK",
     "ROW_UNKNOWN",
+    "VALUE_MINORITY",
     "VALUE_UNHELD",
     "WORKFLOW",
     "LinkPlan",

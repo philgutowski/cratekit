@@ -107,7 +107,7 @@ def test_the_plan_is_the_one_row_its_value_and_who_else_carries_each(machine):
         "path": plan.path,
         "column": LINK,
         "from": str(BINDING),
-        "to": HOUSE,
+        "to": str(HOUSE),
     }
 
 
@@ -173,11 +173,34 @@ def test_a_value_only_a_tombstone_carries_refuses_as_unheld(machine):
     assert caught.value.cause.reason == row_link.VALUE_UNHELD
 
 
-def test_a_value_one_other_live_row_carries_is_enough(machine):
+def test_the_bindings_value_onto_a_row_rekordbox_made_refuses_as_the_minority(machine):
+    """The probe moves a row toward the value most rows carry, never away: the
+    reverse write would take a row that loads and make the question worse."""
     seed(machine)
-    # 102 carries the binding's value, so writing it onto a house row plans.
-    plan = _planned(machine, content_id="201", value=BINDING)
-    assert plan.carriers == 2 and plan.was == str(HOUSE)
+    with pytest.raises(CratekitError) as caught:
+        _planned(machine, content_id="201", value=BINDING)
+    assert caught.value.cause.reason == row_link.VALUE_MINORITY
+    assert caught.value.cause.detail["carriers"] == 2
+    assert caught.value.cause.detail["fellows"] == 5
+
+
+def test_a_value_carried_by_as_many_rows_as_the_rows_own_refuses_too(machine):
+    seed(machine)
+    _sql(machine, f"UPDATE djmdContent SET {LINK} = 7 WHERE ID IN ('401', '501')")
+    _sql(machine, f"UPDATE djmdContent SET {LINK} = 7 WHERE ID = '601'")
+    # 101 holds the binding's value with one fellow, 102; three rows carry 7.
+    assert _planned(machine, content_id="101", value=7).carriers == 3
+    # 601 holds 7 with two fellows; two rows carry the binding's value: equal, refused.
+    with pytest.raises(CratekitError) as caught:
+        _planned(machine, content_id="601", value=BINDING)
+    assert caught.value.cause.reason == row_link.VALUE_MINORITY
+
+
+def test_a_value_more_rows_carry_than_the_rows_own_is_enough_though_not_the_house(machine):
+    seed(machine)
+    _sql(machine, f"UPDATE djmdContent SET {LINK} = 7 WHERE ID IN ('401', '501')")
+    plan = _planned(machine, content_id="101", value=7)
+    assert (plan.carriers, plan.fellows, plan.writes) == (2, 1, True)
 
 
 def test_a_null_column_plans_with_an_empty_replaced_value(machine):
@@ -206,7 +229,8 @@ def test_the_digest_moves_with_the_row_the_value_and_the_value_replaced(machine)
     seed(machine)
     one = _planned(machine, "101", HOUSE)
     assert one.digest != _planned(machine, "102", HOUSE).digest
-    assert one.digest != _planned(machine, "201", BINDING).digest
+    _sql(machine, f"UPDATE djmdContent SET {LINK} = 7 WHERE ID IN ('401', '501')")
+    assert one.digest != _planned(machine, "101", 7).digest
     _sql(machine, f"UPDATE djmdContent SET {LINK} = 7 WHERE ID = '101'")
     assert one.digest != _planned(machine, "101", HOUSE).digest
 
@@ -329,6 +353,20 @@ def test_rekordbox_running_refuses_at_the_apply_and_writes_nothing(acknowledged,
     code, acted = drive(["--run", run_id, *VERB, "101", str(HOUSE)])
     assert code == int(ExitCode.REKORDBOX_OPEN), acted
     assert str(_content(acknowledged)["101"][LINK]) == str(BINDING)
+
+
+def test_a_column_moved_after_the_commit_refuses_through_the_verb(acknowledged, monkeypatch):
+    """The read back is what the verb answers with: a judge that finds a moved
+    column after the commit refuses the run as the guard's defect, naming the
+    session whose capture undoes the durable write."""
+    seed(acknowledged)
+    monkeypatch.setattr(row_link, "judge", lambda plan, before, after: ((), ("101: BPM",)))
+    code, acted, _ = _two_acts()
+    assert code == int(ExitCode.REFUSED_BY_POLICY), acted
+    assert acted["cause"]["reason"] == "whitelist-violation"
+    assert "restore session" in " ".join(acted["cause"]["remediation"]["steps"])
+    # The write itself landed, as the refusal says.
+    assert str(_content(acknowledged)["101"][LINK]) == str(HOUSE)
 
 
 def test_the_guard_refuses_the_column_written_without_the_policy(acknowledged):

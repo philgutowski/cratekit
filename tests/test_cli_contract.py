@@ -2122,16 +2122,17 @@ def _link_rows() -> list[str]:
     import sqlite3
 
     from cratekit.core import rb_writer
+    from tests.test_repair_link import HOUSE
 
     _rows_whole()
     column = rb_writer.CONTENT_LINK_COLUMN
     connection = sqlite3.connect(config.load().library.db_path)
     try:
-        connection.execute(f"UPDATE {rb_writer.CONTENT_TABLE} SET {column} = 2950670")
+        connection.execute(f"UPDATE {rb_writer.CONTENT_TABLE} SET {column} = ?", (HOUSE,))
         connection.commit()
     finally:
         connection.close()
-    return ["1", "2950670"]
+    return ["1", str(HOUSE)]
 
 
 def _already_cut_over() -> list[str]:

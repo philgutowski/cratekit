@@ -1,0 +1,270 @@
+name = "a32"
+pass_kind = "light"
+
+# A32, the ContentLink probe. Every guard the round's own diff added, in
+# src/cratekit/write/row_link.py, row_link_cli.py and the registry entry.
+# The probe writes one column on one live row, so the user facing rows carry a
+# composite where they read zero.
+
+# ── The plan ────────────────────────────────────────────────────────────────
+
+[[rows]]
+id = "P1_tombstone_plans"
+description = "Drop the live row filter from the plan's row query, so a tombstone plans"
+file = "src/cratekit/write/row_link.py"
+surface = "user"
+old = '''                f"WHERE ID = :id AND {rb_writer.SOFT_DELETE_COLUMN} = 0"'''
+new = '''                f"WHERE ID = :id"'''
+
+[[rows]]
+id = "P2_unknown_row"
+description = "Drop the unknown row refusal, so an absent identifier falls through"
+file = "src/cratekit/write/row_link.py"
+surface = "user"
+old = '''    if row is None:
+        raise refuse(
+            ROW_UNKNOWN,'''
+new = '''    if row is None and False:
+        raise refuse(
+            ROW_UNKNOWN,'''
+
+[[rows]]
+id = "P3_unheld_value"
+description = "Drop the unheld value refusal, so a value nobody carries is written"
+file = "src/cratekit/write/row_link.py"
+surface = "user"
+old = '''    if writes and carriers == 0:'''
+new = '''    if writes and carriers < 0:'''
+
+[[rows]]
+id = "P7_minority_value"
+description = "Drop the majority rule, so the binding's value is written onto a row rekordbox made"
+file = "src/cratekit/write/row_link.py"
+surface = "user"
+old = '''    if writes and carriers <= fellows:'''
+new = '''    if writes and carriers < 0:'''
+
+[[rows]]
+id = "P4_count_tombstones"
+description = "Count tombstones as carriers of a value"
+file = "src/cratekit/write/row_link.py"
+surface = "user"
+old = '''            f"AND {rb_writer.SOFT_DELETE_COLUMN} = 0 AND ID != :id"'''
+new = '''            f"AND ID != :id"'''
+
+[[rows]]
+id = "P5_count_self"
+description = "Count the row itself as a carrier of a value"
+file = "src/cratekit/write/row_link.py"
+surface = "user"
+old = '''            f"AND {rb_writer.SOFT_DELETE_COLUMN} = 0 AND ID != :id"'''
+new = '''            f"AND {rb_writer.SOFT_DELETE_COLUMN} = 0 AND :id = :id"'''
+
+[[rows]]
+id = "P6_writes_always"
+description = "A plan always writes, a row already at the value included"
+file = "src/cratekit/write/row_link.py"
+surface = "user"
+old = '''        return self.was != str(self.value)'''
+new = '''        return True'''
+
+[[rows]]
+id = "D1_digest_drops_replaced"
+description = "Drop the replaced value from the item, so the digest does not move when it changes"
+file = "src/cratekit/write/row_link.py"
+surface = "user"
+old = '''            "from": self.was,'''
+new = '''            "from": "",'''
+
+# ── The apply ───────────────────────────────────────────────────────────────
+
+[[rows]]
+id = "A1_apply_nonwriting_plan"
+description = "The apply takes a plan that writes nothing"
+file = "src/cratekit/write/row_link.py"
+old = '''    if not plan.writes:
+        raise refuse(
+            "internal-error",
+            f"the row {plan.content_id} already carries {LINK} {plan.value}, so this "'''
+new = '''    if False:
+        raise refuse(
+            "internal-error",
+            f"the row {plan.content_id} already carries {LINK} {plan.value}, so this "'''
+
+[[rows]]
+id = "A2_stale_deleted"
+description = "A row deleted since the plan is still written"
+file = "src/cratekit/write/row_link.py"
+surface = "user"
+old = '''    if row is None or row[rb_writer.SOFT_DELETE_COLUMN] != 0:'''
+new = '''    if row is None:'''
+
+[[rows]]
+id = "A3_stale_value"
+description = "A row whose column moved since the plan is still written"
+file = "src/cratekit/write/row_link.py"
+surface = "user"
+old = '''    elif ("" if row.get(LINK) is None else str(row[LINK]).strip()) != plan.was:'''
+new = '''    elif False:'''
+
+[[rows]]
+id = "A4_empty_watch"
+description = "An empty analysis watch is accepted"
+file = "src/cratekit/write/row_link.py"
+old = '''    if not watched:
+        raise ValueError('''
+new = '''    if False:
+        raise ValueError('''
+
+[[rows]]
+id = "A5_policy_unregistered"
+description = "The apply does not register the column's policy, so the guard must refuse the write"
+file = "src/cratekit/write/row_link.py"
+surface = "user"
+old = '''    with rb_writer.field_policies_for_commit(rb_writer.CONTENT_LINK_POLICY):'''
+new = '''    with rb_writer.field_policies_for_commit():'''
+
+[[rows]]
+id = "A6_policy_left_behind"
+description = "The commit's policies are left registered after the body, in the shared context manager"
+file = "src/cratekit/core/rb_writer.py"
+tests = ["tests/test_repair_link.py", "tests/test_repair_rows.py"]
+old = '''    finally:
+        reset_field_policies()
+        for policy in was.values():
+            register_field_policy(policy)'''
+new = '''    finally:
+        for policy in was.values():
+            register_field_policy(policy)'''
+
+[[rows]]
+id = "A7_witness_unread"
+description = "A commit that landed under an exception is not recorded"
+file = "src/cratekit/write/row_link.py"
+old = '''                if witness.landed:
+                    _record_commit(record, written, cfg)'''
+new = '''                if False:
+                    _record_commit(record, written, cfg)'''
+
+# ── The read back ───────────────────────────────────────────────────────────
+
+[[rows]]
+id = "J1_wrong_unjudged"
+description = "The judge never reports the column not taking"
+file = "src/cratekit/write/row_link.py"
+surface = "user"
+old = '''    if now.get(LINK) is None or str(now[LINK]).strip() != str(plan.value):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "J2_link_counted_as_moved"
+description = "The judge counts the written column itself as a moved column"
+file = "src/cratekit/write/row_link.py"
+surface = "user"
+old = '''    changed = row_defaults.moved_columns(was, now, planned=(LINK,))'''
+new = '''    changed = row_defaults.moved_columns(was, now, planned=())'''
+
+[[rows]]
+id = "J3_bookkeeping_counted_as_moved"
+description = "The shared moved column rule counts the binding's bookkeeping columns as moved"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+tests = ["tests/test_repair_link.py", "tests/test_repair_rows.py"]
+old = '''    skip = set(planned) | rb_writer.BOOKKEEPING_COLUMNS'''
+new = '''    skip = set(planned)'''
+
+[[rows]]
+id = "J4_moved_not_refused"
+description = "A moved column is reported as a wrong value rather than the guard's defect"
+file = "src/cratekit/write/row_link.py"
+surface = "user"
+old = '''    if written.moved:
+        raise refuse(
+            "whitelist-violation",'''
+new = '''    if False:
+        raise refuse(
+            "whitelist-violation",'''
+
+[[rows]]
+id = "J5_read_back_always_clean"
+description = "The read back passes whatever the judge found"
+file = "src/cratekit/write/row_link.py"
+old = '''    if not written.wrong and not written.moved:
+        return
+    undo = ('''
+new = '''    if True:
+        return
+    undo = ('''
+
+# ── The verb ────────────────────────────────────────────────────────────────
+
+[[rows]]
+id = "C1_ack_after_gate"
+description = "The backup acknowledgment is not read before the gate"
+file = "src/cratekit/write/row_link_cli.py"
+surface = "user"
+old = '''    session.assert_backup_acknowledged(cfg)
+
+    plan = _plan(cfg, ctx.args)'''
+new = '''    plan = _plan(cfg, ctx.args)'''
+
+[[rows]]
+id = "C2_abort_writes"
+description = "An abort at the gate proceeds to the write"
+file = "src/cratekit/write/row_link_cli.py"
+surface = "user"
+old = '''    if ctx.gate.require(spec, plan=data, context=_facts(plan)) != "apply":'''
+new = '''    if ctx.gate.require(spec, plan=data, context=_facts(plan)) not in ("apply", "abort"):'''
+
+[[rows]]
+id = "C3_nothing_to_write_applies"
+description = "A plan that writes nothing reaches the apply"
+file = "src/cratekit/write/row_link_cli.py"
+surface = "user"
+old = '''    if not plan.writes:
+        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=[_nothing(plan)])'''
+new = '''    if False:
+        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=[_nothing(plan)])'''
+
+[[rows]]
+id = "C4_read_back_unasserted"
+description = "The verb answers OK without asserting the read back"
+file = "src/cratekit/write/row_link_cli.py"
+surface = "user"
+old = '''    row_link.assert_read_back(written)
+    data["totals"] = {'''
+new = '''    data["totals"] = {'''
+
+[[rows]]
+id = "R1_gate_not_explicit"
+description = "The confirm gate is answerable inline"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_repair_link.py", "tests/test_cli_contract.py"]
+old = '''                name="repair.link.confirm",
+                options=("apply", "abort"),
+                prompt="Write this value onto this one row?",
+                #: EXPLICIT (R34). A write to a row of a live library is
+                #: answered by a separate recorded act with an actor.
+                explicit=True,'''
+new = '''                name="repair.link.confirm",
+                options=("apply", "abort"),
+                prompt="Write this value onto this one row?",
+                #: EXPLICIT (R34). A write to a row of a live library is
+                #: answered by a separate recorded act with an actor.
+                explicit=False,'''
+
+[[dropped]]
+id = "A8_zero_write_recorded"
+description = "A run that wrote nothing still claims a commit"
+reason = "ranked below the cap: maintainer facing, and the apply refuses a plan that writes nothing before the commit, so the branch is reached only under an exception the witness row already measures"
+
+[[dropped]]
+id = "D2_digest_kind"
+description = "Change the digest's kind to repair rows' kind"
+reason = "ranked below the cap: no test can tell two kinds apart and the item's column name already separates the two plans"
+
+[[dropped]]
+id = "C5_facts_rows_to_write"
+description = "Report one row to write on a plan that writes nothing"
+reason = "ranked below the cap: a gate fact, maintainer facing, covered by the same test as C3"

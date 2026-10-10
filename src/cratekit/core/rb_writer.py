@@ -2737,6 +2737,28 @@ def content_writable_columns() -> frozenset[str]:
 reset_field_policies()
 
 
+@contextmanager
+def field_policies_for_commit(*policies: FieldPolicy) -> Iterator[None]:
+    """Register the named policies for the body and put the registry back after it.
+
+    REGISTERED FOR ONE COMMIT AND THEN PUT BACK, whatever happens inside: a
+    registration left behind would widen the guard for every writer that
+    commits later in the process. The registry as it was is restored, the
+    baseline colour policy included, and a policy another writer registered
+    before survives. Both row repairs enter their commit through this, so the
+    restore rule is spelled once (A32).
+    """
+    was = registered_field_policies()
+    try:
+        for policy in policies:
+            register_field_policy(policy)
+        yield
+    finally:
+        reset_field_policies()
+        for policy in was.values():
+            register_field_policy(policy)
+
+
 def guard_violations(
     new: Iterable[tuple[str, Iterable[str]]],
     dirty: Iterable[tuple[str, Iterable[str]]],
@@ -3591,6 +3613,7 @@ __all__ = [
     "ensure_playlist",
     "MOVED",
     "UNINSPECTABLE",
+    "field_policies_for_commit",
     "guard_violations",
     "pending_changes",
     "integration_db_path",

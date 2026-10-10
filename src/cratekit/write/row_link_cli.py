@@ -67,7 +67,7 @@ def _load() -> config.Config:
                 reason="config-unusable",
                 message=str(exc),
                 remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("write.row_link_cli",),
+                origin=_ORIGIN,
                 detail={"kind": type(exc).__name__},
             )
         ) from exc
@@ -205,3 +205,12 @@ def repair_link(ctx) -> Envelope:
         "read_back": written.read_back,
     }
     return ctx.envelope(data=data, warnings=[_written(written)])
+
+
+__all__ = [
+    "CONFIRM_GATE",
+    "LINK_WRITTEN",
+    "NOTHING_TO_WRITE",
+    "build",
+    "repair_link",
+]

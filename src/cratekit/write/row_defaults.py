@@ -488,7 +488,7 @@ def _chunks(values: Sequence[str]) -> Iterable[Sequence[str]]:
         yield values[start : start + _CHUNK]
 
 
-def _columns(db: Any, content_ids: Sequence[str]) -> dict[str, dict[str, Any]]:
+def read_columns(db: Any, content_ids: Sequence[str]) -> dict[str, dict[str, Any]]:
     """Every column of the named content rows, from SQL, by content identifier."""
     from sqlalchemy import text
 
@@ -504,7 +504,7 @@ def _columns(db: Any, content_ids: Sequence[str]) -> dict[str, dict[str, Any]]:
     return found
 
 
-def _mapped(db: Any, content_ids: Sequence[str]) -> dict[str, Any]:
+def read_mapped(db: Any, content_ids: Sequence[str]) -> dict[str, Any]:
     """The mapped content rows the write sets fields on, by identifier."""
     from pyrekordbox.db6 import tables
 
@@ -514,6 +514,16 @@ def _mapped(db: Any, content_ids: Sequence[str]) -> dict[str, Any]:
         for row in query.all():
             found[str(row.ID)] = row
     return found
+
+
+def moved_columns(
+    was: Mapping[str, Any], now: Mapping[str, Any], *, planned: Iterable[str]
+) -> list[str]:
+    """Every column of one row that changed between two reads, beyond the ones
+    planned and the binding's bookkeeping. Pure, sorted, and the one spelling
+    of the rule both row repairs judge by (A32)."""
+    skip = set(planned) | rb_writer.BOOKKEEPING_COLUMNS
+    return sorted(column for column in now if column not in skip and now[column] != was.get(column))
 
 
 def named(offenders: Sequence[str]) -> str:
@@ -590,13 +600,7 @@ def judge(
         planned = set(item.columns)
         if item.renumbers:
             planned.add(FILE_ID)
-        changed = sorted(
-            column
-            for column in now
-            if column not in planned
-            and column not in rb_writer.BOOKKEEPING_COLUMNS
-            and now[column] != was.get(column)
-        )
+        changed = moved_columns(was, now, planned=planned)
         if changed:
             moved.append(f"{item.content_id}: {', '.join(changed)}")
     return tuple(wrong), tuple(moved)
@@ -682,23 +686,21 @@ def apply_rows(
             "library's grids; name the roots this write could touch"
         )
     content_ids = [item.content_id for item in plan.items]
-    assert_rows_as_planned(plan, _columns(db, content_ids))
-    mapped = _mapped(db, content_ids)
+    assert_rows_as_planned(plan, read_columns(db, content_ids))
+    mapped = read_mapped(db, content_ids)
     # THE EVIDENCE IS READ BEFORE IT IS REPLACED, for the reason ``tag rows``
     # gives: the fingerprint recorded after the commit must not bless a
     # database recovered out of band.
     convergence.detect_out_of_band_restore(cfg, db, tree_registry.read(cfg))
     # REGISTERED FOR THIS COMMIT AND THEN PUT BACK. The two policies are what
-    # admit these columns, and a registration left behind would widen the guard
-    # for every writer that commits later in the process. The registry as it
-    # was is restored whatever happens inside, the baseline colour policy
-    # included. The file id policy is registered only when the plan renumbers,
-    # so a run that fills defaults alone cannot write the column.
-    was = rb_writer.registered_field_policies()
-    try:
-        rb_writer.register_field_policy(rb_writer.ROW_DEFAULTS_POLICY)
-        if plan.renumbers:
-            rb_writer.register_field_policy(rb_writer.FILE_ID_POLICY)
+    # admit these columns, and ``field_policies_for_commit`` is what puts the
+    # registry back whatever happens inside. The file id policy is registered
+    # only when the plan renumbers, so a run that fills defaults alone cannot
+    # write the column.
+    policies = [rb_writer.ROW_DEFAULTS_POLICY]
+    if plan.renumbers:
+        policies.append(rb_writer.FILE_ID_POLICY)
+    with rb_writer.field_policies_for_commit(*policies):
         with (
             session.assert_gates(
                 cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
@@ -710,7 +712,7 @@ def apply_rows(
             session.attach_capture(record, capture.root, cfg)
             snapshot.assert_verified(capture)
 
-            before = _columns(db, content_ids)
+            before = read_columns(db, content_ids)
             written = renumbered = 0
             try:
                 written, renumbered = _fill(plan, mapped)
@@ -725,12 +727,8 @@ def apply_rows(
             _record_commit(record, written, cfg)
             convergence.record_fingerprint(cfg, db)
 
-            after = _columns(db, content_ids)
+            after = read_columns(db, content_ids)
             session_id = record.session_id
-    finally:
-        rb_writer.reset_field_policies()
-        for policy in was.values():
-            rb_writer.register_field_policy(policy)
 
     wrong, moved = judge(plan, before, after)
     return Written(
@@ -799,6 +797,9 @@ __all__ = [
     "filesystem_of",
     "inode_bound",
     "judge",
+    "moved_columns",
     "named",
     "plan_rows",
+    "read_columns",
+    "read_mapped",
 ]

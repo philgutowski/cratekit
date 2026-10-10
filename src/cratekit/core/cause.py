@@ -817,12 +817,15 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         "favorites-class-undeclared": ExitCode.LIBRARY_PREREQUISITE,
         "favorites-source-missing": ExitCode.LIBRARY_PREREQUISITE,
         # A32. The ContentLink probe refuses before its gate: the identifier
-        # names no live content row, or no other live row carries the value
-        # asked for. PRECONDITION on both, since the parser accepted the
-        # command line and what is wrong is the choice of row or value, which
-        # the person changes.
+        # names no live content row, no other live row carries the value asked
+        # for, or fewer rows carry it than carry the row's own value, so the
+        # write would move the row away from the library's majority.
+        # PRECONDITION on all three, since the parser accepted the command line
+        # and what is wrong is the choice of row or value, which the person
+        # changes.
         "link-row-unknown": ExitCode.PRECONDITION,
         "link-value-unheld": ExitCode.PRECONDITION,
+        "link-value-minority": ExitCode.PRECONDITION,
         # ── This installation ───────────────────────────────────────────────
         "doctor-check-failed": ExitCode.PRECONDITION,
         # One slug for every way configuration can be unusable, because the
