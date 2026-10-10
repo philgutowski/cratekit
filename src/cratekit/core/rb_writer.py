@@ -2280,19 +2280,16 @@ def _mytag_templates(db: Any) -> tuple[Any, Any, Any]:
         elif value_attr is None:
             value_attr = getattr(tag, "Attribute", 0)
     if category_attr is None:
+        # :func:`my_tag_writable` reads this reason by the same literal, and the
+        # native landing's no category test holds the two together.
         raise _unavailable(
-            MYTAG_TEMPLATE_MISSING,
+            "mytag-category-template-missing",
             "the library has no tag category to mirror, so there is nothing to "
             "copy the row shape from and this writer refuses to invent one",
         )
     if value_attr is None:
         value_attr = category_attr
     return root_parent, category_attr, value_attr
-
-
-#: Why :func:`_mytag_templates` refuses, named once for the writer and for
-#: :func:`my_tag_writable`, which asks the same question before a gate.
-MYTAG_TEMPLATE_MISSING = "mytag-category-template-missing"
 
 
 def my_tag_writable(db: Any) -> bool:
@@ -2306,7 +2303,7 @@ def my_tag_writable(db: Any) -> bool:
     try:
         _mytag_templates(db)
     except RekordboxUnavailable as exc:
-        if exc.cause.reason != MYTAG_TEMPLATE_MISSING:
+        if exc.cause.reason != "mytag-category-template-missing":
             raise
         return False
     return True
@@ -3662,7 +3659,6 @@ __all__ = [
     "ensure_folder",
     "top_level_folders",
     "ensure_my_tag_value",
-    "MYTAG_TEMPLATE_MISSING",
     "my_tag_writable",
     "ensure_playlist",
     "MOVED",
