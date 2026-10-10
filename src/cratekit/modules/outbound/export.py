@@ -12,7 +12,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from cratekit.core import config
-from cratekit.modules.outbound import ledger
+from cratekit.core.cause import CratekitError
+from cratekit.modules.outbound import kinds, ledger
 from cratekit.modules.outbound.service import RemoteAccount
 
 
@@ -90,6 +91,9 @@ class ExportReport:
     #: empty. Set once per job under the per item shape: the first item moves
     #: the record and the rest find it under their own key.
     adopted_from: str = ""
+    #: Why a playlist this call created is not in the ``Exports`` folder, or
+    #: empty (U131). ``crate organize`` files one left at the root.
+    unfiled: str = ""
 
 
 def plan(
@@ -194,7 +198,17 @@ def apply(
         account.add_to_playlist(remote_id, remote)
         ledger.record_playlist_track(cfg, reserved.key, remote, identity=local)
         added.append(remote)
+    unfiled = ""
+    if reserved.created:
+        # FILED AT CREATION (U131), after the tracks, so a refused move leaves a
+        # whole playlist at the root rather than an empty one, recorded, which
+        # ``crate organize`` files on its next pass.
+        try:
+            unfiled = kinds.file_new(cfg, account, remote_id, kinds.EXPORTS)
+        except CratekitError as exc:
+            unfiled = exc.cause.message
     return ExportReport(
+        unfiled=unfiled,
         playlist_key=planned.playlist_key,
         remote_id=remote_id,
         created=reserved.created,

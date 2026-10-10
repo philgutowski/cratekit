@@ -62,6 +62,7 @@ def _empty() -> dict[str, Any]:
         "labels": {},
         "sets": {},
         "set_folders": {},
+        "kind_folders": {},
     }
 
 
@@ -104,6 +105,13 @@ def _load(cfg: config.Config) -> dict[str, Any]:
         raise _unusable(path, "sets must be a map of set playlist records")
     if not isinstance(set_folders, Mapping):
         raise _unusable(path, "set_folders must be a map of year to folder")
+    kind_folders = raw.get("kind_folders", {})
+    if not isinstance(kind_folders, Mapping) or not all(
+        isinstance(value, Mapping) for value in kind_folders.values()
+    ):
+        # REFUSED for the set map's reason: a kind folder dropped here is made
+        # a second time by the next filing (U131).
+        raise _unusable(path, "kind_folders must be a map of kind folder records")
     return {
         "version": LEDGER_VERSION,
         "playlists": {str(key): dict(value) for key, value in playlists.items()
@@ -121,6 +129,14 @@ def _load(cfg: config.Config) -> dict[str, Any]:
         },
         "set_folders": {
             str(year): str(folder) for year, folder in set_folders.items() if folder
+        },
+        "kind_folders": {
+            str(kind): {
+                "folder_id": str(value.get("folder_id") or ""),
+                "created": value.get("created") is True,
+            }
+            for kind, value in kind_folders.items()
+            if value.get("folder_id")
         },
     }
 
@@ -1092,6 +1108,65 @@ def reserve_set_folder(
         return folder_id, True
     finally:
         lock.__exit__(None, None, None)
+
+
+@dataclass(frozen=True, slots=True)
+class KindFolder:
+    """The root folder recorded for one kind of playlist (U131), or none."""
+
+    folder_id: str = ""
+    #: True only when this product created the folder. One adopted by its name
+    #: may be a person's, and nothing is ever moved out of a person's folder.
+    created: bool = False
+
+
+def kind_folder(cfg: config.Config, kind: str) -> KindFolder:
+    """The root folder recorded for ``kind``, ``Mine`` or ``Exports``. Read only."""
+    record = _load(cfg)["kind_folders"].get(kind) or {}
+    return KindFolder(
+        folder_id=str(record.get("folder_id") or ""), created=record.get("created") is True
+    )
+
+
+def reserve_kind_folder(
+    cfg: config.Config,
+    kind: str,
+    create: Callable[[], str],
+    *,
+    adopt: str = "",
+    stale: str = "",
+) -> tuple[str, bool]:
+    """The kind's root folder, creating one only if none is recorded (U131).
+
+    :func:`reserve_set_folder`'s shape and argument, keyed by kind rather than
+    year. Recorded by the folder's account identifier, so a folder a person
+    renames is still the kind's folder on the next run.
+    """
+    lock = _locked(cfg)
+    try:
+        document = _load(cfg)
+        recorded = str((document["kind_folders"].get(kind) or {}).get("folder_id") or "")
+        if recorded and recorded != stale:
+            return recorded, False
+        if adopt:
+            document["kind_folders"][kind] = {"folder_id": adopt, "created": False}
+            _write(cfg, document)
+            return adopt, False
+        folder_id = create()
+        document["kind_folders"][kind] = {"folder_id": folder_id, "created": True}
+        _write(cfg, document)
+        return folder_id, True
+    finally:
+        lock.__exit__(None, None, None)
+
+
+def exported_playlist_ids(cfg: config.Config) -> frozenset[str]:
+    """Every remote playlist an export recorded, read once (U131)."""
+    return frozenset(
+        str(record.get("remote_id"))
+        for record in _load(cfg)["playlists"].values()
+        if record.get("remote_id")
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
