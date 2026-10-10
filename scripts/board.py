@@ -848,7 +848,21 @@ def residual_files(folder: Path | None = None) -> list[Path]:
     folder = RESIDUALS_DIR if folder is None else folder
     if not folder.is_dir():
         return []
-    return sorted(p for p in folder.glob("*.md") if p.name != "README.md")
+    paths = sorted(p for p in folder.glob("*.md") if p.name != "README.md")
+    # ONLY WHAT GIT KNOWS, staged or committed. An untracked draft is not
+    # filed yet: judging it refused every unrelated commit through the hook,
+    # and landing it numbered a finding nobody had committed. A folder git
+    # cannot read, a fixture outside any repository, is taken whole.
+    listed = subprocess.run(
+        ["git", "ls-files", "-z", "--", "."],
+        cwd=folder,
+        capture_output=True,
+        text=True,
+    )
+    if listed.returncode != 0:
+        return paths
+    known = {name for name in listed.stdout.split("\0") if name}
+    return [p for p in paths if p.name in known]
 
 
 def read_residual_file(path: Path) -> tuple[dict[str, str], str]:
@@ -883,7 +897,11 @@ def read_residual_file(path: Path) -> tuple[dict[str, str], str]:
     for key, allowed in RESIDUAL_OPTIONAL.items():
         if key in meta and meta[key] not in allowed:
             raise ValueError(f"frontmatter {key} is {meta[key]!r}, not one of {allowed}")
-    if re.match(r"R-\d+", meta["title"]):
+    # "R-12. A title" is a filer numbering its own finding. "R-204 is
+    # discharged by half" is a title citing another residual, which the
+    # ledger already holds several of, so only the heading's own shape is
+    # refused.
+    if re.match(r"R-\d+\.", meta["title"]):
         raise ValueError("its title carries a number; the number is given at landing")
     body = "\n".join(lines[close + 1 :]).strip("\n")
     if not body.strip():
@@ -931,11 +949,25 @@ def land_residuals(
     if not parsed:
         return []
     text = ledger.read_text()
-    number = max(residual_titles(ledger), default=0)
+    titles = residual_titles(ledger)
+    # A FILE THAT LANDED ONCE CAN COME BACK. Landing deletes it, and a branch
+    # that edited it afterwards brings it back through a modify and delete
+    # conflict resolved the wrong way. Its heading is then already in the
+    # ledger, and numbering it again would file one finding twice.
+    held = {title: number for number, title in titles.items()}
+    again = [
+        f"{path.name} is R-{held[meta['title']]} already"
+        for path, meta, _ in parsed
+        if meta["title"] in held
+    ]
+    if again:
+        raise ValueError("; ".join(again))
+    number = max(titles, default=0)
     landed = []
     for path, meta, body in parsed:
         number += 1
-        text = text.rstrip("\n") + "\n\n"
+        # The separator the ledger's recent entries carry between them.
+        text = text.rstrip("\n") + "\n\n---\n\n"
         text += f"## R-{number}. {meta['title']}\n\n**Found:** {meta['found']}\n\n{body}\n"
         landed.append((number, meta["title"], meta.get("issue") == "yes"))
     ledger.write_text(text)
@@ -1229,7 +1261,27 @@ def cmd_residuals(args) -> int:
             file=sys.stderr,
         )
         return 1
-    landed = land_residuals()
+    # BEHIND THE REMOTE, the ledger's highest is stale, and a number given
+    # here may already be taken there. Read against the last fetch, since a
+    # check that needs the network is a check that fails offline.
+    behind = subprocess.run(
+        ["git", "rev-list", "--count", "main..origin/main"],
+        capture_output=True,
+        text=True,
+        cwd=LEDGER.parent,
+    )
+    if behind.returncode == 0 and behind.stdout.strip() not in ("", "0"):
+        print(
+            f"board: main is {behind.stdout.strip()} commit(s) behind origin/main as "
+            f"last fetched; pull first, or a number given here may be taken there",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        landed = land_residuals()
+    except ValueError as exc:
+        print(f"board: nothing numbered, {exc}", file=sys.stderr)
+        return 2
     if not landed:
         print("No residual file waits for a number.")
         return 0

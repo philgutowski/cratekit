@@ -7,9 +7,13 @@ file is part of the commit it would be naming.
 **Each unit's own record is a file in `docs/restart/`**, named for what it
 records, `u114.md` for U114, `r572.md` for R-572, `sitting35.md` for an
 attended sitting. A unit writes its paragraph there and never here, so two
-units built in parallel land in either order. This lists the newest first:
+units built in parallel land in either order. This lists the ones added since
+U124, newest first:
 
     git log --diff-filter=A --name-only --format= -- docs/restart
+
+U124 moved every earlier record in one commit, so those list together after
+them; the newest of those are `u118.md`, `u114.md` and `r925.md`.
 
 This file keeps only the sections no unit owns, and `scripts/scan_repo.py`
 refuses a unit's paragraph anywhere in it.

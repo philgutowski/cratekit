@@ -14,6 +14,7 @@ them, because they are not part of the distribution.
 from __future__ import annotations
 
 import importlib.util
+import re
 import subprocess
 from pathlib import Path
 
@@ -147,7 +148,8 @@ def test_the_number_given_at_landing_is_one_past_the_ledgers_highest(tmp_path):
         "**Found:** at the review of #1, U1, 2026-10-09.\n\n"
         "**The mechanism.** The second by name.\n\n**Closes when:** never.\n"
     )
-    assert "Body.\n\n## R-13. The first by name\n" in text
+    assert "Body.\n\n---\n\n## R-13. The first by name\n" in text
+    assert "never.\n\n---\n\n## R-14. The second by name\n" in text
     assert [p.name for p in folder.iterdir()] == ["README.md"]
 
     (folder / "u10-c.md").write_text(_residual("A later landing"))
@@ -172,6 +174,43 @@ def test_a_residual_file_the_landing_could_not_read_is_named(text, reason, tmp_p
     (tmp_path / "u1-x.md").write_text(text)
     problems = board.residual_file_problems(tmp_path)
     assert len(problems) == 1 and reason in problems[0], problems
+
+
+def test_a_title_citing_another_residual_is_not_a_number(tmp_path):
+    """The ledger holds headings like "R-204 is discharged by half"."""
+    board = _load("board")
+    (tmp_path / "u1-x.md").write_text(_residual("R-204 is discharged by half"))
+    assert board.residual_file_problems(tmp_path) == []
+
+
+def test_a_file_that_landed_once_is_not_numbered_again(tmp_path):
+    """A branch edit after the landing can bring a deleted file back."""
+    board = _load("board")
+    ledger = tmp_path / "ledger.md"
+    ledger.write_text(LEDGER_TEXT)
+    folder = tmp_path / "residuals"
+    folder.mkdir()
+    (folder / "u1-a.md").write_text(_residual("The highest, past a gap"))
+    with pytest.raises(ValueError, match="R-12 already"):
+        board.land_residuals(ledger, folder)
+    assert ledger.read_text() == LEDGER_TEXT
+
+
+def test_an_untracked_draft_is_neither_judged_nor_landed(tmp_path):
+    """Only what git knows is filed. A draft blocked every unrelated commit."""
+    board = _load("board")
+    root = tmp_path / "repo"
+    run = _seed(root)
+    folder = root / "docs" / "residuals"
+    (folder / "u1-draft.md").write_text("half written\n")
+    assert board.residual_file_problems(folder) == []
+    (folder / "u1-filed.md").write_text(_residual("Filed and committed"))
+    assert run("git", "add", "docs/residuals/u1-filed.md").returncode == 0
+    assert [p.name for p in board.residual_files(folder)] == ["u1-filed.md"]
+    assert board.land_residuals(root / "docs" / "residual-findings.md", folder) == [
+        (13, "Filed and committed", False)
+    ]
+    assert (folder / "u1-draft.md").exists()
 
 
 def test_a_malformed_file_lands_nothing(tmp_path):
@@ -246,6 +285,7 @@ def test_the_landing_refuses_off_main(tmp_path, monkeypatch, capsys):
     assert run("git", "checkout", "-q", "-b", "unit/9").returncode == 0
     folder = root / "docs" / "residuals"
     (folder / "u9-a.md").write_text(_residual("Filed on a branch"))
+    assert run("git", "add", "-A").returncode == 0
     ledger = root / "docs" / "residual-findings.md"
     monkeypatch.setattr(board, "LEDGER", ledger)
     monkeypatch.setattr(board, "RESIDUALS_DIR", folder)
@@ -257,8 +297,17 @@ def test_the_landing_refuses_off_main(tmp_path, monkeypatch, capsys):
     assert "unit/9" in capsys.readouterr().err
     assert ledger.read_text() == LEDGER_TEXT
 
+    assert run("git", "commit", "-q", "--no-verify", "-m", "u9").returncode == 0
     assert run("git", "checkout", "-q", "main").returncode == 0
-    (folder / "u9-a.md").write_text(_residual("Filed on a branch"))
+    assert run("git", "merge", "-q", "unit/9").returncode == 0
+
+    # Behind the remote as last fetched: the highest read here may be stale.
+    assert run("git", "update-ref", "refs/remotes/origin/main", "unit/9").returncode == 0
+    assert run("git", "reset", "-q", "--hard", "HEAD~1").returncode == 0
+    assert board.cmd_residuals(Args()) == 1
+    assert "behind origin/main" in capsys.readouterr().err
+    assert run("git", "merge", "-q", "unit/9").returncode == 0
+
     assert board.cmd_residuals(Args()) == 0
     assert board.residual_titles(ledger)[13] == "Filed on a branch"
 
@@ -309,6 +358,14 @@ def test_the_restart_state_as_shipped_passes_its_own_scan():
             ),
             "opens a unit's record",
         ),
+        (
+            lambda t: t.replace(
+                "## What is open\n",
+                "## What is open\n\n**Sitting 99, 2026-10-10, attended.** A record.\n",
+                1,
+            ),
+            "opens a unit's record",
+        ),
     ],
 )
 def test_a_unit_writing_into_the_restart_state_is_refused_by_the_scan(edit, says, tmp_path):
@@ -341,8 +398,11 @@ def test_every_moved_paragraph_is_in_a_fragment_byte_for_byte():
     Every paragraph of the restart state at the split base that is not in the
     restart state now is found verbatim in some ``docs/restart/`` file. A
     paragraph can only be split at a blank line, and the split moved whole
-    records, so a paragraph is the unit of comparison. Skipped where the base
-    commit is not in the clone, which is what a shallow checkout looks like.
+    records, so a paragraph is the unit of comparison. "Moved" is read off the
+    base's own layout, everything outside the sections the restart state
+    keeps, so a later edit to a kept section is not mistaken for a lost
+    record. The base commit is on main's history, so a clone without it is a
+    shallow one, and CI does not run the suite.
     """
     shown = subprocess.run(
         ["git", "show", f"{SPLIT_BASE}:RESTART-cratekit.md"],
@@ -352,12 +412,20 @@ def test_every_moved_paragraph_is_in_a_fragment_byte_for_byte():
         check=False,
     )
     assert shown.returncode == 0, f"the split base {SPLIT_BASE} is not in this clone"
-    before = _paragraphs(shown.stdout)
-    kept = set(_paragraphs(_restart_text()))
+    scan = _load("scan_repo")
+    sections = re.split(r"\n(?=## )", shown.stdout)
+    # The head kept its title and its first paragraph; the rest was records.
+    moved = _paragraphs(sections[0])[2:]
+    for section in sections[1:]:
+        heading = section.split("\n", 1)[0]
+        if heading == "## Main, verify before trusting it":
+            # The heading and the command block stayed.
+            moved += _paragraphs(section)[2:]
+        elif heading not in scan.RESTART_SECTIONS:
+            moved += _paragraphs(section)
     fragments = "\n\n".join(
         p.read_text() for p in sorted((REPO_ROOT / "docs" / "restart").glob("*.md"))
     )
-    moved = [p for p in before if p not in kept]
     assert len(moved) > 250
     lost = [p[:80] for p in moved if p not in fragments]
     assert lost == []

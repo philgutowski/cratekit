@@ -500,9 +500,13 @@ RESTART_HEAD = (
     "**Each unit's own record is a file in `docs/restart/`**, named for what it\n"
     "records, `u114.md` for U114, `r572.md` for R-572, `sitting35.md` for an\n"
     "attended sitting. A unit writes its paragraph there and never here, so two\n"
-    "units built in parallel land in either order. This lists the newest first:\n"
+    "units built in parallel land in either order. This lists the ones added since\n"
+    "U124, newest first:\n"
     "\n"
     "    git log --diff-filter=A --name-only --format= -- docs/restart\n"
+    "\n"
+    "U124 moved every earlier record in one commit, so those list together after\n"
+    "them; the newest of those are `u118.md`, `u114.md` and `r925.md`.\n"
     "\n"
     "This file keeps only the sections no unit owns, and `scripts/scan_repo.py`\n"
     "refuses a unit's paragraph anywhere in it.\n"
@@ -522,9 +526,11 @@ RESTART_SECTIONS = frozenset(
     }
 )
 
-#: The opener every unit's record carried, "**U118 built, ..." or
-#: "**R-857 done, ...". Refused anywhere in the file, inside a kept section too.
-_UNIT_RECORD = re.compile(r"^\*\*(?:U\d+|R-\d+)(?: with R-\d+)? (?:built|done)\b", re.M)
+#: The openers a record carried, "**U118 built, ...", "**R-857 done, ...",
+#: "**Sitting 35, ...", "**A5 ...": a paragraph that opens on a unit, a
+#: residual, a chore or a sitting is that one's record. Refused anywhere in
+#: the file, inside a kept section too.
+_UNIT_RECORD = re.compile(r"^\*\*(?:U\d+|R-\d+|A\d+|Sitting \d+)\b", re.M)
 
 
 def restart_violations(relative_path: str, text: str) -> list[str]:
