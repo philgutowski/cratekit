@@ -1178,3 +1178,36 @@ def test_full_releases_say_nothing_of_a_shortfall(installed, monkeypatch):
     question = next_question()
     assert question["provider_withheld"] == 0
     assert all(one["shortfall"] is None for one in question["releases"])
+
+
+def test_a_saved_shortfall_that_withheld_nothing_reads_back_as_no_shortfall(
+    installed, monkeypatch
+):
+    """A shortfall block of withheld 0 is not a shortfall when a question is read back.
+
+    Without this, ``_short_of`` could keep a zero-withheld block and the release
+    line and counts would name a shortfall that withheld nothing (R-515 S8).
+    """
+    register()
+    three_new(monkeypatch)
+    first = next_question()
+    identity = first["releases"][0]["identity"]
+    path = config.state_path("label_sync", installed)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["labels"][SLUG]["pending"]["releases"][0]["shortfall"] = {
+        "declared": 4,
+        "listed": 4,
+        "withheld": 0,
+    }
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    code, envelope = sync("--next")
+    assert code == int(ExitCode.OK), envelope
+    question = envelope["data"]["summary"]["question"]
+    (one,) = [release for release in question["releases"] if release["identity"] == identity]
+    assert one["shortfall"] is None
+    assert question["provider_withheld"] == 0
+    (asked,) = checks(envelope, "question")
+    assert "withheld by the provider" not in asked["detail"]
+    (line,) = checks(envelope, f"release.{identity}")
+    assert "withheld by the provider" not in line["detail"]

@@ -4,10 +4,8 @@ Fourteen rows are prepared in `docs/mutation/r515-rows.toml`, pass_kind light, e
 
 The watcher runs the table on macOS. `scripts/mutate.py` refuses a red full suite baseline, and the build lane's Linux box has the macOS dependent failures it had before, so the driver was not run or hand rolled around that refusal.
 
-As a preview only, the build lane applied each row by hand on Linux and ran its named test file. Eleven killed. Three survived, and the watcher's run is the measure:
+As a preview only, the build lane applied each row by hand on Linux and ran its named test file. Eleven killed. Three survived on that first pass; the two real gaps are closed on this branch, and the third is inert:
 
-* `S3_of_takes_non_positive`: likely EQUIVALENT. With a zero or negative count, `listed >= declared` holds for any listing, so `of` answers None by the next guard.
-* `S5_of_short_over_count`: a real gap. No release or playlist test lists more rows than its declared count, so a negative "withheld" from a long listing goes unseen. The hearts path has its own such test; the listing path does not.
-* `S8_short_of_keeps_zero`: a real gap. No test reads back a saved question whose shortfall block withheld zero.
-
-Neither gap is closed here; the brief was the table. They are named for the watcher to decide.
+* `S3_of_takes_non_positive` is equivalent: with a zero or negative count `listed >= declared` holds for any listing and the next guard answers None.
+* `S5_of_short_over_count`: closed by `test_a_listing_that_serves_more_than_its_declared_count_carries_no_shortfall` in `tests/test_label_tidal_catalogue.py`.
+* `S8_short_of_keeps_zero`: closed by `test_a_saved_shortfall_that_withheld_nothing_reads_back_as_no_shortfall` in `tests/test_label_sync.py`.

@@ -2318,6 +2318,19 @@ def test_a_full_release_carries_no_shortfall(pauses):
     assert short is None
 
 
+def test_a_listing_that_serves_more_than_its_declared_count_carries_no_shortfall():
+    """A release or playlist declaring 4 that serves 6 rows is not a shortfall.
+
+    Without this, ``listed >= declared`` could become ``listed == declared``
+    unseen and a long listing would mint a negative withheld (R-515 S5).
+    """
+    rows = [object() for _ in range(6)]
+    fake = FakeCatalogue(playlists={"p": FakePagedPlaylist(rows, declared=4)})
+    listed, short = label_cli.playlist_listing_or_refuse(fake, "p")
+    assert len(listed) == 6
+    assert short is None
+
+
 @pytest.mark.parametrize("declared", [None, 0, -1, True, "10"])
 def test_a_count_that_is_not_a_usable_count_leaves_nothing_to_compare(declared):
     assert catalogue.ListingShortfall.of([], declared) is None
