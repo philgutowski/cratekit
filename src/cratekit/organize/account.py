@@ -46,7 +46,7 @@ from cratekit.core import config
 from cratekit.core.cause import CratekitError
 from cratekit.export import set_cli
 from cratekit.intake import land_cli
-from cratekit.label import playlists_cli
+from cratekit.label import dated, playlists_cli
 from cratekit.organize import filing, own
 from cratekit.organize.steps import LISTED, NOTHING, PLANNED, Area, Step, refused
 from cratekit.sync import mark_cli, mark_record
@@ -161,6 +161,7 @@ def _label_steps(cfg, area: Area, followed, catalogue_of: _Lazy, remote_of: _Laz
         if planned.writes:
             step.apply = _label_apply(cfg, step, planned, remote_of)
         area.steps.append(step)
+        dated.add_step(cfg, area, entry, planned, remote_of)
 
 
 def _label_apply(cfg, step: Step, planned, remote_of: _Lazy):

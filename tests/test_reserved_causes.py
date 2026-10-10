@@ -5204,7 +5204,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Re-measured on the merge of main at 1e93ee7 into fable/278, 2026-10-10:
     # U121's two slugs beside the pink residual's one and U119's two, so the
     # population is 203, non-reserved 175, reserved half UNCHANGED at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (203, 175, 28)
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (204, 176, 28)
+    # Re-pinned on U117, new label releases kept apart, 2026-10-09. ONE slug,
+    # named rather than counted: label-new-playlists-no-folder, which the
+    # dated playlist's apply refuses with when the label's folder is not on
+    # the account. It is in cause.REASONS and not in the reserved table.
+    # Population 198 to 199, non-reserved 170 to 171, reserved half UNCHANGED
+    # at 28.
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -6231,7 +6237,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Re-measured on the merge of main at 1e93ee7 into fable/278, 2026-10-10:
     # U121's five literals join main's, 680 distinct and 478 that are not keys,
     # measured on the merged tree and not either side alone.
-    assert (len(literals), len(literals - set(causes))) == (680, 478), (
+    assert (len(literals), len(literals - set(causes))) == (683, 480), (
+    # Re-pinned on U117, new label releases kept apart, 2026-10-09: 661 to
+    # 664 distinct, non-keys 464 to 466. THREE joined and nothing left.
+    # label-new-playlists-no-folder is the cause key pinned above.
+    # label-new-playlists is the KIND the dated plan's digest is taken over,
+    # and label-new-playlists-tracks-refused is a WARNING code.
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -7067,7 +7078,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Re-measured on the merge of main at 07c3ea0 into fable/278, 2026-10-10:
     # U121's two modules and U119's two are all in the tree, holders 141, the
     # also-holds-an-integer half UNCHANGED at 29.
-    assert (len(literal_holders), len(literal_both)) == (141, 29), (
+    assert (len(literal_holders), len(literal_both)) == (142, 29), (
+    # Re-pinned on U117, new label releases kept apart, 2026-10-09: holders
+    # move 137 to 138, and the also-holds-an-integer half is UNCHANGED at 29.
+    # ONE module joined and none left, a new file: label/dated.py, which
+    # refuses with label-new-playlists-no-folder and internal-error. It holds
+    # no in-range integer.
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
