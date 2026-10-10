@@ -3014,6 +3014,45 @@ ENTRIES: tuple[Entry, ...] = (
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
+    # ── A label's dated playlist heard (U123) ───────────────────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives. The
+    # half of U117 that happens once the author has heard a go's releases.
+    Entry(
+        name="label.heard",
+        summary=(
+            "mark a label's dated playlist heard: its tracks go in the year "
+            "playlist and the dated playlist is removed from the account"
+        ),
+        module="cratekit.label.heard_cli",
+        builder="build_heard",
+        handler_key="label.heard",
+        feature_rows=(23,),
+        module_id="labels",
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: One surface, the account: tracks added to a year playlist, and a
+        #: dated playlist the outbound ledger records this product CREATED
+        #: taken tracks off or removed. The heard list is written in the label
+        #: review store and the ledger entry dropped, neither of which is a
+        #: declared surface. Nothing in rekordbox is written: the Record
+        #: Labels tree stays on the xml bridge (R39). ``destructive`` because
+        #: it removes a playlist from the account.
+        writes=frozenset({"remote"}),
+        destructive=True,
+        doctor_checks=("credential.provider",),
+        gates=(
+            GateSpec(
+                name="label.heard.confirm",
+                options=("apply", "abort"),
+                prompt="Mark these releases heard, put the dated playlist's tracks in "
+                "the year and remove it from the streaming account?",
+                #: EXPLICIT, as every other write to the account is (R34).
+                explicit=True,
+                digest_source="plan",
+            ),
+        ),
+    ),
 )
 
 #: The verb names, as data. ``tests/test_layering.py`` reads this to enforce that
