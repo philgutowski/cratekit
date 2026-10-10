@@ -467,6 +467,43 @@ def test_a_second_drive_adds_no_second_membership_row(cut_over):
     )
 
 
+def test_a_drive_that_adds_nothing_still_names_an_undeclared_favorites_class(
+    cut_over, monkeypatch
+):
+    """U132. The genre Favorites step ran only when the drive filed a track, so
+    a retry over a library with no class said nothing. It is named on every
+    drive now, with the refusal's code, whatever the drive added."""
+    import dataclasses
+
+    from cratekit.core import active_taxonomy
+    from cratekit.write import genre_favorites
+
+    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+    drive(_resume(job_id))
+
+    real = active_taxonomy.load
+
+    def narrowed(cfg):
+        declared = real(cfg)
+        kept = tuple(e for e in declared.sub_classes if e.signal != taxonomy.SIGNAL_PLAYLIST)
+        assert len(kept) == len(declared.sub_classes) - 1
+        return dataclasses.replace(declared, sub_classes=kept)
+
+    monkeypatch.setattr(active_taxonomy, "load", narrowed)
+    collection.reset_cache()
+    handler = handlers.resolve(registry.entry("adopt.apply").handler_key)
+    with jobs.open_store() as store:
+        job = jobs.get(store, job_id)
+        item = jobs.items(store, job_id)[0]
+    produced = handler(job, item, jobs.frozen_config(job))
+
+    report = json.loads(produced.staged.read_text(encoding="utf-8"))
+    assert report["added"] == 0
+    assert report["favorites"]["cause"] == genre_favorites.CLASS_UNDECLARED
+    (note,) = apply_cli.favorites_warnings({"favorites": report["favorites"]})
+    assert note["code"] == genre_favorites.CLASS_UNDECLARED
+
+
 def test_the_membership_write_is_derived_from_the_plan_and_not_from_the_run(cut_over):
     """The crash-repair property, driven rather than argued.
 

@@ -1372,6 +1372,32 @@ def test_a_driven_resume_over_no_favorites_class_names_the_skipped_step(
 @pytest.mark.parametrize(
     "argv", [["rebuild", "--actor", "a-person"], ["route", "resort"]], ids=["rebuild", "resort"]
 )
+def test_a_rebuild_of_another_tree_says_nothing_of_the_routing_trees_favorites(
+    acknowledged, native, monkeypatch, argv
+):
+    """The class is declared under the routing tree alone, so a job over any
+    other tree skipped no Favorites step, whatever the declaration lacks."""
+    import dataclasses
+
+    del acknowledged, native
+    real = active_taxonomy.load
+
+    def narrowed(cfg):
+        declared = real(cfg)
+        assert declared.tree.id != TREE_ID
+        kept = tuple(e for e in declared.sub_classes if e.signal != taxonomy.SIGNAL_PLAYLIST)
+        return dataclasses.replace(declared, sub_classes=kept)
+
+    monkeypatch.setattr(active_taxonomy, "load", narrowed)
+    job_id = _drive(argv)[1]["data"]["job_id"]
+    code, done = _drive([*argv, "--job", job_id])
+    assert code == int(ExitCode.OK), done
+    assert _favorites_warnings(done) == []
+
+
+@pytest.mark.parametrize(
+    "argv", [["rebuild", "--actor", "a-person"], ["route", "resort"]], ids=["rebuild", "resort"]
+)
 def test_a_driven_resume_over_the_declared_class_says_nothing_of_it(
     acknowledged, native, monkeypatch, argv
 ):

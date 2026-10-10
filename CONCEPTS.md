@@ -376,6 +376,17 @@ text moved on, which is INFO, from one a person edited, which is theirs and
 reads OK. A copy with no record is said to be unrecorded rather than guessed
 either way. Doctor never rewrites the copy.
 
+The UPGRADE (U132), `crate taxonomy upgrade`, is the one verb that does, and it
+only adds: each shipped `[[sub_class]]` and `[[bucket]]` whose id the copy lacks
+is appended verbatim from the shipped text, and `schema_version` is raised to
+the shipped one, behind an explicit gate, with the copy as it was kept beside
+it under a dated name. An entry the copy cannot take as it stands is HELD rather
+than forced: one that would not load, or a bucket whose words another bucket of
+the copy's already files where the shipped template does not, which is how a
+bucket that moved out of another (Soul out of R&B) reaches a copy made before
+the move. A held entry names the hand edit that lets it in. Doctor's
+`taxonomy.schema` names the two versions and every entry the copy lacks.
+
 ### Genre Favorites
 The playlist named Favorites inside each genre folder of the routing tree,
 planned on 2026-10-09 (`docs/plans/2026-10-09-1214-feat-genre-folders-and-favorites-plan.md`,
