@@ -37198,3 +37198,168 @@ unmeasured.
 the collection already places it under BY GENRE, or the author reads a routed
 mirror and says the second placement is what he wants. Ledger only: it is a
 consequence of a choice the author made, and nothing is lost.
+
+---
+
+## R-978. A bucket that moved out of another reaches an older copy only after a hand edit
+
+**Found:** at the build of #300, U132, 2026-10-10.
+
+**The mechanism.** `crate taxonomy upgrade` only adds, and holds a bucket whose
+words another bucket of the copy's already files where the shipped template
+does not. Soul (U118) left R&B and Hip-Hop left the non electronic bucket, so a
+copy made before U118 still files their words in the old place, and both are
+held. On a scratch copy of the live library's taxonomy (read only, 2026-10-10)
+the plan adds `favorites`, raises `schema_version` to 4, and holds `soul` over
+`'Soul'`, `'Soul / R&B'` and `'soul & funk'` in `rnb`, and `hip_hop` over the
+non electronic bucket's `'Hip-Hop'`, `'Hip-Hop / R&B'` and its `hip_hop` sub
+with that sub's tag words and source map. Doctor's `taxonomy.schema` and the
+verb's held note name each word and where it sits.
+
+**Measured cost.** None of it is lost or misfiled: the held buckets stay out
+and every track keeps routing where it routed. What a person pays is the hand
+edit, and the vocabulary row `{ word = "Soul & Funk", tag = "R&B" }` and the
+`sub_by_source` rows for Hip-Hop are part of it, which the held note does not
+spell out row by row. Taking R&B's Soul words out by hand and running the
+upgrade again was driven on that scratch copy and adds `soul`.
+
+**Closes when:** a reshaping verb moves a bucket's words with the bucket, or the
+attended repair A36 makes the edit by hand. Ledger only: the upgrade says what
+it holds and why, and A36 owns the live library.
+
+---
+
+## R-979. The taxonomy upgrade adds classes and buckets and no other section the shipped template gained
+
+**Found:** at the build of #300, U132, 2026-10-10.
+
+**The mechanism.** `core/taxonomy_upgrade.py` appends missing `[[sub_class]]`
+and `[[bucket]]` entries and raises `schema_version`. A top level table the
+shipped template gained (`[long_tracks]`, `[intake_old]`, `[inspiration]`), a
+row it gained in an existing table (`[vocabulary.deezer]`, `[[fuzzy]]`,
+`[[label_gate.rule]]`), and a child table it gained under a bucket the copy
+already declares (a `[[bucket.formerly]]`) are not added, and doctor's
+`taxonomy.schema` does not name them. `taxonomy.active` names a gained top
+level section only for a copy with an origin record (R-689).
+
+**Measured cost.** Not driven against a copy missing one of those. A verb that
+needs such a section refuses or skips by name where it was written to (the
+rotation, the long tracks playlist), so nothing is filed wrongly; the person is
+told by that verb and not by doctor.
+
+**Closes when:** the upgrade and doctor's check cover the other sections, each
+with the same never change an entry rule, or a decision records that a person
+adds those by hand. Ledger only.
+
+---
+
+## R-980. A class or bucket a person left out on purpose is offered by every upgrade
+
+**Found:** at the build of #300, U132, 2026-10-10.
+
+**The mechanism.** The upgrade matches entries by id and has no way to decline
+one and take the rest, and no record of an entry the person removed. A copy
+that deleted Candy, or a bucket the person does not want, gets it back on the
+next approved upgrade, and doctor's `taxonomy.schema` names it as missing on
+every run.
+
+**Measured cost.** The gate lists every addition by id, so nothing is added
+unseen, and the INFO line is not a refusal. What a person pays is aborting an
+upgrade they otherwise want, or deleting the entry again by hand afterwards.
+Not driven with a person's copy.
+
+**Closes when:** the copy can record entries it declines, read by the planner
+and by doctor, or the verb takes the entries to add by id. Ledger only.
+
+---
+
+## R-981. An upgraded taxonomy copy reads as edited, so doctor stops saying when it falls behind again
+
+**Found:** at the review of #300, U132, 2026-10-10.
+
+**The mechanism.** `crate taxonomy upgrade` rewrites the active copy and leaves
+the origin record setup wrote (R-689) as it was. Doctor's `_origin_verdict`
+compares the copy's digest with the record's, so after an upgrade it answers
+"edited since setup copied the shipped template", and a later shipped change
+inside a section both declare (a fuzzy rule, a vocabulary row) no longer raises
+the "fell behind" INFO. Read from the code, not driven.
+
+**Measured cost.** The sentence is true, the copy was edited, by the upgrade on
+the person's answer. What is lost is the R-689 notice for changes inside
+existing sections; the new `taxonomy.schema` check still names any class or
+bucket the copy lacks, which it never did before this unit. The live library
+has no origin record at all, so it loses nothing.
+
+**Closes when:** the record can say which shipped text a copy was last brought
+up to, read by doctor, or a decision records that an upgraded copy is the
+person's. Ledger only.
+
+---
+
+## R-982. A bucket the upgrade adds takes its exact words from the copy's keyword rules without a hold
+
+**Found:** at the review of #300, U132, 2026-10-10.
+
+**The mechanism.** The upgrade's collision check compares the words buckets and
+their subs declare. It does not read the copy's `[[fuzzy]]` keyword rules or
+its vocabulary, so a copy that routes the exact genre "Soul" through a keyword
+rule to another bucket gains a Soul bucket whose exact alias wins over the rule,
+with no hold. That is the routing the shipped template itself has (an exact
+alias before a partial keyword), and the gate lists the bucket by id, so the
+person approves the bucket; what the gate does not say is which of their
+keyword routed words change folder. Not driven against such a copy.
+
+**Measured cost.** Tracks of exactly that genre file into the new folder on the
+next adoption or rebuild instead of the one the keyword rule chose. Nothing is
+lost, and adopt move or a rebuild moves them again if the bucket is taken out.
+
+**Closes when:** the plan names, per added bucket, the copy's keyword rules and
+vocabulary rows its words take over, or holds on them. Ledger only.
+
+---
+
+## R-983. The upgrade's check that an added block left every entry whole is unmeasured
+
+**Found:** at the mutation table of #300, U132, 2026-10-10.
+
+**The mechanism.** `_placed` in `core/taxonomy_upgrade.py` inserts an added
+class or bucket before the copy's entry that follows it in shipped order, then
+keeps the result only if `_kept_whole` finds every entry the copy held exactly
+as it was. Turning that check off kills no test (P9), and the composite meant
+to show what it holds (P9_composite, the placement one line later) kills none
+either, because the following entry's span starts at its comment run and the
+shifted block lands between two comment lines, which parses the same.
+
+**Measured cost.** A placement that breaks the parse is still refused by the
+candidate load (P3, killed) and by the tests that parse the result back. What
+is unguarded by any test is a placement that parses and loads but moves keys
+from one entry into the added one. The placement code computes its index from
+the same block scan the cut uses, and no copy in the suite, the live one
+included, drives it wrong.
+
+**Closes when:** a test hands `_placed` a copy whose following entry has no
+comment run and checks that a shifted index is refused, and a table measures
+P9 against it. Ledger only.
+
+---
+
+## R-984. An edit to the taxonomy copy in the instant before the upgrade writes it is overwritten
+
+**Found:** at the watcher's review of #300, U132, 2026-10-10.
+
+**The mechanism.** `crate taxonomy upgrade` plans again after the answer and
+refuses a plan whose digest moved, then reads the copy once more as bytes and
+refuses those as stale too when they no longer read as the planned text. Those
+bytes are the backup and the restore. What is left is the span between that
+last read and the atomic replace of the copy, which writes the backup in
+between: an edit saved by hand inside it is replaced by the upgraded text, and
+the backup holds the copy from before the edit. Read from the code, not driven.
+
+**Measured cost.** The span is one backup write of a 35 KB file, milliseconds.
+An edit made any time before it, including between the answer and the second
+plan, is refused and kept, which
+`test_an_edit_after_the_second_plan_is_refused_as_stale` drives. No other
+process writes the copy.
+
+**Closes when:** the write takes a lock that hand edits honour, which none do,
+or a decision records the span as accepted. Ledger only.
