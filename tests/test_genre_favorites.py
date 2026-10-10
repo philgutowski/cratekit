@@ -844,3 +844,188 @@ def test_a_removed_favorites_under_the_folder_is_not_written_into(cfg, gates_pas
     live = _favorites_of(db, tree, DEEP)
     assert live is not None and str(live.ID) != str(gone.ID)
     assert _members(db, live.ID) == {"1"} and _members(db, gone.ID) == set()
+
+
+# ---------------------------------------------------------------------------
+# What the watcher's review added
+# ---------------------------------------------------------------------------
+
+
+def _record_band(cfg, bucket: taxonomy.Bucket, folder_id: str, playlist_id: str, sub: str) -> None:
+    convergence.record_nodes(
+        cfg,
+        TREE,
+        [convergence.DestinationNode(bucket=bucket.id, sub=sub, folder_id=folder_id, playlist_id=playlist_id)],
+    )
+
+
+def test_the_rebuild_puts_a_first_favorites_under_a_renamed_folder_its_record_binds(
+    cfg, gates_pass, db
+):
+    """The watcher's scenario, driven: the band is recorded, the folder renamed,
+    no Favorites yet. The rebuild's second pass goes under the recorded folder
+    and makes no parallel folder of the declared name."""
+    tree = Tree(cfg, db)
+    bucket_id = rebuild.routing.resolve_bucket(DECLARED, None).bucket_id
+    bucket = DECLARED.bucket(bucket_id)
+    sub = rebuild.routing.energy_sub(DECLARED, bucket_id, DECLARED.energy.scale_max)
+    folder = tree.folder(bucket)
+    band = tree.playlist(bucket, DECLARED.bucket(bucket_id).energy.band_display.get(sub.id, sub.display), "1")
+    _record_band(cfg, bucket, str(folder.ID), str(band.ID), sub.id)
+    folder.Name = f"{bucket.display} ✦"
+    db.session.commit()
+    tree.source("1")
+    truth = [
+        rebuild.Truth(
+            location=f"{cfg.library.root}/Music/track 1.flac",
+            genre=None,
+            energy=DECLARED.energy.scale_max,
+            voxlevel=None,
+        )
+    ]
+
+    report = rebuild.rebuild_tree(
+        cfg,
+        db,
+        tree_id=TREE,
+        registry=tree.registry,
+        declared=DECLARED,
+        rows=_rows(cfg)[:1],
+        root_exists=lambda _root: True,
+        analysis_roots=[Path(cfg.library.root)],
+        vocal_threshold=None,
+        truth=truth,
+    )
+
+    folders = {node.folder_display for node in rebuild.read_tree(db, str(tree.root.ID))}
+    assert folders == {f"{bucket.display} ✦"}, folders
+    favorites = _favorites_of(db, tree, bucket)
+    assert favorites is not None and _members(db, favorites.ID) == {"1"}
+    assert report.after.converged, report.after.summaries()
+    # And the next refresh binds the bucket to the same folder and plans no removal.
+    plan = _plan(cfg, db, tree)
+    (planned,) = plan.folders
+    assert planned.folder_id == str(folder.ID) and planned.removes == ()
+
+
+def test_a_bucket_is_bound_by_its_band_entries_before_its_favorites_entry(cfg, gates_pass, db):
+    """A Favorites recorded under a parallel folder does not claim the bucket."""
+    tree = Tree(cfg, db)
+    real = tree.folder(DEEP)
+    band = tree.playlist(DEEP, "Med", "1", "2")
+    tree.source("1", "2")
+    twin = db.create_playlist_folder("Deep House (twin)", parent=tree.root)
+    db.session.commit()
+    stray = tree.playlist(DEEP, FAVORITES.display, parent=twin)
+    _record_band(cfg, DEEP, str(real.ID), str(band.ID), "med")
+    _record_band(cfg, DEEP, str(twin.ID), str(stray.ID), FAVORITES.id)
+
+    plan = _plan(cfg, db, tree)
+
+    assert [folder.bucket for folder in plan.folders] == []
+    assert any("beside another folder" in name for name in plan.unclaimed)
+    assert len(plan.unclaimed) == 2
+    refreshed = _apply(cfg, db, tree, plan)
+    assert (refreshed.added, refreshed.removed) == (0, 0)
+    assert _members(db, band.ID) == {"1", "2"}
+
+
+def test_a_check_with_no_source_leaves_the_recorded_favorites_out_and_names_the_gap(
+    cfg, gates_pass, db
+):
+    tree = Tree(cfg, db)
+    tree.playlist(DEEP, "Med", "1")
+    tree.source("1")
+    _refresh(cfg, db, tree)
+    source = next(row for row in db.get_playlist(Name=SOURCE) if not rb_writer.is_folder(row))
+    setattr(source, rb_writer.SOFT_DELETE_COLUMN, 1)
+    db.session.commit()
+
+    placed, gaps = genre_favorites.placements(cfg, db, DECLARED, tree.registry, _rows(cfg))
+    assert placed == () and gaps == (genre_favorites.FAVORITES_DIMENSION,)
+    report = rebuild.check(
+        cfg,
+        db,
+        tree_id=TREE,
+        registry=tree.registry,
+        declared=DECLARED,
+        placements=(),
+        rows=_rows(cfg),
+        root_exists=lambda _root: True,
+        not_compared=gaps,
+    )
+    assert report.unexpected == ()
+    assert not any(FAVORITES.display in name for name in report.foreign)
+    assert genre_favorites.FAVORITES_DIMENSION in report.not_compared
+    assert rebuild.left_behind(report, DECLARED) == ()
+
+
+def test_a_removal_that_fails_after_the_additions_landed_says_what_landed(
+    cfg, gates_pass, db, monkeypatch
+):
+    tree = Tree(cfg, db)
+    tree.playlist(DEEP, "Med", "1", "2")
+    favorites = tree.playlist(DEEP, FAVORITES.display, "2")
+    tree.source("1")
+    plan = _plan(cfg, db, tree)
+
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("the disk went away")
+
+    monkeypatch.setattr(rb_writer, "remove_memberships", broken)
+    with pytest.raises(genre_favorites.RefreshInterrupted) as caught:
+        _apply(cfg, db, tree, plan)
+    partial = caught.value.partial
+    assert partial.added == 1 and partial.removed == 0 and partial.session_id
+    assert isinstance(caught.value.__cause__, RuntimeError)
+    assert _members(db, favorites.ID) == {"1", "2"}
+    (record,) = [r for r in session.records(cfg) if r.workflow == genre_favorites.WORKFLOW]
+    assert {c.tree: (c.created, c.updated) for c in record.change.trees} == {TREE: (1, 0)}
+
+
+def test_the_verb_reports_an_interrupted_refresh_with_the_additions_that_committed(
+    cfg, gates_pass, db, monkeypatch
+):
+    tree = Tree(cfg, db)
+    tree.playlist(DEEP, "Med", "1", "2")
+    tree.playlist(DEEP, FAVORITES.display, "2")
+    tree.source("1")
+    _closed(db)
+
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("the disk went away")
+
+    monkeypatch.setattr(rb_writer, "remove_memberships", broken)
+    code, acted, _ = _two_acts(VERB)
+    assert code != int(ExitCode.OK)
+    assert acted["cause"]["reason"] == "internal-error"
+    assert acted["cause"]["detail"]["added"] == 1
+    assert "nothing was taken out" in acted["cause"]["message"]
+
+
+def test_the_additive_half_carries_the_additions_when_interrupted_past_them(
+    cfg, gates_pass, db, monkeypatch
+):
+    tree = Tree(cfg, db)
+    tree.playlist(DEEP, "Med", "1")
+    tree.source("1")
+    rb_writer.close_db(db)
+
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("the record went away")
+
+    monkeypatch.setattr(convergence, "record_nodes", broken)
+    outcome = genre_favorites.refresh_additive(
+        cfg, DECLARED, analysis_roots=[Path(cfg.library.root)]
+    )
+    assert outcome.refreshed is not None and outcome.refreshed.added == 1
+    assert "the record went away" in outcome.skipped
+
+
+def test_a_skipped_refresh_at_an_adoptions_end_is_said():
+    summary = {"favorites": {"added": 0, "removals_owed": 0, "disagreements": [], "skipped": "the taxonomy declares no sub class derived from a playlist"}}
+    (note,) = apply_cli.favorites_warnings(summary)
+    assert note["code"] == apply_cli.FAVORITES_SKIPPED and "declares no sub class" in note["message"]
+    summary = {"favorites": {"added": 2, "skipped": "the record went away"}}
+    (note,) = apply_cli.favorites_warnings(summary)
+    assert "past 2 addition(s) that committed" in note["message"]

@@ -33,7 +33,7 @@ from cratekit.core import (
     session,
     tree_registry,
 )
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Remedy
+from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Remedy, refuse
 from cratekit.write import genre_favorites
 
 #: The gate, explicit: a removal is the one write that takes something away.
@@ -155,7 +155,26 @@ def favorites_refresh(ctx) -> Envelope:
             ],
         )
 
-    refreshed = written(cfg, declared, registry, plan)
+    try:
+        refreshed = written(cfg, declared, registry, plan)
+    except genre_favorites.RefreshInterrupted as exc:
+        # THE ADDITIONS LANDED. Said with the count and the session, and the
+        # failure that stopped the removals beside it, keeping its own reason
+        # when it has one.
+        inner = exc.__cause__
+        cause = inner.cause if isinstance(inner, CratekitError) else None
+        raise refuse(
+            cause.reason if cause is not None else "internal-error",
+            f"the refresh added {exc.partial.added} membership(s), committed in session "
+            f"{exc.partial.session_id}, and then stopped before the removals were made "
+            f"({cause.message if cause is not None else inner}); every favourite is in "
+            f"its genre Favorites and nothing was taken out, so run it again to finish",
+            remedy=cause.remediation.remedy if cause is not None else Remedy.REPORT_DEFECT,
+            steps=cause.remediation.steps if cause is not None else (),
+            origin=_ORIGIN,
+            detail={"added": exc.partial.added, "session": exc.partial.session_id},
+            inner=cause,
+        ) from exc
     genre_favorites.assert_read_back(refreshed)
     totals: dict[str, Any] = {
         **data["totals"],

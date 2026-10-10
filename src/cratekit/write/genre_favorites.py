@@ -330,13 +330,24 @@ def plan_refresh(
     for node in nodes:
         by_folder.setdefault(node.folder_id, []).append(node)
         display_of[node.folder_id] = node.folder_display
+    # THE BAND ENTRIES BIND THE FOLDER, THE FAVORITES ENTRY LAST. The record
+    # sorts by (bucket, sub) and "favorites" sorts before every band, so taking
+    # the first entry per bucket would let a Favorites a rebuild made beside a
+    # renamed folder claim the bucket and plan every favourite in the real
+    # folder as a removal. Two live folders named by one bucket's record are
+    # listed as that bucket's and nothing is written there.
     recorded_folder: dict[str, str] = {}
     recorded_playlist: dict[str, str] = {}
-    for entry in record.nodes if record is not None else ():
-        if entry.folder_id in by_folder:
-            recorded_folder.setdefault(entry.bucket, entry.folder_id)
-            if entry.sub == sub.id:
-                recorded_playlist[entry.bucket] = entry.playlist_id
+    torn: set[str] = set()
+    entries = () if record is None else sorted(record.nodes, key=lambda e: e.sub == sub.id)
+    for entry in entries:
+        if entry.folder_id not in by_folder:
+            continue
+        held = recorded_folder.setdefault(entry.bucket, entry.folder_id)
+        if held != entry.folder_id:
+            torn.add(entry.bucket)
+        if entry.sub == sub.id and held == entry.folder_id:
+            recorded_playlist[entry.bucket] = entry.playlist_id
 
     # TWO PASSES, THE RECORD FIRST. A folder a previous write recorded for a
     # bucket is that bucket's whatever it is called now, and only a folder no
@@ -344,11 +355,25 @@ def plan_refresh(
     # two buckets', which is the shape the node record refuses after a commit.
     buckets = _folders_of(declared, sub)
     bound: dict[str, str] = {
-        bucket.id: recorded_folder[bucket.id] for bucket in buckets if bucket.id in recorded_folder
+        bucket.id: recorded_folder[bucket.id]
+        for bucket in buckets
+        if bucket.id in recorded_folder and bucket.id not in torn
     }
     claimed: set[str] = set(bound.values())
     unclaimed: list[str] = []
     for bucket in buckets:
+        if bucket.id in torn:
+            named = sorted(
+                {entry.folder_id for entry in entries if entry.bucket == bucket.id}
+                & set(by_folder)
+            )
+            unclaimed.extend(
+                f"{display_of[fid]} (row {fid}, the record names it for {bucket.display} "
+                f"beside another folder)"
+                for fid in named
+            )
+            claimed.update(named)
+            continue
         if bucket.id in bound:
             continue
         named = [
@@ -507,6 +532,25 @@ def facts(plan: RefreshPlan) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+class RefreshInterrupted(Exception):
+    """The refresh stopped after its additions landed and before it was done.
+
+    Carries the refresh as far as it got, the additions committed and the
+    session they are recorded in, and the failure that stopped it as
+    ``__cause__``. Raised for that window only, whatever the failure's type, so
+    a caller never reports zero additions over a commit that landed and never
+    reports the removals as made.
+    """
+
+    def __init__(self, partial: "Refreshed") -> None:
+        self.partial = partial
+        super().__init__(
+            f"the genre Favorites refresh of tree {partial.tree_id!r} added "
+            f"{partial.added} membership(s) in session {partial.session_id} and "
+            f"removed none"
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class Refreshed:
     """What one refresh wrote, read back from the database after its commits."""
@@ -647,39 +691,57 @@ def apply_refresh(
                     _record_favorites_commit(record, plan.tree_id, added=added, removed=0, cfg=cfg)
                 raise
         _record_favorites_commit(record, plan.tree_id, added=added, removed=0, cfg=cfg)
-        if added:
-            convergence.record_fingerprint(cfg, db)
-        if nodes:
-            convergence.record_nodes(cfg, plan.tree_id, nodes)
-
-        # ── the removals, behind the additions ─────────────────────────────
-        owed = plan.removes
-        if remove and owed:
-            with rb_writer.commit_witness(db) as witness:
-                try:
-                    for folder in plan.folders:
-                        if not folder.removes or not folder.playlist_id:
-                            continue
-                        playlist = db.get_playlist(ID=folder.playlist_id)
-                        if playlist is None:
-                            continue
-                        removed += len(rb_writer.remove_memberships(db, playlist, folder.removes))
-                    # THE MEMBERSHIP TABLE ALONE, never the whole removable set.
-                    rb_writer.commit_guarded(db, removals=(rb_writer.MEMBERSHIP_TABLE,))
-                except BaseException:
-                    trees._rollback_quietly(db)
-                    if witness.landed:
-                        _record_favorites_commit(
-                            record, plan.tree_id, added=0, removed=removed, cfg=cfg
-                        )
-                        convergence.record_fingerprint(cfg, db)
-                    raise
-            _record_favorites_commit(record, plan.tree_id, added=0, removed=removed, cfg=cfg)
-            if removed:
+        landed = Refreshed(
+            tree_id=plan.tree_id,
+            added=added,
+            removed=0,
+            created=tuple(created),
+            removals_owed=plan.removes,
+            session_id=record.session_id,
+        )
+        # EVERYTHING PAST THE ADDITIONS' COMMIT IS REPORTED AS HALF WRITTEN when
+        # it fails, whatever the failure's type: the additions are in the
+        # database and recorded, and a caller told only of the failure would
+        # report zero additions over a commit that landed, or the removals as
+        # made when they were not.
+        try:
+            if added:
                 convergence.record_fingerprint(cfg, db)
-            owed = 0
+            if nodes:
+                convergence.record_nodes(cfg, plan.tree_id, nodes)
 
-        disagreements = _read_back(db, plan, removed_too=remove)
+            # ── the removals, behind the additions ─────────────────────────
+            owed = plan.removes
+            if remove and owed:
+                with rb_writer.commit_witness(db) as witness:
+                    try:
+                        for folder in plan.folders:
+                            if not folder.removes or not folder.playlist_id:
+                                continue
+                            playlist = db.get_playlist(ID=folder.playlist_id)
+                            if playlist is None:
+                                continue
+                            removed += len(
+                                rb_writer.remove_memberships(db, playlist, folder.removes)
+                            )
+                        # THE MEMBERSHIP TABLE ALONE, never the whole removable set.
+                        rb_writer.commit_guarded(db, removals=(rb_writer.MEMBERSHIP_TABLE,))
+                    except BaseException:
+                        trees._rollback_quietly(db)
+                        if witness.landed:
+                            _record_favorites_commit(
+                                record, plan.tree_id, added=0, removed=removed, cfg=cfg
+                            )
+                            convergence.record_fingerprint(cfg, db)
+                        raise
+                _record_favorites_commit(record, plan.tree_id, added=0, removed=removed, cfg=cfg)
+                if removed:
+                    convergence.record_fingerprint(cfg, db)
+                owed = 0
+
+            disagreements = _read_back(db, plan, removed_too=remove)
+        except Exception as exc:
+            raise RefreshInterrupted(landed) from exc
         session_id = record.session_id
 
     return Refreshed(
@@ -820,6 +882,10 @@ def refresh_additive(
                 analysis_roots=analysis_roots,
                 remove=False,
             )
+        except RefreshInterrupted as exc:
+            # THE ADDITIONS LANDED AND ARE REPORTED AS SUCH, with the failure
+            # that stopped the rest beside them.
+            return AdditiveOutcome(refreshed=exc.partial, skipped=str(exc.__cause__ or exc))
         except CratekitError as exc:
             return AdditiveOutcome(skipped=exc.cause.message)
         return AdditiveOutcome(refreshed=refreshed)
@@ -834,6 +900,7 @@ __all__ = [
     "WORKFLOW",
     "AdditiveOutcome",
     "FolderPlan",
+    "RefreshInterrupted",
     "RefreshPlan",
     "Refreshed",
     "apply_refresh",

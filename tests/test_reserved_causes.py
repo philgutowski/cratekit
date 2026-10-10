@@ -6172,7 +6172,10 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Re-pinned once more on the same unit's review round: 668 to 669
     # distinct, non-keys 469 to 470. ONE joined, favorites-unverified, the
     # adoption resume's second WARNING code, for a read back that disagreed.
-    assert (len(literals), len(literals - set(causes))) == (669, 470), (
+    # And again on the watcher's round: 669 to 670 distinct, non-keys 470 to
+    # 471. ONE joined, favorites-skipped, the resume's third WARNING code, for
+    # a refresh that did not run at an adoption's end.
+    assert (len(literals), len(literals - set(causes))) == (670, 471), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

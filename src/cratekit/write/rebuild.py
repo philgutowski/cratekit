@@ -338,6 +338,46 @@ def not_compared_warnings(not_compared: Iterable[str]) -> tuple[dict[str, str], 
     )
 
 
+def _uncompared_subs(declared: taxonomy.Taxonomy, not_compared: Sequence[str]) -> set[str]:
+    """The sub class ids whose dimension a run named as not compared."""
+    skipped: set[str] = set()
+    if VOCAL_DIMENSION in tuple(not_compared):
+        skipped.update(
+            entry.id
+            for entry in declared.sub_classes
+            if entry.additive and entry.signal == taxonomy.SIGNAL_VOX
+        )
+    if genre_favorites.FAVORITES_DIMENSION in tuple(not_compared):
+        skipped.update(
+            entry.id
+            for entry in declared.sub_classes
+            if entry.additive and entry.signal == taxonomy.SIGNAL_PLAYLIST
+        )
+    return skipped
+
+
+def _uncompared_playlist_subs(
+    declared: taxonomy.Taxonomy, not_compared: Sequence[str]
+) -> set[str]:
+    """The playlist signal classes whose source this run could not read (U119).
+
+    THE FAVOURITES AND NOT THE VOCAL SUB. A vocal playlist nothing compared
+    keeps its members in the report as unexpected, which is the contract the
+    vocal dimension has always had and ``left_behind`` filters. The favourites'
+    source is a playlist a person can remove or empty on any day, and a tree
+    that read unconverged over that would refuse the very refresh that reads
+    the source again, so their differences are left out of the comparison
+    while their destinations stay resolved and are never somebody's own.
+    """
+    if genre_favorites.FAVORITES_DIMENSION not in tuple(not_compared):
+        return set()
+    return {
+        entry.id
+        for entry in declared.sub_classes
+        if entry.additive and entry.signal == taxonomy.SIGNAL_PLAYLIST
+    }
+
+
 def left_behind(
     after: "ConvergenceReport", declared: taxonomy.Taxonomy
 ) -> tuple["Difference", ...]:
@@ -350,13 +390,9 @@ def left_behind(
     and naming those as leftovers would tell a person to empty a playlist that
     is right. The gap already has its own warning, which says nothing checked.
     """
-    if VOCAL_DIMENSION not in after.not_compared:
+    skipped = _uncompared_subs(declared, after.not_compared)
+    if not skipped:
         return after.unexpected
-    skipped = {
-        entry.id
-        for entry in declared.sub_classes
-        if entry.additive and entry.signal == taxonomy.SIGNAL_VOX
-    }
     return tuple(entry for entry in after.unexpected if entry.sub not in skipped)
 
 
@@ -1111,6 +1147,13 @@ def check(
             for entry in unexpected
         ]
 
+    # A PLAYLIST DIMENSION THIS RUN COULD NOT READ IS NOT A DIFFERENCE (U119).
+    # Its destinations stayed resolved above, so a Favorites is never reported
+    # as somebody's own playlist; what it holds is simply not judged.
+    uncompared = _uncompared_playlist_subs(declared, not_compared)
+    if uncompared:
+        missing = [entry for entry in missing if entry.sub not in uncompared]
+        unexpected = [entry for entry in unexpected if entry.sub not in uncompared]
     return ConvergenceReport(
         tree_id=tree_id,
         root_id=root_id,
@@ -1388,6 +1431,44 @@ def plan_destinations(
     return destinations, plan
 
 
+def _under_recorded_folders(
+    destinations: Sequence[Destination],
+    plan: dict[tuple[str, str], list[str]],
+    record: convergence.TreeConvergence | None,
+    standing: Sequence[TreeNode],
+) -> tuple[tuple[Destination, ...], dict[tuple[str, str], list[str]]]:
+    """A Favorites with no node of its own goes under the folder its bucket's record binds.
+
+    A FOLDER SOMEBODY RENAMED HAS ITS BANDS RECORDED AND NO FAVORITES YET, which
+    is every folder on first rollout. Resolving the Favorites by the bucket's
+    declared name would make a second folder under that name holding only
+    Favorites, record it, and hand the next refresh a folder with no members,
+    so every favourite in the real folder would read as a removal. The bucket's
+    recorded folder, under whatever rekordbox now calls it, is where the
+    Favorites goes.
+    """
+    if record is None:
+        return tuple(destinations), plan
+    display_of = {node.folder_id: node.folder_display for node in standing}
+    recorded_folder: dict[str, str] = {}
+    for entry in record.nodes:
+        if entry.folder_id in display_of:
+            recorded_folder.setdefault(entry.bucket, entry.folder_id)
+    moved: list[Destination] = []
+    for entry in destinations:
+        folder_id = recorded_folder.get(entry.bucket)
+        if entry.node is not None or folder_id is None:
+            moved.append(entry)
+            continue
+        folder_now = display_of[folder_id]
+        if folder_now != entry.folder:
+            locations = plan.pop((entry.folder, entry.playlist), [])
+            plan.setdefault((folder_now, entry.playlist), []).extend(locations)
+            entry = replace(entry, folder=folder_now, renamed=True)
+        moved.append(entry)
+    return tuple(moved), plan
+
+
 def with_favorites(
     cfg: config.Config,
     db: Any,
@@ -1643,6 +1724,7 @@ def rebuild_tree(
         more, second_plan = plan_destinations(
             declared, favorites, standing_now, record_now, tree_id=tree_id
         )
+        more, second_plan = _under_recorded_folders(more, second_plan, record_now, standing_now)
         second = trees.write_tree_membership(
             cfg,
             db,

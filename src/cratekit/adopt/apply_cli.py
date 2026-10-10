@@ -730,10 +730,12 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
     }
 
 
-#: The notes the resume carries when the mirror would take favourites out, and
-#: when the additive refresh's read back disagreed with its plan.
+#: The notes the resume carries when the mirror would take favourites out, when
+#: the additive refresh's read back disagreed with its plan, and when it did not
+#: run at all and why.
 FAVORITES_REMOVALS_OWED = "favorites-removals-owed"
 FAVORITES_UNVERIFIED = "favorites-unverified"
+FAVORITES_SKIPPED = "favorites-skipped"
 
 
 def favorites_warnings(summary: Mapping[str, object]) -> list[dict[str, str]]:
@@ -751,6 +753,19 @@ def favorites_warnings(summary: Mapping[str, object]) -> list[dict[str, str]]:
                     f"{owed} track(s) sit in a genre Favorites and are not in the playlist "
                     f"it mirrors; an adoption only adds, so run the favorites refresh "
                     f"verb, which asks before it removes them"
+                ),
+            }
+        )
+    skipped = str(kept.get("skipped") or "")
+    if skipped:
+        added = int(kept.get("added") or 0)
+        notes.append(
+            {
+                "code": FAVORITES_SKIPPED,
+                "message": (
+                    "the genre Favorites were not refreshed at the end of this adoption"
+                    + (f" past {added} addition(s) that committed" if added else "")
+                    + f": {skipped}"
                 ),
             }
         )
