@@ -5204,7 +5204,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Re-measured on the merge of main at 1e93ee7 into fable/278, 2026-10-10:
     # U121's two slugs beside the pink residual's one and U119's two, so the
     # population is 203, non-reserved 175, reserved half UNCHANGED at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (204, 176, 28)
+    # Re-pinned on U123, a label's dated playlist heard, 2026-10-10. SIX
+    # slugs, named rather than counted, each refused by crate label heard
+    # before its gate: label-heard-invalid (a year or date that is not one),
+    # label-heard-no-releases (no go took a release that year on that day),
+    # label-heard-not-in-playlist (a named release outside the playlist),
+    # label-heard-ambiguous (two playlists with one name in the folder),
+    # label-heard-not-product-made (the ledger does not vouch for the dated
+    # playlist) and label-heard-no-year-playlist (tracks to add and no year).
+    # All six are in cause.REASONS and none is in the reserved table.
+    # Population 204 to 210, non-reserved 176 to 182, reserved half UNCHANGED
+    # at 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (210, 182, 28)
     # Re-pinned on U117, new label releases kept apart, 2026-10-09. ONE slug,
     # named rather than counted: label-new-playlists-no-folder, which the
     # dated playlist's apply refuses with when the label's folder is not on
