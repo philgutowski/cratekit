@@ -354,7 +354,7 @@ def test_a_landing_from_a_set_job_writes_the_set_playlist_with_owned_and_landed_
     assert item["id"] == str(playlist_id) and item["count"] == 3 and item["added"] == 3
     assert item["folder"] == folder_id and item["folder_created"] is False
     codes = [w["code"] for w in acted["warnings"]]
-    assert codes == [land_cli.AWAITING_ANALYSIS, set_playlist.WRITTEN]
+    assert codes == [land_cli.AWAITING_ANALYSIS, land_cli.VOX_NOT_WRITTEN, set_playlist.WRITTEN]
 
     # The one record names both, and counts the set's memberships under the
     # folder's own id, apart from the intake tree's.

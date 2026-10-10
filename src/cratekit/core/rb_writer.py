@@ -2281,13 +2281,35 @@ def _mytag_templates(db: Any) -> tuple[Any, Any, Any]:
             value_attr = getattr(tag, "Attribute", 0)
     if category_attr is None:
         raise _unavailable(
-            "mytag-category-template-missing",
+            MYTAG_TEMPLATE_MISSING,
             "the library has no tag category to mirror, so there is nothing to "
             "copy the row shape from and this writer refuses to invent one",
         )
     if value_attr is None:
         value_attr = category_attr
     return root_parent, category_attr, value_attr
+
+
+#: Why :func:`_mytag_templates` refuses, named once for the writer and for
+#: :func:`my_tag_writable`, which asks the same question before a gate.
+MYTAG_TEMPLATE_MISSING = "mytag-category-template-missing"
+
+
+def my_tag_writable(db: Any) -> bool:
+    """Whether :func:`ensure_my_tag_value` could make a row here, asked before a plan promises one.
+
+    THE WRITER'S OWN QUESTION, not a second reading of the table. A planner
+    that promises a tag the writer then refuses fails after its other work,
+    the native landing's file moves among them (U127). Any other refusal is
+    the caller's as it would be the writer's.
+    """
+    try:
+        _mytag_templates(db)
+    except RekordboxUnavailable as exc:
+        if exc.cause.reason != MYTAG_TEMPLATE_MISSING:
+            raise
+        return False
+    return True
 
 
 def ensure_my_tag_value(db: Any, category_name: str, value_name: str) -> Any:
@@ -3640,6 +3662,8 @@ __all__ = [
     "ensure_folder",
     "top_level_folders",
     "ensure_my_tag_value",
+    "MYTAG_TEMPLATE_MISSING",
+    "my_tag_writable",
     "ensure_playlist",
     "MOVED",
     "UNINSPECTABLE",

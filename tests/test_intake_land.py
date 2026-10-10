@@ -120,6 +120,9 @@ def test_the_first_run_stops_at_the_gate_and_moves_nothing(cfg, silence, export)
     assert shown["files"] == ["One.flac", "Two.flac"]
     assert shown["lands in"] == str(_music(cfg, BATCH))
     assert shown["intake file"] == str(Path(cfg.library.root) / f"{BATCH}_inboxed.xml")
+    # U127: the bridge carries no My Tag, and the screen names the step owed.
+    assert shown["vox My Tag"] == land_cli.BRIDGE_VOX_OWED
+    assert "crate metadata mytags-vocals --apply" in shown["vox My Tag"]
     assert _staged_names(cfg) == ["One.flac", "Two.flac"]
     assert not _music(cfg, BATCH).exists()
     assert not (Path(cfg.library.root) / f"{BATCH}_inboxed.xml").exists()

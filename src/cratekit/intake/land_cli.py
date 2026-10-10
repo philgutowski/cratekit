@@ -73,6 +73,17 @@ NATIVE_GATE = "intake.land.native"
 #: rekordbox has not analysed them, which it does on request and not on sight.
 AWAITING_ANALYSIS = "rows-await-analysis"
 
+#: The warnings a native write carries about the vox My Tag (U127): a file
+#: whose score could not be read, and a landing that wrote no tag at all.
+VOX_UNSCORED = "vox-unscored"
+VOX_NOT_WRITTEN = "vox-not-written"
+
+#: What the bridge's gate screen says of the vox My Tag (U127).
+BRIDGE_VOX_OWED = (
+    "not written, the xml bridge carries no My Tag; once rekordbox has imported "
+    "the batch, run crate metadata mytags-vocals --apply to tag its vocal tracks"
+)
+
 _ORIGIN = ("intake.land_cli",)
 
 #: What a label playlist written, and a label row filed under none, are marked.
@@ -312,6 +323,10 @@ def _shown(
         "intake file": str(destination),
         "count": len(planned.items),
         "files": [item.name for item in planned.items],
+        # U127: the xml bridge carries no My Tag, so the vox tag a native
+        # landing writes is a step this one leaves owed, said before the
+        # approval rather than discovered in a with vox playlist missing it.
+        "vox My Tag": BRIDGE_VOX_OWED,
     }
     if split:
         shown.update(
@@ -730,6 +745,10 @@ def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: P
             entry["why"] = row.why
         if str(row.target) in hearts:
             entry["heart"] = hearts[str(row.target)] or "quarter left to the backfill"
+        if row.action == native.ADD and rows.vox_cut is not None and not rows.vox_blocked:
+            # U127: the score each added row was read at and whether it is tagged.
+            entry["voxlevel"] = row.voxlevel
+            entry["vox"] = row.vox
         items.append(entry)
     identity = {
         "kind": "land-native",
@@ -807,7 +826,23 @@ def collection_facts(rows: native.NativePlan) -> dict[str, Any]:
         "left empty for rekordbox": list(native.LEFT_EMPTY),
         "adds": len(rows.to_add()),
         "already present": len(rows.present()),
+        "vox My Tag": vox_fact(rows),
     }
+
+
+def vox_fact(rows: native.NativePlan) -> str:
+    """The vox My Tag a native plan writes, in one line, for any verb's gate screen (U127)."""
+    adding = rows.to_add()
+    if not adding:
+        return "none, since no row is added"
+    if rows.vox_blocked:
+        return f"none, {rows.vox_blocked}"
+    unscored = len(rows.vox_unscored())
+    return (
+        f"{len(rows.vox_tagged())} of {len(adding)} added row(s), each whose voxlevel "
+        f"is at or above the cut {rows.vox_cut:g}"
+        + (f"; {unscored} file(s) carry no score and get no tag" if unscored else "")
+    )
 
 
 def playlist_item(collection: native.NativeLanded) -> dict[str, Any]:
@@ -881,6 +916,7 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
                         rb_writer.CONTENT_LINK_COLUMN: row.content_link,
                     },
                     "left_empty": sorted(row.empty),
+                    **({"vox": row.vox} if "vox" in item else {}),
                 }
             )
             continue
@@ -901,6 +937,8 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
         "already present": len(landed.collection.present),
         "memberships": landed.collection.memberships_added,
     }
+    if landed.collection.vox_written:
+        totals["vox tagged"] = landed.collection.vox_written
     if landed.collection.playlist_id:
         items.append(playlist_item(landed.collection))
     items.extend(
@@ -1102,6 +1140,7 @@ def _land_native(
     warnings = [{"code": entry.reason, "message": entry.sentence} for entry in landed.refused]
     warnings.extend(account_playlists.left_warning(landed.collection.left))
     warnings.extend(awaiting_analysis(landed.collection))
+    warnings.extend(vox_warnings(landed.collection))
     warnings.extend(favorites_notes(payload, landed.collection))
     kept = landed.collection.set_playlist
     if kept is not None and kept.playlist_id:
@@ -1272,6 +1311,40 @@ def awaiting_analysis(collection: native.NativeLanded) -> list[dict[str, str]]:
     ]
 
 
+def vox_warnings(collection: native.NativeLanded) -> list[dict[str, str]]:
+    """What a person reads about the vox My Tag a native write gave its rows, or did not (U127).
+
+    SHARED WITH ``intake file`` for :func:`awaiting_analysis`' reason. A file
+    with no score is named, never tagged on a guess; a landing that could tag
+    nothing says why and names the step owed. A row tagged is the report's.
+    """
+    if not collection.added:
+        return []
+    if collection.vox_blocked:
+        return [
+            {
+                "code": VOX_NOT_WRITTEN,
+                "message": (
+                    f"no row joined with the vox My Tag, so none reaches a with vox "
+                    f"playlist: {collection.vox_blocked}"
+                ),
+            }
+        ]
+    if not collection.vox_unscored:
+        return []
+    names = ", ".join(path.name for path in collection.vox_unscored)
+    return [
+        {
+            "code": VOX_UNSCORED,
+            "message": (
+                f"{len(collection.vox_unscored)} file(s) carry no voxlevel to read, so "
+                f"their rows got no vox My Tag: {names}; run crate analyze vocals on "
+                f"them and then crate metadata mytags-vocals --apply"
+            ),
+        }
+    ]
+
+
 __all__ = [
     "AWAITING_ANALYSIS",
     "INTAKE_SUFFIX",
@@ -1283,6 +1356,11 @@ __all__ = [
     "awaiting_analysis",
     "build_land",
     "collection_facts",
+    "vox_fact",
+    "vox_warnings",
+    "VOX_NOT_WRITTEN",
+    "VOX_UNSCORED",
+    "BRIDGE_VOX_OWED",
     "default_name",
     "gate_named",
     "intake_file",
