@@ -1,0 +1,220 @@
+name = "u124"
+pass_kind = "light"
+
+[[rows]]
+id = "B1_untracked_filter"
+description = "residual_files returns every file, git's index ignored, so an untracked draft is judged and landed"
+file = "scripts/board.py"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''    if listed.returncode != 0:
+        return paths
+'''
+new = '''    if listed.returncode == 0 or listed.returncode != 0:
+        return paths
+'''
+
+[[rows]]
+id = "B2_readme_excluded"
+description = "the README is read as a residual file"
+file = "scripts/board.py"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''    paths = sorted(p for p in folder.glob("*.md") if p.name != "README.md")'''
+new = '''    paths = sorted(p for p in folder.glob("*.md"))'''
+
+[[rows]]
+id = "B3_name_order"
+description = "files land in folder listing order rather than name order"
+file = "scripts/board.py"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''    paths = sorted(p for p in folder.glob("*.md") if p.name != "README.md")'''
+new = '''    paths = sorted((p for p in folder.glob("*.md") if p.name != "README.md"), reverse=True)'''
+
+[[rows]]
+id = "B4_fence_open"
+description = "a file with no opening fence is not refused"
+file = "scripts/board.py"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''    if not lines or lines[0] != "---":
+        raise ValueError("does not open with a frontmatter fence")'''
+new = '''    if not lines:
+        raise ValueError("does not open with a frontmatter fence")'''
+
+[[rows]]
+id = "B5_unknown_key"
+description = "an unknown frontmatter key is accepted"
+file = "scripts/board.py"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''        if key not in RESIDUAL_REQUIRED and key not in RESIDUAL_OPTIONAL:'''
+new = '''        if key not in RESIDUAL_REQUIRED and key not in RESIDUAL_OPTIONAL and False:'''
+
+[[rows]]
+id = "B6_required_keys"
+description = "a missing title or found line is accepted"
+file = "scripts/board.py"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''        if not meta.get(key):
+            raise ValueError(f"frontmatter has no {key}")'''
+new = '''        if key not in meta and False:
+            raise ValueError(f"frontmatter has no {key}")'''
+
+[[rows]]
+id = "B7_issue_values"
+description = "issue takes any value"
+file = "scripts/board.py"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''        if key in meta and meta[key] not in allowed:'''
+new = '''        if key in meta and meta[key] not in allowed and False:'''
+
+[[rows]]
+id = "B8_numbered_title"
+description = "the number shape widened back to any leading R number"
+file = "scripts/board.py"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''    if re.match(r"R-\d+\.", meta["title"]):'''
+new = '''    if re.match(r"R-\d+", meta["title"]):'''
+
+[[rows]]
+id = "B9_empty_body"
+description = "a file with frontmatter and no body is accepted"
+file = "scripts/board.py"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''    if not body.strip():
+        raise ValueError("has frontmatter and no body")'''
+new = '''    if body is None:
+        raise ValueError("has frontmatter and no body")'''
+
+[[rows]]
+id = "B10_validate_first"
+description = "a malformed file is skipped instead of stopping the landing, so the good ones land"
+file = "scripts/board.py"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''    if problems:
+        raise ValueError("; ".join(problems))
+    if not parsed:'''
+new = '''    if not parsed:'''
+
+[[rows]]
+id = "B11_relanded_title"
+description = "a title the ledger already holds is numbered again"
+file = "scripts/board.py"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''    if again:
+        raise ValueError("; ".join(again))'''
+new = ''''''
+
+[[rows]]
+id = "B12_highest_not_count"
+description = "the next number is the ledger's count plus one rather than its highest plus one"
+file = "scripts/board.py"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''    number = max(titles, default=0)'''
+new = '''    number = len(titles)'''
+
+[[rows]]
+id = "B13_separator"
+description = "landed entries lose the separator line"
+file = "scripts/board.py"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''        text = text.rstrip("\n") + "\n\n---\n\n"'''
+new = '''        text = text.rstrip("\n") + "\n\n"'''
+
+[[rows]]
+id = "B14_files_deleted"
+description = "a landed file is left in the folder"
+file = "scripts/board.py"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''    for path, _, _ in parsed:
+        path.unlink()'''
+new = '''    for path, _, _ in parsed:
+        pass'''
+
+[[rows]]
+id = "B15_closing_reads_folder"
+description = "closing stops reading the residual folder"
+file = "scripts/board.py"
+tests = ["tests/test_restart_and_residual_files.py", "tests/test_pending_units.py"]
+old = '''    malformed = residual_file_problems()
+    if not problems and not malformed:'''
+new = '''    malformed = []
+    if not problems and not malformed:'''
+
+[[rows]]
+id = "B16_unreadable_range"
+description = "an unreadable range returns 0 before the residual folder is read"
+file = "scripts/board.py"
+tests = ["tests/test_restart_and_residual_files.py", "tests/test_pending_units.py"]
+old = '''            print("board: no commit range to read; no trailer checked")
+            return _report([])'''
+new = '''            print("board: no commit range to read; no trailer checked")
+            return 0'''
+
+[[rows]]
+id = "B17_land_on_main_only"
+description = "residuals --land runs on any branch"
+file = "scripts/board.py"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''    if branch != "main":
+        print(
+            f"board: residuals are numbered on main'''
+new = '''    if branch == "never":
+        print(
+            f"board: residuals are numbered on main'''
+
+[[rows]]
+id = "B18_behind_origin"
+description = "residuals --land numbers on a main behind origin/main"
+file = "scripts/board.py"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''    if behind.returncode == 0 and behind.stdout.strip() not in ("", "0"):'''
+new = '''    if behind.returncode == 0 and behind.stdout.strip() not in ("", "0") and False:'''
+
+[[rows]]
+id = "B19_audit_reads_folder"
+description = "audit stops counting a malformed residual file as a contradiction"
+file = "scripts/board.py"
+tests = ["tests/test_restart_and_residual_files.py", "tests/test_pending_units.py"]
+old = '''        clashes = clashes + malformed'''
+new = '''        clashes = clashes'''
+
+[[rows]]
+id = "S1_head_fixed"
+description = "the scan stops comparing RESTART's head to the fixed reader's line"
+file = "scripts/scan_repo.py"
+tests = ["tests/test_restart_and_residual_files.py", "tests/test_portability.py"]
+old = '''    if head != RESTART_HEAD:'''
+new = '''    if head != RESTART_HEAD and False:'''
+
+[[rows]]
+id = "S2_sections"
+description = "the scan accepts any section heading"
+file = "scripts/scan_repo.py"
+tests = ["tests/test_restart_and_residual_files.py", "tests/test_portability.py"]
+old = '''        if heading not in RESTART_SECTIONS:'''
+new = '''        if heading not in RESTART_SECTIONS and False:'''
+
+[[rows]]
+id = "S3_record_opener"
+description = "the record opener narrowed back to units and residuals marked built or done, so a sitting passes"
+file = "scripts/scan_repo.py"
+tests = ["tests/test_restart_and_residual_files.py", "tests/test_portability.py"]
+old = '''_UNIT_RECORD = re.compile(r"^\*\*(?:U\d+|R-\d+|A\d+|Sitting \d+)\b", re.M)'''
+new = '''_UNIT_RECORD = re.compile(r"^\*\*(?:U\d+|R-\d+)(?: with R-\d+)? (?:built|done)\b", re.M)'''
+
+[[rows]]
+id = "S4_wired"
+description = "scan_tree stops calling restart_violations"
+file = "scripts/scan_repo.py"
+tests = ["tests/test_restart_and_residual_files.py", "tests/test_portability.py"]
+old = '''        findings += [f"{relative}: {p}" for p in restart_violations(relative, text)]
+'''
+new = ''''''
+
+[[rows]]
+id = "S5_only_restart"
+description = "the restart rule judges every file, so a fragment is refused"
+file = "scripts/scan_repo.py"
+tests = ["tests/test_restart_and_residual_files.py", "tests/test_portability.py"]
+old = '''    if relative_path != RESTART_FILE:
+        return []'''
+new = '''    if relative_path == "":
+        return []'''

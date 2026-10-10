@@ -112,6 +112,15 @@ it, and how a board could read complete while no acquisition workflow finished.
 A name claim is evidence that a verb exists. It is not evidence that a workflow
 ends.
 
+### Restart fragment
+One unit's record of the verified state, the file `docs/restart/<unit>.md`
+(`u114.md`, `r572.md`, `sitting35.md`). It holds what the unit built, its
+battery, its mutation table's summary and what it left owed, and only that unit
+writes it. `RESTART-cratekit.md` is the rest of the restart state, the sections
+no unit owns, and it carries no fragment's paragraph, so units built in
+parallel never conflict over it. Before U124 the fragments were paragraphs at
+the head of that file, newest first, and every merge conflicted there.
+
 ## Acquisition
 
 ### Adapter
@@ -317,6 +326,19 @@ stale. Nothing remembers it between runs.
 Not a **held release**, which is a label release the genre gate keeps out of
 review, and not **withheld**, which is adoption's word for a track it will not
 file over a place it already holds.
+
+### Suggestion band
+How far the votes for a suggested genre agree, in `crate tag suggest` (U114).
+A row with no genre on the row or the file gets weighted votes from its
+artist's other tracks, its folder's, and with `--catalogue` the catalogue
+lookup `tag folder` makes. **High** is at least 80 percent of the votes over
+six or more, **medium** at least 60 percent over three or more, **low** any
+other suggestion. **Split** is a tie at the top between declared genres, with
+no default, and **none** is a row nothing voted for. Only a high suggestion is
+written unless `--band` widens it, and `--set` picks a genre for one row.
+
+Not a **stale row**, whose row and file both carry a genre and disagree: a
+row whose file carries a genre its row lacks is left to `tag rows`.
 
 ### Provider gate
 The one seam every call to the streaming provider passes, `core/provider_gate`,
@@ -1480,6 +1502,25 @@ names a sub its folder still holds, or that is declared under schema version
 *Avoid:* reading it as a declared sub of the folder it sits in. Nothing is
 filed into it, from either bucket. Also avoid reading it as the outbound
 ledger's `formerly`, which is the display paths a remote playlist moved from.
+Since U118 Hip-Hop has one too, the old Hip-Hop playlist of the same folder.
+
+### Split place
+Since U118, a place another bucket still competes on that this bucket's
+tracks sit in, declared as `[[bucket.split_from]]`. Soul was filed in R&B's
+energy bands as one folder and became a folder of its own, while those bands
+stayed R&B's, so Soul declares every R&B band, Unsorted and R&B's own former
+place as split places. It competes in the declaring bucket only. A track whose
+genre names Soul and sits in one is withheld by adoption and moved by `crate
+adopt move` to the Soul band its reading names, or to Unsorted with no reading,
+and leaves the R&B place; its sub classes, "with vox" among them, stay. A
+track whose genre names R&B is never asked about it. A Soul track no entry
+claims, an unreadable file or a refused folder, is listed under Soul and not
+moved. It needs schema version 3, and the loader refuses one that is not a
+band or former place of its holder, under the holder's own name for it.
+
+*Avoid:* reading it as a former place. A former place is a playlist nobody
+files into any more; a split place is one the holder still files into, and
+only the declaring bucket's tracks leave it.
 
 ### Held elsewhere
 An adoption plan entry withheld because its track already holds a competing
@@ -1630,6 +1671,11 @@ Residual numbers are append only. A number, once given, belongs to that finding
 for life, and numbers already recorded never move when new ones arrive, because
 the number is cited from surfaces the repository cannot see and a renumber
 repoints those citations silently.
+
+A residual is filed without a number, as a file in `docs/residuals/`, and is
+numbered when it lands on `main`, past the ledger's highest. So an unnumbered
+residual is a filed one that has not landed yet, and its number belongs to the
+order of landings rather than the order of filings.
 
 ### Blocking finding
 A finding that does hold a merge. It qualifies only on three conditions together:

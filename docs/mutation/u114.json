@@ -1,0 +1,824 @@
+{
+  "name": "u114",
+  "pass_kind": "light",
+  "branch": "relay/266",
+  "head": "d3d8a32",
+  "when": "2026-10-10 00:04 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 12919,
+  "baseline_exit": 0,
+  "pytest_runs": 30,
+  "state_guarded": "~/Library/Application Support/cratekit (365158 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/tagging/suggest.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/tagging/suggest.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "6ac17a5514fca714",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 12919,
+    "baseline_collected": 12919,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "M1_suggestable_routes_only",
+      "description": "suggestable accepts any word adoption routes, a keyword or catch all placement included, so Dance is suggested",
+      "file": "src/cratekit/tagging/suggest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e98be12fbd1c66c2",
+      "subset": [
+        "tests/test_tag_suggest.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_suggest.py::test_a_catalogue_answer_outside_the_taxonomy_is_never_suggested",
+        "tests/test_tag_suggest.py::test_a_pick_outside_the_taxonomy_is_refused_before_any_row_is_read",
+        "tests/test_tag_suggest.py::test_a_tie_between_declared_genres_is_a_split_with_no_default",
+        "tests/test_tag_suggest.py::test_an_undeclared_word_lowers_the_agreement_and_is_never_suggested",
+        "tests/test_tag_suggest.py::test_only_a_genre_adoption_files_by_its_exact_name_is_suggestable"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return disposition is adopt_scan.Disposition.ROUTE and declared.named_folder(word) is not None",
+      "new": "    return disposition is adopt_scan.Disposition.ROUTE"
+    },
+    {
+      "id": "M2_high_share",
+      "description": "The high band's share bound drops from 0.8 to 0.7",
+      "file": "src/cratekit/tagging/suggest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "790bb2f6872a4f99",
+      "subset": [
+        "tests/test_tag_suggest.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_suggest.py::test_the_band_is_the_share_over_enough_votes[7-10-medium]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "((HIGH, 0.8, 6), (MEDIUM, 0.6, 3))",
+      "new": "((HIGH, 0.7, 6), (MEDIUM, 0.6, 3))"
+    },
+    {
+      "id": "M3_high_votes",
+      "description": "The high band's least vote count halves from 6 to 3",
+      "file": "src/cratekit/tagging/suggest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cab6e1cd40d0050f",
+      "subset": [
+        "tests/test_tag_suggest.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_suggest.py::test_the_band_is_the_share_over_enough_votes[3-3-medium]",
+        "tests/test_tag_suggest.py::test_the_band_is_the_share_over_enough_votes[5-5-medium]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "((HIGH, 0.8, 6), (MEDIUM, 0.6, 3))",
+      "new": "((HIGH, 0.8, 3), (MEDIUM, 0.6, 3))"
+    },
+    {
+      "id": "M4_split",
+      "description": "A two way tie at the top is no longer a split and the first tied genre becomes the default",
+      "file": "src/cratekit/tagging/suggest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e731cd801254733f",
+      "subset": [
+        "tests/test_tag_suggest.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_suggest.py::test_a_folder_that_splits_evenly_offers_both_genres_and_no_default",
+        "tests/test_tag_suggest.py::test_a_person_picks_a_genre_for_a_split",
+        "tests/test_tag_suggest.py::test_a_tie_between_declared_genres_is_a_split_with_no_default"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if len(tied) > 1:",
+      "new": "    if len(tied) > 2:"
+    },
+    {
+      "id": "M5_total_declared_only",
+      "description": "The total counts only declared votes, so an undeclared word no longer lowers the agreement",
+      "file": "src/cratekit/tagging/suggest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "040a0e8b8e1b90e3",
+      "subset": [
+        "tests/test_tag_suggest.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_suggest.py::test_an_undeclared_word_lowers_the_agreement_and_is_never_suggested"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    total = sum(votes.values())",
+      "new": "    total = sum(weight for word, weight in votes.items() if suggestable(declared, word))"
+    },
+    {
+      "id": "M6_folder_weight",
+      "description": "A folder neighbour votes at the artist's weight",
+      "file": "src/cratekit/tagging/suggest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5483a00e2bbad7a7",
+      "subset": [
+        "tests/test_tag_suggest.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_suggest.py::test_the_artist_outweighs_the_folder"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        weights[other] = FOLDER_WEIGHT",
+      "new": "        weights[other] = ARTIST_WEIGHT"
+    },
+    {
+      "id": "M7_votes_once",
+      "description": "A neighbour by the artist in the same folder votes twice, its weights added",
+      "file": "src/cratekit/tagging/suggest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "41ecb7cf29052704",
+      "subset": [
+        "tests/test_tag_suggest.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_suggest.py::test_a_neighbour_by_the_artist_in_the_same_folder_votes_once_at_the_artist_weight"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        weights[other] = max(weights.get(other, 0), ARTIST_WEIGHT)",
+      "new": "        weights[other] = weights.get(other, 0) + ARTIST_WEIGHT"
+    },
+    {
+      "id": "M8_off_taxonomy",
+      "description": "A catalogue answer flagged off taxonomy is counted as a vote when it is suggestable",
+      "file": "src/cratekit/tagging/suggest.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "626fa0b3d904449d",
+      "subset": [
+        "tests/test_tag_suggest.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 12919,
+      "baseline_collected": 12919,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "        and not asked.off_taxonomy\n",
+      "new": ""
+    },
+    {
+      "id": "M9_catalogue_declared",
+      "description": "A catalogue answer is a vote whether or not the taxonomy declares it",
+      "file": "src/cratekit/tagging/suggest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c5dd3075cd70ca5d",
+      "subset": [
+        "tests/test_tag_suggest.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_suggest.py::test_a_catalogue_answer_outside_the_taxonomy_is_never_suggested"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        and suggestable(declared, asked.genre)\n",
+      "new": ""
+    },
+    {
+      "id": "M10_file_has_genre",
+      "description": "A row whose file carries a genre is offered a suggestion instead of being left to tag rows",
+      "file": "src/cratekit/tagging/suggest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2ee6b864fa6f969e",
+      "subset": [
+        "tests/test_tag_suggest.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_suggest.py::test_a_row_whose_file_carries_a_genre_its_row_lacks_votes_with_the_files_word",
+        "tests/test_tag_suggest.py::test_a_row_with_a_genre_on_the_file_and_not_the_row_is_left_to_tag_rows",
+        "tests/test_tag_suggest.py::test_every_live_row_lands_in_exactly_one_outcome",
+        "tests/test_tag_suggest.py::test_the_gate_refuses_a_plan_that_changed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if word:\n            counts[FILE_HAS_GENRE] += 1\n            # IT VOTES WITH ITS FILE'S WORD. The row lags its file, which is\n            # what ``tag rows`` repairs, and the file is the newer of the two.\n            live[track.content_id].genre = word\n            continue\n",
+      "new": ""
+    },
+    {
+      "id": "M11_file_word_votes",
+      "description": "A row whose file carries a genre its row lacks no longer votes with the file's word",
+      "file": "src/cratekit/tagging/suggest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3c1bf47f6c069308",
+      "subset": [
+        "tests/test_tag_suggest.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_suggest.py::test_a_row_whose_file_carries_a_genre_its_row_lacks_votes_with_the_files_word"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            live[track.content_id].genre = word\n",
+      "new": ""
+    },
+    {
+      "id": "M12_below_band",
+      "description": "The band threshold is ignored and every suggestion with a band is written",
+      "file": "src/cratekit/tagging/suggest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "508e53e927f62f87",
+      "subset": [
+        "tests/test_tag_suggest.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_suggest.py::test_a_suggestion_below_the_band_is_offered_and_written_only_when_widened"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        elif not _at_or_above(earned, band):",
+      "new": "        elif not _at_or_above(earned, LOW):"
+    },
+    {
+      "id": "M13_band_order",
+      "description": "The band comparison is reversed, so a weaker band passes a stronger threshold",
+      "file": "src/cratekit/tagging/suggest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9d7e98e569b361ae",
+      "subset": [
+        "tests/test_tag_suggest.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_suggest.py::test_a_suggestion_below_the_band_is_offered_and_written_only_when_widened"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return BANDS.index(band) <= BANDS.index(least)",
+      "new": "    return BANDS.index(band) >= BANDS.index(least)"
+    },
+    {
+      "id": "M14_genre_unknown",
+      "description": "A genre with no lookup row is planned as a write with an empty identifier",
+      "file": "src/cratekit/tagging/suggest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5474e33d11eb5063",
+      "subset": [
+        "tests/test_tag_suggest.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_suggest.py::test_a_declared_genre_the_library_has_no_lookup_row_for_is_left"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                replace(item, action=LEAVE, reason=GENRE_UNKNOWN)\n                if genre_id is None\n                else replace(item, genre_id=genre_id)",
+      "new": "                replace(item, genre_id=genre_id or \"\")"
+    },
+    {
+      "id": "M15_file_moved",
+      "description": "A file that carries a genre by the time the write reaches it is written over",
+      "file": "src/cratekit/tagging/suggest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e3f0aae225462933",
+      "subset": [
+        "tests/test_tag_suggest.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_suggest.py::test_a_file_given_a_genre_after_the_gate_is_left_and_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if word or outcome != rows.FILE_BLANK:",
+      "new": "        if outcome == rows.FILE_UNREADABLE:"
+    },
+    {
+      "id": "M16_file_read_back",
+      "description": "A file is not read back after the write, so its row is written whatever the file holds",
+      "file": "src/cratekit/tagging/suggest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c2bf9d6c07df1aaf",
+      "subset": [
+        "tests/test_tag_suggest.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_suggest.py::test_a_file_the_writer_says_it_wrote_and_that_does_not_read_back_leaves_its_row"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if rows._file_word(target)[0] != item.genre:\n            wrong.append(item.content_id)\n            continue\n",
+      "new": ""
+    },
+    {
+      "id": "M17_rows_follow_files",
+      "description": "Every planned row is written, the ones whose file did not take the genre included",
+      "file": "src/cratekit/tagging/suggest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f590b69534958e9d",
+      "subset": [
+        "tests/test_tag_suggest.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_suggest.py::test_a_file_given_a_genre_after_the_gate_is_left_and_named",
+        "tests/test_tag_suggest.py::test_a_file_that_will_not_take_its_genre_leaves_its_row_and_the_rest_land",
+        "tests/test_tag_suggest.py::test_a_file_the_writer_says_it_wrote_and_that_does_not_read_back_leaves_its_row"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if item.content_id in wanted\n",
+      "new": ""
+    },
+    {
+      "id": "M18_narrow_called",
+      "description": "The row engine never calls the narrow step, so no file is written and every row is",
+      "file": "src/cratekit/tagging/rows.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "04b9f8e22bea9bfb",
+      "subset": [
+        "tests/test_tag_suggest.py",
+        "tests/test_tag_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 21,
+      "collected": 125,
+      "baseline_collected": 125,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_a_commit_that_refuses_leaves_the_row_as_it_was_and_claims_no_commit",
+        "tests/test_tag_rows.py::test_a_file_on_a_volume_that_is_not_mounted_is_counted_and_the_run_does_not_fail",
+        "tests/test_tag_rows.py::test_a_held_row_survives_the_write_and_the_apply_must_name_it_again",
+        "tests/test_tag_rows.py::test_a_mistyped_identifier_is_shown_at_the_gate_and_warned_about",
+        "tests/test_tag_rows.py::test_a_person_reads_the_counts_and_the_pairs_at_the_gate_and_after_the_write",
+        "tests/test_tag_rows.py::test_a_restore_out_of_band_is_marked_before_this_write_replaces_the_evidence",
+        "tests/test_tag_rows.py::test_a_second_apply_plans_nothing_and_writes_nothing",
+        "tests/test_tag_rows.py::test_a_second_run_after_a_clean_one_asks_and_is_a_no_op",
+        "tests/test_tag_rows.py::test_a_word_the_library_has_no_row_for_names_the_act_on_a_run_that_wrote",
+        "tests/test_tag_rows.py::test_an_unregistered_policy_would_write_nothing_and_the_apply_registers_it",
+        "tests/test_tag_rows.py::test_planned_written_and_read_back_through_the_two_acts",
+        "tests/test_tag_rows.py::test_the_apply_is_a_recorded_session_a_restore_can_undo",
+        "tests/test_tag_rows.py::test_the_apply_writes_the_genre_and_no_other_column_of_any_row",
+        "tests/test_tag_rows.py::test_the_genre_report_stops_naming_the_old_word_after_the_run",
+        "tests/test_tag_rows.py::test_with_no_regression_the_write_marks_nothing_and_records_where_it_left_off",
+        "tests/test_tag_suggest.py::test_a_file_given_a_genre_after_the_gate_is_left_and_named",
+        "tests/test_tag_suggest.py::test_a_file_that_will_not_take_its_genre_leaves_its_row_and_the_rest_land",
+        "tests/test_tag_suggest.py::test_a_file_the_writer_says_it_wrote_and_that_does_not_read_back_leaves_its_row",
+        "tests/test_tag_suggest.py::test_a_row_that_reads_back_wrong_also_names_the_files_that_did_not_take_it",
+        "tests/test_tag_suggest.py::test_the_catalogue_is_asked_once_across_the_two_acts",
+        "tests/test_tag_suggest.py::test_the_file_and_the_row_carry_the_genre_and_nothing_else_moved"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if narrow is not None:\n            plan = narrow(plan)",
+      "new": "        if narrow is None:\n            plan = narrow(plan)"
+    },
+    {
+      "id": "M19_write_intent",
+      "description": "The apply opens the database without write intent, so a running rekordbox is not refused by the opener",
+      "file": "src/cratekit/tagging/suggest_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "97e0d98c599eb581",
+      "subset": [
+        "tests/test_tag_suggest.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_suggest.py::test_with_rekordbox_open_the_plan_is_read_and_no_file_is_written"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)",
+      "new": "    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=False, cfg=cfg)"
+    },
+    {
+      "id": "M20_pick_declared",
+      "description": "A --set genre the taxonomy does not declare is accepted",
+      "file": "src/cratekit/tagging/suggest_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f97c4b8615469c67",
+      "subset": [
+        "tests/test_tag_suggest.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_suggest.py::test_a_pick_outside_the_taxonomy_is_refused_before_any_row_is_read"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not suggest.suggestable(declared, genre):",
+      "new": "        if not genre.strip():"
+    },
+    {
+      "id": "M21_kept_days",
+      "description": "A kept catalogue answer lives five times as long",
+      "file": "src/cratekit/tagging/suggest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "42f5a5ebec0b8feb",
+      "subset": [
+        "tests/test_tag_suggest.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_suggest.py::test_a_kept_answer_is_reused_and_one_a_week_old_is_asked_again"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not 0 <= age < CATALOGUE_DAYS:",
+      "new": "    if not 0 <= age < CATALOGUE_DAYS * 5:"
+    },
+    {
+      "id": "M22_unread_day",
+      "description": "An unread answer is kept the whole week, so a later day never asks again",
+      "file": "src/cratekit/tagging/suggest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "23cbf0855aa26b72",
+      "subset": [
+        "tests/test_tag_suggest.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_suggest.py::test_an_answer_nobody_could_read_is_kept_for_the_day_only"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if answer.said == UNREAD and age != 0:",
+      "new": "    if answer.said == UNREAD and age > CATALOGUE_DAYS:"
+    },
+    {
+      "id": "M23_breaker",
+      "description": "The walk stops asking after four unread rows in a row and not three",
+      "file": "src/cratekit/tagging/suggest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e4fe8717f69484d3",
+      "subset": [
+        "tests/test_tag_suggest.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_suggest.py::test_three_rows_in_a_row_nobody_could_read_stop_the_walk_asking"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            self.stopped = self._unread_running >= STOP_AFTER_UNREAD",
+      "new": "            self.stopped = self._unread_running > STOP_AFTER_UNREAD"
+    },
+    {
+      "id": "M24_retry_unread",
+      "description": "A catalogue that could not be read is asked again, the behaviour before the review",
+      "file": "src/cratekit/tagging/suggest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2f29b9e5f35dd940",
+      "subset": [
+        "tests/test_tag_suggest.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_suggest.py::test_a_catalogue_that_cannot_be_read_is_this_rows_answer_and_is_not_asked_twice"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if first.said != DECLINED or first.source_genre:",
+      "new": "        if first.said == MATCHED or first.source_genre:"
+    },
+    {
+      "id": "M25_settled_not_asked",
+      "description": "A row held out or picked is looked up anyway",
+      "file": "src/cratekit/tagging/suggest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b35678c87a2f2314",
+      "subset": [
+        "tests/test_tag_suggest.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 53,
+      "baseline_collected": 53,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_suggest.py::test_a_row_held_out_or_picked_is_not_looked_up"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if catalogue is not None and not settled_by_person:",
+      "new": "        if catalogue is not None:"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "D1_self_excluded",
+      "description": "Remove the pop of the candidate's own identifier from its neighbours",
+      "reason": "a candidate has no genre and is never indexed as a neighbour, so the pop is belt and braces; ranked below the cap"
+    },
+    {
+      "id": "D2_row_has_genre",
+      "description": "Offer a row that already carries a genre",
+      "reason": "the same counting shape as M10, which is measured; the out of scope rule is also held by the outcome census test"
+    },
+    {
+      "id": "D3_held_over_pick",
+      "description": "Let a --set pick override --leave on the same row",
+      "reason": "no test drives both flags on one row; recorded as a residual rather than measured"
+    },
+    {
+      "id": "D4_pick_twice",
+      "description": "Accept one row named twice by --set with two genres",
+      "reason": "an input check on a flag, ranked below the write path's guards"
+    },
+    {
+      "id": "D5_acknowledgment",
+      "description": "Remove the backup acknowledgment read before the plan",
+      "reason": "the same line as tag rows, and the contract suite's ACKNOWLEDGED_BEFORE_THE_GATE guard drives it for this verb"
+    }
+  ]
+}
