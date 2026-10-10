@@ -1,0 +1,42 @@
+# U120 author's mutation table, second pass: three of the first table's four zero
+# rows measured again against the tests the zeros bought. The fourth, P3, is
+# equivalent on this binding and is explained in u120-notes.md. No new mutation
+# joins; 25 distinct in all.
+name = "u120-b"
+pass_kind = "light"
+
+[[rows]]
+id = "A1r_owned_carried"
+description = "carried_hearts: an owned heart counts as carried"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''        if report.get("state") not in CARRIED_STATES:
+            continue
+        said = report.get("track") or {}'''
+new = '''        said = report.get("track") or {}'''
+
+[[rows]]
+id = "B1r_any_path_is_landed"
+description = "landed_paths: a heart's file anywhere in the library counts as landed"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''            if landing.is_landed_path(cfg, path):
+                found.append((row, path))'''
+new = '''            found.append((row, path))'''
+
+[[rows]]
+id = "B4r_stale_not_refused"
+description = "apply: a plan whose digest moved is written anyway"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''    if again.digest != approved.digest:
+        raise refuse(
+            "decision-stale",
+            "the favourites are not as the approved plan read them, so no heart was "'''
+new = '''    if False:
+        raise refuse(
+            "decision-stale",
+            "the favourites are not as the approved plan read them, so no heart was "'''

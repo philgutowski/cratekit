@@ -482,3 +482,90 @@ def test_a_heart_the_landing_placed_without_a_quarter_takes_it_from_the_backfill
     assert acted["data"]["totals"]["added"] == 1
     assert _favorites(cfg, folder_id) == {SOURCE: ["Old"], "2026-Q4": ["Old"]}
 
+
+
+# ---------------------------------------------------------------------------
+# What the mutation table bought: the three guards a green suite shadowed
+# ---------------------------------------------------------------------------
+
+
+def test_an_owned_heart_in_a_batch_folder_is_not_carried_and_not_placed(
+    native_library, silence, monkeypatch
+):
+    """The state rule alone: a heart the library owned when the hearts job ran
+    was never downloaded, so it is not placed even where its file sits in a
+    batch folder a landing made."""
+    cfg, _root_id = native_library
+    folder_id, _source_id = _home(cfg)
+    _stage(cfg, silence, "Already")
+    _land("2026-09-20 by hand")
+    hearts_swept(cfg, {"Already": UNKNOWN, "Fresh": UNKNOWN}, run_id="")
+    _stage(cfg, silence, "Fresh")
+    _land()
+    _account(monkeypatch, {"Already": Q3, "Fresh": Q4})
+
+    code, acted, refused = _acts()
+
+    assert code == int(ExitCode.OK), acted
+    assert [item["title"] for item in refused["cause"]["detail"]["shown"]["items"]] == ["Probe - Fresh"]
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Fresh"], "2026-Q4": ["Fresh"]}
+
+
+def test_a_carried_heart_whose_row_sits_deep_is_left_alone_by_the_path_rule(
+    native_library, silence, monkeypatch
+):
+    """The path rule alone: the heart was carried and the collection holds a
+    row for its file, but the file sits two folders deep, where the source
+    system filed and no landing ever puts anything."""
+    cfg, _root_id = native_library
+    folder_id, _source_id = _home(cfg)
+    hearts_swept(cfg, {"Deep Filed": UNKNOWN, "Landed": UNKNOWN}, run_id="")
+    deep = Path(cfg.library.root) / cfg.library.music_dir / "Processed_Tracks" / "2025" / "Deep Filed.flac"
+    deep.parent.mkdir(parents=True)
+    shutil.copyfile(silence, deep)
+    assert tags.write_tags(deep, {"title": "Deep Filed", "artist": "Probe"})
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        handle.add_content(deep, Title="Deep Filed")
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    _stage(cfg, silence, "Landed")
+    _land()
+    _account(monkeypatch, {"Deep Filed": Q3, "Landed": Q4})
+
+    code, acted, refused = _acts()
+
+    assert code == int(ExitCode.OK), acted
+    assert _rows(cfg)["Deep Filed"], "the collection holds the deep row"
+    assert [item["title"] for item in refused["cause"]["detail"]["shown"]["items"]] == ["Probe - Landed"]
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Landed"], "2026-Q4": ["Landed"]}
+
+
+def test_the_write_itself_refuses_a_plan_whose_home_moved_with_no_gate_in_front(
+    native_library, silence, monkeypatch
+):
+    """The engine's own stale check, driven without the gate that would refuse
+    the same digest first, so the guard is measured and not its shadow."""
+    import pytest
+
+    from cratekit.core.cause import CratekitError
+
+    cfg, _root_id = native_library
+    _folder_id, source_id = _home(cfg)
+    _landed_hearts(cfg, silence, {"Same Girl": None})
+    _account(monkeypatch, {"Same Girl": Q3})
+    approved = backfill_cli.planned(cfg, source=SOURCE)
+    assert approved.writes
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        handle.add_to_playlist(handle.get_playlist(ID=source_id), _rows(cfg)["Same Girl"])
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+
+    with pytest.raises(CratekitError) as caught:
+        backfill_cli.written(cfg, approved, source=SOURCE)
+
+    assert caught.value.cause.reason == "decision-stale"
+    assert _query(cfg, "SELECT ID FROM djmdPlaylist WHERE Name = '2026-Q3'") == []
