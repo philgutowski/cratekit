@@ -1,0 +1,113 @@
+name = "u128-b"
+pass_kind = "light"
+
+# U128 batch B: the two media's writers, in landing.py, ingest.py, native.py
+# and land_cli.py, and reruns of batch A's three zeros after their tests.
+
+[[rows]]
+id = "A6b_abandoned_counts"
+description = "Rerun of A6 after its test: count every landing record as standing"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+old = '''        if record.workflow == ingest.INTAKE_WORKFLOW and record.state in standing'''
+new = '''        if record.workflow == ingest.INTAKE_WORKFLOW'''
+
+[[rows]]
+id = "A8b_ambiguous_is_an_answer"
+description = "Rerun of A8 after its test: take the first of two active rows as the owned row"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+old = '''                if matched.outcome is trees.MatchOutcome.AMBIGUOUS:
+                    answer = ("", AMBIGUOUS_ROWS)
+                    continue'''
+new = '''                if matched.outcome is trees.MatchOutcome.AMBIGUOUS:
+                    answer = (str(matched.content_ids[0]), "")
+                    break'''
+
+[[rows]]
+id = "A9b_emptied_left_lost"
+description = "Rerun of A9 after its test: drop the left rows of a claim left holding nothing"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+old = '''            emptied.extend((one.name, row) for row in left)'''
+new = '''            pass'''
+
+[[rows]]
+id = "B1_engine_stale_unchecked"
+description = "The bridge engine does not read the owned entries again before its first move"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''    if now != planned:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B2_foreign_host_indexed"
+description = "Index an export entry whose Location names another machine, which raises out of the index"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+old = '''        try:
+            locations.location_to_path(recorded)
+        except locations.LocationDecodeError:
+            continue
+        found.append'''
+new = '''        found.append'''
+
+[[rows]]
+id = "B3_owned_unresolved_at_gate"
+description = "The bridge verb does not find the owned tracks in the export before the gate"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''    split, emptied = landing.owned_in_export(cfg, split, export)'''
+new = '''    emptied = ()'''
+
+[[rows]]
+id = "B4_bridge_owned_dropped"
+description = "The intake file's playlist names no owned TrackID, the new files alone"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+old = '''            else:
+                held.append(member)
+        return list(dict.fromkeys(held))'''
+new = '''        return list(dict.fromkeys(held))'''
+
+[[rows]]
+id = "B5_bridge_record_no_account"
+description = "The intake file's record names no account, so a rerun cannot find what it mirrored"
+file = "src/cratekit/intake/ingest.py"
+surface = "user"
+old = '''                INBOX_ACCOUNT_KEY: one.account,'''
+new = '''                INBOX_ACCOUNT_KEY: "",'''
+
+[[rows]]
+id = "N1_native_owned_unwritten"
+description = "The native commit joins no owned row to its playlist, the new rows alone"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''                        member.content_id
+                        if member.target is None'''
+new = '''                        ""
+                        if member.target is None'''
+
+[[rows]]
+id = "N2_native_record_no_pass"
+description = "The native landing's record names no pass, so a rerun cannot find what it mirrored"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''                ingest.INBOX_PASS_KEY: plan.pass_name or "",'''
+new = '''                ingest.INBOX_PASS_KEY: "",'''
+
+[[rows]]
+id = "N3_native_owned_not_found"
+description = "The native verb asks no candidate row for the owned tracks, so every one is left"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''        cfg, named, native.candidate_rows(db, names)'''
+new = '''        cfg, named, ()'''
+
+[[rows]]
+id = "N4_native_dropped_left_lost"
+description = "A native playlist holding nothing writable drops its left rows"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''            dropped.extend((one.name, row) for row in left)'''
+new = '''            pass'''
