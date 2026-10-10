@@ -37041,3 +37041,160 @@ writes on an unvalidated version until someone validates it.
 **Closes when:** what rekordbox derives ContentLink from is known, or the
 validation of a new rekordbox version compares the value on its first own
 import with the majority. Ledger only.
+
+---
+
+## R-971. A native landing writes the vox My Tag and not the male vox or female vox one
+
+**Found:** at the review of #296, U127, 2026-10-10.
+
+**The mechanism.** `native._vox_plan` asks `metadata_cli.vocal_tag_values`
+with no gender, so a landed row clearing the cut carries `vox` alone. The
+vocals verb reads `voxgender` and writes `male vox` or `female vox` beside
+`vox` from the same score. The brief named the `vox` tag only, which is the
+one adoption reads, so the landing keeps to it, and nothing on the screen or
+in the warnings names the gender tags as owed.
+
+**Measured cost.** A landed vocal track is missing from a My Tag filter on
+`male vox` or `female vox` until `crate metadata mytags-vocals --apply` runs.
+No playlist Cratekit writes reads the gender tags. How many landed rows carry
+a `voxgender` was not measured.
+
+**Closes when:** the author says whether a landing writes the gender tags too,
+which is reading `voxgender` in the same open and passing it through, or says
+the verb owns them. Ledger only, it is a filter a person reads and no write
+or workflow depends on it.
+
+---
+
+## R-972. intake file on the xml bridge names no vox My Tag step owed
+
+**Found:** at the build of #296, U127, 2026-10-10.
+
+**The mechanism.** The bridge's `intake land` names `metadata mytags-vocals`
+on its gate screen (U127). `intake file` on the bridge writes an intake file
+and asks no gate, so there is no screen to carry the line, and its envelope
+gives no warning about the tag either. The brief named the bridge landing's
+gate screen, and a warning there would move every bridge `intake file`
+envelope's warning list.
+
+**Measured cost.** A single file filed on the bridge joins rekordbox with no
+`vox` tag and nothing says so; the next `metadata mytags-vocals --apply`
+tags it. Not driven against a calibrated bridge library.
+
+**Closes when:** the bridge `intake file` envelope carries the same line as a
+note, or every library's intake tree is native and the bridge is retired.
+Ledger only, the step is the same one the bridge landing names.
+
+---
+
+## R-973. A native plan opens each added file's tags twice, once for the title and once for the score
+
+**Found:** at the review of #296, U127, 2026-10-10.
+
+**The mechanism.** `native.plan_rows` reads each file's title through
+`ingest.file_meta`, and `_vox_plan` then reads `voxlevel` through
+`tags.read_vox_from_file`, a second container open. `tags.read_tags` reads
+several fields in one open, and `file_meta` does not expose it.
+
+**Measured cost.** Not measured. One extra open per added file per plan, and
+a landing plans twice, once for the gate and once at the apply. The batches
+landed so far are tens of files on the library volume.
+
+**Closes when:** `file_meta` reads `voxlevel` in its own open and the plan
+takes it from there, or a timed landing of a large batch shows the open is
+noise. Ledger only, a cost and not a defect.
+
+---
+
+## R-974. A downloaded row whose file the library holds by now is left out of the mirror
+
+**Found:** by U128 on `relay/295`, 2026-10-10, scoping the claim to the planned files.
+
+**The mechanism.** A row the report called missing or offered is tied only to
+the files this landing planned. When its file is in the library by another
+route, landed by a different pass after the job ran or accepted at review as a
+library file, no planned file answers it, and the mirror lists it as left,
+"neither owned nor landed by this landing", though the library holds it. The
+set playlist asks the library again for such a row through `_LibraryView`; the
+account playlists do not, which keeps a landing from indexing the whole
+library for every pass.
+
+**Measured cost.** Not driven. The warning names the track and its reason, so
+nothing is silently absent, and the sentence claims only what this landing did.
+
+**Closes when:** the claim asks the library, with the person's review answers
+read back, for a carried row no planned file answers, the set playlist's rule.
+Ledger only.
+
+---
+
+## R-975. A pass that downloaded nothing gives its account playlists no mirror
+
+**Found:** by U128 on `relay/295`, 2026-10-10, scoping the landing.
+
+**The mechanism.** The mirror is written by a landing, and a landing of an
+empty staging folder is a plan of nothing that writes nothing, so a pass whose
+every account playlist the library already owned lands no INBOX playlist for
+any of them. A playlist fully owned in a pass where another playlist
+downloaded something is mirrored, since that landing writes it.
+
+**Measured cost.** Not driven against a real pass. The rerun scenarios
+confirm an empty landing writes nothing.
+
+**Closes when:** a verb writes the mirror of a pass with nothing to land, or
+the author says an all owned playlist needs none in INBOX. Ledger only.
+
+---
+
+## R-976. A rerun of a pass lands its late files under a second playlist rather than the mirror
+
+**Found:** by U128 on `relay/295`, 2026-10-10, the conservative call on its rerun rule.
+
+**The mechanism.** A landing records each account playlist it mirrored with
+the account's identifier and the pass. A later landing of the same pass, a
+download that arrived late, holds only its new files for that playlist, so
+nothing it owned is mirrored twice. But the late files land in a playlist of
+their own under the next free name, `Sunset Warmup 2`, rather than joining
+the mirror the first landing made, so the account playlist is whole across two
+INBOX playlists and not in one. Adding to the first would mean finding it live
+by identifier on the native medium and, on the bridge, writing an intake file
+whose playlist of an imported name rekordbox merges or replaces, which no test
+here can show.
+
+**Measured cost.** Driven on the native medium in
+`test_a_rerun_of_the_same_pass_adds_nothing_twice`: the late file is the only
+member of `Sunset Warmup 2`. On the bridge a rerun of a pass is refused while
+its intake file is unimported, and was not driven after an import.
+
+**Closes when:** U130 keeps the two sides in step after the landing, or a
+rerun adds to the recorded mirror when it is live. Ledger only, nothing is
+lost and both playlists say what they hold.
+
+---
+
+## R-977. The routing reads an owned track in an account playlist's mirror as a track to route
+
+**Found:** at the built in review of #295, U128, 2026-10-10.
+
+**The mechanism.** Since U128 an account playlist's INBOX playlist holds the
+tracks the library already owned beside the new ones. `route inbox` plans a
+placement for every track it finds under the intake folder,
+`routing_cli._inbox_keys` on the bridge and the INBOX memberships on the
+native medium, and does not ask whether a track was already filed under BY
+GENRE. So an owned track is routed again. Where its file's genre still names
+the playlist it sits in, the membership writers add nothing, since they add
+only what is absent. Where the file's genre moved since it was filed, which
+773 database rows show in this library, it gains a second genre placement and
+keeps the first. This is the cost R-905 weighed when it chose new tracks only,
+and the author's decision of option (b) accepted the mirror knowing it.
+
+**Measured cost.** Not driven. No `route inbox` was run over a landing that
+mirrored an owned track, on either medium, so how many owned tracks a real
+sync routes a second time, and how many of those land in a second genre, is
+unmeasured.
+
+**Closes when:** `route inbox` leaves a track it finds under INBOX alone when
+the collection already places it under BY GENRE, or the author reads a routed
+mirror and says the second placement is what he wants. Ledger only: it is a
+consequence of a choice the author made, and nothing is lost.
