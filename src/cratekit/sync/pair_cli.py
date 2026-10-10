@@ -1222,16 +1222,9 @@ def sync_pair(ctx) -> Envelope:
         "queued_jobs": [d.queued for d in done if d.queued],
         "marked": sum(1 for d in done if d.marked),
     }
-    sides = [
-        side
-        for side, on in (("rekordbox", on_rekordbox), ("the account", on_account))
-        if on
-    ]
-    skipped = [
-        side
-        for side, on in (("rekordbox", on_rekordbox), ("the account", on_account))
-        if not on
-    ]
+    answered = {"rekordbox": on_rekordbox, "the account": on_account}
+    sides = [side for side, on in answered.items() if on]
+    skipped = [side for side, on in answered.items() if not on]
     message = (
         f"{len(done)} pair(s) synced on {' and '.join(sides)}: "
         f"{totals['rekordbox_added']} added and {totals['rekordbox_removed']} taken off "
