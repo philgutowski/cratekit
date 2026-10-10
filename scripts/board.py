@@ -46,7 +46,13 @@ PROJECT_NUMBER = "2"
 # Status option ids on the project's single-select Status field. Looked up once
 # at startup rather than pinned, because an option id changes if the option is
 # recreated and a pinned id fails silently by writing nothing.
-STATUS_ORDER = ["Ready", "In Progress", "Blocked", "Attended", "Done"]
+STATUS_ORDER = ["Ready", "In Progress", "In review", "Blocked", "Attended", "Done"]
+
+# Statuses that mean somebody holds the card right now. `start` and a lane's
+# builder set In Progress; the relay runner sets In review, its manifest's
+# `in_review_status`, as its first tracker write. Neither can be derived from
+# the graph, so a recomputation keeps them rather than undoing the holder's write.
+UNDERWAY = ("In Progress", "In review")
 
 DEPENDS_RE = re.compile(r"^\*\*Depends on:\*\*\s*(.+)$", re.MULTILINE)
 CLOSES_WITH_RE = re.compile(r"^\*\*Closes with:\*\*\s*(.+)$", re.MULTILINE)
@@ -161,14 +167,15 @@ def derive_status(node: dict, current: str | None) -> str:
         return "Done"
     if node["attended"]:
         return "Attended"
-    if not node["unit"]:
-        # A residual finding waits on whichever unit closes it, and is Ready when
-        # nothing does, because then it is somebody's to pick up directly.
-        return "Blocked" if node["open_deps"] else "Ready"
-    if current == "In Progress":
-        # A unit on a branch stays on a branch. Recomputing it back to Ready
-        # is how a session loses track of work already underway.
-        return "In Progress"
+    if current in UNDERWAY:
+        # A card on a branch stays on a branch, unit or residual, since a lane
+        # builds residual cards too. Recomputing it back to Ready is how a
+        # session loses track of work already underway, and how a sync pulls a
+        # card out from under the runner building it.
+        return current
+    # A residual finding waits on whichever unit closes it, and is Ready when
+    # nothing does, because then it is somebody's to pick up directly. A unit
+    # waits on its dependencies the same way.
     return "Blocked" if node["open_deps"] else "Ready"
 
 
@@ -696,7 +703,7 @@ def cmd_next(args) -> int:
         if n["unit"] and not n["closed"] and not n["open_deps"]
     ]
     in_progress = [
-        n for n in graph.values() if items.get(n["number"], {}).get("status") == "In Progress"
+        n for n in graph.values() if items.get(n["number"], {}).get("status") in UNDERWAY
     ]
     busy = {n["number"] for n in in_progress}
     ready = [n for n in ready if n["number"] not in busy]
