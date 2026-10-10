@@ -1,0 +1,76 @@
+# U119 author's mutation table, third pass: the guards the watcher's review round
+# added. Seven rows, each over the unit's own suite.
+name = "u119-c"
+pass_kind = "light"
+
+[[rows]]
+id = "C1_favorites_entry_binds_first"
+description = "plan_refresh: the record's Favorites entry binds the bucket before its band entries"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''    entries = () if record is None else sorted(record.nodes, key=lambda e: e.sub == sub.id)'''
+new = '''    entries = () if record is None else sorted(record.nodes, key=lambda e: e.sub != sub.id)'''
+
+[[rows]]
+id = "C2_torn_bucket_bound_anyway"
+description = "plan_refresh: a bucket whose record names two live folders is bound to the first"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''        if bucket.id in recorded_folder and bucket.id not in torn
+    }'''
+new = '''        if bucket.id in recorded_folder
+    }'''
+
+[[rows]]
+id = "C3_uncompared_still_compared"
+description = "check: a playlist dimension not compared still counts its differences, so the tree reads unconverged"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py", "tests/test_rebuild.py"]
+old = '''    uncompared = _uncompared_playlist_subs(declared, not_compared)
+    if uncompared:'''
+new = '''    uncompared = _uncompared_playlist_subs(declared, not_compared)
+    if False:'''
+
+[[rows]]
+id = "C4_favorites_beside_renamed_folder"
+description = "rebuild_tree: a first Favorites is made under the declared name beside a renamed folder"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''        more, second_plan = _under_recorded_folders(more, second_plan, record_now, standing_now)
+'''
+new = ''''''
+
+[[rows]]
+id = "C5_interruption_unreported"
+description = "apply_refresh: a failure after the additions landed is raised bare, the additions unreported"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''        except Exception as exc:
+            raise RefreshInterrupted(landed) from exc'''
+new = '''        except Exception:
+            raise'''
+
+[[rows]]
+id = "C6_skip_unsaid"
+description = "favorites_warnings: a refresh that did not run at an adoption's end is not said"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''    skipped = str(kept.get("skipped") or "")
+    if skipped:'''
+new = '''    skipped = str(kept.get("skipped") or "")
+    if False:'''
+
+[[rows]]
+id = "C7_partial_dropped"
+description = "refresh_additive: the additions an interrupted refresh committed are reported as none"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''            return AdditiveOutcome(refreshed=exc.partial, skipped=str(exc.__cause__ or exc))'''
+new = '''            return AdditiveOutcome(skipped=str(exc.__cause__ or exc))'''

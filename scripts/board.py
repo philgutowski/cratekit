@@ -46,7 +46,13 @@ PROJECT_NUMBER = "2"
 # Status option ids on the project's single-select Status field. Looked up once
 # at startup rather than pinned, because an option id changes if the option is
 # recreated and a pinned id fails silently by writing nothing.
-STATUS_ORDER = ["Ready", "In Progress", "Blocked", "Attended", "Done"]
+STATUS_ORDER = ["Ready", "In Progress", "In review", "Blocked", "Attended", "Done"]
+
+# Statuses that mean somebody holds the card right now. `start` and a lane's
+# builder set In Progress; the relay runner sets In review, its manifest's
+# `in_review_status`, as its first tracker write. Neither can be derived from
+# the graph, so a recomputation keeps them rather than undoing the holder's write.
+UNDERWAY = ("In Progress", "In review")
 
 DEPENDS_RE = re.compile(r"^\*\*Depends on:\*\*\s*(.+)$", re.MULTILINE)
 CLOSES_WITH_RE = re.compile(r"^\*\*Closes with:\*\*\s*(.+)$", re.MULTILINE)
@@ -156,19 +162,25 @@ def build_graph(issues: list[dict]) -> dict:
 
 
 def derive_status(node: dict, current: str | None) -> str:
-    """What the board should say, from closure state and the graph alone."""
+    """What the board should say, from closure state, the graph, and a hold.
+
+    Closure state wins. Otherwise a card somebody holds (UNDERWAY) keeps the
+    status it holds, because no graph can derive who is building what; every
+    other card is derived from the graph alone.
+    """
     if node["closed"]:
         return "Done"
+    if current in UNDERWAY:
+        # A card on a branch stays on a branch, unit, residual or attended, since
+        # a lane builds residual cards too and an attended unit is still built.
+        # Recomputing it back is how a session loses track of work already
+        # underway, and how a sync pulls a card out from under the runner.
+        return current
     if node["attended"]:
         return "Attended"
-    if not node["unit"]:
-        # A residual finding waits on whichever unit closes it, and is Ready when
-        # nothing does, because then it is somebody's to pick up directly.
-        return "Blocked" if node["open_deps"] else "Ready"
-    if current == "In Progress":
-        # A unit on a branch stays on a branch. Recomputing it back to Ready
-        # is how a session loses track of work already underway.
-        return "In Progress"
+    # A residual finding waits on whichever unit closes it, and is Ready when
+    # nothing does, because then it is somebody's to pick up directly. A unit
+    # waits on its dependencies the same way.
     return "Blocked" if node["open_deps"] else "Ready"
 
 
@@ -696,16 +708,20 @@ def cmd_next(args) -> int:
         if n["unit"] and not n["closed"] and not n["open_deps"]
     ]
     in_progress = [
-        n for n in graph.values() if items.get(n["number"], {}).get("status") == "In Progress"
+        n for n in graph.values() if items.get(n["number"], {}).get("status") in UNDERWAY
     ]
     busy = {n["number"] for n in in_progress}
     ready = [n for n in ready if n["number"] not in busy]
     ready.sort(key=lambda n: (-n["reach"], -len(n["unblocks"]), n["number"]))
 
     if in_progress:
-        print("Already in progress, finish this before starting anything:")
+        # In review is the relay runner's hold and In Progress a session's or a
+        # lane's, so name which, rather than tell a reader to finish a card a
+        # background run owns.
+        print("Already underway, never start one of these again:")
         for node in in_progress:
-            print(f"  #{node['number']:<3} {node['title']}")
+            status = items[node["number"]]["status"]
+            print(f"  #{node['number']:<3} {status:<11} {node['title']}")
         print()
 
     if not ready:

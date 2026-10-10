@@ -1,0 +1,131 @@
+{
+  "name": "u119-b",
+  "pass_kind": "light",
+  "branch": "fable/276-every-genre-folder-has",
+  "head": "b086709",
+  "when": "2026-10-10 04:33 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 13049,
+  "baseline_exit": 0,
+  "pytest_runs": 7,
+  "state_guarded": "~/Library/Application Support/cratekit (365158 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/write/genre_favorites.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/write/genre_favorites.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "9e45f43388439660",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 13049,
+    "baseline_collected": 13049,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "G5r_favorites_counted_as_members",
+      "description": "plan_refresh: the folder's own Favorites counts among the folder's members",
+      "file": "src/cratekit/write/genre_favorites.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "361eeb30b54c8483",
+      "subset": [
+        "tests/test_genre_favorites.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 36,
+      "baseline_collected": 36,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_genre_favorites.py::test_a_favourite_sitting_only_in_favorites_after_leaving_its_band_is_removed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if favorites_node is not None and node.playlist_id == favorites_node.playlist_id:\n                continue\n            members.update(node.content_ids)",
+      "new": "            members.update(node.content_ids)"
+    },
+    {
+      "id": "G12r_removed_namesake_written_into",
+      "description": "_playlist_row: a removed Favorites of the name under the folder is written into",
+      "file": "src/cratekit/write/genre_favorites.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c91525157cac2ef3",
+      "subset": [
+        "tests/test_genre_favorites.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 36,
+      "baseline_collected": 36,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_genre_favorites.py::test_a_removed_favorites_under_the_folder_is_not_written_into"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    for row in list(db.get_playlist(Name=folder.playlist_display)):\n        if rb_writer.is_folder(row) or rb_writer.node_removed(row):\n            continue",
+      "new": "    for row in list(db.get_playlist(Name=folder.playlist_display)):\n        if rb_writer.is_folder(row):\n            continue"
+    },
+    {
+      "id": "A1r_adoption_skips_refresh",
+      "description": "handle: an adoption that filed a track runs no additive refresh",
+      "file": "src/cratekit/adopt/apply_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "18a9b9e81bbcf16b",
+      "subset": [
+        "tests/test_genre_favorites_adoption.py",
+        "tests/test_adopt_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 29,
+      "baseline_collected": 29,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_genre_favorites_adoption.py::test_an_adoption_that_files_a_favourite_puts_it_in_its_folders_favorites",
+        "tests/test_genre_favorites_adoption.py::test_an_adoption_with_no_source_playlist_files_its_tracks_and_says_the_refresh_skipped"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if membership.added:\n        outcome = genre_favorites.refresh_additive(",
+      "new": "    if False:\n        outcome = genre_favorites.refresh_additive("
+    }
+  ],
+  "dropped": []
+}

@@ -97,7 +97,8 @@ from cratekit.core import (
 )
 from cratekit.core.cause import Scope, refuse
 from cratekit.core.exit_codes import Remedy
-from cratekit.write import routing_pass, trees
+from cratekit.write import genre_favorites, routing_pass, trees
+from cratekit.write.tree_read import DeclaredPlacement, TreeNode, read_tree
 
 logger = logging.getLogger(__name__)
 
@@ -142,23 +143,6 @@ class Truth:
     genre: str | None = None
     energy: int | None = None
     voxlevel: int | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class DeclaredPlacement:
-    """One file and the ONE destination the declaration puts it in.
-
-    ``bucket`` and ``sub`` are stable taxonomy identifiers, never display names
-    (R19, D5). A track that belongs in two places, which is what an additive
-    sub-playlist means, produces two of these rather than one carrying a list:
-    the pair is the unit the check compares and the write plans on, and folding
-    them would make "this track is missing from one of its two playlists"
-    inexpressible.
-    """
-
-    location: str
-    bucket: str
-    sub: str
 
 
 def read_truth(path: Path) -> Truth:
@@ -262,7 +246,14 @@ def derive_from_taxonomy(
     and is NAMED in the second return value, so a reader of a converged answer
     can see what was not compared rather than being told everything matched.
     """
-    additive = tuple(entry for entry in declared.sub_classes if entry.additive)
+    # THE VOCAL CLASSES ONLY (U119). A class derived from a playlist is derived
+    # by the genre favorites engine from the database, not from a file reading,
+    # and the callers that hold a handle add its placements beside these.
+    additive = tuple(
+        entry
+        for entry in declared.sub_classes
+        if entry.additive and entry.signal == taxonomy.SIGNAL_VOX
+    )
     unknown = sorted(entry.id for entry in additive if entry.id != trees.VOX_SUB_CLASS)
     if unknown:
         raise refuse(
@@ -312,7 +303,9 @@ def not_derived(
     alone, never on the readings, which is what lets a surface that never held
     the derivation's report still say what it left out (R-316).
     """
-    additive = any(entry.additive for entry in declared.sub_classes)
+    additive = any(
+        entry.additive and entry.signal == taxonomy.SIGNAL_VOX for entry in declared.sub_classes
+    )
     return (VOCAL_DIMENSION,) if additive and vocal_threshold is None else ()
 
 
@@ -345,6 +338,46 @@ def not_compared_warnings(not_compared: Iterable[str]) -> tuple[dict[str, str], 
     )
 
 
+def _uncompared_subs(declared: taxonomy.Taxonomy, not_compared: Sequence[str]) -> set[str]:
+    """The sub class ids whose dimension a run named as not compared."""
+    skipped: set[str] = set()
+    if VOCAL_DIMENSION in tuple(not_compared):
+        skipped.update(
+            entry.id
+            for entry in declared.sub_classes
+            if entry.additive and entry.signal == taxonomy.SIGNAL_VOX
+        )
+    if genre_favorites.FAVORITES_DIMENSION in tuple(not_compared):
+        skipped.update(
+            entry.id
+            for entry in declared.sub_classes
+            if entry.additive and entry.signal == taxonomy.SIGNAL_PLAYLIST
+        )
+    return skipped
+
+
+def _uncompared_playlist_subs(
+    declared: taxonomy.Taxonomy, not_compared: Sequence[str]
+) -> set[str]:
+    """The playlist signal classes whose source this run could not read (U119).
+
+    THE FAVOURITES AND NOT THE VOCAL SUB. A vocal playlist nothing compared
+    keeps its members in the report as unexpected, which is the contract the
+    vocal dimension has always had and ``left_behind`` filters. The favourites'
+    source is a playlist a person can remove or empty on any day, and a tree
+    that read unconverged over that would refuse the very refresh that reads
+    the source again, so their differences are left out of the comparison
+    while their destinations stay resolved and are never somebody's own.
+    """
+    if genre_favorites.FAVORITES_DIMENSION not in tuple(not_compared):
+        return set()
+    return {
+        entry.id
+        for entry in declared.sub_classes
+        if entry.additive and entry.signal == taxonomy.SIGNAL_PLAYLIST
+    }
+
+
 def left_behind(
     after: "ConvergenceReport", declared: taxonomy.Taxonomy
 ) -> tuple["Difference", ...]:
@@ -357,9 +390,9 @@ def left_behind(
     and naming those as leftovers would tell a person to empty a playlist that
     is right. The gap already has its own warning, which says nothing checked.
     """
-    if VOCAL_DIMENSION not in after.not_compared:
+    skipped = _uncompared_subs(declared, after.not_compared)
+    if not skipped:
         return after.unexpected
-    skipped = {entry.id for entry in declared.sub_classes if entry.additive}
     return tuple(entry for entry in after.unexpected if entry.sub not in skipped)
 
 
@@ -518,98 +551,6 @@ def declared_membership(
 # ---------------------------------------------------------------------------
 # What the database actually holds
 # ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True, slots=True)
-class TreeNode:
-    """One playlist inside a governed tree, its folder, and what it holds.
-
-    Both identifiers AND both display names, deliberately. The identifiers are
-    what a destination is resolved through, so a rename cannot orphan it; the
-    display names are what the membership writer's find-or-create targets, so
-    they are what a plan has to be phrased in. Carrying only one of the two
-    would mean re-reading the database to get the other, from a walk that has
-    already been done.
-    """
-
-    folder_id: str
-    folder_display: str
-    playlist_id: str
-    playlist_display: str
-    content_ids: frozenset[str] = frozenset()
-    #: Every content identifier this playlist holds MORE THAN ONE row for.
-    #:
-    #: Carried beside the set rather than being lost inside it. A frozenset over
-    #: the rows answers "is this track in this playlist", which is the question
-    #: the comparison asks, and silently answers "yes" for a track sitting there
-    #: twice. Two ``djmdSongPlaylist`` rows for one pair is a doubled tree inside
-    #: one playlist: rekordbox shows the track twice, removing it once leaves the
-    #: other, and the additive write cannot take either away. The check that
-    #: exists to catch a doubled tree could not see doubling at this depth at all,
-    #: and reported such a tree converged.
-    doubled: frozenset[str] = frozenset()
-    #: Whether rekordbox removed this playlist or the folder it sits in. The
-    #: binding's lookup hands a removed node back beside the live ones, and
-    #: this walk reports it as it always did, since the comparison that reads
-    #: it was argued over what the lookup returns. The flag is for a reader
-    #: asking where a track SITS, which a playlist nobody can see is not.
-    removed: bool = False
-
-
-def read_tree(db: Any, root_id: str) -> tuple[TreeNode, ...]:
-    """Every playlist two levels under the adopted root, with its membership.
-
-    THE WALK GOES DOWN FROM THE ADOPTED ROOT BY IDENTIFIER, never by name. A walk
-    that resolved the tree by its display name would find a namesake anywhere in
-    the library and report on that instead, which is the silent parallel tree
-    arriving through the check meant to detect it.
-
-    TWO LEVELS, because that is the depth the taxonomy declares: a tree holds
-    folders and a folder holds playlists. A playlist sitting directly under the
-    root is not a shape any declared destination can name, so its membership is
-    not part of this comparison and is left alone rather than being reported as a
-    difference nobody can act on.
-
-    The folder list is MATERIALIZED before the inner queries run. Iterating one
-    query while issuing others on the same session is the shape that made a
-    previous unit's row index report an empty library on its second pass.
-
-    A MEMBERSHIP MARKED REMOVED IS NOT HELD (R-758). The binding's query hands
-    back a soft deleted row beside the live ones and rekordbox shows no track
-    for it, so a track moved out of a playlist would still read as sitting
-    there, and the plan that moved it would plan the same move for ever.
-    """
-    out: list[TreeNode] = []
-    folders = list(db.get_playlist(ParentID=str(root_id)))
-    for folder in folders:
-        playlists = list(db.get_playlist(ParentID=str(folder.ID)))
-        for playlist in playlists:
-            members = [
-                str(row.ContentID)
-                for row in db.get_playlist_songs(PlaylistID=str(playlist.ID))
-                if not rb_writer.membership_removed(row)
-            ]
-            # COUNTED BEFORE IT IS COLLAPSED. The set is what the comparison
-            # needs; the multiplicity is a fact that only exists before the set
-            # is taken, and it is the one this walk used to throw away.
-            seen: dict[str, int] = {}
-            for content_id in members:
-                seen[content_id] = seen.get(content_id, 0) + 1
-            out.append(
-                TreeNode(
-                    folder_id=str(folder.ID),
-                    folder_display=str(folder.Name),
-                    playlist_id=str(playlist.ID),
-                    playlist_display=str(playlist.Name),
-                    content_ids=frozenset(seen),
-                    doubled=frozenset(
-                        content_id for content_id, count in seen.items() if count > 1
-                    ),
-                    removed=rb_writer.node_removed(folder)
-                    or rb_writer.node_removed(playlist),
-                )
-            )
-    return tuple(out)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1206,6 +1147,13 @@ def check(
             for entry in unexpected
         ]
 
+    # A PLAYLIST DIMENSION THIS RUN COULD NOT READ IS NOT A DIFFERENCE (U119).
+    # Its destinations stayed resolved above, so a Favorites is never reported
+    # as somebody's own playlist; what it holds is simply not judged.
+    uncompared = _uncompared_playlist_subs(declared, not_compared)
+    if uncompared:
+        missing = [entry for entry in missing if entry.sub not in uncompared]
+        unexpected = [entry for entry in unexpected if entry.sub not in uncompared]
     return ConvergenceReport(
         tree_id=tree_id,
         root_id=root_id,
@@ -1483,6 +1431,72 @@ def plan_destinations(
     return destinations, plan
 
 
+def _under_recorded_folders(
+    destinations: Sequence[Destination],
+    plan: dict[tuple[str, str], list[str]],
+    record: convergence.TreeConvergence | None,
+    standing: Sequence[TreeNode],
+) -> tuple[tuple[Destination, ...], dict[tuple[str, str], list[str]]]:
+    """A Favorites with no node of its own goes under the folder its bucket's record binds.
+
+    A FOLDER SOMEBODY RENAMED HAS ITS BANDS RECORDED AND NO FAVORITES YET, which
+    is every folder on first rollout. Resolving the Favorites by the bucket's
+    declared name would make a second folder under that name holding only
+    Favorites, record it, and hand the next refresh a folder with no members,
+    so every favourite in the real folder would read as a removal. The bucket's
+    recorded folder, under whatever rekordbox now calls it, is where the
+    Favorites goes.
+    """
+    if record is None:
+        return tuple(destinations), plan
+    display_of = {node.folder_id: node.folder_display for node in standing}
+    recorded_folder: dict[str, str] = {}
+    for entry in record.nodes:
+        if entry.folder_id in display_of:
+            recorded_folder.setdefault(entry.bucket, entry.folder_id)
+    moved: list[Destination] = []
+    for entry in destinations:
+        folder_id = recorded_folder.get(entry.bucket)
+        if entry.node is not None or folder_id is None:
+            moved.append(entry)
+            continue
+        folder_now = display_of[folder_id]
+        if folder_now != entry.folder:
+            locations = plan.pop((entry.folder, entry.playlist), [])
+            plan.setdefault((folder_now, entry.playlist), []).extend(locations)
+            entry = replace(entry, folder=folder_now, renamed=True)
+        moved.append(entry)
+    return tuple(moved), plan
+
+
+def with_favorites(
+    cfg: config.Config,
+    db: Any,
+    declared: taxonomy.Taxonomy,
+    registry: tree_registry.Registry,
+    rows: Sequence[trees.ContentRow],
+    placements: Sequence[DeclaredPlacement],
+    not_compared: Sequence[str],
+    *,
+    tree_id: str,
+) -> tuple[tuple[DeclaredPlacement, ...], tuple[str, ...]]:
+    """The derived placements with the genre Favorites beside them (U119).
+
+    THE ONE DIMENSION DERIVED FROM THE DATABASE RATHER THAN FROM THE FILES. The
+    file truth says which band and which vocal sub a track belongs in; which
+    tracks are favourites is a playlist, and which folder a favourite sits in
+    is the tree, so the genre favorites engine reads both on the handle this
+    run holds. Only for the routing tree the class is declared under; any
+    other governed tree is unchanged. A source the engine cannot read names
+    the dimension as not compared, the vocal gap's shape, so the check reads
+    "not compared" over it and never "matching".
+    """
+    if tree_id != declared.tree.id or genre_favorites.favorites_class(declared) is None:
+        return tuple(placements), tuple(not_compared)
+    extra, gaps = genre_favorites.placements(cfg, db, declared, registry, rows)
+    return (*placements, *extra), (*not_compared, *gaps)
+
+
 def report_convergence(
     cfg: config.Config,
     db: Any,
@@ -1503,12 +1517,16 @@ def report_convergence(
     caller names, which is the same reason the medium check reads the registry:
     a caller that supplies the answer supplies the answer to the question.
     """
+    collection = tuple(rows)
     placements, gaps = declared_membership(
         cfg,
         declared,
         source=registry.derivation_source(tree_id),
         vocal_threshold=vocal_threshold,
         truth=truth,
+    )
+    placements, gaps = with_favorites(
+        cfg, db, declared, registry, collection, placements, gaps, tree_id=tree_id
     )
     return check(
         cfg,
@@ -1517,7 +1535,7 @@ def report_convergence(
         registry=registry,
         declared=declared,
         placements=placements,
-        rows=rows,
+        rows=collection,
         root_exists=root_exists,
         prefix_map=prefix_map,
         not_compared=gaps,
@@ -1619,12 +1637,20 @@ def rebuild_tree(
     assert_no_latched_restore(cfg)
     collection = tuple(rows)
     root_id = tree_registry.anchored_root(tree_id, registry, root_exists=root_exists)
-    placements, not_compared = declared_membership(
+    derived, not_compared = declared_membership(
         cfg,
         declared,
         source=source,
         vocal_threshold=vocal_threshold,
         truth=truth,
+    )
+    # THE GENRE FAVORITES ARE READ OFF THE TREE AS IT STANDS for the before
+    # check, and again off the tree as this run leaves it for the write and
+    # the after check (U119). A favourite whose tag moved it to another folder
+    # is in its new folder's Favorites only once the first write has moved it,
+    # so the second derivation is what the write and the clearing read.
+    placements, not_compared = with_favorites(
+        cfg, db, declared, registry, collection, derived, not_compared, tree_id=tree_id
     )
 
     before = check(
@@ -1643,7 +1669,7 @@ def rebuild_tree(
     record = convergence.read(cfg).tree(tree_id)
     standing = read_tree(db, root_id)
     destinations, plan = plan_destinations(
-        declared, placements, standing, record, tree_id=tree_id
+        declared, derived, standing, record, tree_id=tree_id
     )
 
     if not plan:
@@ -1681,6 +1707,50 @@ def rebuild_tree(
         purpose=convergence.Purpose.REBUILD,
         intent=session.Intent.RECOVERY,
     )
+
+    # THE SECOND PASS, THE GENRE FAVORITES OVER THE TREE THE FIRST PASS LEFT
+    # (U119). Derived from the database rather than from the files, so it is
+    # taken only now, and written through the same writer under the same
+    # purpose, in a session of its own. Its destinations join the record and
+    # its placements join the after check, so the clearing reads the tree the
+    # favourites were filed into and not the one they were read from.
+    placements, not_compared = with_favorites(
+        cfg, db, declared, registry, collection, derived, not_compared, tree_id=tree_id
+    )
+    favorites = tuple(entry for entry in placements if entry not in set(derived))
+    if favorites:
+        standing_now = read_tree(db, root_id)
+        record_now = convergence.read(cfg).tree(tree_id)
+        more, second_plan = plan_destinations(
+            declared, favorites, standing_now, record_now, tree_id=tree_id
+        )
+        more, second_plan = _under_recorded_folders(more, second_plan, record_now, standing_now)
+        second = trees.write_tree_membership(
+            cfg,
+            db,
+            tree_id=tree_id,
+            registry=registry,
+            plan=second_plan,
+            rows=collection,
+            root_exists=root_exists,
+            prefix_map=prefix_map,
+            analysis_roots=analysis_roots,
+            workflow=workflow,
+            purpose=convergence.Purpose.REBUILD,
+            intent=session.Intent.RECOVERY,
+        )
+        membership = replace(
+            membership,
+            added=membership.added + second.added,
+            already_present=membership.already_present + second.already_present,
+            skipped=(*membership.skipped, *second.skipped),
+            playlists=(*membership.playlists, *second.playlists),
+        )
+        known = {(entry.bucket, entry.sub) for entry in destinations}
+        destinations = (
+            *destinations,
+            *(entry for entry in more if (entry.bucket, entry.sub) not in known),
+        )
 
     # THE NODE RECORD COMES FROM THE DESTINATION'S OWN NODE FIRST, and from the
     # freshly read tree only for the destinations that had none. Rebuilding the
@@ -1932,4 +2002,5 @@ __all__ = [
     "report_convergence",
     "resolve_destinations",
     "undeclared_destinations",
+    "with_favorites",
 ]

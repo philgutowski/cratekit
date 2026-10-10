@@ -72,8 +72,9 @@ def problems_from(raw: dict, mutate) -> tuple[str, ...]:
 def test_the_shipped_default_loads(default):
     # 2 since R-797: the shipped template declares a former place, and a
     # template has to state the version that knows one. 3 since U118, for a
-    # split place, the same way.
-    assert default.schema_version == 3
+    # split place, the same way. 4 since U119, for a sub class derived from a
+    # playlist, the same way again.
+    assert default.schema_version == 4
     assert default.buckets
     assert default.fallback.bucket in default.bucket_ids()
 
@@ -104,7 +105,9 @@ def test_the_reserved_and_derived_subs_carry_different_policies(default):
     assert SubPolicy.MANUAL in policies.values()
     assert SubPolicy.DERIVED in policies.values()
     derived = [entry for entry in default.sub_classes if entry.policy is SubPolicy.DERIVED]
-    assert len(derived) == 1 and derived[0].additive is True
+    # TWO since U119, the vocal class and the genre Favorites, each additive and
+    # each on its own signal.
+    assert len(derived) == 2 and all(entry.additive for entry in derived)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -822,6 +825,7 @@ def test_a_version_1_template_with_no_former_place_still_loads(default_raw, seco
         for bucket in data["bucket"]:
             bucket.pop("formerly", None)
             bucket.pop("split_from", None)
+        data["sub_class"] = [c for c in data["sub_class"] if c.get("signal") != "playlist"]
 
     assert build_taxonomy(mutated(default_raw, mutate)).schema_version == 1
     assert second.schema_version == 1
@@ -1029,6 +1033,7 @@ def test_a_version_2_template_with_no_split_place_still_loads(default_raw):
     def mutate(data):
         data["schema_version"] = 2
         del _splitter(data)["split_from"]
+        data["sub_class"] = [c for c in data["sub_class"] if c.get("signal") != "playlist"]
 
     assert build_taxonomy(mutated(default_raw, mutate)).schema_version == 2
 
@@ -1106,3 +1111,69 @@ def test_a_half_declared_inspiration_folder_is_refused_as_strictly_as_a_mandator
     assert any("[inspiration] id" in p for p in emptied)
     assert any("[inspiration] display" in p for p in emptied)
     assert any("[inspiration] must be a table" in p for p in problems_from(default_raw, not_a_table))
+# U119: a sub class derived from a playlist, beside the vocal one
+# ---------------------------------------------------------------------------
+
+
+def test_the_shipped_default_declares_the_genre_favorites_as_a_playlist_signal(default):
+    """U119: one Favorites playlist in every genre folder, mirroring All Favorites."""
+    favorites = default.sub_class("favorites")
+    assert favorites.policy is SubPolicy.DERIVED and favorites.additive is True
+    assert favorites.present_in == "all_buckets"
+    assert favorites.signal == "playlist"
+    assert favorites.signal_playlist == "All Favorites"
+    assert default.schema_version == 4
+    vox = default.sub_class("with_vox")
+    assert vox.signal == "vox" and vox.signal_playlist == ""
+
+
+def test_two_additive_classes_load_when_their_signals_differ(default):
+    additive = [entry for entry in default.sub_classes if entry.additive]
+    assert sorted(entry.signal for entry in additive) == ["playlist", "vox"]
+
+
+def test_two_additive_classes_on_one_signal_are_refused(default_raw):
+    def second_vocal(d):
+        d["sub_class"].append(
+            {"id": "second_vox", "display": "Second", "policy": "derived", "additive": True}
+        )
+
+    problems = problems_from(default_raw, second_vocal)
+    assert any("'vox' signal" in p and "only one is supported per signal" in p for p in problems)
+
+
+def test_a_playlist_signal_names_its_playlist_and_is_derived_and_additive(default_raw):
+    def no_playlist(d):
+        d["sub_class"][2]["signal_playlist"] = ""
+
+    def manual(d):
+        d["sub_class"][2]["policy"] = "manual"
+        d["sub_class"][2]["additive"] = False
+
+    assert any("signal_playlist" in p for p in problems_from(default_raw, no_playlist))
+    assert any("derived and additive" in p for p in problems_from(default_raw, manual))
+
+
+def test_a_playlist_name_on_a_vocal_class_and_an_unknown_signal_are_refused(default_raw):
+    def misplaced(d):
+        d["sub_class"][1]["signal_playlist"] = "All Favorites"
+
+    def unknown(d):
+        d["sub_class"][2]["signal"] = "colour"
+
+    assert any("only meaningful for a playlist signal" in p for p in problems_from(default_raw, misplaced))
+    assert any("signal 'colour'" in p for p in problems_from(default_raw, unknown))
+
+
+def test_a_playlist_signal_under_schema_version_three_is_refused_by_name(default_raw):
+    def older(d):
+        d["schema_version"] = 3
+
+    problems = problems_from(default_raw, older)
+    assert any("schema_version = 4" in p for p in problems)
+
+
+def test_a_template_without_the_favorites_class_loads_clean(default_raw):
+    data = mutated(default_raw, lambda d: d["sub_class"].pop(2))
+    built = build_taxonomy(data)
+    assert [entry.id for entry in built.sub_classes if entry.additive] == ["with_vox"]

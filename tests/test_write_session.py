@@ -2625,6 +2625,10 @@ def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recor
         # R-816. A row's genre written from its file, recorded under the
         # content genre key as rows updated.
         "tagging/rows.py::apply_rows",
+        # U119. The genre Favorites refresh: memberships added in one commit
+        # and removed in a second behind one capture, each recorded under the
+        # routing tree as rows created and rows updated.
+        "write/genre_favorites.py::apply_refresh",
         "write/metadata_cli.py::mytags_vocals",
         # R-923. rekordbox's defaults filled on rows a landing left bare,
         # recorded under the content defaults key as rows updated.

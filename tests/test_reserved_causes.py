@@ -5180,7 +5180,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # flags together do not name the DJ, the set and its month. Both are in
     # cause.REASONS and neither is in the reserved table. Population 198 to
     # 200, non-reserved 170 to 172, reserved half UNCHANGED at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (200, 172, 28)
+    # Re-pinned on U119, the genre Favorites, 2026-10-09. TWO slugs, named
+    # rather than counted: favorites-class-undeclared, which the refresh
+    # refuses with when the active taxonomy declares no sub class derived from
+    # a playlist, and favorites-source-missing, which it refuses with when the
+    # playlist that class mirrors is not in the library live or is there twice.
+    # Both are in cause.REASONS and neither is in the reserved table.
+    # Population 198 to 200, non-reserved 170 to 172, reserved half UNCHANGED
+    # at 28.
+    # Re-measured on the merge of main at 07c3ea0 into fable/278, 2026-10-10:
+    # U119's two slugs and U121's two slugs are both in the tree, so the
+    # population is 202, non-reserved 174, reserved half UNCHANGED at 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (202, 174, 28)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -6170,7 +6181,24 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # set-playlist-nothing-to-write are WARNING codes. The session WORKFLOW
     # the backfill is recorded under and the plan KIND its digest is taken
     # under, set-playlist, was a literal already, the account's exclusion.
-    assert (len(literals), len(literals - set(causes))) == (666, 467), (
+    # Re-pinned on U119, the genre Favorites, 2026-10-09: 661 to 668 distinct,
+    # non-keys 464 to 469. SEVEN joined and nothing left, each absent from
+    # `main`'s own `src` by git grep. favorites-class-undeclared and
+    # favorites-source-missing are the keys named in the pin above.
+    # genre-favorites is the session WORKFLOW the refresh is recorded under and
+    # the plan KIND its digest is taken under. favorites-nothing-to-refresh,
+    # favorites-refreshed and favorites-folders-left-alone are the verb's
+    # WARNING codes, and favorites-removals-owed is the adoption resume's.
+    # Re-pinned once more on the same unit's review round: 668 to 669
+    # distinct, non-keys 469 to 470. ONE joined, favorites-unverified, the
+    # adoption resume's second WARNING code, for a read back that disagreed.
+    # And again on the watcher's round: 669 to 670 distinct, non-keys 470 to
+    # 471. ONE joined, favorites-skipped, the resume's third WARNING code, for
+    # a refresh that did not run at an adoption's end.
+    # Re-measured on the merge of main at 07c3ea0 into fable/278, 2026-10-10:
+    # U121's five literals join U119's nine on one tree, 675 distinct and 474
+    # that are not keys, each side's additions as its own pin names them.
+    assert (len(literals), len(literals - set(causes))) == (675, 474), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6297,7 +6325,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # declares, and both the landing and the backfill verb raise them through
     # `cause.refuse` from that one module, so the two verbs spell each slug
     # from one line. It holds no in-range integer.
-    assert (len(without), len(with_own), len(both)) == (12, 27, 13), (
+    # Re-pinned on U119, the genre Favorites, 2026-10-09: without-own 11 to 12,
+    # with-own 26 to 27, the integer half unchanged at 13. Named from this
+    # derivation's own output: `write/genre_favorites.py` joined, and it joined
+    # the without-own half for the searcher's reason above. It names its two
+    # slugs once each, as `CLASS_UNDECLARED` and `SOURCE_MISSING`, resolving to
+    # the causes `cause.py` declares, and raises each through `cause.refuse`
+    # from one function, so the verb, the adoption's end and the rebuild spell
+    # each slug from one line. It holds no in-range integer.
+    # Re-measured on the merge of main at 07c3ea0 into fable/278, 2026-10-10:
+    # both new modules are in the tree, without-own 13, with-own 28, the
+    # integer half unchanged at 13.
+    assert (len(without), len(with_own), len(both)) == (13, 28, 13), (
         f"the named at-risk population moved: {len(without)} modules hold a name "
         f"resolving to a cause declared elsewhere, {len(with_own)} once each "
         f"file's own enum declarations count, {len(both)} of those also hold an "
@@ -6970,7 +7009,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # and session-committed-unverified, and intake/inspiration_cli.py, which
     # refuses with config-unusable and tree-unconverged. Neither holds an
     # in-range integer.
-    assert (len(literal_holders), len(literal_both)) == (139, 29), (
+    # Re-pinned on U119, the genre Favorites, 2026-10-09: holders move 137 to
+    # 139, and the also-holds-an-integer half is UNCHANGED at 29. TWO modules
+    # joined and none left, both new files: write/genre_favorites.py, which
+    # refuses with favorites-class-undeclared, favorites-source-missing,
+    # decision-stale and session-committed-unverified, and
+    # favorites/refresh_cli.py, which refuses with config-unusable. Neither
+    # holds an in-range integer.
+    # Re-measured on the merge of main at 07c3ea0 into fable/278, 2026-10-10:
+    # U121's two modules and U119's two are all in the tree, holders 141, the
+    # also-holds-an-integer half UNCHANGED at 29.
+    assert (len(literal_holders), len(literal_both)) == (141, 29), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

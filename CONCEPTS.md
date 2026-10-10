@@ -385,6 +385,20 @@ leaves All Favorites leaves it at the next refresh. It is a playlist beside the
 energy bands and "with vox", not a folder, because the tree is three levels deep,
 and its membership is independent of "with vox", so a vocal favourite is in both.
 
+Built by U119: declared as the sub class `favorites`, derived and additive
+beside `with_vox`, with `signal = "playlist"` and `signal_playlist = "All
+Favorites"`, under schema version 4, so the loader keeps one additive class
+per signal rather than one in all. The refresh plans every folder against the
+one live playlist of the signal's name, refusing by name when the class is
+undeclared or the source absent or doubled, digests the TARGET state so a
+partial apply re-plans to the same digest, and writes the additions in one
+commit and the removals in a second. `crate favorites refresh` is the one path
+that removes, behind its own explicit gate; the end of an adoption that files
+a track runs the additive half and reports the removals it leaves owed; the
+rebuild and the convergence check take the engine's placements beside the
+vocal ones, so a Favorites playlist is declared membership and a source that
+cannot be read is a dimension not compared.
+
 *Avoid:* reading it as a second favourites signal. All Favorites is the one
 signal; a genre Favorites only files it by the folder the track already sits in.
 

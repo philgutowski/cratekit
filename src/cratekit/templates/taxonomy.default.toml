@@ -52,7 +52,11 @@
 # 3 SINCE U118, the version a template states before it may declare a split
 # place, see the Soul bucket below, for the same reason one version on. A
 # template with no split place may stay at 2.
-schema_version = 3
+#
+# 4 SINCE U119, the version a template states before it may declare a sub class
+# derived from a playlist, the genre Favorites below. A template with no such
+# class may stay at 3.
+schema_version = 4
 
 # KTD14 pins the tree at three levels: a child of ROOT, a folder, a sub-playlist.
 # The XML bridge's indentation constants encode exactly that, so a template
@@ -163,6 +167,25 @@ display = "with vox"
 policy = "derived"
 additive = true
 present_in = "all_buckets"
+
+# The genre Favorites (U119): one playlist named Favorites in every genre
+# folder, holding exactly the tracks of that folder that are also in the
+# playlist signal_playlist names, All Favorites under the Favorites folder.
+# Derived, so it is never edited by hand: a track that leaves All Favorites
+# leaves it at the next refresh, and one added by hand is taken out. It files
+# by the folder a track already sits in, never by re-reading its tag, so it
+# cannot disagree with the tree. Independent of "with vox": a vocal favourite
+# is in its band, "with vox" and Favorites under one genre. Written by
+# crate favorites refresh, by the end of an adoption that files a track, and
+# by the tree rebuild. Delete the section and the refresh refuses by name.
+[[sub_class]]
+id = "favorites"
+display = "Favorites"
+policy = "derived"
+additive = true
+present_in = "all_buckets"
+signal = "playlist"
+signal_playlist = "All Favorites"
 
 # The set-builder's family vocabulary is a PROJECTION off the bucket, not a
 # second genre table. Reading the family off the resolved bucket also fixes a

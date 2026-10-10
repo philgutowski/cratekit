@@ -1,0 +1,40 @@
+# U119 author's mutation table, second pass: the three zero rows of the first
+# table measured again against the tests the zeros bought. No new mutation
+# joins; 25 distinct in all.
+name = "u119-b"
+pass_kind = "light"
+
+[[rows]]
+id = "G5r_favorites_counted_as_members"
+description = "plan_refresh: the folder's own Favorites counts among the folder's members"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''            if favorites_node is not None and node.playlist_id == favorites_node.playlist_id:
+                continue
+            members.update(node.content_ids)'''
+new = '''            members.update(node.content_ids)'''
+
+[[rows]]
+id = "G12r_removed_namesake_written_into"
+description = "_playlist_row: a removed Favorites of the name under the folder is written into"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''    for row in list(db.get_playlist(Name=folder.playlist_display)):
+        if rb_writer.is_folder(row) or rb_writer.node_removed(row):
+            continue'''
+new = '''    for row in list(db.get_playlist(Name=folder.playlist_display)):
+        if rb_writer.is_folder(row):
+            continue'''
+
+[[rows]]
+id = "A1r_adoption_skips_refresh"
+description = "handle: an adoption that filed a track runs no additive refresh"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_genre_favorites_adoption.py", "tests/test_adopt_apply_cli.py"]
+old = '''    if membership.added:
+        outcome = genre_favorites.refresh_additive('''
+new = '''    if False:
+        outcome = genre_favorites.refresh_additive('''

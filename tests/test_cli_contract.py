@@ -1580,6 +1580,14 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # own logic at all. The tree on this fixture has not cut over, so the
         # plan is the empty one over a tree nobody read, which still asks.
         "adopt.move": [],
+        # U119. LAZY, for the rotation's reason: the engine refuses a tree on
+        # the bridge and a library with no source playlist by name before the
+        # gate, so the sample cuts the routing tree over and makes the one
+        # playlist the class mirrors. The tree holds no genre folder on this
+        # fixture, so the plan is empty, the explicit gate is still asked over
+        # it, and the verb ends NO_OP writing nothing. The writing path is
+        # driven in tests/test_genre_favorites.py.
+        "favorites.refresh": _routing_tree_cut_over_with_a_source,
         # U61. The composer takes the favourites source's export, the same
         # document ``sync.favorites`` is driven with below, so its confirm gate
         # is reachable and conformance 3 can drive it. The registry on this
@@ -1963,6 +1971,44 @@ def _finished_set_job_on_a_native_tree() -> list[str]:
     assert code == int(ExitCode.OK), resumed
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), resumed
     return ["--job", job.job_id]
+def _routing_tree_cut_over_with_a_source() -> list[str]:
+    """The routing tree database native and the favourites source present. Answers no arguments."""
+    from datetime import date
+
+    from cratekit.core import rb_writer, tree_registry
+    from tests import cutover_fixtures
+
+    cfg = config.load()
+    declared = taxonomy.default_taxonomy()
+    root_id = cutover_fixtures.one_root(cfg, declared.tree.display)
+    tree_registry.write(
+        cfg,
+        tree_registry.read(cfg).with_record(
+            tree_registry.TreeRecord(
+                tree_id=declared.tree.id,
+                mode=tree_registry.Mode.DATABASE,
+                cutover_on=date(2026, 10, 9),
+                root_id=root_id,
+                source=tree_registry.DerivationSource.TAXONOMY,
+            )
+        ),
+    )
+    source = declared.sub_class("favorites").signal_playlist
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        held = [row for row in handle.get_playlist(Name=source) if not rb_writer.is_folder(row)]
+        playlist = held[0] if held else handle.create_playlist(source)
+        # ONE TRACK, since an emptied source refuses by name before the gate:
+        # a refresh over it would empty every Favorites. The fixture's first
+        # content row, which sits in no genre folder, so the plan still holds
+        # no folder and writes nothing.
+        # A LIST, since the binding's query object is truthy with no rows in it.
+        if not list(handle.get_playlist_songs(PlaylistID=str(playlist.ID))):
+            handle.add_to_playlist(playlist, "1")
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    return []
 
 
 def _intake_cut_over() -> list[str]:
@@ -2202,6 +2248,10 @@ ACKNOWLEDGED_BEFORE_THE_GATE = {
     ),
     "repair.rows": (
         "tests/test_repair_rows.py::"
+        "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
+    ),
+    "favorites.refresh": (
+        "tests/test_genre_favorites.py::"
         "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
     ),
     "tag.suggest": (

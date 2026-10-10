@@ -54,3 +54,14 @@ Fixing this for good means teaching `derive_status` (or the comparison in
 manifest's `in_review_status` rather than hardcoded, so a Relay-owned card in
 review stops reading as drift at all. That has not been done; this file
 documents the workaround until it is.
+
+## Resolved by U122, 2026-10-10
+
+`derive_status` now keeps `In review` and `In Progress`, the pair `UNDERWAY`,
+for any open card, unit, residual or attended, so an in flight card is no
+longer drift and the rule above is retired: an open `In review` card never
+appears in the audit's drift list, so a drift line is a real one and `sync` is
+the right answer to it again. The name is
+written into `scripts/board.py` rather than read from the manifest, which
+lives outside the repository, so a manifest that renames its
+`in_review_status` brings this drift back until `UNDERWAY` follows it.
