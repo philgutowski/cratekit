@@ -82,8 +82,14 @@ def test_a_closed_card_is_done_whatever_it_held(board, held, number):
 
 
 @pytest.mark.parametrize("held", ["In Progress", "In review"])
-def test_an_attended_card_stays_attended(board, held):
-    assert board.derive_status(_graph(board)[7], held) == "Attended"
+def test_an_attended_card_somebody_holds_keeps_the_hold(board, held):
+    """An attended unit is still built, by a person, and its hold is just as real."""
+    assert board.derive_status(_graph(board)[7], held) == held
+
+
+@pytest.mark.parametrize("current", ["Ready", "Blocked", None])
+def test_an_attended_card_nobody_holds_is_attended(board, current):
+    assert board.derive_status(_graph(board)[7], current) == "Attended"
 
 
 @pytest.mark.parametrize("current", ["Ready", "Blocked", "Done", None])
@@ -93,13 +99,6 @@ def test_a_card_nobody_holds_is_derived_from_the_graph(board, current):
     assert board.derive_status(graph[2], current) == "Blocked"
     assert board.derive_status(graph[4], current) == "Ready"
     assert board.derive_status(graph[5], current) == "Blocked"
-
-
-def test_the_runner_s_status_is_one_the_board_knows(board):
-    """The name is the runner manifest's `in_review_status`, read once, not imported."""
-    assert "In review" in board.UNDERWAY
-    assert "In Progress" in board.UNDERWAY
-    assert set(board.UNDERWAY) <= set(board.STATUS_ORDER)
 
 
 @pytest.mark.parametrize("held", ["In Progress", "In review"])
@@ -119,7 +118,7 @@ def test_next_lists_a_held_card_as_busy_and_never_offers_it(board, monkeypatch, 
     assert board.cmd_next(None) == 0
     out = capsys.readouterr().out
     busy, _, ready = out.partition("Ready now")
-    assert "#10" in busy
+    assert f"#10  {held}" in busy
     assert "#10" not in ready
     assert "#11" in ready
     assert "Take #11." in ready

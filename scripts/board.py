@@ -162,17 +162,22 @@ def build_graph(issues: list[dict]) -> dict:
 
 
 def derive_status(node: dict, current: str | None) -> str:
-    """What the board should say, from closure state and the graph alone."""
+    """What the board should say, from closure state, the graph, and a hold.
+
+    Closure state wins. Otherwise a card somebody holds (UNDERWAY) keeps the
+    status it holds, because no graph can derive who is building what; every
+    other card is derived from the graph alone.
+    """
     if node["closed"]:
         return "Done"
+    if current in UNDERWAY:
+        # A card on a branch stays on a branch, unit, residual or attended, since
+        # a lane builds residual cards too and an attended unit is still built.
+        # Recomputing it back is how a session loses track of work already
+        # underway, and how a sync pulls a card out from under the runner.
+        return current
     if node["attended"]:
         return "Attended"
-    if current in UNDERWAY:
-        # A card on a branch stays on a branch, unit or residual, since a lane
-        # builds residual cards too. Recomputing it back to Ready is how a
-        # session loses track of work already underway, and how a sync pulls a
-        # card out from under the runner building it.
-        return current
     # A residual finding waits on whichever unit closes it, and is Ready when
     # nothing does, because then it is somebody's to pick up directly. A unit
     # waits on its dependencies the same way.
@@ -710,9 +715,13 @@ def cmd_next(args) -> int:
     ready.sort(key=lambda n: (-n["reach"], -len(n["unblocks"]), n["number"]))
 
     if in_progress:
-        print("Already in progress, finish this before starting anything:")
+        # In review is the relay runner's hold and In Progress a session's or a
+        # lane's, so name which, rather than tell a reader to finish a card a
+        # background run owns.
+        print("Already underway, never start one of these again:")
         for node in in_progress:
-            print(f"  #{node['number']:<3} {node['title']}")
+            status = items[node["number"]]["status"]
+            print(f"  #{node['number']:<3} {status:<11} {node['title']}")
         print()
 
     if not ready:
