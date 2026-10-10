@@ -422,3 +422,61 @@ def test_the_screen_counts_the_tagged_rows_against_the_cut(calibrated, silence):
     assert refused["cause"]["detail"]["shown"]["vox My Tag"] == (
         "1 of 2 added row(s), each whose voxlevel is at or above the cut 5"
     )
+
+
+def _plan(rows: tuple[native.RowPlan, ...], **fields) -> native.NativePlan:
+    """A plan of these rows and nothing else, for the engine's pure answers."""
+    return native.NativePlan(
+        tree_id="intake",
+        root_id="root",
+        root_name="INBOX",
+        playlist="batch",
+        database=Path("/db"),
+        device_id="d",
+        master_db_id="1",
+        base_drive=None,
+        current_drive=None,
+        rows=rows,
+        link=None,
+        digest="",
+        **fields,
+    )
+
+
+def _added(name: str, **fields) -> native.RowPlan:
+    return native.RowPlan(
+        source=Path(f"/staging/{name}"),
+        target=Path(f"/music/{name}"),
+        action=native.ADD,
+        title=name,
+        folder_path=f"/music/{name}",
+        file_name=name,
+        file_size=1,
+        file_type=1,
+        content_link=None,
+        **fields,
+    )
+
+
+def test_the_engine_digest_covers_each_rows_score_and_answer():
+    """At the engine, where the file's own fingerprint is not in the digest:
+    the same cut and the same file, answered tagged or not, are two plans,
+    and so are two scores with one answer."""
+    cut = {"vox_cut": CUT}
+    tagged = native.identity(_plan((_added("One.flac", voxlevel=60, vox=True),), **cut))
+    untagged = native.identity(_plan((_added("One.flac", voxlevel=60, vox=False),), **cut))
+    rescored = native.identity(_plan((_added("One.flac", voxlevel=61, vox=True),), **cut))
+    assert tagged != untagged
+    assert tagged != rescored
+
+
+def test_a_blocked_plan_names_no_file_unscored():
+    """No score was read at all when the tag is blocked, so no file is called
+    unscored: the reason is the block, said once, not each file's."""
+    rows = (_added("One.flac"), _added("Two.flac"))
+    assert _plan(rows, vox_cut=CUT, vox_blocked=native.VOX_NO_CATEGORY).vox_unscored() == ()
+    assert _plan(rows, vox_blocked=native.VOX_UNCALIBRATED).vox_unscored() == ()
+    assert [row.target.name for row in _plan(rows, vox_cut=CUT).vox_unscored()] == [
+        "One.flac",
+        "Two.flac",
+    ]
