@@ -2795,6 +2795,48 @@ ENTRIES: tuple[Entry, ...] = (
             ),
         ),
     ),
+    # ── A genre for a row with none (U114) ──────────────────────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives.
+    Entry(
+        name="tag.suggest",
+        summary="suggest a genre for each row with none on the row or the file, "
+        "from its artist, its folder and optionally the catalogues; writes file and row",
+        module="cratekit.tagging.suggest_cli",
+        builder="build",
+        handler_key="tag.suggest",
+        # NO FEATURE ROW AND NO SOURCE SCRIPT. The source system left a track
+        # with no genre to a person in rekordbox, and no inventory row asks for
+        # a suggestion.
+        #
+        # CORE, as ``tag.folder`` is: it tags, and a genre is what adoption
+        # files by, so a core workflow does not wait on a module switched off.
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: THE FILE AND THE ROW, so the two agree. The file through the one
+        #: genre writer, the row through the ``GenreID`` relink ``tag.rows``
+        #: performs, under the same guard.
+        writes=frozenset({"files", "db_metadata"}),
+        destructive=True,
+        taxonomy_terms=("genre_energy",),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+            "library.paths_resolved",
+        ),
+        gates=(
+            GateSpec(
+                name="tag.suggest.confirm",
+                options=("apply", "abort"),
+                prompt="Write these suggested genres on the files and their rows?",
+                #: EXPLICIT (R34), for the reason ``tag.rows.confirm`` gives.
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
     # ── The INBOX rotation (U111) ───────────────────────────────────────────
     #
     # Appended, for the reason the deferred routing block above gives. The

@@ -1902,6 +1902,10 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # R-799. No argument: it reads every tagging record this installation
         # committed, which on the fixture's machine is none.
         "tag.remap": [],
+        # U114. No argument: it reads the whole collection of the configured
+        # database, where no row lacks a genre on a file it can read, so the
+        # plan is empty, the explicit gate still asks and the apply is a no op.
+        "tag.suggest": [],
         # U111. No argument, and a CALLABLE because the drive needs a state the
         # fixture does not build: the rotation refuses an intake tree on the
         # xml bridge, naming ``tree cutover``, so on this fixture it would never
@@ -2155,6 +2159,10 @@ ACKNOWLEDGED_BEFORE_THE_GATE = {
     ),
     "repair.rows": (
         "tests/test_repair_rows.py::"
+        "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
+    ),
+    "tag.suggest": (
+        "tests/test_tag_suggest.py::"
         "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
     ),
     # U112. Only its database area is refused without one; the account area

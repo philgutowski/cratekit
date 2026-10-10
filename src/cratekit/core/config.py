@@ -1395,6 +1395,21 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="tag_suggest_catalogue",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="tag_suggest_catalogue.json",
+        why=(
+            "What the catalogues answered for each row tag suggest offered a "
+            "genre for (U114), kept a week so the run that applies a plan "
+            "rebuilds it from the same answers the gate showed. LIBRARY scoped "
+            "because it is keyed by this library's content identifiers. NEVER "
+            "RESTORED because every entry is replayable from the network: "
+            "losing it costs paced lookups and no data."
+        ),
+    ),
+    StateFile(
         key="label_sync_lock",
         snapshot=SnapshotRole.NEVER_RESTORED,
         root=StateRoot.LIBRARY,
