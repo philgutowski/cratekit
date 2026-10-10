@@ -34,6 +34,13 @@ brief. "Take #56" is a complete instruction once this file and METHOD are read.
 Nobody is watching a session while it runs, so a question is a stop: make the
 conservative call, record it as a residual, and keep going.
 
+**The unattended build system starts with one word: `/board-up`** (the
+`board-up` skill, decided 2026-10-10). It checks that nothing is running, that
+cards are Ready, that rekordbox is closed and the checkout free, then starts
+the Relay feeder, the watcher, the fable builder and the operator seat from
+`~/.relay/manifests/cratekit-board.lanes.toml`, one step at a time. Nothing
+else needs remembering to launch it; `board-lanes` is the skill underneath.
+
 ## The board is the queue
 
 Work is not picked from a plan document, a backlog, or a conversation. It is
