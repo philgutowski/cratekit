@@ -2116,23 +2116,25 @@ def _rows_whole() -> list[str]:
 
 
 def _link_rows() -> list[str]:
-    """Every content row made whole and given one ContentLink, the first
-    included, so ``repair link`` over the first plans nothing. Answers the row
-    and the value."""
+    """Every content row made whole and given rekordbox's probe values, the
+    first included, so ``repair link`` over the first plans nothing. Answers
+    the one probe."""
     import sqlite3
 
     from cratekit.core import rb_writer
     from tests.test_repair_link import HOUSE
 
     _rows_whole()
-    column = rb_writer.CONTENT_LINK_COLUMN
+    link, isrc = rb_writer.CONTENT_LINK_COLUMN, rb_writer.ISRC_COLUMN
     connection = sqlite3.connect(config.load().library.db_path)
     try:
-        connection.execute(f"UPDATE {rb_writer.CONTENT_TABLE} SET {column} = ?", (HOUSE,))
+        connection.execute(
+            f"UPDATE {rb_writer.CONTENT_TABLE} SET {link} = ?, {isrc} = ''", (HOUSE,)
+        )
         connection.commit()
     finally:
         connection.close()
-    return ["1", str(HOUSE)]
+    return ["--set", f"1:{link}={HOUSE}", "--set", f"1:{isrc}="]
 
 
 def _already_cut_over() -> list[str]:

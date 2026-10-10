@@ -1,10 +1,41 @@
 name = "a32"
 pass_kind = "light"
 
-# A32, the ContentLink probe. Every guard the round's own diff added, in
-# src/cratekit/write/row_link.py, row_link_cli.py and the registry entry.
-# The probe writes one column on one live row, so the user facing rows carry a
-# composite where they read zero.
+# A32, the row probe. Every guard the unit's diff added, in
+# src/cratekit/write/row_link.py, row_link_cli.py, the registry entry, the
+# probe policy builder and the two rules the review moved into shared code.
+# The probe writes columns of live rows, so it gets the full 25 rows.
+
+# ── Parsing a triple ────────────────────────────────────────────────────────
+
+[[rows]]
+id = "V1_any_column"
+description = "A triple naming a column outside the probe set is parsed, AnalysisUpdated included"
+file = "src/cratekit/write/row_link.py"
+surface = "user"
+old = '''    if kind is None:
+        raise _invalid('''
+new = '''    if False:
+        raise _invalid('''
+
+[[rows]]
+id = "V2_link_not_converted"
+description = "A ContentLink value is kept as text rather than converted to a whole number"
+file = "src/cratekit/write/row_link.py"
+surface = "user"
+old = '''    if kind is int:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "V4_policy_unrestricted"
+description = "The probe policy builder admits a column outside the probe set"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_repair_link.py"]
+old = '''    outside = wanted - set(ROW_PROBE_COLUMNS)
+    if outside:'''
+new = '''    outside = wanted - set(ROW_PROBE_COLUMNS)
+    if False:'''
 
 # ── The plan ────────────────────────────────────────────────────────────────
 
@@ -13,56 +44,64 @@ id = "P1_tombstone_plans"
 description = "Drop the live row filter from the plan's row query, so a tombstone plans"
 file = "src/cratekit/write/row_link.py"
 surface = "user"
-old = '''                f"WHERE ID = :id AND {rb_writer.SOFT_DELETE_COLUMN} = 0"'''
-new = '''                f"WHERE ID = :id"'''
+old = '''                    f"WHERE ID = :id AND {rb_writer.SOFT_DELETE_COLUMN} = 0"'''
+new = '''                    f"WHERE ID = :id"'''
 
 [[rows]]
 id = "P2_unknown_row"
 description = "Drop the unknown row refusal, so an absent identifier falls through"
 file = "src/cratekit/write/row_link.py"
 surface = "user"
-old = '''    if row is None:
-        raise refuse(
-            ROW_UNKNOWN,'''
-new = '''    if row is None and False:
-        raise refuse(
-            ROW_UNKNOWN,'''
+old = '''        if row is None:
+            raise refuse(
+                ROW_UNKNOWN,'''
+new = '''        if row is None and False:
+            raise refuse(
+                ROW_UNKNOWN,'''
 
 [[rows]]
 id = "P3_unheld_value"
 description = "Drop the unheld value refusal, so a value nobody carries is written"
 file = "src/cratekit/write/row_link.py"
 surface = "user"
-old = '''    if writes and carriers == 0:'''
-new = '''    if writes and carriers < 0:'''
+old = '''        if probe.writes and carriers == 0:'''
+new = '''        if probe.writes and carriers < 0:'''
 
 [[rows]]
-id = "P7_minority_value"
+id = "P7_minority_boundary"
+description = "Move the majority rule's boundary, so a value carried by as many rows as the row's own is written"
+file = "src/cratekit/write/row_link.py"
+surface = "user"
+old = '''        if probe.writes and carriers <= fellows:'''
+new = '''        if probe.writes and carriers < fellows:'''
+
+[[rows]]
+id = "P9_minority_dropped"
 description = "Drop the majority rule, so the binding's value is written onto a row rekordbox made"
 file = "src/cratekit/write/row_link.py"
 surface = "user"
-old = '''    if writes and carriers <= fellows:'''
-new = '''    if writes and carriers < 0:'''
+old = '''        if probe.writes and carriers <= fellows:'''
+new = '''        if probe.writes and carriers < 0:'''
+
+[[rows]]
+id = "P8_null_fellows"
+description = "Count a NULL's fellows with an equality, which matches nothing, so a NULL has no fellows"
+file = "src/cratekit/write/row_link.py"
+surface = "user"
+old = '''    test = f"{column} IS NULL" if value is None else f"{column} = :value"'''
+new = '''    test = f"{column} = :value"'''
 
 [[rows]]
 id = "P4_count_tombstones"
-description = "Count tombstones as carriers of a value"
+description = "Count tombstones as carriers and fellows of a value"
 file = "src/cratekit/write/row_link.py"
 surface = "user"
 old = '''            f"AND {rb_writer.SOFT_DELETE_COLUMN} = 0 AND ID != :id"'''
 new = '''            f"AND ID != :id"'''
 
 [[rows]]
-id = "P5_count_self"
-description = "Count the row itself as a carrier of a value"
-file = "src/cratekit/write/row_link.py"
-surface = "user"
-old = '''            f"AND {rb_writer.SOFT_DELETE_COLUMN} = 0 AND ID != :id"'''
-new = '''            f"AND {rb_writer.SOFT_DELETE_COLUMN} = 0 AND :id = :id"'''
-
-[[rows]]
 id = "P6_writes_always"
-description = "A plan always writes, a row already at the value included"
+description = "Every triple writes, a row already at the value included"
 file = "src/cratekit/write/row_link.py"
 surface = "user"
 old = '''        return self.was != str(self.value)'''
@@ -76,53 +115,39 @@ surface = "user"
 old = '''            "from": self.was,'''
 new = '''            "from": "",'''
 
-# ── The apply ───────────────────────────────────────────────────────────────
-
 [[rows]]
-id = "A1_apply_nonwriting_plan"
-description = "The apply takes a plan that writes nothing"
+id = "D2_digest_unordered"
+description = "Keep the triples in the order given, so the same plan digests two ways"
 file = "src/cratekit/write/row_link.py"
-old = '''    if not plan.writes:
-        raise refuse(
-            "internal-error",
-            f"the row {plan.content_id} already carries {LINK} {plan.value}, so this "'''
-new = '''    if False:
-        raise refuse(
-            "internal-error",
-            f"the row {plan.content_id} already carries {LINK} {plan.value}, so this "'''
+surface = "user"
+old = '''    probes.sort(key=lambda p: (len(p.content_id), p.content_id, p.column))'''
+new = ""
+
+# ── The apply ───────────────────────────────────────────────────────────────
 
 [[rows]]
 id = "A2_stale_deleted"
 description = "A row deleted since the plan is still written"
 file = "src/cratekit/write/row_link.py"
 surface = "user"
-old = '''    if row is None or row[rb_writer.SOFT_DELETE_COLUMN] != 0:'''
-new = '''    if row is None:'''
+old = '''        if row is None or row[rb_writer.SOFT_DELETE_COLUMN] != 0:'''
+new = '''        if row is None:'''
 
 [[rows]]
 id = "A3_stale_value"
 description = "A row whose column moved since the plan is still written"
 file = "src/cratekit/write/row_link.py"
 surface = "user"
-old = '''    elif ("" if row.get(LINK) is None else str(row[LINK]).strip()) != plan.was:'''
-new = '''    elif False:'''
+old = '''        elif _text(row.get(probe.column)) != probe.was:'''
+new = '''        elif False:'''
 
 [[rows]]
-id = "A4_empty_watch"
-description = "An empty analysis watch is accepted"
-file = "src/cratekit/write/row_link.py"
-old = '''    if not watched:
-        raise ValueError('''
-new = '''    if False:
-        raise ValueError('''
-
-[[rows]]
-id = "A5_policy_unregistered"
-description = "The apply does not register the column's policy, so the guard must refuse the write"
+id = "A5_policy_widened"
+description = "The commit's policy admits both probe columns whatever the plan writes"
 file = "src/cratekit/write/row_link.py"
 surface = "user"
-old = '''    with rb_writer.field_policies_for_commit(rb_writer.CONTENT_LINK_POLICY):'''
-new = '''    with rb_writer.field_policies_for_commit():'''
+old = '''    policy = rb_writer.row_probe_policy(p.column for p in plan.writing)'''
+new = '''    policy = rb_writer.row_probe_policy(rb_writer.ROW_PROBE_COLUMNS)'''
 
 [[rows]]
 id = "A6_policy_left_behind"
@@ -137,32 +162,23 @@ new = '''    finally:
         for policy in was.values():
             register_field_policy(policy)'''
 
-[[rows]]
-id = "A7_witness_unread"
-description = "A commit that landed under an exception is not recorded"
-file = "src/cratekit/write/row_link.py"
-old = '''                if witness.landed:
-                    _record_commit(record, written, cfg)'''
-new = '''                if False:
-                    _record_commit(record, written, cfg)'''
-
 # ── The read back ───────────────────────────────────────────────────────────
 
 [[rows]]
 id = "J1_wrong_unjudged"
-description = "The judge never reports the column not taking"
+description = "The judge never reports a value that did not take"
 file = "src/cratekit/write/row_link.py"
 surface = "user"
-old = '''    if now.get(LINK) is None or str(now[LINK]).strip() != str(plan.value):'''
-new = '''    if False:'''
+old = '''            if now.get(probe.column) is None or _text(now[probe.column]) != str(probe.value):'''
+new = '''            if False:'''
 
 [[rows]]
-id = "J2_link_counted_as_moved"
-description = "The judge counts the written column itself as a moved column"
+id = "J2_planned_across_rows"
+description = "The judge excuses every column the plan writes on any row, not the row's own"
 file = "src/cratekit/write/row_link.py"
 surface = "user"
-old = '''    changed = row_defaults.moved_columns(was, now, planned=(LINK,))'''
-new = '''    changed = row_defaults.moved_columns(was, now, planned=())'''
+old = '''        changed = row_defaults.moved_columns(was, now, planned=plan.columns_on(content_id))'''
+new = '''        changed = row_defaults.moved_columns(was, now, planned=[p.column for p in plan.writing])'''
 
 [[rows]]
 id = "J3_bookkeeping_counted_as_moved"
@@ -184,17 +200,6 @@ old = '''    if written.moved:
 new = '''    if False:
         raise refuse(
             "whitelist-violation",'''
-
-[[rows]]
-id = "J5_read_back_always_clean"
-description = "The read back passes whatever the judge found"
-file = "src/cratekit/write/row_link.py"
-old = '''    if not written.wrong and not written.moved:
-        return
-    undo = ('''
-new = '''    if True:
-        return
-    undo = ('''
 
 # ── The verb ────────────────────────────────────────────────────────────────
 
@@ -241,30 +246,41 @@ description = "The confirm gate is answerable inline"
 file = "src/cratekit/cli/registry.py"
 surface = "user"
 tests = ["tests/test_repair_link.py", "tests/test_cli_contract.py"]
-old = '''                name="repair.link.confirm",
-                options=("apply", "abort"),
-                prompt="Write this value onto this one row?",
+old = '''                prompt="Write these probe values onto these rows?",
                 #: EXPLICIT (R34). A write to a row of a live library is
                 #: answered by a separate recorded act with an actor.
                 explicit=True,'''
-new = '''                name="repair.link.confirm",
-                options=("apply", "abort"),
-                prompt="Write this value onto this one row?",
+new = '''                prompt="Write these probe values onto these rows?",
                 #: EXPLICIT (R34). A write to a row of a live library is
                 #: answered by a separate recorded act with an actor.
                 explicit=False,'''
 
 [[dropped]]
+id = "V3_duplicate_pair"
+description = "Drop the refusal of the same row and column twice"
+reason = "ranked below the cap: a repeated triple writes the same value twice in one commit, which the read back still judges, so the cost is a confusing gate and not a wrong write"
+
+[[dropped]]
+id = "P5_count_self"
+description = "Count the row itself as a carrier of a value"
+reason = "ranked below the cap: the same counting query as P4, which is measured"
+
+[[dropped]]
+id = "A1_apply_nonwriting_plan"
+description = "The apply takes a plan that writes nothing"
+reason = "ranked below the cap: maintainer facing, the verb returns before the apply on such a plan, and C3 measures that"
+
+[[dropped]]
+id = "A7_witness_unread"
+description = "A commit that landed under an exception is not recorded"
+reason = "ranked below the cap: maintainer facing, the spine is repair rows' and its witness row is measured in that unit's table"
+
+[[dropped]]
 id = "A8_zero_write_recorded"
 description = "A run that wrote nothing still claims a commit"
-reason = "ranked below the cap: maintainer facing, and the apply refuses a plan that writes nothing before the commit, so the branch is reached only under an exception the witness row already measures"
+reason = "ranked below the cap: maintainer facing, and the apply refuses a plan that writes nothing before the commit"
 
 [[dropped]]
-id = "D2_digest_kind"
-description = "Change the digest's kind to repair rows' kind"
-reason = "ranked below the cap: no test can tell two kinds apart and the item's column name already separates the two plans"
-
-[[dropped]]
-id = "C5_facts_rows_to_write"
-description = "Report one row to write on a plan that writes nothing"
-reason = "ranked below the cap: a gate fact, maintainer facing, covered by the same test as C3"
+id = "A4_empty_watch"
+description = "An empty analysis watch is accepted"
+reason = "ranked below the cap: maintainer facing, every caller passes the library's watch roots"

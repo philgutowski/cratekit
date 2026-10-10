@@ -1,32 +1,29 @@
-"""The ``repair.link`` verb: write a chosen ``ContentLink`` onto one live content
-row, the experiment that asks whether that column keeps a binding row off a
-deck (A32, R-928).
+"""The ``repair.link`` verb: write chosen values into the row probe columns of
+chosen live content rows, the experiment that asks which column keeps a binding
+row off a deck (A32, R-928).
 
-WHY THIS IS A VERB. A one row write to the live database outside a gated verb
-is forbidden, and the question is worth one row: after the defaults (R-923)
-and the file id (U115) were ruled out at sitting 36, ``ContentLink`` is the one
-content column left that differs between a row the native landing made and a
-row rekordbox made. The verb takes the row and the value on its command line,
-plans that one row on a read handle, asks, writes through the guard and reads
-the row back. What rekordbox then shows on the row's context menu is the
-answer, and is read at an attended sitting.
+WHY THIS IS A VERB. A write to the live database outside a gated verb is
+forbidden, and the question is worth a handful of rows. After the defaults
+(R-923) and the file id (U115) were ruled out at sitting 36, a comparison of
+all 78 content columns left three candidates, two of which the probe may write.
+The verb takes any number of ``--set ROW:COLUMN=VALUE`` triples, so each subset
+of candidates can sit on its own row and one reading of rekordbox's context
+menus answers them all. What rekordbox shows on each row is the answer, read
+at an attended sitting.
 
 THE ORDER IS ``repair rows``'S:
 
 * the backup acknowledgment is read before the plan is built and before the
   gate (R-733);
-* the plan is made on a handle opened to read and closed before the gate, and
-  refuses by name an unknown row and a value no other live row carries;
+* the triples are parsed and the plan is made on a handle opened to read and
+  closed before the gate, refusing by name a malformed triple, a column the
+  probe may not write, an unknown row, a value no other live row carries, and
+  a value fewer rows carry than carry the row's own;
 * the gate is asked over the digested plan, AND A PLAN THAT WRITES NOTHING
-  STILL ASKS, a row already at the value: every declared gate has to fire,
-  and the apply is then a no op;
+  STILL ASKS: every declared gate has to fire, and the apply is then a no op;
 * only ``apply`` opens the database with write intent, so that is where a
-  running rekordbox or its agent refuses, and the engine checks the row is
+  running rekordbox or its agent refuses, and the engine checks each row is
   still as the plan read it before the session is entered.
-
-THE SECOND INVOCATION REBUILDS THE PLAN and the gate compares its digest with
-the one the answer was recorded against, so a row changed in between moves the
-digest and the run refuses ``decision-stale``.
 
 THE GATE TAKES NO INLINE ANSWER. It is answered by a separate recorded act with
 an actor, the way every write to a live library's rows is (R34).
@@ -41,14 +38,14 @@ from typing import Any
 
 from cratekit.cli.output import Envelope
 from cratekit.core import analysis_store, config, rb_writer, session
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
+from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.write import row_link
 
 #: The explicit gate the write is asked behind.
 CONFIRM_GATE = "repair.link.confirm"
 
-#: The plan writes nothing: the row already carries the value.
+#: The plan writes nothing: every row already holds its value.
 NOTHING_TO_WRITE = "rows-link-nothing-to-write"
 
 #: What the apply wrote and read back.
@@ -74,25 +71,25 @@ def _load() -> config.Config:
 
 
 def build(parser, entry) -> None:
-    """Declare the verb: the one row and the one value, both on the command line."""
+    """Declare the verb: one ``--set`` per triple, at least one."""
     del entry
     parser.add_argument(
-        "content_id",
-        help="the identifier of the live content row to write, as the collection "
-        "export or SQL shows it",
-    )
-    parser.add_argument(
-        "value",
-        type=int,
-        help=f"the {row_link.LINK} to write, a value other live rows carry",
+        "--set",
+        dest="probes",
+        action="append",
+        default=[],
+        metavar="ROW:COLUMN=VALUE",
+        help=(
+            "write VALUE into COLUMN of the live content row ROW; COLUMN is one of "
+            f"{', '.join(rb_writer.ROW_PROBE_COLUMNS)}; an empty VALUE is the empty "
+            "text; give one --set per probe"
+        ),
     )
     parser.set_defaults(_handler=repair_link)
 
 
 def _confirm_gate(entry):
     """The verb's own gate by name, never by position."""
-    from cratekit.core.cause import refuse
-
     for spec in entry.gates:
         if spec.name == CONFIRM_GATE:
             return spec
@@ -106,16 +103,16 @@ def _confirm_gate(entry):
     )
 
 
-def _payload(plan: row_link.LinkPlan) -> dict[str, Any]:
+def _payload(plan: row_link.ProbePlan) -> dict[str, Any]:
     """The plan as the gate digests it and the envelope carries it."""
     return {
         "digest": plan.digest,
-        "items": [plan.to_json()],
+        "items": [probe.to_json() for probe in plan.probes],
         "totals": {
-            "count": 1 if plan.writes else 0,
+            "count": plan.writes,
+            "probes": len(plan.probes),
             "rows": plan.rows,
-            "carriers": plan.carriers,
-            "fellows": plan.fellows,
+            "rows_written": 0,
             "written": 0,
             "read_back": 0,
         },
@@ -123,30 +120,42 @@ def _payload(plan: row_link.LinkPlan) -> dict[str, Any]:
     }
 
 
-def _facts(plan: row_link.LinkPlan) -> dict[str, Any]:
-    """What the gate puts in front of the item: the counts and what is written."""
+def _facts(plan: row_link.ProbePlan) -> dict[str, Any]:
+    """What the gate puts in front of the items: the counts and every write."""
     return {
         "live rows read": plan.rows,
-        "rows to write": 1 if plan.writes else 0,
-        "column written": row_link.LINK,
-        "value written": plan.value,
-        "value replaced": plan.was or "NULL",
-        "other live rows carrying the value written": plan.carriers,
-        "other live rows carrying the value replaced": plan.fellows,
+        "probes": len(plan.probes),
+        "values to write": plan.writes,
+        "rows to write": len(plan.content_ids),
+        "columns the probe may write": list(rb_writer.ROW_PROBE_COLUMNS),
+        "each write, with who else carries each value": [
+            {
+                "row": probe.content_id,
+                "title": probe.title,
+                "column": probe.column,
+                "from": "NULL" if probe.was is None else probe.was,
+                "to": str(probe.value),
+                "other rows carrying the value written": probe.carriers,
+                "other rows carrying the value replaced": probe.fellows,
+                "writes": probe.writes,
+            }
+            for probe in plan.probes
+        ],
         "what is learned": (
-            "whether rekordbox loads this row to a deck once it carries the value "
-            "rows rekordbox made carry; open rekordbox after the write and read "
-            "the row's context menu"
+            "which of these rows rekordbox loads to a deck once they carry the "
+            "values rows rekordbox made carry; open rekordbox after the write and "
+            "read each row's context menu"
         ),
     }
 
 
-def _nothing(plan: row_link.LinkPlan) -> dict[str, str]:
+def _nothing(plan: row_link.ProbePlan) -> dict[str, str]:
     return {
         "code": NOTHING_TO_WRITE,
         "message": (
-            f"the row {plan.content_id} already carries {row_link.LINK} {plan.value}, "
-            f"so there is nothing to write and nothing to learn from writing it"
+            f"all {len(plan.probes)} probe(s) name a row that already holds the "
+            f"value asked for, so there is nothing to write and nothing to learn "
+            f"from writing it"
         ),
     }
 
@@ -155,36 +164,43 @@ def _written(written: row_link.Written) -> dict[str, str]:
     return {
         "code": LINK_WRITTEN,
         "message": (
-            f"{written.written} row now carries the {row_link.LINK} asked for, "
-            f"{written.read_back} read back from the database as written, that "
-            f"column and no other; undo with a restore of session "
+            f"{written.written} value(s) written on {written.rows} row(s), "
+            f"{written.read_back} read back from the database as written, those "
+            f"columns and no other; undo with a restore of session "
             f"{written.session_id}"
         ),
     }
 
 
-def _plan(cfg: config.Config, args) -> row_link.LinkPlan:
-    """The plan over the library as it stands, through a handle opened to read."""
+def _plan(cfg: config.Config, args) -> row_link.ProbePlan:
+    """The plan over the library as it stands, through a handle opened to read.
+
+    THE TRIPLES ARE PARSED FIRST, so a malformed one refuses before the
+    database is opened at all.
+    """
+    triples = [row_link.parse_triple(spec) for spec in args.probes]
     db = rb_writer.open_db(
         rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
     )
     try:
-        return row_link.plan_link(db, content_id=str(args.content_id), value=int(args.value))
+        return row_link.plan_probes(db, triples)
     finally:
         rb_writer.close_db(db)
 
 
-def _write(cfg: config.Config, plan: row_link.LinkPlan) -> row_link.Written:
+def _write(cfg: config.Config, plan: row_link.ProbePlan) -> row_link.Written:
     """Apply the plan through a handle of this function's own, opened to write."""
     db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
     try:
-        return row_link.apply_link(cfg, db, plan, analysis_roots=analysis_store.watch_roots(cfg))
+        return row_link.apply_probes(
+            cfg, db, plan, analysis_roots=analysis_store.watch_roots(cfg)
+        )
     finally:
         rb_writer.close_db(db)
 
 
 def repair_link(ctx) -> Envelope:
-    """Plan the one row, ask, then write it and read it back."""
+    """Plan every triple, ask, then write them and read the rows back."""
     cfg = _load()
     spec = _confirm_gate(ctx.entry)
     # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
@@ -201,6 +217,7 @@ def repair_link(ctx) -> Envelope:
     row_link.assert_read_back(written)
     data["totals"] = {
         **data["totals"],
+        "rows_written": written.rows,
         "written": written.written,
         "read_back": written.read_back,
     }

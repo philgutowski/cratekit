@@ -669,9 +669,9 @@ ENTRIES: tuple[Entry, ...] = (
     # ── The ContentLink probe (A32, R-928) ──────────────────────────────────
     Entry(
         name="repair.link",
-        summary="write a chosen ContentLink onto one live library row, the "
-        "experiment that asks whether that column keeps a landed row off a "
-        "deck; one row, one column, writes no file",
+        summary="write chosen values into the row probe columns, ContentLink "
+        "and ISRC, of chosen live library rows, the experiment that asks which "
+        "column keeps a landed row off a deck; writes no file",
         module="cratekit.write.row_link_cli",
         builder="build",
         handler_key="repair.link",
@@ -683,8 +683,8 @@ ENTRIES: tuple[Entry, ...] = (
         module_id="repair",
         emits=frozenset({"plan"}),
         output_schema="plan/1",
-        #: THE ROW AND ONLY THE ROW, and of it only
-        #: ``rb_writer.CONTENT_LINK_COLUMN``.
+        #: THE NAMED ROWS AND ONLY THEM, and of each only the columns of
+        #: ``rb_writer.ROW_PROBE_COLUMNS`` its triples name.
         writes=frozenset({"db_metadata"}),
         destructive=True,
         doctor_checks=(
@@ -696,7 +696,7 @@ ENTRIES: tuple[Entry, ...] = (
             GateSpec(
                 name="repair.link.confirm",
                 options=("apply", "abort"),
-                prompt="Write this value onto this one row?",
+                prompt="Write these probe values onto these rows?",
                 #: EXPLICIT (R34). A write to a row of a live library is
                 #: answered by a separate recorded act with an actor.
                 explicit=True,
