@@ -24,6 +24,7 @@ from cratekit.core import config, preflight, rb_writer, session, tags, taxonomy,
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import ingest, land_cli, landing, native
+from cratekit.write import row_link
 from tests import adopt_fixtures, cutover_fixtures
 from tests._containers import synth_container
 from tests.cli_drive import drive
@@ -43,6 +44,18 @@ TODAY = date(2026, 9, 29)
 #: measured a device row that sorted the right way by accident.
 OTHER_DEVICE = ("d-aaa-other", "999")
 MY_DEVICE = ("d-mine", "1")
+
+#: The counter the binding's ``add_content`` copies into ``ContentLink``, the
+#: TRACK menu item's ``rb_local_usn`` as seeded below, and the value rekordbox
+#: wrote on the rows it made in this library (U126). Two numbers that differ,
+#: so a landed row says which one it was given. Neither is the live library's:
+#: the landing reads the value, it does not know it.
+BINDING_LINK = 7
+LIBRARY_LINK = 4242
+
+#: The rows rekordbox made in the fixture library: the two the disposable
+#: database is built with, ``1`` and ``2``, given its value here.
+REKORDBOX_ROWS = ("1", "2")
 
 
 # ---------------------------------------------------------------------------
@@ -87,14 +100,24 @@ def library(tmp_path, monkeypatch):
 
 
 def _seed_binding_rows(cfg: config.Config) -> None:
-    """The rows the binding's ``add_content`` reads: the TRACK menu item and the devices."""
+    """The rows the binding's ``add_content`` reads, and the rows rekordbox made.
+
+    The TRACK menu item and the devices are what the binding reads. The
+    content rows the database is built with stand for rekordbox's own, and
+    are given the ContentLink the landing reads off the library and gives its
+    rows (U126).
+    """
     from pyrekordbox.db6 import tables
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
 
     engine = create_engine(f"sqlite:///{cfg.library.db_path}")
     with Session(engine) as db_session:
-        db_session.add(_row(tables.DjmdMenuItems, ID="m-track", Name="TRACK", rb_local_usn=7))
+        db_session.add(
+            _row(tables.DjmdMenuItems, ID="m-track", Name="TRACK", rb_local_usn=BINDING_LINK)
+        )
+        for content_id in REKORDBOX_ROWS:
+            db_session.get(tables.DjmdContent, content_id).ContentLink = LIBRARY_LINK
         for device_id, master in (OTHER_DEVICE, MY_DEVICE):
             db_session.add(
                 _row(tables.DjmdDevice, ID=device_id, MasterDBID=master, Name=device_id)
@@ -491,24 +514,317 @@ def test_assert_rows_identified_is_pure_over_what_was_read_back(tmp_path):
     path.write_bytes(b"fLaC")
     right = native.AddedRow(
         target=path, content_id="1", title="t", folder_path=str(path), empty={},
-        file_id=str(path.stat().st_ino),
+        file_id=str(path.stat().st_ino), content_link=LIBRARY_LINK,
     )
     wrong = native.AddedRow(
-        target=path, content_id="2", title="t", folder_path=str(path), empty={}, file_id="73894078"
+        target=path, content_id="2", title="t", folder_path=str(path), empty={},
+        file_id="73894078", content_link=LIBRARY_LINK,
     )
-    native.assert_rows_identified(_landed(right))
+    native.assert_rows_identified(_landed(right, content_link=LIBRARY_LINK))
     with pytest.raises(CratekitError) as caught:
-        native.assert_rows_identified(_landed(right, wrong))
+        native.assert_rows_identified(_landed(right, wrong, content_link=LIBRARY_LINK))
     assert caught.value.cause.reason == "internal-error"
     assert "2: " in caught.value.cause.message and "73894078" in caught.value.cause.message
     assert "restore session s-1" in " ".join(caught.value.cause.remediation.steps)
 
 
-def _landed(*rows: native.AddedRow) -> native.NativeLanded:
+def _landed(*rows: native.AddedRow, content_link: int | None = None) -> native.NativeLanded:
     return native.NativeLanded(
         tree_id=INTAKE, playlist="p", playlist_id="9", added=tuple(rows), present=(),
-        memberships_added=len(rows), session_id="s-1",
+        memberships_added=len(rows), session_id="s-1", content_link=content_link,
     )
+
+
+# ---------------------------------------------------------------------------
+# U126: the row is given the library's ContentLink, never the binding's
+# ---------------------------------------------------------------------------
+
+
+def _set_links(cfg: config.Config, links: dict[str, int | str | None]) -> None:
+    """Put the named ContentLink on each named row of the disposable library."""
+    conn = sqlite3.connect(cfg.library.db_path)
+    try:
+        for content_id, link in links.items():
+            conn.execute("UPDATE djmdContent SET ContentLink = ? WHERE ID = ?", (link, content_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_the_rows_carry_the_librarys_content_link_and_not_the_bindings(native_library, silence):
+    """R-928, sitting 37: the binding gives a row the TRACK menu item's counter
+    and rekordbox will not load it; given the value rekordbox's own rows
+    carry, it loads. Every landed row carries the library's value, read from
+    SQL, and the answer says so."""
+    cfg, _root = native_library
+    for name in ("One.flac", "Two.flac"):
+        _stage(cfg, silence, name)
+    code, acted, _ = _two_acts(_land())
+    assert code == int(ExitCode.OK), acted
+
+    rows = _query(
+        cfg,
+        f"SELECT ID, {rb_writer.CONTENT_LINK_COLUMN} FROM djmdContent WHERE FolderPath LIKE ?",
+        f"%{BATCH}%",
+    )
+    assert len(rows) == 2
+    assert {link for _id, link in rows} == {LIBRARY_LINK}
+    assert BINDING_LINK != LIBRARY_LINK
+    landed_items = [item for item in acted["data"]["items"] if item["action"] == "landed"]
+    # A number in the answer as on the screen, never the text of one.
+    assert [item["row"][rb_writer.CONTENT_LINK_COLUMN] for item in landed_items] == [
+        LIBRARY_LINK
+    ] * 2
+
+
+def test_a_library_with_no_majority_content_link_refuses_before_the_gate(native_library, silence):
+    """One value on one row and another on the other: neither is carried by
+    more than half the live rows, so there is no value of rekordbox's to give,
+    and the landing refuses by name with nothing moved and nothing written."""
+    cfg, _root = native_library
+    _set_links(cfg, {"2": 30})
+    _stage(cfg, silence, "One.flac")
+    rows_before = _query(cfg, "SELECT COUNT(*) FROM djmdContent")
+
+    code, refused = drive(_land())
+
+    assert code == int(ExitCode.LIBRARY_PREREQUISITE), refused
+    assert refused["cause"]["reason"] == row_link.MAJORITY_UNCLEAR
+    assert refused["cause"]["detail"]["rows"] == 2
+    assert refused["cause"]["detail"]["carriers"] == 1
+    assert _staged_names(cfg) == ["One.flac"]
+    assert _query(cfg, "SELECT COUNT(*) FROM djmdContent") == rows_before
+    assert session.records(cfg) == ()
+
+
+def test_the_content_link_moves_the_digest(native_library, silence):
+    """The value is part of what is approved: the same files planned against a
+    library whose rows carry another value digest differently, so an approval
+    taken at one value is never applied at another."""
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    code, first = drive(_land())
+    assert code == int(ExitCode.DECISION_REQUIRED), first
+    _set_links(cfg, {"1": LIBRARY_LINK + 1, "2": LIBRARY_LINK + 1})
+    code, second = drive(_land())
+    assert code == int(ExitCode.DECISION_REQUIRED), second
+
+    (one,) = first["cause"]["detail"]["shown"]["items"]
+    (two,) = second["cause"]["detail"]["shown"]["items"]
+    assert one["row"][rb_writer.CONTENT_LINK_COLUMN] == LIBRARY_LINK
+    assert two["row"][rb_writer.CONTENT_LINK_COLUMN] == LIBRARY_LINK + 1
+    assert first["cause"]["detail"]["shown"]["digest"] != second["cause"]["detail"]["shown"]["digest"]
+
+
+def test_an_approval_taken_at_one_content_link_is_not_applied_at_another(native_library, silence):
+    """The library's rows move between the approval and the apply. The apply
+    re-plans, the digest differs, and nothing lands with the value approved
+    or the new one."""
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    code, refused = drive(_land())
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    decided, _ = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
+    assert decided == int(ExitCode.OK)
+    _set_links(cfg, {"1": LIBRARY_LINK + 1, "2": LIBRARY_LINK + 1})
+
+    code, acted = drive(["--run", run_id, *_land()])
+
+    assert code != int(ExitCode.OK), acted
+    assert _landed_rows(cfg) == []
+    assert _staged_names(cfg) == ["One.flac"]
+
+
+def test_a_row_whose_content_link_did_not_take_is_refused_after_the_commit(
+    native_library, silence, monkeypatch
+):
+    """A restamp that leaves the binding's value, standing in for a binding or
+    guard that drops the column, is refused by the read back with the session
+    to restore, rather than reporting a row rekordbox will not load as landed."""
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    real = native._restamp
+
+    def keeping_the_bindings(content, row, plan):
+        real(content, row, plan)
+        setattr(content, rb_writer.CONTENT_LINK_COLUMN, BINDING_LINK)
+
+    monkeypatch.setattr(native, "_restamp", keeping_the_bindings)
+    code, acted, _ = _two_acts(_land())
+
+    assert code != int(ExitCode.OK), acted
+    assert acted["cause"]["reason"] == "internal-error"
+    assert rb_writer.CONTENT_LINK_COLUMN in acted["cause"]["message"]
+    (record,) = session.records(cfg)
+    assert record.session_id in " ".join(acted["cause"]["remediation"]["steps"])
+    ((link,),) = _query(
+        cfg, f"SELECT {rb_writer.CONTENT_LINK_COLUMN} FROM djmdContent WHERE FolderPath LIKE ?",
+        f"%{BATCH}%",
+    )
+    assert link == BINDING_LINK, "the write is durable"
+
+
+def test_assert_rows_identified_holds_the_link_to_the_one_planned(tmp_path):
+    path = tmp_path / "a.flac"
+    path.write_bytes(b"fLaC")
+    inode = str(path.stat().st_ino)
+    right = native.AddedRow(
+        target=path, content_id="1", title="t", folder_path=str(path), empty={},
+        file_id=inode, content_link=LIBRARY_LINK,
+    )
+    wrong = native.AddedRow(
+        target=path, content_id="2", title="t", folder_path=str(path), empty={},
+        file_id=inode, content_link=BINDING_LINK,
+    )
+    native.assert_rows_identified(_landed(right, content_link=LIBRARY_LINK))
+    with pytest.raises(CratekitError) as caught:
+        native.assert_rows_identified(_landed(right, wrong, content_link=LIBRARY_LINK))
+    assert caught.value.cause.reason == "internal-error"
+    message = caught.value.cause.message
+    assert f"2: {rb_writer.CONTENT_LINK_COLUMN} = {BINDING_LINK}" in message
+    assert "1: " not in message
+    # NO PLANNED VALUE IS NO PASS: a row added with nothing to hold it to is
+    # refused, rather than the check going quiet.
+    with pytest.raises(CratekitError) as caught:
+        native.assert_rows_identified(_landed(right))
+    assert f"1: {rb_writer.CONTENT_LINK_COLUMN}" in caught.value.cause.message
+
+
+def test_a_landing_that_adds_no_row_needs_no_majority(native_library, silence):
+    """Every file already in the collection: the landing writes memberships
+    alone, so a library with no majority ContentLink does not refuse it, and
+    no row on the screen claims a link it would not be given."""
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    held = str(_music(cfg) / "One.flac")
+    conn = sqlite3.connect(cfg.library.db_path)
+    conn.execute(
+        "INSERT INTO djmdContent (ID, Title, FolderPath, ContentLink, rb_local_deleted, "
+        "created_at, updated_at) VALUES ('held-1', 'held', ?, 30, 0, '2026-01-01', '2026-01-01')",
+        (held,),
+    )
+    conn.commit()
+    conn.close()
+    _set_links(cfg, {"2": 31})
+
+    code, refused = drive(_land())
+
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["adds"] == 0 and shown["already present"] == 1
+    assert shown["content link"] == "none, since no row is added"
+    (item,) = shown["items"]
+    assert rb_writer.CONTENT_LINK_COLUMN not in item["row"]
+
+
+def test_the_content_link_counts_move_the_digest(native_library, silence):
+    """The screen shows how many rows carry the value, so the digest covers
+    the count as well: the same value carried by one more row is another plan."""
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    code, first = drive(_land())
+    assert code == int(ExitCode.DECISION_REQUIRED), first
+    conn = sqlite3.connect(cfg.library.db_path)
+    conn.execute(
+        "INSERT INTO djmdContent (ID, ContentLink, rb_local_deleted, created_at, updated_at) "
+        "VALUES ('rb-made', ?, 0, '2026-01-01', '2026-01-01')",
+        (LIBRARY_LINK,),
+    )
+    conn.commit()
+    conn.close()
+    code, second = drive(_land())
+    assert code == int(ExitCode.DECISION_REQUIRED), second
+    assert second["cause"]["detail"]["shown"]["content link"].endswith("3 of the library's 3 live rows")
+    assert first["cause"]["detail"]["shown"]["digest"] != second["cause"]["detail"]["shown"]["digest"]
+
+
+class _Handle:
+    """What ``library_link`` reads through: a handle with a session on the file."""
+
+    def __init__(self, path: Path):
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import Session
+
+        self.engine = create_engine(f"sqlite:///{path}")
+        self.session = Session(self.engine)
+
+    def close(self) -> None:
+        self.session.close()
+        self.engine.dispose()
+
+
+def _majority(cfg: config.Config, rows: dict[str, tuple[int | str | None, int]]):
+    """Replace the library's content rows with ``rows`` (link, deleted) and read the majority."""
+    conn = sqlite3.connect(cfg.library.db_path)
+    try:
+        conn.execute("DELETE FROM djmdContent")
+        for content_id, (link, deleted) in rows.items():
+            conn.execute(
+                "INSERT INTO djmdContent (ID, ContentLink, rb_local_deleted, created_at, "
+                "updated_at) VALUES (?, ?, ?, '2026-01-01', '2026-01-01')",
+                (content_id, link, deleted),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+    handle = _Handle(Path(cfg.library.db_path))
+    try:
+        return row_link.library_link(handle)
+    finally:
+        handle.close()
+
+
+@pytest.mark.parametrize(
+    ("rows", "carriers"),
+    [
+        # Three of four: a majority.
+        ({"a": (9, 0), "b": (9, 0), "c": (9, 0), "d": (5, 0)}, 3),
+        # Removed rows are not the library's: two live of two, whatever the dead carry.
+        ({"a": (9, 0), "b": (9, 0), "c": (5, 1), "d": (5, 1), "e": (5, 1)}, 2),
+        # Stored as text, as the binding's affinity can leave it, still a whole number.
+        ({"a": ("9", 0), "b": (9, 0), "c": (None, 0)}, 2),
+    ],
+)
+def test_the_library_link_is_the_value_more_than_half_the_live_rows_carry(machine, rows, carriers):
+    found = _majority(machine, rows)
+    assert found.value == 9
+    assert found.carriers == carriers
+    assert found.rows == sum(1 for _link, deleted in rows.values() if not deleted)
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        # Exactly half is not more than half.
+        {"a": (9, 0), "b": (9, 0), "c": (5, 0), "d": (6, 0)},
+        # A plurality is a guess.
+        {"a": (9, 0), "b": (9, 0), "c": (5, 0), "d": (6, 0), "e": (7, 0)},
+        # A majority of NULL is no value.
+        {"a": (None, 0), "b": (None, 0), "c": (9, 0)},
+        # Not a whole number, in three shapes a looser test let through to int().
+        {"a": ("x9", 0), "b": ("x9", 0), "c": (9, 0)},
+        {"a": ("--5", 0), "b": ("--5", 0), "c": (9, 0)},
+        {"a": ("\u00b2", 0), "b": ("\u00b2", 0), "c": (9, 0)},
+        # Every row removed, so no live row carries anything.
+        {"a": (9, 1), "b": (9, 1)},
+        # No rows at all.
+        {},
+    ],
+)
+def test_no_majority_link_refuses_by_name(machine, rows):
+    with pytest.raises(CratekitError) as caught:
+        _majority(machine, rows)
+    assert caught.value.cause.reason == row_link.MAJORITY_UNCLEAR
+    assert caught.value.cause.detail["column"] == rb_writer.CONTENT_LINK_COLUMN
+
+
+def test_the_link_is_not_an_analysis_column_and_not_bookkeeping():
+    """Given on a created row, so the creation policy must admit it, and never
+    blinded for every writer by being called bookkeeping."""
+    assert rb_writer.CONTENT_LINK_COLUMN not in rb_writer.CONTENT_ROW_EMPTY_COLUMNS
+    assert rb_writer.CONTENT_LINK_COLUMN not in rb_writer.BOOKKEEPING_COLUMNS
+    assert rb_writer.CONTENT_LINK_COLUMN not in native.LEFT_EMPTY
 
 
 def test_after_the_write_no_analysis_value_exists_on_the_new_rows_column_by_column(
@@ -560,7 +876,13 @@ def test_the_gate_screen_names_every_row_its_columns_the_playlist_and_the_databa
         "FileSize",
         "FileType",
         rb_writer.FILE_ID_COLUMN,
+        rb_writer.CONTENT_LINK_COLUMN,
     }
+    # THE LIBRARY'S VALUE, shown with its count, never the binding's (U126).
+    assert item["row"][rb_writer.CONTENT_LINK_COLUMN] == LIBRARY_LINK
+    assert shown["content link"] == (
+        f"{LIBRARY_LINK}, carried by 2 of the library's 2 live rows"
+    )
     # U115: the file id is named as the sentence it is, since the number is
     # read on the landed file when the row is made and no plan can know it.
     assert item["row"][rb_writer.FILE_ID_COLUMN] == native.FILE_ID_AT_LANDING
@@ -619,6 +941,11 @@ def test_a_file_already_in_the_collection_is_present_and_not_added_twice(native_
     assert shown["adds"] == 1 and shown["already present"] == 1
     present = [item for item in shown["items"] if item["action"] == native.PRESENT]
     assert [item["content_id"] for item in present] == ["held-2"]
+    # THE LINK ONLY WHERE A ROW IS ADDED (U126): the held row is not written,
+    # so it claims no value, and the added one carries the library's.
+    assert rb_writer.CONTENT_LINK_COLUMN not in present[0]["row"]
+    (added,) = [item for item in shown["items"] if item["action"] == native.ADD]
+    assert added["row"][rb_writer.CONTENT_LINK_COLUMN] == LIBRARY_LINK
 
     code, acted, _ = _two_acts(_land())
     assert code == int(ExitCode.OK), acted

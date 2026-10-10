@@ -828,6 +828,12 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         "link-row-unknown": ExitCode.PRECONDITION,
         "link-value-unheld": ExitCode.PRECONDITION,
         "link-value-minority": ExitCode.PRECONDITION,
+        # U126. A native landing reads the ContentLink the library's live rows
+        # mostly carry and gives it to every row it makes, and no value is
+        # held by more than half of them, so there is none to give. The
+        # library's state and not the command line: rekordbox's own imports
+        # are the remedy.
+        "link-majority-unclear": ExitCode.LIBRARY_PREREQUISITE,
         # ── This installation ───────────────────────────────────────────────
         "doctor-check-failed": ExitCode.PRECONDITION,
         # One slug for every way configuration can be unusable, because the

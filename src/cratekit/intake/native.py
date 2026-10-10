@@ -43,6 +43,14 @@ is another number. The screen names the column with
 :data:`FILE_ID_AT_LANDING` rather than a value, so what was approved and what
 was written cannot differ by a number the plan could not know.
 
+WHAT SITTING 37 SETTLED (U126, R-928, 2026-10-10): a row the binding makes
+carries the ``ContentLink`` the binding takes from a menu item's counter, and
+rekordbox will not load it to a deck until it carries the value rekordbox
+writes on its own rows. That value is read from the library at plan time,
+:func:`cratekit.write.row_link.library_link`, the one more than half its live
+rows carry, shown on the screen and covered by the digest, and set on each
+row here. A library with no such value refuses before the gate.
+
 THE PLAN IS BUILT AGAINST THE DATABASE AND THE APPLY REBUILDS NOTHING. The
 verb opens the database with write intent, so an open rekordbox refuses before
 anything is shown, plans every row and its columns, and digests them; the
@@ -85,7 +93,7 @@ from cratekit.core import (
 from cratekit.core.cause import CratekitError, Remedy, refuse
 from cratekit.favorites import placement
 from cratekit.intake import ingest, set_playlist
-from cratekit.write import routing_pass, trees
+from cratekit.write import routing_pass, row_link, trees
 
 #: What a planned row will do. A file whose suffix the binding has no file
 #: type for is planned as UNSUPPORTED and left in staging by the landing, the
@@ -137,6 +145,10 @@ class RowPlan:
     file_name: str
     file_size: int
     file_type: int
+    #: The ContentLink the library's live rows mostly carry, given to the row
+    #: (U126). Set on a row to be added and None on every other, so the screen
+    #: and the digest name it only where it is written.
+    content_link: int | None
     #: The row already holding this file, when ``action`` is ``PRESENT``.
     content_id: str | None = None
     #: Why the file is planned as ``UNSUPPORTED``, in a sentence, else empty.
@@ -151,6 +163,11 @@ class RowPlan:
             "FileSize": self.file_size,
             "FileType": self.file_type,
             rb_writer.FILE_ID_COLUMN: FILE_ID_AT_LANDING,
+            **(
+                {rb_writer.CONTENT_LINK_COLUMN: self.content_link}
+                if self.content_link is not None
+                else {}
+            ),
         }
 
 
@@ -260,6 +277,10 @@ class NativePlan:
     base_drive: str | None
     current_drive: str | None
     rows: tuple[RowPlan, ...]
+    #: The ContentLink every added row is given, and how many live rows carry
+    #: it (U126). Read once, at plan time, from the library, and None when the
+    #: plan adds no row, since a landing that writes no row needs no value.
+    link: row_link.LibraryLink | None
     digest: str
     #: The account playlists, each its own INBOX playlist (U113). The batch
     #: playlist, ``playlist``, holds only the rows none of them holds.
@@ -297,6 +318,8 @@ class AddedRow:
     empty: dict[str, Any]
     #: ``rb_file_id`` as the table holds it after the commit, as text (U115).
     file_id: str = ""
+    #: ``ContentLink`` as the table holds it after the commit (U126), None for NULL.
+    content_link: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -318,6 +341,9 @@ class NativeLanded:
     favorites: placement.Placed | None = None
     #: The set's permanent playlist written under INSPIRATION (U121), or None.
     set_playlist: set_playlist.Written | None = None
+    #: The ContentLink the plan gave every added row (U126), which the read
+    #: back is held to. None when the plan added no row.
+    content_link: int | None = None
 
     def names(self) -> tuple[str, ...]:
         """Every INBOX playlist the commit wrote, the batch's first when it wrote one."""
@@ -528,10 +554,21 @@ def plan_rows(
                 file_name=target.name,
                 file_size=source.stat().st_size,
                 file_type=file_type or 0,
+                content_link=None,
                 content_id=held,
                 why=why,
             )
         )
+    # ONLY WHEN A ROW IS ADDED, and before anything is shown (U126). A
+    # landing whose files the collection already holds writes memberships
+    # alone, and a library with no value to give does not refuse it.
+    link = (
+        row_link.library_link(db) if any(row.action == ADD for row in rows) else None
+    )
+    if link is not None:
+        rows = [
+            replace(row, content_link=link.value) if row.action == ADD else row for row in rows
+        ]
     planned = NativePlan(
         tree_id=tree_id,
         root_id=str(root_id),
@@ -543,6 +580,7 @@ def plan_rows(
         base_drive=base_drive,
         current_drive=current_drive,
         rows=tuple(rows),
+        link=link,
         digest="",
         playlists=_supported_only(split, rows),
         pass_name=pass_name,
@@ -671,19 +709,26 @@ def identity(plan: NativePlan) -> dict[str, Any]:
             for row in plan.rows
         ],
         "left_empty": list(LEFT_EMPTY),
+        # THE COUNTS AS WELL AS THE VALUE, since the screen shows both (U126).
+        "content_link": (
+            {"value": plan.link.value, "carriers": plan.link.carriers, "rows": plan.link.rows}
+            if plan.link is not None
+            else None
+        ),
     }
 
 
 def _restamp(content: Any, row: RowPlan, plan: NativePlan) -> None:
-    """Put the planned path and device, the file id, and rekordbox's defaults on the row the binding made.
+    """Put the planned path and device, the file id, the link and rekordbox's defaults on the row the binding made.
 
     The binding stores the path it was given to stat and the first device it
     finds. Both are corrected here when they differ from the plan, on the
     object before the flush the guard performs, so the guard judges the row as
     it will be stored. A row the binding got right is left alone. Every column
     of :data:`cratekit.core.rb_writer.CONTENT_ROW_DEFAULTS` the binding left
-    NULL is given rekordbox's own value the same way (R-923), and the random
-    file id the binding minted is replaced by the landed file's inode (U115).
+    NULL is given rekordbox's own value the same way (R-923), the random
+    file id the binding minted is replaced by the landed file's inode (U115),
+    and the binding's ContentLink by the library's own (U126).
     """
     if str(content.FolderPath) != row.folder_path:
         content.FolderPath = row.folder_path
@@ -696,6 +741,10 @@ def _restamp(content: Any, row: RowPlan, plan: NativePlan) -> None:
     # a row to a deck, so it is replaced on every row, never kept. It cannot be
     # handed to ``add_content``, which names the column itself.
     setattr(content, rb_writer.FILE_ID_COLUMN, file_id_of(row.target))
+    # THE LIBRARY'S CONTENTLINK, AS PLANNED (U126). The binding set it from the
+    # TRACK menu item's counter and rekordbox will not load a row carrying
+    # that, so it is replaced on every row with the value the screen showed.
+    setattr(content, rb_writer.CONTENT_LINK_COLUMN, row.content_link)
     # REKORDBOX'S OWN DEFAULTS, ON THE SAME OBJECT BEFORE THE SAME FLUSH (R-923).
     # The binding leaves these NULL, and rekordbox will not load such a row to a
     # deck. Only a NULL is filled, so a value the binding chose stands.
@@ -709,14 +758,15 @@ def file_id_of(path: Path) -> int:
     return os.stat(path).st_ino
 
 
-def _read_back(db: Any, content_id: str) -> tuple[dict[str, Any], str, str, str]:
-    """The analysis columns, title, path and file id of one row, from SQL after the commit."""
+def _read_back(db: Any, content_id: str) -> tuple[dict[str, Any], str, str, str, int | None]:
+    """The analysis columns, title, path, file id and link of one row, from SQL after the commit."""
     from sqlalchemy import text
 
     selected = ", ".join(LEFT_EMPTY)
     row = db.session.execute(
         text(
-            f"SELECT Title, FolderPath, {rb_writer.FILE_ID_COLUMN}, {selected} "
+            f"SELECT Title, FolderPath, {rb_writer.FILE_ID_COLUMN}, "
+            f"{rb_writer.CONTENT_LINK_COLUMN}, {selected} "
             f"FROM djmdContent WHERE ID = :id"
         ),
         {"id": content_id},
@@ -730,8 +780,14 @@ def _read_back(db: Any, content_id: str) -> tuple[dict[str, Any], str, str, str]
             origin=_ORIGIN,
             detail={"content_id": content_id},
         )
-    values = dict(zip(LEFT_EMPTY, row[3:]))
-    return values, str(row[0] or ""), str(row[1] or ""), str(row[2] or "")
+    values = dict(zip(LEFT_EMPTY, row[4:]))
+    return (
+        values,
+        str(row[0] or ""),
+        str(row[1] or ""),
+        str(row[2] or ""),
+        None if row[3] is None else int(row[3]),
+    )
 
 
 def _holding(match: trees.RowMatch) -> str | None:
@@ -977,7 +1033,7 @@ def apply_rows(
 
         landed = []
         for row, content_id in added_ids:
-            values, title, folder_path, file_id = _read_back(db, content_id)
+            values, title, folder_path, file_id, link = _read_back(db, content_id)
             landed.append(
                 AddedRow(
                     target=row.target,
@@ -986,6 +1042,7 @@ def apply_rows(
                     folder_path=folder_path,
                     empty=values,
                     file_id=file_id,
+                    content_link=link,
                 )
             )
         session_id = record.session_id
@@ -1001,6 +1058,7 @@ def apply_rows(
         playlists=tuple(written),
         favorites=placed,
         set_playlist=set_written,
+        content_link=plan.link.value if plan.link is not None else None,
     )
 
 
@@ -1153,12 +1211,14 @@ def assert_rows_gridless(landed: NativeLanded) -> None:
 
 
 def assert_rows_identified(landed: NativeLanded) -> None:
-    """Refuse when a landed row's file id read back is not its file's inode (U115).
+    """Refuse when a landed row's file id or link read back is not what it was given.
 
-    THE RESTAMP SETS IT BEFORE THE COMMIT and the read back reports it after,
-    so reaching here means the binding or a guard dropped the column on the way
-    to the table, and the row carries an id rekordbox will not load. The write
-    is durable, so the refusal names the session whose capture undoes it.
+    THE RESTAMP SETS BOTH BEFORE THE COMMIT and the read back reports them
+    after, so reaching here means the binding or a guard dropped a column on
+    the way to the table, and the row carries a value rekordbox will not load:
+    a file id that is not its file's inode (U115), or a ContentLink that is not
+    the one the plan read off the library (U126). The write is durable, so the
+    refusal names the session whose capture undoes it.
     """
     wrong = [
         f"{row.content_id}: {rb_writer.FILE_ID_COLUMN} = {row.file_id!r}, "
@@ -1166,11 +1226,19 @@ def assert_rows_identified(landed: NativeLanded) -> None:
         for row in landed.added
         if str(row.file_id) != str(file_id_of(row.target))
     ]
+    # NO SKIP: a row added with no value planned is as wrong as a row whose
+    # value did not take, and None never equals a value read back.
+    wrong += [
+        f"{row.content_id}: {rb_writer.CONTENT_LINK_COLUMN} = {row.content_link!r}, "
+        f"the library's is {landed.content_link!r}"
+        for row in landed.added
+        if landed.content_link is None or row.content_link != landed.content_link
+    ]
     if wrong:
         raise refuse(
             "internal-error",
-            "a landed row does not carry its file's inode after the commit, so "
-            "rekordbox will not load it to a deck: " + "; ".join(wrong),
+            "a landed row does not carry the file id or link it was given after "
+            "the commit, so rekordbox will not load it to a deck: " + "; ".join(wrong),
             remedy=Remedy.REPORT_DEFECT,
             steps=(f"the write is durable; restore session {landed.session_id} to undo it",),
             origin=_ORIGIN,

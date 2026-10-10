@@ -1,0 +1,229 @@
+name = "u126"
+pass_kind = "light"
+
+# U126, the native landing gives each row the library's ContentLink. Every
+# guard the unit's diff added, in src/cratekit/write/row_link.py (the
+# majority read), src/cratekit/intake/native.py (plan, restamp, read back),
+# the gate and answer in land_cli.py and file_cli.py, and the registry entry,
+# plus two of the landing's existing restamp guards as a fixed sample. The
+# landing writes rows into the live library, so every row is user facing.
+
+# ── The majority read ───────────────────────────────────────────────────────
+
+[[rows]]
+id = "M1_half_is_a_majority"
+description = "Accept a value carried by exactly half the live rows"
+file = "src/cratekit/write/row_link.py"
+surface = "user"
+old = '''and carriers * 2 > rows:'''
+new = '''and carriers * 2 >= rows:'''
+
+[[rows]]
+id = "M2_plurality"
+description = "Accept the most common value whatever share of the live rows carries it"
+file = "src/cratekit/write/row_link.py"
+surface = "user"
+old = '''and carriers * 2 > rows:'''
+new = ''':'''
+
+[[rows]]
+id = "M3_dead_rows_count"
+description = "Count removed rows in the majority, so a library's tombstones vote"
+file = "src/cratekit/write/row_link.py"
+surface = "user"
+old = '''            f"WHERE {rb_writer.SOFT_DELETE_COLUMN} = 0 GROUP BY {LINK} "'''
+new = '''            f"GROUP BY {LINK} "'''
+
+[[rows]]
+id = "M4_least_common_first"
+description = "Order the values least common first, so the first read is not the majority"
+file = "src/cratekit/write/row_link.py"
+surface = "user"
+old = '''            f"ORDER BY COUNT(*) DESC"'''
+new = '''            f"ORDER BY COUNT(*) ASC"'''
+
+[[rows]]
+id = "M5_null_is_a_value"
+description = "Drop the NULL test, so a NULL majority is taken as the value"
+file = "src/cratekit/write/row_link.py"
+surface = "user"
+old = '''    if whole is not None and _WHOLE.fullmatch(whole) and carriers * 2 > rows:'''
+new = '''    if whole is None or _WHOLE.fullmatch(whole) and carriers * 2 > rows:'''
+
+[[rows]]
+id = "M6_any_text"
+description = "Loosen the whole number test to the sign stripped isdigit the review found, so --5 and a superscript digit reach int()"
+file = "src/cratekit/write/row_link.py"
+surface = "user"
+old = '''    if whole is not None and _WHOLE.fullmatch(whole) and carriers * 2 > rows:'''
+new = '''    if whole is not None and whole.lstrip("-").isdigit() and carriers * 2 > rows:'''
+
+[[rows]]
+id = "M7_exit_code"
+description = "Register the refusal as PRECONDITION, a command line fault, not the library's"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+old = '''        "link-majority-unclear": ExitCode.LIBRARY_PREREQUISITE,'''
+new = '''        "link-majority-unclear": ExitCode.PRECONDITION,'''
+
+# ── The plan ────────────────────────────────────────────────────────────────
+
+[[rows]]
+id = "P1_no_read"
+description = "Skip the library read and plan a fixed value, the binding's shape of a guess"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''        row_link.library_link(db) if any(row.action == ADD for row in rows) else None'''
+new = '''        row_link.LibraryLink(value=7, carriers=0, rows=0)
+        if any(row.action == ADD for row in rows)
+        else None'''
+
+[[rows]]
+id = "P2_not_shown"
+description = "Drop ContentLink from a row's columns, so the screen and the row's part of the digest omit it"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''            **(
+                {rb_writer.CONTENT_LINK_COLUMN: self.content_link}
+                if self.content_link is not None
+                else {}
+            ),'''
+new = ''''''
+
+[[rows]]
+id = "P3_gate_fact"
+description = "Rename the content link fact on the gate screen, so the value and its count are not where the person reads them"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''        "content link": ('''
+new = '''        "link": ('''
+
+# ── The restamp and the read back ───────────────────────────────────────────
+
+[[rows]]
+id = "R1_binding_value_kept"
+description = "Drop the restamp of ContentLink, so the row keeps the binding's value"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''    setattr(content, rb_writer.CONTENT_LINK_COLUMN, row.content_link)'''
+new = '''    pass'''
+
+[[rows]]
+id = "R2_fill_if_null"
+description = "Set ContentLink only when the binding left it NULL, which it never does"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''    setattr(content, rb_writer.CONTENT_LINK_COLUMN, row.content_link)'''
+new = '''    if getattr(content, rb_writer.CONTENT_LINK_COLUMN, None) is None:
+        setattr(content, rb_writer.CONTENT_LINK_COLUMN, row.content_link)'''
+
+[[rows]]
+id = "R3_check_skipped"
+description = "Skip the read back's ContentLink check"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''        if landed.content_link is None or row.content_link != landed.content_link'''
+new = '''        if False'''
+
+[[rows]]
+id = "R4_nothing_to_hold"
+description = "Hand the landed value no planned link, so the read back has nothing to hold it to"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''        content_link=plan.link.value if plan.link is not None else None,
+    )'''
+new = '''        content_link=None,
+    )'''
+
+[[rows]]
+id = "R5_read_back_file_id"
+description = "Read back the file id column where the link should be"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''        None if row[3] is None else int(row[3]),'''
+new = '''        None if row[2] is None else int(row[2]),'''
+
+[[rows]]
+id = "R6_answer_land"
+description = "Drop the read back ContentLink from intake land's answer"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''                        rb_writer.CONTENT_LINK_COLUMN: row.content_link,'''
+new = ''''''
+
+[[rows]]
+id = "R7_answer_file"
+description = "Drop the read back ContentLink from intake file's answer"
+file = "src/cratekit/intake/file_cli.py"
+surface = "user"
+old = '''                rb_writer.CONTENT_LINK_COLUMN: row.content_link,'''
+new = ''''''
+
+# ── A fixed sample of the landing's existing restamp guards ────────────────
+
+[[rows]]
+id = "S1_file_id_kept"
+description = "Sample, U115: drop the file id restamp, so the row keeps the binding's random id"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''    setattr(content, rb_writer.FILE_ID_COLUMN, file_id_of(row.target))'''
+new = '''    pass'''
+
+[[rows]]
+id = "S2_defaults_left_null"
+description = "Sample, R-923: drop the defaults fill, so the binding's NULLs stay"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''        if getattr(content, column, None) is None:
+            setattr(content, column, value)'''
+new = '''        pass'''
+
+# ── Added by the review round ──────────────────────────────────────────────
+
+[[rows]]
+id = "F1_read_always"
+description = "Read the library's link whatever the plan adds, so a landing of held files refuses on a split library"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''        row_link.library_link(db) if any(row.action == ADD for row in rows) else None'''
+new = '''        row_link.library_link(db)'''
+
+[[rows]]
+id = "F2_every_row_shows"
+description = "Give the link to every planned row, held and unsupported too, so the screen claims a value never written on them"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''            replace(row, content_link=link.value) if row.action == ADD else row for row in rows'''
+new = '''            replace(row, content_link=link.value) for row in rows'''
+
+[[rows]]
+id = "F3_counts_undigested"
+description = "Digest the value alone, so the counts the screen shows can change under an approval"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''            {"value": plan.link.value, "carriers": plan.link.carriers, "rows": plan.link.rows}'''
+new = '''            {"value": plan.link.value}'''
+
+# ── Composites for the answer's two zeros ──────────────────────────────────
+# R6 and R7 start each landed row from the planned row, which already carries
+# the planned link, so dropping the read back value changes nothing an OK
+# answer can show. What makes that true is the read back check: an answer is
+# OK only when every row holds the planned value. Each composite removes that.
+
+[[rows]]
+id = "C1_land_answer_unchecked"
+description = "What R6 does hold: skip the read back check, so intake land answers OK over a row whose link did not take"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+pairs_with = "R6_answer_land"
+old = '''        if landed.content_link is None or row.content_link != landed.content_link'''
+new = '''        if False'''
+
+[[rows]]
+id = "C2_file_answer_unchecked"
+description = "What R7 does hold: let a row added with no planned link pass, so intake file answers OK with nothing to hold the row to"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+pairs_with = "R7_answer_file"
+old = '''        if landed.content_link is None or row.content_link != landed.content_link'''
+new = '''        if landed.content_link is not None and row.content_link != landed.content_link'''

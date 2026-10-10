@@ -32,6 +32,7 @@ from tests.test_config import valid_data
 from tests.test_intake_land_native import (
     DECLARED,
     INTAKE,
+    LIBRARY_LINK,
     _cut_over_intake,
     _members,
     _query,
@@ -851,9 +852,11 @@ def test_a_file_two_collection_rows_claim_is_left_out_rather_than_one_row_picked
     path = _owned(cfg, silence, "Three", content_id="held-3a")
     conn = sqlite3.connect(cfg.library.db_path)
     conn.execute(
-        "INSERT INTO djmdContent (ID, Title, FolderPath, rb_local_deleted, created_at, "
-        "updated_at) VALUES ('held-3b', 'Three', ?, 0, '2026-01-01', '2026-01-01')",
-        (str(path),),
+        "INSERT INTO djmdContent (ID, Title, FolderPath, ContentLink, rb_local_deleted, "
+        "created_at, updated_at) VALUES ('held-3b', 'Three', ?, ?, 0, '2026-01-01', "
+        "'2026-01-01')",
+        # rekordbox's value, so the library's rows still hold a majority (U126).
+        (str(path), LIBRARY_LINK),
     )
     conn.commit()
     conn.close()

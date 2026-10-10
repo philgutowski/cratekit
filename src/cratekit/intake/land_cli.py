@@ -766,6 +766,14 @@ def collection_facts(rows: native.NativePlan) -> dict[str, Any]:
         "reads and writes": str(rows.database),
         "device": f"{rows.device_id} (master {rows.master_db_id})",
         "paths stored": stored,
+        # U126: the value every added row is given, and the count that makes
+        # it the library's, so the person approves the number and its source.
+        "content link": (
+            f"{rows.link.value}, carried by {rows.link.carriers} of the library's "
+            f"{rows.link.rows} live rows"
+            if rows.link is not None
+            else "none, since no row is added"
+        ),
         "left empty for rekordbox": list(native.LEFT_EMPTY),
         "adds": len(rows.to_add()),
         "already present": len(rows.present()),
@@ -836,6 +844,7 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
                         "Title": row.title,
                         "FolderPath": row.folder_path,
                         rb_writer.FILE_ID_COLUMN: row.file_id,
+                        rb_writer.CONTENT_LINK_COLUMN: row.content_link,
                     },
                     "left_empty": sorted(row.empty),
                 }

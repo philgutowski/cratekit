@@ -199,6 +199,7 @@ def _native_reported(payload: dict, landed: native.NativeLanded) -> dict:
                 "Title": row.title,
                 "FolderPath": row.folder_path,
                 rb_writer.FILE_ID_COLUMN: row.file_id,
+                rb_writer.CONTENT_LINK_COLUMN: row.content_link,
             },
             "left_empty": sorted(row.empty),
         }
