@@ -36240,3 +36240,62 @@ genre, which is the shape `tag rows` repairs, so nothing is lost.
 
 **Closes when:** the verb catches a refusal from the row engine after the
 narrow step and adds the files it wrote to the sentence. Ledger only.
+
+## R-939. Files the old tagger wrote "Soul / R&B" onto now file under Soul, R&B sources among them
+
+**Found:** at the review of #275, U118, 2026-10-09.
+
+**The mechanism.** The author decided a combined name files under its first
+word, so "Soul / R&B" is Soul's. The source system's tagger wrote exactly that
+string for the source words "r&b", "rnb", "soul" and "soul / r&b" alike
+(`tests/legacy_taxonomy.py`, its normalize table), so a file carrying it may
+have come from an R&B source. On the live library 7 tracks in R&B carry it
+(2026-10-08 export), and `crate adopt move` plans each out of its R&B band into
+Soul's.
+
+**Measured cost.** Not driven on the live library. Nothing is lost: each moved
+track keeps every other membership, the gate lists each with its genre, and a
+retag to "R&B" followed by another move puts it back.
+
+**Closes when:** the attended run reads the 7 on the rehearsal's gate and
+retags any the author hears as R&B before approving. Ledger only, it closes
+at an attended sitting.
+
+## R-940. A bucket's tagging only word now silently beats another bucket's routing alias
+
+**Found:** at the review of #275, U118, 2026-10-09.
+
+**The mechanism.** "Trap / Wave" routes to the breaks bucket and has always
+tagged as Hip-Hop, through a sub alias while Hip-Hop was a sub. With Hip-Hop a
+bucket, the word is a bucket's tagging alias, and the loader now lets a
+bucket's tagging only word take a key another bucket claims by routing, as a
+sub's always could. The refusal that a hand edit putting such a word in the
+wrong bucket used to meet is gone; two tagging only words of two buckets
+still refuse.
+
+**Measured cost.** None on the shipped template, where the one such word is
+the documented one. A hand edit of a library's copy could make the tagger
+write a folder's name nobody meant, with nothing said at load.
+
+**Closes when:** a tagging only word that overrides a routing alias is
+declared as such, for instance listed in the template header's table of
+words that route one way and tag another, and the loader refuses any that is
+not. Ledger only, maintainer facing.
+
+## R-941. A partial "hip hop" match still lands in NonElectronic's default sub
+
+**Found:** building #275, U118, 2026-10-09.
+
+**The mechanism.** The keyword rules for "hip-hop" and "hip hop" still send a
+genre they partly match to the non electronic bucket, whose default sub is
+Rock, as R-797 left the "r&b" and "soul" rules. "Hip-hop & Rap", the one such
+word measured on the library, was made an exact Hip-Hop alias because the
+author named it. Any other partial match, a "Hip Hop" or "UK Hip-Hop", files
+under NonElectronic / Rock.
+
+**Measured cost.** Not measured on the library beyond the one word. A track
+is filed in a playlist of the wrong style, and nothing is lost.
+
+**Closes when:** the author decides the keyword rules for these genres, the
+decision R-797 records for R&B and Soul, and the rules are repointed or the
+words made aliases. Ledger only, it is the author's decision.

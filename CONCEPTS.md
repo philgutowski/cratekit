@@ -1493,6 +1493,25 @@ names a sub its folder still holds, or that is declared under schema version
 *Avoid:* reading it as a declared sub of the folder it sits in. Nothing is
 filed into it, from either bucket. Also avoid reading it as the outbound
 ledger's `formerly`, which is the display paths a remote playlist moved from.
+Since U118 Hip-Hop has one too, the old Hip-Hop playlist of the same folder.
+
+### Split place
+Since U118, a place another bucket still competes on that this bucket's
+tracks sit in, declared as `[[bucket.split_from]]`. Soul was filed in R&B's
+energy bands as one folder and became a folder of its own, while those bands
+stayed R&B's, so Soul declares every R&B band, Unsorted and R&B's own former
+place as split places. It competes in the declaring bucket only. A track whose
+genre names Soul and sits in one is withheld by adoption and moved by `crate
+adopt move` to the Soul band its reading names, or to Unsorted with no reading,
+and leaves the R&B place; its sub classes, "with vox" among them, stay. A
+track whose genre names R&B is never asked about it. A Soul track no entry
+claims, an unreadable file or a refused folder, is listed under Soul and not
+moved. It needs schema version 3, and the loader refuses one that is not a
+band or former place of its holder, under the holder's own name for it.
+
+*Avoid:* reading it as a former place. A former place is a playlist nobody
+files into any more; a split place is one the holder still files into, and
+only the declaring bucket's tracks leave it.
 
 ### Held elsewhere
 An adoption plan entry withheld because its track already holds a competing

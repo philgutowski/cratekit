@@ -16,9 +16,11 @@
 # tempo priors and the family projection were emitted from the source system's
 # own tables, so they are exact rather than transcribed.
 #
-# ONE BUCKET IS NOT FROM THAT EXPORT. R&B was a sub of the non electronic bucket
-# there. The author moved it to the top level on 2026-10-01 (R-797), with energy
-# bands, and Soul with it as one folder. Its entry says what it left behind.
+# THREE BUCKETS ARE NOT FROM THAT EXPORT. R&B was a sub of the non electronic
+# bucket there. The author moved it to the top level on 2026-10-01 (R-797), with
+# energy bands, and Soul with it as one folder. On 2026-10-09 (U118) Soul left
+# R&B for a folder of its own and Hip-Hop left the non electronic bucket, both
+# with energy bands. Each entry says what it left behind.
 #
 # PROVISIONAL VALUES. The tempo priors are one person's hand-tuned windows and
 # have never been measured against detector error rates; confirming them needs a
@@ -35,7 +37,7 @@
 #
 #   Bass / Club    routes to the catch-all, tags as UK Garage / Bassline
 #   Reggae         routes to the catch-all, tags as the Caribbean sub
-#   Trap / Wave    routes to the breaks bucket, tags as the Hip-Hop sub
+#   Trap / Wave    routes to the breaks bucket, tags as the Hip-Hop bucket
 #
 # This is coherent rather than contradictory: tagging rewrites the file's genre
 # to this library's own name and routing then resolves THAT, so the two are
@@ -46,7 +48,11 @@
 # place, see the R&B bucket below. A build that knows only version 1 refuses
 # this file by name, where it would otherwise ignore the declaration and file
 # tracks twice. A template with no former place may stay at 1.
-schema_version = 2
+#
+# 3 SINCE U118, the version a template states before it may declare a split
+# place, see the Soul bucket below, for the same reason one version on. A
+# template with no split place may stay at 2.
+schema_version = 3
 
 # KTD14 pins the tree at three levels: a child of ROOT, a folder, a sub-playlist.
 # The XML bridge's indentation constants encode exactly that, so a template
@@ -398,14 +404,16 @@ tag_aliases = [
 # R&B AT THE TOP LEVEL, decided by the author on 2026-10-01 (R-797). He is
 # growing an R&B collection and wants to pull from it by energy, so it left the
 # non electronic bucket for a folder of its own, split by the same bands as the
-# dance genres, and Soul came with it as one folder. The energy measure was
-# tuned on dance music and is unproven here; that was known when it was chosen.
+# dance genres, and Soul came with it as one folder until U118 gave Soul its
+# own, below. The energy measure was tuned on dance music and is unproven here;
+# that was known when it was chosen.
 #
-# It takes exactly what the old sub held: the four source strings that filed
-# there, and the tagger's words for them. The tempo window and the family are
-# the non electronic bucket's, unchanged. The keyword rules for "r&b" and
-# "soul" further down still send a partial match to the non electronic bucket's
-# default sub, as they always did; that is a separate decision.
+# It took exactly what the old sub held, and keeps the two of those words the
+# author left under R&B on 2026-10-09: R&B and MPB. The tempo window and the
+# family are the non electronic bucket's, unchanged. The keyword rules for
+# "r&b" and "soul" further down still send a partial match to the non
+# electronic bucket's default sub, as they always did; that is a separate
+# decision.
 #
 # `rates = false` IS CARRIED OVER TOO. These tracks got no star rating written
 # while they sat in the non electronic bucket, and the author decided bands,
@@ -419,18 +427,9 @@ bpm = { start = 110, floor = 70, ceil = 165 }
 aliases = [
   "MPB",
   "R&B",
-  "Soul",
-  "Soul / R&B",
 ]
-# "soul & funk" is the general catalogue's own word (R-796), one genre there
-# covering both. It files here on this table's own precedent, a combined source
-# name goes under its first word, as "hip-hop / r&b" does below. One line to
-# move to the funk sub if that is where these belong. Since R-799 that
-# catalogue has a table of its own at the end of this file, and this alias is
-# read for it only by a copy that declares no such table.
 tag_aliases = [
   "rnb",
-  "soul & funk",
 ]
 rates = false
 
@@ -447,6 +446,117 @@ bucket = "non_electronic"
 sub = "soul_rnb"
 display = "Soul / R&B"
 
+# SOUL AT THE TOP LEVEL, decided by the author on 2026-10-09 (U118), beside
+# R&B and split by the same bands, for the same reason: he pulls soul by
+# energy while playing. Shaped as R&B is, the same family, tempo window and
+# `rates = false`, and no Candy, which nobody asked for here.
+#
+# "Soul / R&B" and "soul & funk" file here on this table's own precedent, a
+# combined source name goes under its first word, as "Hip-Hop / R&B" does
+# under Hip-Hop. "soul & funk" is the general catalogue's own word (R-796),
+# one genre there covering both; since R-799 that catalogue has a table of its
+# own at the end of this file, and this alias is read for it only by a copy
+# that declares no such table.
+[[bucket]]
+id = "soul"
+display = "Soul"
+family = "other"
+bpm = { start = 110, floor = 70, ceil = 165 }
+aliases = [
+  "Soul",
+  "Soul / R&B",
+]
+tag_aliases = [
+  "soul & funk",
+]
+rates = false
+
+# THE BANDS THIS BUCKET'S TRACKS SIT IN TODAY, which R&B still files into. A
+# split place is a place of another bucket that is still that bucket's: a
+# track whose genre names Soul and sits in one is moved by `crate adopt move`
+# to the Soul band its reading names, or to Unsorted with no reading, and
+# leaves the R&B band; a track whose genre names R&B is never touched. Its
+# other memberships stay, "with vox" among them. Adoption will not file a
+# Soul track into a band here while it still sits in one of these, and the
+# move lists any Soul track it cannot move out. `bucket` is the folder that
+# keeps the place, `sub` its identifier there and `display` the name that
+# folder gives it. Delete these tables once no Soul track is left in them.
+#
+# THE LAST ONE IS R&B'S FORMER PLACE, the playlist Soul and R&B shared before
+# either had a folder. A Soul track still there leaves it for Soul. Delete it
+# with R&B's former place, which it names.
+[[bucket.split_from]]
+id = "rnb_low"
+bucket = "rnb"
+sub = "low"
+display = "Low"
+
+[[bucket.split_from]]
+id = "rnb_med"
+bucket = "rnb"
+sub = "med"
+display = "Med"
+
+[[bucket.split_from]]
+id = "rnb_high"
+bucket = "rnb"
+sub = "high"
+display = "High"
+
+[[bucket.split_from]]
+id = "rnb_unsorted"
+bucket = "rnb"
+sub = "unsorted"
+display = "Unsorted"
+
+[[bucket.split_from]]
+id = "rnb_soul_rnb"
+bucket = "rnb"
+sub = "non_electronic_soul_rnb"
+display = "Soul / R&B"
+
+# HIP-HOP AT THE TOP LEVEL, decided by the author on 2026-10-09 (U118). It
+# was a style sub of the non electronic bucket with no energy split, and
+# leaves it as R&B did, for a folder split by the dance bands. Shaped as R&B
+# is, and no Candy.
+#
+# It takes every word the old sub filed and tagged. "Hip-hop & Rap" is the
+# one routing alias the old sub never had: a keyword rule sent it to the non
+# electronic bucket's default sub, and the author named it a Hip-Hop word. The
+# keyword rules for "hip-hop" and "hip hop" further down still send any other
+# partial match to the non electronic bucket, as R-797 decided for R&B.
+[[bucket]]
+id = "hip_hop"
+display = "Hip-Hop"
+family = "other"
+bpm = { start = 110, floor = 70, ceil = 165 }
+aliases = [
+  "Hip-Hop",
+  "Hip-Hop / R&B",
+  "Hip-hop & Rap",
+]
+# "rap/hip hop" is the general catalogue's own word for this genre (R-796).
+# Since R-799 that catalogue has a table of its own at the end of this file,
+# and this alias is read for it only by a copy that declares no such table.
+tag_aliases = [
+  "hip hop",
+  "hip-hop",
+  "hip-hop / r&b",
+  "rap",
+  "rap fr",
+  "rap/hip hop",
+  "trap",
+  "trap / wave",
+]
+rates = false
+
+# THE PLAYLIST THIS BUCKET'S TRACKS SAT IN, as R&B's former place above.
+[[bucket.formerly]]
+id = "non_electronic_hip_hop"
+bucket = "non_electronic"
+sub = "hip_hop"
+display = "Hip-Hop"
+
 [[bucket]]
 id = "non_electronic"
 display = "NonElectronic"
@@ -462,8 +572,6 @@ aliases = [
   "Country",
   "Folk",
   "Funk",
-  "Hip-Hop",
-  "Hip-Hop / R&B",
   "Indie Rock",
   "Jazz",
   "Latin",
@@ -516,24 +624,8 @@ display = "Pop"
 
 # THERE IS NO SOUL / R&B SUB HERE ANY MORE (R-797). It is the "rnb" bucket
 # above, which names the playlist this bucket's folder still holds as its
-# former place.
-
-[[bucket.sub]]
-id = "hip_hop"
-display = "Hip-Hop"
-# "rap/hip hop" is the general catalogue's own word for this genre (R-796).
-# Since R-799 that catalogue has a table of its own at the end of this file,
-# and this alias is read for it only by a copy that declares no such table.
-tag_aliases = [
-  "hip hop",
-  "hip-hop",
-  "hip-hop / r&b",
-  "rap",
-  "rap fr",
-  "rap/hip hop",
-  "trap",
-  "trap / wave",
-]
+# former place. NOR A HIP-HOP SUB (U118): it is the "hip_hop" bucket above,
+# the same way.
 
 [[bucket.sub]]
 id = "folk"
@@ -584,8 +676,6 @@ map = [
   { source = "Country", sub = "caribbean" },
   { source = "Folk", sub = "folk" },
   { source = "Funk", sub = "funk" },
-  { source = "Hip-Hop", sub = "hip_hop" },
-  { source = "Hip-Hop / R&B", sub = "hip_hop" },
   { source = "Indie Rock", sub = "rock" },
   { source = "Jazz", sub = "jazz" },
   { source = "Latin", sub = "caribbean" },
@@ -1125,7 +1215,7 @@ words = [
   { word = "Country", tag = "Folk" },
   { word = "Folk", tag = "Folk" },
   { word = "R&B", tag = "R&B" },
-  { word = "Soul & Funk", tag = "R&B" },
+  { word = "Soul & Funk", tag = "Soul" },
   { word = "Rap/Hip Hop", tag = "Hip-Hop" },
   { word = "Jazz", tag = "Jazz" },
   { word = "Classical", tag = "Classical" },
