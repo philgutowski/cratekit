@@ -1822,6 +1822,29 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # Pink colour in rekordbox is the person's act, and reporting complete
         # over unread colour is the cost this residual named.
         "favorites-pink-colour-missing": ExitCode.PRECONDITION,
+        # ── U123's six, appended for the same reason ───────────────────────────
+        #
+        # ``label heard`` was given a year or a date that is not one.
+        # PRECONDITION rather than USAGE, for ``report-as-of-invalid``'s reason:
+        # the parser accepted it because any string is a valid argument.
+        "label-heard-invalid": ExitCode.PRECONDITION,
+        # No go took a release of the label in that year on that day, so no
+        # dated playlist by that name is the product's. Nothing was written.
+        "label-heard-no-releases": ExitCode.PRECONDITION,
+        # A release named with ``--release`` is not one of the dated playlist's,
+        # refused by name before the gate. Nothing was marked heard.
+        "label-heard-not-in-playlist": ExitCode.PRECONDITION,
+        # The label's folder holds two playlists with the dated name, or the
+        # year's name, so which one is meant is not something a name decides.
+        # The remedy is on the account, ``label-playlists-ambiguous``'s argument.
+        "label-heard-ambiguous": ExitCode.PRECONDITION,
+        # The outbound ledger does not record the dated playlist as one the
+        # product created, so it is not the verb's to take anything off or
+        # remove. The person merges it by hand. Nothing was written.
+        "label-heard-not-product-made": ExitCode.PRECONDITION,
+        # The dated playlist has tracks to put in the year and the folder holds
+        # no year playlist. ``label playlists`` builds it first.
+        "label-heard-no-year-playlist": ExitCode.PRECONDITION,
     }
 )
 

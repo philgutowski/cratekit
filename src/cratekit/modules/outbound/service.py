@@ -2,10 +2,11 @@
 
 A streaming account is mutated by adding a heart, by adding a track to a
 playlist, by retitling a playlist, by making a folder, by putting a playlist
-in one, and by taking tracks off a playlist THE PRODUCT ITSELF CREATED. There
-is no un-heart, no un-color, and no playlist or folder delete on this protocol.
-Deletion in the library never propagates to a streaming service (R36). The
-type is the rule: a caller that wants any other remove has nowhere to call it.
+in one, and by taking tracks off, or removing, a playlist THE PRODUCT ITSELF
+CREATED. There is no un-heart, no un-color, no folder delete, and no delete of
+a playlist anybody else made on this protocol. Deletion in the library never
+propagates to a streaming service (R36). The type is the rule: a caller that
+wants any other remove has nowhere to call it.
 
 **ONE REMOVAL, THE NARROWEST THAT DOES THE JOB (R-836).** ``remove_tracks``
 takes tracks out of one playlist and nothing else, and an implementation
@@ -13,7 +14,13 @@ refuses it, before any call to the provider, for a playlist the outbound
 ledger does not record as one the product created
 (``ledger.product_made``). A playlist the source system or a person made,
 including a label year playlist adopted by its name, is never touched. The
-suite's removal scans admit this one member by name and nothing else.
+suite's removal scans admit this member and ``remove_playlist`` by name and
+nothing else.
+
+**AND ONE PLAYLIST REMOVAL, ON THE SAME RULE (U123).** ``remove_playlist``
+removes one playlist and nothing else, refused before any provider call for a
+playlist the ledger does not vouch for. ``label heard`` is its one caller, and
+only for a label's dated playlist once its tracks sit in the year playlist.
 
 **RETITLING IS NOT A REMOVAL, AND IT IS THE ONE WRITE THAT TOUCHES SOMETHING
 THE PRODUCT DID NOT MAKE.** It exists because a title is how the source system
@@ -163,4 +170,13 @@ class RemoteAccount(Protocol):
         Returns every asked identifier the playlist no longer holds once the
         removal is done, taken off now or already absent, so a resume asking
         again for one that came off before records it and takes nothing.
+        """
+
+    def remove_playlist(self, playlist_id: str) -> None:
+        """Remove one playlist the product created, and nothing else (U123).
+
+        REFUSED BEFORE ANY PROVIDER CALL for a playlist the outbound ledger
+        does not record as one the product created. A playlist the provider no
+        longer has is already removed, so a resume asking again succeeds and
+        removes nothing. No track leaves any other playlist.
         """

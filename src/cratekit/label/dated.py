@@ -13,14 +13,19 @@ releases it took. The date is the local calendar day of the settling, which is
 written when the go plans and queues, so the name in the plan is the name on
 the account, and a second go the same day lands in the same playlist.
 
-HEARD is the per label ``heard`` list of release identifiers in that record.
-Nothing writes it yet (U122 adds the verb); an absent list is nothing heard.
-Nothing here writes the record.
+HEARD is the per label ``heard`` list of release identifiers in that record,
+written only by ``crate label heard`` (U123, :mod:`cratekit.label.heard`); an
+absent list is nothing heard. Nothing here writes the record.
 
 THE YEAR PLAYLIST IS LEFT AS IT IS. The dated playlist is one more playlist in
 the label's folder, reused by its exact name, and only ever added to. No merge
-into the year and no removal happen here (U122). A dated playlist older than
-``labels.new_playlist_age_days`` is reported and nothing moves.
+into the year and no removal happen here; ``label heard`` does both. A dated
+playlist older than ``labels.new_playlist_age_days`` is reported and nothing
+moves.
+
+ONE THIS PLAN CREATES IS RECORDED IN THE OUTBOUND LEDGER (U123), the ledger's
+lock taken before the create, because a removal is asked of a playlist the
+ledger vouches for and of no other. One reused by its name is never recorded.
 
 A WRITE THE ACCOUNT REFUSES PART WAY is raised naming what was written first,
 and the next plan finds the dated playlist by its name and adds only the rest.
@@ -207,7 +212,8 @@ class DatedPlan:
                 "age_days": one.days,
                 "why": (
                     f"{one.days} day(s) old, past the {one.limit} day(s) "
-                    f"labels.new_playlist_age_days allows; reported and never merged on its own"
+                    f"labels.new_playlist_age_days allows; reported and never merged on its "
+                    f"own, crate label heard merges it once its releases are heard"
                 ),
             }
             for one in self.aged
@@ -425,7 +431,14 @@ def apply(cfg: config.Config, account, planned: DatedPlan) -> DatedApplied:
                 continue
             remote_id = step.remote_id
             if step.action == CREATE:
-                remote_id = account.create_playlist(step.name)
+                # VOUCHED FOR IN THE LEDGER AS IT IS MADE (U123), the lock
+                # taken before the create, so ``label heard`` may remove it.
+                remote_id = ledger.reserve_label_dated(
+                    cfg,
+                    planned.label_id,
+                    step.name,
+                    lambda name=step.name: account.create_playlist(name),
+                )
                 # RECORDED BEFORE THE MOVE, so a refusal between the two
                 # names the playlist now at the account root and its id.
                 done.created.append(step.name)

@@ -1,0 +1,112 @@
+{
+  "name": "u123",
+  "pass_kind": "light",
+  "branch": "relay/282",
+  "head": "b63984d",
+  "when": "2026-10-10 08:47 UTC",
+  "valid": true,
+  "invalid_reason": "in progress",
+  "baseline_collected": 13308,
+  "baseline_exit": 0,
+  "pytest_runs": 8,
+  "state_guarded": "~/Library/Application Support/cratekit (365158 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/label/heard.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/label/heard.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "7df5c90e9dc8c815",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 13308,
+    "baseline_collected": 13308,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "H1_outside_refusal",
+      "description": "Drop the refusal of a --release that is not one of the dated playlist's",
+      "file": "src/cratekit/label/heard.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4a62ff5f7c18bac1",
+      "subset": [
+        "tests/test_label_heard.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.heard",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 38,
+      "baseline_collected": 38,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_heard.py::test_a_release_not_in_the_dated_playlist_is_refused_by_name",
+        "tests/test_label_heard.py::test_the_plan_refuses_through_the_engine_as_through_the_verb"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if outside:\n        raise _refused(",
+      "new": "    if False:\n        raise _refused("
+    },
+    {
+      "id": "H2_no_releases_refusal",
+      "description": "Drop the refusal when no go took a release that year on that day",
+      "file": "src/cratekit/label/heard.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bc155dc25f181f4e",
+      "subset": [
+        "tests/test_label_heard.py"
+      ],
+      "subset_reason": "test files importing cratekit.label.heard",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 38,
+      "baseline_collected": 38,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_heard.py::test_a_date_no_go_took_anything_on_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    releases = releases_of(document, catalogue, year, day)\n    if not releases:",
+      "new": "    releases = releases_of(document, catalogue, year, day)\n    if False:"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "H16_kept_on_keep",
+      "description": "Read the year on a KEEP plan",
+      "reason": "efficiency, not a guard: a KEEP plan reading the year writes nothing different"
+    },
+    {
+      "id": "L4_lock_before_create",
+      "description": "Create before the ledger is loaded in reserve_label_dated",
+      "reason": "ranked below the cap: driven directly by the unreadable ledger test, and a reorder of two statements is not a single text swap the driver can make"
+    }
+  ]
+}
