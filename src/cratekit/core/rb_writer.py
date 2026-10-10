@@ -2671,6 +2671,60 @@ FILE_ID_POLICY = FieldPolicy(
     fields=MappingProxyType({FILE_ID_COLUMN: Ownership.OWNED}),
 )
 
+#: The column the binding's ``add_content`` sets from the TRACK menu item's
+#: ``rb_local_usn`` and rekordbox sets to one value on nearly every row it
+#: makes (A32, R-928). Measured on the live library on 2026-10-10: every row
+#: the native landing made carries ``2973454`` and no other row does, while
+#: 10,292 rows rekordbox made carry ``2950670``, every row since 2026-03 but a
+#: few dozen. It keys no table in the database and what it means is unknown.
+#:
+#: NOT A BOOKKEEPING COLUMN, for the reason the file id is not: the guard
+#: would go blind to it for every writer. The creation policy admits it on the
+#: row the binding makes, and the probe below owns it for its one commit.
+CONTENT_LINK_COLUMN = "ContentLink"
+
+#: The recording code, which rekordbox stores as an empty text on every row it
+#: makes from a file without one and the binding leaves NULL (A32). Measured on
+#: 2026-10-10: no row rekordbox made carries NULL here, every binding row does.
+ISRC_COLUMN = "ISRC"
+
+#: THE COLUMNS THE ROW PROBE MAY WRITE, and the type each value is stored as
+#: (A32, R-928). Enumerated on 2026-10-10 over all 78 content columns: these two
+#: and ``AnalysisUpdated`` are the only columns where a binding row carries a
+#: value or a storage shape that no row rekordbox made carries. The third is
+#: deliberately absent. It is an analysis column under R17, refused by the
+#: guard on every write, and it is tested by letting rekordbox analyse the row
+#: again rather than by writing it.
+#:
+#: NOT A BOOKKEEPING COLUMN, either of them: the guard would go blind to them
+#: for every writer.
+ROW_PROBE_COLUMNS: Mapping[str, type] = MappingProxyType(
+    {CONTENT_LINK_COLUMN: int, ISRC_COLUMN: str}
+)
+
+#: The owner a row probe registers its policy under.
+ROW_PROBE_OWNER = "row-probe"
+
+
+def row_probe_policy(columns: Iterable[str]) -> FieldPolicy:
+    """The policy one probe commit registers: exactly the probe columns it writes.
+
+    Built per commit rather than declared once, so a probe that writes only
+    one of the two columns admits only that one to the guard. OWNED, because
+    the value replaced is the binding's and never a person's. Refuses a column
+    outside :data:`ROW_PROBE_COLUMNS` with ``ValueError``, so no caller can
+    widen the probe by naming one.
+    """
+    wanted = set(columns)
+    outside = wanted - set(ROW_PROBE_COLUMNS)
+    if outside:
+        raise ValueError(f"not a row probe column: {sorted(outside)}")
+    return FieldPolicy(
+        owner=ROW_PROBE_OWNER,
+        fields=MappingProxyType(dict.fromkeys(sorted(wanted), Ownership.OWNED)),
+    )
+
+
 _REGISTERED: dict[str, FieldPolicy] = {}
 
 
@@ -2709,6 +2763,28 @@ def content_writable_columns() -> frozenset[str]:
 
 
 reset_field_policies()
+
+
+@contextmanager
+def field_policies_for_commit(*policies: FieldPolicy) -> Iterator[None]:
+    """Register the named policies for the body and put the registry back after it.
+
+    REGISTERED FOR ONE COMMIT AND THEN PUT BACK, whatever happens inside: a
+    registration left behind would widen the guard for every writer that
+    commits later in the process. The registry as it was is restored, the
+    baseline colour policy included, and a policy another writer registered
+    before survives. Both row repairs enter their commit through this, so the
+    restore rule is spelled once (A32).
+    """
+    was = registered_field_policies()
+    try:
+        for policy in policies:
+            register_field_policy(policy)
+        yield
+    finally:
+        reset_field_policies()
+        for policy in was.values():
+            register_field_policy(policy)
 
 
 def guard_violations(
@@ -3503,6 +3579,7 @@ __all__ = [
     "BINDING_ID_LIMIT",
     "BOOKKEEPING_COLUMNS",
     "CONTENT_ANALYSIS_TABLES",
+    "CONTENT_LINK_COLUMN",
     "CONTENT_ROW_DEFAULTS",
     "CONTENT_ROW_EMPTY_COLUMNS",
     "CONTENT_TABLE",
@@ -3512,6 +3589,9 @@ __all__ = [
     "FIELD_EMPTIES",
     "FILE_ID_COLUMN",
     "FILE_ID_POLICY",
+    "ISRC_COLUMN",
+    "ROW_PROBE_COLUMNS",
+    "ROW_PROBE_OWNER",
     "GRIDLESS_ON_CREATE_COLUMNS",
     "LIBRARY_SYNC_SETTING",
     "MASTER_PLAYLIST_XML",
@@ -3563,6 +3643,8 @@ __all__ = [
     "ensure_playlist",
     "MOVED",
     "UNINSPECTABLE",
+    "field_policies_for_commit",
+    "row_probe_policy",
     "guard_violations",
     "pending_changes",
     "integration_db_path",

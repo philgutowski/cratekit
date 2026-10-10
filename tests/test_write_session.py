@@ -2637,6 +2637,9 @@ def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recor
         # R-923. rekordbox's defaults filled on rows a landing left bare,
         # recorded under the content defaults key as rows updated.
         "write/row_defaults.py::apply_rows",
+        # A32. The row probe's values written onto the rows its triples name,
+        # recorded under the content probe key as rows updated.
+        "write/row_link.py::apply_probes",
         # R-758. One capture before two commits, and both are recorded.
         "write/trees.py::move_tree_membership",
         "write/trees.py::write_tree_membership",

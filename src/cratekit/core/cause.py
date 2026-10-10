@@ -816,6 +816,18 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # one in the template and one in rekordbox.
         "favorites-class-undeclared": ExitCode.LIBRARY_PREREQUISITE,
         "favorites-source-missing": ExitCode.LIBRARY_PREREQUISITE,
+        # A32. The row probe refuses before its gate: a triple is malformed,
+        # names a column the probe may not write or repeats a row and column;
+        # the identifier names no live content row; no other live row carries
+        # the value asked for; or fewer rows carry it than carry the row's own
+        # value, so the write would move the row away from the library's
+        # majority. PRECONDITION on all four, since the parser accepted the
+        # command line and what is wrong is the choice of probe, which the
+        # person changes.
+        "link-probe-invalid": ExitCode.PRECONDITION,
+        "link-row-unknown": ExitCode.PRECONDITION,
+        "link-value-unheld": ExitCode.PRECONDITION,
+        "link-value-minority": ExitCode.PRECONDITION,
         # ── This installation ───────────────────────────────────────────────
         "doctor-check-failed": ExitCode.PRECONDITION,
         # One slug for every way configuration can be unusable, because the

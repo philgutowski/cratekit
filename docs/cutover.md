@@ -1095,6 +1095,32 @@ track list as shortcuts; the deck layout switched to compact and nothing
 else was seen to change, and the next sitting should click empty space to
 dismiss a menu before touching the search field.
 
+## Sitting 37, 2026-10-10, late morning, attended, A32, and a landed row loads
+
+The installed copy was rebuilt from `~/cratekit` checked out at the A32
+branch, and the Cratekit feeder had left on its stop file at 06:46. The
+acknowledgment of sitting 36 still held, both ages under a day. A sweep of all
+78 `djmdContent` columns on a copy asked, for each, whether a binding row's
+value or storage shape occurs on any row rekordbox made. Three did not:
+`ContentLink` `2973454`, `ISRC` stored NULL where rekordbox stores the empty
+text, and `AnalysisUpdated` at 1. Play history then dated the rest: rows with
+other ContentLink values were played under rekordbox 7 as late as 2026-07,
+NULL ISRC rows last in 2024, and no row at AnalysisUpdated 1 ever.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `repair link`, the probe | rehearsed on a copy (database to scratch, `.cratekit` cloned to `.cratekit-copyrun` with `cp -Rpc`, config and state dirs redirected), live on an equal digest `5f14b61568f192c6`, the session approving both | **8 values on 6 rows, 8 read back.** ContentLink `2950670` on Water No Get Enemy and Strings of Life; ISRC empty on As and Super Rich Kids; both on Canto Della Liberta and Still In Love; Erotic untouched as the control. Undo by session capture `2026-10-10T12:12:34Z-1989`. | live |
+| rekordbox, desktop control | opened after the mutation table ended, read by dragging each row to a deck, quit with `cmd+q`, both processes confirmed gone | **Water No Get Enemy and Strings of Life load**, each with ISRC still NULL and AnalysisUpdated still 1. As, ISRC alone, does not; Erotic does not. rekordbox changed nothing on any probed row. A dictation app's window sat over the track list at first and refused clicks there until it was dismissed; the context menu did not appear in screenshots, so the drag is the read. | **passed** |
+| `repair link`, the remaining 16 | rehearsed on a copy, live on an equal digest `04e1873ff5f428a6` | ContentLink `2950670` on the 13 other Vonking rows, the A8 row and the two probe rows still carrying the binding's value; 16 written, 16 read back. No live row carries `2973454` now. Undo by session capture `2026-10-10T12:43:04Z-9e6d`. | live |
+| rekordbox, the spot check | opened again, two drags, quit, both processes gone | **The A8 row loads**, for the first time since it was made on 2026-09-29, and **Erotic, refused at the first open, loads**: the same row before and after one column. | **passed** |
+
+**What the sitting leaves.** ContentLink is the block on a native row, and
+the other two candidates are not needed. All 20 landed rows load to a deck.
+R-928 stays open because the landing still lets the binding choose the
+value, so the next native landing makes unplayable rows again until a unit
+makes it write the library's own value; until then, `crate repair link`
+over each landed row is the repair.
+
 ## What blocks a full sync cycle, stated plainly
 
 **Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
@@ -1106,13 +1132,13 @@ cycle, is next and is attended.
 
 ## Next sitting
 
-**The U115 proof ran at sitting 36 and failed.** `repair rows` renumbered
-20 rows correctly and none of them loads; R-928 stays open with
-`ContentLink` as the one named difference left to test, and that test needs
-a gated one row write, so it is a card and not a sitting. Until it lands,
-a landed row that has to play goes through sitting 34's route: remove the
-row in rekordbox, drop the file from Finder. The 19 Vonking rows and the A8
-row are in that state now.
+**A landed row loads, as of sitting 37.** ContentLink was the block, and all
+20 landed rows now carry rekordbox's value and load to a deck. The next
+native landing still makes rows that will not load until the landing writes
+that value itself, which is the unit cut from A32; until it lands, follow a
+native landing with `crate repair link`, one `--set ROW:ContentLink=2950670`
+per landed row, rehearsed on a copy. Sitting 34's route, removing the row in
+rekordbox and dropping the file from Finder, is no longer needed.
 
 One thing is left of the genre work, and it is the author's: `crate delete
 review` over the 36 tracks removed from the collection at sitting 29, run

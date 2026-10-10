@@ -5215,7 +5215,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # All six are in cause.REASONS and none is in the reserved table.
     # Population 204 to 210, non-reserved 176 to 182, reserved half UNCHANGED
     # at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (210, 182, 28)
+    # Re-pinned on A32, the row probe, 2026-10-10. FOUR slugs, named rather
+    # than counted, each refused by crate repair link before its gate:
+    # link-probe-invalid (a triple that does not parse, names a column the
+    # probe may not write or repeats a row and column), link-row-unknown (the
+    # identifier names no live content row), link-value-unheld (no other live
+    # row carries that value) and link-value-minority (fewer rows carry it
+    # than carry the row's own value, found by the review). All four are in
+    # cause.REASONS and none is in the reserved table. Population 210 to 214,
+    # non-reserved 182 to 186, reserved half UNCHANGED at 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (214, 186, 28)
     # Re-pinned on U117, new label releases kept apart, 2026-10-09. ONE slug,
     # named rather than counted: label-new-playlists-no-folder, which the
     # dated playlist's apply refuses with when the label's folder is not on
@@ -6285,7 +6294,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Re-measured on the merge of main at 976adb1 into fable/277, 2026-10-10:
     # U123's ten literals beside U120's nine, 702 distinct and 493 that are not
     # keys, measured on the merged tree and not either side alone.
-    assert (len(literals), len(literals - set(causes))) == (702, 493), (
+    # Re-pinned on A32, the row probe, 2026-10-10: 702 to 710 distinct,
+    # non-keys 493 to 497. EIGHT joined and nothing left, each absent from
+    # `main`'s own `src` by git grep. Four are the keys pinned above,
+    # link-probe-invalid, link-row-unknown, link-value-unheld and
+    # link-value-minority. repair-link is the session WORKFLOW the probe is
+    # recorded under and the plan KIND its digest is taken under. row-probe is
+    # the OWNER of the field policy the apply builds for its commit. And
+    # rows-link-written and rows-link-nothing-to-write are WARNING codes.
+    assert (len(literals), len(literals - set(causes))) == (710, 497), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6438,7 +6455,16 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Re-measured on the merge of main at 1e93ee7 into fable/278, 2026-10-10:
     # intake/set_playlist.py beside favorites/cli.py and write/genre_favorites.py,
     # without-own 14, with-own 29, the integer half unchanged at 13.
-    assert (len(without), len(with_own), len(both)) == (14, 29, 13), (
+    # Re-pinned on A32, the ContentLink probe, 2026-10-10: without-own 14 to
+    # 15, with-own 29 to 30, the integer half unchanged at 13. Named from this
+    # derivation's own output: `write/row_link.py` joined, and it joined the
+    # without-own half for the searcher's reason above. It names its four
+    # slugs once each, as `PROBE_INVALID`, `ROW_UNKNOWN`, `VALUE_UNHELD` and
+    # `VALUE_MINORITY`,
+    # resolving to the causes `cause.py` declares, and the plan raises them
+    # through `cause.refuse` from that one module. It holds no in-range
+    # integer.
+    assert (len(without), len(with_own), len(both)) == (15, 30, 13), (
         f"the named at-risk population moved: {len(without)} modules hold a name "
         f"resolving to a cause declared elsewhere, {len(with_own)} once each "
         f"file's own enum declarations count, {len(both)} of those also hold an "
@@ -7145,7 +7171,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Re-measured on the merge of main at 976adb1 into fable/277, 2026-10-10:
     # U123's label/heard.py beside U120's three modules, holders 146, the
     # also-holds-an-integer half UNCHANGED at 29.
-    assert (len(literal_holders), len(literal_both)) == (146, 29), (
+    # Re-pinned on A32, the ContentLink probe, 2026-10-10: holders move 146
+    # to 148, and the also-holds-an-integer half is UNCHANGED at 29. TWO
+    # modules joined and none left, both new files: write/row_link.py, which
+    # refuses with decision-stale, internal-error and whitelist-violation, and
+    # write/row_link_cli.py, which refuses with config-unusable and
+    # internal-error. Neither holds an in-range integer.
+    assert (len(literal_holders), len(literal_both)) == (148, 29), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

@@ -1927,6 +1927,12 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # plan is empty, the explicit gate still asks, and the apply is a no op,
         # the shape tag.rows has on this fixture.
         "repair.rows": lambda: _rows_whole(),
+        # A32. The one row and the value, and a CALLABLE because the fixture's
+        # rows carry no ContentLink at all: every row is given the value and
+        # made whole, so the plan over the first writes nothing, the explicit
+        # gate still asks, and the apply is a no op, the shape repair.rows has
+        # on this fixture, which records no pin for a write to meet.
+        "repair.link": lambda: _link_rows(),
         # R-799. No argument: it reads every tagging record this installation
         # committed, which on the fixture's machine is none.
         "tag.remap": [],
@@ -2109,6 +2115,28 @@ def _rows_whole() -> list[str]:
     return []
 
 
+def _link_rows() -> list[str]:
+    """Every content row made whole and given rekordbox's probe values, the
+    first included, so ``repair link`` over the first plans nothing. Answers
+    the one probe."""
+    import sqlite3
+
+    from cratekit.core import rb_writer
+    from tests.test_repair_link import HOUSE
+
+    _rows_whole()
+    link, isrc = rb_writer.CONTENT_LINK_COLUMN, rb_writer.ISRC_COLUMN
+    connection = sqlite3.connect(config.load().library.db_path)
+    try:
+        connection.execute(
+            f"UPDATE {rb_writer.CONTENT_TABLE} SET {link} = ?, {isrc} = ''", (HOUSE,)
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    return ["--set", f"1:{link}={HOUSE}", "--set", f"1:{isrc}="]
+
+
 def _already_cut_over() -> list[str]:
     from datetime import date
 
@@ -2276,6 +2304,10 @@ ACKNOWLEDGED_BEFORE_THE_GATE = {
     ),
     "repair.rows": (
         "tests/test_repair_rows.py::"
+        "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
+    ),
+    "repair.link": (
+        "tests/test_repair_link.py::"
         "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
     ),
     "favorites.refresh": (

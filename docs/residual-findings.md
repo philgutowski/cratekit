@@ -36018,6 +36018,18 @@ sets it from the TRACK menu item's usn. Untested, since a one row live
 write outside a gated verb is forbidden; the test is a card. Sitting 36 in
 `docs/cutover.md` has the measurements.
 
+**Found, 2026-10-10, sitting 37, A32, issue 291.** ContentLink is the block.
+A sweep of all 78 content columns left three binding values that no row
+rekordbox made carries, ContentLink, ISRC stored NULL and AnalysisUpdated at
+1, and `crate repair link` put each on its own row in one gated write. Rows
+given ContentLink `2950670` alone loaded to a deck; a row given ISRC alone and
+an untouched row did not; after the remaining 16 rows were given the value,
+the untouched row loaded too, and so did the A8 row. All 20 landed rows load.
+The finding stays open on the landing: it still lets the binding choose
+ContentLink, so a new native row will not load until the landing sets the
+library's value. `docs/solutions/integration-issues/a-binding-row-will-not-load-until-its-contentlink-is-the-value-rekordbox-writes.md`
+has the method.
+
 ---
 
 ## R-929. A random file id that falls under the volume's inode bound reads as stale and is left
