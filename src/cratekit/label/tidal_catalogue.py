@@ -47,7 +47,9 @@ from cratekit.label.catalogue import (
     TRACK_SEARCH_PAGE,
     AccountPlaylist,
     HeartsShortfall,
+    ListingShortfall,
     PlaylistReferenceInvalid,
+    ReleaseRead,
     ReleaseUnresolvable,
     Unread,
     artist_name,
@@ -548,7 +550,7 @@ class TidalCatalogue:
             raise HeartsShortfall(rows, declared)
         return tuple(rows)
 
-    def release_tracks(self, release_id: str) -> tuple[tuple[Any, ...], int | None]:
+    def release_tracks(self, release_id: str) -> ReleaseRead:
         """One release read again by identifier: its tracks, and its year.
 
         TWO READS, AND BOTH CLIMB THE ONE LADDER. The album itself goes through
@@ -557,7 +559,9 @@ class TidalCatalogue:
         ``listing.playlist_tracks``, because an album pages its tracks exactly
         as a playlist does and counts the ones it will not serve the same way.
         That wrapper stops on the declared count, so a short window is never
-        read as the end of the release.
+        read as the end of the release. ENDING ON THE COUNT IS NOT REACHING IT,
+        so the rows are compared with the count and the third element is the
+        :class:`ListingShortfall` when they fall short (R-515).
 
         A RELEASE THAT IS GONE IS ANSWERED ONCE. See :class:`ReleaseUnresolvable`.
         Every other failure is re-raised as the provider raised it once the
@@ -565,7 +569,10 @@ class TidalCatalogue:
         """
         album = self._album(release_id)
         tracks = listing.playlist_tracks(album, shape="release_tracks", sleep=_pause)
-        return tuple(tracks), _year(album)
+        # THE COUNT THE WALK ENDED ON, read off the album the client already
+        # parsed, so the comparison costs no request (R-515).
+        short = ListingShortfall.of(tracks, getattr(album, "num_tracks", None))
+        return tuple(tracks), _year(album), short
 
     def _album(self, release_id: str) -> Any:
         """One release read by identifier, on the one retry ladder. Never ``None``.

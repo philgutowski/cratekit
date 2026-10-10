@@ -1405,7 +1405,7 @@ def test_one_offered_release_costs_two_calls_on_the_catalogue():
             reads.append(f"album {identity}")
             return Album()
 
-    rows, year = tidal_catalogue.TidalCatalogue(Client()).release_tracks("r1")
+    rows, year, _short = tidal_catalogue.TidalCatalogue(Client()).release_tracks("r1")
 
     assert (len(rows), year) == (3, 2024)
     assert len(reads) == 2, reads

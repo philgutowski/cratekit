@@ -6175,7 +6175,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # And again on the watcher's round: 669 to 670 distinct, non-keys 470 to
     # 471. ONE joined, favorites-skipped, the resume's third WARNING code, for
     # a refresh that did not run at an adoption's end.
-    assert (len(literals), len(literals - set(causes))) == (670, 471), (
+    # Re-pinned on the residual "A playlist or release listing returns short
+    # with no error when the provider withholds unservable tracks",
+    # 2026-10-10: 670 to 673 distinct, non-keys 471 to 474. THREE joined, each absent from
+    # `main`'s own `src` by git grep. intake-playlist-withheld,
+    # label-harvest-playlist-withheld and sync-playlists-withheld are WARNING
+    # codes.
+    assert (len(literals), len(literals - set(causes))) == (673, 474), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

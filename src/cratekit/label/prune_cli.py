@@ -74,7 +74,7 @@ def _reader(entry: labels.LabelEntry, found: catalogue.Catalogue):
 
     def tracks_of(release_id: str) -> tuple[str, ...]:
         try:
-            rows, _year = tracks.release_tracks(release_id)
+            rows, _year, _short = tracks.release_tracks(release_id)
         except catalogue.ReleaseUnresolvable:
             return ()
         except CratekitError:

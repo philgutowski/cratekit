@@ -1420,3 +1420,82 @@ def test_the_entry_is_landed_diagnostic_and_declares_no_write():
     assert entry.destructive is False
     assert entry.gates == ()
     assert entry.long_running is False
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-515: a playlist the provider counts tracks on and does not serve
+# ═══════════════════════════════════════════════════════════════════════════
+
+SHORT = "pl-short"
+
+
+def eight() -> list[Track]:
+    return [Track(str(300 + n), f"Act {n}", f"Title {n}") for n in range(1, 9)]
+
+
+def playlist_withheld(envelope: dict) -> list[dict]:
+    return [w for w in envelope["warnings"] if w["code"] == "intake-playlist-withheld"]
+
+
+def bind_playlist(monkeypatch, rows: list[Track], *, declared: int | None) -> None:
+    fake = FakeCatalogue(playlists={SHORT: FakePagedPlaylist(rows, declared=declared)})
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
+
+
+def test_a_playlist_declaring_ten_with_two_withheld_queues_eight_and_warns(
+    cfg, library, monkeypatch
+):
+    bind_playlist(monkeypatch, eight(), declared=10)
+    code, envelope = drive(["intake", "playlist", SHORT])
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "ok"
+    with jobs.open_store() as store:
+        items = jobs.items(store, envelope["data"]["job_id"])
+    assert len(items) == 8
+    assert envelope["data"]["progress"]["shortfall"] == {
+        "declared": 10,
+        "listed": 8,
+        "withheld": 2,
+    }
+    (warning,) = playlist_withheld(envelope)
+    assert "10 declared, 8 listed, 2 withheld by the provider" in warning["message"]
+    assert repr(SHORT) in warning["message"]
+
+
+def test_a_full_playlist_listing_warns_nothing(cfg, library, monkeypatch):
+    bind_playlist(monkeypatch, eight(), declared=8)
+    code, envelope = drive(["intake", "playlist", SHORT])
+    assert code == int(ExitCode.OK), envelope
+    assert playlist_withheld(envelope) == []
+    assert "shortfall" not in envelope["data"]["progress"]
+
+
+def test_a_playlist_with_no_declared_count_warns_nothing(cfg, library, monkeypatch):
+    bind_playlist(monkeypatch, eight(), declared=None)
+    code, envelope = drive(["intake", "playlist", SHORT])
+    assert code == int(ExitCode.OK), envelope
+    assert playlist_withheld(envelope) == []
+
+
+def test_a_playlist_whose_every_track_is_withheld_is_not_a_quiet_no_op(
+    cfg, library, monkeypatch
+):
+    bind_playlist(monkeypatch, [], declared=3)
+    code, envelope = drive(["intake", "playlist", SHORT])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert envelope["data"]["progress"]["shortfall"] == {
+        "declared": 3,
+        "listed": 0,
+        "withheld": 3,
+    }
+    assert len(playlist_withheld(envelope)) == 1
+
+
+def test_the_default_human_output_names_the_playlist_shortfall(cfg, library, monkeypatch):
+    bind_playlist(monkeypatch, eight(), declared=10)
+    code, text = human(["intake", "playlist", SHORT])
+    assert code == int(ExitCode.OK), text
+    assert "warning [intake-playlist-withheld]:" in text
+    assert "10 declared, 8 listed, 2 withheld by the provider" in text
