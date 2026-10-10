@@ -394,6 +394,17 @@ def test_an_unreadable_soul_file_in_r_and_b_is_listed_under_soul_and_not_moved()
     )
 
 
+def test_an_unreadable_soul_file_in_a_renamed_r_and_b_band_is_listed_under_the_name():
+    excluded = _scanned(
+        "t", energy=5, genre="Soul", disposition=adopt_scan.Disposition.EXCLUDED
+    )
+    held = _in_rnb("t", MED)
+    (left,) = _moves([excluded], held, unnamed=held).left
+    assert (left.bucket, left.reason, left.holds_unnamed) == (
+        SOUL.id, adopt_move.LEFT_UNNAMED, (SPLIT[MED].id,)
+    )
+
+
 def test_a_soul_track_whose_folder_a_verdict_refused_is_listed_and_r_and_b_moves_nothing():
     """Found by the review: R&B's own tree path moved it between R&B's bands,
     a folder its genre does not name, because no entry claimed Soul."""
