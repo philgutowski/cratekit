@@ -1062,23 +1062,38 @@ ENTRIES: tuple[Entry, ...] = (
         long_running=True,
         emits=frozenset({"job_state"}),
         output_schema="job_state/1",
-        writes=frozenset({"xml", "files"}),
+        # U129. The account playlist is a remote write behind its own gate; the
+        # worker still acquires nothing, and a machine without a provider session
+        # still identifies and queues, the playlist step soft skipping.
+        writes=frozenset({"xml", "files", "remote"}),
         adjudicates=True,
         destructive=True,
         # THE CHECKS ARE THE GATE'S. ``recognize.recognition_ready`` refuses on
         # the two recognition keys, ffmpeg and ffprobe, so doctor has to fail on
-        # exactly those or a machine doctor passes refuses at the verb. The
-        # provider session is not declared because this verb's worker never
-        # acquires: a recognised track carries no provider identifier.
-        # ``binary.yt-dlp`` IS DELIBERATELY ABSENT (U104). Only a mix URL needs
-        # the downloader, so declaring it would fail doctor on a machine that
-        # identifies every recording it is handed. A URL without it refuses
-        # with ``yt-dlp-missing`` and the install hint, before any spend.
+        # exactly those or a machine doctor passes refuses at the verb.
+        # ``credential.provider`` is declared for the account playlist (U129);
+        # the playlist step soft skips when the account is unreachable so a
+        # queued set is never lost. ``binary.yt-dlp`` IS DELIBERATELY ABSENT
+        # (U104). Only a mix URL needs the downloader, so declaring it would
+        # fail doctor on a machine that identifies every recording it is handed.
+        # A URL without it refuses with ``yt-dlp-missing`` and the install hint,
+        # before any spend.
         doctor_checks=(
             "library.mounted",
             "binary.ffmpeg",
             "binary.ffprobe",
             "credential.recognition",
+            "credential.provider",
+        ),
+        gates=(
+            GateSpec(
+                name="intake.set.account.confirm",
+                options=("apply", "abort"),
+                prompt="Save this set as a private playlist on the streaming account?",
+                # EXPLICIT, as export.set's is (R34): an account write.
+                explicit=True,
+                digest_source="plan",
+            ),
         ),
     ),
     Entry(

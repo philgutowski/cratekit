@@ -187,6 +187,8 @@ _OUT_HELP = (
 
 
 def build_set(parser, entry) -> None:
+    from cratekit.intake import set_playlist
+
     parser.add_argument("source", help=_SOURCE_HELP)
     parser.add_argument("--out", default=None, metavar="DIR", help=_OUT_HELP)
     parser.add_argument(
@@ -203,6 +205,9 @@ def build_set(parser, entry) -> None:
             "reading the answers already kept for this recording; this spends"
         ),
     )
+    # U129. The account playlist is named as INSPIRATION is, so the same three
+    # words land on both. A resume (--job) never remakes the playlist.
+    set_playlist.add_word_arguments(parser)
     parser.set_defaults(_handler=intake_set)
 
 
@@ -724,6 +729,104 @@ def _coverage_or_refuse(
     )
 
 
+
+#: Why the account playlist step was skipped, one code each (U129).
+ACCOUNT_UNNAMED = "set-account-unnamed"
+ACCOUNT_UNREACHABLE = "set-account-unreachable"
+ACCOUNT_GATE = "intake.set.account.confirm"
+
+
+@dataclass(frozen=True, slots=True)
+class _PlaylistName:
+    """What ``intake set`` decided about the account and INSPIRATION name."""
+
+    name: str = ""
+    warning: dict[str, str] | None = None
+
+
+def _set_playlist_name(
+    page,
+    *,
+    dj: str | None,
+    set_name: str | None,
+    set_date: str | None,
+) -> _PlaylistName:
+    """The INSPIRATION form of the name, or a warning when the words are missing."""
+    from cratekit.export import set_cli
+    from cratekit.intake import set_playlist
+
+    try:
+        words = set_playlist.words_from_page(
+            page, dj=dj, set_name=set_name, set_date=set_date
+        )
+    except CratekitError as exc:
+        if exc.cause.reason != set_playlist.UNNAMED:
+            raise
+        return _PlaylistName(
+            warning={
+                "code": ACCOUNT_UNNAMED,
+                "message": (
+                    f"{exc.cause.message}; the set is queued and no account "
+                    f"playlist was planned. Pass the missing flag(s) on a later "
+                    f"crate export set, or on crate intake inspiration"
+                ),
+            }
+        )
+    return _PlaylistName(name=set_cli.set_name(set_playlist.playlist_name(words)))
+
+
+def _save_account_playlist(ctx, cfg, *, name: str, rows) -> tuple[tuple[dict[str, str], ...], dict | None]:
+    """Plan and, on approval, make the account playlist. Soft on provider gaps.
+
+    THE SET IS ALREADY QUEUED. A missing credential or a matching failure must
+    not take the job away; it becomes a warning and a later ``crate export set``
+    or the backfill covers it. The gate is asked only when a plan was made.
+    """
+    if not name or not rows:
+        return (), None
+    from cratekit.export import set_cli
+
+    try:
+        built = set_cli.plan_from_wanted(cfg, name, rows)
+    except CratekitError as exc:
+        return (
+            (
+                {
+                    "code": ACCOUNT_UNREACHABLE,
+                    "message": (
+                        f"the account playlist {name!r} was not planned "
+                        f"({exc.cause.reason}: {exc.cause.message}); the set is "
+                        f"queued, run crate export set over its tracklist once "
+                        f"the account is reachable"
+                    ),
+                },
+            ),
+            None,
+        )
+    # Find the account gate by name so a resume path without gates stays quiet.
+    spec = next((one for one in ctx.entry.gates if one.name == ACCOUNT_GATE), None)
+    if spec is None:
+        return (
+            (
+                {
+                    "code": ACCOUNT_UNREACHABLE,
+                    "message": (
+                        f"the account playlist {name!r} was planned but this verb "
+                        f"declares no account gate, so nothing was written"
+                    ),
+                },
+            ),
+            None,
+        )
+    option = ctx.gate.require(spec, plan=built.payload, context=built.shown)
+    notes = tuple(set_cli._unmatched_warnings(built.planned))
+    if option != "apply" or not built.writes:
+        return notes, built.payload
+    data, more, _wrote = set_cli.apply_planned(cfg, built)
+    return (*notes, *more), data
+
+
+
 def intake_set(ctx) -> Envelope:
     """Identify the recording, freeze what was heard, and queue one item per track.
 
@@ -776,18 +879,31 @@ def intake_set(ctx) -> Envelope:
                 + _parts_notes(result, queued=True)
             )
             tracks = frozen_rows(result.rows)
+            playlist = _set_playlist_name(
+                held.page,
+                dj=getattr(ctx.args, "dj", None),
+                set_name=getattr(ctx.args, "set_name", None),
+                set_date=getattr(ctx.args, "set_date", None),
+            )
             if tracks:
+                payload = {
+                    SOURCE: held.ref,
+                    TRACKS: tracks,
+                    CALLS: result.calls,
+                    UNREACHED: result.unreached,
+                    PARTS: result.parts,
+                    PAGE: dict(held.page),
+                }
+                # U129. Freeze the INSPIRATION name so the account playlist and
+                # the landing's playlist agree, even when they run on different days.
+                if playlist.name:
+                    payload[PLAYLIST_NAME] = playlist.name
+                if playlist.warning:
+                    warnings = list(warnings) + [playlist.warning]
                 job = jobs.enqueue(
                     store,
                     handler_key=ctx.entry.handler_key,
-                    payload={
-                        SOURCE: held.ref,
-                        TRACKS: tracks,
-                        CALLS: result.calls,
-                        UNREACHED: result.unreached,
-                        PARTS: result.parts,
-                        PAGE: dict(held.page),
-                    },
+                    payload=payload,
                     cfg=cfg,
                     item_ids=tuple(tracks),
                 )
@@ -804,18 +920,20 @@ def intake_set(ctx) -> Envelope:
                 warnings=warnings,
             )
         listed, note = _set_tracklist(out, held, result, job.job_id)
+        account_notes, account_data = _save_account_playlist(
+            ctx, cfg, name=playlist.name if playlist.name else "", rows=result.rows
+        )
+        extra = {
+            "calls": result.calls,
+            "unreached": result.unreached,
+            "parts": result.parts,
+            TRACKLIST: str(listed) if listed is not None else None,
+        }
+        if account_data is not None:
+            extra["account_playlist"] = account_data
         return ctx.envelope(
-            data=_reported(
-                store,
-                job,
-                extra={
-                    "calls": result.calls,
-                    "unreached": result.unreached,
-                    "parts": result.parts,
-                    TRACKLIST: str(listed) if listed is not None else None,
-                },
-            ),
-            warnings=(note, *warnings),
+            data=_reported(store, job, extra=extra),
+            warnings=(note, *warnings, *account_notes),
         )
 
 
@@ -1505,6 +1623,7 @@ __all__ = [
     "PAGE",
     "PLAYLIST_NAME",
     "SOURCE",
+    "ACCOUNT_GATE",
     "TRACKLIST",
     "TRACKLISTS_DIR",
     "TRACKLIST_SUFFIX",
