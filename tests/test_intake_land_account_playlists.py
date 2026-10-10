@@ -21,6 +21,7 @@ import pytest
 from cratekit.acquire import match
 from cratekit.cli import jobs as cli_jobs
 from cratekit.core import config, jobs, session
+from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import account_playlists, batch_name, ingest, missing_cli
 from cratekit.intake import cli as intake_cli
@@ -528,3 +529,90 @@ def test_inbox_names_keeps_a_name_exactly_and_compares_it_exactly():
     assert batch_name.inbox_names(
         ["sunset warmup", "A/B: C?"], ["Sunset Warmup"], batch="x"
     ) == ("sunset warmup", "A/B: C?")
+
+
+def test_a_bridge_landing_is_what_a_rerun_of_its_pass_reads_as_mirrored(cfg, silence, export):
+    """The intake file's record names the account and the pass, which the rerun reads."""
+    held = _owned_export(cfg, silence, export, ("Held1",))
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New1", "Late"))})
+    _stage(cfg, silence, "New1.flac")
+    _applied(held, "--pass", PASS)
+
+    assert account_playlists.mirrored(cfg, PASS) == frozenset({"pl-a"})
+    assert account_playlists.mirrored(cfg, "another pass") == frozenset()
+    # A second landing of the pass, with the late file staged, claims only it.
+    late = _stage(cfg, silence, "Late.flac")
+    (claim,) = account_playlists.split(cfg, PASS, [late])
+    assert claim.files == (late,)
+    assert claim.left == ()
+
+
+def test_an_export_rewritten_after_the_gate_moves_nothing(cfg, silence, export):
+    """The owned tracks' TrackIDs are read again before the first move."""
+    held = _owned_export(cfg, silence, export, ("Held1",))
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New1"))})
+    _stage(cfg, silence, "New1.flac")
+    argv = _land(held, "--pass", PASS)
+    code, refused = _drive(argv)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    _drive(["run", "decide", refused["run_id"], GATE, "apply", "--actor", "a-person"])
+
+    # Held1's entry is renumbered, as a later export of the collection can do.
+    body = held.read_text(encoding="utf-8")
+    tid = body.split('Name="Held1"', 1)[0].rsplit('TrackID="', 1)[1].split('"', 1)[0]
+    held.write_text(body.replace(f'TrackID="{tid}"', 'TrackID="98765"'), encoding="utf-8")
+    code, envelope = _drive(["--run", refused["run_id"], *argv])
+
+    # The gate's digest covers each owned track's TrackID, so the answer is stale.
+    assert envelope["cause"]["reason"] == "decision-stale", envelope
+    assert (Path(cfg.paths.download_staging) / "New1.flac").is_file()
+
+
+def test_the_engine_reads_the_owned_entries_again_before_the_first_move(cfg, silence, export):
+    """Between the plan and the moves, the engine's own check, not only the gate's."""
+    from cratekit.intake import landing
+
+    held = _owned_export(cfg, silence, export, ("Held1",))
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New1"))})
+    staged = _stage(cfg, silence, "New1.flac")
+    planned = landing.plan(staged.parent, cfg, BATCH)
+    claims = account_playlists.split(cfg, PASS, planned.items)
+    named = account_playlists.named(claims, (), batch=BATCH)
+    split, _emptied = landing.owned_in_export(cfg, named, held)
+    (one,) = split
+    assert [m.row for m in one.members if m.file is None] != [""]
+
+    body = held.read_text(encoding="utf-8")
+    tid = body.split('Name="Held1"', 1)[0].rsplit('TrackID="', 1)[1].split('"', 1)[0]
+    held.write_text(body.replace(f'TrackID="{tid}"', 'TrackID="98765"'), encoding="utf-8")
+
+    with pytest.raises(CratekitError) as refused:
+        landing.apply(
+            planned,
+            cfg=cfg,
+            export=held,
+            destination=Path(cfg.library.root).parent / "engine_inboxed.xml",
+            split=split,
+            pass_name=PASS,
+        )
+
+    assert refused.value.cause.reason == "decision-stale"
+    assert "no longer lists the owned tracks" in refused.value.cause.message
+    assert staged.is_file()
+
+
+def test_an_export_entry_on_another_machine_is_no_owned_row(cfg, silence, export):
+    """A Location naming another host has no path here, and is not a refusal."""
+    held = _owned_export(cfg, silence, export, ("Held1",))
+    body = held.read_text(encoding="utf-8").replace(
+        'Location="file://localhost/', 'Location="file://otherhost/'
+    )
+    held.write_text(body, encoding="utf-8")
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New1"))})
+    _stage(cfg, silence, "New1.flac")
+
+    envelope = _applied(held, "--pass", PASS)
+
+    assert _inbox(_intake(envelope))["Sunset Warmup"] == ["New1"]
+    (warning,) = [w for w in envelope["warnings"] if w["code"] == account_playlists.LEFT_OUT]
+    assert "Probe - Held1" in warning["message"]

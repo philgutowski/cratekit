@@ -471,7 +471,6 @@ def test_another_owned_row_is_another_plan():
         one = native.PlaylistPlan(
             name="Sunset Warmup",
             account="pl-a",
-            targets=(target,),
             members=(
                 native.PlaylistMember(content_id=owned),
                 native.PlaylistMember(target=target),
@@ -481,10 +480,39 @@ def test_another_owned_row_is_another_plan():
 
     assert planned("101") != planned("102")
     assert planned("101")["members"] == ["row 101", str(target)]
-    # A playlist of new files alone is digested exactly as before U128.
-    alone = native.PlaylistPlan(name="Sunset Warmup", account="pl-a", targets=(target,))
+    # A playlist of new files alone keeps the keys it had before U128.
+    alone = native.PlaylistPlan(
+        name="Sunset Warmup", account="pl-a", members=(native.PlaylistMember(target=target),)
+    )
     assert native._playlist_identity(alone) == {
         "name": "Sunset Warmup",
         "account": "pl-a",
         "targets": [str(target)],
     }
+
+
+def test_a_playlist_whose_only_file_is_unsupported_still_names_it_as_left():
+    """A playlist dropped for holding nothing writable keeps its left rows, by its name."""
+    target = Path("/library/music/b/Odd.xyz")
+    member = account_playlists.Member(position=3, file=Path("Odd.xyz"), artist="Probe", title="Odd")
+    row = native.RowPlan(
+        source=Path("/staging/Odd.xyz"),
+        target=target,
+        action=native.UNSUPPORTED,
+        title="Odd",
+        folder_path=str(target),
+        file_name=target.name,
+        file_size=1,
+        file_type=0,
+        content_link=None,
+    )
+    one = native.PlaylistPlan(
+        name="Deep Cuts",
+        account="pl-b",
+        members=(native.PlaylistMember(target=target, member=member),),
+    )
+
+    kept, dropped = native._supported_only([one], [row])
+
+    assert kept == ()
+    assert dropped == (("Deep Cuts", member.left(account_playlists.NOT_LANDED)),)

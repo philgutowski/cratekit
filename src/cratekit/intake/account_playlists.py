@@ -57,7 +57,7 @@ Layer: modules.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Sequence
@@ -132,12 +132,15 @@ class Member:
 
     ``file`` is a planned file this landing brings, a NEW member; ``paths`` are
     the library files an owned row resolved to, an OWNED member, whose row each
-    medium finds by path.
+    medium finds by path before the gate (:func:`resolve_owned`) and keeps in
+    ``row``: the content row's id on the native medium, the export's TrackID
+    on the bridge.
     """
 
     position: int
     file: Path | None = None
     paths: tuple[str, ...] = ()
+    row: str = ""
     #: The row's words and report state, for the warning when no row is found.
     artist: str = ""
     title: str = ""
@@ -191,27 +194,36 @@ class Claimed:
     #: The account's name for it, which ``name`` differs from only by a count.
     account_name: str
     playlist_id: str
-    #: The planned files it holds, in the account playlist's order.
-    files: tuple[Path, ...]
     #: Every member, new and owned, in the account playlist's order (U128).
     members: tuple[Member, ...] = ()
     #: The rows of the account playlist it does not hold, each with why.
     left: tuple[Left, ...] = ()
 
+    @property
+    def files(self) -> tuple[Path, ...]:
+        """The planned files it holds, in the account playlist's order."""
+        return tuple(one.file for one in self.members if one.file is not None)
+
+    @property
+    def owned(self) -> int:
+        return sum(1 for one in self.members if one.file is None)
+
     def identity(self) -> dict[str, Any]:
         """What a gate's digest covers for it, so another split is another plan.
 
-        THE OWNED MEMBERS AND THE LEFT ROWS ONLY WHEN THERE ARE ANY, so a claim
-        of new files alone is digested exactly as it was before U128.
+        THE OWNED MEMBERS, BY THE ROW EACH WAS FOUND AS, AND THE LEFT ROWS are
+        keys added only when there are any, so a claim of new files alone keeps
+        the keys it had before U128; its files are listed in the account
+        playlist's order since then.
         """
         identity: dict[str, Any] = {
             "name": self.name,
             "account": self.playlist_id,
             "files": [path.name for path in self.files],
         }
-        if any(one.file is None for one in self.members):
+        if self.owned:
             identity["members"] = [
-                one.file.name if one.file is not None else list(one.paths)
+                one.file.name if one.file is not None else {"paths": list(one.paths), "row": one.row}
                 for one in self.members
             ]
         if self.left:
@@ -450,7 +462,7 @@ def _member(row: Row, *, file: Path | None = None) -> Member:
         file=file,
         paths=() if file is not None else row.paths,
         artist=row.wanted.artist,
-        title=row.wanted.spelled or row.wanted.title,
+        title=row.wanted.listed,
         state=row.state,
     )
 
@@ -564,7 +576,6 @@ def named(claimed: Sequence[Claim], held: Iterable[str], *, batch: str) -> tuple
             name=name,
             account_name=one.source.name,
             playlist_id=one.source.playlist_id,
-            files=one.files,
             members=one.members,
             left=one.left,
         )
@@ -572,40 +583,63 @@ def named(claimed: Sequence[Claim], held: Iterable[str], *, batch: str) -> tuple
     )
 
 
-def owned_rows(
-    cfg: config.Config, claimed: Iterable[Claimed], rows: Iterable[Any]
-) -> dict[tuple[str, ...], tuple[str | None, str]]:
-    """Each owned member's library files and the one row they resolve to, or None and why.
+def resolve_owned(
+    cfg: config.Config, claimed: Sequence[Claimed], rows: Iterable[Any]
+) -> tuple[tuple[Claimed, ...], tuple[tuple[str, Left], ...]]:
+    """Each claim with its owned members' rows found by path, and the left rows of the emptied ones.
 
-    ONE RULE FOR BOTH MEDIA, ``rows`` being the database's content rows on the
-    native medium and the export's collection entries on the bridge, each as a
-    :class:`cratekit.write.trees.ContentRow`. The member's files are tried in
-    the report's order and the first one active row holds is the answer. A
-    file two active rows claim is not an answer, the set playlist's rule
-    (U121): the playlist would hold whichever the index yielded first.
+    ONE RULE FOR BOTH MEDIA, asked BEFORE THE GATE so the screen and the
+    digest name the rows the write joins to each playlist. ``rows`` are the
+    database's content rows on the native medium and the export's collection
+    entries on the bridge, each a :class:`cratekit.write.trees.ContentRow`.
+    A member's files are tried in the report's order and the first one active
+    row holds is the answer. A file two active rows claim is not an answer,
+    the set playlist's rule (U121), since the playlist would hold whichever
+    the index yielded first. A member no row answers is left, with why.
+
+    A claim left holding nothing is not a playlist to write, and its left rows
+    are answered beside the claims by its name, so the landing still names
+    them.
     """
     from cratekit.core import locations
     from cratekit.write import trees
 
     wanted = {one.paths for each in claimed for one in each.members if one.file is None}
-    if not wanted:
-        return {}
-    prefix_map = [locations.PrefixRule(a, b) for a, b in cfg.resolved_prefix_map()]
-    index = trees.index_active_rows(rows, root=cfg.library.root, prefix_map=prefix_map)
-    found: dict[tuple[str, ...], tuple[str | None, str]] = {}
-    for paths in wanted:
-        answer: tuple[str | None, str] = (None, NO_ROW)
-        for match_ in trees.match_indexed_rows(
-            paths, index, root=cfg.library.root, prefix_map=prefix_map
-        ):
-            if match_.outcome is trees.MatchOutcome.AMBIGUOUS:
-                answer = (None, AMBIGUOUS_ROWS)
+    found: dict[tuple[str, ...], tuple[str, str]] = {}
+    if wanted:
+        prefix_map = [locations.PrefixRule(a, b) for a, b in cfg.resolved_prefix_map()]
+        index = trees.index_active_rows(rows, root=cfg.library.root, prefix_map=prefix_map)
+        for paths in wanted:
+            answer = ("", NO_ROW)
+            for matched in trees.match_indexed_rows(
+                paths, index, root=cfg.library.root, prefix_map=prefix_map
+            ):
+                if matched.outcome is trees.MatchOutcome.AMBIGUOUS:
+                    answer = ("", AMBIGUOUS_ROWS)
+                    continue
+                if matched.outcome is trees.MatchOutcome.MATCHED and matched.content_id:
+                    answer = (str(matched.content_id), "")
+                    break
+            found[paths] = answer
+    kept: list[Claimed] = []
+    emptied: list[tuple[str, Left]] = []
+    for one in claimed:
+        members: list[Member] = []
+        left = list(one.left)
+        for member in one.members:
+            if member.file is not None:
+                members.append(member)
                 continue
-            if match_.outcome is trees.MatchOutcome.MATCHED and match_.content_id:
-                answer = (str(match_.content_id), "")
-                break
-        found[paths] = answer
-    return found
+            row, why = found[member.paths]
+            if row:
+                members.append(replace(member, row=row))
+            else:
+                left.append(member.left(why))
+        if members:
+            kept.append(replace(one, members=tuple(members), left=tuple(left)))
+        else:
+            emptied.extend((one.name, row) for row in left)
+    return tuple(kept), tuple(emptied)
 
 
 def left_warning(left: Sequence[tuple[str, Left]]) -> list[dict[str, str]]:
@@ -621,8 +655,7 @@ def left_warning(left: Sequence[tuple[str, Left]]) -> list[dict[str, str]]:
             "code": LEFT_OUT,
             "message": (
                 f"{len(left)} track(s) of the account playlists are not in their INBOX "
-                f"playlist, because nothing the library holds or this landing brought "
-                f"was tied to them: {named_rows}"
+                f"playlist, each named with why: {named_rows}"
             ),
         }
     ]
@@ -678,6 +711,7 @@ __all__ = [
     "named",
     "pending_names",
     "prefer_dated",
+    "resolve_owned",
     "sources",
     "split",
     "unclaimed",

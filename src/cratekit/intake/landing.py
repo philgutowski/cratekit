@@ -60,7 +60,7 @@ import json
 import os
 import unicodedata
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Iterator, Mapping, Sequence
 
@@ -70,6 +70,7 @@ from cratekit.core import (
     analysis_store,
     config,
     jobs,
+    locations,
     tags,
     taxonomy,
     tree_registry,
@@ -188,66 +189,88 @@ def export_rows(content: bytes) -> list[trees.ContentRow]:
 
     An export lists no removed track, so none is a tombstone. An entry with no
     Location, a streaming pseudo track, resolves under no root and the index
-    drops it.
+    drops it; an entry whose Location names another machine has no path here
+    at all, so it is dropped before the index, which would refuse it, since a
+    track on another host is no file of this library.
     """
-    return [
-        trees.ContentRow(
-            content_id=track.track_id,
-            recorded=rbxml.attributes(content, track).get("Location", ""),
-            deleted=False,
-        )
-        for track in rbxml.collection_tracks(content)
-    ]
+    found: list[trees.ContentRow] = []
+    for track in rbxml.collection_tracks(content):
+        recorded = rbxml.attributes(content, track).get("Location", "")
+        try:
+            locations.location_to_path(recorded)
+        except locations.LocationDecodeError:
+            continue
+        found.append(trees.ContentRow(content_id=track.track_id, recorded=recorded, deleted=False))
+    return found
 
 
-def _inbox_playlists(
-    cfg: config.Config,
-    split: Sequence[Claimed],
-    *,
-    export: Path,
-    target: Path,
-    pass_name: str | None,
-) -> tuple[list[ingest.InboxPlaylist], list[tuple[str, Left]]]:
-    """Each account playlist as the intake file writes it, owned tracks found in the export.
+def owned_in_export(
+    cfg: config.Config, split: Sequence[Claimed], export: Path
+) -> tuple[tuple[Claimed, ...], tuple[tuple[str, Left], ...]]:
+    """Each account playlist with its owned tracks found in the export by path (U128).
 
-    BY PATH, AGAINST THE EXPORT THE BATCH IS SPLICED INTO, which is the
-    collection as rekordbox last exported it: an owned track's TrackID there is
-    the row the import joins to the playlist. Read before the splice, so a
-    file this landing places is never mistaken for an owned one. An export
-    that cannot be read here is the splice's to refuse, by its own cause.
+    THE EXPORT THE BATCH IS SPLICED INTO is the collection as rekordbox last
+    exported it, so an owned track's TrackID there is the row the import joins
+    to the playlist. Asked before the gate, so the screen counts only what the
+    intake file will hold. An export that cannot be read finds nothing here,
+    and the preflight refuses it by its own cause.
     """
     from cratekit.intake import account_playlists
 
-    left: list[tuple[str, Left]] = [(one.name, row) for one in split for row in one.left]
-    if any(member.file is None for one in split for member in one.members):
-        try:
-            content = export.read_bytes()
-        except OSError:
-            content = b""
-        owned = account_playlists.owned_rows(cfg, split, export_rows(content))
-    else:
-        owned = {}
-    built: list[ingest.InboxPlaylist] = []
-    for one in split:
-        members: list[Path | str] = []
-        for member in one.members:
-            if member.file is not None:
-                members.append(target / member.file.name)
-                continue
-            held, why = owned.get(member.paths, (None, account_playlists.NO_ROW))
-            if held is None:
-                left.append((one.name, member.left(why)))
-            else:
-                members.append(held)
-        built.append(
-            ingest.InboxPlaylist(
-                name=one.name,
-                members=tuple(members),
-                account=one.playlist_id,
-                pass_name=pass_name or "",
-            )
+    if not any(one.owned for one in split):
+        return tuple(split), ()
+    try:
+        content = export.read_bytes()
+    except OSError:
+        content = b""
+    return account_playlists.resolve_owned(cfg, split, export_rows(content))
+
+
+def _assert_owned_unchanged(cfg: config.Config, split: Sequence[Claimed], export: Path) -> None:
+    """Refuse when the export's entries for the owned tracks moved since the plan.
+
+    The TrackIDs were read before the gate. An export rewritten since could
+    give another track the same number, and the playlist would then name the
+    wrong track, so they are read again before the first move.
+    """
+    if not any(one.owned for one in split):
+        return
+    planned = {(one.name, m.paths): m.row for one in split for m in one.members if m.file is None}
+    again, _emptied = owned_in_export(
+        cfg, [replace(one, left=()) for one in split], export
+    )
+    now = {(one.name, m.paths): m.row for one in again for m in one.members if m.file is None}
+    if now != planned:
+        raise refuse(
+            "decision-stale",
+            f"{export} no longer lists the owned tracks of the account playlists as it "
+            f"did when this landing was planned, so nothing was moved; run the landing "
+            f"again against the export as it is",
+            origin=_ORIGIN,
+            detail={"export": str(export)},
         )
-    return built, left
+
+
+def _inbox_playlists(
+    split: Sequence[Claimed], *, target: Path, pass_name: str | None
+) -> list[ingest.InboxPlaylist]:
+    """Each account playlist as the intake file writes it, in the account playlist's order.
+
+    A new member by the path its file lands at, an owned one by the TrackID
+    :func:`owned_in_export` found for it before the gate.
+    """
+    return [
+        ingest.InboxPlaylist(
+            name=one.name,
+            members=tuple(
+                target / member.file.name if member.file is not None else member.row
+                for member in one.members
+            ),
+            account=one.playlist_id,
+            pass_name=pass_name or "",
+        )
+        for one in split
+    ]
 
 
 def _listable(entry: Path) -> bool:
@@ -1232,8 +1255,10 @@ def apply(
     movable, refused = _screen(
         plan, target, checked.declared, nothing_after="no intake file was written"
     )
+    _assert_owned_unchanged(cfg, split, export)
     moved = _move(plan, target, movable, refused, nothing_after="no intake file was written")
-    inbox, left = _inbox_playlists(cfg, split, export=export, target=target, pass_name=pass_name)
+    inbox = _inbox_playlists(split, target=target, pass_name=pass_name)
+    left: list[tuple[str, Left]] = [(one.name, row) for one in split for row in one.left]
 
     try:
         placed = ingest.place_files(
