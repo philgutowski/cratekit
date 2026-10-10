@@ -36859,3 +36859,24 @@ rekordbox at all, and if it does, through which writer: the intake file's xml
 for the add and something else for the removal, since an xml import cannot take
 a playlist away. A31, issue #289, filed with this unit, carries the question.
 Ledger only.
+
+---
+
+## R-966. A provider that answers False to a playlist delete is driven by no test, so the cause the person sees for it is unmeasured
+
+**Found:** at the mutation table of #282, U123, 2026-10-10.
+
+**The mechanism.** `label heard` removes the dated playlist through the
+account protocol's `remove_playlist`. The Tidal adapter can answer False to the
+delete; the verb then reads the folder back, still finds the playlist, and
+refuses with `outbound-remove-refused`. Row `T4_refused_delete` of
+`docs/mutation/u123-rows.toml` drops the False branch and no test dies, because
+no test drives a False answer.
+
+**Measured cost.** None to the person in outcome, a refusal either way. The
+cause shown differs, provider failure against still served, and that
+difference is what the row guards and what nothing measures.
+
+**Closes when:** a test in `tests/test_label_heard.py` drives a False delete
+answer and asserts the provider failure cause, and the row is rerun. Ledger
+only.

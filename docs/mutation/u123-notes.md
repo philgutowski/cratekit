@@ -35,3 +35,16 @@ From an attended session, on a tree whose sources match this branch:
 
 `--resume` reuses H1 and H2, and every row after them runs. A zero on a user
 facing row then owes the composite METHOD describes.
+
+## Measured on macOS, 2026-10-10
+
+The watcher resumed the table in its test worktree at main `976adb1` from the
+relay task's partial sidecar: 25 rows, 24 killed, 1 zero, `T4_refused_delete`.
+The operator session reclassified T4 rather than pairing it: after a delete the
+provider answers False, the read back still finds the playlist, and the verb
+refuses with `outbound-remove-refused`, so the person sees a refusal either
+way; only the cause shown changes, provider failure against still served. The
+outcome is near equivalent, the cause line is not, and no test drives a False
+delete answer. That gap is filed as a residual beside this table rather than
+closed on `main` outside a landing. `docs/mutation/u123.md` and `u123.json` are
+the measured table, byte for byte from the watcher's run.
