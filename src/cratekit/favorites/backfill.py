@@ -141,12 +141,19 @@ def landed_paths(
 
 @dataclass(frozen=True, slots=True)
 class Dates:
-    """What the dating found: each heart's date, how many the account gave, and a short listing."""
+    """What the dating found: each heart's date, how many the account gave, and what the listing was."""
 
     by_ref: dict[str, datetime | None]
     asked: int
     #: The provider's shortfall when the listing came back short (R-504), else None.
     short: catalogue.HeartsShortfall | None = None
+    #: Whether the account was listed at all this run.
+    listed: bool = False
+    #: Whether the listing is known WHOLE: a count was published and reached.
+    #: A listing with no published count says nothing about a heart it lacks.
+    whole: bool = False
+    #: The provider identifiers the listing carried.
+    on_account: frozenset[str] = frozenset()
 
 
 def dated(cfg: config.Config, rows: Sequence[account_playlists.HeartRow]) -> Dates:
@@ -165,16 +172,30 @@ def dated(cfg: config.Config, rows: Sequence[account_playlists.HeartRow]) -> Dat
         return Dates(by_ref=dates, asked=0)
     found = catalogue.resolve(cfg)
     listed, short = label_cli.favourite_tracks_or_refuse(found, intake_cli.FAVORITES)
+    # WHOLE ONLY WHEN THE PROVIDER PUBLISHED A COUNT AND THE LISTING REACHED
+    # IT. The count rides on the catalogue after its listing; a catalogue that
+    # knows no count published none.
+    declared = getattr(found, "hearts_declared", None)
+    whole = short is None and declared is not None and len(listed) >= declared
     asked = 0
     wanted = set(unknown)
+    on_account: set[str] = set()
     for track in listed:
         ref = str(getattr(track, "id", "") or "")
+        on_account.add(ref)
         if ref in wanted:
             when = placeholders.parse_hearted(intake_cli.hearted_on(track))
             if when is not None:
                 dates[ref] = when
                 asked += 1
-    return Dates(by_ref=dates, asked=asked, short=short)
+    return Dates(
+        by_ref=dates,
+        asked=asked,
+        short=short,
+        listed=True,
+        whole=whole,
+        on_account=frozenset(on_account),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,15 +205,23 @@ class Gathered:
     hearts: tuple[LandedHeart, ...]
     #: How many dates the account supplied.
     asked: int
-    #: Hearts whose job knows no date and the account's SHORT listing did not
-    #: carry: held back unplaced, since a withheld heart is not an undated one.
+    #: Hearts whose job knows no date and a listing that is not known whole
+    #: did not carry: held back unplaced, since a withheld heart is not an
+    #: undated one.
     held_back: tuple[LandedHeart, ...] = ()
     #: The jobs whose reports could not be read, skipped and named.
     unreadable: tuple[str, ...] = ()
     short: catalogue.HeartsShortfall | None = None
+    #: Hearts the author took back: the All Favorites membership exists as
+    #: REMOVED in rekordbox, or the account, listed whole, no longer carries
+    #: the heart. Never placed, and named.
+    taken_back: tuple[LandedHeart, ...] = ()
+    #: Whether the account was listed and no count was published, so a heart
+    #: it lacks could not be told from one withheld.
+    uncounted: bool = False
 
 
-def gather(cfg: config.Config, db: Any) -> Gathered:
+def gather(cfg: config.Config, db: Any, *, source_id: str) -> Gathered:
     """Every landed heart with its row and its date, and what was left aside."""
     rows, unreadable = carried(cfg)
     located = landed_paths(cfg, rows)
@@ -201,8 +230,14 @@ def gather(cfg: config.Config, db: Any) -> Gathered:
     by_path = native.content_ids_for(db, cfg, [path for _row, path in located])
     needed = [row for row, path in located if str(path) in by_path]
     dates = dated(cfg, needed)
+    # THE AUTHOR'S DECISION IN REKORDBOX: a heart whose membership in the
+    # source exists as removed was taken out by hand, and the backfill never
+    # puts it back, run after run, where the next outbound sync would then
+    # heart it on the account again.
+    removed = placement.removed_members(db, source_id)
     hearts: list[LandedHeart] = []
     held: list[LandedHeart] = []
+    taken: list[LandedHeart] = []
     seen: set[str] = set()
     for row, path in located:
         content_id = by_path.get(str(path))
@@ -223,11 +258,21 @@ def gather(cfg: config.Config, db: Any) -> Gathered:
             hearted=when,
             dated_by=dated_by,
         )
-        # A HEART THE JOB COULD NOT DATE AND A SHORT LISTING DID NOT CARRY is
-        # held back: the provider may have withheld it dated, and Undated is
-        # a placement this engine never undoes.
-        if when is None and not row.known and dates.short is not None:
-            held.append(heart)
+        if content_id in removed:
+            taken.append(replace(heart, dated_by="removed from the playlist in rekordbox"))
+            continue
+        # A HEART THE JOB COULD NOT DATE AND THE LISTING DID NOT CARRY is one
+        # of two things, and Undated is a placement this engine never undoes.
+        # On a listing known whole the account no longer carries it: the
+        # author's decision, taken back and named. On a short listing, or one
+        # with no published count, the provider may have withheld it dated:
+        # held back and named. Only a heart the listing carried with no date
+        # is undated.
+        if when is None and not row.known and dates.listed and row.ref not in dates.on_account:
+            if dates.whole:
+                taken.append(replace(heart, dated_by="no longer on the account"))
+            else:
+                held.append(heart)
             continue
         hearts.append(heart)
     return Gathered(
@@ -236,6 +281,8 @@ def gather(cfg: config.Config, db: Any) -> Gathered:
         held_back=tuple(held),
         unreadable=unreadable,
         short=dates.short,
+        taken_back=tuple(taken),
+        uncounted=dates.listed and not dates.whole and dates.short is None,
     )
 
 
@@ -259,6 +306,10 @@ class BackfillPlan:
     unreadable: tuple[str, ...] = ()
     #: The listing's shortfall, when it was short.
     withheld: int = 0
+    #: Hearts the author took back, in rekordbox or on the account. Not placed.
+    taken_back: tuple[LandedHeart, ...] = ()
+    #: The account was listed and published no count.
+    uncounted: bool = False
 
     @property
     def undated(self) -> int:
@@ -275,7 +326,7 @@ class BackfillPlan:
 def plan(cfg: config.Config, db: Any, *, source: str) -> BackfillPlan:
     """Gather the landed hearts and plan their placement against the home."""
     home = placement.resolve_home(db, source)
-    found = gather(cfg, db)
+    found = gather(cfg, db, source_id=home.source_id)
     return _planned(
         db,
         home,
@@ -284,6 +335,8 @@ def plan(cfg: config.Config, db: Any, *, source: str) -> BackfillPlan:
         held_back=found.held_back,
         unreadable=found.unreadable,
         withheld=found.short.withheld if found.short is not None else 0,
+        taken_back=found.taken_back,
+        uncounted=found.uncounted,
     )
 
 
@@ -296,6 +349,8 @@ def _planned(
     held_back: Sequence[LandedHeart] = (),
     unreadable: Sequence[str] = (),
     withheld: int = 0,
+    taken_back: Sequence[LandedHeart] = (),
+    uncounted: bool = False,
 ) -> BackfillPlan:
     placements = placement.plan_placements(
         db, home, [(one.content_id, one.hearted, one.title) for one in hearts]
@@ -307,6 +362,8 @@ def _planned(
         held_back=tuple(held_back),
         unreadable=tuple(unreadable),
         withheld=withheld,
+        taken_back=tuple(taken_back),
+        uncounted=uncounted,
     )
     return replace(planned, digest=digest_of(planned.identity()))
 
@@ -327,6 +384,8 @@ def replan(db: Any, approved: BackfillPlan, *, source: str) -> BackfillPlan:
         held_back=approved.held_back,
         unreadable=approved.unreadable,
         withheld=approved.withheld,
+        taken_back=approved.taken_back,
+        uncounted=approved.uncounted,
     )
 
 
@@ -364,6 +423,7 @@ def payload(planned: BackfillPlan, cfg: config.Config) -> dict[str, Any]:
             "undated": planned.undated,
             "dates from the account": planned.asked,
             "held back": len(planned.held_back),
+            "taken back": len(planned.taken_back),
             "jobs unread": len(planned.unreadable),
         },
         "chunk": None,
@@ -385,10 +445,19 @@ def facts(planned: BackfillPlan) -> dict[str, Any]:
         "dates asked of the account": planned.asked,
     }
     if planned.held_back:
-        facts["held back"] = (
-            f"{len(planned.held_back)} heart(s) the account's short listing did not date, "
-            f"{planned.withheld} withheld by the provider; not placed this run"
+        why = (
+            f"{planned.withheld} withheld by the provider"
+            if planned.withheld
+            else "the listing published no count, so a heart it lacks cannot be told from one withheld"
         )
+        facts["held back"] = (
+            f"{len(planned.held_back)} heart(s) the account's listing did not carry, {why}; "
+            f"not placed this run"
+        )
+    if planned.taken_back:
+        facts["taken back"] = [
+            f"{one.title}, {one.dated_by}" for one in planned.taken_back
+        ]
     if planned.unreadable:
         facts["jobs unread"] = list(planned.unreadable)
     return facts

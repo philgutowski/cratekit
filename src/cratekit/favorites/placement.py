@@ -163,6 +163,22 @@ def members(db: Any, playlist_id: str) -> frozenset[str]:
     )
 
 
+def removed_members(db: Any, playlist_id: str) -> frozenset[str]:
+    """The content ids whose membership in a playlist rekordbox marked REMOVED.
+
+    A membership that exists as removed is a track somebody took out of the
+    playlist by hand, and for All Favorites that is the author un-hearting a
+    track in the library. The backfill (U120) reads this so it never puts a
+    heart back that the author took back, where a landing of a new heart has
+    no such row to read.
+    """
+    return frozenset(
+        str(song.ContentID)
+        for song in db.get_playlist_songs(PlaylistID=str(playlist_id))
+        if rb_writer.membership_removed(song)
+    )
+
+
 # ---------------------------------------------------------------------------
 # The plan over content rows, for the backfill
 # ---------------------------------------------------------------------------
@@ -208,10 +224,19 @@ class PlacementPlan:
         return self.adds > 0
 
     def identity(self) -> dict[str, Any]:
-        """What the digest covers: the home's rows and each heart's target state."""
+        """What the digest covers: the home's rows, each quarter's row or its making, each heart's target state.
+
+        THE QUARTER ROWS ARE DIGESTED, found or to be made, so a quarter
+        playlist deleted between the plan and the write is another plan and
+        not a playlist the write makes without having shown it.
+        """
         return {
             "kind": "favorites-placement",
             **self.home.identity(),
+            "quarters": {
+                quarter: self.home.present.get(quarter, "")
+                for quarter in sorted({one.quarter for one in self.placements})
+            },
             "placements": [
                 {
                     "row": one.content_id,
@@ -374,6 +399,7 @@ __all__ = [
     "SOURCE_MISSING",
     "members",
     "place",
+    "removed_members",
     "plan_placements",
     "resolve_home",
     "source_name",

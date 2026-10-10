@@ -71,15 +71,21 @@ def _landed_hearts(cfg, silence, titles: dict[str, str | None], *, batch: str = 
     return job
 
 
-def _account(monkeypatch, dates: dict[str, datetime | None]):
-    """The account's hearts, each dated or not, under the identifiers the jobs froze."""
+def _account(monkeypatch, dates: dict[str, datetime | None], *, declared: int | None | str = "whole"):
+    """The account's hearts, each dated or not, under the identifiers the jobs froze.
+
+    The listing is WHOLE unless ``declared`` says otherwise: the provider
+    published the count it serves. ``None`` is a provider that published none.
+    """
     rows = []
     for title, when in dates.items():
         row = Track(f"tid-{title}", "Probe", title)
         if when is not None:
             row.user_date_added = when
         rows.append(row)
-    return bind_hearts(monkeypatch, rows)
+    fake = bind_hearts(monkeypatch, rows)
+    fake.hearts_declared = len(rows) if declared == "whole" else declared
+    return fake
 
 
 def _acts(verb: list[str] = VERB) -> tuple[int, dict, dict]:
@@ -92,6 +98,19 @@ def _acts(verb: list[str] = VERB) -> tuple[int, dict, dict]:
     assert decided == int(ExitCode.OK), envelope
     code, acted = drive(["--run", run_id, *verb])
     return code, acted, refused
+
+
+def _live(cfg, playlist_id: str) -> list[str]:
+    """The members a person sees: the removed rows left out, which ``_members`` keeps."""
+    return [
+        str(row[0])
+        for row in _query(
+            cfg,
+            "SELECT ContentID FROM djmdSongPlaylist WHERE PlaylistID = ? AND rb_local_deleted = 0 "
+            "ORDER BY TrackNo",
+            playlist_id,
+        )
+    ]
 
 
 def _rows(cfg) -> dict[str, str]:
@@ -205,26 +224,29 @@ def test_a_date_the_job_froze_wins_and_the_account_is_not_asked(native_library, 
     assert _favorites(cfg, folder_id) == {SOURCE: ["Dated"], "2026-Q4": ["Dated"]}
 
 
-def test_a_heart_the_account_dates_nowhere_goes_to_undated_and_is_said(
+def test_a_heart_the_account_dates_nowhere_goes_to_undated_and_one_it_no_longer_carries_is_taken_back(
     native_library, silence, monkeypatch
 ):
     cfg, _root_id = native_library
     folder_id, _source_id = _home(cfg)
     _landed_hearts(cfg, silence, {"Gone": None, "Kept": None})
-    # The account no longer carries the first and dates the second nowhere.
+    # The account, listed whole, no longer carries the first and dates the second nowhere.
     _account(monkeypatch, {"Kept": None})
 
     code, acted, refused = _acts()
 
     assert code == int(ExitCode.OK), acted
     shown = refused["cause"]["detail"]["shown"]
-    assert shown["undated"] == 2 and shown["dates asked of the account"] == 0
-    assert {item["quarter"] for item in shown["items"]} == {"Undated"}
-    assert {item["dated_by"] for item in shown["items"]} == {"none"}
+    assert shown["undated"] == 1 and shown["dates asked of the account"] == 0
+    assert [(item["title"], item["quarter"], item["dated_by"]) for item in shown["items"]] == [
+        ("Probe - Kept", "Undated", "none")
+    ]
+    assert shown["taken back"] == ["Probe - Gone, no longer on the account"]
     (note,) = [w for w in acted["warnings"] if w["code"] == backfill_cli.UNDATED]
-    assert "2 heart(s) carry no date" in note["message"] and "nothing moves a heart" in note["message"]
-    found = _favorites(cfg, folder_id)
-    assert sorted(found[SOURCE]) == ["Gone", "Kept"] and sorted(found["Undated"]) == ["Gone", "Kept"]
+    assert "1 heart(s) carry no date" in note["message"] and "nothing moves a heart" in note["message"]
+    (taken,) = [w for w in acted["warnings"] if w["code"] == backfill_cli.TAKEN_BACK]
+    assert "Probe - Gone (no longer on the account)" in taken["message"]
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Kept"], "Undated": ["Kept"]}
 
 
 def test_a_heart_two_jobs_carried_is_one_heart_with_the_dated_jobs_date(
@@ -423,7 +445,7 @@ def test_a_heart_a_short_listing_did_not_date_is_held_back_not_filed_undated(
     assert code == int(ExitCode.OK), acted
     shown = refused["cause"]["detail"]["shown"]
     assert [item["title"] for item in shown["items"]] == ["Probe - Served"]
-    assert shown["held back"].startswith("1 heart(s) the account's short listing did not date, 4 withheld")
+    assert shown["held back"].startswith("1 heart(s) the account's listing did not carry, 4 withheld")
     (note,) = [w for w in acted["warnings"] if w["code"] == backfill_cli.HELD_BACK]
     assert "held back unplaced" in note["message"] and "4 withheld" in note["message"]
     assert acted["data"]["totals"]["held back"] == 1
@@ -569,3 +591,110 @@ def test_the_write_itself_refuses_a_plan_whose_home_moved_with_no_gate_in_front(
 
     assert caught.value.cause.reason == "decision-stale"
     assert _query(cfg, "SELECT ID FROM djmdPlaylist WHERE Name = '2026-Q3'") == []
+
+
+# ---------------------------------------------------------------------------
+# What the watcher's review added
+# ---------------------------------------------------------------------------
+
+
+def test_a_heart_the_author_took_out_of_all_favorites_is_never_put_back(
+    native_library, silence, monkeypatch
+):
+    """The author un-hearts a track in rekordbox: the membership row stays,
+    marked removed. The backfill reads that as the decision it is, run after
+    run, where the outbound sync would otherwise heart it on the account again."""
+    cfg, _root_id = native_library
+    folder_id, source_id = _home(cfg)
+    _landed_hearts(cfg, silence, {"Same Girl": None, "Kept": None})
+    _account(monkeypatch, {"Same Girl": Q3, "Kept": Q3})
+    code, _acted, _refused = _acts()
+    assert code == int(ExitCode.OK)
+    assert sorted(_favorites(cfg, folder_id)[SOURCE]) == ["Kept", "Same Girl"]
+    # Taken out by hand: the membership exists as removed.
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        (entry,) = [
+            row
+            for row in handle.get_playlist_songs(PlaylistID=source_id)
+            if str(row.ContentID) == _rows(cfg)["Same Girl"]
+        ]
+        entry.rb_local_deleted = 1
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    assert _live(cfg, source_id) == [_rows(cfg)["Kept"]]
+
+    code, acted, refused = _acts()
+
+    assert code == int(ExitCode.OK), acted
+    assert acted["outcome"] == "no_op"
+    shown = refused["cause"]["detail"]["shown"]
+    assert [item["title"] for item in shown["items"]] == ["Probe - Kept"]
+    assert shown["taken back"] == ["Probe - Same Girl, removed from the playlist in rekordbox"]
+    (note,) = [w for w in acted["warnings"] if w["code"] == backfill_cli.TAKEN_BACK]
+    assert "removed from the playlist in rekordbox" in note["message"]
+    assert _live(cfg, source_id) == [_rows(cfg)["Kept"]]
+    assert acted["data"]["totals"]["taken back"] == 1
+
+
+def test_a_listing_with_no_published_count_holds_back_a_heart_it_lacks(
+    native_library, silence, monkeypatch
+):
+    """The provider published no count, so a heart the listing lacks cannot be
+    told from one withheld, and Undated is a placement nothing undoes."""
+    cfg, _root_id = native_library
+    folder_id, _source_id = _home(cfg)
+    _landed_hearts(cfg, silence, {"Served": None, "Absent": None})
+    _account(monkeypatch, {"Served": Q3}, declared=None)
+
+    code, acted, refused = _acts()
+
+    assert code == int(ExitCode.OK), acted
+    shown = refused["cause"]["detail"]["shown"]
+    assert [item["title"] for item in shown["items"]] == ["Probe - Served"]
+    assert shown["held back"].startswith("1 heart(s) the account's listing did not carry, the listing published no count")
+    (note,) = [w for w in acted["warnings"] if w["code"] == backfill_cli.HELD_BACK]
+    assert "no published count" in note["message"]
+    assert "taken back" not in shown
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Served"], "2026-Q3": ["Served"]}
+
+
+def test_a_quarter_playlist_deleted_between_the_plan_and_the_write_is_another_plan(
+    native_library, silence, monkeypatch
+):
+    """The digest covers the quarter rows found and to be made, so the write
+    never makes a playlist the approved screen did not list."""
+    import pytest
+
+    from cratekit.core.cause import CratekitError
+
+    cfg, _root_id = native_library
+    folder_id, _source_id = _home(cfg)
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        q3 = handle.create_playlist("2026-Q3", parent=handle.get_playlist(ID=folder_id))
+        handle.session.commit()
+        q3_id = str(q3.ID)
+    finally:
+        rb_writer.close_db(handle)
+    _landed_hearts(cfg, silence, {"Same Girl": None})
+    _account(monkeypatch, {"Same Girl": Q3})
+    approved = backfill_cli.planned(cfg, source=SOURCE)
+    assert approved.placements.creates == ()
+    assert approved.identity()["quarters"] == {"2026-Q3": q3_id}
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        handle.get_playlist(ID=q3_id).rb_local_deleted = 1
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+
+    with pytest.raises(CratekitError) as caught:
+        backfill_cli.written(cfg, approved, source=SOURCE)
+
+    assert caught.value.cause.reason == "decision-stale"
+    assert _query(
+        cfg, "SELECT COUNT(*) FROM djmdPlaylist WHERE Name = '2026-Q3' AND rb_local_deleted = 0"
+    ) == [(0,)]
+

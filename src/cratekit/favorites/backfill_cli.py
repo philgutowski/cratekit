@@ -34,6 +34,7 @@ PLACED = "favorites-backfilled"
 UNDATED = "favorites-hearts-undated"
 HELD_BACK = "favorites-hearts-held-back"
 JOBS_UNREAD = "favorites-jobs-unread"
+TAKEN_BACK = "favorites-hearts-taken-back"
 
 _ORIGIN = ("favorites", "backfill_cli")
 
@@ -104,14 +105,28 @@ def _notes(plan: backfill.BackfillPlan) -> list[dict[str, str]]:
             }
         )
     if plan.held_back:
+        why = (
+            f"the account's hearts listed short, {plan.withheld} withheld by the provider"
+            if plan.withheld
+            else "the account's hearts listed with no published count"
+        )
         notes.append(
             {
                 "code": HELD_BACK,
                 "message": (
                     f"{len(plan.held_back)} heart(s) were held back unplaced: their job "
-                    f"froze no date and the account's hearts listed short, "
-                    f"{plan.withheld} withheld by the provider, so a withheld heart "
-                    f"would read as undated; run again when the listing is whole"
+                    f"froze no date and {why}, so a heart the listing lacks cannot be "
+                    f"told from one withheld; run again when the listing is whole"
+                ),
+            }
+        )
+    if plan.taken_back:
+        notes.append(
+            {
+                "code": TAKEN_BACK,
+                "message": (
+                    f"{len(plan.taken_back)} heart(s) the author took back were not placed: "
+                    + "; ".join(f"{one.title} ({one.dated_by})" for one in plan.taken_back)
                 ),
             }
         )
@@ -193,6 +208,7 @@ __all__ = [
     "JOBS_UNREAD",
     "NOTHING_TO_PLACE",
     "PLACED",
+    "TAKEN_BACK",
     "UNDATED",
     "build",
     "favorites_backfill",

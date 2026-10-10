@@ -349,3 +349,22 @@ def test_no_content_row_tempo_or_rating_is_written(cfg, db):
         assert conn.execute("SELECT COUNT(*) FROM djmdContent").fetchone()[0] == 6
     finally:
         conn.close()
+
+
+def test_removed_memberships_are_read_apart_from_live_ones(cfg, db):
+    folder, source = _home(db, "1", "2")
+    (entry,) = [row for row in db.get_playlist_songs(PlaylistID=str(source.ID)) if str(row.ContentID) == "2"]
+    entry.rb_local_deleted = 1
+    db.session.commit()
+    assert placement.members(db, source.ID) == {"1"}
+    assert placement.removed_members(db, source.ID) == {"2"}
+    del folder
+
+
+def test_the_plans_digest_covers_each_quarters_row_found_or_to_be_made(cfg, db):
+    folder, _source = _home(db)
+    q3 = _quarter(db, folder, "2026-Q3")
+    home = placement.resolve_home(db, SOURCE)
+    plan = placement.plan_placements(db, home, [("1", Q3, "one"), ("2", Q4, "two")])
+    assert plan.identity()["quarters"] == {"2026-Q3": str(q3.ID), "2026-Q4": ""}
+

@@ -6189,7 +6189,10 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # 477 to 479. TWO joined, favorites-hearts-held-back and favorites-jobs-unread,
     # the backfill verb's WARNING codes for a short listing's undated hearts held
     # back and for a hearts job whose reports could not be read.
-    assert (len(literals), len(literals - set(causes))) == (678, 479), (
+    # Re-pinned on the watcher's round of the same unit, 2026-10-10: 678 to 679
+    # distinct, non-keys 479 to 480. ONE joined, favorites-hearts-taken-back, the
+    # backfill verb's WARNING code for a heart the author took back.
+    assert (len(literals), len(literals - set(causes))) == (679, 480), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

@@ -215,6 +215,10 @@ class FakeCatalogue:
         #: The account's hearted tracks, in the order the listing serves them.
         self.hearts = list(hearts or [])
         self.heart_listings = 0
+        #: The count the provider publishes beside its hearts, None for none
+        #: published. The real catalogue sets it on each listing; a suite that
+        #: means a whole listing sets it to the count it serves.
+        self.hearts_declared: int | None = None
         self.confirmed = None if confirmed is None else frozenset(confirmed)
         self.known_labels = None if known_labels is None else frozenset(known_labels)
         #: Each release's tracks and its year, keyed by the release identifier,
