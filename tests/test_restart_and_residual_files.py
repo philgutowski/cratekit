@@ -80,8 +80,9 @@ def _unit_branch(run, root: Path, unit: int) -> None:
     assert run("git", "checkout", "-q", "-b", f"unit/{unit}", "main").returncode == 0
     (root / "docs" / "restart" / f"u{unit}.md").write_text(f"**U{unit} built.** Its record.\n")
     # Git keeps no empty folder, so the checkout back to main removed it.
-    (root / "docs" / "residuals").mkdir(exist_ok=True)
-    (root / "docs" / "residuals" / f"u{unit}-a-finding.md").write_text(
+    folder = root / "docs" / "residuals"
+    folder.mkdir(exist_ok=True)
+    (folder / f"u{unit}-a-finding.md").write_text(
         _residual(f"Unit {unit} left a finding")
     )
     assert run("git", "add", "-A").returncode == 0

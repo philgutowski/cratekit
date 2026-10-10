@@ -1330,7 +1330,8 @@ def main() -> int:
     )
     closing.set_defaults(func=cmd_closing)
     residuals = sub.add_parser(
-        "residuals", help="list the residual files waiting for a number, or number them"
+        "residuals",
+        help="list the residual files waiting for a number, or number them",
     )
     residuals.add_argument(
         "--land",
