@@ -616,3 +616,62 @@ def test_an_export_entry_on_another_machine_is_no_owned_row(cfg, silence, export
     assert _inbox(_intake(envelope))["Sunset Warmup"] == ["New1"]
     (warning,) = [w for w in envelope["warnings"] if w["code"] == account_playlists.LEFT_OUT]
     assert "Probe - Held1" in warning["message"]
+
+
+def test_an_abandoned_landing_is_not_read_as_mirrored(cfg, silence, export):
+    """A person who discarded the intake file discarded its playlists too."""
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
+    _stage(cfg, silence, "One.flac")
+    _applied(export, "--pass", PASS)
+    assert account_playlists.mirrored(cfg, PASS) == frozenset({"pl-a"})
+
+    (record,) = session.records(cfg)
+    session.close_session(record, cfg, state=session.SessionState.ABANDONED)
+
+    assert account_playlists.mirrored(cfg, PASS) == frozenset()
+
+
+def _one_owned(name: str, paths: tuple[str, ...]) -> account_playlists.Claimed:
+    member = account_playlists.Member(
+        position=1, paths=paths, artist="Probe", title="Held1", state="owned"
+    )
+    return account_playlists.Claimed(
+        name=name, account_name=name, playlist_id="pl-a", members=(member,)
+    )
+
+
+def test_a_file_two_active_rows_claim_is_no_owned_row(cfg):
+    from cratekit.write import trees
+
+    held = Path(cfg.library.root) / cfg.library.music_dir / "b" / "Held1.flac"
+    rows = [
+        trees.ContentRow(content_id="7", recorded=str(held), deleted=False),
+        trees.ContentRow(content_id="8", recorded=str(held), deleted=False),
+    ]
+    new = account_playlists.Member(position=2, file=Path("New1.flac"))
+    claimed = _one_owned("Sunset Warmup", (str(held),))
+    claimed = account_playlists.Claimed(
+        name=claimed.name,
+        account_name=claimed.account_name,
+        playlist_id=claimed.playlist_id,
+        members=(*claimed.members, new),
+    )
+
+    (kept,), emptied = account_playlists.resolve_owned(cfg, [claimed], rows)
+
+    assert kept.members == (new,)
+    assert [one.why for one in kept.left] == [account_playlists.AMBIGUOUS_ROWS]
+    assert emptied == ()
+
+
+def test_a_claim_left_holding_nothing_still_answers_its_left_rows(cfg):
+    held = Path(cfg.library.root) / cfg.library.music_dir / "b" / "Held1.flac"
+
+    kept, emptied = account_playlists.resolve_owned(
+        cfg, [_one_owned("Deep Cuts", (str(held),))], []
+    )
+
+    assert kept == ()
+    assert [(name, one.title, one.why) for name, one in emptied] == [
+        ("Deep Cuts", "Held1", account_playlists.NO_ROW)
+    ]
