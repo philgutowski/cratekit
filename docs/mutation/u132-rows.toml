@@ -1,0 +1,341 @@
+name = "u132"
+pass_kind = "light"
+
+[[rows]]
+id = "P1_collision_hold"
+description = "The planner adds a bucket whose words another bucket of the copy's files"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "user"
+old = '''
+                if clashes:
+'''
+new = '''
+                if False:
+'''
+
+[[rows]]
+id = "P2_designed_sharing"
+description = "A word the shipped template files in both places counts as a clash"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "user"
+old = '''
+        if word in designed.get(owner, set()):
+            continue
+'''
+new = ""
+
+[[rows]]
+id = "P3_candidate_loader_hold"
+description = "A candidate that makes the copy fail to load is added anyway"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "user"
+old = '''
+            loaded = _loads(placed)
+            if isinstance(loaded, list):
+'''
+new = '''
+            loaded = _loads(placed)
+            if False:
+'''
+
+[[rows]]
+id = "P4_version_raise"
+description = "The schema version is never raised"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "user"
+old = '''
+    if active.schema_version < shipped.schema_version:
+'''
+new = '''
+    if False:
+'''
+
+[[rows]]
+id = "P6_cut_equality"
+description = "A cut that parses to something else than the shipped entry is returned"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "user"
+old = '''
+            if parsed[0] != shipped[0]:
+'''
+new = '''
+            if False:
+'''
+
+[[rows]]
+id = "P7_child_tables"
+description = "A bucket's cut stops at its first child table"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "user"
+old = '''
+            if not later.startswith(child):
+'''
+new = '''
+            if True:
+'''
+
+[[rows]]
+id = "P8_present_skip"
+description = "An entry the copy already declares is planned again"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "user"
+old = '''
+            if entry_id in present[kind]:
+'''
+new = '''
+            if False:
+'''
+
+[[rows]]
+id = "P9_kept_whole"
+description = "The placed text is taken without checking every entry the copy held is unchanged"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "user"
+old = '''
+        if _kept_whole(text, joined, kind, entry):
+'''
+new = '''
+        if True:
+'''
+
+[[rows]]
+id = "V1_stale"
+description = "An answer to a plan whose digest moved is written"
+file = "src/cratekit/cli/verbs/taxonomy.py"
+surface = "user"
+old = '''
+    if moved["digest"] != data["digest"]:
+'''
+new = '''
+    if False:
+'''
+
+[[rows]]
+id = "V2_backup"
+description = "The copy as it was is not kept beside it"
+file = "src/cratekit/cli/verbs/taxonomy.py"
+surface = "user"
+old = '''
+    config.atomic_write_bytes(fresh.before.encode("utf-8"), kept)
+'''
+new = ""
+
+[[rows]]
+id = "V3_restore"
+description = "A copy that does not read back is left in place"
+file = "src/cratekit/cli/verbs/taxonomy.py"
+surface = "user"
+old = '''
+        config.atomic_write_bytes(fresh.before.encode("utf-8"), path)
+'''
+new = ""
+
+[[rows]]
+id = "V4_text_compare"
+description = "The read back does not compare the text on disk with the text written"
+file = "src/cratekit/cli/verbs/taxonomy.py"
+surface = "user"
+old = '''
+        if path.read_text(encoding="utf-8") != written:
+'''
+new = '''
+        if False:
+'''
+
+[[rows]]
+id = "V5_nothing"
+description = "A plan that writes nothing still asks the gate"
+file = "src/cratekit/cli/verbs/taxonomy.py"
+surface = "user"
+old = '''
+    if not found.writes:
+'''
+new = '''
+    if False:
+'''
+
+[[rows]]
+id = "V6_backup_name"
+description = "A backup takes the name an earlier backup holds"
+file = "src/cratekit/cli/verbs/taxonomy.py"
+surface = "user"
+old = '''
+    while candidate.exists():
+'''
+new = '''
+    while False:
+'''
+
+[[rows]]
+id = "D1_doctor_behind"
+description = "Doctor reads a copy behind the shipped schema as OK"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''
+    if not found.behind:
+'''
+new = '''
+    if found.behind:
+'''
+
+[[rows]]
+id = "D2_doctor_defect"
+description = "Doctor reports a shipped template defect as the copy not compared"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+old = '''
+        if exc.cause.reason == "internal-error":
+'''
+new = '''
+        if False:
+'''
+
+[[rows]]
+id = "W1_every_apply"
+description = "The adoption runs the Favorites step only when it filed a track"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = ''' or genre_favorites.favorites_class(declared) is None'''
+new = ""
+
+[[rows]]
+id = "W2_coded_note"
+description = "A skip over an undeclared class carries favorites-skipped, not its cause code"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''
+    if skipped and cause == genre_favorites.CLASS_UNDECLARED:
+'''
+new = '''
+    if False:
+'''
+
+[[rows]]
+id = "W3_version_from_report"
+description = "The job's report does not carry the version the skip saw"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+old = '''
+            "schema_version": declared.schema_version,
+'''
+new = '''
+            "schema_version": None,
+'''
+
+[[rows]]
+id = "W4_routing_tree_only"
+description = "A rebuild of another tree names the routing tree's skipped step"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''
+    if declared.tree.id not in {str(tree_id) for tree_id in tree_ids}:
+'''
+new = '''
+    if False:
+'''
+
+[[rows]]
+id = "W5_rebuild_note"
+description = "The rebuild resume carries no skipped step note"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+old = '''
+            *engine.favorites_skipped_warnings(declared, driven),
+'''
+new = ""
+
+[[rows]]
+id = "W6_resort_note"
+description = "The resort resume carries no skipped step note"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''
+                *rebuild.favorites_skipped_warnings(declared, driven),
+'''
+new = ""
+
+[[rows]]
+id = "G1_undeclared_cause"
+description = "The additive half's skip over an undeclared class carries no cause"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+old = '''
+            cause=CLASS_UNDECLARED,
+'''
+new = '''
+            cause="",
+'''
+
+[[rows]]
+id = "P9_composite"
+description = "What P9 holds: the guard off and the placement one line into the following entry"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+pairs_with = "P9_kept_whole"
+old = '''
+            at = own[held_ids.index(following[0])][1]
+        else:
+            last = own[-1][0]
+            at = len(lines)
+            for name, start, _ in blocks[last + 1 :]:
+                if not name.startswith(f"{kind}."):
+                    at = start
+                    break
+    tries = [at] if at is not None else []
+    tries.append(len(lines))
+    for index in tries:
+        head = "".join(lines[:index])
+        tail = "".join(lines[index:])
+        gap = "" if not head or head.endswith("\n\n") else "\n"
+        joined = head + gap + piece + ("\n" + tail if tail else "")
+        if _kept_whole(text, joined, kind, entry):
+'''
+new = '''
+            at = own[held_ids.index(following[0])][1] + 1
+        else:
+            last = own[-1][0]
+            at = len(lines)
+            for name, start, _ in blocks[last + 1 :]:
+                if not name.startswith(f"{kind}."):
+                    at = start
+                    break
+    tries = [at] if at is not None else []
+    tries.append(len(lines))
+    for index in tries:
+        head = "".join(lines[:index])
+        tail = "".join(lines[index:])
+        gap = "" if not head or head.endswith("\n\n") else "\n"
+        joined = head + gap + piece + ("\n" + tail if tail else "")
+        if True:
+'''
+
+[[rows]]
+id = "V4_composite"
+description = "What V4 holds: the upgraded copy written with one more line than the plan"
+file = "src/cratekit/cli/verbs/taxonomy.py"
+pairs_with = "V4_text_compare"
+old = '''
+    config.atomic_write_bytes(fresh.after.encode("utf-8"), path)
+'''
+new = '''
+    config.atomic_write_bytes((fresh.after + "\n").encode("utf-8"), path)
+'''
+
+[[dropped]]
+id = "P5_version_loader_hold"
+description = "A raised version that does not load is kept"
+reason = "maintainer facing and no producer: the version is a gate only, so a copy that loads at its own version loads at a higher one; nothing drives it"
+
+[[dropped]]
+id = "P10_comment_run"
+description = "A cut entry loses the comment paragraph above it"
+reason = "maintainer facing, wording only: parse equality and the loader are unchanged by a comment"
+
+[[dropped]]
+id = "W7_driven_filter"
+description = "A resume names the routing tree's skipped step for an item an earlier run drove"
+reason = "ranked below the cap: it needs a two tree job interrupted between its items, a fixture this suite does not have; the single tree resume finished on entry is outside the drive branch"
+
+[[dropped]]
+id = "G2_other_cause"
+description = "A skip for another cause carries no cause code"
+reason = "ranked below the cap: the same guard family as G1, and pinned by the source missing adoption test"
