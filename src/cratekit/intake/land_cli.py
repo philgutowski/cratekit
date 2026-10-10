@@ -487,11 +487,6 @@ def intake_land(ctx) -> Envelope:
     # pass's own jobs before the gate, so the screen can say where every file
     # goes. Named per medium below, against what that medium's INBOX holds.
     claims = account_playlists.split(cfg, pass_name, planned.items)
-    # AND WHICH FILES ARE HEARTS (U120), read from the same jobs the same way,
-    # each with the quarter the account dated it into. Placed by the native
-    # medium alone: the bridge writes an export, and nothing on it places a
-    # heart, which the backfill does once the batch has cut over.
-    hearted = account_playlists.hearted(cfg, pass_name, planned.items)
     # THE MEDIUM IS THE INTAKE TREE'S MODE, the way the routing verbs choose
     # theirs (R-746). A tree the database owns takes the files into the
     # collection through the guarded writer and no export is involved; a tree
@@ -505,6 +500,11 @@ def intake_land(ctx) -> Envelope:
     medium = ingest.intake_medium(cfg)
     declared, registry = medium.declared, medium.registry
     if medium.native:
+        # AND WHICH FILES ARE HEARTS (U120), read from the same jobs the same
+        # way, each with the quarter the account dated it into. The native
+        # medium alone, since the bridge writes an export and places none, so
+        # the match over the planned files is not made for nothing there.
+        hearted = account_playlists.hearted(cfg, pass_name, planned.items)
         return _land_native(
             ctx,
             cfg,
@@ -657,9 +657,8 @@ def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: P
             entry["content_id"] = row.content_id
         if row.why:
             entry["why"] = row.why
-        quarter = hearts.get(str(row.target))
-        if quarter is not None:
-            entry["heart"] = quarter
+        if str(row.target) in hearts:
+            entry["heart"] = hearts[str(row.target)] or "quarter left to the backfill"
         items.append(entry)
     identity = {
         "kind": "land-native",
@@ -692,7 +691,7 @@ def favorites_facts(plan: native.FavoritesPlan) -> dict[str, Any]:
     if plan.skipped:
         return {"hearts": f"none placed, {plan.skipped}"}
     where = f"{plan.source_name!r} under {plan.folder_name!r}" if plan.folder_name else repr(plan.source_name)
-    return {
+    facts: dict[str, Any] = {
         "hearts": f"{len(plan.items)} file(s) the account hearts, into {where} and their quarter",
         "quarter playlists": [
             f"{quarter} ({sum(1 for item in plan.items if item.quarter == quarter)} file(s))"
@@ -700,6 +699,12 @@ def favorites_facts(plan: native.FavoritesPlan) -> dict[str, Any]:
             for quarter in plan.quarters
         ],
     }
+    if plan.unknown:
+        facts["quarter left to the backfill"] = (
+            f"{plan.unknown} file(s) whose job froze no date, which join "
+            f"{plan.source_name!r} here and take their quarter from crate favorites backfill"
+        )
+    return facts
 
 
 def collection_facts(rows: native.NativePlan) -> dict[str, Any]:

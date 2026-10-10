@@ -54,16 +54,18 @@ CLASS = DECLARED.sub_class("favorites")
 SOURCE = CLASS.signal_playlist
 Q4 = "2026-11-03T12:00:00+00:00"
 Q3 = "2026-09-29T22:00:00+00:00"
+#: A row a build before U120 froze: no date key at all, so the quarter is unknown.
+UNKNOWN = "unknown"
 
 
 def hearts_swept(
     cfg: config.Config, titles: dict[str, str | None], *, run_id: str = RUN
 ) -> jobs.Job:
-    """One hearts job, ``title -> when hearted or None``, queued as a sweep does and run."""
+    """One hearts job, ``title -> when hearted, None for undated, UNKNOWN for no key``, run."""
     tracks = {}
     for title, hearted in titles.items():
         row = {"artist": "Probe", "title": title, "origin": match.TIDAL, "ref": f"tid-{title}"}
-        if hearted:
+        if hearted is not UNKNOWN:
             row[intake_cli.HEARTED] = hearted
         tracks[f"tid-{title}"] = row
     with jobs.open_store() as store:
@@ -459,3 +461,70 @@ def test_a_landed_path_is_one_level_under_the_music_dir(native_library, deep):
     assert landing.is_landed_path(cfg, path) is (not deep)
     assert landing.is_landed_path(cfg, music / "x.flac") is False
     assert landing.is_landed_path(cfg, Path(cfg.library.root) / "elsewhere" / "b" / "x.flac") is False
+
+
+# ---------------------------------------------------------------------------
+# What the review added
+# ---------------------------------------------------------------------------
+
+
+def test_a_heart_whose_job_froze_no_date_key_joins_all_favorites_and_no_quarter(
+    native_library, silence
+):
+    """A job an older build froze says nothing about the date, so the landing
+    puts the heart in All Favorites and leaves its quarter to the backfill,
+    rather than filing it Undated and letting the backfill place it twice."""
+    cfg, _root_id = native_library
+    folder_id, _source_id = _home(cfg)
+    hearts_swept(cfg, {"Old": UNKNOWN, "New": Q4})
+    for title in ("Old", "New"):
+        _stage(cfg, silence, title)
+
+    acted, refused = _landed()
+
+    assert _favorites(cfg, folder_id) == {SOURCE: [_title("New"), _title("Old")], "2026-Q4": [_title("New")]}
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["quarter playlists"] == ["2026-Q4 (1 file(s)), made"]
+    assert shown["quarter left to the backfill"].startswith("1 file(s) whose job froze no date")
+    by_name = {Path(item["to"]).name: item for item in shown["items"] if "to" in item}
+    assert by_name["Old.flac"]["heart"] == "quarter left to the backfill"
+    assert by_name["New.flac"]["heart"] == "2026-Q4"
+    assert acted["data"]["totals"]["hearts placed"] == 3
+
+
+def test_a_homes_refusal_that_is_not_the_missing_source_refuses_the_landing(
+    native_library, silence, monkeypatch
+):
+    from cratekit.core.cause import refuse
+
+    cfg, _root_id = native_library
+    _home(cfg)
+    hearts_swept(cfg, {"Hearted": Q4})
+    _stage(cfg, silence, "Hearted")
+
+    def broken(db, name):
+        raise refuse("decision-stale", "the playlist table could not be read", origin=("t",))
+
+    monkeypatch.setattr(placement, "resolve_home", broken)
+    code, refused = drive(_land())
+
+    assert code != int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["reason"] == "decision-stale"
+    assert (Path(cfg.paths.download_staging) / "Hearted.flac").is_file()
+
+
+def test_the_pass_prefers_the_mention_that_knows_its_date(native_library, silence):
+    """Two hearts jobs in one pass, a retry after a short listing: the first
+    frozen by an older build, the second by this one. The claim takes the one
+    that knows, as the backfill does, so the two cannot disagree."""
+    from cratekit.intake import account_playlists
+
+    cfg, _root_id = native_library
+    hearts_swept(cfg, {"Twice": UNKNOWN})
+    hearts_swept(cfg, {"Twice": Q3})
+    staged = [_stage(cfg, silence, "Twice")]
+
+    (found,) = account_playlists.hearted(cfg, PASS, staged)
+
+    assert (found.quarter, found.known) == ("2026-Q3", True)
+

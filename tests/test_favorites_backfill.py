@@ -21,7 +21,7 @@ from cratekit.favorites import backfill, backfill_cli, placement
 from cratekit.intake import cli as intake_cli
 from tests.cli_drive import drive
 from tests.intake.test_workers import Track, bind_hearts
-from tests.test_intake_land_hearts_native import SOURCE, _favorites, _home, hearts_swept
+from tests.test_intake_land_hearts_native import SOURCE, UNKNOWN, _favorites, _home, hearts_swept
 from tests.test_intake_land_hearts_native import pinned_day as pinned_day  # noqa: PLC0414
 from tests.test_intake_land_native import _members, _query, _two_acts
 from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
@@ -57,8 +57,14 @@ def _land(batch: str = BATCH) -> None:
 
 
 def _landed_hearts(cfg, silence, titles: dict[str, str | None], *, batch: str = BATCH):
-    """A hearts job run by hand, its files staged and landed with no pass."""
-    job = hearts_swept(cfg, titles, run_id="")
+    """A hearts job run by hand, its files staged and landed with no pass.
+
+    ``None`` here is a row an older build froze, with no date key at all,
+    which is what every hearts job before U120 looks like.
+    """
+    job = hearts_swept(
+        cfg, {title: (UNKNOWN if when is None else when) for title, when in titles.items()}, run_id=""
+    )
     for title in titles:
         _stage(cfg, silence, title)
     _land(batch)
@@ -168,7 +174,7 @@ def test_an_owned_heart_the_source_system_filed_is_left_alone(native_library, si
     shutil.copyfile(silence, deep)
     assert tags.write_tags(deep, {"title": "Owned", "artist": "Probe"})
     # One heart missing when the job ran and later put under a deep folder by hand.
-    job = hearts_swept(cfg, {"Owned": None, "Hand Filed": None, "Landed": None}, run_id="")
+    job = hearts_swept(cfg, {"Owned": UNKNOWN, "Hand Filed": UNKNOWN, "Landed": UNKNOWN}, run_id="")
     hand = Path(cfg.library.root) / cfg.library.music_dir / "Processed_Tracks" / "Hand Filed.flac"
     shutil.copyfile(silence, hand)
     assert tags.write_tags(hand, {"title": "Hand Filed", "artist": "Probe"})
@@ -226,7 +232,7 @@ def test_a_heart_two_jobs_carried_is_one_heart_with_the_dated_jobs_date(
 ):
     cfg, _root_id = native_library
     folder_id, _source_id = _home(cfg)
-    hearts_swept(cfg, {"Twice": None}, run_id="")
+    hearts_swept(cfg, {"Twice": UNKNOWN}, run_id="")
     _landed_hearts(cfg, silence, {"Twice": "2026-09-29T22:00:00+00:00"}, batch="2026-09-30-favorites")
     fake = _account(monkeypatch, {"Twice": Q4})
 
@@ -305,7 +311,7 @@ def test_an_unreadable_account_refuses_only_when_a_heart_needs_a_date(
     code, acted, _refused = _acts()
     assert code == int(ExitCode.OK), acted
 
-    hearts_swept(cfg, {"Undated Too": None}, run_id="")
+    hearts_swept(cfg, {"Undated Too": UNKNOWN}, run_id="")
     _stage(cfg, silence, "Undated Too")
     _land("2026-09-30-favorites")
     code, refused = drive(VERB)
@@ -384,3 +390,95 @@ def test_the_landed_path_rule_is_the_landings_own(native_library, silence):
     landed = Path(cfg.library.root) / cfg.library.music_dir / BATCH / "One.flac"
     assert landed.is_file() and landing.is_landed_path(cfg, landed)
     assert intake_cli.FAVORITES_SOURCE_ID == "favorites"
+
+
+# ---------------------------------------------------------------------------
+# What the review added
+# ---------------------------------------------------------------------------
+
+
+def test_a_heart_a_short_listing_did_not_date_is_held_back_not_filed_undated(
+    native_library, silence, monkeypatch
+):
+    """R-504: the provider counts hearts it will not serve, so a heart absent
+    from a short listing may be a dated heart withheld, and Undated is a
+    placement nothing undoes."""
+    from cratekit.label import catalogue
+    from tests.label_fakes import FakeCatalogue, catalogue_factory
+
+    cfg, _root_id = native_library
+    folder_id, _source_id = _home(cfg)
+    _landed_hearts(cfg, silence, {"Served": None, "Withheld": None})
+
+    class Short(FakeCatalogue):
+        def favourite_tracks(self):
+            raise catalogue.HeartsShortfall(self.hearts, 5)
+
+    served = Track("tid-Served", "Probe", "Served")
+    served.user_date_added = Q3
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(Short(hearts=[served])))
+
+    code, acted, refused = _acts()
+
+    assert code == int(ExitCode.OK), acted
+    shown = refused["cause"]["detail"]["shown"]
+    assert [item["title"] for item in shown["items"]] == ["Probe - Served"]
+    assert shown["held back"].startswith("1 heart(s) the account's short listing did not date, 4 withheld")
+    (note,) = [w for w in acted["warnings"] if w["code"] == backfill_cli.HELD_BACK]
+    assert "held back unplaced" in note["message"] and "4 withheld" in note["message"]
+    assert acted["data"]["totals"]["held back"] == 1
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Served"], "2026-Q3": ["Served"]}
+
+
+def test_a_hearts_job_whose_reports_cannot_be_read_is_skipped_and_named(
+    native_library, silence, monkeypatch
+):
+    from cratekit.core import jobs
+
+    cfg, _root_id = native_library
+    folder_id, _source_id = _home(cfg)
+    with jobs.open_store() as store:
+        old = jobs.enqueue(
+            store,
+            handler_key="intake.playlist",
+            payload={"source": "favorites", "source_id": intake_cli.FAVORITES_SOURCE_ID},
+            cfg=cfg,
+            item_ids=(),
+        )
+        jobs.transition(store, old.job_id, jobs.JobState.SUCCEEDED)
+    _landed_hearts(cfg, silence, {"Same Girl": None})
+    _account(monkeypatch, {"Same Girl": Q3})
+
+    code, acted, refused = _acts()
+
+    assert code == int(ExitCode.OK), acted
+    assert refused["cause"]["detail"]["shown"]["jobs unread"] == [old.job_id]
+    (note,) = [w for w in acted["warnings"] if w["code"] == backfill_cli.JOBS_UNREAD]
+    assert old.job_id in note["message"]
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Same Girl"], "2026-Q3": ["Same Girl"]}
+
+
+def test_a_heart_the_landing_placed_without_a_quarter_takes_it_from_the_backfill(
+    native_library, silence, monkeypatch
+):
+    """The two halves agree: a landing of an older job puts the heart in All
+    Favorites alone, and the backfill adds exactly its quarter, once."""
+    from tests.test_intake_land_account_playlists_native import PASS
+
+    cfg, _root_id = native_library
+    folder_id, _source_id = _home(cfg)
+    hearts_swept(cfg, {"Old": UNKNOWN})
+    _stage(cfg, silence, "Old")
+    code, acted, _refused = _two_acts(["intake", "land", "--pass", PASS])
+    assert code == int(ExitCode.OK), acted
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Old"]}
+    _account(monkeypatch, {"Old": Q4})
+
+    code, acted, refused = _acts()
+
+    assert code == int(ExitCode.OK), acted
+    (item,) = refused["cause"]["detail"]["shown"]["items"]
+    assert (item["into_source"], item["into_quarter"], item["quarter"]) == (False, True, "2026-Q4")
+    assert acted["data"]["totals"]["added"] == 1
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Old"], "2026-Q4": ["Old"]}
+

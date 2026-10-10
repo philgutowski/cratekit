@@ -6185,7 +6185,11 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # favorites-hearts-undated are the backfill verb's. The engine refuses
     # under U119's favorites-source-missing and the shared decision-stale, so
     # the cause population above is unchanged.
-    assert (len(literals), len(literals - set(causes))) == (676, 477), (
+    # Re-pinned on U120's review round, 2026-10-10: 676 to 678 distinct, non-keys
+    # 477 to 479. TWO joined, favorites-hearts-held-back and favorites-jobs-unread,
+    # the backfill verb's WARNING codes for a short listing's undated hearts held
+    # back and for a hearts job whose reports could not be read.
+    assert (len(literals), len(literals - set(causes))) == (678, 479), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

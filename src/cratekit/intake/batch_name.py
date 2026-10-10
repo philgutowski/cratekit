@@ -148,13 +148,25 @@ def pass_jobs(cfg: config.Config, pass_name: str) -> list[jobs.Job]:
 
     with jobs.open_store() as store:
         return [
-            job
-            for job in jobs.list_jobs(store)
-            if job.handler_key in intake_cli.INTAKE_KEYS
-            and job.library_id == cfg.library.volume_id
-            and job.state is jobs.JobState.SUCCEEDED
-            and missing_cli.in_pass(job, pass_name)
+            job for job in succeeded_intake_jobs(store, cfg) if missing_cli.in_pass(job, pass_name)
         ]
+
+
+def succeeded_intake_jobs(store, cfg: config.Config) -> list[jobs.Job]:
+    """Every intake job on this library that SUCCEEDED, newest first, of any pass or none.
+
+    THE ONE SPELLING of "a job of this library that carried something", which
+    :func:`pass_jobs` narrows to one pass and the favourites backfill (U120)
+    reads whole, so a new intake key or a new library identity is learned in
+    one place.
+    """
+    return [
+        job
+        for job in jobs.list_jobs(store)
+        if job.handler_key in intake_cli.INTAKE_KEYS
+        and job.library_id == cfg.library.volume_id
+        and job.state is jobs.JobState.SUCCEEDED
+    ]
 
 
 def source_words(
@@ -242,6 +254,7 @@ __all__ = [
     "pass_jobs",
     "readable",
     "source_words",
+    "succeeded_intake_jobs",
     "taken",
     "today",
 ]

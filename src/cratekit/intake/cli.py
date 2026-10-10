@@ -80,8 +80,9 @@ PLAYLIST_NAME = "playlist_name"
 #: When the account says a heart was made, on a hearts job's frozen row, as ISO
 #: 8601 in UTC (U120). Recorded at the queue for U113's reason: a landing reads
 #: which quarter a heart goes to from the job and never from the account again.
-#: Absent on a row the account dates nowhere, and on every row a build before
-#: this one froze, and ``thawed`` reads past it.
+#: ON EVERY ROW A HEARTS JOB FREEZES, ``None`` when the account dates the heart
+#: nowhere, so the KEY's absence means one thing only: a job a build before
+#: this one froze, whose quarter nobody knows yet. ``thawed`` reads past it.
 HEARTED = "hearted"
 
 #: The two handler keys one worker serves. A resume is refused for any other,
@@ -1193,12 +1194,13 @@ def list_favorites(
     rows, short = label_cli.favourite_tracks_or_refuse(found, FAVORITES)
     frozen = frozen_rows(_read_rows(rows, FAVORITES))
     # THE DATE RIDES ON THE ROW (U120), by the identifier the row is keyed by,
-    # so a heart folded to one item carries the date of its first mention.
+    # so a heart folded to one item carries the date of its first mention, and
+    # the key is written on EVERY row, None for a heart the account dates
+    # nowhere, so a row with no key is one an older build froze.
     for row in rows:
-        when = hearted_on(row)
         key = str(getattr(row, "id", "") if not isinstance(row, Mapping) else row.get("id", ""))
-        if when and key in frozen and HEARTED not in frozen[key]:
-            frozen[key][HEARTED] = when
+        if key in frozen and HEARTED not in frozen[key]:
+            frozen[key][HEARTED] = hearted_on(row)
     return frozen, short
 
 

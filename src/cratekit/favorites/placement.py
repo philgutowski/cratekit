@@ -303,8 +303,15 @@ def _live_row(db: Any, playlist_id: str, what: str) -> Any:
     return row
 
 
-def _quarter_row(db: Any, home: Home, name: str, parent: Any) -> tuple[Any, bool]:
-    """The quarter's playlist under the folder, found live by name, else made."""
+def _quarter_row(db: Any, name: str, parent: Any) -> tuple[Any, bool]:
+    """The quarter's playlist under the folder, found live by name, else made.
+
+    NOT :func:`rb_writer.ensure_playlist`, which reads no soft delete marker
+    and takes no root: a quarter playlist rekordbox removed would be found and
+    written to, a row a person cannot see (R-758), and a source at the root
+    has no parent row to scope by. The genre Favorites writer reads the same
+    way for the same reason.
+    """
     parent_id = "" if parent is None else str(parent.ID)
     for row in _live_plain(list(db.get_playlist(Name=name))):
         held = str(getattr(row, "ParentID", "") or "")
@@ -312,12 +319,15 @@ def _quarter_row(db: Any, home: Home, name: str, parent: Any) -> tuple[Any, bool
             return row, False
         if parent is not None and held == parent_id:
             return row, False
-    del home
     return db.create_playlist(name, parent=parent), True
 
 
-def place(db: Any, home: Home, pairs: Sequence[tuple[str, str]]) -> Placed:
+def place(db: Any, home: Home, pairs: Sequence[tuple[str, str | None]]) -> Placed:
     """Add each ``(content id, quarter name)`` to the source and to its quarter.
+
+    A PAIR WITH NO QUARTER JOINS THE SOURCE ALONE: a heart whose job froze no
+    date key is a heart all the same, and its quarter is the backfill's to
+    read from the account rather than a guess made here.
 
     ON THE CALLER'S HANDLE AND INSIDE THE CALLER'S COMMIT, so the landing's
     rows, its INBOX playlists and its hearts are one all or nothing write, and
@@ -335,11 +345,12 @@ def place(db: Any, home: Home, pairs: Sequence[tuple[str, str]]) -> Placed:
     added_source = len(rb_writer.add_memberships(db, source, ordered))
     by_quarter: dict[str, list[str]] = {}
     for content_id, quarter in pairs:
-        by_quarter.setdefault(str(quarter), []).append(str(content_id))
+        if quarter:
+            by_quarter.setdefault(str(quarter), []).append(str(content_id))
     written: list[tuple[str, str, int]] = []
     created: list[str] = []
     for quarter, ids in by_quarter.items():
-        row, made = _quarter_row(db, home, quarter, parent)
+        row, made = _quarter_row(db, quarter, parent)
         if made:
             created.append(quarter)
         count = len(rb_writer.add_memberships(db, row, ids))

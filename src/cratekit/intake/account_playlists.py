@@ -107,6 +107,9 @@ class HeartRow:
     #: The provider's identifier, the job's item key.
     ref: str
     job_id: str
+    #: Whether the job SAID anything about the date: a row frozen by a build
+    #: before U120 carries no key at all, and its quarter is nobody's to guess.
+    known: bool = True
 
     @property
     def title(self) -> str:
@@ -120,10 +123,13 @@ class Hearted:
     path: Path
     hearted: datetime | None
     ref: str
+    known: bool = True
 
     @property
-    def quarter(self) -> str:
-        return placeholders.quarter_label(self.hearted)
+    def quarter(self) -> str | None:
+        """The quarter playlist, ``Undated`` for a heart the account dates nowhere,
+        and None for one whose job never said, which the backfill dates later."""
+        return placeholders.quarter_label(self.hearted) if self.known else None
 
 
 def is_hearts_job(job: jobs.Job) -> bool:
@@ -156,15 +162,26 @@ def carried_hearts(store, job: jobs.Job) -> tuple[HeartRow, ...]:
                 hearted=placeholders.parse_hearted(said.get(intake_cli.HEARTED)),
                 ref=str(said.get("ref") or report.get("item_id") or ""),
                 job_id=job.job_id,
+                known=intake_cli.HEARTED in said,
             )
         )
     return tuple(found)
 
 
+def prefer_dated(held: HeartRow | None, row: HeartRow) -> bool:
+    """Whether ``row`` is the mention of a heart to keep over ``held``.
+
+    ONE RULE FOR THE LANDING AND THE BACKFILL: the first mention, unless a
+    later one knows the date where the first did not, since a job frozen by
+    this build knows and an older one does not, and two readers that chose
+    differently would put one heart in two quarters.
+    """
+    return held is None or (not held.known and row.known)
+
+
 def hearts(cfg: config.Config, pass_name: str) -> tuple[HeartRow, ...]:
     """Every heart the pass's hearts jobs carried, in queue order, a row once."""
-    found: list[HeartRow] = []
-    seen: set[str] = set()
+    found: dict[str, HeartRow] = {}
     with jobs.open_store() as store:
         queued = sorted(
             batch_name.pass_jobs(cfg, pass_name), key=lambda job: (job.created, job.job_id)
@@ -173,11 +190,9 @@ def hearts(cfg: config.Config, pass_name: str) -> tuple[HeartRow, ...]:
             if not is_hearts_job(job):
                 continue
             for row in carried_hearts(store, job):
-                if row.ref in seen:
-                    continue
-                seen.add(row.ref)
-                found.append(row)
-    return tuple(found)
+                if prefer_dated(found.get(row.ref), row):
+                    found[row.ref] = row
+    return tuple(found.values())
 
 
 def hearted(
@@ -211,7 +226,7 @@ def hearted(
         for path in resolved.paths:
             held = planned.get(Path(path).resolve())
             if held is not None and held not in found:
-                found[held] = Hearted(path=held, hearted=row.hearted, ref=row.ref)
+                found[held] = Hearted(path=held, hearted=row.hearted, ref=row.ref, known=row.known)
     return tuple(sorted(found.values(), key=lambda one: order[one.path]))
 
 
@@ -380,6 +395,7 @@ __all__ = [
     "is_hearts_job",
     "named",
     "pending_names",
+    "prefer_dated",
     "sources",
     "split",
     "unclaimed",

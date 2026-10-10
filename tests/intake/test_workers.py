@@ -1838,13 +1838,15 @@ def test_a_hearts_job_freezes_when_each_heart_was_made_and_a_playlist_job_does_n
     frozen = job_of(job_id).payload[intake_cli.TRACKS]
     assert frozen["201"][intake_cli.HEARTED] == "2026-10-01T03:00:00+00:00"
     assert frozen["202"][intake_cli.HEARTED] == "2026-10-01T03:00:00+00:00"
-    assert intake_cli.HEARTED not in frozen["203"]
-    assert intake_cli.HEARTED not in frozen["204"]
+    # THE KEY IS ON EVERY ROW, None for a heart the account dates nowhere, so
+    # a row with no key at all is one an older build froze.
+    assert frozen["203"][intake_cli.HEARTED] is None
+    assert frozen["204"][intake_cli.HEARTED] is None
     # The worker thaws the row as before and its report carries the date along.
     drive(resume_argv(job_id))
     found = by_title(cfg, job_id)
     assert found["Sun Path"]["track"][intake_cli.HEARTED] == "2026-10-01T03:00:00+00:00"
-    assert intake_cli.HEARTED not in found["Salt Road"]["track"]
+    assert found["Salt Road"]["track"][intake_cli.HEARTED] is None
     assert intake_cli.thawed(frozen["201"]).ref == "201"
 
 

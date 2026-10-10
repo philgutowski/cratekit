@@ -173,7 +173,9 @@ class HeartItem:
     """One planned file the pass's hearts asked for, and the quarter playlist it joins (U120)."""
 
     target: Path
-    quarter: str
+    #: The quarter playlist, or None for a heart whose job froze no date key,
+    #: which joins All Favorites here and takes its quarter from the backfill.
+    quarter: str | None
     #: The provider's identifier for the heart, for the screen.
     ref: str
 
@@ -201,7 +203,12 @@ class FavoritesPlan:
     @property
     def quarters(self) -> tuple[str, ...]:
         """Every quarter the hearts go to, by name, so the screen reads in one order."""
-        return tuple(sorted({item.quarter for item in self.items}))
+        return tuple(sorted({item.quarter for item in self.items if item.quarter}))
+
+    @property
+    def unknown(self) -> int:
+        """How many hearts take no quarter here, their job having frozen no date key."""
+        return sum(1 for item in self.items if item.quarter is None)
 
     @property
     def creates(self) -> tuple[str, ...]:
@@ -546,6 +553,12 @@ def _favorites_plan(
     try:
         home = placement.resolve_home(db, source)
     except CratekitError as exc:
+        # THE ONE REFUSAL A LANDING ABSORBS: no source, or two. Anything else
+        # the home's reading raised is the landing's refusal as it would be
+        # any writer's, since a skipped placement over an unreadable table
+        # would downgrade a fail closed check to a note.
+        if exc.cause.reason != placement.SOURCE_MISSING:
+            raise
         return FavoritesPlan(
             source_name=source,
             source_id="",

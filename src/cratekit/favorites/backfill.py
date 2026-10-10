@@ -38,10 +38,10 @@ from typing import Any, Iterable, Sequence
 
 from cratekit.acquire import match, match_cli
 from cratekit.cli.output import digest_of
-from cratekit.core import config, convergence, jobs, rb_writer, session, snapshot
-from cratekit.core.cause import refuse
+from cratekit.core import config, convergence, jobs, rb_writer, session, snapshot, tree_registry
+from cratekit.core.cause import CratekitError, refuse
 from cratekit.favorites import placeholders, placement
-from cratekit.intake import account_playlists, landing, native
+from cratekit.intake import account_playlists, batch_name, landing, native
 from cratekit.intake import cli as intake_cli
 from cratekit.label import catalogue
 from cratekit.label import cli as label_cli
@@ -81,29 +81,37 @@ def hearts_jobs(cfg: config.Config) -> tuple[jobs.Job, ...]:
     with jobs.open_store() as store:
         found = [
             job
-            for job in jobs.list_jobs(store)
+            for job in batch_name.succeeded_intake_jobs(store, cfg)
             if account_playlists.is_hearts_job(job)
-            and job.library_id == cfg.library.volume_id
-            and job.state is jobs.JobState.SUCCEEDED
         ]
     return tuple(sorted(found, key=lambda job: (job.created, job.job_id)))
 
 
-def carried(cfg: config.Config) -> tuple[account_playlists.HeartRow, ...]:
-    """Every heart the library's hearts jobs carried, a provider identifier once.
+def carried(
+    cfg: config.Config,
+) -> tuple[tuple[account_playlists.HeartRow, ...], tuple[str, ...]]:
+    """Every heart the library's hearts jobs carried, a provider identifier once, and the jobs unread.
 
-    THE FIRST DATED MENTION WINS, else the first mention: a heart listed by
-    several jobs is one heart, and a job frozen by this build knows its date
-    where an older one does not.
+    THE MENTION THAT KNOWS ITS DATE WINS, else the first, by the rule the
+    landing's claims use. A JOB WHOSE REPORTS CANNOT BE READ IS SKIPPED AND
+    NAMED rather than refusing the whole backfill: the store holds every job
+    ever queued, a job a build before U57 queued has no items, and one old
+    job must not make every later heart unplaceable. The landing's own claim
+    still refuses on such a job, since there it is the pass's one job.
     """
     rows: dict[str, account_playlists.HeartRow] = {}
+    unreadable: list[str] = []
     with jobs.open_store() as store:
         for job in hearts_jobs(cfg):
-            for row in account_playlists.carried_hearts(store, job):
-                held = rows.get(row.ref)
-                if held is None or (held.hearted is None and row.hearted is not None):
+            try:
+                found = account_playlists.carried_hearts(store, job)
+            except CratekitError:
+                unreadable.append(job.job_id)
+                continue
+            for row in found:
+                if account_playlists.prefer_dated(rows.get(row.ref), row):
                     rows[row.ref] = row
-    return tuple(rows.values())
+    return tuple(rows.values()), tuple(unreadable)
 
 
 def landed_paths(
@@ -131,62 +139,104 @@ def landed_paths(
     return found
 
 
-def dated(
-    cfg: config.Config, rows: Sequence[account_playlists.HeartRow]
-) -> tuple[dict[str, datetime | None], int]:
-    """Each heart's date by provider identifier, the account asked once for the undated.
+@dataclass(frozen=True, slots=True)
+class Dates:
+    """What the dating found: each heart's date, how many the account gave, and a short listing."""
 
-    Answers the dates and how many came from the account. The account is asked
-    only when some heart lacks a date, through the one hearts listing, so a
-    short listing is read as the listing verb reads it and a listing that
-    cannot be read refuses with the listing's own reason.
+    by_ref: dict[str, datetime | None]
+    asked: int
+    #: The provider's shortfall when the listing came back short (R-504), else None.
+    short: catalogue.HeartsShortfall | None = None
+
+
+def dated(cfg: config.Config, rows: Sequence[account_playlists.HeartRow]) -> Dates:
+    """Each heart's date by provider identifier, the account asked once for those whose job knows none.
+
+    The account is asked only when some heart's job froze no date, through the
+    one hearts listing, so a listing that cannot be read refuses with the
+    listing's own reason. A SHORT LISTING IS CARRIED BACK, not discarded: the
+    provider counts hearts it will not serve and leaves them out, so a heart
+    absent from a short listing may be a dated heart withheld, and the caller
+    holds it back rather than filing it as undated for good.
     """
     dates: dict[str, datetime | None] = {row.ref: row.hearted for row in rows}
-    undated = [ref for ref, when in dates.items() if when is None]
-    if not undated:
-        return dates, 0
+    unknown = [row.ref for row in rows if not row.known]
+    if not unknown:
+        return Dates(by_ref=dates, asked=0)
     found = catalogue.resolve(cfg)
-    listed, _short = label_cli.favourite_tracks_or_refuse(found, intake_cli.FAVORITES)
+    listed, short = label_cli.favourite_tracks_or_refuse(found, intake_cli.FAVORITES)
     asked = 0
+    wanted = set(unknown)
     for track in listed:
         ref = str(getattr(track, "id", "") or "")
-        if ref in dates and dates[ref] is None:
+        if ref in wanted:
             when = placeholders.parse_hearted(intake_cli.hearted_on(track))
             if when is not None:
                 dates[ref] = when
                 asked += 1
-    return dates, asked
+    return Dates(by_ref=dates, asked=asked, short=short)
 
 
-def gather(cfg: config.Config, db: Any) -> tuple[tuple[LandedHeart, ...], int]:
-    """Every landed heart with its row and its date. Answers the hearts and the dates asked."""
-    rows = carried(cfg)
+@dataclass(frozen=True, slots=True)
+class Gathered:
+    """The landed hearts, and what finding them left aside."""
+
+    hearts: tuple[LandedHeart, ...]
+    #: How many dates the account supplied.
+    asked: int
+    #: Hearts whose job knows no date and the account's SHORT listing did not
+    #: carry: held back unplaced, since a withheld heart is not an undated one.
+    held_back: tuple[LandedHeart, ...] = ()
+    #: The jobs whose reports could not be read, skipped and named.
+    unreadable: tuple[str, ...] = ()
+    short: catalogue.HeartsShortfall | None = None
+
+
+def gather(cfg: config.Config, db: Any) -> Gathered:
+    """Every landed heart with its row and its date, and what was left aside."""
+    rows, unreadable = carried(cfg)
     located = landed_paths(cfg, rows)
     if not located:
-        return (), 0
+        return Gathered(hearts=(), asked=0, unreadable=unreadable)
     by_path = native.content_ids_for(db, cfg, [path for _row, path in located])
     needed = [row for row, path in located if str(path) in by_path]
-    dates, asked = dated(cfg, needed)
+    dates = dated(cfg, needed)
     hearts: list[LandedHeart] = []
+    held: list[LandedHeart] = []
     seen: set[str] = set()
     for row, path in located:
         content_id = by_path.get(str(path))
         if content_id is None or content_id in seen:
             continue
         seen.add(content_id)
-        when = dates.get(row.ref)
-        hearts.append(
-            LandedHeart(
-                ref=row.ref,
-                path=path,
-                content_id=content_id,
-                title=row.title,
-                job_id=row.job_id,
-                hearted=when,
-                dated_by="none" if when is None else ("job" if row.hearted is not None else "account"),
-            )
+        when = dates.by_ref.get(row.ref)
+        if when is not None:
+            dated_by = "job" if row.known else "account"
+        else:
+            dated_by = "none"
+        heart = LandedHeart(
+            ref=row.ref,
+            path=path,
+            content_id=content_id,
+            title=row.title,
+            job_id=row.job_id,
+            hearted=when,
+            dated_by=dated_by,
         )
-    return tuple(sorted(hearts, key=lambda one: (one.quarter, one.title))), asked
+        # A HEART THE JOB COULD NOT DATE AND A SHORT LISTING DID NOT CARRY is
+        # held back: the provider may have withheld it dated, and Undated is
+        # a placement this engine never undoes.
+        if when is None and not row.known and dates.short is not None:
+            held.append(heart)
+            continue
+        hearts.append(heart)
+    return Gathered(
+        hearts=tuple(sorted(hearts, key=lambda one: (one.quarter, one.title))),
+        asked=dates.asked,
+        held_back=tuple(held),
+        unreadable=unreadable,
+        short=dates.short,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +253,12 @@ class BackfillPlan:
     #: How many dates the account supplied for this plan.
     asked: int
     digest: str = ""
+    #: Hearts the short listing left undated, held back unplaced (R-504).
+    held_back: tuple[LandedHeart, ...] = ()
+    #: Jobs whose reports could not be read, skipped.
+    unreadable: tuple[str, ...] = ()
+    #: The listing's shortfall, when it was short.
+    withheld: int = 0
 
     @property
     def undated(self) -> int:
@@ -219,15 +275,39 @@ class BackfillPlan:
 def plan(cfg: config.Config, db: Any, *, source: str) -> BackfillPlan:
     """Gather the landed hearts and plan their placement against the home."""
     home = placement.resolve_home(db, source)
-    hearts, asked = gather(cfg, db)
-    return _planned(db, home, hearts, asked)
+    found = gather(cfg, db)
+    return _planned(
+        db,
+        home,
+        found.hearts,
+        asked=found.asked,
+        held_back=found.held_back,
+        unreadable=found.unreadable,
+        withheld=found.short.withheld if found.short is not None else 0,
+    )
 
 
-def _planned(db: Any, home: placement.Home, hearts: Sequence[LandedHeart], asked: int) -> BackfillPlan:
+def _planned(
+    db: Any,
+    home: placement.Home,
+    hearts: Sequence[LandedHeart],
+    *,
+    asked: int,
+    held_back: Sequence[LandedHeart] = (),
+    unreadable: Sequence[str] = (),
+    withheld: int = 0,
+) -> BackfillPlan:
     placements = placement.plan_placements(
         db, home, [(one.content_id, one.hearted, one.title) for one in hearts]
     )
-    planned = BackfillPlan(hearts=tuple(hearts), placements=placements, asked=asked)
+    planned = BackfillPlan(
+        hearts=tuple(hearts),
+        placements=placements,
+        asked=asked,
+        held_back=tuple(held_back),
+        unreadable=tuple(unreadable),
+        withheld=withheld,
+    )
     return replace(planned, digest=digest_of(planned.identity()))
 
 
@@ -239,7 +319,15 @@ def replan(db: Any, approved: BackfillPlan, *, source: str) -> BackfillPlan:
     the approval and the write is the home and what it holds, and that is
     what the digest covers.
     """
-    return _planned(db, placement.resolve_home(db, source), approved.hearts, approved.asked)
+    return _planned(
+        db,
+        placement.resolve_home(db, source),
+        approved.hearts,
+        asked=approved.asked,
+        held_back=approved.held_back,
+        unreadable=approved.unreadable,
+        withheld=approved.withheld,
+    )
 
 
 def payload(planned: BackfillPlan, cfg: config.Config) -> dict[str, Any]:
@@ -275,6 +363,8 @@ def payload(planned: BackfillPlan, cfg: config.Config) -> dict[str, Any]:
             "creates": len(planned.placements.creates),
             "undated": planned.undated,
             "dates from the account": planned.asked,
+            "held back": len(planned.held_back),
+            "jobs unread": len(planned.unreadable),
         },
         "chunk": None,
     }
@@ -286,7 +376,7 @@ def facts(planned: BackfillPlan) -> dict[str, Any]:
     where = f"{home.source_name!r} (row {home.source_id})"
     if home.folder_name:
         where += f" under {home.folder_name!r}"
-    return {
+    facts: dict[str, Any] = {
         "into": where,
         "landed hearts": len(planned.hearts),
         "memberships to add": planned.placements.adds,
@@ -294,6 +384,14 @@ def facts(planned: BackfillPlan) -> dict[str, Any]:
         "undated": planned.undated,
         "dates asked of the account": planned.asked,
     }
+    if planned.held_back:
+        facts["held back"] = (
+            f"{len(planned.held_back)} heart(s) the account's short listing did not date, "
+            f"{planned.withheld} withheld by the provider; not placed this run"
+        )
+    if planned.unreadable:
+        facts["jobs unread"] = list(planned.unreadable)
+    return facts
 
 
 # ---------------------------------------------------------------------------
@@ -325,15 +423,25 @@ def _record_backfill_commit(
 
 
 def _read_back(db: Any, placed: placement.Placed, planned: BackfillPlan) -> tuple[str, ...]:
-    """Each playlist that, read live, lacks a heart the plan put in it."""
+    """Each playlist that, read live, lacks a heart the plan says is in it.
+
+    EVERY QUARTER THE PLAN NAMES, not only those the write touched: a heart
+    already in its quarter was not written and is read back all the same, by
+    the row the write used or the one the plan found live, so a quarter row
+    that went between the two acts is a disagreement and not a silence.
+    """
     problems: list[str] = []
     wanted_source = {one.content_id for one in planned.placements.placements}
     missing = sorted(wanted_source - placement.members(db, placed.source_id))
     if missing:
         problems.append(f"{placed.source_name!r} lacks {len(missing)} row(s): {', '.join(missing)}")
-    for name, row, _count in placed.quarters:
+    rows = dict(planned.placements.home.present)
+    rows.update({name: row for name, row, _count in placed.quarters})
+    for name in sorted({one.quarter for one in planned.placements.placements}):
         wanted = {one.content_id for one in planned.placements.placements if one.quarter == name}
-        gone = sorted(wanted - placement.members(db, row))
+        row = rows.get(name)
+        held = placement.members(db, row) if row else frozenset()
+        gone = sorted(wanted - held)
         if gone:
             problems.append(f"{name!r} lacks {len(gone)} row(s): {', '.join(gone)}")
     return tuple(problems)
@@ -378,6 +486,12 @@ def apply(
         for one in planned.placements.placements
         if one.into_source or one.into_quarter
     ]
+    # THE OUT OF BAND RESTORE IS DETECTED BEFORE THE FINGERPRINT IS TOUCHED,
+    # as every writer that records one does: a database recovered from a
+    # backup is compared and every native tree it emptied is marked, so the
+    # fingerprint this write records afterwards blesses nothing. The Favorites
+    # folder is no tree, so the detection marks and never refuses here.
+    convergence.detect_out_of_band_restore(cfg, db, tree_registry.read(cfg))
     with (
         session.assert_gates(
             cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
@@ -421,6 +535,8 @@ def assert_read_back(done: Backfilled) -> None:
 __all__ = [
     "Backfilled",
     "BackfillPlan",
+    "Dates",
+    "Gathered",
     "LandedHeart",
     "WORKFLOW",
     "apply",

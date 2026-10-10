@@ -32,6 +32,8 @@ APPROVE_GATE = "favorites.backfill.approve"
 NOTHING_TO_PLACE = "favorites-nothing-to-place"
 PLACED = "favorites-backfilled"
 UNDATED = "favorites-hearts-undated"
+HELD_BACK = "favorites-hearts-held-back"
+JOBS_UNREAD = "favorites-jobs-unread"
 
 _ORIGIN = ("favorites", "backfill_cli")
 
@@ -87,19 +89,44 @@ def written(
         rb_writer.close_db(db)
 
 
-def _undated_note(plan: backfill.BackfillPlan) -> list[dict[str, str]]:
-    if not plan.undated:
-        return []
-    return [
-        {
-            "code": UNDATED,
-            "message": (
-                f"{plan.undated} heart(s) carry no date on their job and the account "
-                f"dates them nowhere, so they go to {placement.placeholders.UNDATED!r} "
-                f"and stay there; nothing moves a heart to its quarter later"
-            ),
-        }
-    ]
+def _notes(plan: backfill.BackfillPlan) -> list[dict[str, str]]:
+    """What a person reads about the plan beside its counts, whatever the answer."""
+    notes: list[dict[str, str]] = []
+    if plan.undated:
+        notes.append(
+            {
+                "code": UNDATED,
+                "message": (
+                    f"{plan.undated} heart(s) carry no date on their job and the account "
+                    f"dates them nowhere, so they go to {placement.placeholders.UNDATED!r} "
+                    f"and stay there; nothing moves a heart to its quarter later"
+                ),
+            }
+        )
+    if plan.held_back:
+        notes.append(
+            {
+                "code": HELD_BACK,
+                "message": (
+                    f"{len(plan.held_back)} heart(s) were held back unplaced: their job "
+                    f"froze no date and the account's hearts listed short, "
+                    f"{plan.withheld} withheld by the provider, so a withheld heart "
+                    f"would read as undated; run again when the listing is whole"
+                ),
+            }
+        )
+    if plan.unreadable:
+        notes.append(
+            {
+                "code": JOBS_UNREAD,
+                "message": (
+                    f"{len(plan.unreadable)} hearts job(s) could not be read and were "
+                    f"skipped: {', '.join(plan.unreadable)}; a heart only such a job "
+                    f"carried is not placed"
+                ),
+            }
+        )
+    return notes
 
 
 def favorites_backfill(ctx) -> Envelope:
@@ -112,7 +139,7 @@ def favorites_backfill(ctx) -> Envelope:
 
     plan = planned(cfg, source=source)
     data = backfill.payload(plan, cfg)
-    warnings = _undated_note(plan)
+    warnings = _notes(plan)
     if ctx.gate.require(spec, plan=data, context=backfill.facts(plan)) != "approve":
         return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=warnings)
     if not plan.writes:
@@ -162,6 +189,8 @@ def favorites_backfill(ctx) -> Envelope:
 
 __all__ = [
     "APPROVE_GATE",
+    "HELD_BACK",
+    "JOBS_UNREAD",
     "NOTHING_TO_PLACE",
     "PLACED",
     "UNDATED",

@@ -89,8 +89,8 @@ surface = "user"
 tests = ["tests/test_favorites_placement.py", "tests/test_intake_land_hearts_native.py"]
 old = '''        if parent is not None and held == parent_id:
             return row, False
-    del home'''
-new = '''    del home'''
+    return db.create_playlist(name, parent=parent), True'''
+new = '''    return db.create_playlist(name, parent=parent), True'''
 
 [[rows]]
 id = "P7_bypass_only_when_absent"
@@ -118,12 +118,14 @@ new = '''    del sub
 
 [[rows]]
 id = "L1_date_frozen_when_none"
-description = "list_favorites: a heart with no date is frozen with the key and no value"
+description = "list_favorites: a heart with no date is frozen with no key, as an older build did"
 file = "src/cratekit/intake/cli.py"
 surface = "user"
 tests = ["tests/intake/test_workers.py"]
-old = '''        if when and key in frozen and HEARTED not in frozen[key]:'''
-new = '''        if key in frozen and HEARTED not in frozen[key]:'''
+old = '''        if key in frozen and HEARTED not in frozen[key]:
+            frozen[key][HEARTED] = hearted_on(row)'''
+new = '''        if key in frozen and HEARTED not in frozen[key] and hearted_on(row):
+            frozen[key][HEARTED] = hearted_on(row)'''
 
 [[rows]]
 id = "L2_date_added_ignored"
@@ -233,12 +235,12 @@ new = '''            found.append((row, path))'''
 
 [[rows]]
 id = "B2_first_mention_wins"
-description = "carried: a dated later mention does not replace an undated first one"
-file = "src/cratekit/favorites/backfill.py"
+description = "prefer_dated: a later mention that knows its date does not replace a first that does not"
+file = "src/cratekit/intake/account_playlists.py"
 surface = "user"
-tests = ["tests/test_favorites_backfill.py"]
-old = '''                if held is None or (held.hearted is None and row.hearted is not None):'''
-new = '''                if held is None:'''
+tests = ["tests/test_favorites_backfill.py", "tests/test_intake_land_hearts_native.py"]
+old = '''    return held is None or (not held.known and row.known)'''
+new = '''    return held is None'''
 
 [[rows]]
 id = "B3_account_always_asked"
@@ -246,8 +248,8 @@ description = "dated: the account is listed even when every heart has a date"
 file = "src/cratekit/favorites/backfill.py"
 surface = "user"
 tests = ["tests/test_favorites_backfill.py"]
-old = '''    if not undated:
-        return dates, 0
+old = '''    if not unknown:
+        return Dates(by_ref=dates, asked=0)
     found = catalogue.resolve(cfg)'''
 new = '''    found = catalogue.resolve(cfg)'''
 
