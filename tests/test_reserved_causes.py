@@ -5204,7 +5204,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Re-measured on the merge of main at 1e93ee7 into fable/278, 2026-10-10:
     # U121's two slugs beside the pink residual's one and U119's two, so the
     # population is 203, non-reserved 175, reserved half UNCHANGED at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (204, 176, 28)
+    # Re-pinned on U123, a label's dated playlist heard, 2026-10-10. SIX
+    # slugs, named rather than counted, each refused by crate label heard
+    # before its gate: label-heard-invalid (a year or date that is not one),
+    # label-heard-no-releases (no go took a release that year on that day),
+    # label-heard-not-in-playlist (a named release outside the playlist),
+    # label-heard-ambiguous (two playlists with one name in the folder),
+    # label-heard-not-product-made (the ledger does not vouch for the dated
+    # playlist) and label-heard-no-year-playlist (tracks to add and no year).
+    # All six are in cause.REASONS and none is in the reserved table.
+    # Population 204 to 210, non-reserved 176 to 182, reserved half UNCHANGED
+    # at 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (210, 182, 28)
     # Re-pinned on U117, new label releases kept apart, 2026-10-09. ONE slug,
     # named rather than counted: label-new-playlists-no-folder, which the
     # dated playlist's apply refuses with when the label's folder is not on
@@ -6254,6 +6265,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Re-measured on the merge of main at 1e93ee7 into fable/278, 2026-10-10:
     # U121's five literals join main's, 680 distinct and 478 that are not keys,
     # measured on the merged tree and not either side alone.
+    # Re-pinned on U123, a label's dated playlist heard, 2026-10-10: 683 to
+    # 692 distinct, non-keys 480 to 483. NINE joined and nothing left, each
+    # absent from `main`'s own `src` by git grep. The six label-heard refusal
+    # slugs are the keys named in the pin above. label-heard is the KIND the
+    # plan's digest is taken over, and label-heard-tracks-refused and
+    # label-heard-tree-unchanged are the verb's WARNING codes. And once more
+    # on the same unit's review round: 692 to 693 distinct, non-keys 483 to
+    # 484. ONE joined, not-owned, the detail problem the adapter's playlist
+    # removal refuses with for a playlist the client does not serve as owned.
     # Re-pinned on U117, new label releases kept apart, 2026-10-09: 661 to
     # 664 distinct, non-keys 464 to 466. THREE joined and nothing left.
     # label-new-playlists-no-folder is the cause key pinned above.
@@ -6262,7 +6282,10 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Re-measured on the merge of main at 691513b into fable/277, 2026-10-10:
     # U120's nine literals join main's, 692 distinct and 489 that are not keys,
     # measured on the merged tree and not either side alone.
-    assert (len(literals), len(literals - set(causes))) == (692, 489), (
+    # Re-measured on the merge of main at 976adb1 into fable/277, 2026-10-10:
+    # U123's ten literals beside U120's nine, 702 distinct and 493 that are not
+    # keys, measured on the merged tree and not either side alone.
+    assert (len(literals), len(literals - set(causes))) == (702, 493), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -7106,6 +7129,11 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Re-measured on the merge of main at 07c3ea0 into fable/278, 2026-10-10:
     # U121's two modules and U119's two are all in the tree, holders 141, the
     # also-holds-an-integer half UNCHANGED at 29.
+    # Re-pinned on U123, a label's dated playlist heard, 2026-10-10: holders
+    # move 142 to 143, and the also-holds-an-integer half is UNCHANGED at 29.
+    # ONE module joined and none left, a new file: label/heard.py, which
+    # refuses with the six label-heard slugs and internal-error. It holds no
+    # in-range integer. label/heard_cli.py refuses with nothing of its own.
     # Re-pinned on U117, new label releases kept apart, 2026-10-09: holders
     # move 137 to 138, and the also-holds-an-integer half is UNCHANGED at 29.
     # ONE module joined and none left, a new file: label/dated.py, which
@@ -7114,7 +7142,10 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Re-measured on the merge of main at 691513b into fable/277, 2026-10-10:
     # U120's three modules join main's, holders 145, the also-holds-an-integer
     # half UNCHANGED at 29.
-    assert (len(literal_holders), len(literal_both)) == (145, 29), (
+    # Re-measured on the merge of main at 976adb1 into fable/277, 2026-10-10:
+    # U123's label/heard.py beside U120's three modules, holders 146, the
+    # also-holds-an-integer half UNCHANGED at 29.
+    assert (len(literal_holders), len(literal_both)) == (146, 29), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

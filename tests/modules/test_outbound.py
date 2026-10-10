@@ -725,9 +725,10 @@ def test_the_outbound_package_defines_no_remove_write():
     assert clash == []
 
 
-#: R-836. The one removal the protocol declares, and the two flag readers that
-#: were already here and name a question rather than a write.
-ADMITTED_REMOVE_NAMES = frozenset({"remove_tracks", "remove_requested"})
+#: R-836. The removals the protocol declares, ``remove_tracks`` and since U123
+#: ``remove_playlist``, and the flag reader that was already here and names a
+#: question rather than a write.
+ADMITTED_REMOVE_NAMES = frozenset({"remove_tracks", "remove_playlist", "remove_requested"})
 
 
 def _defined_where(root: Path) -> list[tuple[str, str]]:
@@ -741,7 +742,8 @@ def _defined_where(root: Path) -> list[tuple[str, str]]:
 
 
 def test_the_one_remove_the_outbound_package_defines_is_the_protocols_own():
-    """Narrowed on R-836 from "no remove" to exactly ``remove_tracks``.
+    """Narrowed on R-836 from "no remove" to exactly ``remove_tracks``, and on
+    U123 to that and ``remove_playlist``.
 
     The exact name scan above misses a plural, which ``remove_tracks`` is of
     ``remove_track``, so this one reads every function whose name opens with
@@ -755,10 +757,11 @@ def test_the_one_remove_the_outbound_package_defines_is_the_protocols_own():
         if name.lstrip("_").startswith("remove") or "delete" in name.lower()
     ]
     assert {name.lstrip("_") for _where, name in shaped} == ADMITTED_REMOVE_NAMES, shaped
-    assert sorted(where for where, name in shaped if name == "remove_tracks") == [
-        "service.py",
-        "tidal_account.py",
-    ]
+    for member in ("remove_tracks", "remove_playlist"):
+        assert sorted(where for where, name in shaped if name == member) == [
+            "service.py",
+            "tidal_account.py",
+        ], member
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -1797,6 +1797,10 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # R-836. The same for the prune: a label nobody follows is a plan of
         # nothing, still gated. The removing path is in tests/test_prune.py.
         "label.prune": ["no-such-label"],
+        # U123. The same for the heard merge: a label nobody follows is a plan
+        # of nothing, still gated. The merging path is in
+        # tests/test_label_heard.py.
+        "label.heard": ["no-such-label", "2023", "2026-10-09"],
         # R-835. The same, with the landed batch's intake file the mark needs
         # as its proof, LAZY for the reason ``sync.mark``'s sample gives.
         "label.mark": lambda: [

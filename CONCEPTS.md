@@ -1374,6 +1374,18 @@ removes a playlist, a folder or a heart.
 *Avoid:* reading a track's absence from a catalogue read as a reason to take it
 off. An empty or short read looks exactly like a label that moved on.
 
+### Heard
+A label release the author has said they listened to, recorded as its identifier
+in `label_sync.json` under `labels.<id>.heard` by `crate label heard` and by
+nothing else (U123). An absent list is nothing heard. A heard release is left
+out of the dated playlist U117 plans beside the year, and hearing the last
+release of a dated playlist merges its tracks into the year and removes it from
+the account, the one playlist removal the account protocol allows, and only for
+a dated playlist the outbound ledger records as made here.
+
+*Avoid:* deriving it from play counts or from a playlist's age. It is the
+author's word, and the age report only reports.
+
 ### Label debris
 An account playlist the source system's label batch built for one run and left
 behind, named `<label> LIBRARY`. The playlists source excludes any name ending
