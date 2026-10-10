@@ -5166,6 +5166,11 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # intake root holds two of it. It is in cause.REASONS and not in the
     # reserved table. Population 196 to 197, non-reserved 168 to 169,
     # reserved half UNCHANGED at 28.
+    # Re-pinned on U114, the genre suggestion, 2026-10-09. ONE slug, named
+    # rather than counted: tag-suggest-unwritten, which the verb refuses with
+    # when an approved file did not take its suggested genre. It is in
+    # cause.REASONS and not in the reserved table. Population 197 to 198,
+    # non-reserved 169 to 170, reserved half UNCHANGED at 28.
     # Re-pinned on U121, the set's permanent playlist under INSPIRATION,
     # 2026-10-09. TWO slugs, named rather than counted:
     # inspiration-folder-undeclared, which both the landing given --set and
@@ -5173,9 +5178,9 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # no [inspiration] folder or the playlist root holds two of it, and
     # set-playlist-unnamed, which both refuse with when the job's page and the
     # flags together do not name the DJ, the set and its month. Both are in
-    # cause.REASONS and neither is in the reserved table. Population 197 to
-    # 199, non-reserved 169 to 171, reserved half UNCHANGED at 28.
-    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (199, 171, 28)
+    # cause.REASONS and neither is in the reserved table. Population 198 to
+    # 200, non-reserved 170 to 172, reserved half UNCHANGED at 28.
+    assert (len(causes), len(causes - CAUSES), len(CAUSES)) == (200, 172, 28)
 
     literals = kebab_shaped_literals()
     # Re-pinned on the U38 merge, 2026-08-10, same reason as the pin above:
@@ -6147,15 +6152,25 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # joined and nothing left, absent from `main`'s own `src` by git grep.
     # tracklist-unwritten is a WARNING code: intake set queued its job and
     # could not write the tracklist.
+    # Re-pinned on U114, the genre suggestion, 2026-10-09: 648 to 661
+    # distinct, non-keys 452 to 464. THIRTEEN joined and nothing left, each
+    # absent from `main`'s own `src` by git grep. One is a key,
+    # tag-suggest-unwritten, pinned above. tag-suggest is the session
+    # WORKFLOW the write is recorded under and the plan KIND its digest is
+    # taken under. below-band, row-has-genre, file-has-genre and no-votes are
+    # outcomes `tagging/suggest.py` counts a row under that the tree did not
+    # already spell; no-votes and not no-evidence, which is a cause. suggest-nothing-to-write, suggest-genre-written, suggest-left,
+    # suggest-file-has-genre, suggest-file-not-read, suggest-catalogue-unread
+    # and suggest-unmatched are WARNING codes `tagging/suggest_cli.py` gives.
     # Re-pinned on U121, the set's permanent playlist under INSPIRATION,
-    # 2026-10-09: 648 to 653 distinct, non-keys 452 to 455. FIVE joined and
+    # 2026-10-09: 661 to 666 distinct, non-keys 464 to 467. FIVE joined and
     # nothing left, each absent from `main`'s own `src` by git grep.
     # inspiration-folder-undeclared and set-playlist-unnamed are the keys named
     # in the pin above. set-playlist-written, set-playlist-left-out and
     # set-playlist-nothing-to-write are WARNING codes. The session WORKFLOW
     # the backfill is recorded under and the plan KIND its digest is taken
     # under, set-playlist, was a literal already, the account's exclusion.
-    assert (len(literals), len(literals - set(causes))) == (653, 455), (
+    assert (len(literals), len(literals - set(causes))) == (666, 467), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6941,15 +6956,21 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # refuses with decision-stale, internal-error and whitelist-violation, and
     # write/row_defaults_cli.py, which refuses with config-unusable and
     # internal-error. Neither holds an in-range integer.
+    # Re-pinned on U114, the genre suggestion, 2026-10-09: holders move 136
+    # to 137, and the also-holds-an-integer half is UNCHANGED at 29. ONE
+    # module joined and none left, a new file: tagging/suggest_cli.py, which
+    # refuses with config-unusable, internal-error, review-selection-invalid
+    # and tag-suggest-unwritten and holds no in-range integer.
+    # tagging/suggest.py holds no cause.
     # Re-pinned on U121, the set's permanent playlist under INSPIRATION,
-    # 2026-10-09: holders move 136 to 138, and the also-holds-an-integer half
+    # 2026-10-09: holders move 137 to 139, and the also-holds-an-integer half
     # is UNCHANGED at 29. TWO modules joined and none left, both new files:
     # intake/set_playlist.py, which refuses with inspiration-folder-undeclared,
     # set-playlist-unnamed, job-unknown, intake-list-unusable, decision-stale
     # and session-committed-unverified, and intake/inspiration_cli.py, which
     # refuses with config-unusable and tree-unconverged. Neither holds an
     # in-range integer.
-    assert (len(literal_holders), len(literal_both)) == (138, 29), (
+    assert (len(literal_holders), len(literal_both)) == (139, 29), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )

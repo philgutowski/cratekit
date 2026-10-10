@@ -61,20 +61,52 @@ SWEEP_PARITY_POPULATION = [
     v for v in POPULATION if v.lower().strip() not in REFUSED and v not in ALIASED
 ]
 
-# THE ONE BUCKET THE OLD CODE NEVER HAD (R-797). The author moved R&B out of the
-# source routed folder to a folder of its own on 2026-10-01, so the strings that
-# filed in the playlist it left now route to the new bucket, and the tagger
-# writes the new bucket's name where it wrote the old playlist's. Both sets are
-# derived, the first from the engine and the second from the frozen code, and
-# their own tests below hold them equal to what the old code filed there.
+# THE BUCKETS THE OLD CODE NEVER HAD (R-797, U118). The author moved R&B out of
+# the source routed folder to a folder of its own on 2026-10-01, and on
+# 2026-10-09 split Soul out of R&B and moved Hip-Hop out the same way. So the
+# strings that filed in the two playlists they left now route to the new
+# buckets, and the tagger writes R&B's or Soul's name where it wrote the old
+# "Soul / R&B" playlist's. Every set is derived, from the engine or from the
+# frozen code, and their own tests below hold them equal to what the old code
+# filed there.
+PROMOTED_BUCKETS = tuple(
+    bucket for bucket in TAXONOMY.buckets if bucket.formerly or bucket.split_from
+)
+
+
+def _old_playlist(bucket):
+    """The former place a promoted bucket's words were filed in by the old code.
+
+    Its own, or for a bucket split out of a promoted one, that bucket's.
+    """
+    if bucket.formerly:
+        return bucket.formerly[0]
+    (holder,) = {place.bucket for place in bucket.split_from}
+    return TAXONOMY.bucket(holder).formerly[0]
+
+
+OLD_PLAYLIST = {bucket.id: _old_playlist(bucket) for bucket in PROMOTED_BUCKETS}
+PROMOTED = {
+    v for v in POPULATION if routing.resolve_bucket(TAXONOMY, v).bucket_id in OLD_PLAYLIST
+}
+#: The one word filed in a promoted bucket that the old code filed elsewhere.
+#: The author named it a Hip-Hop word on 2026-10-09 (U118); a keyword rule sent
+#: it to the source routed folder's default sub.
+NAMED_BY_THE_AUTHOR = {"Hip-hop & Rap"}
+#: The old tagger's answers that were a playlist name the new tagger does not
+#: write: the old "Soul / R&B" playlist, whose words are R&B's or Soul's now.
+#: The old Hip-Hop playlist's name is the new bucket's, so its answers stand.
+RETAGGED = {
+    k
+    for k in legacy.GENRE_NORMALIZE
+    if any(
+        legacy.normalize_genre(k) == place.display != TAXONOMY.bucket(bucket_id).display
+        for bucket_id, place in OLD_PLAYLIST.items()
+    )
+}
+#: The first of them, as R-797 declared it, for the tests that ask of one.
 PROMOTED_BUCKET = next(bucket for bucket in TAXONOMY.buckets if bucket.formerly)
 (FORMER_PLACE,) = PROMOTED_BUCKET.formerly
-PROMOTED = {
-    v for v in POPULATION if routing.resolve_bucket(TAXONOMY, v).bucket_id == PROMOTED_BUCKET.id
-}
-RETAGGED = {
-    k for k in legacy.GENRE_NORMALIZE if legacy.normalize_genre(k) == FORMER_PLACE.display
-}
 
 ROUTING_PARITY_POPULATION = [v for v in POPULATION if v not in PROMOTED]
 TAGGER_PARITY_POPULATION = [
@@ -107,28 +139,46 @@ def test_routing_resolves_every_source_string_identically(value):
     assert resolved_display(value) == legacy.resolve_genre(value)[0]
 
 
-def test_the_promoted_bucket_takes_exactly_what_the_old_code_filed_in_the_playlist_it_left():
-    """R-797, and the only routing difference from the old code.
+def test_the_promoted_buckets_take_exactly_what_the_old_code_filed_in_the_playlists_they_left():
+    """R-797 and U118, and the only routing differences from the old code.
 
-    The old code filed these strings in one playlist of the source routed
-    folder. The author gave that playlist's genre a folder of its own, so they
-    route there now. The set is asked of the FROZEN code, by the playlist name
-    it answers with, so a string added to the new bucket that the old code filed
+    The old code filed these strings in two playlists of the source routed
+    folder. The author gave their genres folders of their own, so they route
+    there now. Each set is asked of the FROZEN code, by the playlist name it
+    answers with, so a string added to a new bucket that the old code filed
     anywhere else fails here, and so does one the old code filed there that the
-    new bucket forgot.
+    new buckets forgot. The one exception is named by the author.
     """
-    holder = TAXONOMY.bucket(FORMER_PLACE.bucket)
-    filed_there_by_the_old_code = {
-        value
-        for value in POPULATION
-        if legacy.resolve_genre(value)[0] == holder.display
-        and legacy.energy_to_sub(5, holder.display, value) == FORMER_PLACE.display
-    }
-    assert filed_there_by_the_old_code, "the frozen code no longer files anything there"
-    assert PROMOTED == filed_there_by_the_old_code
-    assert PROMOTED == set(PROMOTED_BUCKET.aliases)
+    for place in {place.id: place for place in OLD_PLAYLIST.values()}.values():
+        holder = TAXONOMY.bucket(place.bucket)
+        filed_there_by_the_old_code = {
+            value
+            for value in POPULATION
+            if legacy.resolve_genre(value)[0] == holder.display
+            and legacy.energy_to_sub(5, holder.display, value) == place.display
+        }
+        assert filed_there_by_the_old_code, f"the frozen code no longer files in {place.display}"
+        sharing = {bucket_id for bucket_id, old in OLD_PLAYLIST.items() if old == place}
+        routed_there = {
+            v for v in PROMOTED if routing.resolve_bucket(TAXONOMY, v).bucket_id in sharing
+        }
+        assert routed_there - NAMED_BY_THE_AUTHOR == filed_there_by_the_old_code, place.id
+    assert NAMED_BY_THE_AUTHOR <= PROMOTED
+    for value in NAMED_BY_THE_AUTHOR:
+        assert legacy.resolve_genre(value)[0] == TAXONOMY.bucket(FORMER_PLACE.bucket).display
+    assert PROMOTED == {alias for bucket in PROMOTED_BUCKETS for alias in bucket.aliases}
     for value in PROMOTED:
         assert routing.resolve_bucket(TAXONOMY, value).match is routing.Match.EXACT
+
+
+def test_soul_and_r_and_b_divide_the_old_playlist_as_the_author_decided():
+    """U118: a combined name files under its first word, so "Soul / R&B" is
+    Soul's, and R&B keeps R&B and MPB. Asked by name, since this is the
+    author's decision and not something the frozen code knew."""
+    resolved = {v: routing.resolve_bucket(TAXONOMY, v).bucket_id for v in PROMOTED}
+    soul = next(b.id for b in PROMOTED_BUCKETS if b.display == "Soul")
+    assert {v for v, b in resolved.items() if b == soul} == {"Soul", "Soul / R&B"}
+    assert {v for v, b in resolved.items() if b == PROMOTED_BUCKET.id} == {"R&B", "MPB"}
 
 
 def test_the_keyword_rules_were_not_repointed_by_the_promotion():
@@ -439,17 +489,22 @@ def test_tagging_matches_the_old_tagger_except_on_a_declared_refusal(value):
 
 
 def test_the_tagger_writes_the_promoted_buckets_name_where_it_wrote_the_old_playlists():
-    """R-797. The old tagger answered these with the name of the playlist the
-    promotion left. The answer is the new folder's name now, a bucket and no
-    sub, and a file still carrying the old name routes to the same folder."""
+    """R-797 and U118. The old tagger answered these with the name of the
+    playlist R&B left. The answer is a new folder's name now, R&B's or Soul's
+    by the first word, a bucket and no sub, and a file carrying it routes
+    there. A file still carrying the old playlist's name routes to Soul, by
+    the same first word rule."""
     assert RETAGGED, "the frozen tagger no longer answers with the old playlist's name"
+    soul = next(b for b in PROMOTED_BUCKETS if b.display == "Soul")
     for value in sorted(RETAGGED):
         suggestion = routing.suggest_tag(TAXONOMY, value)
+        expected = soul if value.startswith("soul") else PROMOTED_BUCKET
         assert (suggestion.bucket_id, suggestion.sub_id, suggestion.tag) == (
-            PROMOTED_BUCKET.id, None, PROMOTED_BUCKET.display
+            expected.id, None, expected.display
         ), value
-    for name in (FORMER_PLACE.display, PROMOTED_BUCKET.display):
-        assert routing.resolve_bucket(TAXONOMY, name).bucket_id == PROMOTED_BUCKET.id
+        assert routing.resolve_bucket(TAXONOMY, suggestion.tag).bucket_id == expected.id
+    assert routing.resolve_bucket(TAXONOMY, FORMER_PLACE.display).bucket_id == soul.id
+    assert routing.resolve_bucket(TAXONOMY, PROMOTED_BUCKET.display).bucket_id == PROMOTED_BUCKET.id
 
 
 def test_the_sweep_gains_the_alias_table_it_never_had():
@@ -652,13 +707,13 @@ def test_the_three_strings_the_two_old_tables_flatly_contradicted():
 def test_a_sub_playlist_name_can_be_the_tag_a_bucket_alias_is_not():
     """Nine of the old tagger's answers were sub-playlist names rather than
     folder names, and the round trip only worked because the routing table
-    happened to contain all nine as keys. Declared explicitly now. Eight are
-    left since R-797 gave one of the nine a folder of its own, so the example
-    is one that is still a sub."""
-    suggestion = routing.suggest_tag(TAXONOMY, "Hip-Hop")
+    happened to contain all nine as keys. Declared explicitly now. Seven are
+    left since R-797 and U118 gave two of the nine folders of their own, so the
+    example is one that is still a sub."""
+    suggestion = routing.suggest_tag(TAXONOMY, "Jazz")
     assert suggestion.sub_id is not None
-    assert suggestion.tag == legacy.normalize_genre("Hip-Hop")
-    assert routing.resolve_bucket(TAXONOMY, "Hip-Hop").bucket_id == suggestion.bucket_id
+    assert suggestion.tag == legacy.normalize_genre("Jazz")
+    assert routing.resolve_bucket(TAXONOMY, "Jazz").bucket_id == suggestion.bucket_id
 
 
 def test_the_two_coarse_source_strings_are_declared_unusable_as_a_final_tag():

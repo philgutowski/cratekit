@@ -42,6 +42,7 @@ from cratekit.core.taxonomy import (
     FormerPlace,
     GateRule,
     PublishedRule,
+    SplitPlace,
     Sub,
     Taxonomy,
 )
@@ -440,10 +441,15 @@ def competing_subs(taxonomy: Taxonomy, bucket_id: str) -> tuple[Competing, froze
     the old playlist, with nothing able to settle it. It does not change the
     kind: the kind says what a reading decides among, and no reading ever
     names a former place.
+
+    A SPLIT PLACE COMPETES WHERE IT IS DECLARED AND NOWHERE ELSE (U118). It is
+    a band the holder still files into, so in the holder it already competes
+    as that band, and in the declaring bucket it is the band a track whose
+    genre names that bucket still sits in.
     """
     bucket = taxonomy.bucket(bucket_id)
     classes = {entry.id for entry in taxonomy.sub_classes}
-    former = {place.id for _declarer, place in former_places(taxonomy, bucket_id)}
+    former = left_only(taxonomy, bucket_id)
 
     if (
         bucket.sub_by_source is not None
@@ -481,6 +487,42 @@ def former_place(taxonomy: Taxonomy, bucket_id: str, sub_id: str) -> FormerPlace
     answer is the same place.
     """
     for _declarer, place in former_places(taxonomy, bucket_id):
+        if place.id == sub_id:
+            return place
+    return None
+
+
+def left_only(taxonomy: Taxonomy, bucket_id: str) -> frozenset[str]:
+    """The competing subs of one bucket that a track is only ever moved OUT of.
+
+    Every former place competing there and every split place the bucket
+    declares. ONE ANSWER for what competes and for what a track with no
+    reading may still leave, so a third kind of such place is added here once
+    and both askers see it.
+    """
+    return frozenset(
+        {place.id for _declarer, place in former_places(taxonomy, bucket_id)}
+        | {place.id for place in taxonomy.bucket(bucket_id).split_from}
+    )
+
+
+def split_places(taxonomy: Taxonomy, bucket_id: str) -> tuple[tuple[str, SplitPlace], ...]:
+    """Every split place one bucket declares or holds, with the declaring bucket.
+
+    A split place competes only in the bucket that declares it. The holder's
+    side is asked to know which of its own bands a declaring bucket settles.
+    """
+    return taxonomy.split_places(bucket_id)
+
+
+def split_place(taxonomy: Taxonomy, bucket_id: str, sub_id: str) -> SplitPlace | None:
+    """The split place one of a bucket's competing subs is, or None.
+
+    Only a place the bucket DECLARES, since that is the only bucket it competes
+    in. Asked of the holder with the band's identifier the answer is None:
+    there the band is the holder's own, filed into as any band is.
+    """
+    for place in taxonomy.bucket(bucket_id).split_from:
         if place.id == sub_id:
             return place
     return None

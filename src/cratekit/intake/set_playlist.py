@@ -589,7 +589,8 @@ def recorded_playlist(
     is read where the landing recorded it: a closed record whose set playlist
     detail names this job and whose source committed, the newest first. A set
     landed in two parts on two days then has one playlist, named for the first
-    day, and a backfill adds to it rather than making a twin (R-937). A
+    day, and a backfill adds to it rather than making a twin (the residual on
+    a backfill naming the playlist for the day it runs). A
     recorded playlist that is gone, removed, or no longer under the declared
     folder is not an answer, and the write finds or makes one by name.
     """

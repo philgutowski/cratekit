@@ -36125,91 +36125,177 @@ reaches this sentence, since #269 made its write failure a warning.
 again on a rerun, or the verb points at a folder `--out` can name before
 the fetch. Ledger only: a wording over a rerun's time, no file or row is
 lost and no call is paid twice.
-## R-934. A set playlist is refused on a library whose intake tree is on the xml bridge
 
-**Found:** by the author of U121, 2026-10-09, choosing the medium.
+---
 
-**The mechanism.** The set's permanent playlist is a database node under the
-declared INSPIRATION folder, written through the guarded writer, and the
-bridge landing splices an export and opens no database. Both `intake land
---set` and `crate intake inspiration` refuse a bridge tree by name,
-`tree-unconverged`, through one helper, the landing told it can land without
-`--set` and backfill after the cutover. Nothing writes the playlist into an
-export.
+## R-934. A restore of a tag suggest session undoes the rows and not the files
 
-**Measured cost.** Driven on the bridge fixture: both verbs refuse before
-anything moves. A library still on the bridge gets no permanent playlist from
-a set intake until its intake tree cuts over. The author's library cut over
-on 2026-09-29, so the cost is nobody's today.
+**Found:** at the review of #266, U114, 2026-10-09.
 
-**Closes when:** a bridge writer for the folder is wanted, or every library
-this product serves has cut over. Ledger only.
+**The mechanism.** `tag suggest` writes the genre onto the file through the
+one genre writer and then onto the row inside a recorded session. The session
+capture is of the database, so a restore of that session puts the rows back
+to blank and leaves every file carrying the suggested genre. The next
+`tag rows` run then reads each restored row as lagging its file and writes
+the suggestion back, so the undo does not hold. No tagging record is
+committed for the file write either.
 
-## R-935. A track that becomes owned after the set's playlist was written joins it last, not in set order
+**Measured cost.** Not driven against a restore. The verb's success message
+says it in so many words: a restore undoes the rows and not the files, which
+keep the genre. Undoing a bad batch therefore needs the file genre cleared by
+hand or by another pass.
 
-**Found:** by the review of U121, 2026-10-09, reading the read back.
+**Closes when:** the apply records each file it wrote, with the value it
+replaced, somewhere a restore or a revert verb reads, so the undo covers both
+halves. Board bar: arguably (c), undoing a bad batch cannot finish through
+the verbs; filed ledger only by an unattended session, for the author to
+judge.
 
-**The mechanism.** The playlist is found by its name under the folder, so a
-second write on the same day adds what the playlist lacked, and
-`add_memberships` appends: rekordbox numbers an added track after every
-track the playlist holds. A track that was a question at the first write
-and owned at the second therefore sits last. The read back holds every asked
-id live and holds the order only for a playlist this commit filled, so the
-second write is reported as what it was, one track added, and not refused.
+---
 
-**Measured cost.** Driven on the disposable library:
-`test_a_second_write_that_fills_a_gap_mid_set_is_not_a_failed_write`, three
-tracks, the middle one owned between two writes, read back One, Two, Three
-for a set that played One, Three, Two. Order only; nothing is lost.
+## R-935. A neighbour votes with its row's genre, which can lag its file
 
-**Closes when:** the write re-sorts the memberships to set order, a
-`TrackNo` rewrite the guarded writer does not make today. Ledger only.
+**Found:** at the review of #266, U114, 2026-10-09.
 
-## R-936. The page title is used whole as the set's name when no flag abbreviates it
+**The mechanism.** A neighbour's vote is the genre on its row, the word
+adoption files by. A row whose genre lags a newer word on its file, the shape
+`tag rows` repairs, votes the old word. The review fix covers the case the
+walk already reads: a row with no genre whose file carries one votes with the
+file's word. A row carrying a stale word is not read on its file, because
+that would open every file in the library to vote.
 
-**Found:** by the author of U121, 2026-10-09, naming the Vonking set.
+**Measured cost.** Not driven on the live library. `tag rows` ran live on
+2026-10-01 and wrote 797 rows from their files, so the lag measured then is
+mostly closed; a library that has not run it would suggest the stale word.
 
-**The mechanism.** The form asks for an abbreviated set name, and the page
-title is what the uploader typed: `Public Service NYC - Live at Vonking
-05.03.26` gives, less the uploader's name in front, `Live at Vonking
-05.03.26`, so the playlist would read `10_09_26 Public Service NYC Live at
-Vonking 05.03.26 5-26`, the date twice. The strip rule takes the uploader's
-name off the front with its separator and nothing else; a title that names
-the uploader elsewhere, or a date, keeps it. `--set-name` is the abbreviation
-and wins.
+**Closes when:** the verb warns, or refuses, while `tag rows` would still
+write rows, or a neighbour's file word is read when its row and file are
+known to differ. Ledger only: the suggestion is shown with its votes at the
+gate before anything is written.
 
-**Measured cost.** A longer playlist name than the author would type, for a
-set landed from an address with no `--set-name`. Driven by
-`test_the_words_come_from_the_page_with_the_uploader_taken_off_the_title`.
-No playlist is misnamed in a way that loses it.
+---
 
-**Closes when:** the author decides a rule for abbreviating, which the brief
-left to the flag. Ledger only.
+## R-936. tag suggest reaches into the row engine's private helpers
 
-## R-937. A backfill names the playlist for the day it runs, not the day the set landed
+**Found:** at the review of #266, U114, 2026-10-09.
 
-**Found:** by the author of U121, 2026-10-09, planning the Vonking backfill.
+**The mechanism.** `tagging/suggest.py` walks the census the way
+`tagging/rows.py` does and calls its private `_file_word`, `_PROBED`,
+`_no_energy` and `_mapped`, and `suggest_cli.py` carries one more copy of the
+`_load` and `_confirm_gate` shape every verb shell here has. A rename in
+`rows.py` breaks the suggestion with no interface saying so. Classifying a
+vote word is recomputed per candidate, and `--catalogue` opens each candidate
+file twice, once for the genre and once for the ISRC.
 
-**The mechanism.** The form's first word is the naming day,
-`batch_name.today()`, and the brief says today. A playlist this product
-wrote for a job is named on the landing's session record, and every later
-landing and backfill for that job reads the record, checks the row live under
-the folder and adds to it under its first name, so a set landed in two parts
-on two days is one playlist (the watcher's review of U121). What the record
-cannot name is a playlist a PERSON made: the Vonking playlist the author made
-by hand on 2026-10-09 is `10_09_26 Public Service NYC Live at Vonking 5-26`,
-and a backfill run that day with `--dj "Public Service NYC" --set-name "Live
-at Vonking" --set-date 2026-05` finds it live by name and adds only what it
-lacks, while a backfill run any later day makes a second playlist beside it.
-No flag names the day.
+**Measured cost.** None to a person: the suite imports both modules, so a
+rename fails at once, and the repeated work is milliseconds over a few
+hundred candidates.
 
-**Measured cost.** For a set whose playlist a person made, or for a set
-backfilled after the day it landed with no record of a playlist, a first
-word that says when the playlist was made rather than when the set came in,
-and for the Vonking set a twin unless run on 2026-10-09. The hand made
-playlist is the author's to keep or remove. Driven:
-`test_two_landings_of_one_set_on_two_days_make_one_playlist`.
+**Closes when:** the shared helpers are made public in `rows.py` or moved to
+a census helper both import. Ledger only: maintainer facing.
 
-**Closes when:** the author decides whether the first word is the naming
-day, the brief's form, or the landing day read off the landing's record, in
-which case the backfill gains that read. Ledger only.
+---
+
+## R-937. Interpretations U114 settled without the author
+
+**Found:** at the build of #266, U114, 2026-10-09.
+
+**The mechanism.** Four calls in the brief were made the conservative way by
+an unattended session and are the author's to revisit:
+
+1. **The weights.** The brief's measurement says "the artist's other tracks
+   and the tracks in the same folder weighted double", and its approach orders
+   the signals catalogue, artist, folder, strongest first. The build follows
+   the approach: artist 2, folder 1, the catalogue 6, a neighbour voting once
+   at its higher weight. The measured 60 of 621 at high may have used the
+   folder doubled instead.
+2. **The default band is high.** Only a high suggestion is written unless
+   `--band` widens it, since 439 of 621 measured under 60 percent agreement.
+3. **The catalogue is opt in**, `--catalogue`, since it is paced network work
+   over every candidate and the run that applies asks it again; its answers
+   are kept a week, and an unread one for the day.
+4. **`--leave` beats `--set`** on the same row, silently, and no test drives
+   both on one row.
+
+**Measured cost.** None; each is visible at the gate, where every item shows
+its votes, its band and its reason.
+
+**Closes when:** the author confirms or changes each. Ledger only.
+
+---
+
+## R-938. A row write that refuses after the files were written does not name the files
+
+**Found:** at the review of #266, U114, 2026-10-09.
+
+**The mechanism.** The files are written inside the row engine's session,
+after the lock, the volume check and the capture, so every refusal before the
+narrow step leaves them untouched. A refusal after it, the guarded commit or
+the whitelist, rolls the rows back and raises the engine's own refusal, which
+says nothing about the files already carrying their genre.
+
+**Measured cost.** Not driven: the commit refusing over a genre write needs a
+guard defect or a binding change. The rows stay blank and the files carry the
+genre, which is the shape `tag rows` repairs, so nothing is lost.
+
+**Closes when:** the verb catches a refusal from the row engine after the
+narrow step and adds the files it wrote to the sentence. Ledger only.
+
+## R-939. Files the old tagger wrote "Soul / R&B" onto now file under Soul, R&B sources among them
+
+**Found:** at the review of #275, U118, 2026-10-09.
+
+**The mechanism.** The author decided a combined name files under its first
+word, so "Soul / R&B" is Soul's. The source system's tagger wrote exactly that
+string for the source words "r&b", "rnb", "soul" and "soul / r&b" alike
+(`tests/legacy_taxonomy.py`, its normalize table), so a file carrying it may
+have come from an R&B source. On the live library 7 tracks in R&B carry it
+(2026-10-08 export), and `crate adopt move` plans each out of its R&B band into
+Soul's.
+
+**Measured cost.** Not driven on the live library. Nothing is lost: each moved
+track keeps every other membership, the gate lists each with its genre, and a
+retag to "R&B" followed by another move puts it back.
+
+**Closes when:** the attended run reads the 7 on the rehearsal's gate and
+retags any the author hears as R&B before approving. Ledger only, it closes
+at an attended sitting.
+
+## R-940. A bucket's tagging only word now silently beats another bucket's routing alias
+
+**Found:** at the review of #275, U118, 2026-10-09.
+
+**The mechanism.** "Trap / Wave" routes to the breaks bucket and has always
+tagged as Hip-Hop, through a sub alias while Hip-Hop was a sub. With Hip-Hop a
+bucket, the word is a bucket's tagging alias, and the loader now lets a
+bucket's tagging only word take a key another bucket claims by routing, as a
+sub's always could. The refusal that a hand edit putting such a word in the
+wrong bucket used to meet is gone; two tagging only words of two buckets
+still refuse.
+
+**Measured cost.** None on the shipped template, where the one such word is
+the documented one. A hand edit of a library's copy could make the tagger
+write a folder's name nobody meant, with nothing said at load.
+
+**Closes when:** a tagging only word that overrides a routing alias is
+declared as such, for instance listed in the template header's table of
+words that route one way and tag another, and the loader refuses any that is
+not. Ledger only, maintainer facing.
+
+## R-941. A partial "hip hop" match still lands in NonElectronic's default sub
+
+**Found:** building #275, U118, 2026-10-09.
+
+**The mechanism.** The keyword rules for "hip-hop" and "hip hop" still send a
+genre they partly match to the non electronic bucket, whose default sub is
+Rock, as R-797 left the "r&b" and "soul" rules. "Hip-hop & Rap", the one such
+word measured on the library, was made an exact Hip-Hop alias because the
+author named it. Any other partial match, a "Hip Hop" or "UK Hip-Hop", files
+under NonElectronic / Rock.
+
+**Measured cost.** Not measured on the library beyond the one word. A track
+is filed in a playlist of the wrong style, and nothing is lost.
+
+**Closes when:** the author decides the keyword rules for these genres, the
+decision R-797 records for R&B and Soul, and the rules are repointed or the
+words made aliases. Ledger only, it is the author's decision.
