@@ -1,0 +1,269 @@
+name = "u114"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_suggestable_routes_only"
+description = "suggestable accepts any word adoption routes, a keyword or catch all placement included, so Dance is suggested"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''    return disposition is adopt_scan.Disposition.ROUTE and declared.named_folder(word) is not None'''
+new = '''    return disposition is adopt_scan.Disposition.ROUTE'''
+
+[[rows]]
+id = "M2_high_share"
+description = "The high band's share bound drops from 0.8 to 0.7"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''((HIGH, 0.8, 6), (MEDIUM, 0.6, 3))'''
+new = '''((HIGH, 0.7, 6), (MEDIUM, 0.6, 3))'''
+
+[[rows]]
+id = "M3_high_votes"
+description = "The high band's least vote count halves from 6 to 3"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''((HIGH, 0.8, 6), (MEDIUM, 0.6, 3))'''
+new = '''((HIGH, 0.8, 3), (MEDIUM, 0.6, 3))'''
+
+[[rows]]
+id = "M4_split"
+description = "A two way tie at the top is no longer a split and the first tied genre becomes the default"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''    if len(tied) > 1:'''
+new = '''    if len(tied) > 2:'''
+
+[[rows]]
+id = "M5_total_declared_only"
+description = "The total counts only declared votes, so an undeclared word no longer lowers the agreement"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''    total = sum(votes.values())'''
+new = '''    total = sum(weight for word, weight in votes.items() if suggestable(declared, word))'''
+
+[[rows]]
+id = "M6_folder_weight"
+description = "A folder neighbour votes at the artist's weight"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''        weights[other] = FOLDER_WEIGHT'''
+new = '''        weights[other] = ARTIST_WEIGHT'''
+
+[[rows]]
+id = "M7_votes_once"
+description = "A neighbour by the artist in the same folder votes twice, its weights added"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''        weights[other] = max(weights.get(other, 0), ARTIST_WEIGHT)'''
+new = '''        weights[other] = weights.get(other, 0) + ARTIST_WEIGHT'''
+
+[[rows]]
+id = "M8_off_taxonomy"
+description = "A catalogue answer flagged off taxonomy is counted as a vote when it is suggestable"
+file = "src/cratekit/tagging/suggest.py"
+surface = "maintainer"
+tests = ["tests/test_tag_suggest.py"]
+old = '''        and not asked.off_taxonomy
+'''
+new = ""
+
+[[rows]]
+id = "M9_catalogue_declared"
+description = "A catalogue answer is a vote whether or not the taxonomy declares it"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''        and suggestable(declared, asked.genre)
+'''
+new = ""
+
+[[rows]]
+id = "M10_file_has_genre"
+description = "A row whose file carries a genre is offered a suggestion instead of being left to tag rows"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''        if word:
+            counts[FILE_HAS_GENRE] += 1
+            # IT VOTES WITH ITS FILE'S WORD. The row lags its file, which is
+            # what ``tag rows`` repairs, and the file is the newer of the two.
+            live[track.content_id].genre = word
+            continue
+'''
+new = ""
+
+[[rows]]
+id = "M11_file_word_votes"
+description = "A row whose file carries a genre its row lacks no longer votes with the file's word"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''            live[track.content_id].genre = word
+'''
+new = ""
+
+[[rows]]
+id = "M12_below_band"
+description = "The band threshold is ignored and every suggestion with a band is written"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''        elif not _at_or_above(earned, band):'''
+new = '''        elif not _at_or_above(earned, LOW):'''
+
+[[rows]]
+id = "M13_band_order"
+description = "The band comparison is reversed, so a weaker band passes a stronger threshold"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''    return BANDS.index(band) <= BANDS.index(least)'''
+new = '''    return BANDS.index(band) >= BANDS.index(least)'''
+
+[[rows]]
+id = "M14_genre_unknown"
+description = "A genre with no lookup row is planned as a write with an empty identifier"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''                replace(item, action=LEAVE, reason=GENRE_UNKNOWN)
+                if genre_id is None
+                else replace(item, genre_id=genre_id)'''
+new = '''                replace(item, genre_id=genre_id or "")'''
+
+[[rows]]
+id = "M15_file_moved"
+description = "A file that carries a genre by the time the write reaches it is written over"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''        if word or outcome != rows.FILE_BLANK:'''
+new = '''        if outcome == rows.FILE_UNREADABLE:'''
+
+[[rows]]
+id = "M16_file_read_back"
+description = "A file is not read back after the write, so its row is written whatever the file holds"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''        if rows._file_word(target)[0] != item.genre:
+            wrong.append(item.content_id)
+            continue
+'''
+new = ""
+
+[[rows]]
+id = "M17_rows_follow_files"
+description = "Every planned row is written, the ones whose file did not take the genre included"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''        if item.content_id in wanted
+'''
+new = ""
+
+[[rows]]
+id = "M18_narrow_called"
+description = "The row engine never calls the narrow step, so no file is written and every row is"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py", "tests/test_tag_rows.py"]
+old = '''        if narrow is not None:
+            plan = narrow(plan)'''
+new = '''        if narrow is None:
+            plan = narrow(plan)'''
+
+[[rows]]
+id = "M19_write_intent"
+description = "The apply opens the database without write intent, so a running rekordbox is not refused by the opener"
+file = "src/cratekit/tagging/suggest_cli.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)'''
+new = '''    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=False, cfg=cfg)'''
+
+[[rows]]
+id = "M20_pick_declared"
+description = "A --set genre the taxonomy does not declare is accepted"
+file = "src/cratekit/tagging/suggest_cli.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''        if not suggest.suggestable(declared, genre):'''
+new = '''        if not genre.strip():'''
+
+[[rows]]
+id = "M21_kept_days"
+description = "A kept catalogue answer lives five times as long"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''    if not 0 <= age < CATALOGUE_DAYS:'''
+new = '''    if not 0 <= age < CATALOGUE_DAYS * 5:'''
+
+[[rows]]
+id = "M22_unread_day"
+description = "An unread answer is kept the whole week, so a later day never asks again"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''    if answer.said == UNREAD and age != 0:'''
+new = '''    if answer.said == UNREAD and age > CATALOGUE_DAYS:'''
+
+[[rows]]
+id = "M23_breaker"
+description = "The walk stops asking after four unread rows in a row and not three"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''            self.stopped = self._unread_running >= STOP_AFTER_UNREAD'''
+new = '''            self.stopped = self._unread_running > STOP_AFTER_UNREAD'''
+
+[[rows]]
+id = "M24_retry_unread"
+description = "A catalogue that could not be read is asked again, the behaviour before the review"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''        if first.said != DECLINED or first.source_genre:'''
+new = '''        if first.said == MATCHED or first.source_genre:'''
+
+[[rows]]
+id = "M25_settled_not_asked"
+description = "A row held out or picked is looked up anyway"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''        if catalogue is not None and not settled_by_person:'''
+new = '''        if catalogue is not None:'''
+
+[[dropped]]
+id = "D1_self_excluded"
+description = "Remove the pop of the candidate's own identifier from its neighbours"
+reason = "a candidate has no genre and is never indexed as a neighbour, so the pop is belt and braces; ranked below the cap"
+
+[[dropped]]
+id = "D2_row_has_genre"
+description = "Offer a row that already carries a genre"
+reason = "the same counting shape as M10, which is measured; the out of scope rule is also held by the outcome census test"
+
+[[dropped]]
+id = "D3_held_over_pick"
+description = "Let a --set pick override --leave on the same row"
+reason = "no test drives both flags on one row; recorded as a residual rather than measured"
+
+[[dropped]]
+id = "D4_pick_twice"
+description = "Accept one row named twice by --set with two genres"
+reason = "an input check on a flag, ranked below the write path's guards"
+
+[[dropped]]
+id = "D5_acknowledgment"
+description = "Remove the backup acknowledgment read before the plan"
+reason = "the same line as tag rows, and the contract suite's ACKNOWLEDGED_BEFORE_THE_GATE guard drives it for this verb"

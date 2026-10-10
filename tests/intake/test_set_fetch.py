@@ -91,7 +91,7 @@ def test_a_mix_url_runs_the_ordinary_set_pipeline_over_the_fetched_file(
     job_id = envelope["data"]["job_id"]
     assert len(items_of(job_id)) == 3
     assert envelope["data"]["progress"]["calls"] == 3
-    assert envelope["warnings"] == []
+    assert [w["code"] for w in envelope["warnings"]] == [intake_cli.TRACKLIST_WRITTEN]
     assert [url for url, _ in fetcher.asked] == [URL]
     # What was identified is what was fetched: every chunk was carved from it.
     assert len(recognised.requests) == 3

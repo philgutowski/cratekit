@@ -1,0 +1,59 @@
+name = "u118-b"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_tag_beats_route"
+description = "A bucket's tagging only word no longer wins over another bucket's routing alias, so Trap / Wave tags as the breaks bucket"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_adopt_split_place.py", "tests/test_routing_parity.py"]
+old = '''            tagged[key] = bucket.id
+            tagging[key] = (bucket.id, None)'''
+new = '''            tagged[key] = bucket.id
+            tagging.setdefault(key, (bucket.id, None))'''
+
+[[rows]]
+id = "A2_tag_collision"
+description = "Two buckets listing one tagging only word load, the later winning"
+file = "src/cratekit/core/taxonomy.py"
+surface = "maintainer"
+tests = ["tests/test_taxonomy.py", "tests/test_routing_parity.py"]
+old = '''            if claimer is not None and claimer != bucket.id:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "R1_split_competes"
+description = "A split place no longer competes in the bucket that declares it"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+tests = ["tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py"]
+old = '''        | {place.id for place in taxonomy.bucket(bucket_id).split_from}
+'''
+new = ''''''
+
+[[rows]]
+id = "R2_split_lookup"
+description = "split_place finds nothing, so a split place resolves as an ordinary sub"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+tests = ["tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py"]
+old = '''    for place in taxonomy.bucket(bucket_id).split_from:'''
+new = '''    for place in ():'''
+
+[[rows]]
+id = "P1_named_place_split"
+description = "named_place resolves a split place as a sub of the declaring bucket"
+file = "src/cratekit/adopt/placements.py"
+surface = "user"
+tests = ["tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_adopt_placements.py"]
+old = '''        return named_place(declared, split.bucket, split.sub)'''
+new = '''        return destination(declared, bucket_id, sub_id)'''
+
+[[rows]]
+id = "P2_recorded_under_split"
+description = "recorded_under answers a split place under the declaring bucket, so a renamed holder playlist is not recognised"
+file = "src/cratekit/adopt/placements.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py", "tests/test_adopt_placements.py"]
+old = '''        return recorded_under(declared, split.bucket, split.sub)'''
+new = '''        return bucket_id, sub_id'''
