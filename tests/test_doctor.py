@@ -8082,3 +8082,17 @@ def test_the_schema_is_not_compared_when_the_library_disk_is_absent(configured):
     finding = find(doctor.run(configured, probes=gone), "taxonomy.schema")
     assert finding.status is doctor.Status.INFO
     assert "schema_version" not in finding.detail
+
+
+def test_a_shipped_template_that_does_not_load_is_a_defect_and_not_the_copy(
+    configured, monkeypatch
+):
+    seed_taxonomy(configured)
+    shipped = taxonomy.shipped_template_text("default")
+    monkeypatch.setattr(
+        taxonomy, "shipped_template_text", lambda _n: shipped.replace('id = "rnb"', 'id = "R and B"', 1)
+    )
+    finding = _schema_finding(configured)
+    assert finding.status is doctor.Status.FAIL
+    assert finding.remedy is Remedy.REPORT_DEFECT
+    assert "shipped" in finding.detail

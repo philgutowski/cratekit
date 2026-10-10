@@ -142,6 +142,19 @@ def backup_path(path: Path, now: datetime) -> Path:
     return candidate
 
 
+def _read_back(cfg: config.Config, path: Path, written: str) -> str | None:
+    """Why the copy at ``path`` is not the one written, or None when it is and it loads."""
+    try:
+        if path.read_text(encoding="utf-8") != written:
+            return "the text on disk is not the text written"
+        active_taxonomy.load(cfg)
+    except CratekitError as exc:
+        return exc.cause.message
+    except (OSError, UnicodeDecodeError) as exc:
+        return str(exc)
+    return None
+
+
 def taxonomy_upgrade_verb(ctx: "Context") -> Envelope:
     """Plan what the copy lacks, ask, keep the copy as it was, write, read back."""
     cfg = _load()
@@ -190,26 +203,16 @@ def taxonomy_upgrade_verb(ctx: "Context") -> Envelope:
     config.atomic_write_bytes(fresh.after.encode("utf-8"), path)
 
     # READ BACK THROUGH THE LOADER every verb reads the copy with, so what was
-    # written is what routes; a copy the loader refuses refuses here, naming
-    # the backup that puts the old one back.
-    written = path.read_text(encoding="utf-8")
-    try:
-        active_taxonomy.load(cfg)
-    except CratekitError as exc:
+    # written is what routes. A copy that does not read back is replaced by the
+    # one it replaced, from the bytes this verb holds, so the library is never
+    # left with a declaration every routing verb refuses.
+    problem = _read_back(cfg, path, fresh.after)
+    if problem is not None:
+        config.atomic_write_bytes(fresh.before.encode("utf-8"), path)
         raise refuse(
             "internal-error",
-            f"the upgraded copy at {path} does not load ({exc.cause.message}); the copy "
-            f"as it was is at {kept}, and copying it back over the upgraded one puts "
-            f"it back",
-            remedy=Remedy.REPORT_DEFECT,
-            origin=_ORIGIN,
-            detail={"path": str(path), "backup": str(kept)},
-        ) from exc
-    if written != fresh.after:
-        raise refuse(
-            "internal-error",
-            f"the copy at {path} read back is not the copy this upgrade wrote; the copy "
-            f"as it was is at {kept}",
+            f"the upgraded copy at {path} did not read back ({problem}), so the copy as "
+            f"it was has been put back; it is also kept at {kept}",
             remedy=Remedy.REPORT_DEFECT,
             origin=_ORIGIN,
             detail={"path": str(path), "backup": str(kept)},

@@ -1946,13 +1946,14 @@ def rebuild_governed_tree(
 def favorites_skipped_warnings(
     declared: taxonomy.Taxonomy, tree_ids: Iterable[str]
 ) -> tuple[dict[str, str], ...]:
-    """The note a rebuild over the routing tree carries when no genre Favorites class is declared (U132).
+    """The note a rebuild that drove the routing tree carries when no genre Favorites class is declared (U132).
 
     :func:`with_favorites` passes over an undeclared class without a word, which
     is right for the placements and was wrong for the person: the live library
     rebuilt its genre folders for weeks with no Favorites in any of them and
     nothing said why. Only when the routing tree was among the trees the job
-    rebuilt, since the class is declared under that tree alone. Asked of the
+    rebuilt IN THIS RUN, since the class is declared under that tree alone and
+    a resume reports only what it drove. ``tree_ids`` is that set. Asked of the
     declaration, as :func:`governed_not_compared` is, because the worker's
     report does not outlive its item.
     """

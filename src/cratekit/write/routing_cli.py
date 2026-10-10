@@ -1893,6 +1893,11 @@ def _resume(ctx, store, job_id: str) -> Envelope:
             declared = active_taxonomy.load(jobs.frozen_config(job))
             # FROM HERE THIS RUN DROVE, so from here a refusal owes the leftovers.
             frozen = jobs.frozen_config(job)
+            # THE TREES THIS RUN DRIVES, read before the drive: an item already
+            # done was driven by an earlier run and is not this run's to report.
+            driven = [
+                i.item_id for i in jobs.items(store, job.job_id) if i.state != jobs.ItemState.DONE
+            ]
             _, warnings = ctx.run_job(store, job)
             job = jobs.get(store, job.job_id)
             # THE SAME ENGINE AS THE REBUILD, SO THE SAME GAP (R-316). Only on the
@@ -1907,7 +1912,7 @@ def _resume(ctx, store, job_id: str) -> Envelope:
                 ),
                 # The rebuild's engine, so the rebuild's skipped step (U132).
                 *rebuild.favorites_skipped_warnings(
-                    declared, (item.item_id for item in jobs.items(store, job.job_id))
+                    declared, driven
                 ),
                 *rebuild.left_behind_warnings(records, listed_in=listed_in),
             )

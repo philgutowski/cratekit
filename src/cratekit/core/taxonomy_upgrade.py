@@ -39,8 +39,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
-from cratekit.core import config, taxonomy
-from cratekit.core.cause import access_remedy, refuse
+from cratekit.core import active_taxonomy, config, taxonomy
+from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import Remedy
 
 _ORIGIN = ("core", "taxonomy_upgrade")
@@ -257,19 +257,80 @@ def _loads(text: str) -> taxonomy.Taxonomy | list[str]:
         return list(exc.problems)
 
 
+def _kept_whole(before: str, after: str, kind: str, entry: Mapping[str, Any]) -> bool:
+    """True when ``after`` is ``before`` with ``entry`` added to ``kind`` and nothing else moved."""
+    old, new = tomllib.loads(before), tomllib.loads(after)
+    if {k: v for k, v in old.items() if k != kind} != {k: v for k, v in new.items() if k != kind}:
+        return False
+    listed = list(new.get(kind) or ())
+    if listed.count(entry) != 1:
+        return False
+    listed.remove(entry)
+    return listed == list(old.get(kind) or ())
+
+
+def _placed(
+    text: str, kind: str, entry: Mapping[str, Any], block: str, order: list[str], marker: str
+) -> str | None:
+    """``text`` with ``block`` where the shipped template places it among the copy's entries.
+
+    BEFORE THE COPY'S ENTRY THAT FOLLOWS IT IN THE SHIPPED ORDER, or after the
+    copy's last entry of its kind when none does, so an added bucket sits where
+    a fresh setup would put it. Declared order is behaviour: review menus list
+    buckets in it and a tie between two buckets' words goes to the first
+    declared. When the copy's headers cannot be matched to its entries the
+    block is appended at the end, and either way the result is parsed back and
+    refused unless every entry the copy held is exactly as it was.
+    """
+    piece = marker + "\n" + block
+    lines = text.splitlines(keepends=True)
+    if lines and not lines[-1].endswith("\n"):
+        lines[-1] += "\n"
+    blocks = _blocks("".join(lines))
+    own = [(position, start) for position, (name, start, _) in enumerate(blocks) if name == kind]
+    held_ids = [str(e.get("id", "")) for e in tomllib.loads(text).get(kind) or ()]
+    at: int | None = None
+    if own and len(own) == len(held_ids):
+        later = order[order.index(str(entry["id"])) + 1 :]
+        following = [i for i in later if i in held_ids]
+        if following:
+            at = own[held_ids.index(following[0])][1]
+        else:
+            last = own[-1][0]
+            at = len(lines)
+            for name, start, _ in blocks[last + 1 :]:
+                if not name.startswith(f"{kind}."):
+                    at = start
+                    break
+    tries = [at] if at is not None else []
+    tries.append(len(lines))
+    for index in tries:
+        head = "".join(lines[:index])
+        tail = "".join(lines[index:])
+        gap = "" if not head or head.endswith("\n\n") else "\n"
+        joined = head + gap + piece + ("\n" + tail if tail else "")
+        if _kept_whole(text, joined, kind, entry):
+            return joined
+    return None
+
+
 def plan(active_text: str, shipped_text: str, *, template: str) -> Plan:
     """What the copy lacks and the copy with every entry it can take added.
 
     Raises ``taxonomy.TaxonomyError`` when the active copy does not load, which
     is doctor's ``taxonomy.active`` failure and not a question this answers, and
-    ``ValueError`` when the shipped text cannot be cut.
+    a plain ``ValueError`` when the SHIPPED text does not load or cannot be cut,
+    which is a defect in packaged data and never the person's copy.
     """
     active = taxonomy.load_taxonomy(active_text)
-    shipped = taxonomy.load_taxonomy(shipped_text)
+    try:
+        shipped = taxonomy.load_taxonomy(shipped_text)
+    except taxonomy.TaxonomyError as exc:
+        raise ValueError(f"the shipped {template!r} template does not load: {exc}") from None
     shipped_data: Mapping[str, Any] = tomllib.loads(shipped_text)
     held: list[Held] = []
 
-    base = active_text
+    text = active_text
     version = active.schema_version
     if active.schema_version < shipped.schema_version:
         raised = _raise_version(active_text, shipped.schema_version)
@@ -289,17 +350,17 @@ def plan(active_text: str, shipped_text: str, *, template: str) -> Plan:
             if isinstance(loaded, list):
                 held.append(Held(kind="schema_version", id=str(shipped.schema_version), reasons=tuple(loaded)))
             else:
-                base, version = raised, shipped.schema_version
+                text, version = raised, shipped.schema_version
 
-    accepted: list[str] = []
     added: dict[str, list[str]] = {SUB_CLASS: [], BUCKET: []}
-    current = taxonomy.load_taxonomy(base)
+    current = taxonomy.load_taxonomy(text)
     present = {
         SUB_CLASS: {entry.id for entry in active.sub_classes},
         BUCKET: {bucket.id for bucket in active.buckets},
     }
     marker = MARKER.format(verb=VERB, template=template, version=shipped.schema_version)
     for kind in (SUB_CLASS, BUCKET):
+        order = [str(e.get("id", "")) for e in shipped_data.get(kind) or ()]
         for raw in shipped_data.get(kind) or ():
             entry_id = str(raw.get("id", ""))
             if entry_id in present[kind]:
@@ -311,15 +372,26 @@ def plan(active_text: str, shipped_text: str, *, template: str) -> Plan:
                 if clashes:
                     held.append(Held(kind=kind, id=entry_id, reasons=tuple(clashes)))
                     continue
-            text = _joined(base, marker, [*accepted, block])
-            loaded = _loads(text)
+            placed = _placed(text, kind, raw, block, order, marker)
+            if placed is None:
+                held.append(
+                    Held(
+                        kind=kind,
+                        id=entry_id,
+                        reasons=(
+                            "the copy's text could not be added to without moving an entry "
+                            "it holds; add it by hand from the shipped template",
+                        ),
+                    )
+                )
+                continue
+            loaded = _loads(placed)
             if isinstance(loaded, list):
                 held.append(Held(kind=kind, id=entry_id, reasons=tuple(loaded)))
                 continue
-            accepted.append(block)
+            text = placed
             added[kind].append(entry_id)
             current = loaded
-    after = _joined(base, marker, accepted) if accepted else base
     return Plan(
         template=template,
         from_version=active.schema_version,
@@ -329,13 +401,8 @@ def plan(active_text: str, shipped_text: str, *, template: str) -> Plan:
         buckets=tuple(added[BUCKET]),
         held=tuple(held),
         before=active_text,
-        after=after,
+        after=text,
     )
-
-
-def _joined(base: str, marker: str, blocks: list[str]) -> str:
-    head = base if base.endswith("\n") else base + "\n"
-    return head + "\n" + marker + "\n\n" + "\n".join(blocks)
 
 
 # ---------------------------------------------------------------------------
@@ -386,23 +453,13 @@ def remedy(found: Plan) -> str:
 def read(cfg: config.Config) -> tuple[Path, str, str]:
     """The active copy's path and text, and the shipped text the configuration names.
 
-    Refuses as the loader does for an unmounted library and an unreadable copy,
-    and refuses an absent copy rather than falling back: there is nothing to
-    upgrade, and setup is what makes one.
+    Through the loader's own read, so an unmounted library and an unreadable
+    copy refuse as every verb refuses them, and an absent copy is refused
+    rather than fallen back from: there is nothing to upgrade, and setup is
+    what makes one.
     """
-    path = config.state_path("taxonomy_active", cfg)
-    try:
-        active_text = path.read_text(encoding="utf-8")
-    except (FileNotFoundError, NotADirectoryError) as exc:
-        if not cfg.library.root.is_dir():
-            raise refuse(
-                "library-volume-unmounted",
-                f"the library root {cfg.library.root} is not there, so this library's "
-                f"taxonomy at {path} could not be read",
-                remedy=Remedy.MOUNT_LIBRARY_VOLUME,
-                origin=_ORIGIN,
-                detail={"path": str(path)},
-            ) from exc
+    path, active_text = active_taxonomy.read_text(cfg)
+    if active_text is None:
         raise refuse(
             "config-unusable",
             f"this library has no active taxonomy copy at {path}, so there is nothing to "
@@ -410,15 +467,7 @@ def read(cfg: config.Config) -> tuple[Path, str, str]:
             remedy=Remedy.RUN_SETUP,
             origin=_ORIGIN,
             detail={"path": str(path)},
-        ) from exc
-    except (OSError, UnicodeDecodeError) as exc:
-        raise refuse(
-            "config-unusable",
-            f"the active taxonomy copy at {path} could not be read ({exc})",
-            remedy=access_remedy(exc, otherwise=Remedy.REPORT_DEFECT),
-            origin=_ORIGIN,
-            detail={"path": str(path)},
-        ) from exc
+        )
     name = cfg.taxonomy.template
     try:
         shipped_text = taxonomy.shipped_template_text(name)
@@ -444,6 +493,18 @@ def planned(cfg: config.Config) -> tuple[Path, Plan]:
             f"the active taxonomy copy at {path} is not usable: {exc}; it is repaired by "
             f"hand before it can be upgraded",
             remedy=Remedy.FIX_CONFIG_VALUES,
+            origin=_ORIGIN,
+            detail={"path": str(path)},
+        ) from exc
+    except ValueError as exc:
+        # THE SHIPPED TEXT, NOT THE PERSON'S COPY: a packaged template that does
+        # not load or cannot be cut is a defect to report, and naming the copy
+        # would send someone to edit a file that is correct.
+        raise refuse(
+            "internal-error",
+            f"the shipped {cfg.taxonomy.template!r} template could not be compared with "
+            f"the copy ({exc}); the copy at {path} was not read as the fault",
+            remedy=Remedy.REPORT_DEFECT,
             origin=_ORIGIN,
             detail={"path": str(path)},
         ) from exc

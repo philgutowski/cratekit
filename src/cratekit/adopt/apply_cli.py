@@ -677,7 +677,7 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
         summary = _summary(cfg, job.job_id)
         return ctx.envelope(
             data=shell.reported(store, job, {"adoption": summary}),
-            warnings=[*warnings, *favorites_warnings(summary, declared)],
+            warnings=[*warnings, *favorites_warnings(summary)],
         )
 
 
@@ -699,6 +699,7 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
         "disagreements": [],
         "skipped": "",
         "cause": "",
+        "schema_version": None,
     }
     for report in artifacts.committed(cfg, job_id):
         applied.extend(str(entry) for entry in report.get("applied") or ())
@@ -722,6 +723,7 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
             ]
             favorites["skipped"] = str(kept.get("skipped") or "")
             favorites["cause"] = str(kept.get("cause") or "")
+            favorites["schema_version"] = kept.get("schema_version")
     return {
         "applied": sorted(set(applied)),
         "failed": failed,
@@ -740,14 +742,8 @@ FAVORITES_UNVERIFIED = "favorites-unverified"
 FAVORITES_SKIPPED = "favorites-skipped"
 
 
-def favorites_warnings(
-    summary: Mapping[str, object], declared: taxonomy.Taxonomy | None = None
-) -> list[dict[str, str]]:
-    """The notes an adoption carries about its additive refresh: owed, skipped, unverified.
-
-    ``declared`` is the resume's own declaration, read only to state its schema
-    version in the note a skip over an undeclared class carries.
-    """
+def favorites_warnings(summary: Mapping[str, object]) -> list[dict[str, str]]:
+    """The notes an adoption carries about its additive refresh: owed, skipped, unverified."""
     kept = summary.get("favorites") or {}
     if not isinstance(kept, Mapping):
         return []
@@ -769,11 +765,8 @@ def favorites_warnings(
     if skipped and cause == genre_favorites.CLASS_UNDECLARED:
         # THE CAUSE CODE IS THE NOTE'S CODE (U132), in the one wording the
         # rebuild carries too.
-        notes.append(
-            genre_favorites.undeclared_note(
-                declared.schema_version if declared is not None else None
-            )
-        )
+        version = kept.get("schema_version")
+        notes.append(genre_favorites.undeclared_note(int(version) if version is not None else None))
     elif skipped:
         added = int(kept.get("added") or 0)
         notes.append(
@@ -915,6 +908,10 @@ def handle(job, item, cfg) -> jobs.Produced:
             "disagreements": list(refreshed.disagreements) if refreshed else [],
             "skipped": outcome.skipped,
             "cause": outcome.cause,
+            # THE VERSION THE SKIP SAW, read back by the resume rather than
+            # the declaration as it stands then: an upgrade between the drive
+            # and the report must not turn the note into a false sentence.
+            "schema_version": declared.schema_version,
         }
 
     produced = artifacts.produced(

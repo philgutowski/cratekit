@@ -135,16 +135,39 @@ def test_a_rerun_plans_nothing():
 # ---------------------------------------------------------------------------
 
 
-def test_every_entry_the_copy_held_is_unchanged_and_its_text_is_a_prefix():
+def _subsequence(short: list[str], long: list[str]) -> bool:
+    remaining = iter(long)
+    return all(any(line == other for other in remaining) for line in short)
+
+
+def test_every_line_and_entry_the_copy_held_is_kept_in_its_order():
     copy = behind()
     found = _plan(copy)
     raised = copy.replace("schema_version = 2\n", "schema_version = 4\n", 1)
-    assert found.after.startswith(raised)
+    assert _subsequence(raised.splitlines(), found.after.splitlines())
     before = taxonomy.load_taxonomy(copy)
     after = {b.id: b for b in taxonomy.load_taxonomy(found.after).buckets}
     for bucket in before.buckets:
         assert after[bucket.id] == bucket
-    assert found.after.count("# Added by crate taxonomy upgrade") == 1
+    assert found.after.count("# Added by crate taxonomy upgrade") == 2
+
+
+def test_an_added_entry_sits_where_the_shipped_template_puts_it():
+    """Declared order is behaviour: review menus list buckets in it and a tie
+    between two buckets' words goes to the first declared."""
+    found = _plan(behind())
+    shipped = taxonomy.load_taxonomy(_shipped())
+    after = taxonomy.load_taxonomy(found.after)
+    assert [b.id for b in after.buckets] == [b.id for b in shipped.buckets]
+    assert [c.id for c in after.sub_classes] == [c.id for c in shipped.sub_classes]
+
+
+def test_a_shipped_template_that_does_not_load_is_not_the_copys_fault():
+    broken = _shipped().replace('id = "rnb"', 'id = "R and B"', 1)
+    with pytest.raises(ValueError) as caught:
+        upgrade.plan(behind(), broken, template="default")
+    assert not isinstance(caught.value, taxonomy.TaxonomyError)
+    assert "shipped" in str(caught.value)
 
 
 def test_the_added_text_parses_back_to_the_shipped_entries():
@@ -417,3 +440,23 @@ def test_a_backup_never_takes_an_earlier_backups_name(tmp_path):
     second = upgrade_cli.backup_path(path, now)
     assert second != first and second.parent == path.parent
     assert not second.exists()
+
+
+def test_a_copy_that_does_not_read_back_is_replaced_by_the_one_it_replaced(configured, monkeypatch):
+    from cratekit.core import active_taxonomy
+    from cratekit.core.cause import refuse
+
+    path = write_active(configured, behind())
+    run_id, _ = _asked()
+    _decided(run_id, "approve")
+
+    def refused(cfg):
+        raise refuse("config-unusable", "a loader that disagrees with the planner")
+
+    monkeypatch.setattr(active_taxonomy, "load", refused)
+    code, acted = drive(["--run", run_id, *VERB])
+    assert acted["cause"]["reason"] == "internal-error", acted
+    assert "put back" in acted["cause"]["message"]
+    assert path.read_text(encoding="utf-8") == behind()
+    (kept,) = _backups(path)
+    assert kept.read_text(encoding="utf-8") == behind()

@@ -1257,6 +1257,17 @@ def _check_taxonomy_schema(inputs: _Inputs) -> Finding:
     try:
         _, found = taxonomy_upgrade.planned(inputs.cfg)
     except CratekitError as exc:
+        if exc.cause.reason == "internal-error":
+            # The shipped text could not be compared, which is packaged data
+            # this repository wrote, so it is a defect to report and not the
+            # person's copy.
+            return Finding(
+                key=key,
+                title=title,
+                status=Status.FAIL,
+                detail=exc.cause.message,
+                remedy=Remedy.REPORT_DEFECT,
+            )
         return Finding(
             key=key,
             title=title,
@@ -1266,28 +1277,15 @@ def _check_taxonomy_schema(inputs: _Inputs) -> Finding:
                 f"itself"
             ),
         )
-    except ValueError as exc:
-        # The shipped text could not be cut, which is packaged data this
-        # repository wrote, so it is a defect to report and not the person's.
-        return Finding(
-            key=key,
-            title=title,
-            status=Status.FAIL,
-            detail=(
-                f"the shipped {inputs.cfg.taxonomy.template!r} template could not be "
-                f"compared with the copy ({exc})"
-            ),
-            remedy=Remedy.REPORT_DEFECT,
-        )
     if not found.behind:
         return Finding(
             key=key,
             title=title,
             status=Status.OK,
             detail=(
-                f"the active copy states schema_version {found.from_version}, as the "
-                f"shipped {found.template!r} template does, and declares every class and "
-                f"bucket it ships"
+                f"the active copy states schema_version {found.from_version} and the "
+                f"shipped {found.template!r} template states {found.shipped_version}, and "
+                f"the copy declares every class and bucket it ships"
             ),
         )
     return Finding(
