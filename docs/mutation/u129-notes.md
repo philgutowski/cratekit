@@ -54,3 +54,18 @@ is a small change; left as a note for now.
 ## Verdict
 
 Author's table only; watcher measures on macOS.
+
+## Gate before recognition (fifth round)
+
+The account gate digests the playlist name alone (``intake-set-account``), so it
+can fire from the name flags before recognition and before any mix download, or
+from the mix page after a fetch and still before ACRCloud. Tracks are matched
+after recognition when the write is applied. A resume reuses the recognition
+cache for chunks already answered; a mix download is not cached across runs.
+
+## Mix URL with no page
+
+A mix URL whose fetch left no info document is warned as ``set-account-unnamed``
+the same way a page that left a word out is: the person gave an address, so the
+account step was expected. A bare local recording with no name flags stays silent.
+
