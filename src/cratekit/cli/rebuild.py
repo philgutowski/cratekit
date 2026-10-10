@@ -200,9 +200,7 @@ def _resume(ctx, store, job_id: str) -> Envelope:
             *warnings,
             *engine.not_compared_warnings(engine.governed_not_compared(threshold, declared)),
             # THE GENRE FAVORITES STEP SKIPPED, named with its cause (U132).
-            *engine.favorites_skipped_warnings(
-                declared, driven
-            ),
+            *engine.favorites_skipped_warnings(declared, driven),
         )
     jobs.raise_for_state(job)
     return ctx.envelope(

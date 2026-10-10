@@ -1911,9 +1911,7 @@ def _resume(ctx, store, job_id: str) -> Envelope:
                     rebuild.governed_not_compared(threshold, declared)
                 ),
                 # The rebuild's engine, so the rebuild's skipped step (U132).
-                *rebuild.favorites_skipped_warnings(
-                    declared, driven
-                ),
+                *rebuild.favorites_skipped_warnings(declared, driven),
                 *rebuild.left_behind_warnings(records, listed_in=listed_in),
             )
         jobs.raise_for_state(job)
