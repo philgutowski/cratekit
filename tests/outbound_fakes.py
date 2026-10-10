@@ -43,6 +43,7 @@ PROTOCOL_METHODS = frozenset(
         "add_tracks",
         "folders",
         "folder_playlists",
+        "folder_folders",
         "create_folder",
         "move_to_folder",
         # R-836. A read that names a playlist's tracks, and the one removal.
@@ -70,6 +71,7 @@ class FakeAccount:
         fail_on: frozenset[str] | set[str] | None = None,
         hearts: set[str] | None = None,
         transient: bool = False,
+        provider_error: bool = False,
     ) -> None:
         self.catalog = dict(catalog or {})
         self.hearts: set[str] = set(hearts or ())
@@ -92,6 +94,10 @@ class FakeAccount:
         #: re-arms the job afterwards needs the second, because ``jobs.retry``
         #: refuses a job whose recorded failures are permanent (R-390).
         self.transient = transient
+        #: When set, a failed write raises a ``CratekitError`` the way the real
+        #: account's ``provider_failure`` does, so a mid pass refusal can be
+        #: asserted through the path that rebuilds the cause and merges totals.
+        self.provider_error = provider_error
         self._writes = 0
         #: Every match asked, as the keyword arguments it was asked with, so a
         #: test can say what an engine handed the account to choose by.
@@ -100,9 +106,11 @@ class FakeAccount:
         self.agreeing: list[str] = []
         #: What this account says about a row it does not match, by identity.
         self.reasons: dict[str, str] = {}
-        #: R-835. Root folders, identifier to name, and which folder each
-        #: playlist sits in. A playlist in no folder sits at the root.
+        #: R-835. Folders, identifier to name, which folder each playlist
+        #: sits in, and which folder (if any) each folder sits in. A
+        #: playlist or folder with no parent sits at the root.
         self.folder_names: dict[str, str] = {}
+        self.folder_parent: dict[str, str] = {}
         self.placed: dict[str, str] = {}
         self.folders_created: list[str] = []
         #: Every move, in order, as ``(playlist_id, folder_id)``.
@@ -194,7 +202,11 @@ class FakeAccount:
         return tuple(one for one in remote_ids if one in members)
 
     def folders(self) -> dict[str, str]:
-        return dict(self.folder_names)
+        return {
+            folder_id: name
+            for folder_id, name in self.folder_names.items()
+            if folder_id not in self.folder_parent
+        }
 
     def folder_playlists(self, folder_id: str) -> dict[str, str]:
         return {
@@ -203,11 +215,25 @@ class FakeAccount:
             if folder == folder_id
         }
 
+    def folder_folders(self, folder_id: str) -> dict[str, str]:
+        return {
+            nested: self.folder_names[nested]
+            for nested, parent in self.folder_parent.items()
+            if parent == folder_id
+        }
+
     def create_folder(self, name: str) -> str:
         self._bump(name)
         folder_id = f"folder-{len(self.folders_created) + 1}"
         self.folder_names[folder_id] = name
         self.folders_created.append(name)
+        return folder_id
+
+    def nest_folder(self, name: str, parent_id: str) -> str:
+        """A folder under another. Test helper, not a protocol write."""
+        folder_id = f"nested-{len(self.folder_parent) + 1}"
+        self.folder_names[folder_id] = name
+        self.folder_parent[folder_id] = parent_id
         return folder_id
 
     def move_to_folder(self, playlist_id: str, folder_id: str) -> None:
@@ -238,7 +264,7 @@ class FakeAccount:
             self._fail("interrupted outbound write")
 
     def _fail(self, message: str) -> None:
-        if self.transient:
+        if self.transient or self.provider_error:
             raise refuse(
                 "unavailable-transient",
                 message,
