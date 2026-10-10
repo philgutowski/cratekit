@@ -36002,6 +36002,22 @@ sampler rows and one of them loaded to a deck, is owed to `docs/cutover.md`
 and waits for the library to be free; R-929 and R-930 record the rule's
 edges.
 
+**The live proof ran on 2026-10-10, sitting 36, and failed.** `repair
+rows` renumbered 20 rows, the 19 of sitting 35 and the A8 row, each read
+back equal to its file's inode, and rekordbox opened fresh still greys
+`Load`, `Add To Tag List` and `Export Track` on every one of them while a
+row it made itself the day before has all three live; a drag to a deck
+lands nothing. The sixteen "sampler rows" were rekordbox's own GROOVE
+CIRCUIT preset rows on the boot volume, never the binding's. So the file
+id was a real difference and not the block, and this finding stays open.
+The one `djmdContent` column still differing between a binding row and
+rekordbox's own, beyond identity and the two update counters, is
+`ContentLink`: `2973454` on all 20 binding rows and nowhere else,
+`2950670` on 10,292 of rekordbox's, a value that keys no table. pyrekordbox
+sets it from the TRACK menu item's usn. Untested, since a one row live
+write outside a gated verb is forbidden; the test is a card. Sitting 36 in
+`docs/cutover.md` has the measurements.
+
 ---
 
 ## R-929. A random file id that falls under the volume's inode bound reads as stale and is left

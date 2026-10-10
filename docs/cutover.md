@@ -1061,6 +1061,40 @@ is set. The four tracks the provider lacks are not acquired. The duplicate
 pulled from the batch sits in the session's scratch, not in the library.
 The INSPIRATION playlist was made by hand and U121 (#278) is the verb.
 
+## Sitting 36, 2026-10-10, morning, attended, the U115 live proof, and it fails
+
+The installed copy was rebuilt from `~/cratekit` at `681ee20`, the head of
+`main` that morning, 162 commits past the brief's `fa94b96` and holding
+the merge of #272, with no intake job running. The acknowledgment was
+minted by the session at 10:50Z, both ages read under a day (files 20.4
+hours, database 19.5 hours), and holds to 22:50Z. The Cratekit feeder had
+left on its stop file at 06:46 and the Integrel feeder was idle, so nothing
+built while rekordbox was open. The computer use lock, held by another
+session's pid since 2026-10-09 14:54, did not refuse the access request and
+was left alone.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `repair rows` | rehearsed on a copy (database to scratch, `.cratekit` cloned to `.cratekit-copyrun` with `cp -Rpc`, config and state dirs redirected, the live acknowledgment carried in the clone), live on an equal digest `418d3383f4ffac16`, the session approving both; the live verb resumed under `--run` after `run decide` | **20 rows renumbered, not 36 and not 17.** The 19 Vonking rows of sitting 35 and the A8 row `73894078`, now `1104075`, the inode the U115 record named. The bound read `1417181` on the copy, `1417210` at the live gate and `1417213` at the live apply, filesystem `apfs`; the bound is outside the digest, so the plans matched to the digit with the bound the only line that differed. No column fills: the defaults of sitting 33 were already in place. 20 written and 20 read back on copy and live, undo by session capture `2026-10-10T10:52:56Z-c1cf`. An independent read of the live database afterwards found all 20 equal to `os.stat` of their file and 16 rows left above the bound. | live |
+| The sixteen "sampler rows" | read on the copy before approving | **They were never the binding's.** They are rekordbox's own GROOVE CIRCUIT preset rows, `4-Floor Breaks Kit`, eight under this account's own rekordbox sampler folder on the boot volume made 2026-05-25 and eight under a second account's, made 2026-08-15, before any landing existed. Their ids are boot volume inodes: `Breaks1.wav` under this account is inode `88852942` and its row carries `88852942`. Above the library volume's bound by size alone, they fall under R-930 and were listed and left, with the reason `the path does not resolve on this machine`, which is the prefix rule talking, since the eight files under this account exist at their literal path. A wording residual at most, below the ledger bar: those rows are not deck tracks and rekordbox made them. The U115 record's population of seventeen was one row, and the live population at the time of the run was twenty. | found |
+| rekordbox, desktop control | opened after `doctor` read both backup ages under a day and the processes gone, quit with `cmd+q`, both confirmed gone before any further verb | **A repaired row still does not load.** `Load` greyed on the context menu of `Water No Get Enemy`, of `As` and of `Canto Della Liberta`, and a drag of the first onto deck 1 landed nothing. The control, Maxwell `The Urban Theme (Remastered 2021)`, the row rekordbox made itself on 2026-10-09 with `rb_file_id` `1402651`, had `Load` live, and two more items live that are greyed on every repaired row: `Add To Tag List` and `Export Track`. The repaired ids survived rekordbox's quit, 20 of 20 still their inode. rekordbox wrote nothing outside the volume that keys a track. | **failed** |
+| What still differs, read live while rekordbox was open | the repaired row against the control, every `djmdContent` column, and their `contentFile` rows | Beyond the row's own identity (ids, UUID, path, title, artwork and analysis paths, usn, timestamps) and the known `TrackInfoUpdated` and `AnalysisUpdated` pair, **one column**: `ContentLink`. Every one of the 20 binding rows carries `2973454`, and no other row does; 10,292 rows rekordbox made carry `2950670`, every row since 2026-03 but 27 at `2885134` and a handful of 2023 values. pyrekordbox's `add_content` sets it to the TRACK menu item's `rb_local_usn`, which now reads `645482`; rekordbox's own value keys no table in `master.db`, so what it is remains unknown. Both rows hold five `contentFile` rows of the same shape, artwork and four analysis files, with local paths under the volume. | lead |
+
+**What the sitting leaves.** R-928 stays open: `rb_file_id` was a real
+difference and a necessary repair, since every row rekordbox makes carries
+its inode and the binding's random id was wrong, but it was not the block.
+The 20 repaired rows are correct on that column and still unplayable, and
+the proven route to a playable row remains sitting 34's, remove the row and
+drop the file from Finder. The one named difference left is `ContentLink`,
+untested because a one row write to the live database outside a gated verb
+is forbidden, and that test wants a unit: write `2950670` onto one repaired
+row through a gate, open rekordbox, read `Load`. `Escape` does not close a
+context menu in rekordbox from the control tool, so a click meant for the
+search field dismissed the menu instead and the typed search went to the
+track list as shortcuts; the deck layout switched to compact and nothing
+else was seen to change, and the next sitting should click empty space to
+dismiss a menu before touching the search field.
+
 ## What blocks a full sync cycle, stated plainly
 
 **Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
@@ -1072,15 +1106,13 @@ cycle, is next and is attended.
 
 ## Next sitting
 
-**Owed for U115 (#272), when the library is free:** `crate repair rows`
-rehearsed on a copy and run live. The plan is expected to renumber
-seventeen rows, the A8 row `73894078` and the sixteen sampler rows, and to
-show the volume's inode bound near 1.4 million with the filesystem read as
-`apfs`; a count under seventeen names a random id that fell under the bound
-(R-929), and `unrenumbered` names any row whose file could not be read
-(R-930). Then rekordbox opened and one of the seventeen loaded to a deck,
-which is the proof R-928 closes on. Rebuild the installed copy at the merge
-first, and not while another session's intake job runs.
+**The U115 proof ran at sitting 36 and failed.** `repair rows` renumbered
+20 rows correctly and none of them loads; R-928 stays open with
+`ContentLink` as the one named difference left to test, and that test needs
+a gated one row write, so it is a card and not a sitting. Until it lands,
+a landed row that has to play goes through sitting 34's route: remove the
+row in rekordbox, drop the file from Finder. The 19 Vonking rows and the A8
+row are in that state now.
 
 One thing is left of the genre work, and it is the author's: `crate delete
 review` over the 36 tracks removed from the collection at sitting 29, run
