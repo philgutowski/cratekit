@@ -63,7 +63,7 @@ from cratekit.acquire import listing, match, provider_session
 from cratekit.acquire.adapter import TrackOutcome, classify_unavailable
 from cratekit.core import provider_gate
 from cratekit.core.cause import CratekitError, Scope, refuse
-from cratekit.modules.outbound import account, ledger
+from cratekit.modules.outbound import account, ledger, pairs
 
 #: How many times a write or a single lookup is retried after its first attempt.
 WRITE_RETRIES = 1
@@ -877,12 +877,105 @@ class TidalAccount:
         self._members[playlist_id] = members
         return members
 
-    def remove_tracks(self, playlist_id: str, remote_ids: tuple[str, ...]) -> tuple[str, ...]:
-        """Take tracks off one playlist the product made. NEVER RETRIED.
+    def _vouched(self, identifier: str, kept: str) -> None:
+        """Refuse, before any provider call, a playlist nothing vouches for changing.
 
-        THE LEDGER IS ASKED FIRST, before the playlist is even opened: a
-        playlist ``ledger.product_made`` does not vouch for is refused with no
-        provider call at all.
+        TWO RECORDS VOUCH, AND ONLY TWO. The outbound ledger, for a playlist
+        the product made (R-836), and the playlist pairs, for one of the
+        author's own playlists the author marked to stay the same list as a
+        rekordbox playlist (U130). Any other playlist, the source system's, a
+        label year adopted by its name, or the author's own unpaired, is
+        refused with nothing sent. ``kept`` says what was not done.
+        """
+        if self._cfg is not None and (
+            ledger.product_made(self._cfg, identifier) or pairs.paired(self._cfg, identifier)
+        ):
+            return
+        raise refuse(
+            "outbound-remove-refused",
+            f"the outbound ledger does not record the playlist {identifier} as "
+            f"one this product created and no playlist pair names it, so "
+            f"{kept} and the provider was not asked",
+            steps=("change the playlist by hand in the provider's own player",),
+            scope=Scope.SOURCE,
+            origin=("outbound", "account"),
+            detail={"playlist_id": identifier, "problem": "not-product-made"},
+        )
+
+    def order_tracks(self, playlist_id: str, remote_ids: tuple[str, ...]) -> tuple[str, ...]:
+        """Put the playlist's tracks in this order, one move at a time. NEVER RETRIED.
+
+        THE SAME TWO RECORDS ARE ASKED FIRST as :meth:`remove_tracks` asks,
+        before the playlist is opened.
+
+        EVERY MOVE IS TO THE END, the one position whose meaning does not
+        depend on how the provider counts a move's target. The longest run at
+        the head of ``remote_ids`` already standing in that order stays where
+        it is, and every track after it is moved to the end in turn, which
+        leaves the playlist in exactly the asked order.
+
+        BY POSITION, through :meth:`_positions`, which refuses a playlist whose
+        positions cannot be trusted, and READ BACK after every move, which must
+        be what it held with that one track moved to the end. Any other answer
+        is refused, ``outbound-remove-refused``, and nothing more is sent: a
+        move by position that landed elsewhere would make every later one
+        wrong. A move changes no membership, so a refusal part way leaves every
+        track on the playlist.
+
+        A track the playlist does not hold, or holds twice, is not moved. The
+        return is the playlist's order once the moves are done.
+        """
+        identifier = str(playlist_id)
+        self._vouched(identifier, "no track was moved")
+        playlist = self._playlist(identifier)
+        before = self._positions(identifier, playlist)
+        counts: dict[str, int] = {}
+        for one in before:
+            counts[one] = counts.get(one, 0) + 1
+        wanted = [
+            str(one)
+            for one in dict.fromkeys(remote_ids)
+            if str(one) and counts.get(str(one)) == 1
+        ]
+        standing = [one for one in before if one in set(wanted)]
+        keep = 0
+        for one in standing:
+            if keep < len(wanted) and one == wanted[keep]:
+                keep += 1
+        doing = f"put the playlist {identifier} in order"
+        for one in wanted[keep:]:
+            at = before.index(one)
+            accepted = self._call(
+                doing,
+                lambda at=at, playlist=playlist: playlist.move_by_indices([at], len(before)),
+                retries=0,
+            )
+            if accepted is False or accepted is _ABSENT:
+                raise account.provider_failure(
+                    RuntimeError("the provider did not accept the move"), doing
+                )
+            expected = [*before[:at], *before[at + 1 :], one]
+            playlist = self._playlist(identifier)
+            before = self._positions(identifier, playlist)
+            if before != expected:
+                raise refuse(
+                    "outbound-remove-refused",
+                    f"the playlist {identifier} read back after a move is not what it "
+                    f"held with that track moved to the end, so nothing more was "
+                    f"moved; every track is still on it",
+                    steps=("check the playlist's order by hand in the provider's own player",),
+                    scope=Scope.RUN,
+                    origin=("outbound", "account"),
+                    detail={"playlist_id": identifier, "problem": "read-back-differs"},
+                )
+        return tuple(before)
+
+    def remove_tracks(self, playlist_id: str, remote_ids: tuple[str, ...]) -> tuple[str, ...]:
+        """Take tracks off one playlist the product made or the author paired. NEVER RETRIED.
+
+        THE LEDGER AND THE PAIRS ARE ASKED FIRST, before the playlist is even
+        opened: a playlist neither ``ledger.product_made`` nor
+        ``pairs.paired`` vouches for is refused with no provider call at all.
 
         BY POSITION, BECAUSE THE CLIENT'S REMOVE BY IDENTIFIER READS ONE PAGE.
         Its own lookup of an identifier's position reads the first window of
@@ -905,17 +998,7 @@ class TidalAccount:
         """
         identifier = str(playlist_id)
         wanted = [str(one) for one in dict.fromkeys(remote_ids) if str(one)]
-        if self._cfg is None or not ledger.product_made(self._cfg, identifier):
-            raise refuse(
-                "outbound-remove-refused",
-                f"the outbound ledger does not record the playlist {identifier} as "
-                f"one this product created, so no track was taken off it and the "
-                f"provider was not asked",
-                steps=("take the tracks off by hand in the provider's own player",),
-                scope=Scope.SOURCE,
-                origin=("outbound", "account"),
-                detail={"playlist_id": identifier, "problem": "not-product-made"},
-            )
+        self._vouched(identifier, "no track was taken off it")
         asked = set(wanted)
         doing = f"take {len(wanted)} tracks off the playlist {identifier}"
         playlist = self._playlist(identifier) if wanted else None

@@ -369,6 +369,11 @@ def _plan_playlists(spec: sources.SourceSpec, ctx) -> _Plan:
     # NOR ARE THE SET PLAYLISTS ``export set`` MADE (R-837), whose tracks are
     # fetched from the set's own tracklist.
     set_built = ledger.set_playlist_ids(cfg)
+    # NOR ARE THE PLAYLISTS ``sync pair`` KEEPS (U130), whose missing tracks
+    # that verb queues itself.
+    from cratekit.modules.outbound import pairs
+
+    paired = pairs.paired_ids(cfg)
     with jobs.open_store() as store:
         sweep = playlists.plan(
             store,
@@ -377,6 +382,7 @@ def _plan_playlists(spec: sources.SourceSpec, ctx) -> _Plan:
             handler_key=handler_key,
             label_built=label_built,
             set_built=set_built,
+            paired=paired,
         )
 
     def describe(filed: list[jobs.Job]) -> dict[str, Any]:

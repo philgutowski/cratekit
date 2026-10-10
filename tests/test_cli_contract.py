@@ -1957,6 +1957,12 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # first, see ACKNOWLEDGED_BEFORE_THE_GATE; on this fixture every step
         # either plans nothing or refuses on its own, and both areas still ask.
         "organize": [],
+        # U130. No argument and no pair marked: the plan is empty, both explicit
+        # gates are still asked over it, the account is never listed and the
+        # database never opened, and the verb ends NO_OP. It reads the backup
+        # acknowledgment first, see ACKNOWLEDGED_BEFORE_THE_GATE. The syncing
+        # path is driven in tests/test_sync_pair.py.
+        "sync.pair": [],
     }[entry.name]
     return sample() if callable(sample) else sample
 
@@ -2349,6 +2355,10 @@ ACKNOWLEDGED_BEFORE_THE_GATE = {
     # is still asked, which its own suite drives.
     "organize": (
         "tests/test_organize.py::"
+        "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
+    ),
+    "sync.pair": (
+        "tests/test_sync_pair.py::"
         "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
     ),
 }

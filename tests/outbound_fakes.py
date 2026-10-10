@@ -52,6 +52,8 @@ PROTOCOL_METHODS = frozenset(
         "remove_tracks",
         # U123. The one playlist removal, of a dated playlist heard.
         "remove_playlist",
+        # U130. The order of a playlist the product made or the author paired.
+        "order_tracks",
     }
 )
 
@@ -128,6 +130,8 @@ class FakeAccount:
         #: every removal asked, in order, as ``(playlist_id, ids)``.
         self.names: dict[str, tuple[str, str]] = {}
         self.taken: list[tuple[str, tuple[str, ...]]] = []
+        #: Every order asked for, as ``(playlist, remote_ids)`` (U130).
+        self.ordered: list[tuple[str, tuple[str, ...]]] = []
         #: U123. Every playlist removed, in order, and what it held.
         self.deleted: list[tuple[str, tuple[str, ...]]] = []
 
@@ -260,6 +264,16 @@ class FakeAccount:
         members[:] = [one for one in members if one not in asked]
         self.taken.append((playlist_id, tuple(remote_ids)))
         return tuple(one for one in remote_ids if one not in members)
+
+    def order_tracks(self, playlist_id: str, remote_ids: tuple[str, ...]) -> tuple[str, ...]:
+        """Put the asked tracks it holds once in the asked order, the rest first. One write."""
+        self._bump(playlist_id)
+        members = self.playlists.setdefault(playlist_id, [])
+        once = {one for one in members if members.count(one) == 1}
+        asked = [one for one in dict.fromkeys(remote_ids) if one in once]
+        members[:] = [one for one in members if one not in set(asked)] + asked
+        self.ordered.append((playlist_id, tuple(remote_ids)))
+        return tuple(members)
 
     def remove_playlist(self, playlist_id: str) -> None:
         """Remove the playlist and its place. One write, so ``fail_on`` names it.

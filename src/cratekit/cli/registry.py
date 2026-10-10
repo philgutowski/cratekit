@@ -3174,6 +3174,57 @@ ENTRIES: tuple[Entry, ...] = (
             ),
         ),
     ),
+    # ── A playlist pair, kept one list on both sides (U130) ─────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives.
+    Entry(
+        name="sync.pair",
+        summary="keep one of your account playlists and one rekordbox playlist the "
+        "same list, each side merged against the last sync",
+        module="cratekit.sync.pair_cli",
+        builder="build",
+        handler_key="sync.pair",
+        # NO FEATURE ROW. The source system pulled a playlist one way and pushed
+        # one the other, and kept no list on both sides.
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: Two surfaces. The rekordbox playlist's memberships, added, soft
+        #: removed and numbered through the guarded commit, and the account
+        #: playlist's tracks, added, taken off and ordered, on a playlist the
+        #: pairs record vouches for. No collection row and no audio file is
+        #: written, and an acquisition is a queued intake job, not a write. The
+        #: pair and its snapshot are this product's own state. ``destructive``
+        #: because a membership is taken off on both sides.
+        writes=frozenset({"db_tree", "remote"}),
+        destructive=True,
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+            "credential.provider",
+        ),
+        gates=(
+            GateSpec(
+                name="sync.pair.rekordbox",
+                options=("apply", "skip"),
+                prompt="Write these additions, removals and order to the rekordbox "
+                "playlists, and queue these tracks for acquisition?",
+                #: EXPLICIT, as every database membership write is (R34).
+                explicit=True,
+                digest_source="plan",
+            ),
+            GateSpec(
+                name="sync.pair.account",
+                options=("apply", "skip"),
+                prompt="Write these additions, removals and order to the streaming "
+                "account's playlists?",
+                #: EXPLICIT, as every other write to the account is (R34).
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
 )
 
 #: The verb names, as data. ``tests/test_layering.py`` reads this to enforce that
