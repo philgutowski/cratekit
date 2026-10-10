@@ -472,15 +472,19 @@ tag_aliases = [
 rates = false
 
 # THE BANDS THIS BUCKET'S TRACKS SIT IN TODAY, which R&B still files into. A
-# split place is a band of another bucket that is still that bucket's: a
+# split place is a place of another bucket that is still that bucket's: a
 # track whose genre names Soul and sits in one is moved by `crate adopt move`
 # to the Soul band its reading names, or to Unsorted with no reading, and
 # leaves the R&B band; a track whose genre names R&B is never touched. Its
 # other memberships stay, "with vox" among them. Adoption will not file a
-# Soul track into a band here while it still sits in one of these. `bucket`
-# is the folder that keeps the band, `sub` the band's identifier there and
-# `display` the name that folder gives it. Delete these tables once no Soul
-# track is left in R&B's bands.
+# Soul track into a band here while it still sits in one of these, and the
+# move lists any Soul track it cannot move out. `bucket` is the folder that
+# keeps the place, `sub` its identifier there and `display` the name that
+# folder gives it. Delete these tables once no Soul track is left in them.
+#
+# THE LAST ONE IS R&B'S FORMER PLACE, the playlist Soul and R&B shared before
+# either had a folder. A Soul track still there leaves it for Soul. Delete it
+# with R&B's former place, which it names.
 [[bucket.split_from]]
 id = "rnb_low"
 bucket = "rnb"
@@ -504,6 +508,12 @@ id = "rnb_unsorted"
 bucket = "rnb"
 sub = "unsorted"
 display = "Unsorted"
+
+[[bucket.split_from]]
+id = "rnb_soul_rnb"
+bucket = "rnb"
+sub = "non_electronic_soul_rnb"
+display = "Soul / R&B"
 
 # HIP-HOP AT THE TOP LEVEL, decided by the author on 2026-10-09 (U118). It
 # was a style sub of the non electronic bucket with no energy split, and

@@ -264,9 +264,10 @@ class SplitPlace:
     every track in it as holding two places.
 
     ``id`` is the identifier it competes under in the declaring bucket.
-    ``bucket`` is the holder, ``sub`` the band's identifier there, which is
-    what a previous write recorded its node under, and ``display`` the name
-    the holder gives that band, which the loader checks.
+    ``bucket`` is the holder, ``sub`` the band's identifier there, and
+    ``display`` the name the holder gives that band, which the loader checks.
+    ``sub`` may instead be the holder's own former place, the playlist both
+    genres sat in before either had a folder, and is then left the same way.
 
     A SPLIT PLACE IS ONLY EVER LEFT. No resolver answers with one, so nothing
     is filed into it through the declaring bucket.
@@ -1348,13 +1349,9 @@ def live_places(
     if bucket.single_sub is not None:
         ids.add(bucket.single_sub.id)
         displays.add(bucket.single_sub.display)
-    if bucket.sub_by_source is None and energy.enabled and bucket.energy.enabled:
-        for band in energy.bands:
-            ids.add(band.id)
-            displays.add(bucket.energy.band_display.get(band.id, band.display))
-        if energy.no_energy_sub is not None:
-            ids.add(energy.no_energy_sub.id)
-            displays.add(energy.no_energy_sub.display)
+    bands = _band_names(bucket, energy)
+    ids.update(bands)
+    displays.update(bands.values())
     for entry in sub_classes:
         ids.add(entry.id)
         displays.add(entry.display)
@@ -1457,9 +1454,10 @@ def _check_former_places(
 def _band_names(bucket: Bucket, energy: Energy) -> dict[str, str]:
     """The bands and the no reading sub one bucket files into, by identifier.
 
-    EMPTY FOR A BUCKET THAT DOES NOT SPLIT BY ENERGY, by
-    :func:`live_places`'s own test, so the two cannot disagree about which
-    buckets have bands. Each under the bucket's own label for it.
+    EMPTY FOR A BUCKET THAT DOES NOT SPLIT BY ENERGY. ONE BODY for
+    :func:`live_places` and the split place check, so the two cannot disagree
+    about which buckets have bands or what each band is called. Each under the
+    bucket's own label for it.
     """
     if bucket.sub_by_source is not None or not energy.enabled or not bucket.energy.enabled:
         return {}
@@ -1481,11 +1479,11 @@ def _check_split_places(
 
     THE REVERSE OF :func:`_check_former_places`. A split place is left by the
     tracks whose genre names the declaring bucket and stays the holder's for
-    every other track, so it has to be a band the holder still files into,
-    under the name the holder gives it, or a move would leave a playlist the
-    writer cannot find. Both buckets have to split by energy, since a track
-    leaves the holder's band for the declaring bucket's band its reading
-    names. Its identifier is its own: not a place the declaring bucket
+    every other track, so it has to be a place the holder still competes on,
+    a band it files into or its own former place, under the name the holder
+    gives it, or a move would leave a playlist the writer cannot find. The
+    declaring bucket has to split by energy, since a track leaves the holder's
+    place for the band its reading names. Its identifier is its own: not a place the declaring bucket
     already holds, and not shared with any other former or split place. And
     one band is split out by one bucket, since a track leaving it would
     otherwise be claimed twice.
@@ -1534,12 +1532,18 @@ def _check_split_places(
                     f"bucket; a split place is a band of the folder the genre was split from"
                 )
                 continue
+            # A BAND OF THE HOLDER, OR THE HOLDER'S OWN FORMER PLACE. The second
+            # is the playlist the genre sat in with the holder's before either
+            # had a folder: Soul tracks left in NonElectronic's old "Soul / R&B"
+            # playlist leave it for Soul, where R&B's former place alone would
+            # send them nowhere.
             bands = _band_names(holder, energy)
+            bands.update((former.id, former.display) for former in holder.formerly)
             if place.sub not in bands:
                 problems.append(
-                    f"{where}: {place.sub!r} is not a band {place.bucket!r} files into "
-                    f"({sorted(bands)}); a split place is a playlist its holder still "
-                    f"keeps, and one it stopped declaring is a former place"
+                    f"{where}: {place.sub!r} is not a band or a former place of "
+                    f"{place.bucket!r} ({sorted(bands)}); a split place is a playlist its "
+                    f"holder still competes on, and one it stopped declaring is a former place"
                 )
             elif place.display != bands[place.sub]:
                 problems.append(

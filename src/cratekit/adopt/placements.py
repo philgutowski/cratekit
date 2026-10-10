@@ -70,14 +70,14 @@ def named_place(declared: taxonomy.Taxonomy, bucket_id: str, sub_id: str) -> tup
     refused. The folder is the declared bucket's own name as it is now, so a
     folder renamed in the taxonomy is still found.
 
-    A SPLIT PLACE IS THE HOLDER'S OWN BAND (U118), so it resolves as that band
-    does, through ``destination`` asked of the holder. The track leaves the
-    very playlist the holder files into, and a move cannot find a second
-    spelling of it.
+    A SPLIT PLACE IS A PLACE OF THE HOLDER'S (U118), so it resolves as the
+    holder's own band or former place does, asked of the holder. The track
+    leaves the very playlist the holder competes on, and a move cannot find a
+    second spelling of it.
     """
     split = routing.split_place(declared, bucket_id, sub_id)
     if split is not None:
-        return destination(declared, split.bucket, split.sub)
+        return named_place(declared, split.bucket, split.sub)
     former = routing.former_place(declared, bucket_id, sub_id)
     if former is None:
         return destination(declared, bucket_id, sub_id)
@@ -92,12 +92,13 @@ def recorded_under(
     A former place was written while it was a sub of the bucket whose folder
     holds it, so its node is recorded under that bucket and that sub, and
     asking for it under the bucket that now declares it would find nothing
-    and read a renamed playlist as absent. A split place is the holder's band
-    and its node is recorded under the holder and the band (U118).
+    and read a renamed playlist as absent. A split place is a place of the
+    holder's, and its node is recorded wherever the holder's is (U118).
     """
-    former = routing.former_place(declared, bucket_id, sub_id) or routing.split_place(
-        declared, bucket_id, sub_id
-    )
+    split = routing.split_place(declared, bucket_id, sub_id)
+    if split is not None:
+        return recorded_under(declared, split.bucket, split.sub)
+    former = routing.former_place(declared, bucket_id, sub_id)
     if former is None:
         return bucket_id, sub_id
     return former.bucket, former.sub

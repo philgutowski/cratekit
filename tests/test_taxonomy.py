@@ -705,7 +705,12 @@ def test_a_band_name_is_no_live_place_in_a_bucket_that_does_not_split_by_energy(
     """The other side of the rule above: the check asks what THAT bucket holds."""
 
     def mutate(data):
-        _promoted(data)["formerly"][0]["display"] = data["energy"]["bands"][0]["display"]
+        former = _promoted(data)["formerly"][0]
+        former["display"] = data["energy"]["bands"][0]["display"]
+        # The split place naming it carries the name it is given (U118).
+        for row in _splitter(data)["split_from"]:
+            if row["sub"] == former["id"]:
+                row["display"] = former["display"]
 
     assert build_taxonomy(mutated(default_raw, mutate)).buckets
 
@@ -784,8 +789,14 @@ def test_a_former_place_short_of_a_field_is_refused(default_raw, field, value, m
 
 def test_a_template_with_no_former_place_loads_as_it_always_did(default_raw):
     def mutate(data):
+        formerly = {row["id"] for bucket in data["bucket"] for row in bucket.get("formerly", [])}
         for bucket in data["bucket"]:
             bucket.pop("formerly", None)
+        # A split place naming a former place goes with it (U118).
+        splitter = _splitter(data)
+        splitter["split_from"] = [
+            row for row in splitter["split_from"] if row["sub"] not in formerly
+        ]
 
     loaded = build_taxonomy(mutated(default_raw, mutate))
     assert all(bucket.formerly == () for bucket in loaded.buckets)
@@ -863,8 +874,9 @@ def _split_holder(data: dict) -> dict:
     return next(bucket for bucket in data["bucket"] if bucket["id"] == place["bucket"])
 
 
-def test_the_shipped_template_splits_one_bucket_out_of_every_band_of_another(default, default_raw):
-    """Soul out of R&B: every band and the no reading sub, each read as written."""
+def test_the_shipped_template_splits_one_bucket_out_of_every_place_of_another(default, default_raw):
+    """Soul out of R&B: every band, the no reading sub and R&B's own former
+    place, each read as written."""
     (splitter,) = [bucket for bucket in default.buckets if bucket.split_from]
     holder = default.bucket(splitter.split_from[0].bucket)
     raw = _splitter(default_raw)["split_from"]
@@ -875,6 +887,7 @@ def test_the_shipped_template_splits_one_bucket_out_of_every_band_of_another(def
     assert {place.sub for place in splitter.split_from} == {
         *(band.id for band in default.energy.bands),
         default.energy.no_energy_sub.id,
+        *(former.id for former in holder.formerly),
     }
 
 
@@ -910,9 +923,12 @@ def test_a_split_place_of_a_band_under_its_own_label_is_checked_against_that_lab
             bucket for bucket in data["bucket"] if (bucket.get("energy") or {}).get("band_display")
         )
         band, label = next(iter(holder["energy"]["band_display"].items()))
-        place = _splitter(data)["split_from"][0]
+        bands = {row["id"] for row in data["energy"]["bands"]} | {"unsorted"}
+        splitter = _splitter(data)
+        splitter["split_from"] = [row for row in splitter["split_from"] if row["sub"] in bands]
+        place = splitter["split_from"][0]
         place.update(bucket=holder["id"], sub=band, display=label)
-        for other in _splitter(data)["split_from"][1:]:
+        for other in splitter["split_from"][1:]:
             other["bucket"] = holder["id"]
             other["display"] = holder["energy"]["band_display"].get(other["sub"], other["display"])
 
@@ -956,6 +972,28 @@ def test_a_split_place_id_shared_with_a_former_place_is_refused(default_raw):
         _splitter(data)["split_from"][0]["id"] = _promoted(data)["formerly"][0]["id"]
 
     assert any("already a former or split place" in p for p in problems_from(default_raw, mutate))
+
+
+def test_a_split_place_of_the_holders_former_place_under_another_name_is_refused(default_raw):
+    def mutate(data):
+        former = next(row for row in _splitter(data)["split_from"] if row["sub"] not in (
+            {band["id"] for band in data["energy"]["bands"]} | {"unsorted"}
+        ))
+        former["display"] = "Renamed by hand"
+
+    assert any("gives" in p for p in problems_from(default_raw, mutate))
+
+
+def test_a_split_place_of_another_buckets_former_place_is_refused(default_raw):
+    """Only the holder's own former place, which is a place the holder competes on."""
+
+    def mutate(data):
+        hip_hop = next(b for b in data["bucket"] if b["id"] == "hip_hop")
+        _splitter(data)["split_from"][0].update(
+            sub=hip_hop["formerly"][0]["id"], display=hip_hop["formerly"][0]["display"]
+        )
+
+    assert any("is not a band or a former place" in p for p in problems_from(default_raw, mutate))
 
 
 def test_a_split_place_whose_id_is_a_band_is_refused(default_raw):

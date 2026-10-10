@@ -61,6 +61,9 @@ TREE_ID = DECLARED.tree.id
 (SOUL,) = [bucket for bucket in DECLARED.buckets if bucket.split_from]
 RNB = DECLARED.bucket(SOUL.split_from[0].bucket)
 SPLIT = {place.sub: place for place in SOUL.split_from}
+#: R&B's own former place, the old "Soul / R&B" playlist, which Soul splits too.
+(RNB_FORMER,) = RNB.formerly
+OLD_SOUL_RNB = (DECLARED.bucket(RNB_FORMER.bucket).display, RNB_FORMER.display)
 #: The promoted bucket whose former place is NonElectronic's Hip-Hop playlist.
 HIPHOP = next(bucket for bucket in DECLARED.buckets if bucket.formerly and bucket.id != RNB.id)
 (HH_FORMER,) = HIPHOP.formerly
@@ -200,11 +203,15 @@ def test_hip_hop_left_the_non_electronic_folder_and_declares_the_playlist_it_lef
     assert routing.energy_sub(DECLARED, NONELEC.id, None, source_genre="Funk").display == "Funk"
 
 
-def test_soul_is_split_out_of_every_r_and_b_band_and_nothing_else():
-    assert set(SPLIT) == {band.id for band in DECLARED.energy.bands} | {SINK}
+def test_soul_is_split_out_of_every_r_and_b_band_and_r_and_bs_old_playlist():
+    bands = {band.id for band in DECLARED.energy.bands} | {SINK}
+    assert set(SPLIT) == bands | {RNB_FORMER.id}
     assert SOUL.formerly == ()
-    for sub, place in SPLIT.items():
-        assert destination(DECLARED, RNB.id, sub) == (RNB.display, place.display)
+    for sub in bands:
+        assert destination(DECLARED, RNB.id, sub) == (RNB.display, SPLIT[sub].display)
+    assert (SPLIT[RNB_FORMER.id].display, OLD_SOUL_RNB) == (
+        RNB_FORMER.display, ("NonElectronic", "Soul / R&B")
+    )
 
 
 def test_a_split_place_competes_in_soul_and_nowhere_else():
@@ -233,12 +240,21 @@ def test_no_resolver_answers_with_a_split_place_and_no_writer_can_be_handed_one(
             destination(DECLARED, SOUL.id, place.id)
 
 
-def test_a_split_place_is_found_as_the_r_and_b_band_it_is():
+def test_a_split_place_is_found_as_the_r_and_b_place_it_is():
     for sub, place in SPLIT.items():
-        assert adopt_placements.named_place(DECLARED, SOUL.id, place.id) == destination(
-            DECLARED, RNB.id, sub
+        assert adopt_placements.named_place(DECLARED, SOUL.id, place.id) == (
+            adopt_placements.named_place(DECLARED, RNB.id, sub)
         )
-        assert adopt_placements.recorded_under(DECLARED, SOUL.id, place.id) == (RNB.id, sub)
+        assert adopt_placements.recorded_under(DECLARED, SOUL.id, place.id) == (
+            adopt_placements.recorded_under(DECLARED, RNB.id, sub)
+        )
+    assert adopt_placements.named_place(DECLARED, SOUL.id, SPLIT[MED].id) == (RNB.display, "Med")
+    assert adopt_placements.named_place(
+        DECLARED, SOUL.id, SPLIT[RNB_FORMER.id].id
+    ) == OLD_SOUL_RNB
+    assert adopt_placements.recorded_under(DECLARED, SOUL.id, SPLIT[RNB_FORMER.id].id) == (
+        RNB_FORMER.bucket, RNB_FORMER.sub
+    )
     assert adopt_placements.named_place(DECLARED, SOUL.id, MED) == (SOUL.display, "Med")
 
 
@@ -364,12 +380,72 @@ def test_a_soul_track_in_a_renamed_r_and_b_band_is_left_since_the_writer_cannot_
     )
 
 
-def test_an_unreadable_soul_file_is_not_moved_out_of_r_and_b():
+def test_an_unreadable_soul_file_in_r_and_b_is_listed_under_soul_and_not_moved():
+    """Found by the review: it was in no row, so the split could not be seen to
+    be unfinished before its declaration was deleted."""
     excluded = _scanned(
         "t", energy=5, genre="Soul", disposition=adopt_scan.Disposition.EXCLUDED
     )
     plan = _moves([excluded], _in_rnb("t", MED))
-    assert plan.moves == () and plan.left == ()
+    assert plan.moves == ()
+    (left,) = plan.left
+    assert (left.bucket, left.reason, left.target, left.holds) == (
+        SOUL.id, adopt_move.LEFT_NO_READING, "", (SPLIT[MED].id,)
+    )
+
+
+def test_a_soul_track_whose_folder_a_verdict_refused_is_listed_and_r_and_b_moves_nothing():
+    """Found by the review: R&B's own tree path moved it between R&B's bands,
+    a folder its genre does not name, because no entry claimed Soul."""
+    current = _adoption([_scanned("t", energy=9, genre="Soul")], {})
+    refused = replace(
+        current,
+        entries=tuple(
+            replace(
+                entry,
+                disposition=adopt_scan.Disposition.WITHHELD,
+                withheld_by=adopt_plan.WITHHELD_BY_VERDICT,
+            )
+            for entry in current.entries
+        ),
+        placements=adopt_plan.Placements(read=True, held=_in_rnb("t", LOW, HIGH)),
+    )
+    plan = adopt_move.build_move_plan(refused, DECLARED)
+    assert plan.moves == ()
+    (left,) = plan.left
+    assert (left.bucket, left.reason, set(left.holds)) == (
+        SOUL.id, adopt_move.LEFT_VERDICT, {SPLIT[LOW].id, SPLIT[HIGH].id}
+    )
+
+
+def _in_old_soul_rnb(content_id: str) -> dict:
+    """A track in the old "Soul / R&B" playlist, as the reader reports it."""
+    return {
+        RNB.id: {content_id: (RNB_FORMER.id,)},
+        RNB_FORMER.bucket: {content_id: (RNB_FORMER.id,)},
+        SOUL.id: {content_id: (SPLIT[RNB_FORMER.id].id,)},
+    }
+
+
+def test_a_soul_track_in_the_old_soul_r_and_b_playlist_moves_to_soul_and_is_withheld_until():
+    """Found by the review: it was filed in Soul by adoption while it sat in
+    the old playlist, and nothing took it out."""
+    tracks = [_scanned("t", energy=5, genre="Soul / R&B")]
+    (entry,) = _adoption(tracks, _in_old_soul_rnb("t")).entries
+    assert entry.held_elsewhere and not entry.applicable
+    plan = _moves(tracks, _in_old_soul_rnb("t"))
+    (move,) = plan.moves
+    assert (move.bucket, move.add, move.remove) == (SOUL.id, MED, (SPLIT[RNB_FORMER.id].id,))
+    assert plan.left == ()
+    (written,) = move_cli.membership_moves([move], DECLARED)
+    assert written.remove == (OLD_SOUL_RNB,)
+
+
+def test_an_r_and_b_track_in_the_old_soul_r_and_b_playlist_still_moves_to_r_and_b():
+    plan = _moves([_scanned("t", energy=5, genre="R&B")], _in_old_soul_rnb("t"))
+    (move,) = plan.moves
+    assert (move.bucket, move.add, move.remove) == (RNB.id, MED, (RNB_FORMER.id,))
+    assert plan.left == ()
 
 
 def test_an_entry_naming_a_split_place_as_its_sub_is_never_a_move():
@@ -442,6 +518,8 @@ _SEEDED = (
     ("h-plain", "Hip-Hop", "8", ("old",)),
     ("h-combined", "Hip-Hop / R&B", "2", ("old",)),
     ("h-named", "Hip-hop & Rap", None, ("old",)),
+    ("s-old", "Soul", "5", ("soul-rnb",)),
+    ("r-old", "R&B", "2", ("soul-rnb",)),
 )
 #: Where each moved track ends among the competing places: Soul's or
 #: Hip-Hop's band, or the no reading sub.
@@ -452,6 +530,8 @@ _ENDS = {
     "h-plain": (HIPHOP, HIGH),
     "h-combined": (HIPHOP, LOW),
     "h-named": (HIPHOP, SINK),
+    "s-old": (SOUL, MED),
+    "r-old": (RNB, LOW),
 }
 _STAYING = {"r-stays", "m-stays"}
 RNB_VOX = (RNB.display, VOX.display)
@@ -462,6 +542,8 @@ def _seeded_place(place: str) -> tuple[str, str]:
         return OLD_HIPHOP
     if place == "vox":
         return RNB_VOX
+    if place == "soul-rnb":
+        return OLD_SOUL_RNB
     return destination(DECLARED, RNB.id, place)
 
 
@@ -521,6 +603,8 @@ def test_the_gate_shows_every_soul_and_hip_hop_track_moving_and_no_r_and_b_track
         assert rows[content_id]["remove"] == [SPLIT[MED].id], content_id
     for content_id in ("h-plain", "h-combined", "h-named"):
         assert rows[content_id]["remove"] == [HH_FORMER.id], content_id
+    assert rows["s-old"]["remove"] == [SPLIT[RNB_FORMER.id].id]
+    assert rows["r-old"]["remove"] == [RNB_FORMER.id]
     assert shown["left"] == []
 
 
@@ -548,10 +632,11 @@ def test_an_approved_move_files_soul_and_hip_hop_in_their_folders_and_keeps_r_an
         content_id
         for content_id, places in after.items()
         for sub in SPLIT
-        if destination(DECLARED, RNB.id, sub) in places
+        if sub != RNB_FORMER.id and destination(DECLARED, RNB.id, sub) in places
     }
-    assert in_rnb_bands == _STAYING
+    assert in_rnb_bands == _STAYING | {"r-old"}
     assert not any(OLD_HIPHOP in places for places in after.values())
+    assert not any(OLD_SOUL_RNB in places for places in after.values())
 
     report = artifacts.committed(split, job_id)[-1]
     assert (report["added"], report["removed"]) == (len(_ENDS), len(_ENDS))

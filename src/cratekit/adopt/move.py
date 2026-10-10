@@ -319,9 +319,7 @@ def _left_reason(
     if kind is routing.Competing.BAND:
         if entry.energy is not None:
             return ""
-        former = {place.id for _declarer, place in routing.former_places(declared, entry.bucket)}
-        former |= {place.id for place in declared.bucket(entry.bucket).split_from}
-        return "" if set(stale) <= former else LEFT_NO_READING
+        return "" if set(stale) <= routing.left_only(declared, entry.bucket) else LEFT_NO_READING
     by_source = declared.bucket(entry.bucket).sub_by_source
     if by_source is None:
         return LEFT_NO_READING
@@ -533,6 +531,9 @@ def _standing_in_tree(
     on was never taken off the file.
     """
     kind, competing = routing.competing_subs(declared, bucket)
+    split = held_in_split_place(entry, bucket, placements, declared)
+    if split:
+        return _left_in_split_place(entry, bucket, kind, placements, split, refused)
     held = held_in_tree(entry, bucket, placements, declared, competing)
     if in_former_place_only(declared, bucket, held):
         return _left_in_former_place(entry, bucket, kind, placements, declared, held, refused)
@@ -604,9 +605,62 @@ def settled_in_the_other_bucket(
     for declarer, place in routing.split_places(declared, bucket):
         if declarer == bucket:
             settled.add(place.id)
-        elif claims(entry, declarer):
+        elif claims(entry, declarer) or genre_names(entry, declarer, declared):
             settled.add(place.sub)
     return frozenset(settled)
+
+
+def genre_names(entry: PlanEntry, bucket: str, declared: taxonomy.Taxonomy) -> bool:
+    """Whether the entry's genre names ``bucket``, by any tier but the fallback.
+
+    THE FALLBACK TIER NAMES NOTHING, as :func:`_left_in_former_place` reads it.
+    Asked where no entry claims a bucket, since a file adoption could not read
+    or a folder a verdict refused still carries the genre its row was read
+    with.
+    """
+    resolution = routing.resolve_bucket(declared, entry.genre)
+    return resolution.match is not routing.Match.FALLBACK and resolution.bucket_id == bucket
+
+
+def held_in_split_place(
+    entry: PlanEntry, bucket: str, placements: Placements, declared: taxonomy.Taxonomy
+) -> tuple[str, ...]:
+    """The split places of ``bucket`` a track sits in that no entry moves it out of.
+
+    ONLY WHEN ITS GENRE NAMES ``bucket`` AND ITS ENTRY DOES NOT CLAIM IT (U118):
+    a file the census could not read, or a folder a person's verdict refused.
+    Such a track is LISTED, never moved, so the gate names every one still in
+    the holder's places and the split can be seen to be finished before its
+    declaration is deleted. Found by the review: it was in no row at all, and
+    the holder's own tree path moved it between the holder's bands. A track
+    whose genre names the holder, or nothing, is the holder's and is never
+    asked about here.
+    """
+    split = {place.id for place in declared.bucket(bucket).split_from}
+    if not split or claims(entry, bucket) or not genre_names(entry, bucket, declared):
+        return ()
+    return tuple(sorted(set(placements.holds(bucket, entry.content_id)) & split))
+
+
+def _left_in_split_place(
+    entry: PlanEntry,
+    bucket: str,
+    kind: routing.Competing,
+    placements: Placements,
+    held: tuple[str, ...],
+    refused: frozenset[str],
+) -> Left:
+    """The listing for a track :func:`held_in_split_place` found. The most
+    specific true reason: a renamed playlist, a refused folder, and otherwise
+    a file the census could not read, which is no reading."""
+    unnamed = _unnamed(placements, entry, bucket, held)
+    if unnamed:
+        reason = LEFT_UNNAMED
+    elif bucket in refused:
+        reason = LEFT_VERDICT
+    else:
+        reason = LEFT_NO_READING
+    return _left(entry, bucket, kind, reason, "", held, unnamed)
 
 
 def held_in_tree(
@@ -726,6 +780,10 @@ def buckets_asked(
             bucket.id,
             held_in_tree(entry, bucket.id, placements, declared, subs),
         ):
+            asked.append(bucket.id)
+            continue
+        # A SPLIT PLACE NO ENTRY MOVES THE TRACK OUT OF IS LISTED (U118).
+        if held_in_split_place(entry, bucket.id, placements, declared):
             asked.append(bucket.id)
             continue
         if not tree_path_decides(kind):
@@ -872,6 +930,8 @@ __all__ = [
     "claims",
     "document_digest",
     "from_rows",
+    "genre_names",
+    "held_in_split_place",
     "held_in_tree",
     "in_former_place_only",
     "left_row",

@@ -449,8 +449,7 @@ def competing_subs(taxonomy: Taxonomy, bucket_id: str) -> tuple[Competing, froze
     """
     bucket = taxonomy.bucket(bucket_id)
     classes = {entry.id for entry in taxonomy.sub_classes}
-    former = {place.id for _declarer, place in former_places(taxonomy, bucket_id)}
-    former |= {place.id for place in bucket.split_from}
+    former = left_only(taxonomy, bucket_id)
 
     if (
         bucket.sub_by_source is not None
@@ -491,6 +490,20 @@ def former_place(taxonomy: Taxonomy, bucket_id: str, sub_id: str) -> FormerPlace
         if place.id == sub_id:
             return place
     return None
+
+
+def left_only(taxonomy: Taxonomy, bucket_id: str) -> frozenset[str]:
+    """The competing subs of one bucket that a track is only ever moved OUT of.
+
+    Every former place competing there and every split place the bucket
+    declares. ONE ANSWER for what competes and for what a track with no
+    reading may still leave, so a third kind of such place is added here once
+    and both askers see it.
+    """
+    return frozenset(
+        {place.id for _declarer, place in former_places(taxonomy, bucket_id)}
+        | {place.id for place in taxonomy.bucket(bucket_id).split_from}
+    )
 
 
 def split_places(taxonomy: Taxonomy, bucket_id: str) -> tuple[tuple[str, SplitPlace], ...]:

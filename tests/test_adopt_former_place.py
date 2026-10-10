@@ -71,6 +71,8 @@ SPLIT = next(
     for bucket in DECLARED.buckets
     if any(place.bucket == PROMOTED.id for place in bucket.split_from)
 )
+#: The split place it declares on the promoted bucket's former place.
+(OLD_SPLIT,) = [place for place in SPLIT.split_from if place.sub == FORMER.id]
 
 #: A genre the promoted bucket claims and one the old folder still claims.
 PROMOTED_GENRE = PROMOTED.aliases[0]
@@ -125,12 +127,15 @@ def _scanned(
 def _in_old(content_id: str, *also: str) -> dict:
     """What the placement reader answers for a track in the old playlist.
 
-    Under BOTH buckets the playlist competes in, as the reader reports it.
-    ``also`` is the bands of the promoted bucket the track holds as well.
+    Under BOTH buckets the playlist competes in, as the reader reports it,
+    and under the bucket split out of the promoted one since U118, which
+    declares the playlist as one of its split places. ``also`` is the bands
+    of the promoted bucket the track holds as well.
     """
     return {
         PROMOTED.id: {content_id: (FORMER.id, *also)},
         HOLDER.id: {content_id: (FORMER.id,)},
+        SPLIT.id: {content_id: (OLD_SPLIT.id,)},
     }
 
 
@@ -175,6 +180,10 @@ def test_a_former_place_competes_where_it_is_declared_and_where_it_sits_and_nowh
         if bucket.id not in (PROMOTED.id, HOLDER.id):
             assert FORMER.id not in routing.competing_subs(DECLARED, bucket.id)[1], bucket.id
             assert (PROMOTED.id, FORMER) not in routing.former_places(DECLARED, bucket.id)
+            if not bucket.formerly:
+                # A BUCKET NO FORMER PLACE INVOLVES HAS NONE, strictly, so an
+                # index that leaks one into an unrelated bucket fails here.
+                assert routing.former_places(DECLARED, bucket.id) == (), bucket.id
     for bucket_id in (PROMOTED.id, HOLDER.id):
         assert routing.former_place(DECLARED, bucket_id, FORMER.id) is FORMER
     assert routing.former_places(DECLARED, PROMOTED.id) == ((PROMOTED.id, FORMER),)
