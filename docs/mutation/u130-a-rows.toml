@@ -1,0 +1,61 @@
+name = "u130-a"
+pass_kind = "light"
+
+# U130, a playlist pair kept one list on both sides. Batch A: the merge rules
+# in sync/pair_merge.py. Every row is user facing: the merge decides what is
+# added to and taken off both the rekordbox library and the account.
+
+[[rows]]
+id = "A1_removal_beats_addition"
+description = "A removal wins over an addition, so a track removed on one side and re-added on the other is dropped"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+tests = ["tests/test_sync_pair_merge.py", "tests/test_sync_pair.py"]
+old = '''        if added or not removed:'''
+new = '''        if not removed:'''
+
+[[rows]]
+id = "A2_readded_ignored"
+description = "A rekordbox membership on a new row no longer counts as added"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+tests = ["tests/test_sync_pair_merge.py", "tests/test_sync_pair.py"]
+old = '''            and (key not in then_rekordbox or key in rekordbox.readded)'''
+new = '''            and key not in then_rekordbox'''
+
+[[rows]]
+id = "A3_rekordbox_never_leads"
+description = "Rekordbox never leads the order, so a reorder made only in rekordbox is undone"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+tests = ["tests/test_sync_pair_merge.py", "tests/test_sync_pair.py"]
+old = '''            leader = REKORDBOX'''
+new = '''            leader = ACCOUNT'''
+
+[[rows]]
+id = "A4_rekordbox_leads_when_both_changed"
+description = "Rekordbox leads whenever it changed order, even when the account did too"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+tests = ["tests/test_sync_pair_merge.py", "tests/test_sync_pair.py"]
+old = '''        if not order_changed(account.keys, base.account):'''
+new = '''        if True:'''
+
+[[rows]]
+id = "A5_new_tracks_appended"
+description = "A track only the other side holds goes to the end instead of after its predecessor"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+tests = ["tests/test_sync_pair_merge.py", "tests/test_sync_pair.py"]
+old = '''        anchor += 1
+        result.insert(anchor, key)'''
+new = '''        result.append(key)'''
+
+[[rows]]
+id = "A6_order_change_read_inverted"
+description = "Read an unchanged order as changed and a changed one as unchanged"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+tests = ["tests/test_sync_pair_merge.py", "tests/test_sync_pair.py"]
+old = '''    return [key for key in now if key in held_then] != [key for key in base if key in held_now]'''
+new = '''    return [key for key in now if key in held_then] == [key for key in base if key in held_now]'''
