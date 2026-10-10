@@ -36957,3 +36957,52 @@ of the cause's `origin` field sees.
 **Closes when:** `registry.Entry` grows a `gate(name)` accessor and one shared
 config loader takes the origin, and the copies are replaced by calls. Ledger
 only: maintainer facing, below the board bar.
+
+---
+
+## R-969. A library whose live rows hold no majority ContentLink cannot land a file natively
+
+**Found:** at the build of #292, U126, 2026-10-10.
+
+**The mechanism.** The native landing gives each row it makes the
+ContentLink more than half the library's live rows carry,
+`row_link.library_link`, because the binding's own value keeps a row off a
+deck (R-928). A library with no live rows, or whose rows split so that no
+value is held by more than half, or whose majority is NULL or not a whole
+number, refuses before the gate with `link-majority-unclear`. The landing
+does not fall back to a plurality, which would be a guess about which value
+rekordbox loads, and a wrong guess is a row nobody can play. What
+ContentLink means is still unknown, so the conservative call is to refuse.
+
+**Measured cost.** None on this library: 10,312 of 10,498 live rows carry
+one value, measured on a read only copy on 2026-10-10. A new library, or
+one rebuilt from an export, would have to land its first files through the
+xml bridge or through rekordbox until its own rows carry a majority.
+
+**Closes when:** what rekordbox derives ContentLink from is known, so the
+value can be computed rather than copied. Ledger only.
+
+---
+
+## R-970. The ContentLink a native row is given is a vote over the library's history, not what rekordbox writes today
+
+**Found:** at the review of #292, U126, 2026-10-10.
+
+**The mechanism.** `row_link.library_link` counts every live row, however
+old, and the landing gives its rows the value more than half of them carry.
+On this library the old values are a minority, 2950670 on 10,312 of 10,498
+live rows and on every row rekordbox made since 2026-03 but a few dozen, so
+the vote and the recent rows agree. If a rekordbox update began writing
+another value on new imports, the rows made before it would outvote the new
+ones for as long as they are the majority, and every native row would carry
+the older value. Whether rekordbox loads a row carrying an older value is
+part of what is unknown about the column: the older values on this library
+belong to rows that load, so the vote is the conservative reading today.
+
+**Measured cost.** Not driven; no second value has appeared on recent rows.
+A rekordbox version change is the trigger, and the pin check already stops
+writes on an unvalidated version until someone validates it.
+
+**Closes when:** what rekordbox derives ContentLink from is known, or the
+validation of a new rekordbox version compares the value on its first own
+import with the majority. Ledger only.
