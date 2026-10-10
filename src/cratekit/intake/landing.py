@@ -421,6 +421,26 @@ def target_dir(cfg: config.Config, batch: str) -> Path:
     return Path(cfg.library.root) / cfg.library.music_dir / batch
 
 
+def is_landed_path(cfg: config.Config, path: Path | str) -> bool:
+    """Whether ``path`` sits where a landing puts a file: directly in a batch folder.
+
+    THE INVERSE OF :func:`target_dir`, and a shape rather than a record. Every
+    landing on either medium moves its files into ``music_dir / <batch> /``,
+    one level down, and nothing in the product moves them after that, while
+    the source system filed its files deeper. The favourites backfill (U120)
+    reads this to tell a heart this product landed from an owned heart the
+    author filed by hand, which the brief leaves alone. A file dropped into a
+    folder directly under the music dir by hand reads as landed, and the
+    residual says so.
+    """
+    music = (Path(cfg.library.root) / cfg.library.music_dir).resolve()
+    try:
+        relative = Path(path).resolve().relative_to(music)
+    except ValueError:
+        return False
+    return len(relative.parts) == 2
+
+
 def _device_of(path: Path) -> int | None:
     """The device of ``path``, or of its nearest existing ancestor."""
     probe = path

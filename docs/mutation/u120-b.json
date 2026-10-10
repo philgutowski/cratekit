@@ -1,0 +1,129 @@
+{
+  "name": "u120-b",
+  "pass_kind": "light",
+  "branch": "fable/277-heart-favourites-sync-lands",
+  "head": "952830a",
+  "when": "2026-10-10 07:41 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 13186,
+  "baseline_exit": 0,
+  "pytest_runs": 6,
+  "state_guarded": "~/Library/Application Support/cratekit (365158 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/account_playlists.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/account_playlists.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "44b358d2b61759ea",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 13186,
+    "baseline_collected": 13186,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "A1r_owned_carried",
+      "description": "carried_hearts: an owned heart counts as carried",
+      "file": "src/cratekit/intake/account_playlists.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e02839d9317beec6",
+      "subset": [
+        "tests/test_favorites_backfill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 20,
+      "baseline_collected": 20,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_favorites_backfill.py::test_an_owned_heart_in_a_batch_folder_is_not_carried_and_not_placed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if report.get(\"state\") not in CARRIED_STATES:\n            continue\n        said = report.get(\"track\") or {}",
+      "new": "        said = report.get(\"track\") or {}"
+    },
+    {
+      "id": "B1r_any_path_is_landed",
+      "description": "landed_paths: a heart's file anywhere in the library counts as landed",
+      "file": "src/cratekit/favorites/backfill.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "74dca9de1fe79ac6",
+      "subset": [
+        "tests/test_favorites_backfill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 20,
+      "baseline_collected": 20,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_favorites_backfill.py::test_a_carried_heart_whose_row_sits_deep_is_left_alone_by_the_path_rule"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if landing.is_landed_path(cfg, path):\n                found.append((row, path))",
+      "new": "            found.append((row, path))"
+    },
+    {
+      "id": "B4r_stale_not_refused",
+      "description": "apply: a plan whose digest moved is written anyway",
+      "file": "src/cratekit/favorites/backfill.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "118aa2784156edf1",
+      "subset": [
+        "tests/test_favorites_backfill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 20,
+      "baseline_collected": 20,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_favorites_backfill.py::test_the_write_itself_refuses_a_plan_whose_home_moved_with_no_gate_in_front"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if again.digest != approved.digest:\n        raise refuse(\n            \"decision-stale\",\n            \"the favourites are not as the approved plan read them, so no heart was \"",
+      "new": "    if False:\n        raise refuse(\n            \"decision-stale\",\n            \"the favourites are not as the approved plan read them, so no heart was \""
+    }
+  ],
+  "dropped": []
+}

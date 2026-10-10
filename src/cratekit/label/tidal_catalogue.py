@@ -247,6 +247,8 @@ class TidalCatalogue:
 
     def __init__(self, session: Any) -> None:
         self._session = session
+        #: The count the last hearts listing published, None when it published none.
+        self.hearts_declared: int | None = None
 
     def _artist_named(self, name: str) -> Any | None:
         """The one artist whose name folds to exactly ``name``, or ``None``.
@@ -546,6 +548,11 @@ class TidalCatalogue:
                 "favourites, so its hearts cannot be listed"
             )
         rows, declared = listing.favorite_tracks_declared(self._session)
+        # REMEMBERED FOR THE READER THAT NEEDS TO KNOW THE LISTING IS WHOLE
+        # (U120): a count that was published and reached says every heart is
+        # here; none published says nothing, and a heart absent from such a
+        # listing is not known to be gone.
+        self.hearts_declared = declared
         if declared is not None and len(rows) < declared:
             raise HeartsShortfall(rows, declared)
         return tuple(rows)

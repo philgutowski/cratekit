@@ -46,6 +46,7 @@ from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import config, jobs, rb_writer, session
 from cratekit.core.cause import CratekitError, Outcome, Remedy, refuse
 from cratekit.core.exit_codes import ExitCode
+from cratekit.favorites import placement
 from cratekit.intake import account_playlists, batch_name, ingest, landing, native, set_playlist
 from cratekit.intake import cli as intake_cli
 
@@ -55,6 +56,12 @@ LANDED = "landed"
 REFUSED = "refused"
 #: The one item a native landing appends for the batch playlist it wrote.
 PLAYLIST = "playlist"
+#: The item a native write appends for each favourites playlist it placed hearts in (U120).
+FAVORITES = "favorites"
+
+#: The notes a native landing carries about its hearts (U120).
+FAVORITES_PLACED = "favorites-placed"
+FAVORITES_SKIPPED = "favorites-placement-skipped"
 
 #: The two gates, one per medium. The xml one answers inline as it always has;
 #: the native one is explicit, because a content row in the collection is a
@@ -534,6 +541,11 @@ def intake_land(ctx) -> Envelope:
     if ctx.args.set_job:
         set_playlist.assert_native(medium, landing=True)
     if medium.native:
+        # AND WHICH FILES ARE HEARTS (U120), read from the same jobs the same
+        # way, each with the quarter the account dated it into. The native
+        # medium alone, since the bridge writes an export and places none, so
+        # the match over the planned files is not made for nothing there.
+        hearted = account_playlists.hearted(cfg, pass_name, planned.items)
         return _land_native(
             ctx,
             cfg,
@@ -543,6 +555,7 @@ def intake_land(ctx) -> Envelope:
             registry=registry,
             manifest=manifest,
             claims=claims,
+            hearted=hearted,
         )
     if ctx.args.export is None and declared is not None:
         raise refuse(
@@ -667,6 +680,11 @@ def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: P
     and the root; the files' fingerprint covers what is on disk.
     """
     by_target = {str(row.target): row for row in rows.rows}
+    hearts = (
+        {str(one.target): one.quarter for one in rows.favorites.items}
+        if rows.favorites is not None
+        else {}
+    )
     items = []
     for item in planned.items:
         row = by_target[str(target / item.name)]
@@ -680,6 +698,8 @@ def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: P
             entry["content_id"] = row.content_id
         if row.why:
             entry["why"] = row.why
+        if str(row.target) in hearts:
+            entry["heart"] = hearts[str(row.target)] or "quarter left to the backfill"
         items.append(entry)
     identity = {
         "kind": "land-native",
@@ -689,12 +709,43 @@ def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: P
         "files": planned.digest,
         "collection": rows.digest,
     }
+    if rows.favorites is not None and rows.favorites.skipped:
+        # THE SKIP IS AN ITEM OF THE PLAN, since the payload's keys are closed
+        # (``plan/1``) and the apply reports it back unchanged.
+        items.append(
+            {
+                "action": FAVORITES,
+                "playlist": rows.favorites.source_name,
+                "skipped": rows.favorites.skipped,
+            }
+        )
     return {
         "digest": digest_of(identity),
         "items": items,
-        "totals": {"count": len(items)},
+        "totals": {"count": len(planned.items)},
         "chunk": None,
     }
+
+
+def favorites_facts(plan: native.FavoritesPlan) -> dict[str, Any]:
+    """The hearts on a gate screen, one line per fact (U120)."""
+    if plan.skipped:
+        return {"hearts": f"none placed, {plan.skipped}"}
+    where = f"{plan.source_name!r} under {plan.folder_name!r}" if plan.folder_name else repr(plan.source_name)
+    facts: dict[str, Any] = {
+        "hearts": f"{len(plan.items)} file(s) the account hearts, into {where} and their quarter",
+        "quarter playlists": [
+            f"{quarter} ({sum(1 for item in plan.items if item.quarter == quarter)} file(s))"
+            + (", made" if quarter in plan.creates else "")
+            for quarter in plan.quarters
+        ],
+    }
+    if plan.unknown:
+        facts["quarter left to the backfill"] = (
+            f"{plan.unknown} file(s) whose job froze no date, which join "
+            f"{plan.source_name!r} here and take their quarter from crate favorites backfill"
+        )
+    return facts
 
 
 def collection_facts(rows: native.NativePlan) -> dict[str, Any]:
@@ -751,6 +802,8 @@ def _native_shown(rows: native.NativePlan, *, folder: Path, target: Path) -> dic
                 sum(1 for row in written if str(row.target) not in claimed),
             )
         )
+    if rows.favorites is not None:
+        shown.update(favorites_facts(rows.favorites))
     return shown
 
 
@@ -761,6 +814,10 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
     present = {str(row.target): row for row in landed.collection.present}
     items: list[dict[str, Any]] = []
     for item in payload["items"]:
+        if item.get("action") == FAVORITES:
+            # The skipped placement, carried through as the plan said it (U120).
+            items.append(item)
+            continue
         entry = refused.get(item["from"])
         if entry is not None:
             items.append(
@@ -815,6 +872,29 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
         }
         for written in landed.collection.playlists
     )
+    placed = landed.collection.favorites
+    if placed is not None:
+        totals["hearts placed"] = placed.added
+        items.append(
+            {
+                "action": FAVORITES,
+                "playlist": placed.source_name,
+                "id": placed.source_id,
+                "count": placed.added_source,
+                "session": landed.collection.session_id,
+            }
+        )
+        items.extend(
+            {
+                "action": FAVORITES,
+                "playlist": name,
+                "id": row,
+                "count": count,
+                "created": name in placed.created,
+                "session": landed.collection.session_id,
+            }
+            for name, row, count in placed.quarters
+        )
     kept = landed.collection.set_playlist
     if kept is not None:
         if kept.playlist_id:
@@ -853,6 +933,7 @@ def _land_native(
     registry,
     manifest: landing.LabelManifest | None,
     claims: tuple[tuple[account_playlists.Source, tuple[Path, ...]], ...] = (),
+    hearted: tuple[account_playlists.Hearted, ...] = (),
 ) -> Envelope:
     """Plan the rows against the database, ask, then move and write.
 
@@ -949,6 +1030,11 @@ def _land_native(
                 db, claims, tree_id=tree_id, registry=registry, batch=planned.batch, target=target
             ),
             pass_name=ctx.args.pass_name,
+            hearts=tuple(
+                native.HeartItem(target=target / one.path.name, quarter=one.quarter, ref=one.ref)
+                for one in hearted
+            ),
+            favorites_source=placement.source_name(declared),
             set_plan=set_plan(db),
         ),
         payload=lambda rows: _native_payload(planned, rows, target=target),
@@ -961,6 +1047,7 @@ def _land_native(
     native.assert_rows_identified(landed.collection)
     warnings = [{"code": entry.reason, "message": entry.sentence} for entry in landed.refused]
     warnings.extend(awaiting_analysis(landed.collection))
+    warnings.extend(favorites_notes(payload, landed.collection))
     kept = landed.collection.set_playlist
     if kept is not None and kept.playlist_id:
         set_playlist.assert_read_back(kept)
@@ -972,6 +1059,49 @@ def _land_native(
         warnings.extend(set_playlist.nothing_note(set_planned[0], left=len(kept.left)))
         warnings.extend(set_playlist.left_warning(kept.left))
     return ctx.envelope(data=_native_reported(payload, landed), warnings=warnings)
+
+
+def favorites_notes(payload: dict, collection: native.NativeLanded) -> list[dict[str, str]]:
+    """What a person reads about the hearts a landing placed, or did not (U120).
+
+    ON THE WARNINGS CHANNEL, for R-424's reason: the default renderer prints
+    a verb's outcome, its warnings and its run id, so a fact only the json
+    block states is a fact a person never reads. A skipped placement is said
+    with the home's own words; a placement is said with its counts.
+    """
+    skipped = next(
+        (
+            str(item.get("skipped") or "")
+            for item in payload.get("items", ())
+            if item.get("action") == FAVORITES and item.get("skipped")
+        ),
+        "",
+    )
+    if skipped:
+        return [
+            {
+                "code": FAVORITES_SKIPPED,
+                "message": (
+                    f"the batch landed and no heart was placed: {skipped}; run crate "
+                    f"favorites backfill once the playlist exists"
+                ),
+            }
+        ]
+    placed = collection.favorites
+    if placed is None:
+        return []
+    quarters = ", ".join(
+        f"{name}{' (made)' if name in placed.created else ''}" for name, _row, _n in placed.quarters
+    )
+    return [
+        {
+            "code": FAVORITES_PLACED,
+            "message": (
+                f"{placed.added} membership(s) placed: {placed.added_source} into "
+                f"{placed.source_name!r} and the rest into {quarters}"
+            ),
+        }
+    ]
 
 
 def _native_split(

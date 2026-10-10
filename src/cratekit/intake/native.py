@@ -82,7 +82,8 @@ from cratekit.core import (
     snapshot,
     tree_registry,
 )
-from cratekit.core.cause import Remedy, refuse
+from cratekit.core.cause import CratekitError, Remedy, refuse
+from cratekit.favorites import placement
 from cratekit.intake import ingest, set_playlist
 from cratekit.write import routing_pass, trees
 
@@ -168,6 +169,74 @@ class PlaylistPlan:
 
 
 @dataclass(frozen=True, slots=True)
+class HeartItem:
+    """One planned file the pass's hearts asked for, and the quarter playlist it joins (U120)."""
+
+    target: Path
+    #: The quarter playlist, or None for a heart whose job froze no date key,
+    #: which joins All Favorites here and takes its quarter from the backfill.
+    quarter: str | None
+    #: The provider's identifier for the heart, for the screen.
+    ref: str
+
+
+@dataclass(frozen=True, slots=True)
+class FavoritesPlan:
+    """The hearts a landing places (U120): their home, each one's quarter, or why none.
+
+    PLANNED BEFORE THE GATE AND DIGESTED, so the screen says which files go
+    into All Favorites and which quarter, and an answer given for one set of
+    hearts is stale for another. ``skipped`` is the home's refusal when the
+    source playlist is absent or doubled: the batch still lands, no heart is
+    placed, and the backfill places them once the playlist exists.
+    """
+
+    source_name: str
+    source_id: str
+    folder_id: str
+    folder_name: str
+    items: tuple[HeartItem, ...]
+    #: The quarter playlists live under the folder when the plan was made.
+    present: tuple[str, ...] = ()
+    skipped: str = ""
+
+    @property
+    def quarters(self) -> tuple[str, ...]:
+        """Every quarter the hearts go to, by name, so the screen reads in one order."""
+        return tuple(sorted({item.quarter for item in self.items if item.quarter}))
+
+    @property
+    def unknown(self) -> int:
+        """How many hearts take no quarter here, their job having frozen no date key."""
+        return sum(1 for item in self.items if item.quarter is None)
+
+    @property
+    def creates(self) -> tuple[str, ...]:
+        return tuple(quarter for quarter in self.quarters if quarter not in self.present)
+
+    def home(self) -> placement.Home:
+        return placement.Home(
+            source_name=self.source_name,
+            source_id=self.source_id,
+            folder_id=self.folder_id,
+            folder_name=self.folder_name,
+            present={},
+        )
+
+    def identity(self) -> dict[str, Any]:
+        return {
+            "source": self.source_name,
+            "source_id": self.source_id,
+            "folder": self.folder_id,
+            "skipped": self.skipped,
+            "hearts": [
+                {"to": str(item.target), "quarter": item.quarter, "ref": item.ref}
+                for item in self.items
+            ],
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class WrittenPlaylist:
     """One INBOX playlist the commit wrote for an account playlist, read for the report."""
 
@@ -198,6 +267,9 @@ class NativePlan:
     #: The sync pass the landing was given with ``--pass``, recorded with the
     #: commit under :data:`PASS_KEY` (R-777). None for a landing of no pass.
     pass_name: str | None = None
+    #: The hearts among the rows and where they go (U120). None when the pass
+    #: asked for no heart among these files, or the landing has no pass.
+    favorites: FavoritesPlan | None = None
     #: The set's permanent playlist (U121), written in this same commit under
     #: the declared INSPIRATION folder, for a landing given ``--set``. None
     #: for every other landing.
@@ -241,6 +313,9 @@ class NativeLanded:
     #: The account playlists written (U113). ``playlist_id`` is empty when every
     #: row went into one of these and the batch playlist held none.
     playlists: tuple[WrittenPlaylist, ...] = ()
+    #: The hearts placed into All Favorites and their quarters (U120), in the
+    #: same commit. None when the plan placed none.
+    favorites: placement.Placed | None = None
     #: The set's permanent playlist written under INSPIRATION (U121), or None.
     set_playlist: set_playlist.Written | None = None
 
@@ -371,9 +446,17 @@ def plan_rows(
     files: Sequence[tuple[Path, Path]],
     split: Sequence[PlaylistPlan] = (),
     pass_name: str | None = None,
+    hearts: Sequence[HeartItem] = (),
+    favorites_source: str | None = None,
     set_plan: set_playlist.SetPlaylistPlan | None = None,
 ) -> NativePlan:
     """Plan one row per file and one playlist, against the open database.
+
+    ``hearts`` are the targets the pass's hearts job asked for, each with its
+    quarter (U120), and ``favorites_source`` the playlist every favourite is
+    in. With both, the plan carries where each heart goes, resolved on this
+    same handle; a home that cannot be resolved is a plan that SKIPS the
+    placement and says why, never a refusal of the landing.
 
     ``files`` pairs where each file is now with where the landing will put it.
     The row is planned for the target, since that is the path rekordbox will
@@ -463,9 +546,45 @@ def plan_rows(
         digest="",
         playlists=_supported_only(split, rows),
         pass_name=pass_name,
+        favorites=_favorites_plan(db, hearts, rows, source=favorites_source),
         set_playlist=set_plan,
     )
     return replace(planned, digest=digest_of(identity(planned)))
+
+
+def _favorites_plan(
+    db: Any, hearts: Sequence[HeartItem], rows: Sequence[RowPlan], *, source: str | None
+) -> FavoritesPlan | None:
+    """Where the landing's hearts go, or None when it lands none (U120)."""
+    writable = {str(row.target) for row in rows if row.action != UNSUPPORTED}
+    kept = tuple(item for item in hearts if str(item.target) in writable)
+    if not kept or not source:
+        return None
+    try:
+        home = placement.resolve_home(db, source)
+    except CratekitError as exc:
+        # THE ONE REFUSAL A LANDING ABSORBS: no source, or two. Anything else
+        # the home's reading raised is the landing's refusal as it would be
+        # any writer's, since a skipped placement over an unreadable table
+        # would downgrade a fail closed check to a note.
+        if exc.cause.reason != placement.SOURCE_MISSING:
+            raise
+        return FavoritesPlan(
+            source_name=source,
+            source_id="",
+            folder_id="",
+            folder_name="",
+            items=(),
+            skipped=exc.cause.message,
+        )
+    return FavoritesPlan(
+        source_name=home.source_name,
+        source_id=home.source_id,
+        folder_id=home.folder_id,
+        folder_name=home.folder_name,
+        items=kept,
+        present=tuple(sorted(home.present)),
+    )
 
 
 def _supported_only(
@@ -524,6 +643,7 @@ def identity(plan: NativePlan) -> dict[str, Any]:
         if plan.playlists
         else {}
     )
+    favorites = {"favorites": plan.favorites.identity()} if plan.favorites is not None else {}
     kept = (
         {"set_playlist": set_playlist.identity(plan.set_playlist)}
         if plan.set_playlist is not None
@@ -531,6 +651,7 @@ def identity(plan: NativePlan) -> dict[str, Any]:
     )
     return {
         **split,
+        **favorites,
         **kept,
         "kind": "land-native",
         "tree": plan.tree_id,
@@ -650,6 +771,30 @@ def _candidate_rows(db: Any, names: Iterable[str]) -> list[trees.ContentRow]:
     return found
 
 
+def content_ids_for(db: Any, cfg: config.Config, paths: Sequence[Path]) -> dict[str, str]:
+    """The active row holding each of ``paths``, by path, paths no row holds left out.
+
+    THE ONE RULE FOR A PATH ON THIS MACHINE AGAINST A PATH REKORDBOX WROTE
+    DOWN, asked of the candidate rows rather than the whole collection. The
+    apply asks it of its targets below, and the favourites backfill (U120)
+    asks it of the files the hearts resolve to. Two active rows on one path
+    answer the first, which the matcher surfaces for the person to tidy.
+    """
+    prefix_map = [locations.PrefixRule(a, b) for a, b in cfg.resolved_prefix_map()]
+    matches = trees.match_active_rows(
+        list(paths),
+        _candidate_rows(db, (path.name for path in paths)),
+        root=cfg.library.root,
+        prefix_map=prefix_map,
+    )
+    found: dict[str, str] = {}
+    for path, match in zip(paths, matches):
+        held = _holding(match)
+        if held is not None:
+            found[str(path)] = held
+    return found
+
+
 def _taken_since_the_plan(db: Any, cfg: config.Config, rows: Sequence[RowPlan]) -> dict[str, str]:
     """Each planned target a row has taken since the plan was made, by target.
 
@@ -660,19 +805,7 @@ def _taken_since_the_plan(db: Any, cfg: config.Config, rows: Sequence[RowPlan]) 
     row is added, so nothing pending is flushed by the read, and asked of the
     candidate rows rather than the whole collection.
     """
-    prefix_map = [locations.PrefixRule(a, b) for a, b in cfg.resolved_prefix_map()]
-    matches = trees.match_active_rows(
-        [row.target for row in rows],
-        _candidate_rows(db, (row.target.name for row in rows)),
-        root=cfg.library.root,
-        prefix_map=prefix_map,
-    )
-    taken: dict[str, str] = {}
-    for row, match in zip(rows, matches):
-        held = _holding(match)
-        if held is not None:
-            taken[str(row.target)] = held
-    return taken
+    return content_ids_for(db, cfg, [row.target for row in rows])
 
 
 def apply_rows(
@@ -743,6 +876,7 @@ def apply_rows(
             )
         playlist_id = ""
         written: list[WrittenPlaylist] = []
+        placed: placement.Placed | None = None
         set_written: set_playlist.Written | None = None
         try:
             # BEFORE THE FIRST ROW, so a refusal adds nothing. A name the plan
@@ -792,6 +926,16 @@ def apply_rows(
                         tracks=count,
                     )
                 )
+            # THE HEARTS, IN THE SAME COMMIT (U120): into All Favorites and
+            # each one's quarter, a row already present as much as a row
+            # added, so a heart landed twice is one membership.
+            if plan.favorites is not None and plan.favorites.items:
+                pairs = [
+                    (by_target[str(item.target)], item.quarter)
+                    for item in plan.favorites.items
+                    if str(item.target) in by_target
+                ]
+                placed = placement.place(db, plan.favorites.home(), pairs)
             # THE SET'S PERMANENT PLAYLIST, IN THE SAME COMMIT (U121): the rows
             # this landing made are keyed by target, and a member the landing
             # could not make a row for is left and listed, never guessed.
@@ -809,6 +953,7 @@ def apply_rows(
                     cfg,
                     playlist_id=playlist_id,
                     written=written,
+                    placed=placed,
                     set_written=set_written,
                 )
             raise
@@ -821,6 +966,7 @@ def apply_rows(
             cfg,
             playlist_id=playlist_id,
             written=written,
+            placed=placed,
             set_written=set_written,
         )
         convergence.record_fingerprint(cfg, db)
@@ -853,6 +999,7 @@ def apply_rows(
         memberships_added=memberships,
         session_id=session_id,
         playlists=tuple(written),
+        favorites=placed,
         set_playlist=set_written,
     )
 
@@ -888,6 +1035,7 @@ def _record_landing_commit(
     *,
     playlist_id: str,
     written: Sequence[WrittenPlaylist] = (),
+    placed: placement.Placed | None = None,
     set_written: set_playlist.Written | None = None,
 ) -> None:
     """Record the commit on the session, once anything landed.
@@ -898,7 +1046,13 @@ def _record_landing_commit(
     kept apart because a restore that discards them discards tracks, not
     memberships, and a person weighing that should see the difference.
     """
-    if rows <= 0 and memberships <= 0 and not (set_written and set_written.playlist_id):
+    hearts = placed.added if placed is not None else 0
+    if (
+        rows <= 0
+        and memberships <= 0
+        and hearts <= 0
+        and not (set_written and set_written.playlist_id)
+    ):
         return
     # THE BATCH PLAYLIST IS NAMED ON THE RECORD (U111), by identifier as well
     # as by name, so ``inbox rotate`` ages a batch from the day it landed
@@ -915,6 +1069,11 @@ def _record_landing_commit(
         record.detail[INBOX_PLAYLISTS_KEY] = [
             {"id": one.playlist_id, "name": one.name} for one in written
         ]
+    # AND THE HEARTS PLACED (U120), under their own key, since the Favorites
+    # folder is nobody's registered tree and a restore weighing the intake
+    # tree's memberships should see these apart from them.
+    if placed is not None and hearts > 0:
+        record.detail[placement.PLACED_KEY] = placed.to_json()
     changes = []
     if memberships > 0:
         changes.append(session.TreeChange(tree=plan.tree_id, created=memberships))
@@ -922,10 +1081,23 @@ def _record_landing_commit(
         changes.append(session.TreeChange(tree=rb_writer.CONTENT_TABLE, created=rows))
     # ONLY A TREE THAT CHANGED IS RECORDED COMMITTED. A landing whose every
     # file was present and in the batch already, with only the set's playlist
-    # written, leaves the intake tree as it was, and a record saying the tree
-    # committed with no change would tell a restore and a revert otherwise.
+    # or the hearts written, leaves the intake tree as it was, and a record
+    # saying the tree committed with no change would tell a restore and a
+    # revert otherwise.
     if changes:
         session.record_commit(record, plan.tree_id, session.ChangeSummary(tuple(changes)), cfg)
+    # AND THE HEARTS PLACED (U120), under the favourites key, so the record
+    # counts the batch's memberships and the hearts' apart, as the backfill
+    # records its own.
+    if hearts > 0:
+        session.record_commit(
+            record,
+            placement.RECORD_KEY,
+            session.ChangeSummary(
+                (session.TreeChange(tree=placement.RECORD_KEY, created=hearts),)
+            ),
+            cfg,
+        )
     # AND THE SET'S PLAYLIST (U121), under the declared folder's own id, so
     # the record counts the batch's memberships and the set's apart.
     if set_written is not None and plan.set_playlist is not None:
@@ -1016,6 +1188,8 @@ __all__ = [
     "UNSUPPORTED",
     "WORKFLOW",
     "AddedRow",
+    "FavoritesPlan",
+    "HeartItem",
     "NativeLanded",
     "NativePlan",
     "PlaylistPlan",
@@ -1027,6 +1201,7 @@ __all__ = [
     "assert_rows_gridless",
     "assert_rows_identified",
     "choose_device",
+    "content_ids_for",
     "file_id_of",
     "file_type_of",
     "identity",

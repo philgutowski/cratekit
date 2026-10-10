@@ -397,7 +397,8 @@ that removes, behind its own explicit gate; the end of an adoption that files
 a track runs the additive half and reports the removals it leaves owed; the
 rebuild and the convergence check take the engine's placements beside the
 vocal ones, so a Favorites playlist is declared membership and a source that
-cannot be read is a dimension not compared.
+cannot be read is a dimension not compared. What puts a NEW heart into All
+Favorites in the first place is the landing, since U120, see **Landed heart**.
 
 *Avoid:* reading it as a second favourites signal. All Favorites is the one
 signal; a genre Favorites only files it by the folder the track already sits in.
@@ -596,7 +597,34 @@ reference is only ever an identifier or a URL. It is the inbound direction of
 favourites. The outbound direction, hearting local favourites on the account, is
 `crate sync favorites`. Unlike the source system, it parks nothing in a
 placeholder playlist: a heart the library lacks is a missing item carrying its
-provider identifier.
+provider identifier. Since U120 the listing freezes each heart's date onto its
+row, under `hearted`, so a landing can put the heart where the source system
+put it without asking the account again; see **Landed heart**.
+
+### Landed heart
+A heart the favourites sync downloaded and landed, and where it goes, since
+U120. The source system filed an owned heart into All Favorites and into a
+playlist named for the UTC quarter it was hearted in, `2026-Q4`, both under
+the top level Favorites folder, and an undated one into `Undated`. A native
+landing given `--pass` does the same in its one commit: the pass's hearts job
+says which files are hearts, by the match rule the account playlists use, the
+job's frozen date says the quarter, and the hearts join All Favorites and
+their quarter beside their INBOX playlist, the quarter playlist made when the
+folder lacks it. The placement is add only and never moves a heart between
+quarters. A library with no live All Favorites, or two, lands the batch and
+skips the placement with a warning; a landing with no pass, and every landing
+on the bridge, places nothing. `crate favorites backfill` is the attended
+half: every heart a hearts job carried that the library holds now in a folder
+directly under the music dir, which is where every landing puts a file and
+where nothing the source system filed sits, placed the same way behind an
+explicit gate, the date from the job else from the account listed once. An
+owned heart that is not in All Favorites is left alone until the author
+answers the open question, and so is a heart the author took back: one whose
+All Favorites membership rekordbox marked removed, or one a whole account
+listing no longer carries, is skipped and named rather than put back, since
+the outbound sync would otherwise heart it on the account again. The genre
+Favorites follow from U119's refresh once
+adoption files the track, not at landing.
 
 ### Withheld
 A track the provider COUNTS in a collection and leaves out of every page it

@@ -6231,6 +6231,23 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # And again on the watcher's round: 669 to 670 distinct, non-keys 470 to
     # 471. ONE joined, favorites-skipped, the resume's third WARNING code, for
     # a refresh that did not run at an adoption's end.
+    # Re-pinned on U120, the landed hearts placed, 2026-10-10: 670 to 676
+    # distinct, non-keys 471 to 477. SIX joined and nothing left, each absent
+    # from `main`'s own `src` by git grep, and none is a key: favorites-placement
+    # is the session WORKFLOW the backfill is recorded under and the plan KIND
+    # its digest is taken under; favorites-placed and
+    # favorites-placement-skipped are the native landing's WARNING codes;
+    # favorites-nothing-to-place, favorites-backfilled and
+    # favorites-hearts-undated are the backfill verb's. The engine refuses
+    # under U119's favorites-source-missing and the shared decision-stale, so
+    # the cause population above is unchanged.
+    # Re-pinned on U120's review round, 2026-10-10: 676 to 678 distinct, non-keys
+    # 477 to 479. TWO joined, favorites-hearts-held-back and favorites-jobs-unread,
+    # the backfill verb's WARNING codes for a short listing's undated hearts held
+    # back and for a hearts job whose reports could not be read.
+    # Re-pinned on the watcher's round of the same unit, 2026-10-10: 678 to 679
+    # distinct, non-keys 479 to 480. ONE joined, favorites-hearts-taken-back, the
+    # backfill verb's WARNING code for a heart the author took back.
     # Re-measured on the merge of main at 07c3ea0 into fable/278, 2026-10-10:
     # U121's five literals join U119's nine on one tree, 675 distinct and 474
     # that are not keys, each side's additions as its own pin names them.
@@ -6257,12 +6274,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # on the same unit's review round: 692 to 693 distinct, non-keys 483 to
     # 484. ONE joined, not-owned, the detail problem the adapter's playlist
     # removal refuses with for a playlist the client does not serve as owned.
-    assert (len(literals), len(literals - set(causes))) == (693, 484), (
     # Re-pinned on U117, new label releases kept apart, 2026-10-09: 661 to
     # 664 distinct, non-keys 464 to 466. THREE joined and nothing left.
     # label-new-playlists-no-folder is the cause key pinned above.
     # label-new-playlists is the KIND the dated plan's digest is taken over,
     # and label-new-playlists-tracks-refused is a WARNING code.
+    # Re-measured on the merge of main at 691513b into fable/277, 2026-10-10:
+    # U120's nine literals join main's, 692 distinct and 489 that are not keys,
+    # measured on the merged tree and not either side alone.
+    # Re-measured on the merge of main at 976adb1 into fable/277, 2026-10-10:
+    # U123's ten literals beside U120's nine, 702 distinct and 493 that are not
+    # keys, measured on the merged tree and not either side alone.
+    assert (len(literals), len(literals - set(causes))) == (702, 493), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -7095,6 +7118,14 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # decision-stale and session-committed-unverified, and
     # favorites/refresh_cli.py, which refuses with config-unusable. Neither
     # holds an in-range integer.
+    # Re-pinned on U120, the landed hearts placed, 2026-10-10: holders move
+    # 139 to 142, and the also-holds-an-integer half is UNCHANGED at 29. THREE
+    # modules joined and none left, all new files: favorites/placement.py,
+    # which refuses with decision-stale and under U119's favorites-source-missing
+    # through that module's name; favorites/backfill.py, which refuses with
+    # decision-stale and session-committed-unverified; and
+    # favorites/backfill_cli.py, which refuses with config-unusable. None holds
+    # an in-range integer.
     # Re-measured on the merge of main at 07c3ea0 into fable/278, 2026-10-10:
     # U121's two modules and U119's two are all in the tree, holders 141, the
     # also-holds-an-integer half UNCHANGED at 29.
@@ -7103,12 +7134,18 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # ONE module joined and none left, a new file: label/heard.py, which
     # refuses with the six label-heard slugs and internal-error. It holds no
     # in-range integer. label/heard_cli.py refuses with nothing of its own.
-    assert (len(literal_holders), len(literal_both)) == (143, 29), (
     # Re-pinned on U117, new label releases kept apart, 2026-10-09: holders
     # move 137 to 138, and the also-holds-an-integer half is UNCHANGED at 29.
     # ONE module joined and none left, a new file: label/dated.py, which
     # refuses with label-new-playlists-no-folder and internal-error. It holds
     # no in-range integer.
+    # Re-measured on the merge of main at 691513b into fable/277, 2026-10-10:
+    # U120's three modules join main's, holders 145, the also-holds-an-integer
+    # half UNCHANGED at 29.
+    # Re-measured on the merge of main at 976adb1 into fable/277, 2026-10-10:
+    # U123's label/heard.py beside U120's three modules, holders 146, the
+    # also-holds-an-integer half UNCHANGED at 29.
+    assert (len(literal_holders), len(literal_both)) == (146, 29), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
