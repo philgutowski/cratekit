@@ -25,5 +25,5 @@ tree would be code over a state the product cannot reach.
 **Closes when:** the author decides whether the dated playlist belongs in
 rekordbox at all, and if it does, through which writer: the intake file's xml
 for the add and something else for the removal, since an xml import cannot take
-a playlist away. The follow up card filed with this unit carries the question.
+a playlist away. A31, issue #289, filed with this unit, carries the question.
 Ledger only.
