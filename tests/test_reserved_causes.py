@@ -6248,7 +6248,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Re-measured on the merge of main at 1e93ee7 into fable/278, 2026-10-10:
     # U121's five literals join main's, 680 distinct and 478 that are not keys,
     # measured on the merged tree and not either side alone.
-    assert (len(literals), len(literals - set(causes))) == (683, 480), (
+    # Re-pinned on U123, a label's dated playlist heard, 2026-10-10: 683 to
+    # 692 distinct, non-keys 480 to 483. NINE joined and nothing left, each
+    # absent from `main`'s own `src` by git grep. The six label-heard refusal
+    # slugs are the keys named in the pin above. label-heard is the KIND the
+    # plan's digest is taken over, and label-heard-tracks-refused and
+    # label-heard-tree-unchanged are the verb's WARNING codes.
+    assert (len(literals), len(literals - set(causes))) == (692, 483), (
     # Re-pinned on U117, new label releases kept apart, 2026-10-09: 661 to
     # 664 distinct, non-keys 464 to 466. THREE joined and nothing left.
     # label-new-playlists-no-folder is the cause key pinned above.
@@ -7089,7 +7095,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # Re-measured on the merge of main at 07c3ea0 into fable/278, 2026-10-10:
     # U121's two modules and U119's two are all in the tree, holders 141, the
     # also-holds-an-integer half UNCHANGED at 29.
-    assert (len(literal_holders), len(literal_both)) == (142, 29), (
+    # Re-pinned on U123, a label's dated playlist heard, 2026-10-10: holders
+    # move 142 to 143, and the also-holds-an-integer half is UNCHANGED at 29.
+    # ONE module joined and none left, a new file: label/heard.py, which
+    # refuses with the six label-heard slugs and internal-error. It holds no
+    # in-range integer. label/heard_cli.py refuses with nothing of its own.
+    assert (len(literal_holders), len(literal_both)) == (143, 29), (
     # Re-pinned on U117, new label releases kept apart, 2026-10-09: holders
     # move 137 to 138, and the also-holds-an-integer half is UNCHANGED at 29.
     # ONE module joined and none left, a new file: label/dated.py, which
