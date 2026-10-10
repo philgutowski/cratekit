@@ -126,6 +126,13 @@ def _isolate_state_roots(tmp_path_factory):
                 if hasattr(config, attr):
                     monkeypatch.setattr(config, attr, path)
 
+            # R-926: the config writer refuses, under pytest, any path outside
+            # this root, whatever the environment says. The base temp holds
+            # both this fixture's roots and every test's own tmp_path.
+            monkeypatch.setattr(
+                config, "_TEST_WRITE_ROOT", tmp_path_factory.getbasetemp()
+            )
+
         yield root
 
 
@@ -310,15 +317,19 @@ def _block_real_library_paths(request, tmp_path_factory):
         yield library
 
 @pytest.fixture(autouse=True)
-def _favourites_without_pink():
+def _favourites_without_pink(request):
     """Default the favourites colour read to no pink rows (R-228).
 
     A test that wants pink rows, or a colour refusal, patches
     ``favorites.cli.read_pink_track_ids`` on its own ``monkeypatch``. This
     fixture uses its own MonkeyPatch instance for the reason the module
-    docstring gives.
+    docstring gives. A test marked ``real_pink_read`` keeps the real read, so
+    the one function that opens the library is exercised somewhere.
     """
     favorites_cli = _module_if_present("cratekit.favorites.cli")
+    if request.node.get_closest_marker("real_pink_read") is not None:
+        yield
+        return
     if favorites_cli is None or not hasattr(favorites_cli, "read_pink_track_ids"):
         yield
         return

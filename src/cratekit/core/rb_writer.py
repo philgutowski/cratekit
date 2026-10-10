@@ -1094,6 +1094,28 @@ def canary(
         assert_cloud_sync_readable(db, force=force_cloud_canary)
 
 
+def require_present(target: Path) -> None:
+    """Refuse a database path whose directory or file is absent, by the open's own causes.
+
+    SHARED BY ``open_db`` AND ``read_only_copy``, since the favourites colour read. The copy ran
+    before the open's guards, so a missing file escaped the copy as a raw
+    ``FileNotFoundError`` and reached a person as an internal error.
+    """
+    if not target.parent.exists():
+        raise _unavailable(
+            "library-directory-missing",
+            f"the directory holding the rekordbox database does not exist: "
+            f"{target.parent}; the library volume is most likely not mounted",
+            detail={"directory": str(target.parent)},
+        )
+    if not target.exists():
+        raise _unavailable(
+            "library-database-missing",
+            f"there is no rekordbox database at {target}",
+            detail={"path": str(target)},
+        )
+
+
 def open_db(
     path: Path | str | None = None,
     *,
@@ -1131,19 +1153,7 @@ def open_db(
     """
     target = Path(path) if path is not None else live_db_path(cfg)
 
-    if not target.parent.exists():
-        raise _unavailable(
-            "library-directory-missing",
-            f"the directory holding the rekordbox database does not exist: "
-            f"{target.parent}; the library volume is most likely not mounted",
-            detail={"directory": str(target.parent)},
-        )
-    if not target.exists():
-        raise _unavailable(
-            "library-database-missing",
-            f"there is no rekordbox database at {target}",
-            detail={"path": str(target)},
-        )
+    require_present(target)
 
     if require_closed:
         assert_rekordbox_closed("opening the database for writing")
@@ -1314,6 +1324,7 @@ def read_only_copy(source: Path | str, *, cfg: config.Config | None = None) -> I
     second time. Both are asked of the copy, never of ``source``.
     """
     assert_rekordbox_closed("copying the database for a read only look")
+    require_present(Path(source))
     with disposable_copy(source) as copied:
         refusal = None if copied.stat().st_size else _not_a_library(Path(source), copied)
         if refusal is not None:
