@@ -672,6 +672,7 @@ def plan_pair(reader: _Reader, target: Target, held) -> PairPlan:
     # ── the bases ───────────────────────────────────────────────────────────
     base: pair_merge.Base | None = None
     readded: set[str] = set()
+    unseen: set[str] = set()
     row_to_remote = {**by_row, **{row: remote for remote, row in made.items()}}
 
     def as_key(content_id: str) -> str:
@@ -682,8 +683,11 @@ def plan_pair(reader: _Reader, target: Target, held) -> PairPlan:
         base_account = tuple(remote_key(one) for one in held.account or ())
         if short is not None:
             # A WITHHELD TRACK IS NOT A REMOVED ONE. Which tracks the provider
-            # left out is not known, so no track the base held is read as gone.
-            base_account = tuple(key for key in base_account if key in set(account_keys))
+            # left out is not known, so no track the base held is read as gone,
+            # and none of them is offered to the account as an addition either:
+            # it may be on the playlist, served to nobody.
+            unseen = {key for key in base_account if key not in set(account_keys)}
+            base_account = tuple(key for key in base_account if key not in unseen)
         # A RE-ADD IS A TRACK NONE OF WHOSE BASE MEMBERSHIPS SURVIVES. A track
         # the playlist holds twice that lost one copy still holds the other,
         # which the base saw, so it was not taken out and put back.
@@ -761,7 +765,9 @@ def plan_pair(reader: _Reader, target: Target, held) -> PairPlan:
     )
 
     # ── what the account is asked ───────────────────────────────────────────
-    account_adds = tuple(remote_of(key) for key in merged.add_account if remote_of(key))
+    account_adds = tuple(
+        remote_of(key) for key in merged.add_account if remote_of(key) and key not in unseen
+    )
     account_removes: tuple[str, ...] = ()
     account_order: tuple[str, ...] | None = None
     if short is None:

@@ -70,11 +70,15 @@ class LivePlaylist:
 
     @property
     def num_tracks(self):
+        if self.world.withheld:
+            return len(self.world.account.playlists[ACCOUNT])
         return self.world.declared
 
     def tracks(self, limit=None, offset=0):
         size = self.page_size if limit is None else limit
-        members = self.world.account.playlists[ACCOUNT]
+        members = [
+            one for one in self.world.account.playlists[ACCOUNT] if one not in self.world.withheld
+        ]
         return [
             Listed(one, f"Artist {one}", f"Title {one}", self.world.codes.get(one, ""))
             for one in members[offset : offset + size]
@@ -92,11 +96,18 @@ class World:
         self.account.playlists[ACCOUNT] = [remote(one) for one in account]
         self.codes = {remote(one): isrc(one) for one in ROWS}
         self.declared: int | None = None
+        #: Tracks the account holds and the provider serves to nobody: counted,
+        #: never listed, and never read back.
+        self.withheld: set[str] = set()
         self.catalogue = FakeCatalogue(
             playlists={ACCOUNT: LivePlaylist(self)},
             account=[AccountPlaylist(playlist_id=ACCOUNT, name=NAME)],
         )
         monkeypatch.setattr(catalogue, "resolve", catalogue_factory(self.catalogue))
+        real_tracks = self.account.playlist_tracks
+        self.account.playlist_tracks = lambda playlist_id: tuple(
+            one for one in real_tracks(playlist_id) if one not in self.withheld
+        )
         monkeypatch.setattr(account_module, "resolve", outbound_fakes.account_factory(self.account))
         handle = self.open()
         try:
@@ -794,18 +805,53 @@ def test_a_short_listing_leaves_the_snapshot_so_a_withheld_track_is_not_read_as_
     w = world(account=("1", "2"), rekordbox=("1", "2"))
     assert sync(w.args())[0] == int(ExitCode.OK)
     before = _pair(cfg)
-    w.account.playlists[ACCOUNT] = ["t1"]
-    w.declared = 2
-    assert sync([*VERB, ACCOUNT])[0] == int(ExitCode.OK)
+    w.withheld = {"t2"}
+    code, envelope = sync([*VERB, ACCOUNT])
+    assert code == int(ExitCode.OK), envelope
     assert _pair(cfg).account == before.account
+    assert envelope["data"]["totals"]["account_adds"] == 0, "a withheld track was offered back"
     # The provider serves t2 again, and the author took it out of rekordbox.
-    w.account.playlists[ACCOUNT] = ["t1", "t2"]
-    w.declared = None
+    w.withheld = set()
     w.rekordbox_remove("2")
     code, envelope = sync([*VERB, ACCOUNT])
     assert code == int(ExitCode.OK), envelope
     assert w.held() == ["1"]
     assert w.on_account() == ["t1"]
+
+
+def test_the_writer_refuses_a_playlist_whose_memberships_moved_since_the_plan(world, cfg):
+    """The gate's digest catches this first; the writer's own check is held alone here."""
+    from cratekit.core import analysis_store
+    from cratekit.core.cause import CratekitError
+    from cratekit.write import playlist_pair
+
+    w = world(account=(), rekordbox=("1", "2"))
+    handle = w.open()
+    try:
+        planned = playlist_pair.read_playlist(handle, w.rekordbox_id)
+    finally:
+        rb_writer.close_db(handle)
+    w.rekordbox_add("3")
+    change = playlist_pair.Change(
+        playlist_id=w.rekordbox_id,
+        before=planned.memberships(),
+        adds=("4",),
+        order=("1", "2", "4"),
+    )
+    handle = rb_writer.open_db(Path(cfg.library.db_path), require_closed=True, unlock=False, cfg=cfg)
+    try:
+        with pytest.raises(CratekitError) as refused:
+            playlist_pair.apply(
+                cfg,
+                handle,
+                change,
+                source="playlist-pair:test",
+                analysis_roots=analysis_store.watch_roots(cfg),
+            )
+    finally:
+        rb_writer.close_db(handle)
+    assert refused.value.cause.reason == "decision-stale"
+    assert w.held() == ["1", "2", "3"]
 
 
 def test_a_pair_whose_playlist_is_gone_does_not_hold_every_other_pair(world, cfg, monkeypatch):
