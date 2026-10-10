@@ -1132,13 +1132,15 @@ cycle, is next and is attended.
 
 ## Next sitting
 
-**A landed row loads, as of sitting 37.** ContentLink was the block, and all
-20 landed rows now carry rekordbox's value and load to a deck. The next
-native landing still makes rows that will not load until the landing writes
-that value itself, which is the unit cut from A32; until it lands, follow a
-native landing with `crate repair link`, one `--set ROW:ContentLink=2950670`
-per landed row, rehearsed on a copy. Sitting 34's route, removing the row in
-rekordbox and dropping the file from Finder, is no longer needed.
+**A landed row loads, as of sitting 37, and the landing writes the value
+itself, as of U126.** ContentLink was the block. U126 (#292, merged and
+pushed 2026-10-10 at `fbb3aad`, the installed copy rebuilt from it at 10:59)
+reads the value more than half the library's live rows carry, shows it on
+the land gate as "content link" with its count, and sets it on every row it
+adds, so no `crate repair link` follows a landing any more. Owed: the first
+native landing on the rebuilt copy, one landed row dragged to a deck and
+recorded here, which is U126's live proof. If the plan refuses with
+`link-majority-unclear`, that is R-969 and new.
 
 One thing is left of the genre work, and it is the author's: `crate delete
 review` over the 36 tracks removed from the collection at sitting 29, run
