@@ -52,3 +52,19 @@ on an empty plan (V5) each kill. Doctor names the gap (D1) and tells a shipped
 defect from the copy's (D2). The warnings fire on every apply whatever it
 added (W1), carry the coded note and the copy's version (W2, W3), and on a
 rebuild or a resort only for the routing tree that run drove (W4 to W6).
+
+## After the table, the watcher's review
+
+The table was measured at `6c218c3f`. The review round after it (`7b98fae7`,
+`bd67dc88`) changed two guarded lines and added three guards, and this pass is
+the unit's one table, so none of that is in it:
+
+- V4's mutated line, the text comparison in `_read_back`, is now a byte
+  comparison. The row measured the line as it was.
+- New and unmeasured by a table: the stale refusal on bytes that no longer read
+  as the planned text, the restore's own read back, and `_kept_whole` returning
+  False on text that does not parse. Each has a test that drives it,
+  `test_an_edit_after_the_second_plan_is_refused_as_stale`,
+  `test_a_restore_that_fails_says_so_and_names_the_backup` and
+  `test_a_placement_that_does_not_parse_is_not_kept_whole`, written by the
+  author, so read them as the author's.
