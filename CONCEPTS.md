@@ -495,6 +495,33 @@ the one batch folder; only the rekordbox playlists split, and the batch
 playlist keeps what no account playlist claimed. A later landing of the same
 pass holds only its new files for a playlist that pass already mirrored.
 
+### Playlist pair
+One of the author's own account playlists and one plain rekordbox playlist,
+marked with `crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID` to stay the
+same list on both sides (U130). Named by both identifiers and never by a name
+(R-906), and one playlist pairs with one other. Never the hearts, a label's or
+a set's playlist, the source system's debris or placeholders, a rekordbox
+folder or smart playlist, or anything under one of Cratekit's own trees. Each
+sync merges each side against its PAIR SNAPSHOT: an addition on either side is
+kept, a removal on either side is applied, an addition beats a removal, and the
+order follows the side that changed it, the account's when both did. A removal
+takes a membership off and never a track out of the collection or the account.
+A rekordbox row the account has no match for is named and stays in rekordbox; an
+account track the library lacks is queued once through `intake.playlist`.
+
+*Avoid:* reading a pair as an export or an intake. Both of those go one way and
+never remove.
+
+### Pair snapshot
+What each side of a playlist pair held when its last whole sync finished: the
+account's tracks in order, every live rekordbox membership with its row, and
+the links between the two (U130). It moves only when both gates applied, every
+write landed and the account listed the whole playlist; a sync short of that
+records the links and leaves the snapshot, so the next sync finishes from the
+same base. A pair with no snapshot is on its first sync, which adds only.
+
+*Avoid:* reading it as a database snapshot, which is a backup of the library.
+
 ### Rotation
 `crate inbox rotate` (U111), the write `report intake-aging` only describes.
 A BATCH is a playlist directly under INBOX or under its Old folder that a
@@ -1380,7 +1407,9 @@ year playlist written `created` (R-836). `ledger.product_made` is the answer,
 and it is no unless a record says yes. A label year adopted by its name under
 the folder was made by the source system or a person, and is not product made
 whatever else records it. The only removal the account protocol declares,
-`remove_tracks`, is refused for any other playlist before a provider call.
+`remove_tracks`, and its `order_tracks`, are refused before a provider call for
+any playlist that is neither product made nor one side of a playlist pair
+(U130).
 
 *Avoid:* reading "recorded in the ledger" as product made. An adopted year is
 recorded and was not made here.

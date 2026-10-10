@@ -785,6 +785,9 @@ def test_only_the_rotation_asks_its_commit_to_admit_a_removed_playlist():
         # Favorites in its second commit, the membership table alone, as the
         # move does, behind its own explicit gate.
         "write/genre_favorites.py": ["(rb_writer.MEMBERSHIP_TABLE,)"],
+        # U130. A playlist pair's rekordbox side takes a track off its one
+        # playlist, the membership table alone, behind its explicit gate.
+        "write/playlist_pair.py": ["(rb_writer.MEMBERSHIP_TABLE,)"],
     }
     assert set(rotate.REMOVALS) == {rb_writer.PLAYLIST_TABLE, rb_writer.MEMBERSHIP_TABLE}
 

@@ -176,6 +176,11 @@ class Excluded(StrEnum):
     #: tracks are fetched from that tracklist, so swept as intake it would be a
     #: second download of the same set.
     SET_PLAYLIST = "set-playlist"
+    #: A playlist the author marked to stay the same list as a rekordbox
+    #: playlist (U130). ``sync pair`` keeps it, queueing for acquisition what
+    #: the library lacks, so swept as intake it would be queued twice and
+    #: marked with the swept prefix under the author.
+    PAIRED = "paired"
     RECORDED = "recorded"
     PLACEHOLDER = "favorites-placeholder"
     IN_FLIGHT = "in-flight"
@@ -200,6 +205,7 @@ def exclusion(
     in_flight: frozenset[str] | set[str],
     label_built: frozenset[str] | set[str] = frozenset(),
     set_built: frozenset[str] | set[str] = frozenset(),
+    paired: frozenset[str] | set[str] = frozenset(),
 ) -> Excluded | None:
     """Why this playlist is not new, or ``None`` when it is. Pure.
 
@@ -215,6 +221,8 @@ def exclusion(
         return Excluded.LABEL_FOLDER
     if playlist.playlist_id in set_built:
         return Excluded.SET_PLAYLIST
+    if playlist.playlist_id in paired:
+        return Excluded.PAIRED
     if playlist.playlist_id in recorded:
         return Excluded.RECORDED
     if placeholders.is_placeholder(playlist.name):
@@ -391,6 +399,7 @@ def plan(
     handler_key: str,
     label_built: frozenset[str] = frozenset(),
     set_built: frozenset[str] = frozenset(),
+    paired: frozenset[str] = frozenset(),
 ) -> Sweep:
     """Reconcile the cursor, list the account, and decide every playlist.
 
@@ -401,7 +410,8 @@ def plan(
     IN rather than read here, because this source is core and the record is
     the outbound package's, which a core module does not import (R-835).
     ``set_built`` is every playlist ``export set`` made, handed in for the same
-    reason (R-837).
+    reason (R-837). ``paired`` is every account playlist ``sync pair`` keeps,
+    handed in for the same reason (U130).
     """
     recorded_now = reconcile(store, cfg, handler_key=handler_key)
     existing = WatermarkStore(cfg).read(SOURCE_ID)
@@ -420,6 +430,7 @@ def plan(
             in_flight=in_flight,
             label_built=label_built,
             set_built=set_built,
+            paired=paired,
         )
         if reason is not None:
             sweep.excluded[playlist.playlist_id] = reason

@@ -2634,6 +2634,10 @@ def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recor
         # routing tree as rows created and rows updated.
         "write/genre_favorites.py::apply_refresh",
         "write/metadata_cli.py::mytags_vocals",
+        # U130. A playlist pair's rekordbox side: memberships added, soft
+        # removed and numbered in one commit behind one capture, recorded under
+        # the pair's own source as rows created and rows updated.
+        "write/playlist_pair.py::apply",
         # R-923. rekordbox's defaults filled on rows a landing left bare,
         # recorded under the content defaults key as rows updated.
         "write/row_defaults.py::apply_rows",

@@ -2122,6 +2122,38 @@ STATE_FILES: tuple[StateFile, ...] = (
             "for the inode reason every lock here shares."
         ),
     ),
+    # ── U130's two entries, appended ───────────────────────────────────────
+    StateFile(
+        key="playlist_pairs",
+        snapshot=SnapshotRole.SURVIVES_ROLLBACK,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="playlist_pairs.json",
+        why=(
+            "U130. Every account playlist the author marked to stay the same "
+            "list as one rekordbox playlist, by both identifiers, with what "
+            "each side held when the last sync finished. The next sync merges "
+            "each side against that snapshot, so a lost document makes every "
+            "pair's next sync a first one, which adds and never removes."
+            " It SURVIVES a rollback for the outbound ledger's reason: the "
+            "account does not roll back, and a snapshot older than the account "
+            "would read the account's current tracks as additions."
+        ),
+    ),
+    StateFile(
+        key="playlist_pairs_lock",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="playlist_pairs.lock",
+        why=(
+            "The sibling lock for the playlist pairs, which are a read then a "
+            "write over one document. Two syncs recording at once would both "
+            "read the same document and the second would discard the first "
+            "one's snapshot. NEVER_RESTORED for the inode reason every lock "
+            "here shares."
+        ),
+    ),
 )
 
 _STATE_BY_KEY: Mapping[str, StateFile] = MappingProxyType({s.key: s for s in STATE_FILES})

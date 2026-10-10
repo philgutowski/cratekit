@@ -181,6 +181,11 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'sync-artifacts-unusable',
     'sync-mark-record-unusable',
     'sync-marks-blocked',
+    # 2026-10-10, U130: the four sync pair causes joined.
+    'sync-pair-conflict',
+    'sync-pair-out-of-scope',
+    'sync-pair-store-unusable',
+    'sync-pair-unknown',
     'sync-source-lookups-failed',
     'sync-watermark-unusable',
     'tag-remap-unwritten',
@@ -757,6 +762,11 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-artifacts-unusable',
         'sync-mark-record-unusable',
         'sync-marks-blocked',
+        # 2026-10-10, U130: the four sync pair causes joined.
+        'sync-pair-conflict',
+        'sync-pair-out-of-scope',
+        'sync-pair-store-unusable',
+        'sync-pair-unknown',
         'sync-source-lookups-failed',
         'sync-watermark-unusable',
         'tag-remap-unwritten',
@@ -1311,6 +1321,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'modules/outbound/artifacts.py': ['outbound-artifacts', 'outbound-staging', 'utf-8'],
     'modules/outbound/folders.py': ['label-playlists', 'label-playlists-ambiguous', 'unavailable-transient'],
     'modules/outbound/ledger.py': ['outbound-ledger-unusable', 'outbound-record-moved', 'utf-8'],
+    # 2026-10-10, U130: the playlist pairs record joined.
+    'modules/outbound/pairs.py': ['sync-pair-conflict', 'sync-pair-store-unusable', 'utf-8'],
     'modules/outbound/prune.py': [
         'already-off',
         'export-prune',
@@ -1460,6 +1472,20 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     'sync/mark_record.py': ['sync-mark-record-unusable', 'utf-8'],
     'sync/marks.py': ['sync-marks-blocked'],
+    # 2026-10-10, U130: the sync pair verb joined.
+    'sync/pair_cli.py': [
+        'playlist-pair',
+        'sync-pair-ambiguous',
+        'sync-pair-awaiting',
+        'sync-pair-left-out',
+        'sync-pair-nothing',
+        'sync-pair-out-of-scope',
+        'sync-pair-skipped',
+        'sync-pair-unknown',
+        'sync-pair-unmatched',
+        'sync-pair-withheld',
+        'sync-pair-written',
+    ],
     'sync/playlists.py': [
         'already-swept',
         'favorites-placeholder',
@@ -1651,6 +1677,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'config-unusable',
         'rename-incomplete',
     ],
+    # 2026-10-10, U130: the pair's rekordbox writer joined.
+    'write/playlist_pair.py': ['decision-stale', 'playlist-pair', 'session-committed-unverified'],
     'write/rbxml.py': ['utf-8'],
     'write/rebuild.py': [
         'membership-left-behind',
@@ -2350,6 +2378,8 @@ PINNED_LITERAL_HOLDERS = {
     'modules/outbound/account.py': ['credential-missing', 'outbound-account-unbound', 'unavailable-transient'],
     'modules/outbound/folders.py': ['label-playlists-ambiguous', 'unavailable-transient'],
     'modules/outbound/ledger.py': ['outbound-ledger-unusable', 'outbound-record-moved'],
+    # 2026-10-10, U130: the playlist pairs record joined.
+    'modules/outbound/pairs.py': ['sync-pair-conflict', 'sync-pair-store-unusable'],
     'modules/outbound/prune.py': ['internal-error', 'outbound-remove-refused', 'unavailable-transient'],
     'modules/outbound/sets.py': ['export-set-ambiguous'],
     'modules/outbound/shell.py': ['config-unusable', 'internal-error', 'outbound-account-unbound'],
@@ -2416,6 +2446,8 @@ PINNED_LITERAL_HOLDERS = {
     'sync/mark_cli.py': ['internal-error', 'sync-mark-record-unusable', 'sync-marks-blocked'],
     'sync/mark_record.py': ['sync-mark-record-unusable'],
     'sync/marks.py': ['sync-marks-blocked'],
+    # 2026-10-10, U130: the sync pair verb joined.
+    'sync/pair_cli.py': ['sync-pair-out-of-scope', 'sync-pair-unknown'],
     'sync/playlists.py': ['intake-list-unusable', 'label-playlist-unreadable', 'sync-source-lookups-failed'],
     'sync/run.py': ['sync-source-lookups-failed'],
     'sync/unmark_cli.py': ['internal-error', 'sync-marks-blocked'],
@@ -2461,6 +2493,8 @@ PINNED_LITERAL_HOLDERS = {
         'config-unusable',
         'rename-incomplete',
     ],
+    # 2026-10-10, U130: the pair's rekordbox writer joined.
+    'write/playlist_pair.py': ['decision-stale', 'session-committed-unverified'],
     'write/rebuild.py': [
         'rebuild-derivation-empty',
         'rebuild-derivation-incomplete',
