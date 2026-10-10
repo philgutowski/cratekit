@@ -98,18 +98,16 @@ def test_the_go_day_is_the_local_day_of_the_settling():
     assert dated.taken_by_goes(document, LABEL_ID) == {"r3": "2026-10-08"}
 
 
-def test_an_evening_go_west_of_utc_keeps_its_local_day(monkeypatch):
+def test_an_evening_go_west_of_utc_keeps_its_local_day():
     import time
 
-    monkeypatch.setenv("TZ", "America/New_York")
-    time.tzset()
-    try:
+    with pytest.MonkeyPatch.context() as zone:
+        zone.setenv("TZ", "America/New_York")
+        time.tzset()
         document = {"answers": [_answer(["r3"], "2026-10-08")], "labels": {}}
         assert document["answers"][0][sync_cli.SETTLED]["at"].startswith("2026-10-09T02:00")
         assert dated.taken_by_goes(document, LABEL_ID) == {"r3": "2026-10-08"}
-    finally:
-        monkeypatch.undo()
-        time.tzset()
+    time.tzset()
 
 
 def test_an_unsettled_or_not_now_answer_took_nothing():
