@@ -76,14 +76,6 @@ old = '''        if probe.writes and carriers <= fellows:'''
 new = '''        if probe.writes and carriers < fellows:'''
 
 [[rows]]
-id = "P9_minority_dropped"
-description = "Drop the majority rule, so the binding's value is written onto a row rekordbox made"
-file = "src/cratekit/write/row_link.py"
-surface = "user"
-old = '''        if probe.writes and carriers <= fellows:'''
-new = '''        if probe.writes and carriers < 0:'''
-
-[[rows]]
 id = "P8_null_fellows"
 description = "Count a NULL's fellows with an equality, which matches nothing, so a NULL has no fellows"
 file = "src/cratekit/write/row_link.py"
@@ -254,6 +246,11 @@ new = '''                prompt="Write these probe values onto these rows?",
                 #: EXPLICIT (R34). A write to a row of a live library is
                 #: answered by a separate recorded act with an actor.
                 explicit=False,'''
+
+[[dropped]]
+id = "P9_minority_dropped"
+description = "Drop the majority rule outright"
+reason = "ranked below the cap: P7 moves the same line's boundary, a stricter mutation, so a P7 death implies this one"
 
 [[dropped]]
 id = "V3_duplicate_pair"
