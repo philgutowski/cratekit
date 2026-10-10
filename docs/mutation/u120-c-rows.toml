@@ -1,0 +1,44 @@
+# U120 author's mutation table, third pass: the three guards the watcher's review
+# added, measured on the merge of main at 691513b. 28 distinct in all.
+name = "u120-c"
+pass_kind = "light"
+
+[[rows]]
+id = "W1_taken_back_ignored"
+description = "gather: a heart whose source membership exists as removed is placed again"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py", "tests/test_favorites_placement.py"]
+old = '''        if content_id in removed:
+            taken.append(replace(heart, dated_by="removed from the playlist in rekordbox"))
+            continue
+'''
+new = '''        if False:
+            taken.append(replace(heart, dated_by="removed from the playlist in rekordbox"))
+            continue
+'''
+
+[[rows]]
+id = "W2_uncounted_is_whole"
+description = "dated: a listing with no published count reads as whole"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py", "tests/test_favorites_placement.py"]
+old = '''    whole = short is None and declared is not None and len(listed) >= declared
+'''
+new = '''    whole = short is None
+'''
+
+[[rows]]
+id = "W3_quarters_not_digested"
+description = "PlacementPlan.identity: the quarter rows found or to be made are left out of the digest"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py", "tests/test_favorites_placement.py"]
+old = '''            "quarters": {
+                quarter: self.home.present.get(quarter, "")
+                for quarter in sorted({one.quarter for one in self.placements})
+            },
+'''
+new = '''            "quarters": {},
+'''
