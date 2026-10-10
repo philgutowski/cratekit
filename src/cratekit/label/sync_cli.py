@@ -338,6 +338,14 @@ class Offered:
     size: int | None
     item_id: str | None
     payload: dict[str, Any]
+    #: The release listed short of the count the provider declares (R-515),
+    #: as ``ListingShortfall.block`` carries it, or None for a full listing.
+    short: dict[str, int] | None = None
+
+    @property
+    def provider_withheld(self) -> int:
+        """Tracks the provider counts on this release and did not serve."""
+        return int((self.short or {}).get("withheld") or 0)
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -349,6 +357,7 @@ class Offered:
             "size": self.size,
             "item_id": self.item_id,
             "payload": dict(self.payload),
+            "shortfall": dict(self.short) if self.short else None,
         }
 
     @classmethod
@@ -363,7 +372,18 @@ class Offered:
             size=_count(raw.get("size")),
             item_id=str(raw["item_id"]) if raw.get("item_id") else None,
             payload=dict(payload) if isinstance(payload, Mapping) else {},
+            short=_short_of(raw.get("shortfall")),
         )
+
+
+def _short_of(raw: Any) -> dict[str, int] | None:
+    """A saved shortfall block read back, or None when there is none to trust."""
+    if not isinstance(raw, Mapping):
+        return None
+    block = {key: _count(raw.get(key)) for key in ("declared", "listed", "withheld")}
+    if any(value is None for value in block.values()) or not block["withheld"]:
+        return None
+    return {key: int(value or 0) for key, value in block.items()}
 
 
 def _count(value: Any) -> int | None:
@@ -399,6 +419,16 @@ class Question:
         return sum(one.size or 0 for one in self.releases)
 
     @property
+    def provider_withheld(self) -> int:
+        """Tracks the provider counts on the offered releases and did not serve (R-515)."""
+        return sum(one.provider_withheld for one in self.releases)
+
+    @property
+    def short_releases(self) -> int:
+        """Releases that listed short of their declared count (R-515)."""
+        return sum(1 for one in self.releases if one.provider_withheld)
+
+    @property
     def unknown(self) -> int:
         """Releases whose tracks could not be read, so the counts leave them out."""
         return sum(1 for one in self.releases if one.tracks is None)
@@ -417,6 +447,7 @@ class Question:
             "tracks": self.tracks,
             "size": self.size,
             "unknown": self.unknown,
+            "provider_withheld": self.provider_withheld,
             "beyond": self.beyond,
             "unread": self.unread,
             "withheld": self.withheld,
@@ -451,8 +482,15 @@ def _duration(row: Any) -> int | None:
     return int(value)
 
 
-def _measured(reader: catalogue.ReleaseTracks, identity: str) -> tuple[int, int] | None:
-    """A release's track count and estimated size, or None when it could not be read.
+def _measured(
+    reader: catalogue.ReleaseTracks, identity: str
+) -> tuple[int, int, catalogue.ListingShortfall | None] | None:
+    """A release's track count, estimated size and shortfall, or None when unread.
+
+    THE SHORTFALL RIDES BESIDE THE COUNT (R-515). A release the provider
+    lists short of its declared count is still measured over the rows it
+    served, and the question says how many were withheld rather than reading
+    the short count as the release.
 
     Through the SHARED reader, so a release the ownership question or the
     gate already read costs no second request, and the one outage rule
@@ -460,13 +498,13 @@ def _measured(reader: catalogue.ReleaseTracks, identity: str) -> tuple[int, int]
     session is the person's to act on, not a release with no tracks.
     """
     try:
-        rows, _year = reader.release_tracks(identity)
+        rows, _year, short = reader.release_tracks(identity)
     except CratekitError:
         raise
     except Exception:  # noqa: BLE001 - counted as unread, never guessed at
         return None
     seconds = sum(_duration(row) or SECONDS_PER_TRACK for row in rows)
-    return len(rows), seconds * BYTES_PER_SECOND
+    return len(rows), seconds * BYTES_PER_SECOND, short
 
 
 def size_text(size: int) -> str:
@@ -614,6 +652,7 @@ def _question_for(
                 year=str(candidate.recency or ""),
                 tracks=measured[0] if measured else None,
                 size=measured[1] if measured else None,
+                short=measured[2].block() if measured and measured[2] else None,
                 item_id=None,
                 payload=payload,
             )
@@ -657,6 +696,7 @@ def _question_for(
                 year=_text(item.payload.get("year")) or _text(item.payload.get("recency")),
                 tracks=measured[0] if measured else None,
                 size=measured[1] if measured else None,
+                short=measured[2].block() if measured and measured[2] else None,
                 item_id=item.item_id,
                 payload=dict(item.payload),
             )
@@ -936,6 +976,19 @@ def _named(one: Offered) -> str:
     return said
 
 
+def _tracks_said(one: Offered) -> str:
+    """One release's track count as a person reads it, a short listing said (R-515)."""
+    if one.tracks is None:
+        return "tracks unread"
+    said = f"{one.tracks} track(s)"
+    if one.short:
+        said += (
+            f" ({one.short['declared']} declared, {one.short['listed']} listed, "
+            f"{one.short['withheld']} withheld by the provider)"
+        )
+    return said
+
+
 def _counts(question: Question) -> str:
     said = (
         f"{len(question.releases)} new release(s), {question.tracks} track(s), "
@@ -943,6 +996,11 @@ def _counts(question: Question) -> str:
     )
     if question.unknown:
         said += f", {question.unknown} with tracks unread"
+    if question.provider_withheld:
+        said += (
+            f"; {question.provider_withheld} track(s) withheld by the provider "
+            f"on {question.short_releases} release(s), counted but not listed"
+        )
     if question.beyond:
         said += f"; {question.beyond} more past this run's window"
     if question.unread:
@@ -966,7 +1024,7 @@ def _question_checks(question: Question, *, how: str) -> list[dict[str, Any]]:
                 f"release.{one.identity}",
                 "info",
                 f"{question.label_name}: {_named(one)}, "
-                + (f"{one.tracks} track(s)" if one.tracks is not None else "tracks unread")
+                + _tracks_said(one)
                 + (", waiting in review" if one.item_id else ""),
             )
             for one in question.releases
@@ -1136,7 +1194,7 @@ def _answer(ctx, cfg: config.Config) -> Envelope:
 def _question_text(question: Question) -> str:
     lines = [f"\n{question.label_name}: {_counts(question)}\n"]
     for number, one in enumerate(question.releases, start=1):
-        tracks = f"{one.tracks} track(s)" if one.tracks is not None else "tracks unread"
+        tracks = _tracks_said(one)
         waiting = ", waiting in review" if one.item_id else ""
         lines.append(f"  {number:>3}. {_named(one)}, {tracks}{waiting}\n")
     return "".join(lines)

@@ -7,14 +7,14 @@ never un-colours, and since U51 it also DRIVES the sweep: ``handle`` below is th
 per item worker behind the ``sync.favorites`` handler key, and it is the first
 caller in ``src`` of ``hearts.heart_back``.
 
-**WHAT A FAVOURITE IS HERE, AND HOW THAT DIFFERS FROM THE SOURCE SYSTEM.** The
-engine below calls its input "pink local favourites", and in the live system pink
-is the operator's standing signal that a row should be hearted. This shell cannot
-see pink: it reads a rekordbox collection export, and that document's track rows
-carry no colour, so a hand coloured row is invisible to it. What it reads instead
-is membership in a named playlist, defaulting to the one the source system
-maintains. A pink row outside that playlist is not swept, which is R-228 rather
-than something papered over.
+**WHAT A FAVOURITE IS HERE.** The engine below calls its input "pink local
+favourites", and in the live system pink is the operator's standing signal that a
+row should be hearted. A rekordbox collection export carries no colour, so this
+shell reads pink from a read only open of the live database (R-228), unions those
+content ids with membership of a named playlist (defaulting to the one the source
+system maintains), and deduplicates by content id. Each source is named in the
+plan. A pink row the export lacks is left out of the queue and named beside
+dangling. The empty playlist refusal stays ahead of the colour read.
 
 **NO LOCAL WRITE HAPPENS HERE, AND SINCE R-424 NOTHING SAYS OTHERWISE.**
 ``heart_back`` accepts a ``LocalColors`` writer and would colour the library row.
@@ -37,15 +37,17 @@ Layer: modules.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import config, jobs
-from cratekit.core.cause import Outcome, refuse
+from cratekit.core import config, jobs, rb_writer
+from cratekit.core.cause import Outcome, Scope, refuse
 from cratekit.favorites import placeholders
 from cratekit.modules.outbound import account, artifacts, hearts, shell, source
+from cratekit.write import trees
 
 #: The two payload keys both outbound verbs freeze, spelled once in
 #: :mod:`cratekit.modules.outbound.shell` because the shared resume branch reads
@@ -97,6 +99,122 @@ def local_write_warning() -> tuple[dict[str, str], ...]:
     later pass of this verb reports.
     """
     return (dict(LOCAL_WRITE_WARNING),)
+
+
+#: The colour name rekordbox stores on ``djmdColor.Commnt`` for pink rows.
+#:
+#: LOOKED UP BY THIS NAME rather than hard coded as ColourID 1 (R-228). The
+#: column is ``Commnt`` in the binding; that is the colour's display name.
+PINK_COLOUR_NAME = "Pink"
+
+#: The refusal when the colour table has no live Pink row.
+PINK_COLOUR_MISSING = "favorites-pink-colour-missing"
+
+
+def pink_colour_id(db: Any) -> str:
+    """The ColourID whose name is Pink inside an already open library, or a refusal.
+
+    Soft deleted colour rows are skipped through the one soft delete reader, as
+    ``collection_export.read_tracks`` skips tombstoned content. No live Pink row
+    is a named refusal rather than a silent empty colour source.
+    """
+    for row in db.get_color(Commnt=PINK_COLOUR_NAME):
+        if trees.soft_delete_marker(row):
+            continue
+        return str(row.ID)
+    raise refuse(
+        PINK_COLOUR_MISSING,
+        "the library's colour table has no live row named Pink, so this sweep "
+        "cannot tell which rows are pink and would report complete over rows "
+        "it never considered",
+        steps=(
+            "restore the Pink colour in rekordbox, or colour one row pink so "
+            "the table carries it again",
+        ),
+        scope=Scope.RUN,
+        origin=("favorites", "cli"),
+    )
+
+
+def pink_content_ids(db: Any) -> tuple[str, ...]:
+    """Every live content id coloured pink in ``db``, ordered as the binding yields them.
+
+    Soft deleted content rows are skipped through the same reader
+    ``collection_export.read_tracks`` uses. The Pink ColourID is looked up in
+    this same open, never hard coded.
+    """
+    pink = pink_colour_id(db)
+    found: list[str] = []
+    for row in db.get_content():
+        if trees.soft_delete_marker(row):
+            continue
+        if str(getattr(row, "ColorID", "") or "") == pink:
+            found.append(str(row.ID))
+    return tuple(found)
+
+
+def read_pink_track_ids(cfg: config.Config) -> tuple[str, ...]:
+    """Pink content ids from a read only open of the configured library.
+
+    THE READ'S OWN REFUSAL PROPAGATES (R-228). A missing database, a running
+    rekordbox, or a file that is not a library must stop the sweep the way a
+    missing export does, rather than let the playlist alone report as complete
+    over colour the sweep never saw.
+    """
+    with rb_writer.read_only_copy(rb_writer.live_db_path(cfg), cfg=cfg) as db:
+        return pink_content_ids(db)
+
+
+def union_with_pink(
+    library: source.Library,
+    playlist: source.ResolvedPlaylist,
+    pink_ids: Sequence[str],
+) -> source.ResolvedPlaylist:
+    """Playlist members union pink rows that the export carries, deduplicated.
+
+    Playlist order is kept; pink rows the playlist already carries stay once.
+    Pink rows the export lacks are named on ``pink_missing`` and left out of
+    ``track_ids``, beside dangling. ``from_playlist`` and ``from_colour`` count
+    each source's candidates, so a row in both is counted in both and queued
+    once.
+    """
+    missing: list[str] = []
+    in_export: list[str] = []
+    for track_id in pink_ids:
+        if track_id in library.entries:
+            in_export.append(track_id)
+        else:
+            missing.append(track_id)
+    seen: set[str] = set()
+    kept: list[str] = []
+    for track_id in playlist.track_ids:
+        if track_id in seen:
+            continue
+        seen.add(track_id)
+        kept.append(track_id)
+    for track_id in in_export:
+        if track_id in seen:
+            continue
+        seen.add(track_id)
+        kept.append(track_id)
+    return replace(
+        playlist,
+        track_ids=tuple(kept),
+        from_playlist=len(playlist.track_ids),
+        from_colour=len(in_export),
+        pink_missing=tuple(missing),
+    )
+
+
+def sweep_source_facts(resolved: source.ResolvedPlaylist) -> dict[str, Any]:
+    """The colour and playlist counts the gate shows beside the digest (R-228)."""
+    facts: dict[str, Any] = {
+        "from_playlist": resolved.from_playlist,
+        "from_colour": resolved.from_colour,
+    }
+    if resolved.pink_missing:
+        facts["pink_missing"] = list(resolved.pink_missing)
+    return facts
 
 
 #: What an unmatched favourite is said to be when the account gave no reason
@@ -338,18 +456,20 @@ def sync_favorites(ctx) -> Envelope:
             concluded=concluded,
         )
 
-    exported, resolved = resolve_sweep(
-        getattr(ctx.args, "export", None), getattr(ctx.args, "favorites_playlist", None)
-    )
-
     # LOADED BEFORE THE GATE (R-227), so the age the gate shows is judged against
-    # the person's own day count. See ``export/cli.py`` for the other half of why.
+    # the person's own day count, and before the colour read, which needs the
+    # configured database path. See ``export/cli.py`` for the other half of why.
     cfg = shell.load_config("favorites.cli")
+    exported, resolved = resolve_sweep(
+        getattr(ctx.args, "export", None),
+        getattr(ctx.args, "favorites_playlist", None),
+        cfg=cfg,
+    )
     age = source.export_age(exported, limit_days=cfg.outbound.export_stale_days)
 
     # THE TRACKS THE DIGEST COVERS ARE SHOWN (R-693), through the gate layer,
-    # beside the export's age. The resume shows the same tracks off the
-    # frozen payload.
+    # beside the export's age and the colour versus playlist counts (R-228).
+    # The resume shows the same tracks off the frozen payload.
     option = ctx.gate.require(
         spec,
         plan={"digest": sweep_digest(exported, resolved), "items": list(resolved.track_ids)},
@@ -357,6 +477,7 @@ def sync_favorites(ctx) -> Envelope:
             shell.PLAYLIST: resolved.key,
             shell.EXPORT_PATH: str(exported),
             **shell.shown_export(age),
+            **sweep_source_facts(resolved),
         },
     )
     if option == "abort":
@@ -385,17 +506,31 @@ def sync_favorites(ctx) -> Envelope:
 
 
 def resolve_sweep(
-    export: str | None, playlist: str | None
+    export: str | None,
+    playlist: str | None,
+    *,
+    cfg: config.Config | None = None,
+    pink_ids: Sequence[str] | None = None,
 ) -> tuple[Path, source.ResolvedPlaylist]:
-    """The export and the favourites playlist a sweep would queue, or a refusal.
+    """The export and the favourites union a sweep would queue, or a refusal.
 
     PUBLIC because ``crate sync all`` resolves the same sweep before it asks its
     own confirm, and the digest it asks over has to be the one this verb would
     compute. One resolution, two callers, one digest.
+
+    THE PLAYLIST IS RESOLVED FIRST, so an empty ``All Favorites`` still refuses
+    before any colour is read. Pink rows then join through a read only open, or
+    through ``pink_ids`` when a caller (or a test) already holds them. A colour
+    read that cannot finish refuses with that read's own cause.
     """
     exported = source.required_path(export)
     wanted = str(playlist or source.DEFAULT_FAVORITES_PLAYLIST)
-    return exported, source.resolve(source.read_library(exported), wanted)
+    library = source.read_library(exported)
+    resolved = source.resolve(library, wanted)
+    if pink_ids is None:
+        loaded = cfg if cfg is not None else shell.load_config("favorites.cli")
+        pink_ids = read_pink_track_ids(loaded)
+    return exported, union_with_pink(library, resolved, pink_ids)
 
 
 def sweep_digest(exported: Path, resolved: source.ResolvedPlaylist) -> str:
@@ -528,6 +663,8 @@ __all__ = [
     "BACKLOG",
     "LOCAL_WRITE_WARNING",
     "NO_MATCH",
+    "PINK_COLOUR_MISSING",
+    "PINK_COLOUR_NAME",
     "PLACEHOLDER_NAME",
     "UNMATCHED_WARNING",
     "build_sync",
@@ -535,12 +672,17 @@ __all__ = [
     "confirm_digest",
     "handle",
     "local_write_warning",
+    "pink_colour_id",
+    "pink_content_ids",
     "placeholder_name",
     "queue_sweep",
+    "read_pink_track_ids",
     "resolve_sweep",
     "run_heart_item",
     "summary",
     "sweep_digest",
+    "sweep_source_facts",
     "sync_favorites",
     "sync_favorites_argv",
+    "union_with_pink",
 ]

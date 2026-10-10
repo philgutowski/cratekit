@@ -1597,3 +1597,148 @@ def test_the_adapter_satisfies_the_protocol_it_is_handed_out_as():
     assert declared == outbound_fakes.PROTOCOL_METHODS
     for name in declared:
         assert callable(getattr(tidal_account.TidalAccount, name, None)), name
+
+
+# ── R-572: the file's album tag tells releases spelled alike apart ─────────
+
+
+class Album:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+def on_album(track: Track, name: str) -> Track:
+    """The track as the client hands it out, sitting on the release ``name``."""
+    track.album = Album(name)
+    return track
+
+
+def single_and_album_cut() -> FakeClient:
+    return releases(
+        on_album(Track("101", "Sun Path", None, ("Nova Reef",)), "Sun Path"),
+        on_album(Track("202", "Sun Path", None, ("Nova Reef",)), "Tidal Lines"),
+    )
+
+
+def test_releases_spelled_alike_resolve_to_the_one_the_files_album_names():
+    found = adapter(single_and_album_cut())
+    chosen = found.match_track(
+        identity="7", isrc=CODE, title="Sun Path", artist="Nova Reef", album=" tidal LINES "
+    )
+    assert chosen == "202"
+    assert found.unmatched_reason("7") == ""
+
+
+def test_a_file_album_naming_neither_release_stays_unmatched_and_says_so():
+    found = adapter(single_and_album_cut())
+    chosen = found.match_track(
+        identity="7", isrc=CODE, title="Sun Path", artist="Nova Reef", album="Night Drives"
+    )
+    assert chosen is None
+    reason = found.unmatched_reason("7")
+    assert "hearts 0 of those" in reason
+    assert "the file's album 'Night Drives' names 0 of them" in reason
+
+
+def test_a_file_album_matching_both_releases_stays_unmatched():
+    client = releases(
+        on_album(Track("101", "Sun Path", None, ("Nova Reef",)), "Sun Path"),
+        on_album(Track("202", "Sun Path", None, ("Nova Reef",)), "Sun Path"),
+    )
+    found = adapter(client)
+    chosen = found.match_track(
+        identity="7", isrc=CODE, title="Sun Path", artist="Nova Reef", album="Sun Path"
+    )
+    assert chosen is None
+    assert "the file's album 'Sun Path' names 2 of them" in found.unmatched_reason("7")
+
+
+def test_a_file_with_no_album_tag_stays_unmatched_and_says_the_tag_is_missing():
+    found = adapter(single_and_album_cut())
+    assert match_row(found, "Sun Path") is None
+    reason = found.unmatched_reason("7")
+    assert "2 of them agree" in reason and "hearts 0 of those" in reason
+    assert "the file carries no album tag" in reason
+
+
+def test_an_unreadable_track_stops_the_album_from_choosing_the_lone_agreeing_one():
+    """Rule 1 already refuses this shape; the album must not choose the same lone track."""
+    client = releases(
+        on_album(Track("101", "Sun Path", None, ("Nova Reef",)), "Tidal Lines"),
+        on_album(Track("202", "", None, ()), "Tidal Lines"),
+    )
+    found = adapter(client)
+    chosen = found.match_track(
+        identity="7", isrc=CODE, title="Sun Path", artist="Nova Reef", album="Tidal Lines"
+    )
+    assert chosen is None
+    reason = found.unmatched_reason("7")
+    assert "1 could not be read" in reason
+    assert "so none was chosen" in reason
+    client.user.favorites.hearts = ["101"]
+    found = adapter(client)
+    assert (
+        found.match_track(
+            identity="7",
+            isrc=CODE,
+            title="Sun Path",
+            artist="Nova Reef",
+            album="Tidal Lines",
+        )
+        == "101"
+    ), "the heart rule still chooses among agreeing tracks"
+
+
+def test_the_album_never_overrides_a_heart_or_breaks_a_tie_between_two():
+    """Out of scope by the brief: how a hearted release breaks a tie is unchanged."""
+    client = single_and_album_cut()
+    client.user.favorites.hearts = ["101"]
+    found = adapter(client)
+    assert found.match_track(
+        identity="7", isrc=CODE, title="Sun Path", artist="Nova Reef", album="Tidal Lines"
+    ) == "101"
+    client = single_and_album_cut()
+    client.user.favorites.hearts = ["101", "202"]
+    found = adapter(client)
+    assert found.match_track(
+        identity="7", isrc=CODE, title="Sun Path", artist="Nova Reef", album="Tidal Lines"
+    ) is None
+    assert "hearts 2 of those, so none was chosen" in found.unmatched_reason("7")
+
+
+def test_the_album_chooses_only_among_releases_that_agree_with_the_row():
+    """The radio edit sits on the album the file names, and the row is the plain record."""
+    client = releases(
+        on_album(Track("101", "Sun Path", None, ("Nova Reef",)), "Sun Path"),
+        on_album(Track("202", "Sun Path", None, ("Nova Reef",)), "Night Drives"),
+        on_album(Track("303", "Sun Path", "Radio Edit", ("Nova Reef",)), "Tidal Lines"),
+    )
+    found = adapter(client)
+    assert found.match_track(
+        identity="7", isrc=CODE, title="Sun Path", artist="Nova Reef", album="Tidal Lines"
+    ) is None
+
+
+def test_a_sweep_hearts_the_release_the_files_album_tag_names(
+    installed, monkeypatch, tmp_path
+):
+    """Driven end to end: the album comes off the file in the same read as the ISRC."""
+    placed = _three_tagged(installed, tmp_path)
+    two = Path(installed.library.root) / "Music" / "2.flac"
+    assert tags.write_tags(two, {"album": "Track 2 (Deluxe)"}) is True
+    exported = outbound_fakes.write_export(
+        installed.library.root / "outbound", favorites=(1, 2, 3), locations=placed
+    )
+    shapes = _releases_for_three_rows()
+    single, cut = shapes[isrc_for("2")]
+    on_album(single, "Track 2")
+    on_album(cut, "Track 2 (Deluxe)")
+    client = use_client(monkeypatch, FakeClient(isrcs=shapes))
+    record_session()
+    _run, job_id = approve_and_queue(favorites_verb(exported), "sync.favorites.confirm")
+
+    code, resumed = _resume(job_id)
+
+    assert code == int(ExitCode.OK), resumed
+    assert client.user.favorites.added == ["511", "512", "503"]
+    assert resumed["data"]["progress"]["outbound"]["unmatched"] == []

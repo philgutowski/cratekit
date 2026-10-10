@@ -278,12 +278,15 @@ def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
         plan.inbound = _plan_inbound(spec, cfg)
     try:
         exported, resolved = favorites_cli.resolve_sweep(
-            getattr(ctx.args, "export", None), getattr(ctx.args, "favorites_playlist", None)
+            getattr(ctx.args, "export", None),
+            getattr(ctx.args, "favorites_playlist", None),
+            cfg=cfg,
         )
     except CratekitError as exc:
         # THE WRITE HALF'S OWN PRECONDITION, recorded here rather than raised to
         # ``_plan``, which would build a fresh plan and drop the read half with
-        # it. A missing export is no reason not to list the hearts.
+        # it. A missing export, or a colour read that cannot finish (R-228), is
+        # no reason not to list the hearts.
         plan.refused, plan.not_queued = exc.cause, exc.cause.reason
         return plan
     # THE FAVOURITES VERB'S STANDING WARNING TRAVELS WITH THE COMPOSITION
@@ -317,6 +320,7 @@ def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
                 shell.PLAYLIST: resolved.key,
                 shell.EXPORT_PATH: str(exported),
                 **shell.shown_export(age),
+                **favorites_cli.sweep_source_facts(resolved),
             },
         )
         if option == "abort":
@@ -379,16 +383,39 @@ def _plan_playlists(spec: sources.SourceSpec, ctx) -> _Plan:
         return playlists.report(sweep, filed)
 
     plan = _Plan(spec=spec, describe=describe, detail=describe([]), note=playlists.said)
+    warnings: list[dict[str, str]] = []
     if sweep.unreadable:
-        plan.warnings = (
+        warnings.append(
             {
                 "code": "sync-playlists-unreadable",
                 "message": (
                     f"{len(sweep.unreadable)} account playlist(s) could not be "
                     f"listed and were not queued; the next sync offers them again"
                 ),
-            },
+            }
         )
+    if sweep.short:
+        # A SHORT LISTING IS SAID PER PLAYLIST (R-515), never passed off as
+        # the playlist: the provider counts tracks it will not serve.
+        names = sweep.names()
+        warnings.append(
+            {
+                "code": "sync-playlists-withheld",
+                "message": (
+                    f"{len(sweep.short)} account playlist(s) listed short of the "
+                    f"count the provider declares: "
+                    + "; ".join(
+                        f"{names.get(identity) or identity}: {block['declared']} "
+                        f"declared, {block['listed']} listed, {block['withheld']} "
+                        f"withheld by the provider"
+                        for identity, block in sweep.short.items()
+                    )
+                    + ". The withheld tracks are in no report this pass makes"
+                ),
+            }
+        )
+    if warnings:
+        plan.warnings = tuple(warnings)
     if not sweep.ready:
         plan.not_queued = NOTHING_NEW
         return plan

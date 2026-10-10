@@ -448,7 +448,7 @@ class OwnedReleases:
 
     def _holds(self, release_id: str) -> bool:
         try:
-            rows, _year = self.catalogue.release_tracks(release_id)
+            rows, _year, _short = self.catalogue.release_tracks(release_id)
         except CratekitError:
             raise
         except Exception:  # noqa: BLE001 - not owned, and the release is offered

@@ -1810,6 +1810,14 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # the remedy is on the account, by hand, and the same ask refuses the
         # same way.
         "outbound-remove-refused": ExitCode.PRECONDITION,
+        # ── R-228's one, appended for the same reason ──────────────────────────
+        #
+        # The favourites sweep looks up the ColourID whose name is Pink inside a
+        # read only open, and the colour table has no live row of that name, so
+        # the sweep cannot tell which rows are pink. PRECONDITION: restoring the
+        # Pink colour in rekordbox is the person's act, and reporting complete
+        # over unread colour is the cost this residual named.
+        "favorites-pink-colour-missing": ExitCode.PRECONDITION,
     }
 )
 

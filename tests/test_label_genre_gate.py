@@ -630,7 +630,7 @@ class FailingReader:
             raise ReleaseUnresolvable(release_id)
         if release_id in self.failing:
             raise RuntimeError("the provider timed out")
-        return (Track("1", "A", "One", isrc(1)),), 2026
+        return (Track("1", "A", "One", isrc(1)),), 2026, None
 
 
 ENTRY = labels.LabelEntry(label_id=SLUG, name=LABEL)
@@ -650,7 +650,7 @@ class Flaky(FakeCatalogue):
             raise ReleaseUnresolvable(release_id)
         if release_id in self.failing:
             raise RuntimeError("the provider timed out")
-        return (Track("1", "A", "One", isrc(1)),), 2026
+        return (Track("1", "A", "One", isrc(1)),), 2026, None
 
 
 def test_three_failed_reads_in_a_row_end_the_asking_and_a_gone_release_resets_it():
@@ -1482,7 +1482,7 @@ def test_a_listing_with_no_gate_files_every_candidate_unstamped(installed):
 def test_a_held_release_and_a_queued_one_both_take_a_place(installed):
     gate = genre_gate.SweepGate(
         TAXONOMY,
-        tracks=lambda rid: ((Track("1", "A", "One", isrc(int(rid[1:]))),), 2026),
+        tracks=lambda rid: ((Track("1", "A", "One", isrc(int(rid[1:]))),), 2026, None),
         lookup=Lookup({isrc(4): ("Christian",), isrc(2): ("Dance",), isrc(1): ("Dance",)}),
     )
     releases = [FakeRelease(f"r{n}", year=str(2020 + n)) for n in (4, 3, 2, 1)]

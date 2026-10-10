@@ -3005,7 +3005,8 @@ ENTRIES: tuple[Entry, ...] = (
                 name="organize.account.apply",
                 options=("apply", "abort"),
                 prompt="Apply these steps to the streaming account? Nothing is "
-                "removed and nothing you made is moved.",
+                "removed, and nothing you made is moved unless a sync marked it "
+                "downloaded, which files it in its year folder.",
                 #: EXPLICIT, as every other write to the account is (R34).
                 explicit=True,
                 digest_source="plan",

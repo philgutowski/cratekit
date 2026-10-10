@@ -605,8 +605,9 @@ disagree by exactly these, so a listing that ended where the count says can
 still hold fewer rows. Since R-504 the hearts listing compares the two and
 reports "N declared, M listed, K withheld by the provider" rather than passing
 the short listing off as the account. Which tracks were withheld is never
-known and never guessed. A playlist's listing has the same shape and does not
-compare yet, which is R-515.
+known and never guessed. Since R-515 a playlist's listing and a release's
+listing compare the same way, and carry the shortfall beside the rows rather
+than raising it, so a caller that does not know it keeps working.
 
 Not the review store's **withhold**, which is a producer taking a candidate
 back out of a queue into a hold, see **Held release**. The provider withholds
