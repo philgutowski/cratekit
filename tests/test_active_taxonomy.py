@@ -76,10 +76,17 @@ def shipped_without(section: str) -> str:
 # compares the copy against the shipped template by a fingerprint the definer
 # computes (R-689), and stays OFF the shipped text list on purpose: a module
 # holding the shipped text and the parser is one line from routing by it.
+#
+# THE UPGRADE PLANNER HOLDS BOTH, and is the one module besides the two that
+# define them that may (U132). It writes the active copy from the shipped text
+# as setup does, and parses each candidate copy to refuse one that would not
+# load; it returns names and text, never a parsed taxonomy, so nothing routes
+# by what it reads.
+UPGRADER = SRC / "core" / "taxonomy_upgrade.py"
 READERS = {
     "default_taxonomy": frozenset({LOADER, DEFINER}),
-    "shipped_template_text": frozenset({LOADER, DEFINER, SRC / "cli" / "setup.py"}),
-    "load_taxonomy": frozenset({LOADER, DEFINER, SRC / "cli" / "doctor.py"}),
+    "shipped_template_text": frozenset({LOADER, DEFINER, UPGRADER, SRC / "cli" / "setup.py"}),
+    "load_taxonomy": frozenset({LOADER, DEFINER, UPGRADER, SRC / "cli" / "doctor.py"}),
 }
 
 
