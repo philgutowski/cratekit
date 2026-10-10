@@ -1,0 +1,55 @@
+name = "u118-d"
+pass_kind = "light"
+
+[[rows]]
+id = "T1_old_playlist_split_row"
+description = "Soul no longer splits R&B's former place, so a Soul track in the old Soul / R&B playlist is not moved"
+file = "src/cratekit/templates/taxonomy.default.toml"
+surface = "user"
+tests = ["tests/test_adopt_split_place.py", "tests/test_taxonomy.py", "tests/test_adopt_former_place.py"]
+old = '''
+[[bucket.split_from]]
+id = "rnb_soul_rnb"
+bucket = "rnb"
+sub = "non_electronic_soul_rnb"
+display = "Soul / R&B"
+'''
+new = ''''''
+
+[[rows]]
+id = "T2_named_word"
+description = "Hip-hop & Rap is no longer a Hip-Hop word"
+file = "src/cratekit/templates/taxonomy.default.toml"
+surface = "user"
+tests = ["tests/test_adopt_split_place.py", "tests/test_routing_parity.py"]
+old = '''  "Hip-hop & Rap",
+'''
+new = ''''''
+
+[[rows]]
+id = "T4_hip_hop_former"
+description = "Hip-Hop declares no former place, so its tracks are never moved out of the old playlist"
+file = "src/cratekit/templates/taxonomy.default.toml"
+surface = "user"
+tests = ["tests/test_adopt_split_place.py", "tests/test_taxonomy.py", "tests/test_adopt_former_place.py"]
+old = '''[[bucket.formerly]]
+id = "non_electronic_hip_hop"
+bucket = "non_electronic"
+sub = "hip_hop"
+display = "Hip-Hop"
+'''
+new = ''''''
+
+[[rows]]
+id = "M11_genre_names_fallback"
+description = "genre_names counts the fallback tier as naming a bucket"
+file = "src/cratekit/adopt/move.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_split_place.py", "tests/test_adopt_former_place.py"]
+old = '''    return resolution.match is not routing.Match.FALLBACK and resolution.bucket_id == bucket'''
+new = '''    return resolution.bucket_id == bucket'''
+
+[[dropped]]
+id = "T3_soul_and_funk_word"
+description = "The general catalogue's Soul & Funk writes R&B again"
+reason = "the vocabulary suite's shipped table pins this row by name; ranked below the cap when M11 moved here for the null control"

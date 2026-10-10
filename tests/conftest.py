@@ -120,6 +120,13 @@ def _isolate_state_roots(tmp_path_factory):
                 if hasattr(config, attr):
                     monkeypatch.setattr(config, attr, path)
 
+            # R-926: the config writer refuses, under pytest, any path outside
+            # this root, whatever the environment says. The base temp holds
+            # both this fixture's roots and every test's own tmp_path.
+            monkeypatch.setattr(
+                config, "_TEST_WRITE_ROOT", tmp_path_factory.getbasetemp()
+            )
+
         yield root
 
 

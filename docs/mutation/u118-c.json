@@ -1,0 +1,308 @@
+{
+  "name": "u118-c",
+  "pass_kind": "light",
+  "branch": "relay/275",
+  "head": "a40f717",
+  "when": "2026-10-10 01:44 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 12995,
+  "baseline_exit": 0,
+  "pytest_runs": 14,
+  "state_guarded": "~/Library/Application Support/cratekit (365158 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/adopt/move.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/adopt/move.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "954bca306de2b7cf",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 12995,
+    "baseline_collected": 12995,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "M1_declarer_settles",
+      "description": "The declaring bucket's tree path decides on split places, so R&B tracks in two R&B bands are listed under Soul",
+      "file": "src/cratekit/adopt/move.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5500339ea0407821",
+      "subset": [
+        "tests/test_adopt_split_place.py",
+        "tests/test_adopt_former_place.py",
+        "tests/test_adopt_move.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 214,
+      "baseline_collected": 214,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_former_place.py::test_a_former_place_held_twice_is_not_listed_beside_the_move_that_leaves_it",
+        "tests/test_adopt_former_place.py::test_the_gate_shows_every_track_leaving_the_old_playlist_and_every_one_left",
+        "tests/test_adopt_split_place.py::test_a_track_in_two_r_and_b_bands_whose_genre_names_neither_is_not_listed_under_soul[another-folder]",
+        "tests/test_adopt_split_place.py::test_a_track_in_two_r_and_b_bands_whose_genre_names_neither_is_not_listed_under_soul[no-genre]",
+        "tests/test_adopt_split_place.py::test_an_r_and_b_track_in_two_r_and_b_bands_is_still_r_and_bs_to_settle"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if declarer == bucket:\n            settled.add(place.id)",
+      "new": "        if declarer == bucket:\n            pass"
+    },
+    {
+      "id": "M2_holder_genre_leg",
+      "description": "The holder settles its places only for an entry claiming Soul, not for one whose genre names it",
+      "file": "src/cratekit/adopt/move.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7aa3db2356589243",
+      "subset": [
+        "tests/test_adopt_split_place.py",
+        "tests/test_adopt_former_place.py",
+        "tests/test_adopt_move.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 214,
+      "baseline_collected": 214,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_split_place.py::test_a_soul_track_whose_folder_a_verdict_refused_is_listed_and_r_and_b_moves_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        elif claims(entry, declarer) or genre_names(entry, declarer, declared):",
+      "new": "        elif claims(entry, declarer):"
+    },
+    {
+      "id": "M4_held_split_none",
+      "description": "No unclaimed Soul track in a split place is listed",
+      "file": "src/cratekit/adopt/move.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bd45f6b354aca39e",
+      "subset": [
+        "tests/test_adopt_split_place.py",
+        "tests/test_adopt_former_place.py",
+        "tests/test_adopt_move.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 214,
+      "baseline_collected": 214,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_split_place.py::test_a_soul_track_whose_folder_a_verdict_refused_is_listed_and_r_and_b_moves_nothing",
+        "tests/test_adopt_split_place.py::test_an_unreadable_soul_file_in_a_renamed_r_and_b_band_is_listed_under_the_name",
+        "tests/test_adopt_split_place.py::test_an_unreadable_soul_file_in_r_and_b_is_listed_under_soul_and_not_moved"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not split or claims(entry, bucket) or not genre_names(entry, bucket, declared):\n        return ()",
+      "new": "    if True:\n        return ()"
+    },
+    {
+      "id": "M6_verdict_reason",
+      "description": "A Soul track a verdict refused is listed as no reading",
+      "file": "src/cratekit/adopt/move.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8fe079234c26db50",
+      "subset": [
+        "tests/test_adopt_split_place.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 58,
+      "baseline_collected": 58,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_split_place.py::test_a_soul_track_whose_folder_a_verdict_refused_is_listed_and_r_and_b_moves_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    elif bucket in refused:\n        reason = LEFT_VERDICT\n    else:\n        reason = LEFT_NO_READING",
+      "new": "    elif bucket in refused:\n        reason = LEFT_NO_READING\n    else:\n        reason = LEFT_NO_READING"
+    },
+    {
+      "id": "M7_unnamed_reason",
+      "description": "An unclaimed Soul track in a renamed R&B band is listed as no reading",
+      "file": "src/cratekit/adopt/move.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ae64e3bed242ff12",
+      "subset": [
+        "tests/test_adopt_split_place.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 58,
+      "baseline_collected": 58,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_split_place.py::test_an_unreadable_soul_file_in_a_renamed_r_and_b_band_is_listed_under_the_name"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if unnamed:\n        reason = LEFT_UNNAMED\n    elif bucket in refused:\n        reason = LEFT_VERDICT\n    else:",
+      "new": "    if False:\n        reason = LEFT_UNNAMED\n    elif bucket in refused:\n        reason = LEFT_VERDICT\n    else:"
+    },
+    {
+      "id": "M8_asked_split",
+      "description": "The plan never asks about a bucket where the track is only in a split place nobody claims",
+      "file": "src/cratekit/adopt/move.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "df9d9bcc9f732599",
+      "subset": [
+        "tests/test_adopt_split_place.py",
+        "tests/test_adopt_former_place.py",
+        "tests/test_adopt_move.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 214,
+      "baseline_collected": 214,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_split_place.py::test_a_soul_track_whose_folder_a_verdict_refused_is_listed_and_r_and_b_moves_nothing",
+        "tests/test_adopt_split_place.py::test_an_unreadable_soul_file_in_a_renamed_r_and_b_band_is_listed_under_the_name",
+        "tests/test_adopt_split_place.py::test_an_unreadable_soul_file_in_r_and_b_is_listed_under_soul_and_not_moved"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if held_in_split_place(entry, bucket.id, placements, declared):\n            asked.append(bucket.id)\n            continue\n",
+      "new": ""
+    },
+    {
+      "id": "M9_standing_split_target",
+      "description": "An entry naming a split place as its sub may be a move",
+      "file": "src/cratekit/adopt/move.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "d6122cb598e276e9",
+      "subset": [
+        "tests/test_adopt_split_place.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 12995,
+      "baseline_collected": 12995,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "        or routing.split_place(declared, entry.bucket, entry.sub) is not None\n",
+      "new": ""
+    },
+    {
+      "id": "M10_no_reading_leaves_split",
+      "description": "A Soul track with no reading is left in R&B rather than moved to Soul Unsorted",
+      "file": "src/cratekit/adopt/move.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6c14475bfff75621",
+      "subset": [
+        "tests/test_adopt_split_place.py",
+        "tests/test_adopt_former_place.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 103,
+      "baseline_collected": 103,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_split_place.py::test_a_soul_track_with_no_reading_leaves_r_and_b_for_soul_unsorted",
+        "tests/test_adopt_split_place.py::test_adoption_after_the_move_files_none_of_them_a_second_time",
+        "tests/test_adopt_split_place.py::test_an_approved_move_files_soul_and_hip_hop_in_their_folders_and_keeps_r_and_b",
+        "tests/test_adopt_split_place.py::test_the_gate_shows_every_soul_and_hip_hop_track_moving_and_no_r_and_b_track"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return \"\" if set(stale) <= routing.left_only(declared, entry.bucket) else LEFT_NO_READING",
+      "new": "        former = {place.id for _declarer, place in routing.former_places(declared, entry.bucket)}\n        return \"\" if set(stale) <= former else LEFT_NO_READING"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "M3_holder_claims_leg",
+      "description": "The holder settles only on the genre leg, dropping the claims leg",
+      "reason": "an entry that claims a bucket was routed there by its genre, so the leg is covered by M2's; ranked below the cap"
+    },
+    {
+      "id": "M5_held_split_claims",
+      "description": "held_in_split_place drops its claims check",
+      "reason": "every caller asks claims first and continues, so the check is belt and braces; ranked below the cap"
+    },
+    {
+      "id": "M11_genre_names_fallback",
+      "description": "genre_names counts the fallback tier as naming a bucket",
+      "reason": "only reachable with a taxonomy whose fallback is a bucket that declares split places, which the shipped one is not; maintainer facing, ranked below the cap"
+    }
+  ]
+}

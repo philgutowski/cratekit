@@ -55,11 +55,24 @@ from tests.test_adopt_workers import (  # noqa: F401
 DECLARED = taxonomy.default_taxonomy()
 TREE_ID = DECLARED.tree.id
 
-#: The bucket the shipped template promoted, found by what makes it one.
+#: The bucket the shipped template promoted, found by what makes it one. The
+#: first of them in declared order: since U118 Hip-Hop declares one too, held
+#: by the same folder, and its own file is `test_adopt_split_place.py`.
 PROMOTED = next(bucket for bucket in DECLARED.buckets if bucket.formerly)
 (FORMER,) = PROMOTED.formerly
 HOLDER = DECLARED.bucket(FORMER.bucket)
 OLD_PLACE = (HOLDER.display, FORMER.display)
+#: Every former place the holding folder competes on, this one and the others.
+HELD_FORMERLY = {place.id for _declarer, place in routing.former_places(DECLARED, HOLDER.id)}
+#: The bucket split out of the promoted one since (U118), whose words were the
+#: promoted bucket's when it was promoted.
+SPLIT = next(
+    bucket
+    for bucket in DECLARED.buckets
+    if any(place.bucket == PROMOTED.id for place in bucket.split_from)
+)
+#: The split place it declares on the promoted bucket's former place.
+(OLD_SPLIT,) = [place for place in SPLIT.split_from if place.sub == FORMER.id]
 
 #: A genre the promoted bucket claims and one the old folder still claims.
 PROMOTED_GENRE = PROMOTED.aliases[0]
@@ -114,12 +127,15 @@ def _scanned(
 def _in_old(content_id: str, *also: str) -> dict:
     """What the placement reader answers for a track in the old playlist.
 
-    Under BOTH buckets the playlist competes in, as the reader reports it.
-    ``also`` is the bands of the promoted bucket the track holds as well.
+    Under BOTH buckets the playlist competes in, as the reader reports it,
+    and under the bucket split out of the promoted one since U118, which
+    declares the playlist as one of its split places. ``also`` is the bands
+    of the promoted bucket the track holds as well.
     """
     return {
         PROMOTED.id: {content_id: (FORMER.id, *also)},
         HOLDER.id: {content_id: (FORMER.id,)},
+        SPLIT.id: {content_id: (OLD_SPLIT.id,)},
     }
 
 
@@ -158,14 +174,20 @@ def test_a_former_place_competes_where_it_is_declared_and_where_it_sits_and_nowh
     # kind there is still that folder's own.
     kind, subs = routing.competing_subs(DECLARED, HOLDER.id)
     assert kind is routing.Competing.STYLE
-    assert subs == {sub.id for sub in HOLDER.subs} | {FORMER.id}
+    assert FORMER.id in HELD_FORMERLY
+    assert subs == {sub.id for sub in HOLDER.subs} | HELD_FORMERLY
     for bucket in DECLARED.buckets:
         if bucket.id not in (PROMOTED.id, HOLDER.id):
             assert FORMER.id not in routing.competing_subs(DECLARED, bucket.id)[1], bucket.id
-            assert routing.former_places(DECLARED, bucket.id) == ()
+            assert (PROMOTED.id, FORMER) not in routing.former_places(DECLARED, bucket.id)
+            if not bucket.formerly:
+                # A BUCKET NO FORMER PLACE INVOLVES HAS NONE, strictly, so an
+                # index that leaks one into an unrelated bucket fails here.
+                assert routing.former_places(DECLARED, bucket.id) == (), bucket.id
     for bucket_id in (PROMOTED.id, HOLDER.id):
         assert routing.former_place(DECLARED, bucket_id, FORMER.id) is FORMER
-        assert routing.former_places(DECLARED, bucket_id) == ((PROMOTED.id, FORMER),)
+    assert routing.former_places(DECLARED, PROMOTED.id) == ((PROMOTED.id, FORMER),)
+    assert (PROMOTED.id, FORMER) in routing.former_places(DECLARED, HOLDER.id)
     assert routing.former_place(DECLARED, PROMOTED.id, MED) is None
     assert routing.former_place(DECLARED, ELSEWHERE.id, FORMER.id) is None
 
@@ -565,9 +587,9 @@ def test_a_genre_that_left_the_promoted_bucket_since_the_approval_is_a_stale_dec
 #: playlist the promotion left, anything else a band of the promoted bucket.
 _SEEDED = (
     ("r-reads-high", PROMOTED.aliases[0], "8", ("old",)),
-    ("r-reads-low", PROMOTED.aliases[1], "2", ("old",)),
-    ("r-reads-med", PROMOTED.aliases[2], "5", ("old",)),
-    ("r-already-in-band", PROMOTED.aliases[3], "5", ("old", MED)),
+    ("r-reads-low", PROMOTED.aliases[-1], "2", ("old",)),
+    ("r-reads-med", PROMOTED.aliases[0], "5", ("old",)),
+    ("r-already-in-band", PROMOTED.aliases[-1], "5", ("old", MED)),
     ("r-no-reading", PROMOTED_GENRE, None, ("old",)),
     ("r-by-hand", STAYING_GENRE, "5", ("old",)),
     ("r-no-genre", "", "5", ("old",)),
@@ -592,12 +614,19 @@ def old_shape_text() -> str:
     A library set up before R-797 holds this shape until a person edits it.
     Rebuilt from the shipped text so that everything else in it stays the
     shipped template, and checked below to be the shape it claims.
+
+    THE BUCKET SPLIT OUT OF THE PROMOTED ONE GOES TOO (U118). Its words were
+    the old sub's, and its split places name a bucket this shape has not got.
+    Hip-Hop's promotion stays, which is a shape no library held, and is kept
+    because only R&B's is being undone here.
     """
     text = taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME)
     start = text.index("# R&B AT THE TOP LEVEL")
-    end = text.index(f'[[bucket]]\nid = "{HOLDER.id}"')
+    end = text.index("# HIP-HOP AT THE TOP LEVEL")
+    assert f'id = "{SPLIT.id}"' in text[start:end]
     text = text[:start] + text[end:]
-    aliases = "".join(f'  "{alias}",\n' for alias in PROMOTED.aliases)
+    words = (*PROMOTED.aliases, *SPLIT.aliases)
+    aliases = "".join(f'  "{alias}",\n' for alias in words)
     anchor = f'[[bucket]]\nid = "{HOLDER.id}"\n'
     head, tail = text.split(anchor)
     opening, rest = tail.split("aliases = [\n", 1)
@@ -608,9 +637,7 @@ def old_shape_text() -> str:
     )
     assert tail.count("[bucket.sub_by_source]\n") == 1
     tail = tail.replace("[bucket.sub_by_source]\n", sub)
-    rows = "".join(
-        f'  {{ source = "{alias}", sub = "{FORMER.sub}" }},\n' for alias in PROMOTED.aliases
-    )
+    rows = "".join(f'  {{ source = "{alias}", sub = "{FORMER.sub}" }},\n' for alias in words)
     assert tail.count("map = [\n") == 1
     tail = tail.replace("map = [\n", f"map = [\n{rows}")
     return head + anchor + tail
@@ -618,9 +645,10 @@ def old_shape_text() -> str:
 
 def test_the_old_shape_is_the_shape_before_the_promotion():
     old = taxonomy.load_taxonomy(old_shape_text())
-    assert PROMOTED.id not in old.bucket_ids()
-    assert all(not bucket.formerly for bucket in old.buckets)
-    for alias in PROMOTED.aliases:
+    assert PROMOTED.id not in old.bucket_ids() and SPLIT.id not in old.bucket_ids()
+    assert FORMER.id not in {place.id for bucket in old.buckets for place in bucket.formerly}
+    assert all(not bucket.split_from for bucket in old.buckets)
+    for alias in (*PROMOTED.aliases, *SPLIT.aliases):
         assert routing.resolve_bucket(old, alias).bucket_id == HOLDER.id
         assert routing.energy_sub(old, HOLDER.id, 5, source_genre=alias).id == FORMER.sub
     assert destination(old, HOLDER.id, FORMER.sub) == OLD_PLACE

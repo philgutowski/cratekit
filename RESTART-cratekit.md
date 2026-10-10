@@ -4,6 +4,103 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**U118 built, 2026-10-09, on `relay/275`, issue #275: Soul and Hip-Hop are
+top level genre folders with energy bands, beside R&B.** The shipped template,
+now schema version 3, gains two buckets shaped as R&B is (bands, Unsorted,
+"with vox", `rates = false`, no Candy). Hip-Hop leaves NonElectronic and
+declares the old Hip-Hop playlist as its former place; "Hip-hop & Rap" is an
+exact Hip-Hop alias by the author's naming. Soul takes "Soul", "Soul / R&B"
+and "soul & funk", and declares a new shape, SPLIT PLACES
+(`[[bucket.split_from]]`): R&B's four bands and R&B's own former place, which
+R&B still competes on. A Soul track in one is withheld by adoption and moved
+by `crate adopt move` to its Soul band, keeping "with vox"; an R&B or MPB
+track is never touched; an unclaimed Soul track is listed under Soul. A
+bucket's tagging only word now beats another bucket's routing alias, so
+"Trap / Wave" still tags Hip-Hop. The review drove nine findings, five
+applied in one fix round. Battery on the branch: ruff clean, 12,995 tests
+collected and green, the scan clean. Twenty five mutation rows, 23 detected,
+two maintainer facing zeros (`docs/mutation/u118-notes.md`). R-939 to R-941
+record what is left. NOT YET ON THE LIVE LIBRARY: the active copy is the
+author's file; the attended tail edits it the same way, rehearses `crate
+adopt move` on a database copy, then runs it live on the approved gate.
+
+**U114 built, 2026-10-09, on `relay/266`, issue #266: `crate tag suggest`
+offers a genre for a row with none.** A live row with no genre on the row or
+the file gets weighted votes: its artist's other tracks 2 each, its folder's
+1, a neighbour voting once, and with `--catalogue` the lookup `tag folder`
+makes at 6, asked again on a plain miss only, three unread rows in a row
+stopping the walk, answers kept a week in the new library state entry
+`tag_suggest_catalogue` and an unread one for the day. Only a genre adoption
+routes and the taxonomy names exactly is suggested. One explicit gate,
+`tag.suggest.confirm`, shows the plan grouped by genre and band; `--band`
+(high by default), `--leave` and `--set` choose what is written. The apply
+opens with write intent first, checks the rows, then writes and reads back
+each file inside the row engine's session through a new `narrow` step on
+`rows.apply_rows`, and writes the rows whose file took the genre, recorded
+as `tag-suggest`. A row whose file carries a genre is counted
+`file-has-genre` and left to `tag rows`. The review drove ten findings in
+one fix round, eight applied. Battery on the branch: ruff clean, 12,918
+passed and 1 skipped, the scan clean. Twenty five mutation rows, twenty four
+killed, one maintainer facing zero (`docs/mutation/u114-notes.md`). R-934
+to R-938 record what is left, the undo that covers rows and not files first.
+Not yet run on the live library.
+
+**R-925 built, 2026-10-09, on `relay/269`, issue #269: a queued set's
+tracks can be read.** `intake set` writes the tracklist `intake identify`
+writes, through the same writer, into download staging's tracklists folder
+or the folder its new `--out` names, after the job is queued, and names the
+path in the `tracklist-written` note and under `progress.tracklist`. A
+write that fails is the `tracklist-unwritten` warning naming `crate job
+show`, and the job stays queued. `job show` on an intake job lists every
+frozen track under `progress.intake_tracks` and one line per track in human
+output, artist, title, version and ISRC or `no isrc`. The review drove eight
+findings in one fix round: the folder refusal named an `--out` the verb did
+not take, a write failure withheld a paid job, the field collided with the
+`tracks` counts a dozen payloads carry. Twenty mutation rows, eighteen
+killed, two maintainer facing zeros (`docs/mutation/r925-notes.md`). R-933
+records identify's rerun wording over a fetched mix. One song under several
+ISRCs is still listed once per ISRC.
+
+**R-924 built, 2026-10-09, on `relay/268`, issue #268: `intake set` says
+its phase and progress while it runs.** The first five hour mix fetched 557
+MB and paid 732 calls with nothing on the screen. The dispatcher now hands a
+verb `Context.progress`, a flushed writer on standard error in human output
+and None in JSON output. The fetch says it started, the size of the largest
+file in its scratch folder every fifteen seconds, and what landed. The bound
+identifier states its plan (chunks, cached, paid calls to send, parts) after
+the bounds and the credential read, then counts calls on the first, every
+twentieth and the last; a fully cached recording says no call is sent.
+`intake identify` says the same. The review drove nine findings, five
+applied in one fix round. Twenty two mutation rows, nineteen killed, three
+zeros in `docs/mutation/r924-notes.md`, one of which exposed a test that
+could not see a dead watcher, fixed after the pass. R-932 records what a
+real pipe would show. The identified tracks are still not shown (R-925).
+
+**R-926 built, 2026-10-09, on `relay/270`, issue #270: under pytest a state
+write outside the test root is refused.** The 2026-10-08 clobber of the live
+config was a review subagent's probe run from outside `tests/`, where the
+conftest never loads. The config writer now refuses, under pytest, any path
+outside the base temporary root the conftest registers, and everything when
+none is registered; `atomic_write_bytes` and `_exclusive_lock` run the same
+check and also accept the system temporary directory. The review drove nine
+findings, one fix round: the guard widened to the shared primitives, the
+tests reworked. Battery on the branch: ruff clean, 12,835 passed and 1
+skipped, the scan clean. Fifteen mutation rows, all killed
+(`docs/mutation/r926-notes.md`), the live config's modification time
+unchanged throughout. R-931 records what it cannot see. The rule for
+writers is `docs/solutions/workflow-issues/under-pytest-a-state-write-outside-the-test-root-is-refused.md`.
+
+**Sitting 35, 2026-10-09, attended. The first set intake end to end on the
+native tree.** A 5 hour SoundCloud mix: 54 identified, 36 kept, 20
+downloaded, 19 landed natively under `INBOX / 2026-10-09 Set Public Service
+NYC Live at Vonking 5-3-26`, analysed and tags reloaded in rekordbox, 18
+adopted on an equal digest, and a permanent set playlist made by hand under
+INSPIRATION, which the author decided every set intake gets from now on
+(U121, #278). The 19 rows predate U115's merge and need `crate repair rows`
+once `~/cratekit` is rebuilt. R-924 to R-926 were filed from the run, and
+the Soul, Hip-Hop and genre Favorites work is planned as U118 to U120
+(#275 to #277). Record in `docs/cutover.md`.
+
 **U115 built, 2026-10-09, on `unit/u115`, issue #272: a native row carries
 its file's inode as `rb_file_id`, and the rows numbered at random can be
 repaired.** Sitting 34 named the column: rekordbox writes the file's inode
