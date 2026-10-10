@@ -1,0 +1,98 @@
+name = "u130-b"
+pass_kind = "light"
+
+# U130, batch B: the plan in sync/pair_cli.py, what each side is asked and
+# what a pair may hold. User facing: the plan is what both gates show and what
+# both sides are written to.
+
+[[rows]]
+id = "B1_short_base_unnarrowed"
+description = "A short listing's withheld tracks read as removed on the account"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '''        if short is not None:
+            # A WITHHELD TRACK IS NOT A REMOVED ONE.'''
+new = '''        if False:
+            # A WITHHELD TRACK IS NOT A REMOVED ONE.'''
+
+[[rows]]
+id = "B2_short_removes_on_account"
+description = "A short listing still asks the account for removals and an order"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '''    if short is None:
+        account_removes'''
+new = '''    if True:
+        account_removes'''
+
+[[rows]]
+id = "B3_account_isrc_not_first"
+description = "Ask the provider even when exactly one account track carries the row's ISRC"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '''            if isrc and len(held_there) == 1:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "B4_no_isrc_still_asked"
+description = "A row with no ISRC anywhere is still matched through the provider"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '''            elif not isrc:
+                reason = NO_ISRC'''
+new = '''            elif False:
+                reason = NO_ISRC'''
+
+[[rows]]
+id = "B5_readd_old_rule"
+description = "A re-add is any change of the first row, so a duplicate losing one copy reads as put back"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '''            if content_id in base_rows and not (row_ids & base_rows[content_id])'''
+new = '''            if content_id in base_rows and row_ids != base_rows[content_id]'''
+
+[[rows]]
+id = "B6_requeue"
+description = "A track an earlier sync queued is queued again"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '''        if remote_id in queued_before:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "B7_set_playlist_in_scope"
+description = "A set's playlist may be paired"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '''    if account_id in set_built:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B8_tree_name_in_scope"
+description = "A playlist under a top level node the taxonomy names is in scope"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '''    if any(node_id in roots for node_id, _name in chain) or top_name in names:'''
+new = '''    if any(node_id in roots for node_id, _name in chain):'''
+
+[[rows]]
+id = "B9_stale_pair_blocks_all"
+description = "With no argument, one pair whose playlist is gone refuses every pair"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '''                if not every or exc.cause.reason not in PER_PAIR_REASONS:'''
+new = '''                if True:'''
+
+[[dropped]]
+id = "B10_live_here_add"
+description = "Add a content row the playlist already holds live under another key"
+reason = "add_memberships already skips a live member, so the row writes nothing different; the guard only keeps the gate from listing a no op add, which is a wording cost below the cap"
