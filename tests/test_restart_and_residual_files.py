@@ -431,3 +431,33 @@ def test_every_moved_paragraph_is_in_a_fragment_byte_for_byte():
     assert len(moved) > 250
     lost = [p[:80] for p in moved if p not in fragments]
     assert lost == []
+
+
+def test_audit_counts_a_residual_file_that_cannot_land_as_a_contradiction(
+    tmp_path, monkeypatch, capsys
+):
+    """The audit reads the folder as well as the ledger, and a bad file is exit 2.
+
+    Everything the board itself reads is doubled to an empty board that
+    matches, so the residual file is the only thing that can move the exit.
+    A good file waiting is named and leaves the board matching.
+    """
+    board = _load("board")
+    folder = tmp_path / "residuals"
+    folder.mkdir()
+    monkeypatch.setattr(board, "RESIDUALS_DIR", folder)
+    monkeypatch.setattr(board, "repo_slug", lambda: ("fixture", "cratekit"))
+    monkeypatch.setattr(board, "load_issues", lambda: [])
+    monkeypatch.setattr(board, "reconcile", lambda owner, apply, labels_only=False: [])
+    monkeypatch.setattr(board, "owed_by_unit", lambda: {})
+
+    class Args:
+        labels_only = True
+
+    (folder / "u1-a.md").write_text(_residual("Waiting for its number"))
+    assert board.cmd_audit(Args()) == 0
+    assert "1 residual file(s) in docs/residuals wait for a number" in capsys.readouterr().out
+
+    (folder / "u1-a.md").write_text("---\ntitle: No Found line\n---\n\nBody.\n")
+    assert board.cmd_audit(Args()) == 2
+    assert "CANNOT LAND" in capsys.readouterr().out
