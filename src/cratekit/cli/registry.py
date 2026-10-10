@@ -2920,6 +2920,49 @@ ENTRIES: tuple[Entry, ...] = (
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
+    # ── The landed hearts placed (U120) ─────────────────────────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives. The
+    # native landing places a heart as it lands since U120; this is the
+    # backfill for the hearts that landed before it, and for a landing whose
+    # source playlist was absent and skipped the placement.
+    Entry(
+        name="favorites.backfill",
+        summary="put every heart the favourites sync landed into All Favorites and the "
+        "playlist of the quarter it was hearted in, adding and never removing",
+        module="cratekit.favorites.backfill_cli",
+        builder="build",
+        handler_key="favorites.backfill",
+        # NO FEATURE ROW. The source system did this as part of its favourites
+        # pass; the author decided on 2026-10-09 that a landing does it here.
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: The database tree and nothing else: memberships added to All
+        #: Favorites and to a quarter playlist, that playlist when the folder
+        #: lacks it. No content row, no file, no node removed, no removal.
+        writes=frozenset({"db_tree"}),
+        destructive=True,
+        taxonomy_terms=("favorites",),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+        ),
+        gates=(
+            GateSpec(
+                name="favorites.backfill.approve",
+                options=("approve", "abort"),
+                prompt="Put these landed hearts into All Favorites and their quarter "
+                "playlists?",
+                #: EXPLICIT (R34). A write to the live library's playlists, as
+                #: the refresh's and the landing's are, so no blanket
+                #: affirmative satisfies it.
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
     # ── The retroactive tidy (U112) ─────────────────────────────────────────
     #
     # Appended, for the reason the deferred routing block above gives. A

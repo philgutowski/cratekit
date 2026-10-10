@@ -1588,6 +1588,13 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # it, and the verb ends NO_OP writing nothing. The writing path is
         # driven in tests/test_genre_favorites.py.
         "favorites.refresh": _routing_tree_cut_over_with_a_source,
+        # U120. LAZY, for the refresh's reason: the engine refuses a library
+        # with no live source playlist by name before the gate, so the sample
+        # makes the one playlist every favourite is in. No hearts job on this
+        # fixture, so the plan is empty, the explicit gate is still asked over
+        # it, the account is never listed, and the verb ends NO_OP writing
+        # nothing. The placing path is driven in tests/test_favorites_backfill.py.
+        "favorites.backfill": _a_source_playlist,
         # U61. The composer takes the favourites source's export, the same
         # document ``sync.favorites`` is driven with below, so its confirm gate
         # is reachable and conformance 3 can drive it. The registry on this
@@ -1930,6 +1937,23 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
     return sample() if callable(sample) else sample
 
 
+def _a_source_playlist() -> list[str]:
+    """The playlist every favourite is in, present and empty. Answers no arguments."""
+    from cratekit.core import rb_writer
+
+    cfg = config.load()
+    source = taxonomy.default_taxonomy().sub_class("favorites").signal_playlist
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        held = [row for row in handle.get_playlist(Name=source) if not rb_writer.is_folder(row)]
+        if not held:
+            handle.create_playlist(source)
+            handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    return []
+
+
 def _routing_tree_cut_over_with_a_source() -> list[str]:
     """The routing tree database native and the favourites source present. Answers no arguments."""
     from datetime import date
@@ -2211,6 +2235,10 @@ ACKNOWLEDGED_BEFORE_THE_GATE = {
     ),
     "favorites.refresh": (
         "tests/test_genre_favorites.py::"
+        "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
+    ),
+    "favorites.backfill": (
+        "tests/test_favorites_backfill.py::"
         "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
     ),
     "tag.suggest": (

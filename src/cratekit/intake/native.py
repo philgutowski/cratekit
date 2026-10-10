@@ -742,6 +742,30 @@ def _candidate_rows(db: Any, names: Iterable[str]) -> list[trees.ContentRow]:
     return found
 
 
+def content_ids_for(db: Any, cfg: config.Config, paths: Sequence[Path]) -> dict[str, str]:
+    """The active row holding each of ``paths``, by path, paths no row holds left out.
+
+    THE ONE RULE FOR A PATH ON THIS MACHINE AGAINST A PATH REKORDBOX WROTE
+    DOWN, asked of the candidate rows rather than the whole collection. The
+    apply asks it of its targets below, and the favourites backfill (U120)
+    asks it of the files the hearts resolve to. Two active rows on one path
+    answer the first, which the matcher surfaces for the person to tidy.
+    """
+    prefix_map = [locations.PrefixRule(a, b) for a, b in cfg.resolved_prefix_map()]
+    matches = trees.match_active_rows(
+        list(paths),
+        _candidate_rows(db, (path.name for path in paths)),
+        root=cfg.library.root,
+        prefix_map=prefix_map,
+    )
+    found: dict[str, str] = {}
+    for path, match in zip(paths, matches):
+        held = _holding(match)
+        if held is not None:
+            found[str(path)] = held
+    return found
+
+
 def _taken_since_the_plan(db: Any, cfg: config.Config, rows: Sequence[RowPlan]) -> dict[str, str]:
     """Each planned target a row has taken since the plan was made, by target.
 
@@ -752,19 +776,7 @@ def _taken_since_the_plan(db: Any, cfg: config.Config, rows: Sequence[RowPlan]) 
     row is added, so nothing pending is flushed by the read, and asked of the
     candidate rows rather than the whole collection.
     """
-    prefix_map = [locations.PrefixRule(a, b) for a, b in cfg.resolved_prefix_map()]
-    matches = trees.match_active_rows(
-        [row.target for row in rows],
-        _candidate_rows(db, (row.target.name for row in rows)),
-        root=cfg.library.root,
-        prefix_map=prefix_map,
-    )
-    taken: dict[str, str] = {}
-    for row, match in zip(rows, matches):
-        held = _holding(match)
-        if held is not None:
-            taken[str(row.target)] = held
-    return taken
+    return content_ids_for(db, cfg, [row.target for row in rows])
 
 
 def apply_rows(
@@ -1108,6 +1120,8 @@ __all__ = [
     "UNSUPPORTED",
     "WORKFLOW",
     "AddedRow",
+    "FavoritesPlan",
+    "HeartItem",
     "NativeLanded",
     "NativePlan",
     "PlaylistPlan",
@@ -1119,6 +1133,7 @@ __all__ = [
     "assert_rows_gridless",
     "assert_rows_identified",
     "choose_device",
+    "content_ids_for",
     "file_id_of",
     "file_type_of",
     "identity",

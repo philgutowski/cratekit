@@ -6175,7 +6175,17 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # And again on the watcher's round: 669 to 670 distinct, non-keys 470 to
     # 471. ONE joined, favorites-skipped, the resume's third WARNING code, for
     # a refresh that did not run at an adoption's end.
-    assert (len(literals), len(literals - set(causes))) == (670, 471), (
+    # Re-pinned on U120, the landed hearts placed, 2026-10-10: 670 to 676
+    # distinct, non-keys 471 to 477. SIX joined and nothing left, each absent
+    # from `main`'s own `src` by git grep, and none is a key: favorites-placement
+    # is the session WORKFLOW the backfill is recorded under and the plan KIND
+    # its digest is taken under; favorites-placed and
+    # favorites-placement-skipped are the native landing's WARNING codes;
+    # favorites-nothing-to-place, favorites-backfilled and
+    # favorites-hearts-undated are the backfill verb's. The engine refuses
+    # under U119's favorites-source-missing and the shared decision-stale, so
+    # the cause population above is unchanged.
+    assert (len(literals), len(literals - set(causes))) == (676, 477), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
@@ -6973,7 +6983,15 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # decision-stale and session-committed-unverified, and
     # favorites/refresh_cli.py, which refuses with config-unusable. Neither
     # holds an in-range integer.
-    assert (len(literal_holders), len(literal_both)) == (139, 29), (
+    # Re-pinned on U120, the landed hearts placed, 2026-10-10: holders move
+    # 139 to 142, and the also-holds-an-integer half is UNCHANGED at 29. THREE
+    # modules joined and none left, all new files: favorites/placement.py,
+    # which refuses with decision-stale and under U119's favorites-source-missing
+    # through that module's name; favorites/backfill.py, which refuses with
+    # decision-stale and session-committed-unverified; and
+    # favorites/backfill_cli.py, which refuses with config-unusable. None holds
+    # an in-range integer.
+    assert (len(literal_holders), len(literal_both)) == (142, 29), (
         f"the literal at-risk population moved to {len(literal_holders)} modules, "
         f"{len(literal_both)} of them also holding an in-range integer"
     )
