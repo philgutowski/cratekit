@@ -51,7 +51,7 @@ from typing import Any
 
 from cratekit.acquire import match, match_cli
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import config, review, tags
+from cratekit.core import config, review, secrets, tags
 from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.export.cli import UNMATCHED_WARNING
@@ -1258,6 +1258,17 @@ def _export_set_backfill(ctx, cfg) -> Envelope:
                 detail={**dict(exc.cause.detail), "applied": list(applied)},
                 inner=exc.cause,
             ) from exc
+        if isinstance(exc, secrets.CredentialError):
+            # A mid-loop session loss is a sign-in problem, not a defect (U129).
+            raise refuse(
+                "credential-missing",
+                f"before this failed the backfill already made {made}. {exc}",
+                remedy=Remedy(str(exc.remedy)),
+                steps=(again,),
+                scope=Scope.RUN,
+                origin=_SET,
+                detail={"applied": list(applied), "kind": type(exc).__name__},
+            ) from exc
         raise refuse(
             "internal-error",
             f"before this failed the backfill already made {made}. "
@@ -1370,6 +1381,17 @@ def _export_archive_backfill(ctx, cfg) -> Envelope:
                 origin=_ARCHIVE,
                 detail={**dict(exc.cause.detail), "archived": list(filed)},
                 inner=exc.cause,
+            ) from exc
+        if isinstance(exc, secrets.CredentialError):
+            # A mid-loop session loss is a sign-in problem, not a defect (U129).
+            raise refuse(
+                "credential-missing",
+                f"before this failed the backfill already archived {made}. {exc}",
+                remedy=Remedy(str(exc.remedy)),
+                steps=(again,),
+                scope=Scope.RUN,
+                origin=_ARCHIVE,
+                detail={"archived": list(filed), "kind": type(exc).__name__},
             ) from exc
         raise refuse(
             "internal-error",

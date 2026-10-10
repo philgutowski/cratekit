@@ -6316,7 +6316,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # 2026-10-10: 711 to 712 distinct, non-keys 497 to 498. ONE joined and
     # nothing left, account-playlist-left-out, absent from `main`'s own `src`
     # by git grep, the WARNING code naming the tracks no mirror holds.
-    assert (len(literals), len(literals - set(causes))) == (712, 498), (
+    # Re-measured on the merge of main at 004cb9d into grok/297, 2026-10-10:
+    # U129's nine literals join main's, 721 distinct and 507 that are not keys,
+    # measured on the merged tree and not either side alone.
+    # account-archive, export-archive-backfill, export-archive-backfill-refused,
+    # export-set-backfill, export-set-backfill-no-job, export-set-backfill-no-tracks,
+    # intake-land-archive-failed, set-account-unnamed, set-account-unreachable.
+    assert (len(literals), len(literals - set(causes))) == (721, 507), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

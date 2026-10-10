@@ -439,7 +439,7 @@ new = """    done.marked = False
 """
 
 [[dropped]]
-id = "A15_unnamed_skips_without_warning"
+id = "A26_unnamed_skips_without_warning"
 description = "Queue an unnamed local set without the account unnamed warning"
 reason = "ranked below the cap after archive backfill naming took the slot; the unnamed path stays covered by its own test"
 

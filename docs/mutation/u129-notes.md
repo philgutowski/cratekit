@@ -43,7 +43,14 @@ resume on a later day rebuilds the name and refuses with DecisionStale. The
 "resume" remedy in the export set backfill meets the same stale digest once
 finished playlists drop out of missing.
 
+## Archive order inside write
+
+The account archive runs inside ``write()`` after ``apply_native`` commits but
+before ``assert_rows_gridless`` and ``assert_rows_identified``, with the
+database handle still open. A later check failing leaves the account saying
+DOWNLOADED. Moving the archive after those checks is the better order when it
+is a small change; left as a note for now.
+
 ## Verdict
 
-No zero death row on a user facing guard without a covering test. Author's
-table only; watcher measures on macOS.
+Author's table only; watcher measures on macOS.
