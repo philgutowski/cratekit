@@ -1,0 +1,13 @@
+name = "u127-b"
+pass_kind = "light"
+
+# U127 batch B: N6 re-measured after the engine digest test landed. The 25th
+# row, the cap. N13's test is not re-measured, see u127-notes.md.
+
+[[rows]]
+id = "N6b_digest_blind_to_vox"
+description = "Drop each added row's score and answer from the digest, after the engine test"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''                "rows": [[str(row.target), row.voxlevel, row.vox] for row in plan.to_add()],'''
+new = '''                "rows": [[str(row.target)] for row in plan.to_add()],'''

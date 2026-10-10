@@ -1094,6 +1094,11 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'tree-unconverged',
     ],
     'intake/inspiration_cli.py': ['config-unusable'],
+    # Re-pinned on the merge of main at 230f1d7 (U127) into grok/290, 2026-10-10:
+    # TWO kebab literals joined in intake/land_cli.py and nothing left,
+    # vox-not-written and vox-unscored, the WARNING codes a native write gives
+    # for a landing that could tag no row and for a file with no score.
+    # Measured on the merged tree; do not bring back a package-wide total tuple.
     'intake/land_cli.py': [
         'decision-stale',
         'favorites-placed',
@@ -1103,6 +1108,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'land-native',
         'library-export-unusable',
         'rows-await-analysis',
+        'vox-not-written',
+        'vox-unscored',
     ],
     'intake/landing.py': [
         'decision-stale',
