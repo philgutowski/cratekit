@@ -1,0 +1,839 @@
+{
+  "name": "a32",
+  "pass_kind": "light",
+  "branch": "unit/issue291-the-contentlink-probe-one-repaired-row-g",
+  "head": "45595c7",
+  "when": "2026-10-10 12:13 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 13454,
+  "baseline_exit": 0,
+  "pytest_runs": 30,
+  "state_guarded": "~/Library/Application Support/cratekit (365168 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/write/row_link.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/write/row_link.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "62d373b02494a76c",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 13454,
+    "baseline_collected": 13454,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "V1_any_column",
+      "description": "A triple naming a column outside the probe set is parsed, AnalysisUpdated included",
+      "file": "src/cratekit/write/row_link.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4b083fd049fb7549",
+      "subset": [
+        "tests/test_repair_link.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.row_link",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_repair_link.py::test_a_malformed_triple_or_a_column_outside_the_probe_refuses_by_name[101:AnalysisUpdated=2]",
+        "tests/test_repair_link.py::test_a_malformed_triple_or_a_column_outside_the_probe_refuses_by_name[101:BPM=12800]",
+        "tests/test_repair_link.py::test_a_malformed_triple_or_a_column_outside_the_probe_refuses_by_name[101:Title=x]",
+        "tests/test_repair_link.py::test_a_malformed_triple_refuses_through_the_verb_before_any_gate"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if kind is None:\n        raise _invalid(",
+      "new": "    if False:\n        raise _invalid("
+    },
+    {
+      "id": "V2_link_not_converted",
+      "description": "A ContentLink value is kept as text rather than converted to a whole number",
+      "file": "src/cratekit/write/row_link.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "154648a9f3e81cce",
+      "subset": [
+        "tests/test_repair_link.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.row_link",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_repair_link.py::test_a_malformed_triple_or_a_column_outside_the_probe_refuses_by_name[101:ContentLink=]",
+        "tests/test_repair_link.py::test_a_malformed_triple_or_a_column_outside_the_probe_refuses_by_name[101:ContentLink=lots]",
+        "tests/test_repair_link.py::test_a_triple_reads_row_column_and_a_value_of_the_columns_type",
+        "tests/test_repair_link.py::test_the_plan_is_each_triple_its_values_and_who_else_carries_each"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if kind is int:",
+      "new": "    if False:"
+    },
+    {
+      "id": "V4_policy_unrestricted",
+      "description": "The probe policy builder admits a column outside the probe set",
+      "file": "src/cratekit/core/rb_writer.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "257785ad1b68e017",
+      "subset": [
+        "tests/test_repair_link.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_repair_link.py::test_the_probe_policy_names_exactly_the_columns_asked_and_refuses_any_other"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    outside = wanted - set(ROW_PROBE_COLUMNS)\n    if outside:",
+      "new": "    outside = wanted - set(ROW_PROBE_COLUMNS)\n    if False:"
+    },
+    {
+      "id": "P1_tombstone_plans",
+      "description": "Drop the live row filter from the plan's row query, so a tombstone plans",
+      "file": "src/cratekit/write/row_link.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a5162e0bce26ebdd",
+      "subset": [
+        "tests/test_repair_link.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.row_link",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_repair_link.py::test_a_tombstone_refuses_as_unknown_though_the_row_is_in_the_table"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    f\"WHERE ID = :id AND {rb_writer.SOFT_DELETE_COLUMN} = 0\"",
+      "new": "                    f\"WHERE ID = :id\""
+    },
+    {
+      "id": "P2_unknown_row",
+      "description": "Drop the unknown row refusal, so an absent identifier falls through",
+      "file": "src/cratekit/write/row_link.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "36cf3c4efb80dd5a",
+      "subset": [
+        "tests/test_repair_link.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.row_link",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_repair_link.py::test_a_plan_refusal_reaches_no_gate",
+        "tests/test_repair_link.py::test_a_tombstone_refuses_as_unknown_though_the_row_is_in_the_table",
+        "tests/test_repair_link.py::test_an_unknown_identifier_refuses_by_name_before_any_gate",
+        "tests/test_repair_link.py::test_one_bad_triple_refuses_the_whole_plan"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if row is None:\n            raise refuse(\n                ROW_UNKNOWN,",
+      "new": "        if row is None and False:\n            raise refuse(\n                ROW_UNKNOWN,"
+    },
+    {
+      "id": "P3_unheld_value",
+      "description": "Drop the unheld value refusal, so a value nobody carries is written",
+      "file": "src/cratekit/write/row_link.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "87f0d1cd05a8d7ca",
+      "subset": [
+        "tests/test_repair_link.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.row_link",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_repair_link.py::test_a_value_no_other_live_row_carries_refuses",
+        "tests/test_repair_link.py::test_a_value_only_a_tombstone_carries_refuses_as_unheld"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if probe.writes and carriers == 0:",
+      "new": "        if probe.writes and carriers < 0:"
+    },
+    {
+      "id": "P7_minority_boundary",
+      "description": "Move the majority rule's boundary, so a value carried by as many rows as the row's own is written",
+      "file": "src/cratekit/write/row_link.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f044c0731abb72b9",
+      "subset": [
+        "tests/test_repair_link.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.row_link",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_repair_link.py::test_a_value_carried_by_as_many_rows_as_the_rows_own_refuses_too"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if probe.writes and carriers <= fellows:",
+      "new": "        if probe.writes and carriers < fellows:"
+    },
+    {
+      "id": "P8_null_fellows",
+      "description": "Count a NULL's fellows with an equality, which matches nothing, so a NULL has no fellows",
+      "file": "src/cratekit/write/row_link.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e1ccaac2f8724b90",
+      "subset": [
+        "tests/test_repair_link.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.row_link",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_repair_link.py::test_the_plan_is_each_triple_its_values_and_who_else_carries_each"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    test = f\"{column} IS NULL\" if value is None else f\"{column} = :value\"",
+      "new": "    test = f\"{column} = :value\""
+    },
+    {
+      "id": "P4_count_tombstones",
+      "description": "Count tombstones as carriers and fellows of a value",
+      "file": "src/cratekit/write/row_link.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "281e53e9e05ba5ed",
+      "subset": [
+        "tests/test_repair_link.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.row_link",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_repair_link.py::test_a_null_counts_its_fellows_as_null_so_writing_one_back_is_the_minority",
+        "tests/test_repair_link.py::test_a_value_only_a_tombstone_carries_refuses_as_unheld",
+        "tests/test_repair_link.py::test_the_bindings_value_onto_a_row_rekordbox_made_refuses_as_the_minority",
+        "tests/test_repair_link.py::test_the_plan_is_each_triple_its_values_and_who_else_carries_each",
+        "tests/test_repair_link.py::test_the_two_acts_write_each_triple_and_move_no_other_column"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            f\"AND {rb_writer.SOFT_DELETE_COLUMN} = 0 AND ID != :id\"",
+      "new": "            f\"AND ID != :id\""
+    },
+    {
+      "id": "P6_writes_always",
+      "description": "Every triple writes, a row already at the value included",
+      "file": "src/cratekit/write/row_link.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ea75298fe85ff758",
+      "subset": [
+        "tests/test_repair_link.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.row_link",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_repair_link.py::test_a_plan_where_every_row_is_already_at_its_value_still_asks_and_writes_nothing",
+        "tests/test_repair_link.py::test_a_row_already_at_a_value_nobody_else_carries_still_plans_nothing",
+        "tests/test_repair_link.py::test_a_row_already_at_the_value_plans_nothing_for_that_triple",
+        "tests/test_repair_link.py::test_a_triple_already_at_its_value_is_shown_and_not_written",
+        "tests/test_repair_link.py::test_apply_refuses_a_plan_that_writes_nothing_as_a_defect",
+        "tests/test_repair_link.py::test_judge_skips_a_triple_that_writes_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return self.was != str(self.value)",
+      "new": "        return True"
+    },
+    {
+      "id": "D1_digest_drops_replaced",
+      "description": "Drop the replaced value from the item, so the digest does not move when it changes",
+      "file": "src/cratekit/write/row_link.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fc53b6287a743c07",
+      "subset": [
+        "tests/test_repair_link.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.row_link",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_repair_link.py::test_the_digest_moves_with_the_rows_the_columns_and_both_values",
+        "tests/test_repair_link.py::test_the_plan_is_each_triple_its_values_and_who_else_carries_each"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"from\": self.was,",
+      "new": "            \"from\": \"\","
+    },
+    {
+      "id": "D2_digest_unordered",
+      "description": "Keep the triples in the order given, so the same plan digests two ways",
+      "file": "src/cratekit/write/row_link.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9141b607243fea15",
+      "subset": [
+        "tests/test_repair_link.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.row_link",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_repair_link.py::test_the_digest_is_equal_whatever_order_the_triples_are_given_in"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    probes.sort(key=lambda p: (len(p.content_id), p.content_id, p.column))",
+      "new": ""
+    },
+    {
+      "id": "A2_stale_deleted",
+      "description": "A row deleted since the plan is still written",
+      "file": "src/cratekit/write/row_link.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9cc179e103dd9b65",
+      "subset": [
+        "tests/test_repair_link.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.row_link",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_repair_link.py::test_a_row_deleted_since_the_plan_refuses_stale_and_writes_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if row is None or row[rb_writer.SOFT_DELETE_COLUMN] != 0:",
+      "new": "        if row is None:"
+    },
+    {
+      "id": "A3_stale_value",
+      "description": "A row whose column moved since the plan is still written",
+      "file": "src/cratekit/write/row_link.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "02be2ed7a1f20948",
+      "subset": [
+        "tests/test_repair_link.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.row_link",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_repair_link.py::test_a_column_changed_since_the_plan_refuses_stale_and_writes_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        elif _text(row.get(probe.column)) != probe.was:",
+      "new": "        elif False:"
+    },
+    {
+      "id": "A5_policy_widened",
+      "description": "The commit's policy admits both probe columns whatever the plan writes",
+      "file": "src/cratekit/write/row_link.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2817ed0bd2b7a93c",
+      "subset": [
+        "tests/test_repair_link.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.row_link",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_repair_link.py::test_a_plan_writing_one_column_admits_only_that_one_to_the_guard"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    policy = rb_writer.row_probe_policy(p.column for p in plan.writing)",
+      "new": "    policy = rb_writer.row_probe_policy(rb_writer.ROW_PROBE_COLUMNS)"
+    },
+    {
+      "id": "A6_policy_left_behind",
+      "description": "The commit's policies are left registered after the body, in the shared context manager",
+      "file": "src/cratekit/core/rb_writer.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "2dcb9b8d25f6714a",
+      "subset": [
+        "tests/test_repair_link.py",
+        "tests/test_repair_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 112,
+      "baseline_collected": 112,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_repair_link.py::test_a_policy_registered_before_the_apply_survives_it",
+        "tests/test_repair_link.py::test_the_two_acts_write_each_triple_and_move_no_other_column",
+        "tests/test_repair_rows.py::test_a_policy_registered_before_the_apply_survives_it",
+        "tests/test_repair_rows.py::test_the_two_acts_fill_every_null_default_and_move_no_other_column"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    finally:\n        reset_field_policies()\n        for policy in was.values():\n            register_field_policy(policy)",
+      "new": "    finally:\n        for policy in was.values():\n            register_field_policy(policy)"
+    },
+    {
+      "id": "J1_wrong_unjudged",
+      "description": "The judge never reports a value that did not take",
+      "file": "src/cratekit/write/row_link.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "985d713f75bfeec1",
+      "subset": [
+        "tests/test_repair_link.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.row_link",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_repair_link.py::test_judge_names_a_value_that_did_not_take_and_a_column_that_moved"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if now.get(probe.column) is None or _text(now[probe.column]) != str(probe.value):",
+      "new": "            if False:"
+    },
+    {
+      "id": "J2_planned_across_rows",
+      "description": "The judge excuses every column the plan writes on any row, not the row's own",
+      "file": "src/cratekit/write/row_link.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2f59f467e6bca726",
+      "subset": [
+        "tests/test_repair_link.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.row_link",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_repair_link.py::test_judge_counts_a_column_written_on_another_row_as_moved_here"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        changed = row_defaults.moved_columns(was, now, planned=plan.columns_on(content_id))",
+      "new": "        changed = row_defaults.moved_columns(was, now, planned=[p.column for p in plan.writing])"
+    },
+    {
+      "id": "J3_bookkeeping_counted_as_moved",
+      "description": "The shared moved column rule counts the binding's bookkeeping columns as moved",
+      "file": "src/cratekit/write/row_defaults.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "beeaa854e7caebad",
+      "subset": [
+        "tests/test_repair_link.py",
+        "tests/test_repair_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 112,
+      "baseline_collected": 112,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_repair_link.py::test_a_triple_already_at_its_value_is_shown_and_not_written",
+        "tests/test_repair_link.py::test_judge_accepts_values_read_back_as_the_live_tables_types",
+        "tests/test_repair_link.py::test_the_two_acts_write_each_triple_and_move_no_other_column",
+        "tests/test_repair_rows.py::test_judge_names_a_planned_column_still_null_and_a_column_that_moved",
+        "tests/test_repair_rows.py::test_past_the_bindings_range_the_gate_says_why_no_id_is_renumbered",
+        "tests/test_repair_rows.py::test_the_two_acts_fill_every_null_default_and_move_no_other_column"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    skip = set(planned) | rb_writer.BOOKKEEPING_COLUMNS",
+      "new": "    skip = set(planned)"
+    },
+    {
+      "id": "J4_moved_not_refused",
+      "description": "A moved column is reported as a wrong value rather than the guard's defect",
+      "file": "src/cratekit/write/row_link.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "af0435230271b124",
+      "subset": [
+        "tests/test_repair_link.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.row_link",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_repair_link.py::test_a_column_moved_after_the_commit_refuses_through_the_verb",
+        "tests/test_repair_link.py::test_assert_read_back_refuses_a_moved_column_as_the_guards_defect"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if written.moved:\n        raise refuse(\n            \"whitelist-violation\",",
+      "new": "    if False:\n        raise refuse(\n            \"whitelist-violation\","
+    },
+    {
+      "id": "C1_ack_after_gate",
+      "description": "The backup acknowledgment is not read before the gate",
+      "file": "src/cratekit/write/row_link_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ed4851f3234b9aa5",
+      "subset": [
+        "tests/test_repair_link.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.row_link_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_repair_link.py::test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    session.assert_backup_acknowledged(cfg)\n\n    plan = _plan(cfg, ctx.args)",
+      "new": "    plan = _plan(cfg, ctx.args)"
+    },
+    {
+      "id": "C2_abort_writes",
+      "description": "An abort at the gate proceeds to the write",
+      "file": "src/cratekit/write/row_link_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5f01b7e4838e21de",
+      "subset": [
+        "tests/test_repair_link.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.row_link_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_repair_link.py::test_an_abort_writes_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if ctx.gate.require(spec, plan=data, context=_facts(plan)) != \"apply\":",
+      "new": "    if ctx.gate.require(spec, plan=data, context=_facts(plan)) not in (\"apply\", \"abort\"):"
+    },
+    {
+      "id": "C3_nothing_to_write_applies",
+      "description": "A plan that writes nothing reaches the apply",
+      "file": "src/cratekit/write/row_link_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c4c27b3e7dfd8cbe",
+      "subset": [
+        "tests/test_repair_link.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.row_link_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_repair_link.py::test_a_plan_where_every_row_is_already_at_its_value_still_asks_and_writes_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not plan.writes:\n        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=[_nothing(plan)])",
+      "new": "    if False:\n        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=[_nothing(plan)])"
+    },
+    {
+      "id": "C4_read_back_unasserted",
+      "description": "The verb answers OK without asserting the read back",
+      "file": "src/cratekit/write/row_link_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "43cf4f9a93a64c7a",
+      "subset": [
+        "tests/test_repair_link.py"
+      ],
+      "subset_reason": "test files importing cratekit.write.row_link_cli",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 59,
+      "baseline_collected": 59,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_repair_link.py::test_a_column_moved_after_the_commit_refuses_through_the_verb"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    row_link.assert_read_back(written)\n    data[\"totals\"] = {",
+      "new": "    data[\"totals\"] = {"
+    },
+    {
+      "id": "R1_gate_not_explicit",
+      "description": "The confirm gate is answerable inline",
+      "file": "src/cratekit/cli/registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2e9ffaf8a2d81a14",
+      "subset": [
+        "tests/test_repair_link.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 877,
+      "baseline_collected": 877,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_repair_link.py::test_a_column_moved_after_the_commit_refuses_through_the_verb",
+        "tests/test_repair_link.py::test_a_plan_where_every_row_is_already_at_its_value_still_asks_and_writes_nothing",
+        "tests/test_repair_link.py::test_a_triple_already_at_its_value_is_shown_and_not_written",
+        "tests/test_repair_link.py::test_the_gate_takes_no_inline_answer",
+        "tests/test_repair_link.py::test_the_two_acts_write_each_triple_and_move_no_other_column"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                prompt=\"Write these probe values onto these rows?\",\n                #: EXPLICIT (R34). A write to a row of a live library is\n                #: answered by a separate recorded act with an actor.\n                explicit=True,",
+      "new": "                prompt=\"Write these probe values onto these rows?\",\n                #: EXPLICIT (R34). A write to a row of a live library is\n                #: answered by a separate recorded act with an actor.\n                explicit=False,"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "P9_minority_dropped",
+      "description": "Drop the majority rule outright",
+      "reason": "ranked below the cap: P7 moves the same line's boundary, a stricter mutation, so a P7 death implies this one"
+    },
+    {
+      "id": "V3_duplicate_pair",
+      "description": "Drop the refusal of the same row and column twice",
+      "reason": "ranked below the cap: a repeated triple writes the same value twice in one commit, which the read back still judges, so the cost is a confusing gate and not a wrong write"
+    },
+    {
+      "id": "P5_count_self",
+      "description": "Count the row itself as a carrier of a value",
+      "reason": "ranked below the cap: the same counting query as P4, which is measured"
+    },
+    {
+      "id": "A1_apply_nonwriting_plan",
+      "description": "The apply takes a plan that writes nothing",
+      "reason": "ranked below the cap: maintainer facing, the verb returns before the apply on such a plan, and C3 measures that"
+    },
+    {
+      "id": "A7_witness_unread",
+      "description": "A commit that landed under an exception is not recorded",
+      "reason": "ranked below the cap: maintainer facing, the spine is repair rows' and its witness row is measured in that unit's table"
+    },
+    {
+      "id": "A8_zero_write_recorded",
+      "description": "A run that wrote nothing still claims a commit",
+      "reason": "ranked below the cap: maintainer facing, and the apply refuses a plan that writes nothing before the commit"
+    },
+    {
+      "id": "A4_empty_watch",
+      "description": "An empty analysis watch is accepted",
+      "reason": "ranked below the cap: maintainer facing, every caller passes the library's watch roots"
+    }
+  ]
+}
