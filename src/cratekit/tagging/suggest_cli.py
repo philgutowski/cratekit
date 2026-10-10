@@ -273,7 +273,8 @@ def _advisories(plan: suggest.SuggestPlan) -> list[dict[str, str]]:
                 "message": (
                     f"the catalogues could not be read for {len(unread)} row(s), "
                     f"{_named(unread)}, so those were suggested from the library "
-                    f"alone and are asked again next run"
+                    f"alone; a lookup nobody could read is kept for the day and asked "
+                    f"again on a later one"
                 ),
             }
         )
@@ -308,8 +309,9 @@ def _written(written: rows.Written) -> dict[str, str]:
         "message": (
             f"{written.written} row(s) and their files now carry the suggested "
             f"genre, and {written.read_back} read back from the database as "
-            f"written, the genre and no other column; undo the rows with a "
-            f"restore of session {written.session_id}"
+            f"written, the genre and no other column; a restore of session "
+            f"{written.session_id} undoes the rows and NOT the files, which keep "
+            f"the genre, so tag rows would write it back onto a restored row"
         ),
     }
 
@@ -343,35 +345,39 @@ def _plan(cfg: config.Config, declared, args, chosen: dict[str, str], progress):
 
 
 def _write(cfg: config.Config, plan: suggest.SuggestPlan):
-    """Check the rows, write the files, then the rows whose file read back.
+    """Check the rows, then inside one session write the files and their rows.
 
     ONE HANDLE, OPENED TO WRITE BEFORE ANY FILE IS TOUCHED, so a running
-    rekordbox refuses with every file as it was, and the rows are checked
-    against the plan on it first, so a row that gained a genre since the plan
-    refuses the whole write with nothing written.
+    rekordbox refuses with every file as it was. The row engine then checks
+    every row against the plan, so a row that gained a genre since refuses with
+    nothing written, and enters the session spine: the library lock, the volume
+    check and the capture all come before the first file is written, because
+    the files are written in the engine's ``narrow`` step, and only the rows
+    whose file read back are handed on.
     """
+    held: dict[str, suggest.FilesWritten] = {}
+
+    def files_first(_whole: rows.RowsPlan) -> rows.RowsPlan:
+        held["files"] = suggest.write_files(plan)
+        return suggest.rows_plan(plan, held["files"].read_back)
+
     db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
     try:
-        every = suggest.rows_plan(plan, (item.content_id for item in plan.writes))
-        rows.assert_rows_as_planned(every, rows._mapped(db, list(every.changes.content_ids)))
-        files = suggest.write_files(plan)
-        part = suggest.rows_plan(plan, files.read_back)
-        written = None
-        if part.writes:
-            written = rows.apply_rows(
-                cfg,
-                db,
-                part,
-                analysis_roots=analysis_store.watch_roots(cfg),
-                workflow=suggest.WORKFLOW,
-            )
-        return files, written
+        written = rows.apply_rows(
+            cfg,
+            db,
+            suggest.rows_plan(plan, (item.content_id for item in plan.writes)),
+            analysis_roots=analysis_store.watch_roots(cfg),
+            workflow=suggest.WORKFLOW,
+            narrow=files_first,
+        )
     finally:
         rb_writer.close_db(db)
+    return held.get("files", suggest.FilesWritten()), written
 
 
-def _files_refusal(files: suggest.FilesWritten, written: rows.Written | None):
-    """Refuse over the files that did not take their genre, after the rest landed."""
+def _unwritten(files: suggest.FilesWritten) -> str:
+    """The files that did not take their genre, as one clause, or empty."""
     parts = []
     if files.moved:
         parts.append(f"{len(files.moved)} carried a genre by then: {_named(list(files.moved))}")
@@ -379,28 +385,56 @@ def _files_refusal(files: suggest.FilesWritten, written: rows.Written | None):
         parts.append(f"{len(files.failed)} could not be written: {_named(list(files.failed))}")
     if files.wrong:
         parts.append(f"{len(files.wrong)} do not read back: {_named(list(files.wrong))}")
-    done = (
-        f"{written.written} row(s) and their files were written, session "
-        f"{written.session_id}; "
-        if written is not None
-        else "no row was written; "
+    if not parts:
+        return ""
+    return (
+        "these row(s) were left without a genre on the row, because their file did "
+        "not take it: " + "; ".join(parts)
     )
+
+
+def _files_detail(files: suggest.FilesWritten) -> dict[str, list[str]]:
+    return {"moved": list(files.moved), "failed": list(files.failed), "wrong": list(files.wrong)}
+
+
+def _files_refusal(files: suggest.FilesWritten, written: rows.Written):
+    """Refuse over the files that did not take their genre, after the rest landed."""
     return refuse(
         "tag-suggest-unwritten",
-        done + "these row(s) were left without a genre on the row, because their "
-        "file did not take it: " + "; ".join(parts),
+        f"{written.written} row(s) and their files were written, session "
+        f"{written.session_id}; " + _unwritten(files),
         steps=(
             "check each named file can be written and is not open elsewhere",
             "run the verb again, which offers what is left",
         ),
         origin=_ORIGIN,
-        detail={
-            "moved": list(files.moved),
-            "failed": list(files.failed),
-            "wrong": list(files.wrong),
-            "session": written.session_id if written is not None else None,
-        },
+        detail={**_files_detail(files), "session": written.session_id},
     )
+
+
+def _read_back(files: suggest.FilesWritten, written: rows.Written) -> None:
+    """The row engine's read back, naming the files that did not take theirs too.
+
+    THE READ BACK OUTRANKS THE FILES and keeps its own reason, since a row that
+    reads back wrong is this product's defect and a file that would not take a
+    genre is the file's. Its sentence gains the files' clause, so neither is
+    reported at the cost of the other.
+    """
+    try:
+        rows.assert_read_back(written)
+    except CratekitError as exc:
+        clause = _unwritten(files)
+        if not clause:
+            raise
+        cause = exc.cause
+        raise refuse(
+            cause.reason,
+            f"{cause.message}; and {clause}",
+            remedy=cause.remediation.remedy,
+            steps=cause.remediation.steps,
+            origin=_ORIGIN,
+            detail={**dict(cause.detail or {}), "files": _files_detail(files)},
+        ) from exc
 
 
 def tag_suggest(ctx) -> Envelope:
@@ -422,19 +456,9 @@ def tag_suggest(ctx) -> Envelope:
         )
 
     files, written = _write(cfg, plan)
-    if written is not None:
-        rows.assert_read_back(written)
+    _read_back(files, written)
     if not files.clean:
         raise _files_refusal(files, written)
-    if written is None:
-        # Every file read back and the plan writes, so every row was handed on.
-        raise refuse(
-            "internal-error",
-            "every file took its genre and no row was written",
-            remedy=Remedy.REPORT_DEFECT,
-            origin=_ORIGIN,
-            detail={"writes": len(plan.writes)},
-        )
     data["totals"] = {
         **data["totals"],
         "written": written.written,

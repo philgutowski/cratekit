@@ -40,7 +40,9 @@ THE CATALOGUE'S ANSWERS ARE KEPT, in the library's state directory, for
 :data:`CATALOGUE_DAYS` days. The gate is answered between two invocations and
 each rebuilds the plan, so without them the run that applies would ask every
 catalogue again, and an answer that moved would refuse the plan as stale. A
-lookup that could not be read is not kept and is asked again.
+lookup that could not be read is kept for the day only and asked again on a
+later one. Three rows in a row whose catalogues could not be read stop the
+walk asking them at all.
 
 Layer: modules. It opens no database of its own and names no verb.
 """
@@ -132,6 +134,11 @@ CATALOGUE_STATE = "tag_suggest_catalogue"
 #: at most this many paced lookups.
 _SAVE_EVERY = 20
 
+#: How many rows in a row the catalogues could not be read for before the walk
+#: stops asking them. A catalogue refusing this client is not asked another
+#: few hundred times, which is how an account gets rate limited for good.
+STOP_AFTER_UNREAD = 3
+
 _ORIGIN = ("tagging", "suggest")
 
 #: Given one row's artist, title and ISRC, what the catalogue said. The shipped
@@ -173,8 +180,9 @@ class Item:
     ``genre`` is what a write puts on the file and the row, empty on a row left
     for want of a default. ``options`` is every tied genre on a split, and the
     suggested genre alone otherwise. ``votes`` is the weight each word got, the
-    undeclared ones included, largest first. ``chosen`` says a person named the
-    genre with ``--set`` rather than taking the suggestion.
+    undeclared ones included, largest first. ``chosen`` says the genre shown is
+    the one a person named with ``--set`` rather than the suggestion; the row
+    can still be left, for a genre the library has no lookup row for.
     """
 
     content_id: str
@@ -354,7 +362,7 @@ def _asked_from(hit: SearchHit | None) -> Asked:
 
 
 def catalogue_lookup(searcher: Searcher, published: PublishedGenre | None = None) -> Lookup:
-    """The catalogue lookup ``tag folder`` makes, asked again once on a miss.
+    """The catalogue lookup ``tag folder`` makes, asked again once on a plain miss.
 
     The record shops first, then the general catalogue by ISRC when they gave no
     genre, which is :func:`cratekit.tagging.tag.tag_one`'s order. A refusal to
@@ -373,7 +381,10 @@ def catalogue_lookup(searcher: Searcher, published: PublishedGenre | None = None
 
     def lookup(artist: str, title: str, isrc: str) -> Asked:
         first = once(artist, title, isrc)
-        if first.said == MATCHED or first.source_genre:
+        # ONLY A PLAIN MISS IS ASKED AGAIN. A word the taxonomy declined will
+        # be declined again, and a catalogue that could not be read is one that
+        # is refusing this client: asking it twice per row deepens the block.
+        if first.said != DECLINED or first.source_genre:
             return first
         return once(artist, title, isrc)
 
@@ -419,7 +430,12 @@ def _kept_answer(entry: Any, asked_for: dict[str, str], today: date) -> Asked | 
         )
     except (KeyError, TypeError, ValueError):
         return None
-    if not 0 <= age < CATALOGUE_DAYS or answer.said == UNREAD:
+    if not 0 <= age < CATALOGUE_DAYS:
+        return None
+    # AN ANSWER NOBODY COULD READ IS KEPT FOR THE DAY AND NO LONGER, so the run
+    # that applies a plan made today reads the same answer the gate showed,
+    # and a later day asks again.
+    if answer.said == UNREAD and age != 0:
         return None
     return answer
 
@@ -437,7 +453,10 @@ class KeptCatalogue:
         self._today = today or date.today()
         self._kept = _read_kept(self._path)
         self._unsaved = 0
+        self._unread_running = 0
         self.asked = 0
+        #: True once the walk stopped asking, see :data:`STOP_AFTER_UNREAD`.
+        self.stopped = False
 
     def __enter__(self) -> KeptCatalogue:
         return self
@@ -455,17 +474,27 @@ class KeptCatalogue:
         kept = _kept_answer(self._kept.get(content_id), asked_for, self._today)
         if kept is not None:
             return kept
-        answer = self._lookup(artist, title, isrc)
-        self.asked += 1
-        if answer.said != UNREAD:
-            self._kept[content_id] = {
-                "for": asked_for,
-                "on": self._today.isoformat(),
-                "answer": answer.to_json(),
-            }
-            self._unsaved += 1
-            if self._unsaved >= _SAVE_EVERY:
-                self.save()
+        if self.stopped:
+            answer = Asked(
+                UNREAD,
+                note=(
+                    f"not asked: the catalogues could not be read for "
+                    f"{STOP_AFTER_UNREAD} rows in a row"
+                ),
+            )
+        else:
+            answer = self._lookup(artist, title, isrc)
+            self.asked += 1
+            self._unread_running = self._unread_running + 1 if answer.said == UNREAD else 0
+            self.stopped = self._unread_running >= STOP_AFTER_UNREAD
+        self._kept[content_id] = {
+            "for": asked_for,
+            "on": self._today.isoformat(),
+            "answer": answer.to_json(),
+        }
+        self._unsaved += 1
+        if self._unsaved >= _SAVE_EVERY:
+            self.save()
         return answer
 
 
@@ -585,8 +614,6 @@ def plan_suggestions(
             title=str(getattr(row, "Title", "") or "").strip(),
             mapped=row,
         )
-    by_artist, by_folder = _neighbours(live)
-
     census = adopt_scan.scan_rows(
         collection.collection_rows(mapped.values()),
         declared,
@@ -609,14 +636,21 @@ def plan_suggestions(
             continue
         if word:
             counts[FILE_HAS_GENRE] += 1
+            # IT VOTES WITH ITS FILE'S WORD. The row lags its file, which is
+            # what ``tag rows`` repairs, and the file is the newer of the two.
+            live[track.content_id].genre = word
             continue
         candidates.append((live[track.content_id], track.path))
+    by_artist, by_folder = _neighbours(live)
 
     items: list[Item] = []
     to_write: dict[str, str] = {}
     for ordinal, (row, path) in enumerate(sorted(candidates, key=lambda c: c[0].content_id), 1):
         asked = None
-        if catalogue is not None:
+        # A ROW HELD OUT OR PICKED IS NOT LOOKED UP: no answer changes it, and
+        # every lookup is a paced request.
+        settled_by_person = row.content_id in held_out or row.content_id in picks
+        if catalogue is not None and not settled_by_person:
             isrc = tags.read_tag(Path(path), "isrc") or ""
             asked = catalogue.answer(row.content_id, row.artist, row.title, isrc.strip())
             if progress is not None and (ordinal == 1 or ordinal % 25 == 0):
@@ -777,6 +811,7 @@ __all__ = [
     "OUTCOMES",
     "ROW_HAS_GENRE",
     "SPLIT",
+    "STOP_AFTER_UNREAD",
     "TIED",
     "UNREAD",
     "WORKFLOW",

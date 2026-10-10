@@ -597,6 +597,7 @@ def apply_rows(
     *,
     analysis_roots: Iterable[Path | str],
     workflow: str = WORKFLOW,
+    narrow: Callable[[RowsPlan], RowsPlan] | None = None,
 ) -> Written:
     """Write the plan's genres, commit behind the guard, and read them back.
 
@@ -629,6 +630,13 @@ def apply_rows(
     ``workflow`` is the name the session record carries. ``tag suggest`` writes
     its rows through this function under its own name, so a restore lists the
     write as the verb that made it.
+
+    ``narrow`` IS CALLED INSIDE THE SESSION, after the capture is verified and
+    before the first field is set, and answers the part of the plan to write.
+    ``tag suggest`` writes its files there, so a file is written only behind the
+    library lock and the volume check the session spine takes, and only the rows
+    whose file took the genre are written. It reads no row, so nothing is
+    flushed before the guard has judged it.
     """
     watched = [Path(root) for root in analysis_roots]
     if not watched:
@@ -659,6 +667,10 @@ def apply_rows(
         session.attach_capture(record, capture.root, cfg)
         snapshot.assert_verified(capture)
 
+        if narrow is not None:
+            plan = narrow(plan)
+            writes = plan.writes
+            content_ids = [item.content_id for item in writes]
         before = _columns(db, content_ids)
         written = 0
         try:

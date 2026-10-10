@@ -303,6 +303,30 @@ def test_the_artist_outweighs_the_folder(machine, silence):
     assert (item.genre, item.band) == (DEEP, suggest.LOW)
 
 
+def test_a_row_whose_file_carries_a_genre_its_row_lacks_votes_with_the_files_word(
+    machine, silence
+):
+    build(
+        machine,
+        silence,
+        *[Track(f"3{n}", "", DEEP, artist="a", folder="x") for n in range(3)],
+        Track("10", artist="a", folder="y"),
+    )
+    plan = _planned(machine)
+    assert plan.counts[suggest.FILE_HAS_GENRE] == 3
+    item = _item(plan, "10")
+    assert item.votes == ((DEEP, 3 * suggest.ARTIST_WEIGHT),)
+    assert (item.genre, item.band) == (DEEP, suggest.HIGH)
+
+
+def test_a_row_held_out_or_picked_is_not_looked_up(machine, silence):
+    build(machine, silence, Track("10"), Track("11"), Track("12"))
+    lookup = _Lookup({})
+    with suggest.KeptCatalogue(machine, lookup) as kept:
+        _planned(machine, catalogue=kept, leave=["10"], chosen={"11": DEEP})
+    assert [title for _artist, title, _isrc in lookup.asked] == ["track 12"]
+
+
 def test_a_catalogue_answer_outside_the_taxonomy_is_never_suggested(machine, silence):
     build(machine, silence, Track("10"), Track("11"), Track("12"))
     lookup = _Lookup(
@@ -343,7 +367,7 @@ def test_every_live_row_lands_in_exactly_one_outcome(machine, silence):
         silence,
         *_artist_of_eight(),
         Track("10", artist="The Artist"),
-        Track("11", file=DEEP),
+        Track("11", file=DEEP, folder="elsewhere"),
         Track("12", file=ABSENT),
         Track("13"),
     )
@@ -456,12 +480,43 @@ def test_a_miss_is_asked_again_once_and_a_match_is_not():
     assert (answer.said, answer.source_genre, len(calls)) == (suggest.DECLINED, "Weird", 1)
 
 
-def test_a_catalogue_that_cannot_be_read_is_this_rows_answer_and_not_a_failure():
+def test_a_catalogue_that_cannot_be_read_is_this_rows_answer_and_is_not_asked_twice():
     unreachable = refuse("catalogue-unreachable", "no network")
     search, calls = _searcher(unreachable, unreachable)
     answer = suggest.catalogue_lookup(search)("a", "t", "")
     assert answer.said == suggest.UNREAD and "catalogue-unreachable" in answer.note
-    assert len(calls) == 2
+    assert len(calls) == 1
+
+    search, calls = _searcher(SearchHit(unread=("beatport",)), SearchHit())
+    assert suggest.catalogue_lookup(search)("a", "t", "").said == suggest.UNREAD
+    assert len(calls) == 1
+
+
+def test_three_rows_in_a_row_nobody_could_read_stop_the_walk_asking(machine):
+    lookup = _Lookup({})
+    lookup.answers = {f"t{n}": suggest.Asked(suggest.UNREAD, note="blocked") for n in range(9)}
+    lookup.answers["t5"] = suggest.Asked(suggest.MATCHED, genre=DEEP)
+    with suggest.KeptCatalogue(machine, lookup) as kept:
+        answers = [kept.answer(str(n), "a", f"t{n}", "") for n in range(6)]
+    assert [title for _artist, title, _isrc in lookup.asked] == ["t0", "t1", "t2"]
+    assert kept.stopped and all(answer.said == suggest.UNREAD for answer in answers)
+    assert "not asked" in answers[3].note
+
+
+def test_an_unread_answer_between_two_reads_does_not_stop_the_walk(machine):
+    lookup = _Lookup(
+        {
+            "t0": suggest.Asked(suggest.UNREAD),
+            "t1": suggest.Asked(suggest.UNREAD),
+            "t2": suggest.Asked(suggest.MATCHED, genre=DEEP),
+            "t3": suggest.Asked(suggest.UNREAD),
+            "t4": suggest.Asked(suggest.UNREAD),
+        }
+    )
+    with suggest.KeptCatalogue(machine, lookup) as kept:
+        for n in range(5):
+            kept.answer(str(n), "a", f"t{n}", "")
+    assert not kept.stopped and len(lookup.asked) == 5
 
 
 def test_the_general_catalogue_is_asked_only_when_the_shops_gave_no_genre():
@@ -497,11 +552,14 @@ def test_a_kept_answer_is_reused_and_one_a_week_old_is_asked_again(machine):
         assert kept.asked == 1
 
 
-def test_an_answer_nobody_could_read_is_not_kept(machine):
+def test_an_answer_nobody_could_read_is_kept_for_the_day_only(machine):
+    today = date(2026, 10, 9)
     lookup = _Lookup({"t": suggest.Asked(suggest.UNREAD, note="blocked")})
-    with suggest.KeptCatalogue(machine, lookup) as kept:
+    with suggest.KeptCatalogue(machine, lookup, today=today) as kept:
         kept.answer("1", "a", "t", "")
-    with suggest.KeptCatalogue(machine, lookup) as kept:
+    with suggest.KeptCatalogue(machine, lookup, today=today) as kept:
+        assert kept.answer("1", "a", "t", "").note == "blocked" and kept.asked == 0
+    with suggest.KeptCatalogue(machine, lookup, today=today + timedelta(days=1)) as kept:
         kept.answer("1", "a", "t", "")
         assert kept.asked == 1
     assert len(lookup.asked) == 2
@@ -680,6 +738,51 @@ def test_a_file_that_will_not_take_its_genre_leaves_its_row_and_the_rest_land(
     assert refused["cause"]["detail"]["failed"] == ["11"]
     assert (_genre_of(cfg, "10"), _genre_of(cfg, "11")) == (MELODIC, "")
     assert tags.read_genre_from_file(paths["11"]) in (None, "")
+
+
+def test_a_session_gate_that_refuses_leaves_every_file_as_it_was(
+    acknowledged, silence, monkeypatch
+):
+    """The files are written inside the row session, behind its lock."""
+    from cratekit.tagging import rows
+
+    cfg = acknowledged
+    paths = build(cfg, silence, *_artist_of_eight(), Track("10", artist="The Artist"))
+    files = _bytes(paths)
+    run_id, _ = _first_act()
+    _decide(run_id)
+
+    def busy(*args, **kwargs):
+        raise refuse("library-volume-mismatch", "the volume is not the recorded one")
+
+    monkeypatch.setattr(rows.session, "assert_gates", busy)
+    code, refused = drive(["--run", run_id, *VERB])
+    assert code != int(ExitCode.OK) and refused["cause"]["reason"] == "library-volume-mismatch"
+    assert _bytes(paths) == files and _genre_of(cfg, "10") == ""
+
+
+def test_a_row_that_reads_back_wrong_also_names_the_files_that_did_not_take_it(
+    acknowledged, silence, monkeypatch
+):
+    from cratekit.tagging import rows
+
+    cfg = acknowledged
+    paths = build(
+        cfg,
+        silence,
+        *_artist_of_eight(),
+        Track("10", artist="The Artist"),
+        Track("11", artist="The Artist"),
+    )
+    real = tags.write_genre
+    monkeypatch.setattr(
+        tags, "write_genre", lambda path, genre: False if path == paths["11"] else real(path, genre)
+    )
+    monkeypatch.setattr(rows, "judge", lambda writes, *rest: (("10: reads wrong",), ()))
+    code, refused, _ = _two_acts()
+    assert code != int(ExitCode.OK) and refused["cause"]["reason"] == "internal-error"
+    assert "could not be written: 11" in refused["cause"]["message"]
+    assert refused["cause"]["detail"]["files"]["failed"] == ["11"]
 
 
 def test_a_pick_outside_the_taxonomy_is_refused_before_any_row_is_read(acknowledged, silence):
