@@ -80,6 +80,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Sequence
 
+from cratekit.adopt import placements as adopt_placements
 from cratekit.cli.output import digest_of
 from cratekit.core import (
     config,
@@ -156,6 +157,13 @@ VOX_NO_CATEGORY = (
     "the library holds no My Tag category to copy a new one's shape from, so the "
     "Vocals category cannot be made; make any My Tag in rekordbox and then run "
     "crate metadata mytags-vocals --apply"
+)
+
+#: The calibration is there and cannot be read, so it refuses on every
+#: surface that reads it; the landing names that refusal and writes no tag.
+VOX_UNREADABLE = (
+    "the vocal calibration could not be read ({why}), so no score can be read against "
+    "a cut; run crate analyze calibrate again and then crate metadata mytags-vocals --apply"
 )
 
 _ORIGIN = ("intake.native",)
@@ -407,7 +415,7 @@ class AddedRow:
     file_id: str = ""
     #: ``ContentLink`` as the table holds it after the commit (U126), None for NULL.
     content_link: int | None = None
-    #: Whether the row carries the vox My Tag, read from SQL after the commit (U127).
+    #: Whether the row carries the vox My Tag as adoption reads it, after the commit (U127).
     vox: bool = False
 
 
@@ -442,6 +450,11 @@ class NativeLanded:
     vox_unscored: tuple[Path, ...] = ()
     #: Why no added row was given the tag at all, else empty (U127).
     vox_blocked: str = ""
+    #: Each added row the plan tagged that adoption's reader does not answer
+    #: after the commit (U127), so it reaches no with vox playlist.
+    vox_missing: tuple[Path, ...] = ()
+    #: Why adoption's reader could not answer after the commit, else empty.
+    vox_unread: str = ""
 
     def names(self) -> tuple[str, ...]:
         """Every INBOX playlist the commit wrote, the batch's first when it wrote one."""
@@ -719,7 +732,14 @@ def _vox_plan(
     """
     if not any(row.action == ADD for row in rows):
         return rows, None, ""
-    cut = metadata_cli.load_vocal_threshold(cfg)
+    try:
+        cut = metadata_cli.load_vocal_threshold(cfg)
+    except CratekitError as exc:
+        # AN UNREADABLE CALIBRATION BLOCKS THE TAG, NOT THE LANDING. The
+        # routing passes refuse over it, and so does the vocals verb, which is
+        # where the person repairs it; a batch held in staging over a tag the
+        # landing can say it did not write would cost the whole intake.
+        return rows, None, VOX_UNREADABLE.format(why=exc.cause.message)
     if cut is None:
         return rows, None, VOX_UNCALIBRATED
     if not rb_writer.my_tag_writable(db):
@@ -1252,7 +1272,11 @@ def apply_rows(
             )
 
         landed = []
-        voxed = _vox_read_back(db) if added_ids else frozenset()
+        # ONLY WHEN A TAG WAS PLANNED: a row this landing just made carries no
+        # tag it did not write, so there is nothing else to read back.
+        voxed, vox_unread = (
+            _vox_read_back(db) if any(row.vox for row, _ in added_ids) else (frozenset(), "")
+        )
         for row, content_id in added_ids:
             values, title, folder_path, file_id, link = _read_back(db, content_id)
             landed.append(
@@ -1269,6 +1293,7 @@ def apply_rows(
             )
         session_id = record.session_id
 
+    unscored = {row.target for row in plan.vox_unscored()}
     return NativeLanded(
         tree_id=plan.tree_id,
         playlist=plan.playlist,
@@ -1284,11 +1309,13 @@ def apply_rows(
         left=tuple(left),
         vox_written=vox_written,
         vox_unscored=tuple(
-            row.target
-            for row, _content_id in added_ids
-            if plan.vox_cut is not None and not plan.vox_blocked and row.voxlevel is None
+            row.target for row, _content_id in added_ids if row.target in unscored
         ),
         vox_blocked=plan.vox_blocked if added_ids else "",
+        vox_missing=tuple(
+            row.target for row, content_id in added_ids if row.vox and content_id not in voxed
+        ),
+        vox_unread=vox_unread,
     )
 
 
@@ -1307,30 +1334,22 @@ def _tag_vox(db: Any, added: Sequence[tuple[RowPlan, str]]) -> int:
     return sum(1 for content_id in content_ids if rb_writer.add_my_tag(db, value, content_id))
 
 
-def _vox_read_back(db: Any) -> frozenset[str]:
-    """Every row carrying the vox My Tag, from SQL after the commit (U127).
+def _vox_read_back(db: Any) -> tuple[frozenset[str], str]:
+    """Every row carrying the vox My Tag as adoption reads it, after the commit (U127).
 
-    READ THE WAY ADOPTION READS IT, :func:`cratekit.adopt.placements.vox_tagged`:
-    a value of the vox name inside a category of the Vocals name, the
-    category, the value and the association each live. A tag written under a
-    row rekordbox removed is a tag nobody sees, and this says so by not
-    answering it.
+    ADOPTION'S OWN READER, :func:`cratekit.adopt.placements.vox_tagged`, and
+    not a second reading of the table, because what the landing promises is
+    that the next ``adopt apply`` files the row, and a tag the writer put under
+    a category rekordbox removed is one that reader does not answer. A
+    refusal it raises, a marker no row can state, is the answer's reason and
+    not the landing's failure: the commit has landed by now. Answers the rows
+    and the reason, empty when it read.
     """
-    from sqlalchemy import text
-
-    rows = db.session.execute(
-        text(
-            "SELECT s.ContentID FROM djmdSongMyTag s "
-            "JOIN djmdMyTag v ON v.ID = s.MyTagID "
-            "JOIN djmdMyTag c ON c.ID = v.ParentID "
-            "WHERE v.Name = :value AND c.Name = :category "
-            "AND COALESCE(s.rb_local_deleted, 0) = 0 "
-            "AND COALESCE(v.rb_local_deleted, 0) = 0 "
-            "AND COALESCE(c.rb_local_deleted, 0) = 0"
-        ),
-        {"value": metadata_cli.VALUE_VOX, "category": metadata_cli.CATEGORY},
-    ).all()
-    return frozenset(str(row[0]) for row in rows)
+    try:
+        tagged = adopt_placements.vox_tagged(db)
+    except CratekitError as exc:
+        return frozenset(), exc.cause.message
+    return tagged or frozenset(), ""
 
 
 def assert_names_still_free(db: Any, plan: NativePlan) -> None:

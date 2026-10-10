@@ -49,6 +49,7 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.favorites import placement
 from cratekit.intake import account_playlists, batch_name, ingest, landing, native, set_playlist
 from cratekit.intake import cli as intake_cli
+from cratekit.write import metadata_cli
 
 #: The action every planned file carries until the apply reports on it.
 LAND = "land"
@@ -78,10 +79,12 @@ AWAITING_ANALYSIS = "rows-await-analysis"
 VOX_UNSCORED = "vox-unscored"
 VOX_NOT_WRITTEN = "vox-not-written"
 
-#: What the bridge's gate screen says of the vox My Tag (U127).
+#: What the bridge's gate screen says of the vox My Tag (U127), on a
+#: calibrated library; :func:`bridge_vox_fact` says the rest.
+BRIDGE_VOX_NONE = "not written, the xml bridge carries no My Tag"
 BRIDGE_VOX_OWED = (
-    "not written, the xml bridge carries no My Tag; once rekordbox has imported "
-    "the batch, run crate metadata mytags-vocals --apply to tag its vocal tracks"
+    f"{BRIDGE_VOX_NONE}; once rekordbox has imported the batch, run crate metadata "
+    f"mytags-vocals --apply to tag its vocal tracks"
 )
 
 _ORIGIN = ("intake.land_cli",)
@@ -309,6 +312,7 @@ def _payload(
 def _shown(
     planned: landing.Plan,
     *,
+    cfg: config.Config,
     target: Path,
     destination: Path,
     manifest: landing.LabelManifest | None = None,
@@ -326,7 +330,7 @@ def _shown(
         # U127: the xml bridge carries no My Tag, so the vox tag a native
         # landing writes is a step this one leaves owed, said before the
         # approval rather than discovered in a with vox playlist missing it.
-        "vox My Tag": BRIDGE_VOX_OWED,
+        "vox My Tag": bridge_vox_fact(cfg),
     }
     if split:
         shown.update(
@@ -344,6 +348,24 @@ def _shown(
             f"{name} ({count} listed)" for name, count in sorted(manifest.playlists().items())
         ]
     return shown
+
+
+def bridge_vox_fact(cfg: config.Config) -> str:
+    """What the bridge's gate screen says of the vox My Tag (U127), by the calibration.
+
+    THE STEP OWED IS ONLY NAMED WHERE IT WOULD TAG FROM A FITTED CUT. The vocals
+    verb tags from the default cut on a library with none, which the native
+    landing refuses to do (R-276), so an uncalibrated library is told to
+    calibrate first, and an unreadable calibration is named, never refused:
+    the bridge writes no tag either way.
+    """
+    try:
+        cut = metadata_cli.load_vocal_threshold(cfg)
+    except CratekitError as exc:
+        return f"{BRIDGE_VOX_NONE}, and " + native.VOX_UNREADABLE.format(why=exc.cause.message)
+    if cut is None:
+        return f"{BRIDGE_VOX_NONE}, and {native.VOX_UNCALIBRATED}"
+    return BRIDGE_VOX_OWED
 
 
 def split_facts(
@@ -650,6 +672,7 @@ def intake_land(ctx) -> Envelope:
             digest=payload["digest"],
             context=_shown(
                 planned,
+                cfg=cfg,
                 target=target,
                 destination=destination,
                 manifest=manifest,
@@ -937,8 +960,11 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
         "already present": len(landed.collection.present),
         "memberships": landed.collection.memberships_added,
     }
-    if landed.collection.vox_written:
-        totals["vox tagged"] = landed.collection.vox_written
+    # WHAT ADOPTION READS BACK, not what the writer counted (U127): a tag
+    # written under a category rekordbox removed is no tag a person sees.
+    voxed = sum(1 for row in landed.collection.added if row.vox)
+    if voxed:
+        totals["vox tagged"] = voxed
     if landed.collection.playlist_id:
         items.append(playlist_item(landed.collection))
     items.extend(
@@ -1320,8 +1346,32 @@ def vox_warnings(collection: native.NativeLanded) -> list[dict[str, str]]:
     """
     if not collection.added:
         return []
+    warnings: list[dict[str, str]] = []
+    if collection.vox_missing:
+        # PLANNED, WRITTEN, AND NOT WHAT ADOPTION READS: said, never reported
+        # as tagged, so a person is not told a row reaches with vox when the
+        # next adoption will not file it there.
+        why = (
+            f"the tag could not be read back as adoption reads it: {collection.vox_unread}"
+            if collection.vox_unread
+            else (
+                "the Vocals My Tag category or its vox value it was written under "
+                "is one rekordbox removed; check the Vocals category in rekordbox"
+            )
+        )
+        names = ", ".join(path.name for path in collection.vox_missing)
+        warnings.append(
+            {
+                "code": VOX_NOT_WRITTEN,
+                "message": (
+                    f"{len(collection.vox_missing)} row(s) planned for the vox My Tag "
+                    f"do not carry it, so they reach no with vox playlist: {names}; {why}"
+                ),
+            }
+        )
     if collection.vox_blocked:
         return [
+            *warnings,
             {
                 "code": VOX_NOT_WRITTEN,
                 "message": (
@@ -1331,9 +1381,10 @@ def vox_warnings(collection: native.NativeLanded) -> list[dict[str, str]]:
             }
         ]
     if not collection.vox_unscored:
-        return []
+        return warnings
     names = ", ".join(path.name for path in collection.vox_unscored)
     return [
+        *warnings,
         {
             "code": VOX_UNSCORED,
             "message": (

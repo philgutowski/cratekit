@@ -283,6 +283,49 @@ def test_a_library_with_no_category_to_copy_tags_nothing_and_lands_the_batch(
     assert [w["code"] for w in acted["warnings"]][1:] == [land_cli.VOX_NOT_WRITTEN]
 
 
+def test_an_unreadable_calibration_tags_nothing_and_lands_the_batch(native_library, silence):
+    """The calibration refuses on every surface that reads it. The landing
+    names that refusal and lands its rows, rather than holding the batch in
+    staging over a tag it can say it did not write."""
+    cfg, _root = native_library
+    _seed_vocals(cfg)
+    path = config.state_path(metadata_cli.STATE_KEY_VOCAL_CALIBRATION, cfg)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{not json", encoding="utf-8")
+    _scored(cfg, silence, "One.flac", 60)
+
+    code, acted, refused = _two_acts(_land())
+
+    assert code == int(ExitCode.OK), acted
+    assert "could not be read" in refused["cause"]["detail"]["shown"]["vox My Tag"]
+    assert acted["data"]["totals"]["added"] == 1
+    assert _vox_tagged(cfg) == frozenset()
+    assert [w["code"] for w in acted["warnings"]][1:] == [land_cli.VOX_NOT_WRITTEN]
+
+
+def test_a_tag_written_under_a_removed_category_is_said_and_never_counted(calibrated, silence):
+    """The writer finds the category by name and reads no marker, so over a
+    Vocals category rekordbox removed it writes where nobody sees. The read
+    back is adoption's own, so the report counts no tag and the warning names
+    the row, rather than calling it tagged."""
+    cfg = calibrated
+    conn = sqlite3.connect(cfg.library.db_path)
+    conn.execute("UPDATE djmdMyTag SET rb_local_deleted = 1 WHERE ID = ?", (CATEGORY_ID,))
+    conn.commit()
+    conn.close()
+    _scored(cfg, silence, "One.flac", 60)
+
+    code, acted, _refused = _two_acts(_land())
+
+    assert code == int(ExitCode.OK), acted
+    assert "vox tagged" not in acted["data"]["totals"]
+    (item,) = [i for i in acted["data"]["items"] if i.get("content_id")]
+    assert item["vox"] is False
+    warnings = [w for w in acted["warnings"] if w["code"] == land_cli.VOX_NOT_WRITTEN]
+    (warning,) = warnings
+    assert "One.flac" in warning["message"] and "removed" in warning["message"]
+
+
 # ---------------------------------------------------------------------------
 # Additive only
 # ---------------------------------------------------------------------------

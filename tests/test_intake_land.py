@@ -28,7 +28,7 @@ from cratekit.cli import gates, output, registry
 from cratekit.core import config, session, tags
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
-from cratekit.intake import batch_name, land_cli, landing
+from cratekit.intake import batch_name, land_cli, landing, native
 from tests._containers import synth_container
 from tests.test_config import valid_data
 from tests.xml_fixtures import _fresh_xml
@@ -120,12 +120,30 @@ def test_the_first_run_stops_at_the_gate_and_moves_nothing(cfg, silence, export)
     assert shown["files"] == ["One.flac", "Two.flac"]
     assert shown["lands in"] == str(_music(cfg, BATCH))
     assert shown["intake file"] == str(Path(cfg.library.root) / f"{BATCH}_inboxed.xml")
-    # U127: the bridge carries no My Tag, and the screen names the step owed.
-    assert shown["vox My Tag"] == land_cli.BRIDGE_VOX_OWED
-    assert "crate metadata mytags-vocals --apply" in shown["vox My Tag"]
+    # U127: the bridge carries no My Tag. This library recorded no vocal
+    # calibration, so the step owed is to calibrate first, never to tag from
+    # the default cut.
+    assert shown["vox My Tag"].startswith(land_cli.BRIDGE_VOX_NONE)
+    assert native.VOX_UNCALIBRATED in shown["vox My Tag"]
     assert _staged_names(cfg) == ["One.flac", "Two.flac"]
     assert not _music(cfg, BATCH).exists()
     assert not (Path(cfg.library.root) / f"{BATCH}_inboxed.xml").exists()
+
+
+def test_on_a_calibrated_library_the_bridge_screen_names_the_vocals_verb_as_owed(
+    cfg, silence, export
+):
+    """U127. The bridge cannot carry a My Tag, so its screen names the step
+    that tags the batch once rekordbox imported it."""
+    from tests.test_intake_land_vox_native import _calibrate
+
+    _calibrate(cfg)
+    _stage(cfg, silence, "One.flac")
+    code, refused = _drive(_land(export, "--name", BATCH))
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["vox My Tag"] == land_cli.BRIDGE_VOX_OWED
+    assert "crate metadata mytags-vocals --apply" in shown["vox My Tag"]
 
 
 def test_the_gate_screen_a_person_reads_names_the_files_and_the_intake_file(
