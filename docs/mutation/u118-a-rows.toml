@@ -1,0 +1,65 @@
+name = "u118-a"
+pass_kind = "light"
+
+[[rows]]
+id = "L1_split_version"
+description = "A split place under schema_version 1 or 2 is no longer refused"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_adopt_split_place.py", "tests/test_vocabulary.py"]
+old = '''        if bucket.split_from and version < SPLIT_PLACE_SCHEMA_VERSION:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "L2_declarer_bands"
+description = "A bucket that does not split by energy may declare a split place"
+file = "src/cratekit/core/taxonomy.py"
+surface = "maintainer"
+tests = ["tests/test_taxonomy.py", "tests/test_adopt_split_place.py"]
+old = '''        if bucket.split_from and not _band_names(bucket, energy):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "L3_not_a_place"
+description = "A split place naming no band or former place of its holder is accepted"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_adopt_split_place.py"]
+old = '''            if place.sub not in bands:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "L4_display"
+description = "A split place under another name than its holder gives the place is accepted"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_adopt_split_place.py"]
+old = '''            elif place.display != bands[place.sub]:'''
+new = '''            elif False:'''
+
+[[rows]]
+id = "L5_one_place_one_bucket"
+description = "One holder place split out by two buckets is accepted"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_adopt_split_place.py"]
+old = '''            if key in claimed:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "L6_unique_id"
+description = "A split place id shared with a former or split place is accepted"
+file = "src/cratekit/core/taxonomy.py"
+surface = "maintainer"
+tests = ["tests/test_taxonomy.py", "tests/test_adopt_split_place.py"]
+old = '''            if place.id in seen:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "L7_former_target"
+description = "A split place may no longer name its holder's own former place"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_adopt_split_place.py"]
+old = '''            bands.update((former.id, former.display) for former in holder.formerly)'''
+new = ''''''

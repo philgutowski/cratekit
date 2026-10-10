@@ -4,6 +4,26 @@ Verified state only. How to work is `docs/METHOD.md`. Why the rules are what
 they are is `docs/history/`. **No hash is written here on purpose**, since this
 file is part of the commit it would be naming.
 
+**U118 built, 2026-10-09, on `relay/275`, issue #275: Soul and Hip-Hop are
+top level genre folders with energy bands, beside R&B.** The shipped template,
+now schema version 3, gains two buckets shaped as R&B is (bands, Unsorted,
+"with vox", `rates = false`, no Candy). Hip-Hop leaves NonElectronic and
+declares the old Hip-Hop playlist as its former place; "Hip-hop & Rap" is an
+exact Hip-Hop alias by the author's naming. Soul takes "Soul", "Soul / R&B"
+and "soul & funk", and declares a new shape, SPLIT PLACES
+(`[[bucket.split_from]]`): R&B's four bands and R&B's own former place, which
+R&B still competes on. A Soul track in one is withheld by adoption and moved
+by `crate adopt move` to its Soul band, keeping "with vox"; an R&B or MPB
+track is never touched; an unclaimed Soul track is listed under Soul. A
+bucket's tagging only word now beats another bucket's routing alias, so
+"Trap / Wave" still tags Hip-Hop. The review drove nine findings, five
+applied in one fix round. Battery on the branch: ruff clean, 12,995 tests
+collected and green, the scan clean. Twenty five mutation rows, 23 detected,
+two maintainer facing zeros (`docs/mutation/u118-notes.md`). R-939 to R-941
+record what is left. NOT YET ON THE LIVE LIBRARY: the active copy is the
+author's file; the attended tail edits it the same way, rehearses `crate
+adopt move` on a database copy, then runs it live on the approved gate.
+
 **U114 built, 2026-10-09, on `relay/266`, issue #266: `crate tag suggest`
 offers a genre for a row with none.** A live row with no genre on the row or
 the file gets weighted votes: its artist's other tracks 2 each, its folder's
