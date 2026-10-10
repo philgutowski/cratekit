@@ -102,14 +102,35 @@ def reserve(
     return folder_id
 
 
-def file_new(cfg: config.Config, account: RemoteAccount, playlist_id: str, kind: str) -> str:
+def token(folder: KindFolder) -> str:
+    """What a gate's digest covers of one kind folder decision, as one string.
+
+    The kind, the action and the folder identifier: a folder made, adopted or
+    removed on the account between the ask and the answer changes it, so the
+    old answer is stale rather than authorising a write nobody was shown.
+    """
+    return f"{folder.kind}:{folder.action}:{folder.folder_id}"
+
+
+def file_new(
+    cfg: config.Config, account: RemoteAccount, playlist_id: str, kind: str, planned: str
+) -> str:
     """Put a playlist the product just made into its kind's folder; answer why not.
 
-    Answers ``""`` once filed. A kind whose folder a name cannot decide is
-    left with that reason, and the playlist stays at the root for ``crate
-    organize`` to list. A provider refusal is raised to the caller.
+    ``planned`` is the :func:`token` the gate showed and its digest covered.
+    The decision is made again now and the move is made only when it is the
+    one shown; a different one, or none shown, leaves the playlist at the root
+    for ``crate organize`` to file, with the reason. Answers ``""`` once filed.
+    A failure is raised to the caller.
     """
+    if not planned:
+        return "the gate that queued this export planned no filing"
     folder = decide(cfg, kind, account.folders())
+    if token(folder) != planned:
+        return (
+            f"the {kind} folder on the account changed since the gate was answered "
+            f"({planned} then, {token(folder)} now), so nothing was filed"
+        )
     if folder.why:
         return folder.why
     account.move_to_folder(playlist_id, reserve(cfg, account, folder))
@@ -128,4 +149,5 @@ __all__ = [
     "decide",
     "file_new",
     "reserve",
+    "token",
 ]

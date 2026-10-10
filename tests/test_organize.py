@@ -350,6 +350,13 @@ def test_what_the_author_made_is_listed_with_a_home_and_never_a_write(world):
     assert MINE_ON_ACCOUNT not in mine_account
     # The set the product made is listed by the account and is not the author's.
     assert SET_NAME not in mine_account
+    assert mine_account == {}
+    (filed,) = [
+        step for step in areas[account_area.AREA]["steps"] if step["step"] == account_area.FILE
+    ]
+    assert sorted(row["id"] for row in filed["plan"] if row.get("kind_folder") == "Mine") == [
+        "mine-1"
+    ]
     # The run named batch is a suggestion, never a step.
     assert [one["name"] for one in areas[rekordbox.AREA]["suggested"]] == [RUN_NAMED]
 
@@ -357,6 +364,9 @@ def test_what_the_author_made_is_listed_with_a_home_and_never_a_write(world):
     assert code == int(ExitCode.OK), done
     assert ("mine-1", MINE_ON_ACCOUNT) not in held.renamed
     assert held.folder_names[held.placed["mine-1"]] == "Mine"
+    assert sorted(
+        pid for pid, folder in held.placed.items() if held.folder_names[folder] == "Mine"
+    ) == ["mine-1"]
     assert _parent(cfg, ids["mine"]) in rb_writer.ROOT_PARENT_SENTINELS
     assert _parent(cfg, ids["listen later"]) == inbox
     for area in done["data"]["summary"]["areas"].values():
@@ -694,7 +704,12 @@ def test_an_exported_playlist_the_product_made_is_not_listed_as_yours(world):
     assert "Exported 2025" not in mine
     # The author's own is filed in Mine (U131), and so is a move, not a listing.
     assert MINE_ON_ACCOUNT not in mine
-    assert _file_rows(_report())["exported-1"]["kind_folder"] == "Exports"
+    assert mine == set()
+    rows = _file_rows(_report()).values()
+    assert sorted(row["id"] for row in rows if row.get("kind_folder") == "Mine") == ["mine-1"]
+    assert sorted(row["id"] for row in rows if row.get("kind_folder") == "Exports") == [
+        "exported-1"
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -738,7 +753,9 @@ def test_a_marked_playlist_at_the_root_moves_into_its_year_folder(world):
     folder = held.placed[MARKED_ID]
     assert held.folder_names[folder] == MARKED_YEAR
     applied = _steps(done, account_area.AREA)[account_area.FILE]["applied"]
-    assert [MARKED_ID, folder] in applied["moved"]
+    # The marked playlist to its year, and the author's own to Mine, nothing else.
+    assert applied["moved"] == [[MARKED_ID, folder], ["mine-1", held.placed["mine-1"]]]
+    assert held.folder_names[held.placed["mine-1"]] == "Mine"
     mine = {one["name"] for one in done["data"]["summary"]["areas"][account_area.AREA]["yours"]}
     assert MARKED_NAME not in mine
 
@@ -861,7 +878,7 @@ def test_a_provider_refusal_mid_pass_stops_and_names_what_moved(world):
     assert f"custom-a into {held.placed['custom-a']}" in done["cause"]["message"]
 
 
-def test_a_mark_with_no_year_is_left_and_the_year_is_local():
+def test_a_marks_year_is_local_and_an_unreadable_one_is_empty():
     assert filing.year_of_mark("2025-12-31T23:00:00+00:00") == "2025"
     # 20:00 Eastern on 31 Dec is 01:00 UTC on 1 Jan; local year must win.
     assert filing.year_of_mark("2026-01-01T01:00:00+00:00") == "2025"

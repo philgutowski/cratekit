@@ -209,6 +209,8 @@ def _exported(cfg, account, key="crate-a", name="A crate", tracks=("t1",)):
         playlist_key=key,
         name=name,
         account=account,
+        # What the gate would show and cover, read off the account now.
+        filing=kinds.token(kinds.decide(cfg, export.KIND, account.folders())),
     )
     return export.apply(cfg, account, planned)
 
@@ -281,3 +283,17 @@ def test_a_stale_kind_folder_record_is_replaced(installed):
     assert ledger.kind_folder(cfg, kinds.MINE).folder_id == "folder-1"
 
 
+
+
+def test_a_playlist_whose_mark_has_no_year_is_filed_in_mine(installed):
+    """U131 REVERSES U116's UNDATED LEAVE. Before, a playlist whose mark carried
+    no readable year was reported and left at the root; no ledger claims it,
+    so it is now the author's own and goes to Mine, with the old reason."""
+    cfg = installed
+    account = outbound_fakes.StrictAccount()
+    _mark(cfg, "own-1", "Sunday warmup", when="soon")
+    listed = _world(cfg, account, ("own-1", "DOWNLOADED Sunday warmup"))
+
+    row = _rows(_plan(cfg, account, listed))["own-1"]
+
+    assert (row.action, row.kind, row.why) == (filing.MOVE, kinds.MINE, filing.UNDATED)

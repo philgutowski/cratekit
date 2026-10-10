@@ -43,8 +43,8 @@ from typing import Any
 
 from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import config, jobs
-from cratekit.core.cause import Outcome, refuse
-from cratekit.modules.outbound import account, artifacts, ledger, shell, source
+from cratekit.core.cause import CratekitError, Outcome, refuse
+from cratekit.modules.outbound import account, artifacts, kinds, ledger, shell, source
 from cratekit.modules.outbound import export as outbound_export
 
 #: The two payload keys both outbound verbs freeze, spelled once in
@@ -69,6 +69,12 @@ ADOPTS = "adopts"
 #: worker finds the ledger record by it when the record has moved to the crate's
 #: new path since the job was confirmed.
 REMOTE = "remote_id"
+#: Where a playlist this export creates is filed, the Exports folder decision
+#: :func:`kinds.token` spells, frozen with the job and covered by the digest
+#: (U131). Empty when the write creates nothing.
+FILING = "filing"
+#: A playlist created and left at the account root, with the reason (U131).
+UNFILED_WARNING = "export-playlist-unfiled"
 
 #: What the confirm gate says the write will do to the account's playlists.
 ACTION_CREATE = "create"
@@ -115,7 +121,10 @@ def summary(cfg: config.Config, job_id: str) -> dict[str, Any]:
     unmatched: list[str] = []
     reasons: list[str] = []
     left_out: list[dict[str, str]] = []
+    unfiled: list[str] = []
     for report in artifacts.committed(cfg, job_id):
+        if report.get("unfiled"):
+            unfiled.append(str(report["unfiled"]))
         added.extend(str(item) for item in report.get("added") or ())
         already.extend(str(item) for item in report.get("already") or ())
         for item in report.get("unmatched") or ():
@@ -151,6 +160,7 @@ def summary(cfg: config.Config, job_id: str) -> dict[str, Any]:
             "unmatched": len(unmatched),
         },
         "unmatched_tracks": left_out,
+        "unfiled": unfiled,
     }
 
 
@@ -184,9 +194,20 @@ def concluded(outbound: Mapping[str, Any]) -> tuple[dict[str, str], ...]:
     action with a verb that verifies it, which nothing here has. The warning is
     the line a script reading only the outcome and the warnings can key on.
     """
+    said = tuple(
+        {
+            "code": UNFILED_WARNING,
+            "message": (
+                f"the remote playlist was written and left at the account root, not "
+                f"filed in the {outbound_export.KIND} folder: {reason}. crate "
+                f"organize files it on its next pass"
+            ),
+        }
+        for reason in outbound.get("unfiled") or ()
+    )
     tally = shell.unmatched_tally(outbound)
     if tally is None:
-        return ()
+        return said
     missed, total = tally
     # "WERE NOT WRITTEN", NOT "ARE NOT ON THE PLAYLIST". A track counted as
     # already there may be counted so off the ledger rather than the account
@@ -201,6 +222,7 @@ def concluded(outbound: Mapping[str, Any]) -> tuple[dict[str, str], ...]:
                 f"them; each is listed with its reason in this answer"
             ),
         },
+        *said,
     )
 
 
@@ -248,6 +270,7 @@ def confirm_digest(
     tracks: list[str] | tuple[str, ...],
     *,
     adopts: str = "",
+    filing: str = "",
 ) -> str:
     """The identity the confirm decision is recorded against.
 
@@ -275,12 +298,42 @@ def confirm_digest(
     }
     if adopts:
         covered["adopts"] = adopts
+    # THE EXPORTS FOLDER A NEW PLAYLIST GOES IN (U131), the move and any folder
+    # made, joined only when set for ``adopts``'s reason.
+    if filing:
+        covered["filing"] = filing
     return digest_of(covered)
 
 
 def _frozen_adoption(payload) -> dict[str, str]:
     """The digest's fourth input, read off a frozen payload for the resume."""
-    return {"adopts": str(payload.get(ADOPTS) or "")}
+    extra = {"adopts": str(payload.get(ADOPTS) or "")}
+    if payload.get(FILING):
+        extra["filing"] = str(payload[FILING])
+    return extra
+
+
+def planned_filing(cfg: config.Config, found: ledger.Recognition) -> str:
+    """The Exports folder decision for a write that creates, read before the gate.
+
+    Empty when the write lands on a recorded playlist, which is filed already
+    or left where a person put it. Otherwise the account's root folders are
+    read once, so the gate shows and its digest covers the move and any
+    folder the apply would create (U131).
+
+    AN ACCOUNT THAT CANNOT BE READ HERE PLANS NO FILING rather than refusing
+    the gate: the gate has never needed the account, the write
+    resolves it again and refuses there with its own cause, and a playlist
+    created with no filing planned is left at the root, said in a warning, for
+    ``crate organize`` to file.
+    """
+    if found.own_remote_id or found.adopts:
+        return ""
+    try:
+        root = account.resolve(cfg).folders()
+    except CratekitError:
+        return ""
+    return kinds.token(kinds.decide(cfg, outbound_export.KIND, root))
 
 
 def recognition_warnings(
@@ -471,6 +524,7 @@ def export_playlist(ctx) -> Envelope:
     if getattr(ctx.args, "new_playlist", False):
         found = found.without_offer()
     said = recognition_warnings(resolved, found)
+    filing = planned_filing(cfg, found)
 
     # THE TRACKS THE DIGEST COVERS ARE SHOWN (R-693), through the gate layer,
     # beside the export's age and the remote playlist. The resume shows the
@@ -480,7 +534,11 @@ def export_playlist(ctx) -> Envelope:
         spec,
         plan={
             "digest": confirm_digest(
-                resolved.key, str(exported), resolved.track_ids, adopts=found.adopts
+                resolved.key,
+                str(exported),
+                resolved.track_ids,
+                adopts=found.adopts,
+                filing=filing,
             ),
             "items": list(resolved.track_ids),
         },
@@ -488,6 +546,7 @@ def export_playlist(ctx) -> Envelope:
             shell.PLAYLIST: resolved.key,
             shell.EXPORT_PATH: str(exported),
             ADOPTS: found.adopts,
+            **({FILING: filing} if filing else {}),
             **shell.shown_export(age),
             **shown_playlist(found, said),
         },
@@ -509,6 +568,7 @@ def export_playlist(ctx) -> Envelope:
                 EXPORT: str(exported),
                 ADOPTS: found.adopts,
                 REMOTE: found.own_remote_id or found.remote_id or None,
+                FILING: filing,
                 shell.TRACKS: list(resolved.track_ids),
                 jobs.GATE_RUN_KEY: ctx.run.run_id,
             },
@@ -572,6 +632,7 @@ def run_export_item(
         contents=[str(track) for track in payload.get(shell.TRACKS) or ()],
         # THE EXPORT'S DATE, so a later prune can refuse an older export (R-836).
         written=exported_on(Path(str(payload[EXPORT])), cfg),
+        filing=str(payload.get(FILING) or ""),
     )
     report = outbound_export.apply(cfg, remote, planned)
     return {
@@ -580,6 +641,7 @@ def run_export_item(
         "remote_id": report.remote_id,
         "created": report.created,
         "adopted_from": report.adopted_from,
+        "unfiled": report.unfiled,
         "added": list(report.added),
         "already": list(report.already),
         "unmatched": [
@@ -625,6 +687,8 @@ def handle(job, item, cfg) -> jobs.Produced:
 
 __all__ = [
     "NO_MATCH",
+    "FILING",
+    "UNFILED_WARNING",
     "UNMATCHED_WARNING",
     "build",
     "concluded",

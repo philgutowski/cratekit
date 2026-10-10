@@ -81,14 +81,12 @@ new = '''    if True:
 
 [[rows]]
 id = "K9_export_refusal_kept"
-description = "export.apply: let a refused move at creation fail the export"
+description = "export.apply: let a ledger or raw error filing at creation fail the finished export"
 file = "src/cratekit/modules/outbound/export.py"
 surface = "user"
 tests = ["tests/test_playlist_kinds.py", "tests/test_export_collection.py", "tests/test_outbound_workers.py"]
-old = '''        except CratekitError as exc:
-            unfiled = exc.cause.message'''
-new = '''        except KeyError as exc:
-            unfiled = str(exc)'''
+old = '''        except Exception as exc:  # noqa: BLE001 - reported as the warning'''
+new = '''        except KeyError as exc:  # noqa: BLE001 - reported as the warning'''
 
 [[rows]]
 id = "K10_kind_created_named"
@@ -99,3 +97,32 @@ tests = ["tests/test_playlist_kinds.py", "tests/test_organize.py"]
 old = '''        if made is not None:
             made.append(folder.kind)'''
 new = '''        pass'''
+
+[[rows]]
+id = "K11_filing_in_digest"
+description = "confirm_digest: leave the Exports filing out of the digest, so a changed folder does not make the answer stale"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_playlist_kinds.py"]
+old = '''    if filing:
+        covered["filing"] = filing'''
+new = '''    if False:
+        covered["filing"] = filing'''
+
+[[rows]]
+id = "K12_filing_as_shown"
+description = "kinds.file_new: file whatever the account says now rather than only the decision the gate showed"
+file = "src/cratekit/modules/outbound/kinds.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_playlist_kinds.py"]
+old = '''    if token(folder) != planned:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "K13_unfiled_warning"
+description = "export concluded: drop the unfiled warning, so a playlist left at the root is never said"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py"]
+old = '''        for reason in outbound.get("unfiled") or ()'''
+new = '''        for reason in ()'''

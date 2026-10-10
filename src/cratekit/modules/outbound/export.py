@@ -75,6 +75,9 @@ class ExportPlan:
     #: The ISO date of the collection export the plan was read from, recorded
     #: so ``export prune`` can refuse an older one (R-836). Empty when unread.
     written: str = ""
+    #: The Exports folder decision the gate showed, :func:`kinds.token`, or
+    #: empty when the gate planned no filing (U131).
+    filing: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +99,10 @@ class ExportReport:
     unfiled: str = ""
 
 
+#: The playlist export creates is filed in the account's Exports folder (U131).
+KIND = kinds.EXPORTS
+
+
 def plan(
     tracks: Sequence[LocalTrack],
     *,
@@ -106,6 +113,7 @@ def plan(
     expected: str = "",
     contents: Sequence[str] | None = None,
     written: str = "",
+    filing: str = "",
 ) -> ExportPlan:
     """Match every track. Unmatched stay on the plan; they are not omitted.
 
@@ -142,6 +150,7 @@ def plan(
         adopts=adopts,
         expected=expected,
         written=written,
+        filing=filing,
         contents=tuple(
             str(item)
             for item in (
@@ -202,11 +211,16 @@ def apply(
     if reserved.created:
         # FILED AT CREATION (U131), after the tracks, so a refused move leaves a
         # whole playlist at the root rather than an empty one, recorded, which
-        # ``crate organize`` files on its next pass.
+        # ``crate organize`` files on its next pass. ANY FAILURE HERE IS A
+        # WARNING, never the export's: the playlist and its track are written
+        # and recorded, and a ledger or provider error filing it must not
+        # report a finished write as failed.
         try:
-            unfiled = kinds.file_new(cfg, account, remote_id, kinds.EXPORTS)
+            unfiled = kinds.file_new(cfg, account, remote_id, KIND, planned.filing)
         except CratekitError as exc:
             unfiled = exc.cause.message
+        except Exception as exc:  # noqa: BLE001 - reported as the warning
+            unfiled = f"{type(exc).__name__}: {exc}"
     return ExportReport(
         unfiled=unfiled,
         playlist_key=planned.playlist_key,
