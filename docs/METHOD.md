@@ -28,8 +28,7 @@ one.
 1. **Orient.** `board.py next`, `board.py show N`, `board.py start N`. The issue
    is the brief. Read this file, `RESTART-cratekit.md`, and `CONCEPTS.md` for
    any term that is unclear. Grep `docs/solutions/` by module and tag for the
-   area you are about to touch, and read the entries that match. Note main's
-   highest residual number at branch time.
+   area you are about to touch, and read the entries that match.
 2. **Plan, in plan mode, as a message.** The plan names the seam, the files,
    the test scenarios from the brief, the residuals the unit closes, and what is
    out of scope. It is not a document. `docs/plans/` is closed: nothing new is
@@ -44,16 +43,21 @@ one.
    the fixes. Then the mutation table below, capped at 25 rows. Then the hunts a
    green suite cannot see. At most two fix rounds; when they are spent, what is
    still open becomes a residual and the unit merges.
-5. **Record.** Residuals appended to `docs/residual-findings.md` with fresh
-   numbers above main's highest. **A residual that meets the board bar below
-   also gets an issue, in the same session**, because the board is the queue
-   and a finding nobody queued is a finding nobody does. A `docs/solutions/` entry only if the unit
+5. **Record.** Each residual is a file, `docs/residuals/<unit>-<slug>.md`,
+   with no number; `docs/residuals/README.md` is the form. **A residual that
+   meets the board bar below says `issue: yes`**, because the board is the
+   queue and a finding nobody queued is a finding nobody does, and the issue
+   is filed once the number exists. A `docs/solutions/` entry only if the unit
    found something a future session would get wrong without it, written
-   directly in the existing frontmatter form. `RESTART-cratekit.md` rewritten to
-   the verified state. No explainer, see below.
+   directly in the existing frontmatter form. The unit's restart paragraph is
+   its own file, `docs/restart/<unit>.md` (`u114.md`, `r572.md`), never a
+   paragraph in `RESTART-cratekit.md`, which `scan_repo.py` refuses. No
+   explainer, see below.
 6. **Merge.** The battery from inside the checkout, the closing keyword scan
-   over the whole range, merge to `main` locally, push `main`, delete the
-   branch in both places, `board.py audit`.
+   over the whole range, merge to `main` locally, then on `main`
+   `board.py residuals --land` and commit what it numbered, push `main`,
+   delete the branch in both places, `board.py audit`. File the issue for
+   each residual `--land` names as meeting the board bar.
 
 ## The merge bar, decided 2026-08-09
 
@@ -98,8 +102,9 @@ File it with `gh issue create --repo philgutowski/cratekit --label residual`,
 titled `R-N: ` followed by the ledger heading EXACTLY, since `board.py audit`
 compares the two, with a body opening `**Depends on:** none` and carrying goal,
 key files, approach, test scenarios and out of scope. Add it to project 2.
-Create the issue AFTER the merge that carries the ledger entry, because a
-number is not the finding's until it is on `main`. The Relay feeder picks up
+Create the issue AFTER `board.py residuals --land` numbers it on `main`,
+because a number is not the finding's until then. The unit marks it
+`issue: yes` in its residual file so whoever lands it knows to. The Relay feeder picks up
 any open issue labelled `residual` or `unit` that the board derives as ready.
 
 **Never write a literal dot claude path in a card**, title, body or comment, not
@@ -315,11 +320,15 @@ it.
   already carrying such a string cannot be made safe by the merge commit:
   rewrite those bodies, or expect the close and reopen the issue after the push.
 - **Residual numbers are APPEND ONLY. A number, once given, is that finding's
-  for life.** At a merge, the numbers on `main` do not move. The incoming
-  branch's residuals take fresh numbers above `main`'s current highest. Gaps are
-  fine. GitHub issue titles carry residual numbers in their text, which is a
-  surface the repository cannot see, and is why a renumber is forbidden. Verify
-  a merge with both:
+  for life.** A number is given at landing and nowhere else, decided by U124:
+  a unit files its residuals unnumbered in `docs/residuals/`, and
+  `board.py residuals --land`, which refuses off `main`, gives each the next
+  number past the ledger's highest. So the numbers on `main` never move and no
+  branch is ever renumbered. Gaps are fine. GitHub issue titles carry residual
+  numbers in their text, which is a surface the repository cannot see, and is
+  why a renumber is forbidden. A branch built before U124 that still numbers
+  its own entries takes fresh numbers above `main`'s highest at the merge.
+  Verify a merge with both:
 
       grep "^## R-" docs/residual-findings.md | sort | uniq -d              # must be empty
       git diff origin/main -- docs/residual-findings.md | grep '^-## R-'   # must be empty
@@ -336,9 +345,12 @@ it.
   executed once.
 - **Reconcile the collected count by identifier, not by total.** A total only
   check shows a healthy rise and hides a collapse.
-- **`RESTART-cratekit.md` is rewritten by every merge**, so it conflicts on
-  every merge. Take the incoming unit's version and re-verify it against the
-  merged tree. Never resolve it by keeping both.
+- **A unit's restart paragraph is its own file, decided by U124.** It goes in
+  `docs/restart/<unit>.md`, so two units land in either order without a
+  conflict. `RESTART-cratekit.md` keeps only the sections no unit owns, and
+  `scan_repo.py` refuses a unit's paragraph anywhere in it. A branch built
+  before U124 that conflicts there moves its own paragraph into its fragment
+  and takes `main`'s `RESTART-cratekit.md` as it is.
 
 ## Learnings, filed directly
 
@@ -394,6 +406,11 @@ outcome is BLOCKED, not a build against a tree missing its foundation.
 **Relay owns `main` while it runs.** One writer at a time. Attended work goes
 to a worktree with its own venv and merges between tasks, never during one. A
 merge that lands mid task halts that task as `remote_advanced`.
+
+**The runner lands a task's residual files unnumbered.** It does not run
+`board.py residuals --land`, so whoever writes to `main` next, the watcher or
+an attended session, runs it between tasks and commits what it numbered.
+`board.py audit` names the files still waiting, which is how they are noticed.
 
 ## Do not touch
 
