@@ -1810,3 +1810,51 @@ def test_a_recording_over_the_parts_ceiling_is_refused_at_the_queue_and_queues_n
     assert recognised.requests == []
     with jobs.open_store() as store:
         assert jobs.list_jobs(store) == ()
+
+
+# ---------------------------------------------------------------------------
+# U120: the date a heart was made rides on the job's frozen row
+# ---------------------------------------------------------------------------
+
+
+def test_a_hearts_job_freezes_when_each_heart_was_made_and_a_playlist_job_does_not(
+    cfg, library, monkeypatch
+):
+    """The quarter a landed heart goes to is read from the job, never from the
+    account again (U113's rule), so the listing records the account's date."""
+    from datetime import datetime, timedelta, timezone
+
+    hearts = five_hearts()
+    hearts[0].user_date_added = datetime(2026, 10, 1, 3, 0, tzinfo=timezone.utc)
+    # An older client spells it ``date_added``; a local moment is kept as UTC.
+    hearts[1].date_added = datetime(2026, 9, 30, 22, 0, tzinfo=timezone(timedelta(hours=-5)))
+    hearts[2].user_date_added = "not a date"
+    bind_hearts(monkeypatch, hearts)
+    owned(library, "Aurora Bloom - Sun Path.flac")
+    code, envelope = drive(["intake", "playlist", "favorites"])
+    assert code == int(ExitCode.OK), envelope
+    job_id = envelope["data"]["job_id"]
+
+    frozen = job_of(job_id).payload[intake_cli.TRACKS]
+    assert frozen["201"][intake_cli.HEARTED] == "2026-10-01T03:00:00+00:00"
+    assert frozen["202"][intake_cli.HEARTED] == "2026-10-01T03:00:00+00:00"
+    assert intake_cli.HEARTED not in frozen["203"]
+    assert intake_cli.HEARTED not in frozen["204"]
+    # The worker thaws the row as before and its report carries the date along.
+    drive(resume_argv(job_id))
+    found = by_title(cfg, job_id)
+    assert found["Sun Path"]["track"][intake_cli.HEARTED] == "2026-10-01T03:00:00+00:00"
+    assert intake_cli.HEARTED not in found["Salt Road"]["track"]
+    assert intake_cli.thawed(frozen["201"]).ref == "201"
+
+
+def test_a_playlist_job_freezes_no_date_even_when_the_rows_carry_one(cfg, library, monkeypatch):
+    from datetime import datetime, timezone
+
+    rows = [Track("301", "Someone", "Something")]
+    rows[0].user_date_added = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    bind_playlist(monkeypatch, "pl-1", rows)
+    code, envelope = drive(["intake", "playlist", "pl-1"])
+    assert code == int(ExitCode.OK), envelope
+    frozen = job_of(envelope["data"]["job_id"]).payload[intake_cli.TRACKS]
+    assert intake_cli.HEARTED not in frozen["301"]

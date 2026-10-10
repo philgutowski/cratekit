@@ -1,4 +1,4 @@
-"""The quarterly favourites placeholder playlists, named once.
+"""The quarterly favourites playlists, named once, on both sides.
 
 The source system puts the hearts the library does not own into one private
 provider playlist per UTC quarter, ``Favorites 2026-Q2``, and those playlists are
@@ -6,6 +6,12 @@ the favourites source's to sweep. They are account playlists like any other, so
 the playlists source would sweep them a second time unless it can tell them
 apart, and the name is the only thing that tells them apart: no identifier for
 them is recorded anywhere this build reads.
+
+THE REKORDBOX SIDE IS NAMED HERE TOO, since U120. The source system filed an
+owned heart into a playlist named for the UTC quarter it was hearted in,
+``2026-Q4``, under the Favorites folder beside All Favorites, and a heart with
+no date into ``Undated``. The two sides share one quarter rule, below, so a
+heart is in the same quarter on the account and in the library.
 
 A MODULE OF ITS OWN, WITH NO IMPORTS FROM THE PRODUCT, so the playlists source,
 which is core and runs on the slim profile, can ask the question without
@@ -19,6 +25,7 @@ Layer: modules.
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 
 #: The leading word every placeholder name carries, followed by its quarter.
 PLACEHOLDER_PREFIX = "Favorites "
@@ -32,8 +39,52 @@ BACKLOG = "(undated backlog)"
 #: ends by ``fullmatch`` at the call site, so ``All Favorites`` and
 #: ``Favorites 2026-Q2 copy`` are not placeholders.
 PLACEHOLDER_NAME = re.compile(
-    re.escape(PLACEHOLDER_PREFIX) + r"(?:\d{4}-Q[1-4]|" + re.escape(BACKLOG) + r")"
+    re.escape(PLACEHOLDER_PREFIX) + r"(?:" + r"\d{4}-Q[1-4]" + r"|" + re.escape(BACKLOG) + r")"
 )
+
+#: The rekordbox playlist an owned heart with no date goes to, the source
+#: system's own name for it (U120). The account side's is :data:`BACKLOG`.
+UNDATED = "Undated"
+
+#: A whole quarter label as rekordbox carries it, ``2026-Q4``, anchored at both
+#: ends by ``fullmatch`` at the call site.
+QUARTER_LABEL = re.compile(r"\d{4}-Q[1-4]")
+
+
+def as_utc(moment: datetime) -> datetime:
+    """``moment`` in UTC. A naive datetime is taken to be UTC, the source system's rule."""
+    if moment.tzinfo is None:
+        return moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(timezone.utc)
+
+
+def quarter_of(moment: datetime) -> str:
+    """The UTC quarter label ``YYYY-Qn`` a moment falls in, the one rule for both sides."""
+    utc = as_utc(moment)
+    return f"{utc.year}-Q{(utc.month - 1) // 3 + 1}"
+
+
+def quarter_label(hearted: datetime | None) -> str:
+    """The rekordbox playlist a heart goes to: its quarter, or :data:`UNDATED` with no date."""
+    return UNDATED if hearted is None else quarter_of(hearted)
+
+
+def parse_hearted(said: object) -> datetime | None:
+    """The moment a frozen row says a heart was made, in UTC, or None when it says none.
+
+    A datetime is taken as it is; text is read as ISO 8601, which is how a job
+    freezes it; anything else, and text that does not read, is no date rather
+    than a refusal, because a heart with no readable date is an undated heart
+    and the undated playlist exists for exactly that.
+    """
+    if isinstance(said, datetime):
+        return as_utc(said)
+    if isinstance(said, str) and said.strip():
+        try:
+            return as_utc(datetime.fromisoformat(said.strip()))
+        except ValueError:
+            return None
+    return None
 
 
 def placeholder_name(quarter: str) -> str:
@@ -50,6 +101,12 @@ __all__ = [
     "BACKLOG",
     "PLACEHOLDER_NAME",
     "PLACEHOLDER_PREFIX",
+    "QUARTER_LABEL",
+    "UNDATED",
+    "as_utc",
     "is_placeholder",
+    "parse_hearted",
     "placeholder_name",
+    "quarter_label",
+    "quarter_of",
 ]

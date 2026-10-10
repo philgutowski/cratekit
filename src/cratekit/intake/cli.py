@@ -53,6 +53,7 @@ from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import artifacts, binaries, binary_refusal, config, jobs, review
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
+from cratekit.favorites import placeholders
 from cratekit.intake import fetch, normalize, pipeline, recognize
 from cratekit.label import catalogue
 from cratekit.label import cli as label_cli
@@ -76,6 +77,12 @@ PARTS = "parts"
 #: mark would not say what the author called it. A landing names the playlist's
 #: own INBOX playlist from this.
 PLAYLIST_NAME = "playlist_name"
+#: When the account says a heart was made, on a hearts job's frozen row, as ISO
+#: 8601 in UTC (U120). Recorded at the queue for U113's reason: a landing reads
+#: which quarter a heart goes to from the job and never from the account again.
+#: Absent on a row the account dates nowhere, and on every row a build before
+#: this one froze, and ``thawed`` reads past it.
+HEARTED = "hearted"
 
 #: The two handler keys one worker serves. A resume is refused for any other,
 #: because the driver resolves the worker from the job row and not from the
@@ -1184,7 +1191,31 @@ def list_favorites(
     path, so its inbound check and this verb report the same numbers.
     """
     rows, short = label_cli.favourite_tracks_or_refuse(found, FAVORITES)
-    return frozen_rows(_read_rows(rows, FAVORITES)), short
+    frozen = frozen_rows(_read_rows(rows, FAVORITES))
+    # THE DATE RIDES ON THE ROW (U120), by the identifier the row is keyed by,
+    # so a heart folded to one item carries the date of its first mention.
+    for row in rows:
+        when = hearted_on(row)
+        key = str(getattr(row, "id", "") if not isinstance(row, Mapping) else row.get("id", ""))
+        if when and key in frozen and HEARTED not in frozen[key]:
+            frozen[key][HEARTED] = when
+    return frozen, short
+
+
+def hearted_on(row: object) -> str | None:
+    """When the account says ``row`` was hearted, as ISO 8601 UTC text, or None.
+
+    The provider's client copies the favourite's own timestamp onto the track
+    as ``user_date_added`` and, in older versions, ``date_added``, which is what
+    the source system bucketed quarters by. Read from either, an object or a
+    mapping, and anything that is not a moment is no date.
+    """
+    for name in ("user_date_added", "date_added"):
+        value = row.get(name) if isinstance(row, Mapping) else getattr(row, name, None)
+        moment = placeholders.parse_hearted(value)
+        if moment is not None:
+            return moment.isoformat()
+    return None
 
 
 #: The warning code a hearts listing carries when it came back short.
@@ -1419,6 +1450,7 @@ __all__ = [
     "PARTS",
     "FAVORITES",
     "FAVORITES_SOURCE_ID",
+    "HEARTED",
     "HEARTS_WITHHELD",
     "INTAKE_KEYS",
     "MIX_SCRATCH_LEFT",
@@ -1437,6 +1469,7 @@ __all__ = [
     "build_set",
     "frozen",
     "frozen_rows",
+    "hearted_on",
     "handle",
     "intake_identify",
     "intake_playlist",
