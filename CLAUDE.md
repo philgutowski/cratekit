@@ -162,9 +162,15 @@ lists what.
   rekordbox on the live library through the desktop control tool, to import,
   to let it analyse, and to read what it shows. A Relay run, a job, a verb and
   a test never launch rekordbox or its background agent. Before opening it: no
-  Cratekit job is running, and `crate doctor` reads both backup ages under one
-  day. After quitting it: `rekordbox` and `rekordboxAgent` are both confirmed
+  Cratekit job is running, and `crate doctor` reads both backup ages under five
+  days. After quitting it: `rekordbox` and `rekordboxAgent` are both confirmed
   gone before any verb runs.
+- **A backup is needed only when the library is more than five days out of
+  date, or when Phillip asks for one**, decided by Phillip on 2026-10-10,
+  relaxing the one day rule of 2026-09-29. Below five days a session opens
+  rekordbox and mints the acknowledgment without running `crate backup run`
+  first; at or over five days, or with either age unknown, it runs the backup
+  before anything else.
 - **A database write gate is approved by the session only when a rehearsal
   matches**, decided 2026-09-29. The session drives the same verb on a
   disposable copy with library state redirected, reads the result, and then
@@ -177,7 +183,7 @@ lists what.
   on every gate is `session`. **The backup acknowledgment may be minted by
   the session**, decided by Phillip on 2026-10-09, reversing the 2026-09-29
   rule: the gate shows both backup ages and the person only pasted a command,
-  so the session reads the ages, refuses unless both are under one day, and
+  so the session reads the ages, refuses unless both are under five days, and
   answers with the actor `session`. The verb still wants a controlling
   terminal, so until a card lets it accept the session, it is run under
   `script -q /dev/null`.
