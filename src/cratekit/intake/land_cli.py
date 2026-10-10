@@ -771,6 +771,8 @@ def collection_facts(rows: native.NativePlan) -> dict[str, Any]:
         "content link": (
             f"{rows.link.value}, carried by {rows.link.carriers} of the library's "
             f"{rows.link.rows} live rows"
+            if rows.link is not None
+            else "none, since no row is added"
         ),
         "left empty for rekordbox": list(native.LEFT_EMPTY),
         "adds": len(rows.to_add()),

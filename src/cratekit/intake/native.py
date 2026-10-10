@@ -146,8 +146,9 @@ class RowPlan:
     file_size: int
     file_type: int
     #: The ContentLink the library's live rows mostly carry, given to the row
-    #: (U126). The same value on every row of one plan.
-    content_link: int
+    #: (U126). Set on a row to be added and None on every other, so the screen
+    #: and the digest name it only where it is written.
+    content_link: int | None
     #: The row already holding this file, when ``action`` is ``PRESENT``.
     content_id: str | None = None
     #: Why the file is planned as ``UNSUPPORTED``, in a sentence, else empty.
@@ -162,7 +163,11 @@ class RowPlan:
             "FileSize": self.file_size,
             "FileType": self.file_type,
             rb_writer.FILE_ID_COLUMN: FILE_ID_AT_LANDING,
-            rb_writer.CONTENT_LINK_COLUMN: self.content_link,
+            **(
+                {rb_writer.CONTENT_LINK_COLUMN: self.content_link}
+                if self.content_link is not None
+                else {}
+            ),
         }
 
 
@@ -273,8 +278,9 @@ class NativePlan:
     current_drive: str | None
     rows: tuple[RowPlan, ...]
     #: The ContentLink every added row is given, and how many live rows carry
-    #: it (U126). Read once, at plan time, from the library.
-    link: row_link.LibraryLink
+    #: it (U126). Read once, at plan time, from the library, and None when the
+    #: plan adds no row, since a landing that writes no row needs no value.
+    link: row_link.LibraryLink | None
     digest: str
     #: The account playlists, each its own INBOX playlist (U113). The batch
     #: playlist, ``playlist``, holds only the rows none of them holds.
@@ -312,8 +318,8 @@ class AddedRow:
     empty: dict[str, Any]
     #: ``rb_file_id`` as the table holds it after the commit, as text (U115).
     file_id: str = ""
-    #: ``ContentLink`` as the table holds it after the commit, as text (U126).
-    content_link: str = ""
+    #: ``ContentLink`` as the table holds it after the commit (U126), None for NULL.
+    content_link: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -336,7 +342,7 @@ class NativeLanded:
     #: The set's permanent playlist written under INSPIRATION (U121), or None.
     set_playlist: set_playlist.Written | None = None
     #: The ContentLink the plan gave every added row (U126), which the read
-    #: back is held to. None only on a landed value built by hand.
+    #: back is held to. None when the plan added no row.
     content_link: int | None = None
 
     def names(self) -> tuple[str, ...]:
@@ -499,9 +505,6 @@ def plan_rows(
     root = db.get_playlist(ID=root_id)
     device_id, master_db_id = choose_device(db)
     base_drive, current_drive = rb_writer.recorded_db_drives(db)
-    # BEFORE ANY ROW IS PLANNED, so a library with no value to give refuses
-    # with nothing shown (U126).
-    link = row_link.library_link(db)
     prefix_map = [locations.PrefixRule(a, b) for a, b in cfg.resolved_prefix_map()]
     index = trees.index_active_rows(
         routing_pass.content_rows(db), root=cfg.library.root, prefix_map=prefix_map
@@ -551,11 +554,21 @@ def plan_rows(
                 file_name=target.name,
                 file_size=source.stat().st_size,
                 file_type=file_type or 0,
-                content_link=link.value,
+                content_link=None,
                 content_id=held,
                 why=why,
             )
         )
+    # ONLY WHEN A ROW IS ADDED, and before anything is shown (U126). A
+    # landing whose files the collection already holds writes memberships
+    # alone, and a library with no value to give does not refuse it.
+    link = (
+        row_link.library_link(db) if any(row.action == ADD for row in rows) else None
+    )
+    if link is not None:
+        rows = [
+            replace(row, content_link=link.value) if row.action == ADD else row for row in rows
+        ]
     planned = NativePlan(
         tree_id=tree_id,
         root_id=str(root_id),
@@ -696,6 +709,12 @@ def identity(plan: NativePlan) -> dict[str, Any]:
             for row in plan.rows
         ],
         "left_empty": list(LEFT_EMPTY),
+        # THE COUNTS AS WELL AS THE VALUE, since the screen shows both (U126).
+        "content_link": (
+            {"value": plan.link.value, "carriers": plan.link.carriers, "rows": plan.link.rows}
+            if plan.link is not None
+            else None
+        ),
     }
 
 
@@ -739,7 +758,7 @@ def file_id_of(path: Path) -> int:
     return os.stat(path).st_ino
 
 
-def _read_back(db: Any, content_id: str) -> tuple[dict[str, Any], str, str, str, str]:
+def _read_back(db: Any, content_id: str) -> tuple[dict[str, Any], str, str, str, int | None]:
     """The analysis columns, title, path, file id and link of one row, from SQL after the commit."""
     from sqlalchemy import text
 
@@ -767,7 +786,7 @@ def _read_back(db: Any, content_id: str) -> tuple[dict[str, Any], str, str, str,
         str(row[0] or ""),
         str(row[1] or ""),
         str(row[2] or ""),
-        "" if row[3] is None else str(row[3]),
+        None if row[3] is None else int(row[3]),
     )
 
 
@@ -1039,7 +1058,7 @@ def apply_rows(
         playlists=tuple(written),
         favorites=placed,
         set_playlist=set_written,
-        content_link=plan.link.value,
+        content_link=plan.link.value if plan.link is not None else None,
     )
 
 
@@ -1207,13 +1226,14 @@ def assert_rows_identified(landed: NativeLanded) -> None:
         for row in landed.added
         if str(row.file_id) != str(file_id_of(row.target))
     ]
-    if landed.content_link is not None:
-        wrong += [
-            f"{row.content_id}: {rb_writer.CONTENT_LINK_COLUMN} = {row.content_link!r}, "
-            f"the library's is {landed.content_link}"
-            for row in landed.added
-            if str(row.content_link) != str(landed.content_link)
-        ]
+    # NO SKIP: a row added with no value planned is as wrong as a row whose
+    # value did not take, and None never equals a value read back.
+    wrong += [
+        f"{row.content_id}: {rb_writer.CONTENT_LINK_COLUMN} = {row.content_link!r}, "
+        f"the library's is {landed.content_link!r}"
+        for row in landed.added
+        if landed.content_link is None or row.content_link != landed.content_link
+    ]
     if wrong:
         raise refuse(
             "internal-error",

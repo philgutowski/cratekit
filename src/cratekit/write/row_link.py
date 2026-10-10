@@ -46,6 +46,7 @@ Layer: write. It opens no database of its own and names no verb.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -87,6 +88,10 @@ VALUE_MINORITY = "link-value-minority"
 MAJORITY_UNCLEAR = "link-majority-unclear"
 
 _ORIGIN = ("write", "row_link")
+
+#: A ContentLink the landing will copy: an optional minus and ASCII digits,
+#: nothing else, so ``int`` can never refuse what this accepted.
+_WHOLE = re.compile(r"-?[0-9]+")
 
 
 def _text(value: Any) -> str | None:
@@ -281,7 +286,7 @@ def library_link(db: Any) -> LibraryLink:
     rows = sum(int(count) for _value, count in counted)
     value, carriers = counted[0] if counted else (None, 0)
     whole = _text(value)
-    if whole is not None and whole.lstrip("-").isdigit() and carriers * 2 > rows:
+    if whole is not None and _WHOLE.fullmatch(whole) and carriers * 2 > rows:
         return LibraryLink(value=int(whole), carriers=int(carriers), rows=rows)
     shown = "no value" if not counted else ("NULL" if whole is None else repr(whole))
     raise refuse(
@@ -291,8 +296,8 @@ def library_link(db: Any) -> LibraryLink:
         f"half of them; a row this landing makes takes the value rekordbox "
         f"writes on its own rows, and with no clear majority there is none to take",
         steps=(
-            "import a few files through rekordbox so its own rows carry its value, "
-            "then plan the landing again",
+            "import these files through rekordbox's own import, which gives each row "
+            "its own value; the native landing cannot choose one for this library",
         ),
         origin=_ORIGIN,
         detail={

@@ -514,14 +514,15 @@ def test_assert_rows_identified_is_pure_over_what_was_read_back(tmp_path):
     path.write_bytes(b"fLaC")
     right = native.AddedRow(
         target=path, content_id="1", title="t", folder_path=str(path), empty={},
-        file_id=str(path.stat().st_ino),
+        file_id=str(path.stat().st_ino), content_link=LIBRARY_LINK,
     )
     wrong = native.AddedRow(
-        target=path, content_id="2", title="t", folder_path=str(path), empty={}, file_id="73894078"
+        target=path, content_id="2", title="t", folder_path=str(path), empty={},
+        file_id="73894078", content_link=LIBRARY_LINK,
     )
-    native.assert_rows_identified(_landed(right))
+    native.assert_rows_identified(_landed(right, content_link=LIBRARY_LINK))
     with pytest.raises(CratekitError) as caught:
-        native.assert_rows_identified(_landed(right, wrong))
+        native.assert_rows_identified(_landed(right, wrong, content_link=LIBRARY_LINK))
     assert caught.value.cause.reason == "internal-error"
     assert "2: " in caught.value.cause.message and "73894078" in caught.value.cause.message
     assert "restore session s-1" in " ".join(caught.value.cause.remediation.steps)
@@ -570,8 +571,9 @@ def test_the_rows_carry_the_librarys_content_link_and_not_the_bindings(native_li
     assert {link for _id, link in rows} == {LIBRARY_LINK}
     assert BINDING_LINK != LIBRARY_LINK
     landed_items = [item for item in acted["data"]["items"] if item["action"] == "landed"]
+    # A number in the answer as on the screen, never the text of one.
     assert [item["row"][rb_writer.CONTENT_LINK_COLUMN] for item in landed_items] == [
-        str(LIBRARY_LINK)
+        LIBRARY_LINK
     ] * 2
 
 
@@ -669,19 +671,72 @@ def test_assert_rows_identified_holds_the_link_to_the_one_planned(tmp_path):
     inode = str(path.stat().st_ino)
     right = native.AddedRow(
         target=path, content_id="1", title="t", folder_path=str(path), empty={},
-        file_id=inode, content_link=str(LIBRARY_LINK),
+        file_id=inode, content_link=LIBRARY_LINK,
     )
     wrong = native.AddedRow(
         target=path, content_id="2", title="t", folder_path=str(path), empty={},
-        file_id=inode, content_link=str(BINDING_LINK),
+        file_id=inode, content_link=BINDING_LINK,
     )
     native.assert_rows_identified(_landed(right, content_link=LIBRARY_LINK))
     with pytest.raises(CratekitError) as caught:
         native.assert_rows_identified(_landed(right, wrong, content_link=LIBRARY_LINK))
     assert caught.value.cause.reason == "internal-error"
     message = caught.value.cause.message
-    assert f"2: {rb_writer.CONTENT_LINK_COLUMN} = '{BINDING_LINK}'" in message
+    assert f"2: {rb_writer.CONTENT_LINK_COLUMN} = {BINDING_LINK}" in message
     assert "1: " not in message
+    # NO PLANNED VALUE IS NO PASS: a row added with nothing to hold it to is
+    # refused, rather than the check going quiet.
+    with pytest.raises(CratekitError) as caught:
+        native.assert_rows_identified(_landed(right))
+    assert f"1: {rb_writer.CONTENT_LINK_COLUMN}" in caught.value.cause.message
+
+
+def test_a_landing_that_adds_no_row_needs_no_majority(native_library, silence):
+    """Every file already in the collection: the landing writes memberships
+    alone, so a library with no majority ContentLink does not refuse it, and
+    no row on the screen claims a link it would not be given."""
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    held = str(_music(cfg) / "One.flac")
+    conn = sqlite3.connect(cfg.library.db_path)
+    conn.execute(
+        "INSERT INTO djmdContent (ID, Title, FolderPath, ContentLink, rb_local_deleted, "
+        "created_at, updated_at) VALUES ('held-1', 'held', ?, 30, 0, '2026-01-01', '2026-01-01')",
+        (held,),
+    )
+    conn.commit()
+    conn.close()
+    _set_links(cfg, {"2": 31})
+
+    code, refused = drive(_land())
+
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["adds"] == 0 and shown["already present"] == 1
+    assert shown["content link"] == "none, since no row is added"
+    (item,) = shown["items"]
+    assert rb_writer.CONTENT_LINK_COLUMN not in item["row"]
+
+
+def test_the_content_link_counts_move_the_digest(native_library, silence):
+    """The screen shows how many rows carry the value, so the digest covers
+    the count as well: the same value carried by one more row is another plan."""
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    code, first = drive(_land())
+    assert code == int(ExitCode.DECISION_REQUIRED), first
+    conn = sqlite3.connect(cfg.library.db_path)
+    conn.execute(
+        "INSERT INTO djmdContent (ID, ContentLink, rb_local_deleted, created_at, updated_at) "
+        "VALUES ('rb-made', ?, 0, '2026-01-01', '2026-01-01')",
+        (LIBRARY_LINK,),
+    )
+    conn.commit()
+    conn.close()
+    code, second = drive(_land())
+    assert code == int(ExitCode.DECISION_REQUIRED), second
+    assert second["cause"]["detail"]["shown"]["content link"].endswith("3 of the library's 3 live rows")
+    assert first["cause"]["detail"]["shown"]["digest"] != second["cause"]["detail"]["shown"]["digest"]
 
 
 class _Handle:
@@ -747,8 +802,10 @@ def test_the_library_link_is_the_value_more_than_half_the_live_rows_carry(machin
         {"a": (9, 0), "b": (9, 0), "c": (5, 0), "d": (6, 0), "e": (7, 0)},
         # A majority of NULL is no value.
         {"a": (None, 0), "b": (None, 0), "c": (9, 0)},
-        # Not a whole number.
+        # Not a whole number, in three shapes a looser test let through to int().
         {"a": ("x9", 0), "b": ("x9", 0), "c": (9, 0)},
+        {"a": ("--5", 0), "b": ("--5", 0), "c": (9, 0)},
+        {"a": ("\u00b2", 0), "b": ("\u00b2", 0), "c": (9, 0)},
         # Every row removed, so no live row carries anything.
         {"a": (9, 1), "b": (9, 1)},
         # No rows at all.
