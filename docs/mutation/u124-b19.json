@@ -1,0 +1,72 @@
+{
+  "name": "u124-b19",
+  "pass_kind": "light",
+  "branch": "relay/287",
+  "head": "2d7fe09",
+  "when": "2026-10-10 04:06 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 13025,
+  "baseline_exit": 0,
+  "pytest_runs": 4,
+  "state_guarded": "~/Library/Application Support/cratekit (365158 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to scripts/board.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "scripts/board.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "47ef6028b991eabc",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 13025,
+    "baseline_collected": 13025,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "B19_audit_reads_folder",
+      "description": "audit stops counting a malformed residual file as a contradiction, rerun after the audit test landed",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "b057f7a5083ca4f3",
+      "subset": [
+        "tests/test_restart_and_residual_files.py",
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 107,
+      "baseline_collected": 107,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_audit_counts_a_residual_file_that_cannot_land_as_a_contradiction"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        clashes = clashes + malformed",
+      "new": "        clashes = clashes"
+    }
+  ],
+  "dropped": []
+}
