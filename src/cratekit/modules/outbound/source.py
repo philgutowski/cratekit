@@ -426,10 +426,12 @@ def local_tracks(
             identity=track_id,
             title=entry.name,
             artist=entry.artist,
-            isrc=isrc_for(entry, root=cfg.library.root, prefix_map=rules),
+            isrc=found.isrc,
+            album=found.album,
             release_title=release_title(entry, template=template),
         )
         for track_id, entry in _rows(library, track_ids)
+        for found in (file_identity(entry, root=cfg.library.root, prefix_map=rules),)
     )
 
 
@@ -455,11 +457,13 @@ def heart_candidates(
     return tuple(
         HeartCandidate(
             row_id=track_id,
-            isrc=isrc_for(entry, root=cfg.library.root, prefix_map=rules),
+            isrc=found.isrc,
+            album=found.album,
             release_title=release_title(entry, template=template),
             artist=entry.artist,
         )
         for track_id, entry in _rows(library, track_ids)
+        for found in (file_identity(entry, root=cfg.library.root, prefix_map=rules),)
     )
 
 
@@ -553,21 +557,55 @@ def isrc_for(
     number or a stray label would be a lookup of something that is not a
     recording's identity.
     """
+    return file_identity(entry, root=root, prefix_map=prefix_map).isrc
+
+
+@dataclass(frozen=True, slots=True)
+class FileIdentity:
+    """What the row's audio file says it is: its ISRC and the release it names.
+
+    ``album`` is the file's own album tag, stripped, or ``""`` when it carries
+    none (R-572). It is a statement about which release the file was cut from,
+    and the account reads it only to choose among releases one ISRC already
+    named, never to search.
+    """
+
+    isrc: str = ""
+    album: str = ""
+
+
+def file_identity(
+    entry: library_export.CollectionEntry,
+    *,
+    root: Path | str,
+    prefix_map: list[locations.PrefixRule],
+) -> FileIdentity:
+    """:func:`isrc_for` and the file's album tag, through ONE container open.
+
+    Every way :func:`isrc_for` answers empty answers an empty identity here,
+    for the reasons that function gives. The album is read in the same open as
+    the ISRC (R-572), so a single and its album cut sharing one code can be
+    told apart by the release the file names, and no row pays a second read.
+    """
     if not entry.location:
-        return ""
+        return FileIdentity()
     try:
         recorded = locations.location_to_path(entry.location)
     except locations.LocationDecodeError:
-        return ""
+        return FileIdentity()
     resolved = locations.resolve_recorded_path(recorded, root=root, prefix_map=prefix_map)
     if resolved.path is None:
-        return ""
+        return FileIdentity()
     path = Path(resolved.path)
     if not path.is_file():
-        return ""
+        return FileIdentity()
+    read = tags.read_tags(path, ("isrc", "album"))
     # THE INDEX'S OWN FOLD AND VALIDATION, so the hearts export and the
     # library index cannot read one tag two ways.
-    return match.isrc_token(tags.read_tag(path, "isrc"))
+    return FileIdentity(
+        isrc=match.isrc_token(read["isrc"]),
+        album=str(read["album"] or "").strip(),
+    )
 
 
 def _rows(
@@ -591,9 +629,11 @@ __all__ = [
     "DEFAULT_FAVORITES_PLAYLIST",
     "FUTURE_TOLERANCE",
     "ExportAge",
+    "FileIdentity",
     "Library",
     "ResolvedPlaylist",
     "export_age",
+    "file_identity",
     "forget_libraries",
     "heart_candidates",
     "isrc_for",

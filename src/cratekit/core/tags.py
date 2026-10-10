@@ -148,6 +148,10 @@ FIELDS: dict[str, TagSpec] = {
     # is the ID3 frame the standard names for it, and the downloader writes the
     # Vorbis ``isrc`` comment on every file it delivers.
     "isrc": TagSpec("isrc", "TSRC", "----:com.apple.iTunes:ISRC"),
+    # R-572. The release the file was cut from, read beside the ISRC so the
+    # account can tell a single from its album cut when both are spelled alike.
+    # ``TALB`` is the ID3 frame for it and the Vorbis comment is ``album``.
+    "album": TagSpec("album", "TALB", "\xa9alb"),
 }
 
 FLAC_SUFFIXES = (".flac",)

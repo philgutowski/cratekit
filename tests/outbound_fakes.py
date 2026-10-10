@@ -126,9 +126,16 @@ class FakeAccount:
         title: str = "",
         artist: str = "",
         agree: bool = False,
+        album: str = "",
     ) -> str | None:
         self.matches.append(
-            {"identity": identity, "isrc": isrc, "title": title, "artist": artist}
+            {
+                "identity": identity,
+                "isrc": isrc,
+                "title": title,
+                "artist": artist,
+                "album": album,
+            }
         )
         if agree:
             self.agreeing.append(identity)

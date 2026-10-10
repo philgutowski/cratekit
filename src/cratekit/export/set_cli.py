@@ -15,8 +15,8 @@ on the way:
 
 1. the provider identifier the row carries, which only a list document has;
 2. its ISRC, through the account's own match, which chooses among releases;
-   a row carrying none is asked of the library, and the ISRC the file it holds
-   for the row carries goes down the same match (R-879);
+   a row carrying none is asked of the library, and the ISRC and album the
+   file it holds for the row carries go down the same match (R-879, R-572);
 3. a provider candidate a person already accepted in review for the row,
    ``intake missing``'s own question, read and never offered here;
 4. the catalogue's text search, read page by page within a bound and listed
@@ -48,7 +48,7 @@ from typing import Any
 
 from cratekit.acquire import match, match_cli
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import config, review
+from cratekit.core import config, review, tags
 from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.export.cli import UNMATCHED_WARNING
@@ -201,17 +201,24 @@ class _Library:
         self._view: tuple[Any, ...] | None = None
         self.music = Path(cfg.library.root) / cfg.library.music_dir
 
-    def file_isrc(self, one: match.Wanted) -> tuple[str, str]:
-        """The ISRC the library's own file of this row carries, or ``""`` and why not.
+    def file_isrc(self, one: match.Wanted) -> tuple[str, str, str]:
+        """The ISRC and album the library's own file of this row carries, or empties and why.
 
         ONLY A ROW THE LIBRARY HOLDS, matched at its version by the engine every
         intake verb asks. ONE ISRC OR NONE: held as several files carrying
         different codes, the files do not say which recording the row is, so
         none of them is asked about. The why is empty for a row the library
         does not hold, which is the ordinary case and not a reason.
+
+        THE ALBUM IS READ OFF THE SAME FILE(S) the ISRC came from, the way
+        ``source.file_identity`` reads both in one open (R-572). The library
+        index does not carry the album tag, so the container is opened here for
+        that field alone. Files that agree on one album name hand it on; files
+        that disagree, or carry none, hand an empty album and the account's
+        album rule then chooses nothing.
         """
         if not self.music.is_dir():
-            return "", (
+            return "", "", (
                 f"the library's music folder {str(self.music)!r} is not there, so "
                 f"no file's ISRC could be read for it"
             )
@@ -220,21 +227,39 @@ class _Library:
         index, suppresses, identify = self._view
         found = match.resolve_one(one, index, suppresses=suppresses, suppression_id=identify)
         if found.state is not match.MatchState.MATCHED:
-            return "", ""
+            return "", "", ""
         paths = set(found.paths)
-        codes = {
-            held.isrc
+        carrying = [
+            held
             for held in index.held(one.artist, one.title)
             if str(held.path) in paths and held.isrc
-        }
+        ]
+        codes = {held.isrc for held in carrying}
         if len(codes) == 1:
-            return next(iter(codes)), ""
+            return next(iter(codes)), _album_of(carrying), ""
         if codes:
-            return "", (
+            return "", "", (
                 f"the library holds it in {len(paths)} file(s) carrying {len(codes)} "
                 f"different ISRCs, so none was asked about"
             )
-        return "", "the library holds it and its file carries no ISRC"
+        return "", "", "the library holds it and its file carries no ISRC"
+
+
+def _album_of(carrying: Sequence[Any]) -> str:
+    """The one album tag the matched files agree on, stripped, or ``""``.
+
+    READ THE WAY ``source.file_identity`` READS IT, from the container, not from
+    the library index, which does not carry the album. Several files under one
+    ISRC that name different albums leave the tag empty, so the account cannot
+    guess which release the row was cut from.
+    """
+    albums = {
+        str(tags.read_tags(held.path, ("album",))["album"] or "").strip()
+        for held in carrying
+    }
+    if len(albums) == 1:
+        return next(iter(albums))
+    return ""
 
 
 def _searched(found: catalogue.Catalogue, one: match.Wanted) -> candidates.Answer:
@@ -311,15 +336,31 @@ def _not_chosen(answer: candidates.Answer) -> str:
     return said + _REVIEW_ROUTE
 
 
-def _isrc_match(account, identity: str, one: match.Wanted, code: str, *, agree: bool) -> tuple[str, str]:
+def _isrc_match(
+    account,
+    identity: str,
+    one: match.Wanted,
+    code: str,
+    *,
+    agree: bool,
+    album: str = "",
+) -> tuple[str, str]:
     """The provider track the account's own ISRC match names, or ``""`` and why not.
 
     ``agree`` for a code read off the library's file rather than the row: the
     file's tag is this library's statement, not the provider's, so even one
     track under it must agree with the row before it is listed.
+
+    ``album`` is the album tag of that same file, for the account's release
+    tie break when several tracks share the ISRC and none is hearted (R-572).
     """
     remote = account.match_track(
-        identity=identity, isrc=code, title=one.listed, artist=one.artist, agree=agree
+        identity=identity,
+        isrc=code,
+        title=one.listed,
+        artist=one.artist,
+        agree=agree,
+        album=album,
     )
     if remote:
         return str(remote), ""
@@ -374,9 +415,11 @@ def match_rows(
                     decided.append(sets.SetRow(**row, reason=answered.reason))
                 continue
             if not one.isrc:
-                code, said = library.file_isrc(one)
+                code, album, said = library.file_isrc(one)
                 if code:
-                    remote, said = _isrc_match(account, identity, one, code, agree=True)
+                    remote, said = _isrc_match(
+                        account, identity, one, code, agree=True, album=album
+                    )
                     if remote:
                         decided.append(sets.SetRow(**row, remote_id=remote, how=LIBRARY_ISRC))
                         continue

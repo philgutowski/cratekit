@@ -226,6 +226,11 @@ def _agrees(row: match.Wanted, track: Any) -> bool | None:
     return bool(ours & theirs)
 
 
+def _album_name(track: Any) -> str:
+    """The name of the release a provider track sits on, or ``""`` unread."""
+    return str(getattr(getattr(track, "album", None), "name", "") or "")
+
+
 def _streamable(track: Any) -> bool:
     """Whether the provider will play this track, absent a statement that it will not.
 
@@ -305,6 +310,7 @@ class TidalAccount:
         title: str = "",
         artist: str = "",
         agree: bool = False,
+        album: str = "",
     ) -> str | None:
         """The one provider track this row names exactly, or ``None``.
 
@@ -320,6 +326,9 @@ class TidalAccount:
         WITH ``agree`` ONE TRACK IS CHOSEN AS SEVERAL ARE, through
         :meth:`_among`, so a code read off a library file's tag lists a track
         only when that track is the row's recording and version (R-879).
+
+        ``album`` is the album tag of the row's own file, read beside its ISRC,
+        and only :meth:`_among` reads it (R-572).
 
         IDENTITY SECOND, and only an exact provider track reference, see
         :func:`track_reference`. Never a text search over title and artist:
@@ -343,7 +352,7 @@ class TidalAccount:
                     return next(iter(tracks))
                 if tracks:
                     chosen, reason = self._among(
-                        tracks, isrc=wanted, title=title, artist=artist
+                        tracks, isrc=wanted, title=title, artist=artist, album=album
                     )
                     if chosen is None:
                         self._reasons[key] = reason
@@ -360,11 +369,17 @@ class TidalAccount:
         return resolved if resolved == reference else None
 
     def _among(
-        self, tracks: dict[str, Any], *, isrc: str, title: str, artist: str
+        self,
+        tracks: dict[str, Any],
+        *,
+        isrc: str,
+        title: str,
+        artist: str,
+        album: str = "",
     ) -> tuple[str | None, str]:
         """One of several tracks sharing an ISRC, or ``None`` and why not.
 
-        TWO RULES, IN ORDER, AND NEITHER IS A GUESS.
+        THREE RULES, IN ORDER, AND NONE IS A GUESS.
 
         1. The tracks that agree with the row's artist, title and version under
            the product's own fold, see :func:`_agrees`. Exactly one is the match.
@@ -376,16 +391,25 @@ class TidalAccount:
            person chose that release once and nothing here chooses it for them.
            It is asked of the agreeing tracks only, so a heart on a track the
            row does not name decides nothing.
+        3. When the account hearts none of them, the one whose album name is
+           the album tag of the row's own file (R-572). The file says which
+           release it was cut from, which is a fact about the row. A file with
+           no album tag, or one naming none or several of them, chooses nothing.
+           An unreadable track among the candidates stops this rule too: the
+           album is asked of the agreeing tracks only, and a lone agreeing
+           track the first rule already refused must not come back through the
+           album (R-572).
 
         A TRACK THAT CANNOT BE READ STOPS THE FIRST RULE FROM CHOOSING, on
         ``intake.candidates.sole_exact``'s argument: one agreeing track beside
-        one unreadable one is not known to be the only one that agrees. A track
-        the provider will not play is never a candidate, see :func:`_streamable`.
+        one unreadable one is not known to be the only one that agrees. It
+        stops the album rule the same way. A track the provider will not play
+        is never a candidate, see :func:`_streamable`.
 
-        RELEASES SPELLED ALIKE WITH NONE HEARTED STAY UNMATCHED, and that is
-        the larger half of what was measured. Nothing the seam carries tells a
-        single from its album cut, and the first, the earliest or the lowest
-        numbered is a policy rather than a fact about the row.
+        RELEASES SPELLED ALIKE WITH NONE HEARTED AND NO ALBUM TO TELL THEM
+        APART STAY UNMATCHED. The first, the earliest or the lowest numbered is
+        a policy about the catalogue rather than a fact about the row, and
+        R-572 refused each of them.
         """
         named = f"the ISRC {isrc} names {len(tracks)} provider tracks"
         row = _row_of(title, artist)
@@ -418,10 +442,26 @@ class TidalAccount:
         hearted = [remote for remote in agreeing if remote in hearts]
         if len(hearted) == 1:
             return hearted[0], ""
-        return None, (
+        said = (
             f"{named}{aside}, {len(agreeing)} of them agree with this row's "
             f"artist, title and version and the account hearts {len(hearted)} "
-            f"of those, so none was chosen"
+            f"of those"
+        )
+        if hearted:
+            return None, f"{said}, so none was chosen"
+        if unreadable:
+            return None, f"{said}, so none was chosen"
+        wanted = match.fold(album)
+        if not wanted:
+            return None, f"{said}, and the file carries no album tag, so none was chosen"
+        named_album = [
+            remote for remote in agreeing if match.fold(_album_name(tracks[remote])) == wanted
+        ]
+        if len(named_album) == 1:
+            return named_album[0], ""
+        return None, (
+            f"{said}, and the file's album {album!r} names {len(named_album)} "
+            f"of them, so none was chosen"
         )
 
     def unmatched_reason(self, identity: str) -> str:

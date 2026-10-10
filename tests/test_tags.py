@@ -81,6 +81,7 @@ ALL_FIELDS = {
     "voxgender": "F",
     "voxgenderconf": 80,
     "isrc": "ZZ0000000001",
+    "album": "Probe Album",
 }
 
 
