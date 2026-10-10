@@ -112,6 +112,15 @@ it, and how a board could read complete while no acquisition workflow finished.
 A name claim is evidence that a verb exists. It is not evidence that a workflow
 ends.
 
+### Restart fragment
+One unit's record of the verified state, the file `docs/restart/<unit>.md`
+(`u114.md`, `r572.md`, `sitting35.md`). It holds what the unit built, its
+battery, its mutation table's summary and what it left owed, and only that unit
+writes it. `RESTART-cratekit.md` is the rest of the restart state, the sections
+no unit owns, and it carries no fragment's paragraph, so units built in
+parallel never conflict over it. Before U124 the fragments were paragraphs at
+the head of that file, newest first, and every merge conflicted there.
+
 ## Acquisition
 
 ### Adapter
@@ -375,6 +384,20 @@ in All Favorites, so it is a derived view and never edited by hand: a track that
 leaves All Favorites leaves it at the next refresh. It is a playlist beside the
 energy bands and "with vox", not a folder, because the tree is three levels deep,
 and its membership is independent of "with vox", so a vocal favourite is in both.
+
+Built by U119: declared as the sub class `favorites`, derived and additive
+beside `with_vox`, with `signal = "playlist"` and `signal_playlist = "All
+Favorites"`, under schema version 4, so the loader keeps one additive class
+per signal rather than one in all. The refresh plans every folder against the
+one live playlist of the signal's name, refusing by name when the class is
+undeclared or the source absent or doubled, digests the TARGET state so a
+partial apply re-plans to the same digest, and writes the additions in one
+commit and the removals in a second. `crate favorites refresh` is the one path
+that removes, behind its own explicit gate; the end of an adoption that files
+a track runs the additive half and reports the removals it leaves owed; the
+rebuild and the convergence check take the engine's placements beside the
+vocal ones, so a Favorites playlist is declared membership and a source that
+cannot be read is a dimension not compared.
 
 *Avoid:* reading it as a second favourites signal. All Favorites is the one
 signal; a genre Favorites only files it by the folder the track already sits in.
@@ -1663,6 +1686,11 @@ Residual numbers are append only. A number, once given, belongs to that finding
 for life, and numbers already recorded never move when new ones arrive, because
 the number is cited from surfaces the repository cannot see and a renumber
 repoints those citations silently.
+
+A residual is filed without a number, as a file in `docs/residuals/`, and is
+numbered when it lands on `main`, past the ledger's highest. So an unnumbered
+residual is a filed one that has not landed yet, and its number belongs to the
+order of landings rather than the order of filings.
 
 ### Blocking finding
 A finding that does hold a merge. It qualifies only on three conditions together:

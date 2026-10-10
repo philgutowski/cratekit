@@ -1,0 +1,10 @@
+name = "u124-b19"
+pass_kind = "light"
+
+[[rows]]
+id = "B19_audit_reads_folder"
+description = "audit stops counting a malformed residual file as a contradiction, rerun after the audit test landed"
+file = "scripts/board.py"
+tests = ["tests/test_restart_and_residual_files.py", "tests/test_pending_units.py"]
+old = '''        clashes = clashes + malformed'''
+new = '''        clashes = clashes'''

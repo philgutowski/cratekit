@@ -6,7 +6,8 @@ modules, and guarded library writes.
 This file is the session contract. **`docs/METHOD.md` is the operating
 instruction and is what to read next**: the pipeline, the merge bar, the
 mutation method, the driver rules, the merge constraints and the do-not-touch
-list. `RESTART-cratekit.md` is the verified current state. `docs/history/` is
+list. `RESTART-cratekit.md` is the verified current state, and each unit's own
+record of it is a file in `docs/restart/`. `docs/history/` is
 the narrative record of how the rules were arrived at, read for reasoning, never
 for instruction.
 
@@ -47,7 +48,8 @@ registers answering two questions, and they are not mirrors of each other.
   `A-N`. Those are the work, and the board is where work is picked.
 - A residual `R-N` is a real problem that was recorded rather than fixed, because
   it did not meet the bar to hold a merge. It lives in the file and usually has
-  no issue. **Do not backfill the rest.** A residual earns an issue only if
+  no issue. A unit files it unnumbered in `docs/residuals/`, and it takes its
+  number when it lands on `main`. **Do not backfill the rest.** A residual earns an issue only if
   somebody decides to act on it, and the thirteen that have one are now in the
   queue behind the units, each to be done or closed back to the ledger.
 

@@ -19,7 +19,10 @@ Subcommands:
     start N         branch, mark In Progress, print the closing trailer
     sync            make the board match the repository, idempotent
     audit           report drift, exit 1 if the board is lying
-    closing         refuse a `Closes #n` trailer while a register still owes Un
+    closing         refuse a `Closes #n` trailer while a register still owes Un,
+                    and a residual file the landing could not read
+    residuals       the residual files waiting for a number; `--land` numbers
+                    them on main
 
 `sync` is safe to run at any time and is the one that matters. Everything the
 board says about readiness is derived from issue closure state and the graph, so
@@ -43,7 +46,13 @@ PROJECT_NUMBER = "2"
 # Status option ids on the project's single-select Status field. Looked up once
 # at startup rather than pinned, because an option id changes if the option is
 # recreated and a pinned id fails silently by writing nothing.
-STATUS_ORDER = ["Ready", "In Progress", "Blocked", "Attended", "Done"]
+STATUS_ORDER = ["Ready", "In Progress", "In review", "Blocked", "Attended", "Done"]
+
+# Statuses that mean somebody holds the card right now. `start` and a lane's
+# builder set In Progress; the relay runner sets In review, its manifest's
+# `in_review_status`, as its first tracker write. Neither can be derived from
+# the graph, so a recomputation keeps them rather than undoing the holder's write.
+UNDERWAY = ("In Progress", "In review")
 
 DEPENDS_RE = re.compile(r"^\*\*Depends on:\*\*\s*(.+)$", re.MULTILINE)
 CLOSES_WITH_RE = re.compile(r"^\*\*Closes with:\*\*\s*(.+)$", re.MULTILINE)
@@ -153,19 +162,25 @@ def build_graph(issues: list[dict]) -> dict:
 
 
 def derive_status(node: dict, current: str | None) -> str:
-    """What the board should say, from closure state and the graph alone."""
+    """What the board should say, from closure state, the graph, and a hold.
+
+    Closure state wins. Otherwise a card somebody holds (UNDERWAY) keeps the
+    status it holds, because no graph can derive who is building what; every
+    other card is derived from the graph alone.
+    """
     if node["closed"]:
         return "Done"
+    if current in UNDERWAY:
+        # A card on a branch stays on a branch, unit, residual or attended, since
+        # a lane builds residual cards too and an attended unit is still built.
+        # Recomputing it back is how a session loses track of work already
+        # underway, and how a sync pulls a card out from under the runner.
+        return current
     if node["attended"]:
         return "Attended"
-    if not node["unit"]:
-        # A residual finding waits on whichever unit closes it, and is Ready when
-        # nothing does, because then it is somebody's to pick up directly.
-        return "Blocked" if node["open_deps"] else "Ready"
-    if current == "In Progress":
-        # A unit on a branch stays on a branch. Recomputing it back to Ready
-        # is how a session loses track of work already underway.
-        return "In Progress"
+    # A residual finding waits on whichever unit closes it, and is Ready when
+    # nothing does, because then it is somebody's to pick up directly. A unit
+    # waits on its dependencies the same way.
     return "Blocked" if node["open_deps"] else "Ready"
 
 
@@ -583,8 +598,8 @@ def cmd_closing(args) -> int:
             # No such ref, a shallow clone, or no repository. Nothing to judge
             # rather than a refusal, because a check that fails on a machine it
             # cannot read is a check somebody removes from the hook.
-            print("board: no commit range to read; nothing checked")
-            return 0
+            print("board: no commit range to read; no trailer checked")
+            return _report([])
         problems: list[str] = []
         for message in result.stdout.split("\0"):
             if message.strip():
@@ -596,15 +611,31 @@ def cmd_closing(args) -> int:
 
 
 def _report(problems: list[str]) -> int:
-    if not problems:
+    # A RESIDUAL FILE THE LANDING CANNOT READ is refused here, on every path,
+    # because this is the check that runs before a landing: in the commit-msg
+    # hook and in CI over the pushed range. A file with no title or no Found
+    # line would reach main and stop `residuals --land` there, after the
+    # branch that wrote it is gone.
+    malformed = residual_file_problems()
+    if not problems and not malformed:
         return 0
-    print("CONTRADICTION: a unit cannot close while a register still owes it work.")
-    for line in problems:
-        print(f"  {line}")
-    print()
-    print("This is the same comparison `audit` makes, run BEFORE the close rather")
-    print("than after it. Afterwards the close has already cascaded and `sync`")
-    print("will not repair it.")
+    if problems:
+        print("CONTRADICTION: a unit cannot close while a register still owes it work.")
+        for line in problems:
+            print(f"  {line}")
+        print()
+        print("This is the same comparison `audit` makes, run BEFORE the close rather")
+        print("than after it. Afterwards the close has already cascaded and `sync`")
+        print("will not repair it.")
+    if malformed:
+        if problems:
+            print()
+        print("A RESIDUAL FILE CANNOT LAND as it stands:")
+        for line in malformed:
+            print(f"  {line}")
+        print()
+        print("docs/residuals/README.md is the form: a title and a Found line in the")
+        print("frontmatter, then the body.")
     return 2
 
 
@@ -677,16 +708,20 @@ def cmd_next(args) -> int:
         if n["unit"] and not n["closed"] and not n["open_deps"]
     ]
     in_progress = [
-        n for n in graph.values() if items.get(n["number"], {}).get("status") == "In Progress"
+        n for n in graph.values() if items.get(n["number"], {}).get("status") in UNDERWAY
     ]
     busy = {n["number"] for n in in_progress}
     ready = [n for n in ready if n["number"] not in busy]
     ready.sort(key=lambda n: (-n["reach"], -len(n["unblocks"]), n["number"]))
 
     if in_progress:
-        print("Already in progress, finish this before starting anything:")
+        # In review is the relay runner's hold and In Progress a session's or a
+        # lane's, so name which, rather than tell a reader to finish a card a
+        # background run owns.
+        print("Already underway, never start one of these again:")
         for node in in_progress:
-            print(f"  #{node['number']:<3} {node['title']}")
+            status = items[node["number"]]["status"]
+            print(f"  #{node['number']:<3} {status:<11} {node['title']}")
         print()
 
     if not ready:
@@ -791,13 +826,25 @@ def cmd_start(args) -> int:
     return 0
 
 
-def residual_titles() -> dict[int, str]:
+#: The ledger, append only, and the folder a residual waits in for its number.
+#: Module level so a test can point both at a fixture.
+LEDGER = Path(__file__).resolve().parent.parent / "docs" / "residual-findings.md"
+RESIDUALS_DIR = Path(__file__).resolve().parent.parent / "docs" / "residuals"
+
+#: The frontmatter a residual file carries, which is exactly what a ledger
+#: entry opens with: the heading's title and the Found line. ``issue`` says the
+#: finding meets METHOD's board bar, so whoever numbers it files the issue.
+RESIDUAL_REQUIRED = ("title", "found")
+RESIDUAL_OPTIONAL = {"issue": ("yes", "no")}
+
+
+def residual_titles(ledger: Path | None = None) -> dict[int, str]:
     """Every ``## R-N.`` heading in the residual file, by number.
 
     Read as text rather than parsed as a document, because the only structure
     this needs is the heading line and the file is append only by rule.
     """
-    source = Path(__file__).resolve().parent.parent / "docs" / "residual-findings.md"
+    source = LEDGER if ledger is None else ledger
     if not source.exists():
         return {}
     found: dict[int, str] = {}
@@ -806,6 +853,143 @@ def residual_titles() -> dict[int, str]:
         if match:
             found[int(match.group(1))] = match.group(2)
     return found
+
+
+def residual_files(folder: Path | None = None) -> list[Path]:
+    """The residuals waiting for a number, in the order they will take one.
+
+    Name order, so a landing that numbers two files at once numbers them the
+    same way on every machine. The README describes the form and is not one.
+    """
+    folder = RESIDUALS_DIR if folder is None else folder
+    if not folder.is_dir():
+        return []
+    paths = sorted(p for p in folder.glob("*.md") if p.name != "README.md")
+    # ONLY WHAT GIT KNOWS, staged or committed. An untracked draft is not
+    # filed yet: judging it refused every unrelated commit through the hook,
+    # and landing it numbered a finding nobody had committed. A folder git
+    # cannot read, a fixture outside any repository, is taken whole.
+    listed = subprocess.run(
+        ["git", "ls-files", "-z", "--", "."],
+        cwd=folder,
+        capture_output=True,
+        text=True,
+    )
+    if listed.returncode != 0:
+        return paths
+    known = {name for name in listed.stdout.split("\0") if name}
+    return [p for p in paths if p.name in known]
+
+
+def read_residual_file(path: Path) -> tuple[dict[str, str], str]:
+    """The frontmatter and the body of one residual file.
+
+    Raises ValueError naming what is wrong. Parsed by hand rather than as YAML
+    because this script imports only the standard library, and the form is
+    one ``key: value`` per line between two ``---`` lines.
+    """
+    text = path.read_text()
+    lines = text.split("\n")
+    if not lines or lines[0] != "---":
+        raise ValueError("does not open with a frontmatter fence")
+    try:
+        close = lines.index("---", 1)
+    except ValueError:
+        raise ValueError("its frontmatter fence is never closed") from None
+    meta: dict[str, str] = {}
+    for line in lines[1:close]:
+        key, sep, value = line.partition(":")
+        key, value = key.strip(), value.strip()
+        if not sep or not key:
+            raise ValueError(f"frontmatter line {line!r} is not key: value")
+        if key in meta:
+            raise ValueError(f"frontmatter names {key} twice")
+        if key not in RESIDUAL_REQUIRED and key not in RESIDUAL_OPTIONAL:
+            raise ValueError(f"frontmatter key {key} is not one a ledger entry carries")
+        meta[key] = value
+    for key in RESIDUAL_REQUIRED:
+        if not meta.get(key):
+            raise ValueError(f"frontmatter has no {key}")
+    for key, allowed in RESIDUAL_OPTIONAL.items():
+        if key in meta and meta[key] not in allowed:
+            raise ValueError(f"frontmatter {key} is {meta[key]!r}, not one of {allowed}")
+    # "R-12. A title" is a filer numbering its own finding. "R-204 is
+    # discharged by half" is a title citing another residual, which the
+    # ledger already holds several of, so only the heading's own shape is
+    # refused.
+    if re.match(r"R-\d+\.", meta["title"]):
+        raise ValueError("its title carries a number; the number is given at landing")
+    body = "\n".join(lines[close + 1 :]).strip("\n")
+    if not body.strip():
+        raise ValueError("has frontmatter and no body")
+    return meta, body
+
+
+def residual_file_problems(folder: Path | None = None) -> list[str]:
+    """One line per residual file that could not be landed as it stands."""
+    problems = []
+    for path in residual_files(folder):
+        try:
+            read_residual_file(path)
+        except ValueError as exc:
+            problems.append(f"docs/residuals/{path.name} {exc}")
+    return problems
+
+
+def land_residuals(
+    ledger: Path | None = None, folder: Path | None = None
+) -> list[tuple[int, str, bool]]:
+    """Number every waiting residual, append it to the ledger, delete its file.
+
+    THE NUMBER IS TAKEN BY WHOEVER LANDS FIRST, never by whoever files first,
+    which is the whole point: two branches cut from one base each file a
+    residual without a number, merge in either order, and the landing gives
+    each the next number past the ledger's highest at that moment. A number
+    once given is the finding's for life, so this only appends.
+
+    Validates every file before writing anything, so a malformed one leaves
+    the ledger and the folder exactly as they were. Returns ``(number, title,
+    meets the board bar)`` per file landed.
+    """
+    ledger = LEDGER if ledger is None else ledger
+    paths = residual_files(folder)
+    parsed = []
+    problems = []
+    for path in paths:
+        try:
+            parsed.append((path, *read_residual_file(path)))
+        except ValueError as exc:
+            problems.append(f"{path.name} {exc}")
+    if problems:
+        raise ValueError("; ".join(problems))
+    if not parsed:
+        return []
+    text = ledger.read_text()
+    titles = residual_titles(ledger)
+    # A FILE THAT LANDED ONCE CAN COME BACK. Landing deletes it, and a branch
+    # that edited it afterwards brings it back through a modify and delete
+    # conflict resolved the wrong way. Its heading is then already in the
+    # ledger, and numbering it again would file one finding twice.
+    held = {title: number for number, title in titles.items()}
+    again = [
+        f"{path.name} is R-{held[meta['title']]} already"
+        for path, meta, _ in parsed
+        if meta["title"] in held
+    ]
+    if again:
+        raise ValueError("; ".join(again))
+    number = max(titles, default=0)
+    landed = []
+    for path, meta, body in parsed:
+        number += 1
+        # The separator the ledger's recent entries carry between them.
+        text = text.rstrip("\n") + "\n\n---\n\n"
+        text += f"## R-{number}. {meta['title']}\n\n**Found:** {meta['found']}\n\n{body}\n"
+        landed.append((number, meta["title"], meta.get("issue") == "yes"))
+    ledger.write_text(text)
+    for path, _, _ in parsed:
+        path.unlink()
+    return landed
 
 
 def repointed_residuals(graph: dict) -> list[str]:
@@ -1041,10 +1225,91 @@ def cmd_audit(args) -> int:
         print("only the first sent people to a file the entry was never in.")
         print("Overwriting one from the other would let the wrong one win.")
 
+    malformed = residual_file_problems()
+    if malformed:
+        print()
+        print(f"RESIDUAL FILES THAT CANNOT LAND, {len(malformed)}. A sync cannot fix these:")
+        for line in malformed:
+            print(f"  {line}")
+        clashes = clashes + malformed
+
+    waiting = residual_files()
+    if waiting:
+        print()
+        print(f"{len(waiting)} residual file(s) in docs/residuals wait for a number.")
+        print("On main, after the merge that carried them:")
+        print("    .venv/bin/python scripts/board.py residuals --land")
+
     if not drift and not clashes:
         print("The board matches the repository.")
         return 0
     return 2 if clashes else 1
+
+
+def cmd_residuals(args) -> int:
+    """List the residuals waiting for a number, or number them on main."""
+    malformed = residual_file_problems()
+    if malformed:
+        print("A RESIDUAL FILE CANNOT LAND as it stands:")
+        for line in malformed:
+            print(f"  {line}")
+        return 2
+    waiting = residual_files()
+    if not args.land:
+        highest = max(residual_titles(), default=0)
+        print(f"The ledger's highest is R-{highest}. {len(waiting)} file(s) wait:")
+        for path in waiting:
+            print(f"  docs/residuals/{path.name}")
+        return 0
+    # ON MAIN AND NOWHERE ELSE. A number given on a branch is a number given
+    # by whoever FILED, which is the race this folder exists to remove: two
+    # branches would each take the ledger's highest plus one.
+    branch = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        capture_output=True,
+        text=True,
+        cwd=LEDGER.parent,
+    ).stdout.strip()
+    if branch != "main":
+        print(
+            f"board: residuals are numbered on main, after the merge that carried "
+            f"them, and this checkout is on {branch or 'no branch'}",
+            file=sys.stderr,
+        )
+        return 1
+    # BEHIND THE REMOTE, the ledger's highest is stale, and a number given
+    # here may already be taken there. Read against the last fetch, since a
+    # check that needs the network is a check that fails offline.
+    behind = subprocess.run(
+        ["git", "rev-list", "--count", "main..origin/main"],
+        capture_output=True,
+        text=True,
+        cwd=LEDGER.parent,
+    )
+    if behind.returncode == 0 and behind.stdout.strip() not in ("", "0"):
+        print(
+            f"board: main is {behind.stdout.strip()} commit(s) behind origin/main as "
+            f"last fetched; pull first, or a number given here may be taken there",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        landed = land_residuals()
+    except ValueError as exc:
+        print(f"board: nothing numbered, {exc}", file=sys.stderr)
+        return 2
+    if not landed:
+        print("No residual file waits for a number.")
+        return 0
+    for number, title, board_bar in landed:
+        print(f"R-{number}. {title}")
+        if board_bar:
+            print(f"    meets the board bar: file the issue titled R-{number}: {title}")
+    print()
+    print("Commit the ledger and the deleted files together:")
+    print("    git add docs/residual-findings.md docs/residuals")
+    print('    git commit -m "docs(residuals): number what landed"')
+    return 0
 
 
 def main() -> int:
@@ -1080,6 +1345,16 @@ def main() -> int:
         help="judge every commit after this ref instead of one message file",
     )
     closing.set_defaults(func=cmd_closing)
+    residuals = sub.add_parser(
+        "residuals",
+        help="list the residual files waiting for a number, or number them",
+    )
+    residuals.add_argument(
+        "--land",
+        action="store_true",
+        help="on main, give each file the next R number and append it to the ledger",
+    )
+    residuals.set_defaults(func=cmd_residuals)
     args = parser.parse_args()
     try:
         return args.func(args)
