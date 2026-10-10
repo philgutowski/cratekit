@@ -785,6 +785,39 @@ def test_a_row_that_reads_back_wrong_also_names_the_files_that_did_not_take_it(
     assert refused["cause"]["detail"]["files"]["failed"] == ["11"]
 
 
+def test_a_file_given_a_genre_after_the_gate_is_left_and_named(
+    acknowledged, silence, monkeypatch
+):
+    """Approved blank, carrying a genre by the time the write reaches it."""
+    from cratekit.tagging import rows
+
+    cfg = acknowledged
+    paths = build(cfg, silence, *_artist_of_eight(), Track("10", artist="The Artist"))
+    real = rows.apply_rows
+
+    def a_person_got_there_first(*args, **kwargs):
+        assert tags.write_tags(paths["10"], {"genre": DEEP})
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(rows, "apply_rows", a_person_got_there_first)
+    code, refused, _ = _two_acts()
+    assert code != int(ExitCode.OK) and refused["cause"]["reason"] == "tag-suggest-unwritten"
+    assert refused["cause"]["detail"]["moved"] == ["10"]
+    assert tags.read_genre_from_file(paths["10"]) == DEEP and _genre_of(cfg, "10") == ""
+
+
+def test_a_file_the_writer_says_it_wrote_and_that_does_not_read_back_leaves_its_row(
+    acknowledged, silence, monkeypatch
+):
+    cfg = acknowledged
+    paths = build(cfg, silence, *_artist_of_eight(), Track("10", artist="The Artist"))
+    monkeypatch.setattr(tags, "write_genre", lambda path, genre: True)
+    code, refused, _ = _two_acts()
+    assert code != int(ExitCode.OK) and refused["cause"]["reason"] == "tag-suggest-unwritten"
+    assert refused["cause"]["detail"]["wrong"] == ["10"]
+    assert _genre_of(cfg, "10") == "" and not tags.read_genre_from_file(paths["10"])
+
+
 def test_a_pick_outside_the_taxonomy_is_refused_before_any_row_is_read(acknowledged, silence):
     build(acknowledged, silence, Track("10"))
     for value in (f"10={LOOSE}", "10", "=Deep House", f"10={DEEP}"):
