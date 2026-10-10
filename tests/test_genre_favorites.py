@@ -644,3 +644,162 @@ def test_the_verb_refuses_an_undeclared_class_by_name(cfg, gates_pass, db, monke
     code, refused = drive(VERB)
     assert refused["cause"]["reason"] == genre_favorites.CLASS_UNDECLARED, refused
     assert code != int(ExitCode.DECISION_REQUIRED)
+
+
+# ---------------------------------------------------------------------------
+# What the review added
+# ---------------------------------------------------------------------------
+
+
+def test_a_smart_playlist_or_an_emptied_playlist_of_the_source_name_is_not_the_source(
+    cfg, gates_pass, db
+):
+    """A smart playlist holds no membership rows and reads as empty, and an
+    emptied one is empty; either would empty every genre Favorites."""
+    tree = Tree(cfg, db)
+    tree.playlist(DEEP, "Med", "1")
+    kept = tree.playlist(DEEP, FAVORITES.display, "1")
+    smart = db.create_playlist(SOURCE)
+    smart.Attribute = 4
+    db.session.commit()
+    with pytest.raises(CratekitError) as caught:
+        _plan(cfg, db, tree)
+    assert caught.value.cause.reason == genre_favorites.SOURCE_MISSING
+    smart.Attribute = 0
+    db.session.commit()
+    with pytest.raises(CratekitError) as caught:
+        _plan(cfg, db, tree)
+    assert caught.value.cause.reason == genre_favorites.SOURCE_MISSING
+    assert "no live track" in caught.value.cause.message
+    assert _members(db, kept.ID) == {"1"}
+
+
+def test_a_folder_the_record_binds_to_one_bucket_is_not_bound_to_another_by_its_new_name(
+    cfg, gates_pass, db
+):
+    """Recorded for Deep House and renamed to Afro House's name, the folder stays
+    Deep House's alone, so one Favorites row is never recorded for two buckets."""
+    tree = Tree(cfg, db)
+    tree.playlist(DEEP, "Med", "1", "2")
+    tree.source("1", "2")
+    _refresh(cfg, db, tree)
+    folder = tree.folder(DEEP)
+    folder.Name = AFRO.display
+    db.session.commit()
+
+    plan = _plan(cfg, db, tree)
+
+    assert [folder.bucket for folder in plan.folders] == [DEEP.id]
+    assert plan.unclaimed == ()
+    refreshed = _apply(cfg, db, tree, plan)
+    assert refreshed.added == 0
+    recorded = convergence.read(cfg).tree(TREE)
+    assert recorded.node(AFRO.id, FAVORITES.id) is None
+    assert recorded.node(DEEP.id, FAVORITES.id) is not None
+
+
+def test_the_digest_moves_when_a_track_is_dragged_into_favorites_between_the_acts(
+    cfg, gates_pass, db
+):
+    """A removal the gate never showed is another plan."""
+    tree = Tree(cfg, db)
+    tree.playlist(DEEP, "Med", "1", "2", "3")
+    favorites = tree.playlist(DEEP, FAVORITES.display, "1")
+    tree.source("1")
+    approved = _plan(cfg, db, tree)
+    assert approved.removes == 0
+    db.add_to_playlist(favorites, "3")
+    db.session.commit()
+    with pytest.raises(CratekitError) as caught:
+        _apply(cfg, db, tree, approved)
+    assert caught.value.cause.reason == "decision-stale"
+    assert _members(db, favorites.ID) == {"1", "3"}
+
+
+def test_the_rebuild_files_a_favourite_into_the_folder_it_moves_it_to(cfg, gates_pass, db):
+    """The favourites are derived after the rebuild's own write, so a favourite
+    the rebuild files into a folder is in that folder's Favorites at the end,
+    and the after check converges on the tree as left."""
+    tree = Tree(cfg, db)
+    tree.source("1")
+    bucket_id = rebuild.routing.resolve_bucket(DECLARED, None).bucket_id
+    truth = [
+        rebuild.Truth(
+            location=f"{cfg.library.root}/Music/track 1.flac",
+            genre=None,
+            energy=DECLARED.energy.scale_max,
+            voxlevel=None,
+        )
+    ]
+    report = rebuild.rebuild_tree(
+        cfg,
+        db,
+        tree_id=TREE,
+        registry=tree.registry,
+        declared=DECLARED,
+        rows=_rows(cfg)[:1],
+        root_exists=lambda _root: True,
+        analysis_roots=[Path(cfg.library.root)],
+        vocal_threshold=None,
+        truth=truth,
+    )
+    nodes = {
+        (node.folder_display, node.playlist_display): node for node in rebuild.read_tree(db, str(tree.root.ID))
+    }
+    folder = DECLARED.bucket(bucket_id).display
+    assert (folder, FAVORITES.display) in nodes
+    assert nodes[(folder, FAVORITES.display)].content_ids == frozenset({"1"})
+    assert report.after.converged, report.after.summaries()
+    assert any(p.sub == FAVORITES.id for p in [])  or report.membership.added >= 2
+    recorded = convergence.read(cfg).tree(TREE)
+    assert recorded.node(bucket_id, FAVORITES.id) is not None
+
+
+def test_the_summary_keeps_the_removals_owed_past_an_attempt_that_filed_nothing():
+    reports = [
+        {"favorites": {"added": 1, "removals_owed": 3, "created": ["Deep House"], "skipped": ""}},
+        {"favorites": {}},
+    ]
+    from cratekit.adopt import apply_cli as module
+
+    class _Artifacts:
+        @staticmethod
+        def committed(_cfg, _job_id):
+            return reports
+
+    real = module.artifacts
+    module.artifacts = _Artifacts  # type: ignore[assignment]
+    try:
+        summary = module._summary(None, "job")
+    finally:
+        module.artifacts = real
+    assert summary["favorites"]["removals_owed"] == 3
+    assert summary["favorites"]["added"] == 1
+    (note,) = module.favorites_warnings(summary)
+    assert note["code"] == module.FAVORITES_REMOVALS_OWED
+
+
+def test_a_read_back_disagreement_at_an_adoptions_end_is_a_note_not_a_clean_count():
+    summary = {"favorites": {"added": 1, "removals_owed": 0, "disagreements": ["Deep House: 1 planned track(s) not in Favorites"]}}
+    (note,) = apply_cli.favorites_warnings(summary)
+    assert note["code"] == apply_cli.FAVORITES_UNVERIFIED and "Deep House" in note["message"]
+
+
+def test_the_additive_half_turns_any_refusal_into_a_skip_once_the_adoption_has_landed(
+    cfg, gates_pass, db, monkeypatch
+):
+    tree = Tree(cfg, db)
+    tree.playlist(DEEP, "Med", "1")
+    tree.source("1")
+    rb_writer.close_db(db)
+
+    def stale(*_args, **_kwargs):
+        from cratekit.core.cause import refuse
+
+        raise refuse("decision-stale", "the plan moved", origin=("test",))
+
+    monkeypatch.setattr(genre_favorites, "plan_refresh", stale)
+    outcome = genre_favorites.refresh_additive(
+        cfg, DECLARED, analysis_roots=[Path(cfg.library.root)]
+    )
+    assert outcome.refreshed is None and outcome.skipped == "the plan moved"

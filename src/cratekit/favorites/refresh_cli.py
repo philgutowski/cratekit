@@ -57,7 +57,7 @@ def _load() -> config.Config:
                 reason="config-unusable",
                 message=str(exc),
                 remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("favorites.refresh_cli",),
+                origin=_ORIGIN,
                 detail={"kind": type(exc).__name__},
             )
         ) from exc

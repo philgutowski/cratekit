@@ -65,7 +65,7 @@ from cratekit.core import (
     taxonomy,
     tree_registry,
 )
-from cratekit.core.cause import Remedy, refuse
+from cratekit.core.cause import CratekitError, Remedy, refuse
 from cratekit.write import tree_read, trees
 
 #: The session workflow a refresh is recorded under, its own, so a session that
@@ -117,13 +117,15 @@ def require_class(declared: taxonomy.Taxonomy) -> taxonomy.SubClass:
 
 
 def _folders_of(declared: taxonomy.Taxonomy, sub: taxonomy.SubClass) -> tuple[taxonomy.Bucket, ...]:
-    """The buckets whose folder carries the class, by what ``present_in`` says."""
-    if sub.present_in == "energy_buckets":
-        return tuple(
-            bucket
-            for bucket in declared.buckets
-            if declared.energy.enabled and bucket.energy.enabled and bucket.sub_by_source is None
-        )
+    """The buckets whose folder carries the class: every bucket.
+
+    ``present_in`` IS NOT READ HERE, deliberately. No tree writer reads it: the
+    vocal sub is written under every bucket whatever its entry says, and the
+    routing pass resolves an additive class under every bucket. A second
+    reader giving the key a meaning the first never had would be two answers
+    to where a class sits, so this engine answers as the writers do.
+    """
+    del sub
     return tuple(declared.buckets)
 
 
@@ -135,19 +137,35 @@ def _folders_of(declared: taxonomy.Taxonomy, sub: taxonomy.SubClass) -> tuple[ta
 def source_playlist(db: Any, name: str) -> Any:
     """The one live playlist named ``name`` anywhere in the library, or the refusal.
 
-    NONE AND SEVERAL REFUSE ALIKE, under one reason, since both leave the
-    question "which tracks are favourites" with no answer: a refresh over an
-    absent source would empty every genre Favorites, and one over two sources
-    would mirror whichever the query yielded first. A folder of the name is not
-    a match, since a folder holds playlists and not tracks, and a removed
-    playlist is not there.
+    NONE, SEVERAL AND EMPTY REFUSE ALIKE, under one reason, since each leaves
+    the question "which tracks are favourites" with no answer: a refresh over
+    an absent or an empty source would empty every genre Favorites, and one
+    over two sources would mirror whichever the query yielded first. Only a
+    PLAIN playlist is a match: a folder holds playlists and not tracks, a smart
+    playlist holds no membership rows at all and would read as empty, and a
+    removed playlist is not there. An empty derivation is not evidence that
+    nothing is a favourite, the rebuild's own rule.
     """
     live = [
         row
         for row in list(db.get_playlist(Name=name))
-        if not rb_writer.is_folder(row) and not rb_writer.node_removed(row)
+        if int(getattr(row, "Attribute", -1) or 0) == 0 and not rb_writer.node_removed(row)
     ]
     if len(live) == 1:
+        if not _live_members(db, str(live[0].ID)):
+            raise refuse(
+                SOURCE_MISSING,
+                f"the playlist {name!r} holds no live track, so there is nothing for the "
+                f"genre Favorites to mirror and a refresh would empty every one of them; "
+                f"nothing was written",
+                remedy=Remedy.FIX_CONFIG_VALUES,
+                steps=(
+                    f"heart something into {name!r} in rekordbox first, or name the "
+                    f"playlist that holds the favourites in the class's signal_playlist",
+                ),
+                origin=_ORIGIN,
+                detail={"playlist": name, "id": str(live[0].ID)},
+            )
         return live[0]
     if not live:
         raise refuse(
@@ -216,7 +234,21 @@ class FolderPlan:
         return tuple(one for one in self.present if one not in kept)
 
     def identity(self) -> dict[str, Any]:
-        return {"bucket": self.bucket, "folder": self.folder_id, "wanted": list(self.wanted)}
+        """What the digest covers for this folder: the target, and what leaves.
+
+        THE REMOVES ARE DIGESTED BESIDE THE TARGET. The adds shrink as an apply
+        proceeds and are not digested, so a run stopped partway re-plans to the
+        same digest (R-788). The removes do not move until their one commit
+        lands, and a track somebody dragged into Favorites between the
+        approval and the write is a removal the gate never showed, so the plan
+        that would take it out is another plan.
+        """
+        return {
+            "bucket": self.bucket,
+            "folder": self.folder_id,
+            "wanted": list(self.wanted),
+            "removes": list(self.removes),
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -306,21 +338,37 @@ def plan_refresh(
             if entry.sub == sub.id:
                 recorded_playlist[entry.bucket] = entry.playlist_id
 
-    folders: list[FolderPlan] = []
-    claimed: set[str] = set()
+    # TWO PASSES, THE RECORD FIRST. A folder a previous write recorded for a
+    # bucket is that bucket's whatever it is called now, and only a folder no
+    # record claims may be bound by its display name, so one folder is never
+    # two buckets', which is the shape the node record refuses after a commit.
+    buckets = _folders_of(declared, sub)
+    bound: dict[str, str] = {
+        bucket.id: recorded_folder[bucket.id] for bucket in buckets if bucket.id in recorded_folder
+    }
+    claimed: set[str] = set(bound.values())
     unclaimed: list[str] = []
-    for bucket in _folders_of(declared, sub):
-        folder_id = recorded_folder.get(bucket.id)
-        if folder_id is None:
-            named = [fid for fid, display in display_of.items() if display == bucket.display]
-            if len(named) > 1:
-                unclaimed.extend(f"{bucket.display} (row {fid})" for fid in named)
-                claimed.update(named)
-                continue
-            folder_id = named[0] if named else None
+    for bucket in buckets:
+        if bucket.id in bound:
+            continue
+        named = [
+            fid
+            for fid, display in display_of.items()
+            if display == bucket.display and fid not in claimed
+        ]
+        if len(named) > 1:
+            unclaimed.extend(f"{bucket.display} (row {fid})" for fid in named)
+            claimed.update(named)
+            continue
+        if named:
+            bound[bucket.id] = named[0]
+            claimed.add(named[0])
+
+    folders: list[FolderPlan] = []
+    for bucket in buckets:
+        folder_id = bound.get(bucket.id)
         if folder_id is None:
             continue
-        claimed.add(folder_id)
         children = by_folder[folder_id]
         favorites_node = next(
             (node for node in children if node.playlist_id == recorded_playlist.get(bucket.id)),
@@ -331,9 +379,9 @@ def plan_refresh(
             if favorites_node is not None and node.playlist_id == favorites_node.playlist_id:
                 continue
             members.update(node.content_ids)
-        present = (
-            _live_members(db, favorites_node.playlist_id) if favorites_node is not None else frozenset()
-        )
+        # THE WALK'S OWN READING, taken under the same soft delete rule, rather
+        # than a second query per folder.
+        present = favorites_node.content_ids if favorites_node is not None else frozenset()
         folders.append(
             FolderPlan(
                 bucket=bucket.id,
@@ -735,17 +783,21 @@ def refresh_additive(
     sub = favorites_class(declared)
     if sub is None:
         return AdditiveOutcome(skipped="the taxonomy declares no sub class derived from a playlist")
-    registry = tree_registry.read(cfg)
-    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
+    # EVERY REFUSAL IS A SKIP WITH ITS REASON, not only the three this engine
+    # names: a tree on the bridge, a root that went, rekordbox opened between
+    # the adoption's session and this one, a plan that moved. The adoption's
+    # own memberships and ledger marks have landed by the time this runs, and
+    # a refusal here reported as the adoption's failure would tell the person
+    # nothing was filed when everything was.
+    try:
+        registry = tree_registry.read(cfg)
+        db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
+    except CratekitError as exc:
+        return AdditiveOutcome(skipped=exc.cause.message)
     try:
         try:
             plan = plan_refresh(cfg, db, declared, registry)
-        except tree_registry.TreeModeRefused as exc:
-            return AdditiveOutcome(skipped=exc.cause.message)
-        except Exception as exc:  # noqa: BLE001 - the source's refusal is a skip here
-            reason = getattr(getattr(exc, "cause", None), "reason", None)
-            if reason != SOURCE_MISSING:
-                raise
+        except CratekitError as exc:
             return AdditiveOutcome(skipped=exc.cause.message)
         if not plan.adds:
             return AdditiveOutcome(
@@ -758,8 +810,8 @@ def refresh_additive(
                     session_id="",
                 )
             )
-        return AdditiveOutcome(
-            refreshed=apply_refresh(
+        try:
+            refreshed = apply_refresh(
                 cfg,
                 db,
                 plan,
@@ -768,7 +820,9 @@ def refresh_additive(
                 analysis_roots=analysis_roots,
                 remove=False,
             )
-        )
+        except CratekitError as exc:
+            return AdditiveOutcome(skipped=exc.cause.message)
+        return AdditiveOutcome(refreshed=refreshed)
     finally:
         rb_writer.close_db(db)
 

@@ -1556,15 +1556,20 @@ def rebuild_tree(
     assert_no_latched_restore(cfg)
     collection = tuple(rows)
     root_id = tree_registry.anchored_root(tree_id, registry, root_exists=root_exists)
-    placements, not_compared = declared_membership(
+    derived, not_compared = declared_membership(
         cfg,
         declared,
         source=source,
         vocal_threshold=vocal_threshold,
         truth=truth,
     )
+    # THE GENRE FAVORITES ARE READ OFF THE TREE AS IT STANDS for the before
+    # check, and again off the tree as this run leaves it for the write and
+    # the after check (U119). A favourite whose tag moved it to another folder
+    # is in its new folder's Favorites only once the first write has moved it,
+    # so the second derivation is what the write and the clearing read.
     placements, not_compared = with_favorites(
-        cfg, db, declared, registry, collection, placements, not_compared, tree_id=tree_id
+        cfg, db, declared, registry, collection, derived, not_compared, tree_id=tree_id
     )
 
     before = check(
@@ -1583,7 +1588,7 @@ def rebuild_tree(
     record = convergence.read(cfg).tree(tree_id)
     standing = read_tree(db, root_id)
     destinations, plan = plan_destinations(
-        declared, placements, standing, record, tree_id=tree_id
+        declared, derived, standing, record, tree_id=tree_id
     )
 
     if not plan:
@@ -1621,6 +1626,49 @@ def rebuild_tree(
         purpose=convergence.Purpose.REBUILD,
         intent=session.Intent.RECOVERY,
     )
+
+    # THE SECOND PASS, THE GENRE FAVORITES OVER THE TREE THE FIRST PASS LEFT
+    # (U119). Derived from the database rather than from the files, so it is
+    # taken only now, and written through the same writer under the same
+    # purpose, in a session of its own. Its destinations join the record and
+    # its placements join the after check, so the clearing reads the tree the
+    # favourites were filed into and not the one they were read from.
+    placements, not_compared = with_favorites(
+        cfg, db, declared, registry, collection, derived, not_compared, tree_id=tree_id
+    )
+    favorites = tuple(entry for entry in placements if entry not in set(derived))
+    if favorites:
+        standing_now = read_tree(db, root_id)
+        record_now = convergence.read(cfg).tree(tree_id)
+        more, second_plan = plan_destinations(
+            declared, favorites, standing_now, record_now, tree_id=tree_id
+        )
+        second = trees.write_tree_membership(
+            cfg,
+            db,
+            tree_id=tree_id,
+            registry=registry,
+            plan=second_plan,
+            rows=collection,
+            root_exists=root_exists,
+            prefix_map=prefix_map,
+            analysis_roots=analysis_roots,
+            workflow=workflow,
+            purpose=convergence.Purpose.REBUILD,
+            intent=session.Intent.RECOVERY,
+        )
+        membership = replace(
+            membership,
+            added=membership.added + second.added,
+            already_present=membership.already_present + second.already_present,
+            skipped=(*membership.skipped, *second.skipped),
+            playlists=(*membership.playlists, *second.playlists),
+        )
+        known = {(entry.bucket, entry.sub) for entry in destinations}
+        destinations = (
+            *destinations,
+            *(entry for entry in more if (entry.bucket, entry.sub) not in known),
+        )
 
     # THE NODE RECORD COMES FROM THE DESTINATION'S OWN NODE FIRST, and from the
     # freshly read tree only for the destinations that had none. Rebuilding the

@@ -692,7 +692,13 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
     added = 0
     already = 0
     playlists: list[str] = []
-    favorites: dict[str, object] = {"added": 0, "removals_owed": 0, "created": [], "skipped": ""}
+    favorites: dict[str, object] = {
+        "added": 0,
+        "removals_owed": 0,
+        "created": [],
+        "disagreements": [],
+        "skipped": "",
+    }
     for report in artifacts.committed(cfg, job_id):
         applied.extend(str(entry) for entry in report.get("applied") or ())
         failed.update({str(k): str(v) for k, v in (report.get("failed") or {}).items()})
@@ -700,12 +706,19 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
         already += int(report.get("already_present") or 0)
         playlists.extend(str(name) for name in report.get("playlists") or ())
         kept = report.get("favorites") or {}
-        if isinstance(kept, dict):
+        # ONLY A REPORT WHOSE ATTEMPT RAN THE REFRESH SPEAKS. An attempt that
+        # filed nothing wrote an empty mapping, and reading its silence as
+        # "nothing owed" would lose the warning on the retry path it exists for.
+        if isinstance(kept, dict) and kept:
             favorites["added"] = int(favorites["added"]) + int(kept.get("added") or 0)
             # THE OWED COUNT IS THE LATEST, not a sum: each attempt measures
             # the same mirror again.
             favorites["removals_owed"] = int(kept.get("removals_owed") or 0)
             favorites["created"] = [*favorites["created"], *(kept.get("created") or ())]
+            favorites["disagreements"] = [
+                *favorites["disagreements"],
+                *(str(one) for one in kept.get("disagreements") or ()),
+            ]
             favorites["skipped"] = str(kept.get("skipped") or "")
     return {
         "applied": sorted(set(applied)),
@@ -717,26 +730,45 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
     }
 
 
-#: The note the resume carries when the mirror would take favourites out.
+#: The notes the resume carries when the mirror would take favourites out, and
+#: when the additive refresh's read back disagreed with its plan.
 FAVORITES_REMOVALS_OWED = "favorites-removals-owed"
+FAVORITES_UNVERIFIED = "favorites-unverified"
 
 
 def favorites_warnings(summary: Mapping[str, object]) -> list[dict[str, str]]:
     """The one note an adoption carries when its additive refresh left removals owed."""
     kept = summary.get("favorites") or {}
-    owed = int(kept.get("removals_owed") or 0) if isinstance(kept, Mapping) else 0
-    if owed <= 0:
+    if not isinstance(kept, Mapping):
         return []
-    return [
-        {
-            "code": FAVORITES_REMOVALS_OWED,
-            "message": (
-                f"{owed} track(s) sit in a genre Favorites and are not in the playlist it "
-                f"mirrors; an adoption only adds, so run the favorites refresh verb, "
-                f"which asks before it removes them"
-            ),
-        }
-    ]
+    notes: list[dict[str, str]] = []
+    owed = int(kept.get("removals_owed") or 0)
+    if owed > 0:
+        notes.append(
+            {
+                "code": FAVORITES_REMOVALS_OWED,
+                "message": (
+                    f"{owed} track(s) sit in a genre Favorites and are not in the playlist "
+                    f"it mirrors; an adoption only adds, so run the favorites refresh "
+                    f"verb, which asks before it removes them"
+                ),
+            }
+        )
+    disagreements = [str(one) for one in kept.get("disagreements") or ()]
+    if disagreements:
+        notes.append(
+            {
+                "code": FAVORITES_UNVERIFIED,
+                "message": (
+                    f"the genre Favorites read back after the adoption's refresh are not "
+                    f"the plan's in {len(disagreements)} folder(s): "
+                    + "; ".join(disagreements)
+                    + "; the adoption's own writes are true, and the favorites refresh "
+                    "verb reads the mirror again"
+                ),
+            }
+        )
+    return notes
 
 
 def handle(job, item, cfg) -> jobs.Produced:
@@ -839,6 +871,9 @@ def handle(job, item, cfg) -> jobs.Produced:
             "added": refreshed.added if refreshed else 0,
             "created": list(refreshed.created) if refreshed else [],
             "removals_owed": refreshed.removals_owed if refreshed else 0,
+            # THE READ BACK TRAVELS. The verb refuses on it; an adoption that
+            # has landed reports it, since its own writes are already true.
+            "disagreements": list(refreshed.disagreements) if refreshed else [],
             "skipped": outcome.skipped,
         }
 

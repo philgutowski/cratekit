@@ -6169,7 +6169,10 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # the plan KIND its digest is taken under. favorites-nothing-to-refresh,
     # favorites-refreshed and favorites-folders-left-alone are the verb's
     # WARNING codes, and favorites-removals-owed is the adoption resume's.
-    assert (len(literals), len(literals - set(causes))) == (668, 469), (
+    # Re-pinned once more on the same unit's review round: 668 to 669
+    # distinct, non-keys 469 to 470. ONE joined, favorites-unverified, the
+    # adoption resume's second WARNING code, for a read back that disagreed.
+    assert (len(literals), len(literals - set(causes))) == (669, 470), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )
