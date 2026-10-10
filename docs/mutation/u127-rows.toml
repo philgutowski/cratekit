@@ -1,0 +1,216 @@
+name = "u127"
+pass_kind = "light"
+
+# U127, every native landing writes the vox My Tag from the file's score.
+# The new guards in native.py (the plan, the digest, the write, the record,
+# the read back), the shared screen line and warnings in land_cli.py, the
+# second route in file_cli.py, and the writer's own question in rb_writer.py.
+# The landing writes into the live library, so every row is user facing.
+
+[[rows]]
+id = "N1_cut_strict"
+description = "Compare the score strictly above the cut, so a file exactly at the cut is not tagged"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''        values = metadata_cli.vocal_tag_values(level, None, cut)
+        scored.append(replace(row, voxlevel=level, vox=metadata_cli.VALUE_VOX in values))'''
+new = '''        values = metadata_cli.vocal_tag_values(level, None, cut + 0.5)
+        scored.append(replace(row, voxlevel=level, vox=metadata_cli.VALUE_VOX in values))'''
+
+[[rows]]
+id = "N2_every_add_tagged"
+description = "Tag every added row whatever its score, the guess the brief forbids"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''        scored.append(replace(row, voxlevel=level, vox=metadata_cli.VALUE_VOX in values))'''
+new = '''        scored.append(replace(row, voxlevel=level, vox=True))'''
+
+[[rows]]
+id = "N3_default_cut_when_uncalibrated"
+description = "Tag from the vocals verb's default cut on a library with no calibration instead of blocking"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''    if cut is None:
+        return rows, None, VOX_UNCALIBRATED'''
+new = '''    if cut is None:
+        cut = metadata_cli.DEFAULT_VOCAL_THRESHOLD'''
+
+[[rows]]
+id = "N4_unreadable_refuses"
+description = "Let an unreadable calibration refuse the landing rather than block the tag"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''    except CratekitError as exc:
+        # AN UNREADABLE CALIBRATION BLOCKS THE TAG, NOT THE LANDING. The'''
+new = '''    except ValueError as exc:
+        # AN UNREADABLE CALIBRATION BLOCKS THE TAG, NOT THE LANDING. The'''
+
+[[rows]]
+id = "N5_no_category_check"
+description = "Skip the writer's question at plan time, so a library with no category fails after the moves"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''    if not rb_writer.my_tag_writable(db):
+        return rows, cut, VOX_NO_CATEGORY'''
+new = '''    if False:
+        return rows, cut, VOX_NO_CATEGORY'''
+
+[[rows]]
+id = "N6_digest_blind_to_vox"
+description = "Drop each added row's score and answer from the digest"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''                "rows": [[str(row.target), row.voxlevel, row.vox] for row in plan.to_add()],'''
+new = '''                "rows": [[str(row.target)] for row in plan.to_add()],'''
+
+[[rows]]
+id = "N7_digest_blind_to_cut"
+description = "Drop the cut from the digest"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''                "cut": plan.vox_cut,'''
+new = '''                "cut": None,'''
+
+[[rows]]
+id = "N8_tag_never_written"
+description = "Write no tag at the apply, the defect R-841 measured"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''            vox_written = _tag_vox(db, added_ids)'''
+new = '''            vox_written = 0'''
+
+[[rows]]
+id = "N9_tag_every_added"
+description = "Write the tag on every added row, not only those the plan tagged"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''    content_ids = [content_id for row, content_id in added if row.vox]'''
+new = '''    content_ids = [content_id for row, content_id in added]'''
+
+[[rows]]
+id = "N10_record_silent"
+description = "Record no commit under the vocals key, so a restore cannot count the tags"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''    if vox_written > 0:'''
+new = '''    if vox_written > 10**6:'''
+
+[[rows]]
+id = "N11_missing_unreported"
+description = "Never report a planned tag that adoption does not read back"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''            row.target for row, content_id in added_ids if row.vox and content_id not in voxed'''
+new = '''            row.target for row, content_id in added_ids if False'''
+
+[[rows]]
+id = "N12_unscored_dropped"
+description = "Name no unscored file on the landed record"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''    unscored = {row.target for row in plan.vox_unscored()}'''
+new = '''    unscored = set()'''
+
+[[rows]]
+id = "N13_unscored_while_blocked"
+description = "Count every unscored add as unscored even when the tag was blocked"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''        if self.vox_cut is None or self.vox_blocked:
+            return ()'''
+new = '''        if False:
+            return ()'''
+
+[[rows]]
+id = "N14_read_back_skipped"
+description = "Never read the tag back, so every landed row reports untagged"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+old = '''            _vox_read_back(db) if any(row.vox for row, _ in added_ids) else (frozenset(), "")'''
+new = '''            (frozenset(), "") if any(row.vox for row, _ in added_ids) else (frozenset(), "")'''
+
+[[rows]]
+id = "L1_screen_line_blind"
+description = "The native screen counts no tagged row"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''        f"{len(rows.vox_tagged())} of {len(adding)} added row(s), each whose voxlevel "'''
+new = '''        f"{len(adding)} of {len(adding)} added row(s), each whose voxlevel "'''
+
+[[rows]]
+id = "L2_items_carry_no_vox"
+description = "The gate items carry no score and no answer"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''        if row.action == native.ADD and rows.vox_cut is not None and not rows.vox_blocked:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "L3_totals_from_writer"
+description = "Count the written associations as tagged instead of what adoption reads back"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''    voxed = sum(1 for row in landed.collection.added if row.vox)'''
+new = '''    voxed = landed.collection.vox_written'''
+
+[[rows]]
+id = "L4_missing_unsaid"
+description = "Say nothing when a planned tag does not read back"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''    if collection.vox_missing:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "L5_unscored_unsaid"
+description = "Say nothing about a file with no score"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''    if not collection.vox_unscored:'''
+new = '''    if True:'''
+
+[[rows]]
+id = "L6_bridge_ignores_calibration"
+description = "The bridge names the vocals verb as owed on an uncalibrated library"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''    if cut is None:
+        return f"{BRIDGE_VOX_NONE}, and {native.VOX_UNCALIBRATED}"'''
+new = '''    if False:
+        return f"{BRIDGE_VOX_NONE}, and {native.VOX_UNCALIBRATED}"'''
+
+[[rows]]
+id = "L7_land_warnings_unsaid"
+description = "intake land gives no vox warning"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''    warnings.extend(vox_warnings(landed.collection))'''
+new = '''    warnings.extend([])'''
+
+[[rows]]
+id = "F1_file_warnings_unsaid"
+description = "intake file gives no vox warning"
+file = "src/cratekit/intake/file_cli.py"
+surface = "user"
+old = '''        warnings=[*land_cli.awaiting_analysis(landed), *land_cli.vox_warnings(landed)],'''
+new = '''        warnings=[*land_cli.awaiting_analysis(landed)],'''
+
+[[rows]]
+id = "W1_writable_always"
+description = "The writer's question always answers writable"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+old = '''        if exc.cause.reason != "mytag-category-template-missing":
+            raise
+        return False'''
+new = '''        if exc.cause.reason != "mytag-category-template-missing":
+            raise
+        return True'''
+
+[[rows]]
+id = "W2_writable_reason_drift"
+description = "The writer's question reads another reason than the writer raises"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+old = '''        if exc.cause.reason != "mytag-category-template-missing":'''
+new = '''        if exc.cause.reason != "mytag-category-missing":'''

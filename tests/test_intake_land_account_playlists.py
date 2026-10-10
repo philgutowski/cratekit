@@ -21,6 +21,7 @@ import pytest
 from cratekit.acquire import match
 from cratekit.cli import jobs as cli_jobs
 from cratekit.core import config, jobs, session
+from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import account_playlists, batch_name, ingest, missing_cli
 from cratekit.intake import cli as intake_cli
@@ -262,9 +263,10 @@ def test_a_landing_with_no_pass_splits_nothing(cfg, silence, export):
     assert _inbox(_intake(envelope)) == {"by hand": ["One"]}
 
 
-def test_a_row_the_library_owned_adds_nothing_to_the_playlist(cfg, silence, export):
-    # OWNED IS NOT CARRIED (R-905): a row resolved to a file the library holds
-    # was not downloaded, so no file of the landing is its.
+def test_an_owned_track_whose_row_the_export_does_not_hold_is_warned(cfg, silence, export):
+    # The library holds the file and the export the batch is spliced into has
+    # no entry for it, so there is no TrackID for the playlist to name: the
+    # track is left, and the landing names it rather than dropping it (U128).
     owned = _music(cfg, "older batch")
     owned.mkdir(parents=True)
     _stage(cfg, silence, "Held.flac").rename(owned / "Held.flac")
@@ -274,6 +276,111 @@ def test_a_row_the_library_owned_adds_nothing_to_the_playlist(cfg, silence, expo
     envelope = _applied(export, "--pass", PASS)
 
     assert _inbox(_intake(envelope)) == {"Sunset Warmup": ["One"]}
+    (warning,) = [w for w in envelope["warnings"] if w["code"] == account_playlists.LEFT_OUT]
+    assert "Sunset Warmup 2. Probe - Held" in warning["message"]
+    assert account_playlists.NO_ROW in warning["message"]
+
+
+# ---------------------------------------------------------------------------
+# U128: the INBOX playlist mirrors the whole account playlist
+# ---------------------------------------------------------------------------
+
+
+def _owned_export(cfg, silence, export: Path, titles: tuple[str, ...]) -> Path:
+    """An export whose collection holds ``titles``, landed earlier into the library.
+
+    Landed by the product itself under a name of its own and no pass, so each
+    is a file under the music folder and an entry of the intake file, which is
+    then the export the next landing is spliced into, as one taken after the
+    import is.
+    """
+    for title in titles:
+        _stage(cfg, silence, f"{title}.flac")
+    return _intake(_applied(export, "--name", "older batch"))
+
+
+def test_a_playlist_of_three_owned_and_two_new_lands_all_five_in_account_order(
+    cfg, silence, export
+):
+    held = _owned_export(cfg, silence, export, ("Held1", "Held2", "Held3"))
+    swept(
+        cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New1", "Held2", "New2", "Held3"))}
+    )
+    for name in ("New1.flac", "New2.flac"):
+        _stage(cfg, silence, name)
+
+    envelope = _applied(held, "--pass", PASS)
+
+    inbox = _inbox(_intake(envelope))
+    assert inbox["Sunset Warmup"] == ["Held1", "New1", "Held2", "New2", "Held3"]
+    # The owned tracks are the export's own entries, not spliced a second time.
+    body = _intake(envelope).read_text(encoding="utf-8")
+    assert body.count('Name="Held1"') == 1
+    split = [item for item in envelope["data"]["items"] if item["action"] == "playlist"]
+    assert split == [
+        {"action": "playlist", "playlist": "Sunset Warmup", "account": "pl-a", "count": 5}
+    ]
+    assert not [w for w in envelope["warnings"] if w["code"] == account_playlists.LEFT_OUT]
+
+
+def test_the_gate_screen_counts_the_owned_tracks_beside_the_new(cfg, silence, export):
+    held = _owned_export(cfg, silence, export, ("Held1",))
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New1"))})
+    _stage(cfg, silence, "New1.flac")
+
+    code, refused = _drive(_land(held, "--pass", PASS))
+
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["account playlists"] == ["Sunset Warmup (2 file(s), 1 already in the library)"]
+
+
+def test_an_owned_track_in_two_account_playlists_is_in_both(cfg, silence, export):
+    held = _owned_export(cfg, silence, export, ("Held1",))
+    swept(
+        cfg,
+        {
+            "pl-a": ("Sunset Warmup", ("Held1", "New1")),
+            "pl-b": ("Deep Cuts", ("New1", "Held1")),
+        },
+    )
+    _stage(cfg, silence, "New1.flac")
+
+    envelope = _applied(held, "--pass", PASS)
+
+    inbox = _inbox(_intake(envelope))
+    assert inbox["Sunset Warmup"] == ["Held1", "New1"]
+    assert inbox["Deep Cuts"] == ["New1", "Held1"]
+
+
+def test_a_track_neither_owned_nor_brought_is_named_in_the_warnings(cfg, silence, export):
+    # The download for Gone never arrived, a lossy file refused or a row
+    # nothing answered, so the library does not hold it and the landing did
+    # not bring it.
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("One", "Gone"))})
+    _stage(cfg, silence, "One.flac")
+
+    envelope = _applied(export, "--pass", PASS)
+
+    assert _inbox(_intake(envelope)) == {"Sunset Warmup": ["One"]}
+    (warning,) = [w for w in envelope["warnings"] if w["code"] == account_playlists.LEFT_OUT]
+    assert "Sunset Warmup 2. Probe - Gone" in warning["message"]
+    assert account_playlists.NOT_BROUGHT in warning["message"]
+
+
+def test_a_rerun_of_the_same_pass_is_a_no_op(cfg, silence, export):
+    held = _owned_export(cfg, silence, export, ("Held1",))
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New1"))})
+    _stage(cfg, silence, "New1.flac")
+    first = _intake(_applied(held, "--pass", PASS))
+    before = first.read_bytes()
+
+    code, again = _drive(["-d", f"{GATE}=apply", *_land(first, "--pass", PASS)])
+
+    assert code == int(ExitCode.OK), again
+    assert again["outcome"] == "no_op", again
+    assert again["data"]["items"] == []
+    assert first.read_bytes() == before
 
 
 def test_a_row_that_only_resembles_a_file_does_not_claim_it(cfg, silence, export, monkeypatch):
@@ -350,8 +457,10 @@ def test_the_intake_record_names_each_playlist_and_its_batch_folder(cfg, silence
 
     assert envelope["outcome"] == "pending"
     (record,) = session.records(cfg)
+    # The account and the pass beside the name since U128, which a rerun of
+    # the pass reads to find what it already mirrored.
     assert record.detail[ingest.INBOX_PLAYLISTS_KEY] == [
-        {"name": "Sunset Warmup", "batch": BATCH}
+        {"name": "Sunset Warmup", "batch": BATCH, "account": "pl-a", "pass": PASS}
     ]
 
 
@@ -420,3 +529,149 @@ def test_inbox_names_keeps_a_name_exactly_and_compares_it_exactly():
     assert batch_name.inbox_names(
         ["sunset warmup", "A/B: C?"], ["Sunset Warmup"], batch="x"
     ) == ("sunset warmup", "A/B: C?")
+
+
+def test_a_bridge_landing_is_what_a_rerun_of_its_pass_reads_as_mirrored(cfg, silence, export):
+    """The intake file's record names the account and the pass, which the rerun reads."""
+    held = _owned_export(cfg, silence, export, ("Held1",))
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New1", "Late"))})
+    _stage(cfg, silence, "New1.flac")
+    _applied(held, "--pass", PASS)
+
+    assert account_playlists.mirrored(cfg, PASS) == frozenset({"pl-a"})
+    assert account_playlists.mirrored(cfg, "another pass") == frozenset()
+    # A second landing of the pass, with the late file staged, claims only it.
+    late = _stage(cfg, silence, "Late.flac")
+    (claim,) = account_playlists.split(cfg, PASS, [late])
+    assert claim.files == (late,)
+    assert claim.left == ()
+
+
+def test_an_export_rewritten_after_the_gate_moves_nothing(cfg, silence, export):
+    """The owned tracks' TrackIDs are read again before the first move."""
+    held = _owned_export(cfg, silence, export, ("Held1",))
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New1"))})
+    _stage(cfg, silence, "New1.flac")
+    argv = _land(held, "--pass", PASS)
+    code, refused = _drive(argv)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    _drive(["run", "decide", refused["run_id"], GATE, "apply", "--actor", "a-person"])
+
+    # Held1's entry is renumbered, as a later export of the collection can do.
+    body = held.read_text(encoding="utf-8")
+    tid = body.split('Name="Held1"', 1)[0].rsplit('TrackID="', 1)[1].split('"', 1)[0]
+    held.write_text(body.replace(f'TrackID="{tid}"', 'TrackID="98765"'), encoding="utf-8")
+    code, envelope = _drive(["--run", refused["run_id"], *argv])
+
+    # The gate's digest covers each owned track's TrackID, so the answer is stale.
+    assert envelope["cause"]["reason"] == "decision-stale", envelope
+    assert (Path(cfg.paths.download_staging) / "New1.flac").is_file()
+
+
+def test_the_engine_reads_the_owned_entries_again_before_the_first_move(cfg, silence, export):
+    """Between the plan and the moves, the engine's own check, not only the gate's."""
+    from cratekit.intake import landing
+
+    held = _owned_export(cfg, silence, export, ("Held1",))
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New1"))})
+    staged = _stage(cfg, silence, "New1.flac")
+    planned = landing.plan(staged.parent, cfg, BATCH)
+    claims = account_playlists.split(cfg, PASS, planned.items)
+    named = account_playlists.named(claims, (), batch=BATCH)
+    split, _emptied = landing.owned_in_export(cfg, named, held)
+    (one,) = split
+    assert [m.row for m in one.members if m.file is None] != [""]
+
+    body = held.read_text(encoding="utf-8")
+    tid = body.split('Name="Held1"', 1)[0].rsplit('TrackID="', 1)[1].split('"', 1)[0]
+    held.write_text(body.replace(f'TrackID="{tid}"', 'TrackID="98765"'), encoding="utf-8")
+
+    with pytest.raises(CratekitError) as refused:
+        landing.apply(
+            planned,
+            cfg=cfg,
+            export=held,
+            destination=Path(cfg.library.root).parent / "engine_inboxed.xml",
+            split=split,
+            pass_name=PASS,
+        )
+
+    assert refused.value.cause.reason == "decision-stale"
+    assert "no longer lists the owned tracks" in refused.value.cause.message
+    assert staged.is_file()
+
+
+def test_an_export_entry_on_another_machine_is_no_owned_row(cfg, silence, export):
+    """A Location naming another host has no path here, and is not a refusal."""
+    held = _owned_export(cfg, silence, export, ("Held1",))
+    body = held.read_text(encoding="utf-8").replace(
+        'Location="file://localhost/', 'Location="file://otherhost/'
+    )
+    held.write_text(body, encoding="utf-8")
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New1"))})
+    _stage(cfg, silence, "New1.flac")
+
+    envelope = _applied(held, "--pass", PASS)
+
+    assert _inbox(_intake(envelope))["Sunset Warmup"] == ["New1"]
+    (warning,) = [w for w in envelope["warnings"] if w["code"] == account_playlists.LEFT_OUT]
+    assert "Probe - Held1" in warning["message"]
+
+
+def test_an_abandoned_landing_is_not_read_as_mirrored(cfg, silence, export):
+    """A person who discarded the intake file discarded its playlists too."""
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
+    _stage(cfg, silence, "One.flac")
+    _applied(export, "--pass", PASS)
+    assert account_playlists.mirrored(cfg, PASS) == frozenset({"pl-a"})
+
+    (record,) = session.records(cfg)
+    session.close_session(record, cfg, state=session.SessionState.ABANDONED)
+
+    assert account_playlists.mirrored(cfg, PASS) == frozenset()
+
+
+def _one_owned(name: str, paths: tuple[str, ...]) -> account_playlists.Claimed:
+    member = account_playlists.Member(
+        position=1, paths=paths, artist="Probe", title="Held1", state="owned"
+    )
+    return account_playlists.Claimed(
+        name=name, account_name=name, playlist_id="pl-a", members=(member,)
+    )
+
+
+def test_a_file_two_active_rows_claim_is_no_owned_row(cfg):
+    from cratekit.write import trees
+
+    held = Path(cfg.library.root) / cfg.library.music_dir / "b" / "Held1.flac"
+    rows = [
+        trees.ContentRow(content_id="7", recorded=str(held), deleted=False),
+        trees.ContentRow(content_id="8", recorded=str(held), deleted=False),
+    ]
+    new = account_playlists.Member(position=2, file=Path("New1.flac"))
+    claimed = _one_owned("Sunset Warmup", (str(held),))
+    claimed = account_playlists.Claimed(
+        name=claimed.name,
+        account_name=claimed.account_name,
+        playlist_id=claimed.playlist_id,
+        members=(*claimed.members, new),
+    )
+
+    (kept,), emptied = account_playlists.resolve_owned(cfg, [claimed], rows)
+
+    assert kept.members == (new,)
+    assert [one.why for one in kept.left] == [account_playlists.AMBIGUOUS_ROWS]
+    assert emptied == ()
+
+
+def test_a_claim_left_holding_nothing_still_answers_its_left_rows(cfg):
+    held = Path(cfg.library.root) / cfg.library.music_dir / "b" / "Held1.flac"
+
+    kept, emptied = account_playlists.resolve_owned(
+        cfg, [_one_owned("Deep Cuts", (str(held),))], []
+    )
+
+    assert kept == ()
+    assert [(name, one.title, one.why) for name, one in emptied] == [
+        ("Deep Cuts", "Held1", account_playlists.NO_ROW)
+    ]

@@ -49,6 +49,7 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.favorites import placement
 from cratekit.intake import account_playlists, batch_name, ingest, landing, native, set_playlist
 from cratekit.intake import cli as intake_cli
+from cratekit.write import metadata_cli
 
 #: The action every planned file carries until the apply reports on it.
 LAND = "land"
@@ -72,6 +73,19 @@ NATIVE_GATE = "intake.land.native"
 #: The warning a native landing carries: the rows are in the collection and
 #: rekordbox has not analysed them, which it does on request and not on sight.
 AWAITING_ANALYSIS = "rows-await-analysis"
+
+#: The warnings a native write carries about the vox My Tag (U127): a file
+#: whose score could not be read, and a landing that wrote no tag at all.
+VOX_UNSCORED = "vox-unscored"
+VOX_NOT_WRITTEN = "vox-not-written"
+
+#: What the bridge's gate screen says of the vox My Tag (U127), on a
+#: calibrated library; :func:`bridge_vox_fact` says the rest.
+BRIDGE_VOX_NONE = "not written, the xml bridge carries no My Tag"
+BRIDGE_VOX_OWED = (
+    f"{BRIDGE_VOX_NONE}; once rekordbox has imported the batch, run crate metadata "
+    f"mytags-vocals --apply to tag its vocal tracks"
+)
 
 _ORIGIN = ("intake.land_cli",)
 
@@ -256,6 +270,7 @@ def _payload(
     export: Path,
     manifest: landing.LabelManifest | None = None,
     split: tuple[account_playlists.Claimed, ...] = (),
+    emptied: tuple[tuple[str, account_playlists.Left], ...] = (),
 ) -> dict:
     items = [
         {"action": LAND, "from": str(item), "to": str(target / item.name)}
@@ -283,6 +298,9 @@ def _payload(
         # splits nothing is compared exactly as it was before U113. Another
         # split, or another name for one playlist, is another plan.
         identity["playlists"] = [claimed.identity() for claimed in split]
+    if emptied:
+        # The left rows of an account playlist that holds nothing (U128).
+        identity["unplanned_left"] = [[name, row.identity()] for name, row in emptied]
     return {
         "digest": digest_of(identity),
         "items": items,
@@ -294,10 +312,12 @@ def _payload(
 def _shown(
     planned: landing.Plan,
     *,
+    cfg: config.Config,
     target: Path,
     destination: Path,
     manifest: landing.LabelManifest | None = None,
     split: tuple[account_playlists.Claimed, ...] = (),
+    emptied: int = 0,
 ) -> dict[str, Any]:
     """What the gate screen puts in front of the person, one line per fact."""
     shown: dict[str, Any] = {
@@ -307,12 +327,17 @@ def _shown(
         "intake file": str(destination),
         "count": len(planned.items),
         "files": [item.name for item in planned.items],
+        # U127: the xml bridge carries no My Tag, so the vox tag a native
+        # landing writes is a step this one leaves owed, said before the
+        # approval rather than discovered in a with vox playlist missing it.
+        "vox My Tag": bridge_vox_fact(cfg),
     }
     if split:
         shown.update(
             split_facts(
-                [(one.name, one.account_name, len(one.files)) for one in split],
+                [(one.name, one.account_name, len(one.members), one.owned) for one in split],
                 len(account_playlists.unclaimed(planned.items, split)),
+                left=sum(len(one.left) for one in split) + emptied,
             )
         )
     if manifest is not None:
@@ -325,18 +350,42 @@ def _shown(
     return shown
 
 
-def split_facts(entries: list[tuple[str, str, int]], rest: int) -> dict[str, Any]:
+def bridge_vox_fact(cfg: config.Config) -> str:
+    """What the bridge's gate screen says of the vox My Tag (U127), by the calibration.
+
+    THE STEP OWED IS ONLY NAMED WHERE IT WOULD TAG FROM A FITTED CUT. The vocals
+    verb tags from the default cut on a library with none, which the native
+    landing refuses to do (R-276), so an uncalibrated library is told to
+    calibrate first, and an unreadable calibration is named, never refused:
+    the bridge writes no tag either way.
+    """
+    try:
+        cut = metadata_cli.load_vocal_threshold(cfg)
+    except CratekitError as exc:
+        return f"{BRIDGE_VOX_NONE}, and " + native.VOX_UNREADABLE.format(why=exc.cause.message)
+    if cut is None:
+        return f"{BRIDGE_VOX_NONE}, and {native.VOX_UNCALIBRATED}"
+    return BRIDGE_VOX_OWED
+
+
+def split_facts(
+    entries: list[tuple[str, str, int, int]], rest: int, *, left: int = 0
+) -> dict[str, Any]:
     """The account playlists on a gate screen, each by the name it lands as (U113).
 
-    ``entries`` are each playlist's name, the account's own name for it and how
-    many files it holds; ``rest`` is how many the batch playlist keeps. ONE
+    ``entries`` are each playlist's name, the account's own name for it, how
+    many tracks it holds and how many of those the library already owned
+    (U128); ``rest`` is how many files the batch playlist keeps and ``left``
+    how many rows of the account playlists no INBOX playlist holds. ONE
     WORDING FOR BOTH MEDIA, so the same split reads the same on either screen.
     """
-    return {
+    facts: dict[str, Any] = {
         "account playlists": [
-            f"{name} ({count} file(s))"
+            f"{name} ({count} file(s)"
+            + (f", {owned} already in the library" if owned else "")
+            + ")"
             + (f", the account's {account}" if account and name != account else "")
-            for name, account, count in entries
+            for name, account, count, owned in entries
         ],
         "batch playlist holds": (
             f"{rest} file(s) no account playlist claimed"
@@ -344,6 +393,11 @@ def split_facts(entries: list[tuple[str, str, int]], rest: int) -> dict[str, Any
             else "nothing, so it is not written"
         ),
     }
+    if left:
+        facts["account playlist tracks left out"] = (
+            f"{left} no INBOX playlist will hold, each named with why after the landing"
+        )
+    return facts
 
 
 def _split_items(split: tuple[tuple[account_playlists.Claimed, int], ...]) -> list[dict[str, Any]]:
@@ -427,7 +481,7 @@ def _reported(payload: dict, landed: landing.Landed) -> dict:
 
 def _xml_split(
     cfg: config.Config,
-    claims: tuple[tuple[account_playlists.Source, tuple[Path, ...]], ...],
+    claims: tuple[account_playlists.Claim, ...],
     export: Path,
     *,
     batch: str,
@@ -581,6 +635,9 @@ def intake_land(ctx) -> Envelope:
     )
     destination = intake_file(cfg, stem)
     split = _xml_split(cfg, claims, export, batch=batch, declared=declared, registry=registry)
+    # EACH OWNED TRACK FOUND IN THE EXPORT BEFORE THE GATE (U128), so the screen
+    # counts and the digest covers what the intake file will hold.
+    split, emptied = landing.owned_in_export(cfg, split, export)
     # THE ENGINE'S PRE-MOVE CHECKS ARE ASKED BEFORE THE GATE TOO (R-677), for
     # the manifest's reason. A plan over an export that is not there, or not a
     # collection, or a library that is not mounted, could never run, and the
@@ -606,6 +663,7 @@ def intake_land(ctx) -> Envelope:
         export=export,
         manifest=manifest,
         split=split,
+        emptied=emptied,
     )
     spec = gate_named(ctx.entry, XML_GATE)
     try:
@@ -613,7 +671,13 @@ def intake_land(ctx) -> Envelope:
             spec,
             digest=payload["digest"],
             context=_shown(
-                planned, target=target, destination=destination, manifest=manifest, split=split
+                planned,
+                cfg=cfg,
+                target=target,
+                destination=destination,
+                manifest=manifest,
+                split=split,
+                emptied=len(emptied),
             ),
         )
     except CratekitError as exc:
@@ -652,6 +716,7 @@ def intake_land(ctx) -> Envelope:
             manifest=manifest.path if manifest is not None else None,
             manifest_digest=manifest.digest if manifest is not None else None,
             split=split,
+            pass_name=pass_name,
         )
     return ctx.envelope(
         data=_reported(payload, landed),
@@ -659,8 +724,11 @@ def intake_land(ctx) -> Envelope:
         code=ExitCode.PENDING_HUMAN,
         pending=ingest.persisted_pending(cfg, landed.placed),
         warnings=[
-            {"code": entry.reason, "message": entry.sentence}
-            for entry in (*landed.refused, *landed.unlabelled)
+            *(
+                {"code": entry.reason, "message": entry.sentence}
+                for entry in (*landed.refused, *landed.unlabelled)
+            ),
+            *account_playlists.left_warning((*emptied, *landed.left)),
         ],
     )
 
@@ -700,6 +768,10 @@ def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: P
             entry["why"] = row.why
         if str(row.target) in hearts:
             entry["heart"] = hearts[str(row.target)] or "quarter left to the backfill"
+        if row.action == native.ADD and rows.vox_cut is not None and not rows.vox_blocked:
+            # U127: the score each added row was read at and whether it is tagged.
+            entry["voxlevel"] = row.voxlevel
+            entry["vox"] = row.vox
         items.append(entry)
     identity = {
         "kind": "land-native",
@@ -777,7 +849,23 @@ def collection_facts(rows: native.NativePlan) -> dict[str, Any]:
         "left empty for rekordbox": list(native.LEFT_EMPTY),
         "adds": len(rows.to_add()),
         "already present": len(rows.present()),
+        "vox My Tag": vox_fact(rows),
     }
+
+
+def vox_fact(rows: native.NativePlan) -> str:
+    """The vox My Tag a native plan writes, in one line, for any verb's gate screen (U127)."""
+    adding = rows.to_add()
+    if not adding:
+        return "none, since no row is added"
+    if rows.vox_blocked:
+        return f"none, {rows.vox_blocked}"
+    unscored = len(rows.vox_unscored())
+    return (
+        f"{len(rows.vox_tagged())} of {len(adding)} added row(s), each whose voxlevel "
+        f"is at or above the cut {rows.vox_cut:g}"
+        + (f"; {unscored} file(s) carry no score and get no tag" if unscored else "")
+    )
 
 
 def playlist_item(collection: native.NativeLanded) -> dict[str, Any]:
@@ -806,8 +894,12 @@ def _native_shown(rows: native.NativePlan, *, folder: Path, target: Path) -> dic
         written = [row for row in rows.rows if row.action != native.UNSUPPORTED]
         shown.update(
             split_facts(
-                [(one.name, one.account_name, len(one.targets)) for one in rows.playlists],
+                [
+                    (one.name, one.account_name, len(one.members), one.owned)
+                    for one in rows.playlists
+                ],
                 sum(1 for row in written if str(row.target) not in claimed),
+                left=sum(len(one.left) for one in rows.playlists) + len(rows.unplanned_left),
             )
         )
     if rows.favorites is not None:
@@ -847,6 +939,7 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
                         rb_writer.CONTENT_LINK_COLUMN: row.content_link,
                     },
                     "left_empty": sorted(row.empty),
+                    **({"vox": row.vox} if "vox" in item else {}),
                 }
             )
             continue
@@ -867,6 +960,11 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
         "already present": len(landed.collection.present),
         "memberships": landed.collection.memberships_added,
     }
+    # WHAT ADOPTION READS BACK, not what the writer counted (U127): a tag
+    # written under a category rekordbox removed is no tag a person sees.
+    voxed = sum(1 for row in landed.collection.added if row.vox)
+    if voxed:
+        totals["vox tagged"] = voxed
     if landed.collection.playlist_id:
         items.append(playlist_item(landed.collection))
     items.extend(
@@ -941,7 +1039,7 @@ def _land_native(
     declared,
     registry,
     manifest: landing.LabelManifest | None,
-    claims: tuple[tuple[account_playlists.Source, tuple[Path, ...]], ...] = (),
+    claims: tuple[account_playlists.Claim, ...] = (),
     hearted: tuple[account_playlists.Hearted, ...] = (),
 ) -> Envelope:
     """Plan the rows against the database, ask, then move and write.
@@ -1024,20 +1122,25 @@ def _land_native(
                 _still_free(cfg, planned.batch)
             return landing.apply_native(planned, cfg=cfg, db=db, rows=rows, declared=declared)
 
-    payload, landed = ask_then_write(
-        ctx,
-        cfg,
-        spec,
-        plan=lambda db: native.plan_rows(
+    def plan(db) -> native.NativePlan:
+        split, emptied = _native_split(
+            db,
+            cfg,
+            claims,
+            tree_id=tree_id,
+            registry=registry,
+            batch=planned.batch,
+            target=target,
+        )
+        return native.plan_rows(
             cfg,
             db,
             tree_id=tree_id,
             registry=registry,
             batch=planned.batch,
             files=files,
-            split=_native_split(
-                db, claims, tree_id=tree_id, registry=registry, batch=planned.batch, target=target
-            ),
+            split=split,
+            unplanned_left=emptied,
             pass_name=ctx.args.pass_name,
             hearts=tuple(
                 native.HeartItem(target=target / one.path.name, quarter=one.quarter, ref=one.ref)
@@ -1045,7 +1148,13 @@ def _land_native(
             ),
             favorites_source=placement.source_name(declared),
             set_plan=set_plan(db),
-        ),
+        )
+
+    payload, landed = ask_then_write(
+        ctx,
+        cfg,
+        spec,
+        plan=plan,
         payload=lambda rows: _native_payload(planned, rows, target=target),
         shown=lambda rows: _native_shown(rows, folder=planned.folder, target=target),
         write=write,
@@ -1055,7 +1164,9 @@ def _land_native(
     native.assert_rows_gridless(landed.collection)
     native.assert_rows_identified(landed.collection)
     warnings = [{"code": entry.reason, "message": entry.sentence} for entry in landed.refused]
+    warnings.extend(account_playlists.left_warning(landed.collection.left))
     warnings.extend(awaiting_analysis(landed.collection))
+    warnings.extend(vox_warnings(landed.collection))
     warnings.extend(favorites_notes(payload, landed.collection))
     kept = landed.collection.set_playlist
     if kept is not None and kept.playlist_id:
@@ -1115,25 +1226,48 @@ def favorites_notes(payload: dict, collection: native.NativeLanded) -> list[dict
 
 def _native_split(
     db,
-    claims: tuple[tuple[account_playlists.Source, tuple[Path, ...]], ...],
+    cfg: config.Config,
+    claims: tuple[account_playlists.Claim, ...],
     *,
     tree_id: str,
     registry,
     batch: str,
     target: Path,
-) -> tuple[native.PlaylistPlan, ...]:
-    """Each account playlist named against what the database's INBOX holds, on the write handle."""
+) -> tuple[tuple[native.PlaylistPlan, ...], tuple[tuple[str, account_playlists.Left], ...]]:
+    """Each account playlist named against what the database's INBOX holds, on the write handle.
+
+    AND EACH OWNED TRACK'S ROW FOUND BY PATH ON THE SAME HANDLE (U128), at plan
+    time, so the screen and the digest name the rows the apply adds and the
+    apply finds nothing again. Asked of the candidate rows whose stored path
+    ends in the file's name, the native landing's own lookup, rather than of
+    the whole collection. Answers the playlists and the left rows of the ones
+    left holding nothing.
+    """
     if not claims:
-        return ()
+        return (), ()
     held = native.inbox_held(db, native.anchored_intake_root(db, tree_id, registry))
-    return tuple(
-        native.PlaylistPlan(
-            name=claimed.name,
-            account=claimed.playlist_id,
-            targets=tuple(target / path.name for path in claimed.files),
-            account_name=claimed.account_name,
-        )
-        for claimed in account_playlists.named(claims, held, batch=batch)
+    named = account_playlists.named(claims, held, batch=batch)
+    names = {Path(path).name for one in named for member in one.members for path in member.paths}
+    resolved, emptied = account_playlists.resolve_owned(
+        cfg, named, native.candidate_rows(db, names)
+    )
+    return (
+        tuple(
+            native.PlaylistPlan(
+                name=claimed.name,
+                account=claimed.playlist_id,
+                members=tuple(
+                    native.PlaylistMember(target=target / member.file.name, member=member)
+                    if member.file is not None
+                    else native.PlaylistMember(content_id=member.row, member=member)
+                    for member in claimed.members
+                ),
+                account_name=claimed.account_name,
+                left=claimed.left,
+            )
+            for claimed in resolved
+        ),
+        emptied,
     )
 
 
@@ -1203,6 +1337,65 @@ def awaiting_analysis(collection: native.NativeLanded) -> list[dict[str, str]]:
     ]
 
 
+def vox_warnings(collection: native.NativeLanded) -> list[dict[str, str]]:
+    """What a person reads about the vox My Tag a native write gave its rows, or did not (U127).
+
+    SHARED WITH ``intake file`` for :func:`awaiting_analysis`' reason. A file
+    with no score is named, never tagged on a guess; a landing that could tag
+    nothing says why and names the step owed. A row tagged is the report's.
+    """
+    if not collection.added:
+        return []
+    warnings: list[dict[str, str]] = []
+    if collection.vox_missing:
+        # PLANNED, WRITTEN, AND NOT WHAT ADOPTION READS: said, never reported
+        # as tagged, so a person is not told a row reaches with vox when the
+        # next adoption will not file it there.
+        why = (
+            f"the tag could not be read back as adoption reads it: {collection.vox_unread}"
+            if collection.vox_unread
+            else (
+                "the Vocals My Tag category or its vox value it was written under "
+                "is one rekordbox removed; check the Vocals category in rekordbox"
+            )
+        )
+        names = ", ".join(path.name for path in collection.vox_missing)
+        warnings.append(
+            {
+                "code": VOX_NOT_WRITTEN,
+                "message": (
+                    f"{len(collection.vox_missing)} row(s) planned for the vox My Tag "
+                    f"do not carry it, so they reach no with vox playlist: {names}; {why}"
+                ),
+            }
+        )
+    if collection.vox_blocked:
+        return [
+            *warnings,
+            {
+                "code": VOX_NOT_WRITTEN,
+                "message": (
+                    f"no row joined with the vox My Tag, so none reaches a with vox "
+                    f"playlist: {collection.vox_blocked}"
+                ),
+            }
+        ]
+    if not collection.vox_unscored:
+        return warnings
+    names = ", ".join(path.name for path in collection.vox_unscored)
+    return [
+        *warnings,
+        {
+            "code": VOX_UNSCORED,
+            "message": (
+                f"{len(collection.vox_unscored)} file(s) carry no voxlevel to read, so "
+                f"their rows got no vox My Tag: {names}; run crate analyze vocals on "
+                f"them and then crate metadata mytags-vocals --apply"
+            ),
+        }
+    ]
+
+
 __all__ = [
     "AWAITING_ANALYSIS",
     "INTAKE_SUFFIX",
@@ -1214,6 +1407,11 @@ __all__ = [
     "awaiting_analysis",
     "build_land",
     "collection_facts",
+    "vox_fact",
+    "vox_warnings",
+    "VOX_NOT_WRITTEN",
+    "VOX_UNSCORED",
+    "BRIDGE_VOX_OWED",
     "default_name",
     "gate_named",
     "intake_file",
