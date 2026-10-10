@@ -1127,6 +1127,13 @@ and what left at each merge. When the members are literals in the tree, each is
 asked of git against the pre-merge commit; when a walk derives them, the same
 walk is run over the pre-merge tree and the two sets are differenced.
 
+A pin of a whole total is a shared edit point: every unit that adds a member
+rewrites the same figure and the same ledger comment, so two units built in
+parallel conflict when either lands. The merge resolves it by keeping both
+sides' comments and re-measuring on the merged tree, never by taking one side's
+figure or adding the two sides' changes. Pinning per area, or deriving the
+total from the areas, removes the shared edit point.
+
 ## Queued work
 
 ### Job
