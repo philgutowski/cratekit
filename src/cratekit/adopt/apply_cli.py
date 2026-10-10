@@ -93,7 +93,7 @@ from cratekit.core.cause import (
     refuse,
 )
 from cratekit.core.exit_codes import Remedy
-from cratekit.write import trees
+from cratekit.write import genre_favorites, trees
 from cratekit.write.routing_pass import destination
 
 #: The name this run is recorded under in the session log. It is the verb's own
@@ -674,9 +674,10 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
             origin=("adopt", "apply_cli"),
             nothing_to_run="report an adoption over a library it never touched",
         )
+        summary = _summary(cfg, job.job_id)
         return ctx.envelope(
-            data=shell.reported(store, job, {"adoption": _summary(cfg, job.job_id)}),
-            warnings=warnings,
+            data=shell.reported(store, job, {"adoption": summary}),
+            warnings=[*warnings, *favorites_warnings(summary)],
         )
 
 
@@ -691,19 +692,51 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
     added = 0
     already = 0
     playlists: list[str] = []
+    favorites: dict[str, object] = {"added": 0, "removals_owed": 0, "created": [], "skipped": ""}
     for report in artifacts.committed(cfg, job_id):
         applied.extend(str(entry) for entry in report.get("applied") or ())
         failed.update({str(k): str(v) for k, v in (report.get("failed") or {}).items()})
         added += int(report.get("added") or 0)
         already += int(report.get("already_present") or 0)
         playlists.extend(str(name) for name in report.get("playlists") or ())
+        kept = report.get("favorites") or {}
+        if isinstance(kept, dict):
+            favorites["added"] = int(favorites["added"]) + int(kept.get("added") or 0)
+            # THE OWED COUNT IS THE LATEST, not a sum: each attempt measures
+            # the same mirror again.
+            favorites["removals_owed"] = int(kept.get("removals_owed") or 0)
+            favorites["created"] = [*favorites["created"], *(kept.get("created") or ())]
+            favorites["skipped"] = str(kept.get("skipped") or "")
     return {
         "applied": sorted(set(applied)),
         "failed": failed,
         "added": added,
         "already_present": already,
         "playlists": sorted(set(playlists)),
+        "favorites": favorites,
     }
+
+
+#: The note the resume carries when the mirror would take favourites out.
+FAVORITES_REMOVALS_OWED = "favorites-removals-owed"
+
+
+def favorites_warnings(summary: Mapping[str, object]) -> list[dict[str, str]]:
+    """The one note an adoption carries when its additive refresh left removals owed."""
+    kept = summary.get("favorites") or {}
+    owed = int(kept.get("removals_owed") or 0) if isinstance(kept, Mapping) else 0
+    if owed <= 0:
+        return []
+    return [
+        {
+            "code": FAVORITES_REMOVALS_OWED,
+            "message": (
+                f"{owed} track(s) sit in a genre Favorites and are not in the playlist it "
+                f"mirrors; an adoption only adds, so run the favorites refresh verb, "
+                f"which asks before it removes them"
+            ),
+        }
+    ]
 
 
 def handle(job, item, cfg) -> jobs.Produced:
@@ -789,6 +822,26 @@ def handle(job, item, cfg) -> jobs.Produced:
 
     report, gathered = apply_outstanding(cfg, plan, declared, actor=actor)
 
+    # THE GENRE FAVORITES, AT THE END OF AN ADOPTION THAT FILED A TRACK (U119):
+    # the additive half only, adoption's own contract, in a session of its own
+    # after the apply's. A favourite the apply just filed into a folder joins
+    # that folder's Favorites; what the mirror would take OUT is counted and
+    # owed to crate favorites refresh, which is the one path that removes. A
+    # library with no class, no source or a tree on the bridge is a skip with
+    # its reason, never a failure of the adoption that ran.
+    favorites: dict[str, object] = {}
+    if membership.added:
+        outcome = genre_favorites.refresh_additive(
+            cfg, declared, analysis_roots=analysis_store.watch_roots(cfg)
+        )
+        refreshed = outcome.refreshed
+        favorites = {
+            "added": refreshed.added if refreshed else 0,
+            "created": list(refreshed.created) if refreshed else [],
+            "removals_owed": refreshed.removals_owed if refreshed else 0,
+            "skipped": outcome.skipped,
+        }
+
     produced = artifacts.produced(
         cfg,
         job,
@@ -815,6 +868,7 @@ def handle(job, item, cfg) -> jobs.Produced:
             "playlists": list(membership.playlists),
             "unplaced": [str(match.requested) for match in membership.skipped],
             "skipped": [match.requested for match in membership.skipped],
+            "favorites": favorites,
         },
     )
     if report.failed:
