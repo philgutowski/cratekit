@@ -1,0 +1,659 @@
+{
+  "name": "u129-author",
+  "pass_kind": "light",
+  "branch": "HEAD",
+  "head": "dad0fea9",
+  "when": "2026-10-10 22:30 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 13605,
+  "baseline_exit": 0,
+  "pytest_runs": 21,
+  "state_guarded": "~/Library/Application Support/cratekit (387101 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "1a228b5361604712",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 13605,
+    "baseline_collected": 13605,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "A1_gate_after_enqueue",
+      "description": "Ask the account gate after the set is queued, so an explicit first refusal leaves a job a resume queues again",
+      "file": "src/cratekit/intake/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "efc5d4b4bbb331fe",
+      "subset": [
+        "tests/test_u129_set_account_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "refused",
+      "deaths": 0,
+      "collected": 0,
+      "baseline_collected": 23,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "old text is not present in the target; the row cannot be applied. Copy the text out of the file rather than retyping it.",
+      "runs": 0,
+      "head_verified": true,
+      "old": "            # THE ACCOUNT GATE BEFORE THE QUEUE (U129). An explicit gate always\n            # stops the first run; asking it after enqueue left a job that the\n            # resume queued a second time with the same tracks.\n            account_notes, built, option = _ask_account_playlist(\n                ctx,\n                cfg,\n                name=playlist.name if playlist.name else \"\",\n                rows=result.rows if tracks else (),\n            )\n            if tracks:\n                payload = {\n                    SOURCE: held.ref,\n                    TRACKS: tracks,\n                    CALLS: result.calls,\n                    UNREACHED: result.unreached,\n                    PARTS: result.parts,\n                    PAGE: dict(held.page),\n                }\n                # U129. Freeze the INSPIRATION name so the account playlist and\n                # the landing's playlist agree, even when they run on different days.\n                if playlist.name:\n                    payload[PLAYLIST_NAME] = playlist.name\n                job = jobs.enqueue(\n                    store,\n                    handler_key=ctx.entry.handler_key,\n                    payload=payload,\n                    cfg=cfg,\n                    item_ids=tuple(tracks),\n                )\n",
+      "new": "            if tracks:\n                payload = {\n                    SOURCE: held.ref,\n                    TRACKS: tracks,\n                    CALLS: result.calls,\n                    UNREACHED: result.unreached,\n                    PARTS: result.parts,\n                    PAGE: dict(held.page),\n                }\n                # U129. Freeze the INSPIRATION name so the account playlist and\n                # the landing's playlist agree, even when they run on different days.\n                if playlist.name:\n                    payload[PLAYLIST_NAME] = playlist.name\n                job = jobs.enqueue(\n                    store,\n                    handler_key=ctx.entry.handler_key,\n                    payload=payload,\n                    cfg=cfg,\n                    item_ids=tuple(tracks),\n                )\n            # THE ACCOUNT GATE BEFORE THE QUEUE (U129). An explicit gate always\n            # stops the first run; asking it after enqueue left a job that the\n            # resume queued a second time with the same tracks.\n            account_notes, built, option = _ask_account_playlist(\n                ctx,\n                cfg,\n                name=playlist.name if playlist.name else \"\",\n                rows=result.rows if tracks else (),\n            )\n"
+    },
+    {
+      "id": "A2_gate_ask_dropped",
+      "description": "Drop the account gate ask so an explicit write is never refused",
+      "file": "src/cratekit/intake/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1c7ab90be8a872ab",
+      "subset": [
+        "tests/test_u129_set_account_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "refused",
+      "deaths": 0,
+      "collected": 0,
+      "baseline_collected": 23,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "old text is not present in the target; the row cannot be applied. Copy the text out of the file rather than retyping it.",
+      "runs": 0,
+      "head_verified": true,
+      "old": "    option = ctx.gate.require(spec, plan=built.payload, context=built.shown)\n    notes = tuple(set_cli._unmatched_warnings(built.planned))\n    return notes, built, option\n",
+      "new": "    notes = tuple(set_cli._unmatched_warnings(built.planned))\n    return notes, built, \"apply\"\n"
+    },
+    {
+      "id": "A3_abort_still_writes",
+      "description": "Apply the account playlist even when the gate said abort",
+      "file": "src/cratekit/intake/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "229550d2e6b91867",
+      "subset": [
+        "tests/test_u129_set_account_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 23,
+      "baseline_collected": 23,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_u129_set_account_playlist.py::test_an_abort_on_the_account_gate_queues_the_set_and_writes_no_playlist"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if option != \"apply\" or not built.writes:\n        return notes, built.payload\n",
+      "new": "    if not built.writes:\n        return notes, built.payload\n"
+    },
+    {
+      "id": "A4_archive_raise_fails_landing",
+      "description": "Let an account archive raise escape the landing write after rows are in the library",
+      "file": "src/cratekit/intake/land_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a266de2aaa1df311",
+      "subset": [
+        "tests/test_u129_set_account_playlist.py",
+        "tests/test_set_inspiration_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_set_inspiration_playlist.py::test_a_landing_archive_failure_is_a_warning_on_the_envelope",
+        "tests/test_u129_set_account_playlist.py::test_landing_archive_failure_after_write_is_a_warning"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    try:\n        _data, warnings, _wrote = set_cli.apply_archive(cfg, archived)\n    except Exception as exc:\n        message = (\n            exc.cause.message if isinstance(exc, CratekitError) else f\"{type(exc).__name__}: {exc}\"\n        )\n        return [\n            {\n                \"code\": LAND_ARCHIVE_FAILED,\n                \"message\": (\n                    f\"the account archive could not finish after the landing wrote \"\n                    f\"({message}); the batch is in the library, run crate export \"\n                    f\"archive over the set once the account can be reached\"\n                ),\n            }\n        ]\n    return list(warnings)\n",
+      "new": "    _data, warnings, _wrote = set_cli.apply_archive(cfg, archived)\n    return list(warnings)\n"
+    },
+    {
+      "id": "A5_archive_return_discarded",
+      "description": "Discard apply_archive warnings so a not-renamed return is silent on the landed envelope",
+      "file": "src/cratekit/intake/land_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5d24b49fdebbaaad",
+      "subset": [
+        "tests/test_u129_set_account_playlist.py",
+        "tests/test_set_inspiration_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_set_inspiration_playlist.py::test_a_landing_archive_not_renamed_is_a_warning_on_the_envelope",
+        "tests/test_u129_set_account_playlist.py::test_landing_archive_surfaces_changed_since_plan_as_a_warning"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    try:\n        _data, warnings, _wrote = set_cli.apply_archive(cfg, archived)\n    except Exception as exc:\n",
+      "new": "    try:\n        _data, warnings, _wrote = set_cli.apply_archive(cfg, archived)\n        warnings = []\n    except Exception as exc:\n"
+    },
+    {
+      "id": "A6_archive_notes_not_on_envelope",
+      "description": "Drop archive notes from the landed envelope warnings",
+      "file": "src/cratekit/intake/land_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2eadc594ea4eec24",
+      "subset": [
+        "tests/test_u129_set_account_playlist.py",
+        "tests/test_set_inspiration_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_set_inspiration_playlist.py::test_a_landing_archive_failure_is_a_warning_on_the_envelope",
+        "tests/test_set_inspiration_playlist.py::test_a_landing_archive_not_renamed_is_a_warning_on_the_envelope"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    warnings.extend(favorites_notes(payload, landed.collection))\n    warnings.extend(archive_notes)\n    kept = landed.collection.set_playlist\n",
+      "new": "    warnings.extend(favorites_notes(payload, landed.collection))\n    kept = landed.collection.set_playlist\n"
+    },
+    {
+      "id": "A7_with_archive_omits_digest",
+      "description": "Fold archive items into the landing without changing the digest",
+      "file": "src/cratekit/intake/land_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a7b8eb02b8c721b0",
+      "subset": [
+        "tests/test_u129_set_account_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 13605,
+      "baseline_collected": 13605,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_set_progress.py::test_the_watcher_reports_the_bytes_written_while_the_download_runs"
+      ],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "",
+      "runs": 2,
+      "head_verified": true,
+      "old": "    identity = {\n        \"land\": payload[\"digest\"],\n        \"archive\": archived.payload[\"digest\"],\n    }\n",
+      "new": "    identity = {\n        \"land\": payload[\"digest\"],\n    }\n"
+    },
+    {
+      "id": "A8_land_writes_without_remote",
+      "description": "Declare intake.land without the remote write surface the archive needs",
+      "file": "src/cratekit/cli/registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "23f553331569855e",
+      "subset": [
+        "tests/test_u129_set_account_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 23,
+      "baseline_collected": 23,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_u129_set_account_playlist.py::test_intake_land_declares_remote_and_provider_for_the_archive"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        writes=frozenset({\"xml\", \"files\", \"db_tree\", \"remote\"}),\n",
+      "new": "        writes=frozenset({\"xml\", \"files\", \"db_tree\"}),\n"
+    },
+    {
+      "id": "A9_land_without_provider_check",
+      "description": "Drop credential.provider from intake.land so doctor never names the archive's session",
+      "file": "src/cratekit/cli/registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e7a64a1d8ab4f506",
+      "subset": [
+        "tests/test_u129_set_account_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 23,
+      "baseline_collected": 23,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_u129_set_account_playlist.py::test_intake_land_declares_remote_and_provider_for_the_archive"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"library.paths_resolved\",\n            \"credential.provider\",\n        ),\n",
+      "new": "            \"library.paths_resolved\",\n        ),\n"
+    },
+    {
+      "id": "A10_export_set_without_library_mounted",
+      "description": "Drop library.mounted from export.set so the INSPIRATION backfill opens a database doctor never checked",
+      "file": "src/cratekit/cli/registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1383680ef544a76a",
+      "subset": [
+        "tests/test_u129_set_account_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 23,
+      "baseline_collected": 23,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_u129_set_account_playlist.py::test_export_set_and_archive_declare_library_mounted_for_backfill"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        doctor_checks=(\"library.mounted\", \"credential.provider\"),\n        gates=(\n            GateSpec(\n                name=\"export.set.confirm\",\n",
+      "new": "        doctor_checks=(\"credential.provider\",),\n        gates=(\n            GateSpec(\n                name=\"export.set.confirm\",\n"
+    },
+    {
+      "id": "A11_export_archive_without_library_mounted",
+      "description": "Drop library.mounted from export.archive so the no-name backfill opens library paths doctor never checked",
+      "file": "src/cratekit/cli/registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "dd970cff62fc062c",
+      "subset": [
+        "tests/test_u129_set_account_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 23,
+      "baseline_collected": 23,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_u129_set_account_playlist.py::test_export_set_and_archive_declare_library_mounted_for_backfill"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        doctor_checks=(\"library.mounted\", \"credential.provider\"),\n        gates=(\n            GateSpec(\n                name=\"export.archive.confirm\",\n",
+      "new": "        doctor_checks=(\"credential.provider\",),\n        gates=(\n            GateSpec(\n                name=\"export.archive.confirm\",\n"
+    },
+    {
+      "id": "A12_archive_backfill_swallows_all",
+      "description": "Catch Exception around plan_archive so a credential refusal becomes a warning",
+      "file": "src/cratekit/export/set_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "772cb85f8850f324",
+      "subset": [
+        "tests/test_u129_set_account_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 23,
+      "baseline_collected": 23,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_u129_set_account_playlist.py::test_export_archive_backfill_refuses_a_credential_error"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        except CratekitError as exc:\n            # Soft skip per set, as a landing's _plan_set_archive does. A\n            # CredentialError (not a CratekitError) still refuses the verb.\n            warnings.append(\n                {\n                    \"code\": \"export-archive-backfill-refused\",\n                    \"message\": f\"{name}: {exc.cause.message}\",\n                }\n            )\n            continue\n",
+      "new": "        except Exception as exc:\n            warnings.append(\n                {\n                    \"code\": \"export-archive-backfill-refused\",\n                    \"message\": f\"{name}: {exc}\",\n                }\n            )\n            continue\n"
+    },
+    {
+      "id": "A13_job_lookup_uses_today",
+      "description": "Rebuild a pre-freeze set name from today so a job from another day never matches",
+      "file": "src/cratekit/export/set_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d33c1b631f83db0f",
+      "subset": [
+        "tests/test_u129_set_account_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 23,
+      "baseline_collected": 23,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_u129_set_account_playlist.py::test_job_for_inspiration_name_matches_a_set_from_another_day",
+        "tests/test_u129_set_account_playlist.py::test_job_for_inspiration_name_uses_the_local_day_at_half_past_eleven"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            made = _naming_day(job)\n            # Local calendar day: a UTC stamp after about 20:00 Eastern is the\n            # next UTC day, and .date() on it would miss the set (U129).\n            on = made.astimezone().date() if made is not None else None\n            if set_name(set_playlist.playlist_name(words, on=on)) == wanted:\n                return job\n",
+      "new": "            if set_name(set_playlist.playlist_name(words)) == wanted:\n                return job\n"
+    },
+    {
+      "id": "A14_backfill_apply_hides_made",
+      "description": "Drop the naming of already made playlists when a later backfill apply fails",
+      "file": "src/cratekit/export/set_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7de6d30406c788d2",
+      "subset": [
+        "tests/test_u129_set_account_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "refused",
+      "deaths": 0,
+      "collected": 0,
+      "baseline_collected": 23,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "old text is not present in the target; the row cannot be applied. Copy the text out of the file rather than retyping it.",
+      "runs": 0,
+      "head_verified": true,
+      "old": "    except Exception as exc:\n        # Name what already landed so a mid-loop failure does not hide it (U129).\n        # CredentialError is a plain Exception, not a CratekitError.\n        if not applied:\n            raise\n        made = \", \".join(applied)\n        again = (\n            \"the playlists named above are on the account; resume or \"\n            \"run crate export set again for the rest\"\n        )\n        if isinstance(exc, CratekitError):\n            raise refuse(\n                exc.cause.reason,\n                f\"before this failed the backfill already made {made}. {exc.cause.message}\",\n                remedy=exc.cause.remediation.remedy,\n                steps=(*exc.cause.remediation.steps, again),\n                scope=Scope.RUN,\n                retryable=exc.cause.retryable,\n                origin=_SET,\n                detail={**dict(exc.cause.detail), \"applied\": list(applied)},\n                inner=exc.cause,\n            ) from exc\n        raise refuse(\n            \"internal-error\",\n            f\"before this failed the backfill already made {made}. \"\n            f\"{type(exc).__name__}: {exc}\",\n            remedy=Remedy.REPORT_DEFECT,\n            steps=(again,),\n            scope=Scope.RUN,\n            origin=_SET,\n            detail={\"applied\": list(applied), \"kind\": type(exc).__name__},\n        ) from exc\n",
+      "new": "    except Exception:\n        raise\n"
+    },
+    {
+      "id": "A15_archive_backfill_hides_filed",
+      "description": "Drop the naming of already archived playlists when a later archive backfill apply fails",
+      "file": "src/cratekit/export/set_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d77a0da90708dcc3",
+      "subset": [
+        "tests/test_u129_set_account_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "refused",
+      "deaths": 0,
+      "collected": 0,
+      "baseline_collected": 23,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "old text is not present in the target; the row cannot be applied. Copy the text out of the file rather than retyping it.",
+      "runs": 0,
+      "head_verified": true,
+      "old": "    except Exception as exc:\n        # Name renames already done so a mid-loop failure does not hide them (U129).\n        if not filed:\n            raise\n        made = \", \".join(filed)\n        again = (\n            \"the playlists named above are already archived on the account; \"\n            \"resume or run crate export archive again for the rest\"\n        )\n        if isinstance(exc, CratekitError):\n            raise refuse(\n                exc.cause.reason,\n                f\"before this failed the backfill already archived {made}. \"\n                f\"{exc.cause.message}\",\n                remedy=exc.cause.remediation.remedy,\n                steps=(*exc.cause.remediation.steps, again),\n                scope=Scope.RUN,\n                retryable=exc.cause.retryable,\n                origin=_ARCHIVE,\n                detail={**dict(exc.cause.detail), \"archived\": list(filed)},\n                inner=exc.cause,\n            ) from exc\n        raise refuse(\n            \"internal-error\",\n            f\"before this failed the backfill already archived {made}. \"\n            f\"{type(exc).__name__}: {exc}\",\n            remedy=Remedy.REPORT_DEFECT,\n            steps=(again,),\n            scope=Scope.RUN,\n            origin=_ARCHIVE,\n            detail={\"archived\": list(filed), \"kind\": type(exc).__name__},\n        ) from exc\n",
+      "new": "    except Exception:\n        raise\n"
+    },
+    {
+      "id": "A16_soft_skip_re_raises",
+      "description": "Re-raise a plan_from_wanted refusal so a missing credential takes the set away",
+      "file": "src/cratekit/intake/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e2e4de3800f8edf8",
+      "subset": [
+        "tests/test_u129_set_account_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "refused",
+      "deaths": 0,
+      "collected": 0,
+      "baseline_collected": 23,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "old text is not present in the target; the row cannot be applied. Copy the text out of the file rather than retyping it.",
+      "runs": 0,
+      "head_verified": true,
+      "old": "    except CratekitError as exc:\n        return (\n            (\n                {\n                    \"code\": ACCOUNT_UNREACHABLE,\n                    \"message\": (\n                        f\"the account playlist {name!r} was not planned \"\n                        f\"({exc.cause.reason}: {exc.cause.message}); the set will \"\n                        f\"still be queued, run crate export set over its \"\n                        f\"tracklist once the account is reachable\"\n                    ),\n                },\n            ),\n            None,\n            None,\n        )\n",
+      "new": "    except CratekitError:\n        raise\n"
+    },
+    {
+      "id": "A17_empty_add_still_writes",
+      "description": "Force writes true when every row of the set is unmatched",
+      "file": "src/cratekit/modules/outbound/sets.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "853ad4153bee46b4",
+      "subset": [
+        "tests/test_u129_set_account_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 23,
+      "baseline_collected": 23,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_u129_set_account_playlist.py::test_a_rerun_of_export_set_plans_nothing_when_every_matched_track_is_on_it",
+        "tests/test_u129_set_account_playlist.py::test_a_rerun_of_intake_set_plans_nothing_when_the_playlist_already_holds_the_tracks",
+        "tests/test_u129_set_account_playlist.py::test_a_set_with_no_matches_makes_nothing_and_says_so"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return bool(self.add)\n",
+      "new": "        return True\n"
+    },
+    {
+      "id": "A18_frozen_name_ignored",
+      "description": "Ignore the frozen INSPIRATION name on the job and recompute it",
+      "file": "src/cratekit/intake/set_playlist.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a7d91e3eddf272ce",
+      "subset": [
+        "tests/test_u129_set_account_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 23,
+      "baseline_collected": 23,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_u129_set_account_playlist.py::test_export_set_backfill_names_playlists_already_made_when_a_credential_fails",
+        "tests/test_u129_set_account_playlist.py::test_export_set_backfill_names_playlists_already_made_when_one_fails"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return str(payload.get(intake_cli.PLAYLIST_NAME) or \"\").strip()\n",
+      "new": "    return \"\"\n"
+    },
+    {
+      "id": "A19_plan_archive_always_none",
+      "description": "A set landing never plans the account archive",
+      "file": "src/cratekit/intake/land_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d8391f317509933d",
+      "subset": [
+        "tests/test_u129_set_account_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 13605,
+      "baseline_collected": 13605,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_set_inspiration_playlist.py::test_a_landing_archive_failure_is_a_warning_on_the_envelope",
+        "tests/test_set_inspiration_playlist.py::test_a_landing_archive_not_renamed_is_a_warning_on_the_envelope",
+        "tests/test_set_inspiration_playlist.py::test_a_landing_archives_the_account_playlist_with_prefix_and_year_folder"
+      ],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "",
+      "runs": 2,
+      "head_verified": true,
+      "old": "    try:\n        return set_cli.plan_archive_named(cfg, name, pass_name=pass_name)\n    except CratekitError:\n        # Soft: the landing still lands; archive can run later via export archive.\n        return None\n",
+      "new": "    return None\n"
+    },
+    {
+      "id": "A20_apply_archive_skips_rename",
+      "description": "Skip the playlist rename so DOWNLOADED never lands on the account",
+      "file": "src/cratekit/modules/outbound/sets.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "149815619aa36a3a",
+      "subset": [
+        "tests/test_u129_set_account_playlist.py",
+        "tests/test_set_inspiration_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_set_inspiration_playlist.py::test_a_landing_archives_the_account_playlist_with_prefix_and_year_folder",
+        "tests/test_u129_set_account_playlist.py::test_export_archive_backfill_names_playlists_already_archived_when_a_credential_fails",
+        "tests/test_u129_set_account_playlist.py::test_export_archive_backfill_names_playlists_already_archived_when_one_fails",
+        "tests/test_u129_set_account_playlist.py::test_export_archive_prefixes_the_set_in_its_year_folder"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    account.rename_playlist(playlist.remote_id, planned.to)\n    done.marked = True\n",
+      "new": "    done.marked = False\n"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "A26_unnamed_skips_without_warning",
+      "description": "Queue an unnamed local set without the account unnamed warning",
+      "reason": "ranked below the cap after archive backfill naming took the slot; the unnamed path stays covered by its own test"
+    },
+    {
+      "id": "A21_inspiration_scan_skips_sort",
+      "description": "Leave inspiration playlists unsorted",
+      "reason": "display order only; no wrong outcome word"
+    },
+    {
+      "id": "A22_backfill_waiting_quiet",
+      "description": "Drop waiting sets from the archive backfill shown context",
+      "reason": "ranked below the cap; the soft skip and apply naming rows cover the user facing paths"
+    },
+    {
+      "id": "A23_tracklist_after_apply",
+      "description": "Write the tracklist before the account playlist apply",
+      "reason": "ordering only; the gate before queue and the soft skip are the load bearing guards"
+    },
+    {
+      "id": "A24_abort_outcome_no_op",
+      "description": "Report no_op when the account gate aborts even though the set queued",
+      "reason": "outcome word taste; the abort still queues and writes nothing, covered by A3"
+    },
+    {
+      "id": "A25_session_scan_skipped",
+      "description": "Skip the session log fallback in job lookup",
+      "reason": "frozen name and naming day cover the October backfill case"
+    }
+  ]
+}

@@ -212,20 +212,22 @@ def _month_of(flag: str | None, page_date: str | None) -> date | None:
     return None
 
 
-def words_for(
-    job: jobs.Job,
+def words_from_page(
+    page: Mapping[str, Any] | None,
     *,
     dj: str | None = None,
     set_name: str | None = None,
     set_date: str | None = None,
+    job_id: str = "",
 ) -> SetWords:
-    """The name's three words for this job, the flags first and the page after.
+    """The name's three words, the flags first and the page after.
 
     REFUSED BY NAME WHEN A WORD IS MISSING, naming the flag that supplies it. A
     local recording has no page at all, and a page may name no uploader or no
-    date, so the refusal lists exactly what is still wanted.
+    date, so the refusal lists exactly what is still wanted. ``job_id`` rides
+    only in the refusal's detail, so a call before the job is queued can name
+    the set the same way a call after it does (U129).
     """
-    page = job.payload.get(intake_cli.PAGE) if isinstance(job.payload, Mapping) else None
     page = page if isinstance(page, Mapping) else {}
     who = (dj if dj is not None else str(page.get(fetch.PAGE_UPLOADER) or "")).strip()
     title = str(page.get(fetch.PAGE_TITLE) or "").strip()
@@ -237,18 +239,47 @@ def words_for(
         if not value
     ]
     if missing:
+        where = f" for job {job_id}" if job_id else ""
         raise refuse(
             UNNAMED,
-            f"the set's playlist cannot be named for job {job.job_id}: the recording's "
+            f"the set's playlist cannot be named{where}: the recording's "
             f"page did not say {' or '.join(missing)}, so give {'it' if len(missing) == 1 else 'them'} "
             f"on the command line; nothing was written",
             remedy=Remedy.FIX_COMMAND_LINE,
             steps=tuple(f"pass {flag}" for flag in missing),
             origin=_ORIGIN,
-            detail={"job_id": job.job_id, "missing": missing, "page": dict(page)},
+            detail={"job_id": job_id, "missing": missing, "page": dict(page)},
         )
     assert when is not None
     return SetWords(dj=who, name=what, month=when)
+
+
+def words_for(
+    job: jobs.Job,
+    *,
+    dj: str | None = None,
+    set_name: str | None = None,
+    set_date: str | None = None,
+) -> SetWords:
+    """The name's three words for this job, the flags first and the page after."""
+    page = job.payload.get(intake_cli.PAGE) if isinstance(job.payload, Mapping) else None
+    return words_from_page(
+        page if isinstance(page, Mapping) else {},
+        dj=dj,
+        set_name=set_name,
+        set_date=set_date,
+        job_id=job.job_id,
+    )
+
+
+def frozen_name(job: jobs.Job) -> str:
+    """The playlist name ``intake set`` froze on the job for the account and INSPIRATION (U129).
+
+    Empty when the job was queued before that freeze, or when the set could not
+    be named at queue time. Callers fall back to :func:`playlist_name` then.
+    """
+    payload = job.payload if isinstance(job.payload, Mapping) else {}
+    return str(payload.get(intake_cli.PLAYLIST_NAME) or "").strip()
 
 
 def playlist_name(words: SetWords, *, on: date | None = None) -> str:
@@ -742,7 +773,7 @@ def plan_for_landing(
     return _digested(
         SetPlaylistPlan(
             job_id=job.job_id,
-            name=recorded[1] if recorded else playlist_name(words, on=made),
+            name=recorded[1] if recorded else (frozen_name(job) or playlist_name(words, on=made)),
             tree_id=node.id,
             folder_display=node.display,
             folder_id=folder_id,
@@ -788,7 +819,7 @@ def plan_for_backfill(
     return _digested(
         SetPlaylistPlan(
             job_id=job.job_id,
-            name=recorded[1] if recorded else playlist_name(words, on=made),
+            name=recorded[1] if recorded else (frozen_name(job) or playlist_name(words, on=made)),
             tree_id=node.id,
             folder_display=node.display,
             folder_id=folder_id,
@@ -1207,7 +1238,9 @@ __all__ = [
     "reports_of",
     "set_job_or_refuse",
     "today",
+    "frozen_name",
     "words_for",
+    "words_from_page",
     "write_members",
     "written_note",
 ]

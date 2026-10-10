@@ -1369,13 +1369,15 @@ the Record Labels tree is, or as intake.
 
 ### Set playlist
 The private playlist on the streaming account that an identified set or a
-typed tracklist became through `crate export set` (R-837). It is recorded in
-the outbound ledger's `sets` map under its name, which is the key a second
-run reuses, so the name `intake identify` gives keeps its digest piece. The
-playlists source excludes it as `set-playlist`, since its tracks are fetched
-from the tracklist it was made from. `crate export archive` files it, after
-the set's download lands, in a root folder named for the year it was made,
-prefixed `DOWNLOADED ` through the mark record.
+typed tracklist became through `crate export set` (R-837), or through
+`intake set` itself (U129), which plans that write on its own gate under the
+INSPIRATION playlist's name so the account and rekordbox agree. It is
+recorded in the outbound ledger's `sets` map under its name, which is the key
+a second run reuses. The playlists source excludes it as `set-playlist`,
+since its tracks are fetched from the tracklist it was made from. A set
+landing, or `crate export archive`, files it once the download lands, in a
+root folder named for the year it was made, prefixed `DOWNLOADED ` through
+the mark record.
 
 *Avoid:* reading it as intake, or keying it by anything a person can retype
 differently, such as the tracklist's path.

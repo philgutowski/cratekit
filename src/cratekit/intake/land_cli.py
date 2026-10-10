@@ -914,8 +914,9 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
     present = {str(row.target): row for row in landed.collection.present}
     items: list[dict[str, Any]] = []
     for item in payload["items"]:
-        if item.get("action") == FAVORITES:
-            # The skipped placement, carried through as the plan said it (U120).
+        if item.get("action") == FAVORITES or item.get("area") == "account-archive":
+            # Favourites (U120) and the account archive folded into this landing
+            # (U129) are not file moves: they have no "from", so carry them through.
             items.append(item)
             continue
         entry = refused.get(item["from"])
@@ -1104,6 +1105,14 @@ def _land_native(
             reports = set_playlist.reports_of(store, set_job)
 
     set_planned: list[set_playlist.SetPlaylistPlan] = []
+    # U129. The account playlist's archive rides on this landing's gate when the
+    # set already has one recorded under the frozen INSPIRATION name.
+    archive_planned = _plan_set_archive(
+        cfg,
+        set_job=set_job,
+        words=words,
+        pass_name=ctx.args.pass_name or planned.batch,
+    )
 
     def set_plan(db) -> set_playlist.SetPlaylistPlan | None:
         if set_job is None or words is None:
@@ -1114,13 +1123,33 @@ def _land_native(
         set_planned.append(made)
         return made
 
+    archive_notes: list[dict[str, str]] = []
+
     def write(db, rows: native.NativePlan) -> landing.LandedNative:
         # ONE LANDING PER BATCH NAME, HELD ACROSS THE WHOLE APPLY (R-432), as on
         # the bridge: the engine checks a target free and then renames over it.
         with landing.batch_lock(planned.batch):
             if ctx.args.name is None:
                 _still_free(cfg, planned.batch)
-            return landing.apply_native(planned, cfg=cfg, db=db, rows=rows, declared=declared)
+            landed_native = landing.apply_native(
+                planned, cfg=cfg, db=db, rows=rows, declared=declared
+            )
+        # THE LANDING IS THE PROOF. Archive after the batch is in the library.
+        # A failure here must not fail a landing that already wrote: it becomes
+        # a warning on the landed envelope, and so does apply_archive's own
+        # "not renamed" return (U129).
+        archive_notes.extend(_apply_landing_archive(cfg, archive_planned))
+        return landed_native
+
+    def payload_of(rows: native.NativePlan) -> dict:
+        data = _native_payload(planned, rows, target=target)
+        return _with_archive(data, archive_planned)
+
+    def shown_of(rows: native.NativePlan) -> dict[str, Any]:
+        shown = _native_shown(rows, folder=planned.folder, target=target)
+        if archive_planned is not None:
+            shown["account archive"] = archive_planned.shown
+        return shown
 
     def plan(db) -> native.NativePlan:
         split, emptied = _native_split(
@@ -1155,8 +1184,8 @@ def _land_native(
         cfg,
         spec,
         plan=plan,
-        payload=lambda rows: _native_payload(planned, rows, target=target),
-        shown=lambda rows: _native_shown(rows, folder=planned.folder, target=target),
+        payload=payload_of,
+        shown=shown_of,
         write=write,
     )
     if landed is None:
@@ -1168,6 +1197,7 @@ def _land_native(
     warnings.extend(awaiting_analysis(landed.collection))
     warnings.extend(vox_warnings(landed.collection))
     warnings.extend(favorites_notes(payload, landed.collection))
+    warnings.extend(archive_notes)
     kept = landed.collection.set_playlist
     if kept is not None and kept.playlist_id:
         set_playlist.assert_read_back(kept)
@@ -1269,6 +1299,83 @@ def _native_split(
         ),
         emptied,
     )
+
+
+
+
+#: Why a set landing's account archive did not finish after the rows wrote (U129).
+LAND_ARCHIVE_FAILED = "intake-land-archive-failed"
+
+
+def _apply_landing_archive(cfg, archived) -> list[dict[str, str]]:
+    """Apply the account archive after the landing wrote. Failures are warnings.
+
+    The landing's rows are already in the library. An account call that raises,
+    or an apply that leaves the playlist unrenamed, must not turn the landing
+    into a failure: both ride the warnings channel on the landed envelope.
+    """
+    if archived is None or not archived.writes:
+        return []
+    from cratekit.export import set_cli
+
+    try:
+        _data, warnings, _wrote = set_cli.apply_archive(cfg, archived)
+    except Exception as exc:
+        message = (
+            exc.cause.message if isinstance(exc, CratekitError) else f"{type(exc).__name__}: {exc}"
+        )
+        return [
+            {
+                "code": LAND_ARCHIVE_FAILED,
+                "message": (
+                    f"the account archive could not finish after the landing wrote "
+                    f"({message}); the batch is in the library, run crate export "
+                    f"archive over the set once the account can be reached"
+                ),
+            }
+        ]
+    return list(warnings)
+
+
+def _plan_set_archive(cfg, *, set_job, words, pass_name: str):
+    """The account archive for this set landing, or None when there is none to file (U129)."""
+    if set_job is None:
+        return None
+    from cratekit.export import set_cli
+    from cratekit.modules.outbound import ledger
+
+    name = set_playlist.frozen_name(set_job)
+    if not name and words is not None:
+        name = set_cli.set_name(set_playlist.playlist_name(words))
+    if not name or ledger.set_playlist(cfg, name) is None:
+        return None
+    try:
+        return set_cli.plan_archive_named(cfg, name, pass_name=pass_name)
+    except CratekitError:
+        # Soft: the landing still lands; archive can run later via export archive.
+        return None
+
+
+def _with_archive(payload: dict, archived) -> dict:
+    """Fold the archive plan into the landing's digest and items so one approval covers both."""
+    if archived is None:
+        return payload
+    identity = {
+        "land": payload["digest"],
+        "archive": archived.payload["digest"],
+    }
+    items = list(payload.get("items") or [])
+    for item in archived.payload.get("items") or []:
+        items.append({**item, "area": "account-archive"})
+    totals = dict(payload.get("totals") or {})
+    totals["archive_writes"] = bool(archived.writes)
+    return {
+        **payload,
+        "digest": digest_of(identity),
+        "items": items,
+        "totals": totals,
+    }
+
 
 
 def ask_then_write(
@@ -1398,6 +1505,7 @@ def vox_warnings(collection: native.NativeLanded) -> list[dict[str, str]]:
 
 __all__ = [
     "AWAITING_ANALYSIS",
+    "LAND_ARCHIVE_FAILED",
     "INTAKE_SUFFIX",
     "NATIVE_GATE",
     "RETIRED_SUFFIX",

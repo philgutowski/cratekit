@@ -1029,10 +1029,20 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'outbound-playlist-record-mismatch',
     ],
     'export/prune_cli.py': ['export-playlist-unknown'],
+    # Re-pinned on the merge of main at e686759 into grok/297, 2026-10-10:
+    # SEVEN kebab literals joined in export/set_cli.py and nothing left,
+    # credential-missing plus the six backfill and export-set codes U129 adds.
     'export/set_cli.py': [
+        'credential-missing',
         'export-archive',
+        'export-archive-backfill',
+        'export-archive-backfill-refused',
         'export-archive-changed-since-plan',
         'export-archive-nothing-built',
+        'export-set',
+        'export-set-backfill',
+        'export-set-backfill-no-job',
+        'export-set-backfill-no-tracks',
         'export-set-tracks-refused',
         'intake-list-unusable',
         'internal-error',
@@ -1083,6 +1093,10 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'utf-8',
     ],
     'intake/candidates.py': ['no-candidates', 'provider-candidate'],
+    # Re-pinned on the merge of main at e686759 into grok/297, 2026-10-10:
+    # THREE kebab literals joined in intake/cli.py and nothing left,
+    # set-account-unnamed and set-account-unreachable (WARNING codes) plus
+    # intake-set-account (the account gate's name-only digest kind).
     'intake/cli.py': [
         'config-unusable',
         'intake-artifacts',
@@ -1090,6 +1104,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'intake-list-unusable',
         'intake-playlist-withheld',
         'intake-recognition-failed',
+        'intake-set-account',
         'intake-staging',
         'internal-error',
         'job-unknown',
@@ -1101,6 +1116,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'recognition-cached',
         'recognition-in-parts',
         'recognition-incomplete',
+        'set-account-unnamed',
+        'set-account-unreachable',
         'tracklist-unwritten',
         'tracklist-written',
         'unavailable-transient',
@@ -1131,10 +1148,15 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     # vox-not-written and vox-unscored, the WARNING codes a native write gives
     # for a landing that could tag no row and for a file with no score.
     # Measured on the merged tree; do not bring back a package-wide total tuple.
+    # Re-pinned on the merge of main at e686759 into grok/297, 2026-10-10:
+    # TWO kebab literals joined in intake/land_cli.py and nothing left,
+    # account-archive and intake-land-archive-failed, the archive path U129 adds.
     'intake/land_cli.py': [
+        'account-archive',
         'decision-stale',
         'favorites-placed',
         'favorites-placement-skipped',
+        'intake-land-archive-failed',
         'intake-list-unusable',
         'internal-error',
         'land-native',
@@ -2235,7 +2257,11 @@ PINNED_LITERAL_HOLDERS = {
     'deletion/watermark.py': ['deletion-watermark-unusable'],
     'export/cli.py': ['export-playlist-unknown', 'outbound-item-absent'],
     'export/prune_cli.py': ['export-playlist-unknown'],
+    # Re-pinned on the merge of main at e686759 into grok/297, 2026-10-10:
+    # ONE cause literal joined in export/set_cli.py and nothing left,
+    # credential-missing, the soft skip path U129's set backfill names.
     'export/set_cli.py': [
+        'credential-missing',
         'intake-list-unusable',
         'internal-error',
         'sync-mark-record-unusable',
