@@ -619,7 +619,11 @@ directly under the music dir, which is where every landing puts a file and
 where nothing the source system filed sits, placed the same way behind an
 explicit gate, the date from the job else from the account listed once. An
 owned heart that is not in All Favorites is left alone until the author
-answers the open question. The genre Favorites follow from U119's refresh once
+answers the open question, and so is a heart the author took back: one whose
+All Favorites membership rekordbox marked removed, or one a whole account
+listing no longer carries, is skipped and named rather than put back, since
+the outbound sync would otherwise heart it on the account again. The genre
+Favorites follow from U119's refresh once
 adoption files the track, not at landing.
 
 ### Withheld
