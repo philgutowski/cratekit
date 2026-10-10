@@ -1955,9 +1955,15 @@ def _routing_tree_cut_over_with_a_source() -> list[str]:
     source = declared.sub_class("favorites").signal_playlist
     handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
     try:
-        if not [row for row in handle.get_playlist(Name=source) if not rb_writer.is_folder(row)]:
-            handle.create_playlist(source)
-            handle.session.commit()
+        held = [row for row in handle.get_playlist(Name=source) if not rb_writer.is_folder(row)]
+        playlist = held[0] if held else handle.create_playlist(source)
+        # ONE TRACK, since an emptied source refuses by name before the gate:
+        # a refresh over it would empty every Favorites. The fixture's first
+        # content row, which sits in no genre folder, so the plan still holds
+        # no folder and writes nothing.
+        if not handle.get_playlist_songs(PlaylistID=str(playlist.ID)):
+            handle.add_to_playlist(playlist, "1")
+        handle.session.commit()
     finally:
         rb_writer.close_db(handle)
     return []
