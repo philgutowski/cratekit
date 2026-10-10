@@ -36638,3 +36638,53 @@ writes.
 **Closes when:** the hook path reads each file's staged blob with `git show
 :<path>` and the range path keeps the working tree. Ledger only,
 maintainer facing.
+
+---
+
+## R-956. A dated playlist is not in the outbound ledger's labels map, so the playlists sweep may read it as intake
+
+**Found:** at the review of #274, U117, 2026-10-10.
+
+**The mechanism.** A dated playlist created by U117 is not named in the
+outbound ledger's `labels` map, so `ledger.label_playlist_ids` does not
+carry it. The playlists sweep may therefore read it as intake.
+
+**Measured cost.** Its tracks are owned, so owned dedup should drop them;
+not driven past that reading. Excluding it would mean editing `ledger.py`
+or `sync/playlists.py`.
+
+**Closes when:** the outbound ledger names dated playlists with the year
+ones, or the sweep has another way to leave them alone. Ledger only, or
+U122 if that card takes the ledger write.
+
+---
+
+## R-957. The dated plan lists the label folder a second time per followed label and reads matching dated playlist tracks
+
+**Found:** at the review of #274, U117, 2026-10-10.
+
+**The mechanism.** Organize's dated step lists each followed label's folder
+again and reads the tracks of each matching dated playlist, on top of the
+year plan's listing for the same folder.
+
+**Measured cost.** N extra listings per organize run. The account was rate
+limited once (#217); not driven further here.
+
+**Closes when:** one listing serves both the year and the dated plan, or
+the dated step reuses the year plan's folder read. Ledger only.
+
+---
+
+## R-958. The dated playlist day is the go settle instant converted in the box zone when organize plans
+
+**Found:** at the review of #274, U117, 2026-10-10.
+
+**The mechanism.** The date in a dated playlist name is the go's settle
+instant converted in the box's zone when organize plans, not a day stamped
+when the go ran.
+
+**Measured cost.** The same on a fixed box. A zone change between the go
+and organize moves the day in the name; not driven past that reading.
+
+**Closes when:** the go stamps a local day on the settled answer, and
+organize reads that stamp. Ledger only.
