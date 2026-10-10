@@ -37363,3 +37363,134 @@ process writes the copy.
 
 **Closes when:** the write takes a lock that hand edits honour, which none do,
 or a decision records the span as accepted. Ledger only.
+
+---
+
+## R-985. Five of U129's mutation rows were left unmeasured when the fifth round moved their code
+
+**Found:** at the measured table handoff of #297, U129, 2026-10-10.
+
+**The mechanism.** A1, A2, A14, A15 and A16 (the gate before the queue, the gate ask itself, the two backfill failure namings, and the soft skip) were refused as stale against 74fb854 when the measured table was joined. The fifth round moved the code those rows named, so the old text no longer matched the tip. The code they guard is covered by the driven tests named in the fifth round; the kill scores for the other applicable rows stand.
+
+**Measured cost.** The five rows have no fresh kill score on this tip. A person cannot treat the table as complete for A1, A2, A14, A15 and A16 until each row is re-copied and re-run.
+
+**Closes when:** each of the five rows has its old text re-copied from the file and `scripts/mutate.py docs/mutation/u129-rows.toml --name u129-author --resume` has been run on macOS so the measured table carries a kill score for every applicable row again.
+
+---
+
+## R-986. A pair's account order and rekordbox numbering are unmeasured on the live account and library
+
+**Found:** at the build of #298, U130, 2026-10-10.
+
+**The mechanism.** `TidalAccount.order_tracks` moves each track to the end of
+the account playlist with the client's `move_by_indices`, reading back after
+every move, and `write/playlist_pair.renumber` numbers a pair's live rekordbox
+memberships one through N while a soft removed membership keeps the number it
+had. Both were driven only on stand ins: the adapter over the prune suite's fake
+client, the writer on the disposable database. How the provider reads a move to
+the end, and what rekordbox shows when a live membership shares its number with
+a soft removed one, were not observed.
+
+**Measured cost.** Not driven against the provider or rekordbox. A move the
+provider places elsewhere is refused by the read back after one move, with every
+track still on the playlist; a numbering rekordbox reads otherwise would show
+the pair out of order and change no membership.
+
+**Closes when:** the attended sitting the brief names syncs one real playlist
+edited on both sides, reorders it on each side in turn, and reads the order on
+the account and in rekordbox. Ledger only, since it closes at a sitting.
+
+---
+
+## R-987. A pair sync that fails part way through the account's reorder replays the half order as the account's
+
+**Found:** at the review of #298, U130, 2026-10-10.
+
+**The mechanism.** The pair snapshot moves only when the whole pair was
+written, so a sync that fails part way through `order_tracks` leaves the old
+snapshot. When rekordbox led the order, the account now stands half reordered,
+and the next sync reads both sides as changed in order and follows the
+account's, which is the half order.
+
+**Measured cost.** Not driven: it needs a provider failure between two moves.
+No track is added or removed by it, only the order, and a later reorder on
+either side puts it right.
+
+**Closes when:** a failed account reorder records the moves that landed, or the
+next sync reads an account order that is a prefix of the planned one as
+unchanged. Ledger only.
+
+---
+
+## R-988. A pair's unmatched rekordbox rows are asked of the provider on every plan
+
+**Found:** at the review of #298, U130, 2026-10-10.
+
+**The mechanism.** `sync/pair_cli.plan_pair` matches every unlinked rekordbox
+row through `match_track`, and a row the account has no track for is never
+remembered, so each plan asks again. Both explicit gates mean one sync plans
+three times. A row whose ISRC exactly one track on the account playlist carries
+is linked without a call, and a row with no ISRC anywhere is not asked.
+
+**Measured cost.** Provider calls per sync of about three times the unmatched
+rows that carry an ISRC, paced by the provider gate. Not driven against the
+live account.
+
+**Closes when:** the pair records the rows it asked about and the answer, and a
+plan asks again only after a set interval or when asked to. Ledger only.
+
+---
+
+## R-989. No verb unpairs a playlist pair
+
+**Found:** at the review of #298, U130, 2026-10-10.
+
+**The mechanism.** `crate sync pair` marks a pair and nothing removes one. A
+pair whose account or rekordbox playlist is gone is left out of a sync of every
+pair and named in the answer each time (`sync-pair-left-out`), and pairing
+either surviving playlist with another is refused as a conflict.
+
+**Measured cost.** A warning on every sync, and a hand edit of the playlist
+pairs document to pair the survivor again. Nothing is written wrongly.
+
+**Closes when:** a gated `sync unpair` drops a pair and its snapshot. Ledger
+only until someone wants it.
+
+---
+
+## R-990. An account track removed and added again between two pair syncs reads as never removed
+
+**Found:** at the build of #298, U130, 2026-10-10.
+
+**The mechanism.** The merge sees a removal and a re-add on the same side
+between two syncs only where the side gives a membership an identity, which
+rekordbox does with its row and the account does not. So a track removed in
+rekordbox and, in the same interval, removed and added again on the account,
+reads on the account as held all along, and the rekordbox removal is applied
+to the account.
+
+**Measured cost.** Not driven: the account offers nothing a sync could read it
+from. The re-add made on the account is lost, and the track is still in the
+collection.
+
+**Closes when:** the provider exposes when a track was added to a playlist and
+the snapshot records it. Ledger only.
+
+---
+
+## R-991. Two tests failed once each in a loaded full suite and never again
+
+**Found:** at the mutation table of #298, U130, 2026-10-10.
+
+**The mechanism.** `scripts/mutate.py` refused two baselines in a row on
+2026-10-10, each over one failing test:
+`tests/test_sync_mark.py::test_an_intake_file_of_no_pass_is_a_gated_plan_of_nothing`
+and then `tests/test_sync_pair.py::test_a_short_listing_removes_nothing_from_the_account`.
+Neither failed alone, in its file five times running, or in a full suite run
+straight after (13,660 passed), and the driver kept no traceback.
+
+**Measured cost.** Two refused batches. The cause was not found, so whether
+either test carries a timing dependence is unmeasured.
+
+**Closes when:** the driver keeps a refused baseline's failure text, and the
+next refusal over either test is read from it. Ledger only.
