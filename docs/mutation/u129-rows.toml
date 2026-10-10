@@ -21,8 +21,55 @@ old = '''            # THE ACCOUNT GATE BEFORE THE QUEUE (U129). An explicit gat
                 rows=result.rows if tracks else (),
             )
             if tracks:
+                payload = {
+                    SOURCE: held.ref,
+                    TRACKS: tracks,
+                    CALLS: result.calls,
+                    UNREACHED: result.unreached,
+                    PARTS: result.parts,
+                    PAGE: dict(held.page),
+                }
+                # U129. Freeze the INSPIRATION name so the account playlist and
+                # the landing's playlist agree, even when they run on different days.
+                if playlist.name:
+                    payload[PLAYLIST_NAME] = playlist.name
+                job = jobs.enqueue(
+                    store,
+                    handler_key=ctx.entry.handler_key,
+                    payload=payload,
+                    cfg=cfg,
+                    item_ids=tuple(tracks),
+                )
 '''
 new = '''            if tracks:
+                payload = {
+                    SOURCE: held.ref,
+                    TRACKS: tracks,
+                    CALLS: result.calls,
+                    UNREACHED: result.unreached,
+                    PARTS: result.parts,
+                    PAGE: dict(held.page),
+                }
+                # U129. Freeze the INSPIRATION name so the account playlist and
+                # the landing's playlist agree, even when they run on different days.
+                if playlist.name:
+                    payload[PLAYLIST_NAME] = playlist.name
+                job = jobs.enqueue(
+                    store,
+                    handler_key=ctx.entry.handler_key,
+                    payload=payload,
+                    cfg=cfg,
+                    item_ids=tuple(tracks),
+                )
+            # THE ACCOUNT GATE BEFORE THE QUEUE (U129). An explicit gate always
+            # stops the first run; asking it after enqueue left a job that the
+            # resume queued a second time with the same tracks.
+            account_notes, built, option = _ask_account_playlist(
+                ctx,
+                cfg,
+                name=playlist.name if playlist.name else "",
+                rows=result.rows if tracks else (),
+            )
 '''
 
 [[rows]]
@@ -57,7 +104,7 @@ id = "A4_archive_raise_fails_landing"
 description = "Let an account archive raise escape the landing write after rows are in the library"
 file = "src/cratekit/intake/land_cli.py"
 surface = "user"
-tests = ["tests/test_u129_set_account_playlist.py"]
+tests = ["tests/test_u129_set_account_playlist.py", "tests/test_set_inspiration_playlist.py"]
 old = '''    try:
         _data, warnings, _wrote = set_cli.apply_archive(cfg, archived)
     except Exception as exc:
@@ -85,7 +132,7 @@ id = "A5_archive_return_discarded"
 description = "Discard apply_archive warnings so a not-renamed return is silent on the landed envelope"
 file = "src/cratekit/intake/land_cli.py"
 surface = "user"
-tests = ["tests/test_u129_set_account_playlist.py"]
+tests = ["tests/test_u129_set_account_playlist.py", "tests/test_set_inspiration_playlist.py"]
 old = '''    try:
         _data, warnings, _wrote = set_cli.apply_archive(cfg, archived)
     except Exception as exc:
@@ -101,7 +148,7 @@ id = "A6_archive_notes_not_on_envelope"
 description = "Drop archive notes from the landed envelope warnings"
 file = "src/cratekit/intake/land_cli.py"
 surface = "user"
-tests = ["tests/test_u129_set_account_playlist.py"]
+tests = ["tests/test_u129_set_account_playlist.py", "tests/test_set_inspiration_playlist.py"]
 old = '''    warnings.extend(favorites_notes(payload, landed.collection))
     warnings.extend(archive_notes)
     kept = landed.collection.set_playlist
@@ -219,7 +266,9 @@ file = "src/cratekit/export/set_cli.py"
 surface = "user"
 tests = ["tests/test_u129_set_account_playlist.py"]
 old = '''            made = _naming_day(job)
-            on = made.date() if made is not None else None
+            # Local calendar day: a UTC stamp after about 20:00 Eastern is the
+            # next UTC day, and .date() on it would miss the set (U129).
+            on = made.astimezone().date() if made is not None else None
             if set_name(set_playlist.playlist_name(words, on=on)) == wanted:
                 return job
 '''
@@ -233,42 +282,84 @@ description = "Drop the naming of already made playlists when a later backfill a
 file = "src/cratekit/export/set_cli.py"
 surface = "user"
 tests = ["tests/test_u129_set_account_playlist.py"]
-old = '''    except CratekitError as exc:
+old = '''    except Exception as exc:
         # Name what already landed so a mid-loop failure does not hide it (U129).
-        if applied:
-            made = ", ".join(applied)
+        # CredentialError is a plain Exception, not a CratekitError.
+        if not applied:
+            raise
+        made = ", ".join(applied)
+        again = (
+            "the playlists named above are on the account; resume or "
+            "run crate export set again for the rest"
+        )
+        if isinstance(exc, CratekitError):
             raise refuse(
                 exc.cause.reason,
                 f"before this failed the backfill already made {made}. {exc.cause.message}",
                 remedy=exc.cause.remediation.remedy,
-                steps=(
-                    *exc.cause.remediation.steps,
-                    "the playlists named above are on the account; resume or "
-                    "run crate export set again for the rest",
-                ),
+                steps=(*exc.cause.remediation.steps, again),
                 scope=Scope.RUN,
                 retryable=exc.cause.retryable,
                 origin=_SET,
                 detail={**dict(exc.cause.detail), "applied": list(applied)},
                 inner=exc.cause,
             ) from exc
-        raise
+        raise refuse(
+            "internal-error",
+            f"before this failed the backfill already made {made}. "
+            f"{type(exc).__name__}: {exc}",
+            remedy=Remedy.REPORT_DEFECT,
+            steps=(again,),
+            scope=Scope.RUN,
+            origin=_SET,
+            detail={"applied": list(applied), "kind": type(exc).__name__},
+        ) from exc
 '''
-new = '''    except CratekitError:
+new = '''    except Exception:
         raise
 '''
 
 [[rows]]
-id = "A15_unnamed_skips_without_warning"
-description = "Queue an unnamed local set without the account unnamed warning"
-file = "src/cratekit/intake/cli.py"
+id = "A15_archive_backfill_hides_filed"
+description = "Drop the naming of already archived playlists when a later archive backfill apply fails"
+file = "src/cratekit/export/set_cli.py"
 surface = "user"
 tests = ["tests/test_u129_set_account_playlist.py"]
-old = '''            if playlist.warning:
-                warnings = list(warnings) + [playlist.warning]
+old = '''    except Exception as exc:
+        # Name renames already done so a mid-loop failure does not hide them (U129).
+        if not filed:
+            raise
+        made = ", ".join(filed)
+        again = (
+            "the playlists named above are already archived on the account; "
+            "resume or run crate export archive again for the rest"
+        )
+        if isinstance(exc, CratekitError):
+            raise refuse(
+                exc.cause.reason,
+                f"before this failed the backfill already archived {made}. "
+                f"{exc.cause.message}",
+                remedy=exc.cause.remediation.remedy,
+                steps=(*exc.cause.remediation.steps, again),
+                scope=Scope.RUN,
+                retryable=exc.cause.retryable,
+                origin=_ARCHIVE,
+                detail={**dict(exc.cause.detail), "archived": list(filed)},
+                inner=exc.cause,
+            ) from exc
+        raise refuse(
+            "internal-error",
+            f"before this failed the backfill already archived {made}. "
+            f"{type(exc).__name__}: {exc}",
+            remedy=Remedy.REPORT_DEFECT,
+            steps=(again,),
+            scope=Scope.RUN,
+            origin=_ARCHIVE,
+            detail={"archived": list(filed), "kind": type(exc).__name__},
+        ) from exc
 '''
-new = '''            if False and playlist.warning:
-                warnings = list(warnings) + [playlist.warning]
+new = '''    except Exception:
+        raise
 '''
 
 [[rows]]
@@ -340,12 +431,17 @@ id = "A20_apply_archive_skips_rename"
 description = "Skip the playlist rename so DOWNLOADED never lands on the account"
 file = "src/cratekit/modules/outbound/sets.py"
 surface = "user"
-tests = ["tests/test_u129_set_account_playlist.py"]
+tests = ["tests/test_u129_set_account_playlist.py", "tests/test_set_inspiration_playlist.py"]
 old = """    account.rename_playlist(playlist.remote_id, planned.to)
     done.marked = True
 """
 new = """    done.marked = False
 """
+
+[[dropped]]
+id = "A15_unnamed_skips_without_warning"
+description = "Queue an unnamed local set without the account unnamed warning"
+reason = "ranked below the cap after archive backfill naming took the slot; the unnamed path stays covered by its own test"
 
 [[dropped]]
 id = "A21_inspiration_scan_skips_sort"

@@ -822,8 +822,9 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
     present = {str(row.target): row for row in landed.collection.present}
     items: list[dict[str, Any]] = []
     for item in payload["items"]:
-        if item.get("action") == FAVORITES:
-            # The skipped placement, carried through as the plan said it (U120).
+        if item.get("action") == FAVORITES or item.get("area") == "account-archive":
+            # Favourites (U120) and the account archive folded into this landing
+            # (U129) are not file moves: they have no "from", so carry them through.
             items.append(item)
             continue
         entry = refused.get(item["from"])

@@ -1088,7 +1088,9 @@ def _job_for_inspiration_name(cfg, name: str):
             # name for the day it was queued, never for today (U129): a set from
             # another day would otherwise never match.
             made = _naming_day(job)
-            on = made.date() if made is not None else None
+            # Local calendar day: a UTC stamp after about 20:00 Eastern is the
+            # next UTC day, and .date() on it would miss the set (U129).
+            on = made.astimezone().date() if made is not None else None
             if set_name(set_playlist.playlist_name(words, on=on)) == wanted:
                 return job
     # Session records from a landing name the playlist and the job.
@@ -1234,26 +1236,38 @@ def _export_set_backfill(ctx, cfg) -> Envelope:
             warnings.extend(more)
             if wrote:
                 applied.append(one.name)
-    except CratekitError as exc:
+    except Exception as exc:
         # Name what already landed so a mid-loop failure does not hide it (U129).
-        if applied:
-            made = ", ".join(applied)
+        # CredentialError is a plain Exception, not a CratekitError.
+        if not applied:
+            raise
+        made = ", ".join(applied)
+        again = (
+            "the playlists named above are on the account; resume or "
+            "run crate export set again for the rest"
+        )
+        if isinstance(exc, CratekitError):
             raise refuse(
                 exc.cause.reason,
                 f"before this failed the backfill already made {made}. {exc.cause.message}",
                 remedy=exc.cause.remediation.remedy,
-                steps=(
-                    *exc.cause.remediation.steps,
-                    "the playlists named above are on the account; resume or "
-                    "run crate export set again for the rest",
-                ),
+                steps=(*exc.cause.remediation.steps, again),
                 scope=Scope.RUN,
                 retryable=exc.cause.retryable,
                 origin=_SET,
                 detail={**dict(exc.cause.detail), "applied": list(applied)},
                 inner=exc.cause,
             ) from exc
-        raise
+        raise refuse(
+            "internal-error",
+            f"before this failed the backfill already made {made}. "
+            f"{type(exc).__name__}: {exc}",
+            remedy=Remedy.REPORT_DEFECT,
+            steps=(again,),
+            scope=Scope.RUN,
+            origin=_SET,
+            detail={"applied": list(applied), "kind": type(exc).__name__},
+        ) from exc
     totals = {**payload["totals"], "applied": {"playlists": applied}}
     return ctx.envelope(
         data={**payload, "totals": totals},
@@ -1326,14 +1340,47 @@ def _export_archive_backfill(ctx, cfg) -> Envelope:
     if option != "apply" or not writes:
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP, warnings=warnings)
 
-    filed = []
-    for one in planned:
-        if not one.writes:
-            continue
-        _data, more, wrote = apply_archive(cfg, one)
-        warnings.extend(more)
-        if wrote:
-            filed.append(one.name)
+    filed: list[str] = []
+    try:
+        for one in planned:
+            if not one.writes:
+                continue
+            _data, more, wrote = apply_archive(cfg, one)
+            warnings.extend(more)
+            if wrote:
+                filed.append(one.name)
+    except Exception as exc:
+        # Name renames already done so a mid-loop failure does not hide them (U129).
+        if not filed:
+            raise
+        made = ", ".join(filed)
+        again = (
+            "the playlists named above are already archived on the account; "
+            "resume or run crate export archive again for the rest"
+        )
+        if isinstance(exc, CratekitError):
+            raise refuse(
+                exc.cause.reason,
+                f"before this failed the backfill already archived {made}. "
+                f"{exc.cause.message}",
+                remedy=exc.cause.remediation.remedy,
+                steps=(*exc.cause.remediation.steps, again),
+                scope=Scope.RUN,
+                retryable=exc.cause.retryable,
+                origin=_ARCHIVE,
+                detail={**dict(exc.cause.detail), "archived": list(filed)},
+                inner=exc.cause,
+            ) from exc
+        raise refuse(
+            "internal-error",
+            f"before this failed the backfill already archived {made}. "
+            f"{type(exc).__name__}: {exc}",
+            remedy=Remedy.REPORT_DEFECT,
+            steps=(again,),
+            scope=Scope.RUN,
+            origin=_ARCHIVE,
+            detail={"archived": list(filed), "kind": type(exc).__name__},
+        ) from exc
     totals = {**payload["totals"], "applied": {"archived": filed}}
     return ctx.envelope(
         data={**payload, "totals": totals},

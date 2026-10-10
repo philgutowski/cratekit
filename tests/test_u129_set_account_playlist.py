@@ -378,36 +378,6 @@ def test_with_archive_folds_into_the_landing_digest(account):
     assert land_cli._with_archive(base, None) == base
 
 
-def test_backfill_lists_the_two_october_sets_from_their_jobs(account, monkeypatch):
-    cfg, _fake, held = account
-    names = [
-        "10_09_26 Public Service NYC Live at Vonking 5-26",
-        "10_10_26 Public Service NYC Live at Signal 5-26",
-    ]
-    _succeeded_set_job(cfg, names[0], created="2026-10-09T15:00:00+00:00")
-    _succeeded_set_job(cfg, names[1], created="2026-10-10T15:00:00+00:00")
-    monkeypatch.setattr(
-        set_cli,
-        "_inspiration_playlists",
-        lambda _cfg: [(name, f"id-{i}") for i, name in enumerate(names)],
-    )
-    # Drive the real job lookup; only the tracklist rebuild is stubbed so the
-    # gate can show both sets without running the set worker.
-    from cratekit.acquire import match
-
-    wanted = tuple(
-        match.Wanted(artist=a, title=t, origin=match.TEXT) for a, t in ROWS
-    )
-    monkeypatch.setattr(set_cli, "_wanted_from_job", lambda _cfg, _job: wanted)
-
-    code, refused = drive(["export", "set"])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    assert refused["cause"]["detail"]["gate"] == BUILD
-    message = json.dumps(refused)
-    assert names[0] in message and names[1] in message
-    assert held.created == []
-    # Real lookup found both jobs: no "no-job" soft skips.
-    assert "export-set-backfill-no-job" not in message
 
 
 def test_job_for_inspiration_name_matches_a_set_from_another_day(account, monkeypatch):
@@ -521,3 +491,178 @@ def test_export_archive_backfill_soft_skips_cratekit_errors(account, monkeypatch
     assert any(w["code"] == "export-archive-backfill-refused" for w in done["warnings"])
     assert NAME in done["warnings"][0]["message"]
     assert held.renamed == []
+
+
+def test_export_archive_backfill_refuses_a_credential_error(account, monkeypatch):
+    cfg, _fake, held = account
+    path = _tracklist(cfg)
+    assert _two_acts(["export", "set", str(path), "--name", NAME], BUILD)[0] == int(ExitCode.OK)
+    xml = cfg.library.root / "landed" / "set-batch_inboxed.xml"
+    xml.parent.mkdir(parents=True, exist_ok=True)
+    xml.write_bytes(b"<DJ_PLAYLISTS Version='1.0.0'></DJ_PLAYLISTS>\n")
+
+    from cratekit.core import secrets
+
+    def boom(_cfg, _name, _xml):
+        raise secrets.CredentialError("no provider session is recorded")
+
+    monkeypatch.setattr(set_cli, "plan_archive", boom)
+    monkeypatch.setattr(set_cli, "_proof_for_set", lambda _cfg, _name: xml)
+    # CredentialError is raised while planning, before the gate: the first drive
+    # refuses the verb rather than asking for a decision.
+    code, done = drive(["export", "archive"])
+    assert code != int(ExitCode.OK), done
+    message = json.dumps(done)
+    assert "CredentialError" in message or "no provider session" in message
+    assert "export-archive-backfill-refused" not in message
+    assert held.renamed == []
+
+
+def test_export_set_backfill_names_playlists_already_made_when_a_credential_fails(
+    account, monkeypatch
+):
+    cfg, _fake, held = account
+    names = [
+        "10_09_26 Public Service NYC Live at Vonking 5-26",
+        "10_10_26 Public Service NYC Live at Signal 5-26",
+    ]
+    for name, created in zip(
+        names, ("2026-10-09T12:00:00+00:00", "2026-10-10T12:00:00+00:00"), strict=True
+    ):
+        _succeeded_set_job(cfg, name, created=created)
+    monkeypatch.setattr(
+        set_cli,
+        "_inspiration_playlists",
+        lambda _cfg: [(name, f"id-{i}") for i, name in enumerate(names)],
+    )
+    from cratekit.acquire import match
+    from cratekit.core import secrets
+
+    wanted = tuple(
+        match.Wanted(artist=a, title=t, origin=match.TEXT) for a, t in ROWS
+    )
+    monkeypatch.setattr(set_cli, "_wanted_from_job", lambda _cfg, _job: wanted)
+
+    applied = []
+    real_apply = set_cli.apply_planned
+
+    def once(cfg_arg, built):
+        if applied:
+            raise secrets.CredentialError("the provider session expired mid backfill")
+        data, more, wrote = real_apply(cfg_arg, built)
+        if wrote:
+            applied.append(built.name)
+        return data, more, wrote
+
+    monkeypatch.setattr(set_cli, "apply_planned", once)
+    code, refused = drive(["export", "set"])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    assert drive(["run", "decide", run_id, BUILD, "apply", "--actor", "a-person"])[0] == int(
+        ExitCode.OK
+    )
+    code, done = drive(["--run", run_id, "export", "set"])
+    assert code != int(ExitCode.OK), done
+    message = json.dumps(done)
+    assert names[0] in message
+    assert "already made" in message
+    assert held.created == [names[0]]
+
+
+def test_export_archive_backfill_names_playlists_already_archived_when_one_fails(
+    account, monkeypatch
+):
+    cfg, _fake, held = account
+    # Ledger names are sorted: Other comes before Probe under the same day prefix.
+    names = ["10_10_26 Other Friday Night Mix 5-26", NAME]
+    for name in names:
+        path = _tracklist(cfg, name=f"{name}.txt")
+        assert _two_acts(["export", "set", str(path), "--name", name], BUILD)[0] == int(
+            ExitCode.OK
+        )
+    xml = cfg.library.root / "landed" / "set-batch_inboxed.xml"
+    xml.parent.mkdir(parents=True, exist_ok=True)
+    xml.write_bytes(b"<DJ_PLAYLISTS Version='1.0.0'></DJ_PLAYLISTS>\n")
+    monkeypatch.setattr(set_cli, "_proof_for_set", lambda _cfg, _name: xml)
+
+    filed = []
+    real_apply = set_cli.apply_archive
+
+    def once(cfg_arg, archived):
+        if filed:
+            raise refuse(
+                "unavailable-transient",
+                "the account dropped the second archive",
+                remedy=Remedy.RETRY_LATER,
+                origin=("test",),
+            )
+        data, more, wrote = real_apply(cfg_arg, archived)
+        if wrote:
+            filed.append(archived.name)
+        return data, more, wrote
+
+    monkeypatch.setattr(set_cli, "apply_archive", once)
+    code, refused = drive(["export", "archive"])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    assert drive(
+        ["run", "decide", run_id, ARCHIVE, "apply", "--actor", "a-person"]
+    )[0] == int(ExitCode.OK)
+    code, done = drive(["--run", run_id, "export", "archive"])
+    assert code != int(ExitCode.OK), done
+    message = json.dumps(done)
+    assert names[0] in message
+    assert "already archived" in message
+    assert any(title.startswith("DOWNLOADED ") for _pid, title in held.renamed)
+
+
+def test_job_for_inspiration_name_uses_the_local_day_at_half_past_eleven(
+    account, monkeypatch
+):
+    """A set queued at 23:30 Eastern is that local day, not the next UTC day."""
+    cfg, _fake, _held = account
+    monkeypatch.setenv("TZ", "America/New_York")
+    import time
+
+    time.tzset()
+    try:
+        monkeypatch.setattr(set_playlist, "today", lambda: date(2026, 10, 10))
+        # 23:30 Eastern on Oct 9 is 03:30 UTC on Oct 10.
+        name = "10_09_26 Probe Friday Night Mix 5-26"
+        with jobs.open_store() as store:
+            job = jobs.enqueue(
+                store,
+                handler_key=set_playlist.SET_KEY,
+                payload={
+                    intake_cli.SOURCE: "https://example.invalid/a-set",
+                    intake_cli.TRACKS: {
+                        "rc-1": {"artist": "A", "title": "B", "origin": "text"}
+                    },
+                    intake_cli.CALLS: 1,
+                    intake_cli.UNREACHED: 0,
+                    intake_cli.PARTS: 1,
+                    intake_cli.PAGE: _page(),
+                },
+                cfg=cfg,
+                item_ids=("rc-1",),
+            )
+            with store.immediate() as conn:
+                conn.execute(
+                    "UPDATE jobs SET created = ?, updated = ? WHERE job_id = ?",
+                    (
+                        "2026-10-10T03:30:00+00:00",
+                        "2026-10-10T03:30:00+00:00",
+                        job.job_id,
+                    ),
+                )
+            jobs.transition(store, job.job_id, jobs.JobState.SUCCEEDED)
+        found = set_cli._job_for_inspiration_name(cfg, name)
+        assert found is not None
+        assert found.job_id == job.job_id
+        # A UTC .date() would have looked for 10_10_26 and missed.
+        assert set_cli._job_for_inspiration_name(
+            cfg, "10_10_26 Probe Friday Night Mix 5-26"
+        ) is None
+    finally:
+        monkeypatch.delenv("TZ")
+        time.tzset()

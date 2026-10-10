@@ -11,6 +11,7 @@ D1 applies. Nothing here names a real volume, a real person or a real track.
 
 from __future__ import annotations
 
+import json
 import shutil
 import sqlite3
 from dataclasses import replace
@@ -1172,3 +1173,200 @@ def test_the_backfill_creates_the_declared_folder_at_the_root_when_the_library_l
     assert item["folder_created"] is True and item["playlist_created"] is True
     (record,) = [r for r in session.records(cfg) if r.workflow == set_playlist.WORKFLOW]
     assert record.detail[set_playlist.RECORD_KEY]["folder"] == str(folder_id)
+
+
+# ---------------------------------------------------------------------------
+# U129: the landing archives the account playlist (driven)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def account_on_native(native_library, monkeypatch):
+    """Native landing library with the outbound account bound for archive writes."""
+    from cratekit.core import secrets
+    from cratekit.label import catalogue
+    from tests import outbound_fakes
+    from tests.label_fakes import FakeCatalogue, catalogue_factory
+    from tests.test_outbound_workers import bind as bind_account
+
+    cfg, root_id = native_library
+    # Doctor's credential.provider check reads the keychain before the verb;
+    # the account and catalogue seams are substituted for the writes themselves.
+    secrets.set_json(
+        secrets.Credential.PROVIDER_SESSION,
+        {"access_token": "test-token", "refresh_token": "test-refresh"},
+    )
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(FakeCatalogue(searches={})))
+    held = outbound_fakes.StrictAccount()
+    bind_account(monkeypatch, held)
+    return cfg, root_id, held
+
+
+def _record_account_set(cfg, held, name: str, *, year: str = "2026") -> str:
+    """Record a set playlist on the ledger and create it on the fake account."""
+    from cratekit.modules.outbound import ledger
+
+    remote_id, _created = ledger.reserve_set_playlist(
+        cfg, name, year, lambda: held.create_playlist(name)
+    )
+    return remote_id
+
+
+def _freeze_name(job_id: str, name: str) -> None:
+    """Put the INSPIRATION name on a succeeded set job the way intake set freezes it."""
+    with jobs.open_store() as store:
+        job = jobs.get(store, job_id)
+        payload = dict(job.payload)
+        payload[intake_cli.PLAYLIST_NAME] = name
+        with store.immediate() as conn:
+            import json as _json
+
+            conn.execute(
+                "UPDATE jobs SET payload = ? WHERE job_id = ?",
+                (_json.dumps(payload), job_id),
+            )
+
+
+def test_a_landing_archives_the_account_playlist_with_prefix_and_year_folder(
+    account_on_native, silence
+):
+    cfg, _root_id, held = account_on_native
+    cutover_fixtures.add_folder(cfg, FOLDER)
+    remote_id = _record_account_set(cfg, held, NAME)
+    job_id = set_job(cfg, ("One",), page=PAGE)
+    _freeze_name(job_id, NAME)
+    _stage(cfg, silence, "One")
+
+    code, acted, _refused = _two_acts(_land("--set", job_id, *WORDS))
+
+    assert code == int(ExitCode.OK), acted
+    assert any(
+        pid == remote_id and title.startswith("DOWNLOADED ") for pid, title in held.renamed
+    ), held.renamed
+    assert "2026" in held.folders_created or any(
+        name == "2026" for name in held.folder_names.values()
+    ), held.folders_created
+    assert not any(w["code"] == land_cli.LAND_ARCHIVE_FAILED for w in acted["warnings"])
+
+
+def test_a_landing_archive_failure_is_a_warning_on_the_envelope(
+    account_on_native, silence, monkeypatch
+):
+    cfg, _root_id, held = account_on_native
+    cutover_fixtures.add_folder(cfg, FOLDER)
+    _record_account_set(cfg, held, NAME)
+    job_id = set_job(cfg, ("One",), page=PAGE)
+    _freeze_name(job_id, NAME)
+    _stage(cfg, silence, "One")
+
+    from cratekit.core.cause import refuse
+    from cratekit.core.exit_codes import Remedy
+    from cratekit.export import set_cli
+
+    def boom(_cfg, _archived):
+        raise refuse(
+            "unavailable-transient",
+            "the account could not be reached",
+            remedy=Remedy.RETRY_LATER,
+            origin=("test",),
+        )
+
+    monkeypatch.setattr(set_cli, "apply_archive", boom)
+
+    code, acted, _refused = _two_acts(_land("--set", job_id, *WORDS))
+
+    assert code == int(ExitCode.OK), acted
+    assert any(w["code"] == land_cli.LAND_ARCHIVE_FAILED for w in acted["warnings"])
+    assert any("could not finish after the landing wrote" in w["message"] for w in acted["warnings"])
+    assert held.renamed == []
+
+
+def test_a_landing_archive_not_renamed_is_a_warning_on_the_envelope(
+    account_on_native, silence, monkeypatch
+):
+    cfg, _root_id, held = account_on_native
+    cutover_fixtures.add_folder(cfg, FOLDER)
+    _record_account_set(cfg, held, NAME)
+    job_id = set_job(cfg, ("One",), page=PAGE)
+    _freeze_name(job_id, NAME)
+    _stage(cfg, silence, "One")
+
+    from cratekit.export import set_cli
+
+    archived_holder = {}
+
+    real_plan = land_cli._plan_set_archive
+
+    def capture(cfg_arg, **kwargs):
+        planned = real_plan(cfg_arg, **kwargs)
+        archived_holder["planned"] = planned
+        return planned
+
+    monkeypatch.setattr(land_cli, "_plan_set_archive", capture)
+
+    def soft(_cfg, archived):
+        return (
+            archived.payload,
+            [
+                {
+                    "code": "export-archive-changed-since-plan",
+                    "message": f"{NAME} was retitled by somebody, so it was not renamed",
+                }
+            ],
+            False,
+        )
+
+    monkeypatch.setattr(set_cli, "apply_archive", soft)
+
+    code, acted, _refused = _two_acts(_land("--set", job_id, *WORDS))
+
+    assert code == int(ExitCode.OK), acted
+    assert archived_holder.get("planned") is not None
+    assert any(w["code"] == "export-archive-changed-since-plan" for w in acted["warnings"])
+    assert any("not renamed" in w["message"] for w in acted["warnings"])
+    assert held.renamed == []
+
+
+def test_export_set_backfill_lists_inspiration_playlists_from_the_disposable_database(
+    account_on_native, monkeypatch
+):
+    """Drive ``_inspiration_playlists`` against the disposable DB, never a stub."""
+    from cratekit.acquire import match
+    from cratekit.core import rb_writer
+    from cratekit.export import set_cli
+    from cratekit.modules.outbound import ledger
+
+    cfg, _root_id, held = account_on_native
+    folder_id = cutover_fixtures.add_folder(cfg, FOLDER)
+    names = [
+        "10_09_26 Public Service NYC Live at Vonking 5-26",
+        "10_10_26 Public Service NYC Live at Signal 5-26",
+    ]
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        parent = handle.get_playlist(ID=folder_id)
+        for name in names:
+            handle.create_playlist(name, parent=parent)
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+
+    # Succeeded set jobs whose frozen names match the playlists above.
+    from tests.test_u129_set_account_playlist import _succeeded_set_job
+
+    _succeeded_set_job(cfg, names[0], created="2026-10-09T15:00:00+00:00")
+    _succeeded_set_job(cfg, names[1], created="2026-10-10T15:00:00+00:00")
+
+    wanted = (match.Wanted(artist="Probe", title="One", origin=match.TEXT),)
+    monkeypatch.setattr(set_cli, "_wanted_from_job", lambda _cfg, _job: wanted)
+
+    listed = set_cli._inspiration_playlists(cfg)
+    assert [name for name, _pid in listed] == names
+
+    code, refused = drive(["export", "set"])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    message = json.dumps(refused)
+    assert names[0] in message and names[1] in message
+    assert held.created == []
+    assert "export-set-backfill-no-job" not in message
+    assert ledger.set_playlist_names(cfg) == ()
