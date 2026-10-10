@@ -21,8 +21,14 @@ each promoted to the full suite and still zero.
 **`u120-b.md`**, 3 rows at `952830a`: three of the four zeros measured again
 against the tests they bought. Null control 0 of 13,186. All 3 killed.
 
-25 distinct mutations in all, under the cap of 25: **24 killed, 1 equivalent on
-this binding** (P3, below).
+**`u120-c.md`**, 3 rows at `7c72fc0`, on the merge of main at `691513b`: the
+three guards the watcher's review added, a heart the author took back never
+put back (W1), a listing with no published count not read as whole (W2), the
+quarter rows in the digest (W3). Null control 0 of 13,343. All 3 killed.
+
+28 distinct mutations in all, 25 in the author's first pass under the cap of 25
+and 3 for the watcher's round: **27 killed, 1 equivalent on this binding** (P3,
+below).
 
 ## The first table's zeros
 

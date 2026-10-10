@@ -1,0 +1,133 @@
+{
+  "name": "u120-c",
+  "pass_kind": "light",
+  "branch": "fable/277-heart-favourites-sync-lands",
+  "head": "7c72fc0",
+  "when": "2026-10-10 08:18 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 13343,
+  "baseline_exit": 0,
+  "pytest_runs": 6,
+  "state_guarded": "~/Library/Application Support/cratekit (365158 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/favorites/backfill.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/favorites/backfill.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "fa1b339aa78ad1e5",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 13343,
+    "baseline_collected": 13343,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "W1_taken_back_ignored",
+      "description": "gather: a heart whose source membership exists as removed is placed again",
+      "file": "src/cratekit/favorites/backfill.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "280d4874e2bc7d91",
+      "subset": [
+        "tests/test_favorites_backfill.py",
+        "tests/test_favorites_placement.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 52,
+      "baseline_collected": 52,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_favorites_backfill.py::test_a_heart_the_author_took_out_of_all_favorites_is_never_put_back"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if content_id in removed:\n            taken.append(replace(heart, dated_by=\"removed from the playlist in rekordbox\"))\n            continue\n",
+      "new": "        if False:\n            taken.append(replace(heart, dated_by=\"removed from the playlist in rekordbox\"))\n            continue\n"
+    },
+    {
+      "id": "W2_uncounted_is_whole",
+      "description": "dated: a listing with no published count reads as whole",
+      "file": "src/cratekit/favorites/backfill.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "220e1ade2b71fd69",
+      "subset": [
+        "tests/test_favorites_backfill.py",
+        "tests/test_favorites_placement.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 52,
+      "baseline_collected": 52,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_favorites_backfill.py::test_a_listing_with_no_published_count_holds_back_a_heart_it_lacks"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    whole = short is None and declared is not None and len(listed) >= declared\n",
+      "new": "    whole = short is None\n"
+    },
+    {
+      "id": "W3_quarters_not_digested",
+      "description": "PlacementPlan.identity: the quarter rows found or to be made are left out of the digest",
+      "file": "src/cratekit/favorites/placement.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a68ff613bb531e5a",
+      "subset": [
+        "tests/test_favorites_backfill.py",
+        "tests/test_favorites_placement.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 52,
+      "baseline_collected": 52,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_favorites_backfill.py::test_a_quarter_playlist_deleted_between_the_plan_and_the_write_is_another_plan",
+        "tests/test_favorites_placement.py::test_the_plans_digest_covers_each_quarters_row_found_or_to_be_made"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"quarters\": {\n                quarter: self.home.present.get(quarter, \"\")\n                for quarter in sorted({one.quarter for one in self.placements})\n            },\n",
+      "new": "            \"quarters\": {},\n"
+    }
+  ],
+  "dropped": []
+}
