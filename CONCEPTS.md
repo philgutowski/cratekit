@@ -112,6 +112,15 @@ it, and how a board could read complete while no acquisition workflow finished.
 A name claim is evidence that a verb exists. It is not evidence that a workflow
 ends.
 
+### Restart fragment
+One unit's record of the verified state, the file `docs/restart/<unit>.md`
+(`u114.md`, `r572.md`, `sitting35.md`). It holds what the unit built, its
+battery, its mutation table's summary and what it left owed, and only that unit
+writes it. `RESTART-cratekit.md` is the rest of the restart state, the sections
+no unit owns, and it carries no fragment's paragraph, so units built in
+parallel never conflict over it. Before U124 the fragments were paragraphs at
+the head of that file, newest first, and every merge conflicted there.
+
 ## Acquisition
 
 ### Adapter
@@ -1662,6 +1671,11 @@ Residual numbers are append only. A number, once given, belongs to that finding
 for life, and numbers already recorded never move when new ones arrive, because
 the number is cited from surfaces the repository cannot see and a renumber
 repoints those citations silently.
+
+A residual is filed without a number, as a file in `docs/residuals/`, and is
+numbered when it lands on `main`, past the ledger's highest. So an unnumbered
+residual is a filed one that has not landed yet, and its number belongs to the
+order of landings rather than the order of filings.
 
 ### Blocking finding
 A finding that does hold a merge. It qualifies only on three conditions together:
