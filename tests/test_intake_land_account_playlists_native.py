@@ -253,7 +253,7 @@ def test_the_record_names_each_account_playlist_by_identifier(native_library, si
     landings = [r for r in session.records(cfg) if native.INBOX_PLAYLISTS_KEY in r.detail]
     (record,) = landings
     assert record.detail[native.INBOX_PLAYLISTS_KEY] == [
-        {"id": written["id"], "name": "Sunset Warmup"}
+        {"id": written["id"], "name": "Sunset Warmup", "account": "pl-a", "pass": PASS}
     ]
     # Every row went into the account playlist, so no batch playlist was written.
     assert native.BATCH_PLAYLIST_KEY not in record.detail
@@ -335,3 +335,184 @@ def test_a_playlist_the_rotation_removed_never_takes_a_new_landings_tracks(
     # playlist is a new live row: the removed one gains nothing.
     assert _inbox(cfg, root_id) == {"Sunset Warmup": ["One"]}
     assert _members(cfg, gone_id) == []
+
+
+# ---------------------------------------------------------------------------
+# U128: the INBOX playlist mirrors the whole account playlist, owned rows too
+# ---------------------------------------------------------------------------
+
+
+def _owned(cfg: config.Config, silence: Path, titles: tuple[str, ...]) -> None:
+    """Land ``titles`` first under a name of their own and no pass, so each is a row."""
+    for title in titles:
+        _stage(cfg, silence, title)
+    code, acted, _ = _two_acts(["intake", "land", "--name", "older batch"])
+    assert code == int(ExitCode.OK), acted
+
+
+def test_a_playlist_of_three_owned_and_two_new_lands_all_five_in_account_order(
+    native_library, silence
+):
+    cfg, root_id = native_library
+    _owned(cfg, silence, ("Held1", "Held2", "Held3"))
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New1", "Held2", "New2", "Held3"))})
+    for title in ("New1", "New2"):
+        _stage(cfg, silence, title)
+
+    acted = _landed(cfg)
+
+    inbox = _inbox(cfg, root_id)
+    assert inbox["Sunset Warmup"] == ["Held1", "New1", "Held2", "New2", "Held3"]
+    # The owned rows are the library's own, never a second row for one file.
+    assert len(_query(cfg, "SELECT ID FROM djmdContent WHERE Title = 'Held1'")) == 1
+    (written,) = [
+        item for item in acted["data"]["items"] if item.get("account") == "pl-a"
+    ]
+    assert written["count"] == 5
+    assert not [w for w in acted["warnings"] if w["code"] == account_playlists.LEFT_OUT]
+
+
+def test_an_owned_track_in_two_account_playlists_is_in_both(native_library, silence):
+    cfg, root_id = native_library
+    _owned(cfg, silence, ("Held1",))
+    swept(
+        cfg,
+        {"pl-a": ("Sunset Warmup", ("Held1", "New1")), "pl-b": ("Deep Cuts", ("New1", "Held1"))},
+    )
+    _stage(cfg, silence, "New1")
+
+    _landed(cfg)
+
+    inbox = _inbox(cfg, root_id)
+    assert inbox["Sunset Warmup"] == ["Held1", "New1"]
+    assert inbox["Deep Cuts"] == ["New1", "Held1"]
+
+
+def test_an_owned_track_whose_row_cannot_be_found_by_path_is_warned(native_library, silence):
+    cfg, root_id = native_library
+    # On disk under the music folder, so the sweep calls it owned, and never
+    # landed, so the collection holds no row for its file.
+    loose = Path(cfg.library.root) / cfg.library.music_dir / "by hand"
+    loose.mkdir(parents=True)
+    _stage(cfg, silence, "Held1").rename(loose / "Held1.flac")
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New1"))})
+    _stage(cfg, silence, "New1")
+
+    acted = _landed(cfg)
+
+    assert _inbox(cfg, root_id) == {"Sunset Warmup": ["New1"]}
+    (warning,) = [w for w in acted["warnings"] if w["code"] == account_playlists.LEFT_OUT]
+    assert "Sunset Warmup 1. Probe - Held1" in warning["message"]
+    assert account_playlists.NO_ROW in warning["message"]
+
+
+def test_a_rerun_of_the_same_pass_adds_nothing_twice(native_library, silence, monkeypatch):
+    cfg, root_id = native_library
+    _owned(cfg, silence, ("Held1",))
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New1", "Late"))})
+    _stage(cfg, silence, "New1")
+    first = _landed(cfg)
+    # Late never arrived the first time, so the first landing named it.
+    (warning,) = [w for w in first["warnings"] if w["code"] == account_playlists.LEFT_OUT]
+    assert "Probe - Late" in warning["message"]
+
+    # Nothing staged: the same pass again is a plan of nothing and writes nothing.
+    code, again = drive(_land())
+    assert code == int(ExitCode.OK), again
+    assert again["outcome"] == "no_op", again
+
+    # Late arrives and the same pass is landed again: the account playlist
+    # this pass already mirrored is not mirrored a second time, and the new
+    # landing's playlist holds only what it brought.
+    _stage(cfg, silence, "Late")
+    later = _landed(cfg)
+
+    inbox = _inbox(cfg, root_id)
+    assert inbox["Sunset Warmup"] == ["Held1", "New1"]
+    assert inbox["Sunset Warmup 2"] == ["Late"]
+    assert not [w for w in later["warnings"] if w["code"] == account_playlists.LEFT_OUT]
+
+
+def test_a_rerun_is_read_from_the_record_of_this_pass_alone(native_library, silence):
+    """Another pass of the same account playlist mirrors it whole again, as its own landing."""
+    cfg, root_id = native_library
+    _owned(cfg, silence, ("Held1",))
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New1"))})
+    _stage(cfg, silence, "New1")
+    _landed(cfg)
+
+    run = "2026-10-03T201500Z-ab78"
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New2"))}, run_id=run)
+    _stage(cfg, silence, "New2")
+    code, acted, _ = _two_acts(_land(missing_cli.synced_name(run)))
+
+    assert code == int(ExitCode.OK), acted
+    assert _inbox(cfg, root_id)["Sunset Warmup 2"] == ["Held1", "New2"]
+
+
+def test_the_gate_screen_counts_the_owned_rows_beside_the_new(native_library, silence):
+    cfg, root_id = native_library
+    _owned(cfg, silence, ("Held1",))
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New1"))})
+    _stage(cfg, silence, "New1")
+
+    code, refused = drive(_land())
+
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["account playlists"] == ["Sunset Warmup (2 file(s), 1 already in the library)"]
+
+
+def test_another_owned_row_is_another_plan():
+    """The digest names each owned row, so an answer for one row is stale for another."""
+    target = Path("/library/music/b/New1.flac")
+
+    def planned(owned: str) -> dict:
+        one = native.PlaylistPlan(
+            name="Sunset Warmup",
+            account="pl-a",
+            members=(
+                native.PlaylistMember(content_id=owned),
+                native.PlaylistMember(target=target),
+            ),
+        )
+        return native._playlist_identity(one)
+
+    assert planned("101") != planned("102")
+    assert planned("101")["members"] == ["row 101", str(target)]
+    # A playlist of new files alone keeps the keys it had before U128.
+    alone = native.PlaylistPlan(
+        name="Sunset Warmup", account="pl-a", members=(native.PlaylistMember(target=target),)
+    )
+    assert native._playlist_identity(alone) == {
+        "name": "Sunset Warmup",
+        "account": "pl-a",
+        "targets": [str(target)],
+    }
+
+
+def test_a_playlist_whose_only_file_is_unsupported_still_names_it_as_left():
+    """A playlist dropped for holding nothing writable keeps its left rows, by its name."""
+    target = Path("/library/music/b/Odd.xyz")
+    member = account_playlists.Member(position=3, file=Path("Odd.xyz"), artist="Probe", title="Odd")
+    row = native.RowPlan(
+        source=Path("/staging/Odd.xyz"),
+        target=target,
+        action=native.UNSUPPORTED,
+        title="Odd",
+        folder_path=str(target),
+        file_name=target.name,
+        file_size=1,
+        file_type=0,
+        content_link=None,
+    )
+    one = native.PlaylistPlan(
+        name="Deep Cuts",
+        account="pl-b",
+        members=(native.PlaylistMember(target=target, member=member),),
+    )
+
+    kept, dropped = native._supported_only([one], [row])
+
+    assert kept == ()
+    assert dropped == (("Deep Cuts", member.left(account_playlists.NOT_LANDED)),)

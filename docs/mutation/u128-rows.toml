@@ -1,0 +1,118 @@
+name = "u128"
+pass_kind = "light"
+
+# U128, an account playlist's INBOX playlist mirrors the whole account
+# playlist. Batch A: the claim and the rerun rule in account_playlists.py and
+# the warnings the verb gives in land_cli.py. The landing writes playlists
+# into the live library and an intake file, so every row is user facing.
+
+[[rows]]
+id = "A1_owned_not_mirrored"
+description = "Drop every owned member from the claim, U113's new tracks only rule"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+old = '''            if row.paths not in seen:
+                seen.add(row.paths)
+                members.append(_member(row))'''
+new = '''            if row.paths not in seen:
+                seen.add(row.paths)'''
+
+[[rows]]
+id = "A2_rerun_unseen"
+description = "Never read a playlist as already mirrored by this pass, so a rerun mirrors the owned tracks again"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+old = '''        rerun = source.playlist_id in again'''
+new = '''        rerun = False'''
+
+[[rows]]
+id = "A3_rerun_keeps_owned"
+description = "On a rerun, keep the owned members and the left rows instead of the new files alone"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+old = '''            if rerun:
+                continue
+            if row.state != OWNED:'''
+new = '''            if row.state != OWNED:'''
+
+[[rows]]
+id = "A4_untied_carried_silent"
+description = "A carried row no planned file answers is silently absent rather than left"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+old = '''                if not tied:
+                    left.append(_left(row, NOT_BROUGHT))'''
+new = '''                if not tied:
+                    pass'''
+
+[[rows]]
+id = "A5_report_order_reversed"
+description = "Read the job's reports last to first, so the mirror is not in the account playlist's order"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+old = '''                        for position, report in enumerate(reports, start=1)'''
+new = '''                        for position, report in enumerate(reversed(reports), start=1)'''
+
+[[rows]]
+id = "A6_abandoned_counts"
+description = "Count every landing record as standing, abandoned and open ones too"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+old = '''        if record.workflow == ingest.INTAKE_WORKFLOW and record.state in standing'''
+new = '''        if record.workflow == ingest.INTAKE_WORKFLOW'''
+
+[[rows]]
+id = "A7_any_pass_counts"
+description = "Read a playlist as mirrored when any pass landed it, not only this one"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+old = '''        and entry.get(PASS_KEY) == pass_name'''
+new = '''        and entry.get(PASS_KEY) is not None'''
+
+[[rows]]
+id = "A8_ambiguous_is_an_answer"
+description = "Take the first of two active rows on one file as the owned track's row"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+old = '''                if matched.outcome is trees.MatchOutcome.AMBIGUOUS:
+                    answer = ("", AMBIGUOUS_ROWS)
+                    continue'''
+new = '''                if matched.outcome is trees.MatchOutcome.AMBIGUOUS:
+                    answer = (str(matched.content_ids[0]), "")
+                    break'''
+
+[[rows]]
+id = "A9_emptied_left_lost"
+description = "Drop the left rows of a claim left holding nothing"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+old = '''            emptied.extend((one.name, row) for row in left)'''
+new = '''            pass'''
+
+[[rows]]
+id = "A10_no_warning"
+description = "Give no left out warning however many rows were left"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+old = '''    if not left:
+        return []
+    named_rows'''
+new = '''    if True:
+        return []
+    named_rows'''
+
+[[rows]]
+id = "L1_bridge_warning_unsaid"
+description = "The bridge landing does not put the left rows on its warnings"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''            *account_playlists.left_warning((*emptied, *landed.left)),'''
+new = '''            *account_playlists.left_warning(()),'''
+
+[[rows]]
+id = "L2_native_warning_unsaid"
+description = "The native landing does not put the left rows on its warnings"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+old = '''    warnings.extend(account_playlists.left_warning(landed.collection.left))'''
+new = '''    warnings.extend(account_playlists.left_warning(()))'''

@@ -35280,6 +35280,24 @@ real sync of one of his playlists in rekordbox.
 **Not on the board bar.** Nothing is lost or said falsely, and it closes only
 by the author's choice.
 
+**Closed by #295, U128, 2026-10-10, on `relay/295`.** The author chose (b) on
+2026-10-10, mirror: his custom playlists sat in INBOX thin or empty because a
+landing added only the files it downloaded. A landing now reads every report
+of each account playlist's job in item order, which is the account playlist's
+order. A carried row tied to a planned file is a new member, an owned row an
+owned member carrying the report's `paths`, and every other row is left and
+named in one warning, `account-playlist-left-out`. Each owned member's row is
+found by path before the gate through one rule, `account_playlists.
+resolve_owned`: the database's candidate rows on the native medium, the
+Fresh Export's collection entries on the bridge, where the intake playlist
+names the export's own TrackID; a file two active rows claim is not an
+answer. The screen counts the owned tracks, the digest covers each one's row,
+and the bridge engine reads the export again before its first move. Each
+record entry names the account and the pass, and a later landing of the same
+pass holds only its new files for a playlist that pass mirrored, so a rerun
+adds nothing twice. The concern the decision weighed, an owned track queued
+in INBOX a second time, is real and is filed as its own residual by U128.
+
 
 ---
 

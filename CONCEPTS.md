@@ -474,11 +474,15 @@ another volume is left, being another volume's number. The gate says each.
 A playlist the author made on the streaming account, as distinct from his
 hearts, a set or a label's releases. A sweep records the account's name for it
 on its intake job (U113), and a landing of that pass gives it its OWN INBOX
-playlist named exactly as on the account, holding the files this landing
-brought in for it, with ` 2` and on when the name is held. The files still
-land in the one batch folder; only the rekordbox playlists split, and the
-batch playlist keeps what no account playlist claimed. Owned tracks are not
-added (R-905).
+playlist named exactly as on the account, with ` 2` and on when the name is
+held. Since U128 that playlist MIRRORS the account playlist: every track of it
+the library holds, the files this landing brought and the ones it already
+owned, in the account playlist's order, each owned track found by path (a row
+in the database, the export's entry on the bridge). A track neither owned nor
+brought is LEFT and named in the landing's warnings. The files still land in
+the one batch folder; only the rekordbox playlists split, and the batch
+playlist keeps what no account playlist claimed. A later landing of the same
+pass holds only its new files for a playlist that pass already mirrored.
 
 ### Rotation
 `crate inbox rotate` (U111), the write `report intake-aging` only describes.

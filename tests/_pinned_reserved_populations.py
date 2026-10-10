@@ -1033,6 +1033,13 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'favorites-refreshed',
         'internal-error',
     ],
+    # Re-pinned on the merge of main at 004cb9d (U128) into grok/290, 2026-10-10:
+    # ONE kebab literal joined in intake/account_playlists.py and nothing left,
+    # account-playlist-left-out, the WARNING code naming tracks no mirror holds.
+    # Measured on the merged tree; do not bring back a package-wide total tuple.
+    'intake/account_playlists.py': [
+        'account-playlist-left-out',
+    ],
     'intake/acrcloud.py': [
         'auth-failed',
         'credential-missing',
