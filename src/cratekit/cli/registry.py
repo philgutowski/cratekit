@@ -3135,6 +3135,45 @@ ENTRIES: tuple[Entry, ...] = (
             ),
         ),
     ),
+    # ── The taxonomy copy brought up to the shipped schema (U132) ───────────
+    #
+    # Appended, for the reason the deferred routing block above gives. Setup
+    # copies the shipped template once; this is how a class or a bucket the
+    # shipped template gained since reaches a library's copy.
+    Entry(
+        name="taxonomy.upgrade",
+        summary="add the classes and buckets the shipped taxonomy template declares "
+        "and this library's copy lacks, and state the shipped schema version",
+        module="cratekit.cli.verbs.taxonomy",
+        builder="build",
+        handler_key="taxonomy.upgrade",
+        # NO FEATURE ROW. The source system had one taxonomy table in code and
+        # nothing to upgrade.
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: No declared surface: the library's taxonomy copy beside the
+        #: database, and a dated backup of it, which are library state as the
+        #: profile verb's configuration is. No database row, no audio file, no
+        #: account. Not destructive: it only adds, and the copy as it was is
+        #: kept beside it.
+        writes=frozenset(),
+        #: The copy it upgrades is read by the verb itself, which refuses an
+        #: absent or unusable one by name before its gate, so taxonomy.active
+        #: is not declared here as well.
+        doctor_checks=("library.mounted",),
+        gates=(
+            GateSpec(
+                name="taxonomy.upgrade.apply",
+                options=("approve", "abort"),
+                prompt="Add these classes and buckets to this library's taxonomy copy "
+                "and state the shipped schema version?",
+                #: EXPLICIT (R34). The copy is the declaration every verb routes
+                #: by, so no blanket affirmative satisfies it.
+                explicit=True,
+                digest_source="plan",
+            ),
+        ),
+    ),
 )
 
 #: The verb names, as data. ``tests/test_layering.py`` reads this to enforce that

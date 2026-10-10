@@ -265,3 +265,155 @@ def test_the_remedy_names_the_verb_and_the_hand_edit():
     assert "crate taxonomy upgrade raises schema_version to 4 and adds favorites" in words
     assert "soul is held" in words
     assert "run crate taxonomy upgrade again" in words
+
+
+# ---------------------------------------------------------------------------
+# The verb, through the real dispatcher
+# ---------------------------------------------------------------------------
+
+from cratekit.cli.verbs import taxonomy as upgrade_cli  # noqa: E402
+from cratekit.core import config  # noqa: E402
+from cratekit.core.exit_codes import ExitCode  # noqa: E402
+from tests.cli_drive import drive  # noqa: E402
+from tests.test_active_taxonomy import write_active  # noqa: E402
+from tests.test_config import valid_data  # noqa: E402
+
+VERB = ["taxonomy", "upgrade"]
+APPLY = upgrade_cli.APPLY_GATE
+
+
+@pytest.fixture
+def configured(tmp_path, monkeypatch) -> config.Config:
+    root = tmp_path / "library"
+    root.mkdir()
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
+    cfg = config.from_dict(valid_data(root))
+    config.save(cfg)
+    config.reset_cache()
+    return config.load()
+
+
+def _backups(path) -> list:
+    return sorted(p for p in path.parent.iterdir() if p.name.endswith(".bak"))
+
+
+def _asked() -> tuple[str, dict]:
+    code, refused = drive(VERB)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    detail = refused["cause"]["detail"]
+    assert detail["gate"] == APPLY and detail["explicit"] is True
+    return refused["run_id"], refused
+
+
+def _decided(run_id: str, option: str) -> None:
+    code, envelope = drive(["run", "decide", run_id, APPLY, option, "--actor", "a-person"])
+    assert code == int(ExitCode.OK), envelope
+
+
+def test_the_verb_asks_then_writes_the_upgraded_copy_and_keeps_the_old_one(configured):
+    path = write_active(configured, behind())
+    run_id, refused = _asked()
+    shown = refused["cause"]["detail"]["shown"]
+    changes = {(i["kind"], i["id"], i["change"]) for i in shown["items"]}
+    assert changes == {
+        ("schema_version", "4", "raise"),
+        ("sub_class", "favorites", "add"),
+        ("bucket", "soul", "add"),
+    }
+    assert path.read_text(encoding="utf-8") == behind()
+    _decided(run_id, "approve")
+    code, acted = drive(["--run", run_id, *VERB])
+    assert code == int(ExitCode.OK), acted
+    assert acted["data"]["digest"] == shown["digest"]
+    assert [w["code"] for w in acted["warnings"]] == [upgrade_cli.UPGRADED]
+    assert path.read_text(encoding="utf-8") == _plan(behind()).after
+    (kept,) = _backups(path)
+    assert kept.read_text(encoding="utf-8") == behind()
+    assert str(kept) in acted["warnings"][0]["message"]
+
+
+def test_a_second_run_plans_nothing_and_asks_nothing(configured):
+    path = write_active(configured, _plan(behind()).after)
+    code, acted = drive(VERB)
+    assert code == int(ExitCode.OK) and acted["outcome"] == "no_op", acted
+    assert [w["code"] for w in acted["warnings"]] == [upgrade_cli.NOTHING_TO_UPGRADE]
+    assert _backups(path) == []
+
+
+def test_what_is_held_is_said_and_written_around(configured):
+    path = write_active(configured, live_shaped())
+    run_id, _ = _asked()
+    _decided(run_id, "approve")
+    code, acted = drive(["--run", run_id, *VERB])
+    assert code == int(ExitCode.OK), acted
+    codes = [w["code"] for w in acted["warnings"]]
+    assert codes == [upgrade_cli.HELD, upgrade_cli.UPGRADED]
+    assert "bucket soul" in acted["warnings"][0]["message"]
+    assert "rnb" in acted["warnings"][0]["message"]
+    after = path.read_text(encoding="utf-8")
+    assert _bucket(after, "rnb") == _bucket(live_shaped(), "rnb")
+    code, again = drive(VERB)
+    assert again["outcome"] == "no_op"
+    assert [w["code"] for w in again["warnings"]] == [upgrade_cli.HELD, upgrade_cli.NOTHING_TO_UPGRADE]
+
+
+def test_an_abort_writes_nothing(configured):
+    path = write_active(configured, behind())
+    run_id, _ = _asked()
+    _decided(run_id, "abort")
+    code, acted = drive(["--run", run_id, *VERB])
+    assert acted["outcome"] == "no_op", acted
+    assert path.read_text(encoding="utf-8") == behind()
+    assert _backups(path) == []
+
+
+def test_a_copy_edited_between_the_answer_and_the_write_is_refused_as_stale(configured):
+    path = write_active(configured, behind())
+    run_id, _ = _asked()
+    _decided(run_id, "approve")
+    edited = behind().replace('display = "R&B"', 'display = "R&B Edited By Hand"', 1)
+    path.write_text(edited, encoding="utf-8")
+    code, acted = drive(["--run", run_id, *VERB])
+    assert acted["cause"]["reason"] == "decision-stale", acted
+    assert path.read_text(encoding="utf-8") == edited
+    assert _backups(path) == []
+
+
+def test_a_library_with_no_copy_is_refused_and_given_nothing(configured):
+    path = config.state_path("taxonomy_active", configured)
+    assert not path.exists()
+    code, refused = drive(VERB)
+    assert refused["cause"]["reason"] == "config-unusable", refused
+    assert code != int(ExitCode.DECISION_REQUIRED)
+    assert not path.exists()
+
+
+def test_a_copy_that_does_not_load_is_refused_before_the_gate(configured):
+    path = write_active(configured, behind().replace('id = "rnb"', 'id = "R and B"', 1))
+    code, refused = drive(VERB)
+    assert refused["cause"]["reason"] == "config-unusable", refused
+    assert code != int(ExitCode.DECISION_REQUIRED)
+    assert _backups(path) == []
+
+
+def test_the_digest_is_a_function_of_the_two_texts_alone():
+    """The payload takes no path, so a rehearsal on a disposable copy of the
+    same file matches the live plan, and another text is another digest."""
+    one = upgrade_cli.payload(_plan(behind()))
+    two = upgrade_cli.payload(_plan(behind()))
+    assert one["digest"] == two["digest"]
+    other = upgrade_cli.payload(_plan(live_shaped()))
+    assert other["digest"] != one["digest"]
+
+
+def test_a_backup_never_takes_an_earlier_backups_name(tmp_path):
+    from datetime import datetime
+
+    path = tmp_path / "taxonomy.toml"
+    now = datetime(2026, 10, 10, 14, 5, 12)
+    first = upgrade_cli.backup_path(path, now)
+    assert first.name == "taxonomy.toml.2026-10-10T140512.bak"
+    first.write_text("x", encoding="utf-8")
+    second = upgrade_cli.backup_path(path, now)
+    assert second != first and second.parent == path.parent
+    assert not second.exists()
