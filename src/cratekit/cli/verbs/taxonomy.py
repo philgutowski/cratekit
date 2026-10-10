@@ -142,15 +142,45 @@ def backup_path(path: Path, now: datetime) -> Path:
     return candidate
 
 
-def _read_back(cfg: config.Config, path: Path, written: str) -> str | None:
-    """Why the copy at ``path`` is not the one written, or None when it is and it loads."""
+def as_read(raw: bytes) -> str | None:
+    """``raw`` as the loader reads it, line endings folded to LF, or None when not UTF-8."""
     try:
-        if path.read_text(encoding="utf-8") != written:
-            return "the text on disk is not the text written"
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def newline(raw: bytes) -> str:
+    """The copy's line ending: CRLF when every line ends in one, LF otherwise."""
+    lines = raw.count(b"\n")
+    crlf = raw.count(b"\r\n")
+    return "\r\n" if lines and crlf == lines and raw.count(b"\r") == crlf else "\n"
+
+
+def _read_back(cfg: config.Config, path: Path, written: bytes) -> str | None:
+    """Why the copy at ``path`` is not the one written, or None when it is and it loads.
+
+    A copy that is not UTF-8 reaches the loader, which refuses it by cause.
+    """
+    try:
+        if path.read_bytes() != written:
+            return "the bytes on disk are not the bytes written"
         active_taxonomy.load(cfg)
     except CratekitError as exc:
         return exc.cause.message
-    except (OSError, UnicodeDecodeError) as exc:
+    except OSError as exc:
+        return str(exc)
+    return None
+
+
+def _restore(path: Path, raw: bytes) -> str | None:
+    """Put ``raw`` back at ``path`` and read it back; why it did not take, or None."""
+    try:
+        config.atomic_write_bytes(raw, path)
+        if path.read_bytes() != raw:
+            return "the bytes on disk after it are not the copy as it was"
+    except OSError as exc:
         return str(exc)
     return None
 
@@ -198,24 +228,48 @@ def taxonomy_upgrade_verb(ctx: "Context") -> Envelope:
     if moved["digest"] != data["digest"]:
         raise gates.DecisionStale(spec, ctx.run.run_id, data["digest"], moved["digest"])
 
+    # THE BYTES ON DISK ARE WHAT IS KEPT AND PUT BACK. The planner reads the
+    # copy as text, which folds CRLF to LF, so the copy is read again as bytes:
+    # the backup and any restore are those bytes exactly, and the upgraded copy
+    # keeps their line ending. Bytes that no longer read as the planned text
+    # are an edit made after the second plan, refused as stale like one made
+    # before it.
+    raw = path.read_bytes()
+    if as_read(raw) != fresh.before:
+        # The copy's digest, not a plan's: there is no plan of bytes that changed.
+        moved_to = taxonomy.template_digest(raw.decode("utf-8", errors="replace"))
+        raise gates.DecisionStale(spec, ctx.run.run_id, data["digest"], moved_to)
+    ending = newline(raw)
+    written = fresh.after.replace("\n", ending).encode("utf-8")
+
     kept = backup_path(path, datetime.now())
-    config.atomic_write_bytes(fresh.before.encode("utf-8"), kept)
-    config.atomic_write_bytes(fresh.after.encode("utf-8"), path)
+    config.atomic_write_bytes(raw, kept)
+    config.atomic_write_bytes(written, path)
 
     # READ BACK THROUGH THE LOADER every verb reads the copy with, so what was
     # written is what routes. A copy that does not read back is replaced by the
     # one it replaced, from the bytes this verb holds, so the library is never
-    # left with a declaration every routing verb refuses.
-    problem = _read_back(cfg, path, fresh.after)
+    # left with a declaration every routing verb refuses. That restore is read
+    # back too, and the refusal says whether it took: a disk that fills or a
+    # volume that drops after the write can fail it, and then the person needs
+    # the backup's path more than anything else this verb says.
+    problem = _read_back(cfg, path, written)
     if problem is not None:
-        config.atomic_write_bytes(fresh.before.encode("utf-8"), path)
+        failed = _restore(path, raw)
+        if failed is None:
+            outcome = f"so the copy as it was has been put back; it is also kept at {kept}"
+        else:
+            outcome = (
+                f"and putting the copy as it was back failed too ({failed}), so {path} may "
+                f"hold the text that did not read back; the copy as it was is kept at "
+                f"{kept}, copy it over {path} by hand"
+            )
         raise refuse(
             "internal-error",
-            f"the upgraded copy at {path} did not read back ({problem}), so the copy as "
-            f"it was has been put back; it is also kept at {kept}",
+            f"the upgraded copy at {path} did not read back ({problem}), {outcome}",
             remedy=Remedy.REPORT_DEFECT,
             origin=_ORIGIN,
-            detail={"path": str(path), "backup": str(kept)},
+            detail={"path": str(path), "backup": str(kept), "restored": failed is None},
         )
 
     added = [*fresh.classes, *fresh.buckets]
@@ -230,6 +284,12 @@ def taxonomy_upgrade_verb(ctx: "Context") -> Envelope:
                     + (f" and declares {', '.join(added)}" if added else "")
                     + f"; nothing it already declared was changed, and the copy as it "
                     f"was is at {kept}"
+                    + (
+                        "; its mixed line endings were written as LF, and the copy as it "
+                        "was keeps its own"
+                        if ending == "\n" and b"\r" in raw
+                        else ""
+                    )
                 ),
             },
         ],
@@ -241,9 +301,11 @@ __all__ = [
     "HELD",
     "NOTHING_TO_UPGRADE",
     "UPGRADED",
+    "as_read",
     "backup_path",
     "build",
     "items",
+    "newline",
     "payload",
     "taxonomy_upgrade_verb",
 ]

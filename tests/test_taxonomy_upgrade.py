@@ -162,6 +162,31 @@ def test_an_added_entry_sits_where_the_shipped_template_puts_it():
     assert [c.id for c in after.sub_classes] == [c.id for c in shipped.sub_classes]
 
 
+def test_headers_that_cannot_be_matched_to_entries_put_the_block_at_the_end():
+    """The fallback: a header the scan does not read (a quoted key here) leaves
+    the copy's headers and entries uneven, so the block goes at the end, and
+    the copy's own entries stay exactly as they were."""
+    text = behind()
+    assert text.count("[[sub_class]]\n") > 1
+    quoted = text.replace("[[sub_class]]\n", '[["sub_class"]]\n', 1)
+    found = _plan(quoted)
+    assert found.classes == ("favorites",)
+    assert found.after.rstrip("\n").endswith(
+        upgrade.cut(_shipped(), upgrade.SUB_CLASS, "favorites").rstrip("\n")
+    )
+    before = [c.id for c in taxonomy.load_taxonomy(quoted).sub_classes]
+    assert [c.id for c in taxonomy.load_taxonomy(found.after).sub_classes] == [
+        *before,
+        "favorites",
+    ]
+
+
+def test_a_placement_that_does_not_parse_is_not_kept_whole():
+    """A copy that declares its entries inline cannot take a table at its end;
+    that is a hold, not a ValueError read as a shipped template defect."""
+    assert upgrade._kept_whole("a = 1\n", "a = 1\nb = \n", upgrade.BUCKET, {}) is False
+
+
 def test_a_shipped_template_that_does_not_load_is_not_the_copys_fault():
     broken = _shipped().replace('id = "rnb"', 'id = "R and B"', 1)
     with pytest.raises(ValueError) as caught:
@@ -460,3 +485,111 @@ def test_a_copy_that_does_not_read_back_is_replaced_by_the_one_it_replaced(confi
     assert path.read_text(encoding="utf-8") == behind()
     (kept,) = _backups(path)
     assert kept.read_text(encoding="utf-8") == behind()
+
+
+def _resumed(configured, text: str):
+    """``text`` as the copy, asked, approved, and the verb resumed."""
+    path = write_active(configured, text)
+    run_id, _ = _asked()
+    _decided(run_id, "approve")
+    return path, run_id
+
+
+def test_a_crlf_copy_is_kept_byte_for_byte_and_upgraded_in_its_own_line_ending(configured):
+    crlf = behind().replace("\n", "\r\n")
+    path, run_id = _resumed(configured, crlf)
+    code, acted = drive(["--run", run_id, *VERB])
+    assert code == int(ExitCode.OK), acted
+    (kept,) = _backups(path)
+    assert kept.read_bytes() == crlf.encode("utf-8")
+    written = path.read_bytes()
+    assert written.count(b"\n") == written.count(b"\r\n")
+    assert upgrade_cli.as_read(written) == _plan(behind()).after
+    assert "line endings" not in str(acted["warnings"])
+
+
+def test_a_crlf_copy_plans_the_digest_its_lf_twin_does(configured):
+    """A rehearsal on a copy checked out with the other line ending still matches."""
+    write_active(configured, behind())
+    _, lf = _asked()
+    write_active(configured, behind().replace("\n", "\r\n"))
+    _, crlf = _asked()
+    assert lf["cause"]["detail"]["shown"]["digest"] == crlf["cause"]["detail"]["shown"]["digest"]
+
+
+def test_mixed_line_endings_are_written_as_lf_and_said(configured):
+    mixed = behind().replace("\n", "\r\n", 1)
+    path, run_id = _resumed(configured, mixed)
+    code, acted = drive(["--run", run_id, *VERB])
+    assert code == int(ExitCode.OK), acted
+    (kept,) = _backups(path)
+    assert kept.read_bytes() == mixed.encode("utf-8")
+    assert b"\r" not in path.read_bytes()
+    assert "mixed line endings were written as LF" in str(acted["warnings"])
+
+
+def test_an_edit_after_the_second_plan_is_refused_as_stale(configured, monkeypatch):
+    path, run_id = _resumed(configured, behind())
+    edited = behind().replace('display = "R&B"', 'display = "R&B Edited By Hand"', 1)
+    calls = []
+    real = upgrade.planned
+
+    def planned_then_edited(cfg):
+        out = real(cfg)
+        calls.append(1)
+        if len(calls) == 2:
+            path.write_text(edited, encoding="utf-8")
+        return out
+
+    monkeypatch.setattr(upgrade, "planned", planned_then_edited)
+    code, acted = drive(["--run", run_id, *VERB])
+    assert len(calls) == 2
+    assert acted["cause"]["reason"] == "decision-stale", acted
+    assert path.read_text(encoding="utf-8") == edited
+    assert _backups(path) == []
+
+
+def test_a_restore_that_fails_says_so_and_names_the_backup(configured, monkeypatch):
+    from cratekit.core import active_taxonomy
+    from cratekit.core.cause import refuse
+
+    path, run_id = _resumed(configured, behind())
+
+    def refused(cfg):
+        raise refuse("config-unusable", "a loader that disagrees with the planner")
+
+    writes = []
+    real = config.atomic_write_bytes
+
+    def full_on_the_restore(payload, target, **kwargs):
+        if target == path:
+            writes.append(payload)
+            if len(writes) == 2:
+                raise OSError(28, "No space left on device")
+        return real(payload, target, **kwargs)
+
+    monkeypatch.setattr(active_taxonomy, "load", refused)
+    monkeypatch.setattr(config, "atomic_write_bytes", full_on_the_restore)
+    code, acted = drive(["--run", run_id, *VERB])
+    cause = acted["cause"]
+    assert cause["reason"] == "internal-error", acted
+    (kept,) = _backups(path)
+    assert "failed too" in cause["message"] and "No space left" in cause["message"]
+    assert str(kept) in cause["message"]
+    assert cause["detail"]["restored"] is False
+    assert kept.read_text(encoding="utf-8") == behind()
+
+
+def test_the_read_back_names_a_copy_it_cannot_read(configured, tmp_path):
+    directory = tmp_path / "a-directory"
+    directory.mkdir()
+    problem = upgrade_cli._read_back(configured, directory, b"")
+    assert problem is not None and "directory" in problem.lower()
+
+
+def test_the_read_back_names_a_copy_that_is_not_utf8(configured):
+    raw = b"schema_version = 4\n\xff\xfe\n"
+    path = write_active(configured, "")
+    path.write_bytes(raw)
+    problem = upgrade_cli._read_back(configured, path, raw)
+    assert problem is not None and "utf" in problem.lower(), problem
