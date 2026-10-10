@@ -1,0 +1,92 @@
+name = "u122"
+pass_kind = "light"
+
+[[rows]]
+id = "H1_no_hold"
+description = "Remove the hold: derive_status ignores a held status and derives from the graph"
+file = "scripts/board.py"
+tests = ["tests/test_board_status.py", "tests/test_pending_units.py"]
+old = '''    if current in UNDERWAY:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "H2_review_not_held"
+description = "UNDERWAY loses In review, the runner's status, so it reads as drift again"
+file = "scripts/board.py"
+tests = ["tests/test_board_status.py", "tests/test_pending_units.py"]
+old = '''UNDERWAY = ("In Progress", "In review")'''
+new = '''UNDERWAY = ("In Progress",)'''
+
+[[rows]]
+id = "H3_progress_not_held"
+description = "UNDERWAY loses In Progress, a session's and a lane's status"
+file = "scripts/board.py"
+tests = ["tests/test_board_status.py", "tests/test_pending_units.py"]
+old = '''UNDERWAY = ("In Progress", "In review")'''
+new = '''UNDERWAY = ("In review",)'''
+
+[[rows]]
+id = "H4_hold_flattened"
+description = "A held card derives In Progress whatever it held, so In review becomes drift"
+file = "scripts/board.py"
+tests = ["tests/test_board_status.py", "tests/test_pending_units.py"]
+old = '''        return current
+'''
+new = '''        return "In Progress"
+'''
+
+[[rows]]
+id = "H5_units_only"
+description = "The hold applies to units only, the behaviour before the 2026-10-09 amendment"
+file = "scripts/board.py"
+tests = ["tests/test_board_status.py", "tests/test_pending_units.py"]
+old = '''    if current in UNDERWAY:'''
+new = '''    if current in UNDERWAY and node["unit"]:'''
+
+[[rows]]
+id = "H6_hold_beats_closure"
+description = "The hold is checked before closure, so a closed held card is not Done"
+file = "scripts/board.py"
+tests = ["tests/test_board_status.py", "tests/test_pending_units.py"]
+old = '''    if node["closed"]:
+        return "Done"
+    if current in UNDERWAY:'''
+new = '''    if current in UNDERWAY:
+        return current
+    if node["closed"]:
+        return "Done"
+    if False:'''
+
+[[rows]]
+id = "H7_attended_beats_hold"
+description = "Attended is checked before the hold, the order the review moved"
+file = "scripts/board.py"
+tests = ["tests/test_board_status.py", "tests/test_pending_units.py"]
+old = '''    if current in UNDERWAY:'''
+new = '''    if node["attended"]:
+        return "Attended"
+    if current in UNDERWAY:'''
+
+[[rows]]
+id = "N1_next_busy_progress_only"
+description = "next counts only In Progress as busy, so an In review card is offered again"
+file = "scripts/board.py"
+tests = ["tests/test_board_status.py", "tests/test_pending_units.py"]
+old = '''.get("status") in UNDERWAY'''
+new = '''.get("status") == "In Progress"'''
+
+[[rows]]
+id = "N2_next_offers_busy"
+description = "next lists a busy card under underway but leaves it in the ready list"
+file = "scripts/board.py"
+tests = ["tests/test_board_status.py", "tests/test_pending_units.py"]
+old = '''    ready = [n for n in ready if n["number"] not in busy]'''
+new = '''    ready = list(ready)'''
+
+[[rows]]
+id = "N3_next_no_status"
+description = "next drops the status column, so a reader cannot tell the runner's hold from a session's"
+file = "scripts/board.py"
+tests = ["tests/test_board_status.py", "tests/test_pending_units.py"]
+old = '''            print(f"  #{node['number']:<3} {status:<11} {node['title']}")'''
+new = '''            print(f"  #{node['number']:<3} {node['title']}")'''
