@@ -36688,3 +36688,174 @@ and organize moves the day in the name; not driven past that reading.
 
 **Closes when:** the go stamps a local day on the settled answer, and
 organize reads that stamp. Ledger only.
+
+---
+
+## R-959. A landing given no pass places no heart, and a landing on the bridge places none
+
+**Found:** at the build of #277, U120, 2026-10-10.
+
+**The mechanism.** The native landing knows a file is a heart only through the
+pass's hearts job: `account_playlists.hearted` reads `batch_name.pass_jobs` for
+the pass given with `--pass`, keeps the hearts job among them, and ties its
+carried rows to the planned files by the match rule. A landing run with no
+pass, as `crate intake playlist favorites` followed by `crate acquire download`
+and `crate intake land --name` is, has no job to read, so its files land as any
+other and no heart is placed. The bridge medium writes an export and places
+nothing on either path. The three September hearts landed exactly this way,
+which is why the backfill exists.
+
+**Measured cost.** On the live library every heart that landed before U120,
+and any that lands by hand after it, sits in INBOX until `crate favorites
+backfill` is run. The backfill finds them all, so the cost is one attended
+run, not a lost heart.
+
+**Closes when:** the landing resolves its files against every hearts job on
+the library rather than the pass's, which is wrong while the open question
+about owned hearts stands, since an old hearts job carried every heart the
+library then lacked; or `crate intake land` grows a `--hearts` flag naming a
+job. Ledger only until the author answers the question.
+
+---
+
+## R-960. An undated heart stays in Undated when a date later resolves, and nothing moves it to its quarter
+
+**Found:** at the build of #277, U120, 2026-10-10.
+
+**The mechanism.** The source system kept an undated backlog and moved a
+heart out of it into its quarter once the account dated it. This engine adds
+and never removes, by the standing rule for every favourites writer, so a
+heart placed in `Undated` stays there if a later listing carries its date. A
+heart listed by a build before U120 carries no frozen date, so the landing of
+such a job puts it in `Undated` too; the backfill asks the account for those
+and places the rest in `Undated` only when the account dates them nowhere.
+
+**Measured cost.** Not driven live: the live library holds no `Undated`
+playlist yet and every hearts job queued from now on freezes its dates. The
+cost is one hand drag per heart the account dates after the fact.
+
+**Closes when:** a verb moves a heart from `Undated` to its quarter behind the
+refresh's explicit gate, since a move is a removal. Ledger only.
+
+---
+
+## R-961. The favourites playlist is named in two places, the taxonomy class and the outbound default, and one chooser picks between them
+
+**Found:** at the build of #277, U120, 2026-10-10.
+
+**The mechanism.** U119 declared which playlist is the favourites as the
+`favorites` class's `signal_playlist`; the outbound sweep names the same
+playlist as `source.DEFAULT_FAVORITES_PLAYLIST` and its `--favorites-playlist`
+flag. `placement.source_name` reads the class first and falls back to the
+default, so the landing and the backfill agree with the refresh on a library
+that declares the class and still work on one whose active taxonomy predates
+it, which the live library's did on 2026-10-10. An author who renames the
+class's playlist has renamed where hearts land and not where the sweep reads
+local favourites from, unless the flag follows.
+
+**Measured cost.** Not driven. The two names are equal on the shipped
+template and on the live library.
+
+**Closes when:** the outbound sweep reads its default from the class too, or
+the class's `signal_playlist` is the one spelling and the outbound default is
+removed. Ledger only.
+
+---
+
+## R-962. The backfill tells a landed heart from a filed one by where its file sits, a shape and not a record
+
+**Found:** at the build of #277, U120, 2026-10-10.
+
+**The mechanism.** `landing.is_landed_path` says a file is one a landing put
+down when it sits directly in a folder under the music dir, which is where
+`landing.target_dir` puts every batch and where nothing the source system
+filed sits, its files being two or more folders deep under
+`Processed_Tracks`. The intake records could not answer instead: a bridge
+landing's record names only its intake file, and a native landing whose every
+file an account playlist claimed records no batch playlist, so neither names
+the batch folder for every landing. A file somebody drops into a new folder
+directly under the music dir by hand reads as landed, and a landed file
+somebody moves deeper reads as filed.
+
+**Measured cost.** None on the live library as read on 2026-10-10: every
+folder directly under `Music` is a batch or the source system's own roots,
+and every landed heart sits in one. The rule is wrong only for a hand move.
+
+**Closes when:** every landing records its batch folder on its session
+record, both media, and the backfill reads the records. Ledger only.
+
+---
+
+## R-963. A provider that still serves a playlist just after accepting its delete makes remove_playlist report it not removed
+
+**Found:** at the review of #282, U123, 2026-10-10.
+
+**The mechanism.** `TidalAccount.remove_playlist` reads the playlist back after
+the provider accepts its delete and refuses `outbound-remove-refused`,
+`read-back-differs`, when it is still served. A provider whose lookup lags its
+delete for a moment would be reported as having refused, the ledger entry would
+not be dropped and no release would be marked heard.
+
+**Measured cost.** Not measured: no live delete was made from this task. The
+failure is the safe direction, a removal reported as not done, and a second run
+then finds no playlist by the name in the folder, plans ABSENT, names the
+ledger's identifier as possibly outside the folder, and marks the releases
+heard.
+
+**Closes when:** a live delete at an attended sitting shows whether the lookup
+lags, and if it does, the read back waits and asks again before refusing.
+Ledger only.
+
+---
+
+## R-964. A dated playlist U117 made before U123 landed is not vouched for, so label heard refuses to remove it
+
+**Found:** at the review of #282, U123, 2026-10-10.
+
+**The mechanism.** `label heard` takes tracks off or removes a dated playlist
+only when the outbound ledger records it as made here, and the ledger learned to
+record one in this unit, through `reserve_label_dated`. A dated playlist
+`crate organize` created between U117 landing and this unit landing has no such
+record, and the dated plan reuses it by name without ever recording it, so the
+verb refuses it before the gate with `label-heard-not-product-made`. A plan
+that only marks releases heard, KEEP or ABSENT, is not refused.
+
+**Measured cost.** Not driven against the live account. The window is the time
+between the two landings, and the remedy is in the refusal: merge and remove
+the playlist by hand, then run the verb again to mark its releases heard.
+Recording such a playlist as made here after the fact would take the product's
+word for a playlist nobody can prove it created, which is the one judgement the
+ledger exists not to make.
+
+**Closes when:** every such playlist has been merged by hand once, or the author
+decides to vouch for them by a recorded, attended act. Ledger only.
+
+---
+
+## R-965. label heard writes nothing in the Record Labels tree, since the catalogue tree never leaves the xml bridge
+
+**Found:** at the plan of #282, U123, 2026-10-10.
+
+**The mechanism.** The brief asked `crate label heard` to merge the dated
+playlist into the year and remove it in the Record Labels tree too, through the
+gated database writer `inbox rotate` uses. That writer refuses a tree that is
+not cut over (`tree-unconverged`), and `tree_registry.cutover_trees` admits the
+routing tree and the intake tree only: the catalogue tree stays on the xml
+bridge for good, because a catalogue crawl is not rebuildable (R39). Nothing
+writes a dated playlist into the Record Labels tree either, since U117 built the
+account half only, and `organize`'s rekordbox area lists that tree and plans
+nothing in it. So the verb writes the account and the label review store, and
+says on every run, under `label-heard-tree-unchanged`, that rekordbox is not
+changed.
+
+**Measured cost.** None today: no dated playlist exists in the tree to merge,
+measured by reading every writer of the tree (`write/trees.py`'s
+`insert_record_labels_trees` builds `Record Labels / <Label> / <Label> <year>`
+and nothing dated). A tree half built against a database native Record Labels
+tree would be code over a state the product cannot reach.
+
+**Closes when:** the author decides whether the dated playlist belongs in
+rekordbox at all, and if it does, through which writer: the intake file's xml
+for the add and something else for the removal, since an xml import cannot take
+a playlist away. A31, issue #289, filed with this unit, carries the question.
+Ledger only.
