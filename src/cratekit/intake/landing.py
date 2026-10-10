@@ -60,7 +60,7 @@ import json
 import os
 import unicodedata
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Iterator, Mapping, Sequence
 
@@ -70,6 +70,7 @@ from cratekit.core import (
     analysis_store,
     config,
     jobs,
+    locations,
     tags,
     taxonomy,
     tree_registry,
@@ -81,7 +82,7 @@ from cratekit.intake.ingest import PlacedTrack
 from cratekit.write import rbxml, trees
 
 if TYPE_CHECKING:
-    from cratekit.intake.account_playlists import Claimed
+    from cratekit.intake.account_playlists import Claimed, Left
 
 #: The per item download directory ``acquire download`` keeps under staging.
 #: Whatever is in it belongs to an attempt that did not finish. Named here
@@ -177,21 +178,99 @@ class Landed:
     unlabelled: tuple[Unlabelled, ...] = ()
     #: The account playlists written into the intake file, each with its count.
     split: tuple[tuple[Claimed, int], ...] = ()
+    #: Each account playlist track the intake file does not hold, by playlist
+    #: name (U128): the plan's left rows, an owned track the export holds no
+    #: entry for, and a planned file that did not land.
+    left: tuple[tuple[str, Left], ...] = ()
 
 
-def landed_counts(
-    split: Sequence[Claimed], target: Path, landed: set[Path]
-) -> tuple[tuple[Claimed, int], ...]:
-    """Each account playlist and how many of its files are among ``landed``, none left out.
+def export_rows(content: bytes) -> list[trees.ContentRow]:
+    """The export's collection entries as the row matcher reads them (U128).
 
-    A playlist none of whose files landed is not written by either medium, so
-    it is not reported as written.
+    An export lists no removed track, so none is a tombstone. An entry with no
+    Location, a streaming pseudo track, resolves under no root and the index
+    drops it; an entry whose Location names another machine has no path here
+    at all, so it is dropped before the index, which would refuse it, since a
+    track on another host is no file of this library.
     """
-    counted = (
-        (claimed, sum(1 for path in claimed.files if target / path.name in landed))
-        for claimed in split
+    found: list[trees.ContentRow] = []
+    for track in rbxml.collection_tracks(content):
+        recorded = rbxml.attributes(content, track).get("Location", "")
+        try:
+            locations.location_to_path(recorded)
+        except locations.LocationDecodeError:
+            continue
+        found.append(trees.ContentRow(content_id=track.track_id, recorded=recorded, deleted=False))
+    return found
+
+
+def owned_in_export(
+    cfg: config.Config, split: Sequence[Claimed], export: Path
+) -> tuple[tuple[Claimed, ...], tuple[tuple[str, Left], ...]]:
+    """Each account playlist with its owned tracks found in the export by path (U128).
+
+    THE EXPORT THE BATCH IS SPLICED INTO is the collection as rekordbox last
+    exported it, so an owned track's TrackID there is the row the import joins
+    to the playlist. Asked before the gate, so the screen counts only what the
+    intake file will hold. An export that cannot be read finds nothing here,
+    and the preflight refuses it by its own cause.
+    """
+    from cratekit.intake import account_playlists
+
+    if not any(one.owned for one in split):
+        return tuple(split), ()
+    try:
+        content = export.read_bytes()
+    except OSError:
+        content = b""
+    return account_playlists.resolve_owned(cfg, split, export_rows(content))
+
+
+def _assert_owned_unchanged(cfg: config.Config, split: Sequence[Claimed], export: Path) -> None:
+    """Refuse when the export's entries for the owned tracks moved since the plan.
+
+    The TrackIDs were read before the gate. An export rewritten since could
+    give another track the same number, and the playlist would then name the
+    wrong track, so they are read again before the first move.
+    """
+    if not any(one.owned for one in split):
+        return
+    planned = {(one.name, m.paths): m.row for one in split for m in one.members if m.file is None}
+    again, _emptied = owned_in_export(
+        cfg, [replace(one, left=()) for one in split], export
     )
-    return tuple((claimed, count) for claimed, count in counted if count)
+    now = {(one.name, m.paths): m.row for one in again for m in one.members if m.file is None}
+    if now != planned:
+        raise refuse(
+            "decision-stale",
+            f"{export} no longer lists the owned tracks of the account playlists as it "
+            f"did when this landing was planned, so nothing was moved; run the landing "
+            f"again against the export as it is",
+            origin=_ORIGIN,
+            detail={"export": str(export)},
+        )
+
+
+def _inbox_playlists(
+    split: Sequence[Claimed], *, target: Path, pass_name: str | None
+) -> list[ingest.InboxPlaylist]:
+    """Each account playlist as the intake file writes it, in the account playlist's order.
+
+    A new member by the path its file lands at, an owned one by the TrackID
+    :func:`owned_in_export` found for it before the gate.
+    """
+    return [
+        ingest.InboxPlaylist(
+            name=one.name,
+            members=tuple(
+                target / member.file.name if member.file is not None else member.row
+                for member in one.members
+            ),
+            account=one.playlist_id,
+            pass_name=pass_name or "",
+        )
+        for one in split
+    ]
 
 
 def _listable(entry: Path) -> bool:
@@ -1133,13 +1212,16 @@ def apply(
     manifest: Path | None = None,
     manifest_digest: str | None = None,
     split: Sequence[Claimed] = (),
+    pass_name: str | None = None,
 ) -> Landed:
     """Move the planned files into the library, then write one intake file.
 
-    ``split`` is the playlists the author made on the account, each with the
-    planned files it claimed and the name it lands as (U113). Each is its own
-    playlist in the intake file and the batch playlist keeps the rest. A file
-    the move refused is in none of them.
+    ``split`` is the playlists the author made on the account, each with its
+    members and the name it lands as (U113). Each is its own playlist in the
+    intake file, holding the owned tracks the export lists beside the files
+    it claimed, in the account playlist's order (U128), and the batch
+    playlist keeps the rest. A file the move refused is in none of them.
+    ``pass_name`` is recorded beside each, so a rerun of the pass finds it.
 
     ``manifest`` is the provenance sidecar of the list the batch was acquired
     from. With one, its label rows are filed under the catalog tree in the same
@@ -1173,7 +1255,10 @@ def apply(
     movable, refused = _screen(
         plan, target, checked.declared, nothing_after="no intake file was written"
     )
+    _assert_owned_unchanged(cfg, split, export)
     moved = _move(plan, target, movable, refused, nothing_after="no intake file was written")
+    inbox = _inbox_playlists(split, target=target, pass_name=pass_name)
+    left: list[tuple[str, Left]] = [(one.name, row) for one in split for row in one.left]
 
     try:
         placed = ingest.place_files(
@@ -1186,11 +1271,9 @@ def apply(
             # THE BATCH'S OWN NAME (U110), the one its folder carries, and not
             # the intake file's stem, which names the pass and ends ``_inboxed``.
             playlist=plan.batch,
-            # Each file under the name it has in the library, where it now is.
-            split=[
-                (claimed.name, [target / path.name for path in claimed.files])
-                for claimed in split
-            ],
+            # Each file under the name it has in the library, where it now is,
+            # and each owned track by the export's own TrackID.
+            split=inbox,
         )
     except Exception as exc:
         # ``place_files`` writes the intake file before it records the routing
@@ -1208,6 +1291,22 @@ def apply(
         ) from exc
 
     labelled, unlabelled = _label(cfg, destination, checked, label_rows, placed, target)
+    # EACH PLAYLIST'S COUNT IS WHAT THE INTAKE FILE HOLDS FOR IT, new and owned
+    # (U128), and a planned file that did not land is a row it does not hold.
+    # A playlist holding nothing is not written, so it is not reported.
+    from cratekit.intake import account_playlists
+
+    ids_by_path = {item.path: item.track_id for item in placed}
+    counted: list[tuple[Claimed, int]] = []
+    for claimed, written in zip(split, inbox, strict=True):
+        left.extend(
+            (claimed.name, member.left(account_playlists.NOT_LANDED))
+            for member in claimed.members
+            if member.file is not None and target / member.file.name not in ids_by_path
+        )
+        count = len(written.track_ids(ids_by_path))
+        if count:
+            counted.append((claimed, count))
     return Landed(
         destination=destination,
         placed=tuple(placed),
@@ -1215,7 +1314,8 @@ def apply(
         refused=tuple(refused),
         labelled=tuple(labelled),
         unlabelled=tuple(unlabelled),
-        split=landed_counts(split, target, {item.path for item in placed}),
+        split=tuple(counted),
+        left=tuple(left),
     )
 
 

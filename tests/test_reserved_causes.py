@@ -6312,7 +6312,11 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # 2026-10-10: 710 to 711 distinct, non-keys UNCHANGED at 497. ONE joined,
     # link-majority-unclear, absent from `main`'s own `src` by git grep, and it
     # is the key pinned above.
-    assert (len(literals), len(literals - set(causes))) == (711, 497), (
+    # Re-pinned on U128, the INBOX playlist mirrors the account playlist,
+    # 2026-10-10: 711 to 712 distinct, non-keys 497 to 498. ONE joined and
+    # nothing left, account-playlist-left-out, absent from `main`'s own `src`
+    # by git grep, the WARNING code naming the tracks no mirror holds.
+    assert (len(literals), len(literals - set(causes))) == (712, 498), (
         f"the kebab-literal population moved to {len(literals)} distinct with "
         f"{len(literals - set(causes))} that are not keys"
     )

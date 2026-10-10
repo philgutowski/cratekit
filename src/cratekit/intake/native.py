@@ -78,7 +78,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import TYPE_CHECKING, Any, Iterable, Sequence
 
 from cratekit.cli.output import digest_of
 from cratekit.core import (
@@ -94,6 +94,11 @@ from cratekit.core.cause import CratekitError, Remedy, refuse
 from cratekit.favorites import placement
 from cratekit.intake import ingest, set_playlist
 from cratekit.write import routing_pass, row_link, trees
+
+if TYPE_CHECKING:
+    # The landing's own types, imported for annotation only: the module that
+    # defines them reaches this one through the batch name and the landing.
+    from cratekit.intake.account_playlists import Left, Member
 
 #: What a planned row will do. A file whose suffix the binding has no file
 #: type for is planned as UNSUPPORTED and left in staging by the landing, the
@@ -129,6 +134,10 @@ PASS_KEY = "pass"
 #: by identifier and name (U113). The intake's one spelling, shared with the
 #: intake file's record.
 INBOX_PLAYLISTS_KEY = ingest.INBOX_PLAYLISTS_KEY
+
+#: Why a playlist member is not in its INBOX playlist when its file made no
+#: row (U128), the words the landing's warning names it with on both media.
+NOT_LANDED = "its file did not land"
 
 _ORIGIN = ("intake.native",)
 
@@ -172,6 +181,24 @@ class RowPlan:
 
 
 @dataclass(frozen=True, slots=True)
+class PlaylistMember:
+    """One track an account playlist's INBOX playlist holds (U128).
+
+    A planned ``target``, whose row the apply makes or finds, or the
+    ``content_id`` of a row the library held, found by path at plan time.
+    ``member`` is what the landing planned it from, for the warning when its
+    file does not land.
+    """
+
+    target: Path | None = None
+    content_id: str = ""
+    member: Member | None = None
+
+    def identity(self) -> str:
+        return str(self.target) if self.target is not None else f"row {self.content_id}"
+
+
+@dataclass(frozen=True, slots=True)
 class PlaylistPlan:
     """One INBOX playlist a landing writes for a playlist the author made on the account (U113)."""
 
@@ -179,10 +206,22 @@ class PlaylistPlan:
     name: str
     #: The account's identifier for the playlist it carries.
     account: str
-    #: The planned targets it holds, in the order the landing planned them.
-    targets: tuple[Path, ...]
+    #: Every member, the planned targets and the owned rows, in the account
+    #: playlist's order (U128).
+    members: tuple[PlaylistMember, ...]
     #: The account's own name for it, which ``name`` differs from only by a count.
     account_name: str = ""
+    #: The account playlist's rows it does not hold, each with why (U128).
+    left: tuple[Left, ...] = ()
+
+    @property
+    def targets(self) -> tuple[Path, ...]:
+        """The planned targets it holds, in the account playlist's order."""
+        return tuple(one.target for one in self.members if one.target is not None)
+
+    @property
+    def owned(self) -> int:
+        return sum(1 for one in self.members if one.target is None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -295,6 +334,10 @@ class NativePlan:
     #: the declared INSPIRATION folder, for a landing given ``--set``. None
     #: for every other landing.
     set_playlist: set_playlist.SetPlaylistPlan | None = None
+    #: The left rows of each account playlist that holds nothing here and so
+    #: is not planned (U128), by its name, which the screen counts, the digest
+    #: covers and the landing names.
+    unplanned_left: tuple[tuple[str, Left], ...] = ()
 
     def to_add(self) -> tuple[RowPlan, ...]:
         return tuple(row for row in self.rows if row.action == ADD)
@@ -344,6 +387,9 @@ class NativeLanded:
     #: The ContentLink the plan gave every added row (U126), which the read
     #: back is held to. None when the plan added no row.
     content_link: int | None = None
+    #: Each account playlist track no INBOX playlist holds, by playlist name
+    #: (U128): the plan's left rows and the members whose file did not land.
+    left: tuple[tuple[str, Left], ...] = ()
 
     def names(self) -> tuple[str, ...]:
         """Every INBOX playlist the commit wrote, the batch's first when it wrote one."""
@@ -471,6 +517,7 @@ def plan_rows(
     batch: str,
     files: Sequence[tuple[Path, Path]],
     split: Sequence[PlaylistPlan] = (),
+    unplanned_left: Sequence[tuple[str, Left]] = (),
     pass_name: str | None = None,
     hearts: Sequence[HeartItem] = (),
     favorites_source: str | None = None,
@@ -490,7 +537,9 @@ def plan_rows(
 
     ``split`` is a landing's account playlists (U113), named by the caller
     against :func:`inbox_held` on this same handle, each holding targets of
-    ``files``. They are part of the plan and of its digest. ``set_plan`` is the
+    ``files``. They are part of the plan and of its digest, and so are
+    ``unplanned_left``, the left rows of the account playlists the caller found
+    holding nothing (U128). ``set_plan`` is the
     set's permanent playlist (U121), planned by the caller on this same handle
     over the same targets, and part of the digest the same way.
 
@@ -569,6 +618,7 @@ def plan_rows(
         rows = [
             replace(row, content_link=link.value) if row.action == ADD else row for row in rows
         ]
+    kept, dropped = _supported_only(split, rows)
     planned = NativePlan(
         tree_id=tree_id,
         root_id=str(root_id),
@@ -582,7 +632,8 @@ def plan_rows(
         rows=tuple(rows),
         link=link,
         digest="",
-        playlists=_supported_only(split, rows),
+        playlists=kept,
+        unplanned_left=(*unplanned_left, *dropped),
         pass_name=pass_name,
         favorites=_favorites_plan(db, hearts, rows, source=favorites_source),
         set_playlist=set_plan,
@@ -627,19 +678,39 @@ def _favorites_plan(
 
 def _supported_only(
     split: Sequence[PlaylistPlan], rows: Sequence[RowPlan]
-) -> tuple[PlaylistPlan, ...]:
-    """The account playlists over only the targets a row can be written for.
+) -> tuple[tuple[PlaylistPlan, ...], tuple[tuple[str, Left], ...]]:
+    """The account playlists over only the targets a row can be written for, and what was dropped.
 
     A file planned ``UNSUPPORTED`` stays in staging and no playlist can hold it,
-    so it is not counted on the screen as one of a playlist's, and a playlist
-    holding nothing else is not planned.
+    so it is not counted on the screen as one of a playlist's but listed as
+    left. A playlist holding nothing else, new or owned, is not planned, and
+    every left row it had is answered beside the kept ones by its name, so the
+    landing still names it.
     """
     unsupported = {str(row.target) for row in rows if row.action == UNSUPPORTED}
-    kept = (
-        replace(one, targets=tuple(t for t in one.targets if str(t) not in unsupported))
-        for one in split
-    )
-    return tuple(one for one in kept if one.targets)
+    kept: list[PlaylistPlan] = []
+    dropped: list[tuple[str, Left]] = []
+    for one in split:
+        members = tuple(
+            member
+            for member in one.members
+            if member.target is None or str(member.target) not in unsupported
+        )
+        left = (
+            *one.left,
+            *(
+                member.member.left(NOT_LANDED)
+                for member in one.members
+                if member.target is not None
+                and str(member.target) in unsupported
+                and member.member is not None
+            ),
+        )
+        if members:
+            kept.append(replace(one, members=members, left=left))
+        else:
+            dropped.extend((one.name, row) for row in left)
+    return tuple(kept), tuple(dropped)
 
 
 def inbox_held(db: Any, root_id: str) -> tuple[str, ...]:
@@ -665,20 +736,35 @@ def inbox_held(db: Any, root_id: str) -> tuple[str, ...]:
     return tuple(names)
 
 
+def _playlist_identity(one: PlaylistPlan) -> dict[str, Any]:
+    """One account playlist as the digest covers it, the owned rows and the left ones too.
+
+    KEYS ADDED ONLY WHEN THERE ARE ANY, so a playlist of new files alone keeps
+    the keys it had before U128; its targets are in the account playlist's
+    order since then.
+    """
+    identity: dict[str, Any] = {
+        "name": one.name,
+        "account": one.account,
+        "targets": [str(target) for target in one.targets],
+    }
+    if one.owned:
+        identity["members"] = [member.identity() for member in one.members]
+    if one.left:
+        identity["left"] = [row.identity() for row in one.left]
+    return identity
+
+
 def identity(plan: NativePlan) -> dict[str, Any]:
     """What the digest covers: every fact the screen shows and the apply writes."""
     split = (
-        {
-            "playlists": [
-                {
-                    "name": one.name,
-                    "account": one.account,
-                    "targets": [str(target) for target in one.targets],
-                }
-                for one in plan.playlists
-            ]
-        }
+        {"playlists": [_playlist_identity(one) for one in plan.playlists]}
         if plan.playlists
+        else {}
+    )
+    unplanned = (
+        {"unplanned_left": [[name, row.identity()] for name, row in plan.unplanned_left]}
+        if plan.unplanned_left
         else {}
     )
     favorites = {"favorites": plan.favorites.identity()} if plan.favorites is not None else {}
@@ -689,6 +775,7 @@ def identity(plan: NativePlan) -> dict[str, Any]:
     )
     return {
         **split,
+        **unplanned,
         **favorites,
         **kept,
         "kind": "land-native",
@@ -799,7 +886,7 @@ def _holding(match: trees.RowMatch) -> str | None:
     return None
 
 
-def _candidate_rows(db: Any, names: Iterable[str]) -> list[trees.ContentRow]:
+def candidate_rows(db: Any, names: Iterable[str]) -> list[trees.ContentRow]:
     """The active rows whose stored path ends in one of ``names``, as the matcher reads them.
 
     A CANDIDATE SET, NOT THE ANSWER. The rows are found by the file name at
@@ -839,7 +926,7 @@ def content_ids_for(db: Any, cfg: config.Config, paths: Sequence[Path]) -> dict[
     prefix_map = [locations.PrefixRule(a, b) for a, b in cfg.resolved_prefix_map()]
     matches = trees.match_active_rows(
         list(paths),
-        _candidate_rows(db, (path.name for path in paths)),
+        candidate_rows(db, (path.name for path in paths)),
         root=cfg.library.root,
         prefix_map=prefix_map,
     )
@@ -932,6 +1019,10 @@ def apply_rows(
             )
         playlist_id = ""
         written: list[WrittenPlaylist] = []
+        left: list[tuple[str, Left]] = [
+            *plan.unplanned_left,
+            *((one.name, row) for one in plan.playlists for row in one.left),
+        ]
         placed: placement.Placed | None = None
         set_written: set_playlist.Written | None = None
         try:
@@ -954,11 +1045,24 @@ def apply_rows(
             by_target = {str(row.target): content_id for row, content_id in added_ids}
             by_target.update({str(row.target): row.content_id for row in present if row.content_id})
             claimed = {str(target) for one in plan.playlists for target in one.targets}
-            accounts = [
-                (one, [by_target[str(t)] for t in one.targets if str(t) in by_target])
-                for one in plan.playlists
-            ]
-            accounts = [(one, ids) for one, ids in accounts if ids]
+            # IN THE ACCOUNT PLAYLIST'S ORDER (U128), a new row by its target and
+            # an owned row by the id the plan found for it. A member whose file
+            # made no row is left, and named, rather than silently absent.
+            accounts = []
+            for one in plan.playlists:
+                ids: list[str] = []
+                for member in one.members:
+                    held = (
+                        member.content_id
+                        if member.target is None
+                        else by_target.get(str(member.target), "")
+                    )
+                    if held:
+                        ids.append(held)
+                    elif member.member is not None:
+                        left.append((one.name, member.member.left(NOT_LANDED)))
+                if ids:
+                    accounts.append((one, ids))
             ordered = [
                 by_target[str(row.target)]
                 for row in plan.rows
@@ -1059,6 +1163,7 @@ def apply_rows(
         favorites=placed,
         set_playlist=set_written,
         content_link=plan.link.value if plan.link is not None else None,
+        left=tuple(left),
     )
 
 
@@ -1125,7 +1230,13 @@ def _record_landing_commit(
     # AND EACH ACCOUNT PLAYLIST (U113), whose name carries no date to age it by.
     if written:
         record.detail[INBOX_PLAYLISTS_KEY] = [
-            {"id": one.playlist_id, "name": one.name} for one in written
+            {
+                "id": one.playlist_id,
+                "name": one.name,
+                ingest.INBOX_ACCOUNT_KEY: one.account,
+                ingest.INBOX_PASS_KEY: plan.pass_name or "",
+            }
+            for one in written
         ]
     # AND THE HEARTS PLACED (U120), under their own key, since the Favorites
     # folder is nobody's registered tree and a restore weighing the intake
