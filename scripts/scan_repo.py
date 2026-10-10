@@ -476,6 +476,76 @@ def _elide(span: str, keep: int = 12) -> str:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# The restart state has no per unit area any more (U124). Every unit used to
+# append its paragraph to the head of RESTART-cratekit.md, so every two
+# branches cut from one base conflicted there and a lane landing waited a
+# merge round per unit. A unit's paragraph is now its own file under
+# docs/restart/, and this file keeps only the sections no unit owns. A
+# paragraph written back into it is refused here, because the hook runs this
+# on every commit that stages the file and CI runs it over the tree.
+# ---------------------------------------------------------------------------
+RESTART_FILE = "RESTART-cratekit.md"
+
+#: Everything above the first section, exactly. Editing the reader's line is
+#: editing this constant too, which is the point: a unit cannot slip a
+#: paragraph in above the sections without this guard saying so.
+RESTART_HEAD = (
+    "# Restart: Cratekit\n"
+    "\n"
+    "Verified state only. How to work is `docs/METHOD.md`. Why the rules are what\n"
+    "they are is `docs/history/`. **No hash is written here on purpose**, since this\n"
+    "file is part of the commit it would be naming.\n"
+    "\n"
+    "**Each unit's own record is a file in `docs/restart/`**, named for what it\n"
+    "records, `u114.md` for U114, `r572.md` for R-572, `sitting35.md` for an\n"
+    "attended sitting. A unit writes its paragraph there and never here, so two\n"
+    "units built in parallel land in either order. This lists the newest first:\n"
+    "\n"
+    "    git log --diff-filter=A --name-only --format= -- docs/restart\n"
+    "\n"
+    "This file keeps only the sections no unit owns, and `scripts/scan_repo.py`\n"
+    "refuses a unit's paragraph anywhere in it.\n"
+    "\n"
+)
+
+#: The sections no unit owns. A new one is a decision about the restart state
+#: itself, made here, not a place a unit's record can open.
+RESTART_SECTIONS = frozenset(
+    {
+        "## Main, verify before trusting it",
+        "## What is open",
+        "## Do this first",
+        "## The branches",
+        "## When a relay run is cut off mid unit",
+        "## Standing decisions",
+    }
+)
+
+#: The opener every unit's record carried, "**U118 built, ..." or
+#: "**R-857 done, ...". Refused anywhere in the file, inside a kept section too.
+_UNIT_RECORD = re.compile(r"^\*\*(?:U\d+|R-\d+)(?: with R-\d+)? (?:built|done)\b", re.M)
+
+
+def restart_violations(relative_path: str, text: str) -> list[str]:
+    """A unit's record written into the restart state instead of its own file."""
+    if relative_path != RESTART_FILE:
+        return []
+    remedy = "a unit's paragraph goes in docs/restart/<unit>.md (U124)"
+    problems: list[str] = []
+    first = re.search(r"^## ", text, re.M)
+    head = text[: first.start()] if first else text
+    if head != RESTART_HEAD:
+        problems.append(f"the head above the first section is not the fixed reader's line; {remedy}")
+    for heading in re.findall(r"^## .*$", text, re.M):
+        if heading not in RESTART_SECTIONS:
+            problems.append(f"section {heading[3:]!r} is not one no unit owns; {remedy}")
+    for match in _UNIT_RECORD.finditer(text):
+        line = text.count("\n", 0, match.start()) + 1
+        problems.append(f"line {line} opens a unit's record; {remedy}")
+    return problems
+
+
 def tracked_paths(root: Path) -> list[Path]:
     """Every tracked file under ``root``, vendored trees included.
 
@@ -590,6 +660,7 @@ def scan_tree(
             continue
         findings += [f"{relative}: {p}" for p in portability_violations(text, identity_tokens=identity)]
         findings += [f"{relative}: {p}" for p in secret_violations(text)]
+        findings += [f"{relative}: {p}" for p in restart_violations(relative, text)]
 
     return findings
 
