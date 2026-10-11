@@ -242,7 +242,10 @@ def test_the_sweep_never_reads_a_set_playlist_as_intake(account, monkeypatch):
     class Stop(Exception):
         pass
 
-    def plan(store, cfg_, found, *, handler_key, label_built=frozenset(), set_built=frozenset()):
+    def plan(
+        store, cfg_, found, *, handler_key, label_built=frozenset(), set_built=frozenset(),
+        paired=frozenset(),
+    ):
         handed.append(set_built)
         raise Stop
 

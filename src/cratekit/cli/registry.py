@@ -1062,23 +1062,38 @@ ENTRIES: tuple[Entry, ...] = (
         long_running=True,
         emits=frozenset({"job_state"}),
         output_schema="job_state/1",
-        writes=frozenset({"xml", "files"}),
+        # U129. The account playlist is a remote write behind its own gate; the
+        # worker still acquires nothing, and a machine without a provider session
+        # still identifies and queues, the playlist step soft skipping.
+        writes=frozenset({"xml", "files", "remote"}),
         adjudicates=True,
         destructive=True,
         # THE CHECKS ARE THE GATE'S. ``recognize.recognition_ready`` refuses on
         # the two recognition keys, ffmpeg and ffprobe, so doctor has to fail on
-        # exactly those or a machine doctor passes refuses at the verb. The
-        # provider session is not declared because this verb's worker never
-        # acquires: a recognised track carries no provider identifier.
-        # ``binary.yt-dlp`` IS DELIBERATELY ABSENT (U104). Only a mix URL needs
-        # the downloader, so declaring it would fail doctor on a machine that
-        # identifies every recording it is handed. A URL without it refuses
-        # with ``yt-dlp-missing`` and the install hint, before any spend.
+        # exactly those or a machine doctor passes refuses at the verb.
+        # ``credential.provider`` is declared for the account playlist (U129);
+        # the playlist step soft skips when the account is unreachable so a
+        # queued set is never lost. ``binary.yt-dlp`` IS DELIBERATELY ABSENT
+        # (U104). Only a mix URL needs the downloader, so declaring it would
+        # fail doctor on a machine that identifies every recording it is handed.
+        # A URL without it refuses with ``yt-dlp-missing`` and the install hint,
+        # before any spend.
         doctor_checks=(
             "library.mounted",
             "binary.ffmpeg",
             "binary.ffprobe",
             "credential.recognition",
+            "credential.provider",
+        ),
+        gates=(
+            GateSpec(
+                name="intake.set.account.confirm",
+                options=("apply", "abort"),
+                prompt="Save this set as a private playlist on the streaming account?",
+                # EXPLICIT, as export.set's is (R34): an account write.
+                explicit=True,
+                digest_source="plan",
+            ),
         ),
     ),
     Entry(
@@ -2315,7 +2330,9 @@ ENTRIES: tuple[Entry, ...] = (
         #: on ``export.playlist``'s precedent: every write adds to the account.
         #: A provider candidate accepted in review is READ, never offered.
         writes=frozenset({"remote"}),
-        doctor_checks=("credential.provider",),
+        # library.mounted: the no-name backfill opens the rekordbox database
+        # over INSPIRATION (U129).
+        doctor_checks=("library.mounted", "credential.provider"),
         gates=(
             GateSpec(
                 name="export.set.confirm",
@@ -2347,7 +2364,9 @@ ENTRIES: tuple[Entry, ...] = (
         #: title a person can see.
         writes=frozenset({"remote"}),
         destructive=True,
-        doctor_checks=("credential.provider",),
+        # library.mounted: the no-name backfill opens the rekordbox database
+        # when it looks up intake proofs under the library (U129).
+        doctor_checks=("library.mounted", "credential.provider"),
         gates=(
             GateSpec(
                 name="export.archive.confirm",
@@ -2561,17 +2580,21 @@ ENTRIES: tuple[Entry, ...] = (
         #: one batch playlist under the adopted intake root through the guarded
         #: writer, behind the explicit gate below. The intake tree's mode
         #: chooses, the way the routing verbs choose.
-        writes=frozenset({"xml", "files", "db_tree"}),
+        # U129. A set landing may also archive the account playlist, a remote
+        # write, so the surface and the provider check join the landing's own.
+        writes=frozenset({"xml", "files", "db_tree", "remote"}),
         destructive=True,
         #: The database checks hold for the native medium only, and declaring
         #: them here changes nothing doctor reports: it requires a check when
         #: ANY enabled verb declares it, and adoption, which every profile
-        #: carries, already declares these three.
+        #: carries, already declares these three. ``credential.provider`` is
+        #: for the account archive a set landing may perform (U129).
         doctor_checks=(
             "library.mounted",
             "rekordbox.closed",
             "rekordbox.pins",
             "library.paths_resolved",
+            "credential.provider",
         ),
         gates=(
             GateSpec(
@@ -3133,6 +3156,96 @@ ENTRIES: tuple[Entry, ...] = (
                 explicit=True,
                 digest_source="plan",
             ),
+        ),
+    ),
+    # ── The taxonomy copy brought up to the shipped schema (U132) ───────────
+    #
+    # Appended, for the reason the deferred routing block above gives. Setup
+    # copies the shipped template once; this is how a class or a bucket the
+    # shipped template gained since reaches a library's copy.
+    Entry(
+        name="taxonomy.upgrade",
+        summary="add the classes and buckets the shipped taxonomy template declares "
+        "and this library's copy lacks, and state the shipped schema version",
+        module="cratekit.cli.verbs.taxonomy",
+        builder="build",
+        handler_key="taxonomy.upgrade",
+        # NO FEATURE ROW. The source system had one taxonomy table in code and
+        # nothing to upgrade.
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: No declared surface: the library's taxonomy copy beside the
+        #: database, and a dated backup of it, which are library state as the
+        #: profile verb's configuration is. No database row, no audio file, no
+        #: account. Not destructive: it only adds, and the copy as it was is
+        #: kept beside it.
+        writes=frozenset(),
+        #: The copy it upgrades is read by the verb itself, which refuses an
+        #: absent or unusable one by name before its gate, so taxonomy.active
+        #: is not declared here as well.
+        doctor_checks=("library.mounted",),
+        gates=(
+            GateSpec(
+                name="taxonomy.upgrade.apply",
+                options=("approve", "abort"),
+                prompt="Add these classes and buckets to this library's taxonomy copy "
+                "and state the shipped schema version?",
+                #: EXPLICIT (R34). The copy is the declaration every verb routes
+                #: by, so no blanket affirmative satisfies it.
+                explicit=True,
+                digest_source="plan",
+            ),
+        ),
+    ),
+    # ── A playlist pair, kept one list on both sides (U130) ─────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives.
+    Entry(
+        name="sync.pair",
+        summary="keep one of your account playlists and one rekordbox playlist the "
+        "same list, each side merged against the last sync",
+        module="cratekit.sync.pair_cli",
+        builder="build",
+        handler_key="sync.pair",
+        # NO FEATURE ROW. The source system pulled a playlist one way and pushed
+        # one the other, and kept no list on both sides.
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: Two surfaces. The rekordbox playlist's memberships, added, soft
+        #: removed and numbered through the guarded commit, and the account
+        #: playlist's tracks, added, taken off and ordered, on a playlist the
+        #: pairs record vouches for. No collection row and no audio file is
+        #: written, and an acquisition is a queued intake job, not a write. The
+        #: pair and its snapshot are this product's own state. ``destructive``
+        #: because a membership is taken off on both sides.
+        writes=frozenset({"db_tree", "remote"}),
+        destructive=True,
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+            "credential.provider",
+        ),
+        gates=(
+            GateSpec(
+                name="sync.pair.rekordbox",
+                options=("apply", "skip"),
+                prompt="Write these additions, removals and order to the rekordbox "
+                "playlists, and queue these tracks for acquisition?",
+                #: EXPLICIT, as every database membership write is (R34).
+                explicit=True,
+                digest_source="plan",
+            ),
+            GateSpec(
+                name="sync.pair.account",
+                options=("apply", "skip"),
+                prompt="Write these additions, removals and order to the streaming "
+                "account's playlists?",
+                #: EXPLICIT, as every other write to the account is (R34).
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
 )

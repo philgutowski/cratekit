@@ -92,7 +92,13 @@ def test_a_mix_url_runs_the_ordinary_set_pipeline_over_the_fetched_file(
     job_id = envelope["data"]["job_id"]
     assert len(items_of(job_id)) == 3
     assert envelope["data"]["progress"]["calls"] == 3
-    assert [w["code"] for w in envelope["warnings"]] == [intake_cli.TRACKLIST_WRITTEN]
+    assert [w["code"] for w in envelope["warnings"]] == [
+        intake_cli.TRACKLIST_WRITTEN,
+        intake_cli.ACCOUNT_UNNAMED,
+    ], (
+        "a mix URL whose fetch left no page warns set-account-unnamed: the "
+        "person gave an address, so the account step was expected"
+    )
     assert [url for url, _ in fetcher.asked] == [URL]
     # What was identified is what was fetched: every chunk was carved from it.
     assert len(recognised.requests) == 3
@@ -616,7 +622,11 @@ class PageWritingFetcher(FakeFetcher):
 
 def test_the_page_a_mix_came_from_is_frozen_on_the_set_job(cfg, library, recognised, monkeypatch):
     """U121. The uploader, the title and the upload day name the set's permanent
-    playlist later, so the job carries them; nothing else of the document does."""
+    playlist later, so the job carries them; nothing else of the document does.
+
+    U129 asks the account gate from that page before recognition; abort here so
+    this test stays about the frozen page and not the account write.
+    """
     three_tracks(recognised)
     page = {
         "title": "Probe - Friday Night Mix",
@@ -626,7 +636,13 @@ def test_the_page_a_mix_came_from_is_frozen_on_the_set_job(cfg, library, recogni
         "duration": 5400,
     }
     monkeypatch.setattr(fetch, "fetcher", lambda: PageWritingFetcher(page))
-    code, envelope = drive(["intake", "set", URL])
+    code, refused = drive(["intake", "set", URL])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    assert drive(
+        ["run", "decide", run_id, intake_cli.ACCOUNT_GATE, "abort", "--actor", "a-person"]
+    )[0] == int(ExitCode.OK)
+    code, envelope = drive(["--run", run_id, "intake", "set", URL])
     assert code == int(ExitCode.OK), envelope
     assert job_of(envelope["data"]["job_id"]).payload[intake_cli.PAGE] == {
         "title": "Probe - Friday Night Mix",

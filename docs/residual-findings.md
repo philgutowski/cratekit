@@ -37198,3 +37198,299 @@ unmeasured.
 the collection already places it under BY GENRE, or the author reads a routed
 mirror and says the second placement is what he wants. Ledger only: it is a
 consequence of a choice the author made, and nothing is lost.
+
+---
+
+## R-978. A bucket that moved out of another reaches an older copy only after a hand edit
+
+**Found:** at the build of #300, U132, 2026-10-10.
+
+**The mechanism.** `crate taxonomy upgrade` only adds, and holds a bucket whose
+words another bucket of the copy's already files where the shipped template
+does not. Soul (U118) left R&B and Hip-Hop left the non electronic bucket, so a
+copy made before U118 still files their words in the old place, and both are
+held. On a scratch copy of the live library's taxonomy (read only, 2026-10-10)
+the plan adds `favorites`, raises `schema_version` to 4, and holds `soul` over
+`'Soul'`, `'Soul / R&B'` and `'soul & funk'` in `rnb`, and `hip_hop` over the
+non electronic bucket's `'Hip-Hop'`, `'Hip-Hop / R&B'` and its `hip_hop` sub
+with that sub's tag words and source map. Doctor's `taxonomy.schema` and the
+verb's held note name each word and where it sits.
+
+**Measured cost.** None of it is lost or misfiled: the held buckets stay out
+and every track keeps routing where it routed. What a person pays is the hand
+edit, and the vocabulary row `{ word = "Soul & Funk", tag = "R&B" }` and the
+`sub_by_source` rows for Hip-Hop are part of it, which the held note does not
+spell out row by row. Taking R&B's Soul words out by hand and running the
+upgrade again was driven on that scratch copy and adds `soul`.
+
+**Closes when:** a reshaping verb moves a bucket's words with the bucket, or the
+attended repair A36 makes the edit by hand. Ledger only: the upgrade says what
+it holds and why, and A36 owns the live library.
+
+---
+
+## R-979. The taxonomy upgrade adds classes and buckets and no other section the shipped template gained
+
+**Found:** at the build of #300, U132, 2026-10-10.
+
+**The mechanism.** `core/taxonomy_upgrade.py` appends missing `[[sub_class]]`
+and `[[bucket]]` entries and raises `schema_version`. A top level table the
+shipped template gained (`[long_tracks]`, `[intake_old]`, `[inspiration]`), a
+row it gained in an existing table (`[vocabulary.deezer]`, `[[fuzzy]]`,
+`[[label_gate.rule]]`), and a child table it gained under a bucket the copy
+already declares (a `[[bucket.formerly]]`) are not added, and doctor's
+`taxonomy.schema` does not name them. `taxonomy.active` names a gained top
+level section only for a copy with an origin record (R-689).
+
+**Measured cost.** Not driven against a copy missing one of those. A verb that
+needs such a section refuses or skips by name where it was written to (the
+rotation, the long tracks playlist), so nothing is filed wrongly; the person is
+told by that verb and not by doctor.
+
+**Closes when:** the upgrade and doctor's check cover the other sections, each
+with the same never change an entry rule, or a decision records that a person
+adds those by hand. Ledger only.
+
+---
+
+## R-980. A class or bucket a person left out on purpose is offered by every upgrade
+
+**Found:** at the build of #300, U132, 2026-10-10.
+
+**The mechanism.** The upgrade matches entries by id and has no way to decline
+one and take the rest, and no record of an entry the person removed. A copy
+that deleted Candy, or a bucket the person does not want, gets it back on the
+next approved upgrade, and doctor's `taxonomy.schema` names it as missing on
+every run.
+
+**Measured cost.** The gate lists every addition by id, so nothing is added
+unseen, and the INFO line is not a refusal. What a person pays is aborting an
+upgrade they otherwise want, or deleting the entry again by hand afterwards.
+Not driven with a person's copy.
+
+**Closes when:** the copy can record entries it declines, read by the planner
+and by doctor, or the verb takes the entries to add by id. Ledger only.
+
+---
+
+## R-981. An upgraded taxonomy copy reads as edited, so doctor stops saying when it falls behind again
+
+**Found:** at the review of #300, U132, 2026-10-10.
+
+**The mechanism.** `crate taxonomy upgrade` rewrites the active copy and leaves
+the origin record setup wrote (R-689) as it was. Doctor's `_origin_verdict`
+compares the copy's digest with the record's, so after an upgrade it answers
+"edited since setup copied the shipped template", and a later shipped change
+inside a section both declare (a fuzzy rule, a vocabulary row) no longer raises
+the "fell behind" INFO. Read from the code, not driven.
+
+**Measured cost.** The sentence is true, the copy was edited, by the upgrade on
+the person's answer. What is lost is the R-689 notice for changes inside
+existing sections; the new `taxonomy.schema` check still names any class or
+bucket the copy lacks, which it never did before this unit. The live library
+has no origin record at all, so it loses nothing.
+
+**Closes when:** the record can say which shipped text a copy was last brought
+up to, read by doctor, or a decision records that an upgraded copy is the
+person's. Ledger only.
+
+---
+
+## R-982. A bucket the upgrade adds takes its exact words from the copy's keyword rules without a hold
+
+**Found:** at the review of #300, U132, 2026-10-10.
+
+**The mechanism.** The upgrade's collision check compares the words buckets and
+their subs declare. It does not read the copy's `[[fuzzy]]` keyword rules or
+its vocabulary, so a copy that routes the exact genre "Soul" through a keyword
+rule to another bucket gains a Soul bucket whose exact alias wins over the rule,
+with no hold. That is the routing the shipped template itself has (an exact
+alias before a partial keyword), and the gate lists the bucket by id, so the
+person approves the bucket; what the gate does not say is which of their
+keyword routed words change folder. Not driven against such a copy.
+
+**Measured cost.** Tracks of exactly that genre file into the new folder on the
+next adoption or rebuild instead of the one the keyword rule chose. Nothing is
+lost, and adopt move or a rebuild moves them again if the bucket is taken out.
+
+**Closes when:** the plan names, per added bucket, the copy's keyword rules and
+vocabulary rows its words take over, or holds on them. Ledger only.
+
+---
+
+## R-983. The upgrade's check that an added block left every entry whole is unmeasured
+
+**Found:** at the mutation table of #300, U132, 2026-10-10.
+
+**The mechanism.** `_placed` in `core/taxonomy_upgrade.py` inserts an added
+class or bucket before the copy's entry that follows it in shipped order, then
+keeps the result only if `_kept_whole` finds every entry the copy held exactly
+as it was. Turning that check off kills no test (P9), and the composite meant
+to show what it holds (P9_composite, the placement one line later) kills none
+either, because the following entry's span starts at its comment run and the
+shifted block lands between two comment lines, which parses the same.
+
+**Measured cost.** A placement that breaks the parse is still refused by the
+candidate load (P3, killed) and by the tests that parse the result back. What
+is unguarded by any test is a placement that parses and loads but moves keys
+from one entry into the added one. The placement code computes its index from
+the same block scan the cut uses, and no copy in the suite, the live one
+included, drives it wrong.
+
+**Closes when:** a test hands `_placed` a copy whose following entry has no
+comment run and checks that a shifted index is refused, and a table measures
+P9 against it. Ledger only.
+
+---
+
+## R-984. An edit to the taxonomy copy in the instant before the upgrade writes it is overwritten
+
+**Found:** at the watcher's review of #300, U132, 2026-10-10.
+
+**The mechanism.** `crate taxonomy upgrade` plans again after the answer and
+refuses a plan whose digest moved, then reads the copy once more as bytes and
+refuses those as stale too when they no longer read as the planned text. Those
+bytes are the backup and the restore. What is left is the span between that
+last read and the atomic replace of the copy, which writes the backup in
+between: an edit saved by hand inside it is replaced by the upgraded text, and
+the backup holds the copy from before the edit. Read from the code, not driven.
+
+**Measured cost.** The span is one backup write of a 35 KB file, milliseconds.
+An edit made any time before it, including between the answer and the second
+plan, is refused and kept, which
+`test_an_edit_after_the_second_plan_is_refused_as_stale` drives. No other
+process writes the copy.
+
+**Closes when:** the write takes a lock that hand edits honour, which none do,
+or a decision records the span as accepted. Ledger only.
+
+---
+
+## R-985. Five of U129's mutation rows were left unmeasured when the fifth round moved their code
+
+**Found:** at the measured table handoff of #297, U129, 2026-10-10.
+
+**The mechanism.** A1, A2, A14, A15 and A16 (the gate before the queue, the gate ask itself, the two backfill failure namings, and the soft skip) were refused as stale against 74fb854 when the measured table was joined. The fifth round moved the code those rows named, so the old text no longer matched the tip. The code they guard is covered by the driven tests named in the fifth round; the kill scores for the other applicable rows stand.
+
+**Measured cost.** The five rows have no fresh kill score on this tip. A person cannot treat the table as complete for A1, A2, A14, A15 and A16 until each row is re-copied and re-run.
+
+**Closes when:** each of the five rows has its old text re-copied from the file and `scripts/mutate.py docs/mutation/u129-rows.toml --name u129-author --resume` has been run on macOS so the measured table carries a kill score for every applicable row again.
+
+---
+
+## R-986. A pair's account order and rekordbox numbering are unmeasured on the live account and library
+
+**Found:** at the build of #298, U130, 2026-10-10.
+
+**The mechanism.** `TidalAccount.order_tracks` moves each track to the end of
+the account playlist with the client's `move_by_indices`, reading back after
+every move, and `write/playlist_pair.renumber` numbers a pair's live rekordbox
+memberships one through N while a soft removed membership keeps the number it
+had. Both were driven only on stand ins: the adapter over the prune suite's fake
+client, the writer on the disposable database. How the provider reads a move to
+the end, and what rekordbox shows when a live membership shares its number with
+a soft removed one, were not observed.
+
+**Measured cost.** Not driven against the provider or rekordbox. A move the
+provider places elsewhere is refused by the read back after one move, with every
+track still on the playlist; a numbering rekordbox reads otherwise would show
+the pair out of order and change no membership.
+
+**Closes when:** the attended sitting the brief names syncs one real playlist
+edited on both sides, reorders it on each side in turn, and reads the order on
+the account and in rekordbox. Ledger only, since it closes at a sitting.
+
+---
+
+## R-987. A pair sync that fails part way through the account's reorder replays the half order as the account's
+
+**Found:** at the review of #298, U130, 2026-10-10.
+
+**The mechanism.** The pair snapshot moves only when the whole pair was
+written, so a sync that fails part way through `order_tracks` leaves the old
+snapshot. When rekordbox led the order, the account now stands half reordered,
+and the next sync reads both sides as changed in order and follows the
+account's, which is the half order.
+
+**Measured cost.** Not driven: it needs a provider failure between two moves.
+No track is added or removed by it, only the order, and a later reorder on
+either side puts it right.
+
+**Closes when:** a failed account reorder records the moves that landed, or the
+next sync reads an account order that is a prefix of the planned one as
+unchanged. Ledger only.
+
+---
+
+## R-988. A pair's unmatched rekordbox rows are asked of the provider on every plan
+
+**Found:** at the review of #298, U130, 2026-10-10.
+
+**The mechanism.** `sync/pair_cli.plan_pair` matches every unlinked rekordbox
+row through `match_track`, and a row the account has no track for is never
+remembered, so each plan asks again. Both explicit gates mean one sync plans
+three times. A row whose ISRC exactly one track on the account playlist carries
+is linked without a call, and a row with no ISRC anywhere is not asked.
+
+**Measured cost.** Provider calls per sync of about three times the unmatched
+rows that carry an ISRC, paced by the provider gate. Not driven against the
+live account.
+
+**Closes when:** the pair records the rows it asked about and the answer, and a
+plan asks again only after a set interval or when asked to. Ledger only.
+
+---
+
+## R-989. No verb unpairs a playlist pair
+
+**Found:** at the review of #298, U130, 2026-10-10.
+
+**The mechanism.** `crate sync pair` marks a pair and nothing removes one. A
+pair whose account or rekordbox playlist is gone is left out of a sync of every
+pair and named in the answer each time (`sync-pair-left-out`), and pairing
+either surviving playlist with another is refused as a conflict.
+
+**Measured cost.** A warning on every sync, and a hand edit of the playlist
+pairs document to pair the survivor again. Nothing is written wrongly.
+
+**Closes when:** a gated `sync unpair` drops a pair and its snapshot. Ledger
+only until someone wants it.
+
+---
+
+## R-990. An account track removed and added again between two pair syncs reads as never removed
+
+**Found:** at the build of #298, U130, 2026-10-10.
+
+**The mechanism.** The merge sees a removal and a re-add on the same side
+between two syncs only where the side gives a membership an identity, which
+rekordbox does with its row and the account does not. So a track removed in
+rekordbox and, in the same interval, removed and added again on the account,
+reads on the account as held all along, and the rekordbox removal is applied
+to the account.
+
+**Measured cost.** Not driven: the account offers nothing a sync could read it
+from. The re-add made on the account is lost, and the track is still in the
+collection.
+
+**Closes when:** the provider exposes when a track was added to a playlist and
+the snapshot records it. Ledger only.
+
+---
+
+## R-991. Two tests failed once each in a loaded full suite and never again
+
+**Found:** at the mutation table of #298, U130, 2026-10-10.
+
+**The mechanism.** `scripts/mutate.py` refused two baselines in a row on
+2026-10-10, each over one failing test:
+`tests/test_sync_mark.py::test_an_intake_file_of_no_pass_is_a_gated_plan_of_nothing`
+and then `tests/test_sync_pair.py::test_a_short_listing_removes_nothing_from_the_account`.
+Neither failed alone, in its file five times running, or in a full suite run
+straight after (13,660 passed), and the driver kept no traceback.
+
+**Measured cost.** Two refused batches. The cause was not found, so whether
+either test carries a timing dependence is unmeasured.
+
+**Closes when:** the driver keeps a refused baseline's failure text, and the
+next refusal over either test is read from it. Ledger only.

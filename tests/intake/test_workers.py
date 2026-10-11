@@ -807,7 +807,13 @@ def test_the_help_text_and_the_registry_summary_say_what_the_verb_takes():
         assert "mix URL" in entry.summary
         assert "binary.ffprobe" in entry.doctor_checks
         assert "credential.recognition" in entry.doctor_checks
-        assert "credential.provider" not in entry.doctor_checks
+        # U129. intake.set plans the account playlist; identify does not.
+        if name == "intake.set":
+            assert "credential.provider" in entry.doctor_checks
+            assert any(g.name == "intake.set.account.confirm" for g in entry.gates)
+            assert "remote" in entry.writes
+        else:
+            assert "credential.provider" not in entry.doctor_checks
         # Only an address needs the downloader, so doctor does not demand it.
         assert "binary.yt-dlp" not in entry.doctor_checks
 

@@ -1863,6 +1863,22 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # The dated playlist has tracks to put in the year and the folder holds
         # no year playlist. ``label playlists`` builds it first.
         "label-heard-no-year-playlist": ExitCode.PRECONDITION,
+        # ── U130's four, appended for the same reason ──────────────────────────
+        #
+        # The playlist pairs document could not be read or locked, so what each
+        # pair held at its last sync is unknown. Nothing was written.
+        "sync-pair-store-unusable": ExitCode.PRECONDITION,
+        # ``sync pair`` was given an account playlist that is not marked and no
+        # rekordbox playlist to pair it with, or a playlist either side does not
+        # hold. Nothing was written.
+        "sync-pair-unknown": ExitCode.PRECONDITION,
+        # The playlist is not one a pair may hold: the hearts, a label's or a
+        # set's playlist, a folder, or a playlist under one of Cratekit's own
+        # trees. Nothing was written.
+        "sync-pair-out-of-scope": ExitCode.PRECONDITION,
+        # One of the two playlists is already paired with another. One playlist
+        # stays the same list as one other. Nothing was written.
+        "sync-pair-conflict": ExitCode.PRECONDITION,
     }
 )
 

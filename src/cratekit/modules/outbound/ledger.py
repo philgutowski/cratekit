@@ -1006,6 +1006,21 @@ def set_playlist_names(cfg: config.Config) -> tuple[str, ...]:
     )
 
 
+def label_dated_ids(cfg: config.Config) -> frozenset[str]:
+    """Every dated playlist this library made for any label (U123).
+
+    For ``sync pair`` (U130), which keeps only the author's own playlists: a
+    label's dated playlist is that label's release day, made here and removed
+    by ``label heard``, and never a list the author keeps.
+    """
+    return frozenset(
+        str(remote_id)
+        for record in _load(cfg)["labels"].values()
+        for remote_id in (record.get("dated") or {}).values()
+        if remote_id
+    )
+
+
 def set_playlist_ids(cfg: config.Config) -> frozenset[str]:
     """Every set playlist this library made, for the playlist sweep to leave alone.
 

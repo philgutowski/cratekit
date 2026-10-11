@@ -63,6 +63,7 @@ from cratekit.core import (
     session,
     snapshot,
     taxonomy,
+    taxonomy_upgrade,
     tree_registry,
 )
 from cratekit.core.cause import CratekitError, Remedy, refuse
@@ -107,13 +108,45 @@ def require_class(declared: taxonomy.Taxonomy) -> taxonomy.SubClass:
             "the vocal one and this verb will not invent a playlist in every folder",
             remedy=Remedy.FIX_CONFIG_VALUES,
             steps=(
-                "add a [[sub_class]] with signal = \"playlist\" and the playlist it "
-                "mirrors in signal_playlist to the library's active taxonomy, as the "
-                "shipped template carries, and state schema_version = 4",
+                f"run {taxonomy_upgrade.VERB}, which adds the class the shipped template "
+                "declares and states its schema version, keeping the copy as it was "
+                "beside it",
+                "or add a [[sub_class]] with signal = \"playlist\" and the playlist it "
+                "mirrors in signal_playlist to the library's active taxonomy by hand, as "
+                "the shipped template carries, and state schema_version = 4",
             ),
             origin=_ORIGIN,
         )
     return found
+
+
+def undeclared_note(schema_version: int | None = None) -> dict[str, str]:
+    """The note a verb that ran the genre Favorites step carries when the class was undeclared (U132).
+
+    THE SKIP IS NAMED, with the refusal's own code. The end of an adoption and
+    the rebuild both pass over a library that declares no class without
+    writing, which is right, and said nothing, which is how the live library
+    went without a Favorites playlist in any genre folder after the class
+    shipped. One wording for every surface, so they cannot drift apart.
+    """
+    stated = f"states schema_version {schema_version} and " if schema_version is not None else ""
+    return {
+        "code": CLASS_UNDECLARED,
+        "message": (
+            f"the genre Favorites step was skipped: this library's taxonomy {stated}"
+            f"declares no sub class derived from a playlist, so no genre folder's "
+            f"Favorites was written or checked; {taxonomy_upgrade.VERB} adds the class "
+            f"the shipped template declares, and doctor's taxonomy.schema names what "
+            f"else the copy lacks"
+        ),
+    }
+
+
+def undeclared_warnings(declared: taxonomy.Taxonomy) -> tuple[dict[str, str], ...]:
+    """:func:`undeclared_note` for a declaration without the class, and nothing for one with it."""
+    if favorites_class(declared) is not None:
+        return ()
+    return (undeclared_note(declared.schema_version),)
 
 
 def _folders_of(declared: taxonomy.Taxonomy, sub: taxonomy.SubClass) -> tuple[taxonomy.Bucket, ...]:
@@ -829,6 +862,9 @@ class AdditiveOutcome:
     #: Why nothing ran: the class undeclared, the source missing, the tree on the
     #: bridge. Empty when it ran.
     skipped: str = ""
+    #: The refusal's code behind ``skipped`` when it had one (U132), so the note
+    #: an adoption carries names the cause and not only its sentence.
+    cause: str = ""
 
 
 def refresh_additive(
@@ -847,7 +883,10 @@ def refresh_additive(
     """
     sub = favorites_class(declared)
     if sub is None:
-        return AdditiveOutcome(skipped="the taxonomy declares no sub class derived from a playlist")
+        return AdditiveOutcome(
+            skipped="the taxonomy declares no sub class derived from a playlist",
+            cause=CLASS_UNDECLARED,
+        )
     # EVERY REFUSAL IS A SKIP WITH ITS REASON, not only the three this engine
     # names: a tree on the bridge, a root that went, rekordbox opened between
     # the adoption's session and this one, a plan that moved. The adoption's
@@ -858,12 +897,12 @@ def refresh_additive(
         registry = tree_registry.read(cfg)
         db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
     except CratekitError as exc:
-        return AdditiveOutcome(skipped=exc.cause.message)
+        return AdditiveOutcome(skipped=exc.cause.message, cause=exc.cause.reason)
     try:
         try:
             plan = plan_refresh(cfg, db, declared, registry)
         except CratekitError as exc:
-            return AdditiveOutcome(skipped=exc.cause.message)
+            return AdditiveOutcome(skipped=exc.cause.message, cause=exc.cause.reason)
         if not plan.adds:
             return AdditiveOutcome(
                 refreshed=Refreshed(
@@ -888,9 +927,14 @@ def refresh_additive(
         except RefreshInterrupted as exc:
             # THE ADDITIONS LANDED AND ARE REPORTED AS SUCH, with the failure
             # that stopped the rest beside them.
-            return AdditiveOutcome(refreshed=exc.partial, skipped=str(exc.__cause__ or exc))
+            inner = exc.__cause__
+            return AdditiveOutcome(
+                refreshed=exc.partial,
+                skipped=str(inner or exc),
+                cause=inner.cause.reason if isinstance(inner, CratekitError) else "",
+            )
         except CratekitError as exc:
-            return AdditiveOutcome(skipped=exc.cause.message)
+            return AdditiveOutcome(skipped=exc.cause.message, cause=exc.cause.reason)
         return AdditiveOutcome(refreshed=refreshed)
     finally:
         rb_writer.close_db(db)
@@ -917,4 +961,6 @@ __all__ = [
     "refresh_additive",
     "require_class",
     "source_playlist",
+    "undeclared_note",
+    "undeclared_warnings",
 ]

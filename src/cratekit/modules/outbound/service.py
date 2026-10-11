@@ -22,6 +22,20 @@ removes one playlist and nothing else, refused before any provider call for a
 playlist the ledger does not vouch for. ``label heard`` is its one caller, and
 only for a label's dated playlist once its tracks sit in the year playlist.
 
+**AND THE AUTHOR'S OWN PAIRED PLAYLISTS (U130).** A playlist the author made
+and marked, with ``crate sync pair``, to stay the same list as one rekordbox
+playlist is the one other playlist ``remove_tracks`` and ``order_tracks`` may
+change, because the author asked for a removal on either side to be applied on
+both (decided 2026-10-10). The pairs record vouches for it beside the ledger,
+and a playlist the author did not pair is refused exactly as before. A removal
+there takes a track off that one playlist and nothing else: no track leaves the
+account or the library.
+
+**ORDERING IS NOT A REMOVAL, AND IT IS HELD TO THE SAME RULE.**
+``order_tracks`` moves tracks within one playlist the ledger or the pairs
+vouch for. It changes no membership, so nothing is lost by it, and it is still
+refused for any other playlist, since a person's order is theirs.
+
 **RETITLING IS NOT A REMOVAL, AND IT IS THE ONE WRITE THAT TOUCHES SOMETHING
 THE PRODUCT DID NOT MAKE.** It exists because a title is how the source system
 records what it has already taken: ``sync.playlists.SWEPT_PREFIX`` is a
@@ -161,15 +175,25 @@ class RemoteAccount(Protocol):
         """
 
     def remove_tracks(self, playlist_id: str, remote_ids: tuple[str, ...]) -> tuple[str, ...]:
-        """Take tracks off one playlist the product created, and nothing else.
+        """Take tracks off one playlist the product created or the author paired.
 
         REFUSED BEFORE ANY PROVIDER CALL for a playlist the outbound ledger
-        does not record as one the product created. Every occurrence of an
-        asked track comes off; nothing else on the playlist moves.
+        does not record as one the product created and no playlist pair names
+        (U130). Every occurrence of an asked track comes off; nothing else on
+        the playlist moves.
 
         Returns every asked identifier the playlist no longer holds once the
         removal is done, taken off now or already absent, so a resume asking
         again for one that came off before records it and takes nothing.
+        """
+
+    def order_tracks(self, playlist_id: str, remote_ids: tuple[str, ...]) -> tuple[str, ...]:
+        """Put one playlist's tracks in this order, and change nothing else (U130).
+
+        REFUSED BEFORE ANY PROVIDER CALL on :meth:`remove_tracks`'s rule. A
+        track the playlist does not hold is not added and one it holds that
+        the order does not name stays on it. Returns the playlist's order once
+        the moves are done, read back.
         """
 
     def remove_playlist(self, playlist_id: str) -> None:

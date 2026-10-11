@@ -1,0 +1,99 @@
+name = "u130-c"
+pass_kind = "light"
+
+# U130, batch C: the writes. The snapshot rule and the outcome in
+# sync/pair_cli.py, the rekordbox writer in write/playlist_pair.py, the
+# account adapter's guard and order in tidal_account.py, and the sweep's
+# exclusion in sync/playlists.py. All user facing.
+
+[[rows]]
+id = "C1_half_written_snapshot"
+description = "Record the snapshot when either side was written, not both"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '''    whole = rekordbox_after is not None and account_after is not None and not one.withheld'''
+new = '''    whole = (rekordbox_after is not None or account_after is not None) and not one.withheld'''
+
+[[rows]]
+id = "C2_short_snapshot"
+description = "Record the snapshot from a short listing"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '''    whole = rekordbox_after is not None and account_after is not None and not one.withheld'''
+new = '''    whole = rekordbox_after is not None and account_after is not None'''
+
+[[rows]]
+id = "C3_outcome_always_ok"
+description = "Answer ok whenever a pair was planned, whether or not anything was written"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '''    wrote = any(d.wrote for d in done)'''
+new = '''    wrote = bool(done)'''
+
+[[rows]]
+id = "C4_stale_membership_unchecked"
+description = "Write over a rekordbox playlist whose memberships moved since the approved plan"
+file = "src/cratekit/write/playlist_pair.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '''    if now is None or now.removed or not now.plain or now.memberships() != change.before:'''
+new = '''    if now is None or now.removed or not now.plain:'''
+
+[[rows]]
+id = "C5_no_renumber"
+description = "Leave rekordbox's order as the adds and removals left it"
+file = "src/cratekit/write/playlist_pair.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '''            moved = renumber(db, change.playlist_id, change.order)'''
+new = '''            moved = 0'''
+
+[[rows]]
+id = "C6_pair_not_vouched"
+description = "The account seam refuses a removal from a paired playlist"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_sync_pair_account.py", "tests/test_prune.py"]
+old = '''            ledger.product_made(self._cfg, identifier) or pairs.paired(self._cfg, identifier)'''
+new = '''            ledger.product_made(self._cfg, identifier)'''
+
+[[rows]]
+id = "C7_order_unread"
+description = "An order move whose read back differs is not refused"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_sync_pair_account.py"]
+old = '''            expected = [*before[:at], *before[at + 1 :], one]
+            playlist = self._playlist(identifier)
+            before = self._positions(identifier, playlist)
+            if before != expected:'''
+new = '''            expected = [*before[:at], *before[at + 1 :], one]
+            playlist = self._playlist(identifier)
+            before = self._positions(identifier, playlist)
+            if False:'''
+
+[[rows]]
+id = "C8_no_standing_prefix"
+description = "Move every asked track, even the run already standing in order"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_sync_pair_account.py"]
+old = '''                keep += 1'''
+new = '''                pass'''
+
+[[rows]]
+id = "C9_sweep_takes_paired"
+description = "The playlists sweep offers a paired playlist as intake"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '''    if playlist.playlist_id in paired:'''
+new = '''    if False:'''
+
+[[dropped]]
+id = "C10_no_read_back"
+description = "Drop the read back of the rekordbox playlist after its commit"
+reason = "the writer is correct on every driven input, so no drive can show a read back that differs; a zero here is the known shape of a verification guard, ranked below the cap"

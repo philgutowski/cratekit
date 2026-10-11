@@ -1313,6 +1313,111 @@ def test_a_driven_resume_says_the_vocal_dimension_was_not_compared_beside_drift(
     assert codes.count(rebuild.VOCAL_NOT_COMPARED) == 1, done["warnings"]
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# U132: the genre Favorites step a rebuild skipped is named with its cause
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _favorites_warnings(envelope: dict) -> list[dict]:
+    from cratekit.write import genre_favorites
+
+    return [w for w in envelope["warnings"] if w["code"] == genre_favorites.CLASS_UNDECLARED]
+
+
+@pytest.fixture
+def no_favorites_class(monkeypatch):
+    """This library's declaration without its playlist class, as the live library's copy was.
+
+    Its routing tree carries the id the fixture's registry cut over, since the
+    class is declared under the routing tree alone and a rebuild of any other
+    tree has no Favorites step to skip.
+    """
+    import dataclasses
+
+    real = active_taxonomy.load
+
+    def narrowed(cfg):
+        declared = real(cfg)
+        kept = tuple(e for e in declared.sub_classes if e.signal != taxonomy.SIGNAL_PLAYLIST)
+        assert len(kept) == len(declared.sub_classes) - 1, "no playlist class to take out"
+        tree = dataclasses.replace(declared.tree, id=TREE_ID)
+        return dataclasses.replace(declared, sub_classes=kept, tree=tree)
+
+    monkeypatch.setattr(active_taxonomy, "load", narrowed)
+
+
+@pytest.mark.parametrize(
+    "argv", [["rebuild", "--actor", "a-person"], ["route", "resort"]], ids=["rebuild", "resort"]
+)
+def test_a_driven_resume_over_no_favorites_class_names_the_skipped_step(
+    acknowledged, native, no_favorites_class, argv
+):
+    del acknowledged, native, no_favorites_class
+    code, queued = _drive(argv)
+    assert code == int(ExitCode.OK), queued
+    assert _favorites_warnings(queued) == [], "the queue-only answer skipped nothing yet"
+    job_id = queued["data"]["job_id"]
+    code, done = _drive([*argv, "--job", job_id])
+    assert code == int(ExitCode.OK), done
+    (warned,) = _favorites_warnings(done)
+    assert set(warned) == {"code", "message"}
+    assert "genre Favorites step was skipped" in warned["message"]
+    assert "schema_version 4" in warned["message"]
+    assert "crate taxonomy upgrade" in warned["message"]
+    code, again = _drive([*argv, "--job", job_id])
+    assert code == int(ExitCode.OK), again
+    assert _favorites_warnings(again) == [], "a job finished on entry skipped nothing in this run"
+
+
+@pytest.mark.parametrize(
+    "argv", [["rebuild", "--actor", "a-person"], ["route", "resort"]], ids=["rebuild", "resort"]
+)
+def test_a_rebuild_of_another_tree_says_nothing_of_the_routing_trees_favorites(
+    acknowledged, native, monkeypatch, argv
+):
+    """The class is declared under the routing tree alone, so a job over any
+    other tree skipped no Favorites step, whatever the declaration lacks."""
+    import dataclasses
+
+    del acknowledged, native
+    real = active_taxonomy.load
+
+    def narrowed(cfg):
+        declared = real(cfg)
+        assert declared.tree.id != TREE_ID
+        kept = tuple(e for e in declared.sub_classes if e.signal != taxonomy.SIGNAL_PLAYLIST)
+        return dataclasses.replace(declared, sub_classes=kept)
+
+    monkeypatch.setattr(active_taxonomy, "load", narrowed)
+    job_id = _drive(argv)[1]["data"]["job_id"]
+    code, done = _drive([*argv, "--job", job_id])
+    assert code == int(ExitCode.OK), done
+    assert _favorites_warnings(done) == []
+
+
+@pytest.mark.parametrize(
+    "argv", [["rebuild", "--actor", "a-person"], ["route", "resort"]], ids=["rebuild", "resort"]
+)
+def test_a_driven_resume_over_the_declared_class_says_nothing_of_it(
+    acknowledged, native, monkeypatch, argv
+):
+    import dataclasses
+
+    del acknowledged, native
+    real = active_taxonomy.load
+    monkeypatch.setattr(
+        active_taxonomy,
+        "load",
+        lambda cfg: dataclasses.replace(
+            real(cfg), tree=dataclasses.replace(real(cfg).tree, id=TREE_ID)
+        ),
+    )
+    job_id = _drive(argv)[1]["data"]["job_id"]
+    code, done = _drive([*argv, "--job", job_id])
+    assert code == int(ExitCode.OK), done
+    assert _favorites_warnings(done) == []
+
+
 @pytest.mark.parametrize(
     "argv", [["rebuild", "--actor", "a-person"], ["route", "resort"]], ids=["rebuild", "resort"]
 )

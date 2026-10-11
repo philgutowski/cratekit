@@ -491,6 +491,16 @@ def _template(cfg: config.Config) -> naming.NameTemplate:
     )
 
 
+def name_template(cfg: config.Config) -> naming.NameTemplate:
+    """The declared naming shape, for a caller stripping a title read elsewhere (U130).
+
+    ``sync pair`` reads a row's title from the database rather than from a
+    collection export, and strips its head through this same template so the
+    account is asked about a title exactly as ``export playlist`` asks.
+    """
+    return _template(cfg)
+
+
 def release_title(
     entry: library_export.CollectionEntry, *, template: naming.NameTemplate
 ) -> str:
@@ -646,6 +656,7 @@ __all__ = [
     "heart_candidates",
     "isrc_for",
     "local_tracks",
+    "name_template",
     "prefix_rules",
     "release_title",
     "read_library",

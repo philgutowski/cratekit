@@ -1440,8 +1440,8 @@ def test_conformance_1_structured_output(entry):
 
 
 @pytest.mark.parametrize("entry", LANDED, ids=lambda e: e.name)
-def test_conformance_1_structured_output_is_actually_emitted(entry, configured):
-    argv = ["--output", "json", *_sample_decisions(entry), *entry.path, *_sample_arguments(entry)]
+def test_conformance_1_structured_output_is_actually_emitted(entry, configured, monkeypatch):
+    argv = ["--output", "json", *_sample_decisions(entry), *entry.path, *_sample_arguments(entry, monkeypatch)]
     code, out, _ = drive(argv)
     envelope = json.loads(out)
     assert output.envelope_problems(envelope) == [], envelope
@@ -1462,7 +1462,7 @@ def _written(path: Path, text: str) -> Path:
     return path
 
 
-def _sample_arguments(entry: registry.Entry) -> list[str]:
+def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
     """Enough POSITIONAL arguments to drive one verb, per verb this unit ships.
 
     Decisions are kept separate below rather than mixed in here, because they are
@@ -1472,6 +1472,9 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
     Every caller runs under the ``configured`` fixture, which is what lets the
     file-taking verbs be handed a path inside the configured library rather than
     a literal one this repository would then be shipping (R1).
+
+    ``monkeypatch`` is handed to a LAZY sample that must bind a seam for the
+    drive and have teardown restore it (U129's intake.set sample).
     """
     library = config.load().library.root
     sample = {
@@ -1633,11 +1636,15 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         "login": ["provider-session"],
         # U37. Identify is driven against a missing recording so it must refuse
         # with a vocabulary code before any paid call (no recognition keys on
-        # a fresh install). Set and playlist queue a job, so the source string
-        # is frozen and never fetched. File and tag take a path under the
-        # configured library. Repair and name.apply take no positional: an
-        # empty library is the state a fresh install is genuinely in.
-        "intake.set": ["https://example.invalid/mix"],
+        # a fresh install). Playlist freezes a source string and never fetches.
+        # Set (U129) declares an account gate that fires from the name flags
+        # before recognition, so its sample is LAZY: a local recording plus the
+        # three name flags reach the gate, and recognition or account fakes are
+        # bound through monkeypatch only so the resume after the gate can
+        # finish. File and tag take a path under the configured library.
+        # Repair and name.apply take no positional: an empty library is the
+        # state a fresh install is in.
+        "intake.set": _intake_set_reaching_account_gate,
         "intake.identify": [str(library / "no-such-set.mp3")],
         "intake.playlist": ["https://example.invalid/playlist"],
         # U69. The job verbs' convention: an identifier deliberately absent,
@@ -1933,6 +1940,11 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # gate still asks, and the apply is a no op, the shape repair.rows has
         # on this fixture, which records no pin for a write to meet.
         "repair.link": lambda: _link_rows(),
+        # U132. A CALLABLE, because the fixture's library holds no taxonomy
+        # copy and the verb refuses one it cannot read: the shipped template
+        # without its genre Favorites class is written as the copy, so the
+        # plan adds it, the explicit gate asks, and the apply writes.
+        "taxonomy.upgrade": lambda: _taxonomy_behind(),
         # R-799. No argument: it reads every tagging record this installation
         # committed, which on the fixture's machine is none.
         "tag.remap": [],
@@ -1952,8 +1964,112 @@ def _sample_arguments(entry: registry.Entry) -> list[str]:
         # first, see ACKNOWLEDGED_BEFORE_THE_GATE; on this fixture every step
         # either plans nothing or refuses on its own, and both areas still ask.
         "organize": [],
+        # U130. No argument and no pair marked: the plan is empty, both explicit
+        # gates are still asked over it, the account is never listed and the
+        # database never opened, and the verb ends NO_OP. It reads the backup
+        # acknowledgment first, see ACKNOWLEDGED_BEFORE_THE_GATE. The syncing
+        # path is driven in tests/test_sync_pair.py.
+        "sync.pair": [],
     }[entry.name]
-    return sample() if callable(sample) else sample
+    if not callable(sample):
+        return sample
+    import inspect
+
+    if monkeypatch is not None and "monkeypatch" in inspect.signature(sample).parameters:
+        return sample(monkeypatch)
+    return sample()
+
+
+def _intake_set_reaching_account_gate(monkeypatch) -> list[str]:
+    """A named local recording, so the account gate fires before recognition.
+
+    U129 asks ``intake.set.account.confirm`` over the playlist name from the
+    three name flags, before the recognition preflight, so the first drive
+    reaches the gate with no identify keys. After the gate is answered,
+    conformance still has to finish the verb: the recognition and account
+    fakes below are set through ``monkeypatch`` so teardown restores the real
+    seams. The writing path is driven in tests/test_u129_set_account_playlist.py.
+    """
+    from cratekit.core import secrets
+    from cratekit.intake import acrcloud
+    from cratekit.label import catalogue
+    from tests import outbound_fakes
+    from tests.intake.test_recognition import FakeCarver, hit
+    from tests.label_fakes import FakeCatalogue, catalogue_factory
+    from tests.test_intake_missing_search import Hit
+    from tests.test_outbound_workers import bind as bind_account
+
+    secrets.set(str(secrets.Credential.IDENTIFY_KEY), "k-conformance")
+    secrets.set(str(secrets.Credential.IDENTIFY_SIGNING_KEY), "s-conformance")
+
+    class _Repeating:
+        """One hit for every chunk, across every conformance drive of this verb."""
+
+        def __init__(self) -> None:
+            self.requests = []
+
+        def __call__(self, request):
+            import json
+
+            from cratekit.intake.acrcloud import Response
+
+            self.requests.append(request)
+            body = hit("Aurora Bloom", "Sun Path")
+            return Response(status=200, body=json.dumps(body).encode())
+
+    monkeypatch.setattr(acrcloud, "http_transport", _Repeating())
+    monkeypatch.setattr(acrcloud, "FfmpegCarver", lambda: FakeCarver(25.0))
+    fake = FakeCatalogue(
+        searches={("Aurora Bloom", "Sun Path"): [Hit("tid-1", "Aurora Bloom", "Sun Path")]}
+    )
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
+    bind_account(monkeypatch, outbound_fakes.StrictAccount())
+
+    path = Path(config.load().library.root) / "Music" / "conformance-set.mp3"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"ID3")
+    return [
+        str(path),
+        "--dj",
+        "Probe",
+        "--set-name",
+        "Friday Night",
+        "--set-date",
+        "2026-05",
+    ]
+
+
+def test_intake_set_sample_leaves_account_and_catalogue_seams_real(configured, monkeypatch):
+    """The intake.set sample must not leak fakes into later tests on this worker.
+
+    An earlier shape replaced ``account.resolve`` and ``catalogue.resolve`` for
+    good. ``account.forget`` clears only the opened handle, so every later test
+    on the same xdist worker silently got the fake. The sample now sets both
+    through ``monkeypatch``; a nested context restores them when it closes.
+    """
+    from cratekit.label import catalogue
+    from cratekit.modules.outbound import account
+
+    real_account = account.resolve
+    real_catalogue = catalogue.resolve
+    with monkeypatch.context() as nested:
+        argv = _intake_set_reaching_account_gate(nested)
+        entry = registry.entry("intake.set")
+        code, _, _ = drive([*entry.path, *argv])
+        assert code == int(ExitCode.DECISION_REQUIRED), (
+            "the named local sample must reach the account gate before recognition"
+        )
+        assert account.resolve is not real_account
+        assert catalogue.resolve is not real_catalogue
+    assert account.resolve is real_account, (
+        "closing the intake.set sample's monkeypatch context did not restore "
+        "account.resolve; later tests on this worker would miss the guard"
+    )
+    assert catalogue.resolve is real_catalogue, (
+        "closing the intake.set sample's monkeypatch context did not restore "
+        "catalogue.resolve; later tests on this worker would miss the guard"
+    )
+
 
 
 def _a_source_playlist() -> list[str]:
@@ -2137,6 +2253,20 @@ def _link_rows() -> list[str]:
     return ["--set", f"1:{link}={HOUSE}", "--set", f"1:{isrc}="]
 
 
+def _taxonomy_behind() -> list[str]:
+    """The library's taxonomy copy made without the genre Favorites class."""
+    from cratekit.core import taxonomy
+
+    text = taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME)
+    head, _, tail = text.partition('[[sub_class]]\nid = "favorites"')
+    assert tail, "the shipped template no longer declares the favorites class"
+    _, _, rest = tail.partition("\n[")
+    path = config.state_path("taxonomy_active", config.load())
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(head + "[" + rest, encoding="utf-8")
+    return []
+
+
 def _already_cut_over() -> list[str]:
     from datetime import date
 
@@ -2165,9 +2295,9 @@ def _sample_decisions(entry: registry.Entry) -> list[str]:
 
 @pytest.mark.parametrize("entry", LANDED, ids=lambda e: e.name)
 def test_conformance_2_exit_codes_are_from_the_vocabulary_and_never_status_two(
-    entry, configured
+    entry, configured, monkeypatch
 ):
-    code, _, _ = drive([*_sample_decisions(entry), *entry.path, *_sample_arguments(entry)])
+    code, _, _ = drive([*_sample_decisions(entry), *entry.path, *_sample_arguments(entry, monkeypatch)])
     assert code in {int(c) for c in ExitCode}
     assert code != int(ExitCode.USAGE)
 
@@ -2332,6 +2462,10 @@ ACKNOWLEDGED_BEFORE_THE_GATE = {
         "tests/test_organize.py::"
         "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
     ),
+    "sync.pair": (
+        "tests/test_sync_pair.py::"
+        "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
+    ),
 }
 
 
@@ -2453,7 +2587,7 @@ def _conformance_3(entry: registry.Entry, positional: list[str]) -> list[str]:
 
 
 @pytest.mark.parametrize("entry", LANDED, ids=lambda e: e.name)
-def test_conformance_3_every_gate_refuses_and_then_the_verb_proceeds(entry, configured):
+def test_conformance_3_every_gate_refuses_and_then_the_verb_proceeds(entry, configured, monkeypatch):
     """Assertion 3, rewritten: a gate refuses, and OK comes only after R34's acts.
 
     WHAT WAS WRONG. The previous version drove every gate the same way: refuse,
@@ -2473,7 +2607,7 @@ def test_conformance_3_every_gate_refuses_and_then_the_verb_proceeds(entry, conf
     if not entry.gates:
         return
     _acknowledge_where_the_verb_reads_it_first(entry, configured)
-    _conformance_3(entry, _sample_arguments(entry))
+    _conformance_3(entry, _sample_arguments(entry, monkeypatch))
 
 
 def _swap_in(monkeypatch, promoted: registry.Entry) -> None:

@@ -181,6 +181,11 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'sync-artifacts-unusable',
     'sync-mark-record-unusable',
     'sync-marks-blocked',
+    # 2026-10-10, U130: the four sync pair causes joined.
+    'sync-pair-conflict',
+    'sync-pair-out-of-scope',
+    'sync-pair-store-unusable',
+    'sync-pair-unknown',
     'sync-source-lookups-failed',
     'sync-watermark-unusable',
     'tag-remap-unwritten',
@@ -406,10 +411,16 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'internal-error',
         'revert-nothing-recorded',
     ],
+    # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
+    # ONE kebab literal joined in cli/doctor.py and nothing left, internal-error,
+    # the cause the taxonomy.schema check reads to tell a shipped template defect
+    # from the copy's. Measured on the merged tree; do not bring back a
+    # package-wide total tuple.
     'cli/doctor.py': [
         'commit-msg',
         'doctor-check-failed',
         'hook-impl',
+        'internal-error',
         'merge-commit',
         'post-checkout',
         'post-commit',
@@ -528,6 +539,18 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'cli/verbs/login.py': ['credential-missing', 'utf-8'],
     'cli/verbs/profile.py': ['config-unusable'],
     'cli/verbs/runs.py': ['decision-unknown-gate'],
+    # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
+    # a new module, crate taxonomy upgrade (U132). Its three WARNING codes are
+    # the literals new to the package; the rest were already declared.
+    # Measured on the merged tree; do not bring back a package-wide total tuple.
+    'cli/verbs/taxonomy.py': [
+        'config-unusable',
+        'internal-error',
+        'taxonomy-nothing-to-upgrade',
+        'taxonomy-upgrade-held',
+        'taxonomy-upgraded',
+        'utf-8',
+    ],
     'core/active_taxonomy.py': ['config-unusable', 'library-volume-unmounted', 'utf-8'],
     'core/artifacts.py': ['utf-8'],
     'core/backup_facts.py': [
@@ -739,6 +762,11 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-artifacts-unusable',
         'sync-mark-record-unusable',
         'sync-marks-blocked',
+        # 2026-10-10, U130: the four sync pair causes joined.
+        'sync-pair-conflict',
+        'sync-pair-out-of-scope',
+        'sync-pair-store-unusable',
+        'sync-pair-unknown',
         'sync-source-lookups-failed',
         'sync-watermark-unusable',
         'tag-remap-unwritten',
@@ -950,6 +978,10 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     'core/tags.py': ['utf-8'],
     'core/taxonomy.py': ['utf-8'],
+    # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
+    # a new module, the taxonomy upgrade planner (U132), holding two causes
+    # already declared. Measured on the merged tree.
+    'core/taxonomy_upgrade.py': ['config-unusable', 'internal-error'],
     'core/tombstone.py': ['removed-file', 'review-selection-invalid', 'version-uncredited'],
     'core/tree_registry.py': [
         'catalogue-crawl',
@@ -997,10 +1029,20 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'outbound-playlist-record-mismatch',
     ],
     'export/prune_cli.py': ['export-playlist-unknown'],
+    # Re-pinned on the merge of main at e686759 into grok/297, 2026-10-10:
+    # SEVEN kebab literals joined in export/set_cli.py and nothing left,
+    # credential-missing plus the six backfill and export-set codes U129 adds.
     'export/set_cli.py': [
+        'credential-missing',
         'export-archive',
+        'export-archive-backfill',
+        'export-archive-backfill-refused',
         'export-archive-changed-since-plan',
         'export-archive-nothing-built',
+        'export-set',
+        'export-set-backfill',
+        'export-set-backfill-no-job',
+        'export-set-backfill-no-tracks',
         'export-set-tracks-refused',
         'intake-list-unusable',
         'internal-error',
@@ -1051,6 +1093,10 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'utf-8',
     ],
     'intake/candidates.py': ['no-candidates', 'provider-candidate'],
+    # Re-pinned on the merge of main at e686759 into grok/297, 2026-10-10:
+    # THREE kebab literals joined in intake/cli.py and nothing left,
+    # set-account-unnamed and set-account-unreachable (WARNING codes) plus
+    # intake-set-account (the account gate's name-only digest kind).
     'intake/cli.py': [
         'config-unusable',
         'intake-artifacts',
@@ -1058,6 +1104,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'intake-list-unusable',
         'intake-playlist-withheld',
         'intake-recognition-failed',
+        'intake-set-account',
         'intake-staging',
         'internal-error',
         'job-unknown',
@@ -1069,6 +1116,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'recognition-cached',
         'recognition-in-parts',
         'recognition-incomplete',
+        'set-account-unnamed',
+        'set-account-unreachable',
         'tracklist-unwritten',
         'tracklist-written',
         'unavailable-transient',
@@ -1099,10 +1148,15 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     # vox-not-written and vox-unscored, the WARNING codes a native write gives
     # for a landing that could tag no row and for a file with no score.
     # Measured on the merged tree; do not bring back a package-wide total tuple.
+    # Re-pinned on the merge of main at e686759 into grok/297, 2026-10-10:
+    # TWO kebab literals joined in intake/land_cli.py and nothing left,
+    # account-archive and intake-land-archive-failed, the archive path U129 adds.
     'intake/land_cli.py': [
+        'account-archive',
         'decision-stale',
         'favorites-placed',
         'favorites-placement-skipped',
+        'intake-land-archive-failed',
         'intake-list-unusable',
         'internal-error',
         'land-native',
@@ -1289,6 +1343,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'modules/outbound/artifacts.py': ['outbound-artifacts', 'outbound-staging', 'utf-8'],
     'modules/outbound/folders.py': ['label-playlists', 'label-playlists-ambiguous', 'unavailable-transient'],
     'modules/outbound/ledger.py': ['outbound-ledger-unusable', 'outbound-record-moved', 'utf-8'],
+    # 2026-10-10, U130: the playlist pairs record joined.
+    'modules/outbound/pairs.py': ['sync-pair-conflict', 'sync-pair-store-unusable', 'utf-8'],
     'modules/outbound/prune.py': [
         'already-off',
         'export-prune',
@@ -1438,6 +1494,20 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     'sync/mark_record.py': ['sync-mark-record-unusable', 'utf-8'],
     'sync/marks.py': ['sync-marks-blocked'],
+    # 2026-10-10, U130: the sync pair verb joined.
+    'sync/pair_cli.py': [
+        'playlist-pair',
+        'sync-pair-ambiguous',
+        'sync-pair-awaiting',
+        'sync-pair-left-out',
+        'sync-pair-nothing',
+        'sync-pair-out-of-scope',
+        'sync-pair-skipped',
+        'sync-pair-unknown',
+        'sync-pair-unmatched',
+        'sync-pair-withheld',
+        'sync-pair-written',
+    ],
     'sync/playlists.py': [
         'already-swept',
         'favorites-placeholder',
@@ -1629,6 +1699,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'config-unusable',
         'rename-incomplete',
     ],
+    # 2026-10-10, U130: the pair's rekordbox writer joined.
+    'write/playlist_pair.py': ['decision-stale', 'playlist-pair', 'session-committed-unverified'],
     'write/rbxml.py': ['utf-8'],
     'write/rebuild.py': [
         'membership-left-behind',
@@ -2035,7 +2107,9 @@ PINNED_LITERAL_HOLDERS = {
         'cutover-tree-undeclared',
         'internal-error',
     ],
-    'cli/doctor.py': ['doctor-check-failed'],
+    # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
+    # internal-error joined, read by the taxonomy.schema check (U132).
+    'cli/doctor.py': ['doctor-check-failed', 'internal-error'],
     'cli/export_collection.py': ['library-export-unusable', 'output-exists', 'path-permission-denied'],
     'cli/gates.py': [
         'blocked-by-pending-action',
@@ -2065,6 +2139,9 @@ PINNED_LITERAL_HOLDERS = {
     'cli/verbs/login.py': ['credential-missing'],
     'cli/verbs/profile.py': ['config-unusable'],
     'cli/verbs/runs.py': ['decision-unknown-gate'],
+    # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
+    # a new module, crate taxonomy upgrade (U132). Measured on the merged tree.
+    'cli/verbs/taxonomy.py': ['config-unusable', 'internal-error'],
     'core/active_taxonomy.py': ['config-unusable', 'library-volume-unmounted'],
     'core/backup_facts.py': ['grant-path-access', 'repair-backup-facts', 'upgrade-cratekit'],
     'core/binaries.py': [
@@ -2157,6 +2234,9 @@ PINNED_LITERAL_HOLDERS = {
         'snapshot-integrity-failed',
         'snapshot-store-full',
     ],
+    # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
+    # a new module, the taxonomy upgrade planner (U132). Measured on the merged tree.
+    'core/taxonomy_upgrade.py': ['config-unusable', 'internal-error'],
     'core/tombstone.py': ['review-selection-invalid'],
     'core/tree_registry.py': [
         'cutover-already-recorded',
@@ -2177,7 +2257,11 @@ PINNED_LITERAL_HOLDERS = {
     'deletion/watermark.py': ['deletion-watermark-unusable'],
     'export/cli.py': ['export-playlist-unknown', 'outbound-item-absent'],
     'export/prune_cli.py': ['export-playlist-unknown'],
+    # Re-pinned on the merge of main at e686759 into grok/297, 2026-10-10:
+    # ONE cause literal joined in export/set_cli.py and nothing left,
+    # credential-missing, the soft skip path U129's set backfill names.
     'export/set_cli.py': [
+        'credential-missing',
         'intake-list-unusable',
         'internal-error',
         'sync-mark-record-unusable',
@@ -2320,6 +2404,8 @@ PINNED_LITERAL_HOLDERS = {
     'modules/outbound/account.py': ['credential-missing', 'outbound-account-unbound', 'unavailable-transient'],
     'modules/outbound/folders.py': ['label-playlists-ambiguous', 'unavailable-transient'],
     'modules/outbound/ledger.py': ['outbound-ledger-unusable', 'outbound-record-moved'],
+    # 2026-10-10, U130: the playlist pairs record joined.
+    'modules/outbound/pairs.py': ['sync-pair-conflict', 'sync-pair-store-unusable'],
     'modules/outbound/prune.py': ['internal-error', 'outbound-remove-refused', 'unavailable-transient'],
     'modules/outbound/sets.py': ['export-set-ambiguous'],
     'modules/outbound/shell.py': ['config-unusable', 'internal-error', 'outbound-account-unbound'],
@@ -2386,6 +2472,8 @@ PINNED_LITERAL_HOLDERS = {
     'sync/mark_cli.py': ['internal-error', 'sync-mark-record-unusable', 'sync-marks-blocked'],
     'sync/mark_record.py': ['sync-mark-record-unusable'],
     'sync/marks.py': ['sync-marks-blocked'],
+    # 2026-10-10, U130: the sync pair verb joined.
+    'sync/pair_cli.py': ['sync-pair-out-of-scope', 'sync-pair-unknown'],
     'sync/playlists.py': ['intake-list-unusable', 'label-playlist-unreadable', 'sync-source-lookups-failed'],
     'sync/run.py': ['sync-source-lookups-failed'],
     'sync/unmark_cli.py': ['internal-error', 'sync-marks-blocked'],
@@ -2431,6 +2519,8 @@ PINNED_LITERAL_HOLDERS = {
         'config-unusable',
         'rename-incomplete',
     ],
+    # 2026-10-10, U130: the pair's rekordbox writer joined.
+    'write/playlist_pair.py': ['decision-stale', 'session-committed-unverified'],
     'write/rebuild.py': [
         'rebuild-derivation-empty',
         'rebuild-derivation-incomplete',

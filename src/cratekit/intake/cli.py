@@ -187,6 +187,8 @@ _OUT_HELP = (
 
 
 def build_set(parser, entry) -> None:
+    from cratekit.intake import set_playlist
+
     parser.add_argument("source", help=_SOURCE_HELP)
     parser.add_argument("--out", default=None, metavar="DIR", help=_OUT_HELP)
     parser.add_argument(
@@ -203,6 +205,9 @@ def build_set(parser, entry) -> None:
             "reading the answers already kept for this recording; this spends"
         ),
     )
+    # U129. The account playlist is named as INSPIRATION is, so the same three
+    # words land on both. A resume (--job) never remakes the playlist.
+    set_playlist.add_word_arguments(parser)
     parser.set_defaults(_handler=intake_set)
 
 
@@ -239,8 +244,24 @@ def build_playlist(parser, entry) -> None:
 
 
 def set_argv(job) -> list[str]:
-    source = job.payload.get(SOURCE, "")
-    return ["intake", "set", source, "--job", job.job_id]
+    """The command line that continues one queued set.
+
+    IT CARRIES ``--run`` WHEN THE ACCOUNT GATE WAS ASKED. The account confirm
+    gate is ``explicit``, so R34 makes it answerable only by a separate act
+    recorded against a run. The child :mod:`cratekit.core.jobs` spawns is a
+    fresh process, and ``cli.run`` mints a NEW run whenever ``--run`` is absent,
+    so a resume naming only the job meets the gate with nothing recorded and
+    exits DECISION_REQUIRED on every respawn. The flag goes BEFORE the verb
+    path because ``--run`` belongs to the root parser.
+
+    A job frozen by a build older than the gate, or one whose account step soft
+    skipped, carries no gate run and resumes without the flag.
+    """
+    payload = job.payload or {}
+    source = str(payload.get(SOURCE) or "")
+    gate_run = payload.get(jobs.GATE_RUN_KEY)
+    resume = ["--run", str(gate_run)] if gate_run else []
+    return [*resume, "intake", "set", source, "--job", job.job_id]
 
 
 def playlist_argv(job) -> list[str]:
@@ -724,22 +745,204 @@ def _coverage_or_refuse(
     )
 
 
+
+#: Why the account playlist step was skipped, one code each (U129).
+ACCOUNT_UNNAMED = "set-account-unnamed"
+ACCOUNT_UNREACHABLE = "set-account-unreachable"
+ACCOUNT_GATE = "intake.set.account.confirm"
+
+
+@dataclass(frozen=True, slots=True)
+class _PlaylistName:
+    """What ``intake set`` decided about the account and INSPIRATION name."""
+
+    name: str = ""
+    warning: dict[str, str] | None = None
+
+
+def _set_playlist_name(
+    page,
+    *,
+    dj: str | None,
+    set_name: str | None,
+    set_date: str | None,
+    from_url: bool = False,
+) -> _PlaylistName:
+    """The INSPIRATION form of the name, or a warning when naming was expected.
+
+    A local recording with no page and no name flags never asked for an account
+    playlist, so the skip is silent. A mix URL whose fetch left no page is the
+    same shape as a page that left a word out: the person gave an address, so
+    the account step was expected and the warning says so. A command that
+    passed some of ``--dj`` / ``--set-name`` / ``--set-date`` and still cannot
+    name the set is the other case the warning is for.
+    """
+    from cratekit.export import set_cli
+    from cratekit.intake import set_playlist
+
+    try:
+        words = set_playlist.words_from_page(
+            page, dj=dj, set_name=set_name, set_date=set_date
+        )
+    except CratekitError as exc:
+        if exc.cause.reason != set_playlist.UNNAMED:
+            raise
+        page = page if isinstance(page, Mapping) else {}
+        asked = (
+            bool(page)
+            or from_url
+            or any(v is not None for v in (dj, set_name, set_date))
+        )
+        if not asked:
+            return _PlaylistName()
+        return _PlaylistName(
+            warning={
+                "code": ACCOUNT_UNNAMED,
+                "message": (
+                    f"{exc.cause.message}; the set is queued and no account "
+                    f"playlist was planned. Pass the missing flag(s) on a later "
+                    f"crate export set, or on crate intake inspiration"
+                ),
+            }
+        )
+    return _PlaylistName(name=set_cli.set_name(set_playlist.playlist_name(words)))
+
+
+def _account_gate_payload(name: str) -> dict[str, Any]:
+    """What the account gate digests: the playlist name alone, not its tracks.
+
+    The name is known from the URL page or the name flags before recognition
+    runs, so the gate can fire without paying ACRCloud or depending on which
+    tracks the identifier returns. Tracks are matched after recognition, when
+    the write is applied.
+    """
+    return {
+        "digest": digest_of({"kind": "intake-set-account", "name": name}),
+        "items": [
+            {
+                "id": name,
+                "kind": "playlist",
+                "name": name,
+                "action": "save",
+            }
+        ],
+        "totals": {"count": 1, "writes": True},
+        "chunk": None,
+    }
+
+
+def _account_gate_shown(name: str) -> dict[str, Any]:
+    """What the screen says when the account gate asks before recognition."""
+    return {
+        "playlist": (
+            f"{name}: save it as a private account playlist under this name"
+        ),
+        "tracks": (
+            "the tracks are named after recognition, then matched on the account"
+        ),
+        "removes": "nothing, ever: no track or playlist is taken away",
+    }
+
+
+def _ask_account_gate(ctx, *, name: str) -> tuple[tuple, str | None]:
+    """Ask the account gate over the playlist name, before recognition.
+
+    Soft when this verb somehow declares no gate: that becomes a warning and
+    the set still queues. The gate is asked before ``jobs.enqueue`` so an
+    explicit first refusal does not leave a job that a resume would queue
+    again (U129), and before recognition so the first run does not pay for
+    ACRCloud only to stop for the decision.
+    """
+    if not name:
+        return (), None
+    spec = next((one for one in ctx.entry.gates if one.name == ACCOUNT_GATE), None)
+    if spec is None:
+        return (
+            (
+                {
+                    "code": ACCOUNT_UNREACHABLE,
+                    "message": (
+                        f"the account playlist {name!r} was named but this verb "
+                        f"declares no account gate, so nothing was written"
+                    ),
+                },
+            ),
+            None,
+        )
+    option = ctx.gate.require(
+        spec, plan=_account_gate_payload(name), context=_account_gate_shown(name)
+    )
+    return (), option
+
+
+def _plan_account_playlist(cfg, *, name: str, rows):
+    """Match the set's rows to the account playlist after recognition.
+
+    Soft on a missing credential or a matching failure: those become a warning
+    and a later ``crate export set`` or the backfill covers them. The gate was
+    already asked over the name alone, so a plan failure here does not re-ask.
+    """
+    if not name or not rows:
+        return (), None
+    from cratekit.export import set_cli
+
+    try:
+        built = set_cli.plan_from_wanted(cfg, name, rows)
+    except CratekitError as exc:
+        return (
+            (
+                {
+                    "code": ACCOUNT_UNREACHABLE,
+                    "message": (
+                        f"the account playlist {name!r} was not planned "
+                        f"({exc.cause.reason}: {exc.cause.message}); the set will "
+                        f"still be queued, run crate export set over its "
+                        f"tracklist once the account is reachable"
+                    ),
+                },
+            ),
+            None,
+        )
+    notes = tuple(set_cli._unmatched_warnings(built.planned))
+    return notes, built
+
+
+def _apply_account_playlist(cfg, built, option: str | None):
+    """Write the planned account playlist after the set is queued, or leave it."""
+    from cratekit.export import set_cli
+
+    if built is None:
+        return (), None
+    notes = ()
+    if option != "apply" or not built.writes:
+        return notes, built.payload
+    data, more, _wrote = set_cli.apply_planned(cfg, built)
+    return tuple(more), data
+
+
+
 def intake_set(ctx) -> Envelope:
     """Identify the recording, freeze what was heard, and queue one item per track.
 
-    THE GATE, THEN THE SPEND, THEN THE QUEUE. The recognition gate refuses by
-    name before anything is carved; the identifier is the paid step and it is
-    bounded inside :mod:`cratekit.intake.acrcloud`; only a set that named at
-    least one track becomes a job. The counts the identifier reports are the
-    counts the job freezes, so the honest zero says what it cost and a
-    partial run says how partial.
+    THE ACCOUNT GATE, THEN THE RECOGNITION GATE, THEN THE SPEND, THEN THE
+    QUEUE. The account playlist's name is known from the name flags or from
+    the mix page, so ``intake.set.account.confirm`` is asked before ACRCloud
+    runs (U129): the first run stops for the decision without paying for
+    recognition, and a resume reuses the recognition cache for chunks already
+    answered. The recognition gate then refuses by name before anything is
+    carved; the identifier is the paid step and it is bounded inside
+    :mod:`cratekit.intake.acrcloud`; only a set that named at least one track
+    becomes a job. The counts the identifier reports are the counts the job
+    freezes, so the honest zero says what it cost and a partial run says how
+    partial.
 
-    A MIX URL IS FETCHED AFTER THE GATE AND BEFORE THE SPEND (U104). The gate
-    is free and a download is minutes, so a machine with no recognition keys
-    is told so before it waits. The job freezes the ADDRESS as its source, not
-    the scratch file, which is removed when the ``with`` block ends: the
-    worker reads nothing but the job, and a resume returns above this branch,
-    so nothing is ever fetched twice for one job.
+    A MIX URL IS FETCHED AFTER THE ACCOUNT GATE WHEN THE NAME FLAGS ALREADY
+    NAME THE SET, AND BEFORE RECOGNITION (U104). When the name must come from
+    the page, the fetch runs first so the page can name the set, then the
+    account gate, then recognition. The job freezes the ADDRESS as its source,
+    not the scratch file, which is removed when the ``with`` block ends: the
+    worker reads nothing but the job, and a resume returns above this branch.
+    A mix download is not cached across runs the way recognition answers are.
 
     THE TRACKLIST IS WRITTEN AS ``intake identify`` WRITES IT (R-925), by the
     same writer into the same folder, ``--out`` or the default. A set is the
@@ -760,10 +963,40 @@ def intake_set(ctx) -> Envelope:
             return _resume(ctx, store, ctx.args.job)
         source = str(ctx.args.source)
         local = _local_or_none(source)
+        dj = getattr(ctx.args, "dj", None)
+        set_name = getattr(ctx.args, "set_name", None)
+        set_date = getattr(ctx.args, "set_date", None)
+        # Name from the flags alone when every word is given, so the account
+        # gate can fire before recognition and before any mix download.
+        early = _set_playlist_name({}, dj=dj, set_name=set_name, set_date=set_date)
+        account_notes: tuple = ()
+        option: str | None = None
+        gate_asked = False
+        if early.name:
+            account_notes, option = _ask_account_gate(ctx, name=early.name)
+            gate_asked = True
         recognize.assert_recognition_ready()
         out = _tracklist_dir(cfg, ctx.args.out, local if local is not None else source.strip())
         job = None
+        built = None
         with _recording(cfg, source, local, ctx.progress) as held:
+            playlist = (
+                early
+                if early.name
+                else _set_playlist_name(
+                    held.page,
+                    dj=dj,
+                    set_name=set_name,
+                    set_date=set_date,
+                    from_url=local is None,
+                )
+            )
+            # THE ACCOUNT GATE BEFORE RECOGNITION (U129). When the name came
+            # from the page, ask here, still before the paid identifier runs.
+            if playlist.name and not gate_asked:
+                more, option = _ask_account_gate(ctx, name=playlist.name)
+                account_notes = (*account_notes, *more)
+                gate_asked = True
             result = pipeline.identify_only(
                 held.path,
                 refresh=bool(ctx.args.refresh),
@@ -775,19 +1008,37 @@ def intake_set(ctx) -> Envelope:
                 + _cache_notes(result)
                 + _parts_notes(result, queued=True)
             )
+            if playlist.warning:
+                warnings = list(warnings) + [playlist.warning]
             tracks = frozen_rows(result.rows)
+            # Match tracks after recognition; the gate already decided on the name.
+            plan_notes, built = _plan_account_playlist(
+                cfg,
+                name=playlist.name if playlist.name else "",
+                rows=result.rows if tracks else (),
+            )
+            account_notes = (*account_notes, *plan_notes)
             if tracks:
+                payload = {
+                    SOURCE: held.ref,
+                    TRACKS: tracks,
+                    CALLS: result.calls,
+                    UNREACHED: result.unreached,
+                    PARTS: result.parts,
+                    PAGE: dict(held.page),
+                }
+                # U129. Freeze the INSPIRATION name so the account playlist and
+                # the landing's playlist agree, even when they run on different days.
+                if playlist.name:
+                    payload[PLAYLIST_NAME] = playlist.name
+                # Freeze the gate run only when the account gate was asked, so a
+                # resume can restore the decision. Soft skips leave it out.
+                if gate_asked and option is not None:
+                    payload[jobs.GATE_RUN_KEY] = ctx.run.run_id
                 job = jobs.enqueue(
                     store,
                     handler_key=ctx.entry.handler_key,
-                    payload={
-                        SOURCE: held.ref,
-                        TRACKS: tracks,
-                        CALLS: result.calls,
-                        UNREACHED: result.unreached,
-                        PARTS: result.parts,
-                        PAGE: dict(held.page),
-                    },
+                    payload=payload,
                     cfg=cfg,
                     item_ids=tuple(tracks),
                 )
@@ -801,21 +1052,21 @@ def intake_set(ctx) -> Envelope:
                     source=held.ref,
                 ),
                 outcome=Outcome.NO_OP,
-                warnings=warnings,
+                warnings=(*warnings, *account_notes),
             )
         listed, note = _set_tracklist(out, held, result, job.job_id)
+        apply_notes, account_data = _apply_account_playlist(cfg, built, option)
+        extra = {
+            "calls": result.calls,
+            "unreached": result.unreached,
+            "parts": result.parts,
+            TRACKLIST: str(listed) if listed is not None else None,
+        }
+        if account_data is not None:
+            extra["account_playlist"] = account_data
         return ctx.envelope(
-            data=_reported(
-                store,
-                job,
-                extra={
-                    "calls": result.calls,
-                    "unreached": result.unreached,
-                    "parts": result.parts,
-                    TRACKLIST: str(listed) if listed is not None else None,
-                },
-            ),
-            warnings=(note, *warnings),
+            data=_reported(store, job, extra=extra),
+            warnings=(note, *warnings, *account_notes, *apply_notes),
         )
 
 
@@ -1505,6 +1756,7 @@ __all__ = [
     "PAGE",
     "PLAYLIST_NAME",
     "SOURCE",
+    "ACCOUNT_GATE",
     "TRACKLIST",
     "TRACKLISTS_DIR",
     "TRACKLIST_SUFFIX",

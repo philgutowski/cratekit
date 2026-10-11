@@ -376,6 +376,17 @@ text moved on, which is INFO, from one a person edited, which is theirs and
 reads OK. A copy with no record is said to be unrecorded rather than guessed
 either way. Doctor never rewrites the copy.
 
+The UPGRADE (U132), `crate taxonomy upgrade`, is the one verb that does, and it
+only adds: each shipped `[[sub_class]]` and `[[bucket]]` whose id the copy lacks
+is appended verbatim from the shipped text, and `schema_version` is raised to
+the shipped one, behind an explicit gate, with the copy as it was kept beside
+it under a dated name. An entry the copy cannot take as it stands is HELD rather
+than forced: one that would not load, or a bucket whose words another bucket of
+the copy's already files where the shipped template does not, which is how a
+bucket that moved out of another (Soul out of R&B) reaches a copy made before
+the move. A held entry names the hand edit that lets it in. Doctor's
+`taxonomy.schema` names the two versions and every entry the copy lacks.
+
 ### Genre Favorites
 The playlist named Favorites inside each genre folder of the routing tree,
 planned on 2026-10-09 (`docs/plans/2026-10-09-1214-feat-genre-folders-and-favorites-plan.md`,
@@ -483,6 +494,33 @@ brought is LEFT and named in the landing's warnings. The files still land in
 the one batch folder; only the rekordbox playlists split, and the batch
 playlist keeps what no account playlist claimed. A later landing of the same
 pass holds only its new files for a playlist that pass already mirrored.
+
+### Playlist pair
+One of the author's own account playlists and one plain rekordbox playlist,
+marked with `crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID` to stay the
+same list on both sides (U130). Named by both identifiers and never by a name
+(R-906), and one playlist pairs with one other. Never the hearts, a label's or
+a set's playlist, the source system's debris or placeholders, a rekordbox
+folder or smart playlist, or anything under one of Cratekit's own trees. Each
+sync merges each side against its PAIR SNAPSHOT: an addition on either side is
+kept, a removal on either side is applied, an addition beats a removal, and the
+order follows the side that changed it, the account's when both did. A removal
+takes a membership off and never a track out of the collection or the account.
+A rekordbox row the account has no match for is named and stays in rekordbox; an
+account track the library lacks is queued once through `intake.playlist`.
+
+*Avoid:* reading a pair as an export or an intake. Both of those go one way and
+never remove.
+
+### Pair snapshot
+What each side of a playlist pair held when its last whole sync finished: the
+account's tracks in order, every live rekordbox membership with its row, and
+the links between the two (U130). It moves only when both gates applied, every
+write landed and the account listed the whole playlist; a sync short of that
+records the links and leaves the snapshot, so the next sync finishes from the
+same base. A pair with no snapshot is on its first sync, which adds only.
+
+*Avoid:* reading it as a database snapshot, which is a backup of the library.
 
 ### Rotation
 `crate inbox rotate` (U111), the write `report intake-aging` only describes.
@@ -1331,13 +1369,15 @@ the Record Labels tree is, or as intake.
 
 ### Set playlist
 The private playlist on the streaming account that an identified set or a
-typed tracklist became through `crate export set` (R-837). It is recorded in
-the outbound ledger's `sets` map under its name, which is the key a second
-run reuses, so the name `intake identify` gives keeps its digest piece. The
-playlists source excludes it as `set-playlist`, since its tracks are fetched
-from the tracklist it was made from. `crate export archive` files it, after
-the set's download lands, in a root folder named for the year it was made,
-prefixed `DOWNLOADED ` through the mark record.
+typed tracklist became through `crate export set` (R-837), or through
+`intake set` itself (U129), which plans that write on its own gate under the
+INSPIRATION playlist's name so the account and rekordbox agree. It is
+recorded in the outbound ledger's `sets` map under its name, which is the key
+a second run reuses. The playlists source excludes it as `set-playlist`,
+since its tracks are fetched from the tracklist it was made from. A set
+landing, or `crate export archive`, files it once the download lands, in a
+root folder named for the year it was made, prefixed `DOWNLOADED ` through
+the mark record.
 
 *Avoid:* reading it as intake, or keying it by anything a person can retype
 differently, such as the tracklist's path.
@@ -1369,7 +1409,9 @@ year playlist written `created` (R-836). `ledger.product_made` is the answer,
 and it is no unless a record says yes. A label year adopted by its name under
 the folder was made by the source system or a person, and is not product made
 whatever else records it. The only removal the account protocol declares,
-`remove_tracks`, is refused for any other playlist before a provider call.
+`remove_tracks`, and its `order_tracks`, are refused before a provider call for
+any playlist that is neither product made nor one side of a playlist pair
+(U130).
 
 *Avoid:* reading "recorded in the ledger" as product made. An adopted year is
 recorded and was not made here.
