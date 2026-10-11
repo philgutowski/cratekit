@@ -1020,7 +1020,13 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'deletion/stores.py': ['foreign-callable', 'source-unavailable', 'utf-8'],
     'deletion/trash.py': ['trash-unavailable'],
     'deletion/watermark.py': ['deletion-watermark-unusable', 'utf-8'],
+    # Re-pinned on the merge of main at 5b5dba2 into fable/299, 2026-10-10:
+    # ONE kebab literal joined in export/cli.py and nothing left,
+    # export-playlist-unfiled, the WARNING code for a new playlist U131 could
+    # not file in Exports at creation. Measured on the merged tree; do not
+    # bring back a package-wide total tuple.
     'export/cli.py': [
+        'export-playlist-unfiled',
         'export-playlist-unknown',
         'export-tracks-unmatched',
         'outbound-item-absent',
