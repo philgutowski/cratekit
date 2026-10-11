@@ -1,0 +1,128 @@
+name = "u131"
+pass_kind = "light"
+
+[[rows]]
+id = "K1_mine_made_only"
+description = "filing.plan: read a Mine adopted by its name for marks too, so a playlist leaves a folder a person made"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+tests = ["tests/test_playlist_kinds.py", "tests/test_organize.py"]
+old = '''    if mine.made and mine.folder_id:'''
+new = '''    if mine.folder_id:'''
+
+[[rows]]
+id = "K2_exports_rule"
+description = "filing.plan: drop the Exports rule, so an exported playlist is read as product made and left"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+tests = ["tests/test_playlist_kinds.py", "tests/test_organize.py"]
+old = '''        if identity in exported:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "K3_product_made_left"
+description = "filing.plan: drop the product made leave, so a label's dated playlist is filed in Mine"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+tests = ["tests/test_playlist_kinds.py", "tests/test_organize.py"]
+old = '''        if identity in made:
+            rows.append(Placement(identity, name, LEFT, why=PRODUCT_MADE))'''
+new = '''        if False:
+            rows.append(Placement(identity, name, LEFT, why=PRODUCT_MADE))'''
+
+[[rows]]
+id = "K4_ambiguous_kind"
+description = "kinds.decide: take the first of two root folders named as the kind rather than leave its playlists"
+file = "src/cratekit/modules/outbound/kinds.py"
+surface = "user"
+tests = ["tests/test_playlist_kinds.py", "tests/test_organize.py"]
+old = '''    if len(named) > 1:'''
+new = '''    if len(named) > 99:'''
+
+[[rows]]
+id = "K5_recorded_folder"
+description = "kinds.decide: ignore the recorded folder, so a folder a person renamed is replaced by a new one"
+file = "src/cratekit/modules/outbound/kinds.py"
+surface = "user"
+tests = ["tests/test_playlist_kinds.py", "tests/test_organize.py"]
+old = '''    if recorded.folder_id and recorded.folder_id in root:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "K6_adopt_not_made"
+description = "ledger.reserve_kind_folder: record an adopted folder as made here"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_playlist_kinds.py", "tests/test_organize.py"]
+old = '''            document["kind_folders"][kind] = {"folder_id": adopt, "created": False}'''
+new = '''            document["kind_folders"][kind] = {"folder_id": adopt, "created": True}'''
+
+[[rows]]
+id = "K7_kind_folders_kept"
+description = "ledger._load: drop the kind folder records on read, so the next write forgets them"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_playlist_kinds.py", "tests/test_organize.py"]
+old = '''            for kind, value in kind_folders.items()
+            if value.get("folder_id")'''
+new = '''            for kind, value in kind_folders.items()
+            if False'''
+
+[[rows]]
+id = "K8_export_files_once"
+description = "export.apply: file on every apply rather than only the one that created the playlist"
+file = "src/cratekit/modules/outbound/export.py"
+surface = "user"
+tests = ["tests/test_playlist_kinds.py", "tests/test_export_collection.py", "tests/test_outbound_workers.py"]
+old = '''    if reserved.created:
+        # FILED AT CREATION'''
+new = '''    if True:
+        # FILED AT CREATION'''
+
+[[rows]]
+id = "K9_export_refusal_kept"
+description = "export.apply: let a ledger or raw error filing at creation fail the finished export"
+file = "src/cratekit/modules/outbound/export.py"
+surface = "user"
+tests = ["tests/test_playlist_kinds.py", "tests/test_export_collection.py", "tests/test_outbound_workers.py"]
+old = '''        except Exception as exc:  # noqa: BLE001 - reported as the warning'''
+new = '''        except KeyError as exc:  # noqa: BLE001 - reported as the warning'''
+
+[[rows]]
+id = "K10_kind_created_named"
+description = "kinds.reserve: do not name a kind folder created before a failed ledger write"
+file = "src/cratekit/modules/outbound/kinds.py"
+surface = "maintainer"
+tests = ["tests/test_playlist_kinds.py", "tests/test_organize.py"]
+old = '''        if made is not None:
+            made.append(folder.kind)'''
+new = '''        pass'''
+
+[[rows]]
+id = "K11_filing_in_digest"
+description = "confirm_digest: leave the Exports filing out of the digest, so a changed folder does not make the answer stale"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_playlist_kinds.py"]
+old = '''    if filing:
+        covered["filing"] = filing'''
+new = '''    if False:
+        covered["filing"] = filing'''
+
+[[rows]]
+id = "K12_filing_as_shown"
+description = "kinds.file_new: file whatever the account says now rather than only the decision the gate showed"
+file = "src/cratekit/modules/outbound/kinds.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_playlist_kinds.py"]
+old = '''    if token(folder) != planned:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "K13_unfiled_warning"
+description = "export concluded: drop the unfiled warning, so a playlist left at the root is never said"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py"]
+old = '''        for reason in outbound.get("unfiled") or ()'''
+new = '''        for reason in ()'''

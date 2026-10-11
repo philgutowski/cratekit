@@ -10,7 +10,17 @@ the root and names what becomes of each one:
   is moved into the root folder named for the year of its mark;
 * a label playlist is the label step's, and a set playlist is the archive's;
 * the product's own working playlists stay where they are;
-* anything else is reported and left, since nothing says it was downloaded.
+* A PLAYLIST AN EXPORT MADE, by the ledger's record, is moved into the root
+  ``Exports`` folder (U131);
+* EVERY OTHER PLAYLIST NO LEDGER CLAIMS is the author's own and is moved into
+  the root ``Mine`` folder (U131), each by name on the gate;
+* what is left, the product's other playlists and any playlist whose folder a
+  name cannot decide, is reported and left with its reason.
+
+A PLAYLIST IN ``Mine`` IS STILL READ FOR ITS MARK (U131). One filed in ``Mine``
+and marked by a later sync moves on into its year folder, as one at the root
+does. Only a ``Mine`` this product made is read so; a playlist is never moved
+out of a folder a person made, and one adopted by its name may be a person's.
 
 THE YEAR FOLDER IS THE ONE THE SET ARCHIVE FILES INTO, read and reserved
 through the same ledger entry, so a year holds one folder whichever step made
@@ -36,7 +46,7 @@ from typing import Any
 
 from cratekit.core import config
 from cratekit.core.cause import CratekitError, Scope, refuse
-from cratekit.modules.outbound import ledger, sets
+from cratekit.modules.outbound import kinds, ledger, sets
 from cratekit.modules.outbound.service import RemoteAccount
 from cratekit.organize import own
 from cratekit.sync.playlists import is_swept_name
@@ -57,6 +67,8 @@ PREFIXED_UNMARKED = (
     "its name says downloaded but no sync recorded when, so no year can be chosen"
 )
 UNDATED = "its mark carries no year, so no year folder is its own"
+#: Why a playlist goes to its kind's folder rather than a year's (U131).
+EXPORTED = "made by export playlist, so it is filed with the exports"
 
 
 def _ambiguous(year: str, count: int) -> str:
@@ -88,8 +100,10 @@ class Placement:
     action: str
     year: str = ""
     why: str = ""
+    #: The kind folder a move goes to, ``Mine`` or ``Exports``, when not a year.
+    kind: str = ""
 
-    def item(self, folder: YearFolder | None) -> dict[str, Any]:
+    def item(self, folder: YearFolder | kinds.KindFolder | None) -> dict[str, Any]:
         shown: dict[str, Any] = {
             "id": self.playlist_id,
             "kind": "playlist",
@@ -98,6 +112,8 @@ class Placement:
         }
         if self.year:
             shown["year"] = self.year
+        if self.kind:
+            shown["kind_folder"] = self.kind
         if folder is not None and self.action == MOVE:
             shown["folder"] = folder.action
             shown["folder_id"] = folder.folder_id
@@ -112,6 +128,8 @@ class FilePlan:
 
     rows: tuple[Placement, ...]
     years: Mapping[str, YearFolder]
+    #: Each kind folder a row names, ``Mine`` and ``Exports`` (U131).
+    kinds: Mapping[str, kinds.KindFolder] = field(default_factory=dict)
 
     @property
     def moves(self) -> tuple[Placement, ...]:
@@ -123,24 +141,36 @@ class FilePlan:
 
     def creates(self) -> tuple[str, ...]:
         """The years whose folder a move needs and the account does not hold."""
-        wanted = {row.year for row in self.moves}
-        return tuple(
-            sorted(year for year in wanted if self.years[year].action == sets.CREATE)
+        wanted = {row.year for row in self.moves if row.year}
+        made = sorted(year for year in wanted if self.years[year].action == sets.CREATE)
+        wanted_kinds = {row.kind for row in self.moves if row.kind}
+        made += sorted(
+            kind for kind in wanted_kinds if self.kinds[kind].action == kinds.CREATE
         )
+        return tuple(made)
 
     def identity(self) -> dict[str, Any]:
         """What the digest covers: every row at the root, and every year's folder."""
         return {
             "kind": "filing",
-            "rows": [[row.playlist_id, row.action, row.year, row.why] for row in self.rows],
+            "rows": [
+                [row.playlist_id, row.action, row.year, row.why, row.kind] for row in self.rows
+            ],
             "years": [
                 [one.year, one.action, one.folder_id, one.stale, one.why]
                 for one in (self.years[year] for year in sorted(self.years))
             ],
+            "kinds": [
+                [one.kind, one.action, one.folder_id, one.stale, one.why]
+                for one in (self.kinds[kind] for kind in sorted(self.kinds))
+            ],
         }
 
     def items(self) -> list[dict[str, Any]]:
-        return [row.item(self.years.get(row.year)) for row in self.rows]
+        return [
+            row.item(self.kinds.get(row.kind) if row.kind else self.years.get(row.year))
+            for row in self.rows
+        ]
 
 
 @dataclass
@@ -150,6 +180,9 @@ class Filed:
     #: Each year's folder in hand, and whether this apply created it.
     folders: dict[str, str] = field(default_factory=dict)
     created: list[str] = field(default_factory=list)
+    #: Each kind's folder in hand, and the kinds whose folder this apply made.
+    kinds: dict[str, str] = field(default_factory=dict)
+    kinds_created: list[str] = field(default_factory=list)
     #: Each move made, ``[playlist, folder]``, which is what a move back reads.
     moved: list[list[str]] = field(default_factory=list)
 
@@ -157,6 +190,8 @@ class Filed:
         return {
             "folders": dict(self.folders),
             "folders_created": list(self.created),
+            "kind_folders": dict(self.kinds),
+            "kind_folders_created": list(self.kinds_created),
             "moved": [list(one) for one in self.moved],
         }
 
@@ -241,18 +276,49 @@ def plan(
     ``listed`` is every playlist the account created, ``marks`` is ``sync
     mark``'s record, and ``working`` answers whether a name is one of the
     product's own working playlists. A playlist in any folder is not at the
-    root and is not this step's.
+    root and is not this step's, save one in the ``Mine`` this product made,
+    which is read for a mark that sends it on to its year (U131).
     """
     labels = tuple(labels)
     root = remote.folders()
     in_folders = playlists_in_folders(remote)
     label_built = ledger.label_playlist_ids(cfg)
     set_built = ledger.set_playlist_ids(cfg)
+    exported = ledger.exported_playlist_ids(cfg)
     at_root = [one for one in listed if one.playlist_id not in in_folders]
     made = ledger.product_made_among(cfg, (one.playlist_id for one in at_root))
     standing = _standing_marks(marks)
     years: dict[str, YearFolder] = {}
+    kind_folders: dict[str, kinds.KindFolder] = {}
     rows: list[Placement] = []
+
+    def year_row(identity: str, name: str, year: str) -> Placement:
+        if year not in years:
+            years[year] = _year_folder(cfg, year, root)
+        folder = years[year]
+        if folder.why:
+            return Placement(identity, name, LEFT, year=year, why=folder.why)
+        return Placement(identity, name, MOVE, year=year)
+
+    def kind_row(identity: str, name: str, kind: str, why: str) -> Placement:
+        if kind not in kind_folders:
+            kind_folders[kind] = kinds.decide(cfg, kind, root)
+        folder = kind_folders[kind]
+        if folder.why:
+            return Placement(identity, name, LEFT, why=folder.why, kind=kind)
+        return Placement(identity, name, MOVE, why=why, kind=kind)
+
+    # A MARKED PLAYLIST ALREADY IN MINE moves on to its year, and only out of a
+    # Mine this product made. Nothing else in Mine is shown: it is filed.
+    mine = kinds.decide(cfg, kinds.MINE, root)
+    if mine.made and mine.folder_id:
+        held = remote.folder_playlists(mine.folder_id)
+        for identity, name in sorted(held.items(), key=lambda pair: (pair[1], pair[0])):
+            year = year_of_mark(standing.get(identity, ""))
+            if year and identity not in label_built and identity not in set_built:
+                row = year_row(str(identity), str(name), year)
+                if row.action == MOVE:
+                    rows.append(row)
     for one in sorted(at_root, key=lambda playlist: (playlist.name, playlist.playlist_id)):
         identity, name = str(one.playlist_id), str(one.name)
         if identity in label_built or own.label_of(name, labels) is not None:
@@ -264,34 +330,34 @@ def plan(
         if working(name):
             rows.append(Placement(identity, name, LEFT, why=WORKING))
             continue
-        if identity not in standing:
-            if identity in made:
-                why = PRODUCT_MADE
-            elif is_swept_name(name):
-                why = PREFIXED_UNMARKED
-            else:
-                why = UNMARKED
-            rows.append(Placement(identity, name, LEFT, why=why))
+        year = year_of_mark(standing.get(identity, ""))
+        if year:
+            rows.append(year_row(identity, name, year))
             continue
-        year = year_of_mark(standing[identity])
-        if not year:
-            rows.append(Placement(identity, name, LEFT, why=UNDATED))
+        if identity in exported:
+            rows.append(kind_row(identity, name, kinds.EXPORTS, EXPORTED))
             continue
-        if year not in years:
-            years[year] = _year_folder(cfg, year, root)
-        folder = years[year]
-        if folder.why:
-            rows.append(Placement(identity, name, LEFT, year=year, why=folder.why))
+        if identity in made:
+            rows.append(Placement(identity, name, LEFT, why=PRODUCT_MADE))
             continue
-        rows.append(Placement(identity, name, MOVE, year=year))
-    return FilePlan(rows=tuple(rows), years=years)
+        # NO LEDGER CLAIMS IT, so it is the author's own (U131), filed in Mine
+        # with the reason it is not filed by a year.
+        if identity in standing:
+            why = UNDATED
+        elif is_swept_name(name):
+            why = PREFIXED_UNMARKED
+        else:
+            why = UNMARKED
+        rows.append(kind_row(identity, name, kinds.MINE, why))
+    return FilePlan(rows=tuple(rows), years=years, kinds=kind_folders)
 
 
 def _failed_part_way(exc: Exception, done: Filed) -> Exception:
     """The failure, with every folder made and every move made named in it."""
-    if done.moved or done.created:
+    if done.moved or done.created or done.kinds_created:
         wrote = (
-            f"before this failed {len(done.created)} year folder(s) were created and "
+            f"before this failed {len(done.created)} year folder(s) were created, "
+            f"{len(done.kinds_created)} kind folder(s) were created and "
             f"{len(done.moved)} playlist(s) were moved: "
             + ", ".join(f"{playlist} into {folder}" for playlist, folder in done.moved)
         ).rstrip(": ")
@@ -326,6 +392,14 @@ def apply(cfg: config.Config, remote: RemoteAccount, planned: FilePlan) -> Filed
     done = Filed()
     try:
         for row in planned.moves:
+            if row.kind:
+                if row.kind not in done.kinds:
+                    done.kinds[row.kind] = kinds.reserve(
+                        cfg, remote, planned.kinds[row.kind], done.kinds_created
+                    )
+                remote.move_to_folder(row.playlist_id, done.kinds[row.kind])
+                done.moved.append([row.playlist_id, done.kinds[row.kind]])
+                continue
             folder = planned.years[row.year]
             if row.year not in done.folders:
 
@@ -353,6 +427,7 @@ def apply(cfg: config.Config, remote: RemoteAccount, planned: FilePlan) -> Filed
 
 
 __all__ = [
+    "EXPORTED",
     "LABEL_STEP",
     "LEFT",
     "MOVE",

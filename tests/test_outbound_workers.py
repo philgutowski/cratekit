@@ -2375,11 +2375,15 @@ def test_the_resume_gate_shows_the_frozen_tracks_the_digest_covers(
     assert shown[shell_module.PLAYLIST] == payload[shell_module.PLAYLIST] == outbound_fakes.CRATE
     assert shown[shell_module.EXPORT_PATH] == payload[shell_module.EXPORT] == str(exported)
     assert shown["adopts"] == str(payload.get(export_cli.ADOPTS) or "")
+    # THE EXPORTS FOLDER DECISION IS FROZEN AND SHOWN (U131), and the digest
+    # covers it.
+    assert shown[export_cli.FILING] == payload[export_cli.FILING] == "Exports:create:"
     assert shown["digest"] == export_cli.confirm_digest(
         shown[shell_module.PLAYLIST],
         shown[shell_module.EXPORT_PATH],
         tracks,
         adopts=shown["adopts"],
+        filing=shown[export_cli.FILING],
     )
     assert shell_module.EXPORT not in shown, "the resume reads nothing off the export document"
     with jobs.open_store() as store:
@@ -2402,8 +2406,9 @@ def test_the_export_gate_shows_the_tracks_the_digest_covers_beside_the_age(
     assert shown[shell_module.PLAYLIST] == outbound_fakes.CRATE
     assert shown[shell_module.EXPORT_PATH] == str(exported)
     assert shown[export_cli.ADOPTS] == ""
+    assert shown[export_cli.FILING] == "Exports:create:"
     assert shown["digest"] == export_cli.confirm_digest(
-        outbound_fakes.CRATE, str(exported), ["1", "2", "3"], adopts=""
+        outbound_fakes.CRATE, str(exported), ["1", "2", "3"], adopts="", filing="Exports:create:"
     )
     assert shown["export"]["file"] == exported.name
     assert shown["export"]["freshness"] == "within-limit"
@@ -2488,3 +2493,91 @@ def test_local_tracks_carries_the_files_album_to_the_export_plan(installed, tmp_
     ]
     source.forget_libraries()
 
+
+
+# ---------------------------------------------------------------------------
+# U131: a playlist export playlist creates is filed in Exports, on its gate
+# ---------------------------------------------------------------------------
+
+
+def test_a_created_playlist_is_filed_in_exports_as_its_gate_showed(
+    installed, exported, monkeypatch
+):
+    del installed
+    account = outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3))
+    bind(monkeypatch, account)
+    _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
+
+    code, resumed = _resume(job_id)
+
+    assert code == int(ExitCode.OK), resumed
+    assert _codes(resumed) == []
+    assert account.folders_created == ["Exports"]
+    assert account.moves == [("pl-1", "folder-1")]
+    assert resumed["data"]["progress"]["outbound"]["unfiled"] == []
+
+
+def test_a_changed_exports_folder_makes_the_old_answer_stale(installed, exported, monkeypatch):
+    del installed
+    account = outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3))
+    bind(monkeypatch, account)
+    code, refused = drive(export_verb(exported))
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    detail = refused["cause"]["detail"]
+    assert detail["shown"][export_cli.FILING] == "Exports:create:"
+    decided, _said = drive(
+        ["run", "decide", refused["run_id"], detail["gate"], detail["options"][0], "--actor", "a-person"]
+    )
+    assert decided == int(ExitCode.OK)
+    # A person makes an Exports folder on the account between the ask and the answer.
+    account.create_folder("Exports")
+
+    code, other = drive(["--run", refused["run_id"], *export_verb(exported)])
+
+    assert code != int(ExitCode.OK), other
+    assert other["cause"]["reason"] == "decision-stale"
+    assert _queue_is_empty()
+
+
+def test_a_folder_changed_after_the_queue_leaves_the_playlist_at_the_root_with_a_warning(
+    installed, exported, monkeypatch
+):
+    del installed
+    account = outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3))
+    bind(monkeypatch, account)
+    _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
+    account.create_folder("Exports")
+
+    code, resumed = _resume(job_id)
+
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["outcome"] == "ok"
+    assert _codes(resumed) == [export_cli.UNFILED_WARNING]
+    (warning,) = resumed["warnings"]
+    assert "Exports:create: then, Exports:adopt:folder-1 now" in warning["message"]
+    assert account.moves == []
+    assert account.playlist_tracks("pl-1") == ("tid-1", "tid-2", "tid-3")
+
+
+def test_a_filing_failure_is_a_warning_on_a_finished_export(installed, exported, monkeypatch):
+    from cratekit.modules.outbound import kinds
+
+    del installed
+    account = outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3))
+    bind(monkeypatch, account)
+    _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
+
+    def broken(*_args, **_kwargs):
+        raise OSError("ledger write failed")
+
+    monkeypatch.setattr(kinds, "reserve", broken)
+
+    code, resumed = _resume(job_id)
+
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["outcome"] == "ok"
+    assert _codes(resumed) == [export_cli.UNFILED_WARNING]
+    (warning,) = resumed["warnings"]
+    assert "OSError: ledger write failed" in warning["message"]
+    assert account.playlist_tracks("pl-1") == ("tid-1", "tid-2", "tid-3")
+    assert account.moves == []

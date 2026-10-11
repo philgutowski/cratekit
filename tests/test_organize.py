@@ -345,26 +345,38 @@ def test_what_the_author_made_is_listed_with_a_home_and_never_a_write(world):
     assert mine_db[MINE_IN_REKORDBOX]["suggested_home"] == f"{DECLARED.catalog.display} / {LABEL}"
     assert mine_db["listen later"]["suggested_home"] is None
     mine_account = {one["name"]: one for one in areas[account_area.AREA]["yours"]}
-    assert mine_account[MINE_ON_ACCOUNT]["suggested_home"] == "the 2024 year folder"
+    # THE AUTHOR'S OWN ON THE ACCOUNT IS FILED IN MINE (U131), on the gate, so
+    # it is a move of the filing step and no longer a listing.
+    assert MINE_ON_ACCOUNT not in mine_account
     # The set the product made is listed by the account and is not the author's.
     assert SET_NAME not in mine_account
-    assert len(mine_account) == 1
+    assert mine_account == {}
+    (filed,) = [
+        step for step in areas[account_area.AREA]["steps"] if step["step"] == account_area.FILE
+    ]
+    assert sorted(row["id"] for row in filed["plan"] if row.get("kind_folder") == "Mine") == [
+        "mine-1"
+    ]
     # The run named batch is a suggestion, never a step.
     assert [one["name"] for one in areas[rekordbox.AREA]["suggested"]] == [RUN_NAMED]
 
     code, done, _first = _answered()
     assert code == int(ExitCode.OK), done
     assert ("mine-1", MINE_ON_ACCOUNT) not in held.renamed
-    assert "mine-1" not in held.placed
+    assert held.folder_names[held.placed["mine-1"]] == "Mine"
+    assert sorted(
+        pid for pid, folder in held.placed.items() if held.folder_names[folder] == "Mine"
+    ) == ["mine-1"]
     assert _parent(cfg, ids["mine"]) in rb_writer.ROOT_PARENT_SENTINELS
     assert _parent(cfg, ids["listen later"]) == inbox
     for area in done["data"]["summary"]["areas"].values():
         for step in area["steps"]:
             if step["step"] == account_area.FILE:
                 # THE FILING STEP NAMES EVERY PLAYLIST AT THE ROOT (U116), and an
-                # unmarked one of the author's only ever as left, with why.
+                # unmarked one of the author's is moved into Mine (U131), with why.
                 (row,) = [one for one in step["plan"] if one["name"] == MINE_ON_ACCOUNT]
-                assert row["action"] == filing.LEFT and row["why"] == filing.UNMARKED
+                assert row["action"] == filing.MOVE and row["why"] == filing.UNMARKED
+                assert row["kind_folder"] == "Mine"
                 continue
             assert MINE_ON_ACCOUNT not in str(step["plan"])
             assert MINE_IN_REKORDBOX not in str(step["plan"])
@@ -690,7 +702,14 @@ def test_an_exported_playlist_the_product_made_is_not_listed_as_yours(world):
     mine = {one["name"] for one in _report()["data"]["summary"]["areas"][account_area.AREA]["yours"]}
 
     assert "Exported 2025" not in mine
-    assert MINE_ON_ACCOUNT in mine
+    # The author's own is filed in Mine (U131), and so is a move, not a listing.
+    assert MINE_ON_ACCOUNT not in mine
+    assert mine == set()
+    rows = _file_rows(_report()).values()
+    assert sorted(row["id"] for row in rows if row.get("kind_folder") == "Mine") == ["mine-1"]
+    assert sorted(row["id"] for row in rows if row.get("kind_folder") == "Exports") == [
+        "exported-1"
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -734,7 +753,9 @@ def test_a_marked_playlist_at_the_root_moves_into_its_year_folder(world):
     folder = held.placed[MARKED_ID]
     assert held.folder_names[folder] == MARKED_YEAR
     applied = _steps(done, account_area.AREA)[account_area.FILE]["applied"]
-    assert applied["moved"] == [[MARKED_ID, folder]]
+    # The marked playlist to its year, and the author's own to Mine, nothing else.
+    assert applied["moved"] == [[MARKED_ID, folder], ["mine-1", held.placed["mine-1"]]]
+    assert held.folder_names[held.placed["mine-1"]] == "Mine"
     mine = {one["name"] for one in done["data"]["summary"]["areas"][account_area.AREA]["yours"]}
     assert MARKED_NAME not in mine
 
@@ -768,15 +789,16 @@ def test_an_existing_year_folder_on_the_account_is_adopted_not_made_again(world)
     assert MARKED_YEAR not in held.folders_created
 
 
-def test_an_unmarked_playlist_is_reported_and_not_moved(world):
+def test_an_unmarked_playlist_of_the_authors_is_filed_in_mine(world):
     _cfg, _fake, held, _inbox, _ids = world
 
     row = _file_rows(_report())["mine-1"]
 
-    assert row["action"] == filing.LEFT and row["why"] == filing.UNMARKED
+    assert row["action"] == filing.MOVE and row["why"] == filing.UNMARKED
+    assert row["kind_folder"] == "Mine" and row["folder"] == "create"
     code, done, _first = _answered()
     assert code == int(ExitCode.OK), done
-    assert "mine-1" not in held.placed
+    assert held.folder_names[held.placed["mine-1"]] == "Mine"
 
 
 def test_a_mark_put_back_is_no_mark_and_the_playlist_stays(world):
@@ -856,7 +878,7 @@ def test_a_provider_refusal_mid_pass_stops_and_names_what_moved(world):
     assert f"custom-a into {held.placed['custom-a']}" in done["cause"]["message"]
 
 
-def test_a_mark_with_no_year_is_left_and_the_year_is_local():
+def test_a_marks_year_is_local_and_an_unreadable_one_is_empty():
     assert filing.year_of_mark("2025-12-31T23:00:00+00:00") == "2025"
     # 20:00 Eastern on 31 Dec is 01:00 UTC on 1 Jan; local year must win.
     assert filing.year_of_mark("2026-01-01T01:00:00+00:00") == "2025"
@@ -875,7 +897,8 @@ def test_a_year_folder_already_on_the_account_is_adopted_with_no_set_to_make_it(
 
     assert code == int(ExitCode.OK), done
     assert held.placed[MARKED_ID] == existing
-    assert held.folders_created == []
+    # Only the author's own playlist's Mine folder is made, never the year's.
+    assert held.folders_created == ["Mine"]
 
 
 def test_a_playlist_marked_twice_is_filed_by_its_latest_mark(seams):
@@ -952,7 +975,8 @@ def test_a_prefixed_but_unmarked_playlist_has_its_own_reason(world):
 
     row = _file_rows(_report())["hand-1"]
 
-    assert row["action"] == filing.LEFT and row["why"] == filing.PREFIXED_UNMARKED
+    # No mark says when, so no year: it is the author's own and goes to Mine.
+    assert row["action"] == filing.MOVE and row["why"] == filing.PREFIXED_UNMARKED
     code, done, _first = _answered()
     assert code == int(ExitCode.OK), done
-    assert "hand-1" not in held.placed
+    assert held.folder_names[held.placed["hand-1"]] == "Mine"

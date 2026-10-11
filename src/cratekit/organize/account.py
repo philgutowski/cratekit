@@ -21,7 +21,10 @@ THE STEPS, each the owning verb's plan and apply:
   each playlist at the account root that a sync marked is moved into the year
   folder of its mark, and every other playlist at the root is named with why
   it stays. A playlist marked by this same pass is filed by the next one,
-  since the plan reads the mark record before the marks are applied.
+  since the plan reads the mark record before the marks are applied;
+* EVERY OTHER PLAYLIST FILED BY KIND (U131), in the same step: one an export
+  made into the root ``Exports`` folder, and one no ledger claims, the
+  author's own, into the root ``Mine`` folder, each named on the gate.
 
 A STEP THAT NEEDS THE ACCOUNT AND CANNOT HAVE IT is refused, with that
 refusal's own reason, and every other step is still planned and shown.
@@ -301,11 +304,11 @@ def _set_apply(cfg, step: Step, archived):
 
 
 def _file_step(cfg, area: Area, labels: tuple[str, ...], catalogue_of: _Lazy, remote_of: _Lazy) -> frozenset[str]:
-    """Plan the filing of every marked playlist at the root; answer what it moves."""
+    """Plan the filing of every playlist at the root; answer what it moves."""
     from cratekit.favorites import placeholders
     from cratekit.sync import playlists
 
-    title = "file marked playlists into their year folders"
+    title = "file playlists at the root into their folders"
     try:
         planned = filing.plan(
             cfg,
@@ -325,7 +328,7 @@ def _file_step(cfg, area: Area, labels: tuple[str, ...], catalogue_of: _Lazy, re
         title=title,
         state=PLANNED if planned.writes else NOTHING,
         detail=(
-            f"move {len(moves)} marked playlist(s) into their year folders, creating "
+            f"move {len(moves)} playlist(s) into their year, Mine or Exports folders, creating "
             f"{len(created)} folder(s), and leave {len(planned.rows) - len(moves)} at the root, each with its reason"
             if planned.writes
             else f"nothing to move: {len(planned.rows)} playlist(s) at the root, each left with its reason"
