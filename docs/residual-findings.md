@@ -37513,3 +37513,84 @@ and per year beside `Mine` and `Exports`, rather than four parents.
 
 **Closes when:** Phillip chooses the nested scheme, a seam member creates a
 folder under a parent and moves a folder, and the three steps read under it.
+
+## R-993. A favourites backfill or refresh with nothing to write still opens its gate, and the backfill still asks the account for every date
+
+**Found:** at sitting 38, 2026-10-12, running each verb a second time after
+its live apply.
+
+**The mechanism.** `favorites backfill` plans every landed heart on every
+run and asks the account for the date of each one the job did not freeze,
+then puts the plan to `favorites.backfill.approve` whether or not any
+membership is owed. The second run of the sitting planned 74 hearts, 0
+memberships and no playlist, asked the account for 70 dates (6 calls) and
+opened the gate. `favorites refresh` did the same with 0 adds, 0 removes and
+0 playlists under the digest the first run wrote, `5c9f0888a9029088`. U120's
+record says a second backfill "asks nothing and writes nothing", and the
+taxonomy upgrade ends NO_OP on an empty plan, so the two favourites verbs
+are the ones that do not.
+
+**Measured cost.** One gate to abandon per repeat, and six provider calls a
+repeat for the backfill. A session reading "does a second run plan nothing"
+has to open the gate screen to find out.
+
+**Closes when:** a backfill or refresh whose plan adds, removes and creates
+nothing ends NO_OP without a gate, and the backfill asks the account for no
+date when no heart needs placing.
+
+## R-994. sync pair lists the account before refusing a rekordbox playlist under a Cratekit tree
+
+**Found:** at sitting 38, 2026-10-12, pairing the account's `Phil 9-30-26`
+with the empty INBOX playlist of that name.
+
+**The mechanism.** The verb's scope rule (R-906) refuses a rekordbox
+playlist under a registered tree root, which the database answers. The
+refusal came after the account listing: 638 provider calls over about ten
+minutes at the one second pace, then `sync-pair-out-of-scope`. The local
+precondition is checked after the remote work.
+
+**Measured cost.** Ten minutes and 638 of the account's calls to learn what
+one query of `djmdPlaylist` says.
+
+**Closes when:** the scope rule runs before the first provider call, and a
+test pins the order.
+
+## R-995. export archive waits on an intake file a native landing never writes, so no set landed on the native tree is archived
+
+**Found:** at sitting 38, 2026-10-12, backfilling the archive after the
+Signal set's account playlist was made.
+
+**The mechanism.** `export archive` with no name reads, for each recorded
+set, the intake file `intake land` wrote as the proof of its download. On a
+cut over tree the landing writes rows and no intake file (R-777 named the
+same gap for `sync mark`, which now reads the mark ledger). The Signal set,
+landed natively on 2026-10-10 with 25 rows, reads `waiting, no intake file
+proves its download`, and so will every set from now on.
+
+**Measured cost.** U129's archive half never runs on the native tree; set
+playlists stay at the account root under their INSPIRATION names rather
+than `DOWNLOADED <name>` in their year folder.
+
+**Closes when:** the archive reads the landing's own record, as `sync mark`
+does since R-777, and the Signal set archives.
+
+## R-996. converge on the inbox tree names memberships under genre bucket paths
+
+**Found:** at sitting 38, 2026-10-12, reading `crate converge --tree inbox`
+before deciding how to refill the INBOX playlists.
+
+**The mechanism.** The report names `tree.inbox` differing by 20 missing
+memberships such as `afro_house/unsorted:189299454` and
+`dance_pop/with_vox:9139520`, paths of the routing tree's buckets and subs,
+for rows of the 2026-09-23 batch that also sit in All Favorites. The inbox
+tree declares batch playlists, not buckets, so either the comparison reads
+the routing tree's placements under the inbox tree's name or the inbox
+record carries entries it should not. Not rebuilt; `crate rebuild inbox` is
+the fix the report names and was not run on a tree nobody understood.
+
+**Measured cost.** A convergence report nobody can act on for the inbox
+tree.
+
+**Closes when:** the inbox report names only inbox playlists, or the record
+is read and the 20 entries explained, and a rebuild of the inbox tree on a
+copy writes what the report says.

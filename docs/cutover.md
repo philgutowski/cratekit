@@ -1121,6 +1121,47 @@ value, so the next native landing makes unplayable rows again until a unit
 makes it write the library's own value; until then, `crate repair link`
 over each landed row is the repair.
 
+## Sitting 38, 2026-10-12, attended, the favourites, the vocal tags and the taxonomy upgrade
+
+The author asked whether the favourites and vocal tags had been synced and
+the INBOX cleaned up. None had, and all four were open attended cards filed
+2026-10-10 (A34 to A37, #294, #301 to #303). The installed copy was rebuilt
+from `main` at `8dcd3796`, 71 commits past the `fbb3aad` it ran, so U127 to
+U132 were in it. No feeder, no job and no rekordbox were running. The
+acknowledgment was minted by the session at 23:00Z under the five day rule,
+both ages reading about 3.3 days, and holds to 2026-10-13T11:00Z. Every
+database write was rehearsed on a copy first (database to scratch,
+`.cratekit` cloned to `.cratekit-copyrun` with `cp -Rpc`, config and state
+dirs redirected, doctor's `tree.registry` read on the scratch name) and
+applied live on an equal digest, the session approving. The live database
+read `6c28cd29104ce73c` before the first write, `a463cfbf3c5ea580` after the
+last, and `961bd08da87358c8` after rekordbox quit.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `metadata mytags-vocals --apply`, A37 step 1 | rehearsed on the copy, live on the same plan | Plan 1,534 tracks at cut 5.0, 1,885 associations already present, **688 written**: 412 `vox`, 66 `male vox`, 210 `female vox`, digest `6dc8085863c73daf` on both. `vox` read back 1,141 to 1,553 on copy and live. The card counted 266 rows since September; the plan also covered 162 older Processed_Tracks rows that had a score and no tag, which the card's date bound left out. | live |
+| `adopt scan`, `adopt apply`, A37 step 2 | rehearsed on the copy, live on an equal digest `8acacba7fc51ac7c`, zero lines differing between the two gate screens | Route 9,039, needs-genre 1,308, withheld 13, no collisions; `vocal` add 351, present 945, no-bucket 257. **355 memberships added, 0 removed**: 351 vocal, 4 band. Read back: 1,553 `vox` rows, 1,491 under a `with vox` sub, the 62 others rows with no genre and so no bucket; Angie Stone under `Nu Disco / Indie Dance / with vox`. | live, **#303 closes** |
+| `favorites backfill`, A34 | rehearsed on the copy, live on an equal digest `db179784b7e5de25`; the only differing lines a deprecation warning and the call count, 8 on the copy and 6 live | **74 landed hearts, 148 memberships** into All Favorites and their quarters: 2 into 2024-Q3, 55 into 2026-Q3, 17 into **2026-Q4, created**. All Favorites 109 to 183. The four hearts the card names are in Q4. 70 dates asked of the account. | live, **#294 closes** |
+| `favorites backfill`, a second time | live, abandoned at its gate | Plans 0 memberships and no playlist, yet opens the gate and asks the account for the same 70 dates. U120's record says a second run asks nothing. **R-993.** | found |
+| `taxonomy upgrade`, A36 step 1 | rehearsed on the copy, live on an equal digest `d6012c8ad12d6a35` | Schema 2 to 4, `favorites` added after `with_vox`, **`soul` and `hip_hop` held** because `rnb` still files 'Soul', 'Soul / R&B' and 'soul & funk' and `non_electronic` still files the hip hop words, as doctor's `taxonomy.schema` said. The copy as it was at `taxonomy.toml.2026-10-12T191123.bak`. The live file equals the copy's byte for byte. Letting the two buckets in is U118's attended tail, A38. | live |
+| `favorites refresh`, A36 step 2 | rehearsed on the copy, live on an equal digest `5c9f0888a9029088` | 19 folders, **16 Favorites playlists created, 169 memberships added, 0 removed**; Techno, Trance and Chill / Ambient hold no favourite and get no playlist. Read back: 166 distinct favourites across the 16, 3 of them in two folders, the 17 others favourites with no genre. A second run plans 0, 0 and 0 under the same digest and still opens its gate: R-993 again. | live, **#302 closes** |
+| `sync pair`, A35 step 1 | on the copy, `Phil 9-30-26` (`a20b28ba`) against the empty rekordbox playlist `196247513` | **Refused**, `sync-pair-out-of-scope`: the playlist sits under INBOX, a tree Cratekit writes, R-906 by design. It listed the account first, **638 calls over ten minutes**, before a precondition the database answers. **R-994.** | found |
+| `intake land --pass 2026-10-08T141649Z-d4ce`, A35 | on the copy, staging empty | `no_op`. A later landing of a mirrored pass holds only its new files (U128), so nothing today refills the four empty playlists from their account playlists. The mixed `Tidal playlists and Favorites` playlists stay until something does. **U134 filed; #301 now depends on it.** | found |
+| `export set`, no name, U129's backfill | live at its gate, the session approving, 193 calls, no rate limit | **`10_10_26 Public Service NYC Live at Signal 2-26` created on the account, 39 tracks**, digest `080d8a2ebea7b7a4`, resolved by ISRC and by the author's accepted verdicts, repeats folded. Left for a later sitting: Vonking, GOATCHELLA and PEPOFIT, "no succeeded set job names this INSPIRATION playlist". Vonking's job `2026-10-09T03:01:03Z-6ad9` succeeded but predates U121 and its playlist was made by hand, and R-949 says a backfill run on any day but 2026-10-09 makes a twin. Not run. | live |
+| `export archive`, no name | live, abandoned at its gate | Nothing to archive. Signal waits on "an intake file that proves its download", which a native landing never writes: R-777's shape, closed for `sync mark` and open here. **R-995.** The playlist stays at the account root, listenable. | found |
+| `converge --tree inbox` | read | Reports 20 missing memberships under genre bucket paths (`afro_house/unsorted`, `dance_pop/with_vox`) for `tree.inbox`. Not rebuilt. **R-996.** | found |
+| rekordbox, desktop control | opened after the writes with both processes confirmed gone before and after, quit with `cmd+q` | `R&B / with vox` 96 (27 at sitting 32) and `R&B / Favorites` 6; `Favorites / 2026-Q4` 17; `Deep House / Favorites` 17 and `Tech House / Favorites` 17; the Signal set's rows show `male` and `vox` in the My Tag column. INBOX reads exactly as #301 describes, unchanged. | read |
+
+**What the sitting leaves.** #301 waits on U134. The Vonking set has no
+account playlist, and R-949 holds it until a flag names the day. Soul and
+Hip-Hop are held out of the live taxonomy until A38. The author stated three
+rules this sitting, each filed as a unit: Jazz as a genre folder with energy
+bands (U133), a set landed in several batches as one playlist in rekordbox
+and on the account (U135), and set playlists dated by the day the set went
+up on its service rather than the landing day (U136, R-949's neighbour).
+The memory saying no live Tidal bulk work until #217 was removed; #217 is
+closed.
+
 ## What blocks a full sync cycle, stated plainly
 
 **Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
@@ -1132,15 +1173,15 @@ cycle, is next and is attended.
 
 ## Next sitting
 
-**A landed row loads, as of sitting 37, and the landing writes the value
-itself, as of U126.** ContentLink was the block. U126 (#292, merged and
-pushed 2026-10-10 at `fbb3aad`, the installed copy rebuilt from it at 10:59)
-reads the value more than half the library's live rows carry, shows it on
-the land gate as "content link" with its count, and sets it on every row it
-adds, so no `crate repair link` follows a landing any more. Owed: the first
-native landing on the rebuilt copy, one landed row dragged to a deck and
-recorded here, which is U126's live proof. If the plan refuses with
-`link-majority-unclear`, that is R-969 and new.
+**The favourites, the vocal tags and the taxonomy are current as of sitting
+38 (2026-10-12).** A34, A36 and A37 closed on equal digests; A35 (#301)
+waits on U134, the refill verb. Owed from that sitting: A38, letting Soul and
+Hip-Hop into the live taxonomy by hand and moving their tracks; the Vonking
+set's account playlist once R-949 or U136 names the day; U136's attended
+rename of the two Public Service playlists to their posted dates. U126's
+live proof still stands as owed: the first native landing on the rebuilt
+copy, one landed row dragged to a deck and recorded here, and
+`link-majority-unclear` on its gate is R-969.
 
 One thing is left of the genre work, and it is the author's: `crate delete
 review` over the 36 tracks removed from the collection at sitting 29, run
