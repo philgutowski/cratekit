@@ -96,8 +96,17 @@ def test_the_session_mints_with_no_terminal_when_both_ages_are_under_five_days(
         ({"files": timedelta(days=6), "database": timedelta(days=1)}, "files portion is 6.0 days old"),
         ({"files": timedelta(days=1), "database": FIVE_DAYS}, "database portion is 5.0 days old"),
         ({"files": timedelta(days=1)}, "database portion's age is not known (never-recorded)"),
+        (
+            {"files": timedelta(days=1), "database": -timedelta(days=2)},
+            "database portion's age is not known (recorded-in-the-future)",
+        ),
     ],
-    ids=["files-six-days", "database-exactly-five", "database-never-recorded"],
+    ids=[
+        "files-six-days",
+        "database-exactly-five",
+        "database-never-recorded",
+        "database-recorded-in-the-future",
+    ],
 )
 def test_the_session_is_refused_naming_the_portion_over_five_days_or_unknown(
     nobody_at_a_terminal, ages, named
@@ -112,6 +121,7 @@ def test_the_session_is_refused_naming_the_portion_over_five_days_or_unknown(
     assert cause["reason"] == "backup-acknowledgment-backup-too-old", cause
     assert named in cause["message"], cause["message"]
     assert "run a backup first" in cause["message"]
+    assert cause["remediation"]["remedy"] == "run-backup", cause
     assert session.read_acknowledgment(cfg) is None
 
 
@@ -121,6 +131,7 @@ def test_a_session_with_a_terminal_is_still_held_to_the_ages(installed):  # noqa
 
     code, envelope = _answered_by(SESSION)
 
+    assert code == int(ExitCode.ACK_REQUIRED), envelope
     assert envelope["cause"]["reason"] == "backup-acknowledgment-backup-too-old", envelope
     assert session.read_acknowledgment(installed) is None
 

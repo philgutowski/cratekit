@@ -856,6 +856,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'retry-later',
         'retry-when-unlocked',
         'revalidate-pins',
+        # 2026-10-12, U138: the remedy a too old backup refusal carries joined.
+        'run-backup',
         'run-doctor',
         'run-setup',
         'set-credential',

@@ -1,0 +1,176 @@
+name = "u138"
+pass_kind = "light"
+
+# The session's age rule on the backup acknowledgment, the verb that hands the
+# answer's actor down, the record's two new keys, and one existing terminal
+# guard as a fixed sample.
+
+[[rows]]
+id = "S1_session_rule_gone"
+description = "A session's answer falls to the terminal check, as before U138"
+file = "src/cratekit/core/session.py"
+surface = "user"
+old = '''
+    if decided_by == SESSION_ACTOR:
+'''
+new = '''
+    if False:
+'''
+
+[[rows]]
+id = "S2_any_answer_gets_the_age_rule"
+description = "Any recorded answer, a person's included, mints without a terminal on young backups"
+file = "src/cratekit/core/session.py"
+surface = "user"
+old = '''
+    if decided_by == SESSION_ACTOR:
+'''
+new = '''
+    if decided_by is not None:
+'''
+
+[[rows]]
+id = "S3_stale_not_refused"
+description = "The session mints over a portion five days old or of unknown age"
+file = "src/cratekit/core/session.py"
+surface = "user"
+old = '''
+        if stale:
+'''
+new = '''
+        if False:
+'''
+
+[[rows]]
+id = "S4_state_not_read"
+description = "A portion's age counts as known whatever its state says, so a completion recorded ahead of the clock reads as fresh"
+file = "src/cratekit/core/session.py"
+surface = "user"
+old = '''
+        if entry.state != "known" or entry.age_seconds is None:
+'''
+new = '''
+        if entry.age_seconds is None:
+'''
+
+[[rows]]
+id = "S5_bound_exclusive"
+description = "A portion exactly five days old is under the bound"
+file = "src/cratekit/core/session.py"
+surface = "user"
+old = '''
+        elif entry.age_seconds >= limit:
+'''
+new = '''
+        elif entry.age_seconds > limit:
+'''
+
+[[rows]]
+id = "S6_bound_six_days"
+description = "The bound is six days rather than five"
+file = "src/cratekit/core/session.py"
+surface = "user"
+old = '''
+SESSION_MAX_BACKUP_AGE = timedelta(days=5)
+'''
+new = '''
+SESSION_MAX_BACKUP_AGE = timedelta(days=6)
+'''
+
+[[rows]]
+id = "S7_verb_drops_the_answer"
+description = "The verb never hands down who answered the gate"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+old = '''
+        cfg, now=now, decided_by=answered.actor if answered is not None else None
+'''
+new = '''
+        cfg, now=now, decided_by=None
+'''
+
+[[rows]]
+id = "S8_rule_not_recorded"
+description = "The record always says the terminal rule minted it"
+file = "src/cratekit/core/session.py"
+surface = "user"
+old = '''
+        shown=shown,
+        rule=rule,
+'''
+new = '''
+        shown=shown,
+        rule=RULE_TERMINAL,
+'''
+
+[[rows]]
+id = "S9_answer_not_recorded"
+description = "The record never says who answered the gate"
+file = "src/cratekit/core/session.py"
+surface = "user"
+old = '''
+        rule=rule,
+        decided_by=decided_by,
+'''
+new = '''
+        rule=rule,
+        decided_by=None,
+'''
+
+[[rows]]
+id = "S10_older_record_reads_as_session"
+description = "A record from before U138 reads as minted by the session's rule"
+file = "src/cratekit/core/session.py"
+surface = "maintainer"
+old = '''
+            rule=str(data.get("rule") or RULE_TERMINAL),
+'''
+new = '''
+            rule=str(data.get("rule") or RULE_SESSION_AGES),
+'''
+
+[[rows]]
+id = "S11_rule_not_written"
+description = "The record's rule key is not written to the file"
+file = "src/cratekit/core/session.py"
+surface = "user"
+old = '''
+            "rule": self.rule,
+'''
+new = ""
+
+[[rows]]
+id = "S12_message_names_the_portion"
+description = "Reword the refusal so it no longer names the portion's age"
+file = "src/cratekit/core/session.py"
+surface = "user"
+old = '''
+                f"the {entry.portion} portion is {entry.age_seconds / 86400:.1f} days old"
+'''
+new = '''
+                f"a backup portion is too old ({entry.portion})"
+'''
+
+[[rows]]
+id = "E1_terminal_check"
+description = "Existing guard sample: the terminal check on a person's answer"
+file = "src/cratekit/core/session.py"
+surface = "user"
+old = '''
+        if not probe():
+'''
+new = '''
+        if False:
+'''
+
+[[rows]]
+id = "E2_reason_exit_code"
+description = "The new refusal maps to another exit code than the acknowledgment's"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+old = '''
+        "backup-acknowledgment-backup-too-old": ExitCode.ACK_REQUIRED,
+'''
+new = '''
+        "backup-acknowledgment-backup-too-old": ExitCode.DECISION_REQUIRED,
+'''

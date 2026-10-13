@@ -1255,7 +1255,9 @@ def derive_actor() -> str:
     command line would mint the gate protecting the one operation that removes
     files, and the audit trail would record whatever name it chose. So the
     account is read from the process identity rather than taken as an argument,
-    and ``record_acknowledgment`` has no parameter that could carry one.
+    and ``record_acknowledgment`` has no parameter that could carry one. Its
+    ``decided_by`` (U138) selects which rule mints and is recorded beside the
+    actor, never as it.
 
     The account database is read directly rather than through the convenience
     wrapper, because that wrapper's module also offers a password prompt and this
@@ -1343,7 +1345,7 @@ def _too_old_for_a_session(shown: Sequence[ShownAge]) -> list[str]:
     limit = SESSION_MAX_BACKUP_AGE.total_seconds()
     named = []
     for entry in shown:
-        if entry.state != "known" or entry.age_seconds is None:
+        if entry.state != backup_facts.AgeState.KNOWN or entry.age_seconds is None:
             named.append(f"the {entry.portion} portion's age is not known ({entry.state})")
         elif entry.age_seconds >= limit:
             named.append(
@@ -1392,7 +1394,7 @@ def record_acknowledgment(
                 f"portion is under {SESSION_MAX_BACKUP_AGE.days} days old, and "
                 f"{'; '.join(stale)}; run a backup first, or a person acknowledges "
                 f"from a terminal",
-                remedy=Remedy.ACKNOWLEDGE_BACKUP,
+                remedy=Remedy.RUN_BACKUP,
                 scope=Scope.RUN,
                 detail={
                     "library": str(cfg.library.root),

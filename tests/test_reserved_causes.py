@@ -4922,11 +4922,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     # REMOUNT_WRITABLE and UNLOCK_PATH, none of which existed in main's own
     # core/exit_codes.py before the merge. Only the first is also a reserved
     # cause, which is this merge's own reservation and is the seventh.
+    # 2026-10-12, U138: 45 to 46, RUN_BACKUP, the remedy a session's too old
+    # backup refusal carries. Not a reserved cause, so the seven stand.
     assert (
         len(declared_in_its_own_enum),
         len(declared_in_its_own_enum & CAUSES),
         len(integers),
-    ) == (45, 7, 28), (
+    ) == (46, 7, 28), (
         "core/exit_codes.py is the sharpest case in the residual and its figures "
         "moved. It declares cause-shaped strings in its own Remedy enum, some of "
         "which are also reserved-table causes, and it holds in-range integers "

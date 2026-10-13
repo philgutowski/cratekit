@@ -136,7 +136,9 @@ def build_ack(parser, entry) -> None:
     assert the answer, because an agent driving the command line would then mint
     the gate protecting the one operation that removes files and the audit trail
     would record whatever name it chose. ``record_acknowledgment`` has no
-    parameter that could carry either, and this shell adds none.
+    parameter that could carry either, and this shell adds none. What it is
+    handed since U138 is who answered the gate, from the run record, which
+    selects the rule and is recorded beside the derived actor, never as it.
     """
     del entry
     parser.set_defaults(_handler=record_ack)
