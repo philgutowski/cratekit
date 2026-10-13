@@ -1434,10 +1434,16 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'library-volume-unmounted',
         'outbound-export-required',
     ],
+    # 2026-10-13, U143: the account root removals' five refusal problems joined.
     'modules/outbound/tidal_account.py': [
         'internal-error',
+        'ledger-claimed',
+        'not-a-legacy-folder',
+        'not-a-root-kind',
+        'not-empty',
         'not-owned',
         'not-product-made',
+        'not-this-kind',
         'outbound-remove-refused',
         'positions-unknown',
         'read-back-differs',
