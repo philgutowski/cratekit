@@ -37891,3 +37891,167 @@ Vonking 5-26`, keeps the landing day in its name.
 
 **Closes when:** the page is fetched again for that job (or `--posted` names the day) and
 the rename runs through U140's verb for the account and by hand in rekordbox.
+
+---
+
+## R-1008. An archived set's account playlist is refused by the rename rather than renamed under its mark
+
+**Found:** at the build of #317, U140, 2026-10-13.
+
+**The mechanism.** A set playlist the archive marked carries the
+`DOWNLOADED ` prefix, and `sync mark`'s record holds the title before the
+mark so `sync unmark` can restore it. `export set --rename` refuses such a
+playlist by name (`export-set-rename-unresolved`) rather than retitle it to
+the prefixed new name and rewrite the mark record, which was the
+conservative call for an unattended build.
+
+**Measured cost.** Driven on the disposable database: a set landed with its
+account playlist recorded is archived and marked, and the rename refuses
+with nothing written. A person runs `crate sync unmark --pass PASS`, the
+rename, then the archive again. Neither live set is marked today.
+
+**Closes when:** the rename writes the prefixed title and moves the mark
+record's name with it, or the author keeps the three step path. Ledger only.
+
+---
+
+## R-1009. A refrozen set name need not open with a day, and the posted warning still reads its first word as one
+
+**Found:** at the review of #317, U140, 2026-10-13.
+
+**The mechanism.** `export set --rename` refreezes the name a person gave
+the INSPIRATION playlist, which need not be the source system's dated
+form. `set_playlist.ignored_posted` splits the frozen name and reads its
+first word as the day it opens with, so after a rename to `Warehouse Night`
+a later `intake land --set JOB --posted DAY` warns that the frozen name
+"opens with Warehouse". The flag is ignored either way, since the frozen
+name wins, so only the wording is wrong. Separately, `land_cli` looks an
+INBOX batch up by the frozen name only when no landing recorded one, so a
+second landing of a renamed set that recorded none would make a new INBOX
+playlist under the new name.
+
+**Measured cost.** Not driven. The warning names a word that is not a day;
+the INBOX path needs a landing whose record carries no INBOX playlist,
+which no candidate driven here produced.
+
+**Closes when:** `ignored_posted` checks the first word is a day word before
+naming it, and the author decides whether an INBOX lookup should try the
+name before a refreeze. Ledger only.
+
+---
+
+## R-1010. A set exported under a tracklist's own name cannot follow its INSPIRATION rename
+
+**Found:** at the review of #317, U140, 2026-10-13.
+
+**The mechanism.** `export set --rename JOB` looks for the set's account
+playlist under the INSPIRATION playlist's live name and the names the job
+gives: frozen, the posted day's form and the queued day's. A set whose
+account playlist was made by `export set TRACKLIST` under the file's stem,
+or with `--name`, is recorded under none of those, so the rename refuses
+with `export-set-rename-unresolved`. The refusal now says to rename such a
+playlist on the account by hand rather than send it to the backfill, which
+would make a twin.
+
+**Measured cost.** Not met live: both sets on the live ledger were made by
+a set intake under a job's name. A person who exported a set by tracklist
+and later renamed its INSPIRATION playlist renames the account playlist and
+edits the ledger key by hand.
+
+**Closes when:** the rename accepts the recorded name to start from, or the
+author decides the hand step is enough. Ledger only.
+
+---
+
+## R-1011. A set archived into its plain year folder before U142 is moved on by an intake file and left where it is by its mark
+
+**Found:** at the review of #319, U142, 2026-10-13.
+
+**The mechanism.** Before U142 the set archive filed a set into the root
+folder named for its year, the same `2026` the filing step uses. U142 files
+a set into `Downloaded Sets <year>` and records that folder under its own
+name, so the old `2026` record is the filing's alone. A set the archive put
+in `2026` and prefixed before U142 now meets two rules in
+`organize/account.py`'s set step. With its intake file still at the library
+root it is planned through `export archive`'s plan, which cannot read the
+playlist's title outside the target folder, so it is planned as a move into
+`Downloaded Sets <year>` and a prefix; the apply moves it, finds it already
+prefixed in the new folder and warns `export-archive-changed-since-plan`.
+With no intake file and a standing mark it reads "already archived and
+marked" and stays in `2026`, among the custom playlists the filing files
+there. The two outcomes differ for two sets in the same state.
+
+**Measured cost.** Not driven on the account. On the fake account the first
+case ends in the right folder with a warning that reads as a change since
+the plan rather than as a set already done, and the organize step's own line
+says it will prefix a playlist that is already prefixed. Whether any set on
+the live account was archived into a plain year folder by this product is
+unmeasured here; the brief says the 19 downloaded sets sit in `Downloaded
+Sets 2026` already, which the person did by hand.
+
+**Closes when:** the archive plans a set that sits prefixed in another root
+folder as a move only, and the mark shortcut and the intake file proof agree
+on a set already filed in the plain year folder, or a sitting confirms no
+set is in one and this is closed as unreachable. Ledger only: the end state
+of the first case is correct, and the second leaves a playlist where it was.
+
+---
+
+## R-1012. The no name export archive still reads only the intake file proof, while organize also reads an INSPIRATION playlist
+
+**Found:** at the review of #319, U142, 2026-10-13.
+
+**The mechanism.** U142 gave `crate organize`'s set step a second proof of a
+set's download, a playlist of the set's name under the declared INSPIRATION
+folder. `crate export archive` with no name, the backfill in
+`export/set_cli.py`, still proves a set only by `_proof_for_set`, an intake
+file named for it, and lists any other set as waiting with "no intake file
+proves its download". The brief scoped the second proof to organize, so the
+backfill was left as it was.
+
+**Measured cost.** Read from the code and not driven: a set with no intake
+file and an INSPIRATION playlist of its name is planned and archived by
+`crate organize` (driven, `tests/test_organize.py`) and would be listed as
+waiting by `crate export archive`. Nothing is lost and nothing false is
+written; the backfill's waiting line is true of its own rule, and organize
+finishes the workflow.
+
+**Closes when:** both verbs read one shared proof rule, the intake file or
+the INSPIRATION playlist, or the backfill's waiting line names organize as
+the verb that reads the second proof. Ledger only.
+
+---
+
+## R-1013. A clean account root still opens the account gate, though the plan's R17 says no gate
+
+**Found:** at the build of #320, U143, 2026-10-13.
+
+**The mechanism.** The convention plan (`docs/plans/2026-10-13-1407-feat-tidal-account-convention-plan.md`, R17 and AE8) and the U143 brief say a second run on a clean root plans nothing and opens no gate. U112's pinned rule is that an area with nothing to write says so and still asks, "answering still records the decision" (`organize/steps.py`, `test_an_area_with_nothing_to_do_still_asks`, `test_the_plan_is_empty_and_still_asks_when_the_root_is_clean`). U143 keeps U112's rule: the root step plans nothing and is in state `nothing` on a clean root, and the account area still asks its gate.
+
+**Measured cost.** One question answered on an organize run that writes nothing. No write, no loss. The two rules were not reconciled because changing whether an area asks is U112's decision and changes every area, not only the root step.
+
+**Closes when:** a person decides between the two rules, and either `organize/cli.py` skips the gate of an area that writes nothing (with the two U112 tests rewritten) or the plan's R17 is read as "plans nothing". Ledger only.
+
+---
+
+## R-1014. A track the account cannot play, added to a debris copy after the gate, is not seen by the apply's reread
+
+**Found:** at the review of #320, U143, 2026-10-13.
+
+**The mechanism.** Before removing a debris playlist, `organize.root.apply` reads its tracks again and keeps the playlist if it holds one the gate was not answered over. The read goes through `playlist_tracks`, which leaves out a track the account cannot play while the provider still counts it (`acquire.listing.playlist_tracks`). The plan compares the read with the listing's declared count and leaves a short read, but the apply has no fresh declared count to compare with, and `remove_root_playlist`'s protocol signature carries none. A track the account cannot play, added in the seconds between the gate's answer and the removal, would be removed with the playlist.
+
+**Measured cost.** Not driven. The window is the time between the run that answers the gate replanning and its apply, and the track is one the account cannot play. Reachability is unmeasured.
+
+**Closes when:** the adapter's removal takes the expected declared count and refuses when the served `num_tracks` differs, or the apply reads the count some other way. Ledger only.
+
+---
+
+## R-1015. A downloaded set with no match, or one the provider would not list, is read from the account again on every organize run
+
+**Found:** at the review of #321, U144, 2026-10-13.
+
+**The mechanism.** The INSPIRATION parity step (`organize/inspiration.py`, `plan`) skips a set only when INSPIRATION holds a playlist of its name. A set none of whose tracks matched a library row is planned `empty` and nothing is written for it, and a set whose listing the provider refused is planned `unread`. Neither leaves a record, so every later `crate organize` without `--only`, `--report` included, lists that set's tracks from the provider again and asks the library about each one. The rekordbox area therefore makes one provider listing per such set on every full run, and needs the account reachable to plan this step at all.
+
+**Measured cost.** Not driven against the live account. On 2026-10-13 the account held 19 sets, 2 already in INSPIRATION; how many of the other 17 match nothing is the attended sitting's measurement. Each listing is one paced provider read (R-705's pacing), so the cost is seconds to minutes per run, no write and no loss. `--only adopt` and `--only rotate` never plan the step and pay nothing.
+
+**Closes when:** a person decides whether an empty set should be remembered (a record of sets read and found empty, rekeyed when the library grows), or whether re-reading is the right price for noticing a set whose tracks later landed. Ledger only.
