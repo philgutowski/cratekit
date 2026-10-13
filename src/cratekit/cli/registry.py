@@ -2358,8 +2358,9 @@ ENTRIES: tuple[Entry, ...] = (
         emits=frozenset({"plan"}),
         output_schema="plan/1",
         #: One surface, the account: the year's Downloaded Sets folder is
-        #: created (U142), the set playlist is put in it, and the playlist is retitled with the swept prefix,
-        #: recorded in ``sync mark``'s record so ``sync unmark`` puts it back.
+        #: created (U142), the set playlist is put in it, and the playlist is
+        #: retitled with the swept prefix, recorded in ``sync mark``'s record
+        #: so ``sync unmark`` puts it back.
         #: ``destructive`` for ``label.mark``'s reason: a retitle lands on a
         #: title a person can see.
         writes=frozenset({"remote"}),
@@ -2371,7 +2372,10 @@ ENTRIES: tuple[Entry, ...] = (
             GateSpec(
                 name="export.archive.confirm",
                 options=("apply", "abort"),
-                prompt="File this set playlist in Downloaded Sets for its year on the streaming account?",
+                prompt=(
+                    "File this set playlist in Downloaded Sets for its year on the "
+                    "streaming account?"
+                ),
                 # EXPLICIT, as label.mark's is, for the same reason (R34).
                 explicit=True,
                 digest_source="plan",

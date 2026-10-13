@@ -775,13 +775,19 @@ def _archive_shown(planned: sets.ArchivePlan | None, *, name: str, pass_name: st
         "title": title,
         "undone by": f"crate sync unmark --pass {pass_name}",
     }
-    if planned.stale_folder:
+    if planned.stale_folder and planned.writes:
         shown["recorded folder"] = (
             f"the folder recorded for {planned.folder_name}, {planned.stale_folder}, is no "
             f"longer on the account, so its record is replaced"
         )
     if not planned.writes:
-        shown["nothing to write"] = "the playlist is already in its folder and marked"
+        # NOTHING IS WRITTEN, the ledger included (U142): an adoption alone is
+        # no write, so a stale record is not said to be replaced either.
+        shown["nothing to write"] = (
+            "the playlist is already in its folder, its title left as a person set it"
+            if planned.left == sets.RETITLED
+            else "the playlist is already in its folder and marked"
+        )
     return shown
 
 
@@ -1028,16 +1034,20 @@ def export_archive(ctx) -> Envelope:
 # ── backfill over INSPIRATION (U129) ─────────────────────────────────────────
 
 
-def _inspiration_playlists(cfg, *, read_only: bool = False) -> list[tuple[str, str]]:
+def _inspiration_playlists(
+    cfg, *, read_only: bool = False, declared=None
+) -> list[tuple[str, str]]:
     """Live playlists under the declared INSPIRATION folder: (name, playlist_id).
 
     ``read_only`` opens a read handle, the one ``crate organize`` reads its own
     listing through (U142); the backfill opens the database as a writer would.
+    ``declared`` is the taxonomy when the caller has already loaded it.
     """
     from cratekit.core import active_taxonomy, rb_writer
     from cratekit.intake import set_playlist
 
-    declared = active_taxonomy.load(cfg)
+    if declared is None:
+        declared = active_taxonomy.load(cfg)
     db = rb_writer.open_db(
         rb_writer.live_db_path(cfg),
         require_closed=not read_only,
@@ -1075,9 +1085,12 @@ def inspiration_names(cfg) -> frozenset[str] | None:
     """
     from cratekit.core import active_taxonomy
 
-    if active_taxonomy.load(cfg).inspiration is None:
+    declared = active_taxonomy.load(cfg)
+    if declared.inspiration is None:
         return None
-    return frozenset(name for name, _pid in _inspiration_playlists(cfg, read_only=True))
+    return frozenset(
+        name for name, _pid in _inspiration_playlists(cfg, read_only=True, declared=declared)
+    )
 
 
 def _naming_day(job) -> datetime | None:

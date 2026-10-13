@@ -629,8 +629,11 @@ crate organize
 files unfiled tracks into BY GENRE + ENERGY and its `with vox` subs the way
 `adopt apply` does, and rotates INBOX the way `inbox rotate` does. The account
 area builds a folder for every followed label that lacks one or a year, marks
-every landed sync pass, and archives every set whose download an intake file
-named for the set proves. It also files every playlist at the account root
+every landed sync pass, and archives every set whose download is proven into
+the root folder `Downloaded Sets <year>`, prefixed. Either of two things proves
+a set downloaded: an intake file named for the set, or a playlist of the set's
+name under the INSPIRATION folder in rekordbox. It also files every playlist at
+the account root
 that a sync marked downloaded into the root folder named for the year of its
 mark, creating that folder once if the account lacks it, and names every other
 playlist at the root with why it stays. Approve one area and abort the other

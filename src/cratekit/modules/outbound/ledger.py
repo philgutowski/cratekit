@@ -131,7 +131,7 @@ def _load(cfg: config.Config) -> dict[str, Any]:
             for key, value in sets.items()
         },
         "set_folders": {
-            str(year): str(folder) for year, folder in set_folders.items() if folder
+            str(name): str(folder) for name, folder in set_folders.items() if folder
         },
         "kind_folders": {
             str(kind): {
@@ -963,7 +963,7 @@ def record_label_tracks(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# A set playlist, and the year folders it is archived in (R-837)
+# A set playlist, and the root folders it and the filing use (R-837, U142)
 # ═══════════════════════════════════════════════════════════════════════════
 
 

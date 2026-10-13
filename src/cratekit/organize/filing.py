@@ -27,8 +27,9 @@ is archived into ``Downloaded Sets <year>``, recorded in the same ledger map
 under that name, so the two never share a folder. The year folder is decided on
 the archive's rule: a folder recorded and still listed is reused, one root
 folder named as the year is adopted, and none is created once, on apply, for
-every playlist of that year. Two or more root folders named as the year leave that year's playlists
-where they are, reported, since a playlist the plan cannot place is never moved.
+every playlist of that year. Two or more root folders named as the year leave
+that year's playlists where they are, reported, since a playlist the plan
+cannot place is never moved.
 
 ADD ONLY, BECAUSE THE PROTOCOL IS. A folder is created and a playlist is put in
 one; nothing is renamed, nothing is removed. A move is undone by a move back,

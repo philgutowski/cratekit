@@ -778,6 +778,37 @@ def test_a_folder_named_as_the_year_by_hand_is_adopted_not_doubled(account):
     assert held.placed[ledger.set_playlist(cfg, NAME).remote_id] == "by-hand"
 
 
+def test_a_set_put_in_its_folder_by_hand_writes_nothing_and_its_gate_says_so(account):
+    """U142: an adoption alone is no write, so no record is said to be replaced."""
+    cfg, _fake, held = account
+    assert _build(_tracklist(cfg))[0] == int(ExitCode.OK)
+    recorded = ledger.set_playlist(cfg, NAME)
+    folder_name = f"Downloaded Sets {recorded.year}"
+    ledger.reserve_set_folder(cfg, folder_name, lambda: "gone-from-the-account")
+    folder = held.create_folder(folder_name)
+    held.folders_created.clear()
+    held.placed[recorded.remote_id] = folder
+    held.titles[recorded.remote_id] = f"DOWNLOADED {NAME}"
+    argv = ["export", "archive", NAME, "--xml", str(_landed(cfg))]
+
+    code, asked = drive(argv)
+
+    assert code == int(ExitCode.DECISION_REQUIRED), asked
+    shown = asked["cause"]["detail"]["shown"]
+    assert "recorded folder" not in shown
+    assert shown["nothing to write"] == "the playlist is already in its folder and marked"
+    code, done = _archive(_landed(cfg))
+    assert code == int(ExitCode.OK), done
+    assert done["outcome"] == "no_op"
+    assert held.moves == [] and held.renamed == [] and held.folders_created == []
+    assert ledger.set_folder(cfg, folder_name) == "gone-from-the-account"
+
+    held.titles[recorded.remote_id] = "My Own Title"
+    code, asked = drive(argv)
+    assert code == int(ExitCode.DECISION_REQUIRED), asked
+    assert "as a person set it" in asked["cause"]["detail"]["shown"]["nothing to write"]
+
+
 def test_two_folders_named_as_the_year_refuse_and_write_nothing(account):
     cfg, _fake, held = account
     assert _build(_tracklist(cfg))[0] == int(ExitCode.OK)
