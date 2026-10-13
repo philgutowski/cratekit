@@ -35,3 +35,12 @@ before anything else ran.
 composite pairs, B1 with B1c and B2 with B2c, because the read back's two
 guards are expected zeros: no test makes the commit lose or reorder a
 membership, so what each holds is shown by a mutation of the write itself.
+
+## Both batches run to the end by the watcher on main, 2026-10-13 01:50
+
+Batch a resumed from the four rows above: 11 rows, 10 killed, one zero, A9_replan_digest.
+Batch b: 9 rows, 6 killed, three zeros: B1 and B2 are the expected zeros the composites
+B1c and B2c cover (both killed); B3_record_only_when_added is a gap nobody expected, the
+record written on a commit that added nothing is not caught by any test. A9 and B3 are
+recorded under the residual this unit filed for the unmeasured table; the watcher authors
+no test. Run with the feeder idle and no other driver on the machine.

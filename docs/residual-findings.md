@@ -37683,6 +37683,13 @@ and that expectation is unmeasured.
 **Closes when:** both batches are run to the end with no other lane on the
 machine and their tables committed. Ledger only: maintainer facing.
 
+
+**Closed 2026-10-13, the watcher (both batches measured on main, docs(u134)).** Batch a 11
+rows 10 killed, batch b 9 rows 6 killed; the expected zeros B1 and B2 are covered by their
+composites. Two zeros remain as gaps with no test: A9_replan_digest (a replan that drops the
+digest is not refused) and B3_record_only_when_added (the record is written on a commit that
+added nothing). Ledger only until a card pairs them with tests.
+
 ---
 
 ## R-1000. the set playlist's recorded playlist is the newest record by session id, which a second does not order
