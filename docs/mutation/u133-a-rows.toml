@@ -1,0 +1,164 @@
+name = "u133-a"
+pass_kind = "light"
+
+# Batch a: the upgrade planner's hold, the one code change of U133.
+
+[[rows]]
+id = "P1_first_place_only"
+description = "A word filed in several places of one bucket names only the first, as before U133"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "user"
+old = '''
+        places = found.setdefault(word.casefold().strip(), [])
+        if (word, where) not in places:
+            places.append((word, where))
+'''
+new = '''
+        places = found.setdefault(word.casefold().strip(), [])
+        if not places:
+            places.append((word, where))
+'''
+
+[[rows]]
+id = "P2_one_spelling_per_place"
+description = "One place filing a word under two spellings names only the first, the review's finding 3"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "user"
+old = '''
+        if (word, where) not in places:
+            places.append((word, where))
+'''
+new = '''
+        if all(known != where for _spelling, known in places):
+            places.append((word, where))
+'''
+
+[[rows]]
+id = "P3_map_row_label"
+description = "A source map row is labelled as the sub it files into, merging two hand edits into one sentence"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "user"
+old = '''add(source, f"{bucket.id}, its source map row to {sub_id}")'''
+new = '''add(source, f"{bucket.id}, its sub {sub_id}")'''
+
+[[rows]]
+id = "P4_vocabulary_row_named"
+description = "A vocabulary row writing a clashing word is not named in the hold"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "user"
+old = '''
+            if (row.bucket, row.tag.casefold().strip()) in clashing:
+'''
+new = '''
+            if False:
+'''
+
+[[rows]]
+id = "P5_vocabulary_owner"
+description = "A vocabulary row is named by its tag alone, whichever bucket files that tag"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "user"
+old = '''
+            if (row.bucket, row.tag.casefold().strip()) in clashing:
+'''
+new = '''
+            if row.tag.casefold().strip() in {word for _owner, word in clashing}:
+'''
+
+[[rows]]
+id = "P6_spelling_once"
+description = "A spelling a place files twice is listed twice in its sentence"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "maintainer"
+old = '''
+            if spelling not in clash.setdefault(where, []):
+                clash[where].append(spelling)
+'''
+new = '''
+            clash.setdefault(where, []).append(spelling)
+'''
+
+[[rows]]
+id = "P7_designed_sharing"
+description = "A word the shipped template files in both places counts as a clash (U132's P2, re-measured in its rewritten form)"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "user"
+old = '''
+            if word in designed.get(owner, set()):
+                continue
+'''
+new = ""
+
+[[rows]]
+id = "P8_held_by_whole_copy"
+description = "Only the copy's first bucket filing a word is asked about, as the setdefault before U133 did across buckets"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "user"
+old = '''
+            filed.setdefault(word, []).extend((bucket.id, s, w) for s, w in places)
+'''
+new = '''
+            filed.setdefault(word, list((bucket.id, s, w) for s, w in places))
+'''
+
+[[rows]]
+id = "E1_former_display_live"
+description = "Existing guard sample: a former place whose name its folder still holds is accepted"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+old = '''
+            if former.display in live_displays:
+'''
+new = '''
+            if False:
+'''
+
+[[rows]]
+id = "P9_keyword_note_gone"
+description = "The plan never carries the sentence about the copy's keyword rule"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "user"
+old = '''
+        keywords=_keyword_rules(tuple(added[BUCKET]), active, shipped),
+'''
+new = '''
+        keywords=(),
+'''
+
+[[rows]]
+id = "P10_keyword_note_for_held"
+description = "A keyword rule of a bucket the plan does not add is spoken of too"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "user"
+old = '''
+        if rule.bucket not in added:
+            continue
+'''
+new = ""
+
+[[rows]]
+id = "P12_verb_warning"
+description = "The verb drops the keyword rule warning"
+file = "src/cratekit/cli/verbs/taxonomy.py"
+surface = "user"
+old = '''
+    ] + [{"code": KEYWORD_RULE, "message": sentence} for sentence in found.keywords]
+'''
+new = '''
+    ]
+'''
+
+[[rows]]
+id = "P13_remedy_keyword"
+description = "Doctor's remedy drops the keyword rule sentence"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "user"
+old = '''
+    parts.extend(found.keywords)
+'''
+new = ""
+
+[[dropped]]
+id = "P11_keyword_agrees"
+description = "Drop the skip of a copy rule that already sends the keyword to the added bucket"
+reason = "unreachable: a copy that lacks a bucket cannot hold a keyword rule naming it, since the loader refuses a rule naming an undeclared bucket"
