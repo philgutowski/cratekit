@@ -12,7 +12,7 @@ import tomllib
 
 import pytest
 
-from cratekit.core import taxonomy
+from cratekit.core import routing, taxonomy
 from cratekit.core import taxonomy_upgrade as upgrade
 
 
@@ -237,6 +237,88 @@ def test_the_hand_edit_lets_soul_in_on_the_next_run():
     found = _plan(by_hand)
     assert found.buckets == ("soul",)
     assert found.held == ()
+
+
+JAZZ_START = "# JAZZ AT THE TOP LEVEL"
+JAZZ_END = '[[bucket]]\nid = "non_electronic"'
+#: The four lines a copy made before U133 files Jazz's words by, outside the bucket.
+JAZZ_ALIAS = '  "Indie Rock",\n  "Jazz",\n  "Latin",'
+JAZZ_SUB = '[[bucket.sub]]\nid = "jazz"\ndisplay = "Jazz"\ntag_aliases = [\n  "jazz",\n]\n\n'
+JAZZ_MAP_ROW = '  { source = "Jazz", sub = "jazz" },\n'
+JAZZ_VOCABULARY_ROW = '  { word = "Jazz", tag = "Jazz" },\n'
+
+
+def _swap(text: str, old: str, new: str) -> str:
+    assert text.count(old) == 1, old
+    return text.replace(old, new)
+
+
+def before_jazz() -> str:
+    """The shipped text as it stood before U133: Jazz a style of NonElectronic."""
+    text = _without(_shipped(), JAZZ_START, JAZZ_END)
+    text = _swap(text, '  "Indie Rock",\n  "Latin",', JAZZ_ALIAS)
+    text = _swap(text, '[[bucket.sub]]\nid = "classical"', JAZZ_SUB + '[[bucket.sub]]\nid = "classical"')
+    text = _swap(
+        text,
+        '  { source = "Indie Rock", sub = "rock" },\n',
+        '  { source = "Indie Rock", sub = "rock" },\n' + JAZZ_MAP_ROW,
+    )
+    return _swap(text, 'keyword = "jazz"\nbucket = "jazz"', 'keyword = "jazz"\nbucket = "non_electronic"')
+
+
+def _without_jazz_words(text: str) -> str:
+    """The three lines NonElectronic files Jazz by, taken out by hand."""
+    text = _swap(text, JAZZ_ALIAS, '  "Indie Rock",\n  "Latin",')
+    text = _swap(text, JAZZ_SUB, "")
+    return _swap(text, JAZZ_MAP_ROW, "")
+
+
+def test_jazz_is_held_while_non_electronic_still_files_its_words_and_every_place_is_named():
+    """U133. The copy files Jazz three ways, and a vocabulary row writes it."""
+    copy = before_jazz()
+    assert _bucket(copy, "non_electronic").sub_by_source.map["Jazz"] == "jazz"
+    found = _plan(copy)
+    assert found.buckets == ()
+    (held,) = found.held
+    assert (held.kind, held.id) == ("bucket", "jazz")
+    reasons = list(held.reasons)
+    assert len(reasons) == 4, reasons
+    alias, map_row, sub, row = reasons
+    assert alias.startswith("the copy's bucket non_electronic already files 'Jazz'")
+    assert map_row.startswith("the copy's bucket non_electronic, its source map row to jazz already files 'Jazz'")
+    assert sub.startswith("the copy's bucket non_electronic, its sub jazz already files 'jazz'")
+    assert row.startswith("the copy's [vocabulary.deezer] row 'Jazz' writes 'Jazz'")
+    assert "take the row out with it" in row
+    assert not found.writes
+    assert found.missing_buckets == ("jazz",)
+
+
+def test_the_hand_edit_the_hold_names_lets_jazz_in_on_the_next_run():
+    """Every line the hold named, out, and the copy loads and takes the bucket.
+
+    The catalogue's Jazz still tags Jazz without its row, by the bucket's own
+    word. The copy's keyword rule is the copy's and is left where it was.
+    """
+    by_hand = _without_jazz_words(before_jazz())
+    by_hand = _swap(by_hand, JAZZ_VOCABULARY_ROW, "")
+    found = _plan(by_hand)
+    assert found.buckets == ("jazz",)
+    assert found.held == ()
+    shipped = taxonomy.load_taxonomy(_shipped())
+    assert _bucket(found.after, "jazz") == [b for b in shipped.buckets if b.id == "jazz"][0]
+    after = taxonomy.load_taxonomy(found.after)
+    order = [b.id for b in after.buckets]
+    assert order.index("hip_hop") + 1 == order.index("jazz") == order.index("non_electronic") - 1
+    assert routing.resolve_bucket(after, "Jazz").bucket_id == "jazz"
+    assert routing.suggest_tag(after, "Jazz", source="deezer").tag == "Jazz"
+    assert routing.resolve_bucket(after, "Acid Jazz").bucket_id == "non_electronic"
+
+
+def test_a_copy_with_the_words_out_and_the_row_left_does_not_load():
+    """Why the hold names the row: without it the hand edit refuses the copy."""
+    by_hand = _without_jazz_words(before_jazz())
+    with pytest.raises(taxonomy.TaxonomyError, match="vocabulary.deezer"):
+        taxonomy.load_taxonomy(by_hand)
 
 
 def test_a_word_the_shipped_template_files_twice_is_not_a_clash():
