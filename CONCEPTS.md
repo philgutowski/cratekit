@@ -558,6 +558,17 @@ digest, and an area with no kind named is not planned or asked.
 
 *Avoid:* reading a listed step as done, or a yours entry as a plan.
 
+### Working custom playlist
+The one kind of playlist that belongs at the account root, by Phillip's rule
+of 2026-10-13: a playlist the product did not make, that no ledger claims,
+holding tracks, that he is still building. It stays at the root until a sync
+marks it `DOWNLOADED ` and the filing step moves it into its year folder, and
+it is never deleted, whatever its age. Everything else at the root is filed
+when its tracks are already downloaded and deleted when they are not, each
+named on a gate (`docs/plans/2026-10-13-1407-feat-tidal-account-convention-plan.md`).
+
+*Avoid:* reading an old unmarked custom playlist as abandoned.
+
 ### Fresh Export
 A collection export that describes the database as it is now: the XML document
 holding every collection row and the playlist tree, which the verbs on the
