@@ -220,7 +220,12 @@ def year_of_mark(marked: str) -> str:
 def _year_folder(cfg: config.Config, year: str, root: Mapping[str, str]) -> YearFolder:
     """One year's folder on the set archive's rule, never refused here."""
     recorded = ledger.set_folder(cfg, year)
-    if recorded and recorded in root:
+    # A RECORD WHOSE FOLDER NOW CARRIES THE SETS' NAME IS NOT THE YEAR'S (U142).
+    # Before U142 the archive recorded its folder under the plain year, so a
+    # person who renamed that folder to ``Downloaded Sets <year>`` left the
+    # year's record pointing at the sets' folder. Reused by identifier, it would
+    # file custom playlists among the sets, so it is read as stale and replaced.
+    if recorded and recorded in root and root[recorded] != sets.folder_name(year):
         return YearFolder(year=year, action=sets.REUSE, folder_id=recorded)
     named = sorted(folder_id for folder_id, title in root.items() if title == year)
     if len(named) > 1:

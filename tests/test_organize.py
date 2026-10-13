@@ -1368,6 +1368,54 @@ def test_a_downloaded_sets_folder_made_by_hand_is_adopted_and_the_filing_keeps_i
     assert ledger.set_folder(cfg, year) == plain
 
 
+def test_a_year_record_whose_folder_now_carries_the_sets_name_is_not_the_filings(world):
+    """Recorded under the plain year before U142, renamed by a person to the sets' name."""
+    from cratekit.modules.outbound import ledger
+
+    cfg, fake, held, _inbox, _ids = world
+    recorded = ledger.set_playlist(cfg, SET_NAME)
+    year = recorded.year
+    renamed = held.create_folder(f"Downloaded Sets {year}")
+    made_by_hand = len(held.folders_created)
+    assert ledger.reserve_set_folder(cfg, year, lambda: renamed) == (renamed, True)
+    _marked(cfg, fake, held, when=f"{year}-06-15T12:00:00+00:00")
+
+    code, done, _first = _answered("abort", "apply")
+
+    assert code == int(ExitCode.OK), done
+    assert held.placed[recorded.remote_id] == renamed
+    custom = held.placed[MARKED_ID]
+    assert custom != renamed
+    assert held.folder_names[custom] == year
+    assert [name for name in held.folders_created[made_by_hand:] if year in name] == [year]
+    assert ledger.set_folder(cfg, year) == custom
+    assert ledger.set_folder(cfg, f"Downloaded Sets {year}") == renamed
+
+
+def test_a_set_in_its_folder_with_its_built_title_is_prefixed_and_not_moved(world):
+    from cratekit.modules.outbound import ledger
+
+    cfg, _fake, held, _inbox, _ids = world
+    _no_intake_file(cfg)
+    _inspiration(cfg, SET_NAME)
+    recorded = ledger.set_playlist(cfg, SET_NAME)
+    folder = held.create_folder(f"Downloaded Sets {recorded.year}")
+    held.placed[recorded.remote_id] = folder
+    held.titles[recorded.remote_id] = SET_NAME
+
+    step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
+
+    assert step["state"] == "planned", step
+    assert step["detail"].startswith("prefix it where it is"), step
+    assert "file it in" not in step["detail"]
+
+    code, done, _first = _answered("abort", "apply")
+
+    assert code == int(ExitCode.OK), done
+    assert recorded.remote_id not in [pid for pid, _folder in held.moves]
+    assert held.titles[recorded.remote_id] == f"DOWNLOADED {SET_NAME}"
+
+
 def test_no_downloaded_sets_folder_is_made_once_and_the_year_folder_beside_it(world):
     from cratekit.modules.outbound import ledger
 

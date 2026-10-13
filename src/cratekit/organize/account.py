@@ -315,8 +315,12 @@ def _set_steps(cfg, area: Area) -> None:
             continue
         planned = archived.planned
         folder = planned.folder_name if planned is not None else "its folder"
-        if archived.writes:
+        if archived.writes and planned.move:
             detail = f"file it in {folder} and prefix it, proven by {proof}"
+        elif archived.writes:
+            # IN THE FOLDER ALREADY, with the title it was built with: a prefix
+            # and no move, so the line does not promise one.
+            detail = f"prefix it where it is, already in {folder}, proven by {proof}"
         elif planned is not None and planned.left == sets.RETITLED:
             detail = f"already in {folder}, its title left as a person set it"
         else:
