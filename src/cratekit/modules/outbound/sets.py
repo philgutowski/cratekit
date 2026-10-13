@@ -8,8 +8,12 @@ not fill with sets. This module is both steps, each planned and then applied,
 against the account seam.
 
 ADD ONLY, BECAUSE THE PROTOCOL IS. A playlist is created, tracks are added, a
-folder is created and a playlist is put in one. The one retitle is the archive
+folder is created and a playlist is put in one. One retitle is the archive
 mark, recorded in ``sync mark``'s record so ``sync unmark`` can take it off.
+The other follows the library (U140): a set whose INSPIRATION playlist a
+person renamed has its account playlist renamed to match, and the ledger's key
+and the job's frozen name move with it, so a backfill finds it and makes no
+twin.
 
 THE PLAN READS AND WRITES NOTHING. Each tracklist row arrives already decided,
 matched to one provider track or left out with its reason, and the plan
@@ -343,6 +347,124 @@ def apply_archive(
     return done
 
 
+# ── the rename that follows the library (U140) ──────────────────────────────
+
+
+@dataclass(frozen=True, slots=True)
+class RenamePlan:
+    """A set's account playlist renamed to the name its INSPIRATION playlist carries.
+
+    Three writes, each one skipped when it already holds: the title on the
+    account, the ledger's key, and the name frozen on the set's job. ``name``
+    is the key the playlist is recorded under now, which is ``to`` once an
+    earlier run moved it, so a run that stopped part way plans only the rest.
+    """
+
+    job_id: str
+    playlist: ledger.SetPlaylist
+    to: str
+    #: The name frozen on the job, ``""`` for a job queued before the freeze.
+    frozen: str
+    #: The INSPIRATION playlist's row, whose name ``to`` is.
+    inspiration_id: str = ""
+
+    @property
+    def rename(self) -> bool:
+        """Whether the account title and the ledger key are still to move."""
+        return self.playlist.name != self.to
+
+    @property
+    def refreeze(self) -> bool:
+        return self.frozen != self.to
+
+    @property
+    def writes(self) -> bool:
+        return self.rename or self.refreeze
+
+    def identity(self) -> dict[str, Any]:
+        return {
+            "kind": "export-set-rename",
+            "job": self.job_id,
+            "playlist": self.playlist.remote_id,
+            "name": self.playlist.name,
+            "to": self.to,
+            "frozen": self.frozen,
+            "inspiration": self.inspiration_id,
+        }
+
+
+@dataclass
+class RenameApplied:
+    """What a rename wrote, for the report and for a failure part way."""
+
+    renamed: bool = False
+    rekeyed: bool = False
+    refrozen: bool = False
+
+
+def plan_rename(
+    cfg: config.Config,
+    *,
+    job_id: str,
+    names: Sequence[str],
+    to: str,
+    frozen: str,
+    inspiration_id: str = "",
+) -> RenamePlan | None:
+    """The rename, or ``None`` when no account playlist is recorded for the set.
+
+    ``names`` are the names the set's account playlist may be recorded under,
+    in the order a person would expect: frozen on the job, then the posted
+    day's form, then the queued day's. A record already under ``to`` wins over
+    all of them, since that is a rename an earlier run made. Reads the ledger
+    only; the title on the account is set by identifier, so no read of it
+    stands between the plan and the write.
+    """
+    for name in (to, *names):
+        if not name:
+            continue
+        recorded = ledger.set_playlist(cfg, name)
+        if recorded is not None:
+            return RenamePlan(
+                job_id=job_id,
+                playlist=recorded,
+                to=to,
+                frozen=frozen,
+                inspiration_id=inspiration_id,
+            )
+    return None
+
+
+def apply_rename(
+    cfg: config.Config,
+    account: RemoteAccount,
+    planned: RenamePlan,
+    done: RenameApplied,
+    *,
+    refreeze: Callable[[str], None],
+) -> RenameApplied:
+    """Retitle on the account, then move the ledger key, then refreeze the job, into ``done``.
+
+    THE ACCOUNT FIRST, because it is the one write a person sees. A rename by
+    identifier asked twice asks for one title, so a run that failed after it
+    renames again and moves on. The key moves once the title is there, and
+    the job last, since its old name is how a rerun finds the record if the
+    move never landed. ``refreeze`` is handed the new name and raises if the
+    job cannot take it.
+    """
+    playlist = planned.playlist
+    if planned.rename:
+        account.rename_playlist(playlist.remote_id, planned.to)
+        done.renamed = True
+        done.rekeyed = ledger.rename_set_playlist(
+            cfg, playlist.name, planned.to, playlist.remote_id
+        )
+    if planned.refreeze:
+        refreeze(planned.to)
+        done.refrozen = True
+    return done
+
+
 __all__ = [
     "ADOPT",
     "ALREADY_MARKED",
@@ -354,11 +476,15 @@ __all__ = [
     "NOT_LISTED",
     "RETITLED",
     "REUSE",
+    "RenameApplied",
+    "RenamePlan",
     "SetApplied",
     "SetPlan",
     "SetRow",
     "apply_archive",
+    "apply_rename",
     "apply_set",
     "plan_archive",
+    "plan_rename",
     "plan_set",
 ]

@@ -37,12 +37,20 @@ archive body behind its own gate once the batch is in the library, and a
 backfill over INSPIRATION playlists that have no account playlist yet plans
 both steps behind one gate each.
 
+``export set --rename JOB`` FOLLOWS A RENAME IN THE LIBRARY (U140). A person
+who renamed a set's INSPIRATION playlist left its account playlist, the
+ledger's key and the job's frozen name on the old one, and a backfill then
+read the set as having no account playlist and made a twin. The rename reads
+the INSPIRATION playlist's live name and, behind its own gate, retitles the
+account playlist by identifier, moves the ledger key and refreezes the job.
+
 Layer: modules. The builders' parameters are unannotated so this file does not
 import the CLI registry (KTD23).
 """
 
 from __future__ import annotations
 
+import shlex
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -56,7 +64,7 @@ from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.export.cli import UNMATCHED_WARNING
 from cratekit.intake import candidates
-from cratekit.intake.cli import TRACKLIST_SUFFIX
+from cratekit.intake.cli import PLAYLIST_NAME, TRACKLIST_SUFFIX
 from cratekit.label import catalogue
 from cratekit.modules.outbound import ledger, sets, shell
 from cratekit.sync import mark_record, marks
@@ -113,6 +121,15 @@ def build_set(parser, entry) -> None:
         "--name",
         default=None,
         help="the playlist's name on the account; defaults to the tracklist's own",
+    )
+    parser.add_argument(
+        "--rename",
+        default=None,
+        metavar="JOB",
+        help=(
+            "rename the set job's account playlist to the name its INSPIRATION "
+            "playlist carries now, and record the new name"
+        ),
     )
     parser.set_defaults(_handler=export_set)
 
@@ -684,6 +701,8 @@ def apply_planned(cfg, built: SetPlanned) -> tuple[dict[str, Any], list[dict[str
 
 def export_set(ctx) -> Envelope:
     cfg = shell.load_config("export.set_cli")
+    if ctx.args.rename is not None:
+        return _export_set_rename(ctx, cfg)
     if ctx.args.tracklist is None:
         return _export_set_backfill(ctx, cfg)
     path = Path(str(ctx.args.tracklist))
@@ -1065,6 +1084,37 @@ def _naming_day(job) -> datetime | None:
         return None
 
 
+def _names_for_job(job) -> tuple[str, ...]:
+    """Every name a set job's playlists may carry, most deliberate first.
+
+    The name frozen on the job, then the source system's form on the day the
+    set was posted, then on the day the job was queued. Each spelled as
+    :func:`set_name` spells a recorded name. A job whose page cannot name the
+    set gives its frozen name alone.
+    """
+    from cratekit.intake import set_playlist
+
+    found: list[str] = []
+    frozen = set_playlist.frozen_name(job)
+    if frozen:
+        found.append(set_name(frozen))
+    try:
+        words = set_playlist.words_for(job)
+    except Exception:
+        return tuple(dict.fromkeys(found))
+    # U136. Prefer the posted day from the page. Also accept the day the job
+    # was queued, so a playlist named before U136 (landing day in the first
+    # word) still finds its job until the attended rename. Never today (U129,
+    # R-949): a backfill a week later must find it.
+    queued = _naming_day(job)
+    landing = queued.astimezone().date() if queued is not None else None
+    posted, _warn = set_playlist.naming_day_for(job, landing=landing)
+    found.append(set_name(set_playlist.playlist_name(words, on=posted)))
+    if landing is not None and landing != posted:
+        found.append(set_name(set_playlist.playlist_name(words, on=landing)))
+    return tuple(dict.fromkeys(name for name in found if name))
+
+
 def _job_for_inspiration_name(cfg, name: str):
     """The succeeded set job whose frozen or recorded playlist name is ``name``, or None."""
     from cratekit.core import jobs, session
@@ -1077,27 +1127,7 @@ def _job_for_inspiration_name(cfg, name: str):
                 continue
             if job.state is not jobs.JobState.SUCCEEDED:
                 continue
-            frozen = set_playlist.frozen_name(job)
-            if frozen and set_name(frozen) == wanted:
-                return job
-            try:
-                words = set_playlist.words_for(job)
-            except Exception:
-                continue
-            # U136. Prefer the posted day from the page. Also accept the day
-            # the job was queued, so a playlist named before U136 (landing day
-            # in the first word) still finds its job until the attended rename.
-            # Never today (U129, R-949): a backfill a week later must find it.
-            queued = _naming_day(job)
-            landing = queued.astimezone().date() if queued is not None else None
-            posted, _warn = set_playlist.naming_day_for(job, landing=landing)
-            if set_name(set_playlist.playlist_name(words, on=posted)) == wanted:
-                return job
-            if (
-                landing is not None
-                and landing != posted
-                and set_name(set_playlist.playlist_name(words, on=landing)) == wanted
-            ):
+            if wanted in _names_for_job(job):
                 return job
     # Session records from a landing name the playlist and the job.
     records, _unreadable = session.scan_log(cfg)
@@ -1417,12 +1447,293 @@ def _export_archive_backfill(ctx, cfg) -> Envelope:
     )
 
 
+# ── the rename that follows the library (U140) ──────────────────────────────
+
+#: The gate the rename asks at, the second one ``export.set`` declares.
+RENAME_GATE = "export.set.rename"
+#: Why a rename cannot be planned: no INSPIRATION playlist to follow, no
+#: account playlist recorded, or one the archive marked.
+RENAME_UNRESOLVED = "export-set-rename-unresolved"
+#: What a rename plan does to each of its two items.
+RENAME = "rename"
+REFREEZE = "refreeze"
+KEEP = "keep"
+
+
+def _rename_unresolved(job_id: str, message: str, step: str, **detail: Any) -> CratekitError:
+    return refuse(
+        RENAME_UNRESOLVED,
+        f"job {job_id}: {message}; nothing was written",
+        steps=(step,),
+        scope=Scope.RUN,
+        origin=_SET,
+        detail={"job_id": job_id, **detail},
+    )
+
+
+def _inspiration_of(cfg, job_id: str) -> tuple[str, str] | None:
+    """The INSPIRATION playlist a write made for this job, its id and live name, or None."""
+    from cratekit.core import active_taxonomy, rb_writer
+    from cratekit.intake import set_playlist
+
+    declared = active_taxonomy.load(cfg)
+    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
+    try:
+        folder_id, _node = set_playlist.folder_for(db, declared)
+        if not folder_id:
+            return None
+        return set_playlist.recorded_playlist(cfg, db, job_id, folder_id)
+    finally:
+        rb_writer.close_db(db)
+
+
+def _standing_mark(cfg, remote_id: str) -> mark_record.Marked | None:
+    """The archive's mark still on this playlist, from ``sync mark``'s record, or None."""
+    for entry in mark_record.MarkRecord(cfg).all():
+        if entry.playlist_id == remote_id and not entry.unmarked:
+            return entry
+    return None
+
+
+@dataclass
+class RenamePlanned:
+    """One set's rename, planned: the gate's payload and what an apply needs."""
+
+    planned: sets.RenamePlan
+    payload: dict[str, Any]
+
+    @property
+    def shown(self) -> dict[str, Any]:
+        return _rename_shown(self.planned)
+
+    @property
+    def writes(self) -> bool:
+        return self.planned.writes
+
+
+def _rename_payload(planned: sets.RenamePlan) -> dict[str, Any]:
+    items = [
+        {
+            "id": planned.playlist.remote_id,
+            "kind": "playlist",
+            "name": planned.playlist.name,
+            "to": planned.to,
+            "action": RENAME if planned.rename else KEEP,
+        },
+        {
+            "id": planned.job_id,
+            "kind": "job",
+            "name": planned.frozen,
+            "to": planned.to,
+            "action": REFREEZE if planned.refreeze else KEEP,
+        },
+    ]
+    return {
+        "digest": digest_of(planned.identity()),
+        "items": items,
+        "totals": {"count": len(items), "writes": planned.writes},
+        "chunk": None,
+    }
+
+
+def _rename_shown(planned: sets.RenamePlan) -> dict[str, Any]:
+    old, to = planned.playlist.name, planned.to
+    shown: dict[str, Any] = {
+        "follows": f"the INSPIRATION playlist {planned.inspiration_id}, named {to!r}",
+        "account playlist": (
+            f"{planned.playlist.remote_id}: {old!r} -> {to!r}"
+            if planned.rename
+            else f"{planned.playlist.remote_id}: already {to!r}"
+        ),
+        "ledger entry": f"{old!r} -> {to!r}" if planned.rename else f"already {to!r}",
+        "frozen name": (
+            f"{planned.frozen or 'none'!r} -> {to!r}" if planned.refreeze else f"already {to!r}"
+        ),
+        "removes": "nothing, ever: no track or playlist is taken away",
+    }
+    if not planned.writes:
+        shown["nothing to write"] = (
+            "the account playlist, its ledger entry and the job already carry the "
+            "INSPIRATION playlist's name"
+        )
+    return shown
+
+
+def plan_rename(cfg, job_id: str) -> RenamePlanned:
+    """Plan a set's account playlist renamed to its INSPIRATION playlist's live name.
+
+    REFUSED BY NAME, before the gate and with nothing written, when the job
+    has no INSPIRATION playlist to follow, when no account playlist is recorded
+    under any of its names, and when the archive's mark still stands on the
+    playlist, since the rename would take the downloaded prefix off a title
+    ``sync unmark`` expects to find.
+    """
+    from cratekit.core import jobs
+    from cratekit.intake import set_playlist
+
+    with jobs.open_store() as store:
+        job = set_playlist.set_job_or_refuse(store, job_id)
+    found = _inspiration_of(cfg, job.job_id)
+    if found is None:
+        raise _rename_unresolved(
+            job.job_id,
+            "no INSPIRATION playlist this library made for the set is still in the "
+            "folder, so there is no name for its account playlist to follow",
+            f"make it with crate intake inspiration {job.job_id}, then rename",
+        )
+    inspiration_id, live = found
+    to = set_name(live)
+    if not to:
+        raise _unnamed(live)
+    names = _names_for_job(job)
+    planned = sets.plan_rename(
+        cfg,
+        job_id=job.job_id,
+        names=names,
+        to=to,
+        frozen=set_playlist.frozen_name(job),
+        inspiration_id=inspiration_id,
+    )
+    if planned is None:
+        raise _rename_unresolved(
+            job.job_id,
+            f"no account playlist is recorded for the set under {to!r} or any name "
+            f"its job gives ({', '.join(repr(one) for one in names) or 'none'}), so "
+            f"there is nothing to rename",
+            "run crate export set with no tracklist to make one for its INSPIRATION playlist",
+            names=list(names),
+            to=to,
+        )
+    if planned.rename:
+        mark = _standing_mark(cfg, planned.playlist.remote_id)
+        if mark is not None:
+            raise _rename_unresolved(
+                job.job_id,
+                f"the account playlist {planned.playlist.remote_id} was archived as "
+                f"{mark.to!r} by the pass {mark.pass_name}, and renaming it would take "
+                f"that mark off a title crate sync unmark expects to find",
+                f"run crate sync unmark --pass {shlex.quote(mark.pass_name)}, rename, "
+                f"then archive again",
+                remote_id=planned.playlist.remote_id,
+                pass_name=mark.pass_name,
+            )
+    return RenamePlanned(planned=planned, payload=_rename_payload(planned))
+
+
+def _rename_failed(exc: Exception, done: sets.RenameApplied, planned: sets.RenamePlan) -> CratekitError:
+    """The failure, with what was already written named, on ``_set_failed``'s rule."""
+    parts = []
+    if done.renamed:
+        parts.append(f"the account playlist was renamed to {planned.to!r}")
+    if done.rekeyed:
+        parts.append("its ledger entry moved")
+    said = (
+        "before this failed " + " and ".join(parts)
+        if parts
+        else "nothing was written before this failed"
+    )
+    detail = {
+        "job_id": planned.job_id,
+        "remote_id": planned.playlist.remote_id,
+        "renamed": done.renamed,
+        "rekeyed": done.rekeyed,
+        "refrozen": done.refrozen,
+    }
+    again = (
+        f"run crate export set --rename {planned.job_id} again; what was written "
+        f"is not written twice"
+    )
+    if isinstance(exc, CratekitError):
+        cause = exc.cause
+        return refuse(
+            cause.reason,
+            f"{said}. {cause.message}",
+            remedy=cause.remediation.remedy,
+            steps=(*cause.remediation.steps, again),
+            scope=Scope.RUN,
+            retryable=cause.retryable,
+            origin=_SET,
+            detail={**dict(cause.detail), **detail},
+            inner=cause,
+        )
+    if isinstance(exc, secrets.CredentialError):
+        return refuse(
+            "credential-missing",
+            f"{said}. {exc}",
+            remedy=Remedy(str(exc.remedy)),
+            steps=(again,),
+            scope=Scope.RUN,
+            origin=_SET,
+            detail={**detail, "kind": type(exc).__name__},
+        )
+    return refuse(
+        "internal-error",
+        f"{said}. The rename failed in a way this build does not expect "
+        f"({type(exc).__name__}: {exc})",
+        scope=Scope.RUN,
+        origin=_SET,
+        detail={**detail, "kind": type(exc).__name__},
+    )
+
+
+def apply_rename(cfg, built: RenamePlanned) -> tuple[dict[str, Any], bool]:
+    """Write what the rename plan names after the gate said apply. Returns payload, wrote."""
+    from cratekit.core import jobs
+
+    planned = built.planned
+    if not planned.writes:
+        return built.payload, False
+
+    def refreeze(to: str) -> None:
+        with jobs.open_store() as store:
+            jobs.refreeze(store, planned.job_id, PLAYLIST_NAME, to)
+
+    done = sets.RenameApplied()
+    try:
+        # DEFERRED, so a plan that only refreezes the job asks for no sign in.
+        sets.apply_rename(cfg, _Deferred(cfg), planned, done, refreeze=refreeze)
+    except Exception as exc:
+        raise _rename_failed(exc, done, planned) from exc
+    totals = {
+        **built.payload["totals"],
+        "applied": {
+            "renamed": done.renamed,
+            "rekeyed": done.rekeyed,
+            "refrozen": done.refrozen,
+        },
+    }
+    return {**built.payload, "totals": totals}, True
+
+
+def _export_set_rename(ctx, cfg) -> Envelope:
+    if ctx.args.tracklist is not None or ctx.args.name is not None:
+        raise refuse(
+            "intake-list-unusable",
+            "crate export set --rename takes the set's job and nothing else, since "
+            "the new name is the INSPIRATION playlist's and the tracks are not "
+            "touched, so nothing was planned",
+            remedy=Remedy.FIX_COMMAND_LINE,
+            steps=("drop the tracklist and --name, and pass --rename JOB alone",),
+            scope=Scope.RUN,
+            origin=_SET,
+        )
+    built = plan_rename(cfg, str(ctx.args.rename))
+    gate = next(spec for spec in ctx.entry.gates if spec.name == RENAME_GATE)
+    option = ctx.gate.require(gate, plan=built.payload, context=built.shown)
+    if option != "apply" or not built.writes:
+        return ctx.envelope(data=built.payload, outcome=Outcome.NO_OP)
+    data, wrote = apply_rename(cfg, built)
+    return ctx.envelope(data=data, outcome=Outcome.OK if wrote else Outcome.NO_OP)
+
+
 
 __all__ = [
     "ArchivePlanned",
+    "RenamePlanned",
     "SetPlanned",
     "apply_archive",
     "apply_planned",
+    "apply_rename",
     "build_archive",
     "build_set",
     "export_archive",
@@ -1432,5 +1743,6 @@ __all__ = [
     "plan_archive",
     "plan_archive_named",
     "plan_from_wanted",
+    "plan_rename",
     "set_name",
 ]

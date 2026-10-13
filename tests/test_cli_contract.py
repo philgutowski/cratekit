@@ -2392,6 +2392,14 @@ def test_conformance_2_no_module_builds_an_exit_code_from_a_bare_integer():
 #: fires is a gate the suite can hold a verb to.
 UNREACHABLE_GATES: Mapping[str, str] = MappingProxyType(
     {
+        "export.set.rename": (
+            "asked only by export set --rename JOB, which names a succeeded set "
+            "job, and the conformance fixture's queue holds none, so the sample "
+            "takes the tracklist path, which asks export.set.confirm instead. "
+            "One drive reaches one path. The rename gate, its explicit two act "
+            "answer and its refusals are driven in tests/test_export_set_rename.py "
+            "over a set job and an INSPIRATION playlist."
+        ),
         "intake.file.native": (
             "asked only on a library whose intake tree is recorded database "
             "native, for the reason intake.land.native gives below: the "
