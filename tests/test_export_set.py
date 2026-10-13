@@ -786,7 +786,7 @@ def test_a_set_put_in_its_folder_by_hand_writes_nothing_and_its_gate_says_so(acc
     folder_name = f"Downloaded Sets {recorded.year}"
     ledger.reserve_set_folder(cfg, folder_name, lambda: "gone-from-the-account")
     folder = held.create_folder(folder_name)
-    held.folders_created.clear()
+    made_by_hand = len(held.folders_created)
     held.placed[recorded.remote_id] = folder
     held.titles[recorded.remote_id] = f"DOWNLOADED {NAME}"
     argv = ["export", "archive", NAME, "--xml", str(_landed(cfg))]
@@ -800,7 +800,8 @@ def test_a_set_put_in_its_folder_by_hand_writes_nothing_and_its_gate_says_so(acc
     code, done = _archive(_landed(cfg))
     assert code == int(ExitCode.OK), done
     assert done["outcome"] == "no_op"
-    assert held.moves == [] and held.renamed == [] and held.folders_created == []
+    assert held.moves == [] and held.renamed == []
+    assert len(held.folders_created) == made_by_hand
     assert ledger.set_folder(cfg, folder_name) == "gone-from-the-account"
 
     held.titles[recorded.remote_id] = "My Own Title"

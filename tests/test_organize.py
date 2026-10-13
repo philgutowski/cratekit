@@ -1320,8 +1320,9 @@ def test_a_set_already_prefixed_in_its_downloaded_sets_folder_plans_nothing(worl
     _no_intake_file(cfg)
     _inspiration(cfg, SET_NAME)
     recorded = ledger.set_playlist(cfg, SET_NAME)
+    # NOT CLEARED: the fake numbers a folder by how many it made, so a clear
+    # lets the next one take this folder's identifier.
     folder = held.create_folder(f"Downloaded Sets {recorded.year}")
-    held.folders_created.clear()
     held.placed[recorded.remote_id] = folder
     held.titles[recorded.remote_id] = f"DOWNLOADED {SET_NAME}"
 
@@ -1335,6 +1336,12 @@ def test_a_set_already_prefixed_in_its_downloaded_sets_folder_plans_nothing(worl
     assert recorded.remote_id not in [pid for pid, _title in held.renamed]
     assert ledger.set_folder(cfg, f"Downloaded Sets {recorded.year}") == ""
 
+    # A title a person set is left, and the step says so rather than "marked".
+    held.titles[recorded.remote_id] = "My Own Title"
+    step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
+    assert step["state"] == "nothing", step
+    assert "its title left as a person set it" in step["detail"]
+
 
 def test_a_downloaded_sets_folder_made_by_hand_is_adopted_and_the_filing_keeps_its_year(world):
     """The ledger records the plain year folder, and the set never goes there."""
@@ -1345,7 +1352,7 @@ def test_a_downloaded_sets_folder_made_by_hand_is_adopted_and_the_filing_keeps_i
     year = recorded.year
     by_hand = held.create_folder(f"Downloaded Sets {year}")
     plain = held.create_folder(year)
-    held.folders_created.clear()
+    made_by_hand = len(held.folders_created)
     assert ledger.reserve_set_folder(cfg, year, lambda: plain) == (plain, True)
     _marked(cfg, fake, held, when=f"{year}-06-15T12:00:00+00:00")
 
@@ -1354,7 +1361,9 @@ def test_a_downloaded_sets_folder_made_by_hand_is_adopted_and_the_filing_keeps_i
     assert code == int(ExitCode.OK), done
     assert held.placed[recorded.remote_id] == by_hand
     assert held.placed[MARKED_ID] == plain
-    assert not {year, f"Downloaded Sets {year}"} & set(held.folders_created)
+    assert not {year, f"Downloaded Sets {year}"} & set(held.folders_created[made_by_hand:])
+    assert held.folder_names[by_hand] == f"Downloaded Sets {year}"
+    assert held.folder_names[plain] == year
     assert ledger.set_folder(cfg, f"Downloaded Sets {year}") == by_hand
     assert ledger.set_folder(cfg, year) == plain
 
@@ -1422,3 +1431,15 @@ def test_a_set_proven_by_its_intake_file_never_opens_the_database_for_inspiratio
 
     assert step["state"] == "planned"
     assert f"proven by {SET_NAME}_inboxed.xml" in step["detail"]
+
+
+def test_the_inspiration_proof_is_read_while_rekordbox_runs(world, monkeypatch):
+    """A read handle, as the rekordbox area's own listing: an open rekordbox refuses no proof."""
+    cfg, _fake, _held, _inbox, _ids = world
+    _no_intake_file(cfg)
+    _inspiration(cfg, SET_NAME)
+    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
+
+    step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
+
+    assert step["state"] == "planned", step
