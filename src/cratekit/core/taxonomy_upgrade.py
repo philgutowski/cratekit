@@ -86,6 +86,10 @@ class Plan:
     held: tuple[Held, ...]
     before: str
     after: str
+    #: A sentence for each keyword rule the shipped template points at a bucket
+    #: this adds that the copy points elsewhere or lacks. Never changed: a
+    #: keyword rule is an entry the copy holds.
+    keywords: tuple[str, ...] = ()
 
     @property
     def writes(self) -> bool:
@@ -175,12 +179,22 @@ def cut(shipped_text: str, kind: str, entry_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _words(bucket: taxonomy.Bucket) -> dict[str, tuple[str, str]]:
-    """Every source or tag word a bucket answers to, folded, with its spelling and where it is filed."""
-    found: dict[str, tuple[str, str]] = {}
+def _words(bucket: taxonomy.Bucket) -> dict[str, list[tuple[str, str]]]:
+    """Every source or tag word a bucket answers to, folded, with each spelling and place that files it.
+
+    EVERY PLACE AND EVERY SPELLING, NOT THE FIRST. One word can be filed by a
+    bucket's alias, a sub's tagging word and a source map row at once, as the
+    non electronic bucket filed "Jazz" before U133, and one place can file it
+    under two spellings, an alias "Jazz" and a tagging word "jazz". A hold that
+    named only the first sent a person to take out one line, run the verb
+    again, and be held on the next.
+    """
+    found: dict[str, list[tuple[str, str]]] = {}
 
     def add(word: str, where: str) -> None:
-        found.setdefault(word.casefold().strip(), (word, where))
+        places = found.setdefault(word.casefold().strip(), [])
+        if (word, where) not in places:
+            places.append((word, where))
 
     for word in (*bucket.aliases, *bucket.tag_aliases):
         add(word, bucket.id)
@@ -190,7 +204,7 @@ def _words(bucket: taxonomy.Bucket) -> dict[str, tuple[str, str]]:
             add(word, f"{bucket.id}, its sub {sub.id}")
     if bucket.sub_by_source is not None:
         for source, sub_id in bucket.sub_by_source.map.items():
-            add(source, f"{bucket.id}, its sub {sub_id}")
+            add(source, f"{bucket.id}, its source map row to {sub_id}")
     return found
 
 
@@ -204,25 +218,41 @@ def _collisions(
     purpose, so a copy whose breaks bucket still files that word is the shipped
     shape, and holding Hip-Hop over it would name a hand edit that changes
     routing the template never changed.
+
+    A VOCABULARY ROW THAT WRITES A CLASHING WORD IS NAMED TOO. The loader
+    refuses a row whose tag no exact declaration files, so a copy with the
+    words taken out and the row left does not load, and the verb refuses it
+    before it can add the bucket (U133, the catalogue's "Jazz" row).
     """
     designed = {bucket.id: set(_words(bucket)) for bucket in shipped.buckets}
-    filed: dict[str, tuple[str, str, str]] = {}
+    filed: dict[str, list[tuple[str, str, str]]] = {}
     for bucket in held_by.buckets:
-        for word, (spelling, where) in _words(bucket).items():
-            filed.setdefault(word, (bucket.id, spelling, where))
+        for word, places in _words(bucket).items():
+            filed.setdefault(word, []).extend((bucket.id, s, w) for s, w in places)
     clash: dict[str, list[str]] = {}
+    clashing: set[tuple[str, str]] = set()
     for word in _words(candidate):
-        if word not in filed:
-            continue
-        owner, spelling, where = filed[word]
-        if word in designed.get(owner, set()):
-            continue
-        clash.setdefault(where, []).append(spelling)
-    return [
+        for owner, spelling, where in filed.get(word, ()):
+            if word in designed.get(owner, set()):
+                continue
+            if spelling not in clash.setdefault(where, []):
+                clash[where].append(spelling)
+            clashing.add((owner, word))
+    out = [
         f"the copy's bucket {where} already files {', '.join(repr(w) for w in sorted(words))}; "
         f"take {'that word' if len(words) == 1 else 'those words'} out of it by hand"
         for where, words in sorted(clash.items())
     ]
+    for table in held_by.vocabularies:
+        for row in table.words:
+            if (row.bucket, row.tag.casefold().strip()) in clashing:
+                out.append(
+                    f"the copy's [vocabulary.{table.source}] row {row.word!r} writes {row.tag!r}, "
+                    f"and the copy does not load with that row once the word is out; take "
+                    f"the row out with it, and write it back after the upgrade if the "
+                    f"{candidate.id} bucket's own words do not answer for {row.word!r}"
+                )
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -412,7 +442,40 @@ def plan(active_text: str, shipped_text: str, *, template: str) -> Plan:
         held=tuple(held),
         before=active_text,
         after=text,
+        keywords=_keyword_rules(tuple(added[BUCKET]), active, shipped),
     )
+
+
+def _keyword_rules(
+    added: tuple[str, ...], active: taxonomy.Taxonomy, shipped: taxonomy.Taxonomy
+) -> tuple[str, ...]:
+    """The keyword rules the shipped template sends to an added bucket and the copy does not.
+
+    U133 MOVED ONE. The shipped template sends a partial "jazz" match to the
+    Jazz bucket, and a copy made before it sends one to the non electronic
+    bucket. The upgrade adds the bucket and leaves the rule, since it changes
+    no entry the copy holds, so the copy files "Acid Jazz" where it always did
+    while a fresh setup files it in Jazz. Said, so the difference is a choice
+    a person makes by hand rather than one nobody saw.
+    """
+    copy_rules = {rule.keyword.casefold(): rule.bucket for rule in active.fuzzy}
+    out = []
+    for rule in shipped.fuzzy:
+        if rule.bucket not in added:
+            continue
+        there = copy_rules.get(rule.keyword.casefold())
+        if there == rule.bucket:
+            continue
+        sends = (
+            f"sends a partial match to {there}" if there is not None
+            else "has no rule for it"
+        )
+        out.append(
+            f"the shipped template's keyword rule {rule.keyword!r} sends a partial match "
+            f"to the {rule.bucket} bucket this adds, and the copy {sends}; the copy's rule "
+            f"is left as it is, so repoint it by hand to file those tracks in {rule.bucket}"
+        )
+    return tuple(out)
 
 
 # ---------------------------------------------------------------------------
@@ -452,6 +515,7 @@ def remedy(found: Plan) -> str:
         parts.append(f"{one.id} is held: {'; '.join(one.reasons)}")
     if found.held:
         parts.append(f"then run {VERB} again")
+    parts.extend(found.keywords)
     return "; ".join(parts)
 
 
