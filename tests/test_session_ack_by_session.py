@@ -20,6 +20,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from cratekit.core import backup_facts, session
+from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from tests import test_session_cli as session_suite
 from tests.test_session_cli import (  # noqa: F401
@@ -173,6 +174,28 @@ def test_a_record_written_before_u138_reads_as_the_terminal_rule():
     read = session.Acknowledgment.from_json(older)
     assert (read.rule, read.decided_by) == ("terminal", None)
     assert session.Acknowledgment.from_json(read.to_json()) == read
+
+
+@pytest.mark.parametrize(
+    ("age", "mints"),
+    [(FIVE_DAYS - timedelta(seconds=1), True), (FIVE_DAYS, False)],
+    ids=["a-second-under-five-days", "exactly-five-days"],
+)
+def test_the_bound_is_strict_at_exactly_five_days(cfg, age, mints):
+    """On one clock, so "exactly" means exactly. Through the dispatcher the
+    verb reads the clock a moment after the fact was written, which makes a
+    five day fixture a little over and cannot tell under from at."""
+    now = datetime(2026, 10, 12, 12, 0, tzinfo=UTC)
+    for portion in backup_facts.Portion:
+        backup_facts.record(cfg, portion, completed_at=now - age, destination="/backups/probe")
+    if mints:
+        kept = session.record_acknowledgment(cfg, now=now, decided_by=SESSION)
+        assert (kept.rule, kept.decided_by) == ("session-ages", SESSION)
+    else:
+        with pytest.raises(CratekitError) as refused:
+            session.record_acknowledgment(cfg, now=now, decided_by=SESSION)
+        assert refused.value.cause.reason == "backup-acknowledgment-backup-too-old"
+        assert session.read_acknowledgment(cfg) is None
 
 
 def test_the_bound_is_five_days_as_the_author_set_it():
