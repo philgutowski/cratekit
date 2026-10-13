@@ -223,3 +223,21 @@ old = '''                folder_id, _made = ledger.reserve_set_folder(
 new = '''                folder_id, _made = ledger.reserve_set_folder(
                     cfg,
                     sets.folder_name(row.year),'''
+
+[[rows]]
+id = "S22_year_record_named_for_sets_reused"
+description = "filing year folder: reuse a year record whose folder now carries the sets' name, so custom playlists are filed among the sets"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+tests = ["tests/test_organize.py", "tests/test_playlist_kinds.py"]
+old = '''    if recorded and recorded in root and root[recorded] != sets.folder_name(year):'''
+new = '''    if recorded and recorded in root:'''
+
+[[rows]]
+id = "S23_prefix_only_said_as_a_move"
+description = "organize set step: say file it in the folder for a set already there with its built title, a prefix and no move"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''        if archived.writes and planned.move:'''
+new = '''        if archived.writes:'''
