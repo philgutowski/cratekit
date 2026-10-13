@@ -1211,3 +1211,37 @@ def test_only_yours_shows_a_refused_rotation_since_it_is_why_the_listing_is_shor
     steps = _steps(envelope, rekordbox.AREA)
     assert list(steps) == [rekordbox.ROTATE, rekordbox.YOURS]
     assert steps[rekordbox.ROTATE]["state"] == "refused"
+
+
+@pytest.mark.parametrize(
+    ("kind", "called"),
+    [
+        (account_area.LABELS, ["_labels"]),
+        (account_area.SETS, ["_sets"]),
+        (account_area.MARKS, ["_mark_steps"]),
+        (account_area.FILE, ["_file_step"]),
+        # The filing is planned for yours too, so what it moves is not listed.
+        (account_area.YOURS, ["_file_step", "_yours"]),
+    ],
+)
+def test_each_account_kind_runs_its_own_builder_and_no_other(seams, monkeypatch, kind, called):
+    """No world here holds a landed sync pass, so the marks are pinned at their seam."""
+    ran: list[str] = []
+
+    def recorder(name):
+        def built(*args, **kwargs):
+            ran.append(name)
+            return frozenset()
+
+        return built
+
+    for name in ("_labels", "_sets", "_mark_steps", "_file_step", "_yours"):
+        monkeypatch.setattr(account_area, name, recorder(name))
+    if kind not in rekordbox.STEPS:
+        monkeypatch.setattr(rekordbox, "plan_area", _not_planned)
+
+    collection.reset_cache()
+    code, envelope = drive([*VERB, "--report", "--only", kind])
+
+    assert code == int(ExitCode.OK), envelope
+    assert ran == called
