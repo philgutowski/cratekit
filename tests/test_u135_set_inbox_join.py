@@ -90,7 +90,7 @@ def test_a_set_landed_once_keeps_one_inbox_playlist_named_for_the_set(native_lib
     assert code == int(ExitCode.OK), acted
     shown = refused["cause"]["detail"]["shown"]
     assert shown["inbox playlist"] == NAME
-    assert shown["inbox"].startswith("found live")
+    assert shown["inbox"] == "made"
     assert "inbox leftovers" not in shown
     inbox = _inbox_under(cfg, root_id)
     assert inbox[NAME] == ["One", "Two"]
@@ -103,11 +103,15 @@ def test_two_landings_of_one_set_make_one_inbox_playlist_in_set_order(
     native_library, silence, monkeypatch
 ):
     """The second landing reads the first's batch playlist record, adds to it,
-    and keeps its name, so a set landed in two parts is one INBOX playlist."""
+    and keeps its name, so a set landed in two parts is one INBOX playlist.
+
+    Track titles are Zebra then Apple so set order differs from name order; the
+    joined INBOX playlist must follow set order, not the landing's file sort.
+    """
     cfg, root_id = native_library
     cutover_fixtures.add_folder(cfg, FOLDER)
-    job_id = set_job(cfg, ("One", "Two"))
-    _stage(cfg, silence, "One")
+    job_id = set_job(cfg, ("Zebra", "Apple"))
+    _stage(cfg, silence, "Zebra")
     code, first, refused = _two_acts(_land("--set", job_id, *WORDS))
     assert code == int(ExitCode.OK), first
     ((playlist_id, *_rest),) = [
@@ -116,7 +120,7 @@ def test_two_landings_of_one_set_make_one_inbox_playlist_in_set_order(
     assert refused["cause"]["detail"]["shown"]["inbox playlist"] == NAME
 
     monkeypatch.setattr(batch_name, "today", lambda: date(2026, 10, 10))
-    _stage(cfg, silence, "Two")
+    _stage(cfg, silence, "Apple")
     verb = ["intake", "land", "--name", "2026-10-10 Set", "--set", job_id, *WORDS]
     code, second, refused = _two_acts(verb)
 
@@ -129,8 +133,8 @@ def test_two_landings_of_one_set_make_one_inbox_playlist_in_set_order(
     assert _playlists_named(cfg, "2026-10-10 Set") == []
     assert _playlists_named(cfg, BATCH) == []
     rows = _row_ids_by_name(cfg)
-    assert _members(cfg, str(playlist_id)) == [rows["One"], rows["Two"]]
-    assert _inbox_under(cfg, root_id)[NAME] == ["One", "Two"]
+    assert _members(cfg, str(playlist_id)) == [rows["Zebra"], rows["Apple"]]
+    assert _inbox_under(cfg, root_id)[NAME] == ["Zebra", "Apple"]
     records = _batch_records(cfg)
     assert all(one.get(native.INBOX_JOB_KEY) == job_id for one in records)
     assert {one["id"] for one in records} == {str(playlist_id)}
@@ -259,8 +263,62 @@ def test_a_dated_batch_from_before_the_unit_is_named_as_a_leftover_and_not_joine
     assert code == int(ExitCode.OK), second
     shown = refused["cause"]["detail"]["shown"]
     assert BATCH in shown["inbox leftovers"]
-    assert shown["inbox"].startswith("found live")
+    assert shown["inbox"] == "made"
     assert shown["inbox playlist"] == NAME
     inbox = _inbox_under(cfg, root_id)
     assert inbox[BATCH] == ["One"]
     assert inbox[NAME] == ["Two"]
+
+
+def test_a_removed_set_named_inbox_playlist_is_not_written_into(native_library, silence):
+    """A soft-deleted INBOX playlist of the set's name must not receive members.
+
+    Before U135 the dated batch name made this collision unlikely; the set name
+    now recurs by design, so the write skips removed namesakes the way the
+    INSPIRATION path already does.
+    """
+    from tests.test_set_inspiration_playlist import _make_playlist, _soft_delete_playlist
+
+    cfg, root_id = native_library
+    cutover_fixtures.add_folder(cfg, FOLDER)
+    removed_id = _make_playlist(cfg, NAME, under=root_id)
+    _soft_delete_playlist(cfg, removed_id)
+    job_id = set_job(cfg, ("One",))
+    _stage(cfg, silence, "One")
+
+    code, acted, refused = _two_acts(_land("--set", job_id, *WORDS))
+
+    assert code == int(ExitCode.OK), acted
+    assert refused["cause"]["detail"]["shown"]["inbox"] == "made"
+    assert _members(cfg, removed_id) == []
+    live = [row for row in _playlists_named(cfg, NAME) if str(row[1]) == root_id and not row[3]]
+    ((live_id, *_r),) = live
+    assert str(live_id) != removed_id
+    assert _inbox_under(cfg, root_id)[NAME] == ["One"]
+    (kept,) = _batch_records(cfg)
+    assert kept["id"] == str(live_id) and kept[native.INBOX_JOB_KEY] == job_id
+
+
+def test_a_hand_made_inbox_playlist_of_the_set_name_is_named_found_not_recorded(
+    native_library, silence
+):
+    """A live INBOX playlist of the set's name with no job record is joined, and
+    the screen says so apart from making one, then the job key is stamped."""
+    from tests.test_set_inspiration_playlist import _make_playlist
+
+    cfg, root_id = native_library
+    cutover_fixtures.add_folder(cfg, FOLDER)
+    handmade_id = _make_playlist(cfg, NAME, under=root_id)
+    job_id = set_job(cfg, ("One",))
+    _stage(cfg, silence, "One")
+
+    code, acted, refused = _two_acts(_land("--set", job_id, *WORDS))
+
+    assert code == int(ExitCode.OK), acted
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["inbox"] == "found live by name, not recorded"
+    assert shown["inbox playlist"] == NAME
+    assert _members(cfg, handmade_id) == [_row_ids_by_name(cfg)["One"]]
+    (kept,) = _batch_records(cfg)
+    assert kept["id"] == handmade_id and kept[native.INBOX_JOB_KEY] == job_id
+

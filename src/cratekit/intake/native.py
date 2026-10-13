@@ -387,6 +387,10 @@ class NativePlan:
     #: INBOX playlist names that look like earlier parts of this set from
     #: before U135, named on the screen and never joined automatically.
     inbox_leftovers: tuple[str, ...] = ()
+    #: True when a set landing found a live INBOX playlist of the set's name
+    #: that no earlier landing of this job recorded (U135), so the screen can
+    #: say so apart from making one.
+    inbox_found_by_name: bool = False
     #: The left rows of each account playlist that holds nothing here and so
     #: is not planned (U128), by its name, which the screen counts, the digest
     #: covers and the landing names.
@@ -610,6 +614,7 @@ def plan_rows(
     batch_playlist_id: str = "",
     set_job_id: str = "",
     inbox_leftovers: Sequence[str] = (),
+    inbox_found_by_name: bool = False,
 ) -> NativePlan:
     """Plan one row per file and one playlist, against the open database.
 
@@ -729,6 +734,7 @@ def plan_rows(
         batch_playlist_id=batch_playlist_id,
         set_job_id=set_job_id,
         inbox_leftovers=tuple(inbox_leftovers),
+        inbox_found_by_name=inbox_found_by_name,
         vox_cut=vox_cut,
         vox_blocked=vox_blocked,
     )
@@ -1034,6 +1040,7 @@ def identity(plan: NativePlan) -> dict[str, Any]:
         "batch_playlist": plan.batch_playlist_id,
         "set_job": plan.set_job_id,
         "inbox_leftovers": list(plan.inbox_leftovers),
+        "inbox_found_by_name": plan.inbox_found_by_name,
         "database": str(plan.database),
         "device": plan.device_id,
         "master_db_id": plan.master_db_id,
@@ -1320,11 +1327,36 @@ def apply_rows(
                         left.append((one.name, member.member.left(NOT_LANDED)))
                 if ids:
                     accounts.append((one, ids))
-            ordered = [
-                by_target[str(row.target)]
-                for row in plan.rows
-                if str(row.target) in by_target and str(row.target) not in claimed
-            ]
+            # IN SET ORDER WHEN THIS IS A SET LANDING (U135): the brief asks
+            # for both landings' rows in set order on the joined INBOX playlist.
+            # Landing files alone sort by name; the set's members carry positions.
+            if plan.set_playlist is not None:
+                ordered = []
+                seen: set[str] = set()
+                for member in plan.set_playlist.members:
+                    target = str(member.target) if member.target else ""
+                    if not target or target not in by_target or target in claimed:
+                        continue
+                    held = by_target[target]
+                    if held in seen:
+                        continue
+                    ordered.append(held)
+                    seen.add(held)
+                for row in plan.rows:
+                    target = str(row.target)
+                    if target not in by_target or target in claimed:
+                        continue
+                    held = by_target[target]
+                    if held in seen:
+                        continue
+                    ordered.append(held)
+                    seen.add(held)
+            else:
+                ordered = [
+                    by_target[str(row.target)]
+                    for row in plan.rows
+                    if str(row.target) in by_target and str(row.target) not in claimed
+                ]
             # THE BATCH PLAYLIST HOLDS WHAT NO ACCOUNT PLAYLIST CLAIMED, and is
             # not written when that is nothing, as the intake file does it.
             # A SET LANDING ADDS TO THE RECORDED INBOX PLAYLIST (U135) when an
@@ -1481,9 +1513,12 @@ def _batch_playlist_row(db: Any, plan: NativePlan, anchor: Any) -> Any:
     """The INBOX playlist the batch members go in: the recorded one, else found or made.
 
     THE RECORDED PLAYLIST, when a set landing names one (U135), was checked
-    live at the plan and is checked again here. Otherwise
-    :func:`rb_writer.ensure_playlist` finds a live playlist of the name under
-    the intake root or makes one, as every non-set landing does.
+    live at the plan and is checked again here. Otherwise a live playlist of
+    the name under the intake root is taken, and a new one made when none is
+    live. A removed playlist is not found: rekordbox soft deletes a playlist a
+    person removes, and :func:`rb_writer.ensure_playlist` matches name and
+    parent alone, so a playlist deleted in rekordbox and written into would
+    hold memberships nobody can see. The INSPIRATION path guards the same way.
     """
     if plan.batch_playlist_id:
         row = db.get_playlist(ID=plan.batch_playlist_id)
@@ -1496,7 +1531,23 @@ def _batch_playlist_row(db: Any, plan: NativePlan, anchor: Any) -> Any:
                 detail={"playlist": plan.batch_playlist_id, "name": plan.playlist},
             )
         return row
-    return rb_writer.ensure_playlist(db, plan.playlist, anchor)
+    parent_id = str(anchor.ID)
+    for row in list(db.get_playlist(Name=plan.playlist)):
+        if rb_writer.is_folder(row) or rb_writer.node_removed(row):
+            continue
+        if str(getattr(row, "ParentID", "") or "") == parent_id:
+            return row
+    return db.create_playlist(plan.playlist, parent=anchor)
+
+
+def live_inbox_named(db: Any, name: str, root_id: str) -> bool:
+    """Whether a live (not removed) playlist of ``name`` sits under the intake root."""
+    for row in list(db.get_playlist(Name=name)):
+        if rb_writer.is_folder(row) or rb_writer.node_removed(row):
+            continue
+        if str(getattr(row, "ParentID", "") or "") == str(root_id):
+            return True
+    return False
 
 
 def assert_names_still_free(db: Any, plan: NativePlan) -> None:
@@ -1733,6 +1784,7 @@ __all__ = [
     "file_type_of",
     "identity",
     "inbox_held",
+    "live_inbox_named",
     "leftover_set_inbox",
     "plan_rows",
     "recorded_inbox_playlist",

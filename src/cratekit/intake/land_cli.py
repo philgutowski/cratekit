@@ -853,12 +853,15 @@ def collection_facts(rows: native.NativePlan) -> dict[str, Any]:
     }
     if rows.set_job_id:
         facts["inbox playlist"] = rows.playlist
-        facts["inbox"] = (
-            f"adds to the playlist an earlier landing of this set made "
-            f"(row {rows.batch_playlist_id})"
-            if rows.batch_playlist_id
-            else "found live by its name under INBOX, or made"
-        )
+        if rows.batch_playlist_id:
+            facts["inbox"] = (
+                f"adds to the playlist an earlier landing of this set made "
+                f"(row {rows.batch_playlist_id})"
+            )
+        elif rows.inbox_found_by_name:
+            facts["inbox"] = "found live by name, not recorded"
+        else:
+            facts["inbox"] = "made"
     if rows.inbox_leftovers:
         facts["inbox leftovers"] = (
             "not joined automatically: "
@@ -1174,6 +1177,7 @@ def _land_native(
         batch_playlist_id = ""
         set_job_id = ""
         leftovers: tuple[str, ...] = ()
+        inbox_found_by_name = False
         if set_job is not None and words is not None:
             set_job_id = set_job.job_id
             root_id = native.anchored_intake_root(db, tree_id, registry)
@@ -1184,6 +1188,7 @@ def _land_native(
                 inbox_name = set_playlist.frozen_name(set_job) or set_playlist.playlist_name(
                     words
                 )
+                inbox_found_by_name = native.live_inbox_named(db, inbox_name, root_id)
             leftovers = native.leftover_set_inbox(
                 cfg, db, set_job_id, root_id, inbox_name, keep_id=batch_playlist_id
             )
@@ -1215,6 +1220,7 @@ def _land_native(
             batch_playlist_id=batch_playlist_id,
             set_job_id=set_job_id,
             inbox_leftovers=leftovers,
+            inbox_found_by_name=inbox_found_by_name,
         )
 
     payload, landed = ask_then_write(
