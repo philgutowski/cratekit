@@ -51,7 +51,7 @@ SHIPPED = {
     "R&B": ("R&B", "rnb", None),
     "Soul & Funk": ("Soul", "soul", None),
     "Rap/Hip Hop": ("Hip-Hop", "hip_hop", None),
-    "Jazz": ("Jazz", "non_electronic", "jazz"),
+    "Jazz": ("Jazz", "jazz", None),
     "Classical": ("Classical", "non_electronic", "classical"),
     "Reggae": ("Caribbean", "non_electronic", "caribbean"),
 }

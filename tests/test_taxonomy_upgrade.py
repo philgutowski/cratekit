@@ -34,7 +34,7 @@ FAVORITES_END = "# The set-builder's family vocabulary"
 SOUL_START = '[[bucket]]\nid = "soul"'
 SOUL_END = "# HIP-HOP AT THE TOP LEVEL"
 HIP_HOP_START = '[[bucket]]\nid = "hip_hop"'
-HIP_HOP_END = '[[bucket]]\nid = "non_electronic"'
+HIP_HOP_END = "# JAZZ AT THE TOP LEVEL"
 
 
 def _version(text: str, version: int) -> str:

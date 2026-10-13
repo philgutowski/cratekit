@@ -61,9 +61,10 @@ SWEEP_PARITY_POPULATION = [
     v for v in POPULATION if v.lower().strip() not in REFUSED and v not in ALIASED
 ]
 
-# THE BUCKETS THE OLD CODE NEVER HAD (R-797, U118). The author moved R&B out of
-# the source routed folder to a folder of its own on 2026-10-01, and on
-# 2026-10-09 split Soul out of R&B and moved Hip-Hop out the same way. So the
+# THE BUCKETS THE OLD CODE NEVER HAD (R-797, U118, U133). The author moved R&B
+# out of the source routed folder to a folder of its own on 2026-10-01, on
+# 2026-10-09 split Soul out of R&B and moved Hip-Hop out the same way, and on
+# 2026-10-12 moved Jazz out the same way, with its keyword rule. So the
 # strings that filed in the two playlists they left now route to the new
 # buckets, and the tagger writes R&B's or Soul's name where it wrote the old
 # "Soul / R&B" playlist's. Every set is derived, from the engine or from the
@@ -87,7 +88,21 @@ def _old_playlist(bucket):
 
 OLD_PLAYLIST = {bucket.id: _old_playlist(bucket) for bucket in PROMOTED_BUCKETS}
 PROMOTED = {
-    v for v in POPULATION if routing.resolve_bucket(TAXONOMY, v).bucket_id in OLD_PLAYLIST
+    v
+    for v in POPULATION
+    if routing.resolve_bucket(TAXONOMY, v).bucket_id in OLD_PLAYLIST
+    and routing.resolve_bucket(TAXONOMY, v).match is not routing.Match.FUZZY
+}
+#: The keyword rules the author moved with a promoted bucket, by keyword. Only
+#: Jazz's moved (U133); R&B's and Hip-Hop's stayed (R-804, R-941).
+KEYWORDS_MOVED = {"jazz"}
+#: The words such a rule sends to a promoted bucket. The old code filed them in
+#: the source routed folder by the same keyword, in its default sub.
+MOVED_BY_KEYWORD = {
+    v
+    for v in POPULATION
+    if routing.resolve_bucket(TAXONOMY, v).bucket_id in OLD_PLAYLIST
+    and routing.resolve_bucket(TAXONOMY, v).match is routing.Match.FUZZY
 }
 #: The one word filed in a promoted bucket that the old code filed elsewhere.
 #: The author named it a Hip-Hop word on 2026-10-09 (U118); a keyword rule sent
@@ -108,7 +123,9 @@ RETAGGED = {
 PROMOTED_BUCKET = next(bucket for bucket in TAXONOMY.buckets if bucket.formerly)
 (FORMER_PLACE,) = PROMOTED_BUCKET.formerly
 
-ROUTING_PARITY_POPULATION = [v for v in POPULATION if v not in PROMOTED]
+ROUTING_PARITY_POPULATION = [
+    v for v in POPULATION if v not in PROMOTED and v not in MOVED_BY_KEYWORD
+]
 TAGGER_PARITY_POPULATION = [
     k
     for k in sorted(legacy.GENRE_NORMALIZE)
@@ -179,6 +196,21 @@ def test_soul_and_r_and_b_divide_the_old_playlist_as_the_author_decided():
     soul = next(b.id for b in PROMOTED_BUCKETS if b.display == "Soul")
     assert {v for v, b in resolved.items() if b == soul} == {"Soul", "Soul / R&B"}
     assert {v for v, b in resolved.items() if b == PROMOTED_BUCKET.id} == {"R&B", "MPB"}
+
+
+def test_the_one_keyword_rule_the_author_moved_takes_only_what_the_old_code_filed_by_it():
+    """U133: the "jazz" rule moved with the Jazz bucket, so a partial match
+    files in Jazz now. Every word it sends there, the old code filed in the
+    source routed folder by that same keyword, and no other rule moved."""
+    assert MOVED_BY_KEYWORD, "the corpus no longer carries a partial match to hold this"
+    for value in MOVED_BY_KEYWORD:
+        resolution = routing.resolve_bucket(TAXONOMY, value)
+        assert resolution.matched_on in KEYWORDS_MOVED, value
+        old = OLD_PLAYLIST[resolution.bucket_id]
+        assert legacy.resolve_genre(value) == (
+            TAXONOMY.bucket(old.bucket).display, f"fuzzy {resolution.matched_on}"
+        ), value
+    assert {rule.keyword for rule in TAXONOMY.fuzzy if rule.bucket in OLD_PLAYLIST} == KEYWORDS_MOVED
 
 
 def test_the_keyword_rules_were_not_repointed_by_the_promotion():
@@ -707,13 +739,13 @@ def test_the_three_strings_the_two_old_tables_flatly_contradicted():
 def test_a_sub_playlist_name_can_be_the_tag_a_bucket_alias_is_not():
     """Nine of the old tagger's answers were sub-playlist names rather than
     folder names, and the round trip only worked because the routing table
-    happened to contain all nine as keys. Declared explicitly now. Seven are
-    left since R-797 and U118 gave two of the nine folders of their own, so the
-    example is one that is still a sub."""
-    suggestion = routing.suggest_tag(TAXONOMY, "Jazz")
+    happened to contain all nine as keys. Declared explicitly now. Six are
+    left since R-797, U118 and U133 gave three of the nine folders of their
+    own, so the example is one that is still a sub."""
+    suggestion = routing.suggest_tag(TAXONOMY, "Classical")
     assert suggestion.sub_id is not None
-    assert suggestion.tag == legacy.normalize_genre("Jazz")
-    assert routing.resolve_bucket(TAXONOMY, "Jazz").bucket_id == suggestion.bucket_id
+    assert suggestion.tag == legacy.normalize_genre("Classical")
+    assert routing.resolve_bucket(TAXONOMY, "Classical").bucket_id == suggestion.bucket_id
 
 
 def test_the_two_coarse_source_strings_are_declared_unusable_as_a_final_tag():
