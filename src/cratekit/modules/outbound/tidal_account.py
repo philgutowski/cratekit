@@ -1217,12 +1217,12 @@ class TidalAccount:
             raise account.provider_failure(
                 RuntimeError("the provider did not accept the removal"), doing
             )
-        again = self._call(doing, lambda: self._session.playlist(identifier))
-        if again is not _ABSENT and again is not None:
+        served_after = self._call(doing, lambda: self._session.playlist(identifier))
+        if served_after is not _ABSENT and served_after is not None:
             raise refuse(
                 "outbound-remove-refused",
-                f"the playlist {identifier} is still served by the provider after "
-                f"it was asked to remove it, so it was not removed",
+                f"the {kind} playlist {identifier} is still served by the provider "
+                f"after it was asked to remove it, so it was not removed",
                 steps=("check the playlist by hand in the provider's own player",),
                 scope=Scope.RUN,
                 origin=("outbound", "account"),
