@@ -12,5 +12,7 @@ and `adopt apply` again (34 vocal memberships), then `favorites refresh`
 tail). In rekordbox by computer use: the three mixed INBOX playlists deleted,
 the Signal INSPIRATION playlist renamed to its posted day (U136's tail, the
 rekordbox half). The Vonking job carries no posted date; the account rename
-has no verb, U140 (#317). The Tidal filing (U137) waits on its report. Record
+has no verb, U140 (#317). The Tidal filing ran live through U137, `organize --only
+file`: 21 root playlists into their year, `Mine` or `Exports` folders, 3
+folders made, 13 left by rule. Record
 in `docs/cutover.md`.

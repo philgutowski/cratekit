@@ -1162,7 +1162,7 @@ up on its service rather than the landing day (U136, R-949's neighbour).
 The memory saying no live Tidal bulk work until #217 was removed; #217 is
 closed.
 
-## Sitting 39, 2026-10-13, 02:14 to 02:30, unattended, the watcher under the overnight authority
+## Sitting 39, 2026-10-13, 02:14 to 03:15, unattended, the watcher under the overnight authority
 
 Phillip, 2026-10-12 20:50, away for the night: "keep this going, iterate until
 it is perfect, do not stop to ask me any questions, automate the desktop, drive
@@ -1196,15 +1196,15 @@ after rekordbox quit.
 | `favorites refresh` | rehearsed on the copy `dbbe024b278e9d28`, live `38fe1ff234a181cd`; the difference read item by item is only the folder and playlist row ids of hip_hop, jazz and soul, made separately on each side, every count equal, so approved as session under the 2026-10-09 rule | 22 folders, 0 added, **1 removed**, read back | live |
 | `converge` | read before and after | both trees `differing`, remedy `rebuild-tree`, the same pre existing `electronica_other` and `tree.inbox` items before and after (R-996's shape); nothing of this sitting changed them | read |
 | rekordbox, desktop control | opened after the writes with both processes confirmed gone before and after, quit with `cmd+q` | INSPIRATION `10_10_26 Public Service NYC Live at Signal 2-26` renamed to **`3_25_26 Public Service NYC Live at Signal 2-26`** (U136's tail, the Signal job's `upload_date 20260325`); the three mixed INBOX playlists **deleted** (memberships only); read: Hip-Hop High 10, Low 14, Med 24, with vox 19, Favorites 1; Jazz High 3, Low 10, Med 2, with vox 4; Soul High 2, Low 6, Med 5, Unsorted 2, with vox 11, Favorites 5; INBOX `Phil 9-30-26` 168, `New York Fever Vol. 1` 41, `Phil 10_8_26` 6 | live |
-| `organize --report --only file` (U137), the Tidal filing | on the copy, report only, started 02:08 | the account walk is paced; still reading at the time of this record, its plan unread and nothing filed | pending |
+| `organize --only file` (U137), the Tidal filing | report on the copy (22 minutes, 1,304 paced calls), the plan read line by line, then live on an equal digest `02d28addb67b403c`, the session answering `apply` at 02:30, applied by 03:15 (1,347 calls, none rate limited) | **21 root playlists moved into their year, `Mine` or `Exports` folders, 3 folders created, 13 left at the root each with its reason** (two set playlists for the archive, eleven label LIBRARY playlists for the label step); nothing deleted; the account read back afterwards shows 30 root folders with `Mine`, `Exports` and `2026` among them | live |
 
 **What the sitting leaves.** A35 (#301) and A38 (#311) closed. `Phil 9-30-26
 2` is empty under INBOX and the root `Untitled Playlist` stands; both are
 Phillip's to remove. The Vonking set's job carries no `upload_date`, so its
 INSPIRATION playlist keeps `10_09_26`; the account half of U136's rename has
-no verb and is filed as U140 (#317). The Tidal filing (U137's live run) waits
-on its report; whether it ran is in the overnight ledger and the morning
-report. The 10 tracks the move left are named in the run record.
+no verb and is filed as U140 (#317). The Tidal filing ran live (above), U137's first
+live run; what the label step and the set archive own stays at the root until
+they file it. The 10 tracks the move left are named in the run record.
 
 ## What blocks a full sync cycle, stated plainly
 
@@ -1220,7 +1220,7 @@ cycle, is next and is attended.
 **The INBOX account playlists, Soul, Hip-Hop and Jazz are current as of
 sitting 39 (2026-10-13), unattended.** A35 and A38 closed; the Signal set is
 named for its posted day in rekordbox, the account half waits on U140 (#317);
-the Tidal filing waits on U137's first live run. As of sitting 38 before it,
+the account's root playlists are filed by U131's rule (U137's first live run). As of sitting 38 before it,
 the favourites, the vocal tags and the taxonomy were current. A34, A36 and A37 closed on equal digests; A35 (#301)
 waits on U134, the refill verb. Owed from that sitting: A38, letting Soul and
 Hip-Hop into the live taxonomy by hand and moving their tracks; the Vonking
