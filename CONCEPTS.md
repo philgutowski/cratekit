@@ -1238,6 +1238,18 @@ omission two ways.
 today. They are a statement about the moment the job was queued, which is the
 only moment the item list is a statement about either.
 
+### Frozen name
+The playlist name `intake set` writes on a set job's payload when it is queued,
+`playlist_name`, which names the set's INSPIRATION playlist and, spelled with a
+slash as a dash, its account playlist. Introduced by U129. Since U140 it is the
+one payload value written after the queue: `export set --rename` REFREEZES it
+to the name a person gave the INSPIRATION playlist, on a succeeded job only,
+so every later lookup by the frozen name finds the renamed playlists.
+
+*Avoid:* reading a frozen name as the queue time name, or as one that opens
+with a day. A job queued before U129 has none at all, and its names are derived
+from the page and the queued day instead.
+
 ### Library wide walk
 The one walk `analyze calibrate` treats as the library's own distribution: the
 library root, or the music folder under it, walked recursively, with no folder

@@ -37818,6 +37818,14 @@ ledger and either refreshes the frozen `PLAYLIST_NAME` on the job or stops
 preferring the frozen name once a live INSPIRATION row for the job is
 recorded under another name. Ledger only until that write is designed.
 
+**Closed 2026-10-13, U140 (issue #317).** `crate export set --rename JOB`
+reads the INSPIRATION playlist's live name, finds the account playlist
+under that name or any name the job gives (frozen, posted day, queued
+day), and behind its own explicit gate retitles it by identifier, moves
+the ledger record to the new key and refreezes the name on the job. A
+backfill afterwards finds the renamed playlist recorded and plans no twin.
+The Signal set's live rename is owed to a sitting.
+
 ---
 
 ## R-1005. The session actor that lifts the terminal check on the backup acknowledgment is a free text answer any process can give

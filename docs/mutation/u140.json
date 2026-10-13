@@ -1,0 +1,531 @@
+{
+  "name": "u140",
+  "pass_kind": "light",
+  "branch": "relay/317",
+  "head": "8b67d891",
+  "when": "2026-10-13 19:08 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 13848,
+  "baseline_exit": 0,
+  "pytest_runs": 14,
+  "state_guarded": "~/Library/Application Support/cratekit (429305 entries)",
+  "reused_rows": 6,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/modules/outbound/sets.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/modules/outbound/sets.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "35d2c12d6a4b4b44",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 13848,
+    "baseline_collected": 13848,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "A1_twin_never_named",
+      "description": "plan_rename never names a twin, so a record under the new name beside the old one is adopted silently",
+      "file": "src/cratekit/modules/outbound/sets.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9054ff84da106bb0",
+      "subset": [
+        "tests/test_export_set_rename.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set_rename.py::test_a_twin_under_the_new_name_is_refused_rather_than_adopted"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    twin = (\n        older\n        if recorded_to is not None and older is not None and older.remote_id != recorded_to.remote_id\n        else None\n    )\n",
+      "new": "    twin = None\n"
+    },
+    {
+      "id": "A2_new_name_record_ignored",
+      "description": "plan_rename does not look under the new name, so a rerun after the rekey finds nothing recorded",
+      "file": "src/cratekit/modules/outbound/sets.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "76d9dc80b600fa36",
+      "subset": [
+        "tests/test_export_set_rename.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set_rename.py::test_a_name_with_a_slash_freezes_as_the_library_spells_it",
+        "tests/test_export_set_rename.py::test_a_rename_that_failed_after_the_account_finishes_on_the_next_run",
+        "tests/test_export_set_rename.py::test_a_second_rename_is_a_no_op",
+        "tests/test_export_set_rename.py::test_a_twin_under_the_new_name_is_refused_rather_than_adopted"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    recorded_to = ledger.set_playlist(cfg, to) if to else None\n",
+      "new": "    recorded_to = None\n"
+    },
+    {
+      "id": "A3_refreeze_against_account_spelling",
+      "description": "RenamePlan.refreeze compares the frozen name with the account spelling, not the library's",
+      "file": "src/cratekit/modules/outbound/sets.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8b467f5dc112f9cf",
+      "subset": [
+        "tests/test_export_set_rename.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set_rename.py::test_a_name_with_a_slash_freezes_as_the_library_spells_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return self.frozen != (self.live or self.to)\n",
+      "new": "        return self.frozen != self.to\n"
+    },
+    {
+      "id": "A4_rename_always",
+      "description": "RenamePlan.rename is always true, so a second run renames on the account again",
+      "file": "src/cratekit/modules/outbound/sets.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "dd0f3e7b19ee69f9",
+      "subset": [
+        "tests/test_export_set_rename.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set_rename.py::test_a_name_with_a_slash_freezes_as_the_library_spells_it",
+        "tests/test_export_set_rename.py::test_a_rename_that_failed_after_the_account_finishes_on_the_next_run",
+        "tests/test_export_set_rename.py::test_a_second_rename_is_a_no_op"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return self.playlist.name != self.to\n",
+      "new": "        return True\n"
+    },
+    {
+      "id": "A5_ledger_never_rekeyed",
+      "description": "apply_rename retitles on the account and leaves the ledger key where it was",
+      "file": "src/cratekit/modules/outbound/sets.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9621eb61cd0ff1c6",
+      "subset": [
+        "tests/test_export_set_rename.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 7,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set_rename.py::test_a_backfill_after_the_rename_plans_no_twin_and_a_named_export_adds_to_it",
+        "tests/test_export_set_rename.py::test_a_job_with_no_frozen_name_is_found_by_the_queued_day_and_refrozen",
+        "tests/test_export_set_rename.py::test_a_ledger_left_under_the_old_key_is_moved_on_the_next_run",
+        "tests/test_export_set_rename.py::test_a_name_with_a_slash_freezes_as_the_library_spells_it",
+        "tests/test_export_set_rename.py::test_a_rename_that_failed_after_the_account_finishes_on_the_next_run",
+        "tests/test_export_set_rename.py::test_a_renamed_inspiration_playlist_renames_the_account_playlist_ledger_and_job",
+        "tests/test_export_set_rename.py::test_a_second_rename_is_a_no_op"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        done.rekeyed = ledger.rename_set_playlist(\n            cfg, playlist.name, planned.to, playlist.remote_id\n        )\n",
+      "new": "        done.rekeyed = False\n"
+    },
+    {
+      "id": "A6_refreeze_account_spelling",
+      "description": "apply_rename refreezes the account spelling rather than the INSPIRATION playlist's own name",
+      "file": "src/cratekit/modules/outbound/sets.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6a4c12bb76d7f234",
+      "subset": [
+        "tests/test_export_set_rename.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set_rename.py::test_a_name_with_a_slash_freezes_as_the_library_spells_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        refreeze(planned.live or planned.to)\n",
+      "new": "        refreeze(planned.to)\n"
+    },
+    {
+      "id": "B1_ledger_folds_into_a_twin",
+      "description": "rename_set_playlist drops its refusal when the new name already holds another playlist",
+      "file": "src/cratekit/modules/outbound/ledger.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6fc96ff6184dd845",
+      "subset": [
+        "tests/test_export_set_rename.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set_rename.py::test_the_ledger_refuses_to_fold_a_rename_into_another_playlist"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if held:\n            raise _unusable(\n",
+      "new": "        if False:\n            raise _unusable(\n"
+    },
+    {
+      "id": "B2_ledger_moves_another_id",
+      "description": "rename_set_playlist drops its refusal when the old name records a different playlist",
+      "file": "src/cratekit/modules/outbound/ledger.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f5baa50ec23bd20d",
+      "subset": [
+        "tests/test_export_set_rename.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set_rename.py::test_the_ledger_refuses_to_fold_a_rename_into_another_playlist"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if recorded != remote_id:\n",
+      "new": "        if False:\n"
+    },
+    {
+      "id": "B3_refreeze_any_state",
+      "description": "jobs.refreeze drops the succeeded state check, so a job that may still run is rewritten",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "64f2585e05361ca9",
+      "subset": [
+        "tests/test_export_set_rename.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set_rename.py::test_refreeze_refuses_a_job_that_has_not_succeeded"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if current.state is not JobState.SUCCEEDED:\n            raise refuse(\n                \"internal-error\",\n                f\"job {job_id} is {current.state}, and only a succeeded job's frozen \"\n",
+      "new": "        if False:\n            raise refuse(\n                \"internal-error\",\n                f\"job {job_id} is {current.state}, and only a succeeded job's frozen \"\n"
+    },
+    {
+      "id": "B4_refreeze_writes_nothing_new",
+      "description": "jobs.refreeze writes the payload back without the new value",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f1663bcdede7f690",
+      "subset": [
+        "tests/test_export_set_rename.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set_rename.py::test_a_job_with_no_frozen_name_is_found_by_the_queued_day_and_refrozen",
+        "tests/test_export_set_rename.py::test_a_ledger_left_under_the_old_key_is_moved_on_the_next_run",
+        "tests/test_export_set_rename.py::test_a_name_with_a_slash_freezes_as_the_library_spells_it",
+        "tests/test_export_set_rename.py::test_a_rename_that_failed_after_the_account_finishes_on_the_next_run",
+        "tests/test_export_set_rename.py::test_a_renamed_inspiration_playlist_renames_the_account_playlist_ledger_and_job",
+        "tests/test_export_set_rename.py::test_a_second_rename_is_a_no_op"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        payload[key] = str(value)\n",
+      "new": "        payload.setdefault(key, str(value))\n"
+    },
+    {
+      "id": "B5_unmark_stamp_ignored",
+      "description": "_standing_mark reads a mark already put back as still standing",
+      "file": "src/cratekit/export/set_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "42a7cb6cb3510aa9",
+      "subset": [
+        "tests/test_export_set_rename.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set_rename.py::test_a_mark_already_put_back_does_not_refuse"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if entry.playlist_id == remote_id and not entry.unmarked:\n",
+      "new": "        if entry.playlist_id == remote_id:\n"
+    },
+    {
+      "id": "B6_mark_refusal_dropped",
+      "description": "plan_rename retitles a playlist the archive marked",
+      "file": "src/cratekit/export/set_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c0bdc1df8ddebfb3",
+      "subset": [
+        "tests/test_export_set_rename.py",
+        "tests/test_set_inspiration_playlist.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 90,
+      "baseline_collected": 90,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set_rename.py::test_a_playlist_the_archive_marked_is_refused_rather_than_retitled",
+        "tests/test_set_inspiration_playlist.py::test_export_set_rename_refuses_a_playlist_the_landing_archived"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if mark is not None:\n            raise _rename_unresolved(\n",
+      "new": "        if False:\n            raise _rename_unresolved(\n"
+    },
+    {
+      "id": "B7_twin_refusal_dropped",
+      "description": "plan_rename names the twin and goes on to adopt the record under the new name",
+      "file": "src/cratekit/export/set_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9a122bd3b9898494",
+      "subset": [
+        "tests/test_export_set_rename.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set_rename.py::test_a_twin_under_the_new_name_is_refused_rather_than_adopted"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if planned.twin is not None:\n",
+      "new": "    if False:\n"
+    },
+    {
+      "id": "B8_flag_conflict_dropped",
+      "description": "export set --rename accepts a tracklist or --name beside it",
+      "file": "src/cratekit/export/set_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6688557a23e49b7f",
+      "subset": [
+        "tests/test_export_set_rename.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set_rename.py::test_rename_with_a_tracklist_or_name_is_refused_before_anything"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if ctx.args.tracklist is not None or ctx.args.name is not None:\n",
+      "new": "    if False:\n"
+    },
+    {
+      "id": "B9_abort_applies",
+      "description": "the rename writes when the gate was answered abort",
+      "file": "src/cratekit/export/set_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3dcde74d91b3afd6",
+      "subset": [
+        "tests/test_export_set_rename.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set_rename.py::test_an_aborted_rename_writes_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    option = ctx.gate.require(gate, plan=built.payload, context=built.shown)\n    if option != \"apply\" or not built.writes:\n",
+      "new": "    option = ctx.gate.require(gate, plan=built.payload, context=built.shown)\n    if not built.writes:\n"
+    },
+    {
+      "id": "B10_queued_day_name_dropped",
+      "description": "_names_for_job stops giving the queued day's form, which is the name the Signal set was exported under",
+      "file": "src/cratekit/export/set_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "290bbf972ab7d2a3",
+      "subset": [
+        "tests/test_export_set_rename.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_export_set_rename.py::test_a_backfill_after_the_rename_plans_no_twin_and_a_named_export_adds_to_it",
+        "tests/test_export_set_rename.py::test_a_job_with_no_frozen_name_is_found_by_the_queued_day_and_refrozen"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if landing is not None and landing != posted:\n        found.append(set_name(set_playlist.playlist_name(words, on=landing)))\n",
+      "new": "    if False:\n        found.append(set_name(set_playlist.playlist_name(words, on=landing)))\n"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "C1_ledger_already_moved_return",
+      "description": "rename_set_playlist's early return when the record is already under the new name",
+      "reason": "reached only by a race between plan and apply, since the plan takes a record under the new name and plans no rename; ranked below the cap as maintainer facing"
+    }
+  ]
+}
