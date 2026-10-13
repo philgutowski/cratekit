@@ -971,6 +971,41 @@ def backfill_resolver(
     return resolve
 
 
+#: Why a track asked of the library by :func:`library_rows` has no row (U144),
+#: beside the collection's own two, :data:`NO_ROW` and :data:`AMBIGUOUS_ROWS`.
+UNANSWERED = "the match is a question no person has answered"
+NOT_HELD = "no library file matches it"
+TOMBSTONED = "a version of it was deleted on purpose"
+
+
+def library_rows(cfg: config.Config, db: Any) -> Callable[[match.Wanted], tuple[str, str]]:
+    """Each wanted track's one collection row on ``db``, or empty and why not (U144).
+
+    THE BACKFILL'S RULE FOR A DOWNLOADED ROW, :func:`backfill_resolver`'s,
+    asked of a track that has no job report: the match engine over the library
+    as it is now with a person's review answers read back, then the one
+    collection row the matched file resolves to. Only a MATCHED track has a
+    row. A question nobody answered, a track the library lacks and a version
+    deleted on purpose are each named, never guessed at. Built once, the
+    library indexed once, and asked per track.
+    """
+    collection = _Collection(cfg, db)
+    library = _LibraryView(cfg)
+
+    def row_of(wanted: match.Wanted) -> tuple[str, str]:
+        found = library.resolve(wanted)
+        if found.state is match.MatchState.MATCHED:
+            held, why = collection.row_for(tuple(found.paths))
+            return held or "", why
+        if found.state is match.MatchState.NEEDS_REVIEW:
+            return "", UNANSWERED
+        if found.state is match.MatchState.SUPPRESSED:
+            return "", TOMBSTONED
+        return "", NOT_HELD
+
+    return row_of
+
+
 def plan_for_backfill(
     cfg: config.Config,
     db: Any,
@@ -1145,20 +1180,47 @@ def written_note(written: Written) -> list[dict[str, str]]:
 # ---------------------------------------------------------------------------
 
 
-def _folder_row(db: Any, plan: SetPlaylistPlan) -> tuple[Any, bool]:
+def _folder_row(db: Any, folder_id: str, folder_display: str) -> tuple[Any, bool]:
     """The folder the playlist goes under, found by the plan's id or created at the root."""
-    if plan.folder_id:
-        row = db.get_playlist(ID=plan.folder_id)
+    if folder_id:
+        row = db.get_playlist(ID=folder_id)
         if row is None or rb_writer.node_removed(row):
             raise refuse(
                 "decision-stale",
-                f"the {plan.folder_display!r} folder (row {plan.folder_id}) is not live "
+                f"the {folder_display!r} folder (row {folder_id}) is not live "
                 f"any more, so the set's playlist has nowhere to go; nothing was written",
                 origin=_ORIGIN,
-                detail={"folder": plan.folder_id, "display": plan.folder_display},
+                detail={"folder": folder_id, "display": folder_display},
             )
         return row, False
-    return db.create_playlist_folder(plan.folder_display), True
+    return db.create_playlist_folder(folder_display), True
+
+
+def place_playlist(
+    db: Any, *, folder_id: str, folder_display: str, name: str
+) -> tuple[Any, bool, Any, bool]:
+    """The folder and the playlist of ``name`` under it, each found live or made (U144).
+
+    PUBLIC FOR ``crate organize``'s INSPIRATION parity step, which writes a
+    set's playlist the way this module does and so must find and make it by
+    the same rule: the folder by the plan's id, or created at the root when
+    the plan read none; the live playlist of the name under it, or a new one.
+    Answers the folder, whether it was made, the playlist, whether it was made.
+    """
+    folder, folder_created = _folder_row(db, folder_id, folder_display)
+    playlist, playlist_created = _named_playlist_row(db, name, folder)
+    return folder, folder_created, playlist, playlist_created
+
+
+def _named_playlist_row(db: Any, name: str, folder: Any) -> tuple[Any, bool]:
+    """The live playlist of ``name`` under ``folder``, or one made there."""
+    parent_id = str(folder.ID)
+    for row in list(db.get_playlist(Name=name)):
+        if rb_writer.is_folder(row) or rb_writer.node_removed(row):
+            continue
+        if str(getattr(row, "ParentID", "") or "") == parent_id:
+            return row, False
+    return db.create_playlist(name, parent=folder), True
 
 
 def _playlist_row(db: Any, plan: SetPlaylistPlan, folder: Any) -> tuple[Any, bool]:
@@ -1182,13 +1244,7 @@ def _playlist_row(db: Any, plan: SetPlaylistPlan, folder: Any) -> tuple[Any, boo
                 detail={"playlist": plan.playlist_id, "name": plan.name},
             )
         return row, False
-    parent_id = str(folder.ID)
-    for row in list(db.get_playlist(Name=plan.name)):
-        if rb_writer.is_folder(row) or rb_writer.node_removed(row):
-            continue
-        if str(getattr(row, "ParentID", "") or "") == parent_id:
-            return row, False
-    return db.create_playlist(plan.name, parent=folder), True
+    return _named_playlist_row(db, plan.name, folder)
 
 
 def write_members(
@@ -1228,7 +1284,7 @@ def write_members(
             added=0,
             left=(*left, *plan.left),
         )
-    folder, folder_created = _folder_row(db, plan)
+    folder, folder_created = _folder_row(db, plan.folder_id, plan.folder_display)
     playlist, playlist_created = _playlist_row(db, plan, folder)
     added = rb_writer.add_memberships(db, playlist, distinct)
     return Written(
@@ -1414,6 +1470,7 @@ __all__ = [
     "LEFT_OUT",
     "NOT_LANDED",
     "NOTHING",
+    "NOT_HELD",
     "NOT_RESOLVED",
     "NO_ROW",
     "OWNED",
@@ -1422,6 +1479,8 @@ __all__ = [
     "RECORD_KEY",
     "SET_KEY",
     "SUPPRESSED",
+    "TOMBSTONED",
+    "UNANSWERED",
     "UNNAMED",
     "WORKFLOW",
     "WRITTEN",
@@ -1441,11 +1500,13 @@ __all__ = [
     "ignored_note",
     "ignored_posted",
     "left_warning",
+    "library_rows",
     "nothing_note",
     "page_of",
     "naming_day_for",
     "naming_day",
     "payload",
+    "place_playlist",
     "plan_for_backfill",
     "plan_for_landing",
     "playlist_name",
