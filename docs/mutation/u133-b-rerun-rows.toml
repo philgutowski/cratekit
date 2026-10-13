@@ -1,0 +1,30 @@
+name = "u133-b-rerun"
+pass_kind = "light"
+
+# T6 of batch b measured zero: a former place's sub is the key a previous write
+# recorded the old playlist under, and no test pinned it. The test was added
+# after batch b; this is T6 measured again. E2 rides along because the null
+# control needs a Python target, and is the same row as batch b's.
+
+[[rows]]
+id = "T6_former_sub"
+description = "The former place records the old playlist under another sub identifier"
+file = "src/cratekit/templates/taxonomy.default.toml"
+surface = "user"
+tests = ["tests/test_adopt_jazz_folder.py", "tests/test_routing_parity.py", "tests/test_taxonomy.py"]
+old = '''bucket = "non_electronic"
+sub = "jazz"
+'''
+new = '''bucket = "non_electronic"
+sub = "jazz_style"
+'''
+
+[[rows]]
+id = "E2_former_place_only"
+description = "Existing guard sample: a track sitting only in a former place is never recognised as one"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+old = '''    return bool(held) and set(held) <= former
+'''
+new = '''    return False
+'''

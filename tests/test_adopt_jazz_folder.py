@@ -220,6 +220,21 @@ def test_a_track_in_the_old_jazz_playlist_holds_its_former_place_in_both_buckets
     assert found.holds(NONELEC.id, "t") == (FORMER.id,)
 
 
+#: The identifier the old Jazz playlist had as a sub of NonElectronic, before
+#: U133, from the template's history. A write before U133 recorded the
+#: playlist's node under it, so a renamed old playlist is found by it.
+OLD_SUB_ID = "jazz"
+
+
+def test_the_old_playlist_is_found_under_the_identifier_it_was_recorded_by():
+    assert FORMER.sub == OLD_SUB_ID
+    assert adopt_placements.recorded_under(DECLARED, JAZZ.id, FORMER.id) == (NONELEC.id, OLD_SUB_ID)
+    assert adopt_placements.recorded_under(DECLARED, NONELEC.id, FORMER.id) == (
+        NONELEC.id, OLD_SUB_ID
+    )
+    assert adopt_placements.named_place(DECLARED, JAZZ.id, FORMER.id) == OLD_JAZZ
+
+
 # ── adoption and the move ──────────────────────────────────────────────────
 
 
