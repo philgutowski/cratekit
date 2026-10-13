@@ -1162,6 +1162,50 @@ up on its service rather than the landing day (U136, R-949's neighbour).
 The memory saying no live Tidal bulk work until #217 was removed; #217 is
 closed.
 
+## Sitting 39, 2026-10-13, 02:14 to 02:30, unattended, the watcher under the overnight authority
+
+Phillip, 2026-10-12 20:50, away for the night: "keep this going, iterate until
+it is perfect, do not stop to ask me any questions, automate the desktop, drive
+on your own, assume full permissions. I also want Tidal playlists to be
+retroactively named and organized into folders." The build cards of the night
+(U134, U137, U133, U135, U136, U138, U139) were landed and pushed first
+(`265e35e`), the feeder stopped on its stop file at 02:14:11, the installed
+copy rebuilt from `main` at `265e35e`, and every live step below ran with
+rekordbox closed. The acknowledgment minted at sitting 38 held (valid to
+2026-10-13T11:00Z, both backup ages 3 days). Every database write was
+rehearsed on a copy first (database copied to a scratch directory on the library volume,
+`.cratekit` cloned to `.cratekit-copyrun` with `cp -Rpc`, the installation
+state copied, config and state dirs redirected, doctor's `tree.registry` read
+on the scratch name), then run live by the installed `crate` through
+`live_gate.sh`, which compares the live digest with the rehearsed one and
+answers as `session`. The live database read `961bd08da87358c8` before the
+first write, `4aa6da955feed64f` after the last verb, and `a42a73a0c8c35bd2`
+after rekordbox quit.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `inbox refill --pass 2026-10-08T141649Z-d4ce_synced`, A35 step 1 | rehearsed on the copy, live on an equal digest `acc64ccf25b1c2e0` | **168 memberships added to `Phil 9-30-26`** (168 of 172 owned, 2 left out as neither owned nor landed, 2 repeats), `Dancefloor Rescue` named as having no INBOX playlist; every row read back, no content row | live |
+| `inbox refill --pass 2026-10-09T035914Z-c5e1_synced`, A35 step 1 | rehearsed on the copy, live on an equal digest `62861fcdd1f0a38a` | **47 added**: `New York Fever Vol. 1` 41 of 60 (19 left out, named), `Phil 10_8_26` 6 of 6 | live |
+| coverage of the three mixed playlists, A35 step 2 | read on a fresh copy | all 207 tracks of `2026-10-08 Tidal playlists and Favorites` (164), `2026-10-09 …` (42) and `… 2` (1) are in a named playlist, All Favorites (183 hearted) or BY GENRE; 0 orphans | read |
+| hand edit of the live taxonomy, A38 step 1 | backup beside it, `taxonomy.toml.2026-10-13T021550.hand-edit.bak` | exactly what the hold named: `Soul`, `Soul / R&B`, `soul & funk` out of `rnb`; `Hip-Hop`, `Hip-Hop / R&B`, `Jazz` out of `non_electronic` with its `hip_hop` and `jazz` subs and map rows; the two deezer vocabulary rows (`Rap/Hip Hop`, `Jazz`) out, since the copy does not load with them, and written back after the upgrade | live |
+| `taxonomy upgrade`, A38 step 2 and U133's tail | rehearsed on the copy, live on an equal digest `c3dc105053581278` | **`soul`, `hip_hop`, `jazz` added**, schema 4, 22 buckets, doctor clean; the `jazz` keyword rule left pointing partial matches at NonElectronic, as U133 says it would, the author's call | live |
+| `adopt scan` | live | 10,527 rows: route 9,052, needs-genre 1,308, excluded 167, unmapped 153 | live |
+| `adopt apply`, first pass | rehearsed on the copy, live on an equal digest `a418b4bd4436020d` | 0 added, 8,961 present, 91 withheld by placement (the former places) | live |
+| `adopt move`, A38 step 3 | rehearsed on the copy, live on an equal digest `a55a9d498b39f59d` | **86 tracks moved** into their Hip-Hop, Soul and Jazz bands, none held back; 10 left by reason (2 no reading, 4 genre names no style, 4 one sub held by two rows) | live |
+| `adopt apply`, second pass | rehearsed on the copy, live on an equal digest `a52788affd81e697` | **34 vocal memberships added** (the moved tracks' `with vox`); Soul and Hip-Hop Favorites playlists made with 6 adds, 1 removal owed | live |
+| `favorites refresh` | rehearsed on the copy `dbbe024b278e9d28`, live `38fe1ff234a181cd`; the difference read item by item is only the folder and playlist row ids of hip_hop, jazz and soul, made separately on each side, every count equal, so approved as session under the 2026-10-09 rule | 22 folders, 0 added, **1 removed**, read back | live |
+| `converge` | read before and after | both trees `differing`, remedy `rebuild-tree`, the same pre existing `electronica_other` and `tree.inbox` items before and after (R-996's shape); nothing of this sitting changed them | read |
+| rekordbox, desktop control | opened after the writes with both processes confirmed gone before and after, quit with `cmd+q` | INSPIRATION `10_10_26 Public Service NYC Live at Signal 2-26` renamed to **`3_25_26 Public Service NYC Live at Signal 2-26`** (U136's tail, the Signal job's `upload_date 20260325`); the three mixed INBOX playlists **deleted** (memberships only); read: Hip-Hop High 10, Low 14, Med 24, with vox 19, Favorites 1; Jazz High 3, Low 10, Med 2, with vox 4; Soul High 2, Low 6, Med 5, Unsorted 2, with vox 11, Favorites 5; INBOX `Phil 9-30-26` 168, `New York Fever Vol. 1` 41, `Phil 10_8_26` 6 | live |
+| `organize --report --only file` (U137), the Tidal filing | on the copy, report only, started 02:08 | the account walk is paced; still reading at the time of this record, its plan unread and nothing filed | pending |
+
+**What the sitting leaves.** A35 (#301) and A38 (#311) closed. `Phil 9-30-26
+2` is empty under INBOX and the root `Untitled Playlist` stands; both are
+Phillip's to remove. The Vonking set's job carries no `upload_date`, so its
+INSPIRATION playlist keeps `10_09_26`; the account half of U136's rename has
+no verb and is filed as U140 (#317). The Tidal filing (U137's live run) waits
+on its report; whether it ran is in the overnight ledger and the morning
+report. The 10 tracks the move left are named in the run record.
+
 ## What blocks a full sync cycle, stated plainly
 
 **Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
@@ -1173,8 +1217,11 @@ cycle, is next and is attended.
 
 ## Next sitting
 
-**The favourites, the vocal tags and the taxonomy are current as of sitting
-38 (2026-10-12).** A34, A36 and A37 closed on equal digests; A35 (#301)
+**The INBOX account playlists, Soul, Hip-Hop and Jazz are current as of
+sitting 39 (2026-10-13), unattended.** A35 and A38 closed; the Signal set is
+named for its posted day in rekordbox, the account half waits on U140 (#317);
+the Tidal filing waits on U137's first live run. As of sitting 38 before it,
+the favourites, the vocal tags and the taxonomy were current. A34, A36 and A37 closed on equal digests; A35 (#301)
 waits on U134, the refill verb. Owed from that sitting: A38, letting Soul and
 Hip-Hop into the live taxonomy by hand and moving their tracks; the Vonking
 set's account playlist once R-949 or U136 names the day; U136's attended
