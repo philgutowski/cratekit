@@ -410,9 +410,12 @@ def test_the_writer_refuses_a_membership_the_plan_did_not_name(machine, account,
 def test_a_set_given_its_inspiration_playlist_since_the_plan_is_stale(machine, account, silence):
     _owned(machine, silence, "Cut 01")
     account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01",))
+    # THE FOLDER IS THERE AT THE PLAN, so its id is not what moves: only the
+    # playlist made since, which the write must skip rather than add to.
+    folder_id = cutover_fixtures.add_folder(machine, FOLDER)
     declared = active_taxonomy.load(machine)
     approved = _plan(machine, declared, account)
-    folder_id = cutover_fixtures.add_folder(machine, FOLDER)
+    assert approved.folder_id == folder_id and len(approved.creates) == 1
     handle = rb_writer.open_db(rb_writer.live_db_path(machine), cfg=machine)
     try:
         handle.create_playlist(FEMME, parent=handle.get_playlist(ID=folder_id))
