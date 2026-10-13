@@ -627,7 +627,14 @@ crate organize
 
 `organize` plans two areas and asks one question for each. The rekordbox area
 files unfiled tracks into BY GENRE + ENERGY and its `with vox` subs the way
-`adopt apply` does, and rotates INBOX the way `inbox rotate` does. The account
+`adopt apply` does, and rotates INBOX the way `inbox rotate` does. It also
+gives every downloaded set on the account its INSPIRATION playlist: each
+`DOWNLOADED` playlist in a `Downloaded Sets <year>` folder with no INSPIRATION
+playlist of its name (the account name without `DOWNLOADED `) gets one, holding
+the library tracks its account tracks match, in the set's order, with every
+track it could not match named under the set. Nothing is downloaded, a set with
+no match gets no playlist, and a set already in INSPIRATION is skipped, so a
+second run plans nothing. That write needs rekordbox closed. The account
 area builds a folder for every followed label that lacks one or a year, marks
 every landed sync pass, and archives every set whose download is proven into
 the root folder `Downloaded Sets <year>`, prefixed. Either of two things proves
@@ -651,7 +658,7 @@ crate organize --report --only file
 crate organize --only file
 ```
 
-The kinds are `adopt`, `rotate` and `record-labels` on the rekordbox side,
+The kinds are `adopt`, `rotate`, `record-labels` and `inspiration` on the rekordbox side,
 `labels`, `sets`, `marks` and `file` on the account, and `yours` on both. An
 area with no kind named is not planned and not asked, so `--only file` files
 the playlists at the account root into their folders without reading the

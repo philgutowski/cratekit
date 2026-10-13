@@ -264,6 +264,7 @@ def organize(ctx) -> Envelope:
             labels=tuple(entry.name for entry in followed),
             report=report,
             only=only,
+            available=membership.available,
         )
         areas.append(database)
         gates.append((database, REKORDBOX_GATE, APPROVE))
