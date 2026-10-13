@@ -13,8 +13,11 @@ carries the map through, so an export that writes this file never drops it.
 SINCE R-837 IT HOLDS EACH SET PLAYLIST TOO, under ``sets``, keyed by the
 playlist's name: the playlist an identified set or a typed tracklist became,
 the year it was made in and the tracks written to it. ``set_folders`` maps a
-year to the root folder its archived set playlists are filed in. Both are
-carried through the way ``labels`` is, for the same reason.
+root folder's NAME to its identifier: ``Downloaded Sets <year>``, where a
+year's archived set playlists are filed (U142), and the plain ``<year>`` a
+marked custom playlist is filed in (U116). The two names are two keys, so
+neither step reuses the other's folder. Both maps are carried through the way
+``labels`` is, for the same reason.
 
 SINCE R-836 IT SAYS WHICH PLAYLISTS THE PRODUCT MADE, because that is the one
 kind of playlist a track may be taken off. :func:`product_made` is the answer,
@@ -104,7 +107,7 @@ def _load(cfg: config.Config) -> dict[str, Any]:
         # playlist forgotten, and the next run onto the set makes a second one.
         raise _unusable(path, "sets must be a map of set playlist records")
     if not isinstance(set_folders, Mapping):
-        raise _unusable(path, "set_folders must be a map of year to folder")
+        raise _unusable(path, "set_folders must be a map of folder name to folder")
     kind_folders = raw.get("kind_folders", {})
     if not isinstance(kind_folders, Mapping) or not all(
         isinstance(value, Mapping) for value in kind_folders.values()
@@ -1035,9 +1038,13 @@ def set_playlist_ids(cfg: config.Config) -> frozenset[str]:
     )
 
 
-def set_folder(cfg: config.Config, year: str) -> str:
-    """The root folder recorded for this year's set playlists, or ``""``."""
-    return str(_load(cfg)["set_folders"].get(year) or "")
+def set_folder(cfg: config.Config, name: str) -> str:
+    """The root folder recorded under its name, or ``""``.
+
+    The name is the folder's own: ``Downloaded Sets 2026`` for the set archive,
+    ``2026`` for the filing's year folder (U142).
+    """
+    return str(_load(cfg)["set_folders"].get(name) or "")
 
 
 def reserve_set_playlist(
@@ -1095,30 +1102,31 @@ def record_set_tracks(
 
 def reserve_set_folder(
     cfg: config.Config,
-    year: str,
+    name: str,
     create: Callable[[], str],
     *,
     adopt: str = "",
     stale: str = "",
 ) -> tuple[str, bool]:
-    """The year's archive folder, creating one only if none is recorded.
+    """The root folder recorded under ``name``, creating one only if none is recorded.
 
-    The shape of :func:`reserve_label_folder` and for its reason. ``adopt`` is
-    one root folder already named as the year, which the plan found and a
-    person was shown; ``stale`` is a recorded folder the plan read as gone.
+    The shape of :func:`reserve_label_folder` and for its reason. ``name`` is
+    the folder's own, as :func:`set_folder` reads it. ``adopt`` is one root
+    folder already carrying that name, which the plan found and a person was
+    shown; ``stale`` is a recorded folder the plan read as gone.
     """
     lock = _locked(cfg)
     try:
         document = _load(cfg)
-        recorded = str(document["set_folders"].get(year) or "")
+        recorded = str(document["set_folders"].get(name) or "")
         if recorded and recorded != stale:
             return recorded, False
         if adopt:
-            document["set_folders"][year] = adopt
+            document["set_folders"][name] = adopt
             _write(cfg, document)
             return adopt, False
         folder_id = create()
-        document["set_folders"][year] = folder_id
+        document["set_folders"][name] = folder_id
         _write(cfg, document)
         return folder_id, True
     finally:

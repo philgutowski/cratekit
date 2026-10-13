@@ -718,7 +718,10 @@ def test_the_archive_prefixes_records_and_files_it_in_a_year_folder_made_once(ac
     assert code == int(ExitCode.OK), done
     assert done["outcome"] == "ok"
     first = ledger.set_playlist(cfg, NAME).remote_id
-    assert held.folders_created == [year]
+    # U142: the set's folder is Downloaded Sets <year>, never the plain year.
+    assert held.folders_created == [f"Downloaded Sets {year}"]
+    (folder_item,) = [item for item in done["data"]["items"] if item["kind"] == "folder"]
+    assert folder_item["name"] == f"Downloaded Sets {year}"
     (folder_id,) = held.folder_names
     assert held.placed[first] == folder_id
     assert held.titles[first] == f"DOWNLOADED {NAME}"
@@ -729,7 +732,8 @@ def test_the_archive_prefixes_records_and_files_it_in_a_year_folder_made_once(ac
     code, done = _archive(xml, name=other)
     assert code == int(ExitCode.OK), done
     second = ledger.set_playlist(cfg, other).remote_id
-    assert held.folders_created == [year] and held.placed[second] == folder_id
+    assert held.folders_created == [f"Downloaded Sets {year}"]
+    assert held.placed[second] == folder_id
 
 
 def test_a_playlist_already_in_its_folder_is_left(account):
@@ -759,14 +763,16 @@ def test_a_year_folder_deleted_on_the_account_is_made_again(account):
     (fresh,) = held.folder_names
     assert fresh != gone
     assert held.placed[ledger.set_playlist(cfg, "Second Night").remote_id] == fresh
-    assert ledger.set_folder(cfg, ledger.set_playlist(cfg, "Second Night").year) == fresh
+    year = ledger.set_playlist(cfg, "Second Night").year
+    assert ledger.set_folder(cfg, f"Downloaded Sets {year}") == fresh
+    assert ledger.set_folder(cfg, year) == ""
 
 
 def test_a_folder_named_as_the_year_by_hand_is_adopted_not_doubled(account):
     cfg, _fake, held = account
     assert _build(_tracklist(cfg))[0] == int(ExitCode.OK)
     year = ledger.set_playlist(cfg, NAME).year
-    held.folder_names["by-hand"] = year
+    held.folder_names["by-hand"] = f"Downloaded Sets {year}"
     assert _archive(_landed(cfg))[0] == int(ExitCode.OK)
     assert held.folders_created == []
     assert held.placed[ledger.set_playlist(cfg, NAME).remote_id] == "by-hand"
@@ -776,10 +782,11 @@ def test_two_folders_named_as_the_year_refuse_and_write_nothing(account):
     cfg, _fake, held = account
     assert _build(_tracklist(cfg))[0] == int(ExitCode.OK)
     year = ledger.set_playlist(cfg, NAME).year
-    held.folder_names.update({"one": year, "two": year})
+    held.folder_names.update({"one": f"Downloaded Sets {year}", "two": f"Downloaded Sets {year}"})
     code, refused = drive(["export", "archive", NAME, "--xml", str(_landed(cfg))])
     assert code == int(ExitCode.PRECONDITION), refused
     assert refused["cause"]["reason"] == "export-set-ambiguous"
+    assert f"Downloaded Sets {year}" in refused["cause"]["message"]
     assert held.moves == [] and held.renamed == []
 
 

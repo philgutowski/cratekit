@@ -2347,8 +2347,8 @@ ENTRIES: tuple[Entry, ...] = (
     Entry(
         name="export.archive",
         summary=(
-            "file a downloaded set's playlist in its year folder on the streaming "
-            "account, prefixed as downloaded"
+            "file a downloaded set's playlist in Downloaded Sets <year> on the "
+            "streaming account, prefixed as downloaded"
         ),
         module="cratekit.export.set_cli",
         builder="build_archive",
@@ -2357,8 +2357,8 @@ ENTRIES: tuple[Entry, ...] = (
         module_id="export",
         emits=frozenset({"plan"}),
         output_schema="plan/1",
-        #: One surface, the account: a year folder is created, the set playlist
-        #: is put in it, and the playlist is retitled with the swept prefix,
+        #: One surface, the account: the year's Downloaded Sets folder is
+        #: created (U142), the set playlist is put in it, and the playlist is retitled with the swept prefix,
         #: recorded in ``sync mark``'s record so ``sync unmark`` puts it back.
         #: ``destructive`` for ``label.mark``'s reason: a retitle lands on a
         #: title a person can see.
@@ -2371,7 +2371,7 @@ ENTRIES: tuple[Entry, ...] = (
             GateSpec(
                 name="export.archive.confirm",
                 options=("apply", "abort"),
-                prompt="File this set playlist in its year folder on the streaming account?",
+                prompt="File this set playlist in Downloaded Sets for its year on the streaming account?",
                 # EXPLICIT, as label.mark's is, for the same reason (R34).
                 explicit=True,
                 digest_source="plan",
@@ -3119,13 +3119,15 @@ ENTRIES: tuple[Entry, ...] = (
         output_schema="diagnostic/1",
         #: The union of its steps' surfaces: adoption writes the tree and its
         #: rows, the rotation the tree, the label folders, the marks and the
-        #: archive the account. No file is written by any step it composes,
+        #: archive the account. The set archive reads the INSPIRATION folder
+        #: for its second proof (U142), through a read handle. No file is
+        #: written by any step it composes,
         #: since the adoption is applied with no tag value. ``destructive``
         #: because the rotation removes an expired batch playlist and a mark
         #: retitles a playlist the product did not make.
         writes=frozenset({"db_tree", "db_metadata", "remote"}),
         destructive=True,
-        taxonomy_terms=("genre_energy", "inbox", "inbox_old"),
+        taxonomy_terms=("genre_energy", "inbox", "inbox_old", "inspiration"),
         doctor_checks=(
             "library.mounted",
             "rekordbox.closed",

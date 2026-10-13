@@ -1448,9 +1448,11 @@ def test_a_landing_archives_the_account_playlist_with_prefix_and_year_folder(
     assert any(
         pid == remote_id and title.startswith("DOWNLOADED ") for pid, title in held.renamed
     ), held.renamed
-    assert "2026" in held.folders_created or any(
-        name == "2026" for name in held.folder_names.values()
+    # U142: the set's folder is Downloaded Sets <year>, never the plain year.
+    assert "Downloaded Sets 2026" in held.folders_created or any(
+        name == "Downloaded Sets 2026" for name in held.folder_names.values()
     ), held.folders_created
+    assert "2026" not in held.folders_created
     assert not any(w["code"] == land_cli.LAND_ARCHIVE_FAILED for w in acted["warnings"])
 
 

@@ -11,12 +11,16 @@ THE STEPS, each the owning verb's plan and apply:
   the library root, pending or retired, that a sync pass's playlist jobs
   belong to. An intake file of no pass is counted and is no step;
 * EVERY DOWNLOADED SET ARCHIVED, ``export archive``'s plan for a recorded set
-  whose download this area can PROVE. Nothing records which landing
-  downloaded a set, so the only proof read is an intake file named for the
-  set, ``<set>_inboxed.xml``, which is what ``intake land --pass <set>``
-  writes. A set the mark record already names is archived. Any other set is
-  listed as waiting, with the command that archives it, and nothing is
-  planned for it;
+  whose download this area can PROVE, filed into ``Downloaded Sets <year>``.
+  Nothing records which landing downloaded a set, so two proofs are read: an
+  intake file named for the set, ``<set>_inboxed.xml``, which is what
+  ``intake land --pass <set>`` writes, and (U142) a playlist under the
+  declared INSPIRATION folder whose name is the set's, which only a set's
+  landing or ``intake inspiration`` writes, read from the database through a
+  read handle as the rekordbox area reads its own listing. A set the mark
+  record already names is archived. Any other set is listed as waiting, with
+  the command that archives it, and nothing is planned for it; a database
+  that cannot be read refuses that set's step, since unread is not none;
 * EVERY MARKED CUSTOM PLAYLIST FILED (U116), :mod:`cratekit.organize.filing`:
   each playlist at the account root that a sync marked is moved into the year
   folder of its mark, and every other playlist at the root is named with why
@@ -237,8 +241,22 @@ def _proof(cfg: config.Config, name: str) -> Path | None:
     return intake_by_pass(cfg).get(name)
 
 
+def _waiting(name: str, inspired: frozenset[str] | None) -> str:
+    """Why a set with neither proof waits, naming the second proof's own state."""
+    second = (
+        "no INSPIRATION playlist of its name"
+        if inspired is not None
+        else "no INSPIRATION folder declared in the taxonomy to hold a playlist of its name"
+    )
+    return (
+        f"waiting: no intake file named for this set and {second}, so its download "
+        f"is not proven here and nothing is planned; archive it with crate export "
+        f"archive {name!r} --xml INTAKE once it has landed"
+    )
+
+
 def _set_steps(cfg, area: Area) -> None:
-    from cratekit.modules.outbound import ledger
+    from cratekit.modules.outbound import ledger, sets
 
     try:
         names = ledger.set_playlist_names(cfg)
@@ -257,10 +275,15 @@ def _set_steps(cfg, area: Area) -> None:
             Step(key=SETS, title="archive downloaded sets", state=NOTHING, detail="no set playlist is recorded")
         )
         return
+    # THE DATABASE IS READ ONCE, and only when a set has no intake file and
+    # no standing mark, so an area every set of which is proven by a file
+    # never opens it.
+    inspired = _Lazy(lambda: set_cli.inspiration_names(cfg))
     for name in names:
         key = f"archive:{name}"
         title = f"archive the set {name}"
         xml = _proof(cfg, name)
+        proof = xml.name if xml is not None else ""
         if xml is None:
             recorded = ledger.set_playlist(cfg, name)
             if recorded is not None and recorded.remote_id in marked:
@@ -268,33 +291,41 @@ def _set_steps(cfg, area: Area) -> None:
                     Step(key=key, title=title, state=NOTHING, detail="already archived and marked")
                 )
                 continue
-            area.steps.append(
-                Step(
-                    key=key,
-                    title=title,
-                    state=LISTED,
-                    detail=(
-                        f"waiting: no intake file named for this set, so its download is "
-                        f"not proven here and nothing is planned; archive it with crate "
-                        f"export archive {name!r} --xml INTAKE once it has landed"
-                    ),
+            try:
+                held = inspired.get()
+            except CratekitError as exc:
+                area.steps.append(refused(key, title, exc.cause))
+                continue
+            if held is None or name not in held:
+                area.steps.append(
+                    Step(key=key, title=title, state=LISTED, detail=_waiting(name, held))
                 )
-            )
-            continue
+                continue
+            proof = f"the INSPIRATION playlist {name}"
         try:
-            archived = set_cli.plan_archive(cfg, name, xml)
+            archived = (
+                set_cli.plan_archive(cfg, name, xml)
+                if xml is not None
+                # THE SET'S OWN NAME IS THE PASS, as ``intake land --pass <set>``
+                # would name it, so ``sync unmark --pass <set>`` undoes the mark.
+                else set_cli.plan_archive_named(cfg, name, pass_name=name)
+            )
         except CratekitError as exc:
             area.steps.append(refused(key, title, exc.cause))
             continue
+        planned = archived.planned
+        folder = planned.folder_name if planned is not None else "its folder"
+        if archived.writes:
+            detail = f"file it in {folder} and prefix it, proven by {proof}"
+        elif planned is not None and planned.left == sets.RETITLED:
+            detail = f"already in {folder}, its title left as a person set it"
+        else:
+            detail = f"already in {folder} and marked"
         step = Step(
             key=key,
             title=title,
             state=PLANNED if archived.writes else NOTHING,
-            detail=(
-                f"file it in its year folder and prefix it, proven by {xml.name}"
-                if archived.writes
-                else "already in its year folder and marked"
-            ),
+            detail=detail,
             digest=archived.payload["digest"],
             counts={"writes": int(archived.writes)},
             items=list(archived.payload["items"]),

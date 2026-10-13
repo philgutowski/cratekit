@@ -22,11 +22,12 @@ and marked by a later sync moves on into its year folder, as one at the root
 does. Only a ``Mine`` this product made is read so; a playlist is never moved
 out of a folder a person made, and one adopted by its name may be a person's.
 
-THE YEAR FOLDER IS THE ONE THE SET ARCHIVE FILES INTO, read and reserved
-through the same ledger entry, so a year holds one folder whichever step made
-it. A folder recorded and still listed is reused, one root folder named as the
-year is adopted, and none is created once, on apply, for every playlist of that
-year. Two or more root folders named as the year leave that year's playlists
+THE YEAR FOLDER IS THE PLAIN ``<year>``, NEVER THE SETS' FOLDER (U142). A set
+is archived into ``Downloaded Sets <year>``, recorded in the same ledger map
+under that name, so the two never share a folder. The year folder is decided on
+the archive's rule: a folder recorded and still listed is reused, one root
+folder named as the year is adopted, and none is created once, on apply, for
+every playlist of that year. Two or more root folders named as the year leave that year's playlists
 where they are, reported, since a playlist the plan cannot place is never moved.
 
 ADD ONLY, BECAUSE THE PROTOCOL IS. A folder is created and a playlist is put in
@@ -216,7 +217,7 @@ def year_of_mark(marked: str) -> str:
 
 
 def _year_folder(cfg: config.Config, year: str, root: Mapping[str, str]) -> YearFolder:
-    """The set archive's own decision of one year's folder, never refused here."""
+    """One year's folder on the set archive's rule, never refused here."""
     recorded = ledger.set_folder(cfg, year)
     if recorded and recorded in root:
         return YearFolder(year=year, action=sets.REUSE, folder_id=recorded)
