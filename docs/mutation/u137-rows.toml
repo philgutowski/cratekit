@@ -1,0 +1,178 @@
+name = "u137"
+pass_kind = "light"
+
+# U137, crate organize --only. Every row is a guard this unit's diff added.
+
+[[rows]]
+id = "S1_identity_names_only"
+description = "Leave the selection out of the area's digest document"
+file = "src/cratekit/organize/steps.py"
+surface = "user"
+old = '''        if self.only is not None:
+            identity["only"] = list(self.only)'''
+new = '''        pass'''
+
+[[rows]]
+id = "S2_only_fact"
+description = "Stop naming the selection in the area's facts"
+file = "src/cratekit/organize/steps.py"
+surface = "user"
+old = '''            self.facts[ONLY_FACT] = ", ".join(self.only)'''
+new = '''            pass'''
+
+[[rows]]
+id = "S3_wants_everything"
+description = "Let every kind through whatever the selection"
+file = "src/cratekit/organize/steps.py"
+surface = "user"
+old = '''        return self.only is None or kind in self.only'''
+new = '''        return True'''
+
+[[rows]]
+id = "S4_selection_ignores_only"
+description = "Take every kind of the area as selected when --only names any"
+file = "src/cratekit/organize/steps.py"
+surface = "user"
+old = '''    return tuple(kind for kind in kinds if kind in only)'''
+new = '''    return tuple(kinds)'''
+
+[[rows]]
+id = "C1_named_always"
+description = "Plan an area none of whose kinds is named"
+file = "src/cratekit/organize/cli.py"
+surface = "user"
+old = '''    return selection(kinds, only) != ()'''
+new = '''    return True'''
+
+[[rows]]
+id = "C2_only_dropped"
+description = "Read --only and then plan as if it were absent"
+file = "src/cratekit/organize/cli.py"
+surface = "user"
+old = '''    only = frozenset(chosen) if chosen else None'''
+new = '''    only = None'''
+
+[[rows]]
+id = "C3_choices_dropped"
+description = "Let the parser take any word as a kind"
+file = "src/cratekit/organize/cli.py"
+surface = "user"
+old = '''        choices=KINDS,
+'''
+new = ''
+
+[[rows]]
+id = "C4_registry_read_always"
+description = "Read the label registry under a selection no step of which uses it"
+file = "src/cratekit/organize/cli.py"
+surface = "maintainer"
+old = '''        if _named(account.STEPS, only) or _named((rekordbox.YOURS,), only)'''
+new = '''        if True'''
+
+[[rows]]
+id = "A1_labels_gate"
+description = "Plan the label steps whatever the selection"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+old = '''    if area.wants(LABELS):'''
+new = '''    if True:'''
+
+[[rows]]
+id = "A2_sets_gate"
+description = "Plan the set archives whatever the selection"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+old = '''    if area.wants(SETS):'''
+new = '''    if True:'''
+
+[[rows]]
+id = "A3_marks_gate"
+description = "Plan the marks whatever the selection"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+old = '''    if area.wants(MARKS):'''
+new = '''    if True:'''
+
+[[rows]]
+id = "A4_yours_gate"
+description = "Plan the account's yours whatever the selection"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+old = '''    if area.wants(YOURS):
+        _yours('''
+new = '''    if True:
+        _yours('''
+
+[[rows]]
+id = "A5_filing_for_yours"
+description = "Skip the filing plan when yours is selected without file"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+old = '''    if area.wants(FILE) or area.wants(YOURS):'''
+new = '''    if area.wants(FILE):'''
+
+[[rows]]
+id = "A6_filing_scratch_area"
+description = "Show the filing step when it was planned only for yours"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+old = '''            area if area.wants(FILE) else Area(name=AREA),'''
+new = '''            area,'''
+
+[[rows]]
+id = "A7_registry_refuses_filing"
+description = "Plan the filing over no labels when the registry could not be read"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+old = '''    if unfollowed is not None:
+        area.steps.append(refused(FILE, title, unfollowed.cause))
+        return frozenset()'''
+new = ''
+
+[[rows]]
+id = "A8_labels_module_off"
+description = "Refuse the filing over an unread registry the profile does not use"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+old = '''            unfollowed if LABELS_MODULE in available else None,'''
+new = '''            unfollowed,'''
+
+[[rows]]
+id = "R1_adopt_gate"
+description = "Plan the adoption whatever the selection"
+file = "src/cratekit/organize/rekordbox.py"
+surface = "user"
+old = '''    if area.wants(ADOPT):'''
+new = '''    if True:'''
+
+[[rows]]
+id = "R2_rotation_for_yours"
+description = "Skip the rotation plan when yours is selected without rotate"
+file = "src/cratekit/organize/rekordbox.py"
+surface = "user"
+old = '''    if area.wants(ROTATE) or area.wants(YOURS):'''
+new = '''    if area.wants(ROTATE):'''
+
+[[rows]]
+id = "R3_refused_rotation_shown"
+description = "Hide a rotation that refused when it was planned only for yours"
+file = "src/cratekit/organize/rekordbox.py"
+surface = "user"
+old = '''        if area.wants(ROTATE) or rotation.cause is not None:'''
+new = '''        if area.wants(ROTATE):'''
+
+[[rows]]
+id = "R4_rotation_shown_unselected"
+description = "Show a planned rotation that was planned only for yours"
+file = "src/cratekit/organize/rekordbox.py"
+surface = "user"
+old = '''        if area.wants(ROTATE) or rotation.cause is not None:'''
+new = '''        if True:'''
+
+[[rows]]
+id = "R5_record_labels_gate"
+description = "Plan the record labels listing whatever the selection"
+file = "src/cratekit/organize/rekordbox.py"
+surface = "user"
+old = '''    if area.wants(RECORD_LABELS):'''
+new = '''    if True:'''
