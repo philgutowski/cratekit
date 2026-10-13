@@ -8,8 +8,12 @@ not fill with sets. This module is both steps, each planned and then applied,
 against the account seam.
 
 ADD ONLY, BECAUSE THE PROTOCOL IS. A playlist is created, tracks are added, a
-folder is created and a playlist is put in one. The one retitle is the archive
+folder is created and a playlist is put in one. One retitle is the archive
 mark, recorded in ``sync mark``'s record so ``sync unmark`` can take it off.
+The other follows the library (U140): a set whose INSPIRATION playlist a
+person renamed has its account playlist renamed to match, and the ledger's key
+and the job's frozen name move with it, so a backfill finds it and makes no
+twin.
 
 THE PLAN READS AND WRITES NOTHING. Each tracklist row arrives already decided,
 matched to one provider track or left out with its reason, and the plan
@@ -343,6 +347,149 @@ def apply_archive(
     return done
 
 
+# ── the rename that follows the library (U140) ──────────────────────────────
+
+
+@dataclass(frozen=True, slots=True)
+class RenamePlan:
+    """A set's account playlist renamed to the name its INSPIRATION playlist carries.
+
+    Three writes, each one skipped when it already holds: the title on the
+    account, the ledger's key, and the name frozen on the set's job. ``name``
+    is the key the playlist is recorded under now, which is ``to`` once an
+    earlier run moved it, so a run that stopped part way plans only the rest.
+    """
+
+    job_id: str
+    playlist: ledger.SetPlaylist
+    #: The INSPIRATION playlist's name as the account and the ledger spell it.
+    to: str
+    #: The name frozen on the job, ``""`` for a job queued before the freeze.
+    frozen: str
+    #: The INSPIRATION playlist's name as the library carries it, which is
+    #: what the job freezes: a frozen name names the INSPIRATION playlist too,
+    #: and ``to`` is only its account spelling (a slash becomes a dash).
+    live: str = ""
+    #: The INSPIRATION playlist's row, whose name ``to`` is.
+    inspiration_id: str = ""
+    #: A second playlist recorded for the set under one of the job's other
+    #: names when ``playlist`` is the one under ``to``: a twin, which a rename
+    #: would leave on the account with its tracks and nothing recording it.
+    twin: ledger.SetPlaylist | None = None
+
+    @property
+    def rename(self) -> bool:
+        """Whether the account title and the ledger key are still to move."""
+        return self.playlist.name != self.to
+
+    @property
+    def refreeze(self) -> bool:
+        return self.frozen != (self.live or self.to)
+
+    @property
+    def writes(self) -> bool:
+        return self.rename or self.refreeze
+
+    def identity(self) -> dict[str, Any]:
+        return {
+            "kind": "export-set-rename",
+            "job": self.job_id,
+            "playlist": self.playlist.remote_id,
+            "name": self.playlist.name,
+            "to": self.to,
+            "frozen": self.frozen,
+            "live": self.live,
+            "inspiration": self.inspiration_id,
+        }
+
+
+@dataclass
+class RenameApplied:
+    """What a rename wrote, for the report and for a failure part way."""
+
+    renamed: bool = False
+    rekeyed: bool = False
+    refrozen: bool = False
+
+
+def plan_rename(
+    cfg: config.Config,
+    *,
+    job_id: str,
+    names: Sequence[str],
+    to: str,
+    frozen: str,
+    live: str = "",
+    inspiration_id: str = "",
+) -> RenamePlan | None:
+    """The rename, or ``None`` when no account playlist is recorded for the set.
+
+    ``names`` are the names the set's account playlist may be recorded under,
+    in the order a person would expect: frozen on the job, then the posted
+    day's form, then the queued day's. A record under ``to`` is a rename an
+    earlier run made, AND IT IS TAKEN ONLY ALONE: one under ``to`` beside
+    another playlist under one of ``names`` is a twin a backfill made, and the
+    plan names it in ``twin`` rather than choose. Reads the ledger only; the
+    title on the account is set by identifier, so no read of it stands
+    between the plan and the write.
+    """
+    recorded_to = ledger.set_playlist(cfg, to) if to else None
+    older = None
+    for name in names:
+        if not name or name == to:
+            continue
+        older = ledger.set_playlist(cfg, name)
+        if older is not None:
+            break
+    held = recorded_to or older
+    if held is None:
+        return None
+    twin = (
+        older
+        if recorded_to is not None and older is not None and older.remote_id != recorded_to.remote_id
+        else None
+    )
+    return RenamePlan(
+        job_id=job_id,
+        playlist=held,
+        to=to,
+        frozen=frozen,
+        live=live,
+        inspiration_id=inspiration_id,
+        twin=twin,
+    )
+
+
+def apply_rename(
+    cfg: config.Config,
+    account: RemoteAccount,
+    planned: RenamePlan,
+    done: RenameApplied,
+    *,
+    refreeze: Callable[[str], None],
+) -> RenameApplied:
+    """Retitle on the account, then move the ledger key, then refreeze the job, into ``done``.
+
+    THE ACCOUNT FIRST, because it is the one write a person sees. A rename by
+    identifier asked twice asks for one title, so a run that failed after it
+    renames again and moves on. The key moves once the title is there, and
+    the job last, since its old name is how a rerun finds the record if the
+    move never landed. ``refreeze`` is handed the INSPIRATION playlist's own
+    name and raises if the job cannot take it.
+    """
+    playlist = planned.playlist
+    if planned.rename:
+        account.rename_playlist(playlist.remote_id, planned.to)
+        done.renamed = True
+        done.rekeyed = ledger.rename_set_playlist(
+            cfg, playlist.name, planned.to, playlist.remote_id
+        )
+    if planned.refreeze:
+        refreeze(planned.live or planned.to)
+        done.refrozen = True
+    return done
+
+
 __all__ = [
     "ADOPT",
     "ALREADY_MARKED",
@@ -354,11 +501,15 @@ __all__ = [
     "NOT_LISTED",
     "RETITLED",
     "REUSE",
+    "RenameApplied",
+    "RenamePlan",
     "SetApplied",
     "SetPlan",
     "SetRow",
     "apply_archive",
+    "apply_rename",
     "apply_set",
     "plan_archive",
+    "plan_rename",
     "plan_set",
 ]

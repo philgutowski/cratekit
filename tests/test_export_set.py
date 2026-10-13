@@ -111,9 +111,13 @@ def test_both_verbs_write_only_the_account_behind_an_explicit_gate():
         entry = registry.entry(name)
         assert entry.writes == frozenset({"remote"}), name
         assert entry.module_id == "export" and entry.feature_rows == (36,)
-        (spec,) = entry.gates
+        # The set's second gate is the rename's (U140), held in its own suite.
+        spec = entry.gates[0]
         assert (spec.name, spec.options, spec.explicit) == (gate, ("apply", "abort"), True)
         assert spec.digest_source == "plan"
+        assert [one.name for one in entry.gates[1:]] == (
+            ["export.set.rename"] if name == "export.set" else []
+        )
     assert registry.entry("export.archive").destructive
     assert not registry.entry("export.set").destructive
 
