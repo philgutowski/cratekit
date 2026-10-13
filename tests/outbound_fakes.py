@@ -10,8 +10,10 @@ rather than absent in three.
 
 **IT REFUSES ANYTHING OUTSIDE THE PROTOCOL, AND THAT IS A GUARD RATHER THAN
 TIDINESS.** ``modules/outbound/service.RemoteAccount`` declares no un-heart and
-no folder delete, and two removals only, ``remove_tracks`` (R-836) and
-``remove_playlist`` (U123), each of a playlist the product made.
+no folder delete but an empty legacy year folder's, and the removals it does
+declare are narrow: ``remove_tracks`` (R-836) and ``remove_playlist`` (U123),
+each of a playlist the product made, and the account root's debris and empties
+(U143), each of a kind a gate named.
 :class:`StrictAccount` raises on any other attribute, so a worker that reached
 for one fails the suite instead of failing silently against a fake permissive
 enough to answer.
@@ -54,6 +56,9 @@ PROTOCOL_METHODS = frozenset(
         "remove_playlist",
         # U130. The order of a playlist the product made or the author paired.
         "order_tracks",
+        # U143. The account root's removals, each of a kind the gate named.
+        "remove_root_playlist",
+        "remove_legacy_folder",
     }
 )
 
@@ -134,6 +139,10 @@ class FakeAccount:
         self.ordered: list[tuple[str, tuple[str, ...]]] = []
         #: U123. Every playlist removed, in order, and what it held.
         self.deleted: list[tuple[str, tuple[str, ...]]] = []
+        #: U143. Every root playlist removed, as ``(playlist_id, kind)``, and
+        #: every legacy folder removed, in order.
+        self.root_removed: list[tuple[str, str]] = []
+        self.folders_removed: list[str] = []
 
     def match_track(
         self,
@@ -286,6 +295,32 @@ class FakeAccount:
         self.titles.pop(playlist_id, None)
         self.placed.pop(playlist_id, None)
         self.deleted.append((playlist_id, held))
+
+    def remove_root_playlist(self, playlist_id: str, kind: str) -> None:
+        """Remove a root playlist of the named kind. One write, so ``fail_on`` names it."""
+        from cratekit.modules.outbound import kinds
+
+        assert kind in kinds.ROOT_REMOVALS, kind
+        self._bump(playlist_id)
+        self.playlists.pop(playlist_id, None)
+        self.titles.pop(playlist_id, None)
+        self.placed.pop(playlist_id, None)
+        self.root_removed.append((playlist_id, kind))
+
+    def remove_legacy_folder(self, folder_id: str) -> None:
+        """Remove an empty root folder; one holding anything is refused, as the adapter does."""
+        if folder_id not in self.folders():
+            return
+        if self.folder_playlists(folder_id) or self.folder_folders(folder_id):
+            raise refuse(
+                "outbound-remove-refused",
+                f"the folder {folder_id} still holds something, so it was not removed",
+                origin=("test", "outbound_fakes"),
+                detail={"folder_id": folder_id, "problem": "not-empty"},
+            )
+        self._bump(folder_id)
+        del self.folder_names[folder_id]
+        self.folders_removed.append(folder_id)
 
     def _bump(self, subject: str = "") -> None:
         self._writes += 1

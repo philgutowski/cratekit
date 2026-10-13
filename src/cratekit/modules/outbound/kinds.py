@@ -17,11 +17,18 @@ kind's playlists where they are, since a name does not decide which is meant.
 ADD ONLY. A folder is created and a playlist is put in one. Nothing is renamed
 or removed.
 
+THE ROOT'S OTHER SHAPES ARE NAMED HERE TOO (U143), the words the organize root
+step plans by and the account adapter checks a removal against, so the two read
+one rule: the two kinds of root playlist the account sheds, the source system's
+label debris and an empty playlist, and the legacy year folder a person made
+for one year's custom playlists before the product filed them in ``<year>``.
+
 Layer: modules.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -38,6 +45,22 @@ CREATE = "create"
 REUSE = "reuse"
 ADOPT = "adopt"
 LEFT = "left"
+
+#: The two kinds of root playlist a removal may name (U143): a playlist whose
+#: name carries the source system's label batch suffix, and one holding nothing.
+DEBRIS = "debris"
+EMPTY = "empty"
+ROOT_REMOVALS = (DEBRIS, EMPTY)
+
+#: A legacy year folder's name, a year and these words, case exactly. The one
+#: kind of folder a person made that organize may empty and then remove.
+_LEGACY_YEAR = re.compile(r"([0-9]{4}) Custom Playlists")
+
+
+def legacy_year(name: str) -> str:
+    """The year a legacy year folder's name carries, or ``""`` for any other name."""
+    found = _LEGACY_YEAR.fullmatch(str(name or ""))
+    return found.group(1) if found else ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,14 +163,18 @@ def file_new(
 __all__ = [
     "ADOPT",
     "CREATE",
+    "DEBRIS",
+    "EMPTY",
     "EXPORTS",
     "KINDS",
     "KindFolder",
     "LEFT",
     "MINE",
     "REUSE",
+    "ROOT_REMOVALS",
     "decide",
     "file_new",
+    "legacy_year",
     "reserve",
     "token",
 ]

@@ -346,38 +346,34 @@ def test_what_the_author_made_is_listed_with_a_home_and_never_a_write(world):
     assert mine_db[MINE_IN_REKORDBOX]["suggested_home"] == f"{DECLARED.catalog.display} / {LABEL}"
     assert mine_db["listen later"]["suggested_home"] is None
     mine_account = {one["name"]: one for one in areas[account_area.AREA]["yours"]}
-    # THE AUTHOR'S OWN ON THE ACCOUNT IS FILED IN MINE (U131), on the gate, so
-    # it is a move of the filing step and no longer a listing.
-    assert MINE_ON_ACCOUNT not in mine_account
+    # A WORKING CUSTOM PLAYLIST STAYS AT THE ROOT (U143), reversing U131's move
+    # into Mine: unmarked and unclaimed, it is listed and never planned.
+    assert set(mine_account) == {MINE_ON_ACCOUNT}
+    assert mine_account[MINE_ON_ACCOUNT]["suggested_home"] == "the 2024 year folder"
     # The set the product made is listed by the account and is not the author's.
     assert SET_NAME not in mine_account
-    assert mine_account == {}
     (filed,) = [
         step for step in areas[account_area.AREA]["steps"] if step["step"] == account_area.FILE
     ]
-    assert sorted(row["id"] for row in filed["plan"] if row.get("kind_folder") == "Mine") == [
-        "mine-1"
-    ]
+    assert [row["id"] for row in filed["plan"] if row.get("kind_folder") == "Mine"] == []
     # The run named batch is a suggestion, never a step.
     assert [one["name"] for one in areas[rekordbox.AREA]["suggested"]] == [RUN_NAMED]
 
     code, done, _first = _answered()
     assert code == int(ExitCode.OK), done
     assert ("mine-1", MINE_ON_ACCOUNT) not in held.renamed
-    assert held.folder_names[held.placed["mine-1"]] == "Mine"
-    assert sorted(
-        pid for pid, folder in held.placed.items() if held.folder_names[folder] == "Mine"
-    ) == ["mine-1"]
+    assert "mine-1" not in held.placed
+    assert ("mine-1", "empty") not in held.root_removed and "mine-1" in held.titles
     assert _parent(cfg, ids["mine"]) in rb_writer.ROOT_PARENT_SENTINELS
     assert _parent(cfg, ids["listen later"]) == inbox
     for area in done["data"]["summary"]["areas"].values():
         for step in area["steps"]:
             if step["step"] == account_area.FILE:
                 # THE FILING STEP NAMES EVERY PLAYLIST AT THE ROOT (U116), and an
-                # unmarked one of the author's is moved into Mine (U131), with why.
+                # unmarked one of the author's is left there (U143), with why.
                 (row,) = [one for one in step["plan"] if one["name"] == MINE_ON_ACCOUNT]
-                assert row["action"] == filing.MOVE and row["why"] == filing.UNMARKED
-                assert row["kind_folder"] == "Mine"
+                assert row["action"] == filing.LEFT and row["why"] == filing.WORKING_CUSTOM
+                assert "kind_folder" not in row
                 continue
             assert MINE_ON_ACCOUNT not in str(step["plan"])
             assert MINE_IN_REKORDBOX not in str(step["plan"])
@@ -706,11 +702,10 @@ def test_an_exported_playlist_the_product_made_is_not_listed_as_yours(world):
     mine = {one["name"] for one in _report()["data"]["summary"]["areas"][account_area.AREA]["yours"]}
 
     assert "Exported 2025" not in mine
-    # The author's own is filed in Mine (U131), and so is a move, not a listing.
-    assert MINE_ON_ACCOUNT not in mine
-    assert mine == set()
+    # The author's working custom playlist stays at the root and is listed (U143).
+    assert mine == {MINE_ON_ACCOUNT}
     rows = _file_rows(_report()).values()
-    assert sorted(row["id"] for row in rows if row.get("kind_folder") == "Mine") == ["mine-1"]
+    assert sorted(row["id"] for row in rows if row.get("kind_folder") == "Mine") == []
     assert sorted(row["id"] for row in rows if row.get("kind_folder") == "Exports") == [
         "exported-1"
     ]
@@ -757,9 +752,10 @@ def test_a_marked_playlist_at_the_root_moves_into_its_year_folder(world):
     folder = held.placed[MARKED_ID]
     assert held.folder_names[folder] == MARKED_YEAR
     applied = _steps(done, account_area.AREA)[account_area.FILE]["applied"]
-    # The marked playlist to its year, and the author's own to Mine, nothing else.
-    assert applied["moved"] == [[MARKED_ID, folder], ["mine-1", held.placed["mine-1"]]]
-    assert held.folder_names[held.placed["mine-1"]] == "Mine"
+    # The marked playlist to its year, nothing else: the author's working
+    # custom playlist stays at the root (U143).
+    assert applied["moved"] == [[MARKED_ID, folder]]
+    assert "mine-1" not in held.placed
     mine = {one["name"] for one in done["data"]["summary"]["areas"][account_area.AREA]["yours"]}
     assert MARKED_NAME not in mine
 
@@ -793,16 +789,31 @@ def test_an_existing_year_folder_on_the_account_is_adopted_not_made_again(world)
     assert MARKED_YEAR not in held.folders_created
 
 
-def test_an_unmarked_playlist_of_the_authors_is_filed_in_mine(world):
+def test_an_unmarked_playlist_of_the_authors_stays_at_the_root_as_a_working_custom(world):
+    """U143 REVERSES U131's MOVE INTO MINE for an unmarked, unclaimed playlist:
+    by Phillip's rule of 2026-10-13 it is the one playlist the root is for."""
     _cfg, _fake, held, _inbox, _ids = world
 
     row = _file_rows(_report())["mine-1"]
 
-    assert row["action"] == filing.MOVE and row["why"] == filing.UNMARKED
+    assert row["action"] == filing.LEFT and row["why"] == filing.WORKING_CUSTOM
+    code, done, _first = _answered()
+    assert code == int(ExitCode.OK), done
+    assert "mine-1" not in held.placed and held.folders_created.count("Mine") == 0
+
+
+def test_a_prefixed_playlist_no_sync_recorded_is_still_filed_in_mine(world):
+    cfg, fake, held, _inbox, _ids = world
+    fake.account.append(AccountPlaylist("own-2", "DOWNLOADED by hand", 2))
+    held.titles["own-2"] = "DOWNLOADED by hand"
+
+    row = _file_rows(_report())["own-2"]
+
+    assert row["action"] == filing.MOVE and row["why"] == filing.PREFIXED_UNMARKED
     assert row["kind_folder"] == "Mine" and row["folder"] == "create"
     code, done, _first = _answered()
     assert code == int(ExitCode.OK), done
-    assert held.folder_names[held.placed["mine-1"]] == "Mine"
+    assert held.folder_names[held.placed["own-2"]] == "Mine"
 
 
 def test_a_mark_put_back_is_no_mark_and_the_playlist_stays(world):
@@ -901,8 +912,9 @@ def test_a_year_folder_already_on_the_account_is_adopted_with_no_set_to_make_it(
 
     assert code == int(ExitCode.OK), done
     assert held.placed[MARKED_ID] == existing
-    # Only the author's own playlist's Mine folder is made, never the year's.
-    assert held.folders_created == ["Mine"]
+    # No folder is made: the year's is adopted, and the author's working custom
+    # playlist stays at the root (U143) rather than making a Mine for it.
+    assert held.folders_created == []
 
 
 def test_a_playlist_marked_twice_is_filed_by_its_latest_mark(seams):
@@ -1004,8 +1016,11 @@ def _filed_alone() -> tuple[int, dict]:
 
 
 def test_only_file_plans_the_filing_alone_and_the_database_is_not_asked(world, monkeypatch):
-    cfg, _fake, held, inbox, ids = world
+    cfg, fake, held, inbox, ids = world
     monkeypatch.setattr(rekordbox, "plan_area", _not_planned)
+    # A marked playlist, so the filing alone has a move to make (U143 left the
+    # author's unmarked one at the root).
+    _marked(cfg, fake, held)
     folders, renamed, added = list(held.folders_created), list(held.renamed), list(held.added)
 
     collection.reset_cache()
@@ -1021,9 +1036,9 @@ def test_only_file_plans_the_filing_alone_and_the_database_is_not_asked(world, m
 
     assert code == int(ExitCode.OK), done
     assert list(done["data"]["summary"]["answers"]) == [account_area.AREA]
-    assert held.folder_names[held.placed["mine-1"]] == "Mine"
+    assert held.folder_names[held.placed[MARKED_ID]] == MARKED_YEAR
     # No label folder, no year playlist's tracks, no mark, no archive.
-    assert held.folders_created == [*folders, "Mine"]
+    assert held.folders_created == [*folders, MARKED_YEAR]
     assert held.renamed == renamed and held.added == added
     assert _filed(cfg) == [] and _parent(cfg, ids["batch"]) == inbox
 
@@ -1038,7 +1053,7 @@ def test_only_file_moves_a_marked_playlist_as_the_full_verb_does_and_then_plans_
     folder = held.placed[MARKED_ID]
     assert held.folder_names[folder] == MARKED_YEAR
     applied = _steps(done, account_area.AREA)[account_area.FILE]["applied"]
-    assert applied["moved"] == [[MARKED_ID, folder], ["mine-1", held.placed["mine-1"]]]
+    assert applied["moved"] == [[MARKED_ID, folder]]
     collection.reset_cache()
     code, again = drive([*ONLY_FILE, "--report"])
     assert code == int(ExitCode.OK), again
@@ -1187,6 +1202,9 @@ def test_a_mixed_selection_plans_the_named_kinds_on_each_side_and_no_other(world
 def test_a_registry_the_profile_does_not_use_does_not_refuse_the_filing(world, monkeypatch):
     from cratekit.label import registry as labels
 
+    cfg, fake, held, _inbox, _ids = world
+    _marked(cfg, fake, held)
+
     labels.RegistryStore().path.write_text("{ not json", encoding="utf-8")
     real = organize_cli.profiles.resolve
 
@@ -1223,7 +1241,9 @@ def test_only_yours_shows_a_refused_rotation_since_it_is_why_the_listing_is_shor
         (account_area.SETS, ["_sets"]),
         (account_area.MARKS, ["_mark_steps"]),
         (account_area.FILE, ["_file_step"]),
-        # The filing is planned for yours too, so what it moves is not listed.
+        (account_area.ROOT, ["_root_step"]),
+        # The filing is planned for yours too, so what it moves is not listed;
+        # the root step is not, since yours reads its empties off the filing.
         (account_area.YOURS, ["_file_step", "_yours"]),
     ],
 )
@@ -1238,7 +1258,7 @@ def test_each_account_kind_runs_its_own_builder_and_no_other(seams, monkeypatch,
 
         return built
 
-    for name in ("_labels", "_sets", "_mark_steps", "_file_step", "_yours"):
+    for name in ("_labels", "_sets", "_mark_steps", "_file_step", "_root_step", "_yours"):
         monkeypatch.setattr(account_area, name, recorder(name))
     if kind not in rekordbox.STEPS:
         monkeypatch.setattr(rekordbox, "plan_area", _not_planned)
@@ -1491,3 +1511,130 @@ def test_the_inspiration_proof_is_read_while_rekordbox_runs(world, monkeypatch):
     step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
 
     assert step["state"] == "planned", step
+
+
+# ---------------------------------------------------------------------------
+# U143: the account root kept to working custom playlists
+# ---------------------------------------------------------------------------
+
+ONLY_ROOT = [*VERB, "--only", account_area.ROOT]
+DEBRIS_NAME = f"{LABEL} LIBRARY"
+LEGACY_NAME = "2026 Custom Playlists"
+
+
+def _root_world(world) -> tuple:
+    """The 2026-10-13 root in small: debris copies whose tracks the label folder
+    holds, an empty playlist, a legacy year folder, a working custom playlist,
+    and two folders of the author's that no step may name."""
+    cfg, fake, held, _inbox, _ids = world
+
+    def playlist(playlist_id, name, tracks, folder=""):
+        held.titles[playlist_id] = name
+        held.playlists[playlist_id] = list(tracks)
+        if folder:
+            held.placed[playlist_id] = folder
+        fake.account.append(AccountPlaylist(playlist_id, name, len(tracks)))
+
+    held.folder_names.update(
+        {
+            "hand-label": LABEL,
+            "hand-legacy": LEGACY_NAME,
+            "hand-spotify": "Phil's Spotify",
+            "hand-trivia": "Genre Trivia!",
+        }
+    )
+    playlist("year-1", f"DOWNLOADED {LABEL} 2026", ("t1", "t2", "t3"), "hand-label")
+    playlist("debris-1", DEBRIS_NAME, ("t1", "t2"))
+    playlist("debris-2", DEBRIS_NAME, ("t1", "t2"))
+    playlist("empty-1", "Untitled Playlist", ())
+    playlist("old-1", "Custom from before", ("t9",), "hand-legacy")
+    playlist("spotify-1", "Empty and kept", (), "hand-spotify")
+    playlist("custom-1", "tech_house_hits - Phil", ("t1", "t2", "t3", "t4", "t5"))
+    return cfg, fake, held
+
+
+def _listing_without_removed(fake, held) -> None:
+    """The catalogue's next listing, which no longer names what the account removed."""
+    fake.account[:] = [one for one in fake.account if one.playlist_id in held.titles]
+
+
+def test_only_root_removes_debris_and_empties_on_the_gate_and_files_the_legacy_folder(world):
+    _cfg, fake, held = _root_world(world)
+    collection.reset_cache()
+
+    code, first = drive(ONLY_ROOT)
+
+    assert code == int(ExitCode.DECISION_REQUIRED), first
+    assert first["cause"]["detail"]["gate"] == ACCOUNT_GATE
+    shown = first["cause"]["detail"]["shown"]
+    deletes = shown["deletes"]
+    assert sorted(line.split(" (")[0] for line in deletes) == [
+        f"remove the playlist {DEBRIS_NAME!r}",
+        f"remove the playlist {DEBRIS_NAME!r}",
+        "remove the playlist 'Untitled Playlist'",
+    ]
+    assert "Phil's Spotify" not in str(shown) and "Genre Trivia!" not in str(shown)
+    (item,) = [one for one in shown["items"] if one["step"] == account_area.ROOT]
+    rows = {row["id"]: row for row in item["plan"]}
+    assert rows["old-1"]["action"] == "move" and "custom-1" not in rows
+
+    run_id = first["run_id"]
+    assert drive(["run", "decide", run_id, ACCOUNT_GATE, "apply", "--actor", "a-person"])[0] == 0
+    collection.reset_cache()
+    code, done = drive(["--run", run_id, *ONLY_ROOT])
+
+    assert code == int(ExitCode.OK), done
+    assert held.root_removed == [("debris-1", "debris"), ("debris-2", "debris"), ("empty-1", "empty")]
+    applied = _steps(done, account_area.AREA)[account_area.ROOT]["applied"]
+    assert [name for _kind, _id, name in applied["removed"]] == [
+        DEBRIS_NAME,
+        DEBRIS_NAME,
+        "Untitled Playlist",
+    ]
+    assert held.folder_names[held.placed["old-1"]] == "2026"
+    assert applied["moved"] == [["old-1", held.placed["old-1"]]]
+    # The legacy folder stays through the apply that emptied it, and the
+    # label folder, the author's folders and the working custom are untouched.
+    assert "hand-legacy" in held.folder_names and held.folders_removed == []
+    assert held.placed["year-1"] == "hand-label" and held.playlists["year-1"] == ["t1", "t2", "t3"]
+    assert held.placed["spotify-1"] == "hand-spotify" and "custom-1" not in held.placed
+
+    _listing_without_removed(fake, held)
+    collection.reset_cache()
+    code, second = _two_acts(ONLY_ROOT, ACCOUNT_GATE, "apply")
+
+    assert code == int(ExitCode.OK), second
+    assert held.folders_removed == ["hand-legacy"]
+
+    collection.reset_cache()
+    code, again = drive([*ONLY_ROOT, "--report"])
+    assert code == int(ExitCode.OK), again
+    step = _steps(again, account_area.AREA)[account_area.ROOT]
+    assert step["state"] == "nothing" and step["plan"] == []
+
+
+def test_the_full_verb_lists_the_working_custom_and_never_the_root_steps_removals(world):
+    _root_world(world)
+
+    envelope = _report()
+
+    area = envelope["data"]["summary"]["areas"][account_area.AREA]
+    yours = {one["name"] for one in area["yours"]}
+    assert "tech_house_hits - Phil" in yours
+    assert not {"Untitled Playlist", DEBRIS_NAME} & yours
+    assert _steps(envelope, account_area.AREA)[account_area.ROOT]["state"] == "planned"
+    file_rows = _file_rows(envelope)
+    assert file_rows["custom-1"]["why"] == filing.WORKING_CUSTOM
+    assert file_rows["empty-1"]["why"] == filing.EMPTY
+    assert file_rows["debris-1"]["why"] == filing.DEBRIS
+
+
+def test_an_unread_label_registry_refuses_the_root_step_as_it_refuses_the_filing(world):
+    from cratekit.label import registry as labels
+
+    _root_world(world)
+    labels.RegistryStore().path.write_text("{ not json", encoding="utf-8")
+
+    step = _steps(_report(), account_area.AREA)[account_area.ROOT]
+
+    assert step["state"] == "refused"

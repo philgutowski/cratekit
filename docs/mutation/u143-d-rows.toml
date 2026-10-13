@@ -1,0 +1,34 @@
+name = "u143-d"
+pass_kind = "light"
+
+[[rows]]
+id = "A5_playlist_read_back"
+description = "Adapter: report a root playlist removed though the provider still serves it"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''        if served_after is not _ABSENT and served_after is not None:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "A6_legacy_name"
+description = "Adapter: remove a root folder whatever its name"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''        if not kinds.legacy_year(name):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "A7_folder_empty"
+description = "Adapter: remove a legacy folder that still holds playlists"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''        held = len(self.folder_playlists(identifier)) + len(self.folder_folders(identifier))'''
+new = '''        held = 0'''
+
+[[rows]]
+id = "A8_folder_read_back"
+description = "Adapter: report a folder removed though the root still lists it"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''        if identifier in self.folders():'''
+new = '''        if False:'''

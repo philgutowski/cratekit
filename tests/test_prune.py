@@ -154,10 +154,16 @@ def test_both_prune_verbs_write_only_the_account_behind_an_explicit_gate():
         assert spec.digest_source == "plan"
 
 
-def test_the_protocol_declares_exactly_two_removals():
-    """R-836's track removal and U123's playlist removal, and nothing else."""
+def test_the_protocol_declares_exactly_four_removals():
+    """R-836's track removal, U123's playlist removal, U143's two account root
+    removals, and nothing else."""
     removals = {name for name in outbound_fakes.PROTOCOL_METHODS if "remove" in name}
-    assert removals == {"remove_tracks", "remove_playlist"}
+    assert removals == {
+        "remove_tracks",
+        "remove_playlist",
+        "remove_root_playlist",
+        "remove_legacy_folder",
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════
