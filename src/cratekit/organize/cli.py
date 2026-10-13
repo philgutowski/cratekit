@@ -46,7 +46,7 @@ from cratekit.core.exit_codes import Remedy
 from cratekit.intake import rotate_cli
 from cratekit.modules.outbound import shell
 from cratekit.organize import account, rekordbox
-from cratekit.organize.steps import FAILED, Area, area_check, check
+from cratekit.organize.steps import FAILED, Area, area_check, check, selection
 
 #: The two gates, one per area. Looked up on ``ctx.entry.gates`` by name.
 REKORDBOX_GATE = "organize.rekordbox.approve"
@@ -115,9 +115,10 @@ def _gate(entry, name: str):
 def _followed() -> tuple[tuple, CratekitError | None]:
     """Every followed label, or none and the registry's refusal when it cannot be read.
 
-    THE REFUSAL IS THE LABEL STEP'S, not the verb's: the database area reads
-    the labels only for a suggested home, and the other account steps not at
-    all, so an unreadable registry refuses the one step that needs it.
+    THE REFUSAL IS THE LABEL STEP'S AND THE FILING'S, not the verb's: the
+    database area reads the labels only for a suggested home, the filing to
+    leave a label's playlist for the label step (U137), and the other account
+    steps not at all, so an unreadable registry refuses the steps that need it.
     """
     from cratekit.label import registry as labels
 
@@ -230,8 +231,8 @@ def _raise_failed(areas: list[Area], data: dict[str, Any]) -> None:
 
 
 def _named(kinds: tuple[str, ...], only: frozenset[str] | None) -> bool:
-    """Whether ``--only`` named any of an area's kinds, or named nothing at all."""
-    return only is None or bool(only.intersection(kinds))
+    """Whether ``--only`` named any of these kinds, or named nothing at all."""
+    return selection(kinds, only) != ()
 
 
 def organize(ctx) -> Envelope:
@@ -241,7 +242,13 @@ def organize(ctx) -> Envelope:
     chosen = getattr(ctx.args, "only", None)
     only = frozenset(chosen) if chosen else None
     membership = profiles.resolve(cfg.profile.name, cfg.modules.explicit)
-    followed, unfollowed = _followed()
+    # THE REGISTRY IS READ ONLY FOR A STEP THAT USES IT: every account step
+    # may, and on the database side only the author's own, for a home.
+    followed, unfollowed = (
+        _followed()
+        if _named(account.STEPS, only) or _named((rekordbox.YOURS,), only)
+        else ((), None)
+    )
     today = rotate_cli.as_of(ctx)
 
     # EACH AREA IS PLANNED ONLY WHEN ONE OF ITS KINDS IS NAMED (U137), and an

@@ -353,8 +353,14 @@ def plan_area(
         return area
     if area.wants(ADOPT):
         area.steps.append(_adoption(cfg, declared, registry, ctx, gate, area))
-    if area.wants(ROTATE):
-        area.steps.append(_rotation(cfg, declared, today, area))
+    # THE ROTATION IS PLANNED FOR ``yours`` TOO, since what it leaves alone
+    # under INBOX is the author's and its suggestions ride the same screen. Its
+    # step is shown when selected, or when it refused, because a refusal is
+    # why that listing is short and unread is not none.
+    if area.wants(ROTATE) or area.wants(YOURS):
+        rotation = _rotation(cfg, declared, today, area)
+        if area.wants(ROTATE) or rotation.cause is not None:
+            area.steps.append(rotation)
     if area.wants(RECORD_LABELS):
         area.steps.append(_record_labels(declared))
     if area.wants(YOURS):

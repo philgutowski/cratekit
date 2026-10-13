@@ -1143,3 +1143,57 @@ def test_only_a_database_kind_asks_the_database_alone(world, monkeypatch):
     assert _filed(cfg) == ["r-one", "r-two"]
     assert list(done["data"]["summary"]["areas"]) == [rekordbox.AREA]
     assert held.folders_created == []
+
+
+def test_only_yours_lists_on_each_side_exactly_what_the_full_verb_lists(world):
+    """What the filing moves and what the rotation leaves alone are planned for it too."""
+    cfg, fake, held, _inbox, _ids = world
+    _marked(cfg, fake, held)
+    fake.account.append(AccountPlaylist("kept-1", "Kept in place", 2))
+    held.placed["kept-1"] = held.create_folder("My sets")
+    full = _report()["data"]["summary"]["areas"]
+
+    collection.reset_cache()
+    code, envelope = drive([*VERB, "--report", "--only", "yours"])
+
+    assert code == int(ExitCode.OK), envelope
+    areas = envelope["data"]["summary"]["areas"]
+    assert areas[rekordbox.AREA]["yours"] == full[rekordbox.AREA]["yours"]
+    assert areas[rekordbox.AREA]["suggested"] == full[rekordbox.AREA]["suggested"]
+    assert "listen later" in {one["name"] for one in areas[rekordbox.AREA]["yours"]}
+    assert areas[account_area.AREA]["yours"] == full[account_area.AREA]["yours"]
+    assert MARKED_NAME not in str(areas[account_area.AREA]["yours"])
+    for name in (rekordbox.AREA, account_area.AREA):
+        assert [step["step"] for step in areas[name]["steps"]] == ["yours"], areas[name]
+
+
+def test_a_mixed_selection_plans_the_named_kinds_on_each_side_and_no_other(world):
+    collection.reset_cache()
+    code, envelope = drive(
+        [*VERB, "--report", "--only", account_area.FILE, "--only", rekordbox.ROTATE]
+    )
+
+    assert code == int(ExitCode.OK), envelope
+    areas = envelope["data"]["summary"]["areas"]
+    assert [step["step"] for step in areas[rekordbox.AREA]["steps"]] == [rekordbox.ROTATE]
+    assert [step["step"] for step in areas[account_area.AREA]["steps"]] == [account_area.FILE]
+    assert areas[rekordbox.AREA]["facts"]["only these steps"] == rekordbox.ROTATE
+    assert areas[account_area.AREA]["facts"]["only these steps"] == account_area.FILE
+
+
+def test_a_registry_the_profile_does_not_use_does_not_refuse_the_filing(world, monkeypatch):
+    from cratekit.label import registry as labels
+
+    labels.RegistryStore().path.write_text("{ not json", encoding="utf-8")
+    real = organize_cli.profiles.resolve
+
+    def without_labels(profile, explicit=None):
+        return real(profile, {**dict(explicit or {}), account_area.LABELS_MODULE: False})
+
+    monkeypatch.setattr(organize_cli.profiles, "resolve", without_labels)
+
+    collection.reset_cache()
+    code, envelope = drive([*ONLY_FILE, "--report"])
+
+    assert code == int(ExitCode.OK), envelope
+    assert _steps(envelope, account_area.AREA)[account_area.FILE]["state"] == "planned"

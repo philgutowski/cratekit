@@ -503,8 +503,20 @@ def plan_area(
     if area.wants(MARKS):
         _mark_steps(cfg, area)
     moving: frozenset[str] = frozenset()
-    if area.wants(FILE):
-        moving = _file_step(cfg, area, labels, catalogue_of, remote_of, unfollowed)
+    if area.wants(FILE) or area.wants(YOURS):
+        # THE FILING IS PLANNED FOR ``yours`` TOO, into an area nobody is
+        # shown when the filing itself is not selected, so a playlist the
+        # filing moves is never listed as one of the author's left alone.
+        # A REGISTRY THE PROFILE DOES NOT USE IS NO REASON TO REFUSE: with the
+        # labels module off no label step exists to leave a playlist to.
+        moving = _file_step(
+            cfg,
+            area if area.wants(FILE) else Area(name=AREA),
+            labels,
+            catalogue_of,
+            remote_of,
+            unfollowed if LABELS_MODULE in available else None,
+        )
     if area.wants(YOURS):
         _yours(cfg, area, labels, catalogue_of, remote_of, moving)
     area.facts["writes"] = "add only: folders are created and playlists filed and prefixed"
