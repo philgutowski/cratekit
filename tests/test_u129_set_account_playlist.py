@@ -39,7 +39,7 @@ from tests.test_outbound_workers import bind as bind_account
 ACCOUNT_GATE = intake_cli.ACCOUNT_GATE
 BUILD = "export.set.confirm"
 ARCHIVE = "export.archive.confirm"
-NAME = "10_10_26 Probe Friday Night Mix 5-26"
+NAME = "5_03_26 Probe Friday Night Mix 5-26"
 
 # Matches ``three_tracks`` in the worker suite.
 ROWS = (
@@ -206,7 +206,9 @@ def test_export_archive_prefixes_the_set_in_its_year_folder(account):
 
 def test_frozen_name_agrees_with_inspiration_form():
     words = set_playlist.words_from_page(_page())
-    assert set_cli.set_name(set_playlist.playlist_name(words, on=date(2026, 10, 10))) == NAME
+    day, warn = set_playlist.naming_day(page_upload_date=_page()["upload_date"])
+    assert warn is None and day == date(2026, 5, 3)
+    assert set_cli.set_name(set_playlist.playlist_name(words, on=day)) == NAME
 
 
 def test_plan_archive_named_skips_the_intake_file_check(account):
@@ -387,10 +389,10 @@ def test_with_archive_folds_into_the_landing_digest(account):
 
 def test_job_for_inspiration_name_matches_a_set_from_another_day(account, monkeypatch):
     cfg, _fake, _held = account
-    # Pre-freeze job: no PLAYLIST_NAME, only the page. Naming day is Oct 9; today
-    # is patched to Oct 10 so a today() fallback would miss.
+    # Pre-freeze job: no PLAYLIST_NAME, only the page. Posted day is May 3 from
+    # upload_date; today is patched to Oct 10 so a today() fallback would miss.
     monkeypatch.setattr(set_playlist, "today", lambda: date(2026, 10, 10))
-    name = "10_09_26 Probe Friday Night Mix 5-26"
+    name = "5_03_26 Probe Friday Night Mix 5-26"
     with jobs.open_store() as store:
         job = jobs.enqueue(
             store,

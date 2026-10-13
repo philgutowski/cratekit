@@ -239,6 +239,37 @@ def readable(
     return free(cfg, f"{today().isoformat()} {words}")
 
 
+
+#: The shape a set's permanent playlist opens with (U121, U136): naming day,
+#: who played it, what it is called, and the set's own month. The day is an
+#: argument so a backfill names the set and not the day the backfill runs
+#: (R-949).
+
+
+def set_day_word(day: date) -> str:
+    """The first word of a set playlist name: ``3_25_26`` for 2026-03-25.
+
+    Month without a leading zero, day with one, two digit year, joined by
+    underscores, as the folder's own examples have it (``5_28_26``, ``6_16_26``).
+    """
+    return f"{day.month}_{day.day:02d}_{day.year % 100:02d}"
+
+
+def set_month_word(month: date) -> str:
+    """The set's month half of the form: ``5-26`` for May 2026."""
+    return f"{month.month}-{month.year % 100:02d}"
+
+
+def set_playlist_form(day: date, *, dj: str, name: str, month: date) -> str:
+    """The source system's set playlist name with the naming day as an argument.
+
+    ``3_25_26 Public Service NYC Live at Signal 2-26``. Callers that want the
+    posted day pass it; callers that want the landing day pass that. This form
+    never defaults to today, so a backfill cannot invent a twin (R-949, U136).
+    """
+    return f"{set_day_word(day)} {dj} {name} {set_month_word(month)}"
+
+
 __all__ = [
     "DOWNLOADS",
     "FAVORITES",
@@ -253,6 +284,9 @@ __all__ = [
     "label_words",
     "pass_jobs",
     "readable",
+    "set_playlist_form",
+    "set_month_word",
+    "set_day_word",
     "source_words",
     "succeeded_intake_jobs",
     "taken",

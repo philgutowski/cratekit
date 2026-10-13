@@ -1084,14 +1084,20 @@ def _job_for_inspiration_name(cfg, name: str):
                 words = set_playlist.words_for(job)
             except Exception:
                 continue
-            # A job queued before the freeze may still match by recomputing the
-            # name for the day it was queued, never for today (U129): a set from
-            # another day would otherwise never match.
-            made = _naming_day(job)
-            # Local calendar day: a UTC stamp after about 20:00 Eastern is the
-            # next UTC day, and .date() on it would miss the set (U129).
-            on = made.astimezone().date() if made is not None else None
-            if set_name(set_playlist.playlist_name(words, on=on)) == wanted:
+            # U136. Prefer the posted day from the page. Also accept the day
+            # the job was queued, so a playlist named before U136 (landing day
+            # in the first word) still finds its job until the attended rename.
+            # Never today (U129, R-949): a backfill a week later must find it.
+            queued = _naming_day(job)
+            landing = queued.astimezone().date() if queued is not None else None
+            posted, _warn = set_playlist.naming_day_for(job, landing=landing)
+            if set_name(set_playlist.playlist_name(words, on=posted)) == wanted:
+                return job
+            if (
+                landing is not None
+                and landing != posted
+                and set_name(set_playlist.playlist_name(words, on=landing)) == wanted
+            ):
                 return job
     # Session records from a landing name the playlist and the job.
     records, _unreadable = session.scan_log(cfg)

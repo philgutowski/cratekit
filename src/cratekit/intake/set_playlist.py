@@ -9,16 +9,20 @@ the folder the taxonomy declares as ``[inspiration]``, holding every identified
 track the library owns, the ones it already had and the ones the intake
 downloaded, in the order the set played them.
 
-THE NAME IS THE SOURCE SYSTEM'S FORM, ``{M_DD_YY today} {DJ} {set name} {M-YY
-of the set}``, for example ``10_09_26 Public Service NYC Live at Vonking 5-26``,
-beside the two such playlists the source system left in the folder. The DJ and
-the set's name come from the page the mix was fetched from, which the job
-froze under ``intake_cli.PAGE``, and the set's month from the day the page
-says it went up. A flag stands in for each, and a flag wins: the page title
-is what the uploader typed, and the abbreviated set name the form asks for is
-the author's to choose. A piece neither has is refused by name before the
-gate, never defaulted, because a playlist named from a guess sits in the
-library for good.
+THE NAME IS THE SOURCE SYSTEM'S FORM, ``{M_DD_YY posted} {DJ} {set name} {M-YY
+of the set}``, for example ``3_25_26 Public Service NYC Live at Signal 2-26``,
+beside the two such playlists the source system left in the folder. The first
+word is the day the set went up on its service, read from the page's
+``upload_date`` the job froze, with ``--posted YYYY-MM-DD`` to override and the
+landing day as the recorded fallback when the page names none (U136). The DJ
+and the set's name come from the page under ``intake_cli.PAGE``, and the set's
+month from ``--set-date`` or the same upload day. A flag stands in for each,
+and a flag wins: the page title is what the uploader typed, and the abbreviated
+set name the form asks for is the author's to choose. A piece neither has is
+refused by name before the gate, never defaulted, because a playlist named
+from a guess sits in the library for good. The form itself lives in
+:mod:`cratekit.intake.batch_name` with the day as an argument, so a backfill
+names the set and not the day it runs (R-949).
 
 A MEMBER IS A ROW THE PRODUCT'S OWN MATCH RULE TIED TO THE SET, never a
 guess. Each committed report of the job is read in item order. A row the
@@ -77,6 +81,8 @@ SET_KEY = "intake.set"
 #: The refusal reasons this module owns, reserved in the cause vocabulary.
 FOLDER_UNDECLARED = "inspiration-folder-undeclared"
 UNNAMED = "set-playlist-unnamed"
+#: The page named no upload date, so the naming day fell back to the landing day (U136).
+POSTED_FALLBACK = "set-playlist-posted-fallback"
 
 #: The session record field naming the set playlist a commit wrote, by
 #: identifier, name and the job it was made from.
@@ -102,6 +108,7 @@ DOWNLOADED_STATES = frozenset({"missing", "offered"})
 #: The ``--set-date`` forms, a month or a day, and the page's upload date.
 _FLAG_DATE = re.compile(r"^(\d{4})-(\d{2})(?:-(\d{2}))?$")
 _PAGE_DATE = re.compile(r"^(\d{4})(\d{2})(\d{2})$")
+_POSTED_FLAG = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
 
 _ORIGIN = ("intake.set_playlist",)
 
@@ -153,6 +160,15 @@ def add_word_arguments(parser) -> None:
         help=(
             "the month the set is from, YYYY-MM or YYYY-MM-DD (default: the day the "
             "fetched page says the recording went up)"
+        ),
+    )
+    parser.add_argument(
+        "--posted",
+        default=None,
+        metavar="YYYY-MM-DD",
+        help=(
+            "the day the set went up on its service, as the playlist opens with "
+            "(default: the page's upload_date; the landing day when the page names none)"
         ),
     )
 
@@ -282,18 +298,99 @@ def frozen_name(job: jobs.Job) -> str:
     return str(payload.get(intake_cli.PLAYLIST_NAME) or "").strip()
 
 
-def playlist_name(words: SetWords, *, on: date | None = None) -> str:
-    """The source system's form: ``10_09_26 Public Service NYC Live at Vonking 5-26``.
+def _page_upload_date(page: Mapping[str, Any] | None) -> str:
+    """The page's upload_date string, or empty when the page carries none."""
+    if not isinstance(page, Mapping):
+        return ""
+    return str(page.get(fetch.PAGE_UPLOAD_DATE) or "").strip()
 
-    The naming day is month, day and two digit year joined by underscores, the
-    month without a leading zero and the day with one, as the folder's own
-    examples have it (``5_28_26``, ``6_16_26``). The set's month is month and
-    two digit year joined by a hyphen, the month without a leading zero.
+
+def page_of(job: jobs.Job) -> Mapping[str, Any]:
+    """The page the set job froze, or an empty mapping."""
+    payload = job.payload if isinstance(job.payload, Mapping) else {}
+    page = payload.get(intake_cli.PAGE)
+    return page if isinstance(page, Mapping) else {}
+
+
+def naming_day(
+    *,
+    posted: str | None = None,
+    page_upload_date: str | None = None,
+    landing: date | None = None,
+) -> tuple[date, dict[str, str] | None]:
+    """The day a set's playlists open with (U136).
+
+    ``--posted YYYY-MM-DD`` wins over the page's ``upload_date`` (``YYYYMMDD``).
+    When neither names a day, the landing day is used and a warning is returned
+    for the screen. The INBOX batch name is not this day; it keeps the landing
+    date through :func:`batch_name.readable`.
+    """
+    if posted:
+        found = _POSTED_FLAG.match(posted.strip())
+        if found is None:
+            raise refuse(
+                UNNAMED,
+                f"--posted {posted!r} is not a day, so the set's playlist cannot be "
+                f"named; give it as YYYY-MM-DD",
+                remedy=Remedy.FIX_COMMAND_LINE,
+                origin=_ORIGIN,
+                detail={"posted": posted},
+            )
+        try:
+            return date(int(found.group(1)), int(found.group(2)), int(found.group(3))), None
+        except ValueError as exc:
+            raise refuse(
+                UNNAMED,
+                f"--posted {posted!r} is not a day ({exc}), so the set's playlist "
+                f"cannot be named; give it as YYYY-MM-DD",
+                remedy=Remedy.FIX_COMMAND_LINE,
+                origin=_ORIGIN,
+                detail={"posted": posted},
+            ) from exc
+    raw = (page_upload_date or "").strip()
+    if raw:
+        found = _PAGE_DATE.match(raw)
+        if found is not None:
+            try:
+                return date(int(found.group(1)), int(found.group(2)), int(found.group(3))), None
+            except ValueError:
+                pass
+    day = landing or today()
+    return day, {
+        "code": POSTED_FALLBACK,
+        "message": (
+            f"the set's page named no upload date, so its playlists open with the "
+            f"landing day {batch_name.set_day_word(day)}; pass --posted YYYY-MM-DD "
+            f"to name another day"
+        ),
+    }
+
+
+def naming_day_for(
+    job: jobs.Job,
+    *,
+    posted: str | None = None,
+    landing: date | None = None,
+) -> tuple[date, dict[str, str] | None]:
+    """:func:`naming_day` over the page this job froze."""
+    return naming_day(
+        posted=posted,
+        page_upload_date=_page_upload_date(page_of(job)),
+        landing=landing,
+    )
+
+
+def playlist_name(words: SetWords, *, on: date | None = None) -> str:
+    """The source system's form: ``3_25_26 Public Service NYC Live at Signal 2-26``.
+
+    The naming day is an argument on :func:`batch_name.set_playlist_form` (U136).
+    Pass the posted day from :func:`naming_day`; when ``on`` is omitted the
+    landing day is used, which is the recorded fallback for callers that have
+    not yet resolved a page date.
     """
     made = on or today()
-    return (
-        f"{made.month}_{made.day:02d}_{made.year % 100:02d} {words.dj} {words.name} "
-        f"{words.month.month}-{words.month.year % 100:02d}"
+    return batch_name.set_playlist_form(
+        made, dj=words.dj, name=words.name, month=words.month
     )
 
 
@@ -455,6 +552,8 @@ class SetPlaylistPlan:
     #: record and live under the folder, which this write adds to; empty when
     #: the write finds or makes the playlist by name.
     playlist_id: str = ""
+    #: Warning when the naming day fell back to the landing day (U136), or None.
+    posted_fallback: dict[str, str] | None = None
     digest: str = ""
 
 
@@ -493,6 +592,7 @@ def identity(plan: SetPlaylistPlan) -> dict[str, Any]:
         "folder_display": plan.folder_display,
         "words": plan.words.identity(),
         "made_on": plan.made_on.isoformat() if plan.made_on else "",
+        "posted_fallback": bool(plan.posted_fallback),
         "members": [one.identity() for one in plan.members],
         "left": [one.identity() for one in plan.left],
     }
@@ -734,6 +834,7 @@ def plan_for_landing(
     *,
     files: Sequence[tuple[Path, Path]],
     on: date | None = None,
+    posted: str | None = None,
 ) -> SetPlaylistPlan:
     """The playlist a landing writes beside its batch, over the files about to land.
 
@@ -744,8 +845,19 @@ def plan_for_landing(
     A row no staged file answers is asked of the library next, with the
     person's review answers read back, since a track offered at review and
     accepted as a library file was never downloaded and is owned.
+
+    The naming day is the posted day (U136): ``--posted``, else the page's
+    upload_date, else the landing day with :data:`POSTED_FALLBACK` on the plan.
+    When ``on`` is given it is the day already chosen (a re-plan pins it), so a
+    ``--posted`` override survives ``apply_alone``.
     """
-    made = on or today()
+    if on is not None and posted is None:
+        made = on
+        _resolved, fallback = naming_day_for(job, landing=on)
+        if _resolved != on:
+            fallback = None
+    else:
+        made, fallback = naming_day_for(job, posted=posted, landing=today())
     folder_id, node = folder_for(db, declared)
     recorded = recorded_playlist(cfg, db, job.job_id, folder_id)
     staged = [source for source, _target in files]
@@ -782,6 +894,7 @@ def plan_for_landing(
             left=left,
             made_on=made,
             playlist_id=recorded[0] if recorded else "",
+            posted_fallback=None if recorded or frozen_name(job) else fallback,
         )
     )
 
@@ -795,6 +908,7 @@ def plan_for_backfill(
     reports: Sequence[Mapping[str, Any]],
     *,
     on: date | None = None,
+    posted: str | None = None,
 ) -> SetPlaylistPlan:
     """The playlist for a set whose files already landed, every row resolved against the library now.
 
@@ -804,8 +918,18 @@ def plan_for_backfill(
     no question offered or retired by a plan. A row the report called owned
     keeps its report paths first, and is resolved again only when those paths
     hold no row any more.
+
+    The naming day is the posted day (U136), so a backfill a week later finds
+    the existing playlist by that name and never makes a twin (R-949).
+    When ``on`` is given it is the day already chosen (a re-plan pins it).
     """
-    made = on or today()
+    if on is not None and posted is None:
+        made = on
+        _resolved, fallback = naming_day_for(job, landing=on)
+        if _resolved != on:
+            fallback = None
+    else:
+        made, fallback = naming_day_for(job, posted=posted, landing=today())
     folder_id, node = folder_for(db, declared)
     recorded = recorded_playlist(cfg, db, job.job_id, folder_id)
     library = _LibraryView(cfg)
@@ -828,6 +952,7 @@ def plan_for_backfill(
             left=left,
             made_on=made,
             playlist_id=recorded[0] if recorded else "",
+            posted_fallback=None if recorded or frozen_name(job) else fallback,
         )
     )
 
@@ -858,7 +983,7 @@ def facts(plan: SetPlaylistPlan) -> dict[str, Any]:
         if plan.folder_id
         else f"{plan.folder_display}, created at the playlist root"
     )
-    return {
+    shown = {
         "set playlist": plan.name,
         "under": where,
         "playlist": (
@@ -870,6 +995,14 @@ def facts(plan: SetPlaylistPlan) -> dict[str, Any]:
         "set tracks": len(plan.members),
         "set left out": len(plan.left),
     }
+    if plan.posted_fallback:
+        shown["posted day"] = plan.posted_fallback["message"]
+    return shown
+
+
+def posted_note(plan: SetPlaylistPlan) -> list[dict[str, str]]:
+    """The warning when the naming day fell back to the landing day (U136)."""
+    return [dict(plan.posted_fallback)] if plan.posted_fallback else []
 
 
 def left_warning(left: Sequence[Left]) -> list[dict[str, str]]:
@@ -1207,6 +1340,7 @@ __all__ = [
     "NOT_RESOLVED",
     "NO_ROW",
     "OWNED",
+    "POSTED_FALLBACK",
     "RECORD_KEY",
     "SET_KEY",
     "SUPPRESSED",
@@ -1227,10 +1361,14 @@ __all__ = [
     "identity",
     "left_warning",
     "nothing_note",
+    "page_of",
+    "naming_day_for",
+    "naming_day",
     "payload",
     "plan_for_backfill",
     "plan_for_landing",
     "playlist_name",
+    "posted_note",
     "read_back",
     "record_commit",
     "recorded_playlist",
