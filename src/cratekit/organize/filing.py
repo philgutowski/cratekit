@@ -151,6 +151,9 @@ class FilePlan:
     years: Mapping[str, YearFolder]
     #: Each kind folder a row names, ``Mine`` and ``Exports`` (U131).
     kinds: Mapping[str, kinds.KindFolder] = field(default_factory=dict)
+    #: The root's folders as this plan read them, identifier to name, which the
+    #: root step (U143) reads rather than listing the root a second time.
+    root: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def moves(self) -> tuple[Placement, ...]:
@@ -248,7 +251,14 @@ def year_folder(cfg: config.Config, year: str, root: Mapping[str, str]) -> YearF
     # person who renamed that folder to ``Downloaded Sets <year>`` left the
     # year's record pointing at the sets' folder. Reused by identifier, it would
     # file custom playlists among the sets, so it is read as stale and replaced.
-    if recorded and recorded in root and root[recorded] != sets.folder_name(year):
+    # NOR IS ONE NOW NAMED AS A LEGACY YEAR FOLDER (U143), which the root step
+    # empties into the year's folder: reused, it would be emptied into itself.
+    if (
+        recorded
+        and recorded in root
+        and root[recorded] != sets.folder_name(year)
+        and not kinds.legacy_year(root[recorded])
+    ):
         return YearFolder(year=year, action=sets.REUSE, folder_id=recorded)
     named = sorted(folder_id for folder_id, title in root.items() if title == year)
     if len(named) > 1:
@@ -399,7 +409,7 @@ def plan(
         # (U131), filed in Mine with the reason it is not filed by a year.
         why = UNDATED if identity in standing else PREFIXED_UNMARKED
         rows.append(kind_row(identity, name, kinds.MINE, why))
-    return FilePlan(rows=tuple(rows), years=years, kinds=kind_folders)
+    return FilePlan(rows=tuple(rows), years=years, kinds=kind_folders, root=dict(root))
 
 
 def _failed_part_way(exc: Exception, done: Filed) -> Exception:

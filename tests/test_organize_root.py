@@ -602,3 +602,152 @@ def test_a_folder_removal_the_client_answers_false_is_a_failure(installed):
         _adapter(client, installed).remove_legacy_folder("f-1")
 
     assert client.folder_calls == [(["f-1"], "folder")] and "f-1" in client.root
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6. The review round's findings, each driven
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_debris_copy_given_a_track_since_the_plan_is_kept_and_the_rest_removed(installed):
+    world = World()
+    world.label_folder()
+    world.playlist("debris-1", DEBRIS, CATALOGUE[:2])
+    world.playlist("empty-1", "Untitled Playlist", ())
+    planned = world.kept(installed)
+    world.account.playlists["debris-1"].append("t9")
+
+    done = root.apply(installed, world.account, planned)
+
+    assert world.account.root_removed == [("empty-1", kinds.EMPTY)]
+    assert done.kept == [
+        [kinds.DEBRIS, "debris-1", DEBRIS, "it holds a track it did not hold when the gate was answered"]
+    ]
+
+
+def test_a_playlist_moved_into_a_folder_since_the_plan_is_kept(installed):
+    world = World()
+    world.playlist("empty-1", "Untitled Playlist", ())
+    planned = world.kept(installed)
+    world.account.placed["empty-1"] = world.folder("Phil's Spotify")
+
+    done = root.apply(installed, world.account, planned)
+
+    assert world.account.root_removed == []
+    assert done.kept[0][1] == "empty-1" and "in a folder now" in done.kept[0][3]
+
+
+def test_a_removal_the_account_refuses_before_sending_is_kept_and_the_apply_goes_on(
+    installed, monkeypatch
+):
+    from cratekit.core.cause import refuse
+
+    world = World()
+    world.playlist("empty-1", "Untitled Playlist", ())
+    world.playlist("empty-2", "Videos only", ())
+    real = world.account.remove_root_playlist
+
+    def refusing(playlist_id, kind):
+        if playlist_id == "empty-2":
+            raise refuse(
+                "outbound-remove-refused",
+                "the provider serves it with 2 video(s), which is not empty",
+                detail={"problem": "not-this-kind"},
+            )
+        real(playlist_id, kind)
+
+    monkeypatch.setattr(world.account, "remove_root_playlist", refusing)
+
+    done = root.apply(installed, world.account, world.kept(installed))
+
+    assert world.account.root_removed == [("empty-1", kinds.EMPTY)]
+    assert [one[1] for one in done.kept] == ["empty-2"]
+
+
+def test_a_label_folder_that_cannot_be_read_leaves_its_debris_and_refuses_nothing_else(
+    installed, monkeypatch
+):
+    from cratekit.core.cause import refuse
+
+    world = World()
+    folder = world.label_folder()
+    world.playlist("debris-1", DEBRIS, CATALOGUE[:2])
+    world.playlist("empty-1", "Untitled Playlist", ())
+    real = world.account.folder_playlists
+    reads = {"walked": False}
+
+    def failing(folder_id):
+        # The filing's walk of every folder reads it first; the debris check second.
+        if folder_id == folder and reads["walked"]:
+            raise refuse("unavailable-transient", "the provider did not answer")
+        if folder_id == folder:
+            reads["walked"] = True
+        return real(folder_id)
+
+    monkeypatch.setattr(world.account, "folder_playlists", failing)
+
+    rows = _rows(world.kept(installed))
+
+    assert rows["debris-1"].action == root.LEFT and "could not be read" in rows["debris-1"].why
+    assert rows["empty-1"].action == root.REMOVE
+
+
+def test_a_debris_copy_with_no_listed_count_is_left_before_any_read(installed, monkeypatch):
+    world = World()
+    world.label_folder()
+    world.playlist("debris-1", DEBRIS, CATALOGUE[:2], declared=None)
+    monkeypatch.setattr(
+        world.account, "playlist_tracks", lambda _id: pytest.fail("a track read was made")
+    )
+
+    row = _rows(world.kept(installed))["debris-1"]
+
+    assert row.action == root.LEFT and "no track count" in row.why
+
+
+def test_a_year_record_whose_folder_now_carries_a_legacy_name_is_not_reused(installed):
+    world = World()
+    legacy = world.folder(LEGACY)
+    ledger.reserve_set_folder(installed, YEAR, lambda: "unused", adopt=legacy)
+    world.playlist("old-1", "Custom 1", ("t1",), folder=legacy)
+
+    planned = world.kept(installed)
+
+    assert planned.years[YEAR].action == "create" and planned.years[YEAR].stale == legacy
+    root.apply(installed, world.account, planned)
+    assert world.account.placed["old-1"] != legacy
+    assert world.account.folder_names[world.account.placed["old-1"]] == YEAR
+
+
+def test_a_legacy_folder_whose_year_is_undecided_says_so(installed):
+    world = World()
+    world.folder(YEAR)
+    world.folder(YEAR)
+    legacy = world.folder(LEGACY)
+    world.playlist("old-1", "Custom 1", ("t1",), folder=legacy)
+
+    row = _rows(world.kept(installed))[legacy]
+
+    assert "until the 2026 folder is decided" in row.why and "later run" not in row.why
+
+
+def test_a_folder_removal_answered_not_found_is_read_back_rather_than_failed(installed):
+    client = _Client(root_folders={"f-1": LEGACY})
+
+    def gone(trns, type="folder"):  # noqa: A002 - the client's name
+        client.root.pop("f-1", None)
+        raise ObjectNotFound("f-1")
+
+    client.user.favorites.remove_folders_playlists = gone
+
+    _adapter(client, installed).remove_legacy_folder("f-1")
+
+    assert client.root == {}
+
+
+def test_a_session_with_no_user_is_a_provider_failure_not_a_crash(installed):
+    client = _Client(root_folders={"f-1": LEGACY})
+    client.user = None
+
+    with pytest.raises(CratekitError):
+        _adapter(client, installed).remove_legacy_folder("f-1")

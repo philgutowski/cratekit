@@ -29,9 +29,12 @@ NOTHING IN A LABEL FOLDER, IN ``Mine``, OR IN ANY OTHER FOLDER A PERSON MADE IS
 TOUCHED. A label folder is read, never written; a folder of any other name is
 never read at all.
 
-EVERY REMOVAL AND MOVE IS NAMED ON THE APPLIED TOTALS, and the apply stops at
-the first refusal, raising it with what was already done named, so a run says
-exactly what it removed.
+EVERY REMOVAL AND MOVE IS NAMED ON THE APPLIED TOTALS. Before each playlist
+removal the apply reads again where the playlist sits and, for debris, what it
+holds; a row no longer what the gate showed, or one the account member refuses
+before sending anything, is KEPT, named on the totals and in a warning, and the
+apply goes on. Any other refusal stops it, raised with what was already done
+named, so a run says exactly what it removed.
 
 Layer: modules.
 """
@@ -86,6 +89,9 @@ class RootRow:
     #: debris playlist was compared against.
     folder: str = ""
     why: str = ""
+    #: The tracks a debris removal was planned over, read again before the
+    #: removal, so one given a track since the gate was answered is kept.
+    tracks: tuple[str, ...] = ()
 
     def item(self, years: Mapping[str, filing.YearFolder]) -> dict[str, Any]:
         shown: dict[str, Any] = {
@@ -135,7 +141,16 @@ class RootPlan:
         return {
             "kind": "root",
             "rows": [
-                [row.target, row.kind, row.action, row.what, row.year, row.folder, row.why]
+                [
+                    row.target,
+                    row.kind,
+                    row.action,
+                    row.what,
+                    row.year,
+                    row.folder,
+                    row.why,
+                    sorted(row.tracks),
+                ]
                 for row in self.rows
             ],
             "years": [
@@ -159,6 +174,10 @@ class Kept:
     moved: list[list[str]] = field(default_factory=list)
     #: Each removal made, ``[kind, identifier, name]``.
     removed: list[list[str]] = field(default_factory=list)
+    #: Each removal the gate named and the apply did not make, because the
+    #: playlist or folder is no longer what was planned, ``[kind, identifier,
+    #: name, why]``. Nothing was sent for it.
+    kept: list[list[str]] = field(default_factory=list)
 
     def totals(self) -> dict[str, Any]:
         return {
@@ -166,6 +185,7 @@ class Kept:
             "folders_created": list(self.created),
             "moved": [list(one) for one in self.moved],
             "removed": [list(one) for one in self.removed],
+            "kept": [list(one) for one in self.kept],
         }
 
 
@@ -247,34 +267,56 @@ def _debris(
     def left(why: str, folder: str = "") -> RootRow:
         return RootRow(identity, name, kinds.DEBRIS, LEFT, folder=folder, why=why)
 
+    if not isinstance(declared, int) or isinstance(declared, bool):
+        return left(
+            f"the listing gave no track count, so whether every track is in the "
+            f"{label} folder is not known"
+        )
     folder_id, why = folders.find(label)
     if why:
         return left(why)
-    count, held = folders.downloaded(folder_id)
-    if not count:
+    # A READ THAT FAILS LEAVES THIS ROW ALONE, with its reason, so one label
+    # folder the provider would not list refuses no other row of the step.
+    try:
+        count, held = folders.downloaded(folder_id)
+        if not count:
+            return left(
+                f"the {label} folder holds no DOWNLOADED playlist, so none of its tracks "
+                f"is shown as downloaded",
+                folder_id,
+            )
+        tracks = [str(one) for one in remote.playlist_tracks(identity)]
+        # UNREAD IS NOT NONE. A track the account cannot play is left out of
+        # the read and still counted, so a read short of the declared count
+        # cannot say every track is filed, and the playlist stays.
+        if len(tracks) != declared:
+            return left(
+                f"{len(tracks)} of its {declared!r} track(s) could be read, so whether "
+                f"every one is in the {label} folder is not known",
+                folder_id,
+            )
+        missing = [one for one in dict.fromkeys(tracks) if one not in held]
+        if missing:
+            return left(
+                f"{len(missing)} of its tracks are in no DOWNLOADED playlist of the {label} "
+                f"folder: {_missing_named(remote.track_names(identity), missing)}",
+                folder_id,
+            )
+    except CratekitError as exc:
         return left(
-            f"the {label} folder holds no DOWNLOADED playlist, so none of its tracks "
-            f"is shown as downloaded",
+            f"its tracks or the {label} folder could not be read, so nothing is planned "
+            f"for it: {exc.cause.message}",
             folder_id,
         )
-    tracks = [str(one) for one in remote.playlist_tracks(identity)]
-    # UNREAD IS NOT NONE. A track the account cannot play is left out of the
-    # read and still counted, so a read short of the declared count cannot
-    # say every track is filed, and the playlist stays.
-    if not isinstance(declared, int) or isinstance(declared, bool) or len(tracks) != declared:
-        return left(
-            f"{len(tracks)} of its {declared!r} track(s) could be read, so whether every "
-            f"one is in the {label} folder is not known",
-            folder_id,
-        )
-    missing = [one for one in dict.fromkeys(tracks) if one not in held]
-    if missing:
-        return left(
-            f"{len(missing)} of its tracks are in no DOWNLOADED playlist of the {label} "
-            f"folder: {_missing_named(remote.track_names(identity), missing)}",
-            folder_id,
-        )
-    return RootRow(identity, name, kinds.DEBRIS, REMOVE, folder=folder_id, why=EVERY_TRACK_FILED)
+    return RootRow(
+        identity,
+        name,
+        kinds.DEBRIS,
+        REMOVE,
+        folder=folder_id,
+        why=EVERY_TRACK_FILED,
+        tracks=tuple(dict.fromkeys(tracks)),
+    )
 
 
 def _legacy(
@@ -313,14 +355,15 @@ def _legacy(
                         why=f"filed from {name} into the {year} folder",
                     )
                 )
-    stays = (
-        f"it holds {len(nested)} folder(s), and organize never moves a folder, so it stays"
-        if nested
-        else (
+    if nested:
+        stays = f"it holds {len(nested)} folder(s), and organize never moves a folder, so it stays"
+    elif years[year].why:
+        stays = f"its playlists stay in it until the {year} folder is decided: {years[year].why}"
+    else:
+        stays = (
             f"it holds {len(held)} playlist(s), so it is removed by a later run that "
             f"reads it empty, never by the apply that empties it"
         )
-    )
     rows.append(RootRow(folder_id, name, LEGACY, LEFT, what=FOLDER, year=year, why=stays))
     return rows
 
@@ -340,7 +383,8 @@ def plan(
     followed label as ``(label_id, name)``, for its recorded folder.
     """
     declared = {str(one.playlist_id): one.tracks for one in listed}
-    root = remote.folders()
+    # THE FILING PLAN'S OWN READ OF THE ROOT, taken over the same listing.
+    root = filed.root
     folders = _LabelFolders(cfg, remote, root, followed)
     years: dict[str, filing.YearFolder] = {}
     rows: list[RootRow] = []
@@ -391,15 +435,45 @@ def _failed_part_way(exc: Exception, done: Kept) -> Exception:
     return RuntimeError(f"{wrote}. {type(exc).__name__}: {exc}")
 
 
+#: The refusals an account removal raises BEFORE it sends anything: the
+#: playlist or folder is no longer what the gate showed. The row is kept,
+#: named on the totals, and the apply goes on to the next.
+KEPT_PROBLEMS = frozenset(
+    {"not-this-kind", "ledger-claimed", "not-owned", "not-a-legacy-folder", "not-empty"}
+)
+
+
+def _still_planned(remote: RemoteAccount, row: RootRow, in_folders: set[str]) -> str:
+    """Why a planned playlist removal no longer holds, read now, or ``""``.
+
+    THE ADAPTER CHECKS THE KIND, NOT THE PLACE OR THE TRACKS, so both are read
+    again here: a playlist moved into a folder since the gate was answered is
+    not at the root, and a debris playlist given a track since may hold one
+    its label folder lacks.
+    """
+    if row.target in in_folders:
+        return "it is in a folder now, and nothing in a folder is removed"
+    if row.kind == kinds.DEBRIS:
+        now = {str(one) for one in remote.playlist_tracks(row.target)}
+        if not now <= set(row.tracks):
+            return "it holds a track it did not hold when the gate was answered"
+    return ""
+
+
 def apply(cfg: config.Config, remote: RemoteAccount, planned: RootPlan) -> Kept:
     """File each legacy playlist by year, then make each removal the gate named.
 
     THE MOVES COME FIRST, since they remove nothing, then the playlist
     removals, then the folder removals, each through the account member
-    narrowed to its kind. STOPS AT THE FIRST REFUSAL and raises it with what
-    was done named.
+    narrowed to its kind. A row no longer what was planned is KEPT, nothing
+    sent for it, and named on the totals; any other refusal STOPS the apply
+    and is raised with what was done named.
     """
     done = Kept()
+
+    def keep(row: RootRow, why: str) -> None:
+        done.kept.append([row.kind, row.target, row.name, why])
+
     try:
         for row in planned.moves:
             if row.year not in done.folders:
@@ -408,15 +482,24 @@ def apply(cfg: config.Config, remote: RemoteAccount, planned: RootPlan) -> Kept:
                 )
             remote.move_to_folder(row.target, done.folders[row.year])
             done.moved.append([row.target, done.folders[row.year]])
-        for row in planned.removals:
-            if row.what == FOLDER:
+        playlists = [row for row in planned.removals if row.what == PLAYLIST]
+        in_folders = filing.playlists_in_folders(remote) if playlists else set()
+        for row in (*playlists, *(row for row in planned.removals if row.what == FOLDER)):
+            if row.what == PLAYLIST:
+                why = _still_planned(remote, row, in_folders)
+                if why:
+                    keep(row, why)
+                    continue
+            try:
+                if row.what == PLAYLIST:
+                    remote.remove_root_playlist(row.target, row.kind)
+                else:
+                    remote.remove_legacy_folder(row.target)
+            except CratekitError as exc:
+                if exc.cause.detail.get("problem") not in KEPT_PROBLEMS:
+                    raise
+                keep(row, exc.cause.message)
                 continue
-            remote.remove_root_playlist(row.target, row.kind)
-            done.removed.append([row.kind, row.target, row.name])
-        for row in planned.removals:
-            if row.what != FOLDER:
-                continue
-            remote.remove_legacy_folder(row.target)
             done.removed.append([row.kind, row.target, row.name])
     except Exception as exc:
         raise _failed_part_way(exc, done) from exc
@@ -428,6 +511,7 @@ __all__ = [
     "FOLDER",
     "FOLDER_EMPTY",
     "HOLDS_NOTHING",
+    "KEPT_PROBLEMS",
     "LEFT",
     "LEGACY",
     "MOVE",

@@ -432,8 +432,8 @@ def _root_step(
     catalogue_of: _Lazy,
     remote_of: _Lazy,
     filed_of: _Lazy,
-) -> frozenset[str]:
-    """Plan the root's removals and legacy moves (U143); answer every playlist it takes off the root.
+) -> None:
+    """Plan the root's removals and legacy moves (U143).
 
     A FILING THAT REFUSED REFUSES THIS STEP with the same reason, since the
     filing plan is what names the candidates, and unread is not none.
@@ -449,7 +449,7 @@ def _root_step(
         )
     except CratekitError as exc:
         area.steps.append(refused(ROOT, title, exc.cause))
-        return frozenset()
+        return
     removals, moves = planned.removals, planned.moves
     left = len(planned.rows) - len(removals) - len(moves)
     step = Step(
@@ -467,17 +467,33 @@ def _root_step(
         items=planned.items(),
     )
     if planned.writes:
-        step.apply = _root_apply(cfg, planned, remote_of)
+        step.apply = _root_apply(cfg, step, planned, remote_of)
         area.deletes.extend(row.line() for row in removals)
     area.steps.append(step)
-    return frozenset(row.target for row in (*removals, *moves) if row.what == root.PLAYLIST)
 
 
-def _root_apply(cfg, planned, remote_of: _Lazy):
+def _root_apply(cfg, step: Step, planned, remote_of: _Lazy):
     def apply() -> dict[str, Any]:
-        return root.apply(cfg, remote_of.get(), planned).totals()
+        done = root.apply(cfg, remote_of.get(), planned)
+        step.warnings.extend(
+            {
+                "code": "organize-root-kept",
+                "message": f"the {kind} {name!r} was not removed: {why}",
+            }
+            for kind, _target, name, why in done.kept
+        )
+        return done.totals()
 
     return apply
+
+
+def _empties(filed_of: _Lazy) -> frozenset[str]:
+    """Each root playlist the filing leaves for the root step as empty, or none unread."""
+    try:
+        planned = filed_of.get()
+    except CratekitError:
+        return frozenset()
+    return frozenset(row.playlist_id for row in planned.rows if row.why == filing.EMPTY)
 
 
 def _yours(
@@ -623,19 +639,14 @@ def plan_area(
         # shown when the filing itself is not selected, so a playlist the
         # filing moves is never listed as one of the author's left alone.
         moving = _file_step(cfg, area if area.wants(FILE) else Area(name=AREA), filed_of, remote_of)
-    if area.wants(ROOT) or area.wants(YOURS):
-        # THE ROOT STEP TOO, on the same argument: an empty playlist it
-        # removes is not one of the author's left alone.
-        moving |= _root_step(
-            cfg,
-            area if area.wants(ROOT) else Area(name=AREA),
-            followed,
-            catalogue_of,
-            remote_of,
-            filed_of,
-        )
+    if area.wants(ROOT):
+        _root_step(cfg, area, followed, catalogue_of, remote_of, filed_of)
     if area.wants(YOURS):
-        _yours(cfg, area, labels, catalogue_of, remote_of, moving)
+        # AN EMPTY ROOT PLAYLIST IS THE ROOT STEP'S, not one of the author's
+        # left alone, read off the filing plan so ``--only yours`` makes none
+        # of the root step's reads. Debris is passed over by its name below,
+        # and a legacy folder's playlists are in a folder.
+        _yours(cfg, area, labels, catalogue_of, remote_of, moving | _empties(filed_of))
     area.facts["writes"] = (
         "folders are created and playlists filed and prefixed; at the root, only the "
         "source system's label debris whose tracks are in its label's folder, an empty "

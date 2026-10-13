@@ -1153,7 +1153,10 @@ class TidalAccount:
         and its served name must carry the label batch's suffix, case exactly,
         for debris; for an empty one, it must declare no track and no video,
         both counts readable. Anything else is refused before the delete, so a
-        playlist renamed or added to since the gate was answered stays.
+        playlist renamed, or an empty one given a track, since the gate was
+        answered stays. WHAT IS NOT ASKED HERE is where the playlist sits and
+        whether a debris playlist's tracks are still filed: the caller reads
+        both again before it asks (``organize.root.apply``).
 
         Absent, read back and not retried on :meth:`remove_playlist`'s
         arguments.
@@ -1263,13 +1266,17 @@ class TidalAccount:
                 folder_id=identifier,
             )
         doing = f"remove the folder {identifier}"
-        favourites = self._session.user.favorites
+        # THE CLIENT IS REACHED INSIDE THE CALL, so a session with no user is
+        # translated like any other provider failure. A NOT FOUND ANSWER IS
+        # READ BACK rather than failed: the folder may have gone since the read.
         accepted = self._call(
             doing,
-            lambda: favourites.remove_folders_playlists([identifier], type="folder"),
+            lambda: self._session.user.favorites.remove_folders_playlists(
+                [identifier], type="folder"
+            ),
             retries=0,
         )
-        if accepted is False or accepted is _ABSENT:
+        if accepted is False:
             raise account.provider_failure(
                 RuntimeError("the provider did not accept the folder removal"), doing
             )

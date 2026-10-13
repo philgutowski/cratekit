@@ -1242,9 +1242,9 @@ def test_only_yours_shows_a_refused_rotation_since_it_is_why_the_listing_is_shor
         (account_area.MARKS, ["_mark_steps"]),
         (account_area.FILE, ["_file_step"]),
         (account_area.ROOT, ["_root_step"]),
-        # The filing and the root step are planned for yours too, so what
-        # either takes off the root is not listed (U143).
-        (account_area.YOURS, ["_file_step", "_root_step", "_yours"]),
+        # The filing is planned for yours too, so what it moves is not listed;
+        # the root step is not, since yours reads its empties off the filing.
+        (account_area.YOURS, ["_file_step", "_yours"]),
     ],
 )
 def test_each_account_kind_runs_its_own_builder_and_no_other(seams, monkeypatch, kind, called):
