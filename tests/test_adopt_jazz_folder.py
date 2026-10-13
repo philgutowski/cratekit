@@ -240,6 +240,26 @@ def test_a_jazz_track_in_the_old_playlist_moves_into_its_band_and_leaves_it(leve
     assert plan.left == ()
 
 
+def test_a_partial_jazz_match_already_in_rock_is_filed_in_jazz_and_stays_in_rock():
+    """THE COST OF THE MOVED KEYWORD RULE, pinned so a fix shows up here.
+
+    The old code filed "Acid Jazz" in NonElectronic's default sub, Rock. It
+    routes to Jazz now, and Rock is not a place Jazz competes on, so adoption
+    files it into a Jazz band and the move plans nothing: it sits in both
+    folders, which no verb settles. R-804 named this cost for R&B and chose
+    not to pay it; the author named the rule for Jazz, and the residual U133
+    filed carries it.
+    """
+    rock = NONELEC.sub_by_source.default
+    held = {NONELEC.id: {"t": (rock,)}}
+    tracks = [_scanned("t", energy=5, genre="Acid Jazz")]
+    (entry,) = _adoption(tracks, held).entries
+    assert (entry.bucket, entry.sub) == (JAZZ.id, MED)
+    assert entry.applicable and not entry.held_elsewhere
+    plan = _moves(tracks, held)
+    assert plan.moves == () and plan.left == ()
+
+
 def test_a_classical_track_in_its_style_playlist_is_never_asked_about():
     held = {NONELEC.id: {"t": ("classical",)}}
     plan = _moves([_scanned("t", energy=5, genre="Classical")], held)

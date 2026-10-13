@@ -297,7 +297,8 @@ def test_the_hand_edit_the_hold_names_lets_jazz_in_on_the_next_run():
     """Every line the hold named, out, and the copy loads and takes the bucket.
 
     The catalogue's Jazz still tags Jazz without its row, by the bucket's own
-    word. The copy's keyword rule is the copy's and is left where it was.
+    word. The copy's keyword rule is the copy's and is left where it was, and
+    the plan says so, since the shipped template sends a partial match to Jazz.
     """
     by_hand = _without_jazz_words(before_jazz())
     by_hand = _swap(by_hand, JAZZ_VOCABULARY_ROW, "")
@@ -312,6 +313,47 @@ def test_the_hand_edit_the_hold_names_lets_jazz_in_on_the_next_run():
     assert routing.resolve_bucket(after, "Jazz").bucket_id == "jazz"
     assert routing.suggest_tag(after, "Jazz", source="deezer").tag == "Jazz"
     assert routing.resolve_bucket(after, "Acid Jazz").bucket_id == "non_electronic"
+    (sentence,) = found.keywords
+    assert sentence.startswith("the shipped template's keyword rule 'jazz' sends a partial match")
+    assert "the copy sends a partial match to non_electronic" in sentence
+    assert "repoint it by hand" in sentence
+    assert sentence in upgrade.remedy(found)
+
+
+def test_a_copy_with_no_jazz_keyword_rule_is_told_it_has_none():
+    by_hand = _swap(
+        _without_jazz_words(before_jazz()).replace(JAZZ_VOCABULARY_ROW, "", 1),
+        '[[fuzzy]]\nkeyword = "jazz"\nbucket = "non_electronic"\n\n',
+        "",
+    )
+    (sentence,) = _plan(by_hand).keywords
+    assert "the copy has no rule for it" in sentence
+
+
+def test_a_bucket_this_does_not_add_is_never_told_about_its_keyword_rule():
+    """Held, the bucket is not added, so its rule is not yet a difference."""
+    assert _plan(before_jazz()).keywords == ()
+    assert _plan(_shipped()).keywords == ()
+
+
+def test_one_place_filing_a_word_under_two_spellings_names_both_in_one_sentence():
+    """An alias "Jazz" and a tagging word "jazz" on one bucket are two lines to
+    take out, so the sentence names both rather than sending a person round."""
+    copy = _swap(before_jazz(), JAZZ_SUB, "")
+    copy = _swap(copy, JAZZ_MAP_ROW, "")
+    copy = _swap(copy, JAZZ_VOCABULARY_ROW, "")
+    copy = _swap(
+        copy,
+        'rates = false\nenergy = { enabled = false }\n\n[[bucket.sub]]\nid = "classical"',
+        'rates = false\ntag_aliases = [\n  "jazz",\n]\nenergy = { enabled = false }\n\n'
+        '[[bucket.sub]]\nid = "classical"',
+    )
+    assert _bucket(copy, "non_electronic").tag_aliases == ("jazz",)
+    (held,) = _plan(copy).held
+    assert held.reasons == (
+        "the copy's bucket non_electronic already files 'Jazz', 'jazz'; "
+        "take those words out of it by hand",
+    )
 
 
 def test_a_copy_with_the_words_out_and_the_row_left_does_not_load():
@@ -485,6 +527,21 @@ def test_what_is_held_is_said_and_written_around(configured):
     code, again = drive(VERB)
     assert again["outcome"] == "no_op"
     assert [w["code"] for w in again["warnings"]] == [upgrade_cli.HELD, upgrade_cli.NOTHING_TO_UPGRADE]
+
+
+def test_the_upgrade_that_adds_jazz_says_the_copys_keyword_rule_is_left(configured):
+    copy = _swap(_without_jazz_words(before_jazz()), JAZZ_VOCABULARY_ROW, "")
+    path = write_active(configured, copy)
+    run_id, _ = _asked()
+    _decided(run_id, "approve")
+    code, acted = drive(["--run", run_id, *VERB])
+    assert code == int(ExitCode.OK), acted
+    codes = [w["code"] for w in acted["warnings"]]
+    assert codes == [upgrade_cli.KEYWORD_RULE, upgrade_cli.UPGRADED]
+    assert "'jazz'" in acted["warnings"][0]["message"]
+    after = taxonomy.load_taxonomy(path.read_text(encoding="utf-8"))
+    assert "jazz" in after.bucket_ids()
+    assert [r.bucket for r in after.fuzzy if r.keyword == "jazz"] == ["non_electronic"]
 
 
 def test_an_abort_writes_nothing(configured):

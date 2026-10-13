@@ -543,11 +543,13 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     # a new module, crate taxonomy upgrade (U132). Its three WARNING codes are
     # the literals new to the package; the rest were already declared.
     # Measured on the merged tree; do not bring back a package-wide total tuple.
+    # 2026-10-12, U133: the keyword rule warning joined.
     'cli/verbs/taxonomy.py': [
         'config-unusable',
         'internal-error',
         'taxonomy-nothing-to-upgrade',
         'taxonomy-upgrade-held',
+        'taxonomy-upgrade-keyword-rule',
         'taxonomy-upgraded',
         'utf-8',
     ],

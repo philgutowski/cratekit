@@ -598,10 +598,12 @@ display = "Hip-Hop"
 # Candy. The energy measure was tuned on dance music and is unproven here, as
 # it was for R&B.
 #
-# It takes every word the old sub filed and tagged, and the keyword rule for
-# "jazz" further down, which the author named with the bucket. That is unlike
-# R&B and Hip-Hop, whose keyword rules stayed with the non electronic bucket
-# (R-804, R-941): a partial match such as "Acid Jazz" now files here.
+# It takes every word the old sub filed and tagged. The keyword rule for
+# "jazz" further down points here too, by the author's naming, unlike R&B's
+# and Hip-Hop's, which stayed with the non electronic bucket (R-804, R-941):
+# in this template a partial match such as "Acid Jazz" files here. A copy
+# that took this bucket from `crate taxonomy upgrade` keeps its own keyword
+# rule, which the verb names, until it is repointed by hand.
 [[bucket]]
 id = "jazz"
 display = "Jazz"

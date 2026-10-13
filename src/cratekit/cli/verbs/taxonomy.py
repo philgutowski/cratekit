@@ -40,6 +40,7 @@ APPLY_GATE = "taxonomy.upgrade.apply"
 #: The notes the verb carries on its warnings channel.
 UPGRADED = "taxonomy-upgraded"
 HELD = "taxonomy-upgrade-held"
+KEYWORD_RULE = "taxonomy-upgrade-keyword-rule"
 NOTHING_TO_UPGRADE = "taxonomy-nothing-to-upgrade"
 
 _ORIGIN = ("cli", "verbs", "taxonomy")
@@ -128,7 +129,7 @@ def _held(found: taxonomy_upgrade.Plan) -> list[dict[str, str]]:
             ),
         }
         for one in found.held
-    ]
+    ] + [{"code": KEYWORD_RULE, "message": sentence} for sentence in found.keywords]
 
 
 def backup_path(path: Path, now: datetime) -> Path:

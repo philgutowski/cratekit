@@ -87,23 +87,18 @@ def _old_playlist(bucket):
 
 
 OLD_PLAYLIST = {bucket.id: _old_playlist(bucket) for bucket in PROMOTED_BUCKETS}
-PROMOTED = {
-    v
+_IN_PROMOTED = {
+    v: resolution
     for v in POPULATION
-    if routing.resolve_bucket(TAXONOMY, v).bucket_id in OLD_PLAYLIST
-    and routing.resolve_bucket(TAXONOMY, v).match is not routing.Match.FUZZY
+    if (resolution := routing.resolve_bucket(TAXONOMY, v)).bucket_id in OLD_PLAYLIST
 }
+PROMOTED = {v for v, r in _IN_PROMOTED.items() if r.match is not routing.Match.FUZZY}
 #: The keyword rules the author moved with a promoted bucket, by keyword. Only
 #: Jazz's moved (U133); R&B's and Hip-Hop's stayed (R-804, R-941).
 KEYWORDS_MOVED = {"jazz"}
 #: The words such a rule sends to a promoted bucket. The old code filed them in
 #: the source routed folder by the same keyword, in its default sub.
-MOVED_BY_KEYWORD = {
-    v
-    for v in POPULATION
-    if routing.resolve_bucket(TAXONOMY, v).bucket_id in OLD_PLAYLIST
-    and routing.resolve_bucket(TAXONOMY, v).match is routing.Match.FUZZY
-}
+MOVED_BY_KEYWORD = {v for v, r in _IN_PROMOTED.items() if r.match is routing.Match.FUZZY}
 #: The one word filed in a promoted bucket that the old code filed elsewhere.
 #: The author named it a Hip-Hop word on 2026-10-09 (U118); a keyword rule sent
 #: it to the source routed folder's default sub.
@@ -220,6 +215,8 @@ def test_the_keyword_rules_were_not_repointed_by_the_promotion():
     keyword rules would route such a track to the new bucket while it sits in
     the old folder's default sub, which no verb settles. These are in the
     parity population above, so this names what that population is holding.
+    The author repointed Jazz's rule anyway (U133), and paid that cost there,
+    see the test above and the residual U133 filed; R&B's and Soul's stand.
     """
     partial = [v for v in ROUTING_PARITY_POPULATION if v.lower() in {"soul", "r&b", "soul / r&b"}]
     assert partial, "the corpus no longer carries a partial match to hold this"

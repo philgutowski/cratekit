@@ -86,6 +86,10 @@ class Plan:
     held: tuple[Held, ...]
     before: str
     after: str
+    #: A sentence for each keyword rule the shipped template points at a bucket
+    #: this adds that the copy points elsewhere or lacks. Never changed: a
+    #: keyword rule is an entry the copy holds.
+    keywords: tuple[str, ...] = ()
 
     @property
     def writes(self) -> bool:
@@ -178,16 +182,18 @@ def cut(shipped_text: str, kind: str, entry_id: str) -> str:
 def _words(bucket: taxonomy.Bucket) -> dict[str, list[tuple[str, str]]]:
     """Every source or tag word a bucket answers to, folded, with each spelling and place that files it.
 
-    EVERY PLACE, NOT THE FIRST. One word can be filed by a bucket's alias, a
-    sub's tagging word and a source map row at once, as the non electronic
-    bucket filed "Jazz" before U133. A hold that named only the first sent a
-    person to take out one line, run the verb again, and be held on the next.
+    EVERY PLACE AND EVERY SPELLING, NOT THE FIRST. One word can be filed by a
+    bucket's alias, a sub's tagging word and a source map row at once, as the
+    non electronic bucket filed "Jazz" before U133, and one place can file it
+    under two spellings, an alias "Jazz" and a tagging word "jazz". A hold that
+    named only the first sent a person to take out one line, run the verb
+    again, and be held on the next.
     """
     found: dict[str, list[tuple[str, str]]] = {}
 
     def add(word: str, where: str) -> None:
         places = found.setdefault(word.casefold().strip(), [])
-        if all(known != where for _spelling, known in places):
+        if (word, where) not in places:
             places.append((word, where))
 
     for word in (*bucket.aliases, *bucket.tag_aliases):
@@ -436,7 +442,40 @@ def plan(active_text: str, shipped_text: str, *, template: str) -> Plan:
         held=tuple(held),
         before=active_text,
         after=text,
+        keywords=_keyword_rules(tuple(added[BUCKET]), active, shipped),
     )
+
+
+def _keyword_rules(
+    added: tuple[str, ...], active: taxonomy.Taxonomy, shipped: taxonomy.Taxonomy
+) -> tuple[str, ...]:
+    """The keyword rules the shipped template sends to an added bucket and the copy does not.
+
+    U133 MOVED ONE. The shipped template sends a partial "jazz" match to the
+    Jazz bucket, and a copy made before it sends one to the non electronic
+    bucket. The upgrade adds the bucket and leaves the rule, since it changes
+    no entry the copy holds, so the copy files "Acid Jazz" where it always did
+    while a fresh setup files it in Jazz. Said, so the difference is a choice
+    a person makes by hand rather than one nobody saw.
+    """
+    copy_rules = {rule.keyword.casefold(): rule.bucket for rule in active.fuzzy}
+    out = []
+    for rule in shipped.fuzzy:
+        if rule.bucket not in added:
+            continue
+        there = copy_rules.get(rule.keyword.casefold())
+        if there == rule.bucket:
+            continue
+        sends = (
+            f"sends a partial match to {there}" if there is not None
+            else "has no rule for it"
+        )
+        out.append(
+            f"the shipped template's keyword rule {rule.keyword!r} sends a partial match "
+            f"to the {rule.bucket} bucket this adds, and the copy {sends}; the copy's rule "
+            f"is left as it is, so repoint it by hand to file those tracks in {rule.bucket}"
+        )
+    return tuple(out)
 
 
 # ---------------------------------------------------------------------------
@@ -476,6 +515,7 @@ def remedy(found: Plan) -> str:
         parts.append(f"{one.id} is held: {'; '.join(one.reasons)}")
     if found.held:
         parts.append(f"then run {VERB} again")
+    parts.extend(found.keywords)
     return "; ".join(parts)
 
 
