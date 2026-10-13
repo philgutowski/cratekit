@@ -160,7 +160,9 @@ def test_a_label_folder_with_no_downloaded_playlist_proves_nothing(installed):
 
     row = _rows(world.kept(installed))["debris-1"]
 
-    assert row.action == root.LEFT and "no DOWNLOADED playlist" in row.why
+    # The folder's own reason, not the missing track list a folder with no
+    # DOWNLOADED playlist would also produce: the u143 table's R4 zero.
+    assert row.action == root.LEFT and "folder holds no DOWNLOADED playlist" in row.why
 
 
 def test_a_followed_labels_recorded_folder_is_read_whatever_it_is_called_now(installed):
