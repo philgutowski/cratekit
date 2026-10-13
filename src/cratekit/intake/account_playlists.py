@@ -385,38 +385,51 @@ def sources(cfg: config.Config, pass_name: str) -> tuple[Source, ...]:
     missing`` and ``sync mark`` share, and the refusal comes before the gate,
     since the landing could not say which playlist its files belong to.
     """
+    named = playlist_jobs(cfg, pass_name)
+    with jobs.open_store() as store:
+        return tuple(read_source(store, job, name) for job, name in named)
+
+
+def playlist_jobs(cfg: config.Config, pass_name: str) -> tuple[tuple[jobs.Job, str], ...]:
+    """Each account playlist job of the pass and the account's name for it, no report read.
+
+    IN THE ORDER THE SWEEP QUEUED THEM, which the store lists newest first. The
+    refill (U134) finds every INBOX playlist from these before it reads one
+    report, so a playlist it must refuse is refused before the account's
+    tracks are read.
+    """
+    queued = sorted(
+        batch_name.pass_jobs(cfg, pass_name), key=lambda job: (job.created, job.job_id)
+    )
+    return tuple((job, name) for job in queued if (name := _named(job)) is not None)
+
+
+def account_of(job: jobs.Job) -> str:
+    """The account's identifier for the playlist the job was queued for."""
+    return str((job.payload or {}).get(intake_cli.SOURCE) or "")
+
+
+def read_source(store, job: jobs.Job, name: str) -> Source:
+    """One account playlist job as a :class:`Source`, every report in item order."""
     from cratekit.intake import missing_cli
 
-    found: list[Source] = []
-    with jobs.open_store() as store:
-        # IN THE ORDER THE SWEEP QUEUED THEM, which the store lists newest first.
-        queued = sorted(
-            batch_name.pass_jobs(cfg, pass_name), key=lambda job: (job.created, job.job_id)
-        )
-        for job in queued:
-            name = _named(job)
-            if name is None:
-                continue
-            reports = missing_cli.job_reports(store, job)
-            found.append(
-                Source(
-                    playlist_id=str((job.payload or {}).get(intake_cli.SOURCE) or ""),
-                    name=name,
-                    job_id=job.job_id,
-                    # EVERY REPORT, IN ITEM ORDER, which is the order the sweep
-                    # froze the account playlist's tracks in (U128).
-                    rows=tuple(
-                        Row(
-                            position=position,
-                            state=str(report.get("state") or ""),
-                            wanted=intake_cli.thawed(report["track"]),
-                            paths=tuple(str(path) for path in (report.get("paths") or ())),
-                        )
-                        for position, report in enumerate(reports, start=1)
-                    ),
-                )
+    reports = missing_cli.job_reports(store, job)
+    return Source(
+        playlist_id=account_of(job),
+        name=name,
+        job_id=job.job_id,
+        # EVERY REPORT, IN ITEM ORDER, which is the order the sweep froze the
+        # account playlist's tracks in (U128).
+        rows=tuple(
+            Row(
+                position=position,
+                state=str(report.get("state") or ""),
+                wanted=intake_cli.thawed(report["track"]),
+                paths=tuple(str(path) for path in (report.get("paths") or ())),
             )
-    return tuple(found)
+            for position, report in enumerate(reports, start=1)
+        ),
+    )
 
 
 def mirrored(cfg: config.Config, pass_name: str) -> frozenset[str]:
@@ -701,6 +714,7 @@ __all__ = [
     "Member",
     "Row",
     "Source",
+    "account_of",
     "carried_hearts",
     "claims",
     "hearted",
@@ -710,7 +724,9 @@ __all__ = [
     "mirrored",
     "named",
     "pending_names",
+    "playlist_jobs",
     "prefer_dated",
+    "read_source",
     "resolve_owned",
     "sources",
     "split",

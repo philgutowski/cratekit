@@ -2618,6 +2618,9 @@ def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recor
         # U111. The INBOX rotation: playlist nodes moved and removed behind one
         # capture, recorded under the intake tree.
         "intake/rotate.py::apply_rotation",
+        # U134. The INBOX refill: memberships of playlists under the intake
+        # root behind one capture, recorded under the intake tree.
+        "intake/refill.py::apply_refill",
         # U121. The set's permanent playlist written for a set already landed:
         # one playlist and its memberships behind one capture, recorded under
         # the declared INSPIRATION folder's own id.
@@ -2694,6 +2697,7 @@ def test_each_commit_helper_records_the_commit():
         ("write/metadata_cli.py", "_record_mytags_commit"),
         ("intake/native.py", "_record_landing_commit"),
         ("intake/rotate.py", "_record_rotation_commit"),
+        ("intake/refill.py", "_record_refill_commit"),
         ("favorites/backfill.py", "_record_backfill_commit"),
     ):
         tree = ast.parse((src / relative).read_text())
