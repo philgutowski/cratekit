@@ -1197,3 +1197,17 @@ def test_a_registry_the_profile_does_not_use_does_not_refuse_the_filing(world, m
 
     assert code == int(ExitCode.OK), envelope
     assert _steps(envelope, account_area.AREA)[account_area.FILE]["state"] == "planned"
+
+
+def test_only_yours_shows_a_refused_rotation_since_it_is_why_the_listing_is_short(seams):
+    """No tree has cut over here, so the rotation refuses, and says so under yours."""
+    cfg, _fake, _held = seams
+    session.record_acknowledgment(cfg, terminal=lambda: True)
+
+    collection.reset_cache()
+    code, envelope = drive([*VERB, "--report", "--only", "yours"])
+
+    assert code == int(ExitCode.OK), envelope
+    steps = _steps(envelope, rekordbox.AREA)
+    assert list(steps) == [rekordbox.ROTATE, rekordbox.YOURS]
+    assert steps[rekordbox.ROTATE]["state"] == "refused"
