@@ -881,8 +881,8 @@ a second writer. Treat "could not read" as unknown, not as safe.
 ### The backup acknowledgment
 
 Before any write, Cratekit wants proof that you have a current backup, and the
-proof has to come from you. The acknowledgment lasts twelve hours. A session
-working for you cannot mint one, and answering a gate is not the same act.
+proof has to come from you, or from the ages themselves. The acknowledgment
+lasts twelve hours. Answering a gate is not the same act as minting it.
 From a terminal you are sitting at:
 
 ```bash
@@ -894,6 +894,20 @@ crate --run RUN_ID session ack
 The gate asks whether the database and the music files are backed up, so run
 `crate doctor` first and read the two backup ages. If a verb refuses because the
 acknowledgment is missing or has expired, this is the fix.
+
+A session working for you may answer it as the actor `session`, with no
+terminal, but only on young backups:
+
+```bash
+crate run decide RUN_ID session.ack.backup acknowledged --actor session
+crate --run RUN_ID session ack
+```
+
+The verb then checks the ages itself and mints only while both portions are
+under five days old. An older portion, or one with no completion recorded, is
+refused as `backup-acknowledgment-backup-too-old` and named; run a backup, or
+acknowledge from a terminal yourself. The acknowledgment records which rule
+minted it, `session-ages` or `terminal`, and who answered the gate.
 
 ## When something refuses or stalls
 
