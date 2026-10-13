@@ -47,7 +47,7 @@ description = "A portion's age counts as known whatever its state says, so a com
 file = "src/cratekit/core/session.py"
 surface = "user"
 old = '''
-        if entry.state != "known" or entry.age_seconds is None:
+        if entry.state != backup_facts.AgeState.KNOWN or entry.age_seconds is None:
 '''
 new = '''
         if entry.age_seconds is None:
@@ -173,4 +173,16 @@ old = '''
 '''
 new = '''
         "backup-acknowledgment-backup-too-old": ExitCode.DECISION_REQUIRED,
+'''
+
+[[rows]]
+id = "S13_remedy_points_back_at_ack"
+description = "The too old refusal tells a person to acknowledge again rather than to run a backup"
+file = "src/cratekit/core/session.py"
+surface = "user"
+old = '''
+                remedy=Remedy.RUN_BACKUP,
+'''
+new = '''
+                remedy=Remedy.ACKNOWLEDGE_BACKUP,
 '''
