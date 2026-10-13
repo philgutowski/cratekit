@@ -554,6 +554,9 @@ class SetPlaylistPlan:
     playlist_id: str = ""
     #: Warning when the naming day fell back to the landing day (U136), or None.
     posted_fallback: dict[str, str] | None = None
+    #: The ``--posted`` string the plan was made with, so ``apply_alone`` can
+    #: re-plan without flipping the fallback bit when the day equals landing.
+    posted: str | None = None
     digest: str = ""
 
 
@@ -895,6 +898,7 @@ def plan_for_landing(
             made_on=made,
             playlist_id=recorded[0] if recorded else "",
             posted_fallback=None if recorded or frozen_name(job) else fallback,
+            posted=posted,
         )
     )
 
@@ -953,6 +957,7 @@ def plan_for_backfill(
             made_on=made,
             playlist_id=recorded[0] if recorded else "",
             posted_fallback=None if recorded or frozen_name(job) else fallback,
+            posted=posted,
         )
     )
 
@@ -1262,7 +1267,7 @@ def apply_alone(
     # plan the person approved was read on a handle that has since closed,
     # and the folder, the collection or the library may have moved since.
     again = plan_for_backfill(
-        cfg, db, declared, job, words, reports, on=plan.made_on
+        cfg, db, declared, job, words, reports, on=plan.made_on, posted=plan.posted
     )
     if again.digest != plan.digest:
         raise refuse(

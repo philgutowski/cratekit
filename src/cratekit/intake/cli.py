@@ -949,10 +949,11 @@ def intake_set(ctx) -> Envelope:
     freezes, so the honest zero says what it cost and a partial run says how
     partial.
 
-    A MIX URL IS FETCHED AFTER THE ACCOUNT GATE WHEN THE NAME FLAGS ALREADY
-    NAME THE SET, AND BEFORE RECOGNITION (U104). When the name must come from
-    the page, the fetch runs first so the page can name the set, then the
-    account gate, then recognition. The job freezes the ADDRESS as its source,
+    A MIX URL IS FETCHED AFTER THE ACCOUNT GATE WHEN ``--posted`` AND THE
+    NAME FLAGS ALREADY NAME THE SET, AND BEFORE RECOGNITION (U104, U136).
+    When the name or the posted day must come from the page, the fetch runs
+    first so the page can name the set, then the account gate, then
+    recognition. The job freezes the ADDRESS as its source,
     not the scratch file, which is removed when the ``with`` block ends: the
     worker reads nothing but the job, and a resume returns above this branch.
     A mix download is not cached across runs the way recognition answers are.
@@ -980,15 +981,19 @@ def intake_set(ctx) -> Envelope:
         set_name = getattr(ctx.args, "set_name", None)
         set_date = getattr(ctx.args, "set_date", None)
         posted = getattr(ctx.args, "posted", None)
-        # Name from the flags alone when every word is given, so the account
-        # gate can fire before recognition and before any mix download.
+        # Name from the flags alone when every word is given AND the day is
+        # locked (--posted), so the account gate can fire before recognition
+        # and before any mix download. When --posted is absent the page's
+        # upload_date must be read before the name is frozen (U136), so the
+        # gate waits until after the fetch even when the three word flags
+        # already name the set.
         early = _set_playlist_name(
             {}, dj=dj, set_name=set_name, set_date=set_date, posted=posted
         )
         account_notes: tuple = ()
         option: str | None = None
         gate_asked = False
-        if early.name:
+        if early.name and posted is not None:
             account_notes, option = _ask_account_gate(ctx, name=early.name)
             gate_asked = True
         recognize.assert_recognition_ready()
@@ -998,7 +1003,7 @@ def intake_set(ctx) -> Envelope:
         with _recording(cfg, source, local, ctx.progress) as held:
             playlist = (
                 early
-                if early.name
+                if early.name and posted is not None
                 else _set_playlist_name(
                     held.page,
                     dj=dj,

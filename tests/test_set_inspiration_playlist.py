@@ -477,6 +477,59 @@ def test_a_landing_with_a_page_date_names_the_playlist_for_the_posted_day(
     assert _playlists_named(cfg, NAME) == []
 
 
+def test_a_landing_honours_posted_on_a_pre_freeze_job(native_library, silence):
+    """U136: intake land --set JOB --posted must reach plan_for_landing."""
+    cfg, _root_id = native_library
+    cutover_fixtures.add_folder(cfg, FOLDER)
+    job_id = set_job(cfg, ("One",))
+    _stage(cfg, silence, "One")
+    code, acted, refused = _two_acts(
+        _land("--set", job_id, *WORDS, "--posted", "2026-05-03")
+    )
+    assert code == int(ExitCode.OK), acted
+    assert refused["cause"]["detail"]["shown"]["set playlist"] == POSTED_NAME
+    assert _playlists_named(cfg, POSTED_NAME)
+    assert _playlists_named(cfg, NAME) == []
+
+
+def test_posted_equal_to_landing_day_on_a_pageless_job_is_not_decision_stale(
+    native_library, silence
+):
+    """U136: --posted equal to today must not flip posted_fallback on re-plan."""
+    cfg, _root_id = native_library
+    cutover_fixtures.add_folder(cfg, FOLDER)
+    _owned(cfg, silence, "Three", content_id="held-3")
+    job_id = set_job(cfg, ("Three",))
+    code, acted, refused = _two_acts_approve(
+        _inspiration(job_id, *WORDS, "--posted", "2026-10-09")
+    )
+    assert code == int(ExitCode.OK), acted
+    assert acted["outcome"] != "error"
+    assert refused["cause"]["detail"]["shown"]["set playlist"] == NAME
+    assert _playlists_named(cfg, NAME)
+    assert not any(w["code"] == set_playlist.POSTED_FALLBACK for w in acted["warnings"])
+
+
+def test_a_backfill_a_week_later_adds_to_a_playlist_pre_made_under_the_posted_name(
+    native_library, silence, monkeypatch
+):
+    """Driven R-949: playlist pre-made under the posted name; a week on, one playlist."""
+    cfg, _root_id = native_library
+    folder_id = cutover_fixtures.add_folder(cfg, FOLDER)
+    _owned(cfg, silence, "Three", content_id="held-3")
+    job_id = set_job(cfg, ("Three",), page=PAGE)
+    _make_playlist(cfg, POSTED_NAME, under=folder_id)
+    monkeypatch.setattr(batch_name, "today", lambda: date(2026, 10, 16))
+    code, acted, refused = _two_acts_approve(_inspiration(job_id, *WORDS))
+    assert code == int(ExitCode.OK), acted
+    assert refused["cause"]["detail"]["shown"]["set playlist"] == POSTED_NAME
+    assert len(_playlists_named(cfg, POSTED_NAME)) == 1
+    assert _playlists_named(cfg, "10_16_26 Probe DJ Live at Probe 5-26") == []
+    assert acted["data"]["totals"]["added"] == 1
+    (item,) = [i for i in acted["data"]["items"] if i.get("playlist") == POSTED_NAME]
+    assert item.get("playlist_created") is False
+
+
 def test_a_landing_creates_the_declared_folder_at_the_root_when_the_library_lacks_it(
     native_library, silence
 ):

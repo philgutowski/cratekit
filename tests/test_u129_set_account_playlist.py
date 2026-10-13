@@ -115,6 +115,37 @@ def test_intake_set_declares_the_account_gate_and_remote_write():
     )
 
 
+def test_intake_set_with_all_three_words_freezes_the_page_upload_date(
+    account, recognised, monkeypatch
+):
+    """U136: --dj --set-name --set-date alone must not freeze today's date when
+    the page carries upload_date. The Signal set run hit this: early named
+    before the fetch, kept early, and landed under 10_12_26."""
+    cfg, _fake, held = account
+    three_tracks(recognised)
+    monkeypatch.setattr(fetch, "fetcher", lambda: PageWritingFetcher(_page()))
+    monkeypatch.setattr(set_playlist, "today", lambda: date(2026, 10, 12))
+
+    argv = [
+        "intake",
+        "set",
+        URL,
+        "--dj",
+        "Probe",
+        "--set-name",
+        "Friday Night Mix",
+        "--set-date",
+        "2026-05",
+    ]
+    code, done = _two_acts(argv, ACCOUNT_GATE)
+    assert code == int(ExitCode.OK), done
+    job = job_of(done["data"]["job_id"])
+    assert job.payload[intake_cli.PLAYLIST_NAME] == NAME
+    assert "10_12_26" not in job.payload[intake_cli.PLAYLIST_NAME]
+    assert not any(w["code"] == set_playlist.POSTED_FALLBACK for w in done["warnings"])
+    assert held.created == [NAME]
+
+
 def test_a_set_intake_plans_and_makes_the_account_playlist(account, recognised, monkeypatch):
     cfg, _fake, held = account
     three_tracks(recognised)

@@ -1118,7 +1118,14 @@ def _land_native(
         if set_job is None or words is None:
             return None
         made = set_playlist.plan_for_landing(
-            cfg, db, declared, set_job, words, reports, files=files
+            cfg,
+            db,
+            declared,
+            set_job,
+            words,
+            reports,
+            files=files,
+            posted=getattr(ctx.args, "posted", None),
         )
         set_planned.append(made)
         return made

@@ -1,0 +1,292 @@
+name = "u136"
+pass_kind = "light"
+
+# Author table for U136 posted-day naming. Cap 25. Measured on macOS by the
+# watcher; commit the posted table byte for byte.
+
+[[rows]]
+id = "A1_form_hardcodes_today"
+description = "set_playlist_form drops the day argument and hardcodes today, so a backfill twins"
+file = "src/cratekit/intake/batch_name.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''
+    return f"{set_day_word(day)} {dj} {name} {set_month_word(month)}"
+'''
+new = '''
+    return f"{set_day_word(today())} {dj} {name} {set_month_word(month)}"
+'''
+
+[[rows]]
+id = "A2_posted_ignored"
+description = "naming_day ignores --posted and always prefers the page date"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''
+    if posted:
+        found = _POSTED_FLAG.match(posted.strip())
+'''
+new = '''
+    if False and posted:
+        found = _POSTED_FLAG.match(posted.strip())
+'''
+
+[[rows]]
+id = "A3_page_ignored"
+description = "naming_day ignores the page upload_date and always falls back to landing"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''
+    raw = (page_upload_date or "").strip()
+    if raw:
+'''
+new = '''
+    raw = (page_upload_date or "").strip()
+    if False and raw:
+'''
+
+[[rows]]
+id = "A4_fallback_warning_dropped"
+description = "naming_day returns no warning when falling back to the landing day"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''
+    day = landing or today()
+    return day, {
+        "code": POSTED_FALLBACK,
+        "message": (
+            f"the set's page named no upload date, so its playlists open with the "
+            f"landing day {batch_name.set_day_word(day)}; pass --posted YYYY-MM-DD "
+            f"to name another day"
+        ),
+    }
+'''
+new = '''
+    day = landing or today()
+    return day, None
+'''
+
+[[rows]]
+id = "A5_landing_uses_today"
+description = "plan_for_landing names with today even when the page has upload_date"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''
+    members, left = _members(
+        reports, collection=_Collection(cfg, db), downloaded=downloaded, owned_again=None
+    )
+    return _digested(
+        SetPlaylistPlan(
+            job_id=job.job_id,
+            name=recorded[1] if recorded else (frozen_name(job) or playlist_name(words, on=made)),
+'''
+new = '''
+    members, left = _members(
+        reports, collection=_Collection(cfg, db), downloaded=downloaded, owned_again=None
+    )
+    return _digested(
+        SetPlaylistPlan(
+            job_id=job.job_id,
+            name=recorded[1] if recorded else (frozen_name(job) or playlist_name(words, on=today())),
+'''
+
+[[rows]]
+id = "A6_job_match_today_only"
+description = "_job_for_inspiration_name matches only a name built from today"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+tests = ["tests/test_u129_set_account_playlist.py"]
+old = '''
+            if set_name(set_playlist.playlist_name(words, on=posted)) == wanted:
+'''
+new = '''
+            if set_name(set_playlist.playlist_name(words, on=set_playlist.today())) == wanted:
+'''
+
+[[rows]]
+id = "A7_month_zero_padded"
+description = "set_day_word zero-pads the month, disagreeing with the folder examples"
+file = "src/cratekit/intake/batch_name.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''
+    return f"{day.month}_{day.day:02d}_{day.year % 100:02d}"
+'''
+new = '''
+    return f"{day.month:02d}_{day.day:02d}_{day.year % 100:02d}"
+'''
+
+[[rows]]
+id = "A8_inbox_uses_posted"
+description = "batch_name.readable opens with a posted marker instead of the landing day"
+file = "src/cratekit/intake/batch_name.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''
+    return free(cfg, f"{today().isoformat()} {words}")
+'''
+new = '''
+    return free(cfg, f"posted-{today().isoformat()} {words}")
+'''
+
+[[rows]]
+id = "A9_pin_ignored"
+description = "plan_for_backfill ignores on= and re-resolves from today when posted is absent"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''
+    if on is not None and posted is None:
+        made = on
+        _resolved, fallback = naming_day_for(job, landing=on)
+        if _resolved != on:
+            fallback = None
+    else:
+        made, fallback = naming_day_for(job, posted=posted, landing=today())
+    folder_id, node = folder_for(db, declared)
+    recorded = recorded_playlist(cfg, db, job.job_id, folder_id)
+    library = _LibraryView(cfg)
+'''
+new = '''
+    if on is not None and posted is None:
+        made, fallback = naming_day_for(job, landing=today())
+    else:
+        made, fallback = naming_day_for(job, posted=posted, landing=today())
+    folder_id, node = folder_for(db, declared)
+    recorded = recorded_playlist(cfg, db, job.job_id, folder_id)
+    library = _LibraryView(cfg)
+'''
+
+[[rows]]
+id = "A10_posted_accepts_month"
+description = "naming_day accepts YYYY-MM as --posted"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''
+_POSTED_FLAG = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
+'''
+new = '''
+_POSTED_FLAG = re.compile(r"^(\d{4})-(\d{2})(?:-(\d{2}))?$")
+'''
+
+[[rows]]
+id = "A11_early_freeze_keeps_today"
+description = "intake set keeps the early name whenever the three words name the set"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/test_u129_set_account_playlist.py"]
+old = '''
+        if early.name and posted is not None:
+            account_notes, option = _ask_account_gate(ctx, name=early.name)
+            gate_asked = True
+'''
+new = '''
+        if early.name:
+            account_notes, option = _ask_account_gate(ctx, name=early.name)
+            gate_asked = True
+'''
+
+[[rows]]
+id = "A11b_early_keep"
+description = "intake set keeps early after fetch whenever early has a name"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/test_u129_set_account_playlist.py"]
+old = '''
+            playlist = (
+                early
+                if early.name and posted is not None
+                else _set_playlist_name(
+'''
+new = '''
+            playlist = (
+                early
+                if early.name
+                else _set_playlist_name(
+'''
+
+[[rows]]
+id = "A12_land_drops_posted"
+description = "intake land ignores --posted when planning the set playlist"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''
+            files=files,
+            posted=getattr(ctx.args, "posted", None),
+        )
+'''
+new = '''
+            files=files,
+        )
+'''
+
+[[rows]]
+id = "A13_apply_alone_drops_posted"
+description = "apply_alone re-plans without posted, so a posted day equal to landing flips fallback"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''
+    again = plan_for_backfill(
+        cfg, db, declared, job, words, reports, on=plan.made_on, posted=plan.posted
+    )
+'''
+new = '''
+    again = plan_for_backfill(
+        cfg, db, declared, job, words, reports, on=plan.made_on
+    )
+'''
+
+[[rows]]
+id = "A14_backfill_uses_today"
+description = "plan_for_backfill names with today even when the page has upload_date"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py"]
+old = '''
+            name=recorded[1] if recorded else (frozen_name(job) or playlist_name(words, on=made)),
+            tree_id=node.id,
+            folder_display=node.display,
+            folder_id=folder_id,
+            words=words,
+            members=members,
+            left=left,
+            made_on=made,
+            playlist_id=recorded[0] if recorded else "",
+            posted_fallback=None if recorded or frozen_name(job) else fallback,
+            posted=posted,
+        )
+    )
+
+
+# ---------------------------------------------------------------------------
+# The screen
+# ---------------------------------------------------------------------------
+'''
+new = '''
+            name=recorded[1] if recorded else (frozen_name(job) or playlist_name(words, on=today())),
+            tree_id=node.id,
+            folder_display=node.display,
+            folder_id=folder_id,
+            words=words,
+            members=members,
+            left=left,
+            made_on=made,
+            playlist_id=recorded[0] if recorded else "",
+            posted_fallback=None if recorded or frozen_name(job) else fallback,
+            posted=posted,
+        )
+    )
+
+
+# ---------------------------------------------------------------------------
+# The screen
+# ---------------------------------------------------------------------------
+'''
+
