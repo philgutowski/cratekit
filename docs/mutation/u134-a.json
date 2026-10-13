@@ -1,0 +1,164 @@
+{
+  "name": "u134-a",
+  "pass_kind": "light",
+  "branch": "relay/307",
+  "head": "c11ec06c",
+  "when": "2026-10-13 01:08 UTC",
+  "valid": true,
+  "invalid_reason": "in progress",
+  "baseline_collected": 13735,
+  "baseline_exit": 0,
+  "pytest_runs": 7,
+  "state_guarded": "~/Library/Application Support/cratekit (408200 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/refill.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/refill.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "b7e5d308889f3671",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 13735,
+    "baseline_collected": 13735,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "A1_outside_inbox",
+      "description": "Drop the refusal of a recorded mirror that is live outside INBOX",
+      "file": "src/cratekit/intake/refill.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2f1e9a10ed9c4f86",
+      "subset": [
+        "tests/test_inbox_refill.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.refill",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_inbox_refill.py::test_a_recorded_playlist_moved_outside_inbox_is_refused_by_name_before_any_report_is_read"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if str(mirror.ID) not in under:",
+      "new": "        if False:"
+    },
+    {
+      "id": "A2_mirror_is_first",
+      "description": "Take the newest recorded entry of the pass as the mirror instead of the oldest",
+      "file": "src/cratekit/intake/refill.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a88a561186388bad",
+      "subset": [
+        "tests/test_inbox_refill.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.refill",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_inbox_refill.py::test_a_same_pass_twin_recorded_since_u128_is_not_taken_for_the_mirror"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        mirror = _live_playlist(db, recorded[0])",
+      "new": "        mirror = _live_playlist(db, recorded[-1])"
+    },
+    {
+      "id": "A3_gone_listed",
+      "description": "Fall through to the name match when the recorded mirror is gone",
+      "file": "src/cratekit/intake/refill.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ae690dbfc83a3888",
+      "subset": [
+        "tests/test_inbox_refill.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.refill",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_inbox_refill.py::test_a_recorded_playlist_that_is_gone_is_listed_and_no_name_is_guessed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if recorded:\n        mirror = _live_playlist(db, recorded[0])",
+      "new": "    if recorded and _live_playlist(db, recorded[0]) is not None:\n        mirror = _live_playlist(db, recorded[0])"
+    },
+    {
+      "id": "A4_others_excluded",
+      "description": "Let the name match take a playlist a record gives another pass",
+      "file": "src/cratekit/intake/refill.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5dedb5b05a9c860e",
+      "subset": [
+        "tests/test_inbox_refill.py"
+      ],
+      "subset_reason": "test files importing cratekit.intake.refill",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 19,
+      "baseline_collected": 19,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_inbox_refill.py::test_the_name_is_not_asked_of_a_playlist_a_record_gives_another_pass"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if key not in others",
+      "new": "            if True"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "A12_started_order",
+      "description": "Sort landing records by session id alone, not by when they started",
+      "reason": "a timing row: two landings in one second sort by a random tail, so its deaths are a pass rate, not a count; measured by hand in the first drive as one failure in two runs of the twin test before the fix, and four of four green after it"
+    }
+  ]
+}

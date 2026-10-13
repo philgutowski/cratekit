@@ -1,0 +1,101 @@
+name = "u134-a"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_outside_inbox"
+description = "Drop the refusal of a recorded mirror that is live outside INBOX"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+old = '''        if str(mirror.ID) not in under:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "A2_mirror_is_first"
+description = "Take the newest recorded entry of the pass as the mirror instead of the oldest"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+old = '''        mirror = _live_playlist(db, recorded[0])'''
+new = '''        mirror = _live_playlist(db, recorded[-1])'''
+
+[[rows]]
+id = "A3_gone_listed"
+description = "Fall through to the name match when the recorded mirror is gone"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+old = '''    if recorded:
+        mirror = _live_playlist(db, recorded[0])'''
+new = '''    if recorded and _live_playlist(db, recorded[0]) is not None:
+        mirror = _live_playlist(db, recorded[0])'''
+
+[[rows]]
+id = "A4_others_excluded"
+description = "Let the name match take a playlist a record gives another pass"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+old = '''            if key not in others'''
+new = '''            if True'''
+
+[[rows]]
+id = "A5_unreadable"
+description = "Trust a name match while a session record could not be read"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+old = '''        if unreadable:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "A6_pre_u128_exact_name"
+description = "Match a pre U128 entry by pass alone, so the Name 2 twin counts"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+old = '''    return entry.account == account if entry.account else entry.name == name'''
+new = '''    return entry.account == account if entry.account else True'''
+
+[[rows]]
+id = "A7_pass_matched"
+description = "Drop the pass comparison, so another pass's record names the mirror"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+old = '''    if entry.pass_name != pass_name:
+        return False
+'''
+new = ""
+
+[[rows]]
+id = "A8_only_what_it_lacks"
+description = "Plan every distinct member as an add whatever the playlist holds"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+old = '''if one not in present)'''
+new = '''if True)'''
+
+[[rows]]
+id = "A9_replan_digest"
+description = "Drop the apply's digest comparison against the plan taken again"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+old = '''    if again.digest != plan.digest:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A10_shared_playlist"
+description = "Let two jobs share one playlist unless three do"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+old = '''counts[one.playlist_id] > 1'''
+new = '''counts[one.playlist_id] > 2'''
+
+[[rows]]
+id = "A11_pass_unknown"
+description = "Drop the refusal of a pass with no account playlist job"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+old = '''    if not named:
+        raise _pass_unknown(cfg, pass_name)
+'''
+new = ""
+
+[[dropped]]
+id = "A12_started_order"
+description = "Sort landing records by session id alone, not by when they started"
+reason = "a timing row: two landings in one second sort by a random tail, so its deaths are a pass rate, not a count; measured by hand in the first drive as one failure in two runs of the twin test before the fix, and four of four green after it"

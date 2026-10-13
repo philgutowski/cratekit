@@ -1960,6 +1960,13 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # fixture's database is given, and the verb plans INBOX as empty and
         # still asks. The bridge refusal is driven in tests/test_inbox_rotate.py.
         "inbox.rotate": _intake_cut_over,
+        # U134. LAZY, for the rotation's reason: the refill refuses a bridge
+        # tree by name, so the sample cuts the intake tree over and runs one
+        # account playlist job of a pass. No INBOX playlist answers it on the
+        # fixture, so the plan writes nothing, the explicit gate is still
+        # asked over it, and the verb ends NO_OP. The writing path is driven
+        # in tests/test_inbox_refill.py.
+        "inbox.refill": _finished_account_playlist_pass_on_a_native_tree,
         # U112. No argument. Its database area reads the backup acknowledgment
         # first, see ACKNOWLEDGED_BEFORE_THE_GATE; on this fixture every step
         # either plans nothing or refuses on its own, and both areas still ask.
@@ -2087,6 +2094,41 @@ def _a_source_playlist() -> list[str]:
     finally:
         rb_writer.close_db(handle)
     return []
+
+
+def _finished_account_playlist_pass_on_a_native_tree() -> list[str]:
+    """The intake tree native, and one account playlist job of a pass run to the end.
+
+    Answers ``--pass`` and the pass's name.
+    """
+    from cratekit.acquire import match
+    from cratekit.cli import jobs as cli_jobs
+    from cratekit.core import jobs
+    from cratekit.intake import cli as intake_cli
+    from cratekit.intake import missing_cli
+    from cratekit.sync import playlists
+    from tests.cli_drive import drive as drive_json
+
+    _intake_cut_over()
+    cfg = config.load()
+    run_id = "2026-10-03T101500Z-cd34"
+    with jobs.open_store() as store:
+        job = intake_cli.queue_playlist(
+            store,
+            cfg,
+            handler_key="intake.playlist",
+            reference="pl-a",
+            tracks={
+                "tid-one": {"artist": "Probe", "title": "One", "origin": match.TIDAL, "ref": "tid-one"}
+            },
+            run_id=run_id,
+            source_id=playlists.SOURCE_ID,
+            name="Sunset Warmup",
+        )
+    code, resumed = drive_json(cli_jobs.argv_for(job))
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), resumed
+    return ["--pass", missing_cli.synced_name(run_id)]
 
 
 def _finished_set_job_on_a_native_tree() -> list[str]:
@@ -2420,6 +2462,10 @@ def _assert_gate_reach(entry: registry.Entry, reached: list[str]) -> None:
 #: That each of these refuses without one is driven in its own suite, which
 #: the guard below holds this table to.
 ACKNOWLEDGED_BEFORE_THE_GATE = {
+    "inbox.refill": (
+        "tests/test_inbox_refill.py::"
+        "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
+    ),
     "adopt.move": (
         "tests/test_adopt_move.py::"
         "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"

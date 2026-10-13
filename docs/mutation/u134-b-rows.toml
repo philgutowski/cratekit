@@ -1,0 +1,83 @@
+name = "u134-b"
+pass_kind = "light"
+
+[[rows]]
+id = "B1_read_back_missing"
+description = "Read back vouches for a commit whatever it is missing"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+old = '''        if missing or (filled and not in_order):'''
+new = '''        if filled and not in_order:'''
+
+[[rows]]
+id = "B1c_composite_short_write"
+description = "What B1 holds: the write adds all but the first planned membership"
+file = "src/cratekit/intake/refill.py"
+pairs_with = "B1_read_back_missing"
+old = '''                    rb_writer.add_memberships(db, playlist, target.adds)'''
+new = '''                    rb_writer.add_memberships(db, playlist, target.adds[1:])'''
+
+[[rows]]
+id = "B2_read_back_order"
+description = "Read back vouches for a filled playlist in any order"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+old = '''        if missing or (filled and not in_order):'''
+new = '''        if missing:'''
+
+[[rows]]
+id = "B2c_composite_reversed_write"
+description = "What B2 holds: the write adds the planned memberships in reverse"
+file = "src/cratekit/intake/refill.py"
+pairs_with = "B2_read_back_order"
+old = '''                    rb_writer.add_memberships(db, playlist, target.adds)'''
+new = '''                    rb_writer.add_memberships(db, playlist, target.adds[::-1])'''
+
+[[rows]]
+id = "B3_record_only_when_added"
+description = "Record a tree commit on a refill that added nothing"
+file = "src/cratekit/intake/refill.py"
+surface = "maintainer"
+old = '''    if not count:
+        return
+'''
+new = ""
+
+[[rows]]
+id = "B4_record_on_success"
+description = "Drop the success path's record of the commit"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+old = '''        _record_refill_commit(record, plan, added, cfg)
+        convergence.record_fingerprint(cfg, db)'''
+new = '''        convergence.record_fingerprint(cfg, db)'''
+
+[[rows]]
+id = "B5_no_writes_no_op"
+description = "Apply a plan that adds nothing instead of ending no_op"
+file = "src/cratekit/intake/refill_cli.py"
+surface = "user"
+old = '''    if not plan.writes:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B6_ack_before_gate"
+description = "Drop the backup acknowledgment read before the plan and the gate"
+file = "src/cratekit/intake/refill_cli.py"
+surface = "user"
+old = '''    session.assert_backup_acknowledged(cfg)
+'''
+new = ""
+
+[[rows]]
+id = "B7_again_action"
+description = "Show a repeated track's second row as held, not again"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+old = '''            if one.content_id in seen:'''
+new = '''            if False:'''
+
+[[dropped]]
+id = "B8_name_match_skips_folders"
+description = "Let the name match take a folder under INBOX named as the account playlist"
+reason = "ranked below the cap: no fixture or live INBOX holds a folder carrying an account playlist's name, and the native landing's own inbox_held names folders the same way"
