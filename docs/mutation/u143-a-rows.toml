@@ -1,0 +1,52 @@
+name = "u143-a"
+pass_kind = "light"
+
+[[rows]]
+id = "R1_missing_tracks"
+description = "Debris: read no track as missing, so a copy holding a track the label folder lacks is planned for removal"
+file = "src/cratekit/organize/root.py"
+surface = "user"
+old = '''        missing = [one for one in dict.fromkeys(tracks) if one not in held]'''
+new = '''        missing = []'''
+
+[[rows]]
+id = "R2_short_read"
+description = "Debris: drop the read short of the declared count check"
+file = "src/cratekit/organize/root.py"
+surface = "user"
+old = '''        if len(tracks) != declared:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "R3_no_count"
+description = "Debris: drop the no listed count check that comes before any read"
+file = "src/cratekit/organize/root.py"
+surface = "user"
+old = '''    if not isinstance(declared, int) or isinstance(declared, bool):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "R4_no_downloaded"
+description = "Debris: drop the label folder with no DOWNLOADED playlist check"
+file = "src/cratekit/organize/root.py"
+surface = "user"
+old = '''        if not count:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "R5_swept_only"
+description = "Label folder: count every playlist in it, not only the DOWNLOADED ones"
+file = "src/cratekit/organize/root.py"
+surface = "user"
+old = '''                if is_swept_name(name)'''
+new = '''                if True'''
+
+[[rows]]
+id = "R6_one_named_folder"
+description = "Label folder: take the first of several root folders of the label's name"
+file = "src/cratekit/organize/root.py"
+surface = "user"
+old = '''        if len(named) == 1:
+            return named[0], ""'''
+new = '''        if named:
+            return named[0], ""'''

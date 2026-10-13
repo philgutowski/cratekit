@@ -1,0 +1,51 @@
+name = "u143-b"
+pass_kind = "light"
+
+[[rows]]
+id = "L1_nested_stays"
+description = "Legacy: plan a folder's removal when it holds a folder but no playlist"
+file = "src/cratekit/organize/root.py"
+surface = "user"
+old = '''    if not held and not nested:'''
+new = '''    if not held:'''
+
+[[rows]]
+id = "F1_debris_first"
+description = "Filing: drop the debris branch, so a debris copy is left as the label step's and the root step never sees it"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+old = '''        if not claimed and is_library_debris(name):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "F2_empty_unclaimed"
+description = "Filing: an empty playlist a ledger claims is read as empty too"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+old = '''        empty = not claimed and one.tracks == 0'''
+new = '''        empty = one.tracks == 0'''
+
+[[rows]]
+id = "F3_working_custom"
+description = "Filing: drop the working custom leave, so an unmarked playlist is moved into Mine as before U143"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+old = '''        if identity not in standing and not is_swept_name(name):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "F4_legacy_record_stale"
+description = "Year folder: reuse a recorded folder now named as a legacy year folder"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+old = '''        and not kinds.legacy_year(root[recorded])
+    ):'''
+new = '''    ):'''
+
+[[rows]]
+id = "K1_legacy_name_exact"
+description = "Legacy name: search rather than match the whole name"
+file = "src/cratekit/modules/outbound/kinds.py"
+surface = "user"
+old = '''    found = _LEGACY_YEAR.fullmatch(str(name or ""))'''
+new = '''    found = _LEGACY_YEAR.search(str(name or ""))'''

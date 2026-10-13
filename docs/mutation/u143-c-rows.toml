@@ -1,0 +1,34 @@
+name = "u143-c"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_kind_named"
+description = "Adapter: drop the refusal of a kind other than debris or empty"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''        if kind not in kinds.ROOT_REMOVALS:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "A2_ledger_claimed"
+description = "Adapter: remove a root playlist a ledger record names"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''        if self._cfg is None or self._claimed(identifier):'''
+new = '''        if self._cfg is None:'''
+
+[[rows]]
+id = "A3_debris_served"
+description = "Adapter: accept any served name as debris"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''            served = is_library_debris(name)'''
+new = '''            served = True'''
+
+[[rows]]
+id = "A4_empty_videos"
+description = "Adapter: an empty playlist need not declare zero videos"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''            served = _count(tracks) and _count(videos) and tracks == 0 and videos == 0'''
+new = '''            served = _count(tracks) and tracks == 0'''
