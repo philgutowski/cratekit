@@ -257,10 +257,11 @@ def test_a_pre_u128_record_is_matched_by_the_accounts_exact_name_so_the_twin_is_
         )
     ]
 
-    found = refill.recorded_ids(records, pass_name=PASS, account="pl-a", name=ACCOUNT)
+    entries = refill.recorded_entries(records)
+    found = refill.recorded_ids(entries, pass_name=PASS, account="pl-a", name=ACCOUNT)
 
     assert found == (playlist_id,)
-    assert refill.recorded_ids(records, pass_name="another_synced", account="pl-a", name=ACCOUNT) == ()
+    assert refill.recorded_ids(entries, pass_name="another_synced", account="pl-a", name=ACCOUNT) == ()
 
 
 def test_a_playlist_no_record_names_is_found_by_the_accounts_name_under_inbox(
@@ -437,3 +438,133 @@ def test_the_job_store_is_read_not_written_by_a_plan(native_library, silence, of
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     with jobs.open_store() as store:
         assert [(job.job_id, job.state) for job in jobs.list_jobs(store)] == before
+
+
+# ---------------------------------------------------------------------------
+# The review's findings, driven
+# ---------------------------------------------------------------------------
+
+
+def test_a_same_pass_twin_recorded_since_u128_is_not_taken_for_the_mirror(
+    native_library, silence, offline
+):
+    """A later landing of the same pass makes ``Name 2`` with the same account and pass keys."""
+    cfg, root_id = native_library
+    _owned(cfg, silence, ("Held1",))
+    swept(cfg, {"pl-a": (ACCOUNT, ("Held1", "New1", "Late"))})
+    _stage(cfg, silence, "New1")
+    _landed(cfg)
+    _stage(cfg, silence, "Late")
+    _landed(cfg)
+    twin_id = _playlist_id(cfg, f"{ACCOUNT} 2")
+    assert _live_members(cfg, twin_id) == ["Late"]
+    playlist_id = _emptied(cfg)
+
+    code, acted, refused = _two_acts(_refill())
+
+    assert code == int(ExitCode.OK), acted
+    assert _live_members(cfg, playlist_id) == ["Held1", "New1", "Late"]
+    assert _live_members(cfg, twin_id) == ["Late"]
+    assert refused["cause"]["detail"]["shown"]["playlists"] == [
+        f"{ACCOUNT} (row {playlist_id}, {refill.BY_RECORD}): 3 track(s) the library owns, "
+        f"3 to add, 0 left out"
+    ]
+
+
+def test_a_recorded_playlist_that_is_gone_is_listed_and_no_name_is_guessed(
+    native_library, silence, offline
+):
+    cfg, root_id = native_library
+    playlist_id = _five_landed_and_emptied(cfg, silence)
+    _sql(cfg, "UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE ID = ?", playlist_id)
+    # A live playlist of the account's name, which the record does not name.
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        other = handle.create_playlist(ACCOUNT, parent=handle.get_playlist(ID=root_id))
+        handle.session.commit()
+        other_id = str(other.ID)
+    finally:
+        rb_writer.close_db(handle)
+
+    code, acted, _ = _two_acts(_refill())
+
+    assert code == int(ExitCode.OK), acted
+    assert acted["outcome"] == "no_op", acted
+    (warning,) = [w for w in acted["warnings"] if w["code"] == refill_cli.UNFOUND]
+    assert refill.GONE in warning["message"]
+    assert _live_members(cfg, other_id) == []
+
+
+def test_a_track_the_account_lists_twice_is_one_membership_and_counted_once(
+    native_library, silence, offline, monkeypatch
+):
+    cfg, root_id = native_library
+    _owned(cfg, silence, ("Held1",))
+    swept(cfg, {"pl-a": (ACCOUNT, ("Held1", "New1"))})
+    _stage(cfg, silence, "New1")
+    _landed(cfg)
+    playlist_id = _emptied(cfg)
+    # The account lists Held1 a second time, after New1.
+    real = set_playlist.reports_of
+    monkeypatch.setattr(
+        set_playlist, "reports_of", lambda store, job: (*real(store, job), real(store, job)[0])
+    )
+
+    code, acted, refused = _two_acts(_refill())
+
+    assert code == int(ExitCode.OK), acted
+    actions = [(i["title"], i["action"]) for i in refused["cause"]["detail"]["shown"]["items"]]
+    assert actions == [("Held1", refill.ADD), ("New1", refill.ADD), ("Held1", refill.AGAIN)]
+    totals = acted["data"]["totals"]
+    assert (totals["add"], totals["held"], totals["again"]) == (2, 0, 1)
+    assert _live_members(cfg, playlist_id) == ["Held1", "New1"]
+
+
+class _Row:
+    def __init__(self, row_id: str, name: str, *, parent: str = "root") -> None:
+        self.ID = row_id
+        self.Name = name
+        self.ParentID = parent
+        self.Attribute = 0
+        self.rb_local_deleted = 0
+
+
+class _Db:
+    def __init__(self, *rows: _Row) -> None:
+        self._rows = {row.ID: row for row in rows}
+
+    def get_playlist(self, ID=None):  # noqa: N803 - the binding's spelling
+        return self._rows.get(ID)
+
+
+def test_the_name_is_not_asked_of_a_playlist_a_record_gives_another_pass():
+    mine, theirs = _Row("1", ACCOUNT), _Row("2", ACCOUNT)
+    under = {"1": mine, "2": theirs}
+
+    found = refill.locate(
+        _Db(mine, theirs), under, (), others=frozenset({"2"}), account="pl-a", name=ACCOUNT, job_id="j"
+    )
+
+    assert isinstance(found, refill.Target)
+    assert (found.playlist_id, found.found_by) == ("1", refill.BY_NAME)
+
+
+def test_the_name_is_not_trusted_while_a_session_record_cannot_be_read():
+    mine = _Row("1", ACCOUNT)
+
+    found = refill.locate(
+        _Db(mine), {"1": mine}, (), unreadable=1, account="pl-a", name=ACCOUNT, job_id="j"
+    )
+
+    assert isinstance(found, refill.Unfound) and found.why == refill.UNREADABLE
+
+
+def test_one_playlist_two_jobs_answer_to_is_neither_jobs():
+    first = refill.Target("pl-a", ACCOUNT, "j1", "7", ACCOUNT, refill.BY_NAME)
+    second = refill.Target("pl-b", ACCOUNT, "j2", "7", ACCOUNT, refill.BY_NAME)
+    third = refill.Target("pl-c", "Deep Cuts", "j3", "8", "Deep Cuts", refill.BY_RECORD)
+
+    shared = refill._shared([(None, first), (None, second), (None, third)])
+
+    assert [type(one).__name__ for _job, one in shared] == ["Unfound", "Unfound", "Target"]
+    assert {one.why for _job, one in shared[:2]} == {refill.SHARED}

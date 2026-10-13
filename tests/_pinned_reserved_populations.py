@@ -1224,6 +1224,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'refill-left-out',
         'refill-nothing-planned',
         'refill-playlist-unfound',
+        'refill-records-unreadable',
     ],
     'intake/repair.py': ['path-repair'],
     'intake/repair_cli.py': ['config-unusable', 'path-repair', 'rename-incomplete'],

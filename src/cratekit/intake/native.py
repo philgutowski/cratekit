@@ -836,18 +836,28 @@ def inbox_held(db: Any, root_id: str) -> tuple[str, ...]:
     it, and an account playlist is created, never found by its name, so a
     removed node of that name is never written into.
     """
+    return tuple(str(getattr(row, "Name", "") or "") for row in inbox_nodes(db, root_id))
+
+
+def inbox_nodes(db: Any, root_id: str) -> tuple[Any, ...]:
+    """Every live node anywhere under the intake root, folders included, in walk order.
+
+    THE ONE WALK of what INBOX holds, :func:`inbox_held`'s names and the INBOX
+    refill's playlists (U134), so the two never disagree about what is under
+    the root.
+    """
     # ONE READ OF THE TABLE, walked in memory, rather than a query per node.
     children: dict[str, list[Any]] = {}
     for row in list(db.get_playlist()):
         if not rb_writer.node_removed(row):
             children.setdefault(str(getattr(row, "ParentID", "") or ""), []).append(row)
-    names: list[str] = []
+    found: list[Any] = []
     pending = [str(root_id)]
     while pending:
         for row in children.get(pending.pop(), ()):
-            names.append(str(getattr(row, "Name", "") or ""))
+            found.append(row)
             pending.append(str(row.ID))
-    return tuple(names)
+    return tuple(found)
 
 
 def _playlist_identity(one: PlaylistPlan) -> dict[str, Any]:
@@ -1582,6 +1592,7 @@ __all__ = [
     "file_type_of",
     "identity",
     "inbox_held",
+    "inbox_nodes",
     "plan_rows",
     "stored_folder_path",
 ]

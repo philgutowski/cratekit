@@ -27,6 +27,7 @@ command-line layer, for the reason ``adopt.apply_cli`` gives.
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import Any
 
 from cratekit.cli.output import Envelope
@@ -56,6 +57,9 @@ LEFT_OUT = "refill-left-out"
 
 #: Account playlists of the pass no single INBOX playlist answers.
 UNFOUND = "refill-playlist-unfound"
+
+#: Session records that could not be read, so no playlist was found by name.
+RECORDS_UNREADABLE = "refill-records-unreadable"
 
 
 def _load() -> config.Config:
@@ -99,16 +103,18 @@ def payload(plan: refill.RefillPlan) -> dict[str, Any]:
             for row in target.rows()
         )
     items.extend({"action": "unfound", **one.identity()} for one in plan.unfound)
+    counted = Counter(item["action"] for item in items)
     return {
         "digest": plan.digest,
         "items": items,
         "totals": {
             "count": len(items),
             "playlists": len(plan.targets),
-            "add": plan.adds,
-            "held": sum(len(one.members) for one in plan.targets) - plan.adds,
-            "left": sum(len(one.left) for one in plan.targets),
-            "unfound": len(plan.unfound),
+            "add": counted[refill.ADD],
+            "held": counted[refill.HELD],
+            "again": counted[refill.AGAIN],
+            "left": counted["leave"],
+            "unfound": counted["unfound"],
         },
         "chunk": None,
     }
@@ -120,7 +126,7 @@ def facts(plan: refill.RefillPlan) -> dict[str, Any]:
         "pass": plan.pass_name,
         "intake folder": f"{plan.root_name} ({plan.root_id})",
         "playlists": [
-            f"{one.name} (row {one.playlist_id}, {one.found_by}): {len(one.members)} "
+            f"{one.name} (row {one.playlist_id}, {one.found_by}): {len(one.distinct)} "
             f"track(s) the library owns, {len(one.adds)} to add, {len(one.left)} left out"
             for one in plan.targets
         ],
@@ -154,6 +160,17 @@ def warnings_of(plan: refill.RefillPlan) -> list[dict[str, str]]:
                 "message": (
                     f"{len(plan.unfound)} account playlist(s) of the pass were not "
                     f"refilled: {named}"
+                ),
+            }
+        )
+    if plan.unreadable:
+        found.append(
+            {
+                "code": RECORDS_UNREADABLE,
+                "message": (
+                    f"{plan.unreadable} session record(s) could not be read, so no "
+                    f"account playlist without a readable landing record was found by "
+                    f"its name"
                 ),
             }
         )
@@ -245,6 +262,7 @@ __all__ = [
     "APPROVE_GATE",
     "LEFT_OUT",
     "NOTHING",
+    "RECORDS_UNREADABLE",
     "REFILLED",
     "UNFOUND",
     "build",

@@ -34,10 +34,15 @@ THE PLAYLIST IS FOUND BEFORE ONE REPORT IS READ, in this order:
   landing's ``Name 2`` is never taken for the first;
 * a live playlist anywhere under the intake root with the account's name.
 
+The first record of the pass is the mirror, since a later landing of the same
+pass made a ``Name 2`` holding only its new files. The name is asked only
+when no record names the account playlist, never of a playlist a record gives
+another pass, and never while a session record cannot be read.
+
 A RECORDED PLAYLIST THAT IS LIVE OUTSIDE INBOX IS REFUSED BY NAME. A person
 moved it out of the listening queue, and filling it is not this verb's. An
-account playlist nothing answers, or two playlists answer, is listed and
-written nothing.
+account playlist nothing answers, two playlists answer, or whose recorded
+playlist is gone, is listed and written nothing.
 
 ONLY WHAT THE PLAYLIST LACKS IS PLANNED, in the account's order, through the
 guarded writer's one membership rule, so a second run plans nothing. A
@@ -86,10 +91,18 @@ BY_NAME = "found by the account's name under INBOX"
 #: Why an account playlist of the pass gets no refill, as the screen says it.
 NOT_FOUND = "no live INBOX playlist answers it, by record or by name"
 TWO_FOUND = "two live INBOX playlists answer it, so neither is the one"
+GONE = "the INBOX playlist the landing record names is gone or removed"
+SHARED = "another account playlist of the pass answers to the same INBOX playlist"
+UNREADABLE = (
+    "no landing record names it and a session record could not be read, so a "
+    "name alone is not trusted"
+)
 
-#: What each row of a planned playlist does.
+#: What each row of a planned playlist does. ``again`` is a row whose track an
+#: earlier row of the same account playlist already is: one membership holds both.
 ADD = "add"
 HELD = "held"
+AGAIN = "again"
 
 #: The landing records that still stand, the U128 rule (:func:`account_playlists.mirrored`).
 _STANDING = frozenset(
@@ -122,13 +135,22 @@ class Target:
     #: Every row of the account playlist it will not hold, each with why.
     left: tuple[set_playlist.Left, ...] = ()
 
+    @property
+    def distinct(self) -> tuple[str, ...]:
+        """The content rows the playlist should hold, each once, in the account's order."""
+        return tuple(dict.fromkeys(one.content_id for one in self.members))
+
     def rows(self) -> list[dict[str, Any]]:
         """Each member with what the refill does to it, then each left row."""
-        pending = set(self.adds)
+        adds = set(self.adds)
+        seen: set[str] = set()
         shown: list[dict[str, Any]] = []
         for one in self.members:
-            action = ADD if one.content_id in pending else HELD
-            pending.discard(one.content_id)
+            if one.content_id in seen:
+                action = AGAIN
+            else:
+                action = ADD if one.content_id in adds else HELD
+            seen.add(one.content_id)
             shown.append({"action": action, **one.identity()})
         shown.extend({"action": "leave", **one.identity()} for one in self.left)
         return shown
@@ -176,6 +198,8 @@ class RefillPlan:
     root_name: str
     targets: tuple[Target, ...]
     unfound: tuple[Unfound, ...] = ()
+    #: Session records that could not be read, so a playlist one names was not seen.
+    unreadable: int = 0
     digest: str = ""
 
     @property
@@ -222,6 +246,7 @@ def identity(plan: RefillPlan) -> dict[str, Any]:
         "root": plan.root_id,
         "targets": [one.identity() for one in plan.targets],
         "unfound": [one.identity() for one in plan.unfound],
+        "unreadable": plan.unreadable,
     }
 
 
@@ -250,56 +275,77 @@ def anchored_root(db: Any, tree_id: str, registry: tree_registry.Registry) -> st
         ) from exc
 
 
-def under_root(db: Any, root_id: str) -> dict[str, Any]:
-    """Every live node anywhere under the intake root, by id, folders included.
+@dataclass(frozen=True, slots=True)
+class Recorded:
+    """One account playlist a standing landing record names, and the pass it was landed for."""
 
-    Every descendant and not only the root's children, :func:`native.inbox_held`'s
-    rule, so a playlist the rotation moved into ``Old`` is still under INBOX.
+    session_id: str
+    pass_name: str
+    #: The account's identifier, empty on an entry written before U128.
+    account: str
+    name: str
+    playlist_id: str
+
+
+def recorded_entries(records: Iterable[session.SessionRecord]) -> tuple[Recorded, ...]:
+    """Every account playlist a standing intake landing record names by id, oldest record first.
+
+    AN ENTRY SINCE U128 carries the account's identifier and the pass. AN
+    ENTRY FROM BEFORE carries neither, and its pass is its record's.
+
+    ORDERED BY WHEN THE SESSION STARTED, to the microsecond, and only then by
+    its identifier. An identifier is a second's stamp and a random tail, so two
+    landings inside one second would sort by chance, and the first landing is
+    the one that mirrored the account's whole playlist.
     """
-    children: dict[str, list[Any]] = {}
-    for row in list(db.get_playlist()):
-        if not rb_writer.node_removed(row):
-            children.setdefault(str(getattr(row, "ParentID", "") or ""), []).append(row)
-    found: dict[str, Any] = {}
-    pending = [str(root_id)]
-    while pending:
-        for row in children.get(pending.pop(), ()):
-            found[str(row.ID)] = row
-            pending.append(str(row.ID))
-    return found
-
-
-def recorded_ids(
-    records: Iterable[session.SessionRecord], *, pass_name: str, account: str, name: str
-) -> tuple[str, ...]:
-    """The playlist ids the standing landing records of ``pass_name`` give the account playlist.
-
-    AN ENTRY SINCE U128 is matched by the account's identifier and the pass it
-    carries. AN ENTRY FROM BEFORE carries neither, so it is matched by its
-    record's pass and by the account's name exactly: a second landing of the
-    same pass named its playlist ``Name 2``, and that is not the one the
-    account's whole playlist was mirrored into. Oldest record first.
-    """
-    ids: list[str] = []
-    for record in sorted(records, key=lambda one: one.session_id):
+    found: list[Recorded] = []
+    for record in sorted(records, key=lambda one: (one.started, one.session_id)):
         if record.workflow != ingest.INTAKE_WORKFLOW or record.state not in _STANDING:
             continue
         for entry in record.detail.get(ingest.INBOX_PLAYLISTS_KEY) or ():
             if not isinstance(entry, Mapping) or not entry.get("id"):
                 continue
-            if entry.get(ingest.INBOX_ACCOUNT_KEY):
-                ours = (
-                    str(entry[ingest.INBOX_ACCOUNT_KEY]) == account
-                    and entry.get(ingest.INBOX_PASS_KEY) == pass_name
+            account = str(entry.get(ingest.INBOX_ACCOUNT_KEY) or "")
+            found.append(
+                Recorded(
+                    session_id=record.session_id,
+                    pass_name=str(
+                        (entry.get(ingest.INBOX_PASS_KEY) if account else None)
+                        or record.detail.get(native.PASS_KEY)
+                        or ""
+                    ),
+                    account=account,
+                    name=str(entry.get("name") or ""),
+                    playlist_id=str(entry["id"]),
                 )
-            else:
-                ours = (
-                    record.detail.get(native.PASS_KEY) == pass_name
-                    and entry.get("name") == name
-                )
-            if ours:
-                ids.append(str(entry["id"]))
-    return tuple(dict.fromkeys(ids))
+            )
+    return tuple(found)
+
+
+def ours(entry: Recorded, *, pass_name: str, account: str, name: str) -> bool:
+    """Whether the entry names the INBOX mirror of this account playlist in this pass.
+
+    BY THE ACCOUNT'S IDENTIFIER since U128. BY THE ACCOUNT'S NAME EXACTLY
+    before it: a second landing of the same pass named its playlist ``Name 2``,
+    and that playlist holds that landing's new files, not the account's whole
+    playlist.
+    """
+    if entry.pass_name != pass_name:
+        return False
+    return entry.account == account if entry.account else entry.name == name
+
+
+def recorded_ids(
+    entries: Iterable[Recorded], *, pass_name: str, account: str, name: str
+) -> tuple[str, ...]:
+    """The playlist ids the landing records of ``pass_name`` give the account playlist, oldest first."""
+    return tuple(
+        dict.fromkeys(
+            one.playlist_id
+            for one in entries
+            if ours(one, pass_name=pass_name, account=account, name=name)
+        )
+    )
 
 
 def _live_playlist(db: Any, playlist_id: str) -> Any | None:
@@ -314,55 +360,69 @@ def locate(
     under: Mapping[str, Any],
     recorded: Sequence[str],
     *,
+    others: frozenset[str] = frozenset(),
+    unreadable: int = 0,
     account: str,
     name: str,
     job_id: str,
 ) -> Target | Unfound:
     """The one INBOX playlist the account playlist was mirrored into, or why there is none.
 
-    REFUSED BY NAME when a recorded playlist is live outside INBOX, before any
-    report is read. A recorded playlist that is gone or removed is not an
-    answer, and the account's name is asked next.
+    THE FIRST RECORDED IS THE MIRROR. The pass's first landing gave the account
+    playlist its INBOX playlist, whole since U128; a later landing of the same
+    pass made a ``Name 2`` holding only the files it brought (U113), and is
+    recorded with the same keys. So only the oldest entry is the answer. It is
+    REFUSED BY NAME when it is live outside INBOX, before any report is read,
+    and when it is gone the account playlist is listed and nothing is guessed.
+
+    THE ACCOUNT'S NAME IS ASKED ONLY WHEN NO RECORD NAMES IT, and then only of
+    playlists no landing record gives another pass or another account
+    (``others``), and only while every session record could be read: a record
+    nobody could read may name the playlist this name would take.
     """
-    live = [row for row in (_live_playlist(db, one) for one in recorded) if row is not None]
-    outside = [row for row in live if str(row.ID) not in under]
-    if outside:
-        named = ", ".join(f"{getattr(row, 'Name', '')!r} (row {row.ID})" for row in outside)
-        raise refuse(
-            OUTSIDE_INBOX,
-            f"the landing record of this pass names {named} as the INBOX playlist of the "
-            f"account's {name!r}, and it is no longer under INBOX, so it is not this "
-            f"verb's to fill; nothing was read from the pass or written",
-            remedy=Remedy.COMPLETE_PENDING_ACTION,
-            steps=(
-                "move the playlist back under INBOX in rekordbox and run it again",
-                "or leave it where it is: a playlist kept outside INBOX is the person's",
-            ),
-            origin=_ORIGIN,
-            detail={
-                "account": account,
-                "account_name": name,
-                "playlists": [str(row.ID) for row in outside],
-            },
-        )
-    if live:
-        found_by, rows = BY_RECORD, live
-    else:
-        found_by = BY_NAME
-        rows = [
-            row
-            for row in under.values()
-            if not rb_writer.is_folder(row) and str(getattr(row, "Name", "") or "") == name
-        ]
-    if len(rows) != 1:
+
+    def unfound(why: str, rows: Sequence[Any] = ()) -> Unfound:
         return Unfound(
             account=account,
             account_name=name,
             job_id=job_id,
-            why=TWO_FOUND if rows else NOT_FOUND,
+            why=why,
             candidates=tuple(str(row.ID) for row in rows),
         )
-    (row,) = rows
+
+    if recorded:
+        mirror = _live_playlist(db, recorded[0])
+        if mirror is None:
+            return unfound(GONE)
+        if str(mirror.ID) not in under:
+            raise refuse(
+                OUTSIDE_INBOX,
+                f"the landing record of this pass names {getattr(mirror, 'Name', '')!r} "
+                f"(row {mirror.ID}) as the INBOX playlist of the account's {name!r}, and "
+                f"it is no longer under INBOX, so it is not this verb's to fill; nothing "
+                f"was read from the pass or written",
+                remedy=Remedy.COMPLETE_PENDING_ACTION,
+                steps=(
+                    "move the playlist back under INBOX in rekordbox and run it again",
+                    "or leave it where it is: a playlist kept outside INBOX is the person's",
+                ),
+                origin=_ORIGIN,
+                detail={"account": account, "account_name": name, "playlist": str(mirror.ID)},
+            )
+        found_by, row = BY_RECORD, mirror
+    else:
+        if unreadable:
+            return unfound(UNREADABLE)
+        rows = [
+            row
+            for key, row in under.items()
+            if key not in others
+            and not rb_writer.is_folder(row)
+            and str(getattr(row, "Name", "") or "") == name
+        ]
+        if len(rows) != 1:
+            return unfound(TWO_FOUND if rows else NOT_FOUND, rows)
+        found_by, (row,) = BY_NAME, rows
     return Target(
         account=account,
         account_name=name,
@@ -387,6 +447,28 @@ def _pass_unknown(cfg: config.Config, pass_name: str) -> Exception:
     )
 
 
+def _shared(located: Sequence[tuple[jobs.Job, Target | Unfound]]) -> list[tuple[jobs.Job, Target | Unfound]]:
+    """Each target whose INBOX playlist another target of the pass also answers to, as unfound.
+
+    ONE PLAYLIST IS NOT TWO ACCOUNT PLAYLISTS' MIRROR. Two jobs of the pass
+    found by one name, or one account playlist queued twice, would plan two
+    fills of one playlist against the same state, and neither is the answer.
+    """
+    counts: dict[str, int] = {}
+    for _job, one in located:
+        if isinstance(one, Target):
+            counts[one.playlist_id] = counts.get(one.playlist_id, 0) + 1
+    return [
+        (
+            job,
+            Unfound(one.account, one.account_name, one.job_id, SHARED, (one.playlist_id,))
+            if isinstance(one, Target) and counts[one.playlist_id] > 1
+            else one,
+        )
+        for job, one in located
+    ]
+
+
 def plan_refill(
     cfg: config.Config,
     db: Any,
@@ -402,48 +484,48 @@ def plan_refill(
     named = account_playlists.playlist_jobs(cfg, pass_name)
     if not named:
         raise _pass_unknown(cfg, pass_name)
-    under = under_root(db, str(root_id))
-    records, _unreadable = session.scan_log(cfg)
+    under = {str(row.ID): row for row in native.inbox_nodes(db, str(root_id))}
+    records, unreadable = session.scan_log(cfg)
+    entries = recorded_entries(records)
 
     # EVERY PLAYLIST FOUND, OR THE REFUSAL MADE, BEFORE ONE REPORT IS READ.
     located: list[tuple[jobs.Job, Target | Unfound]] = []
     for job, name in named:
         account = account_playlists.account_of(job)
+        others = frozenset(
+            one.playlist_id
+            for one in entries
+            if not ours(one, pass_name=pass_name, account=account, name=name)
+        )
         located.append(
             (
                 job,
                 locate(
                     db,
                     under,
-                    recorded_ids(records, pass_name=pass_name, account=account, name=name),
+                    recorded_ids(entries, pass_name=pass_name, account=account, name=name),
+                    others=others,
+                    unreadable=len(unreadable),
                     account=account,
                     name=name,
                     job_id=job.job_id,
                 ),
             )
         )
+    located = _shared(located)
 
     targets: list[Target] = []
     unfound = [one for _job, one in located if isinstance(one, Unfound)]
     wanted = [(job, one) for job, one in located if isinstance(one, Target)]
     if wanted:
-        collection = set_playlist._Collection(cfg, db)
-        library = set_playlist._LibraryView(cfg)
+        resolve = set_playlist.backfill_resolver(cfg, db)
         with jobs.open_store() as store:
             for job, target in wanted:
-                members, left = set_playlist._members(
-                    set_playlist.reports_of(store, job),
-                    collection=collection,
-                    downloaded=lambda one: (library.paths(one), set_playlist.OWNED),
-                    owned_again=library.paths,
-                )
+                members, left = resolve(set_playlist.reports_of(store, job))
                 present = set(set_playlist.read_back(db, target.playlist_id))
-                adds = tuple(
-                    content_id
-                    for content_id in dict.fromkeys(one.content_id for one in members)
-                    if content_id not in present
-                )
-                targets.append(replace(target, members=members, adds=adds, left=left))
+                filled = replace(target, members=members, left=left)
+                adds = tuple(one for one in filled.distinct if one not in present)
+                targets.append(replace(filled, adds=adds))
     plan = RefillPlan(
         pass_name=pass_name,
         tree_id=tree_id,
@@ -451,6 +533,7 @@ def plan_refill(
         root_name=str(getattr(root, "Name", "") or ""),
         targets=tuple(targets),
         unfound=tuple(unfound),
+        unreadable=len(unreadable),
     )
     return replace(plan, digest=digest_of(identity(plan)))
 
@@ -525,7 +608,7 @@ def apply_refill(
             Filled(
                 playlist_id=target.playlist_id,
                 name=target.name,
-                wanted=tuple(dict.fromkeys(one.content_id for one in target.members)),
+                wanted=target.distinct,
                 added=added.get(target.playlist_id, ()),
                 read_back=set_playlist.read_back(db, target.playlist_id),
             )
@@ -601,15 +684,20 @@ def assert_read_back(refilled: Refilled) -> None:
 
 __all__ = [
     "ADD",
+    "AGAIN",
     "BY_NAME",
     "BY_RECORD",
+    "GONE",
     "HELD",
     "NOT_FOUND",
     "OUTSIDE_INBOX",
     "RECORD_KEY",
+    "SHARED",
     "TWO_FOUND",
+    "UNREADABLE",
     "WORKFLOW",
     "Filled",
+    "Recorded",
     "RefillPlan",
     "Refilled",
     "Target",
@@ -619,7 +707,8 @@ __all__ = [
     "assert_read_back",
     "identity",
     "locate",
+    "ours",
     "plan_refill",
+    "recorded_entries",
     "recorded_ids",
-    "under_root",
 ]
