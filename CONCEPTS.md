@@ -552,7 +552,9 @@ rekordbox node outside the declared trees, a node the rotation leaves alone,
 or an account playlist the product did not make that sits in no folder. It
 is listed with a suggested home, a followed label's folder or a year folder,
 and is never written. A set's download is proven only by an intake file named
-for the set.
+for the set. Every step is of one KIND, the word `--only` names it by (U137):
+a narrowed area plans only the named kinds and names the selection in its
+digest, and an area with no kind named is not planned or asked.
 
 *Avoid:* reading a listed step as done, or a yours entry as a plan.
 

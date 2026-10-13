@@ -1,7 +1,8 @@
 """One area of ``crate organize`` and the steps it is made of (U112).
 
 A STEP is one plan a composed verb made: one label's folder, one pass's marks,
-one set's archive, the adoption, the rotation. It is in exactly one state:
+one set's archive, the adoption, the rotation. Each is of one KIND, the word
+``--only`` selects it by (U137). It is in exactly one state:
 
 ==============  ===============================================================
 ``planned``     the step's own plan writes, and runs once its area is approved
@@ -94,6 +95,17 @@ def refused(key: str, title: str, cause: Cause) -> Step:
     return Step(key=key, title=title, state=REFUSED, detail=cause.message, cause=cause)
 
 
+#: The fact a narrowed area shows in front of its steps (U137).
+ONLY_FACT = "only these steps"
+
+
+def selection(kinds: tuple[str, ...], only: frozenset[str] | None) -> tuple[str, ...] | None:
+    """The area's own kinds ``--only`` chose, in the area's order; ``None`` for every one."""
+    if only is None:
+        return None
+    return tuple(kind for kind in kinds if kind in only)
+
+
 @dataclass
 class Area:
     """One side of the library: its steps, what the author made, and its own refusal."""
@@ -109,6 +121,16 @@ class Area:
     #: A refusal of the whole area, before any step: the database area with no
     #: backup acknowledgment. Its gate is not asked, since it could write nothing.
     cause: Cause | None = None
+    #: The step kinds ``--only`` selected (U137), or ``None`` for every step.
+    only: tuple[str, ...] | None = None
+
+    def __post_init__(self) -> None:
+        if self.only is not None:
+            self.facts[ONLY_FACT] = ", ".join(self.only)
+
+    def wants(self, kind: str) -> bool:
+        """Whether a step of this kind is planned here."""
+        return self.only is None or kind in self.only
 
     @property
     def writes(self) -> bool:
@@ -121,12 +143,20 @@ class Area:
         return tally
 
     def identity(self) -> dict[str, Any]:
-        """The document the area's digest is taken over, every step's own digest in it."""
-        return {
+        """The document the area's digest is taken over, every step's own digest in it.
+
+        A NARROWED AREA NAMES ITS SELECTION (U137), so an answer given over the
+        steps ``--only`` chose is never read as one given over the whole area.
+        The key is absent with no selection, which keeps the full digest as it was.
+        """
+        identity: dict[str, Any] = {
             "kind": "organize",
             "area": self.name,
             "steps": [step.identity() for step in self.steps],
         }
+        if self.only is not None:
+            identity["only"] = list(self.only)
+        return identity
 
     def digest(self) -> str:
         return digest_of(self.identity())
@@ -258,6 +288,7 @@ __all__ = [
     "FAILED",
     "LISTED",
     "NOTHING",
+    "ONLY_FACT",
     "PLANNED",
     "REFUSED",
     "Area",
@@ -265,4 +296,5 @@ __all__ = [
     "area_check",
     "check",
     "refused",
+    "selection",
 ]

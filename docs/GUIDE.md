@@ -641,6 +641,22 @@ removes, never a track. `--report` prints both plans and asks nothing. The
 rekordbox area needs a backup acknowledged under a day old, and like every
 database write it is worth rehearsing on a copy first.
 
+To run one kind of step alone, name it with `--only`, as often as you like:
+
+```bash
+crate organize --report --only file
+crate organize --only file
+```
+
+The kinds are `adopt`, `rotate` and `record-labels` on the rekordbox side,
+`labels`, `sets`, `marks` and `file` on the account, and `yours` on both. An
+area with no kind named is not planned and not asked, so `--only file` files
+the playlists at the account root into their folders without reading the
+database or planning a label's catalogue, and asks only the account's
+question. Its plan is only the filing, and an answer given to the full
+organize is not taken for it. A word that is not a kind is refused before
+anything is read.
+
 New label releases are kept apart from the ones you have already heard. For
 each followed label, the account area also plans a dated playlist beside the
 year, `<Label> <year> new <YYYY-MM-DD>`, inside the label's folder, holding the

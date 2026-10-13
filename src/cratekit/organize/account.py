@@ -29,6 +29,10 @@ THE STEPS, each the owning verb's plan and apply:
 A STEP THAT NEEDS THE ACCOUNT AND CANNOT HAVE IT is refused, with that
 refusal's own reason, and every other step is still planned and shown.
 
+A KIND OF STEP MAY RUN ALONE (U137). ``crate organize --only KIND`` plans the
+kinds it names, :data:`STEPS`, and no other, so ``--only file`` reads the
+account for the filing and never plans a label year's catalogue adds.
+
 WHAT THE AUTHOR MADE is every playlist the account created that the product did
 not make, that is no source system debris, that sits in no folder and that the
 filing step does not move. Each is
@@ -51,15 +55,21 @@ from cratekit.export import set_cli
 from cratekit.intake import land_cli
 from cratekit.label import dated, playlists_cli
 from cratekit.organize import filing, own
-from cratekit.organize.steps import LISTED, NOTHING, PLANNED, Area, Step, refused
+from cratekit.organize.steps import LISTED, NOTHING, PLANNED, Area, Step, refused, selection
 from cratekit.sync import mark_cli, mark_record
 
 AREA = "account"
 
 LABELS = "labels"
 SETS = "sets"
+MARKS = "marks"
 FILE = "file"
 YOURS = "yours"
+
+#: Every step kind this area plans, in its order, each one ``--only`` may name.
+#: A label's folder and its dated playlist are both ``labels``, every pass's
+#: marks are ``marks``, and every set's archive is ``sets``.
+STEPS = (LABELS, SETS, MARKS, FILE, YOURS)
 
 #: The modules that switch a step on. Adoption, rotation and the mark are core.
 LABELS_MODULE = "labels"
@@ -303,12 +313,29 @@ def _set_apply(cfg, step: Step, archived):
     return apply
 
 
-def _file_step(cfg, area: Area, labels: tuple[str, ...], catalogue_of: _Lazy, remote_of: _Lazy) -> frozenset[str]:
-    """Plan the filing of every playlist at the root; answer what it moves."""
+def _file_step(
+    cfg,
+    area: Area,
+    labels: tuple[str, ...],
+    catalogue_of: _Lazy,
+    remote_of: _Lazy,
+    unfollowed: CratekitError | None = None,
+) -> frozenset[str]:
+    """Plan the filing of every playlist at the root; answer what it moves.
+
+    AN UNREAD LABEL REGISTRY REFUSES THE FILING (U137). The followed labels
+    are what leaves a label's playlist at the root for the label step, so a
+    filing planned over none would move a label's playlist into ``Mine``, and
+    under ``--only file`` the label step's own refusal is not on the screen to
+    say why. Unread is not none.
+    """
     from cratekit.favorites import placeholders
     from cratekit.sync import playlists
 
     title = "file playlists at the root into their folders"
+    if unfollowed is not None:
+        area.steps.append(refused(FILE, title, unfollowed.cause))
+        return frozenset()
     try:
         planned = filing.plan(
             cfg,
@@ -413,25 +440,7 @@ def _yours(
     )
 
 
-def plan_area(
-    cfg: config.Config,
-    *,
-    available: frozenset[str],
-    followed,
-    unfollowed: CratekitError | None = None,
-) -> Area:
-    """Plan every account step; a step that refuses is shown and hides no other.
-
-    ``unfollowed`` is the label registry's own refusal when it could not be
-    read, shown as the label step's refusal, so the other steps still plan.
-    """
-    from cratekit.label import catalogue
-    from cratekit.modules.outbound import account
-
-    area = Area(name=AREA)
-    catalogue_of = _Lazy(lambda: catalogue.resolve(cfg))
-    remote_of = _Lazy(lambda: account.resolve(cfg))
-    labels = tuple(entry.name for entry in followed)
+def _labels(cfg, area: Area, available, followed, unfollowed, catalogue_of: _Lazy, remote_of: _Lazy) -> None:
     if LABELS_MODULE in available and unfollowed is not None:
         area.steps.append(refused(LABELS, "label folders", unfollowed.cause))
     elif LABELS_MODULE in available:
@@ -445,6 +454,9 @@ def plan_area(
                 detail="the labels module is off in this profile, so no label folder is planned",
             )
         )
+
+
+def _sets(cfg, area: Area, available) -> None:
     if EXPORT_MODULE in available:
         _set_steps(cfg, area)
     else:
@@ -456,11 +468,59 @@ def plan_area(
                 detail="the export module is off in this profile, so no set is archived",
             )
         )
-    _mark_steps(cfg, area)
-    moving = _file_step(cfg, area, labels, catalogue_of, remote_of)
-    _yours(cfg, area, labels, catalogue_of, remote_of, moving)
+
+
+def plan_area(
+    cfg: config.Config,
+    *,
+    available: frozenset[str],
+    followed,
+    unfollowed: CratekitError | None = None,
+    only: frozenset[str] | None = None,
+) -> Area:
+    """Plan every account step; a step that refuses is shown and hides no other.
+
+    ``unfollowed`` is the label registry's own refusal when it could not be
+    read, shown as the label step's refusal and the filing's, so the other
+    steps still plan.
+
+    ``only`` is ``--only``'s selection (U137): a step of no selected kind is not
+    planned, so nothing it would read is read. The filing is handed the labels
+    and the same lazy readers either way, and ``yours`` with no filing selected
+    excludes nothing as moving.
+    """
+    from cratekit.label import catalogue
+    from cratekit.modules.outbound import account
+
+    area = Area(name=AREA, only=selection(STEPS, only))
+    catalogue_of = _Lazy(lambda: catalogue.resolve(cfg))
+    remote_of = _Lazy(lambda: account.resolve(cfg))
+    labels = tuple(entry.name for entry in followed)
+    if area.wants(LABELS):
+        _labels(cfg, area, available, followed, unfollowed, catalogue_of, remote_of)
+    if area.wants(SETS):
+        _sets(cfg, area, available)
+    if area.wants(MARKS):
+        _mark_steps(cfg, area)
+    moving: frozenset[str] = frozenset()
+    if area.wants(FILE) or area.wants(YOURS):
+        # THE FILING IS PLANNED FOR ``yours`` TOO, into an area nobody is
+        # shown when the filing itself is not selected, so a playlist the
+        # filing moves is never listed as one of the author's left alone.
+        # A REGISTRY THE PROFILE DOES NOT USE IS NO REASON TO REFUSE: with the
+        # labels module off no label step exists to leave a playlist to.
+        moving = _file_step(
+            cfg,
+            area if area.wants(FILE) else Area(name=AREA),
+            labels,
+            catalogue_of,
+            remote_of,
+            unfollowed if LABELS_MODULE in available else None,
+        )
+    if area.wants(YOURS):
+        _yours(cfg, area, labels, catalogue_of, remote_of, moving)
     area.facts["writes"] = "add only: folders are created and playlists filed and prefixed"
     return area
 
 
-__all__ = ["AREA", "FILE", "LABELS", "SETS", "YOURS", "intake_files", "plan_area"]
+__all__ = ["AREA", "FILE", "LABELS", "MARKS", "SETS", "STEPS", "YOURS", "intake_files", "plan_area"]

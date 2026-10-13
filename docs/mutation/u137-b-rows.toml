@@ -1,0 +1,14 @@
+name = "u137-b"
+pass_kind = "light"
+
+# The rerun of u137's one user facing zero, A3, once a test pinned the marks
+# gate at its seam. Its composite is that test, recorded in u137-notes.md.
+
+[[rows]]
+id = "A3_marks_gate"
+description = "Plan the marks whatever the selection"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''    if area.wants(MARKS):'''
+new = '''    if True:'''
