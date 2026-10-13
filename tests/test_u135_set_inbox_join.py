@@ -346,3 +346,94 @@ def test_a_hand_made_inbox_playlist_of_the_set_name_is_named_found_not_recorded(
     (kept,) = _batch_records(cfg)
     assert kept["id"] == handmade_id and kept[native.INBOX_JOB_KEY] == job_id
 
+
+
+# ---------------------------------------------------------------------------
+# U139: the three U135 guards no test reached (rows A6, A11 and A15)
+# ---------------------------------------------------------------------------
+
+
+def test_a_recorded_inbox_playlist_removed_before_the_next_landing_is_not_joined(
+    native_library, silence, monkeypatch
+):
+    """A6. The first landing records its INBOX playlist; a person removes it in
+    rekordbox; the second landing reads the record, sees the row is soft
+    deleted, and makes the set's playlist afresh rather than joining it."""
+    from tests.test_set_inspiration_playlist import _soft_delete_playlist
+
+    cfg, root_id = native_library
+    cutover_fixtures.add_folder(cfg, FOLDER)
+    job_id = set_job(cfg, ("One", "Two"))
+    _stage(cfg, silence, "One")
+    code, first, _refused = _two_acts(_land("--set", job_id, *WORDS))
+    assert code == int(ExitCode.OK), first
+    ((removed_id, *_rest),) = [
+        row for row in _playlists_named(cfg, NAME) if str(row[1]) == root_id
+    ]
+    _soft_delete_playlist(cfg, str(removed_id))
+    before = _members(cfg, str(removed_id))
+
+    monkeypatch.setattr(batch_name, "today", lambda: date(2026, 10, 10))
+    _stage(cfg, silence, "Two")
+    verb = ["intake", "land", "--name", "2026-10-10 Set", "--set", job_id, *WORDS]
+    code, second, refused = _two_acts(verb)
+
+    assert code == int(ExitCode.OK), second
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["inbox"] == "made"
+    assert _members(cfg, str(removed_id)) == before
+    # Made afresh, so named for the set on this landing's day.
+    assert _inbox_under(cfg, root_id) == {shown["inbox playlist"]: ["Two"]}
+
+
+def test_a_recorded_inbox_playlist_removed_after_the_plan_is_refused_at_the_write(
+    native_library,
+):
+    """A11. The plan named a recorded playlist live; by the write it was removed.
+    Asked of the write's own row lookup, since between two drives the landing
+    plans again and refuses on the digest before the write is reached."""
+    from types import SimpleNamespace
+
+    import pytest
+
+    from cratekit.core.cause import CratekitError
+    from tests.test_set_inspiration_playlist import _make_playlist, _soft_delete_playlist
+
+    cfg, root_id = native_library
+    removed_id = _make_playlist(cfg, NAME, under=root_id)
+    _soft_delete_playlist(cfg, removed_id)
+    planned = SimpleNamespace(batch_playlist_id=removed_id, playlist=NAME)
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        with pytest.raises(CratekitError) as refused:
+            native._batch_playlist_row(handle, planned, handle.get_playlist(ID=root_id))
+    finally:
+        rb_writer.close_db(handle)
+    assert refused.value.cause.reason == "decision-stale"
+    assert removed_id in refused.value.cause.message
+    assert _members(cfg, removed_id) == []
+
+
+def test_a_folder_under_inbox_with_the_sets_name_is_never_taken_as_its_playlist(
+    native_library, silence
+):
+    """A15. A folder is not a playlist; the landing makes the set's playlist
+    beside it and files nothing into the folder."""
+    cfg, root_id = native_library
+    cutover_fixtures.add_folder(cfg, FOLDER)
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        folder = rb_writer.ensure_folder(handle, NAME, parent=handle.get_playlist(ID=root_id))
+        handle.session.commit()
+        folder_id = str(folder.ID)
+    finally:
+        rb_writer.close_db(handle)
+    job_id = set_job(cfg, ("One",))
+    _stage(cfg, silence, "One")
+
+    code, acted, refused = _two_acts(_land("--set", job_id, *WORDS))
+
+    assert code == int(ExitCode.OK), acted
+    assert refused["cause"]["detail"]["shown"]["inbox"] == "made"
+    assert _members(cfg, folder_id) == []
+    assert _inbox_under(cfg, root_id)[NAME] == ["One"]
