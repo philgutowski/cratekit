@@ -62,6 +62,9 @@ A PLAYLIST THE AUTHOR MADE ON THE ACCOUNT GETS ITS OWN (U113). A landing hands
 the plan its account playlists, each named against :func:`inbox_held` and each
 holding the rows it claimed; they are created under the root, never found by
 name, so two landings never share one, and the batch playlist keeps the rest.
+A landing given ``--set`` is the exception since U135: its INBOX playlist is
+named for the set and a later landing of the same job adds to the playlist
+the first one recorded, under its first name.
 The record names every one by identifier, which is what ``inbox rotate`` ages
 them by.
 
@@ -78,7 +81,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterable, Sequence
+from typing import TYPE_CHECKING, Any, Iterable, Mapping, Sequence
 
 from cratekit.adopt import placements as adopt_placements
 from cratekit.cli.output import digest_of
@@ -125,7 +128,14 @@ WORKFLOW = ingest.INTAKE_WORKFLOW
 
 #: The session record field naming the batch playlist a landing wrote, its
 #: identifier and its name. Read by ``inbox rotate`` for the landing date.
+#: Since U135 a landing given ``--set`` also records the set job under
+#: :data:`INBOX_JOB_KEY`, so a later landing of the same job finds that
+#: playlist and adds to it under its first name.
 BATCH_PLAYLIST_KEY = "batch_playlist"
+#: The key on a :data:`BATCH_PLAYLIST_KEY` entry naming the set job the
+#: INBOX playlist was written for (U135). Absent on every landing that is
+#: not a set, and on set landings from before this unit.
+INBOX_JOB_KEY = "job"
 #: The session record field naming the sync pass a landing was given with
 #: ``--pass`` (R-777). Written with the commit, so ``sync mark --pass`` reads a
 #: closed record naming the pass as the proof the pass landed, the one an
@@ -367,6 +377,16 @@ class NativePlan:
     #: the declared INSPIRATION folder, for a landing given ``--set``. None
     #: for every other landing.
     set_playlist: set_playlist.SetPlaylistPlan | None = None
+    #: The INBOX playlist an earlier landing of the same set job made (U135),
+    #: which this write adds to; empty when the write finds or makes the
+    #: playlist by its set name under the intake root.
+    batch_playlist_id: str = ""
+    #: The set job a landing given ``--set`` records on its batch playlist
+    #: (U135), empty for every other landing.
+    set_job_id: str = ""
+    #: INBOX playlist names that look like earlier parts of this set from
+    #: before U135, named on the screen and never joined automatically.
+    inbox_leftovers: tuple[str, ...] = ()
     #: The left rows of each account playlist that holds nothing here and so
     #: is not planned (U128), by its name, which the screen counts, the digest
     #: covers and the landing names.
@@ -587,6 +607,9 @@ def plan_rows(
     hearts: Sequence[HeartItem] = (),
     favorites_source: str | None = None,
     set_plan: set_playlist.SetPlaylistPlan | None = None,
+    batch_playlist_id: str = "",
+    set_job_id: str = "",
+    inbox_leftovers: Sequence[str] = (),
 ) -> NativePlan:
     """Plan one row per file and one playlist, against the open database.
 
@@ -703,6 +726,9 @@ def plan_rows(
         pass_name=pass_name,
         favorites=_favorites_plan(db, hearts, rows, source=favorites_source),
         set_playlist=set_plan,
+        batch_playlist_id=batch_playlist_id,
+        set_job_id=set_job_id,
+        inbox_leftovers=tuple(inbox_leftovers),
         vox_cut=vox_cut,
         vox_blocked=vox_blocked,
     )
@@ -827,6 +853,100 @@ def _supported_only(
     return tuple(kept), tuple(dropped)
 
 
+def recorded_inbox_playlist(
+    cfg: config.Config, db: Any, job_id: str, root_id: str
+) -> tuple[str, str] | None:
+    """The INBOX playlist an earlier landing made for this set job, its id and name.
+
+    THE SESSION RECORD IS THE JOB'S MEMORY OF ITS INBOX PLAYLIST (U135), the
+    same shape :func:`cratekit.intake.set_playlist.recorded_playlist` uses for
+    the permanent playlist under INSPIRATION. A closed landing whose batch
+    playlist detail names this job and whose source committed, newest first.
+    A recorded playlist that is gone, removed, or no longer under the intake
+    root is not an answer, and the write finds or makes one by the set's name.
+    """
+    records, _unreadable = session.scan_log(cfg)
+    found = [
+        record
+        for record in records
+        if record.state is session.SessionState.CLOSED
+        and str(session.SourceState.COMMITTED) in record.sources.values()
+        and isinstance(record.detail.get(BATCH_PLAYLIST_KEY), Mapping)
+        and record.detail[BATCH_PLAYLIST_KEY].get(INBOX_JOB_KEY) == job_id
+    ]
+    for record in sorted(found, key=lambda one: one.session_id, reverse=True):
+        kept = record.detail[BATCH_PLAYLIST_KEY]
+        playlist_id = str(kept.get("id") or "")
+        if not playlist_id:
+            continue
+        row = db.get_playlist(ID=playlist_id)
+        if (
+            row is None
+            or rb_writer.is_folder(row)
+            or rb_writer.node_removed(row)
+            or str(getattr(row, "ParentID", "") or "") != root_id
+        ):
+            continue
+        return playlist_id, str(getattr(row, "Name", "") or kept.get("name") or "")
+    return None
+
+
+def leftover_set_inbox(
+    cfg: config.Config,
+    db: Any,
+    job_id: str,
+    root_id: str,
+    set_name: str,
+    *,
+    keep_id: str = "",
+) -> tuple[str, ...]:
+    """INBOX playlist names that look like earlier parts of this set from before U135.
+
+    A numbered twin of the set's name (``Name 2``) under the intake root, or a
+    dated batch playlist an earlier ``--set`` landing of this job wrote before
+    the record carried the job key. Named on the screen for the author; never
+    joined automatically.
+    """
+    named: list[str] = []
+    prefix = set_name + " "
+    for held in inbox_held(db, root_id):
+        if held == set_name:
+            continue
+        if held.startswith(prefix) and held[len(prefix) :].isdigit():
+            named.append(held)
+    records, _unreadable = session.scan_log(cfg)
+    for record in records:
+        if record.state is not session.SessionState.CLOSED:
+            continue
+        if str(session.SourceState.COMMITTED) not in record.sources.values():
+            continue
+        kept_set = record.detail.get(set_playlist.RECORD_KEY)
+        if not isinstance(kept_set, Mapping) or kept_set.get("job") != job_id:
+            continue
+        batch = record.detail.get(BATCH_PLAYLIST_KEY)
+        if not isinstance(batch, Mapping):
+            continue
+        if batch.get(INBOX_JOB_KEY):
+            continue
+        playlist_id = str(batch.get("id") or "")
+        name = str(batch.get("name") or "")
+        if not name or name == set_name or playlist_id == keep_id:
+            continue
+        if playlist_id:
+            row = db.get_playlist(ID=playlist_id)
+            if (
+                row is None
+                or rb_writer.is_folder(row)
+                or rb_writer.node_removed(row)
+                or str(getattr(row, "ParentID", "") or "") != root_id
+            ):
+                continue
+            name = str(getattr(row, "Name", "") or name)
+        if name and name not in named:
+            named.append(name)
+    return tuple(named)
+
+
 def inbox_held(db: Any, root_id: str) -> tuple[str, ...]:
     """Every name a live node anywhere under the intake root carries (U113).
 
@@ -911,6 +1031,9 @@ def identity(plan: NativePlan) -> dict[str, Any]:
         "tree": plan.tree_id,
         "root": plan.root_id,
         "playlist": plan.playlist,
+        "batch_playlist": plan.batch_playlist_id,
+        "set_job": plan.set_job_id,
+        "inbox_leftovers": list(plan.inbox_leftovers),
         "database": str(plan.database),
         "device": plan.device_id,
         "master_db_id": plan.master_db_id,
@@ -1204,8 +1327,10 @@ def apply_rows(
             ]
             # THE BATCH PLAYLIST HOLDS WHAT NO ACCOUNT PLAYLIST CLAIMED, and is
             # not written when that is nothing, as the intake file does it.
+            # A SET LANDING ADDS TO THE RECORDED INBOX PLAYLIST (U135) when an
+            # earlier landing of the same job left one live under the root.
             if ordered or not accounts:
-                playlist = rb_writer.ensure_playlist(db, plan.playlist, anchor)
+                playlist = _batch_playlist_row(db, plan, anchor)
                 memberships = len(rb_writer.add_memberships(db, playlist, ordered))
                 playlist_id = str(playlist.ID)
             for one, ids in accounts:
@@ -1352,6 +1477,28 @@ def _vox_read_back(db: Any) -> tuple[frozenset[str], str]:
     return tagged or frozenset(), ""
 
 
+def _batch_playlist_row(db: Any, plan: NativePlan, anchor: Any) -> Any:
+    """The INBOX playlist the batch members go in: the recorded one, else found or made.
+
+    THE RECORDED PLAYLIST, when a set landing names one (U135), was checked
+    live at the plan and is checked again here. Otherwise
+    :func:`rb_writer.ensure_playlist` finds a live playlist of the name under
+    the intake root or makes one, as every non-set landing does.
+    """
+    if plan.batch_playlist_id:
+        row = db.get_playlist(ID=plan.batch_playlist_id)
+        if row is None or rb_writer.is_folder(row) or rb_writer.node_removed(row):
+            raise refuse(
+                "decision-stale",
+                f"the INBOX playlist {plan.playlist!r} (row {plan.batch_playlist_id}) "
+                f"the plan adds to is not live any more, so nothing was written",
+                origin=_ORIGIN,
+                detail={"playlist": plan.batch_playlist_id, "name": plan.playlist},
+            )
+        return row
+    return rb_writer.ensure_playlist(db, plan.playlist, anchor)
+
+
 def assert_names_still_free(db: Any, plan: NativePlan) -> None:
     """Refuse an account playlist name INBOX came to hold after the plan chose it.
 
@@ -1408,7 +1555,10 @@ def _record_landing_commit(
     # rather than from whatever the playlist row says. Written with the commit,
     # by the call that persists it.
     if playlist_id:
-        record.detail[BATCH_PLAYLIST_KEY] = {"id": playlist_id, "name": plan.playlist}
+        kept = {"id": playlist_id, "name": plan.playlist}
+        if plan.set_job_id:
+            kept[INBOX_JOB_KEY] = plan.set_job_id
+        record.detail[BATCH_PLAYLIST_KEY] = kept
     # AND THE PASS (R-777), which is what ``sync mark --pass`` reads as the
     # proof this pass landed. Only with the commit, never for a plan.
     if plan.pass_name:
@@ -1558,6 +1708,7 @@ __all__ = [
     "ADD",
     "BATCH_PLAYLIST_KEY",
     "FILE_ID_AT_LANDING",
+    "INBOX_JOB_KEY",
     "INBOX_PLAYLISTS_KEY",
     "LEFT_EMPTY",
     "PRESENT",
@@ -1582,6 +1733,8 @@ __all__ = [
     "file_type_of",
     "identity",
     "inbox_held",
+    "leftover_set_inbox",
     "plan_rows",
+    "recorded_inbox_playlist",
     "stored_folder_path",
 ]
