@@ -3766,18 +3766,27 @@ def test_the_unreachable_exemption_covers_one_named_gate_and_expires_on_its_own(
 #: shape `EXPECTED_PENDING` uses: the duplication IS the mechanism, because the
 #: second place is a line a reviewer reads in a diff.
 EXPECTED_UNREACHABLE_GATES = frozenset(
-    {"write.cloudsync.unreadable", "intake.land.native", "intake.file.native"}
+    {
+        "write.cloudsync.unreadable",
+        "intake.land.native",
+        "intake.file.native",
+        "export.set.rename",
+    }
 )
 
 
 def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
-    """Three gates are exempt. A fourth one is a decision, not a diff.
+    """Four gates are exempt. A fifth one is a decision, not a diff.
 
     The second, ``intake.land.native``, joined with R-746: one verb, two media,
     one drive per fixture, and the conformance fixture's intake tree is on the
     bridge. Its own suite holds the verb to reaching it on a native tree. The
     third, ``intake.file.native``, joined with R-770 for the same reason: it
     is the second verb that writes the intake tree, on the same two media.
+    The fourth, ``export.set.rename``, joined with U140, decided there: one
+    verb, two paths, and the rename's path names a succeeded set job the
+    conformance fixture's queue does not hold. Its own suite,
+    tests/test_export_set_rename.py, drives the gate's two acts.
 
     Note what this pin does NOT prove, so nobody reads more into a green run than
     is there: the map is still a named exemption, not a drive of the unreadable

@@ -8,8 +8,6 @@ write is claimed here; the Signal set's rename is owed to a sitting.
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from cratekit.acquire import match
@@ -242,7 +240,10 @@ def test_a_playlist_the_archive_marked_is_refused_rather_than_retitled(renamed):
 
     assert code == int(ExitCode.PRECONDITION), done
     assert done["cause"]["reason"] == set_cli.RENAME_UNRESOLVED
-    assert "sync unmark --pass pass-1" in json.dumps(done["cause"])
+    assert any(
+        "crate sync unmark --pass 'pass-1'" in step
+        for step in done["cause"]["remediation"]["steps"]
+    ), done["cause"]
     assert held.renamed == []
     assert _frozen(job_id) == OLD
 

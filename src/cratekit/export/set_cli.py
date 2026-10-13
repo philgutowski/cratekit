@@ -50,7 +50,6 @@ import the CLI registry (KTD23).
 
 from __future__ import annotations
 
-import shlex
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -1612,7 +1611,7 @@ def plan_rename(cfg, job_id: str) -> RenamePlanned:
                 f"the account playlist {planned.playlist.remote_id} was archived as "
                 f"{mark.to!r} by the pass {mark.pass_name}, and renaming it would take "
                 f"that mark off a title crate sync unmark expects to find",
-                f"run crate sync unmark --pass {shlex.quote(mark.pass_name)}, rename, "
+                f"run crate sync unmark --pass {mark.pass_name!r}, rename, "
                 f"then archive again",
                 remote_id=planned.playlist.remote_id,
                 pass_name=mark.pass_name,
