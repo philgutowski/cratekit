@@ -174,6 +174,9 @@ class Remedy(StrEnum):
     RUN_DOCTOR = "run-doctor"
     INSTALL_MODULE_EXTRA = "install-module-extra"
     ACKNOWLEDGE_BACKUP = "acknowledge-backup"
+    # U138. A session may mint the acknowledgment only over young backups, and
+    # when one is not, the act that answers it is a backup, not another ack.
+    RUN_BACKUP = "run-backup"
     REPAIR_BACKUP_FACTS = "repair-backup-facts"
 
     # External binaries this installation depends on.

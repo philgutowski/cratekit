@@ -76,6 +76,7 @@ _COMMANDS: Mapping[Remedy, str | None] = {
     Remedy.RUN_DOCTOR: "crate doctor",
     Remedy.INSTALL_MODULE_EXTRA: None,  # generated per entry, see install_command
     Remedy.ACKNOWLEDGE_BACKUP: "crate session ack",
+    Remedy.RUN_BACKUP: "crate backup run",
     # Not "crate login", which this table offered until U97. That verb records a
     # value somebody already holds and refuses without one, so a first run person
     # who typed it reached a second refusal. Minting is an attended act at a

@@ -184,9 +184,11 @@ lists what.
   the session**, decided by Phillip on 2026-10-09, reversing the 2026-09-29
   rule: the gate shows both backup ages and the person only pasted a command,
   so the session reads the ages, refuses unless both are under five days, and
-  answers with the actor `session`. The verb still wants a controlling
-  terminal, so until a card lets it accept the session, it is run under
-  `script -q /dev/null`.
+  answers with the actor `session`. Since U138 the verb accepts that answer
+  with no controlling terminal and itself refuses unless both ages are under
+  five days; until the installed copy carries U138, run it under
+  `script -q /dev/null` as before. Answer as `session` either way: any other
+  actor takes the terminal rule, which checks no age.
 - **DJ_tools is read-only for code.** It is the live system until each workflow's
   replacement is proven. Its `docs/` are the exception.
 - **Do not symlink `.venv` into a worktree.** The editable install names the

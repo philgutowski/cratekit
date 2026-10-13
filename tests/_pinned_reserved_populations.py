@@ -24,6 +24,8 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'auth-failed',
     'awaiting-human-action',
     'awaiting-import',
+    # 2026-10-12, U138: the session's age rule refusal joined.
+    'backup-acknowledgment-backup-too-old',
     'backup-acknowledgment-missing',
     'backup-acknowledgment-no-terminal',
     'backup-facts-unreadable',
@@ -590,6 +592,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'auth-failed',
         'awaiting-human-action',
         'awaiting-import',
+        # 2026-10-12, U138: the session's age rule refusal joined.
+        'backup-acknowledgment-backup-too-old',
         'backup-acknowledgment-missing',
         'backup-acknowledgment-no-terminal',
         'backup-facts-unreadable',
@@ -854,6 +858,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'retry-later',
         'retry-when-unlocked',
         'revalidate-pins',
+        # 2026-10-12, U138: the remedy a too old backup refusal carries joined.
+        'run-backup',
         'run-doctor',
         'run-setup',
         'set-credential',
@@ -958,9 +964,11 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'set-credential',
         'utf-8',
     ],
+    # 2026-10-12, U138: the session's age rule refusal and its rule name joined.
     'core/session.py': [
         'anlz-modified',
         'awaiting-import',
+        'backup-acknowledgment-backup-too-old',
         'backup-acknowledgment-missing',
         'backup-acknowledgment-no-terminal',
         'backup-facts-unreadable',
@@ -970,6 +978,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'library-volume-unmounted',
         'mapped-volume-mismatch',
         'mapped-volume-unmounted',
+        'session-ages',
         'session-committed-unverified',
         'session-lock-held',
         'utf-8',
@@ -2254,6 +2263,8 @@ PINNED_LITERAL_HOLDERS = {
     'core/session.py': [
         'anlz-modified',
         'awaiting-import',
+        # 2026-10-12, U138: the session's age rule refusal joined.
+        'backup-acknowledgment-backup-too-old',
         'backup-acknowledgment-missing',
         'backup-acknowledgment-no-terminal',
         'backup-facts-unreadable',

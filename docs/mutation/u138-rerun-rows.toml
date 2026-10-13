@@ -1,0 +1,16 @@
+name = "u138-rerun"
+pass_kind = "light"
+
+# S5 of u138 measured zero: through the dispatcher a five day fixture reads a
+# moment over five days. A core test on one clock was added after the batch;
+# this is S5 measured again, not a new row.
+
+[[rows]]
+id = "S5_bound_exclusive"
+description = "A portion exactly five days old is under the bound"
+file = "src/cratekit/core/session.py"
+surface = "user"
+old = '''        elif entry.age_seconds >= limit:
+'''
+new = '''        elif entry.age_seconds > limit:
+'''
