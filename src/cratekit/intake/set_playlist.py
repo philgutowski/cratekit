@@ -296,6 +296,9 @@ def frozen_name(job: jobs.Job) -> str:
 
     Empty when the job was queued before that freeze, or when the set could not
     be named at queue time. Callers fall back to :func:`playlist_name` then.
+    SINCE U140 IT MAY NOT BE THE QUEUE TIME NAME: ``export set --rename``
+    refreezes the name a person gave the INSPIRATION playlist, which need not
+    open with a day.
     """
     payload = job.payload if isinstance(job.payload, Mapping) else {}
     return str(payload.get(intake_cli.PLAYLIST_NAME) or "").strip()
@@ -752,8 +755,10 @@ def recorded_playlist(
     """The playlist an earlier write made for this job, its id and name, when it is live under the folder.
 
     THE SESSION RECORD IS THE JOB'S MEMORY OF ITS PLAYLIST. The job's payload is
-    frozen at queue time (KTD9) and is not written to, so what a landing wrote
-    is read where the landing recorded it: a closed record whose set playlist
+    frozen at queue time (KTD9) and no landing writes to it; the one later
+    write is ``export set --rename`` refreezing the name once a person renamed
+    the INSPIRATION playlist (U140). So what a landing wrote is read where the
+    landing recorded it: a closed record whose set playlist
     detail names this job and whose source committed, the newest first. A set
     landed in two parts on two days then has one playlist, named for the first
     day, and a backfill adds to it rather than making a twin (the residual on

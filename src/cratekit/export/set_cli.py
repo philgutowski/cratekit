@@ -50,7 +50,8 @@ import the CLI registry (KTD23).
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -1046,8 +1047,13 @@ def export_archive(ctx) -> Envelope:
 # ── backfill over INSPIRATION (U129) ─────────────────────────────────────────
 
 
-def _inspiration_playlists(cfg) -> list[tuple[str, str]]:
-    """Live playlists under the declared INSPIRATION folder: (name, playlist_id)."""
+@contextmanager
+def _inspiration_folder(cfg) -> Iterator[tuple[Any, str]]:
+    """The live database, opened to read with rekordbox closed, and the INSPIRATION folder's id.
+
+    The id is empty when the folder is not there yet. ONE OPENER FOR THE
+    BACKFILL AND THE RENAME, so both read the same folder the same way.
+    """
     from cratekit.core import active_taxonomy, rb_writer
     from cratekit.intake import set_playlist
 
@@ -1055,6 +1061,16 @@ def _inspiration_playlists(cfg) -> list[tuple[str, str]]:
     db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
     try:
         folder_id, _node = set_playlist.folder_for(db, declared)
+        yield db, folder_id
+    finally:
+        rb_writer.close_db(db)
+
+
+def _inspiration_playlists(cfg) -> list[tuple[str, str]]:
+    """Live playlists under the declared INSPIRATION folder: (name, playlist_id)."""
+    from cratekit.core import rb_writer
+
+    with _inspiration_folder(cfg) as (db, folder_id):
         if not folder_id:
             return []
         found: list[tuple[str, str]] = []
@@ -1068,8 +1084,6 @@ def _inspiration_playlists(cfg) -> list[tuple[str, str]]:
             if name:
                 found.append((name, str(row.ID)))
         return sorted(found, key=lambda one: one[0].lower())
-    finally:
-        rb_writer.close_db(db)
 
 
 def _naming_day(job) -> datetime | None:
@@ -1472,18 +1486,12 @@ def _rename_unresolved(job_id: str, message: str, step: str, **detail: Any) -> C
 
 def _inspiration_of(cfg, job_id: str) -> tuple[str, str] | None:
     """The INSPIRATION playlist a write made for this job, its id and live name, or None."""
-    from cratekit.core import active_taxonomy, rb_writer
     from cratekit.intake import set_playlist
 
-    declared = active_taxonomy.load(cfg)
-    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
-    try:
-        folder_id, _node = set_playlist.folder_for(db, declared)
+    with _inspiration_folder(cfg) as (db, folder_id):
         if not folder_id:
             return None
         return set_playlist.recorded_playlist(cfg, db, job_id, folder_id)
-    finally:
-        rb_writer.close_db(db)
 
 
 def _standing_mark(cfg, remote_id: str) -> mark_record.Marked | None:
@@ -1523,7 +1531,7 @@ def _rename_payload(planned: sets.RenamePlan) -> dict[str, Any]:
             "id": planned.job_id,
             "kind": "job",
             "name": planned.frozen,
-            "to": planned.to,
+            "to": planned.live or planned.to,
             "action": REFREEZE if planned.refreeze else KEEP,
         },
     ]
@@ -1537,6 +1545,7 @@ def _rename_payload(planned: sets.RenamePlan) -> dict[str, Any]:
 
 def _rename_shown(planned: sets.RenamePlan) -> dict[str, Any]:
     old, to = planned.playlist.name, planned.to
+    frozen_to = planned.live or to
     shown: dict[str, Any] = {
         "follows": f"the INSPIRATION playlist {planned.inspiration_id}, named {to!r}",
         "account playlist": (
@@ -1546,7 +1555,9 @@ def _rename_shown(planned: sets.RenamePlan) -> dict[str, Any]:
         ),
         "ledger entry": f"{old!r} -> {to!r}" if planned.rename else f"already {to!r}",
         "frozen name": (
-            f"{planned.frozen or 'none'!r} -> {to!r}" if planned.refreeze else f"already {to!r}"
+            f"{repr(planned.frozen) if planned.frozen else 'none'} -> {frozen_to!r}"
+            if planned.refreeze
+            else f"already {frozen_to!r}"
         ),
         "removes": "nothing, ever: no track or playlist is taken away",
     }
@@ -1563,9 +1574,11 @@ def plan_rename(cfg, job_id: str) -> RenamePlanned:
 
     REFUSED BY NAME, before the gate and with nothing written, when the job
     has no INSPIRATION playlist to follow, when no account playlist is recorded
-    under any of its names, and when the archive's mark still stands on the
-    playlist, since the rename would take the downloaded prefix off a title
-    ``sync unmark`` expects to find.
+    under any of its names, when two are (a backfill made a twin under the new
+    name, and choosing one would leave the other on the account with nothing
+    recording it), and when the archive's mark still stands on the playlist,
+    since the rename would take the downloaded prefix off a title ``sync
+    unmark`` expects to find.
     """
     from cratekit.core import jobs
     from cratekit.intake import set_playlist
@@ -1591,6 +1604,7 @@ def plan_rename(cfg, job_id: str) -> RenamePlanned:
         names=names,
         to=to,
         frozen=set_playlist.frozen_name(job),
+        live=live,
         inspiration_id=inspiration_id,
     )
     if planned is None:
@@ -1599,9 +1613,24 @@ def plan_rename(cfg, job_id: str) -> RenamePlanned:
             f"no account playlist is recorded for the set under {to!r} or any name "
             f"its job gives ({', '.join(repr(one) for one in names) or 'none'}), so "
             f"there is nothing to rename",
-            "run crate export set with no tracklist to make one for its INSPIRATION playlist",
+            "if the set's account playlist was made under a name of its own, from a "
+            "tracklist or --name, rename it on the account by hand, since this verb "
+            "finds only the names the job gives; if the set has none, crate export "
+            "set with no tracklist makes one",
             names=list(names),
             to=to,
+        )
+    if planned.twin is not None:
+        raise _rename_unresolved(
+            job.job_id,
+            f"two account playlists are recorded for the set, "
+            f"{planned.playlist.remote_id} under {to!r} and {planned.twin.remote_id} "
+            f"under {planned.twin.name!r}, and renaming either would leave the other "
+            f"on the account with nothing recording which is the set's",
+            "keep one of the two on the account, take the other and its ledger entry "
+            "away by hand, then rename again",
+            remote_id=planned.playlist.remote_id,
+            twin=planned.twin.remote_id,
         )
     if planned.rename:
         mark = _standing_mark(cfg, planned.playlist.remote_id)

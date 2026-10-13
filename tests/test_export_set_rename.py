@@ -200,7 +200,7 @@ def test_a_job_with_no_frozen_name_is_found_by_the_queued_day_and_refrozen(accou
     code, done, refused = _rename_acts(job.job_id)
 
     assert code == int(ExitCode.OK), done
-    assert refused["cause"]["detail"]["shown"]["frozen name"] == f"'none' -> {names[0]!r}"
+    assert refused["cause"]["detail"]["shown"]["frozen name"] == f"none -> {names[0]!r}"
     assert held.renamed == [(remote_id, names[0])]
     assert ledger.set_playlist_names(cfg) == (names[0],)
     assert _frozen(job.job_id) == names[0]
@@ -356,3 +356,48 @@ def test_the_ledger_refuses_to_fold_a_rename_into_another_playlist(account):
     with pytest.raises(CratekitError):
         ledger.rename_set_playlist(cfg, OLD, "elsewhere", "not-" + first)
     assert set(ledger.set_playlist_names(cfg)) == {OLD, NEW}
+
+
+def test_a_twin_under_the_new_name_is_refused_rather_than_adopted(renamed):
+    """A backfill that already made a twin under NEW: the rename chooses neither."""
+    cfg, held, job_id, remote_id, _live = renamed
+    twin = _recorded(cfg, held, NEW)
+
+    code, done = drive(["export", "set", "--rename", job_id])
+
+    assert code == int(ExitCode.PRECONDITION), done
+    assert done["cause"]["reason"] == set_cli.RENAME_UNRESOLVED
+    assert remote_id in done["cause"]["message"] and twin in done["cause"]["message"]
+    assert held.renamed == []
+    assert set(ledger.set_playlist_names(cfg)) == {OLD, NEW}
+    assert _frozen(job_id) == OLD
+
+
+def test_a_name_with_a_slash_freezes_as_the_library_spells_it(account, monkeypatch):
+    """The account and the ledger spell a slash as a dash; the job keeps the slash,
+    since its frozen name names the INSPIRATION playlist too."""
+    cfg, _fake, held = account
+    live = "3_25_26 Live 3/25 at Probe 2-26"
+    job = _succeeded_set_job(cfg, OLD)
+    remote_id = _recorded(cfg, held, OLD)
+    monkeypatch.setattr(set_cli, "_inspiration_of", lambda _cfg, _job_id: (INSPIRATION_ID, live))
+
+    code, done, refused = _rename_acts(job.job_id)
+
+    assert code == int(ExitCode.OK), done
+    spelled = set_cli.set_name(live)
+    assert held.renamed == [(remote_id, spelled)]
+    assert ledger.set_playlist_names(cfg) == (spelled,)
+    assert _frozen(job.job_id) == live
+    assert refused["cause"]["detail"]["shown"]["frozen name"] == f"{OLD!r} -> {live!r}"
+
+    code, done, _refused = _rename_acts(job.job_id)
+    assert code == int(ExitCode.OK), done
+    assert done["outcome"] == "no_op"
+
+
+def test_refreeze_refuses_a_job_that_is_not_in_the_queue(account):
+    with jobs.open_store() as store:
+        with pytest.raises(CratekitError) as caught:
+            jobs.refreeze(store, "no-such-job", intake_cli.PLAYLIST_NAME, NEW)
+    assert caught.value.cause.reason == "job-unknown"

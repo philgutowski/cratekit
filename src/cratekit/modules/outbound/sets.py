@@ -362,11 +362,20 @@ class RenamePlan:
 
     job_id: str
     playlist: ledger.SetPlaylist
+    #: The INSPIRATION playlist's name as the account and the ledger spell it.
     to: str
     #: The name frozen on the job, ``""`` for a job queued before the freeze.
     frozen: str
+    #: The INSPIRATION playlist's name as the library carries it, which is
+    #: what the job freezes: a frozen name names the INSPIRATION playlist too,
+    #: and ``to`` is only its account spelling (a slash becomes a dash).
+    live: str = ""
     #: The INSPIRATION playlist's row, whose name ``to`` is.
     inspiration_id: str = ""
+    #: A second playlist recorded for the set under one of the job's other
+    #: names when ``playlist`` is the one under ``to``: a twin, which a rename
+    #: would leave on the account with its tracks and nothing recording it.
+    twin: ledger.SetPlaylist | None = None
 
     @property
     def rename(self) -> bool:
@@ -375,7 +384,7 @@ class RenamePlan:
 
     @property
     def refreeze(self) -> bool:
-        return self.frozen != self.to
+        return self.frozen != (self.live or self.to)
 
     @property
     def writes(self) -> bool:
@@ -389,6 +398,7 @@ class RenamePlan:
             "name": self.playlist.name,
             "to": self.to,
             "frozen": self.frozen,
+            "live": self.live,
             "inspiration": self.inspiration_id,
         }
 
@@ -409,30 +419,45 @@ def plan_rename(
     names: Sequence[str],
     to: str,
     frozen: str,
+    live: str = "",
     inspiration_id: str = "",
 ) -> RenamePlan | None:
     """The rename, or ``None`` when no account playlist is recorded for the set.
 
     ``names`` are the names the set's account playlist may be recorded under,
     in the order a person would expect: frozen on the job, then the posted
-    day's form, then the queued day's. A record already under ``to`` wins over
-    all of them, since that is a rename an earlier run made. Reads the ledger
-    only; the title on the account is set by identifier, so no read of it
-    stands between the plan and the write.
+    day's form, then the queued day's. A record under ``to`` is a rename an
+    earlier run made, AND IT IS TAKEN ONLY ALONE: one under ``to`` beside
+    another playlist under one of ``names`` is a twin a backfill made, and the
+    plan names it in ``twin`` rather than choose. Reads the ledger only; the
+    title on the account is set by identifier, so no read of it stands
+    between the plan and the write.
     """
-    for name in (to, *names):
-        if not name:
+    recorded_to = ledger.set_playlist(cfg, to) if to else None
+    older = None
+    for name in names:
+        if not name or name == to:
             continue
-        recorded = ledger.set_playlist(cfg, name)
-        if recorded is not None:
-            return RenamePlan(
-                job_id=job_id,
-                playlist=recorded,
-                to=to,
-                frozen=frozen,
-                inspiration_id=inspiration_id,
-            )
-    return None
+        older = ledger.set_playlist(cfg, name)
+        if older is not None:
+            break
+    held = recorded_to or older
+    if held is None:
+        return None
+    twin = (
+        older
+        if recorded_to is not None and older is not None and older.remote_id != recorded_to.remote_id
+        else None
+    )
+    return RenamePlan(
+        job_id=job_id,
+        playlist=held,
+        to=to,
+        frozen=frozen,
+        live=live,
+        inspiration_id=inspiration_id,
+        twin=twin,
+    )
 
 
 def apply_rename(
@@ -449,8 +474,8 @@ def apply_rename(
     identifier asked twice asks for one title, so a run that failed after it
     renames again and moves on. The key moves once the title is there, and
     the job last, since its old name is how a rerun finds the record if the
-    move never landed. ``refreeze`` is handed the new name and raises if the
-    job cannot take it.
+    move never landed. ``refreeze`` is handed the INSPIRATION playlist's own
+    name and raises if the job cannot take it.
     """
     playlist = planned.playlist
     if planned.rename:
@@ -460,7 +485,7 @@ def apply_rename(
             cfg, playlist.name, planned.to, playlist.remote_id
         )
     if planned.refreeze:
-        refreeze(planned.to)
+        refreeze(planned.live or planned.to)
         done.refrozen = True
     return done
 
