@@ -738,7 +738,7 @@ def _archive_payload(planned: sets.ArchivePlan | None, *, name: str, pass_name: 
             {
                 "id": planned.folder_id,
                 "kind": "folder",
-                "name": planned.year,
+                "name": planned.folder_name,
                 "action": planned.folder_action,
             },
             {
@@ -787,20 +787,26 @@ def _archive_shown(planned: sets.ArchivePlan | None, *, name: str, pass_name: st
     shown: dict[str, Any] = {
         "set playlist": planned.playlist.name,
         "pass": pass_name,
-        "folder": f"{planned.year}: {folder}",
+        "folder": f"{planned.folder_name}: {folder}",
         "place": (
             "put it in the folder" if planned.move else "already in the folder, left there"
         ),
         "title": title,
         "undone by": f"crate sync unmark --pass {pass_name}",
     }
-    if planned.stale_folder:
+    if planned.stale_folder and planned.writes:
         shown["recorded folder"] = (
-            f"the folder recorded for {planned.year}, {planned.stale_folder}, is no "
+            f"the folder recorded for {planned.folder_name}, {planned.stale_folder}, is no "
             f"longer on the account, so its record is replaced"
         )
     if not planned.writes:
-        shown["nothing to write"] = "the playlist is already in its folder and marked"
+        # NOTHING IS WRITTEN, the ledger included (U142): an adoption alone is
+        # no write, so a stale record is not said to be replaced either.
+        shown["nothing to write"] = (
+            "the playlist is already in its folder, its title left as a person set it"
+            if planned.left == sets.RETITLED
+            else "the playlist is already in its folder and marked"
+        )
     return shown
 
 
@@ -1048,17 +1054,28 @@ def export_archive(ctx) -> Envelope:
 
 
 @contextmanager
-def _inspiration_folder(cfg) -> Iterator[tuple[Any, str]]:
-    """The live database, opened to read with rekordbox closed, and the INSPIRATION folder's id.
+def _inspiration_folder(
+    cfg, *, read_only: bool = False, declared=None
+) -> Iterator[tuple[Any, str]]:
+    """The live database, opened to read, and the INSPIRATION folder's id.
 
     The id is empty when the folder is not there yet. ONE OPENER FOR THE
-    BACKFILL AND THE RENAME, so both read the same folder the same way.
+    BACKFILL AND THE RENAME, so both read the same folder the same way, with
+    rekordbox closed. ``read_only`` opens a read handle instead, the one
+    ``crate organize`` reads its own listing through (U142). ``declared`` is
+    the taxonomy when the caller has already loaded it.
     """
     from cratekit.core import active_taxonomy, rb_writer
     from cratekit.intake import set_playlist
 
-    declared = active_taxonomy.load(cfg)
-    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
+    if declared is None:
+        declared = active_taxonomy.load(cfg)
+    db = rb_writer.open_db(
+        rb_writer.live_db_path(cfg),
+        require_closed=not read_only,
+        check_app_version=not read_only,
+        cfg=cfg,
+    )
     try:
         folder_id, _node = set_playlist.folder_for(db, declared)
         yield db, folder_id
@@ -1066,11 +1083,16 @@ def _inspiration_folder(cfg) -> Iterator[tuple[Any, str]]:
         rb_writer.close_db(db)
 
 
-def _inspiration_playlists(cfg) -> list[tuple[str, str]]:
-    """Live playlists under the declared INSPIRATION folder: (name, playlist_id)."""
+def _inspiration_playlists(
+    cfg, *, read_only: bool = False, declared=None
+) -> list[tuple[str, str]]:
+    """Live playlists under the declared INSPIRATION folder: (name, playlist_id).
+
+    ``read_only`` and ``declared`` are :func:`_inspiration_folder`'s.
+    """
     from cratekit.core import rb_writer
 
-    with _inspiration_folder(cfg) as (db, folder_id):
+    with _inspiration_folder(cfg, read_only=read_only, declared=declared) as (db, folder_id):
         if not folder_id:
             return []
         found: list[tuple[str, str]] = []
@@ -1084,6 +1106,26 @@ def _inspiration_playlists(cfg) -> list[tuple[str, str]]:
             if name:
                 found.append((name, str(row.ID)))
         return sorted(found, key=lambda one: one[0].lower())
+
+
+def inspiration_names(cfg) -> frozenset[str] | None:
+    """Every set name an INSPIRATION playlist carries, or None when none is declared.
+
+    PUBLIC FOR ``crate organize`` (U142), whose set step takes an INSPIRATION
+    playlist of the set's name as proof that the set downloaded. Each name is
+    read through :func:`set_name`, the rule the ledger's set names are keyed
+    by. A taxonomy that declares no INSPIRATION folder has no playlist that
+    could prove a set, and says so as None rather than as an empty set; a
+    database that cannot be read, or a root holding the folder twice, refuses.
+    """
+    from cratekit.core import active_taxonomy
+
+    declared = active_taxonomy.load(cfg)
+    if declared.inspiration is None:
+        return None
+    return frozenset(
+        name for name, _pid in _inspiration_playlists(cfg, read_only=True, declared=declared)
+    )
 
 
 def _naming_day(job) -> datetime | None:
@@ -1766,6 +1808,7 @@ __all__ = [
     "build_set",
     "export_archive",
     "export_set",
+    "inspiration_names",
     "match_rows",
     "name_of",
     "plan_archive",

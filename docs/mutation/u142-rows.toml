@@ -1,0 +1,243 @@
+name = "u142"
+pass_kind = "light"
+
+# U142: a set is archived into Downloaded Sets <year>, and an INSPIRATION
+# playlist of its name proves it downloaded. Rows target the guards this unit
+# added. Dropped on purpose, each one line: the digest's folder_name field is a
+# function of the year it sits beside within one build, so removing it is
+# equivalent; the backfill's writer open (read_only False) is unchanged code;
+# check_app_version on the read handle is held by the same patched seam the
+# organize suite pins, so it is left to the require_closed row.
+
+[[rows]]
+id = "S1_folder_prefix"
+description = "sets: drop the Downloaded Sets prefix, so a set is filed into the plain year folder the filing owns"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+tests = ["tests/test_export_set.py", "tests/test_organize.py", "tests/test_set_inspiration_playlist.py"]
+old = '''FOLDER_PREFIX = "Downloaded Sets "'''
+new = '''FOLDER_PREFIX = ""'''
+
+[[rows]]
+id = "S2_plan_reads_the_year_key"
+description = "plan_archive: read the ledger's folder record under the year, so the filing's plain year folder is reused for a set"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+tests = ["tests/test_export_set.py", "tests/test_organize.py", "tests/test_set_inspiration_playlist.py"]
+old = '''    recorded = ledger.set_folder(cfg, name)'''
+new = '''    recorded = ledger.set_folder(cfg, year)'''
+
+[[rows]]
+id = "S3_adopt_by_year_too"
+description = "plan_archive: adopt a root folder named as the plain year as well, so the year folder competes with the sets' folder"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+tests = ["tests/test_export_set.py", "tests/test_organize.py", "tests/test_set_inspiration_playlist.py"]
+old = '''        named = sorted(fid for fid, title in root.items() if title == name)'''
+new = '''        named = sorted(fid for fid, title in root.items() if title in (name, year))'''
+
+[[rows]]
+id = "S4_ambiguity_bound"
+description = "plan_archive: refuse only three folders of the name, so one of two Downloaded Sets folders is picked silently"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+tests = ["tests/test_export_set.py", "tests/test_organize.py", "tests/test_set_inspiration_playlist.py"]
+old = '''        if len(named) > 1:
+            raise _ambiguous_folder(name, named)'''
+new = '''        if len(named) > 2:
+            raise _ambiguous_folder(name, named)'''
+
+[[rows]]
+id = "S5_create_under_the_year"
+description = "apply_archive: create the folder under the plain year, so a set's folder is made with the filing's name"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+tests = ["tests/test_export_set.py", "tests/test_organize.py", "tests/test_set_inspiration_playlist.py"]
+old = '''        lambda: account.create_folder(planned.folder_name),'''
+new = '''        lambda: account.create_folder(planned.year),'''
+
+[[rows]]
+id = "S6_reserve_under_the_year"
+description = "apply_archive: record the folder under the plain year key, so the filing reuses the sets' folder"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+tests = ["tests/test_export_set.py", "tests/test_organize.py", "tests/test_set_inspiration_playlist.py"]
+old = '''        planned.folder_name,
+        lambda: account.create_folder(planned.folder_name),'''
+new = '''        planned.year,
+        lambda: account.create_folder(planned.folder_name),'''
+
+[[rows]]
+id = "S7_adoption_is_a_write"
+description = "ArchivePlan.writes: count an adoption alone as a write again, so a set already filed by hand reads as planned"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+tests = ["tests/test_export_set.py", "tests/test_organize.py", "tests/test_set_inspiration_playlist.py"]
+old = '''        return self.move or self.mark'''
+new = '''        return self.folder_action in (CREATE, ADOPT) or self.move or self.mark'''
+
+[[rows]]
+id = "S8_gate_stale_said_without_a_write"
+description = "export archive gate: say a stale record is replaced even when nothing is written"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+tests = ["tests/test_export_set.py"]
+old = '''    if planned.stale_folder and planned.writes:'''
+new = '''    if planned.stale_folder:'''
+
+[[rows]]
+id = "S9_gate_retitled_called_marked"
+description = "export archive gate: call a playlist a person retitled marked when nothing is written"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+tests = ["tests/test_export_set.py"]
+old = '''            if planned.left == sets.RETITLED
+            else "the playlist is already in its folder and marked"'''
+new = '''            if planned.left == sets.ALREADY_MARKED
+            else "the playlist is already in its folder and marked"'''
+
+[[rows]]
+id = "S10_gate_folder_item_named_by_year"
+description = "export archive payload: name the folder item by the plain year, so the plan shows a folder that is not the one written"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+tests = ["tests/test_export_set.py", "tests/test_organize.py"]
+old = '''                "name": planned.folder_name,'''
+new = '''                "name": planned.year,'''
+
+[[rows]]
+id = "S11_read_handle_requires_closed"
+description = "_inspiration_playlists: open for writing on organize's read too, so a running rekordbox refuses the INSPIRATION proof"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+tests = ["tests/test_organize.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py"]
+old = '''        require_closed=not read_only,'''
+new = '''        require_closed=True,'''
+
+[[rows]]
+id = "S12_undeclared_reads_as_empty"
+description = "inspiration_names: answer an empty set when no INSPIRATION folder is declared, so the wait says no playlist rather than no folder"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''    if declared.inspiration is None:
+        return None
+    return frozenset('''
+new = '''    if declared.inspiration is None:
+        return frozenset()
+    return frozenset('''
+
+[[rows]]
+id = "S13_unread_reads_as_none"
+description = "organize set step: read a database that cannot answer as holding no INSPIRATION playlist, so the set waits instead of refusing"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''            try:
+                held = inspired.get()
+            except CratekitError as exc:
+                area.steps.append(refused(key, title, exc.cause))
+                continue'''
+new = '''            try:
+                held = inspired.get()
+            except CratekitError:
+                held = frozenset()'''
+
+[[rows]]
+id = "S14_any_inspiration_proves_every_set"
+description = "organize set step: take any INSPIRATION playlist as proof for every set, not one of the set's own name"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''            if held is None or name not in held:'''
+new = '''            if held is None or not held:'''
+
+[[rows]]
+id = "S15_second_proof_ignored"
+description = "organize set step: list a set with an INSPIRATION playlist of its name as waiting, the behaviour before this unit"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''            if held is None or name not in held:'''
+new = '''            if True:'''
+
+[[rows]]
+id = "S16_pass_is_not_the_set"
+description = "organize set step: record an INSPIRATION proven mark under another pass, so sync unmark with the set's name finds nothing"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''                else set_cli.plan_archive_named(cfg, name, pass_name=name)'''
+new = '''                else set_cli.plan_archive_named(cfg, name, pass_name="organize")'''
+
+[[rows]]
+id = "S17_proof_not_named"
+description = "organize set step: name the set alone as the proof, so the gate does not say an INSPIRATION playlist proved it"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''            proof = f"the INSPIRATION playlist {name}"'''
+new = '''            proof = name'''
+
+[[rows]]
+id = "S18_wait_names_no_folder_always"
+description = "_waiting: say no INSPIRATION folder is declared whatever the read answered"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''        if inspired is not None
+        else "no INSPIRATION folder declared in the taxonomy to hold a playlist of its name"'''
+new = '''        if inspired is None
+        else "no INSPIRATION folder declared in the taxonomy to hold a playlist of its name"'''
+
+[[rows]]
+id = "S19_database_read_eagerly"
+description = "organize set step: read the INSPIRATION folder before any set, so a set its intake file proves still opens the database"
+file = "src/cratekit/organize/account.py"
+surface = "maintainer"
+tests = ["tests/test_organize.py"]
+old = '''    inspired = _Lazy(lambda: set_cli.inspiration_names(cfg))
+    for name in names:'''
+new = '''    inspired = _Lazy(lambda: set_cli.inspiration_names(cfg))
+    inspired.get()
+    for name in names:'''
+
+[[rows]]
+id = "S20_retitled_detail_called_marked"
+description = "organize set step: call a set a person retitled in its folder marked"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''        elif planned is not None and planned.left == sets.RETITLED:'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "S21_filing_reserves_the_sets_folder"
+description = "filing apply: reserve the year folder under the sets' folder name, so a marked custom playlist is filed among the sets"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+tests = ["tests/test_organize.py", "tests/test_playlist_kinds.py"]
+old = '''                folder_id, _made = ledger.reserve_set_folder(
+                    cfg,
+                    row.year,'''
+new = '''                folder_id, _made = ledger.reserve_set_folder(
+                    cfg,
+                    sets.folder_name(row.year),'''
+
+[[rows]]
+id = "S22_year_record_named_for_sets_reused"
+description = "filing year folder: reuse a year record whose folder now carries the sets' name, so custom playlists are filed among the sets"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+tests = ["tests/test_organize.py", "tests/test_playlist_kinds.py"]
+old = '''    if recorded and recorded in root and root[recorded] != sets.folder_name(year):'''
+new = '''    if recorded and recorded in root:'''
+
+[[rows]]
+id = "S23_prefix_only_said_as_a_move"
+description = "organize set step: say file it in the folder for a set already there with its built title, a prefix and no move"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''        if archived.writes and planned.move:'''
+new = '''        if archived.writes:'''

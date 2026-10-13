@@ -551,8 +551,10 @@ then both asked, then written. YOURS is what the author made: a top level
 rekordbox node outside the declared trees, a node the rotation leaves alone,
 or an account playlist the product did not make that sits in no folder. It
 is listed with a suggested home, a followed label's folder or a year folder,
-and is never written. A set's download is proven only by an intake file named
-for the set. Every step is of one KIND, the word `--only` names it by (U137):
+and is never written. A set's download is proven by an intake file named for
+the set or, since U142, by a playlist of the set's name under the declared
+INSPIRATION folder, read through a read handle; a database that cannot answer
+refuses that set's step. Every step is of one KIND, the word `--only` names it by (U137):
 a narrowed area plans only the named kinds and names the selection in its
 digest, and an area with no kind named is not planned or asked.
 
@@ -1400,9 +1402,11 @@ INSPIRATION playlist's name so the account and rekordbox agree. It is
 recorded in the outbound ledger's `sets` map under its name, which is the key
 a second run reuses. The playlists source excludes it as `set-playlist`,
 since its tracks are fetched from the tracklist it was made from. A set
-landing, or `crate export archive`, files it once the download lands, in a
-root folder named for the year it was made, prefixed `DOWNLOADED ` through
-the mark record.
+landing, or `crate export archive`, files it once the download lands, in the
+root folder `Downloaded Sets <year>` for the year it was made (U142), prefixed
+`DOWNLOADED ` through the mark record. That folder is never the plain
+`<year>` a marked custom playlist is filed in; the ledger records each under
+its own name.
 
 *Avoid:* reading it as intake, or keying it by anything a person can retype
 differently, such as the tracklist's path.

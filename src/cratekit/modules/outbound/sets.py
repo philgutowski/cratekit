@@ -7,6 +7,12 @@ folder named for the year the set was processed, so the account's root does
 not fill with sets. This module is both steps, each planned and then applied,
 against the account seam.
 
+THE SET'S FOLDER IS ``Downloaded Sets <year>`` (U142), the folder the author
+keeps every downloaded set in, and never the plain ``<year>`` folder a marked
+custom playlist is filed in. The two are recorded under two keys of the
+ledger's folder map, each the folder's own name, so neither step reuses the
+other's folder.
+
 ADD ONLY, BECAUSE THE PROTOCOL IS. A playlist is created, tracks are added, a
 folder is created and a playlist is put in one. One retitle is the archive
 mark, recorded in ``sync mark``'s record so ``sync unmark`` can take it off.
@@ -44,10 +50,13 @@ from cratekit.modules.outbound.service import RemoteAccount
 
 _ORIGIN = ("outbound", "sets")
 
-#: What happens to the set playlist, and to the year folder.
+#: What happens to the set playlist, and to the set's folder.
 CREATE = "create"
 REUSE = "reuse"
 ADOPT = "adopt"
+
+#: The set's root folder is this followed by the year (U142).
+FOLDER_PREFIX = "Downloaded Sets "
 
 #: How many tracks one add carries, so each chunk is recorded as it lands.
 CHUNK = 100
@@ -60,6 +69,11 @@ RETITLED = "retitled-since-built"
 #: The folder's listing did not show the playlist just put in it, so there is
 #: no title to recheck, and a rename without one is not made.
 NOT_LISTED = "not-listed"
+
+
+def folder_name(year: str) -> str:
+    """The root folder a year's downloaded sets are filed in, ``Downloaded Sets 2026``."""
+    return FOLDER_PREFIX + year
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,7 +213,7 @@ def apply_set(
 
 @dataclass(frozen=True, slots=True)
 class ArchivePlan:
-    """The year folder and the one set playlist the archive files in it."""
+    """The set's folder for its year and the one set playlist the archive files in it."""
 
     playlist: ledger.SetPlaylist
     year: str
@@ -210,6 +224,10 @@ class ArchivePlan:
     #: The playlist's title in the folder, when it is in the folder already.
     #: ``None`` while it is not, since the seam reads a title only there.
     title: str | None = None
+
+    @property
+    def folder_name(self) -> str:
+        return folder_name(self.year)
 
     @property
     def to(self) -> str:
@@ -233,7 +251,13 @@ class ArchivePlan:
 
     @property
     def writes(self) -> bool:
-        return self.folder_action in (CREATE, ADOPT) or self.move or self.mark
+        """Whether the account changes. A folder made is always a move into it.
+
+        AN ADOPTION ALONE IS NO WRITE (U142). A set a person already put in the
+        folder and prefixed is done, and every reader of this says so on the
+        gate; the folder is adopted by its name again when a set next moves in.
+        """
+        return self.move or self.mark
 
     def identity(self) -> dict[str, Any]:
         return {
@@ -243,6 +267,7 @@ class ArchivePlan:
             "to": self.to,
             "year": self.year,
             "folder": [self.folder_action, self.folder_id, self.stale_folder],
+            "folder_name": self.folder_name,
             "move": self.move,
             "mark": self.mark,
         }
@@ -261,35 +286,43 @@ class ArchiveApplied:
     left: str = ""
 
 
-def _ambiguous_folder(year: str, found: Sequence[str]) -> CratekitError:
+def _ambiguous_folder(name: str, found: Sequence[str]) -> CratekitError:
     return refuse(
         "export-set-ambiguous",
-        f"the account holds {len(found)} root folders named {year!r}, so which one "
-        f"is the year's is not something its name decides, and nothing was written",
+        f"the account holds {len(found)} root folders named {name!r}, so which one "
+        f"holds the year's sets is not something its name decides, and nothing was written",
         steps=(
             "rename or merge the extra folders on the account so one carries the "
-            "year, then archive again",
+            "name, then archive again",
         ),
         scope=Scope.RUN,
         origin=_ORIGIN,
-        detail={"folders": list(found), "name": year},
+        detail={"folders": list(found), "name": name},
     )
 
 
 def plan_archive(
     cfg: config.Config, playlist: ledger.SetPlaylist, account: RemoteAccount, *, year: str
 ) -> ArchivePlan:
-    """Decide the year folder and the playlist's place and title in it."""
-    recorded = ledger.set_folder(cfg, year)
+    """Decide the set's folder for ``year`` and the playlist's place and title in it.
+
+    THE FOLDER IS FOUND BY ITS NAME, ``Downloaded Sets <year>``, on the rule the
+    year folder had (U142): the ledger's record under that name reused while the
+    account still lists it, one root folder of that name adopted, two refused,
+    none created once on apply. The plain ``<year>`` folder is the filing's and
+    is never read here.
+    """
+    name = folder_name(year)
+    recorded = ledger.set_folder(cfg, name)
     root = account.folders()
     stale = ""
     if recorded and recorded in root:
         action, folder_id = REUSE, recorded
     else:
         stale = recorded
-        named = sorted(fid for fid, title in root.items() if title == year)
+        named = sorted(fid for fid, title in root.items() if title == name)
         if len(named) > 1:
-            raise _ambiguous_folder(year, named)
+            raise _ambiguous_folder(name, named)
         action, folder_id = (ADOPT, named[0]) if named else (CREATE, "")
     title = account.folder_playlists(folder_id).get(playlist.remote_id) if folder_id else None
     return ArchivePlan(
@@ -318,8 +351,8 @@ def apply_archive(
     playlist = planned.playlist
     folder_id, made = ledger.reserve_set_folder(
         cfg,
-        planned.year,
-        lambda: account.create_folder(planned.year),
+        planned.folder_name,
+        lambda: account.create_folder(planned.folder_name),
         adopt=planned.folder_id if planned.folder_action == ADOPT else "",
         stale=planned.stale_folder,
     )
@@ -497,6 +530,7 @@ __all__ = [
     "ArchivePlan",
     "CHUNK",
     "CREATE",
+    "FOLDER_PREFIX",
     "MARK",
     "NOT_LISTED",
     "RETITLED",
@@ -509,6 +543,7 @@ __all__ = [
     "apply_archive",
     "apply_rename",
     "apply_set",
+    "folder_name",
     "plan_archive",
     "plan_rename",
     "plan_set",

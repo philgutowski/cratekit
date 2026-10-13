@@ -477,6 +477,9 @@ def test_a_set_with_no_intake_file_named_for_it_waits_and_is_not_planned(world):
 
     assert step["state"] == "listed"
     assert "crate export archive" in step["detail"]
+    # U142: the reason names both proofs, so neither reads as the only one.
+    assert "no intake file named for this set" in step["detail"]
+    assert "no INSPIRATION playlist of its name" in step["detail"]
 
 
 def test_an_area_with_nothing_to_do_still_asks(seams):
@@ -1245,3 +1248,246 @@ def test_each_account_kind_runs_its_own_builder_and_no_other(seams, monkeypatch,
 
     assert code == int(ExitCode.OK), envelope
     assert ran == called
+
+
+# ---------------------------------------------------------------------------
+# U142: a set is archived into Downloaded Sets <year>, and INSPIRATION proves it
+# ---------------------------------------------------------------------------
+
+
+def _inspiration(cfg: config.Config, *names: str) -> str:
+    """The declared INSPIRATION folder at the database root, a playlist in it per name."""
+    folder = cutover_fixtures.add_folder(cfg, DECLARED.inspiration.display)
+    for name in names:
+        _node(cfg, name, under=folder)
+    return folder
+
+
+def _no_intake_file(cfg: config.Config) -> None:
+    (Path(cfg.library.root) / f"{SET_NAME}_inboxed.xml").unlink()
+
+
+def test_a_set_with_no_intake_file_and_an_inspiration_playlist_of_its_name_is_archived(world):
+    from cratekit.modules.outbound import ledger
+    from cratekit.sync import mark_record
+
+    cfg, _fake, held, _inbox, _ids = world
+    _no_intake_file(cfg)
+    _inspiration(cfg, SET_NAME)
+
+    step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
+    assert step["state"] == "planned", step
+    assert f"proven by the INSPIRATION playlist {SET_NAME}" in step["detail"]
+
+    code, done, _first = _answered("abort", "apply")
+
+    assert code == int(ExitCode.OK), done
+    recorded = ledger.set_playlist(cfg, SET_NAME)
+    assert held.folder_names[held.placed[recorded.remote_id]] == f"Downloaded Sets {recorded.year}"
+    assert held.titles[recorded.remote_id] == f"DOWNLOADED {SET_NAME}"
+    # THE SET'S OWN NAME IS THE PASS, so ``sync unmark --pass <set>`` finds it.
+    (mark,) = mark_record.MarkRecord(cfg).of_pass(SET_NAME)
+    assert (mark.playlist_id, mark.to) == (recorded.remote_id, f"DOWNLOADED {SET_NAME}")
+
+
+def test_a_playlist_of_the_sets_name_outside_inspiration_or_removed_proves_nothing(world):
+    cfg, _fake, held, _inbox, _ids = world
+    _no_intake_file(cfg)
+    _node(cfg, SET_NAME, under=None)
+    folder = _inspiration(cfg, SET_NAME.lower(), f"{SET_NAME} 2")
+    removed = _node(cfg, SET_NAME, under=folder)
+    conn = sqlite3.connect(cfg.library.db_path)
+    try:
+        conn.execute(
+            f"UPDATE djmdPlaylist SET {rb_writer.SOFT_DELETE_COLUMN} = 1 WHERE ID = ?", (removed,)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
+
+    assert step["state"] == "listed", step
+    assert "no INSPIRATION playlist of its name" in step["detail"]
+    assert held.moves == [] and held.renamed[-1:] != [(SET_NAME, f"DOWNLOADED {SET_NAME}")]
+
+
+def test_a_set_already_prefixed_in_its_downloaded_sets_folder_plans_nothing(world):
+    """Moved and prefixed by hand, no mark recorded: the INSPIRATION proof finds it done."""
+    from cratekit.modules.outbound import ledger
+
+    cfg, _fake, held, _inbox, _ids = world
+    _no_intake_file(cfg)
+    _inspiration(cfg, SET_NAME)
+    recorded = ledger.set_playlist(cfg, SET_NAME)
+    # NOT CLEARED: the fake numbers a folder by how many it made, so a clear
+    # lets the next one take this folder's identifier.
+    folder = held.create_folder(f"Downloaded Sets {recorded.year}")
+    held.placed[recorded.remote_id] = folder
+    held.titles[recorded.remote_id] = f"DOWNLOADED {SET_NAME}"
+
+    step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
+    assert step["state"] == "nothing", step
+
+    code, done, _first = _answered("abort", "apply")
+
+    assert code == int(ExitCode.OK), done
+    assert recorded.remote_id not in [pid for pid, _folder in held.moves]
+    assert recorded.remote_id not in [pid for pid, _title in held.renamed]
+    assert ledger.set_folder(cfg, f"Downloaded Sets {recorded.year}") == ""
+
+    # A title a person set is left, and the step says so rather than "marked".
+    held.titles[recorded.remote_id] = "My Own Title"
+    step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
+    assert step["state"] == "nothing", step
+    assert "its title left as a person set it" in step["detail"]
+
+
+def test_a_downloaded_sets_folder_made_by_hand_is_adopted_and_the_filing_keeps_its_year(world):
+    """The ledger records the plain year folder, and the set never goes there."""
+    from cratekit.modules.outbound import ledger
+
+    cfg, fake, held, _inbox, _ids = world
+    recorded = ledger.set_playlist(cfg, SET_NAME)
+    year = recorded.year
+    by_hand = held.create_folder(f"Downloaded Sets {year}")
+    plain = held.create_folder(year)
+    made_by_hand = len(held.folders_created)
+    assert ledger.reserve_set_folder(cfg, year, lambda: plain) == (plain, True)
+    _marked(cfg, fake, held, when=f"{year}-06-15T12:00:00+00:00")
+
+    code, done, _first = _answered("abort", "apply")
+
+    assert code == int(ExitCode.OK), done
+    assert held.placed[recorded.remote_id] == by_hand
+    assert held.placed[MARKED_ID] == plain
+    assert not {year, f"Downloaded Sets {year}"} & set(held.folders_created[made_by_hand:])
+    assert held.folder_names[by_hand] == f"Downloaded Sets {year}"
+    assert held.folder_names[plain] == year
+    assert ledger.set_folder(cfg, f"Downloaded Sets {year}") == by_hand
+    assert ledger.set_folder(cfg, year) == plain
+
+
+def test_a_year_record_whose_folder_now_carries_the_sets_name_is_not_the_filings(world):
+    """Recorded under the plain year before U142, renamed by a person to the sets' name."""
+    from cratekit.modules.outbound import ledger
+
+    cfg, fake, held, _inbox, _ids = world
+    recorded = ledger.set_playlist(cfg, SET_NAME)
+    year = recorded.year
+    renamed = held.create_folder(f"Downloaded Sets {year}")
+    made_by_hand = len(held.folders_created)
+    assert ledger.reserve_set_folder(cfg, year, lambda: renamed) == (renamed, True)
+    _marked(cfg, fake, held, when=f"{year}-06-15T12:00:00+00:00")
+
+    code, done, _first = _answered("abort", "apply")
+
+    assert code == int(ExitCode.OK), done
+    assert held.placed[recorded.remote_id] == renamed
+    custom = held.placed[MARKED_ID]
+    assert custom != renamed
+    assert held.folder_names[custom] == year
+    assert [name for name in held.folders_created[made_by_hand:] if year in name] == [year]
+    assert ledger.set_folder(cfg, year) == custom
+    assert ledger.set_folder(cfg, f"Downloaded Sets {year}") == renamed
+
+
+def test_a_set_in_its_folder_with_its_built_title_is_prefixed_and_not_moved(world):
+    from cratekit.modules.outbound import ledger
+
+    cfg, _fake, held, _inbox, _ids = world
+    _no_intake_file(cfg)
+    _inspiration(cfg, SET_NAME)
+    recorded = ledger.set_playlist(cfg, SET_NAME)
+    folder = held.create_folder(f"Downloaded Sets {recorded.year}")
+    held.placed[recorded.remote_id] = folder
+    held.titles[recorded.remote_id] = SET_NAME
+
+    step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
+
+    assert step["state"] == "planned", step
+    assert step["detail"].startswith("prefix it where it is"), step
+    assert "file it in" not in step["detail"]
+
+    code, done, _first = _answered("abort", "apply")
+
+    assert code == int(ExitCode.OK), done
+    assert recorded.remote_id not in [pid for pid, _folder in held.moves]
+    assert held.titles[recorded.remote_id] == f"DOWNLOADED {SET_NAME}"
+
+
+def test_no_downloaded_sets_folder_is_made_once_and_the_year_folder_beside_it(world):
+    from cratekit.modules.outbound import ledger
+
+    cfg, fake, held, _inbox, _ids = world
+    year = ledger.set_playlist(cfg, SET_NAME).year
+    _marked(cfg, fake, held, when=f"{year}-06-15T12:00:00+00:00")
+
+    code, done, _first = _answered("abort", "apply")
+
+    assert code == int(ExitCode.OK), done
+    made = [name for name in held.folders_created if year in name]
+    assert sorted(made) == sorted([f"Downloaded Sets {year}", year])
+    set_id = ledger.set_playlist(cfg, SET_NAME).remote_id
+    assert held.folder_names[held.placed[set_id]] == f"Downloaded Sets {year}"
+    assert held.folder_names[held.placed[MARKED_ID]] == year
+
+
+def test_two_inspiration_folders_refuse_the_unproven_set_alone(world):
+    """Unread is not none: a proof the database cannot answer is a refusal, never a wait."""
+    cfg, _fake, _held, _inbox, _ids = world
+    _no_intake_file(cfg)
+    _inspiration(cfg, SET_NAME)
+    _inspiration(cfg)
+
+    envelope = _report()
+
+    remote = _steps(envelope, account_area.AREA)
+    assert remote[f"archive:{SET_NAME}"]["state"] == "refused", remote
+    assert remote[f"label:{LABEL_ID}"]["state"] == "planned"
+    assert "organize-step-refused" in [warning["code"] for warning in envelope["warnings"]]
+
+
+def test_a_taxonomy_with_no_inspiration_folder_waits_and_says_why(world, monkeypatch):
+    import dataclasses
+
+    from cratekit.core import active_taxonomy
+
+    cfg, _fake, _held, _inbox, _ids = world
+    _no_intake_file(cfg)
+    _inspiration(cfg, SET_NAME)
+    real = active_taxonomy.load
+    monkeypatch.setattr(
+        active_taxonomy, "load", lambda *a, **k: dataclasses.replace(real(*a, **k), inspiration=None)
+    )
+
+    step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
+
+    assert step["state"] == "listed", step
+    assert "no INSPIRATION folder declared" in step["detail"]
+
+
+def test_a_set_proven_by_its_intake_file_never_opens_the_database_for_inspiration(world, monkeypatch):
+    from cratekit.export import set_cli
+
+    def tripwire(*_args, **_kwargs):
+        raise AssertionError("the INSPIRATION folder was read for a set its file proves")
+
+    monkeypatch.setattr(set_cli, "_inspiration_playlists", tripwire)
+
+    step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
+
+    assert step["state"] == "planned"
+    assert f"proven by {SET_NAME}_inboxed.xml" in step["detail"]
+
+
+def test_the_inspiration_proof_is_read_while_rekordbox_runs(world, monkeypatch):
+    """A read handle, as the rekordbox area's own listing: an open rekordbox refuses no proof."""
+    cfg, _fake, _held, _inbox, _ids = world
+    _no_intake_file(cfg)
+    _inspiration(cfg, SET_NAME)
+    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
+
+    step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
+
+    assert step["state"] == "planned", step
