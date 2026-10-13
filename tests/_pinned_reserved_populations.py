@@ -144,6 +144,8 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'rebuild-tree-not-native',
     'recovery-target-refused',
     'refused-by-policy',
+    # U134, 2026-10-12: the refill's refusal of a recorded playlist moved out of INBOX.
+    'refill-playlist-outside-inbox',
     'removal-sequence-unreadable',
     'rename-incomplete',
     'report-as-of-invalid',
@@ -713,6 +715,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'rebuild-derivation-incomplete',
         'rebuild-tree-not-native',
         'recovery-target-refused',
+        'refill-playlist-outside-inbox',
         'refused-by-policy',
         'rekordbox-running',
         'remote-not-configured',
@@ -1206,6 +1209,22 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'intake/normalize.py': ['intake-list-unusable', 'utf-8-sig'],
     'intake/pipeline.py': ['lossy-refused'],
     'intake/recognize.py': ['intake-recognition-unready'],
+    # U134, 2026-10-12: the INBOX refill, its engine and its verb.
+    'intake/refill.py': [
+        'decision-stale',
+        'inbox-refill',
+        'job-unknown',
+        'refill-playlist-outside-inbox',
+        'session-committed-unverified',
+        'tree-unconverged',
+    ],
+    'intake/refill_cli.py': [
+        'config-unusable',
+        'refill-applied',
+        'refill-left-out',
+        'refill-nothing-planned',
+        'refill-playlist-unfound',
+    ],
     'intake/repair.py': ['path-repair'],
     'intake/repair_cli.py': ['config-unusable', 'path-repair', 'rename-incomplete'],
     'intake/rotate.py': [
@@ -1814,6 +1833,8 @@ PINNED_NAMED_WITHOUT_OWN = {
     'core/provider_gate.py': ['provider-cooldown', 'provider-gate-held'],
     'core/session.py': ['awaiting-import'],
     'favorites/cli.py': ['favorites-pink-colour-missing'],
+    # U134, 2026-10-12.
+    'intake/refill.py': ['refill-playlist-outside-inbox'],
     'intake/set_playlist.py': ['inspiration-folder-undeclared', 'set-playlist-unnamed'],
     'modules/tools/backup.py': [
         'database-absent',
@@ -1967,6 +1988,8 @@ PINNED_NAMED_WITH_OWN = {
         'still-referenced',
     ],
     'favorites/cli.py': ['favorites-pink-colour-missing'],
+    # U134, 2026-10-12.
+    'intake/refill.py': ['refill-playlist-outside-inbox'],
     'intake/set_playlist.py': ['inspiration-folder-undeclared', 'set-playlist-unnamed'],
     'modules/tools/backup.py': [
         'database-absent',
@@ -2346,6 +2369,15 @@ PINNED_LITERAL_HOLDERS = {
     'intake/normalize.py': ['intake-list-unusable'],
     'intake/pipeline.py': ['lossy-refused'],
     'intake/recognize.py': ['intake-recognition-unready'],
+    # U134, 2026-10-12: the INBOX refill, its engine and its verb.
+    'intake/refill.py': [
+        'decision-stale',
+        'job-unknown',
+        'refill-playlist-outside-inbox',
+        'session-committed-unverified',
+        'tree-unconverged',
+    ],
+    'intake/refill_cli.py': ['config-unusable'],
     'intake/repair_cli.py': ['config-unusable', 'rename-incomplete'],
     'intake/rotate.py': [
         'decision-stale',

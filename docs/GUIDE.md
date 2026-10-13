@@ -865,6 +865,7 @@ the same gate with nothing recorded and refuses again. Gates you will meet:
 | `adopt.apply.approve` | approve | `adopt apply` |
 | `adopt.move.approve` | approve | `adopt move` |
 | `inbox.rotate.approve` | approve | `inbox rotate`; explicit, `crate run decide` only |
+| `inbox.refill.approve` | apply | `inbox refill`; explicit, `crate run decide` only |
 | `organize.rekordbox.approve` | approve | `organize`, its rekordbox area; explicit, `crate run decide` only |
 | `organize.account.apply` | apply | `organize`, its account area; explicit, `crate run decide` only |
 | `restore.run.confirm` | restore | `restore run` |

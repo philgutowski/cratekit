@@ -797,6 +797,11 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # reason: the remedy is a declaration or a folder, never this
         # installation's configuration.
         "intake-old-undeclared": ExitCode.LIBRARY_PREREQUISITE,
+        # U134. The landing record of a pass names a playlist as the INBOX
+        # mirror of an account playlist, and a person has since moved it out
+        # of INBOX, so a refill will not fill it. The catalog's code: the
+        # remedy is where a playlist sits in the library.
+        "refill-playlist-outside-inbox": ExitCode.LIBRARY_PREREQUISITE,
         # U121. A set's playlist was asked for under a folder this library's
         # taxonomy does not declare, ``[inspiration]``, or the playlist root
         # holds that folder twice. The catalog's code and its reason.
