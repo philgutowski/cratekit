@@ -42,7 +42,7 @@ from cratekit.core import active_taxonomy, config, jobs, rb_writer, session, tre
 from cratekit.core.cause import CratekitError, Remedy, refuse
 from cratekit.intake import rotate, rotate_cli
 from cratekit.organize import own
-from cratekit.organize.steps import LISTED, NOTHING, PLANNED, Area, Step, refused
+from cratekit.organize.steps import LISTED, NOTHING, PLANNED, Area, Step, refused, selection
 
 AREA = "rekordbox"
 
@@ -57,6 +57,9 @@ ADOPT = "adopt"
 ROTATE = "rotate"
 RECORD_LABELS = "record-labels"
 YOURS = "yours"
+
+#: Every step kind this area plans, in its order, each one ``--only`` may name.
+STEPS = (ADOPT, ROTATE, RECORD_LABELS, YOURS)
 
 _ORIGIN = ("organize.rekordbox",)
 
@@ -326,9 +329,14 @@ def plan_area(
     today: date,
     labels: tuple[str, ...],
     report: bool,
+    only: frozenset[str] | None = None,
 ) -> Area:
-    """Plan every database step, or refuse the area before any when no backup is acknowledged."""
-    area = Area(name=AREA)
+    """Plan every database step, or refuse the area before any when no backup is acknowledged.
+
+    ``only`` is ``--only``'s selection (U137): the steps of no selected kind are
+    not planned, and the area's own preconditions still hold for the rest.
+    """
+    area = Area(name=AREA, only=selection(STEPS, only))
     unacknowledged = acknowledgment(cfg)
     if unacknowledged is not None:
         if not report:
@@ -343,10 +351,14 @@ def plan_area(
     except CratekitError as exc:
         area.cause = exc.cause
         return area
-    area.steps.append(_adoption(cfg, declared, registry, ctx, gate, area))
-    area.steps.append(_rotation(cfg, declared, today, area))
-    area.steps.append(_record_labels(declared))
-    area.steps.append(_yours(cfg, declared, labels, area))
+    if area.wants(ADOPT):
+        area.steps.append(_adoption(cfg, declared, registry, ctx, gate, area))
+    if area.wants(ROTATE):
+        area.steps.append(_rotation(cfg, declared, today, area))
+    if area.wants(RECORD_LABELS):
+        area.steps.append(_record_labels(declared))
+    if area.wants(YOURS):
+        area.steps.append(_yours(cfg, declared, labels, area))
     area.facts["rehearse"] = (
         "every write here is a database write: rehearse it on a copy of the "
         "database first, with library state redirected, and compare the digest"
@@ -362,6 +374,7 @@ __all__ = [
     "AREA",
     "RECORD_LABELS",
     "ROTATE",
+    "STEPS",
     "YOURS",
     "acknowledgment",
     "plan_area",

@@ -22,6 +22,14 @@ clean organize over a write that failed.
 
 ``--report`` plans both areas, asks nothing and writes nothing.
 
+``--only KIND``, repeatable, NARROWS BOTH AREAS TO THE STEP KINDS IT NAMES
+(U137). An area none of whose kinds is named is not planned, not asked and not
+written, so ``--only file`` reads no backup acknowledgment and no database. An
+area that is planned keeps its own preconditions, plans only the named kinds,
+and its gate shows and its digest covers only those, with the selection named
+in both. An unknown kind is refused by name by the parser, before anything is
+read. With no ``--only`` the verb is exactly U112's.
+
 Layer: modules. The builder's parameters are unannotated so this file does not
 import the CLI registry (KTD23).
 """
@@ -44,6 +52,10 @@ from cratekit.organize.steps import FAILED, Area, area_check, check
 REKORDBOX_GATE = "organize.rekordbox.approve"
 ACCOUNT_GATE = "organize.account.apply"
 
+#: Every step kind ``--only`` may name, each area's in its own order. ``yours``
+#: is a kind of both areas, and names both.
+KINDS = tuple(dict.fromkeys((*rekordbox.STEPS, *account.STEPS)))
+
 #: What each gate's go option is.
 APPROVE = "approve"
 APPLY = "apply"
@@ -59,6 +71,18 @@ def build(parser, entry) -> None:
         action="store_true",
         default=False,
         help="print both plans and write nothing; no question is asked",
+    )
+    parser.add_argument(
+        "--only",
+        dest="only",
+        action="append",
+        choices=KINDS,
+        default=None,
+        metavar="KIND",
+        help=(
+            "plan, ask and write only this kind of step; repeat it for more. An "
+            "area with no step named is not asked. One of: " + ", ".join(KINDS)
+        ),
     )
     parser.add_argument(
         "--as-of",
@@ -205,39 +229,56 @@ def _raise_failed(areas: list[Area], data: dict[str, Any]) -> None:
     )
 
 
+def _named(kinds: tuple[str, ...], only: frozenset[str] | None) -> bool:
+    """Whether ``--only`` named any of an area's kinds, or named nothing at all."""
+    return only is None or bool(only.intersection(kinds))
+
+
 def organize(ctx) -> Envelope:
     """Plan both areas, ask each its own question, then write what was approved."""
     cfg = shell.load_config("organize.cli")
     report = bool(getattr(ctx.args, "report", False))
+    chosen = getattr(ctx.args, "only", None)
+    only = frozenset(chosen) if chosen else None
     membership = profiles.resolve(cfg.profile.name, cfg.modules.explicit)
     followed, unfollowed = _followed()
     today = rotate_cli.as_of(ctx)
 
-    database = rekordbox.plan_area(
-        cfg,
-        ctx,
-        gate=REKORDBOX_GATE,
-        today=today,
-        labels=tuple(entry.name for entry in followed),
-        report=report,
-    )
-    remote = account.plan_area(
-        cfg, available=membership.available, followed=followed, unfollowed=unfollowed
-    )
-    areas = [database, remote]
+    # EACH AREA IS PLANNED ONLY WHEN ONE OF ITS KINDS IS NAMED (U137), and an
+    # area that is not planned is neither asked nor written.
+    areas: list[Area] = []
+    gates: list[tuple[Area, str, str]] = []
+    if _named(rekordbox.STEPS, only):
+        database = rekordbox.plan_area(
+            cfg,
+            ctx,
+            gate=REKORDBOX_GATE,
+            today=today,
+            labels=tuple(entry.name for entry in followed),
+            report=report,
+            only=only,
+        )
+        areas.append(database)
+        gates.append((database, REKORDBOX_GATE, APPROVE))
+    if _named(account.STEPS, only):
+        remote = account.plan_area(
+            cfg,
+            available=membership.available,
+            followed=followed,
+            unfollowed=unfollowed,
+            only=only,
+        )
+        areas.append(remote)
+        gates.append((remote, ACCOUNT_GATE, APPLY))
 
     if report:
         data = _report(areas, report=True, answers={})
         return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=_warnings(areas))
 
-    answers = {
-        database.name: _ask(ctx, database, REKORDBOX_GATE),
-        remote.name: _ask(ctx, remote, ACCOUNT_GATE),
-    }
-    if answers[database.name] == APPROVE and database.writes:
-        _apply(database)
-    if answers[remote.name] == APPLY and remote.writes:
-        _apply(remote)
+    answers = {area.name: _ask(ctx, area, name) for area, name, _go in gates}
+    for area, _name, go in gates:
+        if answers[area.name] == go and area.writes:
+            _apply(area)
 
     data = _report(areas, report=False, answers=answers)
     _raise_failed(areas, data)
@@ -249,4 +290,4 @@ def organize(ctx) -> Envelope:
     )
 
 
-__all__ = ["ACCOUNT_GATE", "REKORDBOX_GATE", "build", "organize"]
+__all__ = ["ACCOUNT_GATE", "KINDS", "REKORDBOX_GATE", "build", "organize"]
