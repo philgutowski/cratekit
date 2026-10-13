@@ -2941,6 +2941,43 @@ ENTRIES: tuple[Entry, ...] = (
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
+    # ── The INBOX refill (U134) ─────────────────────────────────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives. The
+    # rebuild of an account playlist's INBOX mirror from the pass that made it,
+    # for a playlist emptied after it landed.
+    Entry(
+        name="inbox.refill",
+        summary="refill each INBOX playlist a pass mirrored from the author's account, "
+        "every track the library owns in the account's order, memberships only",
+        module="cratekit.intake.refill_cli",
+        builder="build",
+        handler_key="inbox.refill",
+        # NO FEATURE ROW. The source system never mirrored an account playlist.
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: The database tree and nothing else: memberships of playlists already
+        #: under the intake root. No content row, no playlist row, no file.
+        writes=frozenset({"db_tree"}),
+        taxonomy_terms=("inbox",),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+        ),
+        gates=(
+            GateSpec(
+                name="inbox.refill.approve",
+                options=("apply", "abort"),
+                prompt="Add these tracks to their INBOX playlists?",
+                #: EXPLICIT (R34). A write outside the intake flow, answered by
+                #: a recorded act, as the set playlist's backfill is.
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
     # ── The set's permanent playlist (U121) ─────────────────────────────────
     #
     # Appended, for the reason the deferred routing block above gives. The

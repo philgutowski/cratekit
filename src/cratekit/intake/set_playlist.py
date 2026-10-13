@@ -903,6 +903,35 @@ def plan_for_landing(
     )
 
 
+def backfill_resolver(
+    cfg: config.Config, db: Any
+) -> Callable[[Sequence[Mapping[str, Any]]], tuple[tuple[Member, ...], tuple[Left, ...]]]:
+    """The backfill's rule, every report resolved against the library as it is now.
+
+    THE WORKER'S VIEW WITHOUT ITS WRITES, :class:`_LibraryView`, and the
+    collection indexed once on ``db``: a row the report called owned keeps its
+    report paths first and is resolved again only when those paths hold no row
+    any more; a downloaded row is asked of the library with a person's review
+    answers read back. Built once and asked per job, so the library is indexed
+    once however many jobs are read. The INBOX refill (U134) asks the same
+    question of an account playlist's job.
+    """
+    collection = _Collection(cfg, db)
+    library = _LibraryView(cfg)
+
+    def resolve(
+        reports: Sequence[Mapping[str, Any]],
+    ) -> tuple[tuple[Member, ...], tuple[Left, ...]]:
+        return _members(
+            reports,
+            collection=collection,
+            downloaded=lambda wanted: (library.paths(wanted), OWNED),
+            owned_again=library.paths,
+        )
+
+    return resolve
+
+
 def plan_for_backfill(
     cfg: config.Config,
     db: Any,
@@ -936,14 +965,7 @@ def plan_for_backfill(
         made, fallback = naming_day_for(job, posted=posted, landing=today())
     folder_id, node = folder_for(db, declared)
     recorded = recorded_playlist(cfg, db, job.job_id, folder_id)
-    library = _LibraryView(cfg)
-
-    members, left = _members(
-        reports,
-        collection=_Collection(cfg, db),
-        downloaded=lambda wanted: (library.paths(wanted), OWNED),
-        owned_again=library.paths,
-    )
+    members, left = backfill_resolver(cfg, db)(reports)
     return _digested(
         SetPlaylistPlan(
             job_id=job.job_id,
@@ -1361,6 +1383,7 @@ __all__ = [
     "apply_alone",
     "assert_native",
     "assert_read_back",
+    "backfill_resolver",
     "facts",
     "folder_for",
     "identity",
