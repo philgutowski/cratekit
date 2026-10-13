@@ -12,6 +12,7 @@ D1 applies. Nothing here names a real volume, a real person or a real track.
 
 from __future__ import annotations
 
+import io
 import sqlite3
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -980,3 +981,165 @@ def test_a_prefixed_but_unmarked_playlist_has_its_own_reason(world):
     code, done, _first = _answered()
     assert code == int(ExitCode.OK), done
     assert held.folder_names[held.placed["hand-1"]] == "Mine"
+
+
+# ---------------------------------------------------------------------------
+# U137: one kind of step runs alone, ``--only``
+# ---------------------------------------------------------------------------
+
+ONLY_FILE = [*VERB, "--only", account_area.FILE]
+
+
+def _not_planned(*args, **kwargs):
+    raise AssertionError("an area with no step named was planned")
+
+
+def _filed_alone() -> tuple[int, dict]:
+    """``--only file`` answered at its one gate, the account's, then the run that writes."""
+    collection.reset_cache()
+    return _two_acts(ONLY_FILE, ACCOUNT_GATE, "apply")
+
+
+def test_only_file_plans_the_filing_alone_and_the_database_is_not_asked(world, monkeypatch):
+    cfg, _fake, held, inbox, ids = world
+    monkeypatch.setattr(rekordbox, "plan_area", _not_planned)
+    folders, renamed, added = list(held.folders_created), list(held.renamed), list(held.added)
+
+    collection.reset_cache()
+    code, envelope = drive([*ONLY_FILE, "--report"])
+    assert code == int(ExitCode.OK), envelope
+    areas = envelope["data"]["summary"]["areas"]
+    assert list(areas) == [account_area.AREA]
+    assert [step["step"] for step in areas[account_area.AREA]["steps"]] == [account_area.FILE]
+    assert areas[account_area.AREA]["facts"]["only these steps"] == account_area.FILE
+
+    # The acknowledgment is in force, and still the account is the first gate.
+    code, done = _filed_alone()
+
+    assert code == int(ExitCode.OK), done
+    assert list(done["data"]["summary"]["answers"]) == [account_area.AREA]
+    assert held.folder_names[held.placed["mine-1"]] == "Mine"
+    # No label folder, no year playlist's tracks, no mark, no archive.
+    assert held.folders_created == [*folders, "Mine"]
+    assert held.renamed == renamed and held.added == added
+    assert _filed(cfg) == [] and _parent(cfg, ids["batch"]) == inbox
+
+
+def test_only_file_moves_a_marked_playlist_as_the_full_verb_does_and_then_plans_nothing(world):
+    cfg, fake, held, _inbox, _ids = world
+    _marked(cfg, fake, held)
+
+    code, done = _filed_alone()
+
+    assert code == int(ExitCode.OK), done
+    folder = held.placed[MARKED_ID]
+    assert held.folder_names[folder] == MARKED_YEAR
+    applied = _steps(done, account_area.AREA)[account_area.FILE]["applied"]
+    assert applied["moved"] == [[MARKED_ID, folder], ["mine-1", held.placed["mine-1"]]]
+    collection.reset_cache()
+    code, again = drive([*ONLY_FILE, "--report"])
+    assert code == int(ExitCode.OK), again
+    assert _steps(again, account_area.AREA)[account_area.FILE]["state"] == "nothing"
+
+
+def test_only_files_digest_is_not_the_full_areas_and_an_answer_over_one_is_stale_for_the_other(seams):
+    """No acknowledgment here, so the full verb's first gate is the account's too."""
+    _cfg, _fake, held = seams
+    register(LABEL)
+    collection.reset_cache()
+    full = _report()["data"]["summary"]["areas"][account_area.AREA]["digest"]
+    collection.reset_cache()
+    code, narrowed = drive([*ONLY_FILE, "--report"])
+    assert code == int(ExitCode.OK), narrowed
+    assert narrowed["data"]["summary"]["areas"][account_area.AREA]["digest"] != full
+
+    code, first = drive(VERB)
+    assert first["cause"]["detail"]["gate"] == ACCOUNT_GATE, first
+    run_id = first["run_id"]
+    assert drive(["run", "decide", run_id, ACCOUNT_GATE, "apply", "--actor", "a-person"])[0] == 0
+
+    code, again = drive(["--run", run_id, *ONLY_FILE])
+
+    assert code == int(ExitCode.DECISION_STALE), again
+    assert held.folders_created == [] and held.moves == []
+
+
+def test_the_selection_alone_moves_the_digest_when_it_names_every_step(world):
+    """``--only`` over every kind plans what the full verb plans, and is still its own answer."""
+    full = _report()["data"]["summary"]["areas"]
+    every = [arg for kind in organize_cli.KINDS for arg in ("--only", kind)]
+    collection.reset_cache()
+    code, named = drive([*VERB, "--report", *every])
+    assert code == int(ExitCode.OK), named
+    for name, area in named["data"]["summary"]["areas"].items():
+        assert [step["step"] for step in area["steps"]] == [
+            step["step"] for step in full[name]["steps"]
+        ]
+        assert area["digest"] != full[name]["digest"]
+
+
+def test_an_unknown_kind_is_refused_by_name_before_anything_is_read(machine, monkeypatch, capsys):
+    from cratekit import cli
+    from cratekit.modules.outbound import shell
+
+    monkeypatch.setattr(shell, "load_config", _not_planned)
+
+    out, err = io.StringIO(), io.StringIO()
+    code = cli.run(["--output", "json", *VERB, "--only", "filing"], stdout=out, stderr=err)
+
+    assert code == 2
+    said = capsys.readouterr().err + err.getvalue()
+    assert "'filing'" in said and account_area.FILE in said
+
+
+def test_report_with_only_file_makes_no_provider_write(world):
+    _cfg, fake, held, _inbox, _ids = world
+    _marked(_cfg, fake, held)
+    before = (
+        list(held.created), list(held.folders_created), list(held.moves),
+        list(held.renamed), list(held.added), dict(held.placed),
+    )
+
+    collection.reset_cache()
+    code, envelope = drive([*ONLY_FILE, "--report"])
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert _steps(envelope, account_area.AREA)[account_area.FILE]["state"] == "planned"
+    assert before == (
+        held.created, held.folders_created, held.moves,
+        held.renamed, held.added, held.placed,
+    )
+
+
+def test_an_unread_label_registry_refuses_the_filing_rather_than_plan_it_over_no_label(world):
+    from cratekit.label import registry as labels
+
+    _cfg, _fake, held, _inbox, _ids = world
+    labels.RegistryStore().path.write_text("{ not json", encoding="utf-8")
+
+    collection.reset_cache()
+    code, envelope = drive([*ONLY_FILE, "--report"])
+
+    assert code == int(ExitCode.OK), envelope
+    step = _steps(envelope, account_area.AREA)[account_area.FILE]
+    assert step["state"] == "refused" and step["reason"] == "label-intent-unusable"
+    code, first = drive(ONLY_FILE)
+    assert first["cause"]["detail"]["gate"] == ACCOUNT_GATE, first
+    assert "nothing to do" in first["cause"]["detail"]["shown"]
+    assert held.moves == []
+
+
+def test_only_a_database_kind_asks_the_database_alone(world, monkeypatch):
+    cfg, _fake, held, _inbox, _ids = world
+    monkeypatch.setattr(account_area, "plan_area", _not_planned)
+    argv = [*VERB, "--only", rekordbox.ADOPT]
+
+    collection.reset_cache()
+    code, done = _two_acts(argv, DB_GATE, "approve")
+
+    assert code == int(ExitCode.OK), done
+    assert [step["step"] for step in _steps(done, rekordbox.AREA).values()] == [rekordbox.ADOPT]
+    assert _filed(cfg) == ["r-one", "r-two"]
+    assert list(done["data"]["summary"]["areas"]) == [rekordbox.AREA]
+    assert held.folders_created == []
