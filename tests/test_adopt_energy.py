@@ -130,7 +130,7 @@ def test_an_untagged_file_lands_in_unsorted_as_before(cfg, declared, library, si
 
 
 @pytest.mark.parametrize("energy", ["9", None], ids=["tagged", "untagged"])
-@pytest.mark.parametrize("genre", ["Chill / Ambient", "Jazz"])
+@pytest.mark.parametrize("genre", ["Chill / Ambient", "Classical"])
 def test_a_bucket_with_an_exception_keeps_it_tagged_or_not(
     cfg, declared, library, silence, genre, energy
 ):

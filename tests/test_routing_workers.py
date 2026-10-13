@@ -2042,7 +2042,7 @@ RATING_TRACKS = {
     "21": ("Floor Filler.flac", "Tech House", 10, ("Tech House", "High")),
     "22": ("Warm Up.flac", "Deep House", 1, ("Deep House", "Low")),
     "23": ("Hand Rated.flac", "Tech House", 10, ("Tech House", "High")),
-    "24": ("Jazz Track.flac", "Jazz", 10, ("NonElectronic", "Jazz")),
+    "24": ("Classical Track.flac", "Classical", 10, ("NonElectronic", "Classical")),
     "25": ("No Reading.flac", "Deep House", None, ("Deep House", "Unsorted")),
 }
 
@@ -2051,7 +2051,7 @@ RATING_TRACKS = {
 RATING_FOLDERS = (
     ("Deep House", ("Low", "Med", "High", "Unsorted")),
     ("Tech House", ("Low", "Med", "High")),
-    ("NonElectronic", ("Jazz",)),
+    ("NonElectronic", ("Classical",)),
 )
 
 #: The export scale's five and one star values, spelled out rather than asked
@@ -2710,7 +2710,7 @@ def test_a_track_in_a_bucket_that_does_not_rate_is_filed_and_not_owed(
     """Filed, so the pass reached it, and not counted, so the flag held."""
     export = _alone(configured, tmp_path / "exports", "24", "0")
     _code, envelope = _apply_export(export)
-    assert _sub_keys(_routed(export).read_bytes(), "NonElectronic", "Jazz") == ("24",)
+    assert _sub_keys(_routed(export).read_bytes(), "NonElectronic", "Classical") == ("24",)
     assert _owed(envelope) == [], "a rates = false bucket was counted as owed"
 
 

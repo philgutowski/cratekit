@@ -12,7 +12,7 @@ import tomllib
 
 import pytest
 
-from cratekit.core import taxonomy
+from cratekit.core import routing, taxonomy
 from cratekit.core import taxonomy_upgrade as upgrade
 
 
@@ -34,7 +34,7 @@ FAVORITES_END = "# The set-builder's family vocabulary"
 SOUL_START = '[[bucket]]\nid = "soul"'
 SOUL_END = "# HIP-HOP AT THE TOP LEVEL"
 HIP_HOP_START = '[[bucket]]\nid = "hip_hop"'
-HIP_HOP_END = '[[bucket]]\nid = "non_electronic"'
+HIP_HOP_END = "# JAZZ AT THE TOP LEVEL"
 
 
 def _version(text: str, version: int) -> str:
@@ -239,6 +239,158 @@ def test_the_hand_edit_lets_soul_in_on_the_next_run():
     assert found.held == ()
 
 
+JAZZ_START = "# JAZZ AT THE TOP LEVEL"
+JAZZ_END = '[[bucket]]\nid = "non_electronic"'
+#: The four lines a copy made before U133 files Jazz's words by, outside the bucket.
+JAZZ_ALIAS = '  "Indie Rock",\n  "Jazz",\n  "Latin",'
+JAZZ_SUB = '[[bucket.sub]]\nid = "jazz"\ndisplay = "Jazz"\ntag_aliases = [\n  "jazz",\n]\n\n'
+JAZZ_MAP_ROW = '  { source = "Jazz", sub = "jazz" },\n'
+JAZZ_VOCABULARY_ROW = '  { word = "Jazz", tag = "Jazz" },\n'
+
+
+def _swap(text: str, old: str, new: str) -> str:
+    assert text.count(old) == 1, old
+    return text.replace(old, new)
+
+
+def before_jazz() -> str:
+    """The shipped text as it stood before U133: Jazz a style of NonElectronic."""
+    text = _without(_shipped(), JAZZ_START, JAZZ_END)
+    text = _swap(text, '  "Indie Rock",\n  "Latin",', JAZZ_ALIAS)
+    text = _swap(text, '[[bucket.sub]]\nid = "classical"', JAZZ_SUB + '[[bucket.sub]]\nid = "classical"')
+    text = _swap(
+        text,
+        '  { source = "Indie Rock", sub = "rock" },\n',
+        '  { source = "Indie Rock", sub = "rock" },\n' + JAZZ_MAP_ROW,
+    )
+    return _swap(text, 'keyword = "jazz"\nbucket = "jazz"', 'keyword = "jazz"\nbucket = "non_electronic"')
+
+
+def _without_jazz_words(text: str) -> str:
+    """The three lines NonElectronic files Jazz by, taken out by hand."""
+    text = _swap(text, JAZZ_ALIAS, '  "Indie Rock",\n  "Latin",')
+    text = _swap(text, JAZZ_SUB, "")
+    return _swap(text, JAZZ_MAP_ROW, "")
+
+
+def test_jazz_is_held_while_non_electronic_still_files_its_words_and_every_place_is_named():
+    """U133. The copy files Jazz three ways, and a vocabulary row writes it."""
+    copy = before_jazz()
+    assert _bucket(copy, "non_electronic").sub_by_source.map["Jazz"] == "jazz"
+    found = _plan(copy)
+    assert found.buckets == ()
+    (held,) = found.held
+    assert (held.kind, held.id) == ("bucket", "jazz")
+    reasons = list(held.reasons)
+    assert len(reasons) == 4, reasons
+    alias, map_row, sub, row = reasons
+    assert alias.startswith("the copy's bucket non_electronic already files 'Jazz'")
+    assert map_row.startswith("the copy's bucket non_electronic, its source map row to jazz already files 'Jazz'")
+    assert sub.startswith("the copy's bucket non_electronic, its sub jazz already files 'jazz'")
+    assert row.startswith("the copy's [vocabulary.deezer] row 'Jazz' writes 'Jazz'")
+    assert "take the row out with it" in row
+    assert not found.writes
+    assert found.missing_buckets == ("jazz",)
+
+
+def test_the_hand_edit_the_hold_names_lets_jazz_in_on_the_next_run():
+    """Every line the hold named, out, and the copy loads and takes the bucket.
+
+    The catalogue's Jazz still tags Jazz without its row, by the bucket's own
+    word. The copy's keyword rule is the copy's and is left where it was, and
+    the plan says so, since the shipped template sends a partial match to Jazz.
+    """
+    by_hand = _without_jazz_words(before_jazz())
+    by_hand = _swap(by_hand, JAZZ_VOCABULARY_ROW, "")
+    found = _plan(by_hand)
+    assert found.buckets == ("jazz",)
+    assert found.held == ()
+    shipped = taxonomy.load_taxonomy(_shipped())
+    assert _bucket(found.after, "jazz") == [b for b in shipped.buckets if b.id == "jazz"][0]
+    after = taxonomy.load_taxonomy(found.after)
+    order = [b.id for b in after.buckets]
+    assert order.index("hip_hop") + 1 == order.index("jazz") == order.index("non_electronic") - 1
+    assert routing.resolve_bucket(after, "Jazz").bucket_id == "jazz"
+    assert routing.suggest_tag(after, "Jazz", source="deezer").tag == "Jazz"
+    assert routing.resolve_bucket(after, "Acid Jazz").bucket_id == "non_electronic"
+    (sentence,) = found.keywords
+    assert sentence.startswith("the shipped template's keyword rule 'jazz' sends a partial match")
+    assert "the copy sends a partial match to non_electronic" in sentence
+    assert "repoint it by hand" in sentence
+    assert sentence in upgrade.remedy(found)
+
+
+def test_a_copy_with_no_jazz_keyword_rule_is_told_it_has_none():
+    by_hand = _swap(
+        _without_jazz_words(before_jazz()).replace(JAZZ_VOCABULARY_ROW, "", 1),
+        '[[fuzzy]]\nkeyword = "jazz"\nbucket = "non_electronic"\n\n',
+        "",
+    )
+    (sentence,) = _plan(by_hand).keywords
+    assert "the copy has no rule for it" in sentence
+
+
+def test_a_bucket_this_does_not_add_is_never_told_about_its_keyword_rule():
+    """Held, the bucket is not added, so its rule is not yet a difference."""
+    assert _plan(before_jazz()).keywords == ()
+    assert _plan(_shipped()).keywords == ()
+
+
+def test_one_place_filing_a_word_under_two_spellings_names_both_in_one_sentence():
+    """An alias "Jazz" and a tagging word "jazz" on one bucket are two lines to
+    take out, so the sentence names both rather than sending a person round."""
+    copy = _swap(before_jazz(), JAZZ_SUB, "")
+    copy = _swap(copy, JAZZ_MAP_ROW, "")
+    copy = _swap(copy, JAZZ_VOCABULARY_ROW, "")
+    copy = _swap(
+        copy,
+        'rates = false\nenergy = { enabled = false }\n\n[[bucket.sub]]\nid = "classical"',
+        'rates = false\ntag_aliases = [\n  "jazz",\n]\nenergy = { enabled = false }\n\n'
+        '[[bucket.sub]]\nid = "classical"',
+    )
+    assert _bucket(copy, "non_electronic").tag_aliases == ("jazz",)
+    (held,) = _plan(copy).held
+    assert held.reasons == (
+        "the copy's bucket non_electronic already files 'Jazz', 'jazz'; "
+        "take those words out of it by hand",
+    )
+
+
+def test_a_copy_with_the_words_out_and_the_row_left_does_not_load():
+    """Why the hold names the row: without it the hand edit refuses the copy."""
+    by_hand = _without_jazz_words(before_jazz())
+    with pytest.raises(taxonomy.TaxonomyError, match="vocabulary.deezer"):
+        taxonomy.load_taxonomy(by_hand)
+
+
+def test_every_bucket_of_the_copy_filing_a_word_is_named_not_the_first():
+    """A person's copy whose R&B bucket tags "jazz" as well as NonElectronic
+    filing it is two buckets to edit, and the hold names both."""
+    rnb = 'aliases = [\n  "MPB",\n  "R&B",\n]\ntag_aliases = [\n  "rnb",\n]'
+    copy = _swap(before_jazz(), rnb, rnb.replace('  "rnb",', '  "jazz",\n  "rnb",'))
+    assert "jazz" in _bucket(copy, "rnb").tag_aliases
+    (held,) = _plan(copy).held
+    named = [r for r in held.reasons if r.startswith("the copy's bucket ")]
+    assert "the copy's bucket rnb already files 'jazz'; take that word out of it by hand" in named
+    assert any(r.startswith("the copy's bucket non_electronic already files 'Jazz'") for r in named)
+
+
+def test_a_vocabulary_row_whose_tag_files_where_the_template_shares_the_word_is_not_named():
+    """The row's tag files in the breaks bucket, which the shipped template
+    gives "Trap / Wave" on purpose, so taking R&B's word out leaves it
+    loading; only the bucket that clashes is named, not the row."""
+    copy = _retag(_without(_shipped(), HIP_HOP_START, HIP_HOP_END), "Rap/Hip Hop", "Hip-Hop", "R&B")
+    copy = _swap(copy, 'tag_aliases = [\n  "rnb",\n]', 'tag_aliases = [\n  "rnb",\n  "trap / wave",\n]')
+    reggae = '  { word = "Reggae", tag = "Caribbean" },\n'
+    copy = _swap(copy, reggae, reggae + '  { word = "Trap", tag = "Trap / Wave" },\n')
+    (row,) = [w for v in taxonomy.load_taxonomy(copy).vocabularies for w in v.words if w.word == "Trap"]
+    assert row.bucket == "breaks_dnb_dubstep"
+    (held,) = _plan(copy).held
+    assert held.reasons == (
+        "the copy's bucket rnb already files 'trap / wave'; take that word out of it by hand",
+    )
+
+
 def test_a_word_the_shipped_template_files_twice_is_not_a_clash():
     """Trap / Wave routes to breaks and tags as Hip-Hop in the shipped template."""
     copy = _retag(_without(_shipped(), HIP_HOP_START, HIP_HOP_END), "Rap/Hip Hop", "Hip-Hop", "R&B")
@@ -403,6 +555,21 @@ def test_what_is_held_is_said_and_written_around(configured):
     code, again = drive(VERB)
     assert again["outcome"] == "no_op"
     assert [w["code"] for w in again["warnings"]] == [upgrade_cli.HELD, upgrade_cli.NOTHING_TO_UPGRADE]
+
+
+def test_the_upgrade_that_adds_jazz_says_the_copys_keyword_rule_is_left(configured):
+    copy = _swap(_without_jazz_words(before_jazz()), JAZZ_VOCABULARY_ROW, "")
+    path = write_active(configured, copy)
+    run_id, _ = _asked()
+    _decided(run_id, "approve")
+    code, acted = drive(["--run", run_id, *VERB])
+    assert code == int(ExitCode.OK), acted
+    codes = [w["code"] for w in acted["warnings"]]
+    assert codes == [upgrade_cli.KEYWORD_RULE, upgrade_cli.UPGRADED]
+    assert "'jazz'" in acted["warnings"][0]["message"]
+    after = taxonomy.load_taxonomy(path.read_text(encoding="utf-8"))
+    assert "jazz" in after.bucket_ids()
+    assert [r.bucket for r in after.fuzzy if r.keyword == "jazz"] == ["non_electronic"]
 
 
 def test_an_abort_writes_nothing(configured):

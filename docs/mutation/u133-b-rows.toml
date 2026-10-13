@@ -1,0 +1,199 @@
+name = "u133-b"
+pass_kind = "light"
+
+# Batch b: the shipped template's declarations for Jazz, and one existing
+# guard of the move it relies on. The template is data, so each row names its
+# subset: the files that read the shipped Jazz declaration.
+
+[[rows]]
+id = "T1_keyword_back"
+description = "The jazz keyword rule sends a partial match to NonElectronic again, as before U133"
+file = "src/cratekit/templates/taxonomy.default.toml"
+surface = "user"
+tests = ["tests/test_adopt_jazz_folder.py", "tests/test_routing_parity.py", "tests/test_taxonomy_upgrade.py"]
+old = '''
+keyword = "jazz"
+bucket = "jazz"
+'''
+new = '''
+keyword = "jazz"
+bucket = "non_electronic"
+'''
+
+[[rows]]
+id = "T2_alias_gone"
+description = "Jazz loses its routing alias, so a track tagged Jazz reaches it only by the keyword"
+file = "src/cratekit/templates/taxonomy.default.toml"
+surface = "user"
+tests = ["tests/test_adopt_jazz_folder.py", "tests/test_routing_parity.py", "tests/test_vocabulary.py", "tests/test_taxonomy_upgrade.py"]
+old = '''
+aliases = [
+  "Jazz",
+]
+'''
+new = '''
+aliases = []
+'''
+
+[[rows]]
+id = "T3_tag_alias_gone"
+description = "Jazz loses its tagging word"
+file = "src/cratekit/templates/taxonomy.default.toml"
+surface = "user"
+tests = ["tests/test_adopt_jazz_folder.py", "tests/test_routing_parity.py", "tests/test_vocabulary.py", "tests/test_taxonomy_upgrade.py"]
+old = '''
+tag_aliases = [
+  "jazz",
+]
+rates = false
+'''
+new = '''
+rates = false
+'''
+
+[[rows]]
+id = "T4_rates"
+description = "Jazz gets a star rating derived from energy"
+file = "src/cratekit/templates/taxonomy.default.toml"
+surface = "user"
+tests = ["tests/test_adopt_jazz_folder.py", "tests/test_routing_parity.py", "tests/test_taxonomy_upgrade.py"]
+old = '''
+  "jazz",
+]
+rates = false
+'''
+new = '''
+  "jazz",
+]
+'''
+
+[[rows]]
+id = "T5_former_display"
+description = "The former place names a playlist the library does not hold, so the move finds nothing to leave"
+file = "src/cratekit/templates/taxonomy.default.toml"
+surface = "user"
+tests = ["tests/test_adopt_jazz_folder.py", "tests/test_routing_parity.py", "tests/test_taxonomy.py"]
+old = '''
+sub = "jazz"
+display = "Jazz"
+'''
+new = '''
+sub = "jazz"
+display = "Jazz Archive"
+'''
+
+[[rows]]
+id = "T6_former_sub"
+description = "The former place records the old playlist under another sub identifier"
+file = "src/cratekit/templates/taxonomy.default.toml"
+surface = "user"
+tests = ["tests/test_adopt_jazz_folder.py", "tests/test_routing_parity.py", "tests/test_taxonomy.py"]
+old = '''
+bucket = "non_electronic"
+sub = "jazz"
+'''
+new = '''
+bucket = "non_electronic"
+sub = "jazz_style"
+'''
+
+[[rows]]
+id = "T7_former_gone"
+description = "Jazz declares no former place, so its tracks are filed into a band while they still sit in the old playlist"
+file = "src/cratekit/templates/taxonomy.default.toml"
+surface = "user"
+tests = ["tests/test_adopt_jazz_folder.py", "tests/test_routing_parity.py", "tests/test_taxonomy.py"]
+old = '''
+[[bucket.formerly]]
+id = "non_electronic_jazz"
+bucket = "non_electronic"
+sub = "jazz"
+display = "Jazz"
+'''
+new = ""
+
+[[rows]]
+id = "T8_bpm"
+description = "Jazz's tempo window starts at 120, off the non electronic window"
+file = "src/cratekit/templates/taxonomy.default.toml"
+surface = "user"
+tests = ["tests/test_adopt_jazz_folder.py", "tests/test_routing_parity.py"]
+old = '''
+display = "Jazz"
+family = "other"
+bpm = { start = 110,'''
+new = '''
+display = "Jazz"
+family = "other"
+bpm = { start = 120,'''
+
+[[rows]]
+id = "T9_energy_off"
+description = "Jazz has no energy split"
+file = "src/cratekit/templates/taxonomy.default.toml"
+surface = "user"
+tests = ["tests/test_adopt_jazz_folder.py", "tests/test_routing_parity.py", "tests/test_taxonomy.py"]
+old = '''
+  "jazz",
+]
+rates = false
+'''
+new = '''
+  "jazz",
+]
+rates = false
+energy = { enabled = false }
+'''
+
+[[rows]]
+id = "T10_family"
+description = "Jazz reads as the downtempo family to the set builder"
+file = "src/cratekit/templates/taxonomy.default.toml"
+surface = "user"
+tests = ["tests/test_adopt_jazz_folder.py", "tests/test_routing_parity.py"]
+old = '''
+display = "Jazz"
+family = "other"
+'''
+new = '''
+display = "Jazz"
+family = "downtempo"
+'''
+
+[[rows]]
+id = "T11_nonelec_alias_back"
+description = "NonElectronic files the word Jazz again beside the Jazz bucket"
+file = "src/cratekit/templates/taxonomy.default.toml"
+surface = "user"
+tests = ["tests/test_adopt_jazz_folder.py", "tests/test_routing_parity.py", "tests/test_taxonomy.py", "tests/test_vocabulary.py"]
+old = '''
+  "Indie Rock",
+  "Latin",
+'''
+new = '''
+  "Indie Rock",
+  "Jazz",
+  "Latin",
+'''
+
+[[rows]]
+id = "E2_former_place_only"
+description = "Existing guard sample: a track sitting only in a former place is never recognised as one"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+old = '''
+    return bool(held) and set(held) <= former
+'''
+new = '''
+    return False
+'''
+
+[[dropped]]
+id = "T12_order"
+description = "Declare Jazz after NonElectronic rather than before it"
+reason = "a two site edit the driver cannot express as one replacement; the order is pinned by test_jazz_sits_after_hip_hop_and_before_the_folder_it_left, which reads the declared order directly"
+
+[[dropped]]
+id = "T13_old_sub_back"
+description = "Declare the jazz sub under NonElectronic again"
+reason = "the loader refuses a former place whose sub its folder still declares, the guard E1's neighbour in _check_former_places; measuring it again here buys no information about U133"

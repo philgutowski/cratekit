@@ -1,0 +1,26 @@
+name = "u133-a-rerun"
+pass_kind = "light"
+
+# P5 and P8 of batch a measured zero. Each guard is reachable by a hand edited
+# copy, driven, and had no test; the tests were added after batch a, and these
+# are the same two rows measured again, not new rows.
+
+[[rows]]
+id = "P5_vocabulary_owner"
+description = "A vocabulary row is named by its tag alone, whichever bucket files that tag"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "user"
+old = '''            if (row.bucket, row.tag.casefold().strip()) in clashing:
+'''
+new = '''            if row.tag.casefold().strip() in {word for _owner, word in clashing}:
+'''
+
+[[rows]]
+id = "P8_held_by_whole_copy"
+description = "Only the copy's first bucket filing a word is asked about, as the setdefault before U133 did across buckets"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "user"
+old = '''            filed.setdefault(word, []).extend((bucket.id, s, w) for s, w in places)
+'''
+new = '''            filed.setdefault(word, list((bucket.id, s, w) for s, w in places))
+'''

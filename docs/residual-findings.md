@@ -37606,3 +37606,155 @@ tree.
 **Closes when:** the inbox report names only inbox playlists, or the record
 is read and the 20 entries explained, and a rebuild of the inbox tree on a
 copy writes what the report says.
+
+---
+
+## R-997. A partial "jazz" genre already in NonElectronic's default sub is filed in a Jazz band and left in Rock
+
+**Found:** at the review of #308, U133, 2026-10-12.
+
+**The mechanism.** U133 moved the keyword rule `keyword = "jazz"` from the
+non electronic bucket to the new Jazz bucket, as the author's brief named,
+unlike R&B's and Hip-Hop's (R-804, R-941). Before it, a genre that only
+contains the word, such as `Acid Jazz`, `Jazz Funk`, `Jazz House` or
+lowercase `jazz`, routed to NonElectronic by the keyword, had no row in its
+source map, and landed in the default sub, Rock. It routes to Jazz now. Rock
+is not a place Jazz competes on, so adoption files such a track into a Jazz
+band, applicable and not withheld, and `crate adopt move` plans nothing for
+it: the track sits in Jazz and in NonElectronic / Rock, and no verb settles
+it. The rule also sits before `house` and `hip hop` in first match order, so
+`Jazz House`, `Jazzstep` and `Jazz Rap` file as Jazz rather than in a dance
+or Hip-Hop folder; before U133 they landed in Rock, also not their folder.
+Pinned by `test_a_partial_jazz_match_already_in_rock_is_filed_in_jazz_and_stays_in_rock`.
+
+**Measured cost.** Driven on the shipped template through the adoption plan
+and the move plan with a placement reader holding the track in Rock. How
+many live tracks carry such a genre is unmeasured, since the unit does not
+read the live library. The brief counted 15 rows with the genre Jazz and 15
+tracks in NonElectronic / Jazz, which are exact matches, not this
+population. The live copy is not affected until its own keyword rule is
+repointed by hand: `crate taxonomy upgrade` adds the bucket and leaves the
+copy's rule, and says so.
+
+**Options.** (a) Leave it, and count the population with `crate report
+genres` at the attended tail before repointing the live copy's rule. (b)
+Declare NonElectronic's default sub a split place of Jazz for tracks whose
+genre names Jazz, so the move takes them out of Rock. (c) Put the keyword
+rule back on NonElectronic and add only the wanted spellings as exact Jazz
+aliases. (d) Move the rule below `house` so `Jazz House` files as house.
+
+**Closes when:** the author chooses, with the live count in hand. Not on the
+board bar: nothing is lost, nothing false is said, and the live copy keeps
+its old rule until a person repoints it.
+
+---
+
+## R-998. taxonomy upgrade asks a person to take a vocabulary row out and maybe write it back
+
+**Found:** at the review of #308, U133, 2026-10-12.
+
+**The mechanism.** A copy made before U133 files the word Jazz in
+NonElectronic, and its `[vocabulary.deezer]` row `{ word = "Jazz", tag =
+"Jazz" }` writes that word. `crate taxonomy upgrade` holds the Jazz bucket
+until NonElectronic stops filing it, and a copy with the word out and the row
+left does not load, so the verb refuses it before it can add the bucket.
+U133's hold names the row and says to take it out with the word and write it
+back after the upgrade if the new bucket's own words do not answer for it.
+That is a hand round trip the verb leaves to the person, because the
+upgrade only adds (U132) and cannot take words out and add a bucket in one
+step.
+
+**Measured cost.** For Jazz none: measured on the shipped template, the
+catalogue's Jazz tags as Jazz with the row and without it, by the Jazz
+bucket's own tagging word. For a future bucket whose own words do not cover
+a row's word, forgetting the write back changes what that catalogue word
+tags as. Not driven, since no shipped bucket has that shape.
+
+**Closes when:** the upgrade plans a hand edit and an addition together, or
+checks vocabulary rows against the copy with the candidate in place. Ledger
+only: maintainer and attended facing, nothing lost.
+
+---
+
+## R-999. U134's mutation table is four rows of twenty, the rest owed to a quiet machine
+
+**Found:** at the build of #307, U134, 2026-10-12.
+
+**The mechanism.** `scripts/mutate.py` stops a batch when the real
+installation state gains an entry while a child runs. With three Relay lanes
+and the watcher on one machine, two other mutation drivers and a `crate
+doctor` run wrote there during each attempt, and batch a stopped three times.
+Rows A1 to A4 were measured and killed; A5 to A11 and batch b's nine rows,
+two of them composites for the read back's guards, were not run.
+`docs/mutation/u134-notes.md` names them and the rerun command.
+
+**Measured cost.** None to a person. The guards are covered by the 19 tests
+of `tests/test_inbox_refill.py`, which the author expects each row to kill,
+and that expectation is unmeasured.
+
+**Closes when:** both batches are run to the end with no other lane on the
+machine and their tables committed. Ledger only: maintainer facing.
+
+---
+
+## R-1000. the set playlist's recorded playlist is the newest record by session id, which a second does not order
+
+**Found:** at the review of #307, U134, 2026-10-12, by the same shape in the refill.
+
+**The mechanism.** `set_playlist.recorded_playlist` takes the newest closed
+record naming a set job, sorting by `session_id` in reverse. A session id is a
+second's stamp and four random hex characters, so two records made inside one
+second sort by chance. The refill's own lookup had the same shape and its
+twin test failed one run in two on it, before U134 ordered records by
+`started`, which carries microseconds, then by id.
+
+**Measured cost.** Not driven for the set playlist. Two writes of one set's
+playlist would have to commit in the same second for the wrong record to be
+read, and a backfill run by a person does not.
+
+**Closes when:** `recorded_playlist` sorts by `(started, session_id)`, the
+order `refill.recorded_entries` uses. Ledger only.
+
+---
+
+## R-1001. a crate organize selection of listing steps only still asks each area's gate and shows the account's writes fact
+
+**Found:** at the review of #314, U137, 2026-10-12.
+
+**The mechanism.** `crate organize --only yours` (or `--only record-labels`)
+plans only steps that write nothing, and each planned area still asks its
+explicit gate, because U112 asks an area with nothing to do. The account
+area's `writes` fact, "add only: folders are created and playlists filed and
+prefixed", is set whatever the selection, so a narrowed area that can write
+nothing still says what the whole area writes.
+
+**Measured cost.** Driven in `test_only_yours_lists_on_each_side_exactly_what_the_full_verb_lists`
+with `--report`, which asks nothing. Without `--report` a person answers two
+gates through `crate run decide` for a run that writes nothing; the gate's
+own "nothing to do" fact says so. Nothing false is written and no write is
+missed.
+
+**Closes when:** an area whose selected steps are all listings is planned and
+reported as `--report` would, asking nothing, and the `writes` fact names
+only what the selected kinds can write. Ledger only.
+
+---
+
+## R-1002. A pre-unit --set landing with no set playlist record cannot name its dated INBOX batch as a leftover
+
+**Found:** at the review of #309, U135, 2026-10-12.
+
+**The mechanism.** `leftover_set_inbox` finds dated batch playlists from before
+U135 by walking closed sessions whose set playlist record names this job and
+whose batch playlist detail carries no `job` key. A pre-unit `--set` landing
+whose set playlist wrote nothing (every member left out) never wrote a set
+playlist record, so that walk cannot name the dated INBOX batch it did make.
+The later landing then makes a set-named INBOX playlist beside the dated one
+without listing the dated name under inbox leftovers.
+
+**Measured cost.** Edge: only landings that wrote the INBOX batch and wrote
+nothing under INSPIRATION. Not driven.
+
+**Closes when:** `leftover_set_inbox` also walks batch playlist details that
+name the set without a set playlist record, or the operator renames the dated
+batch by hand. Ledger only.

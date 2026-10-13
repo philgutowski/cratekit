@@ -1,0 +1,101 @@
+{
+  "name": "u133-a-rerun",
+  "pass_kind": "light",
+  "branch": "fable/308-jazz-genre-folder-under",
+  "head": "a5bd3098",
+  "when": "2026-10-13 01:08 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 13744,
+  "baseline_exit": 0,
+  "pytest_runs": 5,
+  "state_guarded": "~/Library/Application Support/cratekit (408200 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/taxonomy_upgrade.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/taxonomy_upgrade.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "eca518e743f0c659",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 13744,
+    "baseline_collected": 13744,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "P5_vocabulary_owner",
+      "description": "A vocabulary row is named by its tag alone, whichever bucket files that tag",
+      "file": "src/cratekit/core/taxonomy_upgrade.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7e6bea66deeea8f8",
+      "subset": [
+        "tests/test_taxonomy_upgrade.py"
+      ],
+      "subset_reason": "test files importing cratekit.core.taxonomy_upgrade",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 46,
+      "baseline_collected": 46,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_taxonomy_upgrade.py::test_a_vocabulary_row_whose_tag_files_where_the_template_shares_the_word_is_not_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if (row.bucket, row.tag.casefold().strip()) in clashing:\n",
+      "new": "            if row.tag.casefold().strip() in {word for _owner, word in clashing}:\n"
+    },
+    {
+      "id": "P8_held_by_whole_copy",
+      "description": "Only the copy's first bucket filing a word is asked about, as the setdefault before U133 did across buckets",
+      "file": "src/cratekit/core/taxonomy_upgrade.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c126398d51d875c1",
+      "subset": [
+        "tests/test_taxonomy_upgrade.py"
+      ],
+      "subset_reason": "test files importing cratekit.core.taxonomy_upgrade",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 46,
+      "baseline_collected": 46,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_taxonomy_upgrade.py::test_a_vocabulary_row_whose_tag_files_where_the_template_shares_the_word_is_not_named",
+        "tests/test_taxonomy_upgrade.py::test_every_bucket_of_the_copy_filing_a_word_is_named_not_the_first"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            filed.setdefault(word, []).extend((bucket.id, s, w) for s, w in places)\n",
+      "new": "            filed.setdefault(word, list((bucket.id, s, w) for s, w in places))\n"
+    }
+  ],
+  "dropped": []
+}

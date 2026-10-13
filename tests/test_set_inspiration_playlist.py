@@ -195,6 +195,16 @@ def _playlists_named(cfg: config.Config, name: str) -> list[tuple]:
     )
 
 
+def _under_parent(cfg: config.Config, name: str, parent_id: str) -> list[tuple]:
+    """Playlists of ``name`` parented to ``parent_id`` (INBOX or INSPIRATION)."""
+    return [row for row in _playlists_named(cfg, name) if str(row[1]) == str(parent_id)]
+
+
+def _inspiration_folder_id(cfg: config.Config) -> str:
+    ((folder_id,),) = _root_folders(cfg, FOLDER)
+    return str(folder_id)
+
+
 def _root_folders(cfg: config.Config, name: str) -> list[tuple]:
     return _query(
         cfg,
@@ -414,14 +424,14 @@ def test_a_landing_from_a_set_job_writes_the_set_playlist_with_owned_and_landed_
     # The plan the person approved is the plan that was applied, set included.
     assert shown["digest"] == acted["data"]["digest"]
 
-    ((playlist_id, parent, attribute, removed),) = _playlists_named(cfg, NAME)
+    ((playlist_id, parent, attribute, removed),) = _under_parent(cfg, NAME, folder_id)
     assert str(parent) == folder_id and int(attribute or 0) == 0 and not removed
     rows = _row_ids_by_name(cfg)
     # Owned and landed alike, in the order the set played them.
     assert _members(cfg, str(playlist_id)) == [rows["One"], "held-3", rows["Two"]]
 
-    # The batch is as every landing makes it: the landed files only, under INBOX.
-    ((batch_id, batch_parent, _a, _r),) = _playlists_named(cfg, BATCH)
+    # The INBOX playlist is named for the set (U135), holding the landed files only.
+    ((batch_id, batch_parent, _a, _r),) = _under_parent(cfg, NAME, root_id)
     assert str(batch_parent) == root_id
     assert _members(cfg, str(batch_id)) == [rows["One"], rows["Two"]]
     assert _children(cfg, root_id) == [str(batch_id)]
@@ -429,7 +439,7 @@ def test_a_landing_from_a_set_job_writes_the_set_playlist_with_owned_and_landed_
     totals = acted["data"]["totals"]
     assert totals["memberships"] == 2, "the set's memberships are not the batch's"
     assert totals["set playlist tracks"] == 3 and totals["set playlist left out"] == 0
-    (item,) = [i for i in acted["data"]["items"] if i.get("playlist") == NAME]
+    (item,) = [i for i in acted["data"]["items"] if i.get("playlist") == NAME and "playlist_created" in i]
     assert item["id"] == str(playlist_id) and item["count"] == 3 and item["added"] == 3
     assert item["folder"] == folder_id and item["folder_created"] is False
     codes = [w["code"] for w in acted["warnings"]]
@@ -466,20 +476,23 @@ def test_a_landing_with_a_page_date_names_the_playlist_for_the_posted_day(
     native_library, silence
 ):
     """U136: page upload_date wins over the landing day for the INSPIRATION name."""
-    cfg, _root_id = native_library
+    cfg, root_id = native_library
     cutover_fixtures.add_folder(cfg, FOLDER)
     job_id = set_job(cfg, ("One",), page=PAGE)
     _stage(cfg, silence, "One")
     code, acted, refused = _two_acts(_land("--set", job_id, *WORDS))
     assert code == int(ExitCode.OK), acted
     assert refused["cause"]["detail"]["shown"]["set playlist"] == POSTED_NAME
-    assert _playlists_named(cfg, POSTED_NAME)
-    assert _playlists_named(cfg, NAME) == []
+    assert _under_parent(cfg, POSTED_NAME, _inspiration_folder_id(cfg))
+    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
+    # THE INBOX BATCH KEEPS THE LANDING DAY (U136's brief), and since U135 a
+    # set landing names it for the set, so the landing day's name is there.
+    assert _under_parent(cfg, NAME, root_id)
 
 
 def test_a_landing_honours_posted_on_a_pre_freeze_job(native_library, silence):
     """U136: intake land --set JOB --posted must reach plan_for_landing."""
-    cfg, _root_id = native_library
+    cfg, root_id = native_library
     cutover_fixtures.add_folder(cfg, FOLDER)
     job_id = set_job(cfg, ("One",))
     _stage(cfg, silence, "One")
@@ -488,8 +501,11 @@ def test_a_landing_honours_posted_on_a_pre_freeze_job(native_library, silence):
     )
     assert code == int(ExitCode.OK), acted
     assert refused["cause"]["detail"]["shown"]["set playlist"] == POSTED_NAME
-    assert _playlists_named(cfg, POSTED_NAME)
-    assert _playlists_named(cfg, NAME) == []
+    assert _under_parent(cfg, POSTED_NAME, _inspiration_folder_id(cfg))
+    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
+    # THE INBOX BATCH KEEPS THE LANDING DAY (U136's brief), and since U135 a
+    # set landing names it for the set, so the landing day's name is there.
+    assert _under_parent(cfg, NAME, root_id)
 
 
 def test_posted_on_a_frozen_job_names_another_day_and_the_frozen_name_wins_with_a_warning(
@@ -511,7 +527,7 @@ def test_posted_on_a_frozen_job_names_another_day_and_the_frozen_name_wins_with_
     assert code == int(ExitCode.OK), acted
     shown = refused["cause"]["detail"]["shown"]
     assert shown["set playlist"] == NAME
-    assert _playlists_named(cfg, NAME)
+    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg))
     assert _playlists_named(cfg, POSTED_NAME) == []
     ignored = [w for w in acted["warnings"] if w["code"] == set_playlist.POSTED_IGNORED]
     assert len(ignored) == 1, acted["warnings"]
@@ -573,9 +589,9 @@ def test_a_landing_creates_the_declared_folder_at_the_root_when_the_library_lack
     assert code == int(ExitCode.OK), acted
     assert refused["cause"]["detail"]["shown"]["under"] == f"{FOLDER}, created at the playlist root"
     ((folder_id,),) = _root_folders(cfg, FOLDER)
-    ((_pid, parent, _a, _r),) = _playlists_named(cfg, NAME)
+    ((_pid, parent, _a, _r),) = _under_parent(cfg, NAME, _inspiration_folder_id(cfg))
     assert str(parent) == str(folder_id)
-    (item,) = [i for i in acted["data"]["items"] if i.get("playlist") == NAME]
+    (item,) = [i for i in acted["data"]["items"] if i.get("playlist") == NAME and "playlist_created" in i]
     assert item["folder_created"] is True
 
 
@@ -661,12 +677,12 @@ def test_a_row_neither_owned_nor_landed_is_counted_and_named_and_not_added(nativ
     assert code == int(ExitCode.OK), acted
     shown = refused["cause"]["detail"]["shown"]
     assert shown["set tracks"] == 2 and shown["set left out"] == 1
-    ((playlist_id, *_rest),) = _playlists_named(cfg, NAME)
+    ((playlist_id, *_rest),) = _under_parent(cfg, NAME, _inspiration_folder_id(cfg))
     rows = _row_ids_by_name(cfg)
     assert _members(cfg, str(playlist_id)) == [rows["One"], rows["Two"]]
     (left,) = [w for w in acted["warnings"] if w["code"] == set_playlist.LEFT_OUT]
     assert "2. Probe - Four" in left["message"] and set_playlist.NOT_RESOLVED in left["message"]
-    (item,) = [i for i in acted["data"]["items"] if i.get("playlist") == NAME]
+    (item,) = [i for i in acted["data"]["items"] if i.get("playlist") == NAME and "playlist_created" in i]
     assert item["left"] == [
         {"position": 2, "artist": "Probe", "title": "Four", "state": "missing", "why": set_playlist.NOT_RESOLVED}
     ]
@@ -679,7 +695,7 @@ def test_a_set_with_nothing_owned_or_landed_writes_no_playlist_and_says_so(nativ
     _stage(cfg, silence, "One")
     code, acted, _ = _two_acts(_land("--set", job_id, *WORDS))
     assert code == int(ExitCode.OK), acted
-    assert _playlists_named(cfg, NAME) == []
+    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
     codes = [w["code"] for w in acted["warnings"]]
     assert set_playlist.NOTHING in codes and set_playlist.LEFT_OUT in codes
     (record,) = session.records(cfg)
@@ -758,7 +774,7 @@ def test_the_backfill_over_a_landed_set_adds_the_playlist_and_nothing_to_inbox(
     shown = refused["cause"]["detail"]["shown"]
     assert shown["set playlist"] == NAME and shown["set tracks"] == 3 and shown["set left out"] == 0
     assert shown["digest"] == acted["data"]["digest"]
-    ((playlist_id, parent, _a, _r),) = _playlists_named(cfg, NAME)
+    ((playlist_id, parent, _a, _r),) = _under_parent(cfg, NAME, _inspiration_folder_id(cfg))
     assert str(parent) == folder_id
     rows = _row_ids_by_name(cfg)
     assert _members(cfg, str(playlist_id)) == [rows["One"], "held-3", rows["Two"]]
@@ -796,7 +812,7 @@ def test_the_backfill_run_twice_on_one_day_adds_nothing_the_second_time(native_l
     code, again, _ = _two_acts_approve(_inspiration(job_id, *WORDS))
     assert code == int(ExitCode.OK), again
     assert again["data"]["totals"]["added"] == 0 and again["data"]["totals"]["read back"] == 1
-    ((playlist_id, *_rest),) = _playlists_named(cfg, NAME)
+    ((playlist_id, *_rest),) = _under_parent(cfg, NAME, _inspiration_folder_id(cfg))
     assert len(_members(cfg, str(playlist_id))) == 1
 
 
@@ -809,7 +825,7 @@ def test_the_backfill_over_a_set_with_nothing_owned_asks_and_then_writes_nothing
     code, acted, _ = _two_acts_approve(_inspiration(job_id, *WORDS))
     assert code == int(ExitCode.OK), acted
     assert acted["outcome"] == "no_op"
-    assert _playlists_named(cfg, NAME) == []
+    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
     assert [w["code"] for w in acted["warnings"]] == [
         set_playlist.POSTED_FALLBACK,
         set_playlist.NOTHING,
@@ -880,7 +896,7 @@ def test_a_folder_that_went_between_the_plan_and_the_write_is_refused_as_stale(
     conn.close()
     code, acted = drive(["--run", run_id, *verb])
     assert acted["cause"]["reason"] == "decision-stale", acted
-    assert _playlists_named(cfg, NAME) == []
+    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
 
 
 # ---------------------------------------------------------------------------
@@ -901,7 +917,7 @@ def test_a_row_that_resolves_only_to_a_different_version_is_not_guessed(native_l
     assert code == int(ExitCode.OK), acted
     assert refused["cause"]["detail"]["shown"]["set tracks"] == 0
     assert acted["data"]["totals"]["added"] == 1, "the batch did not land the file"
-    assert _playlists_named(cfg, NAME) == []
+    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
     (left,) = [w for w in acted["warnings"] if w["code"] == set_playlist.LEFT_OUT]
     assert "1. Probe - One" in left["message"]
 
@@ -925,7 +941,7 @@ def test_a_collection_that_moved_between_the_plan_and_the_write_is_refused_as_st
     conn.close()
     code, acted = drive(["--run", run_id, *verb])
     assert acted["cause"]["reason"] == "decision-stale", acted
-    assert _playlists_named(cfg, NAME) == []
+    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
     assert not [r for r in session.records(cfg) if r.workflow == set_playlist.WORKFLOW]
 
 
@@ -951,7 +967,7 @@ def test_a_landing_whose_folder_went_between_the_two_acts_moves_nothing(native_l
     code, acted = drive(["--run", run_id, *verb])
     assert acted["cause"]["reason"] == "decision-stale", acted
     assert "has since changed" in acted["cause"]["message"]
-    assert _playlists_named(cfg, NAME) == []
+    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
     assert (Path(cfg.paths.download_staging) / "One.flac").is_file()
     assert _query(cfg, "SELECT COUNT(*) FROM djmdContent WHERE FolderPath LIKE ?", f"%{BATCH}%") == [(0,)]
 
@@ -998,7 +1014,7 @@ def test_a_track_accepted_at_review_as_a_library_file_joins_the_playlist_at_a_la
 
     assert code == int(ExitCode.OK), acted
     assert refused["cause"]["detail"]["shown"]["set tracks"] == 2
-    ((playlist_id, *_rest),) = _playlists_named(cfg, NAME)
+    ((playlist_id, *_rest),) = _under_parent(cfg, NAME, _inspiration_folder_id(cfg))
     rows = _row_ids_by_name(cfg)
     assert _members(cfg, str(playlist_id)) == ["held-1x", rows["Two"]]
 
@@ -1027,7 +1043,7 @@ def test_an_unanswered_question_is_left_out_and_the_plan_offers_nothing(native_l
     code, acted = drive(["--run", run_id, *_inspiration(job_id, *WORDS)])
     assert code == int(ExitCode.OK) and acted["outcome"] == "no_op", acted
     assert _unresolved(cfg) == before
-    assert _playlists_named(cfg, NAME) == []
+    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
 
 
 def test_a_file_two_collection_rows_claim_is_left_out_rather_than_one_row_picked(
@@ -1052,9 +1068,9 @@ def test_a_file_two_collection_rows_claim_is_left_out_rather_than_one_row_picked
     code, acted, _ = _two_acts(_land("--set", job_id, *WORDS))
 
     assert code == int(ExitCode.OK), acted
-    ((playlist_id, *_rest),) = _playlists_named(cfg, NAME)
+    ((playlist_id, *_rest),) = _under_parent(cfg, NAME, _inspiration_folder_id(cfg))
     assert _members(cfg, str(playlist_id)) == [_row_ids_by_name(cfg)["One"]]
-    (item,) = [i for i in acted["data"]["items"] if i.get("playlist") == NAME]
+    (item,) = [i for i in acted["data"]["items"] if i.get("playlist") == NAME and "playlist_created" in i]
     assert [one["why"] for one in item["left"]] == [set_playlist.AMBIGUOUS_ROWS]
 
 
@@ -1069,7 +1085,7 @@ def test_a_second_write_that_fills_a_gap_mid_set_is_not_a_failed_write(native_li
     job_id = set_job(cfg, ("One", "Three", "Two"))
     code, first, _ = _two_acts_approve(_inspiration(job_id, *WORDS))
     assert code == int(ExitCode.OK), first
-    ((playlist_id, *_rest),) = _playlists_named(cfg, NAME)
+    ((playlist_id, *_rest),) = _under_parent(cfg, NAME, _inspiration_folder_id(cfg))
     assert _members(cfg, str(playlist_id)) == ["held-1", "held-2"]
 
     _owned(cfg, silence, "Three", content_id="held-3")
@@ -1098,7 +1114,7 @@ def test_members_keep_the_sets_order_when_it_is_not_alphabetical(native_library,
     _stage(cfg, silence, "Two")
     code, acted, _ = _two_acts(_land("--set", job_id, *WORDS))
     assert code == int(ExitCode.OK), acted
-    ((playlist_id, *_rest),) = _playlists_named(cfg, NAME)
+    ((playlist_id, *_rest),) = _under_parent(cfg, NAME, _inspiration_folder_id(cfg))
     rows = _row_ids_by_name(cfg)
     assert _members(cfg, str(playlist_id)) == [rows["Two"], rows["One"], "held-3"]
 
@@ -1133,7 +1149,7 @@ def test_the_engine_refuses_a_plan_whose_collection_moved_even_with_no_gate_in_f
     with pytest.raises(CratekitError) as caught:
         inspiration_cli.written(cfg, declared, plan, job, words, reports)
     assert caught.value.cause.reason == "decision-stale"
-    assert _playlists_named(cfg, NAME) == []
+    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
 
 
 def test_the_engine_refuses_a_folder_removed_after_the_plan_even_with_no_gate_in_front(
@@ -1157,7 +1173,7 @@ def test_the_engine_refuses_a_folder_removed_after_the_plan_even_with_no_gate_in
         db.session.rollback()
     finally:
         rb_writer.close_db(db)
-    assert _playlists_named(cfg, NAME) == []
+    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
 
 
 # ---------------------------------------------------------------------------
@@ -1185,13 +1201,14 @@ def _make_playlist(cfg: config.Config, name: str, *, under: str) -> str:
 def test_two_landings_of_one_set_on_two_days_make_one_playlist(native_library, silence, monkeypatch):
     """The second landing reads the first's session record, adds to the playlist
     it made and keeps its name, so a set landed in two parts is one playlist."""
-    cfg, _root_id = native_library
+    cfg, root_id = native_library
     cutover_fixtures.add_folder(cfg, FOLDER)
     job_id = set_job(cfg, ("One", "Two"))
     _stage(cfg, silence, "One")
     code, first, _ = _two_acts(_land("--set", job_id, *WORDS))
     assert code == int(ExitCode.OK), first
-    ((playlist_id, *_rest),) = _playlists_named(cfg, NAME)
+    folder_id = _inspiration_folder_id(cfg)
+    ((playlist_id, *_rest),) = _under_parent(cfg, NAME, folder_id)
 
     monkeypatch.setattr(batch_name, "today", lambda: date(2026, 10, 10))
     _stage(cfg, silence, "Two")
@@ -1200,11 +1217,12 @@ def test_two_landings_of_one_set_on_two_days_make_one_playlist(native_library, s
 
     assert code == int(ExitCode.OK), second
     assert refused["cause"]["detail"]["shown"]["playlist"].startswith("adds to the playlist")
-    assert _playlists_named(cfg, "10_10_26 Probe DJ Live at Probe 5-26") == []
-    assert len(_playlists_named(cfg, NAME)) == 1
+    assert _under_parent(cfg, "10_10_26 Probe DJ Live at Probe 5-26", folder_id) == []
+    assert len(_under_parent(cfg, NAME, folder_id)) == 1
+    assert len(_under_parent(cfg, NAME, root_id)) == 1
     rows = _row_ids_by_name(cfg)
     assert _members(cfg, str(playlist_id)) == [rows["One"], rows["Two"]]
-    (item,) = [i for i in second["data"]["items"] if i.get("playlist") == NAME]
+    (item,) = [i for i in second["data"]["items"] if i.get("playlist") == NAME and "playlist_created" in i]
     assert item["id"] == str(playlist_id) and item["added"] == 1 and item["playlist_created"] is False
 
 
@@ -1217,14 +1235,15 @@ def test_a_recorded_playlist_that_was_removed_is_not_added_to_and_a_live_one_is_
     _stage(cfg, silence, "One")
     code, first, _ = _two_acts(_land("--set", job_id, *WORDS))
     assert code == int(ExitCode.OK), first
-    ((removed_id, *_rest),) = _playlists_named(cfg, NAME)
+    folder_id = _inspiration_folder_id(cfg)
+    ((removed_id, *_rest),) = _under_parent(cfg, NAME, folder_id)
     _soft_delete_playlist(cfg, str(removed_id))
 
     code, acted, refused = _two_acts_approve(_inspiration(job_id, *WORDS))
 
     assert code == int(ExitCode.OK), acted
     assert refused["cause"]["detail"]["shown"]["playlist"].startswith("found live")
-    live = [row for row in _playlists_named(cfg, NAME) if not row[3]]
+    live = [row for row in _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) if not row[3]]
     ((live_id, *_r),) = live
     assert str(live_id) != str(removed_id)
     assert _members(cfg, str(live_id)) == [_row_ids_by_name(cfg)["One"]]
@@ -1243,11 +1262,11 @@ def test_a_removed_namesake_under_the_folder_is_not_written_into(native_library,
 
     assert code == int(ExitCode.OK), acted
     assert _members(cfg, removed_id) == []
-    live = [row for row in _playlists_named(cfg, NAME) if not row[3]]
+    live = [row for row in _under_parent(cfg, NAME, folder_id) if not row[3]]
     ((live_id, parent, _a, _r),) = live
     assert str(parent) == folder_id and str(live_id) != removed_id
     assert _members(cfg, str(live_id)) == ["held-3"]
-    (item,) = [i for i in acted["data"]["items"] if i.get("playlist") == NAME]
+    (item,) = [i for i in acted["data"]["items"] if i.get("playlist") == NAME and "playlist_created" in i]
     assert item["playlist_created"] is True
 
 
@@ -1276,7 +1295,7 @@ def test_when_every_landed_members_file_is_refused_the_left_list_names_them(
     assert acted["data"]["totals"]["landed"] == 1 and acted["data"]["totals"]["refused"] == 2
     assert acted["data"]["totals"]["set playlist left out"] == 2
     assert acted["data"]["totals"]["set playlist tracks"] == 0
-    assert _playlists_named(cfg, NAME) == []
+    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
     (nothing,) = [w for w in acted["warnings"] if w["code"] == set_playlist.NOTHING]
     assert "2 track(s) are listed as left out" in nothing["message"]
     (left,) = [w for w in acted["warnings"] if w["code"] == set_playlist.LEFT_OUT]
@@ -1315,7 +1334,7 @@ def test_two_rows_of_the_set_resolving_to_one_track_are_one_member(native_librar
 
     assert code == int(ExitCode.OK), acted
     assert refused["cause"]["detail"]["shown"]["set tracks"] == 2, "both positions are shown"
-    (item,) = [i for i in acted["data"]["items"] if i.get("playlist") == NAME]
+    (item,) = [i for i in acted["data"]["items"] if i.get("playlist") == NAME and "playlist_created" in i]
     assert item["count"] == 1 and item["added"] == 1
     assert acted["data"]["totals"]["read back"] == 1
     assert _members(cfg, item["id"]) == ["held-3"]
@@ -1353,9 +1372,9 @@ def test_the_backfill_creates_the_declared_folder_at_the_root_when_the_library_l
     assert code == int(ExitCode.OK), acted
     assert refused["cause"]["detail"]["shown"]["under"] == f"{FOLDER}, created at the playlist root"
     ((folder_id,),) = _root_folders(cfg, FOLDER)
-    ((_pid, parent, _a, _r),) = _playlists_named(cfg, NAME)
+    ((_pid, parent, _a, _r),) = _under_parent(cfg, NAME, _inspiration_folder_id(cfg))
     assert str(parent) == str(folder_id)
-    (item,) = [i for i in acted["data"]["items"] if i.get("playlist") == NAME]
+    (item,) = [i for i in acted["data"]["items"] if i.get("playlist") == NAME and "playlist_created" in i]
     assert item["folder_created"] is True and item["playlist_created"] is True
     (record,) = [r for r in session.records(cfg) if r.workflow == set_playlist.WORKFLOW]
     assert record.detail[set_playlist.RECORD_KEY]["folder"] == str(folder_id)

@@ -16,11 +16,12 @@
 # tempo priors and the family projection were emitted from the source system's
 # own tables, so they are exact rather than transcribed.
 #
-# THREE BUCKETS ARE NOT FROM THAT EXPORT. R&B was a sub of the non electronic
+# FOUR BUCKETS ARE NOT FROM THAT EXPORT. R&B was a sub of the non electronic
 # bucket there. The author moved it to the top level on 2026-10-01 (R-797), with
 # energy bands, and Soul with it as one folder. On 2026-10-09 (U118) Soul left
 # R&B for a folder of its own and Hip-Hop left the non electronic bucket, both
-# with energy bands. Each entry says what it left behind.
+# with energy bands, and on 2026-10-12 (U133) Jazz left it the same way. Each
+# entry says what it left behind.
 #
 # PROVISIONAL VALUES. The tempo priors are one person's hand-tuned windows and
 # have never been measured against detector error rates; confirming them needs a
@@ -590,6 +591,39 @@ bucket = "non_electronic"
 sub = "hip_hop"
 display = "Hip-Hop"
 
+# JAZZ AT THE TOP LEVEL, decided by the author on 2026-10-12 (U133), a folder
+# of its own under the tree beside the other genre folders. It was a style sub
+# of the non electronic bucket with no energy split, and leaves it as Hip-Hop
+# did, for a folder split by the dance bands. Shaped as Hip-Hop is, and no
+# Candy. The energy measure was tuned on dance music and is unproven here, as
+# it was for R&B.
+#
+# It takes every word the old sub filed and tagged. The keyword rule for
+# "jazz" further down points here too, by the author's naming, unlike R&B's
+# and Hip-Hop's, which stayed with the non electronic bucket (R-804, R-941):
+# in this template a partial match such as "Acid Jazz" files here. A copy
+# that took this bucket from `crate taxonomy upgrade` keeps its own keyword
+# rule, which the verb names, until it is repointed by hand.
+[[bucket]]
+id = "jazz"
+display = "Jazz"
+family = "other"
+bpm = { start = 110, floor = 70, ceil = 165 }
+aliases = [
+  "Jazz",
+]
+tag_aliases = [
+  "jazz",
+]
+rates = false
+
+# THE PLAYLIST THIS BUCKET'S TRACKS SAT IN, as R&B's former place above.
+[[bucket.formerly]]
+id = "non_electronic_jazz"
+bucket = "non_electronic"
+sub = "jazz"
+display = "Jazz"
+
 [[bucket]]
 id = "non_electronic"
 display = "NonElectronic"
@@ -606,7 +640,6 @@ aliases = [
   "Folk",
   "Funk",
   "Indie Rock",
-  "Jazz",
   "Latin",
   "NonElectronic / Pop",
   "Punk",
@@ -621,13 +654,6 @@ aliases = [
 # writing it anyway. This follows the stricter one.
 rates = false
 energy = { enabled = false }
-
-[[bucket.sub]]
-id = "jazz"
-display = "Jazz"
-tag_aliases = [
-  "jazz",
-]
 
 [[bucket.sub]]
 id = "classical"
@@ -658,7 +684,8 @@ display = "Pop"
 # THERE IS NO SOUL / R&B SUB HERE ANY MORE (R-797). It is the "rnb" bucket
 # above, which names the playlist this bucket's folder still holds as its
 # former place. NOR A HIP-HOP SUB (U118): it is the "hip_hop" bucket above,
-# the same way.
+# the same way. NOR A JAZZ SUB (U133): it is the "jazz" bucket above, the same
+# way.
 
 [[bucket.sub]]
 id = "folk"
@@ -710,7 +737,6 @@ map = [
   { source = "Folk", sub = "folk" },
   { source = "Funk", sub = "funk" },
   { source = "Indie Rock", sub = "rock" },
-  { source = "Jazz", sub = "jazz" },
   { source = "Latin", sub = "caribbean" },
   { source = "NonElectronic / Pop", sub = "pop" },
   { source = "Pop", sub = "pop" },
@@ -880,9 +906,10 @@ bucket = "chill_ambient"
 keyword = "chill"
 bucket = "chill_ambient"
 
+# U133: the author moved this rule with the Jazz bucket. See that bucket.
 [[fuzzy]]
 keyword = "jazz"
-bucket = "non_electronic"
+bucket = "jazz"
 
 [[fuzzy]]
 keyword = "classical"

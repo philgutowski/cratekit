@@ -647,15 +647,15 @@ def _holder(data: dict) -> dict:
     return next(bucket for bucket in data["bucket"] if bucket["id"] == former["bucket"])
 
 
-def test_the_shipped_template_declares_two_former_places_and_they_load(default, default_raw):
-    """R&B's since R-797 and Hip-Hop's since U118, each read as written."""
+def test_the_shipped_template_declares_three_former_places_and_they_load(default, default_raw):
+    """R&B's since R-797, Hip-Hop's since U118 and Jazz's since U133, each read as written."""
     declared = [
         (bucket.id, place) for bucket in default.buckets for place in bucket.formerly
     ]
     raw = [
         (bucket["id"], row) for bucket in default_raw["bucket"] for row in bucket.get("formerly", [])
     ]
-    assert len(declared) == len(raw) == 2
+    assert len(declared) == len(raw) == 3
     for (bucket_id, former), (raw_id, row) in zip(declared, raw):
         assert (bucket_id, former.id, former.bucket, former.sub, former.display) == (
             raw_id, row["id"], row["bucket"], row["sub"], row["display"]
