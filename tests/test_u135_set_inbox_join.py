@@ -140,6 +140,30 @@ def test_two_landings_of_one_set_make_one_inbox_playlist_in_set_order(
     assert {one["id"] for one in records} == {str(playlist_id)}
 
 
+def test_one_landing_of_a_set_files_its_inbox_playlist_in_set_order_not_name_order(
+    native_library, silence
+):
+    """Both tracks staged in one landing, the set's order the opposite of their
+    names'. The landing sorts its files by name, so only the set's positions
+    put Zebra first; the two landing test above stages one file per landing
+    and cannot tell the two orders apart."""
+    cfg, root_id = native_library
+    cutover_fixtures.add_folder(cfg, FOLDER)
+    job_id = set_job(cfg, ("Zebra", "Apple"))
+    _stage(cfg, silence, "Apple")
+    _stage(cfg, silence, "Zebra")
+
+    code, acted, _refused = _two_acts(_land("--set", job_id, *WORDS))
+
+    assert code == int(ExitCode.OK), acted
+    assert _inbox_under(cfg, root_id)[NAME] == ["Zebra", "Apple"]
+    rows = _row_ids_by_name(cfg)
+    ((playlist_id, *_rest),) = [
+        row for row in _playlists_named(cfg, NAME) if str(row[1]) == root_id
+    ]
+    assert _members(cfg, str(playlist_id)) == [rows["Zebra"], rows["Apple"]]
+
+
 def test_a_landing_without_set_keeps_todays_dated_name(native_library, silence):
     cfg, root_id = native_library
     _stage(cfg, silence, "Loose")
