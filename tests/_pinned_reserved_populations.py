@@ -1245,6 +1245,9 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'rotate-nothing-planned',
         'rotate-records-unreadable',
     ],
+    # 2026-10-12, U136, measured on the merge of main b43848a into the
+    # branch: the posted day's two warnings joined, the fallback from the
+    # branch's own build and the ignored flag from the fable fix.
     'intake/set_playlist.py': [
         'decision-stale',
         'inspiration-folder-undeclared',
@@ -1254,6 +1257,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'set-playlist',
         'set-playlist-left-out',
         'set-playlist-nothing-to-write',
+        'set-playlist-posted-fallback',
+        'set-playlist-posted-ignored',
         'set-playlist-unnamed',
         'set-playlist-written',
         'tree-unconverged',

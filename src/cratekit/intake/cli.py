@@ -766,6 +766,7 @@ def _set_playlist_name(
     dj: str | None,
     set_name: str | None,
     set_date: str | None,
+    posted: str | None = None,
     from_url: bool = False,
 ) -> _PlaylistName:
     """The INSPIRATION form of the name, or a warning when naming was expected.
@@ -776,6 +777,9 @@ def _set_playlist_name(
     the account step was expected and the warning says so. A command that
     passed some of ``--dj`` / ``--set-name`` / ``--set-date`` and still cannot
     name the set is the other case the warning is for.
+
+    The first word is the posted day (U136): ``--posted``, else the page's
+    upload_date, else the landing day with a warning on the screen.
     """
     from cratekit.export import set_cli
     from cratekit.intake import set_playlist
@@ -791,7 +795,7 @@ def _set_playlist_name(
         asked = (
             bool(page)
             or from_url
-            or any(v is not None for v in (dj, set_name, set_date))
+            or any(v is not None for v in (dj, set_name, set_date, posted))
         )
         if not asked:
             return _PlaylistName()
@@ -805,7 +809,16 @@ def _set_playlist_name(
                 ),
             }
         )
-    return _PlaylistName(name=set_cli.set_name(set_playlist.playlist_name(words)))
+    page = page if isinstance(page, Mapping) else {}
+    day, fallback = set_playlist.naming_day(
+        posted=posted,
+        page_upload_date=str(page.get(fetch.PAGE_UPLOAD_DATE) or ""),
+        landing=set_playlist.today(),
+    )
+    return _PlaylistName(
+        name=set_cli.set_name(set_playlist.playlist_name(words, on=day)),
+        warning=fallback,
+    )
 
 
 def _account_gate_payload(name: str) -> dict[str, Any]:
@@ -936,10 +949,11 @@ def intake_set(ctx) -> Envelope:
     freezes, so the honest zero says what it cost and a partial run says how
     partial.
 
-    A MIX URL IS FETCHED AFTER THE ACCOUNT GATE WHEN THE NAME FLAGS ALREADY
-    NAME THE SET, AND BEFORE RECOGNITION (U104). When the name must come from
-    the page, the fetch runs first so the page can name the set, then the
-    account gate, then recognition. The job freezes the ADDRESS as its source,
+    A MIX URL IS FETCHED AFTER THE ACCOUNT GATE WHEN ``--posted`` AND THE
+    NAME FLAGS ALREADY NAME THE SET, AND BEFORE RECOGNITION (U104, U136).
+    When the name or the posted day must come from the page, the fetch runs
+    first so the page can name the set, then the account gate, then
+    recognition. The job freezes the ADDRESS as its source,
     not the scratch file, which is removed when the ``with`` block ends: the
     worker reads nothing but the job, and a resume returns above this branch.
     A mix download is not cached across runs the way recognition answers are.
@@ -966,13 +980,20 @@ def intake_set(ctx) -> Envelope:
         dj = getattr(ctx.args, "dj", None)
         set_name = getattr(ctx.args, "set_name", None)
         set_date = getattr(ctx.args, "set_date", None)
-        # Name from the flags alone when every word is given, so the account
-        # gate can fire before recognition and before any mix download.
-        early = _set_playlist_name({}, dj=dj, set_name=set_name, set_date=set_date)
+        posted = getattr(ctx.args, "posted", None)
+        # Name from the flags alone when every word is given AND the day is
+        # locked (--posted), so the account gate can fire before recognition
+        # and before any mix download. When --posted is absent the page's
+        # upload_date must be read before the name is frozen (U136), so the
+        # gate waits until after the fetch even when the three word flags
+        # already name the set.
+        early = _set_playlist_name(
+            {}, dj=dj, set_name=set_name, set_date=set_date, posted=posted
+        )
         account_notes: tuple = ()
         option: str | None = None
         gate_asked = False
-        if early.name:
+        if early.name and posted is not None:
             account_notes, option = _ask_account_gate(ctx, name=early.name)
             gate_asked = True
         recognize.assert_recognition_ready()
@@ -982,12 +1003,13 @@ def intake_set(ctx) -> Envelope:
         with _recording(cfg, source, local, ctx.progress) as held:
             playlist = (
                 early
-                if early.name
+                if early.name and posted is not None
                 else _set_playlist_name(
                     held.page,
                     dj=dj,
                     set_name=set_name,
                     set_date=set_date,
+                    posted=posted,
                     from_url=local is None,
                 )
             )

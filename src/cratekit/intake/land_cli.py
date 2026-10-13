@@ -1135,7 +1135,14 @@ def _land_native(
         if set_job is None or words is None:
             return None
         made = set_playlist.plan_for_landing(
-            cfg, db, declared, set_job, words, reports, files=files
+            cfg,
+            db,
+            declared,
+            set_job,
+            words,
+            reports,
+            files=files,
+            posted=getattr(ctx.args, "posted", None),
         )
         set_planned.append(made)
         return made
@@ -1242,6 +1249,9 @@ def _land_native(
     warnings.extend(vox_warnings(landed.collection))
     warnings.extend(favorites_notes(payload, landed.collection))
     warnings.extend(archive_notes)
+    if set_planned:
+        # ONCE PER RUN, from the first plan: the write takes the plan again.
+        warnings.extend(set_playlist.ignored_note(set_planned[0]))
     kept = landed.collection.set_playlist
     if kept is not None and kept.playlist_id:
         set_playlist.assert_read_back(kept)

@@ -73,13 +73,17 @@ def planned(
     job: jobs.Job,
     words: set_playlist.SetWords,
     reports: tuple[dict[str, Any], ...],
+    *,
+    posted: str | None = None,
 ) -> set_playlist.SetPlaylistPlan:
     """The plan over the library as it stands, through a handle opened to read and closed."""
     db = rb_writer.open_db(
         rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
     )
     try:
-        return set_playlist.plan_for_backfill(cfg, db, declared, job, words, reports)
+        return set_playlist.plan_for_backfill(
+            cfg, db, declared, job, words, reports, posted=posted
+        )
     finally:
         rb_writer.close_db(db)
 
@@ -120,6 +124,7 @@ def intake_inspiration(ctx) -> Envelope:
     cfg = _load()
     medium = _native_or_refuse(cfg)
     declared = medium.declared
+    posted = getattr(ctx.args, "posted", None)
     with jobs.open_store() as store:
         job = set_playlist.set_job_or_refuse(store, str(ctx.args.job))
         words = set_playlist.words_for(
@@ -127,7 +132,7 @@ def intake_inspiration(ctx) -> Envelope:
         )
         reports = set_playlist.reports_of(store, job)
     spec = land_cli.gate_named(ctx.entry, APPROVE_GATE)
-    plan = planned(cfg, declared, job, words, reports)
+    plan = planned(cfg, declared, job, words, reports, posted=posted)
     payload = set_playlist.payload(plan)
     session.assert_backup_acknowledged(cfg)
     if ctx.gate.require(spec, plan=payload, context=set_playlist.facts(plan)) != "apply":
@@ -140,6 +145,7 @@ def intake_inspiration(ctx) -> Envelope:
             data=payload,
             outcome=Outcome.NO_OP,
             warnings=[
+                *set_playlist.posted_note(plan),
                 *set_playlist.nothing_note(plan),
                 *set_playlist.left_warning(plan.left),
             ],
@@ -162,6 +168,7 @@ def intake_inspiration(ctx) -> Envelope:
     return ctx.envelope(
         data=data,
         warnings=[
+            *set_playlist.posted_note(plan),
             *set_playlist.written_note(kept),
             *set_playlist.left_warning(kept.left),
         ],

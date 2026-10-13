@@ -36550,6 +36550,14 @@ playlist is the author's to keep or remove. Driven:
 day, the brief's form, or the landing day read off the landing's record, in
 which case the backfill gains that read. Ledger only.
 
+**Closed 2026-10-12, U136 (issue #310).** The naming form in
+`batch_name.set_playlist_form` takes the day as an argument. A set's
+INSPIRATION and account playlists open with the page's `upload_date` (or
+`--posted`), so a backfill a week later recomputes the same name and finds
+the existing playlist, never a twin. The landing day remains the fallback
+when the page names no upload date, with a warning on the screen. The INBOX
+batch name is unchanged.
+
 ---
 
 ## R-950. A track that becomes owned after the set's playlist was written joins it last, not in set order
@@ -36616,6 +36624,10 @@ No playlist is misnamed in a way that loses it.
 
 **Closes when:** the author decides a rule for abbreviating, which the brief
 left to the flag. Ledger only.
+
+**Note, U136 (issue #310).** The posted-day rename of the first word does not
+touch this. `--set-name` is still the abbreviation, and the page title is
+still used whole when no flag is given. Ledger only.
 
 ---
 

@@ -55,6 +55,7 @@ BATCH = "2026-10-09 Set"
 FOLDER = DECLARED.inspiration.display
 WORDS = ["--dj", "Probe DJ", "--set-name", "Live at Probe", "--set-date", "2026-05"]
 NAME = "10_09_26 Probe DJ Live at Probe 5-26"
+POSTED_NAME = "5_03_26 Probe DJ Live at Probe 5-26"
 PAGE = {"title": "Probe DJ - Live at Probe 05.03.26", "uploader": "Probe DJ", "upload_date": "20260503"}
 APPROVE = inspiration_cli.APPROVE_GATE
 
@@ -321,6 +322,83 @@ def test_a_page_date_that_is_not_a_date_names_no_month_and_the_flag_is_asked_for
     assert caught.value.cause.detail["missing"] == ["--set-date"]
 
 
+def test_a_job_with_upload_date_names_playlists_for_the_posted_day():
+    """U136: upload_date 20260325 opens as 3_25_26, not the landing day."""
+    words = set_playlist.SetWords("Public Service NYC", "Live at Signal", date(2026, 2, 1))
+    day, warn = set_playlist.naming_day(page_upload_date="20260325", landing=date(2026, 10, 10))
+    assert warn is None
+    assert day == date(2026, 3, 25)
+    assert set_playlist.playlist_name(words, on=day) == (
+        "3_25_26 Public Service NYC Live at Signal 2-26"
+    )
+    assert batch_name.set_playlist_form(
+        day, dj=words.dj, name=words.name, month=words.month
+    ) == "3_25_26 Public Service NYC Live at Signal 2-26"
+
+
+def test_a_job_without_upload_date_names_for_the_landing_day_and_warns():
+    day, warn = set_playlist.naming_day(page_upload_date="", landing=date(2026, 10, 10))
+    assert day == date(2026, 10, 10)
+    assert warn is not None
+    assert warn["code"] == set_playlist.POSTED_FALLBACK
+    assert "10_10_26" in warn["message"]
+
+
+def test_posted_flag_wins_over_the_page_upload_date():
+    day, warn = set_playlist.naming_day(
+        posted="2026-04-17", page_upload_date="20260325", landing=date(2026, 10, 10)
+    )
+    assert warn is None
+    assert day == date(2026, 4, 17)
+    words = set_playlist.SetWords("Probe", "Friday", date(2026, 4, 1))
+    assert set_playlist.playlist_name(words, on=day) == "4_17_26 Probe Friday 4-26"
+
+
+def test_a_backfill_a_week_later_recomputes_the_same_posted_name():
+    """R-949 closes: the form takes the day as an argument, so today cannot twin it."""
+    words = set_playlist.SetWords("Public Service NYC", "Live at Signal", date(2026, 2, 1))
+    first, _ = set_playlist.naming_day(page_upload_date="20260325", landing=date(2026, 10, 10))
+    later, _ = set_playlist.naming_day(page_upload_date="20260325", landing=date(2026, 10, 17))
+    assert first == later == date(2026, 3, 25)
+    assert set_playlist.playlist_name(words, on=first) == set_playlist.playlist_name(words, on=later)
+    # The landing day alone would have twinned.
+    assert set_playlist.playlist_name(words, on=date(2026, 10, 10)) != set_playlist.playlist_name(
+        words, on=date(2026, 10, 17)
+    )
+
+
+def test_the_inbox_batch_name_is_unchanged_by_the_posted_day():
+    """INBOX still ages by the landing day; U136 does not retarget batch_name.readable."""
+    assert batch_name.is_default_shape("2026-10-10 Set")
+    # The set playlist form is a different shape and lives beside readable.
+    assert batch_name.set_day_word(date(2026, 3, 25)) == "3_25_26"
+    assert not batch_name.is_default_shape("3_25_26 Public Service NYC Live at Signal 2-26")
+
+
+def test_a_pinned_naming_day_keeps_a_posted_override_over_the_page():
+    """apply_alone re-plans with on=made_on; a --posted override must survive."""
+    words = set_playlist.SetWords("Probe", "Friday", date(2026, 4, 1))
+    posted, _ = set_playlist.naming_day(
+        posted="2026-04-17", page_upload_date="20260325", landing=date(2026, 10, 10)
+    )
+    assert posted == date(2026, 4, 17)
+    # The page alone would prefer March 25; the pinned day wins.
+    assert set_playlist.playlist_name(words, on=posted) == "4_17_26 Probe Friday 4-26"
+    page_day, _ = set_playlist.naming_day(page_upload_date="20260325")
+    assert page_day == date(2026, 3, 25)
+    assert set_playlist.playlist_name(words, on=page_day) != set_playlist.playlist_name(
+        words, on=posted
+    )
+
+
+@pytest.mark.parametrize("given", ["April 17", "2026-4-17", "2026-04", "2026-04-17T12:00:00"])
+def test_a_posted_flag_that_is_not_a_day_is_refused_by_name(given):
+    with pytest.raises(CratekitError) as caught:
+        set_playlist.naming_day(posted=given, landing=date(2026, 10, 10))
+    assert caught.value.cause.reason == set_playlist.UNNAMED
+    assert caught.value.cause.remediation.remedy is Remedy.FIX_COMMAND_LINE
+
+
 # ---------------------------------------------------------------------------
 # The landing given --set
 # ---------------------------------------------------------------------------
@@ -391,7 +469,113 @@ def test_the_words_come_off_the_jobs_page_when_no_flag_is_given(native_library, 
     _stage(cfg, silence, "One")
     code, acted, _ = _two_acts(_land("--set", job_id))
     assert code == int(ExitCode.OK), acted
-    assert _playlists_named(cfg, "10_09_26 Probe DJ Live at Probe 05.03.26 5-26")
+    assert _playlists_named(cfg, "5_03_26 Probe DJ Live at Probe 05.03.26 5-26")
+
+
+def test_a_landing_with_a_page_date_names_the_playlist_for_the_posted_day(
+    native_library, silence
+):
+    """U136: page upload_date wins over the landing day for the INSPIRATION name."""
+    cfg, root_id = native_library
+    cutover_fixtures.add_folder(cfg, FOLDER)
+    job_id = set_job(cfg, ("One",), page=PAGE)
+    _stage(cfg, silence, "One")
+    code, acted, refused = _two_acts(_land("--set", job_id, *WORDS))
+    assert code == int(ExitCode.OK), acted
+    assert refused["cause"]["detail"]["shown"]["set playlist"] == POSTED_NAME
+    assert _under_parent(cfg, POSTED_NAME, _inspiration_folder_id(cfg))
+    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
+    # THE INBOX BATCH KEEPS THE LANDING DAY (U136's brief), and since U135 a
+    # set landing names it for the set, so the landing day's name is there.
+    assert _under_parent(cfg, NAME, root_id)
+
+
+def test_a_landing_honours_posted_on_a_pre_freeze_job(native_library, silence):
+    """U136: intake land --set JOB --posted must reach plan_for_landing."""
+    cfg, root_id = native_library
+    cutover_fixtures.add_folder(cfg, FOLDER)
+    job_id = set_job(cfg, ("One",))
+    _stage(cfg, silence, "One")
+    code, acted, refused = _two_acts(
+        _land("--set", job_id, *WORDS, "--posted", "2026-05-03")
+    )
+    assert code == int(ExitCode.OK), acted
+    assert refused["cause"]["detail"]["shown"]["set playlist"] == POSTED_NAME
+    assert _under_parent(cfg, POSTED_NAME, _inspiration_folder_id(cfg))
+    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
+    # THE INBOX BATCH KEEPS THE LANDING DAY (U136's brief), and since U135 a
+    # set landing names it for the set, so the landing day's name is there.
+    assert _under_parent(cfg, NAME, root_id)
+
+
+def test_posted_on_a_frozen_job_names_another_day_and_the_frozen_name_wins_with_a_warning(
+    native_library, silence
+):
+    """U136: a job queued since U129 keeps the name it froze, so ``--posted``
+    naming another day is not used, and the landing says so once, naming the
+    flag's day and the frozen name's."""
+    cfg, _root_id = native_library
+    cutover_fixtures.add_folder(cfg, FOLDER)
+    job_id = set_job(cfg, ("One",), page=PAGE)
+    _freeze_name(job_id, NAME)
+    _stage(cfg, silence, "One")
+
+    code, acted, refused = _two_acts(
+        _land("--set", job_id, *WORDS, "--posted", "2026-05-03")
+    )
+
+    assert code == int(ExitCode.OK), acted
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["set playlist"] == NAME
+    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg))
+    assert _playlists_named(cfg, POSTED_NAME) == []
+    ignored = [w for w in acted["warnings"] if w["code"] == set_playlist.POSTED_IGNORED]
+    assert len(ignored) == 1, acted["warnings"]
+    (warning,) = ignored
+    assert "--posted 2026-05-03" in warning["message"]
+    assert POSTED_NAME.split()[0] in warning["message"]
+    assert NAME.split()[0] in warning["message"]
+    assert "the frozen name wins" in warning["message"]
+    assert shown["posted day"] == warning["message"]
+    assert not any(w["code"] == set_playlist.POSTED_FALLBACK for w in acted["warnings"])
+
+
+def test_posted_equal_to_landing_day_on_a_pageless_job_is_not_decision_stale(
+    native_library, silence
+):
+    """U136: --posted equal to today must not flip posted_fallback on re-plan."""
+    cfg, _root_id = native_library
+    cutover_fixtures.add_folder(cfg, FOLDER)
+    _owned(cfg, silence, "Three", content_id="held-3")
+    job_id = set_job(cfg, ("Three",))
+    code, acted, refused = _two_acts_approve(
+        _inspiration(job_id, *WORDS, "--posted", "2026-10-09")
+    )
+    assert code == int(ExitCode.OK), acted
+    assert acted["outcome"] != "error"
+    assert refused["cause"]["detail"]["shown"]["set playlist"] == NAME
+    assert _playlists_named(cfg, NAME)
+    assert not any(w["code"] == set_playlist.POSTED_FALLBACK for w in acted["warnings"])
+
+
+def test_a_backfill_a_week_later_adds_to_a_playlist_pre_made_under_the_posted_name(
+    native_library, silence, monkeypatch
+):
+    """Driven R-949: playlist pre-made under the posted name; a week on, one playlist."""
+    cfg, _root_id = native_library
+    folder_id = cutover_fixtures.add_folder(cfg, FOLDER)
+    _owned(cfg, silence, "Three", content_id="held-3")
+    job_id = set_job(cfg, ("Three",), page=PAGE)
+    _make_playlist(cfg, POSTED_NAME, under=folder_id)
+    monkeypatch.setattr(batch_name, "today", lambda: date(2026, 10, 16))
+    code, acted, refused = _two_acts_approve(_inspiration(job_id, *WORDS))
+    assert code == int(ExitCode.OK), acted
+    assert refused["cause"]["detail"]["shown"]["set playlist"] == POSTED_NAME
+    assert len(_playlists_named(cfg, POSTED_NAME)) == 1
+    assert _playlists_named(cfg, "10_16_26 Probe DJ Live at Probe 5-26") == []
+    assert acted["data"]["totals"]["added"] == 1
+    (item,) = [i for i in acted["data"]["items"] if i.get("playlist") == POSTED_NAME]
+    assert item.get("playlist_created") is False
 
 
 def test_a_landing_creates_the_declared_folder_at_the_root_when_the_library_lacks_it(
@@ -602,7 +786,10 @@ def test_the_backfill_over_a_landed_set_adds_the_playlist_and_nothing_to_inbox(
         "read back": 3,
     }
     assert [i["action"] for i in acted["data"]["items"]] == ["add", "add", "add", "playlist"]
-    assert [w["code"] for w in acted["warnings"]] == [set_playlist.WRITTEN]
+    assert [w["code"] for w in acted["warnings"]] == [
+        set_playlist.POSTED_FALLBACK,
+        set_playlist.WRITTEN,
+    ]
     # Nothing under INBOX moved and no content row changed.
     assert _children(cfg, root_id) == inbox_before
     assert _content_table(cfg) == content_before
@@ -639,7 +826,11 @@ def test_the_backfill_over_a_set_with_nothing_owned_asks_and_then_writes_nothing
     assert code == int(ExitCode.OK), acted
     assert acted["outcome"] == "no_op"
     assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
-    assert [w["code"] for w in acted["warnings"]] == [set_playlist.NOTHING, set_playlist.LEFT_OUT]
+    assert [w["code"] for w in acted["warnings"]] == [
+        set_playlist.POSTED_FALLBACK,
+        set_playlist.NOTHING,
+        set_playlist.LEFT_OUT,
+    ]
     assert not [r for r in session.records(cfg) if r.workflow == set_playlist.WORKFLOW]
 
 
@@ -903,6 +1094,7 @@ def test_a_second_write_that_fills_a_gap_mid_set_is_not_a_failed_write(native_li
     assert code == int(ExitCode.OK), again
     assert again["data"]["totals"]["added"] == 1 and again["data"]["totals"]["read back"] == 3
     assert _members(cfg, str(playlist_id)) == ["held-1", "held-2", "held-3"]
+    # The second write finds the recorded playlist, so the posted fallback is not re-warned.
     assert [w["code"] for w in again["warnings"]] == [set_playlist.WRITTEN]
 
 
