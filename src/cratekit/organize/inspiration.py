@@ -10,8 +10,12 @@ downloaded, a set the source system did not finish shows as a short playlist,
 and every track left out is named under its set.
 
 THE PLAN. Every ``DOWNLOADED`` playlist in every root folder named
-``Downloaded Sets <year>`` is one set, and its INSPIRATION name is the account
-name with that prefix off. A set whose name an INSPIRATION playlist already
+``Downloaded Sets <year>``, or recorded by the archive as that year's folder
+whatever it is called now, is one set, and its INSPIRATION name is the account
+name with that prefix off, spelled by the rule a set playlist's name is made
+by (a slash becomes a dash). A playlist in such a folder without the prefix,
+and a folder whose playlists could not be listed, are named on the gate and
+read no further. A set whose name an INSPIRATION playlist already
 carries, by the rule the set archive reads that proof with (U142), is skipped,
 so a second run plans nothing. Every other set's tracks are read from the
 account and each is asked of the library by the rule a set's own backfill
@@ -47,6 +51,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -54,6 +59,7 @@ from cratekit.acquire import match
 from cratekit.cli.output import digest_of
 from cratekit.core import analysis_store, config, convergence, rb_writer, session, snapshot
 from cratekit.core.cause import CratekitError, refuse
+from cratekit.modules.outbound.folders import MARK_PREFIX
 
 _ORIGIN = ("organize.inspiration",)
 
@@ -68,11 +74,13 @@ SKIP = "skip"
 EMPTY = "empty"
 UNREAD = "unread"
 TWICE = "two-of-one-name"
+#: A playlist in a sets folder without the prefix, and a sets folder whose
+#: playlists could not be listed: each shown, neither read further.
+UNPREFIXED = "unprefixed"
+FOLDER_UNREAD = "folder-unread"
 
-#: The prefix a downloaded set's account playlist carries. Spelled as the mark
-#: and the sweep spell it; ``tests/test_organize_inspiration.py`` holds the
-#: three equal.
-PREFIX = "DOWNLOADED "
+#: The prefix a downloaded set's account playlist carries, the archive's own.
+PREFIX = MARK_PREFIX
 
 
 def sets_folder(name: str) -> bool:
@@ -188,6 +196,8 @@ class ParityPlan:
             "no match": tally[EMPTY],
             "unread": tally[UNREAD],
             "two of one name": tally[TWICE],
+            "not prefixed": tally[UNPREFIXED],
+            "folders unread": tally[FOLDER_UNREAD],
             "tracks matched": sum(len(row.members) for row in self.creates),
             "tracks missed": sum(len(row.misses) + row.withheld for row in self.creates),
         }
@@ -199,7 +209,8 @@ class ParityPlan:
         counts = self.counts()
         rest = (
             f"{counts['already in INSPIRATION']} set(s) already in INSPIRATION, "
-            f"{counts['no match']} with no track in the library, {counts['unread']} unread"
+            f"{counts['no match']} with no track in the library, {counts['unread']} unread, "
+            f"{counts['not prefixed']} not prefixed, {counts['folders unread']} folder(s) unread"
         )
         if self.writes:
             return (
@@ -246,28 +257,70 @@ class Applied:
 # ---------------------------------------------------------------------------
 
 
-def account_sets(remote: Any) -> list[tuple[str, str, str]]:
-    """Every downloaded set on the account: (folder name, playlist id, INSPIRATION name).
+def account_sets(
+    remote: Any, recorded: Iterable[str] = ()
+) -> tuple[list[tuple[str, str, str]], list[SetRow]]:
+    """Every downloaded set on the account, and every row nothing is planned for.
 
-    Read through the account's two folder reads, in folder then name order.
-    A playlist in the folder without the prefix is not a downloaded set and is
-    not read: the archive prefixes every set it files.
+    The sets are ``(folder name, playlist id, INSPIRATION name)``, in folder
+    then name order. A SETS FOLDER is a root folder named ``Downloaded Sets
+    <year>``, or one whose id ``recorded`` names, which is the folder the
+    archive files into by its ledger record whatever it is called now. Two
+    kinds of row are answered beside the sets and never read further: a folder
+    whose playlists could not be listed, unread and not empty, and a playlist
+    in a sets folder without the prefix, which the archive leaves unprefixed
+    when a person retitled it, named so it is not silently passed over.
     """
-    found: list[tuple[str, str, str]] = []
+    from cratekit.export import set_cli
+
+    marked = frozenset(recorded)
+    sets_found: list[tuple[str, str, str]] = []
+    rows: list[SetRow] = []
     folders = sorted(remote.folders().items(), key=lambda one: (one[1], one[0]))
     for folder_id, folder_name in folders:
-        if not sets_folder(folder_name):
+        if not sets_folder(folder_name) and folder_id not in marked:
             continue
-        playlists = sorted(
-            remote.folder_playlists(folder_id).items(), key=lambda one: (one[1], one[0])
-        )
-        for playlist_id, name in playlists:
-            if not name.startswith(PREFIX):
+        try:
+            listed = remote.folder_playlists(folder_id)
+        except CratekitError as exc:
+            rows.append(
+                SetRow(
+                    "",
+                    "",
+                    folder_name,
+                    FOLDER_UNREAD,
+                    why=f"its playlists could not be listed: {exc.cause.message}",
+                )
+            )
+            continue
+        for playlist_id, name in sorted(listed.items(), key=lambda one: (one[1], one[0])):
+            stripped = name[len(PREFIX):].strip() if name.startswith(PREFIX) else ""
+            if not stripped:
+                rows.append(
+                    SetRow(
+                        name,
+                        playlist_id,
+                        folder_name,
+                        UNPREFIXED,
+                        why=(
+                            f"it does not carry the {PREFIX.strip()} prefix, so it is "
+                            f"not read as a downloaded set; prefix it on the account if "
+                            f"it is one"
+                        ),
+                    )
+                )
                 continue
-            stripped = name[len(PREFIX):].strip()
-            if stripped:
-                found.append((folder_name, playlist_id, stripped))
-    return found
+            sets_found.append((folder_name, playlist_id, set_cli.set_name(stripped)))
+    return sets_found, rows
+
+
+def recorded_folders(cfg: config.Config) -> frozenset[str]:
+    """Every root folder id the ledger records as a year's downloaded sets folder."""
+    from cratekit.modules.outbound import ledger
+
+    return frozenset(
+        folder_id for name, folder_id in ledger.set_folders(cfg).items() if sets_folder(name)
+    )
 
 
 def _read(found: Any, playlist_id: str) -> tuple[tuple[match.Wanted, ...], int]:
@@ -289,7 +342,7 @@ def _matched(
         if held:
             ids.append(held)
         else:
-            misses.append(Miss(position, one.artist, one.spelled or one.title, why))
+            misses.append(Miss(position, one.artist, one.listed, why))
     return tuple(dict.fromkeys(ids)), tuple(misses)
 
 
@@ -339,28 +392,36 @@ def _held(db: Any, folder_id: str) -> frozenset[str]:
 
 
 def plan(
-    cfg: config.Config, db: Any, declared: Any, *, remote: Any, found: Any
+    cfg: config.Config,
+    declared: Any,
+    *,
+    remote: Any,
+    found: Any,
+    reading: Callable[[], AbstractContextManager[Any]],
 ) -> ParityPlan:
-    """Every downloaded set on the account, decided against INSPIRATION and the library on ``db``.
+    """Every downloaded set on the account, decided against INSPIRATION and the library.
 
     ``remote`` is the account, for its folders; ``found`` is the catalogue,
-    for each set's tracks. A taxonomy with no INSPIRATION folder, or a root
-    holding it twice, refuses by the set playlist's own rule.
+    for each set's tracks; ``reading`` opens a read handle on the database.
+    THE DATABASE IS NEVER HELD OPEN ACROSS A PROVIDER CALL: it is opened once
+    to read where INSPIRATION is and what it holds, closed while the account
+    is read, and opened again to match only when a set has tracks to match. A
+    taxonomy with no INSPIRATION folder, or a root holding it twice, refuses
+    by the set playlist's own rule.
     """
-    from cratekit.export import set_cli
     from cratekit.intake import set_playlist
 
-    folder_id, node = set_playlist.folder_for(db, declared)
-    held = _held(db, folder_id)
-    listed = account_sets(remote)
-    named = Counter(set_cli.set_name(name) for _folder, _pid, name in listed)
-    row_of = _Rows(cfg, db)
-    rows: list[SetRow] = []
+    with reading() as db:
+        folder_id, node = set_playlist.folder_for(db, declared)
+        held = _held(db, folder_id)
+    listed, rows = account_sets(remote, recorded_folders(cfg))
+    named = Counter(name for _folder, _pid, name in listed)
+    read: list[tuple[str, str, str, tuple[match.Wanted, ...], int]] = []
     for folder, playlist_id, name in listed:
-        if set_cli.set_name(name) in held:
+        if name in held:
             rows.append(SetRow(name, playlist_id, folder, SKIP))
             continue
-        if named[set_cli.set_name(name)] > 1:
+        if named[name] > 1:
             rows.append(
                 SetRow(
                     name,
@@ -368,9 +429,9 @@ def plan(
                     folder,
                     TWICE,
                     why=(
-                        f"{named[set_cli.set_name(name)]} downloaded sets on the account "
-                        f"carry this name and INSPIRATION can hold one, so neither is "
-                        f"written; rename one on the account"
+                        f"{named[name]} downloaded sets on the account carry this name "
+                        f"and INSPIRATION can hold one, so neither is written; rename "
+                        f"one on the account"
                     ),
                 )
             )
@@ -383,9 +444,19 @@ def plan(
         except match.UnreadableList as exc:
             rows.append(SetRow(name, playlist_id, folder, UNREAD, why=str(exc)))
             continue
-        rows.append(_decided(name, playlist_id, folder, wanted, withheld, row_of))
+        read.append((name, playlist_id, folder, wanted, withheld))
+    if read:
+        with reading() as db:
+            row_of = _Rows(cfg, db)
+            rows.extend(
+                _decided(name, playlist_id, folder, wanted, withheld, row_of)
+                for name, playlist_id, folder, wanted, withheld in read
+            )
     return ParityPlan(
-        tree_id=node.id, folder_display=node.display, folder_id=folder_id, rows=tuple(rows)
+        tree_id=node.id,
+        folder_display=node.display,
+        folder_id=folder_id,
+        rows=tuple(sorted(rows, key=lambda row: (row.folder, row.name, row.playlist_id))),
     )
 
 
@@ -540,14 +611,20 @@ def apply(cfg: config.Config, declared: Any, approved: ParityPlan) -> Applied:
     """Write the approved plan in a session of its own, on a handle opened to write.
 
     rekordbox must be closed. The plan is taken again on this handle and
-    refused when it moved; then the session spine every database writer
-    calls: the gates with a record kept, a capture verified before anything
+    refused when it moved, and the tree's convergence latch is asked; then the
+    session spine every database writer calls: the gates with a record kept, a capture verified before anything
     is written, the analysis watch, the commit witness and the guarded commit.
     """
+    from cratekit.core import tree_registry
+
     watched = list(analysis_store.watch_roots(cfg))
     db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
     try:
         assert_unchanged(approved, again(cfg, db, declared, approved))
+        # THE TREE'S OWN LATCH FIRST, as every tree writer's: a database
+        # restored out of band is detected before this write's fingerprint
+        # overwrites the evidence, and a tree marked unconverged is refused.
+        convergence.assert_tree_writable(cfg, db, approved.tree_id, tree_registry.read(cfg))
         wrote: list[Wrote] = []
         with (
             session.assert_gates(
@@ -586,10 +663,12 @@ def apply(cfg: config.Config, declared: Any, approved: ParityPlan) -> Applied:
 __all__ = [
     "CREATE",
     "EMPTY",
+    "FOLDER_UNREAD",
     "PREFIX",
     "RECORD_KEY",
     "SKIP",
     "TWICE",
+    "UNPREFIXED",
     "UNREAD",
     "WORKFLOW",
     "Applied",
@@ -603,6 +682,7 @@ __all__ = [
     "assert_read_back",
     "assert_unchanged",
     "plan",
+    "recorded_folders",
     "sets_folder",
     "write",
 ]

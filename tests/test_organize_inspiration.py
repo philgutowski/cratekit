@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import shutil
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -440,13 +441,59 @@ def test_a_read_back_holding_a_row_the_plan_did_not_name_is_refused():
 
 
 def _plan(cfg: config.Config, declared, account: Account) -> inspiration.ParityPlan:
-    handle = rb_writer.open_db(
-        rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
+    @contextmanager
+    def reading():
+        handle = rb_writer.open_db(
+            rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
+        )
+        try:
+            yield handle
+        finally:
+            rb_writer.close_db(handle)
+
+    return inspiration.plan(
+        cfg, declared, remote=account.held, found=account.found, reading=reading
     )
-    try:
-        return inspiration.plan(cfg, handle, declared, remote=account.held, found=account.found)
-    finally:
-        rb_writer.close_db(handle)
+
+
+def test_a_convergence_latch_refuses_the_write_before_anything_is_written(
+    machine, account, silence, monkeypatch
+):
+    from cratekit.core import convergence
+
+    _owned(machine, silence, "Cut 01")
+    account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01",))
+    declared = active_taxonomy.load(machine)
+    approved = _plan(machine, declared, account)
+    asked: list[str] = []
+
+    def latched(_cfg, _db, tree_id, _registry, **_kwargs):
+        from cratekit.core.cause import refuse
+
+        asked.append(tree_id)
+        raise refuse("tree-unconverged", "the tree is marked unconverged")
+
+    monkeypatch.setattr(convergence, "assert_tree_writable", latched)
+
+    with pytest.raises(CratekitError) as refused:
+        inspiration.apply(machine, declared, approved)
+
+    assert refused.value.cause.reason == "tree-unconverged"
+    assert asked == [DECLARED.inspiration.id]
+    assert _query(machine, "SELECT ID FROM djmdPlaylist WHERE Name = ?", FEMME) == []
+    assert not [r for r in session.records(machine) if r.workflow == inspiration.WORKFLOW]
+
+
+def test_a_slash_in_the_account_name_is_written_as_a_dash(machine, account, silence):
+    _owned(machine, silence, "Cut 01")
+    account.add_set("DOWNLOADED 5_28_26 A b2b B / Night 10-18", ("Cut 01",))
+
+    code, done, _refused = _approved()
+
+    assert code == int(ExitCode.OK), done
+    assert set(_playlists_under(machine, _inspiration_id(machine))) == {
+        "5_28_26 A b2b B - Night 10-18"
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -458,14 +505,64 @@ def test_only_prefixed_playlists_in_a_downloaded_sets_folder_are_sets(machine, a
     _owned(machine, silence, "Cut 01")
     other = account.add_folder("2026")
     account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01",), folder=other)
-    account.add_set(GOATS, ("Cut 01",))
+    retitled = account.add_set(GOATS, ("Cut 01",))
     later = account.add_folder("Downloaded Sets 2025")
     account.add_set("DOWNLOADED 1_02_25 Old DJ Old Mix 12-24", ("Cut 01",), folder=later)
 
     step = _step(_report())
 
-    assert set(_by_set(step)) == {"1_02_25 Old DJ Old Mix 12-24"}
-    assert _by_set(step)["1_02_25 Old DJ Old Mix 12-24"]["account folder"] == "Downloaded Sets 2025"
+    shown = _by_set(step)
+    assert set(shown) == {"1_02_25 Old DJ Old Mix 12-24", GOATS}
+    assert shown["1_02_25 Old DJ Old Mix 12-24"]["account folder"] == "Downloaded Sets 2025"
+    # AN UNPREFIXED PLAYLIST IN A SETS FOLDER IS NAMED, never silently passed over.
+    assert shown[GOATS]["action"] == inspiration.UNPREFIXED
+    assert "prefix" in shown[GOATS]["reason"]
+    assert retitled not in account.found.playlists_asked_for
+    assert step["counts"]["not prefixed"] == 1
+
+
+def test_a_sets_folder_the_archive_recorded_is_read_whatever_it_is_called_now(
+    machine, account, silence
+):
+    from cratekit.modules.outbound import ledger
+
+    _owned(machine, silence, "Cut 01")
+    renamed = account.add_folder("Sets of 2024")
+    account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01",), folder=renamed)
+    unrecorded = account.add_folder("Other sets")
+    account.add_set(f"DOWNLOADED {GOATS}", ("Cut 01",), folder=unrecorded)
+    ledger.reserve_set_folder(machine, "Downloaded Sets 2024", lambda: renamed)
+
+    step = _step(_report())
+
+    assert set(_by_set(step)) == {FEMME}
+    assert _by_set(step)[FEMME]["account folder"] == "Sets of 2024"
+
+
+def test_a_sets_folder_that_cannot_be_listed_is_named_and_the_rest_still_plan(
+    machine, account, silence, monkeypatch
+):
+    from cratekit.core.cause import refuse
+
+    _owned(machine, silence, "Cut 01")
+    account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01",))
+    broken = account.add_folder("Downloaded Sets 2025")
+    real = account.held.folder_playlists
+
+    def listing(folder_id):
+        if folder_id == broken:
+            raise refuse("credential-missing", "the folder could not be listed")
+        return real(folder_id)
+
+    monkeypatch.setattr(account.held, "folder_playlists", listing)
+
+    envelope = _report()
+    step = _step(envelope)
+
+    assert step["state"] == "planned" and step["counts"]["folders unread"] == 1
+    (unread,) = [item for item in step["plan"] if item["action"] == inspiration.FOLDER_UNREAD]
+    assert unread["account folder"] == "Downloaded Sets 2025"
+    assert any("Downloaded Sets 2025" in w["message"] for w in envelope["warnings"])
 
 
 def test_two_account_sets_of_one_name_are_both_left(machine, account, silence):

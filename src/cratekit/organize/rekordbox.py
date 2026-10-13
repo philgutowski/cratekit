@@ -38,6 +38,7 @@ Layer: modules.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import date
 from typing import Any
 
@@ -47,6 +48,7 @@ from cratekit.adopt import shell as adopt_shell
 from cratekit.core import active_taxonomy, config, jobs, rb_writer, session, tree_registry
 from cratekit.core.cause import CratekitError, Remedy, refuse
 from cratekit.intake import rotate, rotate_cli
+from cratekit.organize import account as account_area
 from cratekit.organize import inspiration, own
 from cratekit.organize.steps import LISTED, NOTHING, PLANNED, Area, Step, refused, selection
 
@@ -68,8 +70,9 @@ INSPIRATION = "inspiration"
 #: Every step kind this area plans, in its order, each one ``--only`` may name.
 STEPS = (ADOPT, ROTATE, RECORD_LABELS, INSPIRATION, YOURS)
 
-#: The module that archives sets, whose sets the INSPIRATION step reads.
-EXPORT_MODULE = "export"
+#: The module that archives sets, whose sets the INSPIRATION step reads, the
+#: account area's own word for it.
+EXPORT_MODULE = account_area.EXPORT_MODULE
 
 _ORIGIN = ("organize.rekordbox",)
 
@@ -276,10 +279,11 @@ def _record_labels(declared) -> Step:
 def _inspiration(cfg: config.Config, declared, available: frozenset[str] | None) -> Step:
     """Every downloaded set on the account given its INSPIRATION playlist (U144).
 
-    Planned through a read handle, as the author's own listing is read, so it
-    plans while rekordbox runs; the write opens its own handle and needs
-    rekordbox closed. A refusal of the intake tree, the database, the account
-    or the catalogue refuses this step alone.
+    Planned through read handles, as the author's own listing is read, so it
+    plans while rekordbox runs, and no handle is held across a provider call;
+    the write opens its own handle and needs rekordbox closed. A refusal of
+    the intake tree, the database, the account or the catalogue refuses this
+    step alone.
     """
     title = "give every downloaded set its INSPIRATION playlist"
     if available is not None and EXPORT_MODULE not in available:
@@ -293,21 +297,25 @@ def _inspiration(cfg: config.Config, declared, available: frozenset[str] | None)
     from cratekit.label import catalogue
     from cratekit.modules.outbound import account
 
-    try:
-        set_playlist.assert_native(ingest.intake_medium(cfg), landing=False)
+    @contextmanager
+    def reading():
         db = rb_writer.open_db(
             rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
         )
         try:
-            planned = inspiration.plan(
-                cfg,
-                db,
-                declared,
-                remote=account.resolve(cfg),
-                found=catalogue.resolve(cfg),
-            )
+            yield db
         finally:
             rb_writer.close_db(db)
+
+    try:
+        set_playlist.assert_native(ingest.intake_medium(cfg), landing=False)
+        planned = inspiration.plan(
+            cfg,
+            declared,
+            remote=account.resolve(cfg),
+            found=catalogue.resolve(cfg),
+            reading=reading,
+        )
     except CratekitError as exc:
         return refused(INSPIRATION, title, exc.cause)
     step = Step(
@@ -324,10 +332,14 @@ def _inspiration(cfg: config.Config, declared, available: frozenset[str] | None)
     step.warnings.extend(
         {
             "code": "organize-inspiration-unread",
-            "message": f"the downloaded set {row.name!r} was not read: {row.why}",
+            "message": (
+                f"the downloaded set {row.name!r} was not read: {row.why}"
+                if row.action == inspiration.UNREAD
+                else f"the account folder {row.folder!r} was not read: {row.why}"
+            ),
         }
         for row in planned.rows
-        if row.action == inspiration.UNREAD
+        if row.action in (inspiration.UNREAD, inspiration.FOLDER_UNREAD)
     )
     if planned.writes:
 

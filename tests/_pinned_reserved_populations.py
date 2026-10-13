@@ -1508,6 +1508,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     # 2026-10-13, U144: the INSPIRATION parity step, its write and its unread warning.
     'organize/inspiration.py': [
         'decision-stale',
+        'folder-unread',
         'inspiration-parity',
         'session-committed-unverified',
         'two-of-one-name',
