@@ -363,6 +363,34 @@ def test_a_copy_with_the_words_out_and_the_row_left_does_not_load():
         taxonomy.load_taxonomy(by_hand)
 
 
+def test_every_bucket_of_the_copy_filing_a_word_is_named_not_the_first():
+    """A person's copy whose R&B bucket tags "jazz" as well as NonElectronic
+    filing it is two buckets to edit, and the hold names both."""
+    rnb = 'aliases = [\n  "MPB",\n  "R&B",\n]\ntag_aliases = [\n  "rnb",\n]'
+    copy = _swap(before_jazz(), rnb, rnb.replace('  "rnb",', '  "jazz",\n  "rnb",'))
+    assert "jazz" in _bucket(copy, "rnb").tag_aliases
+    (held,) = _plan(copy).held
+    named = [r for r in held.reasons if r.startswith("the copy's bucket ")]
+    assert "the copy's bucket rnb already files 'jazz'; take that word out of it by hand" in named
+    assert any(r.startswith("the copy's bucket non_electronic already files 'Jazz'") for r in named)
+
+
+def test_a_vocabulary_row_whose_tag_files_where_the_template_shares_the_word_is_not_named():
+    """The row's tag files in the breaks bucket, which the shipped template
+    gives "Trap / Wave" on purpose, so taking R&B's word out leaves it
+    loading; only the bucket that clashes is named, not the row."""
+    copy = _retag(_without(_shipped(), HIP_HOP_START, HIP_HOP_END), "Rap/Hip Hop", "Hip-Hop", "R&B")
+    copy = _swap(copy, 'tag_aliases = [\n  "rnb",\n]', 'tag_aliases = [\n  "rnb",\n  "trap / wave",\n]')
+    reggae = '  { word = "Reggae", tag = "Caribbean" },\n'
+    copy = _swap(copy, reggae, reggae + '  { word = "Trap", tag = "Trap / Wave" },\n')
+    (row,) = [w for v in taxonomy.load_taxonomy(copy).vocabularies for w in v.words if w.word == "Trap"]
+    assert row.bucket == "breaks_dnb_dubstep"
+    (held,) = _plan(copy).held
+    assert held.reasons == (
+        "the copy's bucket rnb already files 'trap / wave'; take that word out of it by hand",
+    )
+
+
 def test_a_word_the_shipped_template_files_twice_is_not_a_clash():
     """Trap / Wave routes to breaks and tags as Hip-Hop in the shipped template."""
     copy = _retag(_without(_shipped(), HIP_HOP_START, HIP_HOP_END), "Rap/Hip Hop", "Hip-Hop", "R&B")
