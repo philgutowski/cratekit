@@ -3138,7 +3138,9 @@ ENTRIES: tuple[Entry, ...] = (
         #: The union of its steps' surfaces: adoption writes the tree and its
         #: rows, the rotation the tree, the label folders, the marks and the
         #: archive the account. The set archive reads the INSPIRATION folder
-        #: for its second proof (U142), through a read handle. No file is
+        #: for its second proof (U142), through a read handle, and the
+        #: parity step (U144) writes a playlist per downloaded set under that
+        #: folder, which is the tree, from the account's sets. No file is
         #: written by any step it composes,
         #: since the adoption is applied with no tag value. ``destructive``
         #: because the rotation removes an expired batch playlist, a mark

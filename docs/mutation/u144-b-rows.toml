@@ -1,0 +1,76 @@
+name = "u144-b"
+pass_kind = "light"
+
+[[rows]]
+id = "B1_unnamed_membership"
+description = "Write guard: drop the refusal of a membership the approved plan did not name"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''        if unnamed:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "B2_stale_digest"
+description = "Write guard: drop the digest comparison of the plan taken again on the write handle"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''    if now.digest() != approved.digest():'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B3_again_now_held"
+description = "Again: a set given its INSPIRATION playlist since the plan is decided as before, not skipped"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''                replace(row, action=SKIP, members=(), misses=(), withheld=0, why="")
+                if now'''
+new = '''                replace(row, action=SKIP, members=(), misses=(), withheld=0, why="")
+                if False'''
+
+[[rows]]
+id = "B4_convergence_latch"
+description = "Write: drop the INSPIRATION tree's convergence latch before the session"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''        convergence.assert_tree_writable(cfg, db, approved.tree_id, tree_registry.read(cfg))'''
+new = '''        pass'''
+
+[[rows]]
+id = "B5_read_back_exact"
+description = "Read back: accept a made playlist holding rows the plan did not name, or out of order"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''        if missing or (one.created and not exact):'''
+new = '''        if missing:'''
+
+[[rows]]
+id = "B6_read_back_missing"
+description = "Read back: accept a found playlist missing a planned row"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''        if missing or (one.created and not exact):'''
+new = '''        if one.created and not exact:'''
+
+[[rows]]
+id = "B7_writes_the_members"
+description = "Write: add every member but the first"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''        added = rb_writer.add_memberships(db, playlist, row.members)'''
+new = '''        added = rb_writer.add_memberships(db, playlist, row.members[1:])'''
+
+[[rows]]
+id = "B8_commit_recorded"
+description = "Record: record no commit, so a restore cannot weigh the session"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''    made = [one for one in wrote if one.added or one.created]'''
+new = '''    made = []'''

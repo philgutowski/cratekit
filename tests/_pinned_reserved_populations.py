@@ -1505,7 +1505,15 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     # 2026-10-13, U143: the root step's kept warning joined.
     'organize/account.py': ['organize-root-kept'],
     'organize/cli.py': ['internal-error', 'organize-area-refused', 'organize-step-refused'],
-    'organize/rekordbox.py': ['record-labels', 'tree-unconverged'],
+    # 2026-10-13, U144: the INSPIRATION parity step, its write and its unread warning.
+    'organize/inspiration.py': [
+        'decision-stale',
+        'folder-unread',
+        'inspiration-parity',
+        'session-committed-unverified',
+        'two-of-one-name',
+    ],
+    'organize/rekordbox.py': ['organize-inspiration-unread', 'record-labels', 'tree-unconverged'],
     # 2026-10-13, U143: the root step's kept refusal problems joined.
     'organize/root.py': [
         'ledger-claimed',
@@ -2533,6 +2541,8 @@ PINNED_LITERAL_HOLDERS = {
         'source-unsupported',
     ],
     'organize/cli.py': ['internal-error'],
+    # 2026-10-13, U144: the INSPIRATION parity step's two write refusals.
+    'organize/inspiration.py': ['decision-stale', 'session-committed-unverified'],
     'organize/rekordbox.py': ['tree-unconverged'],
     'session/cli.py': ['backup-facts-unreadable', 'config-unusable', 'internal-error'],
     'session/restore_cli.py': [

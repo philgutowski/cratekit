@@ -1038,6 +1038,21 @@ def set_playlist_ids(cfg: config.Config) -> frozenset[str]:
     )
 
 
+def set_folders(cfg: config.Config) -> dict[str, str]:
+    """Every root folder recorded, its name to its identifier (U144).
+
+    Read by ``crate organize``'s INSPIRATION parity step, which takes a
+    ``Downloaded Sets <year>`` folder the archive recorded as that year's,
+    whatever the account calls it now, since the archive files into it by
+    this record.
+    """
+    return {
+        str(name): str(folder_id)
+        for name, folder_id in _load(cfg)["set_folders"].items()
+        if folder_id
+    }
+
+
 def set_folder(cfg: config.Config, name: str) -> str:
     """The root folder recorded under its name, or ``""``.
 

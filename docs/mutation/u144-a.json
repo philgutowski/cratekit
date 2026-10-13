@@ -1,0 +1,282 @@
+{
+  "name": "u144-a",
+  "pass_kind": "light",
+  "branch": "relay/321",
+  "head": "53e9737a",
+  "when": "2026-10-13 22:44 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 13948,
+  "baseline_exit": 0,
+  "pytest_runs": 11,
+  "state_guarded": "~/Library/Application Support/cratekit (429305 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/organize/inspiration.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/organize/inspiration.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "e034ba601b9726d8",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 13948,
+    "baseline_collected": 13948,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "A1_skip_rule",
+      "description": "Plan: drop the skip of a set INSPIRATION already holds, so it is read and planned again",
+      "file": "src/cratekit/organize/inspiration.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "544e1856c1c0a4fe",
+      "subset": [
+        "tests/test_organize_inspiration.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 30,
+      "baseline_collected": 30,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize_inspiration.py::test_a_second_run_plans_nothing",
+        "tests/test_organize_inspiration.py::test_a_set_already_under_inspiration_is_skipped_and_its_tracks_never_read"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if name in held:\n            rows.append(SetRow(name, playlist_id, folder, SKIP))",
+      "new": "        if False:\n            rows.append(SetRow(name, playlist_id, folder, SKIP))"
+    },
+    {
+      "id": "A2_two_of_one_name",
+      "description": "Plan: drop the two account sets of one name check, so both are read and planned",
+      "file": "src/cratekit/organize/inspiration.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bf8e2829630b4025",
+      "subset": [
+        "tests/test_organize_inspiration.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 30,
+      "baseline_collected": 30,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize_inspiration.py::test_two_account_sets_of_one_name_are_both_left"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if named[name] > 1:",
+      "new": "        if False:"
+    },
+    {
+      "id": "A3_unprefixed_read",
+      "description": "Account sets: read a playlist without the DOWNLOADED prefix as a set named as it is",
+      "file": "src/cratekit/organize/inspiration.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "438d06d0b8e5ad2d",
+      "subset": [
+        "tests/test_organize_inspiration.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 30,
+      "baseline_collected": 30,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize_inspiration.py::test_only_prefixed_playlists_in_a_downloaded_sets_folder_are_sets"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            stripped = name[len(PREFIX):].strip() if name.startswith(PREFIX) else \"\"",
+      "new": "            stripped = (name[len(PREFIX):] if name.startswith(PREFIX) else name).strip()"
+    },
+    {
+      "id": "A4_sets_folder_name",
+      "description": "Account sets: read every root folder, not only a Downloaded Sets year or a recorded one",
+      "file": "src/cratekit/organize/inspiration.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "dc6aba1bd6547d81",
+      "subset": [
+        "tests/test_organize_inspiration.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 30,
+      "baseline_collected": 30,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize_inspiration.py::test_a_sets_folder_the_archive_recorded_is_read_whatever_it_is_called_now",
+        "tests/test_organize_inspiration.py::test_only_prefixed_playlists_in_a_downloaded_sets_folder_are_sets"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not sets_folder(folder_name) and folder_id not in marked:",
+      "new": "        if False:"
+    },
+    {
+      "id": "A5_recorded_folder",
+      "description": "Account sets: ignore the ledger's record, so a renamed sets folder is passed over",
+      "file": "src/cratekit/organize/inspiration.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1ace7f95e24c1943",
+      "subset": [
+        "tests/test_organize_inspiration.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 30,
+      "baseline_collected": 30,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize_inspiration.py::test_a_sets_folder_the_archive_recorded_is_read_whatever_it_is_called_now"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not sets_folder(folder_name) and folder_id not in marked:",
+      "new": "        if not sets_folder(folder_name):"
+    },
+    {
+      "id": "A6_set_name_spelling",
+      "description": "Account sets: write the stripped account name as it is, slash and all",
+      "file": "src/cratekit/organize/inspiration.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fbf9716b01c94fdb",
+      "subset": [
+        "tests/test_organize_inspiration.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 30,
+      "baseline_collected": 30,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize_inspiration.py::test_a_slash_in_the_account_name_is_written_as_a_dash"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            sets_found.append((folder_name, playlist_id, set_cli.set_name(stripped)))",
+      "new": "            sets_found.append((folder_name, playlist_id, stripped))"
+    },
+    {
+      "id": "A7_only_matched",
+      "description": "Match: take a track with no row as a member, an empty id in the playlist",
+      "file": "src/cratekit/organize/inspiration.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9a1f1aa460575345",
+      "subset": [
+        "tests/test_organize_inspiration.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 30,
+      "baseline_collected": 30,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize_inspiration.py::test_a_near_match_is_a_question_named_as_a_miss_and_never_written",
+        "tests/test_organize_inspiration.py::test_a_second_run_plans_nothing",
+        "tests/test_organize_inspiration.py::test_a_set_with_no_match_is_reported_and_no_empty_playlist_is_written",
+        "tests/test_organize_inspiration.py::test_a_step_whose_every_set_has_no_match_plans_nothing_and_writes_nothing",
+        "tests/test_organize_inspiration.py::test_eighteen_tracks_fifteen_in_the_library_plan_fifteen_and_name_three",
+        "tests/test_organize_inspiration.py::test_the_writer_refuses_a_membership_the_plan_did_not_name"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        held, why = row_of(one)\n        if held:",
+      "new": "        held, why = row_of(one)\n        if True:"
+    },
+    {
+      "id": "A8_empty_not_written",
+      "description": "Decide: plan a set with no match as a create, an empty playlist",
+      "file": "src/cratekit/organize/inspiration.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "77ab14bb5ef32bd4",
+      "subset": [
+        "tests/test_organize_inspiration.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 30,
+      "baseline_collected": 30,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize_inspiration.py::test_a_set_with_no_match_is_reported_and_no_empty_playlist_is_written",
+        "tests/test_organize_inspiration.py::test_a_step_whose_every_set_has_no_match_plans_nothing_and_writes_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        action=CREATE if members else EMPTY,",
+      "new": "        action=CREATE,"
+    }
+  ],
+  "dropped": []
+}

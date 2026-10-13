@@ -1,0 +1,87 @@
+name = "u144-c"
+pass_kind = "light"
+
+[[rows]]
+id = "C1_again_now_held"
+description = "B3 measured again after the stale test was tightened: a set given its INSPIRATION playlist since the plan is decided as before, not skipped"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''                replace(row, action=SKIP, members=(), misses=(), withheld=0, why="")
+                if now'''
+new = '''                replace(row, action=SKIP, members=(), misses=(), withheld=0, why="")
+                if False'''
+
+[[rows]]
+id = "C2_folder_unread"
+description = "Account sets: let a folder listing refusal refuse the whole step instead of one folder"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''            listed = remote.folder_playlists(folder_id)
+        except CratekitError as exc:'''
+new = '''            listed = remote.folder_playlists(folder_id)
+        except ZeroDivisionError as exc:'''
+
+[[rows]]
+id = "C3_withheld"
+description = "Read: drop the count the provider withheld from a short listing"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''    return match.read_tidal_tracks(rows), (short.withheld if short is not None else 0)'''
+new = '''    return match.read_tidal_tracks(rows), 0'''
+
+[[rows]]
+id = "C4_missed_coefficient"
+description = "Counts: leave the withheld tracks out of the tracks missed"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''            "tracks missed": sum(len(row.misses) + row.withheld for row in self.creates),'''
+new = '''            "tracks missed": sum(len(row.misses) for row in self.creates),'''
+
+[[rows]]
+id = "C5_export_module"
+description = "Area: plan the step with the export module off"
+file = "src/cratekit/organize/rekordbox.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''    if available is not None and EXPORT_MODULE not in available:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "C6_native_only"
+description = "Area: drop the refusal of an intake tree still on the xml bridge"
+file = "src/cratekit/organize/rekordbox.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''        set_playlist.assert_native(ingest.intake_medium(cfg), landing=False)'''
+new = '''        pass'''
+
+[[rows]]
+id = "C7_folder_warning"
+description = "Area: warn only for an unread set, not for an unread sets folder"
+file = "src/cratekit/organize/rekordbox.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''        if row.action in (inspiration.UNREAD, inspiration.FOLDER_UNREAD)'''
+new = '''        if row.action == inspiration.UNREAD'''
+
+[[rows]]
+id = "C8_question_named"
+description = "Library rows: name an unanswered question as a track the library lacks"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''            return "", UNANSWERED'''
+new = '''            return "", NOT_HELD'''
+
+[[rows]]
+id = "C9_parent_of_named"
+description = "Sample of an existing U121 guard, now shared: take a live playlist of the name under any parent"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py", "tests/test_organize_inspiration.py"]
+old = '''        if str(getattr(row, "ParentID", "") or "") == parent_id:'''
+new = '''        if True:'''

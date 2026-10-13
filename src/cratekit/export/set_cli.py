@@ -1090,22 +1090,33 @@ def _inspiration_playlists(
 
     ``read_only`` and ``declared`` are :func:`_inspiration_folder`'s.
     """
+    with _inspiration_folder(cfg, read_only=read_only, declared=declared) as (db, folder_id):
+        return inspiration_playlists_on(db, folder_id)
+
+
+def inspiration_playlists_on(db, folder_id: str) -> list[tuple[str, str]]:
+    """Live playlists directly under the INSPIRATION folder ``folder_id``, on ``db``.
+
+    PUBLIC FOR ``crate organize``'s INSPIRATION parity step (U144), which reads
+    the same folder on a handle it already holds, so the playlist that proves a
+    set to the archive (U142) and the one that tells the parity step a set is
+    done are read by one rule. Empty when ``folder_id`` is empty.
+    """
     from cratekit.core import rb_writer
 
-    with _inspiration_folder(cfg, read_only=read_only, declared=declared) as (db, folder_id):
-        if not folder_id:
-            return []
-        found: list[tuple[str, str]] = []
-        # Bound under a local name so the add-only scan over this file does not
-        # read the writer's removal predicate as a removal this verb performs.
-        gone = rb_writer.node_removed
-        for row in list(db.get_playlist(ParentID=folder_id)):
-            if rb_writer.is_folder(row) or gone(row):
-                continue
-            name = set_name(str(getattr(row, "Name", "") or ""))
-            if name:
-                found.append((name, str(row.ID)))
-        return sorted(found, key=lambda one: one[0].lower())
+    if not folder_id:
+        return []
+    found: list[tuple[str, str]] = []
+    # Bound under a local name so the add-only scan over this file does not
+    # read the writer's removal predicate as a removal this verb performs.
+    gone = rb_writer.node_removed
+    for row in list(db.get_playlist(ParentID=folder_id)):
+        if rb_writer.is_folder(row) or gone(row):
+            continue
+        name = set_name(str(getattr(row, "Name", "") or ""))
+        if name:
+            found.append((name, str(row.ID)))
+    return sorted(found, key=lambda one: one[0].lower())
 
 
 def inspiration_names(cfg) -> frozenset[str] | None:
@@ -1809,6 +1820,7 @@ __all__ = [
     "export_archive",
     "export_set",
     "inspiration_names",
+    "inspiration_playlists_on",
     "match_rows",
     "name_of",
     "plan_archive",

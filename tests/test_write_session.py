@@ -2625,6 +2625,10 @@ def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recor
         # one playlist and its memberships behind one capture, recorded under
         # the declared INSPIRATION folder's own id.
         "intake/set_playlist.py::apply_alone",
+        # U144. INSPIRATION brought level with the account's downloaded sets:
+        # playlists and their memberships under the declared INSPIRATION folder
+        # behind one capture, recorded under that folder's own id.
+        "organize/inspiration.py::apply",
         # R-816. A row's genre written from its file, recorded under the
         # content genre key as rows updated.
         "tagging/rows.py::apply_rows",
