@@ -833,7 +833,7 @@ def collection_facts(rows: native.NativePlan) -> dict[str, Any]:
         if rows.base_drive and rows.current_drive and rows.base_drive != rows.current_drive
         else "under the mounted path"
     )
-    return {
+    facts = {
         "playlist": f"{rows.playlist} under {rows.root_name} (row {rows.root_id})",
         "reads and writes": str(rows.database),
         "device": f"{rows.device_id} (master {rows.master_db_id})",
@@ -851,6 +851,23 @@ def collection_facts(rows: native.NativePlan) -> dict[str, Any]:
         "already present": len(rows.present()),
         "vox My Tag": vox_fact(rows),
     }
+    if rows.set_job_id:
+        facts["inbox playlist"] = rows.playlist
+        if rows.batch_playlist_id:
+            facts["inbox"] = (
+                f"adds to the playlist an earlier landing of this set made "
+                f"(row {rows.batch_playlist_id})"
+            )
+        elif rows.inbox_found_by_name:
+            facts["inbox"] = "found live by name, not recorded"
+        else:
+            facts["inbox"] = "made"
+    if rows.inbox_leftovers:
+        facts["inbox leftovers"] = (
+            "not joined automatically: "
+            + ", ".join(repr(name) for name in rows.inbox_leftovers)
+        )
+    return facts
 
 
 def vox_fact(rows: native.NativePlan) -> str:
@@ -1152,13 +1169,36 @@ def _land_native(
         return shown
 
     def plan(db) -> native.NativePlan:
+        # THE INBOX PLAYLIST FOR A SET (U135): named for the set, and an earlier
+        # landing of the same job's playlist is added to under its first name.
+        # The batch folder stays the dated (or --name) landing name so two
+        # landings never share a folder; only the playlist joins.
+        inbox_name = planned.batch
+        batch_playlist_id = ""
+        set_job_id = ""
+        leftovers: tuple[str, ...] = ()
+        inbox_found_by_name = False
+        if set_job is not None and words is not None:
+            set_job_id = set_job.job_id
+            root_id = native.anchored_intake_root(db, tree_id, registry)
+            recorded = native.recorded_inbox_playlist(cfg, db, set_job_id, root_id)
+            if recorded is not None:
+                batch_playlist_id, inbox_name = recorded
+            else:
+                inbox_name = set_playlist.frozen_name(set_job) or set_playlist.playlist_name(
+                    words
+                )
+                inbox_found_by_name = native.live_inbox_named(db, inbox_name, root_id)
+            leftovers = native.leftover_set_inbox(
+                cfg, db, set_job_id, root_id, inbox_name, keep_id=batch_playlist_id
+            )
         split, emptied = _native_split(
             db,
             cfg,
             claims,
             tree_id=tree_id,
             registry=registry,
-            batch=planned.batch,
+            batch=inbox_name,
             target=target,
         )
         return native.plan_rows(
@@ -1166,7 +1206,7 @@ def _land_native(
             db,
             tree_id=tree_id,
             registry=registry,
-            batch=planned.batch,
+            batch=inbox_name,
             files=files,
             split=split,
             unplanned_left=emptied,
@@ -1177,6 +1217,10 @@ def _land_native(
             ),
             favorites_source=placement.source_name(declared),
             set_plan=set_plan(db),
+            batch_playlist_id=batch_playlist_id,
+            set_job_id=set_job_id,
+            inbox_leftovers=leftovers,
+            inbox_found_by_name=inbox_found_by_name,
         )
 
     payload, landed = ask_then_write(

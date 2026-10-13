@@ -1,0 +1,294 @@
+name = "u135-author"
+pass_kind = "light"
+
+# Author's table for U135 review fixes: soft-deleted INBOX namesake, set-order
+# memberships, found-vs-made screen, recorded join, leftovers. Cap 25. The
+# watcher measures on macOS and posts the table to commit byte for byte.
+
+[[rows]]
+id = "A1_removed_namesake_written_into"
+description = "Drop the node_removed skip so a soft-deleted set-named INBOX playlist is written into"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_u135_set_inbox_join.py::test_a_removed_set_named_inbox_playlist_is_not_written_into"]
+old = """    for row in list(db.get_playlist(Name=plan.playlist)):
+        if rb_writer.is_folder(row) or rb_writer.node_removed(row):
+            continue
+        if str(getattr(row, "ParentID", "") or "") == parent_id:
+            return row
+    return db.create_playlist(plan.playlist, parent=anchor)
+"""
+new = """    return rb_writer.ensure_playlist(db, plan.playlist, anchor)
+"""
+
+[[rows]]
+id = "A2_set_order_falls_to_name_order"
+description = "INBOX members follow landing file name order even when a set playlist is planned"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_u135_set_inbox_join.py::test_two_landings_of_one_set_make_one_inbox_playlist_in_set_order"]
+old = """            if plan.set_playlist is not None:
+                ordered = []
+                seen: set[str] = set()
+                for member in plan.set_playlist.members:
+                    target = str(member.target) if member.target else ""
+                    if not target or target not in by_target or target in claimed:
+                        continue
+                    held = by_target[target]
+                    if held in seen:
+                        continue
+                    ordered.append(held)
+                    seen.add(held)
+                for row in plan.rows:
+                    target = str(row.target)
+                    if target not in by_target or target in claimed:
+                        continue
+                    held = by_target[target]
+                    if held in seen:
+                        continue
+                    ordered.append(held)
+                    seen.add(held)
+            else:
+                ordered = [
+                    by_target[str(row.target)]
+                    for row in plan.rows
+                    if str(row.target) in by_target and str(row.target) not in claimed
+                ]
+"""
+new = """            ordered = [
+                by_target[str(row.target)]
+                for row in plan.rows
+                if str(row.target) in by_target and str(row.target) not in claimed
+            ]
+"""
+
+[[rows]]
+id = "A3_found_vs_made_collapsed"
+description = "The gate screen always says found-or-made when no recorded INBOX playlist is named"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = [
+  "tests/test_u135_set_inbox_join.py::test_a_set_landed_once_keeps_one_inbox_playlist_named_for_the_set",
+  "tests/test_u135_set_inbox_join.py::test_a_hand_made_inbox_playlist_of_the_set_name_is_named_found_not_recorded",
+]
+old = """        if rows.batch_playlist_id:
+            facts["inbox"] = (
+                f"adds to the playlist an earlier landing of this set made "
+                f"(row {rows.batch_playlist_id})"
+            )
+        elif rows.inbox_found_by_name:
+            facts["inbox"] = "found live by name, not recorded"
+        else:
+            facts["inbox"] = "made"
+"""
+new = """        facts["inbox"] = (
+            f"adds to the playlist an earlier landing of this set made "
+            f"(row {rows.batch_playlist_id})"
+            if rows.batch_playlist_id
+            else "found live by its name under INBOX, or made"
+        )
+"""
+
+[[rows]]
+id = "A4_live_inbox_named_always_false"
+description = "Never detect a live set-named INBOX playlist, so a hand-made one reads as made"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_u135_set_inbox_join.py::test_a_hand_made_inbox_playlist_of_the_set_name_is_named_found_not_recorded"]
+old = """    for row in list(db.get_playlist(Name=name)):
+        if rb_writer.is_folder(row) or rb_writer.node_removed(row):
+            continue
+        if str(getattr(row, "ParentID", "") or "") == str(root_id):
+            return True
+    return False
+"""
+new = """    return False
+"""
+
+[[rows]]
+id = "A5_recorded_inbox_skips_job_key"
+description = "recorded_inbox_playlist ignores the job key so any closed batch playlist is treated as this job's"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_u135_set_inbox_join.py::test_two_landings_of_one_set_make_one_inbox_playlist_in_set_order"]
+old = """        and record.detail[BATCH_PLAYLIST_KEY].get(INBOX_JOB_KEY) == job_id
+"""
+new = """        and True
+"""
+
+[[rows]]
+id = "A6_recorded_accepts_removed"
+description = "recorded_inbox_playlist returns a soft-deleted playlist id as live"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_u135_set_inbox_join.py::test_a_removed_set_named_inbox_playlist_is_not_written_into"]
+old = """            or rb_writer.node_removed(row)
+            or str(getattr(row, "ParentID", "") or "") != root_id
+        ):
+            continue
+        return playlist_id, str(getattr(row, "Name", "") or kept.get("name") or "")
+"""
+new = """            or str(getattr(row, "ParentID", "") or "") != root_id
+        ):
+            continue
+        return playlist_id, str(getattr(row, "Name", "") or kept.get("name") or "")
+"""
+
+[[rows]]
+id = "A7_leftover_joins_numbered_twin"
+description = "A numbered twin of the set name under INBOX is no longer named as a leftover"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_u135_set_inbox_join.py::test_a_numbered_leftover_inbox_playlist_is_named_on_the_screen_and_not_joined"]
+old = """        if held.startswith(prefix) and held[len(prefix) :].isdigit():
+            named.append(held)
+"""
+new = """        if False:
+            named.append(held)
+"""
+
+[[rows]]
+id = "A8_job_key_not_stamped"
+description = "A set landing's batch playlist record carries no job key"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_u135_set_inbox_join.py::test_a_set_landed_once_keeps_one_inbox_playlist_named_for_the_set"]
+old = """        if plan.set_job_id:
+            kept[INBOX_JOB_KEY] = plan.set_job_id
+"""
+new = """        if False:
+            kept[INBOX_JOB_KEY] = plan.set_job_id
+"""
+
+[[rows]]
+id = "A9_set_landing_keeps_dated_batch_name"
+description = "A --set landing keeps the dated batch playlist name instead of the set's name"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_u135_set_inbox_join.py::test_a_set_landed_once_keeps_one_inbox_playlist_named_for_the_set"]
+old = """            if recorded is not None:
+                batch_playlist_id, inbox_name = recorded
+            else:
+                inbox_name = set_playlist.frozen_name(set_job) or set_playlist.playlist_name(
+                    words
+                )
+                inbox_found_by_name = native.live_inbox_named(db, inbox_name, root_id)
+"""
+new = """            if recorded is not None:
+                batch_playlist_id, inbox_name = recorded
+            else:
+                inbox_found_by_name = False
+"""
+
+[[rows]]
+id = "A10_non_set_uses_set_name"
+description = "A landing without --set still takes the set playlist name form"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_u135_set_inbox_join.py::test_a_landing_without_set_keeps_todays_dated_name"]
+old = """        if set_job is not None and words is not None:
+            set_job_id = set_job.job_id
+            root_id = native.anchored_intake_root(db, tree_id, registry)
+            recorded = native.recorded_inbox_playlist(cfg, db, set_job_id, root_id)
+            if recorded is not None:
+                batch_playlist_id, inbox_name = recorded
+            else:
+                inbox_name = set_playlist.frozen_name(set_job) or set_playlist.playlist_name(
+                    words
+                )
+                inbox_found_by_name = native.live_inbox_named(db, inbox_name, root_id)
+            leftovers = native.leftover_set_inbox(
+                cfg, db, set_job_id, root_id, inbox_name, keep_id=batch_playlist_id
+            )
+"""
+new = """        if True:
+            set_job_id = "forced"
+            inbox_name = "forced-set-name"
+"""
+
+[[rows]]
+id = "A11_batch_stale_skips_removed_check"
+description = "A recorded batch playlist that was removed is still written into"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_u135_set_inbox_join.py"]
+old = """        if row is None or rb_writer.is_folder(row) or rb_writer.node_removed(row):
+            raise refuse(
+                "decision-stale",
+                f"the INBOX playlist {plan.playlist!r} (row {plan.batch_playlist_id}) "
+                f"the plan adds to is not live any more, so nothing was written",
+                origin=_ORIGIN,
+                detail={"playlist": plan.batch_playlist_id, "name": plan.playlist},
+            )
+        return row
+"""
+new = """        if row is None or rb_writer.is_folder(row):
+            raise refuse(
+                "decision-stale",
+                f"the INBOX playlist {plan.playlist!r} (row {plan.batch_playlist_id}) "
+                f"the plan adds to is not live any more, so nothing was written",
+                origin=_ORIGIN,
+                detail={"playlist": plan.batch_playlist_id, "name": plan.playlist},
+            )
+        return row
+"""
+
+[[rows]]
+id = "A12_inspiration_join_broken"
+description = "Second landing of a set remakes the INSPIRATION playlist instead of adding"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_u135_set_inbox_join.py::test_inspiration_join_stays_pinned_beside_the_inbox_join"]
+old = """        if row is None or rb_writer.is_folder(row) or rb_writer.node_removed(row):
+            raise refuse(
+                "decision-stale",
+                f"the set's playlist {plan.name!r} (row {plan.playlist_id}) the plan "
+                f"adds to is not live any more, so nothing was written",
+                origin=_ORIGIN,
+                detail={"playlist": plan.playlist_id, "name": plan.name},
+            )
+        return row, False
+"""
+new = """        return db.create_playlist(plan.name, parent=folder), True
+"""
+
+[[rows]]
+id = "A13_live_inbox_ignores_parent"
+description = "live_inbox_named matches the name anywhere, not only under the intake root"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_u135_set_inbox_join.py::test_a_hand_made_inbox_playlist_of_the_set_name_is_named_found_not_recorded"]
+old = """        if str(getattr(row, "ParentID", "") or "") == str(root_id):
+            return True
+"""
+new = """        if True:
+            return True
+"""
+
+[[rows]]
+id = "A14_set_order_reverses"
+description = "INBOX set-order walk appends members in reverse position order"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_u135_set_inbox_join.py::test_two_landings_of_one_set_make_one_inbox_playlist_in_set_order"]
+old = """                for member in plan.set_playlist.members:
+"""
+new = """                for member in reversed(plan.set_playlist.members):
+"""
+
+[[rows]]
+id = "A15_folder_accepted_as_inbox"
+description = "_batch_playlist_row returns a folder of the set name as the INBOX playlist"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_u135_set_inbox_join.py"]
+old = """        if rb_writer.is_folder(row) or rb_writer.node_removed(row):
+            continue
+        if str(getattr(row, "ParentID", "") or "") == parent_id:
+            return row
+"""
+new = """        if rb_writer.node_removed(row):
+            continue
+        if str(getattr(row, "ParentID", "") or "") == parent_id:
+            return row
+"""
