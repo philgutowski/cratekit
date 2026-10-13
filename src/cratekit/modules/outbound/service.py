@@ -3,8 +3,9 @@
 A streaming account is mutated by adding a heart, by adding a track to a
 playlist, by retitling a playlist, by making a folder, by putting a playlist
 in one, and by taking tracks off, or removing, a playlist THE PRODUCT ITSELF
-CREATED. There is no un-heart, no un-color, no folder delete, and no delete of
-a playlist anybody else made on this protocol. Deletion in the library never
+CREATED. There is no un-heart, no un-color, and no delete of a playlist or a
+folder anybody else made on this protocol, save the account root's three
+kinds below (U143). Deletion in the library never
 propagates to a streaming service (R36). The type is the rule: a caller that
 wants any other remove has nowhere to call it.
 
@@ -30,6 +31,15 @@ both (decided 2026-10-10). The pairs record vouches for it beside the ledger,
 and a playlist the author did not pair is refused exactly as before. A removal
 there takes a track off that one playlist and nothing else: no track leaves the
 account or the library.
+
+**AND THE ACCOUNT ROOT'S THREE KINDS, NAMED BY A GATE (U143).** The one
+removal no ledger vouches for, because what it removes is nothing the product
+made: ``remove_root_playlist`` removes a playlist at the root that is the
+source system's label debris or holds no track, and ``remove_legacy_folder``
+removes a root folder named as a legacy year folder once it holds nothing.
+Each checks its kind on the provider's own answer before it removes, refuses a
+playlist any ledger claims, and reads the removal back. ``crate organize``'s
+root step is the one caller, and only for a row its gate showed by name.
 
 **ORDERING IS NOT A REMOVAL, AND IT IS HELD TO THE SAME RULE.**
 ``order_tracks`` moves tracks within one playlist the ledger or the pairs
@@ -203,4 +213,29 @@ class RemoteAccount(Protocol):
         does not record as one the product created. A playlist the provider no
         longer has is already removed, so a resume asking again succeeds and
         removes nothing. No track leaves any other playlist.
+        """
+
+    # ── the account root's removals (U143) ───────────────────────────────────
+    #
+    # TWO MEMBERS, EACH NARROWED TO A KIND THE PROVIDER'S OWN ANSWER CONFIRMS,
+    # since the playlist or folder is one no ledger records.
+
+    def remove_root_playlist(self, playlist_id: str, kind: str) -> None:
+        """Remove one root playlist of a kind the gate named, and nothing else.
+
+        ``kind`` is ``kinds.DEBRIS`` or ``kinds.EMPTY``. REFUSED BEFORE ANY
+        REMOVAL for any other kind, for a playlist any ledger claims, and for
+        one the provider serves as not of that kind: debris must carry the
+        source system's suffix, and an empty playlist must declare no track
+        and no video. A playlist the provider no longer has is already
+        removed. Read back: one still served is refused.
+        """
+
+    def remove_legacy_folder(self, folder_id: str) -> None:
+        """Remove one empty legacy year folder at the root, and nothing else.
+
+        REFUSED BEFORE ANY REMOVAL for a folder that is not at the root, whose
+        name is not a legacy year folder's, or that holds any playlist or
+        folder. A folder the root no longer lists is already removed. Read
+        back: one still listed is refused.
         """

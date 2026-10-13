@@ -18,6 +18,11 @@ from tests.test_label_workers import installed as installed  # noqa: PLC0414 - f
 
 MARKED_WHEN = "2026-10-08T21:00:00+00:00"
 
+#: A playlist of the author's that goes to Mine: its name says downloaded and
+#: no sync recorded when, so no year files it. Since U143 an unmarked one with
+#: no prefix is a working custom playlist and stays at the root instead.
+OWN = "DOWNLOADED Sunday warmup"
+
 
 def _world(cfg, account, *playlists: tuple[str, str]) -> list[AccountPlaylist]:
     listed = []
@@ -64,7 +69,8 @@ def test_each_kind_lands_in_its_own_folder(installed):
         ("exported-1", "Exported crate"),
         ("set-1", "A set"),
         ("marked-1", "DOWNLOADED Phil 10_8_26"),
-        ("own-1", "Sunday warmup"),
+        ("own-1", OWN),
+        ("custom-1", "Sunday warmup"),
         ("label-1", "Kompakt 2024"),
         ("work-1", "Work in progress"),
     )
@@ -74,6 +80,8 @@ def test_each_kind_lands_in_its_own_folder(installed):
 
     assert (rows["exported-1"].action, rows["exported-1"].kind) == (filing.MOVE, kinds.EXPORTS)
     assert (rows["own-1"].action, rows["own-1"].kind) == (filing.MOVE, kinds.MINE)
+    # U143: unmarked, unprefixed and unclaimed, it is a working custom playlist.
+    assert (rows["custom-1"].action, rows["custom-1"].why) == (filing.LEFT, filing.WORKING_CUSTOM)
     assert (rows["marked-1"].action, rows["marked-1"].year) == (filing.MOVE, "2026")
     # A set awaiting its archive stays at the root for the archive to file.
     assert (rows["set-1"].action, rows["set-1"].why) == (filing.LEFT, filing.SET_STEP)
@@ -86,7 +94,7 @@ def test_each_kind_lands_in_its_own_folder(installed):
     assert _folder_of(account, "exported-1") == kinds.EXPORTS
     assert _folder_of(account, "own-1") == kinds.MINE
     assert _folder_of(account, "marked-1") == "2026"
-    assert not {"set-1", "label-1", "work-1"} & set(account.placed)
+    assert not {"set-1", "label-1", "work-1", "custom-1"} & set(account.placed)
     assert sorted(done.kinds_created) == [kinds.EXPORTS, kinds.MINE]
     assert ledger.kind_folder(cfg, kinds.MINE).created is True
 
@@ -94,7 +102,7 @@ def test_each_kind_lands_in_its_own_folder(installed):
 def test_a_rerun_plans_nothing(installed):
     cfg = installed
     account = outbound_fakes.StrictAccount()
-    listed = _world(cfg, account, ("own-1", "Sunday warmup"), ("own-2", "Digging"))
+    listed = _world(cfg, account, ("own-1", OWN), ("own-2", "DOWNLOADED Digging"))
     filing.apply(cfg, account, _plan(cfg, account, listed))
     moves = len(account.moves)
 
@@ -110,7 +118,7 @@ def test_a_playlist_in_a_hand_made_folder_is_left(installed):
     account = outbound_fakes.StrictAccount()
     hand = account.create_folder("Old faves")
     account.folders_created.clear()
-    listed = _world(cfg, account, ("own-1", "Sunday warmup"))
+    listed = _world(cfg, account, ("own-1", OWN))
     account.placed["own-1"] = hand
     _mark(cfg, "own-1", "Sunday warmup")
 
@@ -124,13 +132,15 @@ def test_a_playlist_in_a_hand_made_folder_is_left(installed):
 def test_a_renamed_playlist_and_a_renamed_folder_stay_where_they_are(installed):
     cfg = installed
     account = outbound_fakes.StrictAccount()
-    listed = _world(cfg, account, ("own-1", "Sunday warmup"))
+    listed = _world(cfg, account, ("own-1", OWN))
     filing.apply(cfg, account, _plan(cfg, account, listed))
     mine = account.placed["own-1"]
     # A person renames both the playlist and the folder on the account.
     account.titles["own-1"] = "Sunday warmup, kept"
     account.folder_names[mine] = "My own"
-    listed = _world(cfg, account, ("own-1", "Sunday warmup, kept"), ("own-2", "New one"))
+    listed = _world(
+        cfg, account, ("own-1", "Sunday warmup, kept"), ("own-2", "DOWNLOADED New one")
+    )
 
     planned = _plan(cfg, account, listed)
     filing.apply(cfg, account, planned)
@@ -158,7 +168,7 @@ def test_two_folders_named_mine_leave_the_authors_playlists_listed(installed):
     account = outbound_fakes.StrictAccount()
     account.create_folder(kinds.MINE)
     account.create_folder(kinds.MINE)
-    listed = _world(cfg, account, ("own-1", "Sunday warmup"))
+    listed = _world(cfg, account, ("own-1", OWN))
 
     row = _rows(_plan(cfg, account, listed))["own-1"]
 
@@ -171,7 +181,7 @@ def test_a_hand_made_folder_named_mine_is_adopted_and_never_emptied(installed):
     account = outbound_fakes.StrictAccount()
     hand = account.create_folder(kinds.MINE)
     account.folders_created.clear()
-    listed = _world(cfg, account, ("own-1", "Sunday warmup"), ("held-1", "Kept by hand"))
+    listed = _world(cfg, account, ("own-1", OWN), ("held-1", "Kept by hand"))
     account.placed["held-1"] = hand
     _mark(cfg, "held-1", "Kept by hand")
 
@@ -188,7 +198,7 @@ def test_a_hand_made_folder_named_mine_is_adopted_and_never_emptied(installed):
 def test_a_playlist_marked_after_it_was_filed_in_mine_reaches_its_year(installed):
     cfg = installed
     account = outbound_fakes.StrictAccount()
-    listed = _world(cfg, account, ("own-1", "Sunday warmup"))
+    listed = _world(cfg, account, ("own-1", OWN))
     filing.apply(cfg, account, _plan(cfg, account, listed))
     assert _folder_of(account, "own-1") == kinds.MINE
     _mark(cfg, "own-1", "Sunday warmup")

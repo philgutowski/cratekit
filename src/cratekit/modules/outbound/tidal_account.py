@@ -12,8 +12,12 @@ created, and refuses any other before a provider call. It is the one place this
 class names a removal on the client, and the suite's scan of this file admits
 that one call inside that one member and nothing else. The outbound gates and the
 confirm digest sit in front of every write; this module adds no gate and removes
-none. ``rename_playlist`` is the one member that writes to something the product
-did not create, and it is not a removal: it retitles, changes no membership and
+none. ``remove_playlist`` (U123) is the same rule for a whole playlist. The
+account root's removals (U143), ``remove_root_playlist`` and
+``remove_legacy_folder``, are the members that remove something the product did
+not create, each narrowed to a kind the provider's own answer must confirm
+before anything is sent. ``rename_playlist`` writes to something the product did
+not create too, and it is not a removal: it retitles, changes no membership and
 deletes nothing.
 
 **THE WORKERS RELY ON THREE RULES THAT ARE NOT VISIBLE IN THEIR CODE.**
@@ -63,7 +67,7 @@ from cratekit.acquire import listing, match, provider_session
 from cratekit.acquire.adapter import TrackOutcome, classify_unavailable
 from cratekit.core import provider_gate
 from cratekit.core.cause import CratekitError, Scope, refuse
-from cratekit.modules.outbound import account, ledger, pairs
+from cratekit.modules.outbound import account, kinds, ledger, pairs
 
 #: How many times a write or a single lookup is retried after its first attempt.
 WRITE_RETRIES = 1
@@ -248,7 +252,8 @@ class TidalAccount:
     Eight add only, two that read folders, one that puts a playlist in a
     folder, one that retitles a playlist the account owns, one that says why
     the last match of a row came back empty, one that names a playlist's
-    tracks, and the one removal, from a playlist the product made.
+    tracks, and the one removal, from a playlist the product made. Since U143
+    also the account root's two removals, each of a kind a gate named.
     """
 
     def __init__(
@@ -1112,6 +1117,172 @@ class TidalAccount:
                 detail={"playlist_id": identifier, "problem": "read-back-differs"},
             )
         self._members.pop(identifier, None)
+
+    # ── the account root's removals (U143) ──────────────────────────────────
+
+    def _root_refusal(self, what: str, said: str, problem: str, **detail: str) -> CratekitError:
+        """A root removal refused with nothing sent, in words and by problem."""
+        return refuse(
+            "outbound-remove-refused",
+            f"{said}, so {what} was not removed",
+            steps=(f"remove {what} by hand in the provider's own player",),
+            scope=Scope.SOURCE,
+            origin=("outbound", "account"),
+            detail={**detail, "problem": problem},
+        )
+
+    def _claimed(self, identifier: str) -> bool:
+        """Whether any ledger record names the playlist, made or adopted."""
+        cfg = self._cfg
+        return (
+            ledger.product_made(cfg, identifier)
+            or identifier in ledger.label_playlist_ids(cfg)
+            or identifier in ledger.set_playlist_ids(cfg)
+            or identifier in ledger.exported_playlist_ids(cfg)
+        )
+
+    def remove_root_playlist(self, playlist_id: str, kind: str) -> None:
+        """Remove one root playlist of the named kind (U143). NEVER RETRIED.
+
+        THE KIND IS ASKED FIRST, then the ledger: a kind other than debris or
+        empty, and a playlist any ledger record names, are refused with no
+        provider call, since the product's own playlists are
+        :meth:`remove_playlist`'s and its rule.
+
+        THE PROVIDER'S OWN ANSWER MUST BE OF THE KIND. The playlist is opened
+        and its served name must carry the label batch's suffix, case exactly,
+        for debris; for an empty one, it must declare no track and no video,
+        both counts readable. Anything else is refused before the delete, so a
+        playlist renamed or added to since the gate was answered stays.
+
+        Absent, read back and not retried on :meth:`remove_playlist`'s
+        arguments.
+        """
+        from cratekit.sync.playlists import is_library_debris
+
+        identifier = str(playlist_id)
+        what = f"the playlist {identifier}"
+        if kind not in kinds.ROOT_REMOVALS:
+            raise self._root_refusal(
+                what,
+                f"{kind!r} is not a kind of root playlist this account removes",
+                "not-a-root-kind",
+                playlist_id=identifier,
+            )
+        if self._cfg is None or self._claimed(identifier):
+            raise self._root_refusal(
+                what,
+                "a ledger record names it, or no ledger could be read, and the "
+                "product's own playlists are not removed as root debris or empties",
+                "ledger-claimed",
+                playlist_id=identifier,
+            )
+        doing = f"remove the {kind} playlist {identifier}"
+        found = self._call(doing, lambda: self._session.playlist(identifier))
+        if found is _ABSENT or found is None:
+            self._members.pop(identifier, None)
+            return
+        name = str(getattr(found, "name", "") or "")
+        tracks = getattr(found, "num_tracks", None)
+        videos = getattr(found, "num_videos", None)
+        if kind == kinds.DEBRIS:
+            served = is_library_debris(name)
+        else:
+            served = _count(tracks) and _count(videos) and tracks == 0 and videos == 0
+        if not served:
+            raise self._root_refusal(
+                what,
+                f"the provider serves it as {name!r} with {tracks!r} track(s) and "
+                f"{videos!r} video(s), which is not {kind}",
+                "not-this-kind",
+                playlist_id=identifier,
+                kind=kind,
+            )
+        try:
+            remove = found.delete
+        except AttributeError:
+            remove = None
+        if not callable(remove):
+            raise self._root_refusal(
+                what,
+                "the provider does not serve it as one this account owns",
+                "not-owned",
+                playlist_id=identifier,
+            )
+        accepted = self._call(doing, remove, retries=0)
+        if accepted is False:
+            raise account.provider_failure(
+                RuntimeError("the provider did not accept the removal"), doing
+            )
+        again = self._call(doing, lambda: self._session.playlist(identifier))
+        if again is not _ABSENT and again is not None:
+            raise refuse(
+                "outbound-remove-refused",
+                f"the playlist {identifier} is still served by the provider after "
+                f"it was asked to remove it, so it was not removed",
+                steps=("check the playlist by hand in the provider's own player",),
+                scope=Scope.RUN,
+                origin=("outbound", "account"),
+                detail={"playlist_id": identifier, "problem": "read-back-differs"},
+            )
+        self._members.pop(identifier, None)
+
+    def remove_legacy_folder(self, folder_id: str) -> None:
+        """Remove one empty legacy year folder at the root (U143). NEVER RETRIED.
+
+        READ FIRST, ON THE PROVIDER'S ANSWER: the root's folders are listed and
+        the folder must be among them under a legacy year folder's name, and
+        it must hold no playlist and no folder. A folder the root no longer
+        lists is already removed. Anything else is refused before the removal.
+
+        THROUGH THE COLLECTION'S OWN REMOVAL, which names the folder by its
+        identifier, rather than the client's folder object, whose lookup reads
+        one page of fifty root folders (R-835).
+
+        READ BACK: the root is listed again and must not name the folder.
+        """
+        identifier = str(folder_id)
+        what = f"the folder {identifier}"
+        root = self.folders()
+        if identifier not in root:
+            return
+        name = root[identifier]
+        if not kinds.legacy_year(name):
+            raise self._root_refusal(
+                what,
+                f"its name {name!r} is not a legacy year folder's",
+                "not-a-legacy-folder",
+                folder_id=identifier,
+            )
+        held = len(self.folder_playlists(identifier)) + len(self.folder_folders(identifier))
+        if held:
+            raise self._root_refusal(
+                what,
+                f"{name!r} still holds {held} playlist(s) or folder(s)",
+                "not-empty",
+                folder_id=identifier,
+            )
+        doing = f"remove the folder {identifier}"
+        favourites = self._session.user.favorites
+        accepted = self._call(
+            doing,
+            lambda: favourites.remove_folders_playlists([identifier], type="folder"),
+            retries=0,
+        )
+        if accepted is False or accepted is _ABSENT:
+            raise account.provider_failure(
+                RuntimeError("the provider did not accept the folder removal"), doing
+            )
+        if identifier in self.folders():
+            raise refuse(
+                "outbound-remove-refused",
+                f"the folder {identifier} is still listed at the root after it was "
+                f"asked to remove it, so it was not removed",
+                steps=("check the folder by hand in the provider's own player",),
+                scope=Scope.RUN,
+                origin=("outbound", "account"),
+                detail={"folder_id": identifier, "problem": "read-back-differs"},
+            )
 
 
 def open_account(cfg: Any = None) -> TidalAccount:

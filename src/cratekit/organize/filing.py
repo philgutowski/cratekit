@@ -12,8 +12,17 @@ the root and names what becomes of each one:
 * the product's own working playlists stay where they are;
 * A PLAYLIST AN EXPORT MADE, by the ledger's record, is moved into the root
   ``Exports`` folder (U131);
-* EVERY OTHER PLAYLIST NO LEDGER CLAIMS is the author's own and is moved into
-  the root ``Mine`` folder (U131), each by name on the gate;
+* THE SOURCE SYSTEM'S LABEL DEBRIS, and an unclaimed playlist holding no
+  track, are left for the root step (U143), :mod:`cratekit.organize.root`,
+  which removes each it can, by name on the gate;
+* A WORKING CUSTOM PLAYLIST, one no ledger claims and no sync marked, is left
+  at the root, whatever its age (U143). It is the one playlist that belongs
+  there, until a sync marks it and this step files it by its year. Before
+  U143 it was moved into ``Mine`` (U131), and Phillip's rule of 2026-10-13
+  reversed that;
+* ONE NO LEDGER CLAIMS THAT A SYNC CANNOT FILE BY A YEAR, its name prefixed
+  with no mark recorded or its mark carrying no year, is moved into the root
+  ``Mine`` folder (U131), by name on the gate;
 * what is left, the product's other playlists and any playlist whose folder a
   name cannot decide, is reported and left with its reason.
 
@@ -31,8 +40,9 @@ every playlist of that year. Two or more root folders named as the year leave
 that year's playlists where they are, reported, since a playlist the plan
 cannot place is never moved.
 
-ADD ONLY, BECAUSE THE PROTOCOL IS. A folder is created and a playlist is put in
-one; nothing is renamed, nothing is removed. A move is undone by a move back,
+ADD ONLY. A folder is created and a playlist is put in one; nothing is renamed,
+nothing is removed. The root's three removals are the root step's (U143), on
+rows this plan leaves for it. A move is undone by a move back,
 and each move this step makes is named on the applied totals the run records,
 playlist and folder, so the run says exactly what to put back.
 
@@ -51,7 +61,7 @@ from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.modules.outbound import kinds, ledger, sets
 from cratekit.modules.outbound.service import RemoteAccount
 from cratekit.organize import own
-from cratekit.sync.playlists import is_swept_name
+from cratekit.sync.playlists import is_library_debris, is_swept_name
 
 _ORIGIN = ("organize.filing",)
 
@@ -64,7 +74,16 @@ LABEL_STEP = "a label playlist, which the label step files"
 SET_STEP = "a set playlist, which the set archive files"
 WORKING = "one of the product's own working playlists, kept at the root"
 PRODUCT_MADE = "made by the product and not a custom playlist"
-UNMARKED = "not marked by a sync, so nothing says it was downloaded"
+#: The three a root playlist is left for, the last kept at the root (U143).
+DEBRIS = (
+    "the source system's label debris, which the root step removes once its "
+    "tracks are in its label's folder"
+)
+EMPTY = "it holds no track, so the root step removes it"
+WORKING_CUSTOM = (
+    "a working custom playlist, kept at the root until a sync marks it "
+    "downloaded and it is filed by its year"
+)
 PREFIXED_UNMARKED = (
     "its name says downloaded but no sync recorded when, so no year can be chosen"
 )
@@ -217,8 +236,12 @@ def year_of_mark(marked: str) -> str:
     return f"{when.year:04d}"
 
 
-def _year_folder(cfg: config.Config, year: str, root: Mapping[str, str]) -> YearFolder:
-    """One year's folder on the set archive's rule, never refused here."""
+def year_folder(cfg: config.Config, year: str, root: Mapping[str, str]) -> YearFolder:
+    """One year's folder on the set archive's rule, never refused here.
+
+    The root step's legacy moves (U143) decide the year's folder by this same
+    rule, so the two steps file into one folder and never make two.
+    """
     recorded = ledger.set_folder(cfg, year)
     # A RECORD WHOSE FOLDER NOW CARRIES THE SETS' NAME IS NOT THE YEAR'S (U142).
     # Before U142 the archive recorded its folder under the plain year, so a
@@ -269,6 +292,11 @@ def playlists_in_folders(remote: RemoteAccount) -> set[str]:
     return held
 
 
+def at_root(listed: Sequence[Any], in_folders: set[str] | frozenset[str]) -> list[Any]:
+    """The listed playlists no folder holds, which are the ones at the account root."""
+    return [one for one in listed if one.playlist_id not in in_folders]
+
+
 def plan(
     cfg: config.Config,
     *,
@@ -292,8 +320,8 @@ def plan(
     label_built = ledger.label_playlist_ids(cfg)
     set_built = ledger.set_playlist_ids(cfg)
     exported = ledger.exported_playlist_ids(cfg)
-    at_root = [one for one in listed if one.playlist_id not in in_folders]
-    made = ledger.product_made_among(cfg, (one.playlist_id for one in at_root))
+    root_playlists = at_root(listed, in_folders)
+    made = ledger.product_made_among(cfg, (one.playlist_id for one in root_playlists))
     standing = _standing_marks(marks)
     years: dict[str, YearFolder] = {}
     kind_folders: dict[str, kinds.KindFolder] = {}
@@ -301,7 +329,7 @@ def plan(
 
     def year_row(identity: str, name: str, year: str) -> Placement:
         if year not in years:
-            years[year] = _year_folder(cfg, year, root)
+            years[year] = year_folder(cfg, year, root)
         folder = years[year]
         if folder.why:
             return Placement(identity, name, LEFT, year=year, why=folder.why)
@@ -326,16 +354,31 @@ def plan(
                 row = year_row(str(identity), str(name), year)
                 if row.action == MOVE:
                     rows.append(row)
-    for one in sorted(at_root, key=lambda playlist: (playlist.name, playlist.playlist_id)):
+    for one in sorted(root_playlists, key=lambda playlist: (playlist.name, playlist.playlist_id)):
         identity, name = str(one.playlist_id), str(one.name)
-        if identity in label_built or own.label_of(name, labels) is not None:
+        if identity in label_built:
             rows.append(Placement(identity, name, LEFT, why=LABEL_STEP))
             continue
         if identity in set_built:
             rows.append(Placement(identity, name, LEFT, why=SET_STEP))
             continue
+        claimed = identity in exported or identity in made
+        empty = not claimed and one.tracks == 0
+        # DEBRIS IS ASKED BEFORE THE LABEL'S NAME (U143), since ``<label>
+        # LIBRARY`` starts with a followed label's name and is not its playlist.
+        if not claimed and is_library_debris(name):
+            rows.append(Placement(identity, name, LEFT, why=EMPTY if empty else DEBRIS))
+            continue
+        if own.label_of(name, labels) is not None:
+            rows.append(Placement(identity, name, LEFT, why=LABEL_STEP))
+            continue
         if working(name):
             rows.append(Placement(identity, name, LEFT, why=WORKING))
+            continue
+        # AN EMPTY PLAYLIST IS THE ROOT STEP'S WHATEVER ITS MARK, since a
+        # playlist holding nothing downloaded nothing to file by a year.
+        if empty:
+            rows.append(Placement(identity, name, LEFT, why=EMPTY))
             continue
         year = year_of_mark(standing.get(identity, ""))
         if year:
@@ -347,14 +390,14 @@ def plan(
         if identity in made:
             rows.append(Placement(identity, name, LEFT, why=PRODUCT_MADE))
             continue
-        # NO LEDGER CLAIMS IT, so it is the author's own (U131), filed in Mine
-        # with the reason it is not filed by a year.
-        if identity in standing:
-            why = UNDATED
-        elif is_swept_name(name):
-            why = PREFIXED_UNMARKED
-        else:
-            why = UNMARKED
+        # NO LEDGER CLAIMS IT AND NO SYNC MARKED IT: a working custom playlist,
+        # kept at the root (U143), however old.
+        if identity not in standing and not is_swept_name(name):
+            rows.append(Placement(identity, name, LEFT, why=WORKING_CUSTOM))
+            continue
+        # NO LEDGER CLAIMS IT AND NO YEAR FILES IT, so it is the author's own
+        # (U131), filed in Mine with the reason it is not filed by a year.
+        why = UNDATED if identity in standing else PREFIXED_UNMARKED
         rows.append(kind_row(identity, name, kinds.MINE, why))
     return FilePlan(rows=tuple(rows), years=years, kinds=kind_folders)
 
@@ -390,6 +433,37 @@ def _failed_part_way(exc: Exception, done: Filed) -> Exception:
     return RuntimeError(f"{wrote}. {type(exc).__name__}: {exc}")
 
 
+def reserve_year(
+    cfg: config.Config,
+    remote: RemoteAccount,
+    folder: YearFolder,
+    folders: dict[str, str],
+    created: list[str],
+) -> str:
+    """The year's folder identifier, made once on the account if the plan found none.
+
+    ``folders`` and ``created`` are the caller's, and take the folder and its
+    year as soon as the provider answers a create, before the ledger write, so
+    a write that then raises still names the folder made. A folder another
+    step recorded first in the same apply is reused, never made twice.
+    """
+
+    def create() -> str:
+        folder_id = remote.create_folder(folder.year)
+        folders[folder.year] = folder_id
+        created.append(folder.year)
+        return folder_id
+
+    folder_id, _made = ledger.reserve_set_folder(
+        cfg,
+        folder.year,
+        create,
+        adopt=folder.folder_id if folder.action == sets.ADOPT else "",
+        stale=folder.stale,
+    )
+    return folder_id
+
+
 def apply(cfg: config.Config, remote: RemoteAccount, planned: FilePlan) -> Filed:
     """Make or reuse each year's folder, then move each planned playlist into it.
 
@@ -407,25 +481,10 @@ def apply(cfg: config.Config, remote: RemoteAccount, planned: FilePlan) -> Filed
                 remote.move_to_folder(row.playlist_id, done.kinds[row.kind])
                 done.moved.append([row.playlist_id, done.kinds[row.kind]])
                 continue
-            folder = planned.years[row.year]
             if row.year not in done.folders:
-
-                def create(year: str = row.year) -> str:
-                    folder_id = remote.create_folder(year)
-                    # Record as soon as the provider answers, before the ledger
-                    # write: a write that raises must still name the folder made.
-                    done.folders[year] = folder_id
-                    done.created.append(year)
-                    return folder_id
-
-                folder_id, _made = ledger.reserve_set_folder(
-                    cfg,
-                    row.year,
-                    create,
-                    adopt=folder.folder_id if folder.action == sets.ADOPT else "",
-                    stale=folder.stale,
+                done.folders[row.year] = reserve_year(
+                    cfg, remote, planned.years[row.year], done.folders, done.created
                 )
-                done.folders[row.year] = folder_id
             remote.move_to_folder(row.playlist_id, done.folders[row.year])
             done.moved.append([row.playlist_id, done.folders[row.year]])
     except Exception as exc:
@@ -434,6 +493,8 @@ def apply(cfg: config.Config, remote: RemoteAccount, planned: FilePlan) -> Filed
 
 
 __all__ = [
+    "DEBRIS",
+    "EMPTY",
     "EXPORTED",
     "LABEL_STEP",
     "LEFT",
@@ -442,14 +503,17 @@ __all__ = [
     "PRODUCT_MADE",
     "SET_STEP",
     "UNDATED",
-    "UNMARKED",
     "WORKING",
+    "WORKING_CUSTOM",
     "FilePlan",
     "Filed",
     "Placement",
     "YearFolder",
     "apply",
+    "at_root",
     "plan",
     "playlists_in_folders",
+    "reserve_year",
+    "year_folder",
     "year_of_mark",
 ]

@@ -725,10 +725,16 @@ def test_the_outbound_package_defines_no_remove_write():
     assert clash == []
 
 
-#: R-836. The removals the protocol declares, ``remove_tracks`` and since U123
-#: ``remove_playlist``, and the flag reader that was already here and names a
-#: question rather than a write.
-ADMITTED_REMOVE_NAMES = frozenset({"remove_tracks", "remove_playlist", "remove_requested"})
+#: R-836. The removals the protocol declares, ``remove_tracks``, since U123
+#: ``remove_playlist``, since U143 the account root's two, and the flag reader
+#: that was already here and names a question rather than a write.
+PROTOCOL_REMOVALS = (
+    "remove_tracks",
+    "remove_playlist",
+    "remove_root_playlist",
+    "remove_legacy_folder",
+)
+ADMITTED_REMOVE_NAMES = frozenset({*PROTOCOL_REMOVALS, "remove_requested"})
 
 
 def _defined_where(root: Path) -> list[tuple[str, str]]:
@@ -742,8 +748,9 @@ def _defined_where(root: Path) -> list[tuple[str, str]]:
 
 
 def test_the_one_remove_the_outbound_package_defines_is_the_protocols_own():
-    """Narrowed on R-836 from "no remove" to exactly ``remove_tracks``, and on
-    U123 to that and ``remove_playlist``.
+    """Narrowed on R-836 from "no remove" to exactly ``remove_tracks``, on
+    U123 to that and ``remove_playlist``, and on U143 to those and the account
+    root's two.
 
     The exact name scan above misses a plural, which ``remove_tracks`` is of
     ``remove_track``, so this one reads every function whose name opens with
@@ -757,7 +764,7 @@ def test_the_one_remove_the_outbound_package_defines_is_the_protocols_own():
         if name.lstrip("_").startswith("remove") or "delete" in name.lower()
     ]
     assert {name.lstrip("_") for _where, name in shaped} == ADMITTED_REMOVE_NAMES, shaped
-    for member in ("remove_tracks", "remove_playlist"):
+    for member in PROTOCOL_REMOVALS:
         assert sorted(where for where, name in shaped if name == member) == [
             "service.py",
             "tidal_account.py",

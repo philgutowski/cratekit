@@ -3141,8 +3141,10 @@ ENTRIES: tuple[Entry, ...] = (
         #: for its second proof (U142), through a read handle. No file is
         #: written by any step it composes,
         #: since the adoption is applied with no tag value. ``destructive``
-        #: because the rotation removes an expired batch playlist and a mark
-        #: retitles a playlist the product did not make.
+        #: because the rotation removes an expired batch playlist, a mark
+        #: retitles a playlist the product did not make, and the root step
+        #: (U143) removes the account root's label debris, empty playlists and
+        #: an emptied legacy year folder, each by name on the account's gate.
         writes=frozenset({"db_tree", "db_metadata", "remote"}),
         destructive=True,
         taxonomy_terms=("genre_energy", "inbox", "inbox_old", "inspiration"),
@@ -3166,9 +3168,11 @@ ENTRIES: tuple[Entry, ...] = (
             GateSpec(
                 name="organize.account.apply",
                 options=("apply", "abort"),
-                prompt="Apply these steps to the streaming account? Nothing is "
-                "removed, and nothing you made is moved unless a sync marked it "
-                "downloaded, which files it in its year folder.",
+                prompt="Apply these steps to the streaming account? Only the "
+                "removals listed are made: label debris whose tracks are in its "
+                "label's folder, empty root playlists, and an emptied legacy year "
+                "folder. A working custom playlist stays at the root until a "
+                "sync marks it downloaded, which files it in its year folder.",
                 #: EXPLICIT, as every other write to the account is (R34).
                 explicit=True,
                 digest_source="plan",

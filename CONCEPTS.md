@@ -556,7 +556,12 @@ the set or, since U142, by a playlist of the set's name under the declared
 INSPIRATION folder, read through a read handle; a database that cannot answer
 refuses that set's step. Every step is of one KIND, the word `--only` names it by (U137):
 a narrowed area plans only the named kinds and names the selection in its
-digest, and an area with no kind named is not planned or asked.
+digest, and an area with no kind named is not planned or asked. The `root`
+kind (U143) is the account's only removals: label debris whose tracks are in
+its label's folder, an empty root playlist, and a LEGACY YEAR FOLDER (a root
+folder named `<year> Custom Playlists`) once a later run reads it empty, after
+its playlists were moved into `<year>`. Each removal is named on the gate's
+`deletes` line and on the applied totals.
 
 *Avoid:* reading a listed step as done, or a yours entry as a plan.
 
@@ -568,6 +573,9 @@ marks it `DOWNLOADED ` and the filing step moves it into its year folder, and
 it is never deleted, whatever its age. Everything else at the root is filed
 when its tracks are already downloaded and deleted when they are not, each
 named on a gate (`docs/plans/2026-10-13-1407-feat-tidal-account-convention-plan.md`).
+Since U143 the filing step leaves it at the root with that reason and `yours`
+lists it; before, U131 moved it into `Mine`. A playlist whose listing gave no
+track count is read as one too, since unread is not empty.
 
 *Avoid:* reading an old unmarked custom playlist as abandoned.
 

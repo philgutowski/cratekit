@@ -1537,9 +1537,15 @@ def test_the_adapter_pages_nothing_by_hand():
 
 
 #: The removals the adapter may name on the client, each in the one member it
-#: may name it in: R-836's by position, U123's playlist delete. Anything else
-#: with a removal shape is a new write.
-ADMITTED_REMOVALS = {"remove_tracks": "remove_by_indices", "remove_playlist": "delete"}
+#: may name it in: R-836's by position, U123's playlist delete, and U143's root
+#: playlist delete and legacy folder removal. Anything else with a removal
+#: shape is a new write.
+ADMITTED_REMOVALS = {
+    "remove_tracks": "remove_by_indices",
+    "remove_playlist": "delete",
+    "remove_root_playlist": "delete",
+    "remove_legacy_folder": "remove_folders_playlists",
+}
 
 
 def test_the_adapter_names_each_remove_on_the_client_inside_its_one_member():

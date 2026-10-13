@@ -27,8 +27,16 @@ THE STEPS, each the owning verb's plan and apply:
   it stays. A playlist marked by this same pass is filed by the next one,
   since the plan reads the mark record before the marks are applied;
 * EVERY OTHER PLAYLIST FILED BY KIND (U131), in the same step: one an export
-  made into the root ``Exports`` folder, and one no ledger claims, the
-  author's own, into the root ``Mine`` folder, each named on the gate.
+  made into the root ``Exports`` folder, and one no ledger claims that no year
+  can file, the author's own, into the root ``Mine`` folder, each named on the
+  gate. A working custom playlist, unclaimed and unmarked, stays at the root
+  (U143);
+* THE ROOT KEPT (U143), :mod:`cratekit.organize.root`: the source system's
+  label debris whose tracks are in its label's folder and every empty root
+  playlist removed, and a legacy year folder emptied into its year's folder
+  and removed on a later run, each removal named on the gate and on the
+  applied totals. The filing plan names the candidates, so it is planned once
+  and read by both.
 
 A STEP THAT NEEDS THE ACCOUNT AND CANNOT HAVE IT is refused, with that
 refusal's own reason, and every other step is still planned and shown.
@@ -58,7 +66,7 @@ from cratekit.core.cause import CratekitError
 from cratekit.export import set_cli
 from cratekit.intake import land_cli
 from cratekit.label import dated, playlists_cli
-from cratekit.organize import filing, own
+from cratekit.organize import filing, own, root
 from cratekit.organize.steps import LISTED, NOTHING, PLANNED, Area, Step, refused, selection
 from cratekit.sync import mark_cli, mark_record
 
@@ -68,12 +76,15 @@ LABELS = "labels"
 SETS = "sets"
 MARKS = "marks"
 FILE = "file"
+ROOT = "root"
 YOURS = "yours"
 
 #: Every step kind this area plans, in its order, each one ``--only`` may name.
 #: A label's folder and its dated playlist are both ``labels``, every pass's
-#: marks are ``marks``, and every set's archive is ``sets``.
-STEPS = (LABELS, SETS, MARKS, FILE, YOURS)
+#: marks are ``marks``, and every set's archive is ``sets``. ``root`` is one
+#: kind with three row types, debris, empties and a legacy year folder (U143),
+#: since the gate reads the same either way and the three share one root read.
+STEPS = (LABELS, SETS, MARKS, FILE, ROOT, YOURS)
 
 #: The modules that switch a step on. Adoption, rotation and the mark are core.
 LABELS_MODULE = "labels"
@@ -348,15 +359,14 @@ def _set_apply(cfg, step: Step, archived):
     return apply
 
 
-def _file_step(
+def _filing_plan(
     cfg,
-    area: Area,
     labels: tuple[str, ...],
     catalogue_of: _Lazy,
     remote_of: _Lazy,
-    unfollowed: CratekitError | None = None,
-) -> frozenset[str]:
-    """Plan the filing of every playlist at the root; answer what it moves.
+    unfollowed: CratekitError | None,
+) -> filing.FilePlan:
+    """The filing step's plan, which the root step reads its candidates from.
 
     AN UNREAD LABEL REGISTRY REFUSES THE FILING (U137). The followed labels
     are what leaves a label's playlist at the root for the label step, so a
@@ -365,21 +375,24 @@ def _file_step(
     say why. Unread is not none.
     """
     from cratekit.favorites import placeholders
-    from cratekit.sync import playlists
 
-    title = "file playlists at the root into their folders"
     if unfollowed is not None:
-        area.steps.append(refused(FILE, title, unfollowed.cause))
-        return frozenset()
+        raise unfollowed
+    return filing.plan(
+        cfg,
+        listed=catalogue_of.get().account_playlists(),
+        remote=remote_of.get(),
+        labels=labels,
+        marks=mark_record.MarkRecord(cfg).all(),
+        working=placeholders.is_placeholder,
+    )
+
+
+def _file_step(cfg, area: Area, filed_of: _Lazy, remote_of: _Lazy) -> frozenset[str]:
+    """Plan the filing of every playlist at the root; answer what it moves."""
+    title = "file playlists at the root into their folders"
     try:
-        planned = filing.plan(
-            cfg,
-            listed=catalogue_of.get().account_playlists(),
-            remote=remote_of.get(),
-            labels=labels,
-            marks=mark_record.MarkRecord(cfg).all(),
-            working=lambda name: placeholders.is_placeholder(name) or playlists.is_library_debris(name),
-        )
+        planned = filed_of.get()
     except CratekitError as exc:
         area.steps.append(refused(FILE, title, exc.cause))
         return frozenset()
@@ -408,6 +421,61 @@ def _file_step(
 def _file_apply(cfg, planned, remote_of: _Lazy):
     def apply() -> dict[str, Any]:
         return filing.apply(cfg, remote_of.get(), planned).totals()
+
+    return apply
+
+
+def _root_step(
+    cfg,
+    area: Area,
+    followed,
+    catalogue_of: _Lazy,
+    remote_of: _Lazy,
+    filed_of: _Lazy,
+) -> frozenset[str]:
+    """Plan the root's removals and legacy moves (U143); answer every playlist it takes off the root.
+
+    A FILING THAT REFUSED REFUSES THIS STEP with the same reason, since the
+    filing plan is what names the candidates, and unread is not none.
+    """
+    title = "keep the account root to working custom playlists"
+    try:
+        planned = root.plan(
+            cfg,
+            listed=catalogue_of.get().account_playlists(),
+            remote=remote_of.get(),
+            filed=filed_of.get(),
+            followed=tuple((entry.label_id, entry.name) for entry in followed),
+        )
+    except CratekitError as exc:
+        area.steps.append(refused(ROOT, title, exc.cause))
+        return frozenset()
+    removals, moves = planned.removals, planned.moves
+    left = len(planned.rows) - len(removals) - len(moves)
+    step = Step(
+        key=ROOT,
+        title=title,
+        state=PLANNED if planned.writes else NOTHING,
+        detail=(
+            f"remove {len(removals)} playlist(s) or folder(s), move {len(moves)} playlist(s) "
+            f"out of a legacy year folder, and leave {left}, each with its reason"
+            if planned.writes
+            else f"nothing to remove or move: {left} left at the root, each with its reason"
+        ),
+        digest=digest_of(planned.identity()),
+        counts={"remove": len(removals), "move": len(moves), "left": left},
+        items=planned.items(),
+    )
+    if planned.writes:
+        step.apply = _root_apply(cfg, planned, remote_of)
+        area.deletes.extend(row.line() for row in removals)
+    area.steps.append(step)
+    return frozenset(row.target for row in (*removals, *moves) if row.what == root.PLAYLIST)
+
+
+def _root_apply(cfg, planned, remote_of: _Lazy):
+    def apply() -> dict[str, Any]:
+        return root.apply(cfg, remote_of.get(), planned).totals()
 
     return apply
 
@@ -537,25 +605,54 @@ def plan_area(
         _sets(cfg, area, available)
     if area.wants(MARKS):
         _mark_steps(cfg, area)
-    moving: frozenset[str] = frozenset()
-    if area.wants(FILE) or area.wants(YOURS):
-        # THE FILING IS PLANNED FOR ``yours`` TOO, into an area nobody is
-        # shown when the filing itself is not selected, so a playlist the
-        # filing moves is never listed as one of the author's left alone.
-        # A REGISTRY THE PROFILE DOES NOT USE IS NO REASON TO REFUSE: with the
-        # labels module off no label step exists to leave a playlist to.
-        moving = _file_step(
+    # ONE FILING PLAN, read by the filing step and the root step (U143).
+    # A REGISTRY THE PROFILE DOES NOT USE IS NO REASON TO REFUSE: with the
+    # labels module off no label step exists to leave a playlist to.
+    filed_of = _Lazy(
+        lambda: _filing_plan(
             cfg,
-            area if area.wants(FILE) else Area(name=AREA),
             labels,
             catalogue_of,
             remote_of,
             unfollowed if LABELS_MODULE in available else None,
         )
+    )
+    moving: frozenset[str] = frozenset()
+    if area.wants(FILE) or area.wants(YOURS):
+        # THE FILING IS PLANNED FOR ``yours`` TOO, into an area nobody is
+        # shown when the filing itself is not selected, so a playlist the
+        # filing moves is never listed as one of the author's left alone.
+        moving = _file_step(cfg, area if area.wants(FILE) else Area(name=AREA), filed_of, remote_of)
+    if area.wants(ROOT) or area.wants(YOURS):
+        # THE ROOT STEP TOO, on the same argument: an empty playlist it
+        # removes is not one of the author's left alone.
+        moving |= _root_step(
+            cfg,
+            area if area.wants(ROOT) else Area(name=AREA),
+            followed,
+            catalogue_of,
+            remote_of,
+            filed_of,
+        )
     if area.wants(YOURS):
         _yours(cfg, area, labels, catalogue_of, remote_of, moving)
-    area.facts["writes"] = "add only: folders are created and playlists filed and prefixed"
+    area.facts["writes"] = (
+        "folders are created and playlists filed and prefixed; at the root, only the "
+        "source system's label debris whose tracks are in its label's folder, an empty "
+        "playlist and an emptied legacy year folder are removed, each named"
+    )
     return area
 
 
-__all__ = ["AREA", "FILE", "LABELS", "MARKS", "SETS", "STEPS", "YOURS", "intake_files", "plan_area"]
+__all__ = [
+    "AREA",
+    "FILE",
+    "LABELS",
+    "MARKS",
+    "ROOT",
+    "SETS",
+    "STEPS",
+    "YOURS",
+    "intake_files",
+    "plan_area",
+]

@@ -123,6 +123,9 @@ class Area:
     cause: Cause | None = None
     #: The step kinds ``--only`` selected (U137), or ``None`` for every step.
     only: tuple[str, ...] | None = None
+    #: Every removal a planned step would make, one line each (U143), shown on
+    #: the gate in place of the line that says nothing is removed.
+    deletes: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.only is not None:
@@ -176,7 +179,11 @@ class Area:
             ),
             **self.facts,
             "yours, not moved": [_your_line(one) for one in self.yours],
-            "deletes": "nothing: no playlist, folder or track is deleted by organize",
+            "deletes": (
+                list(self.deletes)
+                if self.deletes
+                else "nothing: no playlist, folder or track is deleted by organize"
+            ),
         }
         if self.suggested:
             shown["suggested, not written"] = [one["suggestion"] for one in self.suggested]
