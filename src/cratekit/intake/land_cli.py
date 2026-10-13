@@ -1205,6 +1205,9 @@ def _land_native(
     warnings.extend(vox_warnings(landed.collection))
     warnings.extend(favorites_notes(payload, landed.collection))
     warnings.extend(archive_notes)
+    if set_planned:
+        # ONCE PER RUN, from the first plan: the write takes the plan again.
+        warnings.extend(set_playlist.ignored_note(set_planned[0]))
     kept = landed.collection.set_playlist
     if kept is not None and kept.playlist_id:
         set_playlist.assert_read_back(kept)

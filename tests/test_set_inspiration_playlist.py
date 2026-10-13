@@ -492,6 +492,38 @@ def test_a_landing_honours_posted_on_a_pre_freeze_job(native_library, silence):
     assert _playlists_named(cfg, NAME) == []
 
 
+def test_posted_on_a_frozen_job_names_another_day_and_the_frozen_name_wins_with_a_warning(
+    native_library, silence
+):
+    """U136: a job queued since U129 keeps the name it froze, so ``--posted``
+    naming another day is not used, and the landing says so once, naming the
+    flag's day and the frozen name's."""
+    cfg, _root_id = native_library
+    cutover_fixtures.add_folder(cfg, FOLDER)
+    job_id = set_job(cfg, ("One",), page=PAGE)
+    _freeze_name(job_id, NAME)
+    _stage(cfg, silence, "One")
+
+    code, acted, refused = _two_acts(
+        _land("--set", job_id, *WORDS, "--posted", "2026-05-03")
+    )
+
+    assert code == int(ExitCode.OK), acted
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["set playlist"] == NAME
+    assert _playlists_named(cfg, NAME)
+    assert _playlists_named(cfg, POSTED_NAME) == []
+    ignored = [w for w in acted["warnings"] if w["code"] == set_playlist.POSTED_IGNORED]
+    assert len(ignored) == 1, acted["warnings"]
+    (warning,) = ignored
+    assert "--posted 2026-05-03" in warning["message"]
+    assert POSTED_NAME.split()[0] in warning["message"]
+    assert NAME.split()[0] in warning["message"]
+    assert "the frozen name wins" in warning["message"]
+    assert shown["posted day"] == warning["message"]
+    assert not any(w["code"] == set_playlist.POSTED_FALLBACK for w in acted["warnings"])
+
+
 def test_posted_equal_to_landing_day_on_a_pageless_job_is_not_decision_stale(
     native_library, silence
 ):

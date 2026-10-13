@@ -30,3 +30,12 @@ driven never-a-twin backfill.
 | A14 | backfill name | use today when page has upload_date | test_a_backfill_a_week_later_adds_to_a_playlist_pre_made_under_the_posted_name |
 
 All fifteen killed on the author's subset run. No zero-death row kept.
+
+**The fable fix, 2026-10-12.** One row added, A15, over the new
+`set-playlist-posted-ignored` warning: `--posted` on a job whose frozen name
+opens with another day. Two rows re-aligned to the code as it reads now,
+their mutation unchanged: A9's quoted block named `library =
+_LibraryView(cfg)`, which the merge of main `b43848a` replaced with U134's
+`backfill_resolver`, so it matched nothing on the merged tree; A14's quoted
+block gained the plan's `posted_ignored` line. Every row's old text was
+counted against its file after the change, once each.

@@ -149,7 +149,7 @@ old = '''
         made, fallback = naming_day_for(job, posted=posted, landing=today())
     folder_id, node = folder_for(db, declared)
     recorded = recorded_playlist(cfg, db, job.job_id, folder_id)
-    library = _LibraryView(cfg)
+    members, left = backfill_resolver(cfg, db)(reports)
 '''
 new = '''
     if on is not None and posted is None:
@@ -158,7 +158,7 @@ new = '''
         made, fallback = naming_day_for(job, posted=posted, landing=today())
     folder_id, node = folder_for(db, declared)
     recorded = recorded_playlist(cfg, db, job.job_id, folder_id)
-    library = _LibraryView(cfg)
+    members, left = backfill_resolver(cfg, db)(reports)
 '''
 
 [[rows]]
@@ -261,6 +261,7 @@ old = '''
             playlist_id=recorded[0] if recorded else "",
             posted_fallback=None if recorded or frozen_name(job) else fallback,
             posted=posted,
+            posted_ignored=ignored_posted(job, posted),
         )
     )
 
@@ -281,6 +282,7 @@ new = '''
             playlist_id=recorded[0] if recorded else "",
             posted_fallback=None if recorded or frozen_name(job) else fallback,
             posted=posted,
+            posted_ignored=ignored_posted(job, posted),
         )
     )
 
@@ -290,3 +292,16 @@ new = '''
 # ---------------------------------------------------------------------------
 '''
 
+# Added by the fable fix (2026-10-12): the one row for the new branch.
+[[rows]]
+id = "A15_posted_ignored_silent"
+description = "--posted naming another day than a frozen name is not used and nothing says so"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+old = '''
+    if word == opens:
+        return None
+'''
+new = '''
+    return None
+'''

@@ -83,6 +83,9 @@ FOLDER_UNDECLARED = "inspiration-folder-undeclared"
 UNNAMED = "set-playlist-unnamed"
 #: The page named no upload date, so the naming day fell back to the landing day (U136).
 POSTED_FALLBACK = "set-playlist-posted-fallback"
+#: ``--posted`` named a day the job's frozen name does not open with, and the
+#: frozen name won, so the flag named nothing (U136).
+POSTED_IGNORED = "set-playlist-posted-ignored"
 
 #: The session record field naming the set playlist a commit wrote, by
 #: identifier, name and the job it was made from.
@@ -366,6 +369,32 @@ def naming_day(
     }
 
 
+def ignored_posted(job: jobs.Job, posted: str | None) -> dict[str, str] | None:
+    """The warning when ``--posted`` names a day the job's frozen name does not open with (U136).
+
+    A job queued since U129 carries the name ``intake set`` froze, and that
+    name wins over ``--posted`` so every landing and backfill of the set finds
+    the one playlist. The flag is then not used, and saying so names both days.
+    None without the flag, without a frozen name, or when the two agree.
+    """
+    frozen = frozen_name(job)
+    if not posted or not frozen:
+        return None
+    day, _fallback = naming_day(posted=posted)
+    word = batch_name.set_day_word(day)
+    opens = frozen.split()[0]
+    if word == opens:
+        return None
+    return {
+        "code": POSTED_IGNORED,
+        "message": (
+            f"--posted {posted.strip()} names the day {word}, but this set's playlists "
+            f"keep the name {frozen!r} frozen on its job when it was queued, which "
+            f"opens with {opens}; the frozen name wins and --posted was not used"
+        ),
+    }
+
+
 def naming_day_for(
     job: jobs.Job,
     *,
@@ -557,6 +586,10 @@ class SetPlaylistPlan:
     #: The ``--posted`` string the plan was made with, so ``apply_alone`` can
     #: re-plan without flipping the fallback bit when the day equals landing.
     posted: str | None = None
+    #: Warning when ``--posted`` named another day than the frozen name opens
+    #: with, which won (U136), or None. NOT in :func:`identity`: it changes
+    #: nothing written, and a re-plan without the flag must keep the digest.
+    posted_ignored: dict[str, str] | None = None
     digest: str = ""
 
 
@@ -899,6 +932,7 @@ def plan_for_landing(
             playlist_id=recorded[0] if recorded else "",
             posted_fallback=None if recorded or frozen_name(job) else fallback,
             posted=posted,
+            posted_ignored=ignored_posted(job, posted),
         )
     )
 
@@ -980,6 +1014,7 @@ def plan_for_backfill(
             playlist_id=recorded[0] if recorded else "",
             posted_fallback=None if recorded or frozen_name(job) else fallback,
             posted=posted,
+            posted_ignored=ignored_posted(job, posted),
         )
     )
 
@@ -1024,12 +1059,22 @@ def facts(plan: SetPlaylistPlan) -> dict[str, Any]:
     }
     if plan.posted_fallback:
         shown["posted day"] = plan.posted_fallback["message"]
+    if plan.posted_ignored:
+        shown["posted day"] = plan.posted_ignored["message"]
     return shown
 
 
 def posted_note(plan: SetPlaylistPlan) -> list[dict[str, str]]:
-    """The warning when the naming day fell back to the landing day (U136)."""
-    return [dict(plan.posted_fallback)] if plan.posted_fallback else []
+    """The warnings about the naming day (U136): it fell back to the landing day, or ``--posted`` was not used."""
+    return [
+        *([dict(plan.posted_fallback)] if plan.posted_fallback else []),
+        *ignored_note(plan),
+    ]
+
+
+def ignored_note(plan: SetPlaylistPlan) -> list[dict[str, str]]:
+    """The warning when ``--posted`` was not used because the frozen name won (U136)."""
+    return [dict(plan.posted_ignored)] if plan.posted_ignored else []
 
 
 def left_warning(left: Sequence[Left]) -> list[dict[str, str]]:
@@ -1368,6 +1413,7 @@ __all__ = [
     "NO_ROW",
     "OWNED",
     "POSTED_FALLBACK",
+    "POSTED_IGNORED",
     "RECORD_KEY",
     "SET_KEY",
     "SUPPRESSED",
@@ -1387,6 +1433,8 @@ __all__ = [
     "facts",
     "folder_for",
     "identity",
+    "ignored_note",
+    "ignored_posted",
     "left_warning",
     "nothing_note",
     "page_of",
