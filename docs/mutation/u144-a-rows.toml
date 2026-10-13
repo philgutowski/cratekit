@@ -1,0 +1,78 @@
+name = "u144-a"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_skip_rule"
+description = "Plan: drop the skip of a set INSPIRATION already holds, so it is read and planned again"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''        if name in held:
+            rows.append(SetRow(name, playlist_id, folder, SKIP))'''
+new = '''        if False:
+            rows.append(SetRow(name, playlist_id, folder, SKIP))'''
+
+[[rows]]
+id = "A2_two_of_one_name"
+description = "Plan: drop the two account sets of one name check, so both are read and planned"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''        if named[name] > 1:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "A3_unprefixed_read"
+description = "Account sets: read a playlist without the DOWNLOADED prefix as a set named as it is"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''            stripped = name[len(PREFIX):].strip() if name.startswith(PREFIX) else ""'''
+new = '''            stripped = (name[len(PREFIX):] if name.startswith(PREFIX) else name).strip()'''
+
+[[rows]]
+id = "A4_sets_folder_name"
+description = "Account sets: read every root folder, not only a Downloaded Sets year or a recorded one"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''        if not sets_folder(folder_name) and folder_id not in marked:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "A5_recorded_folder"
+description = "Account sets: ignore the ledger's record, so a renamed sets folder is passed over"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''        if not sets_folder(folder_name) and folder_id not in marked:'''
+new = '''        if not sets_folder(folder_name):'''
+
+[[rows]]
+id = "A6_set_name_spelling"
+description = "Account sets: write the stripped account name as it is, slash and all"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''            sets_found.append((folder_name, playlist_id, set_cli.set_name(stripped)))'''
+new = '''            sets_found.append((folder_name, playlist_id, stripped))'''
+
+[[rows]]
+id = "A7_only_matched"
+description = "Match: take a track with no row as a member, an empty id in the playlist"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''        held, why = row_of(one)
+        if held:'''
+new = '''        held, why = row_of(one)
+        if True:'''
+
+[[rows]]
+id = "A8_empty_not_written"
+description = "Decide: plan a set with no match as a create, an empty playlist"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''        action=CREATE if members else EMPTY,'''
+new = '''        action=CREATE,'''
