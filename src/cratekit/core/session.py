@@ -32,6 +32,12 @@ This module is that spend, and it is four separate things that have to agree:
    the RECORD. No flag, no configuration key and no environment variable
    satisfies it, because the one operation that removes a user's files must not
    be gated on something the process removing them can assert about itself.
+   ONE EXCEPTION, decided by the author on 2026-10-09 with the five day bound
+   of 2026-10-10 (U138): when the gate's recorded answer was given by the
+   actor ``session``, the session may mint without a terminal, but only while
+   every backup portion reads under five days. The person was pasting a command
+   over ages the gate already showed, so the ages are the check that means
+   something. The record says which rule minted it.
 
 THE ORDER OF THE THREE GATES IS LOAD BEARING, and it is not the order they are
 listed in the plan:
@@ -1108,6 +1114,21 @@ ACK_SCHEMA_VERSION = 1
 #: cover today's deletion.
 DEFAULT_ACK_VALIDITY = timedelta(hours=12)
 
+#: The actor a session records its answer to the acknowledgment's gate under
+#: (U138), as ``crate run decide RUN session.ack.backup acknowledged --actor
+#: session`` records it.
+SESSION_ACTOR = "session"
+
+#: The oldest any backup portion may be for a session to mint (U138). The
+#: author's rule, five days since 2026-10-10 (one day before it).
+SESSION_MAX_BACKUP_AGE = timedelta(days=5)
+
+#: Which rule minted an acknowledgment, recorded on it. A record written before
+#: U138 carries neither and reads as the terminal rule, which is the only rule
+#: there was.
+RULE_TERMINAL = "terminal"
+RULE_SESSION_AGES = "session-ages"
+
 
 @dataclass(frozen=True, slots=True)
 class ShownAge:
@@ -1150,17 +1171,29 @@ class Acknowledgment:
     recorded_at: datetime
     expires_at: datetime
     shown: tuple[ShownAge, ...] = ()
+    #: The rule that minted it, :data:`RULE_TERMINAL` or :data:`RULE_SESSION_AGES`.
+    rule: str = RULE_TERMINAL
+    #: The actor the run record holds for the gate's answer, or None when the
+    #: record was minted without one. Not :attr:`actor`, which is the account
+    #: this process ran as and is never supplied.
+    decided_by: str | None = None
 
     def valid_at(self, moment: datetime) -> bool:
         return moment < self.expires_at
 
     def to_json(self) -> dict[str, Any]:
+        # TWO KEYS ADDED, NO VERSION BUMP (U138). A build that knows version 1
+        # reads the keys it knows and ignores these, so the installed copy and
+        # this one read one file. A bump would make every older build refuse
+        # every destructive verb on the first record this one writes.
         return {
             "schema_version": ACK_SCHEMA_VERSION,
             "actor": self.actor,
             "recorded_at": self.recorded_at.isoformat(),
             "expires_at": self.expires_at.isoformat(),
             "shown": [entry.to_json() for entry in self.shown],
+            "rule": self.rule,
+            "decided_by": self.decided_by,
         }
 
     @classmethod
@@ -1179,6 +1212,10 @@ class Acknowledgment:
             recorded_at=datetime.fromisoformat(str(data["recorded_at"])),
             expires_at=datetime.fromisoformat(str(data["expires_at"])),
             shown=tuple(ShownAge.from_json(entry) for entry in (data.get("shown") or ())),
+            rule=str(data.get("rule") or RULE_TERMINAL),
+            decided_by=(
+                str(data["decided_by"]) if data.get("decided_by") is not None else None
+            ),
         )
 
 
@@ -1295,12 +1332,33 @@ def _shown_ages(cfg: config.Config, now: datetime) -> tuple[ShownAge, ...]:
     )
 
 
+def _too_old_for_a_session(shown: Sequence[ShownAge]) -> list[str]:
+    """Each portion a session may not mint over, with why, in the order shown.
+
+    A portion whose age is not known counts against the session: no completion
+    recorded, a completion ahead of the clock, or no age at all. "Could not
+    tell" is never "fresh enough" (backup_facts' rule), and the session's whole
+    warrant is that the ages were read and were young.
+    """
+    limit = SESSION_MAX_BACKUP_AGE.total_seconds()
+    named = []
+    for entry in shown:
+        if entry.state != "known" or entry.age_seconds is None:
+            named.append(f"the {entry.portion} portion's age is not known ({entry.state})")
+        elif entry.age_seconds >= limit:
+            named.append(
+                f"the {entry.portion} portion is {entry.age_seconds / 86400:.1f} days old"
+            )
+    return named
+
+
 def record_acknowledgment(
     cfg: config.Config,
     *,
     now: datetime | None = None,
     validity: timedelta = DEFAULT_ACK_VALIDITY,
     terminal: Callable[[], bool] | None = None,
+    decided_by: str | None = None,
 ) -> Acknowledgment:
     """Mint the acknowledgment. A separate act from answering it, by a person.
 
@@ -1313,25 +1371,57 @@ def record_acknowledgment(
     THERE IS NO ACTOR PARAMETER, and there is no affirmative parameter either.
     Both absences are the point: a session consults this record, so anything that
     let the invocation assert its own way past it would put the gate under the
-    control of the thing it gates.
+    control of the thing it gates. The recorded actor is still derived.
+
+    ``decided_by`` IS NOT AN ACTOR, it is a rule selector (U138): the actor the
+    run record holds for the gate's answer, handed down by the verb. When it is
+    :data:`SESSION_ACTOR` the terminal check is replaced by the age rule, which
+    refuses unless every portion reads under :data:`SESSION_MAX_BACKUP_AGE`,
+    naming each that does not. Any other answer keeps the terminal check, so a
+    person without a terminal is refused as before. The author decided a
+    session may mint on those ages, so the selector widens exactly that.
     """
     moment = now or datetime.now(timezone.utc)
-    probe = terminal or has_controlling_terminal
-    if not probe():
-        raise refuse(
-            "backup-acknowledgment-no-terminal",
-            "this invocation has no controlling terminal, so there is nobody here "
-            "to acknowledge that the database and the music files are backed up; "
-            "the acknowledgment is recorded by a person and consulted by the run",
-            remedy=Remedy.ACKNOWLEDGE_BACKUP,
-            scope=Scope.RUN,
-            detail={"library": str(cfg.library.root)},
-        )
+    if decided_by == SESSION_ACTOR:
+        shown = _shown_ages(cfg, moment)
+        stale = _too_old_for_a_session(shown)
+        if stale:
+            raise refuse(
+                "backup-acknowledgment-backup-too-old",
+                f"a session mints the backup acknowledgment only while every backup "
+                f"portion is under {SESSION_MAX_BACKUP_AGE.days} days old, and "
+                f"{'; '.join(stale)}; run a backup first, or a person acknowledges "
+                f"from a terminal",
+                remedy=Remedy.ACKNOWLEDGE_BACKUP,
+                scope=Scope.RUN,
+                detail={
+                    "library": str(cfg.library.root),
+                    "portions": [entry.to_json() for entry in shown],
+                    "max_age_days": SESSION_MAX_BACKUP_AGE.days,
+                },
+            )
+        rule = RULE_SESSION_AGES
+    else:
+        probe = terminal or has_controlling_terminal
+        if not probe():
+            raise refuse(
+                "backup-acknowledgment-no-terminal",
+                "this invocation has no controlling terminal, so there is nobody here "
+                "to acknowledge that the database and the music files are backed up; "
+                "the acknowledgment is recorded by a person and consulted by the run",
+                remedy=Remedy.ACKNOWLEDGE_BACKUP,
+                scope=Scope.RUN,
+                detail={"library": str(cfg.library.root)},
+            )
+        shown = _shown_ages(cfg, moment)
+        rule = RULE_TERMINAL
     acknowledgment = Acknowledgment(
         actor=derive_actor(),
         recorded_at=moment,
         expires_at=moment + validity,
-        shown=_shown_ages(cfg, moment),
+        shown=shown,
+        rule=rule,
+        decided_by=decided_by,
     )
     config.atomic_write_bytes(
         json.dumps(acknowledgment.to_json(), indent=2, sort_keys=True).encode("utf-8") + b"\n",

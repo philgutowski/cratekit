@@ -923,6 +923,10 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # slug, because "record one" and "you are not the one who can" are
         # different sentences to the same user.
         "backup-acknowledgment-no-terminal": ExitCode.ACK_REQUIRED,
+        # U138. A session answered the gate and a backup portion is five days
+        # old or more, or its age is not known. Same code, the gate is not
+        # satisfied; its own slug, because the act that answers it is a backup.
+        "backup-acknowledgment-backup-too-old": ExitCode.ACK_REQUIRED,
         # U8. The acknowledgment cannot be minted because the ages it must SHOW
         # cannot be read. Same code again, because the answer is still "this gate
         # is not satisfied"; a third slug, because the remedy is a different act

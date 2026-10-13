@@ -238,7 +238,11 @@ def record_ack(ctx) -> Envelope:
 
     THE ACT NEEDS A PERSON AT A TERMINAL, and that refusal comes from the engine
     rather than from anything here. It is what stops a detached job from minting
-    the gate that protects every destructive verb.
+    the gate that protects every destructive verb. UNLESS THE ANSWER IS THE
+    SESSION'S (U138): the actor the run record holds for this gate is handed
+    down, never read off this command line, and when it is ``session`` the
+    engine mints on the backup ages instead, refusing unless every portion is
+    under five days old.
     """
     cfg = _load()
     now = datetime.now(timezone.utc)
@@ -258,7 +262,13 @@ def record_ack(ctx) -> Envelope:
     # thing handed over: there is deliberately no way to tell that function what
     # a person was shown, because a caller that could say so could say anything,
     # which is the same clause that keeps the actor out of its signature.
-    acknowledgment = session.record_acknowledgment(cfg, now=now)
+    # WHO ANSWERED, FROM THE RUN RECORD (U138), read before the decision is
+    # spent below. An explicit gate is never answered on this command line, so
+    # the recorded decision is the only place the actor comes from.
+    answered = ctx.run.decisions.get(spec.name)
+    acknowledgment = session.record_acknowledgment(
+        cfg, now=now, decided_by=answered.actor if answered is not None else None
+    )
     # AND THE REPORT COMES FROM THE RECORD, not from the read above it. Both
     # describe the same portions and after ``now=now`` they agree, but they are
     # two reads of one file and only one of them is the thing that was written
@@ -295,6 +305,8 @@ def record_ack(ctx) -> Envelope:
             "summary": {
                 "recorded": True,
                 "actor": acknowledgment.actor,
+                "rule": acknowledgment.rule,
+                "decided_by": acknowledgment.decided_by,
                 "recorded_at": acknowledgment.recorded_at.isoformat(),
                 "expires_at": acknowledgment.expires_at.isoformat(),
                 "shown": recorded_ages,
