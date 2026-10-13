@@ -2329,15 +2329,29 @@ ENTRIES: tuple[Entry, ...] = (
         #: outbound ledger, which is not a declared surface. NOT destructive,
         #: on ``export.playlist``'s precedent: every write adds to the account.
         #: A provider candidate accepted in review is READ, never offered.
+        #: ``--rename JOB`` (U140) retitles one playlist this product made to
+        #: the name the person already gave its INSPIRATION playlist, and
+        #: refreezes that name on the set's job, which is this product's own
+        #: state. Still not destructive: no track or playlist is taken away,
+        #: and a playlist the archive marked is refused rather than retitled.
         writes=frozenset({"remote"}),
         # library.mounted: the no-name backfill opens the rekordbox database
-        # over INSPIRATION (U129).
+        # over INSPIRATION (U129), and the rename reads it for the live name.
         doctor_checks=("library.mounted", "credential.provider"),
         gates=(
             GateSpec(
                 name="export.set.confirm",
                 options=("apply", "abort"),
                 prompt="Make this set a private playlist on the streaming account?",
+                # EXPLICIT, as every other write to the account is (R34).
+                explicit=True,
+                digest_source="plan",
+            ),
+            GateSpec(
+                name="export.set.rename",
+                options=("apply", "abort"),
+                prompt="Rename this set's playlist on the streaming account to its "
+                "INSPIRATION playlist's name, and record the new name?",
                 # EXPLICIT, as every other write to the account is (R34).
                 explicit=True,
                 digest_source="plan",

@@ -37526,6 +37526,13 @@ and per year beside `Mine` and `Exports`, rather than four parents.
 **Closes when:** Phillip chooses the nested scheme, a seam member creates a
 folder under a parent and moves a folder, and the three steps read under it.
 
+**Decided 2026-10-13, closed without building.** A live probe showed the
+provider ignores a parent on create, accepts a folder move (`trn:folder:`)
+and reads it back nested, and the Tidal app does not draw the nested folder.
+Phillip ruled nesting out and the root stays flat;
+`docs/solutions/integration-issues/tidal-nests-a-folder-through-the-move-endpoint-and-the-app-does-not-draw-it-so-the-account-root-stays-flat.md`
+and `docs/plans/2026-10-13-1407-feat-tidal-account-convention-plan.md`.
+
 ## R-993. A favourites backfill or refresh with nothing to write still opens its gate, and the backfill still asks the account for every date
 
 **Found:** at sitting 38, 2026-10-12, running each verb a second time after
@@ -37810,6 +37817,14 @@ playlist to match and update the ledger entry, or to pass `--name` on
 ledger and either refreshes the frozen `PLAYLIST_NAME` on the job or stops
 preferring the frozen name once a live INSPIRATION row for the job is
 recorded under another name. Ledger only until that write is designed.
+
+**Closed 2026-10-13, U140 (issue #317).** `crate export set --rename JOB`
+reads the INSPIRATION playlist's live name, finds the account playlist
+under that name or any name the job gives (frozen, posted day, queued
+day), and behind its own explicit gate retitles it by identifier, moves
+the ledger record to the new key and refreezes the name on the job. A
+backfill afterwards finds the renamed playlist recorded and plans no twin.
+The Signal set's live rename is owed to a sitting.
 
 ---
 

@@ -1074,6 +1074,45 @@ def reserve_set_playlist(
         lock.__exit__(None, None, None)
 
 
+def rename_set_playlist(cfg: config.Config, old: str, new: str, remote_id: str) -> bool:
+    """Move a set playlist's record from ``old`` to ``new``, once its title is ``new`` (U140).
+
+    The record is keyed by the playlist's name, so a playlist renamed on the
+    account and left under its old key is a set the next backfill reads as
+    having no account playlist, and makes a second one for. THE IDENTIFIER
+    MUST AGREE: the move is refused when ``old`` names another playlist, and
+    when ``new`` already holds one, since that is the twin this exists to
+    prevent and folding it in would forget a playlist on the account. Returns
+    whether anything moved; a record already under ``new`` moves nothing.
+    """
+    lock = _locked(cfg)
+    try:
+        document = _load(cfg)
+        sets = document["sets"]
+        held = str((sets.get(new) or {}).get("remote_id") or "")
+        if held == remote_id:
+            return False
+        path = config.state_path("outbound_writes", cfg)
+        if held:
+            raise _unusable(
+                path,
+                f"it already holds the set playlist {held} under {new!r}, so "
+                f"{remote_id} cannot take that name",
+            )
+        recorded = str((sets.get(old) or {}).get("remote_id") or "")
+        if recorded != remote_id:
+            raise _unusable(
+                path,
+                f"it records {recorded or 'no playlist'} under {old!r}, not "
+                f"{remote_id}, which was just renamed",
+            )
+        sets[new] = sets.pop(old)
+        _write(cfg, document)
+        return True
+    finally:
+        lock.__exit__(None, None, None)
+
+
 def record_set_tracks(
     cfg: config.Config,
     name: str,

@@ -1577,3 +1577,88 @@ def test_export_set_backfill_lists_inspiration_playlists_from_the_disposable_dat
     assert held.created == []
     assert "export-set-backfill-no-job" not in message
     assert ledger.set_playlist_names(cfg) == ()
+
+
+# ---------------------------------------------------------------------------
+# U140: the account playlist follows a renamed INSPIRATION playlist
+# ---------------------------------------------------------------------------
+
+
+def _rename_row(cfg: config.Config, playlist_id: str, name: str) -> None:
+    """A person's rename in rekordbox, as the attended tail made it."""
+    conn = sqlite3.connect(cfg.library.db_path)
+    conn.execute("UPDATE djmdPlaylist SET Name = ? WHERE ID = ?", (name, playlist_id))
+    conn.commit()
+    conn.close()
+
+
+def _landed_and_renamed(cfg, held, silence, *, record_first: bool) -> tuple[str, str]:
+    """A set landed under NAME, its account playlist recorded, its INSPIRATION renamed."""
+    cutover_fixtures.add_folder(cfg, FOLDER)
+    remote_id = _record_account_set(cfg, held, NAME) if record_first else ""
+    job_id = set_job(cfg, ("One",), page=PAGE)
+    _freeze_name(job_id, NAME)
+    _stage(cfg, silence, "One")
+    code, landed, _refused = _two_acts(_land("--set", job_id, *WORDS))
+    assert code == int(ExitCode.OK), landed
+    if not record_first:
+        remote_id = _record_account_set(cfg, held, NAME)
+    ((playlist_id, *_rest),) = _under_parent(cfg, NAME, _inspiration_folder_id(cfg))
+    _rename_row(cfg, str(playlist_id), POSTED_NAME)
+    return job_id, remote_id
+
+
+def test_export_set_rename_follows_the_live_inspiration_row_on_the_disposable_database(
+    account_on_native, silence
+):
+    """U140's read of the INSPIRATION playlist driven against the database, never a stub."""
+    from cratekit.export import set_cli
+    from cratekit.modules.outbound import ledger
+
+    cfg, _root_id, held = account_on_native
+    job_id, remote_id = _landed_and_renamed(cfg, held, silence, record_first=False)
+    argv = ["export", "set", "--rename", job_id]
+
+    code, refused = drive(argv)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["detail"]["gate"] == set_cli.RENAME_GATE
+    run_id = refused["run_id"]
+    decided, envelope = drive(
+        ["run", "decide", run_id, set_cli.RENAME_GATE, "apply", "--actor", "a-person"]
+    )
+    assert decided == int(ExitCode.OK), envelope
+    code, acted = drive(["--run", run_id, *argv])
+
+    assert code == int(ExitCode.OK), acted
+    assert held.renamed == [(remote_id, POSTED_NAME)]
+    assert ledger.set_playlist_names(cfg) == (POSTED_NAME,)
+    with jobs.open_store() as store:
+        assert set_playlist.frozen_name(jobs.get(store, job_id)) == POSTED_NAME
+    # The backfill over INSPIRATION now finds the renamed playlist recorded.
+    code, after = drive(["export", "set"])
+    assert code == int(ExitCode.DECISION_REQUIRED), after
+    assert after["cause"]["detail"]["shown"]["inspiration without account playlist"] == ["none"]
+    assert held.created == [NAME]
+
+
+def test_export_set_rename_refuses_a_playlist_the_landing_archived(account_on_native, silence):
+    """A landing that archived the set marked its title; the rename leaves the mark alone."""
+    from cratekit.export import set_cli
+    from cratekit.modules.outbound import ledger
+
+    cfg, _root_id, held = account_on_native
+    job_id, remote_id = _landed_and_renamed(cfg, held, silence, record_first=True)
+    assert any(pid == remote_id for pid, _title in held.renamed), held.renamed
+    before = list(held.renamed)
+
+    code, refused = drive(["export", "set", "--rename", job_id])
+
+    assert code == int(ExitCode.PRECONDITION), refused
+    assert refused["cause"]["reason"] == set_cli.RENAME_UNRESOLVED
+    assert "the pass 2026-10-09 Set" in refused["cause"]["message"]
+    assert any(
+        "crate sync unmark --pass '2026-10-09 Set'" in step
+        for step in refused["cause"]["remediation"]["steps"]
+    ), refused["cause"]["remediation"]
+    assert held.renamed == before
+    assert ledger.set_playlist_names(cfg) == (NAME,)

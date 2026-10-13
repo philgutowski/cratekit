@@ -560,6 +560,17 @@ digest, and an area with no kind named is not planned or asked.
 
 *Avoid:* reading a listed step as done, or a yours entry as a plan.
 
+### Working custom playlist
+The one kind of playlist that belongs at the account root, by Phillip's rule
+of 2026-10-13: a playlist the product did not make, that no ledger claims,
+holding tracks, that he is still building. It stays at the root until a sync
+marks it `DOWNLOADED ` and the filing step moves it into its year folder, and
+it is never deleted, whatever its age. Everything else at the root is filed
+when its tracks are already downloaded and deleted when they are not, each
+named on a gate (`docs/plans/2026-10-13-1407-feat-tidal-account-convention-plan.md`).
+
+*Avoid:* reading an old unmarked custom playlist as abandoned.
+
 ### Fresh Export
 A collection export that describes the database as it is now: the XML document
 holding every collection row and the playlist tree, which the verbs on the
@@ -1228,6 +1239,18 @@ omission two ways.
 *Avoid:* reading a frozen walk's omission lists as a statement about the tree
 today. They are a statement about the moment the job was queued, which is the
 only moment the item list is a statement about either.
+
+### Frozen name
+The playlist name `intake set` writes on a set job's payload when it is queued,
+`playlist_name`, which names the set's INSPIRATION playlist and, spelled with a
+slash as a dash, its account playlist. Introduced by U129. Since U140 it is the
+one payload value written after the queue: `export set --rename` REFREEZES it
+to the name a person gave the INSPIRATION playlist, on a succeeded job only,
+so every later lookup by the frozen name finds the renamed playlists.
+
+*Avoid:* reading a frozen name as the queue time name, or as one that opens
+with a day. A job queued before U129 has none at all, and its names are derived
+from the page and the queued day instead.
 
 ### Library wide walk
 The one walk `analyze calibrate` treats as the library's own distribution: the

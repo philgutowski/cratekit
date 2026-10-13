@@ -728,6 +728,48 @@ def reopen(store: JobStore, job_id: str, *, stage: str | None = None) -> Job:
     return get(store, job_id)
 
 
+def refreeze(store: JobStore, job_id: str, key: str, value: str) -> Job:
+    """Rewrite one string value on a SUCCEEDED job's frozen payload (U140).
+
+    The one write to a payload after the queue, and it is narrow on purpose.
+    KTD9 freezes a payload so a resume runs against the inputs it was planned
+    against, and a succeeded job is terminal: nothing reopens it, so nothing
+    resumes over the changed value. A job in any other state may still run,
+    and is refused. Any key may be named, and the one caller names the set
+    job's playlist name; the state check is what keeps a resume input out of
+    reach, since only a job that never runs again is written.
+
+    The state and the payload are read INSIDE the write's transaction, so a
+    writer between the read and the write cannot be overwritten by a stale
+    copy of the payload.
+    """
+    with store.immediate() as conn:
+        row = conn.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
+        if row is None:
+            raise refuse(
+                "job-unknown",
+                f"no job in this installation's queue has the identifier {job_id!r}",
+                steps=("check the identifier against the jobs this installation has queued",),
+                scope=Scope.RUN,
+                origin=("jobs",),
+                detail={"job_id": job_id},
+            )
+        current = _job_from_row(row)
+        if current.state is not JobState.SUCCEEDED:
+            raise refuse(
+                "internal-error",
+                f"job {job_id} is {current.state}, and only a succeeded job's frozen "
+                f"payload is rewritten, since any other may still run against it",
+                remedy=Remedy.REPORT_DEFECT,
+                origin=("jobs",),
+                detail={"job_id": job_id, "state": str(current.state), "key": key},
+            )
+        payload = dict(current.payload)
+        payload[key] = str(value)
+        _touch(conn, job_id, payload=json.dumps(payload, sort_keys=True))
+    return get(store, job_id)
+
+
 def retry(store: JobStore, job_id: str) -> Job:
     """Re-open a job that ended CANCELLED or FAILED, and re-arm its failed items.
 

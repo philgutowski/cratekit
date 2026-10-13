@@ -1,0 +1,239 @@
+name = "u140"
+pass_kind = "light"
+
+# Author table for U140, the set rename that follows the library. Cap 25.
+# Measured on macOS by the author's own session, three batches with --resume
+# so no foreground call passes the harness ceiling.
+
+[[rows]]
+id = "A1_twin_never_named"
+description = "plan_rename never names a twin, so a record under the new name beside the old one is adopted silently"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py"]
+old = '''
+    twin = (
+        older
+        if recorded_to is not None and older is not None and older.remote_id != recorded_to.remote_id
+        else None
+    )
+'''
+new = '''
+    twin = None
+'''
+
+[[rows]]
+id = "A2_new_name_record_ignored"
+description = "plan_rename does not look under the new name, so a rerun after the rekey finds nothing recorded"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py"]
+old = '''
+    recorded_to = ledger.set_playlist(cfg, to) if to else None
+'''
+new = '''
+    recorded_to = None
+'''
+
+[[rows]]
+id = "A3_refreeze_against_account_spelling"
+description = "RenamePlan.refreeze compares the frozen name with the account spelling, not the library's"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py"]
+old = '''
+        return self.frozen != (self.live or self.to)
+'''
+new = '''
+        return self.frozen != self.to
+'''
+
+[[rows]]
+id = "A4_rename_always"
+description = "RenamePlan.rename is always true, so a second run renames on the account again"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py"]
+old = '''
+        return self.playlist.name != self.to
+'''
+new = '''
+        return True
+'''
+
+[[rows]]
+id = "A5_ledger_never_rekeyed"
+description = "apply_rename retitles on the account and leaves the ledger key where it was"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py"]
+old = '''
+        done.rekeyed = ledger.rename_set_playlist(
+            cfg, playlist.name, planned.to, playlist.remote_id
+        )
+'''
+new = '''
+        done.rekeyed = False
+'''
+
+[[rows]]
+id = "A6_refreeze_account_spelling"
+description = "apply_rename refreezes the account spelling rather than the INSPIRATION playlist's own name"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py"]
+old = '''
+        refreeze(planned.live or planned.to)
+'''
+new = '''
+        refreeze(planned.to)
+'''
+
+[[rows]]
+id = "B1_ledger_folds_into_a_twin"
+description = "rename_set_playlist drops its refusal when the new name already holds another playlist"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py"]
+old = '''
+        if held:
+            raise _unusable(
+'''
+new = '''
+        if False:
+            raise _unusable(
+'''
+
+[[rows]]
+id = "B2_ledger_moves_another_id"
+description = "rename_set_playlist drops its refusal when the old name records a different playlist"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py"]
+old = '''
+        if recorded != remote_id:
+'''
+new = '''
+        if False:
+'''
+
+[[rows]]
+id = "B3_refreeze_any_state"
+description = "jobs.refreeze drops the succeeded state check, so a job that may still run is rewritten"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py"]
+old = '''
+        if current.state is not JobState.SUCCEEDED:
+            raise refuse(
+                "internal-error",
+                f"job {job_id} is {current.state}, and only a succeeded job's frozen "
+'''
+new = '''
+        if False:
+            raise refuse(
+                "internal-error",
+                f"job {job_id} is {current.state}, and only a succeeded job's frozen "
+'''
+
+[[rows]]
+id = "B4_refreeze_writes_nothing_new"
+description = "jobs.refreeze writes the payload back without the new value"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py"]
+old = '''
+        payload[key] = str(value)
+'''
+new = '''
+        payload.setdefault(key, str(value))
+'''
+
+[[rows]]
+id = "B5_unmark_stamp_ignored"
+description = "_standing_mark reads a mark already put back as still standing"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py"]
+old = '''
+        if entry.playlist_id == remote_id and not entry.unmarked:
+'''
+new = '''
+        if entry.playlist_id == remote_id:
+'''
+
+[[rows]]
+id = "B6_mark_refusal_dropped"
+description = "plan_rename retitles a playlist the archive marked"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py", "tests/test_set_inspiration_playlist.py"]
+old = '''
+        if mark is not None:
+            raise _rename_unresolved(
+'''
+new = '''
+        if False:
+            raise _rename_unresolved(
+'''
+
+[[rows]]
+id = "B7_twin_refusal_dropped"
+description = "plan_rename names the twin and goes on to adopt the record under the new name"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py"]
+old = '''
+    if planned.twin is not None:
+'''
+new = '''
+    if False:
+'''
+
+[[rows]]
+id = "B8_flag_conflict_dropped"
+description = "export set --rename accepts a tracklist or --name beside it"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py"]
+old = '''
+    if ctx.args.tracklist is not None or ctx.args.name is not None:
+'''
+new = '''
+    if False:
+'''
+
+[[rows]]
+id = "B9_abort_applies"
+description = "the rename writes when the gate was answered abort"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py"]
+old = '''
+    option = ctx.gate.require(gate, plan=built.payload, context=built.shown)
+    if option != "apply" or not built.writes:
+'''
+new = '''
+    option = ctx.gate.require(gate, plan=built.payload, context=built.shown)
+    if not built.writes:
+'''
+
+[[rows]]
+id = "B10_queued_day_name_dropped"
+description = "_names_for_job stops giving the queued day's form, which is the name the Signal set was exported under"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py"]
+old = '''
+    if landing is not None and landing != posted:
+        found.append(set_name(set_playlist.playlist_name(words, on=landing)))
+'''
+new = '''
+    if False:
+        found.append(set_name(set_playlist.playlist_name(words, on=landing)))
+'''
+
+[[dropped]]
+id = "C1_ledger_already_moved_return"
+description = "rename_set_playlist's early return when the record is already under the new name"
+reason = "reached only by a race between plan and apply, since the plan takes a record under the new name and plans no rename; ranked below the cap as maintainer facing"

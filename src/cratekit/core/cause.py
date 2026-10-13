@@ -1832,6 +1832,12 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # ambiguous``'s argument: the remedy is on the account. Nothing was
         # written.
         "export-set-ambiguous": ExitCode.PRECONDITION,
+        # U140. A set's account playlist was asked to follow its INSPIRATION
+        # playlist's name and could not: the job has no INSPIRATION playlist
+        # still in the folder, no account playlist is recorded under any of
+        # its names, or the archive's mark stands on it. PRECONDITION: the
+        # remedy is another verb first. Nothing was written.
+        "export-set-rename-unresolved": ExitCode.PRECONDITION,
         # ── R-836's one, appended for the same reason ──────────────────────────
         #
         # A removal from a remote playlist was refused with nothing sent: the

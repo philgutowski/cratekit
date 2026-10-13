@@ -67,6 +67,8 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'export-playlist-empty',
     'export-playlist-unknown',
     'export-set-ambiguous',
+    # 2026-10-13, U140: the set rename's refusal joined.
+    'export-set-rename-unresolved',
     'favorites-class-undeclared',
     'favorites-pink-colour-missing',
     'favorites-source-missing',
@@ -638,6 +640,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'export-playlist-empty',
         'export-playlist-unknown',
         'export-set-ambiguous',
+        # 2026-10-13, U140: the set rename's refusal joined.
+        'export-set-rename-unresolved',
         'favorites-class-undeclared',
         'favorites-pink-colour-missing',
         'favorites-source-missing',
@@ -1063,6 +1067,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'export-set-backfill',
         'export-set-backfill-no-job',
         'export-set-backfill-no-tracks',
+        # 2026-10-13, U140: the set rename's refusal joined.
+        'export-set-rename-unresolved',
         'export-set-tracks-refused',
         'intake-list-unusable',
         'internal-error',
@@ -1404,6 +1410,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'export-archive',
         'export-set',
         'export-set-ambiguous',
+        # 2026-10-13, U140: the rename plan's identity kind joined.
+        'export-set-rename',
         'not-listed',
         'retitled-since-built',
     ],
@@ -1849,6 +1857,8 @@ PINNED_NAMED_WITHOUT_OWN = {
     'core/jobs.py': ['cancelled'],
     'core/provider_gate.py': ['provider-cooldown', 'provider-gate-held'],
     'core/session.py': ['awaiting-import'],
+    # 2026-10-13, U140: the set rename's refusal, held in a named constant.
+    'export/set_cli.py': ['export-set-rename-unresolved'],
     'favorites/cli.py': ['favorites-pink-colour-missing'],
     # U134, 2026-10-12.
     'intake/refill.py': ['refill-playlist-outside-inbox'],
@@ -2004,6 +2014,8 @@ PINNED_NAMED_WITH_OWN = {
         'size-mismatch',
         'still-referenced',
     ],
+    # 2026-10-13, U140: the set rename's refusal, held in a named constant.
+    'export/set_cli.py': ['export-set-rename-unresolved'],
     'favorites/cli.py': ['favorites-pink-colour-missing'],
     # U134, 2026-10-12.
     'intake/refill.py': ['refill-playlist-outside-inbox'],
@@ -2308,8 +2320,10 @@ PINNED_LITERAL_HOLDERS = {
     # Re-pinned on the merge of main at e686759 into grok/297, 2026-10-10:
     # ONE cause literal joined in export/set_cli.py and nothing left,
     # credential-missing, the soft skip path U129's set backfill names.
+    # 2026-10-13, U140: the set rename's refusal joined.
     'export/set_cli.py': [
         'credential-missing',
+        'export-set-rename-unresolved',
         'intake-list-unusable',
         'internal-error',
         'sync-mark-record-unusable',
