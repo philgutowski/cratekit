@@ -1206,6 +1206,64 @@ no verb and is filed as U140 (#317). The Tidal filing ran live (above), U137's f
 live run; what the label step and the set archive own stays at the root until
 they file it. The 10 tracks the move left are named in the run record.
 
+## Sitting 40, 2026-10-13, 20:03 to 20:15, then 06:23 to 06:25 on 2026-10-14, the operator session, Phillip present
+
+Phillip, 20:03: "I want the playlists tonight." The run of the day (U140 #317,
+U142 #319, U143 #320, U144 #321) had landed and been pushed by 19:54
+(`a06f827`, residuals numbered at `04be3dad`), the feeder was idle, and
+U144's record owed exactly this sitting. The feeder was asked to leave on
+its stop file at 20:04 (it left at 20:28, at its next wake), the installed copy rebuilt
+from `main` at `04be3dad`, rekordbox and its agent confirmed gone before
+every verb. Both backup ages read 4.4 days (files 2026-10-09 14:24Z,
+database 2026-10-09 15:17Z), so the session minted the acknowledgment
+under the five day rule at 00:11Z, valid to 2026-10-14T12:11Z. The write
+was rehearsed first on a copy (database cloned to a scratch directory on
+the library volume with `cp -c`, `.cratekit` cloned to `.cratekit-copyrun`,
+the installation state copied, config and state dirs redirected, its own
+acknowledgment minted there at 00:08Z), then run live by the installed
+`crate` through `live_gate.sh` on an equal digest, the session answering
+`approve`. The copy and its state were removed after the live run.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `organize --only inspiration` (U144), the INSPIRATION backfill | rehearsed on the copy (plan 88 s, 78 provider calls, applied 86 s), live on an equal digest `3a4f66635677099d`, approved 20:13, applied by 20:14 (76 calls, none rate limited) | **16 INSPIRATION playlists created of 165 matched tracks**, every playlist read back by the verb; 2 sets skipped as already in INSPIRATION (`5_28_26 oshe GOATCHELLA Radio Mix 4-26`, `6_16_26 Pepofit PEPOFIT LIB JUNKYARD 5-26`); 1 set written nothing, no track of it matched (`6_17_26 David San (Oficial) DAVID SAN @ Psicodelica Podcast 2-24`, both tracks owned on disk and not in the collection); 4 misses named under their sets, below | live |
+| `organize --only inspiration`, second run | live, plan only | 0 to apply, 1 with nothing to do, digest `48b7a6f9a49739ae`; the gate still asked (the `u143-a-clean-run-still-asks` residual) and was answered `abort` | read |
+| rekordbox, desktop control | opened after the writes with both processes confirmed gone before and after, quit with `cmd+q` | opened 06:23 the next morning, once the feeder had left and `crate doctor` read both backup ages at 4 days (they cross five at 10:24 that morning); the INSPIRATION folder lists every one of the 16 new playlists under its full name beside the two sets already there and the two Public Service ones, each row count equal to the verb's read back; `6_19_26 Lee Burridge Playground Burning Man 10-24` opened to 12 tracks with artwork, key and BPM resolved, 1 h 15 min, 629.6 MB | read |
+
+**The misses, by set.** `5_29_26 DOTB - Death on the Balcony Frisky Radio NYC
+- 3hr Special 3-21`: 28, Pedro Madeira, Long Shadows, no library file
+matches it. `5_29_26 DOTB - Death on the Balcony John Digweed 'Transitions'
+Radio - Guest Mix 789`: 7, Max Cooper, Volition (Robag Wruhme's Botnax Caal
+Remix), owned on disk and not in the collection. `5_29_26 When We Dip Radio
+Amonita When We Dip Radio #167 [25.7.20] 7-20`: 5, Divana Project, Kebo
+Giro, owned on disk and not in the collection. `6_19_26 Lee Burridge
+Playground Burning Man 10-24`: 12, Spiller, Groovejet (If This Ain't Love)
+(Purple Disco Machine & Lorenz Rhode Remix), owned on disk and not in the
+collection. With the David San set's two, six owned files are on disk with
+no collection row; they join a playlist once rekordbox holds them.
+
+**The playlists made, with their rows.** LP Giobbi This Is Femme House Mix
+9; Alex Twin opening set for PAWSA 17; DOTB Frisky Radio NYC 27; DOTB John
+Digweed Transitions 789 6; Desert in Me Kora Desert In Podcast 15 9; Fulltone
+Fusion Festival 7; When We Dip Radio Amonita #167 5; ƒernab verbimmelt #4
+Fulltone 4; Atish Never Sleep Again Burning Man 14; OSHE Bonnaroo For Goats
+10; Lee Burridge Hotel Humboldt 11; Lee Burridge Playground Burning Man 12;
+Sebastien Leger Lost Miracle 093 6; Sebastien Leger Lost Miracle 094 6; DHA
+FM Atish & Hoj 3; hoj Hoj b2b Lee Burridge Burning Man 2012 19. Each under
+its full account name without the `DOWNLOADED ` prefix.
+
+**What the sitting leaves.** Every downloaded set on the account has its
+INSPIRATION playlist except the David San set, which has no matchable row
+until its two files are in the collection. The run's JSON is under
+`~/.local/state/cratekit/live/inspiration*.json` and `ack-live*.json`.
+
+**A trap for the next sitting.** The feeder's lock file is held with `flock`
+on a file that is never removed (`cratekit-board.feeder.lock`, dated
+2026-09-20), so a waiter that polls for the file to vanish never fires. Poll
+the feeder's pid, or the "leaving" line in its log. The waiter set at 20:04
+did neither and the harness ended it at thirty minutes, which is why the
+rekordbox read waited for the morning.
+
 ## What blocks a full sync cycle, stated plainly
 
 **Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
