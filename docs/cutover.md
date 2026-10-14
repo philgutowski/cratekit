@@ -1264,6 +1264,69 @@ the feeder's pid, or the "leaving" line in its log. The waiter set at 20:04
 did neither and the harness ended it at thirty minutes, which is why the
 rekordbox read waited for the morning.
 
+## Sitting 41, 2026-10-14, 06:37 to 08:05, Phillip present from 06:50, stopped on his word
+
+Phillip, 06:37, by the restart prompt: run the account steps the last four units
+owe (U140's rename, U142's sets archive, U143's root step, twice), read the
+root back, then list the pairing candidates for his custom playlists. Then,
+by message while it ran: "don't backup today", "proceed without asking me any
+questions", "if longer than 20 min, stop and file it for a future run", "is
+it reasonable to complete the tidal library playlist and folder reorg in the
+next hour?", "I want all the playlists at the root to be filed when this is
+done", "if they haven't been downloaded, just delete them" (the ` LIBRARY`
+copies), and at 08:02 "just stop here and I will delete and reorg them by
+hand". The feeder was idle (pid 39040, nothing Ready but #29) and was left
+running, since no card was filed before it. `crate doctor` read clean with
+both backup ages at 4 days; the acknowledgment of sitting 40 held to
+2026-10-14T12:11Z; rekordbox and its agent were confirmed gone before every
+verb and were not opened. No rehearsal copy was made for the account steps:
+they write the account only, and the account is not copied, so each live
+plan was read at its gate instead. No database write, no backup, no beat
+grid. The actor on every gate was `session`.
+
+**The first finding was the clock.** A read of the account root through the
+product's own client, folders and every folder's playlists, ran 24 minutes
+and was stopped; instrumented, with every request counted by path, the
+account's 624 playlists cost 637 calls in 640 seconds and the 31 folders'
+playlists 648 calls in 651 seconds, 1,233 of the 1,285 being
+`GET /v1/playlists/<id>`, one per playlist parsed, against 53 page requests.
+At the gate's default pace of one call a second that is eleven minutes per
+listing, and `organize` lists the account when it plans and again when it
+applies, which is where sitting 39's 22 minute report and 45 minute apply
+went. R-1016, with a card. On Phillip's ask the pace was halved,
+`provider.min_interval_s` 1.0 to 0.5 in the live config (backup
+`config.toml.bak-2026-10-14-before-pacing`), and stayed there: 5,500 calls
+at that pace drew no rate limit answer (`provider_gate.json` reads 0 rate
+limited, 0 trips, 166,884 calls lifetime at 07:29).
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| read of the account root, instrumented | live, read only, 07:02 to 07:24 | **31 root folders, 13 root playlists**: the Signal set `10_10_26 Public Service NYC Live at Signal 2-26` (38), eleven ` LIBRARY` copies (four Colorize at 144, five Sol Selectas at 197, one Rebellion at 3, one Do Not Sit On The Furniture at 11), `tech_house_hits - Phil` (5); `Downloaded Sets 2026` 19, `2026` 2, `2026 Custom Playlists` 53 (52 `DOWNLOADED` and the unprefixed `lisa_7/16`); the Vonking set is on the account under no name, and `Untitled Playlist` is gone from the root; the probe folder `Cratekit nesting probe A` stood at the root with B and C inside it | read |
+| the three `Cratekit nesting probe` folders, step 1 | by hand through the client, the 2026-10-13 cleanup script, 07:25 | **B, C and A removed**, the root read back with none | live |
+| `export set --rename 2026-10-10T14:59:24Z-a4b0` (U140), step 2 | live, 07:25, refused before its gate | **`export-set-rename-unresolved`, nothing written**: the ledger records the set under `10_10_26 Public Service NYC Live at Signal 2-26`, the name its landing wrote (session `2026-10-10T16:09:29Z-714e`), and the verb looked only under the INSPIRATION name `3_25_26 Public Service NYC Live at Signal 2-26` and the two names the job's page words give, `… Live @ Signal: 2.16.2026 3-26` on the posted and the queued day. R-1017, with a card. The Signal rename stays owed | refused |
+| `organize --only sets` (U142), step 3 | live, 07:25, plan only, the gate answered `abort` | **0 to apply, 2 listed only, digest `a5b6aad2206399f7`**: Signal waiting, no intake file named for it and no INSPIRATION playlist of its recorded name (the rename above is the proof it lacks); `tech_house_hits - Phil` waiting on the same reason. Vonking is in no ledger map and was not planned, as the brief allows. The read back stays 19 plus 0 | read |
+| `organize --only root` (U143), step 4, first run | live, planned 07:26 to 07:45 (2,213 calls, none rate limited), the gate answered `apply` at 07:45, the apply ended by hand at 08:03 on Phillip's word, still in its second listing | plan: **remove `Rebellion LIBRARY`** (every track in the label folder), **move 53 playlists out of `2026 Custom Playlists` into `2026`**, leave ten debris copies naming the tracks their label folders lack (Colorize 39 of 144 each, Sol Selectas 29 of 197 each, Do Not Sit On The Furniture 5 of 11), leave the legacy folder for the later run; digest `e0574ae2454744fa`. **Nothing was written**: `2026` reads 2 and `2026 Custom Playlists` 53 after the stop, so the account is as the first read shows it, less the probe folders | planned, not applied |
+| `organize --only root`, second run, step 4 | not run | the first apply never emptied the folder | not run |
+| rekordbox, step 5 | not opened | the account steps changed nothing in rekordbox and Phillip stopped the sitting before the read | not run |
+| the pairing candidates (U130), Phillip's standing wish | both sides listed, read only; rekordbox from a database copy cloned with `cp -c` to a scratch directory on the volume and removed after | account side: `tech_house_hits - Phil` was the one working custom playlist at the root, and Phillip deleted it by hand at 07:50 (its `sets` record outlives it, R-1018); rekordbox side: **204 plain playlists outside Cratekit's trees**, by top folder ARCHIVE 92, GIG READY 43, MOODS 20, Genre Trivia! 18, Favorites 12, WIP 9, TOOLBOX 6, Bandcamp Purchases 2, root 2. No pair was marked and nothing was synced: a first sync writes rekordbox behind the acknowledgment and queues every unmatched track for acquisition, so the pairs are Phillip's to name | read |
+
+**What the sitting leaves.** Phillip is deleting the ten ` LIBRARY` copies
+and reorganising the root by hand, his decision of 08:02, which overrides
+the plan's leave rule for those copies (their undownloaded tracks are 39, 29
+and 5 per copy, named in the run `2026-10-14T11:26:38Z-fe27`). The Signal
+set stays at the root under its old name until R-1017 lands, and the
+Rebellion copy and the legacy folder stay until he moves them or the root
+step runs again. The provider pace is half a second. The run envelopes are
+under `~/.local/state/cratekit/live/{rename,sets,root}.act1.json`; the
+instrumented read and the candidate list are in the session's scratch
+directory and summarised above.
+
+**A trap for the next sitting.** Budget an account step by its listings, not
+its writes: at the half second pace a listing is about five and a half
+minutes and an organize step pays two, so plan, read and apply is twelve
+minutes before the first write, and the old one second pace doubles it.
+Run every account step under nohup with a pid waiter.
+
 ## What blocks a full sync cycle, stated plainly
 
 **Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
@@ -1274,6 +1337,20 @@ attributes only on rows it creates (R-688). Line 4 of #178, the full sync
 cycle, is next and is attended.
 
 ## Next sitting
+
+**The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
+He stopped the root step and is deleting the ten ` LIBRARY` copies and
+filing the rest himself. Before the next account step: read the root back
+first, since it will not match any plan written here. Owed from sitting 41,
+in this order: R-1017 landed, then U140's Signal rename live
+(`crate export set --rename 2026-10-10T14:59:24Z-a4b0`, read back as
+`3_25_26 Public Service NYC Live at Signal 2-26`, `export set` planning no
+twin), then `organize --only sets` archiving it into `Downloaded Sets 2026`
+(read back 19 plus 1; Vonking is on the account under no name and in no
+ledger map), then `organize --only root` twice over whatever he left. Budget
+each by its listings (the trap above). The pairing candidates for U130 are
+listed in sitting 41; Phillip names the pairs, and nothing is marked until he
+does. R-1016 is the card that makes any of this fast.
 
 **The INBOX account playlists, Soul, Hip-Hop and Jazz are current as of
 sitting 39 (2026-10-13), unattended.** A35 and A38 closed; the Signal set is

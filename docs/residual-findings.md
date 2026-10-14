@@ -38055,3 +38055,89 @@ the verb that reads the second proof. Ledger only.
 **Measured cost.** Not driven against the live account. On 2026-10-13 the account held 19 sets, 2 already in INSPIRATION; how many of the other 17 match nothing is the attended sitting's measurement. Each listing is one paced provider read (R-705's pacing), so the cost is seconds to minutes per run, no write and no loss. `--only adopt` and `--only rotate` never plan the step and pay nothing.
 
 **Closes when:** a person decides whether an empty set should be remembered (a record of sets read and found empty, rekeyed when the library grows), or whether re-reading is the right price for noticing a set whose tracks later landed. Ledger only.
+
+---
+
+## R-1016. Every account playlist listing costs one request per playlist on top of its pages, so a single listing takes eleven minutes at the default pace
+
+**Found:** at sitting 41, 2026-10-14, instrumenting a read of the account root after the first read ran past twenty minutes.
+
+**The mechanism.** `listing.account_playlists` and `listing.folder_playlists`
+parse each returned item through the provider library's playlist parser, and
+that parser fetches the playlist again, `GET /v1/playlists/<id>`, once per
+item. Measured with every request counted by path: the account's 624
+playlists cost 637 calls (13 pages plus 624 single fetches) in 640 seconds,
+and the 31 folders' playlists cost 648 calls in 651 seconds, 1,233 single
+playlist fetches against 53 page requests in all. The provider gate paces
+every call at `provider.min_interval_s`, one second by default, so the fetches
+are the time: eleven minutes per listing, and `organize` lists the account
+when it plans and again when it applies.
+
+**Measured cost.** The filing step's 22 minute report and 45 minute apply of
+sitting 39 are this. At sitting 41 the owed account steps could not fit the
+hour Phillip gave them at one call a second, and the sitting ran with the
+interval lowered to half a second in the live config (backup
+`config.toml.bak-2026-10-14-before-pacing`), which the breaker still guards;
+165,000 calls at one a second had drawn no rate limit answer.
+
+**Closes when:** the listings build the playlist objects from the page's own
+data without the second fetch, or read only the fields the callers use
+(identifier, name, track count), and a listing of 624 playlists is measured
+under one minute. Phillip asked on 2026-10-14 for this to be filed for a
+future run.
+
+---
+
+## R-1017. The set rename looks the ledger up by the names its job derives today, so the Signal set, recorded under the name its landing wrote, is refused as unresolved
+
+**Found:** at sitting 41, 2026-10-14, running U140's `crate export set --rename 2026-10-10T14:59:24Z-a4b0` live for the first time.
+
+**The mechanism.** `export set --rename JOB` reads the INSPIRATION playlist's live
+name and then looks for the account playlist in the outbound ledger's `sets`
+map under that name or under `set_cli._names_for_job`, which spells the job's
+frozen name, then the source system's form on the posted day, then on the
+queued day, each built from the job's page words. The Signal job carries no
+frozen name, and its page words spell `Public Service NYC Live @ Signal:
+2.16.2026 3-26`, while the ledger's record, written by the landing of
+2026-10-10 (session `2026-10-10T16:09:29Z-714e`), is keyed `10_10_26 Public
+Service NYC Live at Signal 2-26`. None of the three names the verb tries is
+the recorded one, so it refused `export-set-rename-unresolved` with nothing
+written, and the landing's own session record, which names both the job and
+the recorded playlist name, is read by the verb for the INSPIRATION lookup but
+not for this one.
+
+**Measured cost.** The Signal set's account playlist cannot be renamed by the
+verb, and because the sets step of `organize` proves a download by an
+INSPIRATION playlist of the recorded name, the set cannot be archived either:
+`organize --only sets` listed it as waiting with no proof at the same sitting.
+The one set U140 was built to rename is the one it cannot find.
+
+**Closes when:** the rename resolves the ledger record through the landing's
+session record (job to recorded name) or by the account playlist identifier
+the landing recorded, before falling back to the derived names, and the Signal
+rename runs live and the set archives. Meets the board bar: a workflow a DJ
+needs cannot finish.
+
+---
+
+## R-1018. The outbound ledger's sets map keeps a record for a set playlist removed by hand, so the sets step lists it as waiting on every run
+
+**Found:** at sitting 41, 2026-10-14, after Phillip deleted `tech_house_hits - Phil` on the account by hand while the root step applied.
+
+**The mechanism.** `organize --only sets` plans from the outbound ledger's
+`sets` map, one archive step per recorded set, and proves a download by an
+intake file named for the set or an INSPIRATION playlist of its name. The map
+records `tech_house_hits - Phil`, a typed tracklist Phillip exported at
+sitting 30 from his own rekordbox set build, with the account identifier
+`7e6226cf-97ae-4fb6-adc6-b7b2a749f01f`. He removed that playlist on the account
+on 2026-10-14. Nothing clears a `sets` record whose playlist the account no
+longer lists, and no verb removes one, so each run of the sets step lists the
+set as waiting for a proof that will never come.
+
+**Measured cost.** One listed row on every sets gate, naming a playlist that
+does not exist; nothing is written. Not driven past the listing: whether the
+apply of a later proof would refuse on the missing identifier is unmeasured.
+
+**Closes when:** the sets step reads a recorded set whose identifier the
+account no longer lists as gone and says so, or a verb takes a record off the
+map by name. Ledger only, since the row is a listing and no write follows.
