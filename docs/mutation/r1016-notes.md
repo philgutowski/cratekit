@@ -33,3 +33,12 @@ single test is written to kill and none of which has been measured.
 `user_date_added`; no caller reads that field, so a zero there would be a
 maintainer facing zero. M10 is killed by the endpoint path the paired client
 test pins, and by the counting transport refusing a path it does not serve.
+
+**Measured by the watcher, 2026-10-14, on macOS at relay/322 b20ca372**
+(after the installer image was ejected), with the command above and the
+output written outside the worktree, then copied here byte for byte: 11
+rows, 10 killed, one zero. `M6_not_a_page_reads_items_null_as_empty` is
+equivalent, not a gap: it rewrites the loop line, but the not a page guard
+three lines above already refuses any page whose `items` is not a list, so
+the mutated `or []` never sees a null. The guard itself is row M5, killed
+by three tests.
