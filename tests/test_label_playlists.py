@@ -611,7 +611,7 @@ class _Endpoint:
 
 class _PlaylistParser:
     @staticmethod
-    def parse_factory(data: dict) -> _Named:
+    def parse(data: dict) -> _Named:
         return _Named(data["uuid"], data["title"])
 
 
@@ -778,12 +778,17 @@ def test_the_client_library_still_offers_the_folder_calls_the_adapter_makes():
     # R-878: the folder walks reach past the listing methods to these.
     assert callable(getattr(tidalapi.session.Session, "parse_folder", None))
     assert callable(getattr(tidalapi.request.Requests, "request", None))
-    assert callable(getattr(tidalapi.playlist.Playlist, "parse_factory", None))
+    # R-1016: both playlist walks parse with the parser's own ``parse``, never
+    # its ``parse_factory``, and the account walk reaches the user's request.
+    assert callable(getattr(tidalapi.playlist.Playlist, "parse", None))
     session = tidalapi.session.Session()
     handle = session.folder()
     assert handle.request is session.request
     assert handle.session.config.api_v2_location
-    assert callable(handle.playlist.parse_factory)
+    assert callable(handle.playlist.parse)
+    user = tidalapi.user.LoggedInUser(session, 42)
+    assert user.request is session.request
+    assert callable(user.playlist.parse)
 
 
 def test_a_year_the_batch_did_not_file_is_left_alone(followed):

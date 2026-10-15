@@ -225,7 +225,6 @@ class Omitting:
         return [item for item in window if item.id not in self._omitted]
 
     tracks = _serve
-    playlist_and_favorite_playlists = _serve
     get_albums = _serve
 
     def get_ep_singles(self, limit: int | None = None, offset: int = 0) -> list:
@@ -323,7 +322,7 @@ def test_a_playlist_that_publishes_no_count_degrades_rather_than_refusing():
 def test_the_account_playlists_listing_reads_to_the_end_at_its_own_page_size():
     """Page size 50 here, not 100, so a shared constant would page this one wrong."""
     playlists = omitting_corpus(105, range(6), prefix="p")
-    session = Session(playlists)  # the fake IS the user: it answers the listing method
+    session = Session(User(serve=playlists._serve))
     got = listing.account_playlists(session)
     assert len(got) == 99
     assert playlists.calls == [(50, 0), (50, 50), (50, 100), (50, 150)]
@@ -530,12 +529,50 @@ class Session:
         self.user = user
 
 
+class _ItemParser:
+    """The client's playlist parser, reduced to the identifier it reads."""
+
+    @staticmethod
+    def parse(data: dict) -> Item:
+        return Item(data["uuid"])
+
+
+class AccountRequest:
+    """The account playlist endpoint behind the user's request object (R-1016).
+
+    Serves whatever ``serve(limit, offset)`` returns, wrapped the way the
+    endpoint wraps it, each playlist under ``playlist`` beside the ``created``
+    the walk moves onto it.
+    """
+
+    def __init__(self, serve) -> None:
+        self._serve = serve
+        self.sent: list[tuple[str, str, dict]] = []
+
+    def request(self, method: str, path: str, params: dict | None = None) -> _Answer:
+        self.sent.append((method, path, dict(params or {})))
+        window = self._serve(limit=params["limit"], offset=params["offset"])
+        return _Answer(
+            {
+                "items": [
+                    {"created": "2026-01-01T00:00:00Z", "playlist": {"uuid": item.id}}
+                    for item in window
+                ]
+            }
+        )
+
+
 class User:
-    def __init__(self, favorites=None, playlists: list[list[Item]] | None = None) -> None:
+    def __init__(
+        self, favorites=None, playlists: list[list[Item]] | None = None, serve=None
+    ) -> None:
         self.favorites = favorites
         self._playlists = playlists or []
+        self.id = 42
+        self.playlist = _ItemParser()
+        self.request = AccountRequest(serve or self._page)
 
-    def playlist_and_favorite_playlists(self, limit: int | None = None, offset: int = 0) -> list:
+    def _page(self, limit: int | None = None, offset: int = 0) -> list:
         index = offset // (limit or 1)
         return self._playlists[index] if index < len(self._playlists) else []
 
@@ -1281,3 +1318,285 @@ def test_a_client_whose_request_rejects_the_arguments_refuses_by_name_unslept():
     session.request = Older()
     with pytest.raises(listing.ListingNotPaginated, match="changed shape"):
         listing.account_folders(session, sleep=lambda _: pytest.fail("slept"))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-1016: a playlist listing costs its pages and nothing more
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Measured on the author's account on 2026-10-14: 624 playlists cost 637
+# requests, 13 pages and 624 single fetches, because the client's playlist
+# parser ends in ``Playlist.factory``, which rebuilds every playlist the account
+# created as a ``UserPlaylist``, and that constructor fetches it again. The
+# tests below drive the REAL client over a transport that counts every request
+# by path, since a method level fake cannot make the fetch the defect is.
+
+OWNER = 42
+
+
+class _Sent:
+    def __init__(self, url: str) -> None:
+        self.url = url
+
+
+class _Response:
+    """What ``requests`` hands the client back, as far as the client reads it."""
+
+    def __init__(self, url: str, body: dict) -> None:
+        self.request = _Sent(url)
+        self.status_code = 200
+        self.ok = True
+        self.headers = {"etag": '"1"'}
+        self.text = ""
+        self._body = body
+
+    def json(self) -> dict:
+        return self._body
+
+    def raise_for_status(self) -> None:
+        return None
+
+
+def _owned_playlist(index: int, owner: int = OWNER) -> dict:
+    """One playlist's data as the provider serves it, created by ``owner``."""
+    return {
+        "uuid": f"pl{index}",
+        "title": f"List {index:03d}",
+        "type": "USER",
+        "numberOfTracks": index % 7,
+        "numberOfVideos": 0,
+        "description": "",
+        "duration": 0,
+        "image": None,
+        "squareImage": None,
+        "promotedArtists": [],
+        "creator": {"id": owner},
+    }
+
+
+class CountingTransport:
+    """The HTTP session under a real client, counting every request by path.
+
+    Serves the account playlist endpoint by offset, the folder endpoint by
+    cursor, one playlist by identifier, and a playlist's tracks, empty. The
+    single playlist read is served rather than refused so the client's own
+    listing method can be watched making it (the paired test below).
+    """
+
+    def __init__(self, playlists: list[dict], *, page: int = 50) -> None:
+        self.playlists = playlists
+        self.page = page
+        self.paths: dict[str, int] = {}
+
+    def request(self, method: str, url: str, params: dict | None = None, **_: object):
+        from urllib.parse import urlsplit
+
+        path = urlsplit(url).path
+        self.paths[path] = self.paths.get(path, 0) + 1
+        params = params or {}
+        if path.endswith("/playlistsAndFavoritePlaylists"):
+            start = int(params.get("offset") or 0)
+            window = self.playlists[start : start + min(int(params["limit"]), self.page)]
+            items = [{"created": "2026-01-01T00:00:00Z", "playlist": dict(p)} for p in window]
+            return _Response(url, {"items": items, "totalNumberOfItems": len(self.playlists)})
+        if path.endswith("/my-collection/playlists/folders"):
+            start = int(params.get("cursor") or 0)
+            window = self.playlists[start : start + min(int(params["limit"]), self.page)]
+            body: dict = {
+                "items": [
+                    {"itemType": "PLAYLIST", "trn": f"trn:playlist:{p['uuid']}", "data": dict(p)}
+                    for p in window
+                ],
+                "totalNumberOfItems": len(self.playlists),
+            }
+            if start + len(window) < len(self.playlists):
+                body["cursor"] = str(start + len(window))
+            return _Response(url, body)
+        if path.endswith("/tracks"):
+            return _Response(url, {"items": [], "totalNumberOfItems": 0})
+        if "/playlists/" in path:
+            wanted = path.rsplit("/", 1)[-1]
+            return _Response(url, next(p for p in self.playlists if p["uuid"] == wanted))
+        raise AssertionError(f"the transport serves no {path}")
+
+    def single_fetches(self) -> int:
+        """Requests for one playlist by identifier, the cost R-1016 removes."""
+        return sum(
+            count
+            for path, count in self.paths.items()
+            if path.startswith("/v1/playlists/") and not path.endswith("/tracks")
+        )
+
+
+def _logged_in_over(transport: CountingTransport):
+    """A real client, logged in as ``OWNER``, whose HTTP session is the transport."""
+    tidalapi = pytest.importorskip("tidalapi")
+    session = tidalapi.Session()
+    session.request_session = transport
+    session.user = tidalapi.user.LoggedInUser(session, OWNER)
+    return session
+
+
+def test_an_account_listing_of_owned_playlists_costs_its_pages_and_no_single_fetch():
+    """The brief's first scenario: N playlists over P pages make P requests."""
+    held = [_owned_playlist(n) for n in range(130)]
+    transport = CountingTransport(held)
+    found = listing.account_playlists(_logged_in_over(transport), sleep=lambda _: None)
+
+    assert [p.id for p in found] == [p["uuid"] for p in held]
+    assert transport.single_fetches() == 0
+    # Three pages of 50 hold the 130, and the empty fourth ends the walk.
+    assert transport.paths == {f"/v1/users/{OWNER}/playlistsAndFavoritePlaylists": 4}
+
+
+def test_the_clients_own_account_listing_fetches_every_owned_playlist_again():
+    """The pair to the test above: the mechanism R-1016 measured, on this client.
+
+    If a later client stops making the fetch this goes red, which says the
+    listing could return to the client's own method, rather than the walk
+    carrying a workaround for a cost that no longer exists unnoticed.
+    """
+    held = [_owned_playlist(n) for n in range(5)] + [_owned_playlist(5, owner=7)]
+    transport = CountingTransport(held)
+    _logged_in_over(transport).user.playlist_and_favorite_playlists(limit=50, offset=0)
+
+    assert transport.single_fetches() == 5
+    # And the walk sends the request the client's method sends: one path, the
+    # same one, so a client that moved its endpoint turns this red too.
+    page_paths = {path for path in transport.paths if not path.startswith("/v1/playlists/")}
+    assert page_paths == {"/v1/" + listing.ACCOUNT_PLAYLISTS_ENDPOINT % OWNER}
+
+
+def test_a_folder_listing_of_owned_playlists_costs_its_pages_and_no_single_fetch():
+    """The brief's second scenario, over the cursor walk."""
+    held = [_owned_playlist(n) for n in range(12)]
+    transport = CountingTransport(held, page=5)
+    session = _logged_in_over(transport)
+    handle = session.folder()
+    handle.id = "folder-kompakt"
+    found = listing.folder_playlists(handle, sleep=lambda _: None)
+
+    assert [p.id for p in found] == [p["uuid"] for p in held]
+    assert transport.single_fetches() == 0
+    assert transport.paths == {"/v2/my-collection/playlists/folders": 3}
+
+
+def test_a_listed_playlist_carries_the_fields_the_callers_read():
+    """Identifier, name, track count and creator, read off the page alone."""
+    transport = CountingTransport([_owned_playlist(3)])
+    (playlist,) = listing.account_playlists(_logged_in_over(transport), sleep=lambda _: None)
+
+    assert (playlist.id, playlist.name, playlist.num_tracks) == ("pl3", "List 003", 3)
+    assert playlist.creator.id == OWNER
+    assert playlist.user_date_added is not None
+
+
+def test_a_listed_playlist_still_reads_its_tracks_through_the_playlist():
+    """The brief's last scenario: the object is the client's, and it pages its tracks."""
+    transport = CountingTransport([_owned_playlist(0)])
+    (playlist,) = listing.account_playlists(_logged_in_over(transport), sleep=lambda _: None)
+    before = dict(transport.paths)
+
+    assert listing.playlist_tracks(playlist, sleep=lambda _: None) == []
+    after = {path: n - before.get(path, 0) for path, n in transport.paths.items()}
+    assert {path: n for path, n in after.items() if n} == {"/v1/playlists/pl0/tracks": 1}
+
+
+def test_the_catalogue_and_the_folder_reads_hand_the_plans_what_the_pages_said():
+    """The brief's third scenario: the filing and root plans read these two."""
+    from cratekit.label import tidal_catalogue
+    from cratekit.label.catalogue import AccountPlaylist
+    from cratekit.modules.outbound.tidal_account import TidalAccount
+
+    held = [_owned_playlist(n) for n in range(60)] + [_owned_playlist(60, owner=7)]
+    transport = CountingTransport(held)
+    session = _logged_in_over(transport)
+
+    listed = tidal_catalogue.TidalCatalogue(session).account_playlists()
+    assert listed == tuple(
+        AccountPlaylist(p["uuid"], p["title"], p["numberOfTracks"]) for p in held[:60]
+    )
+    inside = TidalAccount(session, sleep=lambda _: None).folder_playlists("folder-kompakt")
+    assert inside == {p["uuid"]: p["title"] for p in held}
+    assert transport.single_fetches() == 0
+
+
+def test_a_listing_of_624_playlists_is_paced_in_seconds_not_minutes(tmp_path):
+    """The brief's verification, on the transport: the author's 624 at the default pace.
+
+    The real gate, at the configuration's default interval, over a clock that
+    moves only when the gate sleeps. Fourteen requests, thirteen pages and the
+    empty one, against the 637 the live read made.
+    """
+    from cratekit.core.provider_gate import Gate, GateSettings
+
+    class Clock:
+        def __init__(self) -> None:
+            self.now = 1_700_000_000.0
+
+        def __call__(self) -> float:
+            return self.now
+
+        def sleep(self, seconds: float) -> None:
+            self.now += seconds
+
+    clock = Clock()
+    transport = CountingTransport([_owned_playlist(n) for n in range(624)])
+    session = _logged_in_over(transport)
+    gate = Gate(
+        path=tmp_path / "gate.json", lock_path=tmp_path / "gate.lock",
+        clock=clock, sleep=clock.sleep,
+    )
+    assert gate.attach(session)
+    start = clock.now
+    found = listing.account_playlists(session, sleep=lambda _: None)
+
+    assert len(found) == 624
+    assert transport.single_fetches() == 0
+    assert gate.calls == 14
+    # Paced, so the gate really is under the walk, and at most one interval a
+    # call, which at the default of one second is fourteen against 640 live.
+    elapsed = clock.now - start
+    assert 0 < elapsed <= gate.calls * GateSettings().min_interval_s
+    assert elapsed < 60
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [{"status": 500, "userMessage": "upstream"}, {"items": None}, ["not", "a", "page"]],
+    ids=["an-error-body", "items-null", "a-list"],
+)
+def test_an_account_answer_that_is_not_a_page_is_refused_not_read_as_the_end(answer):
+    """Read as the empty page that ends the walk, the account would come back short."""
+
+    class Answering:
+        def request(self, method: str, path: str, params: dict | None = None) -> _Answer:
+            return _Answer(answer)
+
+    user = User()
+    user.request = Answering()
+    slept: list[float] = []
+    with pytest.raises(ValueError, match="neither a page nor a list of items"):
+        listing.account_playlists(Session(user), sleep=slept.append)
+    assert len(slept) == listing.DEFAULT_MAX_RETRIES
+
+
+def test_an_account_request_that_rejects_the_arguments_refuses_by_name_unslept():
+    """The translation ``_paged_caller`` made for the client's method, kept for the raw call."""
+
+    class Older:
+        def request(self, method: str, path: str):
+            pytest.fail("a request that cannot carry its paging was sent")
+
+    user = User()
+    user.request = Older()
+    with pytest.raises(listing.ListingNotPaginated, match="account playlist listing"):
+        listing.account_playlists(Session(user), sleep=lambda _: pytest.fail("slept"))
+
+
+def test_a_user_without_the_parts_the_account_walk_reaches_is_refused_by_name():
+    class Bare:
+        id = OWNER
+
+    with pytest.raises(listing.ListingNotPaginated, match="account playlist listing"):
+        listing.account_playlists(Session(Bare()))

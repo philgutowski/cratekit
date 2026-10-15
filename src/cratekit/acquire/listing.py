@@ -41,10 +41,11 @@ THE THREE THINGS EACH WRAPPER DOES, and why each is not optional:
 
 WHAT IS NOT HERE. Nothing calls the network in this module by itself; every
 wrapper takes the provider object or a page-fetching callable, which is what lets
-the whole module be proven against fakes with no account and no session. The two
-folder shapes are the nearest thing to an exception: they send their own request,
-but through the request object the provider client hands them, so they reach the
-network by the same transport, and the same pacing gate, as every client call.
+the whole module be proven against fakes with no account and no session. The
+three folder shapes and the account playlists shape are the nearest thing to an
+exception: they send their own request, but through the request object the
+provider client hands them, so they reach the network by the same transport, and
+the same pacing gate, as every client call.
 """
 
 from __future__ import annotations
@@ -409,7 +410,10 @@ def paginate_cursor(
     sat inside the page fetch before this walk existed, so a rate limit on it
     was retried, and a walk that stopped retrying it would turn one blip into a
     refused verb. Retried per item rather than with the page, so a blip on the
-    thirtieth playlist does not fetch the other twenty nine again.
+    thirtieth playlist does not fetch the other twenty nine again. The folder
+    playlists walk has parsed without that fetch since R-1016, and the ladder
+    stays, because a parser is the client's code and this walk cannot see
+    whether a later version of it reaches the network.
 
     **A response that is not a page is refused, not read as the end.** One with
     neither an ``items`` list nor a declared count is retried on the ladder and
@@ -623,14 +627,18 @@ FOLDER_ENDPOINT = "my-collection/playlists/folders"
 #: reading a listing nobody has measured.
 FOLDER_ORDER = "NAME"
 
+#: What a refusal from one of the three folder walks calls the walk.
+FOLDER_WALK = "folder listing"
 
-def _client_part(owner: Any, *path: str) -> Any:
+
+def _client_part(owner: Any, *path: str, walk: str) -> Any:
     """``owner.a.b``, or :class:`ListingNotPaginated` naming the missing part.
 
-    The folder walks reach past the client's listing methods to its request
-    object, its configuration and its parsers. A client version that moved one
-    of those is an upgrade problem the user can act on, the same as a listing
-    method that went away, and it is refused by name rather than retried.
+    The folder walks and the account playlists walk reach past the client's
+    listing methods to its request object, its configuration and its parsers. A
+    client version that moved one of those is an upgrade problem the user can
+    act on, the same as a listing method that went away, and it is refused by
+    name rather than retried. ``walk`` names the listing in that refusal.
     """
     value = owner
     for name in path:
@@ -638,9 +646,28 @@ def _client_part(owner: Any, *path: str) -> Any:
         if value is None:
             raise ListingNotPaginated(
                 f"{type(owner).__name__} has no {'.'.join(path)}; the provider client "
-                f"changed shape and the folder listing needs updating with it"
+                f"changed shape and the {walk} needs updating with it"
             )
     return value
+
+
+def _send(request: Any, walk: str, *args: Any, **kwargs: Any) -> Any:
+    """``request.request(*args, **kwargs)``, a rejected signature refused by name.
+
+    The walks that send the client's request themselves, the three folder walks
+    and the account playlists walk, send it through here, so a client whose
+    request object no longer takes the arguments is refused as
+    :class:`ListingNotPaginated` in one wording, the walk named, rather than
+    retried as though waiting could change a signature.
+    """
+    try:
+        return request.request(*args, **kwargs)
+    except TypeError as exc:
+        raise ListingNotPaginated(
+            f"{type(request).__name__}.request does not accept the arguments the "
+            f"{walk} sends; the provider client changed shape and the {walk} "
+            f"needs updating with it"
+        ) from exc
 
 
 def _folder_endpoint(
@@ -664,15 +691,59 @@ def _folder_endpoint(
         }
         if cursor is not None:
             params["cursor"] = cursor
-        try:
-            answer = request.request("GET", FOLDER_ENDPOINT, base_url=base_url, params=params)
-        except TypeError as exc:
-            raise ListingNotPaginated(
-                f"{type(request).__name__}.request does not accept the arguments the "
-                f"folder listing sends; the provider client changed shape and the "
-                f"folder listing needs updating with it"
-            ) from exc
+        answer = _send(
+            request, FOLDER_WALK, "GET", FOLDER_ENDPOINT, base_url=base_url, params=params
+        )
         return answer.json()
+
+    return call
+
+
+#: The account listing's endpoint, the one ``User.playlist_and_favorite_playlists``
+#: calls, the account's identifier in place of ``%s``.
+ACCOUNT_PLAYLISTS_ENDPOINT = "users/%s/playlistsAndFavoritePlaylists"
+
+
+def _account_playlists_endpoint(user: Any) -> Callable[[int, int], list[Any]]:
+    """Bind the account listing into the ``(limit, offset)`` shape, parsed WITHOUT a fetch.
+
+    Sends what ``User.playlist_and_favorite_playlists`` sends, through the user's
+    own request object, and does its one reshaping, the listing's ``created``
+    moved onto the playlist as ``dateAdded``. What it does not do is hand each
+    item to ``Playlist.parse_factory``, the parser that method is wired to: that
+    parser ends in ``Playlist.factory``, which builds a ``UserPlaylist`` for
+    every playlist the account created, and that constructor fetches the
+    playlist again, ``GET playlists/<id>``, to read its etag. Measured on the
+    author's account on 2026-10-14, 624 playlists cost 637 requests, 13 pages and
+    624 fetches (R-1016). ``Playlist.parse`` reads the same item data and makes
+    no request, so a page costs one request.
+
+    The objects come back as ``Playlist`` rather than ``UserPlaylist``. They
+    read their tracks as before; what they lack is an etag, which only the
+    client's own edit methods send, and no caller of this listing edits through
+    the object it lists.
+    """
+    walk = "account playlist listing"
+    request = _client_part(user, "request", walk=walk)
+    parse = _client_part(user, "playlist", "parse", walk=walk)
+    path = ACCOUNT_PLAYLISTS_ENDPOINT % _client_part(user, "id", walk=walk)
+
+    def call(limit: int, offset: int) -> list[Any]:
+        answer = _send(request, walk, "GET", path, params={"limit": limit, "offset": offset})
+        page = answer.json()
+        if not isinstance(page, dict) or not isinstance(page.get("items"), list):
+            # Refused rather than read as the empty page that ends this walk:
+            # an error body read as the end would return the account short.
+            raise ValueError(
+                f"the {walk} was answered with something that is neither a page "
+                f"nor a list of items: {str(page)[:200]!r}"
+            )
+        found = []
+        for item in page["items"]:
+            playlist = item["playlist"]
+            playlist["dateAdded"] = item["created"]
+            found.append(parse(playlist))
+        return found
 
     return call
 
@@ -778,10 +849,15 @@ def account_playlists(session: Any, **kwargs: Any) -> list[Any]:
     Filtering to the ones the account CREATED is a policy question that differs
     per caller, and a wrapper that answered it would be two things at once: this
     one is pagination and nothing else.
+
+    ONE REQUEST PER PAGE AND NONE PER PLAYLIST (R-1016). The walk sends the
+    client's listing request itself rather than calling the client's listing
+    method, because that method parses each playlist the account created by
+    fetching it again. :func:`_account_playlists_endpoint` says why.
     """
     kwargs.setdefault("key", lambda playlist: str(getattr(playlist, "id", "")))
     return paginate(
-        _paged_caller(session.user, "playlist_and_favorite_playlists"),
+        _account_playlists_endpoint(session.user),
         **_shape("account_playlists", **kwargs),
     )
 
@@ -808,14 +884,14 @@ def account_folders(session: Any, **kwargs: Any) -> list[Any]:
     """
     kwargs.setdefault("key", lambda folder: str(getattr(folder, "id", "")))
     fetch = _folder_endpoint(
-        _client_part(session, "request"),
-        _client_part(session, "config", "api_v2_location"),
+        _client_part(session, "request", walk=FOLDER_WALK),
+        _client_part(session, "config", "api_v2_location", walk=FOLDER_WALK),
         "root",
     )
     return paginate_cursor(
         fetch,
         keep=_item_type("FOLDER"),
-        parse=_client_part(session, "parse_folder"),
+        parse=_client_part(session, "parse_folder", walk=FOLDER_WALK),
         **_shape("account_folders", **kwargs),
     )
 
@@ -828,16 +904,19 @@ def folder_playlists(folder: Any, **kwargs: Any) -> list[Any]:
     account a folder's second page of five was its first (R-878). ``folder`` is
     the client's folder object, and the walk sends what its ``items`` sends, the
     folder's identifier, through its own request object, keeps the playlists, and
-    parses each one's ``data`` with the playlist parser ``items`` uses.
-    Deduplicated by identifier on the same argument.
+    parses each one's ``data`` with the playlist parser ``items`` uses, less its
+    factory step. ``items`` parses with ``Playlist.parse_factory``, which fetches
+    every playlist the account created again, one request each (R-1016), so the
+    walk parses with ``Playlist.parse``, which reads the same data and fetches
+    nothing. Deduplicated by identifier on the same argument.
     """
     kwargs.setdefault("key", lambda playlist: str(getattr(playlist, "id", "")))
     fetch = _folder_endpoint(
-        _client_part(folder, "request"),
-        _client_part(folder, "session", "config", "api_v2_location"),
-        str(_client_part(folder, "id")),
+        _client_part(folder, "request", walk=FOLDER_WALK),
+        _client_part(folder, "session", "config", "api_v2_location", walk=FOLDER_WALK),
+        str(_client_part(folder, "id", walk=FOLDER_WALK)),
     )
-    parse_playlist = _client_part(folder, "playlist", "parse_factory")
+    parse_playlist = _client_part(folder, "playlist", "parse", walk=FOLDER_WALK)
     return paginate_cursor(
         fetch,
         keep=_item_type("PLAYLIST"),
@@ -858,14 +937,14 @@ def folder_folders(folder: Any, **kwargs: Any) -> list[Any]:
     """
     kwargs.setdefault("key", lambda nested: str(getattr(nested, "id", "")))
     fetch = _folder_endpoint(
-        _client_part(folder, "request"),
-        _client_part(folder, "session", "config", "api_v2_location"),
-        str(_client_part(folder, "id")),
+        _client_part(folder, "request", walk=FOLDER_WALK),
+        _client_part(folder, "session", "config", "api_v2_location", walk=FOLDER_WALK),
+        str(_client_part(folder, "id", walk=FOLDER_WALK)),
     )
     return paginate_cursor(
         fetch,
         keep=_item_type("FOLDER"),
-        parse=_client_part(folder, "session", "parse_folder"),
+        parse=_client_part(folder, "session", "parse_folder", walk=FOLDER_WALK),
         **_shape("folder_folders", **kwargs),
     )
 
@@ -988,11 +1067,13 @@ PAGINATION_KEYWORDS = frozenset({"limit", "offset"})
 
 
 __all__ = [
+    "ACCOUNT_PLAYLISTS_ENDPOINT",
     "DEFAULT_BASE_DELAY_S",
     "DEFAULT_MAX_DELAY_S",
     "DEFAULT_MAX_RETRIES",
     "FOLDER_ENDPOINT",
     "FOLDER_ORDER",
+    "FOLDER_WALK",
     "GUARDED_METHODS",
     "PAGE_CAPS",
     "PAGE_SIZES",
