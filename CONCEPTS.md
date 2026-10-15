@@ -1905,3 +1905,25 @@ never makes anybody fix it.
   stops a merge whenever the battery is red on its account, and both halves are
   said out loud, because a reader given only the classification will ask why the
   merge stopped and a reader given only the outcome will assume it was blocking.
+
+### Account mirror
+A root folder on the streaming account that copies one rekordbox folder of the
+routing tree, or the Favorites folder, planned on 2026-10-14
+(`docs/plans/2026-10-14-2214-feat-genre-tree-on-tidal-plan.md`). It is flat,
+named exactly as the rekordbox folder, and holds one private playlist per
+rekordbox playlist named `<Folder> <Playlist>`, `Deep House Low`, holding the
+tracks the account carries. It is a MIRROR, kept by a step of `crate organize`
+on every sitting: tracks are added and removed so each playlist equals its
+rekordbox playlist, a track added by hand on the account comes off, and a
+library track the account cannot match is named in the report and never
+substituted. The product never removes a mirrored folder or playlist.
+
+*Avoid:* reading it as an export (`crate export playlist`, add only, filed in
+`Exports`) or as a pair (`crate sync pair`, merged both ways).
+
+### Month playlist
+The playlist under the Favorites folder named for the UTC month a heart was
+hearted in, `2026-10`, decided on 2026-10-14 to replace the quarter playlist
+of the **Landed heart** entry, with the existing quarters split into months by
+each heart's date and retired. A heart with no date on its job row or on the
+account stays in Undated. Add only, like the quarter was.
