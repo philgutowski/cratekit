@@ -1,0 +1,123 @@
+name = "r1017"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_no_recorded_names"
+description = "Rename: drop the names the landings recorded from the names looked up, the defect R-1017 names"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_sync_mark.py"]
+old = '''    recorded = tuple(set_name(one) for one in set_playlist.recorded_names(cfg, job.job_id))'''
+new = '''    recorded = ()'''
+
+[[rows]]
+id = "M2_recorded_before_frozen"
+description = "Rename: rank the landing names ahead of the frozen name an earlier rename chose"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_sync_mark.py"]
+old = '''            for one in (set_name(frozen) if frozen else "", *recorded, *_names_for_job(job))'''
+new = '''            for one in (*recorded, set_name(frozen) if frozen else "", *_names_for_job(job))'''
+
+[[rows]]
+id = "M3_landing_open_read"
+description = "Landing records: read a record that never closed as a landing"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_sync_mark.py"]
+old = '''        if record.state is session.SessionState.CLOSED
+        and str(session.SourceState.COMMITTED) in record.sources.values()
+        and isinstance(record.detail.get(RECORD_KEY), Mapping)
+        and record.detail[RECORD_KEY].get("job") == job_id
+    ]
+    return tuple('''
+new = '''        if record.state is not None
+        and str(session.SourceState.COMMITTED) in record.sources.values()
+        and isinstance(record.detail.get(RECORD_KEY), Mapping)
+        and record.detail[RECORD_KEY].get("job") == job_id
+    ]
+    return tuple('''
+
+[[rows]]
+id = "M4_landing_uncommitted_read"
+description = "Landing records: read a record whose source never committed as a landing"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_sync_mark.py"]
+old = '''        and str(session.SourceState.COMMITTED) in record.sources.values()
+        and isinstance(record.detail.get(RECORD_KEY), Mapping)
+        and record.detail[RECORD_KEY].get("job") == job_id
+    ]
+    return tuple('''
+new = '''        and record.sources
+        and isinstance(record.detail.get(RECORD_KEY), Mapping)
+        and record.detail[RECORD_KEY].get("job") == job_id
+    ]
+    return tuple('''
+
+[[rows]]
+id = "M5_landing_any_job"
+description = "Landing records: read another job's landing as this job's"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_sync_mark.py"]
+old = '''        and record.detail[RECORD_KEY].get("job") == job_id
+    ]
+    return tuple('''
+new = '''        and record.detail[RECORD_KEY].get("job") is not None
+    ]
+    return tuple('''
+
+[[rows]]
+id = "M6_oldest_first"
+description = "Landing records: read them oldest first, which recorded_playlist also depends on"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_sync_mark.py"]
+old = '''        for record in sorted(found, key=lambda one: one.session_id, reverse=True)'''
+new = '''        for record in sorted(found, key=lambda one: one.session_id, reverse=False)'''
+
+[[rows]]
+id = "M7_names_not_deduplicated"
+description = "recorded_names: return a name twice when two landings recorded it"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "maintainer"
+tests = ["tests/test_export_set_rename.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_sync_mark.py"]
+old = '''        dict.fromkeys(name for kept in _landed(cfg, job_id) if (name := str(kept.get("name") or "")))'''
+new = '''        list(name for kept in _landed(cfg, job_id) if (name := str(kept.get("name") or "")))'''
+
+[[rows]]
+id = "M8_first_older_name_only"
+description = "Plan: stop at the first older name holding a record, the pre review behaviour"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_sync_mark.py"]
+old = '''        if found is not None and all(found.remote_id != one.remote_id for one in older):'''
+new = '''        if found is not None and not older:'''
+
+[[rows]]
+id = "M9_twin_only_beside_to"
+description = "Plan: call a twin only when a record under the new name exists, the pre review rule"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_sync_mark.py"]
+old = '''    twin = next((one for one in older if one.remote_id != held.remote_id), None)'''
+new = '''    twin = next((one for one in older if recorded_to is not None and one.remote_id != held.remote_id), None)'''
+
+[[rows]]
+id = "M10_older_beats_to"
+description = "Plan: hold an older name's record ahead of the one under the new name"
+file = "src/cratekit/modules/outbound/sets.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_sync_mark.py"]
+old = '''    held = recorded_to or (older[0] if older else None)'''
+new = '''    held = (older[0] if older else None) or recorded_to'''
+
+[[rows]]
+id = "M12_twin_message_names_to"
+description = "Refusal: name the held playlist under the new name rather than the name it is recorded under"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+tests = ["tests/test_export_set_rename.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_sync_mark.py"]
+old = '''            f"{planned.playlist.remote_id} under {planned.playlist.name!r} and "'''
+new = '''            f"{planned.playlist.remote_id} under {to!r} and "'''
