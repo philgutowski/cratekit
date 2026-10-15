@@ -647,3 +647,28 @@ def test_a_heart_taken_back_and_hearted_again_is_not_taken_back(native_library, 
     assert code == int(ExitCode.OK), acted
     assert "taken back" not in refused["cause"]["detail"]["shown"]
     assert _favorites(cfg, folder_id)["2026-11"] == ["Again"]
+
+
+def test_a_track_taken_out_of_a_quarter_by_hand_goes_to_no_month(native_library, silence, monkeypatch):
+    """R-758: a membership rekordbox marked removed is not a member."""
+    cfg, _root_id = native_library
+    folder_id, _source_id = _home(cfg)
+    _landed_hearts(cfg, silence, {"Stays": NOV, "Went": OCT.format(day=12)})
+    q4 = _quarter(cfg, folder_id, "2026-Q4", "Stays", "Went")
+    went = _rows(cfg)["Went"]
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        (entry,) = [
+            row for row in handle.get_playlist_songs(PlaylistID=q4) if str(row.ContentID) == went
+        ]
+        entry.rb_local_deleted = 1
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    _account(monkeypatch, {})
+
+    code, acted, refused = _acts()
+
+    assert code == int(ExitCode.OK), acted
+    assert refused["cause"]["detail"]["shown"]["quarters to retire"] == ["2026-Q4 (1)"]
+    assert _favorites(cfg, folder_id) == {SOURCE: [], "2026-11": ["Stays"]}
