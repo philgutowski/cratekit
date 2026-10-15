@@ -1094,6 +1094,16 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'outbound-item-absent',
     ],
     'favorites/placement.py': ['decision-stale', 'favorites-placement'],
+    # 2026-10-15, U145: the quarters split into months, engine and verb.
+    'favorites/split.py': ['decision-stale', 'favorites-split', 'session-committed-unverified', 'whitelist-violation'],
+    'favorites/split_cli.py': [
+        'config-unusable',
+        'favorites-no-quarter-left',
+        'favorites-quarters-split',
+        'favorites-split-hearts-withheld',
+        'favorites-split-jobs-unread',
+        'favorites-split-undated',
+    ],
     'favorites/refresh_cli.py': [
         'config-unusable',
         'favorites-folders-left-alone',
@@ -2358,6 +2368,9 @@ PINNED_LITERAL_HOLDERS = {
     'favorites/cli.py': ['favorites-pink-colour-missing', 'outbound-item-absent'],
     'favorites/placement.py': ['decision-stale'],
     'favorites/refresh_cli.py': ['config-unusable', 'internal-error'],
+    # 2026-10-15, U145: the quarters split into months, engine and verb.
+    'favorites/split.py': ['decision-stale', 'session-committed-unverified', 'whitelist-violation'],
+    'favorites/split_cli.py': ['config-unusable'],
     'intake/acrcloud.py': [
         'auth-failed',
         'credential-missing',

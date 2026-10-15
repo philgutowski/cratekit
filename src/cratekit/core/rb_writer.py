@@ -3529,7 +3529,8 @@ def commit_guarded(
     ``removals`` IS EMPTY FOR EVERY WRITER BUT TWO. It names the tables this
     commit admits a soft delete in, and the whitelist holds it to
     :data:`REMOVABLE_TABLES`. The membership move names the membership table
-    and the INBOX rotation names both (U111). Any other commit refuses a
+    and the INBOX rotation names both (U111), as the favourites month split
+    does for the quarters it retires (U145). Any other commit refuses a
     changed marker.
 
     ``creations`` IS EMPTY FOR EVERY WRITER BUT ONE AS WELL (R-746). It names

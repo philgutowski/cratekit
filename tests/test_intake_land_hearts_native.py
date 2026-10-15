@@ -171,6 +171,21 @@ def test_a_hearted_file_lands_in_its_batch_all_favorites_and_a_month_made_for_it
     ) == []
 
 
+def test_a_heart_dated_the_twentieth_of_october_joins_its_month_and_no_quarter_is_made(
+    native_library, silence
+):
+    """U145's AE1: the landing given a pass files by month, never by quarter."""
+    cfg, _root_id = native_library
+    folder_id, _source_id = _home(cfg)
+    hearts_swept(cfg, {"October": "2026-10-20T18:30:00+00:00"})
+    _stage(cfg, silence, "October")
+
+    _landed()
+
+    assert _favorites(cfg, folder_id) == {SOURCE: [_title("October")], "2026-10": [_title("October")]}
+    assert _query(cfg, "SELECT ID FROM djmdPlaylist WHERE Name LIKE '%-Q_'") == []
+
+
 def test_the_record_carries_the_hearts_placed_under_their_own_key(native_library, silence):
     cfg, _root_id = native_library
     _home(cfg)

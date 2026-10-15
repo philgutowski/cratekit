@@ -3119,6 +3119,48 @@ ENTRIES: tuple[Entry, ...] = (
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
+    # ── The quarters split into months (U145) ───────────────────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives. A one
+    # time verb: since U145 a landed heart files by month, and this splits the
+    # quarter playlists already under Favorites into months and retires them.
+    Entry(
+        name="favorites.split",
+        summary="split every quarter playlist beside All Favorites into the playlists of "
+        "the months its hearts were hearted in, then retire the emptied quarters",
+        module="cratekit.favorites.split_cli",
+        builder="build",
+        handler_key="favorites.split",
+        # NO FEATURE ROW. The source system filed by quarter; the author chose
+        # months on 2026-10-14.
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: The database tree and nothing else: memberships added to month
+        #: playlists under the Favorites folder, those playlists when absent,
+        #: and each quarter playlist retired with its own memberships, a soft
+        #: delete. No content row and no file.
+        writes=frozenset({"db_tree"}),
+        destructive=True,
+        taxonomy_terms=("favorites",),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+        ),
+        gates=(
+            GateSpec(
+                name="favorites.split.approve",
+                options=("approve", "abort"),
+                prompt="Put these quarter playlists' hearts into their month playlists and "
+                "retire the quarters?",
+                #: EXPLICIT (R34). It retires playlists of the live library, so
+                #: no blanket affirmative satisfies it.
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
     # ── The retroactive tidy (U112) ─────────────────────────────────────────
     #
     # Appended, for the reason the deferred routing block above gives. A
