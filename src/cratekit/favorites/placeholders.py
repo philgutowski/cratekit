@@ -55,6 +55,10 @@ UNDATED = "Undated"
 #: the playlists the month split retires, and nothing makes one any more.
 QUARTER_LABEL = re.compile(r"\d{4}-Q[1-4]")
 
+#: A whole month label as a placement names it, ``2026-10``, anchored at both
+#: ends by ``fullmatch`` at the call site.
+MONTH_LABEL = re.compile(r"\d{4}-(?:0[1-9]|1[0-2])")
+
 
 def as_utc(moment: datetime) -> datetime:
     """``moment`` in UTC. A naive datetime is taken to be UTC, the source system's rule."""
@@ -92,6 +96,21 @@ def parse_hearted(said: object) -> datetime | None:
     return None
 
 
+def is_filing(name: str) -> bool:
+    """Whether a playlist beside All Favorites is one a heart is filed in by date.
+
+    A month, :data:`UNDATED`, or a quarter the split has not retired yet
+    (U146): a heart any of them holds already has its date's playlist, and a
+    playlist of any other name beside the source is somebody else's.
+    """
+    text = str(name or "")
+    return (
+        text == UNDATED
+        or MONTH_LABEL.fullmatch(text) is not None
+        or QUARTER_LABEL.fullmatch(text) is not None
+    )
+
+
 def placeholder_name(quarter: str) -> str:
     """The placeholder playlist name for a quarter label such as ``2026-Q2``."""
     return f"{PLACEHOLDER_PREFIX}{quarter}"
@@ -104,11 +123,13 @@ def is_placeholder(name: str) -> bool:
 
 __all__ = [
     "BACKLOG",
+    "MONTH_LABEL",
     "PLACEHOLDER_NAME",
     "PLACEHOLDER_PREFIX",
     "QUARTER_LABEL",
     "UNDATED",
     "as_utc",
+    "is_filing",
     "is_placeholder",
     "month_label",
     "month_of",

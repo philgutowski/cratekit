@@ -9,6 +9,12 @@ mirror. This engine is that placement, called by the native landing inside its
 own commit and by ``crate favorites backfill`` for the hearts that landed
 before it existed.
 
+**AN OWNED HEART JOINS TOO, SINCE U146.** The author answered U120's open
+question on 2026-10-14: a heart on a track the library already owns is a
+favourite, so the landing places the pass's owned hearts beside the ones it
+downloaded, and the backfill places every owned heart a hearts job reported.
+Neither path takes a membership away.
+
 **BY MONTH SINCE U145.** The author chose on 2026-10-14 a month grain over the
 source system's quarter, so a heart joins the playlist of the UTC month it was
 hearted in, ``Favorites / 2026-10``, and no quarter playlist is made again.
@@ -168,6 +174,24 @@ def members(db: Any, playlist_id: str) -> frozenset[str]:
     )
 
 
+def filed(db: Any, home: Home) -> frozenset[str]:
+    """The content ids a dated playlist beside the source holds live: a month, Undated, a quarter.
+
+    WHAT "ALREADY HAS ITS MONTH" MEANS FOR A HEART ALL FAVORITES HOLDS (U146):
+    any filing playlist under the folder, :func:`placeholders.is_filing`, so a
+    heart the split filed in Undated, or one a person moved to another month
+    by hand, is not given a second month. A playlist of any other name is not
+    read, which matters for a source at the playlist root, where the home's
+    neighbours are every root playlist in the library. Read only by the
+    backfill.
+    """
+    held: set[str] = set()
+    for name, row in home.present.items():
+        if row != home.source_id and placeholders.is_filing(name):
+            held |= members(db, row)
+    return frozenset(held)
+
+
 def members_marked_removed(db: Any, playlist_id: str) -> frozenset[str]:
     """The content ids whose membership in a playlist rekordbox marked REMOVED.
 
@@ -181,8 +205,10 @@ def members_marked_removed(db: Any, playlist_id: str) -> frozenset[str]:
     A membership that exists as removed is a track somebody took out of the
     playlist by hand, and for All Favorites that is the author un-hearting a
     track in the library. The backfill (U120) reads this so it never puts a
-    heart back that the author took back, where a landing of a new heart has
-    no such row to read.
+    heart back that the author took back. THE LANDING DOES NOT READ IT, by the
+    author's rule of 2026-10-14 (U146): a heart the pass's own job still
+    found on the account joins again, since dropping a favourite is two hand
+    steps, un-hearting on the account and taking it out here.
     """
     return frozenset(
         str(song.ContentID)
@@ -316,6 +342,16 @@ class Placed:
     def added(self) -> int:
         return self.added_source + sum(count for _name, _row, count in self.months)
 
+    def said(self) -> str:
+        """The placement as one clause a person reads, the one wording every verb uses."""
+        months = ", ".join(
+            f"{name}{' (made)' if name in self.created else ''}" for name, _row, _n in self.months
+        )
+        return (
+            f"{self.added} membership(s) placed: {self.added_source} into "
+            f"{self.source_name!r} and the rest into {months}"
+        )
+
     def to_json(self) -> dict[str, Any]:
         return {
             "source": self.source_name,
@@ -412,6 +448,7 @@ __all__ = [
     "PlacementPlan",
     "RECORD_KEY",
     "SOURCE_MISSING",
+    "filed",
     "members",
     "month_row",
     "place",

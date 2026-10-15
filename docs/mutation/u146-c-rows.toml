@@ -1,0 +1,87 @@
+# U146 author's mutation table, batch c of four: the native landing's plan and
+# write, and the landing verb's owned path.
+name = "u146-c"
+pass_kind = "light"
+
+[[rows]]
+id = "N1_owned_held_planned"
+description = "_favorites_plan: an owned heart All Favorites holds is planned again beside a landing, and its month made"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '''        if one.content_id in in_source or one.content_id in seen:'''
+new = '''        if one.content_id in seen:'''
+
+[[rows]]
+id = "N2_owned_not_written"
+description = "apply_rows: the owned hearts are planned and shown and never written"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '''                pairs.extend((one.content_id, one.month) for one in plan.favorites.owned)'''
+new = ''''''
+
+[[rows]]
+id = "N3_owned_out_of_digest"
+description = "FavoritesPlan.identity: the owned hearts are not digested, so an answer given for one set of them stands for another"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '''        if self.owned:
+            identity["owned"] = ['''
+new = '''        if self.owned and False:
+            identity["owned"] = ['''
+
+[[rows]]
+id = "N4_owned_needs_a_heart_file"
+description = "_favorites_plan: owned hearts are placed only when a landed file is a heart too"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '''    if not (kept or owned) or not source:'''
+new = '''    if not kept or not source:'''
+
+[[rows]]
+id = "L1_owned_not_passed"
+description = "intake_land: the pass's owned hearts are read and never handed to the native landing"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '''            owned=owned,
+        )'''
+new = '''        )'''
+
+[[rows]]
+id = "L2_empty_landing_no_op"
+description = "_land_native: an empty landing ends NO_OP as before, its owned hearts never placed"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '''        if owned:
+            return _place_owned('''
+new = '''        if owned and False:
+            return _place_owned('''
+
+[[rows]]
+id = "L3_gate_asked_for_nothing"
+description = "_place_owned: a pass whose owned hearts are all placed opens the database to write and asks the gate over nothing"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '''    if not first.writes:
+        return ctx.envelope(data=empty, outcome=Outcome.NO_OP)'''
+new = ''''''
+
+[[rows]]
+id = "L4_missing_source_refuses"
+description = "_place_owned: a library with no All Favorites refuses the empty landing instead of ending NO_OP and saying why"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '''        if exc.cause.reason != placement.SOURCE_MISSING:
+            raise
+        return ctx.envelope(
+            data=empty,'''
+new = '''        raise
+        return ctx.envelope(
+            data=empty,'''

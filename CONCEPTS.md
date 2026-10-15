@@ -681,18 +681,34 @@ hearts join All Favorites and their month beside their INBOX playlist, the
 month playlist made when the folder lacks it. The placement is add only and
 never moves a heart between months. A library with no live All Favorites, or two, lands the batch and
 skips the placement with a warning; a landing with no pass, and every landing
-on the bridge, places nothing. `crate favorites backfill` is the attended
-half: every heart a hearts job carried that the library holds now in a folder
-directly under the music dir, which is where every landing puts a file and
-where nothing the source system filed sits, placed the same way behind an
-explicit gate, the date from the job else from the account listed once. An
-owned heart that is not in All Favorites is left alone until the author
-answers the open question, and so is a heart the author took back: one whose
-All Favorites membership rekordbox marked removed, or one a whole account
-listing no longer carries, is skipped and named rather than put back, since
-the outbound sync would otherwise heart it on the account again. The genre
-Favorites follow from U119's refresh once
+on the bridge, places nothing. Since U146 the same landing places the pass's
+**Owned heart**s too. `crate favorites backfill` is the attended half: every
+heart a hearts job reported, in any state, whose track the library holds
+now wherever its file sits, and that All Favorites lacks, placed the same way
+behind an explicit gate that shows the count per month, the date from the job
+else from the account listed once. A heart All Favorites holds is placed only
+when no dated playlist beside it does (a month, Undated or a quarter not yet
+split), which is the heart a landing put in All Favorites with no month. A
+heart the author took back is skipped and named rather than put back: one
+whose All Favorites membership rekordbox marked removed, or one a whole account
+listing no longer carries. The genre Favorites follow from U119's refresh once
 adoption files the track, not at landing.
+
+### Owned heart
+A heart on a track the library already held when the hearts job listed it,
+reported `owned` with the files the match rule resolved it to, since U146. The
+author answered U120's open question on 2026-10-14: an owned heart is a
+favourite, so All Favorites is the account's hearts. The native landing given
+`--pass` places the pass's owned hearts that All Favorites does not hold live
+into All Favorites and their month, finding each one's row by the report's
+file, in its own commit when files land and, when staging is empty, through
+the backfill's guarded session under the same `intake.land.native` gate. A
+pass whose owned hearts are all placed opens nothing to write and ends NO_OP.
+A heart taken out of All Favorites by hand and still hearted on the account
+joins again at the next landing, and the backfill does not put it back: both
+sides add and neither removes, so dropping a favourite is two hand steps,
+un-heart on the account and remove from All Favorites. A row whose job froze
+no date key is left to the backfill, which can date it from the account.
 
 ### Withheld
 A track the provider COUNTS in a collection and leaves out of every page it

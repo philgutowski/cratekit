@@ -16,8 +16,6 @@ import sqlite3
 from datetime import date
 from pathlib import Path
 
-import pytest
-
 from cratekit.acquire import match
 from cratekit.cli import jobs as cli_jobs
 from cratekit.core import analysis_store, config, jobs, rb_writer, session, taxonomy, tree_registry
@@ -464,18 +462,6 @@ def test_the_pass_jobs_hearts_are_read_from_the_job_and_a_playlist_job_claims_no
         "tid-Hearted": NOV,
         "tid-Nowhere": SEP,
     }
-
-
-@pytest.mark.parametrize("deep", [False, True])
-def test_a_landed_path_is_one_level_under_the_music_dir(native_library, deep):
-    from cratekit.intake import landing
-
-    cfg, _root_id = native_library
-    music = Path(cfg.library.root) / cfg.library.music_dir
-    path = music / "2026-09-29-favorites" / ("deeper/" if deep else "") / "x.flac"
-    assert landing.is_landed_path(cfg, path) is (not deep)
-    assert landing.is_landed_path(cfg, music / "x.flac") is False
-    assert landing.is_landed_path(cfg, Path(cfg.library.root) / "elsewhere" / "b" / "x.flac") is False
 
 
 # ---------------------------------------------------------------------------

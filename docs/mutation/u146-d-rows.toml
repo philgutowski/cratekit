@@ -1,0 +1,18 @@
+# U146 author's mutation table, batch d of four: the one row expected zero, run
+# alone so its promotion to the full suite does not push a batch past the
+# ceiling.
+name = "u146-d"
+pass_kind = "light"
+
+[[rows]]
+id = "B7_empty_identifier_kept"
+description = "listed: a listed track with no identifier is kept under the empty key"
+file = "src/cratekit/favorites/backfill.py"
+surface = "maintainer"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''        if not ref:
+            # A ROW WITH NO IDENTIFIER IS NO HEART'S EVIDENCE: an empty key
+            # would read as carrying every heart whose own ref is empty.
+            continue
+'''
+new = ''''''

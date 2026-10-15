@@ -1,12 +1,12 @@
-"""``crate favorites backfill``: the hearts this product landed, put where a landing now puts them (U120).
+"""``crate favorites backfill``: every owned heart, put where a landing now puts them (U120, U146).
 
-The attended half of U120. A heart the favourites sync landed before this
-unit sits in its INBOX batch and nowhere else; this verb finds every such
-heart, shows each one with the month it goes to, asks, and adds it to All
-Favorites and its month playlist in one guarded commit (its quarter playlist
-until U145). It removes nothing
-and moves nothing, so a second run over a placed library asks and writes
-nothing.
+The attended half of the favourites placement. Since U146 a heart on any
+track the library owns is a favourite, so this verb finds every heart a
+hearts job reported whose track the library holds and All Favorites lacks,
+shows each one with the month it goes to and the count per month, asks, and
+adds it to All Favorites and its month playlist in one guarded commit. It
+removes nothing and moves nothing, so a second run over a placed library
+asks and writes nothing.
 
 THE ORDER IS THE REFRESH VERB'S: the backup acknowledgment before anything
 is gathered (R-733), the plan on a handle opened to read and closed, the gate
@@ -99,8 +99,8 @@ def _notes(plan: backfill.BackfillPlan) -> list[dict[str, str]]:
             {
                 "code": UNDATED,
                 "message": (
-                    f"{plan.undated} heart(s) carry no date on their job and the account "
-                    f"dates them nowhere, so they go to {placement.placeholders.UNDATED!r} "
+                    f"{plan.undated} heart(s) carry no date on their job or on the account, "
+                    f"so they go to {placement.placeholders.UNDATED!r} "
                     f"and stay there; nothing moves a heart to its month later"
                 ),
             }
@@ -115,9 +115,9 @@ def _notes(plan: backfill.BackfillPlan) -> list[dict[str, str]]:
             {
                 "code": HELD_BACK,
                 "message": (
-                    f"{len(plan.held_back)} heart(s) were held back unplaced: their job "
-                    f"froze no date and {why}, so a heart the listing lacks cannot be "
-                    f"told from one withheld; run again when the listing is whole"
+                    f"{len(plan.held_back)} heart(s) were held back unplaced: "
+                    f"{why}, so a heart the listing lacks cannot be told from one "
+                    f"withheld; run again when the listing is whole"
                 ),
             }
         )
@@ -146,7 +146,7 @@ def _notes(plan: backfill.BackfillPlan) -> list[dict[str, str]]:
 
 
 def favorites_backfill(ctx) -> Envelope:
-    """Find the landed hearts, ask, then place them and read them back."""
+    """Find the owned hearts to place, ask, then place them and read them back."""
     cfg = _load()
     source = placement.source_name(active_taxonomy.load(cfg))
     spec = _approve_gate(ctx.entry)
@@ -167,8 +167,8 @@ def favorites_backfill(ctx) -> Envelope:
                 {
                     "code": NOTHING_TO_PLACE,
                     "message": (
-                        f"{len(plan.hearts)} landed heart(s) found and every one is already "
-                        f"in {source!r} and its month playlist, so nothing was written"
+                        f"no owned heart needs placing, {plan.already} already in "
+                        f"{source!r} and a month playlist, so nothing was written"
                     ),
                 },
             ],
@@ -182,9 +182,6 @@ def favorites_backfill(ctx) -> Envelope:
         "added": placed.added,
         "created": len(placed.created),
     }
-    months = ", ".join(
-        f"{name}{' (made)' if name in placed.created else ''}" for name, _row, _n in placed.months
-    )
     return ctx.envelope(
         data={**data, "totals": totals},
         warnings=[
@@ -192,9 +189,8 @@ def favorites_backfill(ctx) -> Envelope:
             {
                 "code": PLACED,
                 "message": (
-                    f"{placed.added} membership(s) added for {len(plan.hearts)} landed "
-                    f"heart(s): {placed.added_source} into {source!r} and the rest into "
-                    f"{months}; every playlist read back from the database holds its "
+                    f"{placed.said()}, for {len(plan.hearts)} owned heart(s); every "
+                    f"playlist read back from the database holds its "
                     f"hearts, and no track left the collection; undo with a restore of "
                     f"session {done.session_id}"
                 ),

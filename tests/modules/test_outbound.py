@@ -717,6 +717,24 @@ def test_hearts_sync_never_removes_a_heart_or_a_color_under_any_flag(cfg):
     assert hearts.remove_requested(flags) is True
 
 
+def test_a_favourite_un_hearted_on_the_account_is_hearted_again_and_nothing_is_removed(cfg):
+    """U146's R6, the outbound half: a track hearted on the account, placed
+    into All Favorites by the inbound side, then un-hearted on the account
+    while All Favorites still holds it, is a candidate again and is hearted
+    again. The heart the author made is in no ledger, so nothing stops it."""
+    account = FakeAccount(catalog={"row-owned": "tid-owned"})
+    account.hearts.add("tid-other")
+    assert "tid-owned" not in account.hearts, "taken back on the account"
+
+    report = hearts.heart_back(
+        cfg, account, [hearts.HeartCandidate(row_id="row-owned", remote_id="tid-owned")]
+    )
+
+    assert report.hearted == ("tid-owned",)
+    assert account.hearts == {"tid-owned", "tid-other"}
+    assert account.removed == []
+
+
 def test_the_outbound_package_defines_no_remove_write():
     defined = _defined_functions(OUTBOUND_ROOT) | _defined_functions(EXPORT_ROOT) | _defined_functions(
         FAVORITES_ROOT

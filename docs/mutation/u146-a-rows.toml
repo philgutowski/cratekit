@@ -1,0 +1,80 @@
+# U146 author's mutation table, batch a of four: the backfill's gather.
+# Four batches because one batch of twenty five rows runs past the ten minute
+# ceiling on a foreground command once a zero is promoted; the rows are one
+# table of twenty five, split by file, and u146-notes.md reads them together.
+name = "u146-a"
+pass_kind = "light"
+
+[[rows]]
+id = "B1_carried_states"
+description = "carried: the backfill reads only the carried states again, so an owned heart is never placed"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''                found = account_playlists.carried_hearts(store, job, states=None)'''
+new = '''                found = account_playlists.carried_hearts(store, job)'''
+
+[[rows]]
+id = "B3_already_ignores_filed"
+description = "gather: a heart All Favorites holds is already placed whatever its month, so a heart with no month never takes one"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''        if content_id in in_source and content_id in filed:'''
+new = '''        if content_id in in_source:'''
+
+[[rows]]
+id = "B4_already_ignores_source"
+description = "gather: a heart a month holds is already placed whatever All Favorites holds, so a heart out of All Favorites is never put back nor named"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''        if content_id in in_source and content_id in filed:'''
+new = '''        if content_id in filed:'''
+
+[[rows]]
+id = "B5_removed_counts_a_live_row"
+description = "gather: a removed membership beside a live one reads as taken back, so a heart put back by hand never takes its month"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''    removed = placement.members_marked_removed(db, home.source_id) - in_source'''
+new = '''    removed = placement.members_marked_removed(db, home.source_id)'''
+
+[[rows]]
+id = "B9_whole_and_short_swapped"
+description = "gather: a heart a whole listing lacks is held back and one a short listing lacks is taken back"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''            if listing.whole:'''
+new = '''            if not listing.whole:'''
+
+[[rows]]
+id = "B10_job_no_date_dated_by_account"
+description = "gather: a row whose job dated it nowhere is dated from the account, so the backfill and the landing file one heart in two places"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''        if not heart.known:'''
+new = '''        if heart.hearted is None:'''
+
+[[rows]]
+id = "B11_listing_always_asked"
+description = "gather: the account is listed even when no heart needs placing"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''    if not candidates:
+        return Gathered('''
+new = '''    if not candidates and False:
+        return Gathered('''
+
+[[rows]]
+id = "B12_landing_takes_keyless_rows"
+description = "owned_in_library: a row whose job froze no date key is placed by the landing, into Undated for good"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '''    known = [row for row in rows if row.known and row.paths]'''
+new = '''    known = [row for row in rows if row.paths]'''
