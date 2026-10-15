@@ -39,6 +39,7 @@ SPLIT = "favorites-quarters-split"
 UNDATED = "favorites-split-undated"
 JOBS_UNREAD = "favorites-split-jobs-unread"
 WITHHELD = "favorites-split-hearts-withheld"
+TAKEN_BACK = "favorites-split-hearts-taken-back"
 
 _ORIGIN = ("favorites", "split_cli")
 
@@ -106,6 +107,21 @@ def _notes(plan: split.SplitPlan) -> list[dict[str, str]]:
                     + "; ".join(
                         f"{one.title or 'row ' + one.content_id} (from {', '.join(one.quarters)})"
                         for one in plan.undated
+                    )
+                ),
+            }
+        )
+    if plan.taken_back:
+        notes.append(
+            {
+                "code": TAKEN_BACK,
+                "message": (
+                    f"{len(plan.taken_back)} member(s) the author took out of "
+                    f"{plan.home.source_name!r} by hand go to no month, and their quarter "
+                    f"is retired all the same: "
+                    + "; ".join(
+                        f"{one.title or 'row ' + one.content_id} (from {', '.join(one.quarters)})"
+                        for one in plan.taken_back
                     )
                 ),
             }
@@ -199,6 +215,7 @@ __all__ = [
     "JOBS_UNREAD",
     "NOTHING_TO_SPLIT",
     "SPLIT",
+    "TAKEN_BACK",
     "UNDATED",
     "WITHHELD",
     "build",

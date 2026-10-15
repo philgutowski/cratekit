@@ -501,3 +501,93 @@ def test_an_addition_the_plan_did_not_name_is_a_violation(shape, expected):
     violations = split.addition_violations(_before(), after, planned={"m": ["1"]}, created=created)
 
     assert any(expected in one for one in violations), violations
+
+
+# ---------------------------------------------------------------------------
+# The review's round: the author's take back, one resolve per heart, one removal
+# ---------------------------------------------------------------------------
+
+
+def test_a_member_taken_out_of_all_favorites_goes_to_no_month_and_its_quarter_still_retires(
+    native_library, silence, monkeypatch
+):
+    """The backfill's rule: a heart the author took back is never put back."""
+    cfg, _root_id = native_library
+    folder_id, source_id = _home(cfg)
+    _landed_hearts(cfg, silence, {"Kept": NOV, "Dropped": NOV})
+    rows = _rows(cfg)
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        source = handle.get_playlist(ID=source_id)
+        for title in ("Kept", "Dropped"):
+            handle.add_to_playlist(source, rows[title])
+        handle.session.commit()
+        (entry,) = [
+            row
+            for row in handle.get_playlist_songs(PlaylistID=source_id)
+            if str(row.ContentID) == rows["Dropped"]
+        ]
+        entry.rb_local_deleted = 1
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    q4 = _quarter(cfg, folder_id, "2026-Q4", "Kept", "Dropped")
+    _account(monkeypatch, {})
+
+    code, acted, refused = _acts()
+
+    assert code == int(ExitCode.OK), acted
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["month playlists"] == ["2026-11 (1), made"]
+    assert shown["taken back"] == [
+        f"Dropped (row {rows['Dropped']}, from 2026-Q4), removed from {SOURCE!r} in rekordbox"
+    ]
+    assert _favorites(cfg, folder_id)["2026-11"] == ["Kept"]
+    assert _removed(cfg, q4)
+    (note,) = [w for w in acted["warnings"] if w["code"] == split_cli.TAKEN_BACK]
+    assert "Dropped (from 2026-Q4)" in note["message"]
+
+
+def test_a_heart_every_sync_froze_again_is_resolved_once_with_its_first_dated_mention(
+    native_library, silence, monkeypatch
+):
+    cfg, _root_id = native_library
+    folder_id, _source_id = _home(cfg)
+    from tests.test_intake_land_hearts_native import UNKNOWN, hearts_swept
+
+    # The oldest job froze no date, the next dated it in October, the last in November.
+    hearts_swept(cfg, {"Often": UNKNOWN}, run_id="")
+    hearts_swept(cfg, {"Often": OCT.format(day=7)}, run_id="")
+    _landed_hearts(cfg, silence, {"Often": NOV}, batch="2026-11-04-favorites")
+    _quarter(cfg, folder_id, "2026-Q4", "Often")
+    _account(monkeypatch, {})
+    asked: list[str] = []
+    real = split.match.resolve_one
+
+    def counted(track, *args, **kwargs):
+        asked.append(track.ref)
+        return real(track, *args, **kwargs)
+
+    monkeypatch.setattr(split.match, "resolve_one", counted)
+
+    code, acted, _refused = _acts()
+
+    assert code == int(ExitCode.OK), acted
+    assert _favorites(cfg, folder_id)["2026-10"] == ["Often"]
+    # Once per plan, and the two acts are two plans.
+    assert asked == ["tid-Often", "tid-Often"]
+
+
+def test_the_one_removal_the_favourites_package_makes_is_the_splits_quarter_retirement():
+    """Nothing under favorites/ takes a membership out of a playlist that lives on."""
+    import ast
+    from pathlib import Path
+
+    root = Path(split.__file__).resolve().parent
+    calls: list[tuple[str, str]] = []
+    for path in sorted(root.rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                if node.func.attr in {"remove_memberships", "remove_playlist_node", "remove_from_playlist"}:
+                    calls.append((path.name, node.func.attr))
+    assert calls == [("split.py", "remove_playlist_node")]

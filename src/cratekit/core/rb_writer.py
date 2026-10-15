@@ -3526,7 +3526,7 @@ def commit_guarded(
 ) -> None:
     """Commit only when it is still safe to, and roll back rather than leak.
 
-    ``removals`` IS EMPTY FOR EVERY WRITER BUT TWO. It names the tables this
+    ``removals`` IS EMPTY FOR EVERY WRITER BUT A FEW. It names the tables this
     commit admits a soft delete in, and the whitelist holds it to
     :data:`REMOVABLE_TABLES`. The membership move names the membership table
     and the INBOX rotation names both (U111), as the favourites month split

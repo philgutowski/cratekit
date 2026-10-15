@@ -1100,6 +1100,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'config-unusable',
         'favorites-no-quarter-left',
         'favorites-quarters-split',
+        'favorites-split-hearts-taken-back',
         'favorites-split-hearts-withheld',
         'favorites-split-jobs-unread',
         'favorites-split-undated',

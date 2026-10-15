@@ -9,6 +9,7 @@ D1 applies. Nothing here names a real volume, a real person or a real track.
 
 from __future__ import annotations
 
+import re
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
@@ -90,7 +91,7 @@ def _names_under(db, parent) -> dict[str, str]:
 def test_the_month_is_the_utc_month(moment, label):
     assert placeholders.month_of(moment) == label
     assert placeholders.month_label(moment) == label
-    assert placeholders.MONTH_LABEL.fullmatch(label)
+    assert re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", label)
     assert not placeholders.QUARTER_LABEL.fullmatch(label)
 
 
@@ -98,8 +99,7 @@ def test_no_quarter_is_named_by_the_placement_any_more():
     """U145: the month rule is the only one, so no quarter playlist is written again."""
     assert not hasattr(placeholders, "quarter_label")
     assert not hasattr(placeholders, "quarter_of")
-    assert placeholders.MONTH_LABEL.fullmatch("2026-13") is None
-    assert placeholders.MONTH_LABEL.fullmatch("2026-00") is None
+    assert placeholders.month_of(datetime(2026, 1, 9, tzinfo=UTC)) == "2026-01"
     assert placeholders.QUARTER_LABEL.fullmatch("2026-Q4")
 
 

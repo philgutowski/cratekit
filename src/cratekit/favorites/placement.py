@@ -173,7 +173,10 @@ def members_marked_removed(db: Any, playlist_id: str) -> frozenset[str]:
 
     A READER, NAMED SO IT READS AS ONE: the outbound guard admits no function
     under ``favorites/`` whose name opens with ``remove``, since nothing in the
-    favourites packages takes a membership or a heart away, and this takes none.
+    favourites packages takes a heart away or a membership out of a playlist
+    that lives on, and this takes none. The one removal the package makes is
+    ``crate favorites split`` retiring a whole quarter playlist (U145), held
+    to that one call by its suite.
 
     A membership that exists as removed is a track somebody took out of the
     playlist by hand, and for All Favorites that is the author un-hearting a

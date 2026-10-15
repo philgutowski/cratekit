@@ -274,19 +274,27 @@ def is_hearts_job(job: jobs.Job) -> bool:
     )
 
 
-def carried_hearts(store, job: jobs.Job) -> tuple[HeartRow, ...]:
+def carried_hearts(
+    store, job: jobs.Job, *, states: frozenset[str] | None = CARRIED_STATES
+) -> tuple[HeartRow, ...]:
     """The rows a hearts job's download was made from, each with its frozen date.
 
     THE SAME STATES A PLAYLIST'S CLAIM READS, ``missing`` and ``offered``: an
     owned heart was never downloaded, so it is not a heart this build lands,
     which is the brief's conservative answer to the owned hearts not in All
     Favorites. The date is the row's own frozen key, read as the job froze it.
+
+    ``states=None`` reads EVERY row whatever its state, for a reader that wants
+    the job's dates rather than its downloads: ``crate favorites split``
+    (U145) dates the hearts the quarters hold, which were mostly owned when
+    their job ran. One reader of the frozen rows, so the two cannot disagree
+    about a heart's date or its identifier.
     """
     from cratekit.intake import missing_cli
 
     found: list[HeartRow] = []
     for report in missing_cli.job_reports(store, job):
-        if report.get("state") not in CARRIED_STATES:
+        if states is not None and report.get("state") not in states:
             continue
         said = report.get("track") or {}
         wanted = intake_cli.thawed(said)

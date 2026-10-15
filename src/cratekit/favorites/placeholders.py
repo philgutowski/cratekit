@@ -55,10 +55,6 @@ UNDATED = "Undated"
 #: the playlists the month split retires, and nothing makes one any more.
 QUARTER_LABEL = re.compile(r"\d{4}-Q[1-4]")
 
-#: A whole month label as rekordbox carries it since U145, ``2026-10``,
-#: anchored at both ends by ``fullmatch`` at the call site.
-MONTH_LABEL = re.compile(r"\d{4}-(?:0[1-9]|1[0-2])")
-
 
 def as_utc(moment: datetime) -> datetime:
     """``moment`` in UTC. A naive datetime is taken to be UTC, the source system's rule."""
@@ -108,7 +104,6 @@ def is_placeholder(name: str) -> bool:
 
 __all__ = [
     "BACKLOG",
-    "MONTH_LABEL",
     "PLACEHOLDER_NAME",
     "PLACEHOLDER_PREFIX",
     "QUARTER_LABEL",

@@ -46,8 +46,8 @@ from cratekit.cli.output import digest_of
 from cratekit.core import config, convergence, jobs, rb_writer, session, snapshot, tree_registry
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.favorites import backfill, placeholders, placement
+from cratekit.intake import account_playlists, native
 from cratekit.intake import cli as intake_cli
-from cratekit.intake import native
 from cratekit.label import catalogue
 from cratekit.write import trees
 
@@ -167,30 +167,29 @@ def _tied(
 
 
 def _job_rows(cfg: config.Config) -> tuple[list[tuple[match.Wanted, datetime]], tuple[str, ...]]:
-    """Every dated row of every hearts job on this library, oldest job first, whatever its state.
+    """Each heart a hearts job on this library dated, once, oldest job first, whatever its state.
 
     NOT ONLY THE ROWS A DOWNLOAD WAS MADE FROM, as the backfill's are: a heart
     the library owned when its job ran is still dated on its row, and the
-    quarters hold owned hearts above all. A job whose reports cannot be read
-    is skipped and named, for the backfill's reason.
+    quarters hold owned hearts above all. Read through the one reader of a
+    hearts job's frozen rows, every state admitted. A PROVIDER IDENTIFIER IS
+    RESOLVED ONCE, its first dated mention winning, since every sync freezes
+    the whole listing again and the match is the slow part. A job whose
+    reports cannot be read is skipped and named, for the backfill's reason.
     """
-    from cratekit.intake import missing_cli
-
-    rows: list[tuple[match.Wanted, datetime]] = []
+    found: dict[str, tuple[match.Wanted, datetime]] = {}
     unreadable: list[str] = []
     with jobs.open_store() as store:
         for job in backfill.hearts_jobs(cfg):
             try:
-                reports = missing_cli.job_reports(store, job)
+                rows = account_playlists.carried_hearts(store, job, states=None)
             except CratekitError:
                 unreadable.append(job.job_id)
                 continue
-            for report in reports:
-                said = report.get("track") or {}
-                when = placeholders.parse_hearted(said.get(intake_cli.HEARTED))
-                if when is not None:
-                    rows.append((intake_cli.thawed(said), when))
-    return rows, tuple(unreadable)
+            for row in rows:
+                if row.hearted is not None and row.ref not in found:
+                    found[row.ref] = (row.wanted, row.hearted)
+    return list(found.values()), tuple(unreadable)
 
 
 def date_members(cfg: config.Config, db: Any, content_ids: Iterable[str]) -> Dating:
@@ -254,22 +253,24 @@ class SplitPlan:
 
     home: placement.Home
     quarters: tuple[Quarter, ...]
+    #: The members a month takes, every live member of a quarter but those
+    #: the author took back.
     members: tuple[Member, ...]
+    #: Each month the members go to, by name in order, with its members in
+    #: quarter order. Derived from ``members`` once, by :func:`_planned`.
+    months: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     #: Each planned month's live members when planned, for the counts. NOT
     #: DIGESTED, so a run whose additions landed plans the same split.
     held: Mapping[str, frozenset[str]] = field(default_factory=dict)
+    #: Members whose All Favorites membership rekordbox marked removed and
+    #: that All Favorites no longer holds live: the author took the heart
+    #: back, so no month takes it, as the backfill never puts one back. Named,
+    #: and the quarter holding it still retires.
+    taken_back: tuple[Member, ...] = ()
     digest: str = ""
     listed: bool = False
     withheld: int = 0
     unreadable: tuple[str, ...] = ()
-
-    @property
-    def months(self) -> dict[str, tuple[str, ...]]:
-        """Each month the members go to, by name in order, with its members in quarter order."""
-        found: dict[str, list[str]] = {}
-        for one in self.members:
-            found.setdefault(one.month, []).append(one.content_id)
-        return {name: tuple(found[name]) for name in sorted(found)}
 
     @property
     def adds(self) -> int:
@@ -312,6 +313,7 @@ class SplitPlan:
                 for one in self.quarters
             ],
             "members": [{"row": one.content_id, "month": one.month} for one in self.members],
+            "taken_back": [one.content_id for one in self.taken_back],
         }
 
 
@@ -329,18 +331,40 @@ def _titles(db: Any, content_ids: Iterable[str]) -> dict[str, str]:
     return found
 
 
+def _in_quarters(held_quarters: Sequence[Quarter]) -> dict[str, list[str]]:
+    """Each content row the quarters hold, in quarter order, with the quarters holding it."""
+    found: dict[str, list[str]] = {}
+    for one in held_quarters:
+        for content_id in one.members:
+            found.setdefault(content_id, []).append(one.name)
+    return found
+
+
+def taken_back(db: Any, home: placement.Home, content_ids: Iterable[str]) -> frozenset[str]:
+    """The rows among ``content_ids`` the author took out of the source by hand.
+
+    THE BACKFILL'S RULE (U120), read the same way: a membership of the source
+    that rekordbox marked removed is the author un-hearting the track in the
+    library. A row that is back in the source live was hearted again, so it
+    is not taken back.
+    """
+    wanted = {str(content_id) for content_id in content_ids}
+    removed = placement.members_marked_removed(db, home.source_id) & wanted
+    if not removed:
+        return frozenset()
+    return frozenset(removed - placement.members(db, home.source_id))
+
+
 def _planned(
     db: Any,
     home: placement.Home,
     held_quarters: Sequence[Quarter],
     dating: Dating,
 ) -> SplitPlan:
-    in_quarters: dict[str, list[str]] = {}
-    for one in held_quarters:
-        for content_id in one.members:
-            in_quarters.setdefault(content_id, []).append(one.name)
+    in_quarters = _in_quarters(held_quarters)
+    gone = taken_back(db, home, in_quarters)
     titles = _titles(db, in_quarters)
-    members = tuple(
+    every = [
         Member(
             content_id=content_id,
             title=titles.get(content_id, ""),
@@ -349,20 +373,27 @@ def _planned(
             dated_by=dating.by_row.get(content_id, Dated(None, BY_NONE)).dated_by,
         )
         for content_id, names in in_quarters.items()
-    )
+    ]
+    members = tuple(one for one in every if one.content_id not in gone)
+    by_month: dict[str, list[str]] = {}
+    for one in members:
+        by_month.setdefault(one.month, []).append(one.content_id)
+    months = {name: tuple(by_month[name]) for name in sorted(by_month)}
+    held = {
+        name: placement.members(db, home.present[name]) if name in home.present else frozenset()
+        for name in months
+    }
     planned = SplitPlan(
         home=home,
         quarters=tuple(held_quarters),
         members=members,
+        months=months,
+        held=held,
+        taken_back=tuple(one for one in every if one.content_id in gone),
         listed=dating.listed,
         withheld=dating.withheld,
         unreadable=dating.unreadable,
     )
-    held = {
-        name: placement.members(db, home.present[name]) if name in home.present else frozenset()
-        for name in planned.months
-    }
-    planned = replace(planned, held=held)
     return replace(planned, digest=digest_of(planned.identity()))
 
 
@@ -370,11 +401,13 @@ def plan(cfg: config.Config, db: Any, *, source: str) -> SplitPlan:
     """The quarters under the home, each member dated, planned against what the folder holds.
 
     A library with no quarter playlist plans nothing, and nothing is dated,
-    so the account is never asked and the library never walked.
+    so the account is never asked and the library never walked. A member the
+    author took back is not dated, since no month takes it.
     """
     home = placement.resolve_home(db, source)
     held = quarters(db, home)
-    wanted = {content_id for one in held for content_id in one.members}
+    in_quarters = _in_quarters(held)
+    wanted = set(in_quarters) - taken_back(db, home, in_quarters)
     dating = date_members(cfg, db, wanted) if wanted else Dating(by_row={})
     return _planned(db, home, held, dating)
 
@@ -433,6 +466,7 @@ def payload(planned: SplitPlan) -> dict[str, Any]:
             "creates": len(planned.creates),
             "retires": len(planned.quarters),
             "undated": len(planned.undated),
+            "taken back": len(planned.taken_back),
             "dates from jobs": by_source.get(BY_JOB, 0),
             "dates from the account": by_source.get(BY_ACCOUNT, 0),
             "jobs unread": len(planned.unreadable),
@@ -460,6 +494,12 @@ def facts(planned: SplitPlan) -> dict[str, Any]:
             f"{one.title or 'row ' + one.content_id} (row {one.content_id}, from "
             f"{', '.join(one.quarters)})"
             for one in planned.undated
+        ]
+    if planned.taken_back:
+        shown["taken back"] = [
+            f"{one.title or 'row ' + one.content_id} (row {one.content_id}, from "
+            f"{', '.join(one.quarters)}), removed from {home.source_name!r} in rekordbox"
+            for one in planned.taken_back
         ]
     if planned.withheld:
         shown["withheld"] = (
@@ -648,7 +688,8 @@ def _unemptied(db: Any, planned: SplitPlan, rows: Mapping[str, str]) -> list[str
         missing = sorted(
             content_id
             for content_id in one.members
-            if content_id not in held.get(month_of[content_id], frozenset())
+            if content_id in month_of
+            and content_id not in held.get(month_of[content_id], frozenset())
         )
         if missing:
             problems.append(
