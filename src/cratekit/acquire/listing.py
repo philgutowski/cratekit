@@ -627,8 +627,11 @@ FOLDER_ENDPOINT = "my-collection/playlists/folders"
 #: reading a listing nobody has measured.
 FOLDER_ORDER = "NAME"
 
+#: What a refusal from one of the three folder walks calls the walk.
+FOLDER_WALK = "folder listing"
 
-def _client_part(owner: Any, *path: str, walk: str = "folder listing") -> Any:
+
+def _client_part(owner: Any, *path: str, walk: str) -> Any:
     """``owner.a.b``, or :class:`ListingNotPaginated` naming the missing part.
 
     The folder walks and the account playlists walk reach past the client's
@@ -646,6 +649,25 @@ def _client_part(owner: Any, *path: str, walk: str = "folder listing") -> Any:
                 f"changed shape and the {walk} needs updating with it"
             )
     return value
+
+
+def _send(request: Any, walk: str, *args: Any, **kwargs: Any) -> Any:
+    """``request.request(*args, **kwargs)``, a rejected signature refused by name.
+
+    The walks that send the client's request themselves, the three folder walks
+    and the account playlists walk, send it through here, so a client whose
+    request object no longer takes the arguments is refused as
+    :class:`ListingNotPaginated` in one wording, the walk named, rather than
+    retried as though waiting could change a signature.
+    """
+    try:
+        return request.request(*args, **kwargs)
+    except TypeError as exc:
+        raise ListingNotPaginated(
+            f"{type(request).__name__}.request does not accept the arguments the "
+            f"{walk} sends; the provider client changed shape and the {walk} "
+            f"needs updating with it"
+        ) from exc
 
 
 def _folder_endpoint(
@@ -669,14 +691,9 @@ def _folder_endpoint(
         }
         if cursor is not None:
             params["cursor"] = cursor
-        try:
-            answer = request.request("GET", FOLDER_ENDPOINT, base_url=base_url, params=params)
-        except TypeError as exc:
-            raise ListingNotPaginated(
-                f"{type(request).__name__}.request does not accept the arguments the "
-                f"folder listing sends; the provider client changed shape and the "
-                f"folder listing needs updating with it"
-            ) from exc
+        answer = _send(
+            request, FOLDER_WALK, "GET", FOLDER_ENDPOINT, base_url=base_url, params=params
+        )
         return answer.json()
 
     return call
@@ -712,16 +729,17 @@ def _account_playlists_endpoint(user: Any) -> Callable[[int, int], list[Any]]:
     path = ACCOUNT_PLAYLISTS_ENDPOINT % _client_part(user, "id", walk=walk)
 
     def call(limit: int, offset: int) -> list[Any]:
-        try:
-            answer = request.request("GET", path, params={"limit": limit, "offset": offset})
-        except TypeError as exc:
-            raise ListingNotPaginated(
-                f"{type(request).__name__}.request does not accept the arguments the "
-                f"account playlist listing sends; the provider client changed shape "
-                f"and the listing needs updating with it"
-            ) from exc
+        answer = _send(request, walk, "GET", path, params={"limit": limit, "offset": offset})
+        page = answer.json()
+        if not isinstance(page, dict) or not isinstance(page.get("items"), list):
+            # Refused rather than read as the empty page that ends this walk:
+            # an error body read as the end would return the account short.
+            raise ValueError(
+                f"the {walk} was answered with something that is neither a page "
+                f"nor a list of items: {str(page)[:200]!r}"
+            )
         found = []
-        for item in answer.json()["items"]:
+        for item in page["items"]:
             playlist = item["playlist"]
             playlist["dateAdded"] = item["created"]
             found.append(parse(playlist))
@@ -866,14 +884,14 @@ def account_folders(session: Any, **kwargs: Any) -> list[Any]:
     """
     kwargs.setdefault("key", lambda folder: str(getattr(folder, "id", "")))
     fetch = _folder_endpoint(
-        _client_part(session, "request"),
-        _client_part(session, "config", "api_v2_location"),
+        _client_part(session, "request", walk=FOLDER_WALK),
+        _client_part(session, "config", "api_v2_location", walk=FOLDER_WALK),
         "root",
     )
     return paginate_cursor(
         fetch,
         keep=_item_type("FOLDER"),
-        parse=_client_part(session, "parse_folder"),
+        parse=_client_part(session, "parse_folder", walk=FOLDER_WALK),
         **_shape("account_folders", **kwargs),
     )
 
@@ -894,11 +912,11 @@ def folder_playlists(folder: Any, **kwargs: Any) -> list[Any]:
     """
     kwargs.setdefault("key", lambda playlist: str(getattr(playlist, "id", "")))
     fetch = _folder_endpoint(
-        _client_part(folder, "request"),
-        _client_part(folder, "session", "config", "api_v2_location"),
-        str(_client_part(folder, "id")),
+        _client_part(folder, "request", walk=FOLDER_WALK),
+        _client_part(folder, "session", "config", "api_v2_location", walk=FOLDER_WALK),
+        str(_client_part(folder, "id", walk=FOLDER_WALK)),
     )
-    parse_playlist = _client_part(folder, "playlist", "parse")
+    parse_playlist = _client_part(folder, "playlist", "parse", walk=FOLDER_WALK)
     return paginate_cursor(
         fetch,
         keep=_item_type("PLAYLIST"),
@@ -919,14 +937,14 @@ def folder_folders(folder: Any, **kwargs: Any) -> list[Any]:
     """
     kwargs.setdefault("key", lambda nested: str(getattr(nested, "id", "")))
     fetch = _folder_endpoint(
-        _client_part(folder, "request"),
-        _client_part(folder, "session", "config", "api_v2_location"),
-        str(_client_part(folder, "id")),
+        _client_part(folder, "request", walk=FOLDER_WALK),
+        _client_part(folder, "session", "config", "api_v2_location", walk=FOLDER_WALK),
+        str(_client_part(folder, "id", walk=FOLDER_WALK)),
     )
     return paginate_cursor(
         fetch,
         keep=_item_type("FOLDER"),
-        parse=_client_part(folder, "session", "parse_folder"),
+        parse=_client_part(folder, "session", "parse_folder", walk=FOLDER_WALK),
         **_shape("folder_folders", **kwargs),
     )
 
@@ -1055,6 +1073,7 @@ __all__ = [
     "DEFAULT_MAX_RETRIES",
     "FOLDER_ENDPOINT",
     "FOLDER_ORDER",
+    "FOLDER_WALK",
     "GUARDED_METHODS",
     "PAGE_CAPS",
     "PAGE_SIZES",

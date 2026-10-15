@@ -1461,6 +1461,10 @@ def test_the_clients_own_account_listing_fetches_every_owned_playlist_again():
     _logged_in_over(transport).user.playlist_and_favorite_playlists(limit=50, offset=0)
 
     assert transport.single_fetches() == 5
+    # And the walk sends the request the client's method sends: one path, the
+    # same one, so a client that moved its endpoint turns this red too.
+    page_paths = {path for path in transport.paths if not path.startswith("/v1/playlists/")}
+    assert page_paths == {"/v1/" + listing.ACCOUNT_PLAYLISTS_ENDPOINT % OWNER}
 
 
 def test_a_folder_listing_of_owned_playlists_costs_its_pages_and_no_single_fetch():
@@ -1555,3 +1559,44 @@ def test_a_listing_of_624_playlists_is_paced_in_seconds_not_minutes(tmp_path):
     elapsed = clock.now - start
     assert 0 < elapsed <= gate.calls * GateSettings().min_interval_s
     assert elapsed < 60
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [{"status": 500, "userMessage": "upstream"}, {"items": None}, ["not", "a", "page"]],
+    ids=["an-error-body", "items-null", "a-list"],
+)
+def test_an_account_answer_that_is_not_a_page_is_refused_not_read_as_the_end(answer):
+    """Read as the empty page that ends the walk, the account would come back short."""
+
+    class Answering:
+        def request(self, method: str, path: str, params: dict | None = None) -> _Answer:
+            return _Answer(answer)
+
+    user = User()
+    user.request = Answering()
+    slept: list[float] = []
+    with pytest.raises(ValueError, match="neither a page nor a list of items"):
+        listing.account_playlists(Session(user), sleep=slept.append)
+    assert len(slept) == listing.DEFAULT_MAX_RETRIES
+
+
+def test_an_account_request_that_rejects_the_arguments_refuses_by_name_unslept():
+    """The translation ``_paged_caller`` made for the client's method, kept for the raw call."""
+
+    class Older:
+        def request(self, method: str, path: str):
+            pytest.fail("a request that cannot carry its paging was sent")
+
+    user = User()
+    user.request = Older()
+    with pytest.raises(listing.ListingNotPaginated, match="account playlist listing"):
+        listing.account_playlists(Session(user), sleep=lambda _: pytest.fail("slept"))
+
+
+def test_a_user_without_the_parts_the_account_walk_reaches_is_refused_by_name():
+    class Bare:
+        id = OWNER
+
+    with pytest.raises(listing.ListingNotPaginated, match="account playlist listing"):
+        listing.account_playlists(Session(Bare()))
