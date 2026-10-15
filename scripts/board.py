@@ -64,6 +64,29 @@ class Fail(Exception):
     pass
 
 
+class Truncated(Fail):
+    """A board read came back cut short, so it cannot be taken as the whole board."""
+
+
+# The most rows one read asks `gh` for. `gh` pages internally up to this, so a
+# read returns everything below it. It used to be 300, and once the project
+# passed 300 items every newer card read as "not on the board" and no sync could
+# repair it (U148). A read that returns exactly this many is a truncated read,
+# never a complete one, and is refused rather than taken as whole.
+READ_LIMIT = 5000
+
+
+def whole(rows: list, what: str) -> list:
+    """The rows of one read, refused if they fill the limit."""
+    if len(rows) >= READ_LIMIT:
+        raise Truncated(
+            f"the {what} read returned {len(rows)} rows, the whole limit of "
+            f"{READ_LIMIT}, so it is truncated and the board cannot be read from it. "
+            f"Raise READ_LIMIT in scripts/board.py."
+        )
+    return rows
+
+
 def gh(*args: str, parse: bool = False):
     result = subprocess.run(["gh", *args], capture_output=True, text=True)
     if result.returncode != 0:
@@ -83,17 +106,18 @@ def repo_slug() -> tuple[str, str]:
 
 
 def load_issues() -> list[dict]:
-    return gh(
+    issues = gh(
         "issue",
         "list",
         "--state",
         "all",
         "--limit",
-        "300",
+        str(READ_LIMIT),
         "--json",
         "number,title,state,body,labels",
         parse=True,
     )
+    return whole(issues, "issue")
 
 
 def parse_deps(body: str) -> list[int] | None:
@@ -669,13 +693,22 @@ def project_items(owner: str) -> dict:
         "--owner",
         owner,
         "--limit",
-        "300",
+        str(READ_LIMIT),
         "--format",
         "json",
         parse=True,
     )
+    rows = whole(data["items"], "project item")
+    # The project says how many items it holds, which checks the read without
+    # trusting the limit at all.
+    total = data.get("totalCount")
+    if total is not None and len(rows) < total:
+        raise Truncated(
+            f"the project item read returned {len(rows)} of the {total} items the "
+            f"project holds, so it is truncated and the board cannot be read from it."
+        )
     items = {}
-    for item in data["items"]:
+    for item in rows:
         content = item.get("content") or {}
         number = content.get("number")
         if number is not None:
@@ -692,6 +725,10 @@ def cmd_next(args) -> int:
     graph = build_graph(load_issues())
     try:
         items = project_items(owner)
+    except Truncated:
+        # A cut short read is not a token that cannot see the board, and the
+        # queue below would offer a held card the read missed.
+        raise
     except Fail:
         # A repository-scoped token cannot read a user-owned project. The queue
         # itself comes from the issues and is unaffected; the only thing lost is
