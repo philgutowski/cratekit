@@ -38425,3 +38425,88 @@ of the three argument signature, and the brief kept those tests unchanged.
 
 **Closes when:** `reconcile` takes the graph `cmd_audit` already built, with
 those two doubles widened to accept it. Ledger only, maintainer facing.
+
+---
+
+## R-1031. The mirror's apply plans the whole account again, so a first build pays its matching twice and a library write between the passes makes the decision stale
+
+**Found:** at sitting 42, 2026-10-15, the first live `crate organize --only mirror` (U147, #326).
+
+**The mechanism.** `organize` plans the mirror from the library and the account,
+matching every tree row `mirror_links` has not yet linked against the provider,
+one or more calls per row, and shows the gate. The apply under `--run` plans
+everything again, from the account and the provider, and applies only if the
+second plan's digest equals the decided one. Nothing links a row until an apply
+lands, so the first build's matching is paid twice by design, and any library
+write between the two passes, a landing, a refresh, a split, turns the approved
+plan stale (`decision-stale`) and starts the pair over.
+
+**Measured cost.** The first attempt planned 23 folders in 7,548 s and 12,305
+account requests at 0.25 s, the apply's pass cost the same again at 0.15 s,
+then refused `decision-stale` because `favorites split` and `favorites backfill`
+had run between the reads. The second attempt paid both passes again, 3,166 s
+and 12,307 requests for the plan at 0.1 s and about the same for the apply's
+pass, before the first folder was written. A refresh after the first build
+plans in 2,001 s and 7,215 requests, so this is a first build cost, but it is
+the one a person is waiting on, about two hours of it.
+
+**Closes when:** the apply under `--run` rebuilds its plan from the matches the
+gate's plan found, frozen on the run or recorded in `mirror_links` at plan time
+(a link is a fact about a row and a provider track, not a write to the
+account), asking the provider only about rows the frozen plan does not carry,
+so the digest the gate showed is the digest the apply applies and the second
+pass costs the listing alone. Earns an issue: it is a change to how an
+organize run carries its plan from the gate to the apply, which every account
+step shares.
+
+---
+
+## R-1032. The mirror leaves two thirds of its unmatched rows on a tie between provider releases that all agree, which is the right refusal for a heart and the wrong one for a listening copy
+
+**Found:** at sitting 42, 2026-10-15, the first live `crate organize --only mirror` (U147, #326).
+
+**The mechanism.** The mirror matches a tree row through the matcher the
+export uses, and that matcher refuses a row whose ISRC names several provider
+tracks that every one agree with the row's artist, title and version when the
+account hearts none of them and the file carries no album tag to decide
+(R-572's rule, written for the hearts and the pairs, where the chosen release
+is written back as the row's identity). A mirrored playlist writes nothing
+back, so for listening the tie is a choice between identical tracks, and
+refusing it leaves the row off the account.
+
+**Measured cost.** Of 12,768 tree rows the plan matched 6,525 and left 6,243
+unmatched: 4,213 on that tie with no album tag, 91 on the tie with an album tag
+that did not decide it, 1,873 because the row carries no ISRC in the database
+or in its file, 66 because the account has no track for the row's ISRC. Deep
+House has 679 rows unheard against 768 heard, Organic House 830 against 345,
+Electronica / Other 685 against 897, House / Funky House / Disco 686 against
+722. One tie resolved itself when the session hearted `Okonkolo - Elegua`:
+the next plan swapped Nu Disco / Indie Dance's copy to the hearted release.
+
+**Closes when:** the mirror asks the matcher for any one of the agreeing
+provider tracks when the only reason for refusing is the tie, records which
+it chose in `mirror_links` so the next refresh keeps it, and the hearts and
+the pairs keep R-572's refusal. The 1,873 rows with no ISRC are a different
+matter and not this finding. Earns an issue: a product rule the author
+decided, changed in an unattended sitting, is how a wrong release gets written
+somewhere by accident, so the author decides it.
+
+---
+
+## R-1033. The favourites backfill opens its gate with nothing to place, where the split and the refresh end NO_OP
+
+**Found:** at sitting 42, 2026-10-15, the live `crate favorites backfill` (U146, #325).
+
+**The mechanism.** After the live backfill had placed its 58 hearts, a second
+run planned 0 hearts and 0 memberships with 235 already placed and still
+stopped at `favorites.backfill.approve` for a decision; `favorites split` the
+same minute ended `no_op` with no gate, and `favorites refresh` does the same.
+A third run after a fresh heart on an owned track did the same again: count
+0, gate asked. The verb reaches its gate before it reads its own plan as empty.
+
+**Measured cost.** Three aborted runs in the sitting, and a "second run plans
+nothing" proof that needs the plan read rather than the outcome. An unattended
+driver that answers gates answers one that should not have been there.
+
+**Closes when:** the backfill ends `no_op` before its gate when it has no
+heart to place and no membership to add, as the split does. Ledger only.
