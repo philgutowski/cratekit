@@ -62,18 +62,30 @@ def _items(issues: list[dict], count: int) -> list[dict]:
     ]
 
 
-def _fake_gh(issues: list[dict], items: list[dict], *, total: int | None = None):
+#: Leaves a count as the true one, as distinct from None, which drops the key.
+TRUE = object()
+
+
+def _fake_gh(issues: list[dict], items: list[dict], *, total=TRUE, issue_total=TRUE):
     """A `gh` that honours `--limit` the way the real one does, by cutting short."""
     calls: list[tuple[str, ...]] = []
 
     def gh(*args: str, parse: bool = False):
         calls.append(args)
         limit = int(args[args.index("--limit") + 1]) if "--limit" in args else None
+        if args[:2] == ("api", "graphql"):
+            # `--jq` prints the bare count, and `gh` hands back text
+            assert "issues { totalCount }" in " ".join(args)
+            return str(len(issues) if issue_total is TRUE else issue_total)
         if args[:2] == ("issue", "list"):
             return issues[:limit]
         if args[:2] == ("project", "item-list"):
-            served = items[:limit]
-            return {"items": served, "totalCount": len(items) if total is None else total}
+            served = {"items": items[:limit], "totalCount": len(items)}
+            if total is None:
+                del served["totalCount"]
+            elif total is not TRUE:
+                served["totalCount"] = total
+            return served
         if args[:2] == ("project", "field-list"):
             options = [{"name": s, "id": s} for s in ("Ready", "Done", "Blocked")]
             return {"fields": [{"name": "Status", "id": "status", "options": options}]}
@@ -146,8 +158,46 @@ def test_items_short_of_the_projects_own_count_are_refused(board, monkeypatch):
     issues = _issues(ITEMS)
     monkeypatch.setattr(board, "gh", _fake_gh(issues, _items(issues, ITEMS), total=ITEMS + 1))
 
-    with pytest.raises(board.Truncated, match=f"returned {ITEMS} of the {ITEMS + 1} items"):
+    with pytest.raises(board.Truncated, match=f"returned {ITEMS} of the {ITEMS + 1} GitHub"):
         board.project_items("owner")
+
+
+def test_an_item_read_with_no_count_is_refused(board, monkeypatch):
+    """No count means no check, which is not the same as a whole read."""
+    issues = _issues(ITEMS)
+    monkeypatch.setattr(board, "gh", _fake_gh(issues, _items(issues, ITEMS), total=None))
+
+    with pytest.raises(board.Truncated, match="no count to check it against"):
+        board.project_items("owner")
+
+
+def test_issues_short_of_the_repositorys_own_count_are_refused(board, monkeypatch):
+    """A short page under the limit is caught by the count, not by the limit."""
+    issues = _issues(ISSUES)
+    fake = _fake_gh(issues, _items(issues, ITEMS), issue_total=ISSUES + 1)
+    monkeypatch.setattr(board, "gh", fake)
+
+    with pytest.raises(board.Truncated, match=f"returned {ISSUES} of the {ISSUES + 1} GitHub"):
+        board.load_issues()
+
+
+def test_issues_filed_after_the_count_are_read_and_not_refused(board, monkeypatch):
+    """The count comes first, so a newer issue lengthens the read past it."""
+    issues = _issues(ISSUES)
+    fake = _fake_gh(issues, _items(issues, ITEMS), issue_total=ISSUES - 2)
+    monkeypatch.setattr(board, "gh", fake)
+
+    assert len(board.load_issues()) == ISSUES
+    reads = [call[:2] for call in fake.calls]
+    assert reads == [("api", "graphql"), ("issue", "list")]
+
+
+def test_an_issue_count_that_is_not_a_number_is_refused(board, monkeypatch):
+    issues = _issues(3)
+    monkeypatch.setattr(board, "gh", _fake_gh(issues, _items(issues, 3), issue_total="null"))
+
+    with pytest.raises(board.Truncated, match="no count to check it against"):
+        board.load_issues()
 
 
 def test_both_reads_ask_gh_for_the_limit(board, monkeypatch):
@@ -158,7 +208,7 @@ def test_both_reads_ask_gh_for_the_limit(board, monkeypatch):
     board.load_issues()
     board.project_items("owner")
 
-    limits = [call[call.index("--limit") + 1] for call in fake.calls]
+    limits = [call[call.index("--limit") + 1] for call in fake.calls if "--limit" in call]
     assert limits == [str(board.READ_LIMIT)] * 2
 
 
@@ -188,3 +238,53 @@ def test_next_still_names_a_token_that_cannot_read_the_board(board, monkeypatch,
     monkeypatch.setattr(board, "project_items", refused)
     assert board.cmd_next(None) == 0
     assert "cannot read the project board with this token" in capsys.readouterr().out
+
+
+def _git(calls: list, branch: str = "main"):
+    """`subprocess.run` for `cmd_start`'s git calls, recording each one."""
+
+    class Done:
+        def __init__(self, stdout=""):
+            self.stdout = stdout
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        if argv[:2] == ["git", "rev-parse"]:
+            return Done(branch + "\n")
+        return Done("")
+
+    return run
+
+
+def test_start_reads_the_board_before_it_branches(board, monkeypatch):
+    """A refused read leaves the checkout on main, so start can simply be rerun."""
+    git: list = []
+    monkeypatch.setattr(board.subprocess, "run", _git(git))
+    monkeypatch.setattr(board, "repo_slug", lambda: ("owner", "repo"))
+    monkeypatch.setattr(board, "load_issues", lambda: _issues(2))
+    monkeypatch.setattr(board, "project_context", lambda owner: {})
+
+    def truncated(owner):
+        raise board.Truncated("cut short")
+
+    monkeypatch.setattr(board, "project_items", truncated)
+    with pytest.raises(board.Truncated):
+        board.cmd_start(type("Args", (), {"number": 2}))
+    assert not [argv for argv in git if argv[:2] == ["git", "checkout"]]
+
+
+def test_start_says_so_when_the_card_is_not_on_the_board(board, monkeypatch, capsys):
+    git: list = []
+    monkeypatch.setattr(board.subprocess, "run", _git(git))
+    monkeypatch.setattr(board, "repo_slug", lambda: ("owner", "repo"))
+    monkeypatch.setattr(board, "load_issues", lambda: _issues(2))
+    monkeypatch.setattr(board, "project_context", lambda owner: {})
+    monkeypatch.setattr(board, "project_items", lambda owner: {})
+    monkeypatch.setattr(board, "gh", _fake_gh([], []))
+
+    assert board.cmd_start(type("Args", (), {"number": 2})) == 0
+    out = capsys.readouterr().out
+    assert "is NOT on the" in out
+    assert "#2 is In Progress" not in out
+    assert [argv for argv in git if argv[:2] == ["git", "checkout"]]
+
