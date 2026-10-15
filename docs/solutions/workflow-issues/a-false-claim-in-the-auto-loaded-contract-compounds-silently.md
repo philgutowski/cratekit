@@ -62,7 +62,7 @@ above `main`'s highest (`docs/METHOD.md:229`). Of those 114, exactly 15 have an
 issue on the repository. Measured with:
 
 ```
-gh issue list --repo philgutowski/cratekit --state all --limit 300 \
+gh issue list --repo philgutowski/cratekit --state all --limit 5000 \
   --json number,title,createdAt
 ```
 

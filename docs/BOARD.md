@@ -31,7 +31,7 @@ on 2026-08-02 and the file passed a hundred while the table sat still, and every
 session read the stale number for twelve days. A census in a document nothing
 checks is a claim with no expiry. Ask the repository instead:
 
-    gh issue list --repo philgutowski/cratekit --state all --limit 300 \
+    gh issue list --repo philgutowski/cratekit --state all --limit 5000 \
       --json number,title --jq '.[].title' | cut -c1-3 | sort | uniq -c
     grep -c '^## R-' docs/residual-findings.md
 

@@ -1,0 +1,195 @@
+name = "u148"
+pass_kind = "light"
+
+[[rows]]
+id = "L1_old_limit"
+description = "READ_LIMIT back to 300, the ceiling the board passed"
+file = "scripts/board.py"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '''READ_LIMIT = 5000'''
+new = '''READ_LIMIT = 300'''
+
+[[rows]]
+id = "L2_issue_literal"
+description = "load_issues asks gh for a literal 300 instead of READ_LIMIT"
+file = "scripts/board.py"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '''        "all",
+        "--limit",
+        str(READ_LIMIT),'''
+new = '''        "all",
+        "--limit",
+        "300",'''
+
+[[rows]]
+id = "L3_item_literal"
+description = "project_items asks gh for a literal 300 instead of READ_LIMIT"
+file = "scripts/board.py"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '''        owner,
+        "--limit",
+        str(READ_LIMIT),'''
+new = '''        owner,
+        "--limit",
+        "300",'''
+
+[[rows]]
+id = "W1_full_page_taken"
+description = "whole accepts a read of exactly the limit, a full page read as complete"
+file = "scripts/board.py"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '''    if len(rows) >= READ_LIMIT:'''
+new = '''    if len(rows) > READ_LIMIT:'''
+
+[[rows]]
+id = "W2_whole_off"
+description = "whole checks nothing"
+file = "scripts/board.py"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '''    if len(rows) >= READ_LIMIT:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "W3_issue_whole_dropped"
+description = "load_issues no longer passes its read through whole"
+file = "scripts/board.py"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '''    whole(issues, "issue")
+'''
+new = '''    pass
+'''
+
+[[rows]]
+id = "W4_item_whole_dropped"
+description = "project_items no longer passes its read through whole"
+file = "scripts/board.py"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '''    rows = whole(data["items"], "project item")'''
+new = '''    rows = data["items"]'''
+
+[[rows]]
+id = "C1_one_short_allowed"
+description = "short_of_count lets a read one row short of the count through"
+file = "scripts/board.py"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '''    if len(rows) < total:'''
+new = '''    if len(rows) < total - 1:'''
+
+[[rows]]
+id = "C2_count_off"
+description = "short_of_count never compares rows to the count"
+file = "scripts/board.py"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '''    if len(rows) < total:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "C3_no_count_skips"
+description = "a read with no count skips the check, the shape before the review"
+file = "scripts/board.py"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '''    if not isinstance(total, int):
+        # No count means no check, and a read nobody could check is not whole.
+        raise Truncated('''
+new = '''    if not isinstance(total, int):
+        return
+        raise Truncated('''
+
+[[rows]]
+id = "C4_only_none_refused"
+description = "only a missing count is refused, a count that is not a number falls through"
+file = "scripts/board.py"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '''    if not isinstance(total, int):'''
+new = '''    if total is None:'''
+
+[[rows]]
+id = "C5_issue_count_dropped"
+description = "load_issues never checks its read against the repository's count"
+file = "scripts/board.py"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '''    short_of_count(issues, int(total) if total.isdigit() else total, "issue")'''
+new = '''    pass'''
+
+[[rows]]
+id = "C6_item_count_dropped"
+description = "project_items never checks its read against the project's totalCount"
+file = "scripts/board.py"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '''    short_of_count(rows, data.get("totalCount"), "project item")'''
+new = '''    pass'''
+
+[[rows]]
+id = "C7_count_after_read"
+description = "the issue count is asked after the read, so an issue filed between them is refused"
+file = "scripts/board.py"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '''    total = gh(
+        "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}",
+        "-f", f"query={ISSUE_COUNT_QUERY}",
+        "--jq", ".data.repository.issues.totalCount",
+    )
+    issues = gh(
+        "issue",
+        "list",
+        "--state",
+        "all",
+        "--limit",
+        str(READ_LIMIT),
+        "--json",
+        "number,title,state,body,labels",
+        parse=True,
+    )'''
+new = '''    issues = gh(
+        "issue",
+        "list",
+        "--state",
+        "all",
+        "--limit",
+        str(READ_LIMIT),
+        "--json",
+        "number,title,state,body,labels",
+        parse=True,
+    )
+    total = gh(
+        "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}",
+        "-f", f"query={ISSUE_COUNT_QUERY}",
+        "--jq", ".data.repository.issues.totalCount",
+    )'''
+
+[[rows]]
+id = "N1_truncation_blamed_on_token"
+description = "next catches a truncation as a token that cannot read the board"
+file = "scripts/board.py"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '''    except Truncated:
+        # A cut short read is not a token that cannot see the board, and the
+        # queue below would offer a held card the read missed.
+        raise
+'''
+new = ''''''
+
+[[rows]]
+id = "S1_branch_before_read"
+description = "start creates the branch before it reads the board, the shape before the review"
+file = "scripts/board.py"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '''    ctx = project_context(owner)
+    items = project_items(owner)
+    item = items.get(node["number"])
+
+    subprocess.run(["git", "checkout", "-b", branch], check=True)
+'''
+new = '''    subprocess.run(["git", "checkout", "-b", branch], check=True)
+    ctx = project_context(owner)
+    items = project_items(owner)
+    item = items.get(node["number"])
+'''
+
+[[rows]]
+id = "S2_claims_in_progress"
+description = "start says a card not on the board is In Progress"
+file = "scripts/board.py"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '''        print(f"Branch {branch} is checked out, but #{node['number']} is NOT on the")'''
+new = '''        print(f"Branch {branch} is checked out and #{node['number']} is In Progress.")'''

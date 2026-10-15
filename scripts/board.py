@@ -64,6 +64,38 @@ class Fail(Exception):
     pass
 
 
+class Truncated(Fail):
+    """A board read came back cut short, so it cannot be taken as the whole board."""
+
+
+# The most rows one read asks `gh` for. `gh` pages internally up to this, so a
+# read returns everything below it. It used to be 300, and once the project
+# passed 300 items every newer card read as "not on the board" and no sync could
+# repair it (U148). A read that returns exactly this many cannot be told from a
+# truncated one, so it is refused rather than taken as whole. Each read is also
+# checked against the count GitHub gives for it, which trusts no limit at all.
+READ_LIMIT = 5000
+
+# Every issue in the repository, any state, pull requests not included, which is
+# the population `gh issue list --state all` reads. The placeholders are filled
+# by `gh api` from the remote, so nothing here names the repository.
+ISSUE_COUNT_QUERY = (
+    "query($owner: String!, $name: String!) "
+    "{ repository(owner: $owner, name: $name) { issues { totalCount } } }"
+)
+
+
+def whole(rows: list, what: str) -> list:
+    """The rows of one read, refused if they fill the limit."""
+    if len(rows) >= READ_LIMIT:
+        raise Truncated(
+            f"the {what} read returned {len(rows)} rows, the whole limit of "
+            f"{READ_LIMIT}, so it is truncated and the board cannot be read from it. "
+            f"Raise READ_LIMIT in scripts/board.py."
+        )
+    return rows
+
+
 def gh(*args: str, parse: bool = False):
     result = subprocess.run(["gh", *args], capture_output=True, text=True)
     if result.returncode != 0:
@@ -82,18 +114,43 @@ def repo_slug() -> tuple[str, str]:
 # reading the board
 
 
+def short_of_count(rows: list, total, what: str) -> None:
+    """Refuse a read with fewer rows than GitHub says exist, or with no count."""
+    if not isinstance(total, int):
+        # No count means no check, and a read nobody could check is not whole.
+        raise Truncated(
+            f"the {what} read came with no count to check it against ({total!r}), "
+            f"so it cannot be shown to be whole."
+        )
+    if len(rows) < total:
+        raise Truncated(
+            f"the {what} read returned {len(rows)} of the {total} GitHub holds, "
+            f"so it is truncated and the board cannot be read from it."
+        )
+
+
 def load_issues() -> list[dict]:
-    return gh(
+    # Counted BEFORE the read, so an issue filed between the two makes the read
+    # longer than the count rather than shorter, and is never refused.
+    total = gh(
+        "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}",
+        "-f", f"query={ISSUE_COUNT_QUERY}",
+        "--jq", ".data.repository.issues.totalCount",
+    )
+    issues = gh(
         "issue",
         "list",
         "--state",
         "all",
         "--limit",
-        "300",
+        str(READ_LIMIT),
         "--json",
         "number,title,state,body,labels",
         parse=True,
     )
+    whole(issues, "issue")
+    short_of_count(issues, int(total) if total.isdigit() else total, "issue")
+    return issues
 
 
 def parse_deps(body: str) -> list[int] | None:
@@ -669,13 +726,15 @@ def project_items(owner: str) -> dict:
         "--owner",
         owner,
         "--limit",
-        "300",
+        str(READ_LIMIT),
         "--format",
         "json",
         parse=True,
     )
+    rows = whole(data["items"], "project item")
+    short_of_count(rows, data.get("totalCount"), "project item")
     items = {}
-    for item in data["items"]:
+    for item in rows:
         content = item.get("content") or {}
         number = content.get("number")
         if number is not None:
@@ -692,6 +751,10 @@ def cmd_next(args) -> int:
     graph = build_graph(load_issues())
     try:
         items = project_items(owner)
+    except Truncated:
+        # A cut short read is not a token that cannot see the board, and the
+        # queue below would offer a held card the read missed.
+        raise
     except Fail:
         # A repository-scoped token cannot read a user-owned project. The queue
         # itself comes from the issues and is unaffected; the only thing lost is
@@ -788,11 +851,14 @@ def cmd_start(args) -> int:
     if dirty.strip():
         raise Fail("the working tree is dirty. Commit or stash before starting a unit.")
 
-    subprocess.run(["git", "checkout", "-b", branch], check=True)
-
+    # The board is read BEFORE the branch exists, so a read that refuses leaves
+    # the checkout on main with nothing to undo.
     ctx = project_context(owner)
     items = project_items(owner)
     item = items.get(node["number"])
+
+    subprocess.run(["git", "checkout", "-b", branch], check=True)
+
     if item:
         gh(
             "project",
@@ -806,8 +872,13 @@ def cmd_start(args) -> int:
             "--single-select-option-id",
             ctx["options"]["In Progress"],
         )
-    print()
-    print(f"Branch {branch} is checked out and #{node['number']} is In Progress.")
+        print()
+        print(f"Branch {branch} is checked out and #{node['number']} is In Progress.")
+    else:
+        print()
+        print(f"Branch {branch} is checked out, but #{node['number']} is NOT on the")
+        print("project board, so nothing there shows it is taken and `next` will")
+        print("still offer it. Run `board.py sync` to add it, then set it In Progress.")
     print()
     print("Read the brief:")
     print(f"    .venv/bin/python scripts/board.py show {node['number']}")
