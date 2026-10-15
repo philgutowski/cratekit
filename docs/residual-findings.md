@@ -38197,3 +38197,209 @@ writes nothing and names the hand rename as its remedy.
 INSPIRATION playlist's identifier, on the ledger entry they create, and the
 rename resolves by that before any name. Ledger only until a set is found in
 this shape.
+
+---
+
+## R-1021. The month split's approval gate is exempt from the conformance drive, since the fixture cannot write and a library with no quarter asks nothing
+
+**Found:** at the build of #324, U145, 2026-10-15.
+
+**The mechanism.** Conformance 3 drives every verb's gates on one shared
+fixture and asserts OK after the two acts. `favorites.split.approve` is asked
+only over a library holding a quarter playlist, and approving it writes, which
+that fixture refuses for its unpinned rekordbox (S2). The brief says a library
+with no quarter opens no gate. So the gate joined `UNREACHABLE_GATES` and
+`EXPECTED_UNREACHABLE_GATES`, the fifth exemption, decided here unattended.
+
+**Measured cost.** Maintainer facing. The verb's own suite drives the gate's
+two acts, its refusals and the write in `tests/test_favorites_split.py`.
+
+**Closes when:** the conformance fixture can make a database write, a pin
+recorded for its drive alone, at which point the sample makes an empty
+quarter and the exemption is deleted. Ledger only.
+
+---
+
+## R-1022. A month split stopped between its two commits reports only the failure, not that its additions landed
+
+**Found:** at the build of #324, U145, 2026-10-15.
+
+**The mechanism.** `split.apply` commits the month memberships, records that
+commit on the session, then retires the quarters in a second commit. A failure
+in the second half propagates as it was raised. The genre Favorites refresh
+wraps the same window in `RefreshInterrupted` so its caller can say the
+additions landed; the split does not.
+
+**Measured cost.** Driven by
+`test_a_run_stopped_after_its_additions_replans_to_the_same_digest_and_finishes`:
+the person is shown the failure alone, while the months already hold their
+members and the session record says so. Running the verb again plans the same
+digest, adds nothing and retires the quarters, so nothing is lost and nothing
+is left half done once it is run again.
+
+**Closes when:** the second half's failure is reported with what the first
+commit wrote, the refresh's way. Ledger only.
+
+---
+
+## R-1023. The month split files a quarter member no job and no account listing dates into Undated for good, the quarter it sat in discarded, even when the listing came back short
+
+**Found:** at the review of #324, U145, 2026-10-15.
+
+**The mechanism.** `crate favorites split` dates each member of a quarter
+playlist by a hearts job's frozen date, else by the account's heart date, and
+a member dated by neither goes to `Undated` while its quarter is retired. Two
+cases reach that branch with real evidence lost. A heart the provider counts
+and withholds from the listing (R-504) may be dated on the account and is
+filed undated, where the backfill holds such a heart back. And the quarter's
+own name is a date range, `2026-Q3`, which the retirement throws away, so the
+only record of it is the session's capture.
+
+**Measured cost.** Not driven on the live library. The gate names every
+undated member with the quarter it came from, and says how many the provider
+withheld when the listing is short, so the author sees each one before
+approving. Nothing moves a heart out of `Undated` later.
+
+**Closes when:** the author chooses among filing such a member into
+`Undated` as the brief says (today), holding its quarter back unretired until
+the listing is whole, or filing it into the first month of its quarter. The
+conservative reading of the brief was taken because the brief names this
+case and its answer.
+
+---
+
+## R-1024. A heart the product made and the author un-hearted on the account is never hearted again, while All Favorites keeps it
+
+**Found:** at the build of #325, U146, 2026-10-15.
+
+**The mechanism.** The 2026-10-14 plan's R6 says an un-hearted track still in
+All Favorites is hearted again by the next outbound pass. `hearts.heart_back`
+counts a remote identifier as already hearted when the outbound ledger holds
+it (`remote in known or account.has_heart(remote)`), so a heart this product
+made once, then taken back by the author on the account, reads as already
+there and is never sent again. A heart the author made on the account is in
+no ledger and is hearted again, which
+`test_a_favourite_un_hearted_on_the_account_is_hearted_again_and_nothing_is_removed`
+drives. `hearts.py` was read only in this unit, so the ledger rule stands.
+
+**Measured cost.** Read from the source, not driven against the account. The
+two sides then disagree for the one class of track the product hearted: in
+All Favorites in rekordbox and not hearted on the account, until the author
+hearts it by hand or takes it out of All Favorites.
+
+**Closes when:** the author decides whether the ledger should yield to a
+listing that lacks the heart (R6 as written) or whether a heart the product
+made and the author took back stays taken back on the account; ledger only
+until then.
+
+---
+
+## R-1025. The backfill names a heart taken out of All Favorites as taken back, and the next landing of a pass that still hearts it puts it back
+
+**Found:** at the review of #325, U146, 2026-10-15.
+
+**The mechanism.** The brief keeps the backfill's rule that a heart whose All
+Favorites membership rekordbox marked removed is skipped and named, and adds
+R6, that a track removed from All Favorites by hand and still hearted rejoins
+at the next favourites sync. Both are built as written: `backfill.gather`
+reads `members_marked_removed`, and the landing's owned path
+(`native._favorites_plan`, `backfill.plan_owned`) reads only live membership.
+So the backfill's screen says "removed from the playlist in rekordbox" for a
+track the very next landing will put back while the account still hearts it.
+
+**Measured cost.** Driven in both suites: the backfill names it
+(`test_a_heart_the_author_took_out_of_all_favorites_is_never_put_back`) and
+the landing restores it
+(`test_a_track_removed_from_all_favorites_by_hand_and_still_hearted_joins_again`).
+Nothing is lost; the screen tells the author something the next pass undoes,
+which is the author's own two step rule for dropping a favourite.
+
+**Closes when:** the backfill's taken back line says the heart rejoins at the
+next landing while the account still hearts it, or the author drops one of
+the two rules. Ledger only.
+
+---
+
+## R-1026. The landing's gate asks to move files into the library when the only write is owned hearts joining All Favorites
+
+**Found:** at the review of #325, U146, 2026-10-15.
+
+**The mechanism.** A landing whose staging is empty and whose pass has owned
+hearts All Favorites lacks asks `intake.land.native`, whose prompt in the
+registry reads "Move these files into the library and add them to the
+collection?". The screen beside it (`backfill.landing_facts`) says
+`files to land: 0` and lists the hearts by month, so what is written is
+shown, and the prompt's sentence is the one line that is wrong.
+
+**Measured cost.** Driven:
+`test_an_owned_track_hearted_today_joins_all_favorites_and_its_month_with_nothing_downloaded`
+answers that gate with no file staged. A person reads a question about files
+over a plan with none.
+
+**Closes when:** the prompt names the hearts as well as the files, or the
+owned only path gets a prompt of its own. Ledger only, a wording fix.
+
+---
+
+## R-1027. A playlist a person made under a mirrored playlist's title in the folder keeps that playlist unmirrored until it is renamed
+
+**Found:** at the build of #326, U147, 2026-10-15.
+
+**The mechanism.** The brief names folder adoption and playlist creation and
+says nothing of a person's playlist already carrying a mirror's title, for
+example `Techno Low` inside a `Techno` folder Phillip made. `mirror.plan`
+leaves it alone and names it (`LEFT`, "rename it on the account"), since
+adopting it would let the mirror take tracks off a person's playlist, which
+R-836 forbids, and making a second of the same title would put two `Techno
+Low` in one folder.
+
+**Measured cost.** Driven:
+`test_a_persons_playlist_of_the_same_title_is_left_and_nothing_made_beside_it`.
+That one rekordbox playlist is not on the account until the person renames or
+deletes theirs; the gate says so on every run.
+
+**Closes when:** the author chooses among leave and name (built), adopt add
+only, or make the mirror's own beside it. Ledger only.
+
+---
+
+## R-1028. A track the provider refused once is never offered to its mirrored playlist again
+
+**Found:** at the review of #326, U147, 2026-10-15.
+
+**The mechanism.** `mirror.apply` records a track `add_tracks` did not hold
+under the playlist's `refused` (`ledger.record_mirror_refused`), and
+`mirror.plan` leaves every recorded refusal out of a refresh's adds, the label
+folders' rule, so a refresh over an unchanged playlist plans nothing. Nothing
+ever clears the entry, so a track that was region locked or briefly withdrawn
+and later becomes playable stays off its mirror.
+
+**Measured cost.** Driven with the fake's `unaddable`: the second plan is
+`nothing` and the gate item says `refused before: 1`. The mirror then differs
+from rekordbox by that track, said on every plan, never silently. Retrying
+every run instead would keep the step planned for ever over a withdrawn track.
+
+**Closes when:** a refresh retries refused tracks on some cadence, or a verb
+clears one playlist's refusals. Ledger only.
+
+---
+
+## R-1029. The account mirror copies the tree as it was before the same organize run's database writes, so the account lags rekordbox by one run
+
+**Found:** at the build of #326, U147, 2026-10-15.
+
+**The mechanism.** `crate organize` plans both areas, asks both gates, then
+writes (`organize/cli.py`). The mirror step (`organize/account_mirror.py`) is
+planned from the tree before the database area's adoption and filing write
+to it, so a track the run files reaches the account at the next run. Driven:
+`test_a_second_run_after_a_full_apply_plans_nothing` now plans mirror steps on
+the second run and nothing on the third. Re-planning after the database apply
+would write what no gate showed.
+
+**Measured cost.** One sitting of delay for tracks the same run filed; nothing
+false is said, since the gate shows the plan it will write. Options for the
+author: a second account gate after the database apply, a mirror only rerun
+at the end of a sitting (`crate organize --only mirror`, which works today),
+or accept the lag.
+
+**Closes when:** the author picks one. Ledger only: nothing is lost or misstated.
