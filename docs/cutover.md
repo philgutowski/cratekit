@@ -1327,6 +1327,71 @@ minutes and an organize step pays two, so plan, read and apply is twelve
 minutes before the first write, and the old one second pace doubles it.
 Run every account step under nohup with a pid waiter.
 
+## Sitting 42, 2026-10-15, 04:53 to 13:12, unattended, the `/board-up` session under the overnight authority
+
+Phillip, 2026-10-14 23:10, going to bed: "If there is more than one halt or
+something gets refused, fix it, don't stop it. Continue until you get this
+right. Don't stop and don't ask me any questions." The night's cards, #322
+(R-1016), #323 (R-1017), #324 (U145), #325 (U146) and #326 (U147), were built
+by the feeder and landed and pushed by the watcher between 23:35 and 04:50
+(`9c95a916`, residuals numbered as `a8d81f0a`); #322 halted once on a mounted
+installer image the operator ejected and was landed by hand, #324 halted once
+on a pre flight the watcher's own residual step dirtied. The feeder was then
+kept up for U148 (#327), the `board.py` item limit the watcher found when the
+audit could not reach 0 on a 316 item project. Every live step below ran with
+rekordbox closed, from the installed copy rebuilt at `9c95a916`, the backup
+run first (files 4,330 s, 2,240 of 96,885 files sent; database at 10:05Z),
+and the acknowledgment minted as `session` at 06:08 (both ages under five
+days, valid to 22:08Z). Every database write was rehearsed on a copy
+(`copy_setup.sh`: the database cloned to `copyrun/`, `.cratekit` to
+`.cratekit-copyrun`, the installation state and the acknowledgment copied,
+the config derived from the live one) and then driven live through
+`live_gate.sh` as `session`. The live database read `4d3fd29eeeef77af` before
+the first write, `213db969cbf3953d` after the backfill, `1be9cdbbbe735f53`
+after rekordbox quit and `1ac2b01bd15fb18d` after the refresh. The live pace was
+lowered from 0.5 s to 0.25 s at 05:17 for the mirror's first build
+(`config.toml.bak-2026-10-15-before-s42-pacing`), on the 2026-10-14 probe
+that drew no rate limit at ten calls a second.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| R-1016, #322, the listing cost | live, read, `listing.account_playlists` through the product's gate with requests counted by path | **613 playlists in 7.1 s, 14 requests**, every one `GET users/<id>/playlistsAndFavoritePlaylists`, no fetch per playlist; 637 calls and 640 s on 2026-10-14 | read |
+| R-1017, #323, `export set --rename 2026-10-10T14:59:24Z-a4b0` | live, digest `fe01189f92d3f699`, approved as session | **account playlist `ed84daca` renamed `10_10_26 ...` to `3_25_26 Public Service NYC Live at Signal 2-26`**, the job's name frozen, the ledger rekeyed, 5 calls | live |
+| `export set`, the twin check | live, act 1 read then aborted | count 0, nothing to write; five INSPIRATION playlists listed as left for a later sitting because no succeeded set job names them | read |
+| `organize --only sets` | report in 2 s (the listing cost fixed), live on digest `0204d59c2da1fcb4` | **the Signal set prefixed where it is, in `Downloaded Sets 2026`**, proven by its INSPIRATION playlist; 8 calls | live |
+| U145, `favorites split` | rehearsed on the copy, live on an equal digest `62b043f103ce91dd` | **11 quarter playlists (191 members) split into 21 month playlists**, 2024-06 to 2026-10, plus Undated 7 (no date on any job or on the account; the account listed 9 hearts short, withheld), every quarter retired; second run NO_OP | live |
+| U146, `favorites backfill` | rehearsed on the copy `3e1f7f3107cf97d8`, live `05e4ed0aa6960120`; every one of the 58 items and every count equal, the difference the month playlist row ids made separately on each side, approved as session under the 2026-10-09 rule | **58 owned hearts placed, 109 memberships**, 58 into All Favorites and the rest into 2024-06 1, 2024-07 5, 2025-07 1, 2026-02 1, 2026-07 32, 2026-08 1, 2026-09 4, 2026-10 13; 177 already placed; every playlist read back; second run plans 0 with 235 already placed but still opens its gate (residual below) | live |
+| U146, a fresh heart on an owned track | one heart added on the account by the session, `Okonkolo - Elegua` (113042695, ISRC QZ2L61800050, from the Signal set's playlist) | the backfill plans nothing for it, by design: it places hearts a hearts job has listed, and a new heart reaches the library through a sync pass, which downloads unowned hearts and needs the acquisition tail; **left for the next real sync pass**, which is the brief's R4 | account |
+| U147, `organize --only mirror`, the first build, three attempts | first attempt 05:18 to 08:41: plan 12,305 requests in 7,548 s at 0.25 s (digest `41f2b4ff074ce2fa`, 23 folders, 6,525 adds), approved, then the apply's own pass refused `decision-stale` because the split and backfill had changed the Favorites folder between the two reads; second attempt 08:42 to 10:33 at 0.1 s: plan 12,307 requests in 3,166 s (`ab7e101bb9347599`, 6,624 adds, 6,245 unmatched), apply wrote 22 root folders and 170 playlists then failed `unavailable-transient` on House / Funky House / Disco (a 412 on a 100 track add, 31,009 calls, none rate limited); resume 10:33 to 11:40: plan 7,215 requests in 2,001 s (`28cca4f0f914c121`), 21 folders already equal, House's 4 playlists and 400 tracks written, one swap in Nu Disco / Indie Dance (the session's heart on `Okonkolo - Elegua` tipping a tie to the hearted release) | **22 genre folders at the root, each with its playlists named `<Folder> <Playlist>`, 174 mirror playlists, Favorites adopted with All Favorites, 20 months and Undated beside the seven old `DOWNLOADED` quarters**; 6,624 tracks on the account, 6,245 rows unmatched: 4,213 on an ISRC tie between agreeing releases with no album tag, 1,873 with no ISRC, 91 the tie with an album tag, 66 with no provider track (residual below); about 88,000 provider calls across the three attempts, none rate limited | live |
+| `favorites refresh` | rehearsed on the copy, live on an equal digest `382ea3da3d7cfcb4` | **56 memberships added across the 22 genre Favorites**, 1 playlist created, 0 removed, every folder read back | live |
+| U147, the run after the refresh | 12:07 to 13:11, plan 7,219 requests in 1,930 s, digest `f53800c585e5c697`, approved as session | **the plan held exactly the refresh's consequences and nothing else: 51 adds across 14 genre Favorites (51 of the 56 refreshed memberships matched on the account) and one playlist created, `Techno Favorites`, 0 removes, 9 folders with nothing to do**; applied, 18,219 calls, none rate limited | live |
+| rekordbox, desktop control | opened 12:02 after the last database write, both processes confirmed gone after `cmd+q` at 12:06 (Phillip's call ran over, so the session waited while Zoom was in front) | **All Favorites 241**; the Favorites folder reads 2024-06 7, 2024-07 15, 2024-08 1, 2024-10 2, 2024-12 4, 2025-02 2, 2025-05 1, 2025-06 1, 2025-07 2, 2025-08 2, 2025-09 1, 2026-01 4, 2026-02 4, 2026-04 2, 2026-05 2, 2026-06 10, 2026-07 103, 2026-08 5, 2026-09 37, 2026-10 30, Undated 6, **no quarter playlist**; the genre Favorites as before the refresh (Deep House 17, Tech House 17, House 17, Minimal 5, Progressive 9, R&B 5, Hip-Hop 1, Soul 5) | live |
+| the account, read back | through the product's listing, 12:40; the TIDAL desktop app is blocked for computer use by policy and the Chrome extension refused to connect (signed into another claude.ai account than this login), so no screen read | 52 root folders, the 22 genre folders and Favorites among them, every genre folder holding its full playlist set (Afro House 7, Chill / Ambient 2, Hip-Hop 5, Jazz 4, NonElectronic 12, Favorites 29) | read |
+| U148, #327, the mutation table the relay task could not measure | driven on main at 11:43 with no live verb running | **17 rows, 17 killed**, committed as `04a1b896` | main |
+
+**What the sitting leaves.** The genre tree and the Favorites folder are on
+the account and the ledger links every matched row, so a refresh plans in
+about half an hour and writes only the differences. The heart on `Okonkolo -
+Elegua` stands on the account for the next sync pass to place (U146's R4 by
+the sync path was not driven: it downloads unowned hearts and needs the
+acquisition tail). The copy run was removed from the volume. The live pace
+stays at 0.1 s, set in three steps (0.25 at 05:17, 0.15 at 06:51, 0.1 at
+08:42) with no rate limit answer in about 100,000 calls; the backup of the
+config before the first step is `config.toml.bak-2026-10-15-before-s42-pacing`.
+The `attended` plan branch (`aeb36f19`, the 2026-10-14 brainstorm) was merged
+into main as `4add803d`. The month playlist 2026-07 reads 103 where the split
+placed 78 and the backfill named 32 for it: the backfill adds a month
+membership only where the member lacks one, 109 memberships for 58 hearts, so
+seven of its 32 were already there from the split, and Undated reads 6 against
+the split's 7 named, unexplained and left for the next sitting to read.
+
+**Residuals of the sitting, filed unnumbered under `docs/residuals/`:** the
+mirror plans the whole account twice per run and a library write between the
+passes stales the decision (`s42-the-mirror-plans-twice...`); two thirds of
+the mirror's unmatched rows are a tie between agreeing releases the matcher
+refuses (`s42-the-mirror-leaves...`); the backfill opens its gate with nothing
+to place where the split ends NO_OP (`s42-the-backfill-asks...`).
+
 ## What blocks a full sync cycle, stated plainly
 
 **Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
