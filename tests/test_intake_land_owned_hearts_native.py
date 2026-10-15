@@ -400,12 +400,14 @@ def test_an_owned_heart_placed_by_hand_between_the_two_acts_makes_the_answer_sta
     native_library, silence
 ):
     """The digest covers the owned hearts, so an answer given while one was
-    missing is stale once it is in All Favorites."""
+    missing is stale once it is in All Favorites. A downloaded heart lands
+    beside it, so the placement is planned in both acts and only the owned
+    hearts differ between them."""
     cfg, _root_id = native_library
     folder_id, source_id = _home(cfg)
     row = _owned(cfg, silence, "Owned")
-    hearts_swept(cfg, {"Owned": NOV})
-    _stage(cfg, silence, "Loose")
+    hearts_swept(cfg, {"Owned": NOV, "Fresh": NOV})
+    _stage(cfg, silence, "Fresh")
     code, refused = drive(LAND)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     run_id = refused["run_id"]
@@ -424,4 +426,4 @@ def test_an_owned_heart_placed_by_hand_between_the_two_acts_makes_the_answer_sta
 
     assert code != int(ExitCode.OK), acted
     assert acted["cause"]["reason"] == "decision-stale", acted["cause"]
-    assert _favorites(cfg, folder_id) == {SOURCE: ["Owned"]}
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Owned"]}, "nothing was written"
