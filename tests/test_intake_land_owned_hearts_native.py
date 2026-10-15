@@ -357,3 +357,71 @@ def test_landing_an_older_pass_places_no_owned_heart_once_a_later_hearts_job_ran
     assert code == int(ExitCode.OK), acted
     assert acted["outcome"] == "no_op"
     assert _favorites(cfg, folder_id) == {SOURCE: []}
+
+
+def test_an_owned_heart_all_favorites_holds_without_a_month_is_no_write_for_an_empty_landing(
+    native_library, silence
+):
+    """The landing places what All Favorites lacks and nothing else: a month
+    for a heart it already holds is the backfill's to give."""
+    cfg, _root_id = native_library
+    folder_id, source_id = _home(cfg)
+    row = _owned(cfg, silence, "Held")
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        handle.add_to_playlist(handle.get_playlist(ID=source_id), row)
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    hearts_swept(cfg, {"Held": NOV})
+
+    code, acted = drive(LAND)
+
+    assert code == int(ExitCode.OK), acted
+    assert acted["outcome"] == "no_op"
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Held"]}
+
+
+def test_an_owned_heart_joins_beside_a_landed_file_that_is_no_heart(native_library, silence):
+    cfg, _root_id = native_library
+    folder_id, _source_id = _home(cfg)
+    _owned(cfg, silence, "Owned")
+    hearts_swept(cfg, {"Owned": NOV})
+    _stage(cfg, silence, "Loose")
+
+    code, acted, _refused = _two_acts(LAND)
+
+    assert code == int(ExitCode.OK), acted
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Owned"], "2026-11": ["Owned"]}
+    assert acted["data"]["totals"]["landed"] == 1
+
+
+def test_an_owned_heart_placed_by_hand_between_the_two_acts_makes_the_answer_stale(
+    native_library, silence
+):
+    """The digest covers the owned hearts, so an answer given while one was
+    missing is stale once it is in All Favorites."""
+    cfg, _root_id = native_library
+    folder_id, source_id = _home(cfg)
+    row = _owned(cfg, silence, "Owned")
+    hearts_swept(cfg, {"Owned": NOV})
+    _stage(cfg, silence, "Loose")
+    code, refused = drive(LAND)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    decided, envelope = drive(
+        ["run", "decide", run_id, land_cli.NATIVE_GATE, "apply", "--actor", "a-person"]
+    )
+    assert decided == int(ExitCode.OK), envelope
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        handle.add_to_playlist(handle.get_playlist(ID=source_id), row)
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+
+    code, acted = drive(["--run", run_id, *LAND])
+
+    assert code != int(ExitCode.OK), acted
+    assert acted["cause"]["reason"] == "decision-stale", acted["cause"]
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Owned"]}

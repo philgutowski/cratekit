@@ -873,3 +873,37 @@ def test_a_heart_its_job_dated_nowhere_stays_undated_though_the_account_dates_it
     (item,) = refused["cause"]["detail"]["shown"]["items"]
     assert (item["month"], item["dated_by"]) == ("Undated", "none")
     assert _favorites(cfg, folder_id) == {SOURCE: ["Dateless"], "Undated": ["Dateless"]}
+
+
+def test_a_heart_put_back_by_hand_after_a_removal_takes_its_month_and_is_not_taken_back(
+    native_library, silence, monkeypatch
+):
+    """A removed membership row beside a live one is a heart put back, not one
+    taken back: only a removal with no live membership is the author's no."""
+    cfg, _root_id = native_library
+    folder_id, source_id = _home(cfg)
+    row = _deep_row(cfg, silence, "Back Again")
+    hearts_swept(cfg, {"Back Again": "2026-11-03T12:00:00+00:00"}, run_id="")
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        source = handle.get_playlist(ID=source_id)
+        handle.add_to_playlist(source, row)
+        handle.session.commit()
+        (entry,) = list(handle.get_playlist_songs(PlaylistID=source_id))
+        entry.rb_local_deleted = 1
+        handle.session.commit()
+        handle.add_to_playlist(source, row)
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    assert _live(cfg, source_id) == [row]
+    _account(monkeypatch, {"Back Again": NOV})
+
+    code, acted, refused = _acts()
+
+    assert code == int(ExitCode.OK), acted
+    shown = refused["cause"]["detail"]["shown"]
+    assert "taken back" not in shown
+    (item,) = shown["items"]
+    assert (item["into_source"], item["into_month"], item["month"]) == (False, True, "2026-11")
+    assert _favorites(cfg, folder_id)["2026-11"] == ["Back Again"]
