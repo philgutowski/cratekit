@@ -776,7 +776,9 @@ def recorded_names(cfg: config.Config, job_id: str) -> tuple[str, ...]:
     R-1017. What a landing named the playlist is what a backfill made the
     set's account playlist under, so it is the name the outbound ledger holds,
     whatever the job's page words spell today. Read from the record, as the
-    library carries it, whether or not the playlist is still there.
+    library carries it, whether or not the playlist is still there: unlike
+    :func:`recorded_playlist`, which wants the live row, this wants the name
+    the account playlist was made under, and that name outlives the row.
     """
     return tuple(
         dict.fromkeys(name for kept in _landed(cfg, job_id) if (name := str(kept.get("name") or "")))

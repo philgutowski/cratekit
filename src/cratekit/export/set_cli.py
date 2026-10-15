@@ -1650,16 +1650,24 @@ def plan_rename(cfg, job_id: str) -> RenamePlanned:
     to = set_name(live)
     if not to:
         raise _unnamed(live)
-    # R-1017. The name a landing wrote first, since a backfill made the account
-    # playlist under it, then the names the job's page words spell today.
+    # R-1017. The frozen name, which an earlier rename chose; then the names the
+    # set's landings wrote, since a backfill made the account playlist under
+    # one; then the names the job's page words spell today.
+    frozen = set_playlist.frozen_name(job)
     recorded = tuple(set_name(one) for one in set_playlist.recorded_names(cfg, job.job_id))
-    names = tuple(dict.fromkeys(one for one in (*recorded, *_names_for_job(job)) if one))
+    names = tuple(
+        dict.fromkeys(
+            one
+            for one in (set_name(frozen) if frozen else "", *recorded, *_names_for_job(job))
+            if one
+        )
+    )
     planned = sets.plan_rename(
         cfg,
         job_id=job.job_id,
         names=names,
         to=to,
-        frozen=set_playlist.frozen_name(job),
+        frozen=frozen,
         live=live,
         inspiration_id=inspiration_id,
     )
@@ -1681,7 +1689,8 @@ def plan_rename(cfg, job_id: str) -> RenamePlanned:
         raise _rename_unresolved(
             job.job_id,
             f"two account playlists are recorded for the set, "
-            f"{planned.playlist.remote_id} under {to!r} and {planned.twin.remote_id} "
+            f"{planned.playlist.remote_id} under {planned.playlist.name!r} and "
+            f"{planned.twin.remote_id} "
             f"under {planned.twin.name!r}, and renaming either would leave the other "
             f"on the account with nothing recording which is the set's",
             "keep one of the two on the account, take the other and its ledger entry "

@@ -68,9 +68,12 @@ def _landed(
     *,
     state: session.SessionState = session.SessionState.CLOSED,
     source: session.SourceState = session.SourceState.COMMITTED,
+    stamp: str | None = None,
 ) -> None:
     """A landing's session record naming the set's INSPIRATION playlist ``name``."""
-    record = session.open_session(cfg, workflow="intake", sources=("library",))
+    record = session.open_session(
+        cfg, workflow="intake", sources=("library",), session_id=stamp
+    )
     record.sources["library"] = str(source)
     record.detail[set_playlist.RECORD_KEY] = {
         "id": "insp-row",
@@ -429,7 +432,7 @@ def test_refreeze_refuses_a_job_that_is_not_in_the_queue(account):
 
 #: The name a landing wrote the INSPIRATION playlist under, and a backfill the
 #: account playlist under, which none of the job's page words spell today.
-LANDED = "10_10_26 Public Service NYC Live at Probe 2-26"
+LANDED = "10_10_26 Public Service NYC Live at Signal 2-26"
 
 
 @pytest.fixture
@@ -526,3 +529,54 @@ def test_the_backfill_plans_no_twin_after_a_rename_by_the_landing_record(landed,
     assert code == int(ExitCode.DECISION_REQUIRED), after
     assert after["cause"]["detail"]["shown"]["inspiration without account playlist"] == ["none"]
     assert held.created == [LANDED]
+
+
+def test_two_playlists_under_two_older_names_are_a_twin_not_a_choice(landed):
+    """The landing's name and the queued day's each hold a playlist, nothing is
+    under the new name, and renaming either would leave the other unrecorded."""
+    cfg, held, job_id, remote_id = landed
+    _landed(cfg, job_id, LANDED)
+    with jobs.open_store() as store:
+        queued = set_cli._names_for_job(jobs.get(store, job_id))[-1]
+    twin = _recorded(cfg, held, queued)
+
+    code, done = drive(["export", "set", "--rename", job_id])
+
+    assert code == int(ExitCode.PRECONDITION), done
+    assert done["cause"]["reason"] == set_cli.RENAME_UNRESOLVED
+    assert (done["cause"]["detail"]["remote_id"], done["cause"]["detail"]["twin"]) == (
+        remote_id,
+        twin,
+    )
+    assert held.renamed == []
+    assert set(ledger.set_playlist_names(cfg)) == {LANDED, queued}
+
+
+def test_the_frozen_name_ranks_ahead_of_the_landing_record(account, monkeypatch):
+    """An earlier rename froze OLD; a stale record under the landing's name is
+    the twin, never the playlist the rename takes."""
+    cfg, _fake, held = account
+    job = _succeeded_set_job(cfg, OLD)
+    kept = _recorded(cfg, held, OLD)
+    _landed(cfg, job.job_id, LANDED)
+    stale = _recorded(cfg, held, LANDED)
+    monkeypatch.setattr(set_cli, "_inspiration_of", lambda _cfg, _job_id: (INSPIRATION_ID, NEW))
+
+    code, done = drive(["export", "set", "--rename", job.job_id])
+
+    assert code == int(ExitCode.PRECONDITION), done
+    assert (done["cause"]["detail"]["remote_id"], done["cause"]["detail"]["twin"]) == (kept, stale)
+    assert f"{kept} under {OLD!r}" in done["cause"]["message"]
+
+
+def test_recorded_names_reads_every_landing_of_the_job_the_newest_first(account):
+    cfg, _fake, _held = account
+    _landed(cfg, "job-a", "10_10_26 First Part", stamp="2026-10-10T16:09:29Z-0001")
+    _landed(cfg, "job-a", "10_11_26 Second Part", stamp="2026-10-11T16:09:29Z-0002")
+    _landed(cfg, "job-a", "10_11_26 Second Part", stamp="2026-10-11T17:00:00Z-0003")
+    _landed(cfg, "job-b", "10_12_26 Another Set", stamp="2026-10-12T16:09:29Z-0004")
+
+    assert set_playlist.recorded_names(cfg, "job-a") == (
+        "10_11_26 Second Part",
+        "10_10_26 First Part",
+    )

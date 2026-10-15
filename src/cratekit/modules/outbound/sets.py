@@ -405,9 +405,9 @@ class RenamePlan:
     live: str = ""
     #: The INSPIRATION playlist's row, whose name ``to`` is.
     inspiration_id: str = ""
-    #: A second playlist recorded for the set under one of the job's other
-    #: names when ``playlist`` is the one under ``to``: a twin, which a rename
-    #: would leave on the account with its tracks and nothing recording it.
+    #: A second playlist recorded for the set under another of its names than
+    #: ``playlist``'s: a twin, which a rename would leave on the account with
+    #: its tracks and nothing recording it.
     twin: ledger.SetPlaylist | None = None
 
     @property
@@ -458,31 +458,30 @@ def plan_rename(
     """The rename, or ``None`` when no account playlist is recorded for the set.
 
     ``names`` are the names the set's account playlist may be recorded under,
-    in the order a person would expect: recorded by the set's landing (R-1017),
-    then frozen on the job, then the posted day's form, then the queued day's.
-    A record under ``to`` is a rename an
-    earlier run made, AND IT IS TAKEN ONLY ALONE: one under ``to`` beside
-    another playlist under one of ``names`` is a twin a backfill made, and the
-    plan names it in ``twin`` rather than choose. Reads the ledger only; the
+    in the order a person would expect: frozen on the job, then recorded by the
+    set's landings (R-1017), then the posted day's form, then the queued day's.
+    A record under ``to`` is a rename an earlier run made, AND IT IS TAKEN ONLY
+    ALONE: one under ``to`` beside another playlist under one of ``names``, or
+    two different playlists under two of ``names``, is a twin a backfill made,
+    and the plan names it in ``twin`` rather than choose. Reads the ledger only; the
     title on the account is set by identifier, so no read of it stands
     between the plan and the write.
     """
     recorded_to = ledger.set_playlist(cfg, to) if to else None
-    older = None
+    # EVERY NAME IS READ, not the first that holds one (R-1017): two playlists
+    # under two of the set's older names are a twin as surely as one under
+    # ``to``, and renaming the first would leave the second unrecorded.
+    older: list[ledger.SetPlaylist] = []
     for name in names:
         if not name or name == to:
             continue
-        older = ledger.set_playlist(cfg, name)
-        if older is not None:
-            break
-    held = recorded_to or older
+        found = ledger.set_playlist(cfg, name)
+        if found is not None and all(found.remote_id != one.remote_id for one in older):
+            older.append(found)
+    held = recorded_to or (older[0] if older else None)
     if held is None:
         return None
-    twin = (
-        older
-        if recorded_to is not None and older is not None and older.remote_id != recorded_to.remote_id
-        else None
-    )
+    twin = next((one for one in older if one.remote_id != held.remote_id), None)
     return RenamePlan(
         job_id=job_id,
         playlist=held,
