@@ -1,0 +1,122 @@
+name = "r1016"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_account_walk_back_on_the_clients_method"
+description = "The account walk calls the client's playlist_and_favorite_playlists again, which parses through parse_factory and fetches every owned playlist, the defect itself"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_playlists.py", "tests/test_outbound_tidal_account.py", "tests/modules/test_labels.py", "tests/test_provider_gate.py", "tests/intake/test_workers.py"]
+old = '''    return paginate(
+        _account_playlists_endpoint(session.user),
+        **_shape("account_playlists", **kwargs),
+    )'''
+new = '''    return paginate(
+        _paged_caller(session.user, "playlist_and_favorite_playlists"),
+        **_shape("account_playlists", **kwargs),
+    )'''
+
+[[rows]]
+id = "M2_account_parse_through_the_factory"
+description = "The account walk keeps its own request but parses with parse_factory, so every owned playlist is fetched again"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_playlists.py", "tests/test_outbound_tidal_account.py", "tests/modules/test_labels.py", "tests/test_provider_gate.py", "tests/intake/test_workers.py"]
+old = '''    parse = _client_part(user, "playlist", "parse", walk=walk)'''
+new = '''    parse = _client_part(user, "playlist", "parse_factory", walk=walk)'''
+
+[[rows]]
+id = "M3_folder_parse_through_the_factory"
+description = "The folder walk parses with parse_factory again, so every owned playlist in a folder is fetched again"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_playlists.py", "tests/test_outbound_tidal_account.py", "tests/modules/test_labels.py", "tests/test_provider_gate.py", "tests/intake/test_workers.py"]
+old = '''    parse_playlist = _client_part(folder, "playlist", "parse", walk=FOLDER_WALK)'''
+new = '''    parse_playlist = _client_part(folder, "playlist", "parse_factory", walk=FOLDER_WALK)'''
+
+[[rows]]
+id = "M4_date_added_not_moved"
+description = "The listing's created is no longer moved onto the playlist as dateAdded, so user_date_added is lost where the client's method kept it"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_playlists.py", "tests/test_outbound_tidal_account.py", "tests/modules/test_labels.py", "tests/test_provider_gate.py", "tests/intake/test_workers.py"]
+old = '''            playlist["dateAdded"] = item["created"]
+'''
+new = '''            item["created"]
+'''
+
+[[rows]]
+id = "M5_not_a_page_check_dropped"
+description = "An answer that is not a page is no longer refused by name and escapes as a bare KeyError or TypeError"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_playlists.py", "tests/test_outbound_tidal_account.py", "tests/modules/test_labels.py", "tests/test_provider_gate.py", "tests/intake/test_workers.py"]
+old = '''        if not isinstance(page, dict) or not isinstance(page.get("items"), list):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M6_not_a_page_reads_items_null_as_empty"
+description = "The check accepts a page whose items is null and reads it as empty, so an error body ends the walk with the account short"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_playlists.py", "tests/test_outbound_tidal_account.py", "tests/modules/test_labels.py", "tests/test_provider_gate.py", "tests/intake/test_workers.py"]
+old = '''        found = []
+        for item in page["items"]:'''
+new = '''        found = []
+        for item in page.get("items") or []:'''
+
+[[rows]]
+id = "M7_send_translation_dropped"
+description = "_send no longer translates a rejected signature, so a client whose request moved is retried through the whole ladder as a raw TypeError"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_playlists.py", "tests/test_outbound_tidal_account.py", "tests/modules/test_labels.py", "tests/test_provider_gate.py", "tests/intake/test_workers.py"]
+old = '''    try:
+        return request.request(*args, **kwargs)
+    except TypeError as exc:'''
+new = '''    try:
+        return request.request(*args, **kwargs)
+    except KeyboardInterrupt as exc:'''
+
+[[rows]]
+id = "M8_walk_name_ignored"
+description = "_client_part's refusal names the folder listing whatever walk it was called for, so the account walk blames the wrong listing"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_playlists.py", "tests/test_outbound_tidal_account.py", "tests/modules/test_labels.py", "tests/test_provider_gate.py", "tests/intake/test_workers.py"]
+old = '''                f"changed shape and the {walk} needs updating with it"
+            )
+    return value'''
+new = '''                f"changed shape and the folder listing needs updating with it"
+            )
+    return value'''
+
+[[rows]]
+id = "M9_offset_not_sent"
+description = "The account request always asks for offset 0, so the walk reads its first page until the budget raises"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_playlists.py", "tests/test_outbound_tidal_account.py", "tests/modules/test_labels.py", "tests/test_provider_gate.py", "tests/intake/test_workers.py"]
+old = '''params={"limit": limit, "offset": offset})'''
+new = '''params={"limit": limit, "offset": 0})'''
+
+[[rows]]
+id = "M10_wrong_endpoint"
+description = "The account walk asks the account's own created playlists endpoint, which leaves out the followed ones the listing has always served"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_playlists.py", "tests/test_outbound_tidal_account.py", "tests/modules/test_labels.py", "tests/test_provider_gate.py", "tests/intake/test_workers.py"]
+old = '''ACCOUNT_PLAYLISTS_ENDPOINT = "users/%s/playlistsAndFavoritePlaylists"'''
+new = '''ACCOUNT_PLAYLISTS_ENDPOINT = "users/%s/playlists"'''
+
+[[rows]]
+id = "S1_account_dedup_dropped"
+description = "Sample of an existing guard: the account listing loses its dedup by identifier, so a playlist re-served across a page boundary is returned twice"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_playlists.py", "tests/test_outbound_tidal_account.py", "tests/modules/test_labels.py", "tests/test_provider_gate.py", "tests/intake/test_workers.py"]
+old = '''    kwargs.setdefault("key", lambda playlist: str(getattr(playlist, "id", "")))
+    return paginate(
+        _account_playlists_endpoint(session.user),'''
+new = '''    return paginate(
+        _account_playlists_endpoint(session.user),'''
