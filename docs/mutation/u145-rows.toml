@@ -1,0 +1,252 @@
+# U145 author's mutation table: hearts file by month, and the quarters split into months and retired.
+# Twenty five rows, the cap, over the month rule and its callers, the split's
+# reading of the quarters, its dating, its taken back rule, its digest, the
+# guards on each of its two commits, the confinement rule, and the verb's order.
+# Considered and dropped below the cap: as_utc inside month_of (the quarter era
+# test of a naive moment still pins it through month_of's parametrization), the
+# gone membership branch of the confinement rule (the changed membership row
+# exercises the same reading), _tied's first mention rule (the job rows reach it
+# already deduplicated by provider identifier, so only two identifiers
+# resolving to one row could reach it), the read back of a quarter still live
+# (the node confinement before the commit refuses the same state first), and
+# the commit of the additions only when something was added (a run with a made
+# month and nothing to add cannot be built, since a month is made for a member).
+name = "u145"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_month_off_by_one"
+description = "month_of: the month is off by one, October named 2026-09"
+file = "src/cratekit/favorites/placeholders.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_split.py", "tests/test_intake_land_hearts_native.py"]
+old = '''    return f"{utc.year:04d}-{utc.month:02d}"'''
+new = '''    return f"{utc.year:04d}-{utc.month - 1:02d}"'''
+
+[[rows]]
+id = "M2_placement_undated"
+description = "plan_placements: every heart is planned into Undated, its date ignored"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_backfill.py"]
+old = '''        month = placeholders.month_label(hearted)'''
+new = '''        month = placeholders.month_label(None)'''
+
+[[rows]]
+id = "M3_landing_heart_undated"
+description = "Hearted.month: a landed heart whose job dated it goes to Undated"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+tests = ["tests/test_intake_land_hearts_native.py"]
+old = '''        return placeholders.month_label(self.hearted) if self.known else None'''
+new = '''        return placeholders.UNDATED if self.known else None'''
+
+[[rows]]
+id = "M4_states_carried_only"
+description = "carried_hearts: states=None still reads only the carried states, so an owned row dates nothing"
+file = "src/cratekit/intake/account_playlists.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py", "tests/test_favorites_backfill.py"]
+old = '''        if states is not None and report.get("state") not in states:'''
+new = '''        if report.get("state") not in (states or CARRIED_STATES):'''
+
+[[rows]]
+id = "S1_any_name_is_a_quarter"
+description = "quarters: every playlist beside the source but Undated is a quarter, All Favorites and the months included"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''        if not placeholders.QUARTER_LABEL.fullmatch(name):'''
+new = '''        if name == placeholders.UNDATED:'''
+
+[[rows]]
+id = "S2_removed_member_read_live"
+description = "quarters: a membership rekordbox marked removed counts as a member"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''            if not rb_writer.membership_removed(song)
+        ]
+        found.append(Quarter('''
+new = '''            if True
+        ]
+        found.append(Quarter('''
+
+[[rows]]
+id = "S3_last_dated_mention_wins"
+description = "_job_rows: a heart's last dated mention wins over its first"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''                if row.hearted is not None and row.ref not in found:'''
+new = '''                if row.hearted is not None:'''
+
+[[rows]]
+id = "S4_account_never_asked"
+description = "date_members: a member no job dates is never looked for on the account"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''    rest = wanted - set(by_row)
+    if rest:'''
+new = '''    rest = wanted - set(by_row)
+    if False:'''
+
+[[rows]]
+id = "S5_job_dates_ignored"
+description = "_job_rows: no hearts job row is read, so every date comes from the account"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''                if row.hearted is not None and row.ref not in found:'''
+new = '''                if row.hearted is None and row.ref not in found:'''
+
+[[rows]]
+id = "S6_rehearted_is_taken_back"
+description = "taken_back: a heart removed and added back live is still taken back"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''    return frozenset(removed - placement.members(db, home.source_id))'''
+new = '''    return frozenset(removed)'''
+
+[[rows]]
+id = "S7_taken_back_placed"
+description = "_planned: a member the author took back is put in its month all the same"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''    members = tuple(one for one in every if one.content_id not in gone)'''
+new = '''    members = tuple(one for one in every)'''
+
+[[rows]]
+id = "S8_stale_digest_accepted"
+description = "apply: a digest that moved between the approval and the write is written anyway"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''    if again.digest != approved.digest:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "S9_digest_covers_the_months_state"
+description = "identity: the digest covers what the months hold, so a run stopped after its additions plans another digest"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''            "taken_back": [one.content_id for one in self.taken_back],
+        }'''
+new = '''            "taken_back": [one.content_id for one in self.taken_back],
+            "held": {name: sorted(ids) for name, ids in self.held.items()},
+        }'''
+
+[[rows]]
+id = "S10_unemptied_retired"
+description = "apply: a quarter whose member its month lacks is retired all the same"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''        unemptied = _unemptied(db, planned, rows)
+        if unemptied:'''
+new = '''        unemptied = _unemptied(db, planned, rows)
+        if False:'''
+
+[[rows]]
+id = "S11_unemptied_asks_taken_back"
+description = "_unemptied: a taken back member is asked of a month it has none in"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''            if content_id in month_of
+            and content_id not in held.get(month_of[content_id], frozenset())'''
+new = '''            if content_id not in held.get(month_of[content_id], frozenset())'''
+
+[[rows]]
+id = "S12_retirement_admits_memberships_only"
+description = "apply: the retirement's commit admits a removed membership and no removed playlist"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''                rb_writer.commit_guarded(db, removals=REMOVALS)'''
+new = '''                rb_writer.commit_guarded(db, removals=(rb_writer.MEMBERSHIP_TABLE,))'''
+
+[[rows]]
+id = "S13_retirement_confined_to_nothing"
+description = "apply: the node confinement is told no quarter is removed"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''                    removed=[one.playlist_id for one in planned.quarters],'''
+new = '''                    removed=[],'''
+
+[[rows]]
+id = "C1_unplanned_membership_admitted"
+description = "addition_violations: a membership added into a month for a row the plan did not name is admitted"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''        if row[m_marker] or content_id not in wanted.get(owner, set()):'''
+new = '''        if row[m_marker]:'''
+
+[[rows]]
+id = "C2_unplanned_playlist_admitted"
+description = "addition_violations: a playlist row the plan did not make is admitted"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''    for key in sorted(added - set(created)):'''
+new = '''    for key in sorted(set()):'''
+
+[[rows]]
+id = "C3_parent_unchecked"
+description = "addition_violations: a made month under another parent is admitted"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''            or str(row[parent_at]) != str(parent)'''
+new = '''            or False'''
+
+[[rows]]
+id = "C4_changed_membership_admitted"
+description = "addition_violations: an existing membership that changed is admitted"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''        if before.memberships[key] != after.memberships[key]:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "C5_content_unchecked"
+description = "addition_violations: a changed content row is admitted"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''    if before.content != after.content:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "C6_existing_playlist_change_admitted"
+description = "addition_violations: an existing playlist row that changed beyond its bookkeeping is admitted"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''        if changed - allowed:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "V1_gate_on_nothing"
+description = "favorites_split: a library with no quarter is still put to the gate"
+file = "src/cratekit/favorites/split_cli.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''    if not plan.writes:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "V2_no_ack"
+description = "favorites_split: the backup acknowledgment is not read before the plan"
+file = "src/cratekit/favorites/split_cli.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''    session.assert_backup_acknowledged(cfg)'''
+new = '''    pass'''

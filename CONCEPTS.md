@@ -670,13 +670,16 @@ put it without asking the account again; see **Landed heart**.
 A heart the favourites sync downloaded and landed, and where it goes, since
 U120. The source system filed an owned heart into All Favorites and into a
 playlist named for the UTC quarter it was hearted in, `2026-Q4`, both under
-the top level Favorites folder, and an undated one into `Undated`. A native
-landing given `--pass` does the same in its one commit: the pass's hearts job
-says which files are hearts, by the match rule the account playlists use, the
-job's frozen date says the quarter, and the hearts join All Favorites and
-their quarter beside their INBOX playlist, the quarter playlist made when the
-folder lacks it. The placement is add only and never moves a heart between
-quarters. A library with no live All Favorites, or two, lands the batch and
+the top level Favorites folder, and an undated one into `Undated`. Since U145
+the grain is the UTC MONTH, `2026-10`, the author's choice of 2026-10-14, and
+no quarter playlist is written again; `crate favorites split` turned the
+quarters already there into months once and retired them (see **Month
+playlist**). A native landing given `--pass` places a heart in its one
+commit: the pass's hearts job says which files are hearts, by the match rule
+the account playlists use, the job's frozen date says the month, and the
+hearts join All Favorites and their month beside their INBOX playlist, the
+month playlist made when the folder lacks it. The placement is add only and
+never moves a heart between months. A library with no live All Favorites, or two, lands the batch and
 skips the placement with a warning; a landing with no pass, and every landing
 on the bridge, places nothing. `crate favorites backfill` is the attended
 half: every heart a hearts job carried that the library holds now in a folder
