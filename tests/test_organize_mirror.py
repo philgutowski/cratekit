@@ -560,9 +560,27 @@ def test_the_intake_sweep_leaves_a_mirrored_playlist_alone():
     assert playlists.exclusion(mirrored, recorded=set(), in_flight=set()) is None
 
 
-def test_the_ledger_names_every_mirrored_playlist_for_the_sweep(installed, monkeypatch):
-    world = World(installed, monkeypatch)
-    world.mirror(folder("Techno", Low=(1,)))
-    world.run()
+def test_the_sync_pass_hands_the_sweep_every_mirrored_playlist(installed, monkeypatch):
+    from types import SimpleNamespace
 
-    assert ledger.mirror_playlist_ids(installed) == {world.playlist_id("Techno Low")}
+    from cratekit.label import catalogue
+    from cratekit.sync import cli as sync_cli
+
+    world = World(installed, monkeypatch)
+    world.mirror(folder("Techno", Low=(1,), High=(2,)))
+    world.run()
+    handed: list[frozenset[str]] = []
+
+    class Stop(Exception):
+        pass
+
+    def plan(store, cfg_, found, *, handler_key, mirrored=frozenset(), **_others):
+        handed.append(mirrored)
+        raise Stop
+
+    monkeypatch.setattr(catalogue, "resolve", lambda _cfg: object())
+    monkeypatch.setattr(playlists, "plan", plan)
+    with pytest.raises(Stop):
+        sync_cli._plan_playlists(SimpleNamespace(handler_key="intake.playlist"), None)
+
+    assert handed == [{world.playlist_id("Techno Low"), world.playlist_id("Techno High")}]

@@ -248,7 +248,7 @@ def test_the_sweep_never_reads_a_set_playlist_as_intake(account, monkeypatch):
 
     def plan(
         store, cfg_, found, *, handler_key, label_built=frozenset(), set_built=frozenset(),
-        paired=frozenset(),
+        paired=frozenset(), mirrored=frozenset(),
     ):
         handed.append(set_built)
         raise Stop
