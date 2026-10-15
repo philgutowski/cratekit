@@ -1,0 +1,26 @@
+# U146 author's mutation table, batch e: the two rows measured again. B17 was
+# refused in batch b, its old text written with a doubled backslash in a
+# literal string; N3 was a zero in batch c and is measured against the test
+# it bought.
+name = "u146-e"
+pass_kind = "light"
+
+[[rows]]
+id = "B17_month_label_wrong"
+description = "MONTH_LABEL: a month playlist does not read as a month, so every placed heart is planned again with nothing to add"
+file = "src/cratekit/favorites/placeholders.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''MONTH_LABEL = re.compile(r"\d{4}-(?:0[1-9]|1[0-2])")'''
+new = '''MONTH_LABEL = re.compile(r"\d{4}-(?:0[1-9]|1[0-2])-")'''
+
+[[rows]]
+id = "N3_owned_out_of_digest"
+description = "FavoritesPlan.identity: the owned hearts are not digested, so an answer given for one set of them stands for another"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '''        if self.owned:
+            identity["owned"] = ['''
+new = '''        if self.owned and False:
+            identity["owned"] = ['''
