@@ -572,16 +572,48 @@ class AccountEntry:
         self.num_tracks = num_tracks
 
 
+class _EntryAnswer:
+    def __init__(self, body: dict) -> None:
+        self._body = body
+
+    def json(self) -> dict:
+        return self._body
+
+
+class _EntryParser:
+    """The client's playlist parser, handing back the entry the page carried."""
+
+    @staticmethod
+    def parse(data: dict) -> AccountEntry:
+        return data["entry"]
+
+
 class AccountUser:
+    """The logged in user as the account playlists walk reaches it (R-1016).
+
+    Its identifier, its request object serving the account playlist endpoint,
+    and its playlist parser, which is all the walk touches.
+    """
+
     def __init__(self, user_id, entries) -> None:
         self.id = user_id
         self._entries = list(entries)
         self.pages: list[tuple[int, int]] = []
+        self.request = _EntryRequest(self)
+        self.playlist = _EntryParser()
 
-    def playlist_and_favorite_playlists(self, limit: int | None = None, offset: int = 0):
-        size = 50 if limit is None else limit
-        self.pages.append((size, offset))
-        return self._entries[offset : offset + size]
+
+class _EntryRequest:
+    def __init__(self, user: AccountUser) -> None:
+        self._user = user
+
+    def request(self, method: str, path: str, params: dict | None = None) -> _EntryAnswer:
+        size, offset = params["limit"], params["offset"]
+        self._user.pages.append((size, offset))
+        window = self._user._entries[offset : offset + size]
+        return _EntryAnswer(
+            {"items": [{"created": None, "playlist": {"entry": entry}} for entry in window]}
+        )
 
 
 def test_the_account_listing_keeps_the_playlists_the_account_created():
