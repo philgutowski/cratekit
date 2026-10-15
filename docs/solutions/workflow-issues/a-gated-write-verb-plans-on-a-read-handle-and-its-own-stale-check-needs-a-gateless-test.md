@@ -72,3 +72,16 @@ caller with no gate in front, which no CLI test is.
   not present". Write a row whose text carries backslash escapes through
   Python, and assert the TOML's `old` against the source before the driver
   runs.
+- The same refusal the other way round, U146 on 2026-10-15: a regex row
+  written in a TOML literal string, `'''...'''`, with `\\d` for `\d`.
+  A literal string processes no escape, so the row's text held two
+  backslashes where the source holds one, the row was refused, and measuring
+  it again cost a whole batch of baseline. In a literal string write the
+  source's text exactly, one backslash.
+- A digest test that changes one thing between the two acts must keep
+  everything else in the plan alive in both. U146's first stale answer test
+  let the owned heart it moved also empty the favourites plan, so the digest
+  moved for the plan's absence and the guard it was written for, the owned
+  hearts in the digest, read zero on the full suite. A downloaded heart
+  landing beside it in both acts made the owned hearts the only difference,
+  and the row was killed.

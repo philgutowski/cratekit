@@ -1,0 +1,103 @@
+{
+  "name": "u146-e",
+  "pass_kind": "light",
+  "branch": "relay/325",
+  "head": "2dd1d9b8",
+  "when": "2026-10-15 06:50 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 14032,
+  "baseline_exit": 0,
+  "pytest_runs": 6,
+  "state_guarded": "~/Library/Application Support/cratekit (429320 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/favorites/placeholders.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/favorites/placeholders.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "b366275de594e481",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 14032,
+    "baseline_collected": 14032,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "B17_month_label_wrong",
+      "description": "MONTH_LABEL: a month playlist does not read as a month, so every placed heart is planned again with nothing to add",
+      "file": "src/cratekit/favorites/placeholders.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "34ef6dd9c9c0718c",
+      "subset": [
+        "tests/test_favorites_backfill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 27,
+      "baseline_collected": 27,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_favorites_backfill.py::test_a_heart_the_author_took_out_of_all_favorites_is_never_put_back",
+        "tests/test_favorites_backfill.py::test_a_second_run_finds_the_same_hearts_and_writes_nothing",
+        "tests/test_favorites_backfill.py::test_an_unreadable_account_refuses_only_when_a_heart_needs_placing",
+        "tests/test_favorites_backfill.py::test_owned_hearts_not_in_all_favorites_are_planned_by_month_and_those_taken_back_are_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "MONTH_LABEL = re.compile(r\"\\d{4}-(?:0[1-9]|1[0-2])\")",
+      "new": "MONTH_LABEL = re.compile(r\"\\d{4}-(?:0[1-9]|1[0-2])-\")"
+    },
+    {
+      "id": "N3_owned_out_of_digest",
+      "description": "FavoritesPlan.identity: the owned hearts are not digested, so an answer given for one set of them stands for another",
+      "file": "src/cratekit/intake/native.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5600d1d9f436f19d",
+      "subset": [
+        "tests/test_intake_land_owned_hearts_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 15,
+      "baseline_collected": 15,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_land_owned_hearts_native.py::test_an_owned_heart_placed_by_hand_between_the_two_acts_makes_the_answer_stale"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if self.owned:\n            identity[\"owned\"] = [",
+      "new": "        if self.owned and False:\n            identity[\"owned\"] = ["
+    }
+  ],
+  "dropped": []
+}
