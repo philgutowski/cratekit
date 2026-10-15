@@ -1,0 +1,250 @@
+{
+  "name": "u147-c",
+  "pass_kind": "light",
+  "branch": "relay/326",
+  "head": "2805f778",
+  "when": "2026-10-15 08:15 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 14070,
+  "baseline_exit": 0,
+  "pytest_runs": 10,
+  "state_guarded": "~/Library/Application Support/cratekit (429320 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/modules/outbound/ledger.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/modules/outbound/ledger.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "2b373b049cccd547",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 14070,
+    "baseline_collected": 14070,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "M14_made_in_mirror",
+      "description": "ledger._made_in: a mirrored playlist is no longer vouched for, so no track may come off it (R-836)",
+      "file": "src/cratekit/modules/outbound/ledger.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0fa016d75d0b568d",
+      "subset": [
+        "tests/test_organize_mirror.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize_mirror.py::test_a_track_added_by_hand_to_a_mirrored_playlist_is_removed_and_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    # U147. A mirrored playlist is only ever created, never adopted.\n    for record in document[\"mirrors\"].values():\n        for entry in (record.get(\"playlists\") or {}).values():\n            if str(entry.get(\"remote_id\") or \"\") == wanted:\n                return True\n",
+      "new": ""
+    },
+    {
+      "id": "M15_malformed_mirrors_read",
+      "description": "ledger._load: a malformed mirror record is read rather than refused",
+      "file": "src/cratekit/modules/outbound/ledger.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "85f90e8138197b0a",
+      "subset": [
+        "tests/test_organize_mirror.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize_mirror.py::test_a_malformed_mirror_record_refuses_rather_than_reading_as_none"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        raise _unusable(path, \"mirrors must be a map of mirrored folder records\")",
+      "new": "        mirrors = {}"
+    },
+    {
+      "id": "M16_folder_made_twice",
+      "description": "ledger.reserve_mirror_folder: a recorded folder is not reused, so a resume makes a second",
+      "file": "src/cratekit/modules/outbound/ledger.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d069506703d8916a",
+      "subset": [
+        "tests/test_organize_mirror.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize_mirror.py::test_a_playlist_made_and_not_yet_moved_is_moved_on_the_next_run",
+        "tests/test_organize_mirror.py::test_an_apply_stopped_after_the_folder_was_created_resumes_without_a_second_folder"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        record = _mirror_entry(document, name)\n        recorded = str(record.get(\"folder_id\") or \"\")\n        if recorded and recorded != stale:\n            return recorded, False\n",
+      "new": "        record = _mirror_entry(document, name)\n        recorded = str(record.get(\"folder_id\") or \"\")\n"
+    },
+    {
+      "id": "M17_playlist_made_twice",
+      "description": "ledger.reserve_mirror_playlist: a recorded playlist is not reused, so a resume makes a second",
+      "file": "src/cratekit/modules/outbound/ledger.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "69991f568330e262",
+      "subset": [
+        "tests/test_organize_mirror.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize_mirror.py::test_a_playlist_made_and_not_yet_moved_is_moved_on_the_next_run",
+        "tests/test_organize_mirror.py::test_a_removal_the_account_refuses_is_kept_named_and_the_apply_goes_on",
+        "tests/test_organize_mirror.py::test_a_track_added_by_hand_to_a_mirrored_playlist_is_removed_and_named",
+        "tests/test_organize_mirror.py::test_a_track_moved_from_med_to_high_is_added_to_one_and_removed_from_the_other",
+        "tests/test_organize_mirror.py::test_an_apply_stopped_after_the_folder_was_created_resumes_without_a_second_folder"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        playlists = _mirror_entry(document, folder)[\"playlists\"]\n        recorded = str((playlists.get(name) or {}).get(\"remote_id\") or \"\")\n        if recorded:\n            return recorded, False\n",
+      "new": "        playlists = _mirror_entry(document, folder)[\"playlists\"]\n"
+    },
+    {
+      "id": "M18_sweep_exclusion",
+      "description": "sync.playlists.exclusion: a mirrored playlist is swept as intake",
+      "file": "src/cratekit/sync/playlists.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "86fe4fb2950e2f93",
+      "subset": [
+        "tests/test_organize_mirror.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize_mirror.py::test_the_intake_sweep_leaves_a_mirrored_playlist_alone"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if playlist.playlist_id in mirrored:\n        return Excluded.MIRROR\n",
+      "new": ""
+    },
+    {
+      "id": "M19_sweep_handoff",
+      "description": "sync.cli: the sync source hands the sweep no mirrored playlist",
+      "file": "src/cratekit/sync/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c70ac359c10acae3",
+      "subset": [
+        "tests/test_organize_mirror.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize_mirror.py::test_the_sync_pass_hands_the_sweep_every_mirrored_playlist"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            mirrored=mirrored,",
+      "new": ""
+    },
+    {
+      "id": "M20_pair_scope",
+      "description": "sync.pair_cli._scope_account: a mirrored playlist may be paired",
+      "file": "src/cratekit/sync/pair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "afb1fa4338c0a743",
+      "subset": [
+        "tests/test_organize_mirror.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize_mirror.py::test_sync_pair_refuses_to_pair_a_mirrored_playlist"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if account_id in mirrored:",
+      "new": "    if False:"
+    }
+  ],
+  "dropped": []
+}
