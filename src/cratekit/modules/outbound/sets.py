@@ -458,8 +458,9 @@ def plan_rename(
     """The rename, or ``None`` when no account playlist is recorded for the set.
 
     ``names`` are the names the set's account playlist may be recorded under,
-    in the order a person would expect: frozen on the job, then the posted
-    day's form, then the queued day's. A record under ``to`` is a rename an
+    in the order a person would expect: recorded by the set's landing (R-1017),
+    then frozen on the job, then the posted day's form, then the queued day's.
+    A record under ``to`` is a rename an
     earlier run made, AND IT IS TAKEN ONLY ALONE: one under ``to`` beside
     another playlist under one of ``names`` is a twin a backfill made, and the
     plan names it in ``twin`` rather than choose. Reads the ledger only; the

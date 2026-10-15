@@ -1650,7 +1650,10 @@ def plan_rename(cfg, job_id: str) -> RenamePlanned:
     to = set_name(live)
     if not to:
         raise _unnamed(live)
-    names = _names_for_job(job)
+    # R-1017. The name a landing wrote first, since a backfill made the account
+    # playlist under it, then the names the job's page words spell today.
+    recorded = tuple(set_name(one) for one in set_playlist.recorded_names(cfg, job.job_id))
+    names = tuple(dict.fromkeys(one for one in (*recorded, *_names_for_job(job)) if one))
     planned = sets.plan_rename(
         cfg,
         job_id=job.job_id,
@@ -1664,12 +1667,13 @@ def plan_rename(cfg, job_id: str) -> RenamePlanned:
         raise _rename_unresolved(
             job.job_id,
             f"no account playlist is recorded for the set under {to!r} or any name "
-            f"its job gives ({', '.join(repr(one) for one in names) or 'none'}), so "
+            f"its landing recorded or its job gives "
+            f"({', '.join(repr(one) for one in names) or 'none'}), so "
             f"there is nothing to rename",
             "if the set's account playlist was made under a name of its own, from a "
             "tracklist or --name, rename it on the account by hand, since this verb "
-            "finds only the names the job gives; if the set has none, crate export "
-            "set with no tracklist makes one",
+            "finds only the names the landing recorded and the job gives; if the set "
+            "has none, crate export set with no tracklist makes one",
             names=list(names),
             to=to,
         )

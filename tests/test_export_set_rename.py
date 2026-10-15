@@ -12,7 +12,7 @@ import pytest
 
 from cratekit.acquire import match
 from cratekit.cli import registry
-from cratekit.core import jobs
+from cratekit.core import jobs, session
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.export import set_cli
@@ -59,6 +59,28 @@ def _recorded(cfg, held, name: str) -> str:
     )
     ledger.record_set_tracks(cfg, name, added=["tid-1"])
     return remote_id
+
+
+def _landed(
+    cfg,
+    job_id: str,
+    name: str,
+    *,
+    state: session.SessionState = session.SessionState.CLOSED,
+    source: session.SourceState = session.SourceState.COMMITTED,
+) -> None:
+    """A landing's session record naming the set's INSPIRATION playlist ``name``."""
+    record = session.open_session(cfg, workflow="intake", sources=("library",))
+    record.sources["library"] = str(source)
+    record.detail[set_playlist.RECORD_KEY] = {
+        "id": "insp-row",
+        "name": name,
+        "job": job_id,
+        "folder": "insp-folder",
+    }
+    record.state = state
+    record.ended = "2026-10-10T16:09:29+00:00"
+    session.write_record(record, cfg)
 
 
 def _frozen(job_id: str) -> str:
@@ -401,3 +423,106 @@ def test_refreeze_refuses_a_job_that_is_not_in_the_queue(account):
         with pytest.raises(CratekitError) as caught:
             jobs.refreeze(store, "no-such-job", intake_cli.PLAYLIST_NAME, NEW)
     assert caught.value.cause.reason == "job-unknown"
+
+
+# ── R-1017: the name the landing recorded ───────────────────────────────────
+
+#: The name a landing wrote the INSPIRATION playlist under, and a backfill the
+#: account playlist under, which none of the job's page words spell today.
+LANDED = "10_10_26 Public Service NYC Live at Probe 2-26"
+
+
+@pytest.fixture
+def landed(account, monkeypatch):
+    """The Signal set's shape: no frozen name, page words that spell neither
+    name, the account playlist recorded under the landing's name, and the
+    INSPIRATION playlist renamed by a person to NEW."""
+    cfg, _fake, held = account
+    job = _succeeded_set_job(cfg, "", created="2026-10-10T14:59:24+00:00")
+    assert LANDED not in set_cli._names_for_job(job)
+    assert NEW not in set_cli._names_for_job(job)
+    remote_id = _recorded(cfg, held, LANDED)
+    monkeypatch.setattr(set_cli, "_inspiration_of", lambda _cfg, _job_id: (INSPIRATION_ID, NEW))
+    return cfg, held, job.job_id, remote_id
+
+
+def test_a_job_whose_page_words_differ_renames_by_the_name_its_landing_recorded(landed):
+    cfg, held, job_id, remote_id = landed
+    _landed(cfg, job_id, LANDED)
+
+    code, done, refused = _rename_acts(job_id)
+
+    assert code == int(ExitCode.OK), done
+    assert held.renamed == [(remote_id, NEW)]
+    assert ledger.set_playlist(cfg, LANDED) is None
+    moved = ledger.set_playlist(cfg, NEW)
+    assert moved is not None and moved.remote_id == remote_id
+    assert moved.added == frozenset({"tid-1"})
+    assert _frozen(job_id) == NEW
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["account playlist"] == f"{remote_id}: {LANDED!r} -> {NEW!r}"
+    assert shown["frozen name"] == f"none -> {NEW!r}"
+
+    # A second run is a no op: the record is under NEW and the job carries it.
+    code, done, _refused = _rename_acts(job_id)
+    assert code == int(ExitCode.OK), done
+    assert done["outcome"] == "no_op"
+    assert len(held.renamed) == 1
+
+
+@pytest.mark.parametrize(
+    "recorded",
+    ["none", "open", "uncommitted", "another job"],
+)
+def test_a_job_with_no_landing_record_and_no_matching_name_still_refuses(landed, recorded):
+    """Only a closed landing of this job whose source committed names the playlist."""
+    cfg, held, job_id, _remote_id = landed
+    if recorded == "open":
+        _landed(cfg, job_id, LANDED, state=session.SessionState.OPEN)
+    elif recorded == "uncommitted":
+        _landed(cfg, job_id, LANDED, source=session.SourceState.PENDING)
+    elif recorded == "another job":
+        _landed(cfg, "2026-10-10T00:00:00Z-0000", LANDED)
+
+    code, done = drive(["export", "set", "--rename", job_id])
+
+    assert code == int(ExitCode.PRECONDITION), done
+    assert done["cause"]["reason"] == set_cli.RENAME_UNRESOLVED
+    assert "no account playlist is recorded" in done["cause"]["message"]
+    assert LANDED not in done["cause"]["detail"]["names"]
+    assert held.renamed == []
+    assert ledger.set_playlist_names(cfg) == (LANDED,)
+
+
+def test_a_twin_under_the_new_name_still_refuses_when_the_landing_names_the_old(landed):
+    cfg, held, job_id, remote_id = landed
+    _landed(cfg, job_id, LANDED)
+    twin = _recorded(cfg, held, NEW)
+
+    code, done = drive(["export", "set", "--rename", job_id])
+
+    assert code == int(ExitCode.PRECONDITION), done
+    assert done["cause"]["reason"] == set_cli.RENAME_UNRESOLVED
+    assert done["cause"]["detail"]["twin"] == remote_id
+    assert done["cause"]["detail"]["remote_id"] == twin
+    assert held.renamed == []
+    assert set(ledger.set_playlist_names(cfg)) == {LANDED, NEW}
+    assert _frozen(job_id) == ""
+
+
+def test_the_backfill_plans_no_twin_after_a_rename_by_the_landing_record(landed, monkeypatch):
+    cfg, held, job_id, _remote_id = landed
+    _landed(cfg, job_id, LANDED)
+    monkeypatch.setattr(set_cli, "_inspiration_playlists", lambda _cfg: [(NEW, INSPIRATION_ID)])
+    code, before = drive(["export", "set"])
+    assert code == int(ExitCode.DECISION_REQUIRED), before
+    # Before the rename the backfill reads the set as having no account playlist.
+    left = before["cause"]["detail"]["shown"]["left for a later sitting"]
+    assert any(message.startswith(f"{NEW}: ") for message in left), left
+
+    assert _rename_acts(job_id)[0] == int(ExitCode.OK)
+
+    code, after = drive(["export", "set"])
+    assert code == int(ExitCode.DECISION_REQUIRED), after
+    assert after["cause"]["detail"]["shown"]["inspiration without account playlist"] == ["none"]
+    assert held.created == [LANDED]
