@@ -83,10 +83,10 @@ PAGE = "page"
 PLAYLIST_NAME = "playlist_name"
 #: When the account says a heart was made, on a hearts job's frozen row, as ISO
 #: 8601 in UTC (U120). Recorded at the queue for U113's reason: a landing reads
-#: which quarter a heart goes to from the job and never from the account again.
+#: which month a heart goes to from the job and never from the account again.
 #: ON EVERY ROW A HEARTS JOB FREEZES, ``None`` when the account dates the heart
 #: nowhere, so the KEY's absence means one thing only: a job a build before
-#: this one froze, whose quarter nobody knows yet. ``thawed`` reads past it.
+#: this one froze, whose month nobody knows yet. ``thawed`` reads past it.
 HEARTED = "hearted"
 
 #: The two handler keys one worker serves. A resume is refused for any other,

@@ -47,8 +47,9 @@ mirrored a second time under the next free name.
 
 THE HEARTS ARE TIED TO THEIR FILES THE SAME WAY, SINCE U120, and for another
 purpose: a file the pass's hearts job asked for is a heart, and the landing
-puts it into All Favorites and its quarter beside its INBOX playlist. The
-hearts claim no INBOX playlist of their own, as before. The quarter is read
+puts it into All Favorites and its month beside its INBOX playlist (by
+quarter until U145). The hearts claim no INBOX playlist of their own, as
+before. The month is read
 from the date the job froze on the row (``intake_cli.HEARTED``), never from
 the account again, and a row frozen with no date is an undated heart.
 
@@ -241,7 +242,7 @@ class HeartRow:
     ref: str
     job_id: str
     #: Whether the job SAID anything about the date: a row frozen by a build
-    #: before U120 carries no key at all, and its quarter is nobody's to guess.
+    #: before U120 carries no key at all, and its month is nobody's to guess.
     known: bool = True
 
     @property
@@ -251,7 +252,7 @@ class HeartRow:
 
 @dataclass(frozen=True, slots=True)
 class Hearted:
-    """One planned file that is a heart, and the quarter playlist it goes to (U120)."""
+    """One planned file that is a heart, and the month playlist it goes to (U120, U145)."""
 
     path: Path
     hearted: datetime | None
@@ -259,10 +260,10 @@ class Hearted:
     known: bool = True
 
     @property
-    def quarter(self) -> str | None:
-        """The quarter playlist, ``Undated`` for a heart the account dates nowhere,
+    def month(self) -> str | None:
+        """The month playlist, ``Undated`` for a heart the account dates nowhere,
         and None for one whose job never said, which the backfill dates later."""
-        return placeholders.quarter_label(self.hearted) if self.known else None
+        return placeholders.month_label(self.hearted) if self.known else None
 
 
 def is_hearts_job(job: jobs.Job) -> bool:
@@ -273,19 +274,27 @@ def is_hearts_job(job: jobs.Job) -> bool:
     )
 
 
-def carried_hearts(store, job: jobs.Job) -> tuple[HeartRow, ...]:
+def carried_hearts(
+    store, job: jobs.Job, *, states: frozenset[str] | None = CARRIED_STATES
+) -> tuple[HeartRow, ...]:
     """The rows a hearts job's download was made from, each with its frozen date.
 
     THE SAME STATES A PLAYLIST'S CLAIM READS, ``missing`` and ``offered``: an
     owned heart was never downloaded, so it is not a heart this build lands,
     which is the brief's conservative answer to the owned hearts not in All
     Favorites. The date is the row's own frozen key, read as the job froze it.
+
+    ``states=None`` reads EVERY row whatever its state, for a reader that wants
+    the job's dates rather than its downloads: ``crate favorites split``
+    (U145) dates the hearts the quarters hold, which were mostly owned when
+    their job ran. One reader of the frozen rows, so the two cannot disagree
+    about a heart's date or its identifier.
     """
     from cratekit.intake import missing_cli
 
     found: list[HeartRow] = []
     for report in missing_cli.job_reports(store, job):
-        if report.get("state") not in CARRIED_STATES:
+        if states is not None and report.get("state") not in states:
             continue
         said = report.get("track") or {}
         wanted = intake_cli.thawed(said)
@@ -307,7 +316,7 @@ def prefer_dated(held: HeartRow | None, row: HeartRow) -> bool:
     ONE RULE FOR THE LANDING AND THE BACKFILL: the first mention, unless a
     later one knows the date where the first did not, since a job frozen by
     this build knows and an older one does not, and two readers that chose
-    differently would put one heart in two quarters.
+    differently would put one heart in two months.
     """
     return held is None or (not held.known and row.known)
 
@@ -331,7 +340,7 @@ def hearts(cfg: config.Config, pass_name: str) -> tuple[HeartRow, ...]:
 def hearted(
     cfg: config.Config, pass_name: str | None, files: Sequence[Path]
 ) -> tuple[Hearted, ...]:
-    """Which of the planned ``files`` the pass's hearts asked for, with each one's quarter.
+    """Which of the planned ``files`` the pass's hearts asked for, with each one's month.
 
     THE ONE MATCH RULE :func:`claims` USES, over the planned files only, and
     the same answer for a landing of no pass: nothing, since no job ties a

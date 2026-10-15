@@ -1598,6 +1598,12 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # it, the account is never listed, and the verb ends NO_OP writing
         # nothing. The placing path is driven in tests/test_favorites_backfill.py.
         "favorites.backfill": _a_source_playlist,
+        # U145. LAZY, for the backfill's reason: the engine refuses a library
+        # with no live source playlist before anything else. No quarter
+        # playlist sits beside it, so the plan is empty and, by the brief, the
+        # verb asks nothing and ends NO_OP; UNREACHABLE_GATES says why its gate
+        # is not asked here. The split is driven in tests/test_favorites_split.py.
+        "favorites.split": _a_source_playlist,
         # U61. The composer takes the favourites source's export, the same
         # document ``sync.favorites`` is driven with below, so its confirm gate
         # is reachable and conformance 3 can drive it. The registry on this
@@ -2400,6 +2406,16 @@ UNREACHABLE_GATES: Mapping[str, str] = MappingProxyType(
             "answer and its refusals are driven in tests/test_export_set_rename.py "
             "over a set job and an INSPIRATION playlist."
         ),
+        "favorites.split.approve": (
+            "asked only over a library that still holds a quarter playlist "
+            "beside All Favorites, and approving one writes: the quarter is "
+            "retired, which the conformance fixture refuses for its unpinned "
+            "rekordbox, since a pin is never adopted on a user's behalf (S2). "
+            "A library with no quarter asks nothing, by U145's brief, so the "
+            "sample is that library and the verb ends NO_OP with no gate. The "
+            "gate, its explicit two act answer, the split and its refusals are "
+            "driven in tests/test_favorites_split.py."
+        ),
         "intake.file.native": (
             "asked only on a library whose intake tree is recorded database "
             "native, for the reason intake.land.native gives below: the "
@@ -2500,6 +2516,10 @@ ACKNOWLEDGED_BEFORE_THE_GATE = {
     ),
     "favorites.backfill": (
         "tests/test_favorites_backfill.py::"
+        "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
+    ),
+    "favorites.split": (
+        "tests/test_favorites_split.py::"
         "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
     ),
     "tag.suggest": (
@@ -3771,12 +3791,13 @@ EXPECTED_UNREACHABLE_GATES = frozenset(
         "intake.land.native",
         "intake.file.native",
         "export.set.rename",
+        "favorites.split.approve",
     }
 )
 
 
 def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
-    """Four gates are exempt. A fifth one is a decision, not a diff.
+    """Five gates are exempt. A sixth one is a decision, not a diff.
 
     The second, ``intake.land.native``, joined with R-746: one verb, two media,
     one drive per fixture, and the conformance fixture's intake tree is on the
@@ -3786,7 +3807,12 @@ def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
     The fourth, ``export.set.rename``, joined with U140, decided there: one
     verb, two paths, and the rename's path names a succeeded set job the
     conformance fixture's queue does not hold. Its own suite,
-    tests/test_export_set_rename.py, drives the gate's two acts.
+    tests/test_export_set_rename.py, drives the gate's two acts. The fifth,
+    ``favorites.split.approve``, joined with U145, decided there and recorded
+    as a residual: the verb asks only over a library holding a quarter, and
+    approving one writes, which the unpinned conformance fixture refuses, while
+    a library with no quarter asks nothing by the brief. Its own suite,
+    tests/test_favorites_split.py, drives the gate's two acts and the write.
 
     Note what this pin does NOT prove, so nobody reads more into a green run than
     is there: the map is still a named exemption, not a drive of the unreadable

@@ -1826,7 +1826,7 @@ def test_a_recording_over_the_parts_ceiling_is_refused_at_the_queue_and_queues_n
 def test_a_hearts_job_freezes_when_each_heart_was_made_and_a_playlist_job_does_not(
     cfg, library, monkeypatch
 ):
-    """The quarter a landed heart goes to is read from the job, never from the
+    """The month a landed heart goes to is read from the job, never from the
     account again (U113's rule), so the listing records the account's date."""
     from datetime import datetime, timedelta, timezone
 

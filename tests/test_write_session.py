@@ -2636,6 +2636,10 @@ def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recor
         # All Favorites and their quarters in one commit behind one capture,
         # recorded under the favourites key as rows created.
         "favorites/backfill.py::apply",
+        # U145. The quarters split into months: memberships added in one
+        # commit and the emptied quarters retired in a second behind one
+        # capture, each recorded under the favourites key.
+        "favorites/split.py::apply",
         # U119. The genre Favorites refresh: memberships added in one commit
         # and removed in a second behind one capture, each recorded under the
         # routing tree as rows created and rows updated.
@@ -2703,6 +2707,7 @@ def test_each_commit_helper_records_the_commit():
         ("intake/rotate.py", "_record_rotation_commit"),
         ("intake/refill.py", "_record_refill_commit"),
         ("favorites/backfill.py", "_record_backfill_commit"),
+        ("favorites/split.py", "_record_split_commit"),
     ):
         tree = ast.parse((src / relative).read_text())
         (function,) = [

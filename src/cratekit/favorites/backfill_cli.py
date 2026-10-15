@@ -2,8 +2,9 @@
 
 The attended half of U120. A heart the favourites sync landed before this
 unit sits in its INBOX batch and nowhere else; this verb finds every such
-heart, shows each one with the quarter it goes to, asks, and adds it to All
-Favorites and its quarter playlist in one guarded commit. It removes nothing
+heart, shows each one with the month it goes to, asks, and adds it to All
+Favorites and its month playlist in one guarded commit (its quarter playlist
+until U145). It removes nothing
 and moves nothing, so a second run over a placed library asks and writes
 nothing.
 
@@ -100,7 +101,7 @@ def _notes(plan: backfill.BackfillPlan) -> list[dict[str, str]]:
                 "message": (
                     f"{plan.undated} heart(s) carry no date on their job and the account "
                     f"dates them nowhere, so they go to {placement.placeholders.UNDATED!r} "
-                    f"and stay there; nothing moves a heart to its quarter later"
+                    f"and stay there; nothing moves a heart to its month later"
                 ),
             }
         )
@@ -167,7 +168,7 @@ def favorites_backfill(ctx) -> Envelope:
                     "code": NOTHING_TO_PLACE,
                     "message": (
                         f"{len(plan.hearts)} landed heart(s) found and every one is already "
-                        f"in {source!r} and its quarter playlist, so nothing was written"
+                        f"in {source!r} and its month playlist, so nothing was written"
                     ),
                 },
             ],
@@ -181,8 +182,8 @@ def favorites_backfill(ctx) -> Envelope:
         "added": placed.added,
         "created": len(placed.created),
     }
-    quarters = ", ".join(
-        f"{name}{' (made)' if name in placed.created else ''}" for name, _row, _n in placed.quarters
+    months = ", ".join(
+        f"{name}{' (made)' if name in placed.created else ''}" for name, _row, _n in placed.months
     )
     return ctx.envelope(
         data={**data, "totals": totals},
@@ -193,7 +194,7 @@ def favorites_backfill(ctx) -> Envelope:
                 "message": (
                     f"{placed.added} membership(s) added for {len(plan.hearts)} landed "
                     f"heart(s): {placed.added_source} into {source!r} and the rest into "
-                    f"{quarters}; every playlist read back from the database holds its "
+                    f"{months}; every playlist read back from the database holds its "
                     f"hearts, and no track left the collection; undo with a restore of "
                     f"session {done.session_id}"
                 ),

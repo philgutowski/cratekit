@@ -1,0 +1,71 @@
+{
+  "name": "u145-s2",
+  "pass_kind": "light",
+  "branch": "relay/324",
+  "head": "a222a600",
+  "when": "2026-10-15 05:10 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 14014,
+  "baseline_exit": 0,
+  "pytest_runs": 4,
+  "state_guarded": "~/Library/Application Support/cratekit (429320 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/favorites/split.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/favorites/split.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "f3d8443399dcefb5",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 14014,
+    "baseline_collected": 14014,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "S2b_removed_member_read_live",
+      "description": "quarters: a membership rekordbox marked removed counts as a member",
+      "file": "src/cratekit/favorites/split.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fcf7cc629a37534c",
+      "subset": [
+        "tests/test_favorites_split.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 33,
+      "baseline_collected": 33,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_favorites_split.py::test_a_track_taken_out_of_a_quarter_by_hand_goes_to_no_month"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if not rb_writer.membership_removed(song)\n        ]\n        found.append(Quarter(",
+      "new": "            if True\n        ]\n        found.append(Quarter("
+    }
+  ],
+  "dropped": []
+}

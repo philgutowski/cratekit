@@ -1,0 +1,17 @@
+# U145 second pass: the one zero row of the first table, measured again after the test that pins it.
+name = "u145-s2"
+pass_kind = "light"
+
+[[rows]]
+id = "S2b_removed_member_read_live"
+description = "quarters: a membership rekordbox marked removed counts as a member"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''            if not rb_writer.membership_removed(song)
+        ]
+        found.append(Quarter('''
+new = '''            if True
+        ]
+        found.append(Quarter('''
+

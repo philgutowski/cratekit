@@ -1,4 +1,4 @@
-"""Where a landed heart goes in the library: All Favorites and its quarter (U120).
+"""Where a landed heart goes in the library: All Favorites and its month (U120, U145).
 
 A track the author hearts on the account is downloaded by the favourites
 sync and lands in INBOX like any other file. Until this unit nothing in the
@@ -9,12 +9,17 @@ mirror. This engine is that placement, called by the native landing inside its
 own commit and by ``crate favorites backfill`` for the hearts that landed
 before it existed.
 
+**BY MONTH SINCE U145.** The author chose on 2026-10-14 a month grain over the
+source system's quarter, so a heart joins the playlist of the UTC month it was
+hearted in, ``Favorites / 2026-10``, and no quarter playlist is made again.
+The quarters already there are ``crate favorites split``'s to retire.
+
 **ADD ONLY.** It adds a membership that is absent and never takes one away,
 through the one writer that owns the "only when absent" rule, so a heart
-placed twice is placed once. A heart's quarter playlist is created under the
-folder that holds All Favorites when it is absent, by its quarter's name, the
-source system's own, and an undated heart goes to ``Undated``. Nothing here
-moves a heart between quarters: an undated heart that later gets a date stays
+placed twice is placed once. A heart's month playlist is created under the
+folder that holds All Favorites when it is absent, by its month's name, and an
+undated heart goes to ``Undated``, the source system's own name. Nothing here
+moves a heart between months: an undated heart that later gets a date stays
 where it was put, which the record says.
 
 **THE SOURCE IS NAMED ONCE AND READ, NEVER MADE.** The playlist a heart joins
@@ -29,7 +34,7 @@ it, since both spell the same playlist and a library that predates the class
 still has one. Unlike U119's engine an EMPTY source is a fine source here,
 because this engine only adds to it.
 
-**THE QUARTER IS READ FROM THE JOB, NEVER FROM THE ACCOUNT AGAIN.** The hearts
+**THE MONTH IS READ FROM THE JOB, NEVER FROM THE ACCOUNT AGAIN.** The hearts
 listing freezes each heart's date onto its row (``intake.cli.HEARTED``), and
 the landing reads the date from there, which is U113's rule for what a
 playlist asked for. The backfill reads the same key and asks the account only
@@ -80,21 +85,21 @@ def source_name(declared: taxonomy.Taxonomy) -> str:
 
 
 # ---------------------------------------------------------------------------
-# The home: the source playlist, its folder, and the quarters already there
+# The home: the source playlist, its folder, and the months already there
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
 class Home:
-    """The one source playlist, the folder it sits in, and the quarter playlists there now."""
+    """The one source playlist, the folder it sits in, and the playlists there now."""
 
     source_name: str
     source_id: str
     #: The folder's row, or empty when the source sits at the playlist root,
-    #: in which case a quarter playlist is created beside it at the root.
+    #: in which case a month playlist is created beside it at the root.
     folder_id: str
     folder_name: str
-    #: Every live plain playlist under the folder, by name, quarter named or not.
+    #: Every live plain playlist under the folder, by name, month named or not.
     present: Mapping[str, str]
 
     def identity(self) -> dict[str, Any]:
@@ -168,7 +173,10 @@ def members_marked_removed(db: Any, playlist_id: str) -> frozenset[str]:
 
     A READER, NAMED SO IT READS AS ONE: the outbound guard admits no function
     under ``favorites/`` whose name opens with ``remove``, since nothing in the
-    favourites packages takes a membership or a heart away, and this takes none.
+    favourites packages takes a heart away or a membership out of a playlist
+    that lives on, and this takes none. The one removal the package makes is
+    ``crate favorites split`` retiring a whole quarter playlist (U145), held
+    to that one call by its suite.
 
     A membership that exists as removed is a track somebody took out of the
     playlist by hand, and for All Favorites that is the author un-hearting a
@@ -190,17 +198,17 @@ def members_marked_removed(db: Any, playlist_id: str) -> frozenset[str]:
 
 @dataclass(frozen=True, slots=True)
 class Placement:
-    """One content row and the quarter it goes to, with what it already has."""
+    """One content row and the month it goes to, with what it already has."""
 
     content_id: str
-    quarter: str
+    month: str
     title: str = ""
     into_source: bool = True
-    into_quarter: bool = True
+    into_month: bool = True
 
     @property
     def adds(self) -> int:
-        return int(self.into_source) + int(self.into_quarter)
+        return int(self.into_source) + int(self.into_month)
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,11 +224,11 @@ class PlacementPlan:
 
     @property
     def creates(self) -> tuple[str, ...]:
-        """The quarter playlists the write would make, in the order first needed."""
+        """The month playlists the write would make, in the order first needed."""
         made: list[str] = []
         for one in self.placements:
-            if one.into_quarter and one.quarter not in self.home.present and one.quarter not in made:
-                made.append(one.quarter)
+            if one.into_month and one.month not in self.home.present and one.month not in made:
+                made.append(one.month)
         return tuple(made)
 
     @property
@@ -228,25 +236,25 @@ class PlacementPlan:
         return self.adds > 0
 
     def identity(self) -> dict[str, Any]:
-        """What the digest covers: the home's rows, each quarter's row or its making, each heart's target state.
+        """What the digest covers: the home's rows, each month's row or its making, each heart's target state.
 
-        THE QUARTER ROWS ARE DIGESTED, found or to be made, so a quarter
-        playlist deleted between the plan and the write is another plan and
-        not a playlist the write makes without having shown it.
+        THE MONTH ROWS ARE DIGESTED, found or to be made, so a month playlist
+        deleted between the plan and the write is another plan and not a
+        playlist the write makes without having shown it.
         """
         return {
             "kind": "favorites-placement",
             **self.home.identity(),
-            "quarters": {
-                quarter: self.home.present.get(quarter, "")
-                for quarter in sorted({one.quarter for one in self.placements})
+            "months": {
+                month: self.home.present.get(month, "")
+                for month in sorted({one.month for one in self.placements})
             },
             "placements": [
                 {
                     "row": one.content_id,
-                    "quarter": one.quarter,
+                    "month": one.month,
                     "source": one.into_source,
-                    "into_quarter": one.into_quarter,
+                    "into_month": one.into_month,
                 }
                 for one in self.placements
             ],
@@ -263,7 +271,7 @@ def plan_placements(
     live, so a plan over a library already placed writes nothing and says so.
     """
     in_source = members(db, home.source_id)
-    in_quarter: dict[str, frozenset[str]] = {}
+    in_month: dict[str, frozenset[str]] = {}
     seen: set[str] = set()
     placements: list[Placement] = []
     for content_id, hearted, title in hearts:
@@ -271,17 +279,17 @@ def plan_placements(
         if key in seen:
             continue
         seen.add(key)
-        quarter = placeholders.quarter_label(hearted)
-        if quarter not in in_quarter:
-            held = home.present.get(quarter)
-            in_quarter[quarter] = members(db, held) if held else frozenset()
+        month = placeholders.month_label(hearted)
+        if month not in in_month:
+            held = home.present.get(month)
+            in_month[month] = members(db, held) if held else frozenset()
         placements.append(
             Placement(
                 content_id=key,
-                quarter=quarter,
+                month=month,
                 title=title,
                 into_source=key not in in_source,
-                into_quarter=key not in in_quarter[quarter],
+                into_month=key not in in_month[month],
             )
         )
     return PlacementPlan(home=home, placements=tuple(placements))
@@ -294,27 +302,27 @@ def plan_placements(
 
 @dataclass(frozen=True, slots=True)
 class Placed:
-    """What one placement wrote: memberships into the source and into each quarter."""
+    """What one placement wrote: memberships into the source and into each month."""
 
     source_name: str
     source_id: str
     added_source: int
-    #: Each quarter playlist written to: its name, its row, and the memberships added.
-    quarters: tuple[tuple[str, str, int], ...]
-    #: The quarter playlists this write made, by name.
+    #: Each month playlist written to: its name, its row, and the memberships added.
+    months: tuple[tuple[str, str, int], ...]
+    #: The month playlists this write made, by name.
     created: tuple[str, ...]
 
     @property
     def added(self) -> int:
-        return self.added_source + sum(count for _name, _row, count in self.quarters)
+        return self.added_source + sum(count for _name, _row, count in self.months)
 
     def to_json(self) -> dict[str, Any]:
         return {
             "source": self.source_name,
             "source_id": self.source_id,
             "added_source": self.added_source,
-            "quarters": [
-                {"name": name, "id": row, "added": count} for name, row, count in self.quarters
+            "months": [
+                {"name": name, "id": row, "added": count} for name, row, count in self.months
             ],
             "created": list(self.created),
         }
@@ -332,11 +340,14 @@ def _live_row(db: Any, playlist_id: str, what: str) -> Any:
     return row
 
 
-def _quarter_row(db: Any, name: str, parent: Any) -> tuple[Any, bool]:
-    """The quarter's playlist under the folder, found live by name, else made.
+def month_row(db: Any, name: str, parent: Any) -> tuple[Any, bool]:
+    """The month's playlist under the folder, found live by name, else made.
+
+    PUBLIC because ``crate favorites split`` makes its months here too, so a
+    landing and the split cannot disagree about which row a month is.
 
     NOT :func:`rb_writer.ensure_playlist`, which reads no soft delete marker
-    and takes no root: a quarter playlist rekordbox removed would be found and
+    and takes no root: a month playlist rekordbox removed would be found and
     written to, a row a person cannot see (R-758), and a source at the root
     has no parent row to scope by. The genre Favorites writer reads the same
     way for the same reason.
@@ -352,16 +363,16 @@ def _quarter_row(db: Any, name: str, parent: Any) -> tuple[Any, bool]:
 
 
 def place(db: Any, home: Home, pairs: Sequence[tuple[str, str | None]]) -> Placed:
-    """Add each ``(content id, quarter name)`` to the source and to its quarter.
+    """Add each ``(content id, month name)`` to the source and to its month.
 
-    A PAIR WITH NO QUARTER JOINS THE SOURCE ALONE: a heart whose job froze no
-    date key is a heart all the same, and its quarter is the backfill's to
-    read from the account rather than a guess made here.
+    A PAIR WITH NO MONTH JOINS THE SOURCE ALONE: a heart whose job froze no
+    date key is a heart all the same, and its month is the backfill's to read
+    from the account rather than a guess made here.
 
     ON THE CALLER'S HANDLE AND INSIDE THE CALLER'S COMMIT, so the landing's
     rows, its INBOX playlists and its hearts are one all or nothing write, and
     the backfill's own session owns its commit. The source row is read again
-    by identifier here, since a plan was read on another handle, and a quarter
+    by identifier here, since a plan was read on another handle, and a month
     playlist is found live by name under the folder or made. The memberships
     go through :func:`rb_writer.add_memberships`, which owns "only when
     absent", so the same heart twice is one membership.
@@ -370,25 +381,25 @@ def place(db: Any, home: Home, pairs: Sequence[tuple[str, str | None]]) -> Place
     parent = None
     if home.folder_id:
         parent = _live_row(db, home.folder_id, f"the folder {home.folder_name!r}")
-    ordered = [str(content_id) for content_id, _quarter in pairs]
+    ordered = [str(content_id) for content_id, _month in pairs]
     added_source = len(rb_writer.add_memberships(db, source, ordered))
-    by_quarter: dict[str, list[str]] = {}
-    for content_id, quarter in pairs:
-        if quarter:
-            by_quarter.setdefault(str(quarter), []).append(str(content_id))
+    by_month: dict[str, list[str]] = {}
+    for content_id, month in pairs:
+        if month:
+            by_month.setdefault(str(month), []).append(str(content_id))
     written: list[tuple[str, str, int]] = []
     created: list[str] = []
-    for quarter, ids in by_quarter.items():
-        row, made = _quarter_row(db, quarter, parent)
+    for month, ids in by_month.items():
+        row, made = month_row(db, month, parent)
         if made:
-            created.append(quarter)
+            created.append(month)
         count = len(rb_writer.add_memberships(db, row, ids))
-        written.append((quarter, str(row.ID), count))
+        written.append((month, str(row.ID), count))
     return Placed(
         source_name=home.source_name,
         source_id=str(source.ID),
         added_source=added_source,
-        quarters=tuple(written),
+        months=tuple(written),
         created=tuple(created),
     )
 
@@ -402,6 +413,7 @@ __all__ = [
     "RECORD_KEY",
     "SOURCE_MISSING",
     "members",
+    "month_row",
     "place",
     "members_marked_removed",
     "plan_placements",

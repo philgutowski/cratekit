@@ -596,7 +596,7 @@ def intake_land(ctx) -> Envelope:
         set_playlist.assert_native(medium, landing=True)
     if medium.native:
         # AND WHICH FILES ARE HEARTS (U120), read from the same jobs the same
-        # way, each with the quarter the account dated it into. The native
+        # way, each with the month the account dated it into. The native
         # medium alone, since the bridge writes an export and places none, so
         # the match over the planned files is not made for nothing there.
         hearted = account_playlists.hearted(cfg, pass_name, planned.items)
@@ -749,7 +749,7 @@ def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: P
     """
     by_target = {str(row.target): row for row in rows.rows}
     hearts = (
-        {str(one.target): one.quarter for one in rows.favorites.items}
+        {str(one.target): one.month for one in rows.favorites.items}
         if rows.favorites is not None
         else {}
     )
@@ -767,7 +767,7 @@ def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: P
         if row.why:
             entry["why"] = row.why
         if str(row.target) in hearts:
-            entry["heart"] = hearts[str(row.target)] or "quarter left to the backfill"
+            entry["heart"] = hearts[str(row.target)] or "month left to the backfill"
         if row.action == native.ADD and rows.vox_cut is not None and not rows.vox_blocked:
             # U127: the score each added row was read at and whether it is tagged.
             entry["voxlevel"] = row.voxlevel
@@ -805,17 +805,17 @@ def favorites_facts(plan: native.FavoritesPlan) -> dict[str, Any]:
         return {"hearts": f"none placed, {plan.skipped}"}
     where = f"{plan.source_name!r} under {plan.folder_name!r}" if plan.folder_name else repr(plan.source_name)
     facts: dict[str, Any] = {
-        "hearts": f"{len(plan.items)} file(s) the account hearts, into {where} and their quarter",
-        "quarter playlists": [
-            f"{quarter} ({sum(1 for item in plan.items if item.quarter == quarter)} file(s))"
-            + (", made" if quarter in plan.creates else "")
-            for quarter in plan.quarters
+        "hearts": f"{len(plan.items)} file(s) the account hearts, into {where} and their month",
+        "month playlists": [
+            f"{month} ({sum(1 for item in plan.items if item.month == month)} file(s))"
+            + (", made" if month in plan.creates else "")
+            for month in plan.months
         ],
     }
     if plan.unknown:
-        facts["quarter left to the backfill"] = (
+        facts["month left to the backfill"] = (
             f"{plan.unknown} file(s) whose job froze no date, which join "
-            f"{plan.source_name!r} here and take their quarter from crate favorites backfill"
+            f"{plan.source_name!r} here and take their month from crate favorites backfill"
         )
     return facts
 
@@ -1018,7 +1018,7 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
                 "created": name in placed.created,
                 "session": landed.collection.session_id,
             }
-            for name, row, count in placed.quarters
+            for name, row, count in placed.months
         )
     kept = landed.collection.set_playlist
     if kept is not None:
@@ -1219,7 +1219,7 @@ def _land_native(
             unplanned_left=emptied,
             pass_name=ctx.args.pass_name,
             hearts=tuple(
-                native.HeartItem(target=target / one.path.name, quarter=one.quarter, ref=one.ref)
+                native.HeartItem(target=target / one.path.name, month=one.month, ref=one.ref)
                 for one in hearted
             ),
             favorites_source=placement.source_name(declared),
@@ -1294,15 +1294,15 @@ def favorites_notes(payload: dict, collection: native.NativeLanded) -> list[dict
     placed = collection.favorites
     if placed is None:
         return []
-    quarters = ", ".join(
-        f"{name}{' (made)' if name in placed.created else ''}" for name, _row, _n in placed.quarters
+    months = ", ".join(
+        f"{name}{' (made)' if name in placed.created else ''}" for name, _row, _n in placed.months
     )
     return [
         {
             "code": FAVORITES_PLACED,
             "message": (
                 f"{placed.added} membership(s) placed: {placed.added_source} into "
-                f"{placed.source_name!r} and the rest into {quarters}"
+                f"{placed.source_name!r} and the rest into {months}"
             ),
         }
     ]
