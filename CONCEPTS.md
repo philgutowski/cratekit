@@ -1949,3 +1949,17 @@ hearted in, `2026-10`, decided on 2026-10-14 to replace the quarter playlist
 of the **Landed heart** entry, with the existing quarters split into months by
 each heart's date and retired. A heart with no date on its job row or on the
 account stays in Undated. Add only, like the quarter was.
+
+### Custom playlist twin
+The permanent rekordbox copy of a downloaded custom playlist, planned on
+2026-10-15 (`docs/plans/2026-10-15-1330-feat-rekordbox-tidal-parity-plan.md`):
+one playlist of the account playlist's name, less the `DOWNLOADED ` prefix,
+in the folder `Custom Playlists <year>` beside INBOX, holding the rows the
+library owns for its tracks. It is a PLAYLIST PAIR with the account's copy,
+marked at the landing without a hand step and backfilled once for the
+playlists the account already holds, so an edit on either side reaches the
+other at the next `sync pair`. It is the one place an account edit changes
+rekordbox; the INBOX playlist the same landing writes is a different
+playlist of the same rows and rotates out, the twin does not.
+
+*Avoid:* reading it as the INBOX playlist, or as a mirror, which goes one way.
