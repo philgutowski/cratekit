@@ -3085,7 +3085,7 @@ ENTRIES: tuple[Entry, ...] = (
     Entry(
         name="favorites.backfill",
         summary="put every heart the favourites sync landed into All Favorites and the "
-        "playlist of the quarter it was hearted in, adding and never removing",
+        "playlist of the month it was hearted in, adding and never removing",
         module="cratekit.favorites.backfill_cli",
         builder="build",
         handler_key="favorites.backfill",
@@ -3094,7 +3094,7 @@ ENTRIES: tuple[Entry, ...] = (
         emits=frozenset({"plan"}),
         output_schema="plan/1",
         #: The database tree and nothing else: memberships added to All
-        #: Favorites and to a quarter playlist, that playlist when the folder
+        #: Favorites and to a month playlist, that playlist when the folder
         #: lacks it. No content row, no file, no node removed, no removal.
         writes=frozenset({"db_tree"}),
         destructive=True,
@@ -3108,7 +3108,7 @@ ENTRIES: tuple[Entry, ...] = (
             GateSpec(
                 name="favorites.backfill.approve",
                 options=("approve", "abort"),
-                prompt="Put these landed hearts into All Favorites and their quarter "
+                prompt="Put these landed hearts into All Favorites and their month "
                 "playlists?",
                 #: EXPLICIT (R34). A write to the live library's playlists, as
                 #: the refresh's and the landing's are, so no blanket

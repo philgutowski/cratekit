@@ -2,7 +2,8 @@
 
 ``crate favorites backfill`` is the attended half of U120: the hearts the
 favourites sync downloaded and landed while nothing put them into All
-Favorites and their quarter are found, shown, and placed in one guarded
+Favorites and their month (their quarter until U145) are found, shown, and
+placed in one guarded
 session. This module gathers them and writes them; ``backfill_cli`` asks.
 
 **WHAT A LANDED HEART IS, STATED SO THE OPEN QUESTION STAYS OPEN.** The
@@ -18,7 +19,7 @@ the source system filed does. A heart that fails any one is left where it is
 and is not listed.
 
 **THE DATE IS THE JOB'S, ELSE THE ACCOUNT'S, ONCE.** A job frozen by this
-build carries each heart's date on its row, and the quarter is read from there
+build carries each heart's date on its row, and the month is read from there
 as the landing reads it. Every job before this build carries none, so when a
 heart to place has no date the account is listed once and read by provider
 identifier; a heart the account no longer carries, or dates nowhere, is an
@@ -67,8 +68,8 @@ class LandedHeart:
     dated_by: str
 
     @property
-    def quarter(self) -> str:
-        return placeholders.quarter_label(self.hearted)
+    def month(self) -> str:
+        return placeholders.month_label(self.hearted)
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +277,7 @@ def gather(cfg: config.Config, db: Any, *, source_id: str) -> Gathered:
             continue
         hearts.append(heart)
     return Gathered(
-        hearts=tuple(sorted(hearts, key=lambda one: (one.quarter, one.title))),
+        hearts=tuple(sorted(hearts, key=lambda one: (one.month, one.title))),
         asked=dates.asked,
         held_back=tuple(held),
         unreadable=unreadable,
@@ -406,9 +407,9 @@ def payload(planned: BackfillPlan, cfg: config.Config) -> dict[str, Any]:
                 "row": heart.content_id,
                 "title": heart.title,
                 "path": shown,
-                "quarter": one.quarter,
+                "month": one.month,
                 "into_source": one.into_source,
-                "into_quarter": one.into_quarter,
+                "into_month": one.into_month,
                 "dated_by": heart.dated_by,
                 "job": heart.job_id,
             }
@@ -440,7 +441,7 @@ def facts(planned: BackfillPlan) -> dict[str, Any]:
         "into": where,
         "landed hearts": len(planned.hearts),
         "memberships to add": planned.placements.adds,
-        "quarter playlists to create": list(planned.placements.creates),
+        "month playlists to create": list(planned.placements.creates),
         "undated": planned.undated,
         "dates asked of the account": planned.asked,
     }
@@ -494,9 +495,9 @@ def _record_backfill_commit(
 def _read_back(db: Any, placed: placement.Placed, planned: BackfillPlan) -> tuple[str, ...]:
     """Each playlist that, read live, lacks a heart the plan says is in it.
 
-    EVERY QUARTER THE PLAN NAMES, not only those the write touched: a heart
-    already in its quarter was not written and is read back all the same, by
-    the row the write used or the one the plan found live, so a quarter row
+    EVERY MONTH THE PLAN NAMES, not only those the write touched: a heart
+    already in its month was not written and is read back all the same, by
+    the row the write used or the one the plan found live, so a month row
     that went between the two acts is a disagreement and not a silence.
     """
     problems: list[str] = []
@@ -505,9 +506,9 @@ def _read_back(db: Any, placed: placement.Placed, planned: BackfillPlan) -> tupl
     if missing:
         problems.append(f"{placed.source_name!r} lacks {len(missing)} row(s): {', '.join(missing)}")
     rows = dict(planned.placements.home.present)
-    rows.update({name: row for name, row, _count in placed.quarters})
-    for name in sorted({one.quarter for one in planned.placements.placements}):
-        wanted = {one.content_id for one in planned.placements.placements if one.quarter == name}
+    rows.update({name: row for name, row, _count in placed.months})
+    for name in sorted({one.month for one in planned.placements.placements}):
+        wanted = {one.content_id for one in planned.placements.placements if one.month == name}
         row = rows.get(name)
         held = placement.members(db, row) if row else frozenset()
         gone = sorted(wanted - held)
@@ -551,9 +552,9 @@ def apply(
         )
     planned = again
     pairs = [
-        (one.content_id, one.quarter)
+        (one.content_id, one.month)
         for one in planned.placements.placements
-        if one.into_source or one.into_quarter
+        if one.into_source or one.into_month
     ]
     # THE OUT OF BAND RESTORE IS DETECTED BEFORE THE FINGERPRINT IS TOUCHED,
     # as every writer that records one does: a database recovered from a

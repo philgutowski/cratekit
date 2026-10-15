@@ -269,22 +269,22 @@ class PlaylistPlan:
 
 @dataclass(frozen=True, slots=True)
 class HeartItem:
-    """One planned file the pass's hearts asked for, and the quarter playlist it joins (U120)."""
+    """One planned file the pass's hearts asked for, and the month playlist it joins (U120, U145)."""
 
     target: Path
-    #: The quarter playlist, or None for a heart whose job froze no date key,
-    #: which joins All Favorites here and takes its quarter from the backfill.
-    quarter: str | None
+    #: The month playlist, or None for a heart whose job froze no date key,
+    #: which joins All Favorites here and takes its month from the backfill.
+    month: str | None
     #: The provider's identifier for the heart, for the screen.
     ref: str
 
 
 @dataclass(frozen=True, slots=True)
 class FavoritesPlan:
-    """The hearts a landing places (U120): their home, each one's quarter, or why none.
+    """The hearts a landing places (U120): their home, each one's month, or why none.
 
     PLANNED BEFORE THE GATE AND DIGESTED, so the screen says which files go
-    into All Favorites and which quarter, and an answer given for one set of
+    into All Favorites and which month, and an answer given for one set of
     hearts is stale for another. ``skipped`` is the home's refusal when the
     source playlist is absent or doubled: the batch still lands, no heart is
     placed, and the backfill places them once the playlist exists.
@@ -295,23 +295,23 @@ class FavoritesPlan:
     folder_id: str
     folder_name: str
     items: tuple[HeartItem, ...]
-    #: The quarter playlists live under the folder when the plan was made.
+    #: The month playlists live under the folder when the plan was made.
     present: tuple[str, ...] = ()
     skipped: str = ""
 
     @property
-    def quarters(self) -> tuple[str, ...]:
-        """Every quarter the hearts go to, by name, so the screen reads in one order."""
-        return tuple(sorted({item.quarter for item in self.items if item.quarter}))
+    def months(self) -> tuple[str, ...]:
+        """Every month the hearts go to, by name, so the screen reads in one order."""
+        return tuple(sorted({item.month for item in self.items if item.month}))
 
     @property
     def unknown(self) -> int:
-        """How many hearts take no quarter here, their job having frozen no date key."""
-        return sum(1 for item in self.items if item.quarter is None)
+        """How many hearts take no month here, their job having frozen no date key."""
+        return sum(1 for item in self.items if item.month is None)
 
     @property
     def creates(self) -> tuple[str, ...]:
-        return tuple(quarter for quarter in self.quarters if quarter not in self.present)
+        return tuple(month for month in self.months if month not in self.present)
 
     def home(self) -> placement.Home:
         return placement.Home(
@@ -329,7 +329,7 @@ class FavoritesPlan:
             "folder": self.folder_id,
             "skipped": self.skipped,
             "hearts": [
-                {"to": str(item.target), "quarter": item.quarter, "ref": item.ref}
+                {"to": str(item.target), "month": item.month, "ref": item.ref}
                 for item in self.items
             ],
         }
@@ -457,7 +457,7 @@ class NativeLanded:
     #: The account playlists written (U113). ``playlist_id`` is empty when every
     #: row went into one of these and the batch playlist held none.
     playlists: tuple[WrittenPlaylist, ...] = ()
-    #: The hearts placed into All Favorites and their quarters (U120), in the
+    #: The hearts placed into All Favorites and their months (U120), in the
     #: same commit. None when the plan placed none.
     favorites: placement.Placed | None = None
     #: The set's permanent playlist written under INSPIRATION (U121), or None.
@@ -619,7 +619,7 @@ def plan_rows(
     """Plan one row per file and one playlist, against the open database.
 
     ``hearts`` are the targets the pass's hearts job asked for, each with its
-    quarter (U120), and ``favorites_source`` the playlist every favourite is
+    month (U120, U145), and ``favorites_source`` the playlist every favourite is
     in. With both, the plan carries where each heart goes, resolved on this
     same handle; a home that cannot be resolved is a plan that SKIPS the
     placement and says why, never a refusal of the landing.
@@ -1388,11 +1388,11 @@ def apply_rows(
                     )
                 )
             # THE HEARTS, IN THE SAME COMMIT (U120): into All Favorites and
-            # each one's quarter, a row already present as much as a row
+            # each one's month, a row already present as much as a row
             # added, so a heart landed twice is one membership.
             if plan.favorites is not None and plan.favorites.items:
                 pairs = [
-                    (by_target[str(item.target)], item.quarter)
+                    (by_target[str(item.target)], item.month)
                     for item in plan.favorites.items
                     if str(item.target) in by_target
                 ]

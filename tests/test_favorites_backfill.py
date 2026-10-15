@@ -39,8 +39,8 @@ VERB = ["favorites", "backfill"]
 GATE = backfill_cli.APPROVE_GATE
 BATCH = "2026-09-29-favorites"
 UTC = timezone.utc
-Q3 = datetime(2026, 9, 29, 22, 0, tzinfo=UTC)
-Q4 = datetime(2026, 11, 3, 12, 0, tzinfo=UTC)
+SEP = datetime(2026, 9, 29, 22, 0, tzinfo=UTC)
+NOV = datetime(2026, 11, 3, 12, 0, tzinfo=UTC)
 
 
 def _stage(cfg, silence: Path, title: str) -> Path:
@@ -128,7 +128,7 @@ def test_the_plan_lists_exactly_the_landed_hearts_and_the_approval_places_them(
     cfg, _root_id = native_library
     folder_id, source_id = _home(cfg)
     _landed_hearts(cfg, silence, {"Same Girl": None, "Fractals": None, "Find My Way": None})
-    fake = _account(monkeypatch, {"Same Girl": Q3, "Fractals": Q3, "Find My Way": Q3, "Elsewhere": Q4})
+    fake = _account(monkeypatch, {"Same Girl": SEP, "Fractals": SEP, "Find My Way": SEP, "Elsewhere": NOV})
     assert _favorites(cfg, folder_id) == {SOURCE: []}, "nothing placed them as they landed"
 
     code, acted, refused = _acts()
@@ -140,10 +140,10 @@ def test_the_plan_lists_exactly_the_landed_hearts_and_the_approval_places_them(
         "Probe - Fractals",
         "Probe - Same Girl",
     ]
-    assert {item["quarter"] for item in shown["items"]} == {"2026-Q3"}
+    assert {item["month"] for item in shown["items"]} == {"2026-09"}
     assert {item["dated_by"] for item in shown["items"]} == {"account"}
     assert shown["landed hearts"] == 3 and shown["memberships to add"] == 6
-    assert shown["quarter playlists to create"] == ["2026-Q3"]
+    assert shown["month playlists to create"] == ["2026-09"]
     assert shown["dates asked of the account"] == 3 and shown["undated"] == 0
     assert shown["into"].startswith(f"{SOURCE!r} (row {source_id}) under 'Favorites'")
     # Once per plan, and the two acts are two plans: the gate's refusal and
@@ -151,13 +151,13 @@ def test_the_plan_lists_exactly_the_landed_hearts_and_the_approval_places_them(
     assert fake.heart_listings == 2
     assert _favorites(cfg, folder_id) == {
         SOURCE: ["Find My Way", "Fractals", "Same Girl"],
-        "2026-Q3": ["Find My Way", "Fractals", "Same Girl"],
+        "2026-09": ["Find My Way", "Fractals", "Same Girl"],
     } or sorted(_favorites(cfg, folder_id)[SOURCE]) == ["Find My Way", "Fractals", "Same Girl"]
     totals = acted["data"]["totals"]
     assert (totals["count"], totals["added"], totals["created"]) == (3, 6, 1)
     (note,) = [w for w in acted["warnings"] if w["code"] == backfill_cli.PLACED]
     assert "6 membership(s) added for 3 landed heart(s)" in note["message"]
-    assert "2026-Q3 (made)" in note["message"]
+    assert "2026-09 (made)" in note["message"]
     # Every item of the plan names the file by its path under the library.
     assert all(item["path"].startswith(f"Music/{BATCH}/") for item in shown["items"])
 
@@ -166,7 +166,7 @@ def test_a_second_run_finds_the_same_hearts_and_writes_nothing(native_library, s
     cfg, _root_id = native_library
     folder_id, _source_id = _home(cfg)
     _landed_hearts(cfg, silence, {"Same Girl": None})
-    _account(monkeypatch, {"Same Girl": Q3})
+    _account(monkeypatch, {"Same Girl": SEP})
     code, _acted, _refused = _acts()
     assert code == int(ExitCode.OK)
 
@@ -177,9 +177,9 @@ def test_a_second_run_finds_the_same_hearts_and_writes_nothing(native_library, s
     (note,) = [w for w in acted["warnings"] if w["code"] == backfill_cli.NOTHING_TO_PLACE]
     assert "1 landed heart(s) found and every one is already" in note["message"]
     shown = refused["cause"]["detail"]["shown"]
-    assert shown["memberships to add"] == 0 and shown["quarter playlists to create"] == []
-    assert _favorites(cfg, folder_id) == {SOURCE: ["Same Girl"], "2026-Q3": ["Same Girl"]}
-    assert len(_members(cfg, _query(cfg, "SELECT ID FROM djmdPlaylist WHERE Name = '2026-Q3'")[0][0])) == 1
+    assert shown["memberships to add"] == 0 and shown["month playlists to create"] == []
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Same Girl"], "2026-09": ["Same Girl"]}
+    assert len(_members(cfg, _query(cfg, "SELECT ID FROM djmdPlaylist WHERE Name = '2026-09'")[0][0])) == 1
 
 
 def test_an_owned_heart_the_source_system_filed_is_left_alone(native_library, silence, monkeypatch):
@@ -199,29 +199,29 @@ def test_an_owned_heart_the_source_system_filed_is_left_alone(native_library, si
     assert tags.write_tags(hand, {"title": "Hand Filed", "artist": "Probe"})
     _stage(cfg, silence, "Landed")
     _land()
-    _account(monkeypatch, {"Owned": Q3, "Hand Filed": Q3, "Landed": Q4})
+    _account(monkeypatch, {"Owned": SEP, "Hand Filed": SEP, "Landed": NOV})
     del job
 
     code, acted, refused = _acts()
 
     assert code == int(ExitCode.OK), acted
     assert [item["title"] for item in refused["cause"]["detail"]["shown"]["items"]] == ["Probe - Landed"]
-    assert _favorites(cfg, folder_id) == {SOURCE: ["Landed"], "2026-Q4": ["Landed"]}
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Landed"], "2026-11": ["Landed"]}
 
 
 def test_a_date_the_job_froze_wins_and_the_account_is_not_asked(native_library, silence, monkeypatch):
     cfg, _root_id = native_library
     folder_id, _source_id = _home(cfg)
     _landed_hearts(cfg, silence, {"Dated": "2026-11-03T12:00:00+00:00"})
-    fake = _account(monkeypatch, {"Dated": Q3})
+    fake = _account(monkeypatch, {"Dated": SEP})
 
     code, _acted, refused = _acts()
 
     assert code == int(ExitCode.OK)
     (item,) = refused["cause"]["detail"]["shown"]["items"]
-    assert (item["quarter"], item["dated_by"]) == ("2026-Q4", "job")
+    assert (item["month"], item["dated_by"]) == ("2026-11", "job")
     assert fake.heart_listings == 0
-    assert _favorites(cfg, folder_id) == {SOURCE: ["Dated"], "2026-Q4": ["Dated"]}
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Dated"], "2026-11": ["Dated"]}
 
 
 def test_a_heart_the_account_dates_nowhere_goes_to_undated_and_one_it_no_longer_carries_is_taken_back(
@@ -238,7 +238,7 @@ def test_a_heart_the_account_dates_nowhere_goes_to_undated_and_one_it_no_longer_
     assert code == int(ExitCode.OK), acted
     shown = refused["cause"]["detail"]["shown"]
     assert shown["undated"] == 1 and shown["dates asked of the account"] == 0
-    assert [(item["title"], item["quarter"], item["dated_by"]) for item in shown["items"]] == [
+    assert [(item["title"], item["month"], item["dated_by"]) for item in shown["items"]] == [
         ("Probe - Kept", "Undated", "none")
     ]
     assert shown["taken back"] == ["Probe - Gone, no longer on the account"]
@@ -256,15 +256,15 @@ def test_a_heart_two_jobs_carried_is_one_heart_with_the_dated_jobs_date(
     folder_id, _source_id = _home(cfg)
     hearts_swept(cfg, {"Twice": UNKNOWN}, run_id="")
     _landed_hearts(cfg, silence, {"Twice": "2026-09-29T22:00:00+00:00"}, batch="2026-09-30-favorites")
-    fake = _account(monkeypatch, {"Twice": Q4})
+    fake = _account(monkeypatch, {"Twice": NOV})
 
     code, _acted, refused = _acts()
 
     assert code == int(ExitCode.OK)
     (item,) = refused["cause"]["detail"]["shown"]["items"]
-    assert (item["quarter"], item["dated_by"]) == ("2026-Q3", "job")
+    assert (item["month"], item["dated_by"]) == ("2026-09", "job")
     assert fake.heart_listings == 0
-    assert _favorites(cfg, folder_id) == {SOURCE: ["Twice"], "2026-Q3": ["Twice"]}
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Twice"], "2026-09": ["Twice"]}
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +276,7 @@ def test_the_record_carries_the_placement_under_the_favourites_key(native_librar
     cfg, _root_id = native_library
     _home(cfg)
     _landed_hearts(cfg, silence, {"Same Girl": None})
-    _account(monkeypatch, {"Same Girl": Q3})
+    _account(monkeypatch, {"Same Girl": SEP})
 
     code, acted, _refused = _acts()
 
@@ -293,7 +293,7 @@ def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(native_library,
     cfg, _root_id = native_library
     _home(cfg)
     _landed_hearts(cfg, silence, {"Same Girl": None})
-    _account(monkeypatch, {"Same Girl": Q3})
+    _account(monkeypatch, {"Same Girl": SEP})
     session.ack_path(cfg).unlink()
 
     code, refused = drive(VERB)
@@ -307,7 +307,7 @@ def test_with_no_source_playlist_the_verb_refuses_by_name_before_the_gate(
 ):
     cfg, _root_id = native_library
     _landed_hearts(cfg, silence, {"Same Girl": None})
-    fake = _account(monkeypatch, {"Same Girl": Q3})
+    fake = _account(monkeypatch, {"Same Girl": SEP})
 
     code, refused = drive(VERB)
 
@@ -348,7 +348,7 @@ def test_a_home_that_moved_between_the_two_acts_is_refused_by_the_write(
     cfg, _root_id = native_library
     _folder_id, source_id = _home(cfg)
     _landed_hearts(cfg, silence, {"Same Girl": None})
-    _account(monkeypatch, {"Same Girl": Q3})
+    _account(monkeypatch, {"Same Girl": SEP})
     code, refused = drive(VERB)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     run_id = refused["run_id"]
@@ -366,7 +366,7 @@ def test_a_home_that_moved_between_the_two_acts_is_refused_by_the_write(
 
     assert code != int(ExitCode.OK), acted
     assert acted["cause"]["reason"] == "decision-stale", acted
-    assert _query(cfg, "SELECT ID FROM djmdPlaylist WHERE Name = '2026-Q3'") == []
+    assert _query(cfg, "SELECT ID FROM djmdPlaylist WHERE Name = '2026-09'") == []
 
 
 def test_with_nothing_landed_the_gate_is_still_asked_and_nothing_is_written(
@@ -389,7 +389,7 @@ def test_no_content_row_tempo_or_rating_is_written(native_library, silence, monk
     cfg, _root_id = native_library
     _home(cfg)
     _landed_hearts(cfg, silence, {"Same Girl": None})
-    _account(monkeypatch, {"Same Girl": Q3})
+    _account(monkeypatch, {"Same Girl": SEP})
     before = _query(cfg, "SELECT COUNT(*) FROM djmdContent")
 
     code, _acted, _refused = _acts()
@@ -437,7 +437,7 @@ def test_a_heart_a_short_listing_did_not_date_is_held_back_not_filed_undated(
             raise catalogue.HeartsShortfall(self.hearts, 5)
 
     served = Track("tid-Served", "Probe", "Served")
-    served.user_date_added = Q3
+    served.user_date_added = SEP
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(Short(hearts=[served])))
 
     code, acted, refused = _acts()
@@ -449,7 +449,7 @@ def test_a_heart_a_short_listing_did_not_date_is_held_back_not_filed_undated(
     (note,) = [w for w in acted["warnings"] if w["code"] == backfill_cli.HELD_BACK]
     assert "held back unplaced" in note["message"] and "4 withheld" in note["message"]
     assert acted["data"]["totals"]["held back"] == 1
-    assert _favorites(cfg, folder_id) == {SOURCE: ["Served"], "2026-Q3": ["Served"]}
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Served"], "2026-09": ["Served"]}
 
 
 def test_a_hearts_job_whose_reports_cannot_be_read_is_skipped_and_named(
@@ -469,7 +469,7 @@ def test_a_hearts_job_whose_reports_cannot_be_read_is_skipped_and_named(
         )
         jobs.transition(store, old.job_id, jobs.JobState.SUCCEEDED)
     _landed_hearts(cfg, silence, {"Same Girl": None})
-    _account(monkeypatch, {"Same Girl": Q3})
+    _account(monkeypatch, {"Same Girl": SEP})
 
     code, acted, refused = _acts()
 
@@ -477,14 +477,14 @@ def test_a_hearts_job_whose_reports_cannot_be_read_is_skipped_and_named(
     assert refused["cause"]["detail"]["shown"]["jobs unread"] == [old.job_id]
     (note,) = [w for w in acted["warnings"] if w["code"] == backfill_cli.JOBS_UNREAD]
     assert old.job_id in note["message"]
-    assert _favorites(cfg, folder_id) == {SOURCE: ["Same Girl"], "2026-Q3": ["Same Girl"]}
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Same Girl"], "2026-09": ["Same Girl"]}
 
 
-def test_a_heart_the_landing_placed_without_a_quarter_takes_it_from_the_backfill(
+def test_a_heart_the_landing_placed_without_a_month_takes_it_from_the_backfill(
     native_library, silence, monkeypatch
 ):
     """The two halves agree: a landing of an older job puts the heart in All
-    Favorites alone, and the backfill adds exactly its quarter, once."""
+    Favorites alone, and the backfill adds exactly its month, once."""
     from tests.test_intake_land_account_playlists_native import PASS
 
     cfg, _root_id = native_library
@@ -494,15 +494,15 @@ def test_a_heart_the_landing_placed_without_a_quarter_takes_it_from_the_backfill
     code, acted, _refused = _two_acts(["intake", "land", "--pass", PASS])
     assert code == int(ExitCode.OK), acted
     assert _favorites(cfg, folder_id) == {SOURCE: ["Old"]}
-    _account(monkeypatch, {"Old": Q4})
+    _account(monkeypatch, {"Old": NOV})
 
     code, acted, refused = _acts()
 
     assert code == int(ExitCode.OK), acted
     (item,) = refused["cause"]["detail"]["shown"]["items"]
-    assert (item["into_source"], item["into_quarter"], item["quarter"]) == (False, True, "2026-Q4")
+    assert (item["into_source"], item["into_month"], item["month"]) == (False, True, "2026-11")
     assert acted["data"]["totals"]["added"] == 1
-    assert _favorites(cfg, folder_id) == {SOURCE: ["Old"], "2026-Q4": ["Old"]}
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Old"], "2026-11": ["Old"]}
 
 
 
@@ -524,13 +524,13 @@ def test_an_owned_heart_in_a_batch_folder_is_not_carried_and_not_placed(
     hearts_swept(cfg, {"Already": UNKNOWN, "Fresh": UNKNOWN}, run_id="")
     _stage(cfg, silence, "Fresh")
     _land()
-    _account(monkeypatch, {"Already": Q3, "Fresh": Q4})
+    _account(monkeypatch, {"Already": SEP, "Fresh": NOV})
 
     code, acted, refused = _acts()
 
     assert code == int(ExitCode.OK), acted
     assert [item["title"] for item in refused["cause"]["detail"]["shown"]["items"]] == ["Probe - Fresh"]
-    assert _favorites(cfg, folder_id) == {SOURCE: ["Fresh"], "2026-Q4": ["Fresh"]}
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Fresh"], "2026-11": ["Fresh"]}
 
 
 def test_a_carried_heart_whose_row_sits_deep_is_left_alone_by_the_path_rule(
@@ -554,14 +554,14 @@ def test_a_carried_heart_whose_row_sits_deep_is_left_alone_by_the_path_rule(
         rb_writer.close_db(handle)
     _stage(cfg, silence, "Landed")
     _land()
-    _account(monkeypatch, {"Deep Filed": Q3, "Landed": Q4})
+    _account(monkeypatch, {"Deep Filed": SEP, "Landed": NOV})
 
     code, acted, refused = _acts()
 
     assert code == int(ExitCode.OK), acted
     assert _rows(cfg)["Deep Filed"], "the collection holds the deep row"
     assert [item["title"] for item in refused["cause"]["detail"]["shown"]["items"]] == ["Probe - Landed"]
-    assert _favorites(cfg, folder_id) == {SOURCE: ["Landed"], "2026-Q4": ["Landed"]}
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Landed"], "2026-11": ["Landed"]}
 
 
 def test_the_write_itself_refuses_a_plan_whose_home_moved_with_no_gate_in_front(
@@ -576,7 +576,7 @@ def test_the_write_itself_refuses_a_plan_whose_home_moved_with_no_gate_in_front(
     cfg, _root_id = native_library
     _folder_id, source_id = _home(cfg)
     _landed_hearts(cfg, silence, {"Same Girl": None})
-    _account(monkeypatch, {"Same Girl": Q3})
+    _account(monkeypatch, {"Same Girl": SEP})
     approved = backfill_cli.planned(cfg, source=SOURCE)
     assert approved.writes
     handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
@@ -590,7 +590,7 @@ def test_the_write_itself_refuses_a_plan_whose_home_moved_with_no_gate_in_front(
         backfill_cli.written(cfg, approved, source=SOURCE)
 
     assert caught.value.cause.reason == "decision-stale"
-    assert _query(cfg, "SELECT ID FROM djmdPlaylist WHERE Name = '2026-Q3'") == []
+    assert _query(cfg, "SELECT ID FROM djmdPlaylist WHERE Name = '2026-09'") == []
 
 
 # ---------------------------------------------------------------------------
@@ -607,7 +607,7 @@ def test_a_heart_the_author_took_out_of_all_favorites_is_never_put_back(
     cfg, _root_id = native_library
     folder_id, source_id = _home(cfg)
     _landed_hearts(cfg, silence, {"Same Girl": None, "Kept": None})
-    _account(monkeypatch, {"Same Girl": Q3, "Kept": Q3})
+    _account(monkeypatch, {"Same Girl": SEP, "Kept": SEP})
     code, _acted, _refused = _acts()
     assert code == int(ExitCode.OK)
     assert sorted(_favorites(cfg, folder_id)[SOURCE]) == ["Kept", "Same Girl"]
@@ -646,7 +646,7 @@ def test_a_listing_with_no_published_count_holds_back_a_heart_it_lacks(
     cfg, _root_id = native_library
     folder_id, _source_id = _home(cfg)
     _landed_hearts(cfg, silence, {"Served": None, "Absent": None})
-    _account(monkeypatch, {"Served": Q3}, declared=None)
+    _account(monkeypatch, {"Served": SEP}, declared=None)
 
     code, acted, refused = _acts()
 
@@ -657,13 +657,13 @@ def test_a_listing_with_no_published_count_holds_back_a_heart_it_lacks(
     (note,) = [w for w in acted["warnings"] if w["code"] == backfill_cli.HELD_BACK]
     assert "no published count" in note["message"]
     assert "taken back" not in shown
-    assert _favorites(cfg, folder_id) == {SOURCE: ["Served"], "2026-Q3": ["Served"]}
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Served"], "2026-09": ["Served"]}
 
 
-def test_a_quarter_playlist_deleted_between_the_plan_and_the_write_is_another_plan(
+def test_a_month_playlist_deleted_between_the_plan_and_the_write_is_another_plan(
     native_library, silence, monkeypatch
 ):
-    """The digest covers the quarter rows found and to be made, so the write
+    """The digest covers the month rows found and to be made, so the write
     never makes a playlist the approved screen did not list."""
     import pytest
 
@@ -673,16 +673,16 @@ def test_a_quarter_playlist_deleted_between_the_plan_and_the_write_is_another_pl
     folder_id, _source_id = _home(cfg)
     handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
     try:
-        q3 = handle.create_playlist("2026-Q3", parent=handle.get_playlist(ID=folder_id))
+        q3 = handle.create_playlist("2026-09", parent=handle.get_playlist(ID=folder_id))
         handle.session.commit()
         q3_id = str(q3.ID)
     finally:
         rb_writer.close_db(handle)
     _landed_hearts(cfg, silence, {"Same Girl": None})
-    _account(monkeypatch, {"Same Girl": Q3})
+    _account(monkeypatch, {"Same Girl": SEP})
     approved = backfill_cli.planned(cfg, source=SOURCE)
     assert approved.placements.creates == ()
-    assert approved.identity()["quarters"] == {"2026-Q3": q3_id}
+    assert approved.identity()["months"] == {"2026-09": q3_id}
     handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
     try:
         handle.get_playlist(ID=q3_id).rb_local_deleted = 1
@@ -695,6 +695,6 @@ def test_a_quarter_playlist_deleted_between_the_plan_and_the_write_is_another_pl
 
     assert caught.value.cause.reason == "decision-stale"
     assert _query(
-        cfg, "SELECT COUNT(*) FROM djmdPlaylist WHERE Name = '2026-Q3' AND rb_local_deleted = 0"
+        cfg, "SELECT COUNT(*) FROM djmdPlaylist WHERE Name = '2026-09' AND rb_local_deleted = 0"
     ) == [(0,)]
 
