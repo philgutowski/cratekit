@@ -122,7 +122,11 @@ def test_an_owned_track_hearted_today_joins_all_favorites_and_its_month_with_not
     assert refused["cause"]["detail"]["gate"] == land_cli.NATIVE_GATE
     assert acted["data"]["totals"]["hearts placed"] == 2
     (note,) = [w for w in acted["warnings"] if w["code"] == land_cli.FAVORITES_PLACED]
-    assert "2 membership(s) placed for 1 owned heart(s)" in note["message"]
+    assert "2 membership(s) placed: 1 into" in note["message"]
+    assert "for 1 owned heart(s)" in note["message"]
+    # The landing's own screen: no account listing, no backfill count.
+    assert shown["files to land"] == 0
+    assert "already placed" not in shown and "dates asked of the account" not in shown
     assert "no file was landed" in note["message"]
     # The backfill's guarded session wrote it, recorded under the favourites key.
     (record,) = [r for r in session.records(cfg) if r.workflow == backfill.WORKFLOW]
@@ -214,6 +218,7 @@ def test_an_owned_heart_joins_in_the_same_commit_as_a_downloaded_one(native_libr
     assert (placed["2026-09"], placed["2026-11"]) == (["Owned"], ["Fresh"])
     shown = refused["cause"]["detail"]["shown"]
     assert shown["owned hearts"] == ["Probe - Owned, 2026-09"]
+    assert shown["hearts"].startswith("1 file(s) the account hearts and 1 owned track(s), into")
     assert shown["month playlists"] == ["2026-09 (0 file(s), 1 owned), made", "2026-11 (1 file(s)), made"]
     assert acted["data"]["totals"]["hearts placed"] == 4
     # One session wrote the batch and both hearts.
@@ -299,4 +304,56 @@ def test_an_owned_only_pass_refuses_before_the_gate_with_no_acknowledgment(nativ
     code, refused = drive(LAND)
 
     assert code == int(ExitCode.ACK_REQUIRED), refused
+    assert _favorites(cfg, folder_id) == {SOURCE: []}
+
+
+# ---------------------------------------------------------------------------
+# What the review added
+# ---------------------------------------------------------------------------
+
+
+def test_an_owned_heart_whose_file_two_rows_claim_is_not_placed_by_a_guess(native_library, silence):
+    """U128's rule for an owned member: a file two active rows claim answers
+    nothing, so the landing never files whichever duplicate came first."""
+    cfg, _root_id = native_library
+    folder_id, _source_id = _home(cfg)
+    _owned(cfg, silence, "Twice Imported")
+    path = Path(cfg.library.root) / cfg.library.music_dir / "Processed_Tracks" / "2025" / "Twice Imported.flac"
+    # A second import of the same file: a row made elsewhere and pointed at it.
+    elsewhere = path.with_name("Twice Imported copy.flac")
+    shutil.copyfile(silence, elsewhere)
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        second = handle.add_content(elsewhere, Title="Twice Imported")
+        second.FolderPath = str(path)
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    elsewhere.unlink()
+    assert len(_query(cfg, "SELECT ID FROM djmdContent WHERE FolderPath = ?", str(path))) == 2
+    hearts_swept(cfg, {"Twice Imported": NOV})
+
+    code, acted = drive(LAND)
+
+    assert code == int(ExitCode.OK), acted
+    assert acted["outcome"] == "no_op"
+    assert _favorites(cfg, folder_id) == {SOURCE: []}
+
+
+def test_landing_an_older_pass_places_no_owned_heart_once_a_later_hearts_job_ran(
+    native_library, silence
+):
+    """The pass's job is a snapshot of the account; a later hearts job is the
+    account's later word, so an older pass cannot put back a heart the author
+    dropped since, un-hearted and taken out of All Favorites."""
+    cfg, _root_id = native_library
+    folder_id, _source_id = _home(cfg)
+    _owned(cfg, silence, "Dropped")
+    hearts_swept(cfg, {"Dropped": NOV})
+    hearts_swept(cfg, {"Other": NOV}, run_id="2026-10-04T101500Z-ef56")
+
+    code, acted = drive(LAND)
+
+    assert code == int(ExitCode.OK), acted
+    assert acted["outcome"] == "no_op"
     assert _favorites(cfg, folder_id) == {SOURCE: []}

@@ -359,8 +359,27 @@ def owned_hearts(cfg: config.Config, pass_name: str | None) -> tuple[HeartRow, .
     when it listed the hearts, and the landing finds the row for each file by
     path on its own handle. A landing of no pass has no job to read, so it
     has no owned hearts, as it has no hearts.
+
+    ONLY WHILE THE PASS HOLDS THE NEWEST HEARTS JOB ON THE LIBRARY. The job is
+    a snapshot of the account, and a heart the author dropped since, un-hearted
+    and taken out of All Favorites, is still owned in it; a later pass's job is
+    the account's later word, so landing an older pass places no owned heart
+    and leaves them to the latest pass and the backfill, which lists the
+    account.
     """
     if not pass_name:
+        return ()
+    with jobs.open_store() as store:
+        mine = [job for job in batch_name.pass_jobs(cfg, pass_name) if is_hearts_job(job)]
+        if not mine:
+            return ()
+        newest = max((job.created, job.job_id) for job in mine)
+        superseded = any(
+            (job.created, job.job_id) > newest
+            for job in batch_name.succeeded_intake_jobs(store, cfg)
+            if is_hearts_job(job)
+        )
+    if superseded:
         return ()
     return hearts(cfg, pass_name, states=frozenset({OWNED}))
 

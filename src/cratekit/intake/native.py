@@ -1258,6 +1258,28 @@ def content_ids_for(db: Any, cfg: config.Config, paths: Sequence[Path]) -> dict[
     return found
 
 
+def single_rows_for(db: Any, cfg: config.Config, paths: Sequence[Path]) -> dict[str, str]:
+    """The one active row holding each of ``paths``, by path, a path two rows claim left out.
+
+    :func:`content_ids_for` WITHOUT ITS FALLBACK, for a reader that must not
+    guess: a file two active rows claim answers nothing here, the rule an
+    owned member of an account playlist is found by (U128), so an owned heart
+    (U146) never joins All Favorites as whichever duplicate came first.
+    """
+    prefix_map = [locations.PrefixRule(a, b) for a, b in cfg.resolved_prefix_map()]
+    matches = trees.match_active_rows(
+        list(paths),
+        candidate_rows(db, (path.name for path in paths)),
+        root=cfg.library.root,
+        prefix_map=prefix_map,
+    )
+    return {
+        str(path): str(match.content_id)
+        for path, match in zip(paths, matches)
+        if match.outcome is trees.MatchOutcome.MATCHED and match.content_id
+    }
+
+
 def _taken_since_the_plan(db: Any, cfg: config.Config, rows: Sequence[RowPlan]) -> dict[str, str]:
     """Each planned target a row has taken since the plan was made, by target.
 
@@ -1853,5 +1875,6 @@ __all__ = [
     "leftover_set_inbox",
     "plan_rows",
     "recorded_inbox_playlist",
+    "single_rows_for",
     "stored_folder_path",
 ]

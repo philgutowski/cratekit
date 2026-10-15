@@ -182,9 +182,6 @@ def favorites_backfill(ctx) -> Envelope:
         "added": placed.added,
         "created": len(placed.created),
     }
-    months = ", ".join(
-        f"{name}{' (made)' if name in placed.created else ''}" for name, _row, _n in placed.months
-    )
     return ctx.envelope(
         data={**data, "totals": totals},
         warnings=[
@@ -192,9 +189,8 @@ def favorites_backfill(ctx) -> Envelope:
             {
                 "code": PLACED,
                 "message": (
-                    f"{placed.added} membership(s) added for {len(plan.hearts)} owned "
-                    f"heart(s): {placed.added_source} into {source!r} and the rest into "
-                    f"{months}; every playlist read back from the database holds its "
+                    f"{placed.said()}, for {len(plan.hearts)} owned heart(s); every "
+                    f"playlist read back from the database holds its "
                     f"hearts, and no track left the collection; undo with a restore of "
                     f"session {done.session_id}"
                 ),

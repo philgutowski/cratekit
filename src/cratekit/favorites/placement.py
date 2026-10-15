@@ -205,8 +205,10 @@ def members_marked_removed(db: Any, playlist_id: str) -> frozenset[str]:
     A membership that exists as removed is a track somebody took out of the
     playlist by hand, and for All Favorites that is the author un-hearting a
     track in the library. The backfill (U120) reads this so it never puts a
-    heart back that the author took back, where a landing of a new heart has
-    no such row to read.
+    heart back that the author took back. THE LANDING DOES NOT READ IT, by the
+    author's rule of 2026-10-14 (U146): a heart the pass's own job still
+    found on the account joins again, since dropping a favourite is two hand
+    steps, un-hearting on the account and taking it out here.
     """
     return frozenset(
         str(song.ContentID)
@@ -339,6 +341,16 @@ class Placed:
     @property
     def added(self) -> int:
         return self.added_source + sum(count for _name, _row, count in self.months)
+
+    def said(self) -> str:
+        """The placement as one clause a person reads, the one wording every verb uses."""
+        months = ", ".join(
+            f"{name}{' (made)' if name in self.created else ''}" for name, _row, _n in self.months
+        )
+        return (
+            f"{self.added} membership(s) placed: {self.added_source} into "
+            f"{self.source_name!r} and the rest into {months}"
+        )
 
     def to_json(self) -> dict[str, Any]:
         return {

@@ -173,7 +173,8 @@ def test_the_plan_lists_exactly_the_landed_hearts_and_the_approval_places_them(
     totals = acted["data"]["totals"]
     assert (totals["count"], totals["added"], totals["created"]) == (3, 6, 1)
     (note,) = [w for w in acted["warnings"] if w["code"] == backfill_cli.PLACED]
-    assert "6 membership(s) added for 3 owned heart(s)" in note["message"]
+    assert "6 membership(s) placed: 3 into" in note["message"]
+    assert "for 3 owned heart(s)" in note["message"]
     assert "2026-09 (made)" in note["message"]
     # Every item of the plan names the file by its path under the library.
     assert all(item["path"].startswith(f"Music/{BATCH}/") for item in shown["items"])
@@ -853,3 +854,22 @@ def test_a_heart_all_favorites_holds_at_the_root_beside_another_playlist_still_t
         "SELECT ID FROM djmdPlaylist WHERE Name = '2026-11' AND rb_local_deleted = 0",
     )
     assert _live(cfg, str(month[0])) == [row]
+
+
+def test_a_heart_its_job_dated_nowhere_stays_undated_though_the_account_dates_it_now(
+    native_library, silence, monkeypatch
+):
+    """The job's "no date" is the job's date: only a row with no key at all is
+    dated from the listing, so the backfill files it where the landing would."""
+    cfg, _root_id = native_library
+    folder_id, _source_id = _home(cfg)
+    _deep_row(cfg, silence, "Dateless")
+    hearts_swept(cfg, {"Dateless": None}, run_id="")
+    _account(monkeypatch, {"Dateless": NOV})
+
+    code, acted, refused = _acts()
+
+    assert code == int(ExitCode.OK), acted
+    (item,) = refused["cause"]["detail"]["shown"]["items"]
+    assert (item["month"], item["dated_by"]) == ("Undated", "none")
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Dateless"], "Undated": ["Dateless"]}

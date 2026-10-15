@@ -815,8 +815,11 @@ def favorites_facts(plan: native.FavoritesPlan) -> dict[str, Any]:
         said = f"{files} file(s)" + (f", {held} owned" if held else "")
         return f"{month} ({said})" + (", made" if month in plan.creates else "")
 
+    hearts = f"{len(plan.items)} file(s) the account hearts"
+    if plan.owned:
+        hearts += f" and {len(plan.owned)} owned track(s)"
     facts: dict[str, Any] = {
-        "hearts": f"{len(plan.items)} file(s) the account hearts, into {where} and their month",
+        "hearts": f"{hearts}, into {where} and their month",
         "month playlists": [counted(month) for month in plan.months],
     }
     if plan.owned:
@@ -1351,16 +1354,13 @@ def _place_owned(
         spec,
         plan=lambda db: backfill.plan_owned(cfg, db, source=source, rows=owned),
         payload=lambda planned: backfill.payload(planned, cfg),
-        shown=backfill.facts,
+        shown=backfill.landing_facts,
         write=written,
     )
     if done is None:
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
     backfill.assert_read_back(done)
     placed = done.placed
-    months = ", ".join(
-        f"{name}{' (made)' if name in placed.created else ''}" for name, _row, _n in placed.months
-    )
     totals = {**payload["totals"], "hearts placed": placed.added}
     return ctx.envelope(
         data={**payload, "totals": totals},
@@ -1368,10 +1368,8 @@ def _place_owned(
             {
                 "code": FAVORITES_PLACED,
                 "message": (
-                    f"{placed.added} membership(s) placed for {len(payload['items'])} owned "
-                    f"heart(s): {placed.added_source} into {placed.source_name!r} and the "
-                    f"rest into {months}; no file was landed; undo with a restore of "
-                    f"session {done.session_id}"
+                    f"{placed.said()}, for {len(payload['items'])} owned heart(s); no file "
+                    f"was landed; undo with a restore of session {done.session_id}"
                 ),
             }
         ],
@@ -1407,18 +1405,7 @@ def favorites_notes(payload: dict, collection: native.NativeLanded) -> list[dict
     placed = collection.favorites
     if placed is None:
         return []
-    months = ", ".join(
-        f"{name}{' (made)' if name in placed.created else ''}" for name, _row, _n in placed.months
-    )
-    return [
-        {
-            "code": FAVORITES_PLACED,
-            "message": (
-                f"{placed.added} membership(s) placed: {placed.added_source} into "
-                f"{placed.source_name!r} and the rest into {months}"
-            ),
-        }
-    ]
+    return [{"code": FAVORITES_PLACED, "message": placed.said()}]
 
 
 def _native_split(

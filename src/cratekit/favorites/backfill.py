@@ -79,6 +79,9 @@ class OwnedHeart:
     #: Where the date came from: ``job``, ``account``, or ``none``; for a
     #: heart taken back, why.
     dated_by: str
+    #: Whether the job froze a date key at all; only a row with none is dated
+    #: from the account, so a job's "no date" is Undated by both paths.
+    known: bool = True
 
     @property
     def month(self) -> str:
@@ -184,6 +187,10 @@ def listed(cfg: config.Config) -> Listing:
     dates: dict[str, datetime | None] = {}
     for track in tracks:
         ref = str(getattr(track, "id", "") or "")
+        if not ref:
+            # A ROW WITH NO IDENTIFIER IS NO HEART'S EVIDENCE: an empty key
+            # would read as carrying every heart whose own ref is empty.
+            continue
         when = placeholders.parse_hearted(intake_cli.hearted_on(track))
         if dates.get(ref) is None:
             dates[ref] = when
@@ -248,6 +255,7 @@ def gather(cfg: config.Config, db: Any, *, home: placement.Home) -> Gathered:
             job_id=row.job_id,
             hearted=row.hearted,
             dated_by="job" if row.hearted is not None else "none",
+            known=row.known,
         )
         if content_id in removed:
             taken.append(replace(heart, dated_by=REMOVED_IN_REKORDBOX))
@@ -265,13 +273,16 @@ def gather(cfg: config.Config, db: Any, *, home: placement.Home) -> Gathered:
         # NOT ON THE ACCOUNT NOW: on a listing known whole the author took it
         # back, and it is named; on a short listing, or one with no published
         # count, the provider may have withheld it, and it is held back.
-        if heart.ref not in listing.dates:
+        if not heart.ref or heart.ref not in listing.dates:
             if listing.whole:
                 taken.append(replace(heart, dated_by=OFF_THE_ACCOUNT))
             else:
                 held.append(heart)
             continue
-        if heart.hearted is None:
+        # THE JOB'S DATE FIRST, AND ITS "NO DATE" TOO: only a row frozen by a
+        # build before U120, with no key at all, is dated from the listing,
+        # so a heart the job dated nowhere is Undated here as at the landing.
+        if not heart.known:
             when = listing.dates.get(heart.ref)
             if when is not None:
                 heart = replace(heart, hearted=when, dated_by="account")
@@ -295,17 +306,19 @@ def owned_in_library(
     """A pass's owned hearts with the row each one's report file is, for the landing (U146).
 
     THE REPORT'S OWN FILES, the first one an active row holds, the rule an
-    owned member of an account playlist is found by (U128). A ROW WHOSE JOB
-    FROZE NO DATE KEY IS LEFT TO THE BACKFILL, which dates it from the account;
-    the landing has no listing to read and Undated is a placement nothing
-    undoes. A row the job dated nowhere goes to ``Undated``. One heart per
-    row, the first mention of a row winning.
+    owned member of an account playlist is found by (U128): a file two active
+    rows claim answers nothing, and the next file of the report is tried. A
+    ROW WHOSE JOB FROZE NO DATE KEY IS LEFT TO THE BACKFILL, which dates it
+    from the account; the landing has no listing to read and Undated is a
+    placement nothing undoes. A row the job dated nowhere goes to
+    ``Undated``, as the backfill files it. One heart per row, the first
+    mention of a row winning.
     """
     known = [row for row in rows if row.known and row.paths]
     paths = [Path(said) for row in known for said in row.paths]
     if not paths:
         return ()
-    by_path = native.content_ids_for(db, cfg, paths)
+    by_path = native.single_rows_for(db, cfg, paths)
     found: list[OwnedHeart] = []
     seen: set[str] = set()
     for row in known:
@@ -547,6 +560,19 @@ def facts(planned: BackfillPlan) -> dict[str, Any]:
     return facts
 
 
+def landing_facts(planned: BackfillPlan) -> dict[str, Any]:
+    """The facts a landing that brought no file shows over its owned hearts (U146).
+
+    THE BACKFILL'S, LESS WHAT THE LANDING NEVER ASKS: it lists no account and
+    counts no heart already placed, since the pass's own job is its listing.
+    """
+    shown = facts(planned)
+    for key in ("dates asked of the account", "already placed"):
+        shown.pop(key, None)
+    shown["files to land"] = 0
+    return shown
+
+
 # ---------------------------------------------------------------------------
 # The write
 # ---------------------------------------------------------------------------
@@ -700,6 +726,7 @@ __all__ = [
     "facts",
     "gather",
     "hearts_jobs",
+    "landing_facts",
     "listed",
     "owned_in_library",
     "owned_paths",
