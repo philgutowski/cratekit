@@ -1,0 +1,198 @@
+{
+  "name": "u147-d",
+  "pass_kind": "light",
+  "branch": "relay/326",
+  "head": "8cf496ea",
+  "when": "2026-10-15 08:26 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 14070,
+  "baseline_exit": 0,
+  "pytest_runs": 8,
+  "state_guarded": "~/Library/Application Support/cratekit (429320 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/organize/account_mirror.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/organize/account_mirror.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "214588d4ffe34596",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 14070,
+    "baseline_collected": 14070,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "A1_deletes_unnamed",
+      "description": "account_mirror.add_steps: a mirror removal is not named on the gate's deletes",
+      "file": "src/cratekit/organize/account_mirror.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c04fc946df86d9ca",
+      "subset": [
+        "tests/test_organize_mirror.py",
+        "tests/test_organize_mirror_library.py"
+      ],
+      "subset_reason": "test files importing cratekit.organize.account_mirror",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 37,
+      "baseline_collected": 37,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize_mirror.py::test_every_track_a_refresh_takes_off_is_named_on_the_gate"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            area.deletes.extend(",
+      "new": "            list().extend("
+    },
+    {
+      "id": "A2_retired_unnamed",
+      "description": "account_mirror.add_steps: a mirrored folder the library no longer holds is not listed",
+      "file": "src/cratekit/organize/account_mirror.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e9478e23c6d52f8b",
+      "subset": [
+        "tests/test_organize_mirror.py",
+        "tests/test_organize_mirror_library.py"
+      ],
+      "subset_reason": "test files importing cratekit.organize.account_mirror",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 37,
+      "baseline_collected": 37,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize_mirror.py::test_a_folder_the_library_no_longer_holds_is_left_and_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    for name in sorted(set(recorded) - held):",
+      "new": "    for name in ():"
+    },
+    {
+      "id": "A3_twin_folders_read",
+      "description": "account_mirror.read_library: two rekordbox folders of one name are both mirrored into one",
+      "file": "src/cratekit/organize/account_mirror.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bd70e0e4cc9a87da",
+      "subset": [
+        "tests/test_organize_mirror.py",
+        "tests/test_organize_mirror_library.py"
+      ],
+      "subset_reason": "test files importing cratekit.organize.account_mirror",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 37,
+      "baseline_collected": 37,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize_mirror_library.py::test_two_tree_folders_of_one_name_refuse_that_name_and_read_the_rest"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if counted[name] > 1:",
+      "new": "        if counted[name] > 99:"
+    },
+    {
+      "id": "A5_source_title",
+      "description": "account_mirror.read_library: All Favorites takes the folder's prefix like every other playlist",
+      "file": "src/cratekit/organize/account_mirror.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a6eb49e1336c3ec1",
+      "subset": [
+        "tests/test_organize_mirror.py",
+        "tests/test_organize_mirror_library.py"
+      ],
+      "subset_reason": "test files importing cratekit.organize.account_mirror",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 37,
+      "baseline_collected": 37,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize_mirror_library.py::test_every_genre_folder_and_the_favorites_folder_is_read_under_its_account_titles"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    return shown if shown == source else mirror.title(name, shown)",
+      "new": "                    return mirror.title(name, shown)"
+    },
+    {
+      "id": "A6_file_code_trusted",
+      "description": "account_mirror.identify: a code read off the file does not ask the track to agree",
+      "file": "src/cratekit/organize/account_mirror.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b187b812958cf441",
+      "subset": [
+        "tests/test_organize_mirror.py",
+        "tests/test_organize_mirror_library.py"
+      ],
+      "subset_reason": "test files importing cratekit.organize.account_mirror",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 37,
+      "baseline_collected": 37,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_organize_mirror.py::test_a_code_read_off_the_file_asks_the_one_track_to_agree_and_a_database_code_does_not"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            (isrc, album), agree = pair_cli.file_identity(cfg, row.path), True",
+      "new": "            (isrc, album), agree = pair_cli.file_identity(cfg, row.path), False"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "A4_nested_folder_skipped",
+      "description": "_folder mirrors a folder inside a genre folder as a playlist",
+      "reason": "ranked below the cap: the library test builds a nested folder and asserts it absent; the cap of 25 is spent"
+    }
+  ]
+}

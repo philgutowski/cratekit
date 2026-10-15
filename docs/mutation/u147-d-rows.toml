@@ -1,0 +1,47 @@
+name = "u147-d"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_deletes_unnamed"
+description = "account_mirror.add_steps: a mirror removal is not named on the gate's deletes"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+old = '''            area.deletes.extend('''
+new = '''            list().extend('''
+
+[[rows]]
+id = "A2_retired_unnamed"
+description = "account_mirror.add_steps: a mirrored folder the library no longer holds is not listed"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+old = '''    for name in sorted(set(recorded) - held):'''
+new = '''    for name in ():'''
+
+[[rows]]
+id = "A3_twin_folders_read"
+description = "account_mirror.read_library: two rekordbox folders of one name are both mirrored into one"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+old = '''        if counted[name] > 1:'''
+new = '''        if counted[name] > 99:'''
+
+[[rows]]
+id = "A5_source_title"
+description = "account_mirror.read_library: All Favorites takes the folder's prefix like every other playlist"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+old = '''                    return shown if shown == source else mirror.title(name, shown)'''
+new = '''                    return mirror.title(name, shown)'''
+
+[[rows]]
+id = "A6_file_code_trusted"
+description = "account_mirror.identify: a code read off the file does not ask the track to agree"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+old = '''            (isrc, album), agree = pair_cli.file_identity(cfg, row.path), True'''
+new = '''            (isrc, album), agree = pair_cli.file_identity(cfg, row.path), False'''
+
+[[dropped]]
+id = "A4_nested_folder_skipped"
+description = "_folder mirrors a folder inside a genre folder as a playlist"
+reason = "ranked below the cap: the library test builds a nested folder and asserts it absent; the cap of 25 is spent"

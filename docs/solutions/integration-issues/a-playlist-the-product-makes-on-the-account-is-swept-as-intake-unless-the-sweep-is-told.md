@@ -51,3 +51,11 @@ Any verb that creates a playlist on the account must answer, in the same
 unit, what the playlists sweep does with it next pass. Exclude it by a record
 the product keeps, by identifier, never by a title a person can also type.
 R-837's set playlists are the next verb this applies to.
+
+U147's account mirrors were the third such verb, and nothing in their brief
+named the sweep either: about 130 mirrored playlists, each holding tracks the
+library already owns, would have been swept and then marked with the swept
+prefix under the mirror. `Excluded.MIRROR`, handed in from
+`ledger.mirror_playlist_ids`. The same unit found the rule has a second half,
+`sync pair`: a playlist another writer keeps must also be refused as a pair,
+or two writers each remove what the other adds (`pair_cli._scope_account`).
