@@ -466,6 +466,7 @@ def test_a_planned_addition_into_a_made_month_is_confined():
         ("gone membership", "row 's1' disappeared"),
         ("unplanned playlist", "unplanned djmdPlaylist row 'x'"),
         ("wrong name", "not a live plain playlist named '2026-10'"),
+        ("wrong parent", "not a live plain playlist named '2026-10' under 'f'"),
         ("not made", "was not made"),
         ("quarter renamed", "row 'q' changed ['Name']"),
         ("content", "djmdContent row changed"),
@@ -490,6 +491,8 @@ def test_an_addition_the_plan_did_not_name_is_a_violation(shape, expected):
         playlists["x"] = ("x", "2026-11", "f", 0, 3, 0, "t1")
     elif shape == "wrong name":
         playlists["m"] = ("m", "2026-1", "f", 0, 2, 0, "t1")
+    elif shape == "wrong parent":
+        playlists["m"] = ("m", "2026-10", "root", 0, 2, 0, "t1")
     elif shape == "not made":
         created = {"m": ("2026-10", "f"), "n": ("2026-11", "f")}
     elif shape == "quarter renamed":
@@ -591,3 +594,56 @@ def test_the_one_removal_the_favourites_package_makes_is_the_splits_quarter_reti
                 if node.func.attr in {"remove_memberships", "remove_playlist_node", "remove_from_playlist"}:
                     calls.append((path.name, node.func.attr))
     assert calls == [("split.py", "remove_playlist_node")]
+
+
+def test_a_job_row_owned_when_its_job_ran_still_dates_the_member(native_library, silence, monkeypatch):
+    """The quarters hold owned hearts above all, so every match state is read."""
+    from tests.test_favorites_backfill import _land, _stage
+    from tests.test_intake_land_hearts_native import hearts_swept
+
+    cfg, _root_id = native_library
+    folder_id, _source_id = _home(cfg)
+    _stage(cfg, silence, "Owned")
+    _land("2026-09-01-favorites")
+    job = hearts_swept(cfg, {"Owned": OCT.format(day=11)}, run_id="")
+    _quarter(cfg, folder_id, "2026-Q4", "Owned")
+    fake = _account(monkeypatch, {})
+
+    code, acted, _refused = _acts()
+
+    assert code == int(ExitCode.OK), acted
+    from cratekit.core import jobs
+    from cratekit.intake import missing_cli
+
+    with jobs.open_store() as store:
+        states = {report.get("state") for report in missing_cli.job_reports(store, job)}
+    assert states == {"owned"}, "the heart was owned when its job ran"
+    assert fake.heart_listings == 0
+    assert _favorites(cfg, folder_id)["2026-10"] == ["Owned"]
+
+
+def test_a_heart_taken_back_and_hearted_again_is_not_taken_back(native_library, silence, monkeypatch):
+    cfg, _root_id = native_library
+    folder_id, source_id = _home(cfg)
+    _landed_hearts(cfg, silence, {"Again": NOV})
+    again = _rows(cfg)["Again"]
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        source = handle.get_playlist(ID=source_id)
+        handle.add_to_playlist(source, again)
+        handle.session.commit()
+        (entry,) = list(handle.get_playlist_songs(PlaylistID=source_id))
+        entry.rb_local_deleted = 1
+        handle.session.commit()
+        handle.add_to_playlist(source, again)
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    _quarter(cfg, folder_id, "2026-Q4", "Again")
+    _account(monkeypatch, {})
+
+    code, acted, refused = _acts()
+
+    assert code == int(ExitCode.OK), acted
+    assert "taken back" not in refused["cause"]["detail"]["shown"]
+    assert _favorites(cfg, folder_id)["2026-11"] == ["Again"]
