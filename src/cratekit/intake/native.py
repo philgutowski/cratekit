@@ -280,6 +280,16 @@ class HeartItem:
 
 
 @dataclass(frozen=True, slots=True)
+class OwnedHeartItem:
+    """One heart of the pass on a track the library already holds, and its month (U146)."""
+
+    content_id: str
+    month: str
+    ref: str
+    title: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class FavoritesPlan:
     """The hearts a landing places (U120): their home, each one's month, or why none.
 
@@ -298,11 +308,19 @@ class FavoritesPlan:
     #: The month playlists live under the folder when the plan was made.
     present: tuple[str, ...] = ()
     skipped: str = ""
+    #: The pass's hearts on tracks the library already holds that All
+    #: Favorites lacks, placed in the same commit (U146).
+    owned: tuple[OwnedHeartItem, ...] = ()
 
     @property
     def months(self) -> tuple[str, ...]:
         """Every month the hearts go to, by name, so the screen reads in one order."""
-        return tuple(sorted({item.month for item in self.items if item.month}))
+        return tuple(
+            sorted(
+                {item.month for item in self.items if item.month}
+                | {one.month for one in self.owned}
+            )
+        )
 
     @property
     def unknown(self) -> int:
@@ -323,7 +341,8 @@ class FavoritesPlan:
         )
 
     def identity(self) -> dict[str, Any]:
-        return {
+        """The digest's view: the owned hearts a key only when there are any (U146)."""
+        identity: dict[str, Any] = {
             "source": self.source_name,
             "source_id": self.source_id,
             "folder": self.folder_id,
@@ -333,6 +352,11 @@ class FavoritesPlan:
                 for item in self.items
             ],
         }
+        if self.owned:
+            identity["owned"] = [
+                {"row": one.content_id, "month": one.month, "ref": one.ref} for one in self.owned
+            ]
+        return identity
 
 
 @dataclass(frozen=True, slots=True)
@@ -610,6 +634,7 @@ def plan_rows(
     pass_name: str | None = None,
     hearts: Sequence[HeartItem] = (),
     favorites_source: str | None = None,
+    owned_hearts: Sequence[OwnedHeartItem] = (),
     set_plan: set_playlist.SetPlaylistPlan | None = None,
     batch_playlist_id: str = "",
     set_job_id: str = "",
@@ -622,7 +647,9 @@ def plan_rows(
     month (U120, U145), and ``favorites_source`` the playlist every favourite is
     in. With both, the plan carries where each heart goes, resolved on this
     same handle; a home that cannot be resolved is a plan that SKIPS the
-    placement and says why, never a refusal of the landing.
+    placement and says why, never a refusal of the landing. ``owned_hearts``
+    are the pass's hearts on rows the collection already holds (U146), the
+    ones All Favorites lacks placed in the same commit.
 
     ``files`` pairs where each file is now with where the landing will put it.
     The row is planned for the target, since that is the path rekordbox will
@@ -729,7 +756,9 @@ def plan_rows(
         playlists=kept,
         unplanned_left=(*unplanned_left, *dropped),
         pass_name=pass_name,
-        favorites=_favorites_plan(db, hearts, rows, source=favorites_source),
+        favorites=_favorites_plan(
+            db, hearts, rows, source=favorites_source, owned=owned_hearts
+        ),
         set_playlist=set_plan,
         batch_playlist_id=batch_playlist_id,
         set_job_id=set_job_id,
@@ -788,12 +817,23 @@ def _vox_plan(
 
 
 def _favorites_plan(
-    db: Any, hearts: Sequence[HeartItem], rows: Sequence[RowPlan], *, source: str | None
+    db: Any,
+    hearts: Sequence[HeartItem],
+    rows: Sequence[RowPlan],
+    *,
+    source: str | None,
+    owned: Sequence[OwnedHeartItem] = (),
 ) -> FavoritesPlan | None:
-    """Where the landing's hearts go, or None when it lands none (U120)."""
+    """Where the landing's hearts go, or None when it places none (U120, U146).
+
+    AN OWNED HEART JOINS WHEN ALL FAVORITES DOES NOT HOLD IT LIVE (U146), so a
+    heart a person took out of All Favorites by hand and still hearts on the
+    account joins again: the author's rule of 2026-10-14 is that dropping a
+    favourite takes both hand steps. A heart it holds already is no write.
+    """
     writable = {str(row.target) for row in rows if row.action != UNSUPPORTED}
     kept = tuple(item for item in hearts if str(item.target) in writable)
-    if not kept or not source:
+    if not (kept or owned) or not source:
         return None
     try:
         home = placement.resolve_home(db, source)
@@ -812,6 +852,16 @@ def _favorites_plan(
             items=(),
             skipped=exc.cause.message,
         )
+    in_source = placement.members(db, home.source_id) if owned else frozenset()
+    joining: list[OwnedHeartItem] = []
+    seen: set[str] = set()
+    for one in owned:
+        if one.content_id in in_source or one.content_id in seen:
+            continue
+        seen.add(one.content_id)
+        joining.append(one)
+    if not kept and not joining:
+        return None
     return FavoritesPlan(
         source_name=home.source_name,
         source_id=home.source_id,
@@ -819,6 +869,7 @@ def _favorites_plan(
         folder_name=home.folder_name,
         items=kept,
         present=tuple(sorted(home.present)),
+        owned=tuple(joining),
     )
 
 
@@ -1389,13 +1440,15 @@ def apply_rows(
                 )
             # THE HEARTS, IN THE SAME COMMIT (U120): into All Favorites and
             # each one's month, a row already present as much as a row
-            # added, so a heart landed twice is one membership.
-            if plan.favorites is not None and plan.favorites.items:
-                pairs = [
+            # added, so a heart landed twice is one membership. And the
+            # pass's owned hearts All Favorites lacked (U146), by their rows.
+            if plan.favorites is not None and (plan.favorites.items or plan.favorites.owned):
+                pairs: list[tuple[str, str | None]] = [
                     (by_target[str(item.target)], item.month)
                     for item in plan.favorites.items
                     if str(item.target) in by_target
                 ]
+                pairs.extend((one.content_id, one.month) for one in plan.favorites.owned)
                 placed = placement.place(db, plan.favorites.home(), pairs)
             # THE SET'S PERMANENT PLAYLIST, IN THE SAME COMMIT (U121): the rows
             # this landing made are keyed by target, and a member the landing
@@ -1780,6 +1833,7 @@ __all__ = [
     "HeartItem",
     "NativeLanded",
     "NativePlan",
+    "OwnedHeartItem",
     "PlaylistPlan",
     "RowPlan",
     "WrittenPlaylist",

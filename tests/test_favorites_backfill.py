@@ -1,10 +1,12 @@
-"""U120: ``crate favorites backfill`` places the hearts that landed before the landing did.
+"""U120, U146: ``crate favorites backfill`` places every owned heart All Favorites lacks.
 
 Driven through the real dispatcher on the native landing suite's library: a
 hearts job queued by hand and run, its files staged and landed with no pass,
 which is how the September hearts landed, so nothing placed them. Then the
 verb: the plan lists exactly those, the account supplies the dates the job
 never froze, the approval places them, and a second run has nothing to do.
+Since U146 a heart the library owned when its job ran, and one whose file
+sits anywhere under the library, is placed the same way.
 
 D1 applies. Nothing here names a real volume, a real person or a real track.
 """
@@ -28,7 +30,6 @@ from tests.test_intake_land_native import _platform_seams as _platform_seams  # 
 from tests.test_intake_land_native import (
     _release_process_locks as _release_process_locks,  # noqa: PLC0414
 )
-from tests.test_intake_land_native import _stage as _stage_native
 from tests.test_intake_land_native import acknowledged as acknowledged  # noqa: PLC0414
 from tests.test_intake_land_native import library as library  # noqa: PLC0414
 from tests.test_intake_land_native import machine as machine  # noqa: PLC0414
@@ -117,6 +118,21 @@ def _rows(cfg) -> dict[str, str]:
     return {str(title): str(row) for row, title in _query(cfg, "SELECT ID, Title FROM djmdContent")}
 
 
+def _deep_row(cfg, silence: Path, title: str) -> str:
+    """A track the library holds two folders deep, with its row, as the source system filed it."""
+    deep = Path(cfg.library.root) / cfg.library.music_dir / "Processed_Tracks" / "2025" / f"{title}.flac"
+    deep.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(silence, deep)
+    assert tags.write_tags(deep, {"title": title, "artist": "Probe"})
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        row = handle.add_content(deep, Title=title)
+        handle.session.commit()
+        return str(row.ID)
+    finally:
+        rb_writer.close_db(handle)
+
+
 # ---------------------------------------------------------------------------
 # The brief's scenario: the three September hearts, listed exactly, placed
 # ---------------------------------------------------------------------------
@@ -142,7 +158,8 @@ def test_the_plan_lists_exactly_the_landed_hearts_and_the_approval_places_them(
     ]
     assert {item["month"] for item in shown["items"]} == {"2026-09"}
     assert {item["dated_by"] for item in shown["items"]} == {"account"}
-    assert shown["landed hearts"] == 3 and shown["memberships to add"] == 6
+    assert shown["hearts to place"] == 3 and shown["memberships to add"] == 6
+    assert shown["by month"] == ["2026-09: 3"]
     assert shown["month playlists to create"] == ["2026-09"]
     assert shown["dates asked of the account"] == 3 and shown["undated"] == 0
     assert shown["into"].startswith(f"{SOURCE!r} (row {source_id}) under 'Favorites'")
@@ -156,7 +173,7 @@ def test_the_plan_lists_exactly_the_landed_hearts_and_the_approval_places_them(
     totals = acted["data"]["totals"]
     assert (totals["count"], totals["added"], totals["created"]) == (3, 6, 1)
     (note,) = [w for w in acted["warnings"] if w["code"] == backfill_cli.PLACED]
-    assert "6 membership(s) added for 3 landed heart(s)" in note["message"]
+    assert "6 membership(s) added for 3 owned heart(s)" in note["message"]
     assert "2026-09 (made)" in note["message"]
     # Every item of the plan names the file by its path under the library.
     assert all(item["path"].startswith(f"Music/{BATCH}/") for item in shown["items"])
@@ -175,41 +192,47 @@ def test_a_second_run_finds_the_same_hearts_and_writes_nothing(native_library, s
     assert code == int(ExitCode.OK), acted
     assert acted["outcome"] == "no_op"
     (note,) = [w for w in acted["warnings"] if w["code"] == backfill_cli.NOTHING_TO_PLACE]
-    assert "1 landed heart(s) found and every one is already" in note["message"]
+    assert "no owned heart needs placing, 1 already in" in note["message"]
     shown = refused["cause"]["detail"]["shown"]
     assert shown["memberships to add"] == 0 and shown["month playlists to create"] == []
+    assert shown["already placed"] == 1 and shown["items"] == []
     assert _favorites(cfg, folder_id) == {SOURCE: ["Same Girl"], "2026-09": ["Same Girl"]}
     assert len(_members(cfg, _query(cfg, "SELECT ID FROM djmdPlaylist WHERE Name = '2026-09'")[0][0])) == 1
 
 
-def test_an_owned_heart_the_source_system_filed_is_left_alone(native_library, silence, monkeypatch):
-    """The open question's conservative default: a heart the library owned, or
-    one filed deeper than a batch folder, is not a heart this product landed."""
+def test_an_owned_heart_the_source_system_filed_is_placed_and_one_with_no_row_is_not(
+    native_library, silence, monkeypatch
+):
+    """U146 answers the open question: a heart the library owned when its job
+    ran, filed deep by the source system, is placed; a file the collection
+    holds no row for has nothing to place and is left out."""
     cfg, _root_id = native_library
     folder_id, _source_id = _home(cfg)
-    # One heart owned when the job ran, under the source system's deep folder.
-    deep = Path(cfg.library.root) / cfg.library.music_dir / "Processed_Tracks" / "2025" / "Owned.flac"
-    deep.parent.mkdir(parents=True)
-    shutil.copyfile(silence, deep)
-    assert tags.write_tags(deep, {"title": "Owned", "artist": "Probe"})
-    # One heart missing when the job ran and later put under a deep folder by hand.
-    job = hearts_swept(cfg, {"Owned": UNKNOWN, "Hand Filed": UNKNOWN, "Landed": UNKNOWN}, run_id="")
+    # One heart owned when the job ran, under the source system's deep folder, with its row.
+    _deep_row(cfg, silence, "Owned")
+    # One heart missing when the job ran and later put under a deep folder by hand, no row.
+    hearts_swept(cfg, {"Owned": UNKNOWN, "Hand Filed": UNKNOWN, "Landed": UNKNOWN}, run_id="")
     hand = Path(cfg.library.root) / cfg.library.music_dir / "Processed_Tracks" / "Hand Filed.flac"
     shutil.copyfile(silence, hand)
     assert tags.write_tags(hand, {"title": "Hand Filed", "artist": "Probe"})
     _stage(cfg, silence, "Landed")
     _land()
     _account(monkeypatch, {"Owned": SEP, "Hand Filed": SEP, "Landed": NOV})
-    del job
 
     code, acted, refused = _acts()
 
     assert code == int(ExitCode.OK), acted
-    assert [item["title"] for item in refused["cause"]["detail"]["shown"]["items"]] == ["Probe - Landed"]
-    assert _favorites(cfg, folder_id) == {SOURCE: ["Landed"], "2026-11": ["Landed"]}
+    shown = refused["cause"]["detail"]["shown"]
+    assert [item["title"] for item in shown["items"]] == ["Probe - Owned", "Probe - Landed"]
+    assert shown["by month"] == ["2026-09: 1", "2026-11: 1"]
+    placed = _favorites(cfg, folder_id)
+    assert sorted(placed[SOURCE]) == ["Landed", "Owned"]
+    assert (placed["2026-09"], placed["2026-11"]) == (["Owned"], ["Landed"])
 
 
-def test_a_date_the_job_froze_wins_and_the_account_is_not_asked(native_library, silence, monkeypatch):
+def test_a_date_the_job_froze_wins_over_the_accounts(native_library, silence, monkeypatch):
+    """The account is listed all the same since U146, to learn it still
+    carries the heart, and its date does not overrule the job's."""
     cfg, _root_id = native_library
     folder_id, _source_id = _home(cfg)
     _landed_hearts(cfg, silence, {"Dated": "2026-11-03T12:00:00+00:00"})
@@ -218,9 +241,11 @@ def test_a_date_the_job_froze_wins_and_the_account_is_not_asked(native_library, 
     code, _acted, refused = _acts()
 
     assert code == int(ExitCode.OK)
-    (item,) = refused["cause"]["detail"]["shown"]["items"]
+    shown = refused["cause"]["detail"]["shown"]
+    (item,) = shown["items"]
     assert (item["month"], item["dated_by"]) == ("2026-11", "job")
-    assert fake.heart_listings == 0
+    assert shown["dates asked of the account"] == 0
+    assert fake.heart_listings == 2, "once per plan, and the two acts are two plans"
     assert _favorites(cfg, folder_id) == {SOURCE: ["Dated"], "2026-11": ["Dated"]}
 
 
@@ -263,7 +288,7 @@ def test_a_heart_two_jobs_carried_is_one_heart_with_the_dated_jobs_date(
     assert code == int(ExitCode.OK)
     (item,) = refused["cause"]["detail"]["shown"]["items"]
     assert (item["month"], item["dated_by"]) == ("2026-09", "job")
-    assert fake.heart_listings == 0
+    assert fake.heart_listings == 2
     assert _favorites(cfg, folder_id) == {SOURCE: ["Twice"], "2026-09": ["Twice"]}
 
 
@@ -316,12 +341,18 @@ def test_with_no_source_playlist_the_verb_refuses_by_name_before_the_gate(
     assert fake.heart_listings == 0, "the home is resolved before the library is walked"
 
 
-def test_an_unreadable_account_refuses_only_when_a_heart_needs_a_date(
+def test_an_unreadable_account_refuses_only_when_a_heart_needs_placing(
     native_library, silence, monkeypatch
 ):
+    """Every heart to place is checked against the account since U146, so an
+    unreadable listing refuses then; a library with every heart placed never
+    asks it."""
     cfg, _root_id = native_library
     _home(cfg)
     _landed_hearts(cfg, silence, {"Dated": "2026-11-03T12:00:00+00:00"})
+    _account(monkeypatch, {"Dated": NOV})
+    code, acted, _refused = _acts()
+    assert code == int(ExitCode.OK), acted
 
     class Unreadable:
         def favourite_tracks(self):
@@ -332,6 +363,7 @@ def test_an_unreadable_account_refuses_only_when_a_heart_needs_a_date(
     monkeypatch.setattr(catalogue, "resolve", lambda _cfg: Unreadable())
     code, acted, _refused = _acts()
     assert code == int(ExitCode.OK), acted
+    assert acted["outcome"] == "no_op"
 
     hearts_swept(cfg, {"Undated Too": UNKNOWN}, run_id="")
     _stage(cfg, silence, "Undated Too")
@@ -380,7 +412,7 @@ def test_with_nothing_landed_the_gate_is_still_asked_and_nothing_is_written(
 
     assert code == int(ExitCode.OK), acted
     assert acted["outcome"] == "no_op"
-    assert refused["cause"]["detail"]["shown"]["landed hearts"] == 0
+    assert refused["cause"]["detail"]["shown"]["hearts to place"] == 0
     assert fake.heart_listings == 0
     assert _favorites(cfg, folder_id) == {SOURCE: []}
 
@@ -400,18 +432,6 @@ def test_no_content_row_tempo_or_rating_is_written(native_library, silence, monk
         cfg, "SELECT BPM, Rating, AnalysisDataPath FROM djmdContent WHERE Title = 'Same Girl'"
     )
     assert bpm in (None, 0) and rating in (None, 0) and not analysis
-
-
-def test_the_landed_path_rule_is_the_landings_own(native_library, silence):
-    """A file the native landing just put down reads as landed, by the rule the backfill uses."""
-    from cratekit.intake import landing
-
-    cfg, _root_id = native_library
-    _stage_native(cfg, silence, "One.flac")
-    _land()
-    landed = Path(cfg.library.root) / cfg.library.music_dir / BATCH / "One.flac"
-    assert landed.is_file() and landing.is_landed_path(cfg, landed)
-    assert intake_cli.FAVORITES_SOURCE_ID == "favorites"
 
 
 # ---------------------------------------------------------------------------
@@ -507,16 +527,15 @@ def test_a_heart_the_landing_placed_without_a_month_takes_it_from_the_backfill(
 
 
 # ---------------------------------------------------------------------------
-# What the mutation table bought: the three guards a green suite shadowed
+# What the mutation table bought, turned round by U146: the two narrowings gone
 # ---------------------------------------------------------------------------
 
 
-def test_an_owned_heart_in_a_batch_folder_is_not_carried_and_not_placed(
+def test_an_owned_heart_in_a_batch_folder_is_placed_beside_a_downloaded_one(
     native_library, silence, monkeypatch
 ):
-    """The state rule alone: a heart the library owned when the hearts job ran
-    was never downloaded, so it is not placed even where its file sits in a
-    batch folder a landing made."""
+    """The state rule is gone (U146): a heart the library owned when the
+    hearts job ran was never downloaded, and it is placed all the same."""
     cfg, _root_id = native_library
     folder_id, _source_id = _home(cfg)
     _stage(cfg, silence, "Already")
@@ -529,16 +548,21 @@ def test_an_owned_heart_in_a_batch_folder_is_not_carried_and_not_placed(
     code, acted, refused = _acts()
 
     assert code == int(ExitCode.OK), acted
-    assert [item["title"] for item in refused["cause"]["detail"]["shown"]["items"]] == ["Probe - Fresh"]
-    assert _favorites(cfg, folder_id) == {SOURCE: ["Fresh"], "2026-11": ["Fresh"]}
+    assert [item["title"] for item in refused["cause"]["detail"]["shown"]["items"]] == [
+        "Probe - Already",
+        "Probe - Fresh",
+    ]
+    placed = _favorites(cfg, folder_id)
+    assert sorted(placed[SOURCE]) == ["Already", "Fresh"]
+    assert (placed["2026-09"], placed["2026-11"]) == (["Already"], ["Fresh"])
 
 
-def test_a_carried_heart_whose_row_sits_deep_is_left_alone_by_the_path_rule(
+def test_a_carried_heart_whose_row_sits_deep_is_placed_now_the_path_rule_is_gone(
     native_library, silence, monkeypatch
 ):
-    """The path rule alone: the heart was carried and the collection holds a
-    row for its file, but the file sits two folders deep, where the source
-    system filed and no landing ever puts anything."""
+    """The path rule is gone (U146): the heart was carried and the collection
+    holds a row for its file two folders deep, where the source system filed,
+    and it is placed as a landed one is."""
     cfg, _root_id = native_library
     folder_id, _source_id = _home(cfg)
     hearts_swept(cfg, {"Deep Filed": UNKNOWN, "Landed": UNKNOWN}, run_id="")
@@ -560,8 +584,12 @@ def test_a_carried_heart_whose_row_sits_deep_is_left_alone_by_the_path_rule(
 
     assert code == int(ExitCode.OK), acted
     assert _rows(cfg)["Deep Filed"], "the collection holds the deep row"
-    assert [item["title"] for item in refused["cause"]["detail"]["shown"]["items"]] == ["Probe - Landed"]
-    assert _favorites(cfg, folder_id) == {SOURCE: ["Landed"], "2026-11": ["Landed"]}
+    assert [item["title"] for item in refused["cause"]["detail"]["shown"]["items"]] == [
+        "Probe - Deep Filed",
+        "Probe - Landed",
+    ]
+    placed = _favorites(cfg, folder_id)
+    assert (placed["2026-09"], placed["2026-11"]) == (["Deep Filed"], ["Landed"])
 
 
 def test_the_write_itself_refuses_a_plan_whose_home_moved_with_no_gate_in_front(
@@ -630,7 +658,7 @@ def test_a_heart_the_author_took_out_of_all_favorites_is_never_put_back(
     assert code == int(ExitCode.OK), acted
     assert acted["outcome"] == "no_op"
     shown = refused["cause"]["detail"]["shown"]
-    assert [item["title"] for item in shown["items"]] == ["Probe - Kept"]
+    assert shown["items"] == [] and shown["already placed"] == 1, "Kept is placed already"
     assert shown["taken back"] == ["Probe - Same Girl, removed from the playlist in rekordbox"]
     (note,) = [w for w in acted["warnings"] if w["code"] == backfill_cli.TAKEN_BACK]
     assert "removed from the playlist in rekordbox" in note["message"]
@@ -698,3 +726,130 @@ def test_a_month_playlist_deleted_between_the_plan_and_the_write_is_another_plan
         cfg, "SELECT COUNT(*) FROM djmdPlaylist WHERE Name = '2026-09' AND rb_local_deleted = 0"
     ) == [(0,)]
 
+
+
+# ---------------------------------------------------------------------------
+# U146: every owned heart the account still carries, once
+# ---------------------------------------------------------------------------
+
+
+def test_owned_hearts_not_in_all_favorites_are_planned_by_month_and_those_taken_back_are_named(
+    native_library, silence, monkeypatch
+):
+    """The brief's 94, 3 and 91, at the scale of a fixture: five owned hearts
+    All Favorites lacks, one of them no longer on the account and one taken
+    out in rekordbox, plan three by month and name the two."""
+    cfg, _root_id = native_library
+    folder_id, source_id = _home(cfg)
+    rows = {title: _deep_row(cfg, silence, title) for title in ("Aug", "Sep A", "Sep B", "Gone", "Out")}
+    hearts_swept(
+        cfg,
+        {
+            "Aug": "2026-08-02T10:00:00+00:00",
+            "Sep A": "2026-09-01T10:00:00+00:00",
+            "Sep B": UNKNOWN,
+            "Gone": "2026-09-03T10:00:00+00:00",
+            "Out": "2026-09-04T10:00:00+00:00",
+        },
+        run_id="",
+    )
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        handle.add_to_playlist(handle.get_playlist(ID=source_id), rows["Out"])
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        (entry,) = [
+            row
+            for row in handle.get_playlist_songs(PlaylistID=source_id)
+            if str(row.ContentID) == rows["Out"]
+        ]
+        entry.rb_local_deleted = 1
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    _account(monkeypatch, {"Aug": SEP, "Sep A": SEP, "Sep B": SEP, "Out": SEP})
+
+    code, acted, refused = _acts()
+
+    assert code == int(ExitCode.OK), acted
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["hearts to place"] == 3
+    assert shown["by month"] == ["2026-08: 1", "2026-09: 2"]
+    assert shown["dates asked of the account"] == 1, "Sep B's job froze no date"
+    assert sorted(shown["taken back"]) == [
+        "Probe - Gone, no longer on the account",
+        "Probe - Out, removed from the playlist in rekordbox",
+    ]
+    placed = _favorites(cfg, folder_id)
+    assert sorted(_live(cfg, source_id)) == sorted(rows[t] for t in ("Aug", "Sep A", "Sep B"))
+    assert placed["2026-08"] == ["Aug"] and sorted(placed["2026-09"]) == ["Sep A", "Sep B"]
+
+    code, acted, refused = _acts()
+
+    assert code == int(ExitCode.OK), acted
+    assert acted["outcome"] == "no_op", "the second run plans nothing"
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["items"] == [] and shown["already placed"] == 3
+
+
+def test_a_heart_all_favorites_holds_and_undated_holds_is_not_given_a_month(
+    native_library, silence, monkeypatch
+):
+    """A dated playlist beside the source already files it, so the backfill
+    does not add a second, even where the account dates it now."""
+    cfg, _root_id = native_library
+    folder_id, source_id = _home(cfg)
+    row = _deep_row(cfg, silence, "Filed")
+    hearts_swept(cfg, {"Filed": None}, run_id="")
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        folder = handle.get_playlist(ID=folder_id)
+        undated = handle.create_playlist("Undated", parent=folder)
+        handle.add_to_playlist(handle.get_playlist(ID=source_id), row)
+        handle.add_to_playlist(undated, row)
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    fake = _account(monkeypatch, {"Filed": NOV})
+
+    code, acted, refused = _acts()
+
+    assert code == int(ExitCode.OK), acted
+    assert acted["outcome"] == "no_op"
+    assert refused["cause"]["detail"]["shown"]["already placed"] == 1
+    assert fake.heart_listings == 0, "nothing to place, so the account is not asked"
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Filed"], "Undated": ["Filed"]}
+
+
+def test_a_heart_all_favorites_holds_at_the_root_beside_another_playlist_still_takes_its_month(
+    native_library, silence, monkeypatch
+):
+    """Filed means a dated playlist: a source at the playlist root has every
+    root playlist beside it, and one of another name does not file a heart."""
+    cfg, _root_id = native_library
+    _folder_id, source_id = _home(cfg, folder=False)
+    row = _deep_row(cfg, silence, "Rooted")
+    hearts_swept(cfg, {"Rooted": "2026-11-03T12:00:00+00:00"}, run_id="")
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        other = handle.create_playlist("Warmup")
+        handle.add_to_playlist(handle.get_playlist(ID=source_id), row)
+        handle.add_to_playlist(other, row)
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    _account(monkeypatch, {"Rooted": NOV})
+
+    code, acted, refused = _acts()
+
+    assert code == int(ExitCode.OK), acted
+    (item,) = refused["cause"]["detail"]["shown"]["items"]
+    assert (item["into_source"], item["into_month"], item["month"]) == (False, True, "2026-11")
+    (month,) = _query(
+        cfg,
+        "SELECT ID FROM djmdPlaylist WHERE Name = '2026-11' AND rb_local_deleted = 0",
+    )
+    assert _live(cfg, str(month[0])) == [row]

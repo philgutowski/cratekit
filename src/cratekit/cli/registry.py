@@ -3079,13 +3079,14 @@ ENTRIES: tuple[Entry, ...] = (
     # ── The landed hearts placed (U120) ─────────────────────────────────────
     #
     # Appended, for the reason the deferred routing block above gives. The
-    # native landing places a heart as it lands since U120; this is the
-    # backfill for the hearts that landed before it, and for a landing whose
-    # source playlist was absent and skipped the placement.
+    # native landing places a heart as it lands since U120, and an owned heart
+    # too since U146; this is the backfill for the hearts placed before then,
+    # every owned heart a hearts job reported, and for a landing whose source
+    # playlist was absent and skipped the placement.
     Entry(
         name="favorites.backfill",
-        summary="put every heart the favourites sync landed into All Favorites and the "
-        "playlist of the month it was hearted in, adding and never removing",
+        summary="put every heart on the account whose track the library owns into All "
+        "Favorites and the playlist of the month it was hearted in, adding and never removing",
         module="cratekit.favorites.backfill_cli",
         builder="build",
         handler_key="favorites.backfill",

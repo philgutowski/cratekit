@@ -40,13 +40,13 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, TypeVar
 
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import config, jobs, rb_writer, session
+from cratekit.core import analysis_store, config, jobs, rb_writer, session
 from cratekit.core.cause import CratekitError, Outcome, Remedy, refuse
 from cratekit.core.exit_codes import ExitCode
-from cratekit.favorites import placement
+from cratekit.favorites import backfill, placement
 from cratekit.intake import account_playlists, batch_name, ingest, landing, native, set_playlist
 from cratekit.intake import cli as intake_cli
 from cratekit.write import metadata_cli
@@ -600,6 +600,9 @@ def intake_land(ctx) -> Envelope:
         # medium alone, since the bridge writes an export and places none, so
         # the match over the planned files is not made for nothing there.
         hearted = account_playlists.hearted(cfg, pass_name, planned.items)
+        # AND WHICH HEARTS THE LIBRARY ALREADY HELD (U146), with the files the
+        # job's reports named, so the landing places them too, files or none.
+        owned = account_playlists.owned_hearts(cfg, pass_name)
         return _land_native(
             ctx,
             cfg,
@@ -610,6 +613,7 @@ def intake_land(ctx) -> Envelope:
             manifest=manifest,
             claims=claims,
             hearted=hearted,
+            owned=owned,
         )
     if ctx.args.export is None and declared is not None:
         raise refuse(
@@ -804,14 +808,20 @@ def favorites_facts(plan: native.FavoritesPlan) -> dict[str, Any]:
     if plan.skipped:
         return {"hearts": f"none placed, {plan.skipped}"}
     where = f"{plan.source_name!r} under {plan.folder_name!r}" if plan.folder_name else repr(plan.source_name)
+
+    def counted(month: str) -> str:
+        files = sum(1 for item in plan.items if item.month == month)
+        held = sum(1 for one in plan.owned if one.month == month)
+        said = f"{files} file(s)" + (f", {held} owned" if held else "")
+        return f"{month} ({said})" + (", made" if month in plan.creates else "")
+
     facts: dict[str, Any] = {
         "hearts": f"{len(plan.items)} file(s) the account hearts, into {where} and their month",
-        "month playlists": [
-            f"{month} ({sum(1 for item in plan.items if item.month == month)} file(s))"
-            + (", made" if month in plan.creates else "")
-            for month in plan.months
-        ],
+        "month playlists": [counted(month) for month in plan.months],
     }
+    if plan.owned:
+        # U146: the hearts on tracks the library already held, by title.
+        facts["owned hearts"] = [f"{one.title}, {one.month}" for one in plan.owned]
     if plan.unknown:
         facts["month left to the backfill"] = (
             f"{plan.unknown} file(s) whose job froze no date, which join "
@@ -1059,6 +1069,7 @@ def _land_native(
     manifest: landing.LabelManifest | None,
     claims: tuple[account_playlists.Claim, ...] = (),
     hearted: tuple[account_playlists.Hearted, ...] = (),
+    owned: tuple[account_playlists.HeartRow, ...] = (),
 ) -> Envelope:
     """Plan the rows against the database, ask, then move and write.
 
@@ -1073,6 +1084,10 @@ def _land_native(
     THE GATE TAKES NO INLINE ANSWER. This is a new kind of write, content rows
     in the collection, and it is answered by a separate recorded act with an
     actor, the way the adoption is (R34).
+
+    AN EMPTY STAGING FOLDER STILL PLACES THE PASS'S OWNED HEARTS (U146): a
+    heart on a track the library holds joins All Favorites whether or not a
+    file was downloaded, under this same gate, through :func:`_place_owned`.
     """
     tree_id = declared.intake.id
     if ctx.args.export is not None:
@@ -1099,6 +1114,8 @@ def _land_native(
     if not planned.items:
         identity = {"kind": "land-native", "folder": str(planned.folder), "batch": planned.batch}
         empty = {"digest": digest_of(identity), "items": [], "totals": {"count": 0}, "chunk": None}
+        if owned:
+            return _place_owned(ctx, cfg, spec, declared=declared, owned=owned, empty=empty)
         return ctx.envelope(data=empty, outcome=Outcome.NO_OP)
 
     # THE LIBRARY CHECKS BEFORE THE DATABASE IS OPENED, so an unmounted volume
@@ -1223,6 +1240,12 @@ def _land_native(
                 for one in hearted
             ),
             favorites_source=placement.source_name(declared),
+            owned_hearts=tuple(
+                native.OwnedHeartItem(
+                    content_id=one.content_id, month=one.month, ref=one.ref, title=one.title
+                )
+                for one in backfill.owned_in_library(cfg, db, owned)
+            ),
             set_plan=set_plan(db),
             batch_playlist_id=batch_playlist_id,
             set_job_id=set_job_id,
@@ -1263,6 +1286,96 @@ def _land_native(
         warnings.extend(set_playlist.nothing_note(set_planned[0], left=len(kept.left)))
         warnings.extend(set_playlist.left_warning(kept.left))
     return ctx.envelope(data=_native_reported(payload, landed), warnings=warnings)
+
+
+def _place_owned(
+    ctx,
+    cfg: config.Config,
+    spec,
+    *,
+    declared,
+    owned: tuple[account_playlists.HeartRow, ...],
+    empty: dict,
+) -> Envelope:
+    """The pass's owned hearts All Favorites lacks, placed when no file was downloaded (U146).
+
+    THE LANDING'S GATE AND THE BACKFILL'S WRITER. Asked first of a handle
+    opened to read, so a pass whose owned hearts are all placed, which is
+    nearly every pass, opens nothing to write and asks nothing, and ends
+    NO_OP exactly as an empty landing did. When some heart is missing, the
+    order is :func:`ask_then_write`'s: the database opened with write intent,
+    the plan taken again on it, the acknowledgment, the gate, and the guarded
+    session of :func:`backfill.apply`, which takes the plan once more and
+    refuses a digest that moved, then reads every membership back.
+
+    A LIBRARY WITH NO ALL FAVORITES, OR TWO, IS NOT A REFUSAL, as a landing
+    with files skips its placement: there is nothing else to land, so the
+    pass ends NO_OP and says why.
+    """
+    source = placement.source_name(declared)
+    db = rb_writer.open_db(
+        rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
+    )
+    try:
+        first = backfill.plan_owned(cfg, db, source=source, rows=owned)
+    except CratekitError as exc:
+        if exc.cause.reason != placement.SOURCE_MISSING:
+            raise
+        return ctx.envelope(
+            data=empty,
+            outcome=Outcome.NO_OP,
+            warnings=[
+                {
+                    "code": FAVORITES_SKIPPED,
+                    "message": (
+                        f"nothing to land and no owned heart was placed: "
+                        f"{exc.cause.message}; run crate favorites backfill once the "
+                        f"playlist exists"
+                    ),
+                }
+            ],
+        )
+    finally:
+        rb_writer.close_db(db)
+    if not first.writes:
+        return ctx.envelope(data=empty, outcome=Outcome.NO_OP)
+
+    def written(db, approved: backfill.BackfillPlan) -> backfill.Backfilled:
+        return backfill.apply(
+            cfg, db, approved, source=source, analysis_roots=analysis_store.watch_roots(cfg)
+        )
+
+    payload, done = ask_then_write(
+        ctx,
+        cfg,
+        spec,
+        plan=lambda db: backfill.plan_owned(cfg, db, source=source, rows=owned),
+        payload=lambda planned: backfill.payload(planned, cfg),
+        shown=backfill.facts,
+        write=written,
+    )
+    if done is None:
+        return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
+    backfill.assert_read_back(done)
+    placed = done.placed
+    months = ", ".join(
+        f"{name}{' (made)' if name in placed.created else ''}" for name, _row, _n in placed.months
+    )
+    totals = {**payload["totals"], "hearts placed": placed.added}
+    return ctx.envelope(
+        data={**payload, "totals": totals},
+        warnings=[
+            {
+                "code": FAVORITES_PLACED,
+                "message": (
+                    f"{placed.added} membership(s) placed for {len(payload['items'])} owned "
+                    f"heart(s): {placed.added_source} into {placed.source_name!r} and the "
+                    f"rest into {months}; no file was landed; undo with a restore of "
+                    f"session {done.session_id}"
+                ),
+            }
+        ],
+    )
 
 
 def favorites_notes(payload: dict, collection: native.NativeLanded) -> list[dict[str, str]]:
@@ -1432,20 +1545,25 @@ def _with_archive(payload: dict, archived) -> dict:
 
 
 
+#: What a native write plans: a landing's rows, or the owned hearts alone (U146).
+_Planned = TypeVar("_Planned")
+
+
 def ask_then_write(
     ctx,
     cfg: config.Config,
     spec,
     *,
-    plan: Callable[[Any], native.NativePlan],
-    payload: Callable[[native.NativePlan], dict],
-    shown: Callable[[native.NativePlan], dict[str, Any]],
-    write: Callable[[Any, native.NativePlan], Any],
+    plan: Callable[[Any], _Planned],
+    payload: Callable[[_Planned], dict],
+    shown: Callable[[_Planned], dict[str, Any]],
+    write: Callable[[Any, _Planned], Any],
 ) -> tuple[dict, Any | None]:
     """The order every native intake write keeps, held once. Answers (payload, written).
 
-    SHARED BY THE LANDING AND ``intake file`` (R-770), because the order is the
-    contract and two hand kept copies of it would come to differ:
+    SHARED BY THE LANDING AND ``intake file`` (R-770), and by the landing's
+    owned hearts when no file came (U146), because the order is the contract
+    and two hand kept copies of it would come to differ:
 
     * THE DATABASE IS OPENED WITH WRITE INTENT BEFORE THE PLAN, so a running
       rekordbox or its agent refuses before anything is shown, and the plan is

@@ -9,6 +9,12 @@ mirror. This engine is that placement, called by the native landing inside its
 own commit and by ``crate favorites backfill`` for the hearts that landed
 before it existed.
 
+**AN OWNED HEART JOINS TOO, SINCE U146.** The author answered U120's open
+question on 2026-10-14: a heart on a track the library already owns is a
+favourite, so the landing places the pass's owned hearts beside the ones it
+downloaded, and the backfill places every owned heart a hearts job reported.
+Neither path takes a membership away.
+
 **BY MONTH SINCE U145.** The author chose on 2026-10-14 a month grain over the
 source system's quarter, so a heart joins the playlist of the UTC month it was
 hearted in, ``Favorites / 2026-10``, and no quarter playlist is made again.
@@ -166,6 +172,24 @@ def members(db: Any, playlist_id: str) -> frozenset[str]:
         for song in db.get_playlist_songs(PlaylistID=str(playlist_id))
         if not rb_writer.membership_removed(song)
     )
+
+
+def filed(db: Any, home: Home) -> frozenset[str]:
+    """The content ids a dated playlist beside the source holds live: a month, Undated, a quarter.
+
+    WHAT "ALREADY HAS ITS MONTH" MEANS FOR A HEART ALL FAVORITES HOLDS (U146):
+    any filing playlist under the folder, :func:`placeholders.is_filing`, so a
+    heart the split filed in Undated, or one a person moved to another month
+    by hand, is not given a second month. A playlist of any other name is not
+    read, which matters for a source at the playlist root, where the home's
+    neighbours are every root playlist in the library. Read only by the
+    backfill.
+    """
+    held: set[str] = set()
+    for name, row in home.present.items():
+        if row != home.source_id and placeholders.is_filing(name):
+            held |= members(db, row)
+    return frozenset(held)
 
 
 def members_marked_removed(db: Any, playlist_id: str) -> frozenset[str]:
@@ -412,6 +436,7 @@ __all__ = [
     "PlacementPlan",
     "RECORD_KEY",
     "SOURCE_MISSING",
+    "filed",
     "members",
     "month_row",
     "place",
