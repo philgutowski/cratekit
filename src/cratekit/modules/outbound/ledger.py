@@ -29,6 +29,14 @@ identifier, each one a playlist :mod:`cratekit.label.dated` CREATED. One reused
 by its name was made by somebody else and is never written here, so
 ``label heard`` may remove a dated playlist only when this map vouches for it,
 and drops the entry once it has.
+
+SINCE U147 IT HOLDS EACH ACCOUNT MIRROR, under ``mirrors``, keyed by the root
+folder's name on the account, which is the rekordbox folder's: the folder, and
+per mirrored playlist, keyed by its account title, the playlist and the tracks
+the provider would not add. Every mirrored playlist is one the product created,
+so a track may be taken off it. ``mirror_links`` maps a library content row to
+the account track it matched and the ISRC it matched under, so a refresh does
+not ask the provider to match the same row again.
 """
 
 from __future__ import annotations
@@ -66,6 +74,8 @@ def _empty() -> dict[str, Any]:
         "sets": {},
         "set_folders": {},
         "kind_folders": {},
+        "mirrors": {},
+        "mirror_links": {},
     }
 
 
@@ -115,6 +125,17 @@ def _load(cfg: config.Config) -> dict[str, Any]:
         # REFUSED for the set map's reason: a kind folder dropped here is made
         # a second time by the next filing (U131).
         raise _unusable(path, "kind_folders must be a map of kind folder records")
+    mirrors = raw.get("mirrors", {})
+    if not isinstance(mirrors, Mapping) or not all(
+        isinstance(value, Mapping) and isinstance(value.get("playlists", {}), Mapping)
+        for value in mirrors.values()
+    ):
+        # REFUSED for the label map's reason (U147): a mirrored folder or
+        # playlist dropped here is made a second time by the next organize.
+        raise _unusable(path, "mirrors must be a map of mirrored folder records")
+    links = raw.get("mirror_links", {})
+    if not isinstance(links, Mapping):
+        raise _unusable(path, "mirror_links must be a map of content row to account track")
     return {
         "version": LEDGER_VERSION,
         "playlists": {str(key): dict(value) for key, value in playlists.items()
@@ -140,6 +161,29 @@ def _load(cfg: config.Config) -> dict[str, Any]:
             }
             for kind, value in kind_folders.items()
             if value.get("folder_id")
+        },
+        "mirrors": {
+            str(name): {
+                "folder_id": str(value.get("folder_id") or ""),
+                "created": value.get("created") is True,
+                "playlists": {
+                    str(title): {
+                        "remote_id": str(record.get("remote_id") or ""),
+                        "refused": _listed(record, "refused"),
+                    }
+                    for title, record in (value.get("playlists") or {}).items()
+                    if isinstance(record, Mapping) and record.get("remote_id")
+                },
+            }
+            for name, value in mirrors.items()
+        },
+        "mirror_links": {
+            str(content_id): {
+                "remote": str(value.get("remote") or ""),
+                "isrc": str(value.get("isrc") or ""),
+            }
+            for content_id, value in links.items()
+            if isinstance(value, Mapping) and value.get("remote")
         },
     }
 
@@ -1237,6 +1281,182 @@ def reserve_kind_folder(
         lock.__exit__(None, None, None)
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# The account mirrors of the genre tree and the Favorites folder (U147)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@dataclass(frozen=True, slots=True)
+class MirrorPlaylist:
+    """One playlist the product made inside a mirrored folder, as recorded."""
+
+    name: str
+    remote_id: str
+    #: Tracks the provider was asked for and would not add. Not asked again,
+    #: so a refresh over an unchanged playlist plans nothing.
+    refused: frozenset[str] = frozenset()
+
+
+@dataclass(frozen=True, slots=True)
+class MirrorFolder:
+    """One mirrored root folder, and every playlist the product made in it."""
+
+    name: str
+    folder_id: str = ""
+    #: True only when this product created the folder; one adopted by its name
+    #: may be a person's. Said on the gate, never a reason to remove anything.
+    created: bool = False
+    playlists: Mapping[str, MirrorPlaylist] = field(default_factory=dict)
+
+
+def mirror_folders(cfg: config.Config) -> dict[str, MirrorFolder]:
+    """Every mirrored folder recorded, by its name. Read only."""
+    return {
+        name: MirrorFolder(
+            name=name,
+            folder_id=str(record.get("folder_id") or ""),
+            created=record.get("created") is True,
+            playlists={
+                title: MirrorPlaylist(
+                    name=title,
+                    remote_id=str(entry["remote_id"]),
+                    refused=frozenset(_listed(entry, "refused")),
+                )
+                for title, entry in (record.get("playlists") or {}).items()
+            },
+        )
+        for name, record in _load(cfg)["mirrors"].items()
+    }
+
+
+def mirror_playlist_ids(cfg: config.Config) -> frozenset[str]:
+    """Every mirrored playlist the product made, for the intake sweep to leave alone.
+
+    A mirrored playlist holds tracks the library already owns, copied from a
+    rekordbox playlist, so swept as intake it would be read as a list to
+    download and then marked with the swept prefix under the mirror.
+    """
+    return frozenset(
+        str(entry.get("remote_id"))
+        for record in _load(cfg)["mirrors"].values()
+        for entry in (record.get("playlists") or {}).values()
+        if entry.get("remote_id")
+    )
+
+
+def mirror_links(cfg: config.Config) -> dict[str, tuple[str, str]]:
+    """Each content row a mirror matched, to ``(account track, ISRC matched under)``."""
+    return {
+        content_id: (str(value["remote"]), str(value.get("isrc") or ""))
+        for content_id, value in _load(cfg)["mirror_links"].items()
+    }
+
+
+def record_mirror_links(cfg: config.Config, links: Mapping[str, tuple[str, str]]) -> None:
+    """Remember rows matched to account tracks, so a refresh does not match them again."""
+    if not links:
+        return
+    lock = _locked(cfg)
+    try:
+        document = _load(cfg)
+        for content_id, (remote, isrc) in links.items():
+            if remote:
+                document["mirror_links"][str(content_id)] = {"remote": str(remote), "isrc": str(isrc)}
+        _write(cfg, document)
+    finally:
+        lock.__exit__(None, None, None)
+
+
+def _mirror_entry(document: dict[str, Any], name: str) -> dict[str, Any]:
+    record = document["mirrors"].setdefault(
+        name, {"folder_id": "", "created": False, "playlists": {}}
+    )
+    record.setdefault("playlists", {})
+    return record
+
+
+def reserve_mirror_folder(
+    cfg: config.Config,
+    name: str,
+    create: Callable[[], str],
+    *,
+    adopt: str = "",
+    stale: str = "",
+) -> tuple[str, bool]:
+    """The mirrored folder, creating one only if none is recorded. ``(id, created)``.
+
+    :func:`reserve_label_folder`'s shape and argument: the lock is taken before
+    the create, ``adopt`` is the one root folder of the name the plan found and
+    a person was shown, and ``stale`` is a recorded folder read as gone.
+    """
+    lock = _locked(cfg)
+    try:
+        document = _load(cfg)
+        record = _mirror_entry(document, name)
+        recorded = str(record.get("folder_id") or "")
+        if recorded and recorded != stale:
+            return recorded, False
+        if adopt:
+            record["folder_id"], record["created"] = adopt, False
+            _write(cfg, document)
+            return adopt, False
+        folder_id = create()
+        record["folder_id"], record["created"] = folder_id, True
+        _write(cfg, document)
+        return folder_id, True
+    finally:
+        lock.__exit__(None, None, None)
+
+
+def reserve_mirror_playlist(
+    cfg: config.Config, folder: str, name: str, create: Callable[[], str]
+) -> tuple[str, bool]:
+    """One mirrored playlist, creating it only if none is recorded. ``(id, created)``.
+
+    ALWAYS CREATED, NEVER ADOPTED: a playlist of the same title a person made
+    is left alone by the plan, so every playlist recorded here is one the
+    product made and may take a track off (R-836). The lock is taken before
+    the create, so an unwritable ledger refuses before anything exists.
+    """
+    lock = _locked(cfg)
+    try:
+        document = _load(cfg)
+        playlists = _mirror_entry(document, folder)["playlists"]
+        recorded = str((playlists.get(name) or {}).get("remote_id") or "")
+        if recorded:
+            return recorded, False
+        remote_id = create()
+        playlists[name] = {"remote_id": remote_id, "refused": []}
+        _write(cfg, document)
+        return remote_id, True
+    finally:
+        lock.__exit__(None, None, None)
+
+
+def record_mirror_refused(
+    cfg: config.Config, folder: str, name: str, refused: Iterable[str]
+) -> None:
+    """Remember tracks the provider would not add to one mirrored playlist."""
+    wanted = [str(one) for one in refused]
+    if not wanted:
+        return
+    lock = _locked(cfg)
+    try:
+        document = _load(cfg)
+        entry = ((document["mirrors"].get(folder) or {}).get("playlists") or {}).get(name)
+        if not entry:
+            raise _unusable(
+                config.state_path("outbound_writes", cfg),
+                f"it holds no mirrored playlist {name!r} in {folder!r}, whose tracks were just written",
+            )
+        held = _listed(entry, "refused")
+        held += [one for one in wanted if one not in held]
+        entry["refused"] = held
+        _write(cfg, document)
+    finally:
+        lock.__exit__(None, None, None)
+
+
 def exported_playlist_ids(cfg: config.Config) -> frozenset[str]:
     """Every remote playlist an export recorded, read once (U131)."""
     return frozenset(
@@ -1264,7 +1484,9 @@ def product_made(cfg: config.Config, playlist_id: str) -> bool:
     * a label year's, only when it was written ``created``. A year adopted by
       its name under the folder was made by the source system or a person;
     * a label's dated playlist (U123), since :func:`reserve_label_dated` is
-      called only for one the dated plan creates.
+      called only for one the dated plan creates;
+    * a mirrored playlist's (U147), since :func:`reserve_mirror_playlist` only
+      creates.
 
     ADOPTED ANYWHERE WINS. A playlist a label record holds as adopted is not
     made here, whatever another record says about the same identifier.
@@ -1304,6 +1526,11 @@ def _made_in(document: dict, wanted: str) -> bool:
     for record in (*document["playlists"].values(), *document["sets"].values()):
         if str(record.get("remote_id") or "") == wanted:
             return True
+    # U147. A mirrored playlist is only ever created, never adopted.
+    for record in document["mirrors"].values():
+        for entry in (record.get("playlists") or {}).values():
+            if str(entry.get("remote_id") or "") == wanted:
+                return True
     return False
 
 

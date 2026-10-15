@@ -439,6 +439,19 @@ def test_a_second_run_after_a_full_apply_plans_nothing(world):
     code, done, _first = _answered()
     assert code == int(ExitCode.OK), done
 
+    # U147. THE MIRROR READS THE TREE BEFORE THE DATABASE AREA WRITES IT, plan
+    # then ask then write, so a playlist the adoption made in a run is mirrored
+    # by the next one, and the mirror is all the second run plans.
+    lagging = [
+        step["step"]
+        for area in _report()["data"]["summary"]["areas"].values()
+        for step in area["steps"]
+        if step["state"] == "planned"
+    ]
+    assert lagging and all(key.startswith("mirror:") for key in lagging), lagging
+    code, done, _first = _answered()
+    assert code == int(ExitCode.OK), done
+
     envelope = _report()
 
     for area in envelope["data"]["summary"]["areas"].values():
@@ -1041,6 +1054,42 @@ def test_only_file_plans_the_filing_alone_and_the_database_is_not_asked(world, m
     assert held.folders_created == [*folders, MARKED_YEAR]
     assert held.renamed == renamed and held.added == added
     assert _filed(cfg) == [] and _parent(cfg, ids["batch"]) == inbox
+
+
+def test_only_mirror_plans_and_writes_the_mirror_alone_and_a_rerun_plans_nothing(world, monkeypatch):
+    """U147. The mirror runs alone under the account's one gate, and is kept by a rerun."""
+    _cfg, _fake, held, _inbox, _ids = world
+    # The full verb files the batch into the tree, whose new folders the mirror
+    # read before they existed, so the mirror alone has them to plan.
+    assert _answered()[0] == int(ExitCode.OK)
+    monkeypatch.setattr(rekordbox, "plan_area", _not_planned)
+    folders = list(held.folders_created)
+    only = [*VERB, "--only", account_area.MIRROR]
+    renamed = list(held.renamed)
+
+    collection.reset_cache()
+    code, envelope = drive([*only, "--report"])
+    assert code == int(ExitCode.OK), envelope
+    steps = envelope["data"]["summary"]["areas"][account_area.AREA]["steps"]
+    assert steps and all(step["step"].startswith("mirror:") for step in steps), steps
+    assert any(step["state"] == "planned" for step in steps), steps
+
+    collection.reset_cache()
+    code, done = _two_acts(only, ACCOUNT_GATE, "apply")
+
+    assert code == int(ExitCode.OK), done
+    applied = [
+        step["applied"]
+        for step in done["data"]["summary"]["areas"][account_area.AREA]["steps"]
+        if "applied" in step
+    ]
+    assert applied and all("requests" in one and "seconds" in one for one in applied)
+    assert len(held.folders_created) > len(folders) and held.renamed == renamed
+    collection.reset_cache()
+    code, again = drive([*only, "--report"])
+    assert code == int(ExitCode.OK), again
+    states = {step["state"] for step in again["data"]["summary"]["areas"][account_area.AREA]["steps"]}
+    assert "planned" not in states and "refused" not in states, again
 
 
 def test_only_file_moves_a_marked_playlist_as_the_full_verb_does_and_then_plans_nothing(world):

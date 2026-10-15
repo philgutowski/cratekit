@@ -12,6 +12,7 @@ moved, and put a dated comment on those entries. Do not reintroduce a total tupl
 
 # Every declared cause that is not in the reserved table. One slug per line so two cards appending different causes merge cleanly. Re-pin by naming the slug that joined or left, measured on the merged tree.
 PINNED_NON_RESERVED_CAUSES = frozenset({
+    'account-mirror-ambiguous',  # 2026-10-15, U147: the account mirror joined.
     'adapter-broken',
     'adopt-entries-failed',
     'adopt-item-absent',
@@ -580,6 +581,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     'core/binary_refusal.py': ['yt-dlp-missing'],
     'core/cause.py': [
+        'account-mirror-ambiguous',  # 2026-10-15, U147
         'adapter-broken',
         'adopt-entries-failed',
         'adopt-item-absent',
@@ -1402,6 +1404,13 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'modules/outbound/artifacts.py': ['outbound-artifacts', 'outbound-staging', 'utf-8'],
     'modules/outbound/folders.py': ['label-playlists', 'label-playlists-ambiguous', 'unavailable-transient'],
     'modules/outbound/ledger.py': ['outbound-ledger-unusable', 'outbound-record-moved', 'utf-8'],
+    # 2026-10-15, U147: the account mirror joined.
+    'modules/outbound/mirror.py': [
+        'account-mirror',
+        'account-mirror-ambiguous',
+        'outbound-remove-refused',
+        'unavailable-transient',
+    ],
     # 2026-10-10, U130: the playlist pairs record joined.
     'modules/outbound/pairs.py': ['sync-pair-conflict', 'sync-pair-store-unusable', 'utf-8'],
     'modules/outbound/prune.py': [
@@ -1515,6 +1524,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'modules/tools/setbuilder.py': ['utf-8'],
     # 2026-10-13, U143: the root step's kept warning joined.
     'organize/account.py': ['organize-root-kept'],
+    # 2026-10-15, U147: the account mirror step joined.
+    'organize/account_mirror.py': ['organize-mirror-kept'],
     'organize/cli.py': ['internal-error', 'organize-area-refused', 'organize-step-refused'],
     # 2026-10-13, U144: the INSPIRATION parity step, its write and its unread warning.
     'organize/inspiration.py': [
@@ -2513,6 +2524,12 @@ PINNED_LITERAL_HOLDERS = {
     'modules/outbound/account.py': ['credential-missing', 'outbound-account-unbound', 'unavailable-transient'],
     'modules/outbound/folders.py': ['label-playlists-ambiguous', 'unavailable-transient'],
     'modules/outbound/ledger.py': ['outbound-ledger-unusable', 'outbound-record-moved'],
+    # 2026-10-15, U147: the account mirror joined.
+    'modules/outbound/mirror.py': [
+        'account-mirror-ambiguous',
+        'outbound-remove-refused',
+        'unavailable-transient',
+    ],
     # 2026-10-10, U130: the playlist pairs record joined.
     'modules/outbound/pairs.py': ['sync-pair-conflict', 'sync-pair-store-unusable'],
     'modules/outbound/prune.py': ['internal-error', 'outbound-remove-refused', 'unavailable-transient'],

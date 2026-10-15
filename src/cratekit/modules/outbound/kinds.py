@@ -17,6 +17,13 @@ kind's playlists where they are, since a name does not decide which is meant.
 ADD ONLY. A folder is created and a playlist is put in one. Nothing is renamed
 or removed.
 
+THE ROOT'S PRODUCT FOLDERS GAINED THE MIRRORS (U147). Besides a label's folder,
+``Mine``, ``Exports``, ``<year>`` and ``Downloaded Sets <year>``, the root
+holds one folder per genre folder of the routing tree and one ``Favorites``,
+each named exactly as its rekordbox folder and kept by ``crate organize``'s
+mirror step (:mod:`cratekit.modules.outbound.mirror`). The ledger records each
+under ``mirrors``, so no filing step reads one as a person's.
+
 THE ROOT'S OTHER SHAPES ARE NAMED HERE TOO (U143), the words the organize root
 step plans by and the account adapter checks a removal against, so the two read
 one rule: the two kinds of root playlist the account sheds, the source system's
