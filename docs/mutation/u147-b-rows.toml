@@ -1,0 +1,70 @@
+name = "u147-b"
+pass_kind = "light"
+
+[[rows]]
+id = "M2_stale_folder_again"
+description = "Batch a's zero, measured again after its test: reuse a recorded folder whether or not the root still lists it"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+old = '''    if held_id and held_id in root:'''
+new = '''    if held_id:'''
+
+[[rows]]
+id = "M4_refused_asked_again_again"
+description = "Batch a's zero, measured again after its test: offer a refused track again on every refresh"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+old = '''                    add=tuple(one for one in wanted if one not in on and one not in mine.refused),'''
+new = '''                    add=tuple(one for one in wanted if one not in on),'''
+
+[[rows]]
+id = "M8_move_new_only"
+description = "mirror.apply: move only a playlist made now, never one made earlier and left at the root"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+old = '''        if made or step.move:'''
+new = '''        if made:'''
+
+[[rows]]
+id = "M9_link_reused_blind"
+description = "Matcher: reuse a link even when the row's database code changed"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+old = '''        if linked is not None and (not row.isrc or row.isrc == linked[1]):'''
+new = '''        if linked is not None:'''
+
+[[rows]]
+id = "M10_no_code_asked"
+description = "Matcher: ask the provider about a row with no code at all"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "maintainer"
+old = '''        if not said.isrc:
+            return "", "", NO_ISRC
+'''
+new = ""
+
+[[rows]]
+id = "M11_agree_dropped"
+description = "Matcher: never ask the one track to agree, a file's code included (R-879)"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+old = '''            agree=said.agree,'''
+new = '''            agree=False,'''
+
+[[rows]]
+id = "M13_links_unrecorded"
+description = "mirror.apply: record no link, so every refresh matches every row again"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+old = '''    ledger.record_mirror_links(cfg, planned.links if links is None else links)'''
+new = '''    pass'''
+
+[[dropped]]
+id = "M7_chunk_coefficient"
+description = "CHUNK = 100 to 50"
+reason = "ranked below the cap: the 250 track test asserts the chunk sizes 100, 100, 50 directly"
+
+[[dropped]]
+id = "M12_unreadable_only_off_folder"
+description = "UNREADABLE taken for a playlist still in its folder"
+reason = "ranked below the cap: the labels engine's rule copied whole, measured there (R-835)"
