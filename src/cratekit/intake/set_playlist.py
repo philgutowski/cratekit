@@ -749,6 +749,42 @@ class _LibraryView:
         return tuple(found.paths) if found.state is match.MatchState.MATCHED else ()
 
 
+def _landed(cfg: config.Config, job_id: str) -> tuple[Mapping[str, Any], ...]:
+    """The set playlist detail every landing of this job recorded, the newest first.
+
+    A closed record whose source committed, so a landing that wrote nothing is
+    not read as having named a playlist.
+    """
+    records, _unreadable = session.scan_log(cfg)
+    found = [
+        record
+        for record in records
+        if record.state is session.SessionState.CLOSED
+        and str(session.SourceState.COMMITTED) in record.sources.values()
+        and isinstance(record.detail.get(RECORD_KEY), Mapping)
+        and record.detail[RECORD_KEY].get("job") == job_id
+    ]
+    return tuple(
+        record.detail[RECORD_KEY]
+        for record in sorted(found, key=lambda one: one.session_id, reverse=True)
+    )
+
+
+def recorded_names(cfg: config.Config, job_id: str) -> tuple[str, ...]:
+    """The names this job's landings wrote its INSPIRATION playlist under, the newest first.
+
+    R-1017. What a landing named the playlist is what a backfill made the
+    set's account playlist under, so it is the name the outbound ledger holds,
+    whatever the job's page words spell today. Read from the record, as the
+    library carries it, whether or not the playlist is still there: unlike
+    :func:`recorded_playlist`, which wants the live row, this wants the name
+    the account playlist was made under, and that name outlives the row.
+    """
+    return tuple(
+        dict.fromkeys(name for kept in _landed(cfg, job_id) if (name := str(kept.get("name") or "")))
+    )
+
+
 def recorded_playlist(
     cfg: config.Config, db: Any, job_id: str, folder_id: str
 ) -> tuple[str, str] | None:
@@ -766,17 +802,7 @@ def recorded_playlist(
     recorded playlist that is gone, removed, or no longer under the declared
     folder is not an answer, and the write finds or makes one by name.
     """
-    records, _unreadable = session.scan_log(cfg)
-    found = [
-        record
-        for record in records
-        if record.state is session.SessionState.CLOSED
-        and str(session.SourceState.COMMITTED) in record.sources.values()
-        and isinstance(record.detail.get(RECORD_KEY), Mapping)
-        and record.detail[RECORD_KEY].get("job") == job_id
-    ]
-    for record in sorted(found, key=lambda one: one.session_id, reverse=True):
-        kept = record.detail[RECORD_KEY]
+    for kept in _landed(cfg, job_id):
         playlist_id = str(kept.get("id") or "")
         if not playlist_id:
             continue
@@ -1513,6 +1539,7 @@ __all__ = [
     "posted_note",
     "read_back",
     "record_commit",
+    "recorded_names",
     "recorded_playlist",
     "record_on",
     "reports_of",
