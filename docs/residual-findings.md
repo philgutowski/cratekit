@@ -38141,3 +38141,59 @@ apply of a later proof would refuse on the missing identifier is unmeasured.
 **Closes when:** the sets step reads a recorded set whose identifier the
 account no longer lists as gone and says so, or a verb takes a record off the
 map by name. Ledger only, since the row is a listing and no write follows.
+
+---
+
+## R-1019. A mounted installer disk image named for the assistant app makes the repository scan fail on every branch, and with it the battery and every mutation baseline
+
+**Found:** building R-1016, relay task 322, 2026-10-14.
+
+**The mechanism.** `scripts/scan_repo.py`'s runtime identity tier adds the
+name of every entry under the macOS volumes mount root to the set of personal identifiers, on
+the argument that a mounted volume is the contributor's. On 2026-10-14 a
+read only installer disk image was mounted there under the assistant app's product name, the word this repository's agent instructions and skills use for it
+ (the mount
+root last changed 21:37), so that word became a personal identifier, and
+every document, skill and test that names the assistant failed the scan:
+`scan_repo.py` exits red and `tests/test_portability.py::
+test_the_repository_itself_is_clean` fails, on `main` as on any branch,
+with no line of the tree changed. Filtering the scan's output for that one
+token left no other finding.
+
+**Measured cost.** The battery is red for every unit while the image is
+mounted, so the runner's gate refuses every merge. `scripts/mutate.py`
+refuses to start on the red full baseline, and it scrubs `PYTEST_ADDOPTS`
+on purpose, so the one environmental test cannot be deselected; R-1016's
+table was recorded unmeasured for this reason. Ejecting the image, or a
+`.scan-identity` that cannot remove a token, is the only remedy today, and
+neither is a session's to take.
+
+**Closes when:** the runtime tier ignores a mounted image that is not a
+contributor's volume (a read only, quarantined disk image is the measured
+shape), or declares a stop list of product and vendor names the repository
+names by design, and the suite and scan stay green with the image mounted.
+Ledger only: maintainer facing, and ejecting the image clears it at once.
+
+---
+
+## R-1020. A set's account playlist is tied to its job by name alone, so one made under a name neither the landing nor the job recorded is not found by the rename
+
+**Found:** at the review of #323, R-1017, 2026-10-14.
+
+**The mechanism.** The outbound ledger keys a set's account playlist by its
+name and records no job and no INSPIRATION playlist identifier.
+`export set --rename` therefore finds it only under a name it can spell: the
+frozen name, a name a landing recorded, or a name the job's page words give.
+The backfill makes the account playlist under the INSPIRATION playlist's name
+as listed on the day it runs, so a person who renamed the INSPIRATION playlist
+between the landing and the backfill, and again later, leaves it under a name
+nothing records, and the rename refuses `export-set-rename-unresolved`.
+
+**Measured cost.** Not driven. No such set is known on the live library; the
+Signal set was under the landing's name, which R-1017 reads. The refusal
+writes nothing and names the hand rename as its remedy.
+
+**Closes when:** the backfill and a named export record the job, or the
+INSPIRATION playlist's identifier, on the ledger entry they create, and the
+rename resolves by that before any name. Ledger only until a set is found in
+this shape.
