@@ -49,7 +49,7 @@ Two facts measured on 2026-10-13 shape the answer. Tidal accepts a folder inside
 
 **The root convention**
 
-- R1. The account root holds, besides Phillip's own folders, exactly these product folders: one folder per followed label, `Mine`, `Exports`, one `<year>` folder per year with downloaded custom playlists, and one `Downloaded Sets <year>` folder per year with downloaded sets, all at the root.
+- R1. The account root holds, besides Phillip's own folders, exactly these product folders: one folder per followed label, `Mine`, `Exports`, one `<year>` folder per year with downloaded custom playlists, and one `Downloaded Sets <year>` folder per year with downloaded sets, all at the root. Since U147 (2026-10-15) it also holds the account mirrors: one folder per genre folder under BY GENRE + ENERGY and one `Favorites`, each named exactly as its rekordbox folder.
 - R2. The product creates every folder at the root and never moves a folder, renames a folder, or renames a playlist for the sake of order.
 - R3. A playlist the product did not make and no ledger claims, at the root and holding tracks, is a working custom playlist and stays at the root until a sync marks it, after which the filing step moves it into its year folder as today.
 - R4. The product never deletes a working custom playlist, whatever its age.

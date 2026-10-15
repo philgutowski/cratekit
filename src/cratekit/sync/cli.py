@@ -374,6 +374,9 @@ def _plan_playlists(spec: sources.SourceSpec, ctx) -> _Plan:
     from cratekit.modules.outbound import pairs
 
     paired = pairs.paired_ids(cfg)
+    # NOR ARE THE PLAYLISTS ``crate organize`` MIRRORS (U147), each a copy of a
+    # rekordbox playlist the library already holds.
+    mirrored = ledger.mirror_playlist_ids(cfg)
     with jobs.open_store() as store:
         sweep = playlists.plan(
             store,
@@ -383,6 +386,7 @@ def _plan_playlists(spec: sources.SourceSpec, ctx) -> _Plan:
             label_built=label_built,
             set_built=set_built,
             paired=paired,
+            mirrored=mirrored,
         )
 
     def describe(filed: list[jobs.Job]) -> dict[str, Any]:

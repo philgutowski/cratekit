@@ -1894,6 +1894,14 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # One of the two playlists is already paired with another. One playlist
         # stays the same list as one other. Nothing was written.
         "sync-pair-conflict": ExitCode.PRECONDITION,
+        # ── U147's one, appended for the same reason ───────────────────────────
+        #
+        # A rekordbox folder was to be mirrored onto the account and the
+        # account holds two root folders of its name, or the tree holds two
+        # folders of it, so which one is the mirror is not something a name
+        # decides. PRECONDITION on ``label-playlists-ambiguous``'s argument:
+        # the remedy is a rename by hand. Nothing was written for that folder.
+        "account-mirror-ambiguous": ExitCode.PRECONDITION,
     }
 )
 

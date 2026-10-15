@@ -1,0 +1,54 @@
+name = "u147-a"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_two_root_folders"
+description = "mirror.plan: drop the refusal of two root folders of the mirror's name, so the first is adopted"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+old = '''        if len(named) > 1:
+            raise ambiguous(folder.name, named)
+'''
+new = ""
+
+[[rows]]
+id = "M2_stale_folder"
+description = "mirror.plan: reuse a recorded folder whether or not the root still lists it"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+old = '''    if held_id and held_id in root:'''
+new = '''    if held_id:'''
+
+[[rows]]
+id = "M3_no_removals"
+description = "mirror.plan: plan no removal, so a hand added or moved track stays on the mirror"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+old = '''            remove = tuple(one for one in names if one not in keep)'''
+new = '''            remove = ()'''
+
+[[rows]]
+id = "M4_refused_asked_again"
+description = "mirror.plan: offer a track the provider refused before again on every refresh"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+old = '''                    add=tuple(one for one in wanted if one not in on and one not in mine.refused),'''
+new = '''                    add=tuple(one for one in wanted if one not in on),'''
+
+[[rows]]
+id = "M5_persons_playlist"
+description = "mirror.plan: never leave a person's playlist of the same title, make one beside it"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+old = '''        theirs = sorted(pid for pid, name in inside.items() if name == source.name)
+        if theirs:'''
+new = '''        theirs = sorted(pid for pid, name in inside.items() if name == source.name)
+        if False:'''
+
+[[rows]]
+id = "M6_kept_any_scope"
+description = "mirror.apply: keep every remove refusal, the read back that differs included"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+old = '''            if exc.cause.reason != "outbound-remove-refused" or exc.cause.scope != Scope.SOURCE:'''
+new = '''            if exc.cause.reason != "outbound-remove-refused":'''

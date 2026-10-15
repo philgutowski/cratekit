@@ -1,0 +1,83 @@
+name = "u147-c"
+pass_kind = "light"
+
+[[rows]]
+id = "M14_made_in_mirror"
+description = "ledger._made_in: a mirrored playlist is no longer vouched for, so no track may come off it (R-836)"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_organize_mirror.py"]
+old = '''    # U147. A mirrored playlist is only ever created, never adopted.
+    for record in document["mirrors"].values():
+        for entry in (record.get("playlists") or {}).values():
+            if str(entry.get("remote_id") or "") == wanted:
+                return True
+'''
+new = ""
+
+[[rows]]
+id = "M15_malformed_mirrors_read"
+description = "ledger._load: a malformed mirror record is read rather than refused"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_organize_mirror.py"]
+old = '''        raise _unusable(path, "mirrors must be a map of mirrored folder records")'''
+new = '''        mirrors = {}'''
+
+[[rows]]
+id = "M16_folder_made_twice"
+description = "ledger.reserve_mirror_folder: a recorded folder is not reused, so a resume makes a second"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_organize_mirror.py"]
+old = '''        record = _mirror_entry(document, name)
+        recorded = str(record.get("folder_id") or "")
+        if recorded and recorded != stale:
+            return recorded, False
+'''
+new = '''        record = _mirror_entry(document, name)
+        recorded = str(record.get("folder_id") or "")
+'''
+
+[[rows]]
+id = "M17_playlist_made_twice"
+description = "ledger.reserve_mirror_playlist: a recorded playlist is not reused, so a resume makes a second"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_organize_mirror.py"]
+old = '''        playlists = _mirror_entry(document, folder)["playlists"]
+        recorded = str((playlists.get(name) or {}).get("remote_id") or "")
+        if recorded:
+            return recorded, False
+'''
+new = '''        playlists = _mirror_entry(document, folder)["playlists"]
+'''
+
+[[rows]]
+id = "M18_sweep_exclusion"
+description = "sync.playlists.exclusion: a mirrored playlist is swept as intake"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_organize_mirror.py"]
+old = '''    if playlist.playlist_id in mirrored:
+        return Excluded.MIRROR
+'''
+new = ""
+
+[[rows]]
+id = "M19_sweep_handoff"
+description = "sync.cli: the sync source hands the sweep no mirrored playlist"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_organize_mirror.py"]
+old = '''            mirrored=mirrored,'''
+new = ""
+
+[[rows]]
+id = "M20_pair_scope"
+description = "sync.pair_cli._scope_account: a mirrored playlist may be paired"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_organize_mirror.py"]
+old = '''    if account_id in mirrored:'''
+new = '''    if False:'''

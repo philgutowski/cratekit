@@ -339,6 +339,7 @@ def _scope_account(
     listed: Mapping[str, Any],
     label_owned: frozenset[str],
     set_built: frozenset[str],
+    mirrored: frozenset[str] = frozenset(),
 ) -> str:
     """The account playlist's name, or the refusal saying why a pair may not hold it."""
     playlist = listed.get(account_id)
@@ -360,6 +361,14 @@ def _scope_account(
         raise _out_of_scope(
             f"{name!r} ({account_id}) is a set's playlist, which export set keeps, "
             f"so it was not synced",
+            account_id=account_id,
+        )
+    if account_id in mirrored:
+        # U147. ``crate organize`` keeps a mirrored playlist equal to its
+        # rekordbox playlist, so a pair merging both ways would fight it.
+        raise _out_of_scope(
+            f"{name!r} ({account_id}) is a mirrored playlist, which organize keeps "
+            f"equal to its rekordbox playlist, so it was not synced",
             account_id=account_id,
         )
     if playlists.is_library_debris(name) or placeholders.is_placeholder(name):
@@ -433,6 +442,8 @@ class _Reader:
     set_built: frozenset[str]
     tops: tuple[frozenset[str], frozenset[str]]
     store: Any
+    #: Every playlist ``crate organize`` mirrors (U147).
+    mirrored: frozenset[str] = frozenset()
 
     @cached_property
     def remote(self):
@@ -561,7 +572,9 @@ def _mirror_isrcs(reader: _Reader, account_id: str) -> dict[str, tuple[str, ...]
 def plan_pair(reader: _Reader, target: Target, held) -> PairPlan:
     """Read both sides of one pair, match them, merge them, and say what to write."""
     cfg = reader.cfg
-    name = _scope_account(target.account_id, reader.listed, reader.label_owned, reader.set_built)
+    name = _scope_account(
+        target.account_id, reader.listed, reader.label_owned, reader.set_built, reader.mirrored
+    )
     rekordbox = _scope_rekordbox(
         target.rekordbox_id,
         playlist_pair.read_playlist(reader.db, target.rekordbox_id),
@@ -910,6 +923,7 @@ def plan(
             set_built=set_built,
             tops=tops,
             store=store,
+            mirrored=ledger.mirror_playlist_ids(cfg),
         )
         planned: list[PairPlan] = []
         left_out: dict[str, str] = {}

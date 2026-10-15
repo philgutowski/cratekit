@@ -990,7 +990,7 @@ def test_the_sync_pass_hands_the_sweep_every_year_playlist_a_build_recorded(
 
     def plan(
         store, cfg_, found, *, handler_key, label_built=frozenset(), set_built=frozenset(),
-        paired=frozenset(),
+        paired=frozenset(), mirrored=frozenset(),
     ):
         handed.append(label_built)
         raise Stop

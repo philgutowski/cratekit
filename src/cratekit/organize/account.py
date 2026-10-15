@@ -36,7 +36,11 @@ THE STEPS, each the owning verb's plan and apply:
   playlist removed, and a legacy year folder emptied into its year's folder
   and removed on a later run, each removal named on the gate and on the
   applied totals. The filing plan names the candidates, so it is planned once
-  and read by both.
+  and read by both;
+* EVERY GENRE FOLDER AND THE FAVORITES FOLDER MIRRORED (U147),
+  :mod:`cratekit.organize.account_mirror`: one root folder per rekordbox folder
+  of the routing tree, and one for the Favorites folder, each playlist kept
+  equal to its rekordbox playlist's account tracks, one step per folder.
 
 A STEP THAT NEEDS THE ACCOUNT AND CANNOT HAVE IT is refused, with that
 refusal's own reason, and every other step is still planned and shown.
@@ -66,7 +70,7 @@ from cratekit.core.cause import CratekitError
 from cratekit.export import set_cli
 from cratekit.intake import land_cli
 from cratekit.label import dated, playlists_cli
-from cratekit.organize import filing, own, root
+from cratekit.organize import account_mirror, filing, own, root
 from cratekit.organize.steps import LISTED, NOTHING, PLANNED, Area, Step, refused, selection
 from cratekit.sync import mark_cli, mark_record
 
@@ -77,6 +81,7 @@ SETS = "sets"
 MARKS = "marks"
 FILE = "file"
 ROOT = "root"
+MIRROR = account_mirror.MIRROR
 YOURS = "yours"
 
 #: Every step kind this area plans, in its order, each one ``--only`` may name.
@@ -84,7 +89,9 @@ YOURS = "yours"
 #: marks are ``marks``, and every set's archive is ``sets``. ``root`` is one
 #: kind with three row types, debris, empties and a legacy year folder (U143),
 #: since the gate reads the same either way and the three share one root read.
-STEPS = (LABELS, SETS, MARKS, FILE, ROOT, YOURS)
+#: Every mirrored folder is ``mirror`` (U147), planned after the filing and the
+#: root, whose plans read the account before anything here is created.
+STEPS = (LABELS, SETS, MARKS, FILE, ROOT, MIRROR, YOURS)
 
 #: The modules that switch a step on. Adoption, rotation and the mark are core.
 LABELS_MODULE = "labels"
@@ -641,6 +648,8 @@ def plan_area(
         moving = _file_step(cfg, area if area.wants(FILE) else Area(name=AREA), filed_of, remote_of)
     if area.wants(ROOT):
         _root_step(cfg, area, followed, catalogue_of, remote_of, filed_of)
+    if area.wants(MIRROR):
+        account_mirror.add_steps(cfg, area, remote_of.get)
     if area.wants(YOURS):
         # AN EMPTY ROOT PLAYLIST IS THE ROOT STEP'S, not one of the author's
         # left alone, read off the filing plan so ``--only yours`` makes none
@@ -650,7 +659,8 @@ def plan_area(
     area.facts["writes"] = (
         "folders are created and playlists filed and prefixed; at the root, only the "
         "source system's label debris whose tracks are in its label's folder, an empty "
-        "playlist and an emptied legacy year folder are removed, each named"
+        "playlist and an emptied legacy year folder are removed, each named; a mirrored "
+        "playlist the product made loses the tracks its rekordbox playlist no longer holds"
     )
     return area
 
@@ -660,6 +670,7 @@ __all__ = [
     "FILE",
     "LABELS",
     "MARKS",
+    "MIRROR",
     "ROOT",
     "SETS",
     "STEPS",
