@@ -492,6 +492,40 @@ def test_a_playlist_made_and_not_yet_moved_is_moved_on_the_next_run(installed, m
     assert world.account.created == ["Techno Low"]
 
 
+def test_a_recorded_folder_deleted_on_the_account_is_made_again_rather_than_reused(
+    installed, monkeypatch
+):
+    world = World(installed, monkeypatch)
+    world.mirror(folder("Techno", Low=(1,)))
+    world.run()
+    gone = world.folder_id("Techno")
+    del world.account.folder_names[gone]
+
+    area = world.plan()
+    head = _steps(area)["mirror:Techno"].items[0]
+    world.apply(area)
+
+    assert head["action"] == mirror.CREATE
+    assert world.account.folders_created == ["Techno", "Techno"]
+    assert ledger.mirror_folders(installed)["Techno"].folder_id == world.folder_id("Techno") != gone
+
+
+def test_a_track_the_provider_refused_is_not_offered_again_so_a_refresh_plans_nothing(
+    installed, monkeypatch
+):
+    world = World(installed, monkeypatch)
+    world.account.unaddable.add("r2")
+    world.mirror(folder("Techno", Low=(1, 2)))
+    (applied,) = world.apply(world.plan())
+    assert applied["refused"] == 1 and world.held("Techno Low") == ["r1"]
+
+    step = world.plan().steps[0]
+
+    assert step.state == NOTHING
+    assert step.items[1]["refused before"] == 1 and "add" in step.items[1]
+    assert step.items[1]["add"] == 0
+
+
 def test_an_account_that_cannot_be_resolved_refuses_the_kind_with_its_reason(installed, monkeypatch):
     world = World(installed, monkeypatch)
     world.mirror(soul())
