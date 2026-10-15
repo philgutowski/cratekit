@@ -17,7 +17,7 @@ import json
 import pytest
 
 from cratekit.core import config
-from cratekit.core.cause import CratekitError, refuse
+from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.label.catalogue import AccountPlaylist
 from cratekit.modules.outbound import ledger, mirror
 from cratekit.organize import account_mirror
@@ -282,7 +282,9 @@ def test_a_removal_the_account_refuses_is_kept_named_and_the_apply_goes_on(insta
     world.account.playlists[world.playlist_id("Deep House Low")].append("r77")
 
     def refused(_pid, _ids):
-        raise refuse("outbound-remove-refused", "positions unknown", origin=("test",))
+        raise refuse(
+            "outbound-remove-refused", "positions unknown", scope=Scope.SOURCE, origin=("test",)
+        )
 
     monkeypatch.setattr(world.account, "remove_tracks", refused)
     world.mirror(folder("Deep House", Low=(1, 2), High=(3, 4)))
@@ -292,6 +294,46 @@ def test_a_removal_the_account_refuses_is_kept_named_and_the_apply_goes_on(insta
     assert applied["kept"] == ["Deep House Low: positions unknown"]
     assert world.held("Deep House High") == ["r3", "r4"]
     assert [w["code"] for w in area.steps[0].warnings] == ["organize-mirror-kept"]
+
+
+def test_a_removal_whose_read_back_differs_is_raised_never_kept(installed, monkeypatch):
+    """Something may have come off that was not asked; the step fails and says so."""
+    world = World(installed, monkeypatch)
+    world.mirror(folder("Deep House", Low=(1, 2)))
+    world.run()
+    world.account.playlists[world.playlist_id("Deep House Low")].append("r77")
+
+    def differs(_pid, _ids):
+        raise refuse(
+            "outbound-remove-refused",
+            "the playlist read back is not what it held with the asked positions gone",
+            scope=Scope.RUN,
+            origin=("test",),
+            detail={"problem": "read-back-differs"},
+        )
+
+    monkeypatch.setattr(world.account, "remove_tracks", differs)
+    area = world.plan()
+
+    with pytest.raises(CratekitError) as caught:
+        world.apply(area)
+
+    assert caught.value.cause.detail["problem"] == "read-back-differs"
+
+
+def test_every_track_a_refresh_takes_off_is_named_on_the_gate(installed, monkeypatch):
+    world = World(installed, monkeypatch)
+    world.mirror(folder("Deep House", Low=(1, 2)))
+    world.run()
+    world.account.playlists[world.playlist_id("Deep House Low")].append("r77")
+    world.account.names["r77"] = ("Someone", "Added On The Phone")
+
+    area = world.plan()
+
+    assert area.deletes == [
+        "1 track(s) off the mirrored playlist 'Deep House Low': Someone - Added On The Phone (r77)"
+    ]
+    assert area.shown()["deletes"] == area.deletes
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -467,14 +509,14 @@ def test_a_folder_whose_playlist_cannot_be_read_refuses_alone(installed, monkeyp
     world = World(installed, monkeypatch)
     world.mirror(folder("Techno", Low=(1,)), soul())
     world.run()
-    real = world.account.playlist_tracks
+    real = world.account.track_names
 
     def unread(playlist_id):
         if playlist_id == world.playlist_id("Techno Low"):
             raise refuse("unavailable-transient", "the read timed out", origin=("test",))
         return real(playlist_id)
 
-    monkeypatch.setattr(world.account, "playlist_tracks", unread)
+    monkeypatch.setattr(world.account, "track_names", unread)
     steps = _steps(world.plan())
 
     assert steps["mirror:Techno"].state == REFUSED
@@ -513,6 +555,84 @@ def test_a_row_whose_database_code_changed_is_matched_again(installed, monkeypat
 
     assert len(world.account.matches) == asked + 1
     assert world.account.matches[-1]["isrc"] == "NEWCODE0001"
+
+
+def test_a_code_read_off_the_file_asks_the_one_track_to_agree_and_a_database_code_does_not(
+    installed, monkeypatch
+):
+    from cratekit.sync import pair_cli
+
+    world = World(installed, monkeypatch)
+    monkeypatch.setattr(pair_cli, "file_identity", lambda _cfg, _path: ("FILECODE001", "An Album"))
+    tagged_only = mirror.Row(content_id="c2", title="Title 2", artist="Artist 2", isrc="", path="x")
+    world.mirror(
+        mirror.Folder(
+            name="Techno",
+            playlists=(mirror.Source(name="Techno Low", rows=(row(1), tagged_only)),),
+        )
+    )
+
+    world.plan()
+
+    assert world.account.agreeing == ["c2"]
+    asked = {one["identity"]: one for one in world.account.matches}
+    assert asked["c2"]["isrc"] == "FILECODE001" and asked["c2"]["album"] == "An Album"
+    assert asked["c1"]["isrc"] == "ISRC00001"
+
+
+def test_a_persons_playlist_left_alone_costs_no_match(installed, monkeypatch):
+    world = World(installed, monkeypatch)
+    world.account.folder_names["hand-1"] = "Techno"
+    world.account.titles["mine-1"] = "Techno Low"
+    world.account.playlists["mine-1"] = []
+    world.account.placed["mine-1"] = "hand-1"
+    world.mirror(folder("Techno", Low=(1, 2)))
+
+    world.plan()
+
+    assert world.account.matches == []
+
+
+def test_rows_a_folder_with_nothing_to_write_matched_are_linked_by_another_folders_apply(
+    installed, monkeypatch
+):
+    world = World(installed, monkeypatch)
+    world.mirror(folder("Techno", Low=(1,)))
+    world.run()
+    # The Techno rows' links are lost, so its plan matches them again and has
+    # nothing to write, and the new Soul folder's apply records them anyway.
+    path = config.state_path("outbound_writes", installed)
+    document = json.loads(path.read_text())
+    document["mirror_links"] = {}
+    path.write_text(json.dumps(document))
+    world.mirror(folder("Techno", Low=(1,)), folder("Soul", Low=(2,)))
+
+    area = world.run()
+
+    assert _steps(area)["mirror:Techno"].state == NOTHING
+    assert set(ledger.mirror_links(installed)) == {"c1", "c2"}
+
+
+def test_a_library_name_two_folders_take_names_its_remedy_in_rekordbox(installed, monkeypatch):
+    cause = account_mirror._twice("Soul", "folders")
+
+    assert cause.reason == mirror.AMBIGUOUS_REASON
+    assert any("in rekordbox" in step for step in cause.remediation.steps)
+
+
+def test_sync_pair_refuses_to_pair_a_mirrored_playlist():
+    from types import SimpleNamespace
+
+    from cratekit.sync import pair_cli
+
+    listed = {"pl-1": SimpleNamespace(name="Deep House Low")}
+
+    with pytest.raises(CratekitError) as caught:
+        pair_cli._scope_account("pl-1", listed, frozenset(), frozenset(), frozenset({"pl-1"}))
+
+    assert caught.value.cause.reason == "sync-pair-out-of-scope"
+    assert "mirrored" in caught.value.cause.message
+    assert pair_cli._scope_account("pl-1", listed, frozenset(), frozenset()) == "Deep House Low"
 
 
 def test_the_digest_moves_when_a_write_changes_and_not_when_only_the_timing_does(

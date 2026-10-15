@@ -71,6 +71,9 @@ LEFT = "left"
 #: could not be read, which is what one deleted on the account looks like.
 UNREADABLE = "unreadable"
 
+#: The refusal of a name two folders take, on the account or in the library.
+AMBIGUOUS_REASON = "account-mirror-ambiguous"
+
 #: How many tracks one add carries, :data:`folders.CHUNK`'s number and reason.
 CHUNK = 100
 
@@ -122,6 +125,11 @@ class Identity:
     isrc: str = ""
     album: str = ""
     title: str = ""
+    #: Whether even one track the code names must agree with the row, which a
+    #: code read off the file's own tag asks, since it did not come from the
+    #: provider and a file tagged with another recording's code would name the
+    #: wrong track (R-879).
+    agree: bool = False
 
 
 class Counted:
@@ -203,6 +211,7 @@ class Matcher:
             isrc=said.isrc,
             title=said.title,
             artist=row.artist,
+            agree=said.agree,
             album=said.album,
         )
         if not remote:
@@ -319,7 +328,7 @@ class FolderPlan:
 def ambiguous(name: str, found: Sequence[str]) -> CratekitError:
     """Two root folders of a mirror's name: that folder refused by name, nothing written."""
     return refuse(
-        "account-mirror-ambiguous",
+        AMBIGUOUS_REASON,
         f"the account holds {len(found)} root folders named {name!r}, so which one "
         f"is the mirror is not something its name decides, and nothing was planned "
         f"for it",
@@ -330,16 +339,6 @@ def ambiguous(name: str, found: Sequence[str]) -> CratekitError:
         scope=Scope.SOURCE,
         origin=_ORIGIN,
         detail={"folders": list(found), "name": name},
-    )
-
-
-def _named(account: RemoteAccount, playlist_id: str, ids: Sequence[str]) -> tuple[str, ...]:
-    """Each track to take off as ``Artist - Title``, its identifier when unnamed."""
-    if not ids:
-        return ()
-    names = account.track_names(playlist_id)
-    return tuple(
-        f"{names[one][0]} - {names[one][1]} ({one})" if one in names else one for one in ids
     )
 
 
@@ -388,12 +387,14 @@ def plan(
 
     steps: list[PlaylistPlan] = []
     for source in folder.playlists:
-        wanted, unmatched = _wanted(source, matcher)
         mine = made.get(source.name)
         if mine is not None:
             placed = mine.remote_id in inside
+            # ONE READ PER PLAYLIST, names and all: the names are what the gate
+            # shows a removal by, and the adapter keeps the membership it read
+            # for the add that follows.
             try:
-                held = tuple(account.playlist_tracks(mine.remote_id))
+                names = account.track_names(mine.remote_id)
             except CratekitError as exc:
                 if placed or exc.cause.reason != "unavailable-transient":
                     raise
@@ -402,8 +403,6 @@ def plan(
                         name=source.name,
                         action=UNREADABLE,
                         remote_id=mine.remote_id,
-                        tracks=len(wanted),
-                        unmatched=unmatched,
                         why=(
                             "the playlist recorded for it is not in the folder and could "
                             "not be read, so it may have been deleted on the account; "
@@ -412,9 +411,10 @@ def plan(
                     )
                 )
                 continue
-            on = set(held)
+            wanted, unmatched = _wanted(source, matcher)
+            on = set(names)
             keep = set(wanted)
-            remove = tuple(one for one in dict.fromkeys(held) if one not in keep)
+            remove = tuple(one for one in names if one not in keep)
             steps.append(
                 PlaylistPlan(
                     name=source.name,
@@ -425,11 +425,15 @@ def plan(
                     remove=remove,
                     tracks=len(wanted),
                     unmatched=unmatched,
-                    removed_names=_named(account, mine.remote_id, remove),
+                    removed_names=tuple(
+                        f"{names[one][0]} - {names[one][1]} ({one})" for one in remove
+                    ),
                     refused=sum(1 for one in wanted if one in mine.refused and one not in on),
                 )
             )
             continue
+        # A PERSON'S PLAYLIST IS DECIDED BEFORE ANY ROW IS MATCHED, since
+        # nothing is written to it and a match would be a request for nothing.
         theirs = sorted(pid for pid, name in inside.items() if name == source.name)
         if theirs:
             steps.append(
@@ -437,8 +441,6 @@ def plan(
                     name=source.name,
                     action=LEFT,
                     remote_id=theirs[0],
-                    tracks=len(wanted),
-                    unmatched=unmatched,
                     why=(
                         f"the folder holds {len(theirs)} playlist(s) of this title the "
                         f"product did not make, so a person's playlist is left as it is "
@@ -448,6 +450,7 @@ def plan(
                 )
             )
             continue
+        wanted, unmatched = _wanted(source, matcher)
         steps.append(
             PlaylistPlan(
                 name=source.name,
@@ -504,15 +507,30 @@ class Applied:
         }
 
 
-def apply(cfg: config.Config, account: RemoteAccount, planned: FolderPlan, done: Applied) -> Applied:
+def apply(
+    cfg: config.Config,
+    account: RemoteAccount,
+    planned: FolderPlan,
+    done: Applied,
+    *,
+    links: Mapping[str, tuple[str, str]] | None = None,
+) -> Applied:
     """Carry out one folder's plan, recording each write as it lands, into ``done``.
 
     ``done`` is the caller's, so a raise part way leaves in it what was
-    written before the raise. A removal the account refuses for one playlist,
-    ``outbound-remove-refused``, is kept and named and the apply goes on, since
-    the adds already landed and the other playlists are their own.
+    written before the raise. ``links`` are the rows to record as matched,
+    the folder's own by default; a caller planning several folders hands every
+    one its run matched, so a folder with nothing to write does not leave its
+    rows to be matched again.
+
+    A REMOVAL REFUSED WITH NOTHING SENT, ``outbound-remove-refused`` at source
+    scope (positions unknown, or a playlist the ledger does not vouch for), is
+    kept and named and the apply goes on, since the adds already landed and the
+    other playlists are their own. ANY OTHER REFUSAL IS RAISED, the read back
+    that differs above all: a track other than the asked ones may have come
+    off, and the refusal's own words say to check the playlist by hand.
     """
-    ledger.record_mirror_links(cfg, planned.links)
+    ledger.record_mirror_links(cfg, planned.links if links is None else links)
     folder_id, created = ledger.reserve_mirror_folder(
         cfg,
         planned.name,
@@ -548,7 +566,7 @@ def apply(cfg: config.Config, account: RemoteAccount, planned: FolderPlan, done:
         try:
             gone = account.remove_tracks(remote_of[step.name], step.remove)
         except CratekitError as exc:
-            if exc.cause.reason != "outbound-remove-refused":
+            if exc.cause.reason != "outbound-remove-refused" or exc.cause.scope != Scope.SOURCE:
                 raise
             done.kept.append((step.name, exc.cause.message))
             continue
@@ -558,6 +576,7 @@ def apply(cfg: config.Config, account: RemoteAccount, planned: FolderPlan, done:
 
 __all__ = [
     "ADOPT",
+    "AMBIGUOUS_REASON",
     "Applied",
     "CHUNK",
     "CREATE",

@@ -42,7 +42,7 @@ from typing import Any
 
 from cratekit.cli.output import digest_of
 from cratekit.core import config
-from cratekit.core.cause import Cause, CratekitError
+from cratekit.core.cause import Cause, CratekitError, Scope, refuse
 from cratekit.modules.outbound import ledger, mirror
 from cratekit.organize.steps import LISTED, NOTHING, PLANNED, Area, Step, refused
 
@@ -53,6 +53,8 @@ TITLE = "mirror the genre tree and the Favorites folder onto the account"
 
 #: The fact the area shows for the plan's own request count and duration.
 PLAN_FACT = "mirror plan"
+
+_ORIGIN = ("organize", "account_mirror")
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,18 +115,17 @@ def _folder(db: Any, name: str, parent_id: str, titled: Callable[[str], str]) ->
 
 
 def _twice(name: str, what: str) -> Cause:
-    exc = mirror.ambiguous(name, ())
-    return Cause(
-        reason=exc.cause.reason,
-        message=(
-            f"the library holds two of {what} under the account name {name!r}, so "
-            f"which one the mirror copies is not something a name decides, and nothing "
-            f"was planned for it"
-        ),
-        remediation=exc.cause.remediation,
-        origin=exc.cause.origin,
+    """Two library nodes taking one account name: refused, the remedy in rekordbox."""
+    return refuse(
+        mirror.AMBIGUOUS_REASON,
+        f"the library holds two of {what} under the account name {name!r}, so which "
+        f"one the mirror copies is not something a name decides, and nothing was "
+        f"planned for it",
+        steps=("rename one of them in rekordbox so each carries its own name",),
+        scope=Scope.SOURCE,
+        origin=_ORIGIN,
         detail={"name": name},
-    )
+    ).cause
 
 
 def read_library(cfg: config.Config) -> Library:
@@ -200,9 +201,16 @@ def identify(cfg: config.Config) -> Callable[[mirror.Row], mirror.Identity]:
     template = source.name_template(cfg)
 
     def said(row: mirror.Row) -> mirror.Identity:
-        isrc, album = (row.isrc, "") if row.isrc else pair_cli.file_identity(cfg, row.path)
+        if row.isrc:
+            isrc, album, agree = row.isrc, "", False
+        else:
+            # A CODE READ OFF THE FILE ASKS EVEN ONE TRACK TO AGREE (R-879).
+            (isrc, album), agree = pair_cli.file_identity(cfg, row.path), True
         return mirror.Identity(
-            isrc=isrc, album=album, title=naming.strip_heads(row.title, template=template)
+            isrc=isrc,
+            album=album,
+            title=naming.strip_heads(row.title, template=template),
+            agree=agree,
         )
 
     return said
@@ -229,12 +237,16 @@ def _detail(planned: mirror.FolderPlan) -> str:
     )
 
 
-def _apply(cfg, step: Step, planned: mirror.FolderPlan, account: mirror.Counted):
+def _apply(
+    cfg, step: Step, planned: mirror.FolderPlan, account: mirror.Counted, matcher: mirror.Matcher
+):
     def apply() -> dict[str, Any]:
         account.lap()
         done = mirror.Applied()
         try:
-            mirror.apply(cfg, account, planned, done)
+            # EVERY ROW THE RUN MATCHED, not only this folder's, so a folder
+            # with nothing to write leaves no row to be matched again.
+            mirror.apply(cfg, account, planned, done, links=matcher.fresh)
         finally:
             requests, seconds = account.lap()
         step.warnings.extend(
@@ -286,7 +298,15 @@ def add_steps(cfg: config.Config, area: Area, account_of: Callable[[], Any]) -> 
             items=planned.items(),
         )
         if planned.writes:
-            step.apply = _apply(cfg, step, planned, account)
+            step.apply = _apply(cfg, step, planned, account, matcher)
+            # EVERY TRACK TAKEN OFF IS NAMED ON THE GATE, U143's line for a
+            # removal, so the gate never says nothing is removed over one.
+            area.deletes.extend(
+                f"{len(one.remove)} track(s) off the mirrored playlist {one.name!r}: "
+                + "; ".join(one.removed_names)
+                for one in planned.playlists
+                if one.remove
+            )
         area.steps.append(step)
     for name, cause in sorted(library.refused.items()):
         area.steps.append(refused(f"{MIRROR}:{name}", f"mirror {name} onto the account", cause))

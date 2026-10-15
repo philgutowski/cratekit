@@ -1885,6 +1885,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
 
 # Modules holding a name that resolves to a cause declared elsewhere (own enum declarations excluded from the key set).
 PINNED_NAMED_WITHOUT_OWN = {
+    # 2026-10-15, U147: the account mirror joined.
+    'modules/outbound/mirror.py': ['account-mirror-ambiguous'],
     'acquire/adapter.py': [
         'adapter-broken',
         'auth-failed',
@@ -1948,6 +1950,8 @@ PINNED_NAMED_WITHOUT_OWN = {
 
 # Modules holding a name that resolves to a cause, counting each file's own enum declarations.
 PINNED_NAMED_WITH_OWN = {
+    # 2026-10-15, U147: the account mirror joined.
+    'modules/outbound/mirror.py': ['account-mirror-ambiguous'],
     'acquire/adapter.py': [
         'adapter-broken',
         'auth-failed',
