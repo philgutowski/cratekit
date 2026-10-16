@@ -1401,6 +1401,28 @@ finding stands for every tree still on the xml bridge, `inbox` and
 attributes only on rows it creates (R-688). Line 4 of #178, the full sync
 cycle, is next and is attended.
 
+## Sitting 43, 2026-10-16, the operator session, U153's live colour backfill
+
+Phillip asked why his recent favourites imported without the pink colour.
+They did: until U153 the product filed a heart into All Favorites and left
+the row uncoloured, and Pink is the standing favourite signal the sweep reads.
+U153 was built, reviewed, merged and pushed (`main` at `aa97f32d`, issue
+#334), then this sitting coloured the library live.
+
+Rehearsed on a disposable copy of the live database
+(`~/.local/state/cratekit/copyrun`, removed after): `crate favorites backfill`
+planned 0 memberships to add, 138 All Favorites members to colour Pink, 0
+held, digest `78433db65e4f0879`, and the copy apply coloured all 138 and read
+them back. Live, the ack was minted as `session` (both backups 1 day old,
+under five), the digest equalled the rehearsal, approved as `session`, and the
+verb coloured 138 rows Pink, read every one back from the database, and left
+the collection unchanged. A second live run planned 0 rows to colour, which is
+the idempotence check and the independent re-read: no grey member of All
+Favorites remains. Undo is a restore of the landing's session. The library's
+master.db is SQLCipher encrypted, so the binding's read-back is the only
+direct read; a visual check in rekordbox is the one belt-and-braces step not
+taken, and Phillip will see the pink dots on next open.
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
