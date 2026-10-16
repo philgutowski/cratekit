@@ -481,3 +481,26 @@ def test_an_owned_heart_beside_a_landed_file_takes_pink_in_the_same_commit(nativ
     assert sorted(record.detail["favorites_placed"]["coloured"]) == sorted(
         str(row) for (row,) in _query(cfg, "SELECT ID FROM djmdContent WHERE Title IN ('Probe - Owned', 'Fresh', 'Owned')")
     )
+
+
+def test_a_present_coloured_owned_heart_beside_a_landed_file_is_held_and_named(native_library, silence):
+    """U153 L2: with a file landing (the native-apply path), favorites_notes
+    carries the held note for an owned heart a person already coloured."""
+    import sqlite3
+
+    cfg, _root_id = native_library
+    _home(cfg)
+    chosen = _owned(cfg, silence, "Chosen")
+    conn = sqlite3.connect(cfg.library.db_path)
+    conn.execute("UPDATE djmdContent SET ColorID = ? WHERE ID = ?", (RED_ID, chosen))
+    conn.commit()
+    conn.close()
+    hearts_swept(cfg, {"Chosen": SEP, "Fresh": NOV})
+    _stage(cfg, silence, "Fresh")
+
+    code, acted, _refused = _two_acts(LAND)
+
+    assert code == int(ExitCode.OK), acted
+    assert _colour_of(cfg, "Chosen") == RED_ID and _colour_of(cfg, "Fresh") == PINK_ID
+    (held,) = [w for w in acted["warnings"] if w["code"] == land_cli.FAVORITES_COLOUR_HELD]
+    assert held["message"].endswith("keep it: Chosen (Red)")
