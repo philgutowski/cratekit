@@ -2600,7 +2600,9 @@ ENTRIES: tuple[Entry, ...] = (
         #: chooses, the way the routing verbs choose.
         # U129. A set landing may also archive the account playlist, a remote
         # write, so the surface and the provider check join the landing's own.
-        writes=frozenset({"xml", "files", "db_tree", "remote"}),
+        # U153. A landed heart's row is coloured Pink in the same commit, a
+        # content column, so the metadata surface joins the tree's.
+        writes=frozenset({"xml", "files", "db_tree", "db_metadata", "remote"}),
         destructive=True,
         #: The database checks hold for the native medium only, and declaring
         #: them here changes nothing doctor reports: it requires a check when
@@ -3094,10 +3096,11 @@ ENTRIES: tuple[Entry, ...] = (
         # pass; the author decided on 2026-10-09 that a landing does it here.
         emits=frozenset({"plan"}),
         output_schema="plan/1",
-        #: The database tree and nothing else: memberships added to All
-        #: Favorites and to a month playlist, that playlist when the folder
-        #: lacks it. No content row, no file, no node removed, no removal.
-        writes=frozenset({"db_tree"}),
+        #: The database tree, memberships added to All Favorites and to a
+        #: month playlist, that playlist when the folder lacks it, and since
+        #: U153 one content column, the colour, Pink on every member that has
+        #: none. No content row made, no file, no node removed, no removal.
+        writes=frozenset({"db_tree", "db_metadata"}),
         destructive=True,
         taxonomy_terms=("favorites",),
         doctor_checks=(

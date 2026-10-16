@@ -580,6 +580,16 @@ Hearts the library does not own reach it the other way, through
 `crate intake playlist favorites`, which queues them for acquisition. Nothing
 un-hearts or un-colours, on either side.
 
+A heart that comes IN is coloured, which is the inbound half the sync does not
+touch. When a landing places a heart into All Favorites and its month, it
+colours that track Pink in the same write, because Pink is the standing signal a
+track is a favourite and the sweep above reads it. `crate favorites backfill`
+does the same for every member of All Favorites that carries no colour, so the
+colour and the playlist agree over a library placed before the colour write
+existed. A track you coloured otherwise by hand keeps its colour and is named,
+never overwritten, and a library whose colour table has no Pink row places the
+hearts and says it coloured none, to be run again once Pink is restored.
+
 ### Publish a playlist
 
 ```bash

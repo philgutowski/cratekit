@@ -96,6 +96,7 @@ from cratekit.core import (
     tree_registry,
 )
 from cratekit.core.cause import CratekitError, Remedy, refuse
+from cratekit.favorites import colour as colour_mod
 from cratekit.favorites import placement
 from cratekit.intake import ingest, set_playlist
 from cratekit.write import metadata_cli, routing_pass, row_link, trees
@@ -311,6 +312,15 @@ class FavoritesPlan:
     #: The pass's hearts on tracks the library already holds that All
     #: Favorites lacks, placed in the same commit (U146).
     owned: tuple[OwnedHeartItem, ...] = ()
+    #: The library's Pink row (U153), or empty with ``colour_skipped`` saying
+    #: why, in which case the hearts are placed and none is coloured.
+    pink: str = ""
+    colour_skipped: str = ""
+    #: The owned hearts with no colour, which take Pink with their placement.
+    #: A landed file's new row has none by construction and is not listed.
+    colour: tuple[str, ...] = ()
+    #: The owned hearts a person coloured otherwise, named and left.
+    held: tuple[colour_mod.Held, ...] = ()
 
     @property
     def months(self) -> tuple[str, ...]:
@@ -356,6 +366,11 @@ class FavoritesPlan:
             identity["owned"] = [
                 {"row": one.content_id, "month": one.month, "ref": one.ref} for one in self.owned
             ]
+        # THE PINK ROW AND THE ROWS IT GOES ON (U153), so a heart coloured by
+        # hand between the two acts, or a Pink row retired, is another plan.
+        identity["pink"] = self.pink
+        if self.colour:
+            identity["colour"] = list(self.colour)
         return identity
 
 
@@ -862,6 +877,15 @@ def _favorites_plan(
         joining.append(one)
     if not kept and not joining:
         return None
+    # THE COLOUR, READ ON THIS HANDLE (U153): the Pink row by name, absorbed
+    # into a skip when the table has none, and each owned heart's colour now,
+    # so only a row with none takes Pink and a row a person coloured is held.
+    pink, colour_skipped = placement.read_pink(db)
+    to_colour: tuple[str, ...] = ()
+    held: tuple[colour_mod.Held, ...] = ()
+    if pink and joining:
+        sorted_rows = colour_mod.sort_rows(db, pink, [one.content_id for one in joining])
+        to_colour, held = sorted_rows.to_colour, sorted_rows.held
     return FavoritesPlan(
         source_name=home.source_name,
         source_id=home.source_id,
@@ -870,6 +894,10 @@ def _favorites_plan(
         items=kept,
         present=tuple(sorted(home.present)),
         owned=tuple(joining),
+        pink=pink,
+        colour_skipped=colour_skipped,
+        colour=to_colour,
+        held=held,
     )
 
 
@@ -1137,6 +1165,16 @@ def _restamp(content: Any, row: RowPlan, plan: NativePlan) -> None:
     file id the binding minted is replaced by the landed file's inode (U115),
     and the binding's ContentLink by the library's own (U126).
     """
+    # THE MINTED ID IS COERCED TO TEXT (U153). ``generate_unused_id`` returns
+    # an int and the ID column is text, so the row reads back as a string on
+    # every later open, which is why this package stores ``str(content.ID)``
+    # everywhere. The in-memory int is the one place the two forms diverge, and
+    # it bit when the landing first dirtied an EXISTING content row in the same
+    # commit as a new one, to colour a heart Pink: a flush cannot order a
+    # djmdContent set whose pending rows mix an int ID and the text IDs every
+    # stored row carries. Setting it to its stored form here, on the object
+    # before the guard's flush, removes the divergence rather than the symptom.
+    content.ID = str(content.ID)
     if str(content.FolderPath) != row.folder_path:
         content.FolderPath = row.folder_path
     if str(content.DeviceID) != plan.device_id:
@@ -1471,7 +1509,24 @@ def apply_rows(
                     if str(item.target) in by_target
                 ]
                 pairs.extend((one.content_id, one.month) for one in plan.favorites.owned)
-                placed = placement.place(db, plan.favorites.home(), pairs)
+                # AND PINK ON EACH (U153): every row this landing made for a
+                # heart, which carries no colour by construction, and the
+                # owned hearts the plan read as uncoloured.
+                to_colour = [
+                    by_target[str(item.target)]
+                    for item in plan.favorites.items
+                    if str(item.target) in by_target
+                ]
+                to_colour.extend(plan.favorites.colour)
+                placed = placement.place(
+                    db,
+                    plan.favorites.home(),
+                    pairs,
+                    pink=plan.favorites.pink,
+                    to_colour=to_colour,
+                    held=plan.favorites.held,
+                    colour_skipped=plan.favorites.colour_skipped,
+                )
             # THE SET'S PERMANENT PLAYLIST, IN THE SAME COMMIT (U121): the rows
             # this landing made are keyed by target, and a member the landing
             # could not make a row for is left and listed, never guessed.
@@ -1679,10 +1734,12 @@ def _record_landing_commit(
     memberships, and a person weighing that should see the difference.
     """
     hearts = placed.added if placed is not None else 0
+    coloured = len(placed.coloured) if placed is not None else 0
     if (
         rows <= 0
         and memberships <= 0
         and hearts <= 0
+        and coloured <= 0
         and not (set_written and set_written.playlist_id)
     ):
         return
@@ -1713,7 +1770,7 @@ def _record_landing_commit(
     # AND THE HEARTS PLACED (U120), under their own key, since the Favorites
     # folder is nobody's registered tree and a restore weighing the intake
     # tree's memberships should see these apart from them.
-    if placed is not None and hearts > 0:
+    if placed is not None and (hearts > 0 or coloured > 0):
         record.detail[placement.PLACED_KEY] = placed.to_json()
     changes = []
     if memberships > 0:
@@ -1730,12 +1787,16 @@ def _record_landing_commit(
     # AND THE HEARTS PLACED (U120), under the favourites key, so the record
     # counts the batch's memberships and the hearts' apart, as the backfill
     # records its own.
-    if hearts > 0:
+    if hearts > 0 or coloured > 0:
         session.record_commit(
             record,
             placement.RECORD_KEY,
             session.ChangeSummary(
-                (session.TreeChange(tree=placement.RECORD_KEY, created=hearts),)
+                (
+                    session.TreeChange(
+                        tree=placement.RECORD_KEY, created=hearts, updated=coloured
+                    ),
+                )
             ),
             cfg,
         )

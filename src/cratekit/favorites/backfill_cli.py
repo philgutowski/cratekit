@@ -24,7 +24,7 @@ from typing import Any
 from cratekit.cli.output import Envelope
 from cratekit.core import active_taxonomy, analysis_store, config, rb_writer, session
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Remedy
-from cratekit.favorites import backfill, placement
+from cratekit.favorites import backfill, colour, placement
 
 #: The gate, explicit: a write to the live library's playlists.
 APPROVE_GATE = "favorites.backfill.approve"
@@ -36,6 +36,10 @@ UNDATED = "favorites-hearts-undated"
 HELD_BACK = "favorites-hearts-held-back"
 JOBS_UNREAD = "favorites-jobs-unread"
 TAKEN_BACK = "favorites-hearts-taken-back"
+#: A row a person coloured otherwise, left as it is and named (U153).
+COLOUR_HELD = "favorites-colour-held"
+#: No live Pink row, so the memberships are placed and nothing is coloured (U153).
+PINK_MISSING = colour.PINK_COLOUR_MISSING
 
 _ORIGIN = ("favorites", "backfill_cli")
 
@@ -142,6 +146,28 @@ def _notes(plan: backfill.BackfillPlan) -> list[dict[str, str]]:
                 ),
             }
         )
+    if plan.placements.colour_skipped:
+        notes.append(
+            {
+                "code": PINK_MISSING,
+                "message": (
+                    f"no row is coloured: {plan.placements.colour_skipped}; the "
+                    f"memberships are placed all the same, and a later run colours "
+                    f"them once the library carries Pink again"
+                ),
+            }
+        )
+    if plan.placements.held:
+        notes.append(
+            {
+                "code": COLOUR_HELD,
+                "message": (
+                    f"{len(plan.placements.held)} row(s) carry a colour a person chose "
+                    f"and keep it: "
+                    + "; ".join(one.said() for one in plan.placements.held)
+                ),
+            }
+        )
     return notes
 
 
@@ -168,7 +194,8 @@ def favorites_backfill(ctx) -> Envelope:
                     "code": NOTHING_TO_PLACE,
                     "message": (
                         f"no owned heart needs placing, {plan.already} already in "
-                        f"{source!r} and a month playlist, so nothing was written"
+                        f"{source!r} and a month playlist, and every member of "
+                        f"{source!r} is coloured or held, so nothing was written"
                     ),
                 },
             ],
@@ -181,6 +208,7 @@ def favorites_backfill(ctx) -> Envelope:
         **data["totals"],
         "added": placed.added,
         "created": len(placed.created),
+        "coloured": len(placed.coloured),
     }
     return ctx.envelope(
         data={**data, "totals": totals},
@@ -189,10 +217,11 @@ def favorites_backfill(ctx) -> Envelope:
             {
                 "code": PLACED,
                 "message": (
-                    f"{placed.said()}, for {len(plan.hearts)} owned heart(s); every "
-                    f"playlist read back from the database holds its "
-                    f"hearts, and no track left the collection; undo with a restore of "
-                    f"session {done.session_id}"
+                    f"{placed.said()}, for {len(plan.hearts)} owned heart(s) and "
+                    f"{len(plan.placements.recolour)} placed row(s); every "
+                    f"playlist read back from the database holds its hearts, every "
+                    f"coloured row reads Pink, and no track left the collection; undo "
+                    f"with a restore of session {done.session_id}"
                 ),
             },
         ],
@@ -201,9 +230,11 @@ def favorites_backfill(ctx) -> Envelope:
 
 __all__ = [
     "APPROVE_GATE",
+    "COLOUR_HELD",
     "HELD_BACK",
     "JOBS_UNREAD",
     "NOTHING_TO_PLACE",
+    "PINK_MISSING",
     "PLACED",
     "TAKEN_BACK",
     "UNDATED",

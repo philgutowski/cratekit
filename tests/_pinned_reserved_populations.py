@@ -1081,8 +1081,10 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     'favorites/backfill.py': ['decision-stale', 'favorites-placement', 'session-committed-unverified'],
     'favorites/backfill_cli.py': [
+        # 2026-10-16, U153: the held colour warning joined.
         'config-unusable',
         'favorites-backfilled',
+        'favorites-colour-held',
         'favorites-hearts-held-back',
         'favorites-hearts-taken-back',
         'favorites-hearts-undated',
@@ -1090,11 +1092,13 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'favorites-nothing-to-place',
     ],
     'favorites/cli.py': [
+        # 2026-10-16, U153: the Pink lookup and its refusal moved to colour.py.
         'favorites-hearts-unmatched',
         'favorites-local-write-unbound',
-        'favorites-pink-colour-missing',
         'outbound-item-absent',
     ],
+    # 2026-10-16, U153: the Pink colour module, holding the lookup and its refusal.
+    'favorites/colour.py': ['favorites-pink-colour-missing'],
     'favorites/placement.py': ['decision-stale', 'favorites-placement'],
     # 2026-10-15, U145: the quarters split into months, engine and verb.
     'favorites/split.py': ['decision-stale', 'favorites-split', 'session-committed-unverified', 'whitelist-violation'],
@@ -1191,8 +1195,10 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     # TWO kebab literals joined in intake/land_cli.py and nothing left,
     # account-archive and intake-land-archive-failed, the archive path U129 adds.
     'intake/land_cli.py': [
+        # 2026-10-16, U153: the held colour warning joined.
         'account-archive',
         'decision-stale',
+        'favorites-colour-held',
         'favorites-placed',
         'favorites-placement-skipped',
         'intake-land-archive-failed',
@@ -1907,7 +1913,8 @@ PINNED_NAMED_WITHOUT_OWN = {
     'core/session.py': ['awaiting-import'],
     # 2026-10-13, U140: the set rename's refusal, held in a named constant.
     'export/set_cli.py': ['export-set-rename-unresolved'],
-    'favorites/cli.py': ['favorites-pink-colour-missing'],
+    # 2026-10-16, U153: the Pink lookup and its refusal moved to colour.py.
+    'favorites/colour.py': ['favorites-pink-colour-missing'],
     # U134, 2026-10-12.
     'intake/refill.py': ['refill-playlist-outside-inbox'],
     'intake/set_playlist.py': ['inspiration-folder-undeclared', 'set-playlist-unnamed'],
@@ -2066,7 +2073,8 @@ PINNED_NAMED_WITH_OWN = {
     ],
     # 2026-10-13, U140: the set rename's refusal, held in a named constant.
     'export/set_cli.py': ['export-set-rename-unresolved'],
-    'favorites/cli.py': ['favorites-pink-colour-missing'],
+    # 2026-10-16, U153: the Pink lookup and its refusal moved to colour.py.
+    'favorites/colour.py': ['favorites-pink-colour-missing'],
     # U134, 2026-10-12.
     'intake/refill.py': ['refill-playlist-outside-inbox'],
     'intake/set_playlist.py': ['inspiration-folder-undeclared', 'set-playlist-unnamed'],
@@ -2381,7 +2389,9 @@ PINNED_LITERAL_HOLDERS = {
     ],
     'favorites/backfill.py': ['decision-stale', 'session-committed-unverified'],
     'favorites/backfill_cli.py': ['config-unusable'],
-    'favorites/cli.py': ['favorites-pink-colour-missing', 'outbound-item-absent'],
+    # 2026-10-16, U153: the Pink literal moved to colour.py, leaving cli.py this.
+    'favorites/cli.py': ['outbound-item-absent'],
+    'favorites/colour.py': ['favorites-pink-colour-missing'],
     'favorites/placement.py': ['decision-stale'],
     'favorites/refresh_cli.py': ['config-unusable', 'internal-error'],
     # 2026-10-15, U145: the quarters split into months, engine and verb.

@@ -694,6 +694,36 @@ whose All Favorites membership rekordbox marked removed, or one a whole account
 listing no longer carries. The genre Favorites follow from U119's refresh once
 adoption files the track, not at landing.
 
+Since U153 the same write COLOURS the heart Pink, in the one commit that
+places it. Pink is the operator's standing signal that a track is a favourite,
+and `crate sync favorites` reads it, so a heart filed into All Favorites with
+no colour said two things at once. The landing colours every heart it places,
+and `crate favorites backfill` colours every member of All Favorites carrying
+no colour, asking the account nothing since the row's membership is the whole
+claim. Only a row with no colour takes Pink, read by the core writer's own
+definition of unset: a track the author coloured otherwise keeps its colour
+and is named, never overwritten, since a heart is not a reason to take a
+colour a person chose. A library whose colour table has no live Pink row
+places the memberships, colours nothing and warns rather than refusing, so an
+acquisition never stops on a cosmetic; the backfill colours them once Pink is
+restored. The lookup and the write live in `favorites.colour`, read by name
+from `djmdColor`, never hard coded, and the colour is a `db_metadata` surface
+the landing and the backfill now declare. See **Pink favourite**.
+
+### Pink favourite
+A track coloured Pink in rekordbox, which is the operator's standing signal
+that it is a favourite. Two directions read and write it, and conflating them
+is the trap. OUTBOUND, `crate sync favorites` reads pink rows (and All
+Favorites members) as the hearts to send to the account (R-228), and writes
+nothing to the library. INBOUND, since U153, a heart the product places is
+coloured Pink by the landing and by `crate favorites backfill`, so the colour
+a DJ sets by hand and the colour the product writes mean the same thing and
+the sweep reads either. The identifier is the library's own, looked up by the
+name `Pink` on `djmdColor` inside the open that uses it, so a renamed or
+retired colour is a named condition, not a silent miss. The write is
+fill only, through the core writer's `track-color` policy: a row that already
+carries a colour is left and named.
+
 ### Owned heart
 A heart on a track the library already held when the hearts job listed it,
 reported `owned` with the files the match rule resolved it to, since U146. The
@@ -702,7 +732,10 @@ favourite, so All Favorites is the account's hearts. The native landing given
 `--pass` places the pass's owned hearts that All Favorites does not hold live
 into All Favorites and their month, finding each one's row by the report's
 file, in its own commit when files land and, when staging is empty, through
-the backfill's guarded session under the same `intake.land.native` gate. A
+the backfill's guarded session under the same `intake.land.native` gate. Since
+U153 an owned heart the landing places is coloured Pink the same way a
+downloaded one is, unless the author already coloured it (see **Pink
+favourite**). A
 pass whose owned hearts are all placed opens nothing to write and ends NO_OP.
 A heart taken out of All Favorites by hand and still hearted on the account
 joins again at the next landing, and the backfill does not put it back: both

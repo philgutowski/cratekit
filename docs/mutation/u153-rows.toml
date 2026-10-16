@@ -1,0 +1,242 @@
+name = "u153"
+pass_kind = "full"
+
+[[rows]]
+id = "C1_is_uncoloured_narrowed"
+description = "is_uncoloured: only None counts as unset, so a '0' colour reads coloured and is held not written"
+file = "src/cratekit/favorites/colour.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_pink.py", "tests/test_favorites_backfill.py"]
+old = '''    return value in rb_writer.FIELD_EMPTIES[COLUMN]'''
+new = '''    return value is None'''
+
+[[rows]]
+id = "C2_sort_rows_dedup"
+description = "sort_rows: drop the seen check, so a row named twice is sorted and coloured twice"
+file = "src/cratekit/favorites/colour.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_pink.py", "tests/test_favorites_backfill.py"]
+old = '''        if key in seen:
+            continue'''
+new = '''        if False:
+            continue'''
+
+[[rows]]
+id = "C3_sort_rows_missing_row"
+description = "sort_rows: do not skip a row the handle cannot find, so an absent id reaches getattr"
+file = "src/cratekit/favorites/colour.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_pink.py", "tests/test_favorites_backfill.py"]
+old = '''        row = find_row(db, key)
+        if row is None:
+            continue'''
+new = '''        row = find_row(db, key)
+        if row is None:
+            to_colour.append(key)
+            continue'''
+
+[[rows]]
+id = "C4_sort_rows_uncoloured_branch"
+description = "sort_rows: treat every row as uncoloured, so a coloured row is coloured not held"
+file = "src/cratekit/favorites/colour.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_pink.py", "tests/test_favorites_backfill.py"]
+old = '''        if is_uncoloured(current):
+            to_colour.append(key)'''
+new = '''        if True:
+            to_colour.append(key)'''
+
+[[rows]]
+id = "C5_find_row_session_new"
+description = "find_row: skip the session's pending inserts, so a row made this commit loads a second time and the flush cannot sort"
+file = "src/cratekit/favorites/colour.py"
+surface = "user"
+tests = ["tests/test_intake_land_hearts_native.py", "tests/test_intake_land_owned_hearts_native.py"]
+old = '''        for row in getattr(session, "new", ()):
+            table = getattr(getattr(row, "__table__", None), "name", "")
+            if table == rb_writer.CONTENT_TABLE and str(getattr(row, "ID", "")) == wanted:
+                return row'''
+new = '''        for row in getattr(session, "new", ()):
+            table = getattr(getattr(row, "__table__", None), "name", "")
+            if False:
+                return row'''
+
+[[rows]]
+id = "C6_write_pink_fill_only"
+description = "write_pink: drop the is_uncoloured re-check, so a colour a person chose is overwritten"
+file = "src/cratekit/favorites/colour.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_pink.py", "tests/test_intake_land_owned_hearts_native.py"]
+old = '''        if row is None or not is_uncoloured(getattr(row, COLUMN, None)):
+            continue'''
+new = '''        if row is None:
+            continue'''
+
+[[rows]]
+id = "C7_write_pink_reports_write"
+description = "write_pink: report every row as coloured, including one the policy skipped"
+file = "src/cratekit/favorites/colour.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_pink.py", "tests/test_favorites_backfill.py"]
+old = '''        if decision is rb_writer.Decision.WRITE:
+            written.append(str(content_id))'''
+new = '''        if decision is not rb_writer.Decision.WRITE:
+            written.append(str(content_id))'''
+
+[[rows]]
+id = "P1_into_colour_flag"
+description = "plan_placements: never mark a placement for colour, so no heart takes Pink"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_backfill.py", "tests/test_intake_land_hearts_native.py"]
+old = '''            into_colour=one.content_id in takes,'''
+new = '''            into_colour=False,'''
+
+[[rows]]
+id = "P2_to_colour_no_pink_guard"
+description = "to_colour: return rows even with no Pink row, so the caller is handed rows to colour with no colour"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_backfill.py"]
+old = '''        if not self.pink:
+            return ()'''
+new = '''        if False:
+            return ()'''
+
+[[rows]]
+id = "P3_writes_colours"
+description = "PlacementPlan.writes: ignore the colour count, so a colour-only plan reports no write and ends NO_OP"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_backfill.py"]
+old = '''        return self.adds > 0 or self.colours > 0'''
+new = '''        return self.adds > 0'''
+
+[[rows]]
+id = "P4_identity_pink"
+description = "identity: drop the Pink row from the digest, so a colour change between plan and write is not caught"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_backfill.py"]
+old = '''            "pink": self.pink,'''
+new = '''            "pink": "",'''
+
+[[rows]]
+id = "P5_recolour_dedup"
+description = "plan_placements recolour: drop the not-in-seen check, so a heart also named as a recolour is listed twice"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_backfill.py"]
+old = '''            if row in titles and row not in seen'''
+new = '''            if row in titles'''
+
+[[rows]]
+id = "P6_place_pink_guard"
+description = "place: colour even with no Pink id, so write_pink blanks a colour by setting it to the empty id"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_backfill.py", "tests/test_intake_land_hearts_native.py"]
+old = '''    if pink and to_colour:'''
+new = '''    if to_colour:'''
+
+[[rows]]
+id = "B1_read_back_grey"
+description = "backfill _read_back: invert the Pink check, so a row that reads Pink is called a disagreement and the verb refuses"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''        if str(getattr(colour.find_row(db, row), colour.COLUMN, "") or "") != pink'''
+new = '''        if str(getattr(colour.find_row(db, row), colour.COLUMN, "") or "") == pink'''
+
+[[rows]]
+id = "B2_record_colour_only"
+description = "backfill record: do not record a colour-only commit, so a run that only coloured leaves no session record"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''    if placed.added <= 0 and not placed.coloured:'''
+new = '''    if placed.added <= 0:'''
+
+[[rows]]
+id = "B3_member_order_isdigit"
+description = "backfill _member_order: sort every id as an int, so a non-numeric id raises and takes the plan down"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''        content_ids, key=lambda c: (0, int(c), "") if str(c).isdigit() else (1, 0, str(c))'''
+new = '''        content_ids, key=lambda c: (0, int(c), "")'''
+
+[[rows]]
+id = "N1_restamp_id_text"
+description = "native _restamp: do not coerce the minted ID to text, so a colour on an existing row cannot flush beside a new one"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py", "tests/test_intake_land_hearts_native.py"]
+old = '''    content.ID = str(content.ID)'''
+new = '''    content.ID = content.ID'''
+
+[[rows]]
+id = "N2_favorites_plan_colour_read"
+description = "native _favorites_plan: read the colour with no Pink guard, so an empty Pink id reaches sort_rows"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py", "tests/test_intake_land_hearts_native.py"]
+old = '''    if pink and joining:'''
+new = '''    if joining:'''
+
+[[rows]]
+id = "N3_landing_colour_owned"
+description = "native apply: drop the owned hearts from the colour set, so an owned heart is placed but not coloured"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '''                to_colour.extend(plan.favorites.colour)'''
+new = '''                to_colour.extend([])'''
+
+[[rows]]
+id = "N4_record_coloured"
+description = "native record: ignore the coloured count, so a landing that only coloured leaves the favourites key unrecorded"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_hearts_native.py", "tests/test_intake_land_owned_hearts_native.py"]
+old = '''    if hearts > 0 or coloured > 0:'''
+new = '''    if hearts > 0:'''
+
+[[rows]]
+id = "L1_facts_colour_count"
+description = "land_cli favorites_facts: count only the items, so the owned hearts are left out of the Pink total shown"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py", "tests/test_intake_land_hearts_native.py"]
+old = '''        facts["rows to colour Pink"] = len(plan.items) + len(plan.colour)'''
+new = '''        facts["rows to colour Pink"] = len(plan.items)'''
+
+[[rows]]
+id = "L2_notes_held"
+description = "land_cli favorites_notes: never emit the held note, so a row kept with its own colour is not reported"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '''    if placed.held:
+        notes.append(
+            {
+                "code": FAVORITES_COLOUR_HELD,'''
+new = '''    if False:
+        notes.append(
+            {
+                "code": FAVORITES_COLOUR_HELD,'''
+
+[[rows]]
+id = "L3_notes_colour_skipped"
+description = "land_cli favorites_notes: never emit the missing-Pink note, so a landing that coloured nothing says nothing"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_hearts_native.py"]
+old = '''    if placed.colour_skipped:
+        notes.append(
+            {
+                "code": colour_mod.PINK_COLOUR_MISSING,'''
+new = '''    if False:
+        notes.append(
+            {
+                "code": colour_mod.PINK_COLOUR_MISSING,'''
