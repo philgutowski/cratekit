@@ -819,7 +819,10 @@ def test_a_heart_all_favorites_holds_and_undated_holds_is_not_given_a_month(
     code, acted, refused = _acts()
 
     assert code == int(ExitCode.OK), acted
-    assert acted["outcome"] == "no_op"
+    # Since U153 the row, placed by hand with no colour, takes Pink here, and
+    # that is the whole of the write: no month is given.
+    assert acted["outcome"] == "ok" and acted["data"]["totals"]["added"] == 0
+    assert acted["data"]["totals"]["coloured"] == 1
     assert refused["cause"]["detail"]["shown"]["already placed"] == 1
     assert fake.heart_listings == 0, "nothing to place, so the account is not asked"
     assert _favorites(cfg, folder_id) == {SOURCE: ["Filed"], "Undated": ["Filed"]}
@@ -907,3 +910,111 @@ def test_a_heart_put_back_by_hand_after_a_removal_takes_its_month_and_is_not_tak
     (item,) = shown["items"]
     assert (item["into_source"], item["into_month"], item["month"]) == (False, True, "2026-11")
     assert _favorites(cfg, folder_id)["2026-11"] == ["Back Again"]
+
+
+# ---------------------------------------------------------------------------
+# U153: the backfill colours every uncoloured member of All Favorites
+# ---------------------------------------------------------------------------
+
+from tests.test_intake_land_hearts_native import PINK_ID, RED_ID, _colour_of  # noqa: E402
+
+
+def _paint(cfg, title: str, colour_id: str) -> None:
+    """A colour set by hand, or a row placed before U153 that carries none."""
+    import sqlite3
+
+    conn = sqlite3.connect(cfg.library.db_path)
+    try:
+        conn.execute("UPDATE djmdContent SET ColorID = ? WHERE Title = ?", (colour_id, title))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_the_backfill_colours_the_members_placed_before_it_and_holds_a_coloured_one(
+    native_library, silence, monkeypatch
+):
+    cfg, _root_id = native_library
+    folder_id, _source_id = _home(cfg)
+    _landed_hearts(cfg, silence, {"Same Girl": None, "Fractals": None, "Find My Way": None})
+    fake = _account(monkeypatch, {"Same Girl": SEP, "Fractals": SEP, "Find My Way": SEP})
+    code, acted, _refused = _acts()
+    assert code == int(ExitCode.OK), acted
+    assert acted["data"]["totals"]["coloured"] == 3
+    assert all(_colour_of(cfg, title) == PINK_ID for title in ("Same Girl", "Fractals", "Find My Way"))
+    # As the library stood before this unit: placed, and no colour on two, Red on one.
+    _paint(cfg, "Same Girl", "0")
+    _paint(cfg, "Fractals", "")
+    _paint(cfg, "Find My Way", RED_ID)
+    listings = fake.heart_listings
+
+    code, acted, refused = _acts()
+
+    assert code == int(ExitCode.OK), acted
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["hearts to place"] == 0 and shown["memberships to add"] == 0
+    assert shown["rows to colour Pink"] == 2
+    assert shown["colour held"] == ["Find My Way (Red)"]
+    assert sorted((item["action"], item["title"]) for item in shown["items"]) == [
+        ("colour", "Fractals"),
+        ("colour", "Same Girl"),
+    ]
+    assert fake.heart_listings == listings, "a colour needs no account call"
+    assert (_colour_of(cfg, "Same Girl"), _colour_of(cfg, "Fractals")) == (PINK_ID, PINK_ID)
+    assert _colour_of(cfg, "Find My Way") == RED_ID
+    totals = acted["data"]["totals"]
+    assert (totals["added"], totals["coloured"], totals["colours"], totals["colour held"]) == (0, 2, 2, 1)
+    (held,) = [w for w in acted["warnings"] if w["code"] == backfill_cli.COLOUR_HELD]
+    assert held["message"].endswith("keep it: Find My Way (Red)")
+    (note,) = [w for w in acted["warnings"] if w["code"] == backfill_cli.PLACED]
+    assert "2 row(s) coloured Pink" in note["message"] and "2 placed row(s)" in note["message"]
+    # The record carries the colour as rows updated under the favourites key.
+    records = [r for r in session.records(cfg) if r.workflow == backfill.WORKFLOW]
+    assert len(records) == 2, "the first run and this one"
+    assert sorted(len(r.detail["favorites_placed"]["coloured"]) for r in records) == [2, 3]
+    assert all(r.state is session.SessionState.CLOSED for r in records)
+
+    code, acted, refused = _acts()
+
+    assert acted["outcome"] == "no_op", acted
+    assert refused["cause"]["detail"]["shown"]["rows to colour Pink"] == 0
+    assert refused["cause"]["detail"]["shown"]["items"] == []
+
+
+def test_with_no_pink_row_the_backfill_places_the_hearts_and_warns(native_library, silence, monkeypatch):
+    cfg, _root_id = native_library
+    folder_id, _source_id = _home(cfg, pink=False)
+    _landed_hearts(cfg, silence, {"Same Girl": None})
+    _account(monkeypatch, {"Same Girl": SEP})
+
+    code, acted, refused = _acts()
+
+    assert code == int(ExitCode.OK), acted
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["rows to colour Pink"].startswith("none, the library's colour table has no live row named Pink")
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Same Girl"], "2026-09": ["Same Girl"]}
+    assert _colour_of(cfg, "Same Girl") in ("", "0")
+    (note,) = [w for w in acted["warnings"] if w["code"] == backfill_cli.PINK_MISSING]
+    assert note["message"].startswith("no row is coloured: the library's colour table has no live row named Pink")
+    assert acted["data"]["totals"]["coloured"] == 0
+
+
+def test_a_member_coloured_by_hand_between_the_two_acts_is_refused_by_the_write(
+    native_library, silence, monkeypatch
+):
+    cfg, _root_id = native_library
+    _home(cfg)
+    _landed_hearts(cfg, silence, {"Same Girl": None})
+    _account(monkeypatch, {"Same Girl": SEP})
+    code, refused = drive(VERB)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    decided, _envelope = drive(["run", "decide", run_id, GATE, "approve", "--actor", "a-person"])
+    assert decided == int(ExitCode.OK)
+    _paint(cfg, "Same Girl", RED_ID)
+
+    code, acted = drive(["--run", run_id, *VERB])
+
+    assert code != int(ExitCode.OK), acted
+    assert acted["cause"]["reason"] == "decision-stale", acted["cause"]
+    assert _colour_of(cfg, "Same Girl") == RED_ID

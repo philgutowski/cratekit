@@ -256,8 +256,15 @@ def test_pink_already_hearted_is_counted_as_already(installed, monkeypatch):
 
 
 def test_pink_readers_call_trees_soft_delete_marker():
-    """The watcher named trees.soft_delete_marker; a private read would widen the pin."""
-    source_text = Path("src/cratekit/favorites/cli.py").read_text()
+    """The watcher named trees.soft_delete_marker; a private read would widen the pin.
+
+    The readers live in ``favorites/colour.py`` since U153, and the sweep's
+    shell reaches them from there, so both files are read: the one that holds
+    the readers must call the marker, and neither may read the column itself.
+    """
+    source_text = Path("src/cratekit/favorites/colour.py").read_text()
     assert "trees.soft_delete_marker" in source_text
-    assert "getattr(row, \"rb_local_deleted\"" not in source_text
-    assert "row.rb_local_deleted" not in source_text
+    for path in ("src/cratekit/favorites/colour.py", "src/cratekit/favorites/cli.py"):
+        text = Path(path).read_text()
+        assert "getattr(row, \"rb_local_deleted\"" not in text
+        assert "row.rb_local_deleted" not in text

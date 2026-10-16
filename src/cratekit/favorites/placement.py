@@ -46,6 +46,17 @@ the landing reads the date from there, which is U113's rule for what a
 playlist asked for. The backfill reads the same key and asks the account only
 for a heart listed by a build before the key existed.
 
+**A PLACED HEART IS COLOURED PINK, SINCE U153.** Pink is the author's standing
+signal that a row is a favourite, and the sweep reads it, so a heart put into
+All Favorites with no colour was a favourite the library said two things
+about. The plan reads the Pink row by name and each heart's colour on the
+planning handle, names the rows it would colour, and the write colours them
+in the same commit as the memberships, through the core writer's track colour
+policy. Only a row with no colour is coloured: a row a person coloured
+otherwise is held and named, never overwritten. A library with no live Pink
+row places the memberships, colours nothing and says so, so a colour table is
+never the reason a landing stops. See ``favorites.colour``.
+
 Layer: modules.
 """
 
@@ -56,8 +67,8 @@ from datetime import datetime
 from typing import Any, Iterable, Mapping, Sequence
 
 from cratekit.core import rb_writer, taxonomy
-from cratekit.core.cause import Remedy, refuse
-from cratekit.favorites import placeholders
+from cratekit.core.cause import CratekitError, Remedy, refuse
+from cratekit.favorites import colour, placeholders
 from cratekit.modules.outbound import source as outbound_source
 from cratekit.write import genre_favorites
 
@@ -231,22 +242,54 @@ class Placement:
     title: str = ""
     into_source: bool = True
     into_month: bool = True
+    #: Whether the row carries no colour and takes Pink with its placement (U153).
+    into_colour: bool = False
 
     @property
     def adds(self) -> int:
+        """Memberships, and only memberships: a colour is counted apart."""
         return int(self.into_source) + int(self.into_month)
 
 
 @dataclass(frozen=True, slots=True)
+class Recolour:
+    """A row already placed that carries no colour, coloured and nothing else (U153)."""
+
+    content_id: str
+    title: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class PlacementPlan:
-    """Every heart placed against one home, read on one handle."""
+    """Every heart placed against one home, read on one handle, and the colour each takes."""
 
     home: Home
     placements: tuple[Placement, ...]
+    #: The library's Pink row, or empty when the colour table has none live,
+    #: in which case ``colour_skipped`` says so and nothing is coloured.
+    pink: str = ""
+    colour_skipped: str = ""
+    #: Rows placed already that take Pink and no membership, the backfill's.
+    recolour: tuple[Recolour, ...] = ()
+    #: Rows a person coloured otherwise, named and left.
+    held: tuple[colour.Held, ...] = ()
 
     @property
     def adds(self) -> int:
         return sum(one.adds for one in self.placements)
+
+    @property
+    def to_colour(self) -> tuple[str, ...]:
+        """Every row the write colours Pink, the placed hearts first, then the recolours."""
+        if not self.pink:
+            return ()
+        rows = [one.content_id for one in self.placements if one.into_colour]
+        rows.extend(one.content_id for one in self.recolour)
+        return tuple(rows)
+
+    @property
+    def colours(self) -> int:
+        return len(self.to_colour)
 
     @property
     def creates(self) -> tuple[str, ...]:
@@ -259,14 +302,17 @@ class PlacementPlan:
 
     @property
     def writes(self) -> bool:
-        return self.adds > 0
+        return self.adds > 0 or self.colours > 0
 
     def identity(self) -> dict[str, Any]:
-        """What the digest covers: the home's rows, each month's row or its making, each heart's target state.
+        """What the digest covers: the home's rows, each month's row or its making, each heart's target state, each row's colour.
 
         THE MONTH ROWS ARE DIGESTED, found or to be made, so a month playlist
         deleted between the plan and the write is another plan and not a
-        playlist the write makes without having shown it.
+        playlist the write makes without having shown it. THE PINK ROW AND
+        THE ROWS TO COLOUR ARE DIGESTED TOO (U153), so a row coloured by hand
+        between the plan and the write is another plan, and a Pink row
+        retired between them is another colour.
         """
         return {
             "kind": "favorites-placement",
@@ -281,20 +327,47 @@ class PlacementPlan:
                     "month": one.month,
                     "source": one.into_source,
                     "into_month": one.into_month,
+                    "colour": one.into_colour,
                 }
                 for one in self.placements
             ],
+            "pink": self.pink,
+            "recolour": [one.content_id for one in self.recolour],
         }
 
 
+def read_pink(db: Any) -> tuple[str, str]:
+    """The Pink row's identifier and no message, or no identifier and why.
+
+    THE ONE REFUSAL A PLACEMENT ABSORBS: no live Pink row. The memberships are
+    still placed and the colour is skipped with the sweep's own words, since
+    an acquisition stopping on a colour table would be a workflow a DJ cannot
+    finish over a cosmetic. Anything else the read raised is the caller's
+    refusal, as it would be any writer's.
+    """
+    try:
+        return colour.pink_colour_id(db), ""
+    except CratekitError as exc:
+        if exc.cause.reason != colour.PINK_COLOUR_MISSING:
+            raise
+        return "", exc.cause.message
+
+
 def plan_placements(
-    db: Any, home: Home, hearts: Sequence[tuple[str, datetime | None, str]]
+    db: Any,
+    home: Home,
+    hearts: Sequence[tuple[str, datetime | None, str]],
+    *,
+    recolour: Sequence[tuple[str, str]] = (),
 ) -> PlacementPlan:
-    """Each heart's placement against what the home holds live.
+    """Each heart's placement against what the home holds live, and the colour it takes.
 
     ``hearts`` are ``(content id, when hearted or None, title)``, a row named
     twice folding to its first mention. What each row already has is read
     live, so a plan over a library already placed writes nothing and says so.
+    ``recolour`` are ``(content id, title)`` rows placed already whose colour
+    the caller wants read: those with none take Pink and no membership, those
+    with another colour are held, and those Pink already are nothing.
     """
     in_source = members(db, home.source_id)
     in_month: dict[str, frozenset[str]] = {}
@@ -318,7 +391,36 @@ def plan_placements(
                 into_month=key not in in_month[month],
             )
         )
-    return PlacementPlan(home=home, placements=tuple(placements))
+    pink, skipped = read_pink(db)
+    if not pink:
+        return PlacementPlan(home=home, placements=tuple(placements), colour_skipped=skipped)
+    titles = {str(content_id): title for content_id, title in recolour}
+    sorted_rows = colour.sort_rows(
+        db, pink, [*(one.content_id for one in placements), *titles]
+    )
+    takes = frozenset(sorted_rows.to_colour)
+    placements = [
+        Placement(
+            content_id=one.content_id,
+            month=one.month,
+            title=one.title,
+            into_source=one.into_source,
+            into_month=one.into_month,
+            into_colour=one.content_id in takes,
+        )
+        for one in placements
+    ]
+    return PlacementPlan(
+        home=home,
+        placements=tuple(placements),
+        pink=pink,
+        recolour=tuple(
+            Recolour(content_id=row, title=titles[row])
+            for row in sorted_rows.to_colour
+            if row in titles and row not in seen
+        ),
+        held=sorted_rows.held,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -337,6 +439,12 @@ class Placed:
     months: tuple[tuple[str, str, int], ...]
     #: The month playlists this write made, by name.
     created: tuple[str, ...]
+    #: The rows this write coloured Pink (U153).
+    coloured: tuple[str, ...] = ()
+    #: The rows a person coloured otherwise, named and left (U153).
+    held: tuple[colour.Held, ...] = ()
+    #: Why no row was coloured, when the colour table has no live Pink row (U153).
+    colour_skipped: str = ""
 
     @property
     def added(self) -> int:
@@ -347,10 +455,11 @@ class Placed:
         months = ", ".join(
             f"{name}{' (made)' if name in self.created else ''}" for name, _row, _n in self.months
         )
-        return (
+        said = (
             f"{self.added} membership(s) placed: {self.added_source} into "
             f"{self.source_name!r} and the rest into {months}"
         )
+        return f"{said}; {len(self.coloured)} row(s) coloured {colour.PINK_COLOUR_NAME}"
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -361,6 +470,9 @@ class Placed:
                 {"name": name, "id": row, "added": count} for name, row, count in self.months
             ],
             "created": list(self.created),
+            "coloured": list(self.coloured),
+            "held": [{"row": one.content_id, "title": one.title, "colour": one.colour} for one in self.held],
+            "colour_skipped": self.colour_skipped,
         }
 
 
@@ -398,8 +510,17 @@ def month_row(db: Any, name: str, parent: Any) -> tuple[Any, bool]:
     return db.create_playlist(name, parent=parent), True
 
 
-def place(db: Any, home: Home, pairs: Sequence[tuple[str, str | None]]) -> Placed:
-    """Add each ``(content id, month name)`` to the source and to its month.
+def place(
+    db: Any,
+    home: Home,
+    pairs: Sequence[tuple[str, str | None]],
+    *,
+    pink: str = "",
+    to_colour: Sequence[str] = (),
+    held: Sequence[colour.Held] = (),
+    colour_skipped: str = "",
+) -> Placed:
+    """Add each ``(content id, month name)`` to the source and to its month, and colour ``to_colour`` Pink.
 
     A PAIR WITH NO MONTH JOINS THE SOURCE ALONE: a heart whose job froze no
     date key is a heart all the same, and its month is the backfill's to read
@@ -412,6 +533,12 @@ def place(db: Any, home: Home, pairs: Sequence[tuple[str, str | None]]) -> Place
     playlist is found live by name under the folder or made. The memberships
     go through :func:`rb_writer.add_memberships`, which owns "only when
     absent", so the same heart twice is one membership.
+
+    THE COLOUR IS THE PLAN'S (U153): the rows named in ``to_colour`` take
+    ``pink``, each read again here and left alone when its colour is no
+    longer unset, through :func:`colour.write_pink`, which owns "only when
+    unset". With no ``pink`` nothing is coloured, which is the plan's answer
+    for a library whose colour table has no live Pink row.
     """
     source = _live_row(db, home.source_id, f"the playlist {home.source_name!r}")
     parent = None
@@ -431,12 +558,18 @@ def place(db: Any, home: Home, pairs: Sequence[tuple[str, str | None]]) -> Place
             created.append(month)
         count = len(rb_writer.add_memberships(db, row, ids))
         written.append((month, str(row.ID), count))
+    coloured: tuple[str, ...] = ()
+    if pink and to_colour:
+        coloured = colour.write_pink(db, pink, [str(row) for row in to_colour])
     return Placed(
         source_name=home.source_name,
         source_id=str(source.ID),
         added_source=added_source,
         months=tuple(written),
         created=tuple(created),
+        coloured=coloured,
+        held=tuple(held),
+        colour_skipped=colour_skipped,
     )
 
 
@@ -447,6 +580,7 @@ __all__ = [
     "Placement",
     "PlacementPlan",
     "RECORD_KEY",
+    "Recolour",
     "SOURCE_MISSING",
     "filed",
     "members",
@@ -454,6 +588,7 @@ __all__ = [
     "place",
     "members_marked_removed",
     "plan_placements",
+    "read_pink",
     "resolve_home",
     "source_name",
 ]

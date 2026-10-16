@@ -81,8 +81,37 @@ def hearts_swept(
     return job
 
 
-def _home(cfg: config.Config, *, folder: bool = True) -> tuple[str, str]:
-    """The Favorites folder holding an empty All Favorites, as the source system left it."""
+#: The colour rows a real library carries, two of them: the one the placement
+#: writes and one a person might choose instead (U153).
+PINK_ID = "1"
+RED_ID = "2"
+
+
+def _colours(cfg: config.Config, *, pink: bool = True) -> None:
+    """The colour table as rekordbox ships it, Pink and Red, or Red alone."""
+    from pyrekordbox.db6 import tables
+
+    from tests.test_rb_writer_db import _row
+
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        have = {str(row.ID) for row in handle.get_color()}
+        if pink and PINK_ID not in have:
+            handle.session.add(
+                _row(tables.DjmdColor, ID=PINK_ID, ColorCode=1, SortKey=1, Commnt="Pink")
+            )
+        if RED_ID not in have:
+            handle.session.add(
+                _row(tables.DjmdColor, ID=RED_ID, ColorCode=2, SortKey=2, Commnt="Red")
+            )
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+
+
+def _home(cfg: config.Config, *, folder: bool = True, pink: bool = True) -> tuple[str, str]:
+    """The Favorites folder holding an empty All Favorites, as the source system left it, and the colours."""
+    _colours(cfg, pink=pink)
     handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
     try:
         parent = handle.create_playlist_folder("Favorites") if folder else None
@@ -91,6 +120,12 @@ def _home(cfg: config.Config, *, folder: bool = True) -> tuple[str, str]:
         return ("" if parent is None else str(parent.ID)), str(row.ID)
     finally:
         rb_writer.close_db(handle)
+
+
+def _colour_of(cfg: config.Config, title: str) -> str:
+    """The colour a row reads, by title, as rekordbox would show it."""
+    ((value,),) = _query(cfg, "SELECT ColorID FROM djmdContent WHERE Title = ?", title)
+    return str(value or "")
 
 
 def _favorites(cfg: config.Config, folder_id: str) -> dict[str, list[str]]:
@@ -160,7 +195,14 @@ def test_a_hearted_file_lands_in_its_batch_all_favorites_and_a_month_made_for_it
     assert acted["data"]["totals"]["hearts placed"] == 2
     assert acted["data"]["totals"]["memberships"] == 2, "the INBOX count is the INBOX count"
     (note,) = [w for w in acted["warnings"] if w["code"] == land_cli.FAVORITES_PLACED]
-    assert note["message"] == f"2 membership(s) placed: 1 into {SOURCE!r} and the rest into 2026-11 (made)"
+    assert note["message"] == (
+        f"2 membership(s) placed: 1 into {SOURCE!r} and the rest into 2026-11 (made); "
+        f"1 row(s) coloured Pink"
+    )
+    # And the heart's row is Pink, the file beside it is not (U153).
+    assert shown["rows to colour Pink"] == 1
+    assert _colour_of(cfg, _title("Hearted")) == PINK_ID
+    assert _colour_of(cfg, _title("One")) in ("", "0")
     # In no genre Favorites: the only plain playlists named for the class are none.
     assert _query(
         cfg,
@@ -529,3 +571,26 @@ def test_the_pass_prefers_the_mention_that_knows_its_date(native_library, silenc
 
     assert (found.month, found.known) == ("2026-09", True)
 
+
+
+# ---------------------------------------------------------------------------
+# U153: the landed heart's row is Pink, or the landing says why not
+# ---------------------------------------------------------------------------
+
+
+def test_with_no_pink_row_the_landing_places_the_heart_and_warns(native_library, silence):
+    cfg, _root_id = native_library
+    folder_id, _source_id = _home(cfg, pink=False)
+    hearts_swept(cfg, {"Hearted": NOV})
+    _stage(cfg, silence, "Hearted")
+
+    acted, refused = _landed()
+
+    assert _favorites(cfg, folder_id) == {SOURCE: [_title("Hearted")], "2026-11": [_title("Hearted")]}
+    assert _colour_of(cfg, _title("Hearted")) in ("", "0")
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["rows to colour Pink"].startswith("none, the library's colour table has no live row named Pink")
+    (note,) = [w for w in acted["warnings"] if w["code"] == "favorites-pink-colour-missing"]
+    assert "crate favorites backfill colours them once the library carries Pink again" in note["message"]
+    (placed,) = [w for w in acted["warnings"] if w["code"] == land_cli.FAVORITES_PLACED]
+    assert placed["message"].endswith("; 0 row(s) coloured Pink")

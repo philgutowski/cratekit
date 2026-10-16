@@ -240,7 +240,8 @@ def test_the_plan_reads_what_each_heart_already_has_and_what_it_would_make(cfg, 
         "month": "2026-09",
         "source": False,
         "into_month": True,
-    }
+        "colour": False,
+    }, "this library seeds no Pink row, so no heart takes a colour"
 
 
 def test_a_row_named_twice_folds_to_its_first_mention(cfg, db):
@@ -384,3 +385,181 @@ def test_the_plans_digest_covers_each_months_row_found_or_to_be_made(cfg, db):
     plan = placement.plan_placements(db, home, [("1", SEP, "one"), ("2", NOV, "two")])
     assert plan.identity()["months"] == {"2026-09": str(q3.ID), "2026-11": ""}
 
+
+
+# ---------------------------------------------------------------------------
+# U153: a placed heart is coloured Pink, only when its row has no colour
+# ---------------------------------------------------------------------------
+
+PINK_ID = "1"
+RED_ID = "2"
+
+
+def _colours(db, *, pink: bool = True) -> None:
+    """The colour table as rekordbox ships it, Pink and Red, or Red alone."""
+    from pyrekordbox.db6 import tables
+
+    from tests.test_rb_writer_db import _row
+
+    if pink:
+        db.session.add(_row(tables.DjmdColor, ID=PINK_ID, ColorCode=1, SortKey=1, Commnt="Pink"))
+    db.session.add(_row(tables.DjmdColor, ID=RED_ID, ColorCode=2, SortKey=2, Commnt="Red"))
+    db.session.commit()
+
+
+def _paint(db, content_id: str, colour_id: str) -> None:
+    """A colour a person set in rekordbox."""
+    db.get_content(ID=content_id).ColorID = colour_id
+    db.session.commit()
+
+
+def _colour_of(db, content_id: str) -> str:
+    return str(getattr(db.get_content(ID=content_id), "ColorID", "") or "")
+
+
+def test_the_plan_names_each_uncoloured_heart_for_pink_and_holds_a_coloured_one(cfg, db):
+    _colours(db)
+    folder, _source = _home(db, "1", "2", "3")
+    _month(db, folder, "2026-09", "1", "2", "3")
+    _paint(db, "2", RED_ID)
+    _paint(db, "3", PINK_ID)
+    home = placement.resolve_home(db, SOURCE)
+
+    plan = placement.plan_placements(
+        db, home, [("1", SEP, "one"), ("2", SEP, "two"), ("3", SEP, "three")]
+    )
+
+    by_row = {one.content_id: one for one in plan.placements}
+    assert (by_row["1"].into_colour, by_row["2"].into_colour, by_row["3"].into_colour) == (
+        True,
+        False,
+        False,
+    )
+    assert plan.pink == PINK_ID and plan.colour_skipped == ""
+    assert plan.to_colour == ("1",) and plan.colours == 1
+    title = str(db.get_content(ID="2").Title)
+    assert [(one.content_id, one.title, one.colour) for one in plan.held] == [("2", title, "Red")]
+    # Nothing to add, one row to colour: the plan still writes.
+    assert plan.adds == 0 and plan.writes
+    identity = plan.identity()
+    assert identity["pink"] == PINK_ID and identity["recolour"] == []
+    assert [p["colour"] for p in identity["placements"]] == [True, False, False]
+
+
+def test_the_write_colours_the_planned_rows_and_only_those(cfg, db):
+    _colours(db)
+    _parent, _source = _home(db)
+    home = placement.resolve_home(db, SOURCE)
+    plan = placement.plan_placements(db, home, [("1", SEP, "one"), ("4", NOV, "four")])
+
+    placed = placement.place(db, home, [("1", "2026-09"), ("4", "2026-11")], pink=plan.pink, to_colour=plan.to_colour)
+    db.session.commit()
+
+    assert placed.coloured == ("1", "4")
+    assert (_colour_of(db, "1"), _colour_of(db, "4")) == (PINK_ID, PINK_ID)
+    assert _colour_of(db, "2") in ("", "0"), "a row the plan did not name is untouched"
+    assert placed.said().endswith("; 2 row(s) coloured Pink")
+    assert placed.to_json()["coloured"] == ["1", "4"]
+
+
+def test_a_recolour_row_takes_pink_and_no_membership(cfg, db):
+    _colours(db)
+    folder, _source = _home(db, "5", "6")
+    _month(db, folder, "2026-09", "5", "6")
+    _paint(db, "6", PINK_ID)
+    home = placement.resolve_home(db, SOURCE)
+
+    plan = placement.plan_placements(db, home, [], recolour=[("5", "five"), ("6", "six")])
+
+    assert [(one.content_id, one.title) for one in plan.recolour] == [("5", "five")]
+    assert plan.to_colour == ("5",) and plan.placements == () and plan.writes
+    assert plan.identity()["recolour"] == ["5"]
+    before = _members(db, str(_source.ID))
+    placed = placement.place(db, home, [], pink=plan.pink, to_colour=plan.to_colour)
+    db.session.commit()
+    assert placed.coloured == ("5",) and placed.added == 0
+    assert _members(db, str(_source.ID)) == before
+    assert _colour_of(db, "5") == PINK_ID
+
+
+def test_a_heart_named_as_a_heart_is_not_listed_again_as_a_recolour(cfg, db):
+    _colours(db)
+    _home(db, "1")
+    home = placement.resolve_home(db, SOURCE)
+    plan = placement.plan_placements(db, home, [("1", SEP, "one")], recolour=[("1", "one")])
+    assert plan.recolour == () and plan.to_colour == ("1",)
+
+
+def test_with_no_pink_row_the_plan_places_and_colours_nothing_and_says_why(cfg, db):
+    _colours(db, pink=False)
+    _home(db)
+    home = placement.resolve_home(db, SOURCE)
+
+    plan = placement.plan_placements(db, home, [("1", SEP, "one")], recolour=[("2", "two")])
+
+    assert plan.pink == "" and "no live row named Pink" in plan.colour_skipped
+    assert plan.to_colour == () and plan.colours == 0 and plan.recolour == ()
+    assert plan.adds == 2 and plan.writes, "the memberships are still placed"
+    assert plan.identity()["pink"] == ""
+    placed = placement.place(db, home, [("1", "2026-09")], pink=plan.pink, to_colour=("1",))
+    db.session.commit()
+    assert placed.coloured == () and _colour_of(db, "1") in ("", "0")
+    assert placed.said().endswith("; 0 row(s) coloured Pink")
+
+
+def test_a_colour_read_that_is_not_the_missing_row_is_the_callers_refusal(cfg, db, monkeypatch):
+    from cratekit.core.cause import refuse
+
+    def broken(_db):
+        raise refuse("library-database-missing", "gone", origin=("favorites", "colour"))
+
+    monkeypatch.setattr(placement.colour, "pink_colour_id", broken)
+    _home(db)
+    home = placement.resolve_home(db, SOURCE)
+    with pytest.raises(CratekitError) as caught:
+        placement.plan_placements(db, home, [("1", SEP, "one")])
+    assert caught.value.cause.reason == "library-database-missing"
+
+
+def test_the_write_leaves_a_row_coloured_by_hand_after_the_plan(cfg, db):
+    _colours(db)
+    _home(db)
+    home = placement.resolve_home(db, SOURCE)
+    plan = placement.plan_placements(db, home, [("1", SEP, "one")])
+    assert plan.to_colour == ("1",)
+    _paint(db, "1", RED_ID)
+
+    placed = placement.place(db, home, [("1", "2026-09")], pink=plan.pink, to_colour=plan.to_colour)
+    db.session.commit()
+
+    assert placed.coloured == () and _colour_of(db, "1") == RED_ID
+
+
+def test_a_row_coloured_by_hand_between_two_plans_moves_the_digest(cfg, db):
+    from cratekit.cli.output import digest_of
+
+    _colours(db)
+    _home(db)
+    home = placement.resolve_home(db, SOURCE)
+    first = digest_of(placement.plan_placements(db, home, [("1", SEP, "one")]).identity())
+    _paint(db, "1", RED_ID)
+    second = digest_of(placement.plan_placements(db, home, [("1", SEP, "one")]).identity())
+    assert first != second
+
+
+def test_the_colour_module_sorts_rows_by_what_they_carry(cfg, db):
+    from cratekit.favorites import colour
+
+    _colours(db)
+    _paint(db, "2", RED_ID)
+    _paint(db, "3", PINK_ID)
+
+    found = colour.sort_rows(db, PINK_ID, ["1", "2", "3", "3", "absent"])
+
+    assert found.to_colour == ("1",) and found.already == ("3",)
+    assert [one.said() for one in found.held] == [f"{db.get_content(ID='2').Title} (Red)"]
+    assert colour.colour_name(db, "nope") == "nope"
+    assert colour.is_uncoloured(None) and colour.is_uncoloured("0") and not colour.is_uncoloured("1")
+    assert colour.write_pink(db, PINK_ID, ["1", "2", "3", "absent"]) == ("1",)
+    db.session.commit()
+    assert (_colour_of(db, "1"), _colour_of(db, "2")) == (PINK_ID, RED_ID)

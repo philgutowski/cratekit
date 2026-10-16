@@ -427,3 +427,57 @@ def test_an_owned_heart_placed_by_hand_between_the_two_acts_makes_the_answer_sta
     assert code != int(ExitCode.OK), acted
     assert acted["cause"]["reason"] == "decision-stale", acted["cause"]
     assert _favorites(cfg, folder_id) == {SOURCE: ["Owned"]}, "nothing was written"
+
+
+# ---------------------------------------------------------------------------
+# U153: an owned heart takes Pink, one a person coloured keeps it
+# ---------------------------------------------------------------------------
+
+from tests.test_intake_land_hearts_native import PINK_ID, RED_ID, _colour_of  # noqa: E402
+
+
+def test_an_owned_heart_is_coloured_pink_and_one_a_person_coloured_is_held(native_library, silence):
+    import sqlite3
+
+    cfg, _root_id = native_library
+    folder_id, _source_id = _home(cfg)
+    _owned(cfg, silence, "Owned")
+    chosen = _owned(cfg, silence, "Chosen")
+    conn = sqlite3.connect(cfg.library.db_path)
+    conn.execute("UPDATE djmdContent SET ColorID = ? WHERE ID = ?", (RED_ID, chosen))
+    conn.commit()
+    conn.close()
+    hearts_swept(cfg, {"Owned": NOV, "Chosen": NOV})
+
+    code, acted, refused = _two_acts(LAND)
+
+    assert code == int(ExitCode.OK), acted
+    assert sorted(_favorites(cfg, folder_id)[SOURCE]) == ["Chosen", "Owned"]
+    assert (_colour_of(cfg, "Owned"), _colour_of(cfg, "Chosen")) == (PINK_ID, RED_ID)
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["rows to colour Pink"] == 1
+    # The held line reads the row's own title, which is the bare tag here.
+    assert shown["colour held"] == ["Chosen (Red)"]
+    (note,) = [w for w in acted["warnings"] if w["code"] == land_cli.FAVORITES_PLACED]
+    assert "1 row(s) coloured Pink" in note["message"]
+    (held,) = [w for w in acted["warnings"] if w["code"] == land_cli.FAVORITES_COLOUR_HELD]
+    assert held["message"].endswith("keep it: Chosen (Red)")
+
+
+def test_an_owned_heart_beside_a_landed_file_takes_pink_in_the_same_commit(native_library, silence):
+    cfg, _root_id = native_library
+    _home(cfg)
+    _owned(cfg, silence, "Owned")
+    hearts_swept(cfg, {"Owned": SEP, "Fresh": NOV})
+    _stage(cfg, silence, "Fresh")
+
+    code, acted, refused = _two_acts(LAND)
+
+    assert code == int(ExitCode.OK), acted
+    assert (_colour_of(cfg, "Owned"), _colour_of(cfg, "Fresh")) == (PINK_ID, PINK_ID)
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["rows to colour Pink"] == 2
+    (record,) = [r for r in session.records(cfg) if "favorites_placed" in r.detail]
+    assert sorted(record.detail["favorites_placed"]["coloured"]) == sorted(
+        str(row) for (row,) in _query(cfg, "SELECT ID FROM djmdContent WHERE Title IN ('Probe - Owned', 'Fresh', 'Owned')")
+    )

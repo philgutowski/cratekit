@@ -49,7 +49,7 @@ from cratekit.acquire import match, match_cli
 from cratekit.cli.output import digest_of
 from cratekit.core import config, convergence, jobs, rb_writer, session, snapshot, tree_registry
 from cratekit.core.cause import CratekitError, refuse
-from cratekit.favorites import placeholders, placement
+from cratekit.favorites import colour, placeholders, placement
 from cratekit.intake import account_playlists, batch_name, native
 from cratekit.intake import cli as intake_cli
 from cratekit.label import catalogue
@@ -220,14 +220,35 @@ class Gathered:
     #: Hearts the library owns that All Favorites and a dated playlist beside
     #: it already hold: counted, never listed, nothing to write.
     already: int = 0
+    #: Every live member of the source with its title, for the colour read
+    #: (U153): a member with no colour takes Pink and no membership.
+    members: tuple[tuple[str, str], ...] = ()
+
+
+def source_members(db: Any, home: placement.Home) -> tuple[tuple[str, str], ...]:
+    """Every live member of the source playlist with its title, in row order.
+
+    THE ROWS THE BACKFILL COLOURS WITHOUT A JOB (U153): a member of All
+    Favorites is a favourite whatever put it there, a landing, the source
+    system or a hand, so the colour read covers every one, and asks the
+    account nothing, since the row's membership is the whole of the claim.
+    """
+    found: list[tuple[str, str]] = []
+    for content_id in sorted(placement.members(db, home.source_id), key=int):
+        row = db.get_content(ID=content_id)
+        if row is None:
+            continue
+        found.append((content_id, str(getattr(row, "Title", "") or "")))
+    return tuple(found)
 
 
 def gather(cfg: config.Config, db: Any, *, home: placement.Home) -> Gathered:
     """Every owned heart to place with its row and its date, and what was left aside."""
     rows, unreadable = carried(cfg)
     located = owned_paths(cfg, rows)
+    members = source_members(db, home)
     if not located:
-        return Gathered(hearts=(), asked=0, unreadable=unreadable)
+        return Gathered(hearts=(), asked=0, unreadable=unreadable, members=members)
     by_path = native.content_ids_for(db, cfg, [path for _row, path in located])
     in_source = placement.members(db, home.source_id)
     filed = placement.filed(db, home)
@@ -263,7 +284,12 @@ def gather(cfg: config.Config, db: Any, *, home: placement.Home) -> Gathered:
         candidates.append(heart)
     if not candidates:
         return Gathered(
-            hearts=(), asked=0, unreadable=unreadable, taken_back=tuple(taken), already=already
+            hearts=(),
+            asked=0,
+            unreadable=unreadable,
+            taken_back=tuple(taken),
+            already=already,
+            members=members,
         )
     listing = listed(cfg)
     hearts: list[OwnedHeart] = []
@@ -297,6 +323,7 @@ def gather(cfg: config.Config, db: Any, *, home: placement.Home) -> Gathered:
         taken_back=tuple(taken),
         uncounted=not listing.whole and listing.short is None,
         already=already,
+        members=members,
     )
 
 
@@ -369,6 +396,9 @@ class BackfillPlan:
     uncounted: bool = False
     #: Owned hearts already in All Favorites and a dated playlist, not listed.
     already: int = 0
+    #: The source's members the colour read covered, carried so the replan
+    #: reads the same rows' colour again rather than walking the playlist (U153).
+    recolour: tuple[tuple[str, str], ...] = ()
 
     @property
     def undated(self) -> int:
@@ -407,6 +437,7 @@ def plan(cfg: config.Config, db: Any, *, source: str) -> BackfillPlan:
         taken_back=found.taken_back,
         uncounted=found.uncounted,
         already=found.already,
+        recolour=found.members,
     )
 
 
@@ -443,9 +474,13 @@ def _planned(
     taken_back: Sequence[OwnedHeart] = (),
     uncounted: bool = False,
     already: int = 0,
+    recolour: Sequence[tuple[str, str]] = (),
 ) -> BackfillPlan:
     placements = placement.plan_placements(
-        db, home, [(one.content_id, one.hearted, one.title) for one in hearts]
+        db,
+        home,
+        [(one.content_id, one.hearted, one.title) for one in hearts],
+        recolour=recolour,
     )
     planned = BackfillPlan(
         hearts=tuple(hearts),
@@ -457,6 +492,7 @@ def _planned(
         taken_back=tuple(taken_back),
         uncounted=uncounted,
         already=already,
+        recolour=tuple(recolour),
     )
     return replace(planned, digest=digest_of(planned.identity()))
 
@@ -466,8 +502,9 @@ def replan(db: Any, approved: BackfillPlan, *, source: str) -> BackfillPlan:
 
     THE HEARTS ARE NOT GATHERED AGAIN: they are what was approved, and the
     walk that found them is minutes on a real library. What can move between
-    the approval and the write is the home and what it holds, and that is
-    what the digest covers.
+    the approval and the write is the home and what it holds, and each row's
+    colour (U153), and that is what the digest covers: the rows whose colour
+    is read are the approved plan's, their colour is read again here.
     """
     return _planned(
         db,
@@ -480,6 +517,7 @@ def replan(db: Any, approved: BackfillPlan, *, source: str) -> BackfillPlan:
         taken_back=approved.taken_back,
         uncounted=approved.uncounted,
         already=approved.already,
+        recolour=approved.recolour,
     )
 
 
@@ -503,17 +541,26 @@ def payload(planned: BackfillPlan, cfg: config.Config) -> dict[str, Any]:
                 "month": one.month,
                 "into_source": one.into_source,
                 "into_month": one.into_month,
+                "into_colour": one.into_colour,
                 "dated_by": heart.dated_by,
                 "job": heart.job_id,
             }
         )
+    # THE ROWS PLACED ALREADY THAT TAKE PINK (U153), one item each, so the
+    # screen lists every row the write touches and not only the hearts.
+    items.extend(
+        {"action": "colour", "row": one.content_id, "title": one.title}
+        for one in planned.placements.recolour
+    )
     return {
         "digest": planned.digest,
         "items": items,
         "totals": {
-            "count": len(items),
+            "count": len(planned.hearts),
             "adds": planned.placements.adds,
             "creates": len(planned.placements.creates),
+            "colours": planned.placements.colours,
+            "colour held": len(planned.placements.held),
             "undated": planned.undated,
             "dates from the account": planned.asked,
             "held back": len(planned.held_back),
@@ -537,10 +584,15 @@ def facts(planned: BackfillPlan) -> dict[str, Any]:
         "by month": [f"{month}: {count}" for month, count in planned.by_month.items()],
         "memberships to add": planned.placements.adds,
         "month playlists to create": list(planned.placements.creates),
+        "rows to colour Pink": planned.placements.colours,
         "undated": planned.undated,
         "dates asked of the account": planned.asked,
         "already placed": planned.already,
     }
+    if planned.placements.colour_skipped:
+        facts["rows to colour Pink"] = f"none, {planned.placements.colour_skipped}"
+    if planned.placements.held:
+        facts["colour held"] = [one.said() for one in planned.placements.held]
     if planned.held_back:
         why = (
             f"{planned.withheld} withheld by the provider"
@@ -589,14 +641,22 @@ class Backfilled:
 def _record_backfill_commit(
     record: session.SessionRecord, placed: placement.Placed, cfg: config.Config
 ) -> None:
-    """Record the commit on the session, as rows created under the favourites key."""
-    if placed.added <= 0:
+    """Record the commit on the session, memberships created and rows coloured under the favourites key."""
+    if placed.added <= 0 and not placed.coloured:
         return
     record.detail[placement.PLACED_KEY] = placed.to_json()
     session.record_commit(
         record,
         placement.RECORD_KEY,
-        session.ChangeSummary((session.TreeChange(tree=placement.RECORD_KEY, created=placed.added),)),
+        session.ChangeSummary(
+            (
+                session.TreeChange(
+                    tree=placement.RECORD_KEY,
+                    created=placed.added,
+                    updated=len(placed.coloured),
+                ),
+            )
+        ),
         cfg,
     )
 
@@ -623,6 +683,16 @@ def _read_back(db: Any, placed: placement.Placed, planned: BackfillPlan) -> tupl
         gone = sorted(wanted - held)
         if gone:
             problems.append(f"{name!r} lacks {len(gone)} row(s): {', '.join(gone)}")
+    # AND EVERY ROW THE PLAN COLOURS READS PINK (U153), by the row, so a
+    # colour the policy declined or the commit dropped is a disagreement.
+    pink = planned.placements.pink
+    grey = [
+        row
+        for row in planned.placements.to_colour
+        if str(getattr(colour.find_row(db, row), colour.COLUMN, "") or "") != pink
+    ]
+    if grey:
+        problems.append(f"{len(grey)} row(s) do not read Pink: {', '.join(grey)}")
     return tuple(problems)
 
 
@@ -683,7 +753,15 @@ def apply(
         snapshot.assert_verified(capture)
         placed: placement.Placed | None = None
         try:
-            placed = placement.place(db, planned.placements.home, pairs)
+            placed = placement.place(
+                db,
+                planned.placements.home,
+                pairs,
+                pink=planned.placements.pink,
+                to_colour=planned.placements.to_colour,
+                held=planned.placements.held,
+                colour_skipped=planned.placements.colour_skipped,
+            )
             rb_writer.commit_guarded(db)
         except BaseException:
             trees._rollback_quietly(db)
@@ -691,7 +769,7 @@ def apply(
                 _record_backfill_commit(record, placed, cfg)
             raise
         _record_backfill_commit(record, placed, cfg)
-        if placed.added:
+        if placed.added or placed.coloured:
             convergence.record_fingerprint(cfg, db)
         disagreements = _read_back(db, placed, planned)
         session_id = record.session_id
@@ -734,4 +812,5 @@ __all__ = [
     "plan",
     "plan_owned",
     "replan",
+    "source_members",
 ]

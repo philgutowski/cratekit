@@ -47,6 +47,7 @@ from cratekit.core import analysis_store, config, jobs, rb_writer, session
 from cratekit.core.cause import CratekitError, Outcome, Remedy, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.favorites import backfill, placement
+from cratekit.favorites import colour as colour_mod
 from cratekit.intake import account_playlists, batch_name, ingest, landing, native, set_playlist
 from cratekit.intake import cli as intake_cli
 from cratekit.write import metadata_cli
@@ -63,6 +64,8 @@ FAVORITES = "favorites"
 #: The notes a native landing carries about its hearts (U120).
 FAVORITES_PLACED = "favorites-placed"
 FAVORITES_SKIPPED = "favorites-placement-skipped"
+#: A heart's row a person coloured otherwise, left and named (U153).
+FAVORITES_COLOUR_HELD = "favorites-colour-held"
 
 #: The two gates, one per medium. The xml one answers inline as it always has;
 #: the native one is explicit, because a content row in the collection is a
@@ -830,6 +833,14 @@ def favorites_facts(plan: native.FavoritesPlan) -> dict[str, Any]:
             f"{plan.unknown} file(s) whose job froze no date, which join "
             f"{plan.source_name!r} here and take their month from crate favorites backfill"
         )
+    # THE COLOUR (U153): every landed heart's row and each uncoloured owned
+    # heart takes Pink, a row a person coloured is held, no Pink row is said.
+    if plan.colour_skipped:
+        facts["rows to colour Pink"] = f"none, {plan.colour_skipped}"
+    else:
+        facts["rows to colour Pink"] = len(plan.items) + len(plan.colour)
+    if plan.held:
+        facts["colour held"] = [one.said() for one in plan.held]
     return facts
 
 
@@ -1362,18 +1373,38 @@ def _place_owned(
     backfill.assert_read_back(done)
     placed = done.placed
     totals = {**payload["totals"], "hearts placed": placed.added}
-    return ctx.envelope(
-        data={**payload, "totals": totals},
-        warnings=[
+    warnings = [
+        {
+            "code": FAVORITES_PLACED,
+            "message": (
+                f"{placed.said()}, for {len(payload['items'])} owned heart(s); no file "
+                f"was landed; undo with a restore of session {done.session_id}"
+            ),
+        }
+    ]
+    # THE COLOUR'S NOTES (U153), the same two a landing with files carries.
+    if placed.colour_skipped:
+        warnings.append(
             {
-                "code": FAVORITES_PLACED,
+                "code": colour_mod.PINK_COLOUR_MISSING,
                 "message": (
-                    f"{placed.said()}, for {len(payload['items'])} owned heart(s); no file "
-                    f"was landed; undo with a restore of session {done.session_id}"
+                    f"no row is coloured: {placed.colour_skipped}; the hearts are placed "
+                    f"all the same, and crate favorites backfill colours them once the "
+                    f"library carries Pink again"
                 ),
             }
-        ],
-    )
+        )
+    if placed.held:
+        warnings.append(
+            {
+                "code": FAVORITES_COLOUR_HELD,
+                "message": (
+                    f"{len(placed.held)} row(s) carry a colour a person chose and keep it: "
+                    + "; ".join(one.said() for one in placed.held)
+                ),
+            }
+        )
+    return ctx.envelope(data={**payload, "totals": totals}, warnings=warnings)
 
 
 def favorites_notes(payload: dict, collection: native.NativeLanded) -> list[dict[str, str]]:
@@ -1405,7 +1436,31 @@ def favorites_notes(payload: dict, collection: native.NativeLanded) -> list[dict
     placed = collection.favorites
     if placed is None:
         return []
-    return [{"code": FAVORITES_PLACED, "message": placed.said()}]
+    notes = [{"code": FAVORITES_PLACED, "message": placed.said()}]
+    # THE COLOUR'S OWN NOTES (U153), from what the write knew, so the apply
+    # reports the held rows and the missing Pink row the gate screen showed.
+    if placed.colour_skipped:
+        notes.append(
+            {
+                "code": colour_mod.PINK_COLOUR_MISSING,
+                "message": (
+                    f"no row is coloured: {placed.colour_skipped}; the hearts are "
+                    f"placed all the same, and crate favorites backfill colours them "
+                    f"once the library carries Pink again"
+                ),
+            }
+        )
+    if placed.held:
+        notes.append(
+            {
+                "code": FAVORITES_COLOUR_HELD,
+                "message": (
+                    f"{len(placed.held)} row(s) carry a colour a person chose and keep it: "
+                    + "; ".join(one.said() for one in placed.held)
+                ),
+            }
+        )
+    return notes
 
 
 def _native_split(
