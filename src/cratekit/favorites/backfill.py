@@ -234,12 +234,24 @@ def source_members(db: Any, home: placement.Home) -> tuple[tuple[str, str], ...]
     account nothing, since the row's membership is the whole of the claim.
     """
     found: list[tuple[str, str]] = []
-    for content_id in sorted(placement.members(db, home.source_id), key=int):
+    for content_id in _member_order(placement.members(db, home.source_id)):
         row = db.get_content(ID=content_id)
         if row is None:
             continue
         found.append((content_id, str(getattr(row, "Title", "") or "")))
     return tuple(found)
+
+
+def _member_order(content_ids: Iterable[str]) -> list[str]:
+    """A stable order over content ids that does not assume they are numeric.
+
+    rekordbox numbers content rows, so a numeric sort reads naturally, but a
+    non-numeric id must not take the whole plan down with a ``ValueError``: a
+    numeric id sorts by its value, anything else sorts after, by its text.
+    """
+    return sorted(
+        content_ids, key=lambda c: (0, int(c), "") if str(c).isdigit() else (1, 0, str(c))
+    )
 
 
 def gather(cfg: config.Config, db: Any, *, home: placement.Home) -> Gathered:
@@ -250,7 +262,9 @@ def gather(cfg: config.Config, db: Any, *, home: placement.Home) -> Gathered:
     if not located:
         return Gathered(hearts=(), asked=0, unreadable=unreadable, members=members)
     by_path = native.content_ids_for(db, cfg, [path for _row, path in located])
-    in_source = placement.members(db, home.source_id)
+    # THE SOURCE MEMBERS ARE READ ONCE: source_members already walked them for
+    # the colour read, so the membership set this gather needs is their ids.
+    in_source = frozenset(cid for cid, _title in members)
     filed = placement.filed(db, home)
     # THE AUTHOR'S DECISION IN REKORDBOX: a heart whose membership in the
     # source exists as removed, and is not live again, was taken out by hand,

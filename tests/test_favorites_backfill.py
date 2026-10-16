@@ -1018,3 +1018,9 @@ def test_a_member_coloured_by_hand_between_the_two_acts_is_refused_by_the_write(
     assert code != int(ExitCode.OK), acted
     assert acted["cause"]["reason"] == "decision-stale", acted["cause"]
     assert _colour_of(cfg, "Same Girl") == RED_ID
+
+
+def test_member_order_is_numeric_and_tolerates_a_non_numeric_id():
+    """U153 review: a non-numeric content id must not take the whole plan down."""
+    assert backfill._member_order(["10", "2", "1"]) == ["1", "2", "10"]
+    assert backfill._member_order(["2", "odd", "1"]) == ["1", "2", "odd"]

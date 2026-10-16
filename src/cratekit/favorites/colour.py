@@ -97,24 +97,21 @@ def is_uncoloured(value: Any) -> bool:
 
 
 def find_row(db: Any, content_id: str) -> Any | None:
-    """The content row, the instance the session already holds first, else loaded.
+    """The content row, a pending-insert instance the session holds first, else loaded.
 
-    THE SESSION'S OWN INSTANCE WINS, because a landing colours rows it made in
-    this same commit, which the binding minted with a numeric identifier, and
-    a lookup by the string form loads a second instance of the same row under
-    a second key. Two instances of one row in one flush cannot be ordered by
-    primary key and the commit fails inside the binding. So a row the session
-    holds, new or loaded, is matched on the text of its identifier, and the
-    query is asked only for a row the session has never seen.
+    THE SESSION'S PENDING INSERTS ARE CHECKED FIRST, because a landing colours
+    rows it made in this same commit, which the binding minted and which no
+    query can reach until the flush. Only ``session.new`` is walked, never the
+    whole identity map: a row already loaded is returned by ``get_content``
+    itself, since a get by primary key hands back the session's own instance,
+    so setting its colour dirties the row the flush will write. Walking the
+    identity map as well made a backfill over a large source quadratic, each of
+    N lookups scanning a map that had grown to N, for no row the query misses.
     """
     wanted = str(content_id)
     session = getattr(db, "session", None)
     if session is not None:
-        held = list(getattr(session, "new", ()))
-        identity_map = getattr(session, "identity_map", None)
-        if identity_map is not None:
-            held.extend(identity_map.values())
-        for row in held:
+        for row in getattr(session, "new", ()):
             table = getattr(getattr(row, "__table__", None), "name", "")
             if table == rb_writer.CONTENT_TABLE and str(getattr(row, "ID", "")) == wanted:
                 return row
