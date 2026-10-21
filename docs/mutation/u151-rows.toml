@@ -1,0 +1,165 @@
+name = "u151"
+pass_kind = "light"
+
+[[rows]]
+id = "O1_owner_filter_dropped"
+description = "a card on this project number under another owner counts as this board's"
+file = "scripts/board.py"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+surface = "maintainer"
+old = '''                if login.lower() != owner.lower():
+                    continue
+'''
+new = '''                pass
+'''
+
+[[rows]]
+id = "O2_owner_case_sensitive"
+description = "the owner match becomes case sensitive"
+file = "scripts/board.py"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+surface = "maintainer"
+old = '''                if login.lower() != owner.lower():'''
+new = '''                if login != owner:'''
+
+[[rows]]
+id = "N1_number_filter_dropped"
+description = "a card on another project of the same owner counts as this board's"
+file = "scripts/board.py"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+surface = "maintainer"
+old = '''                if str(project.get("number")) != PROJECT_NUMBER:
+                    continue
+'''
+new = '''                pass
+'''
+
+[[rows]]
+id = "M1_membership_count_dropped"
+description = "an issue whose memberships come back short is trusted"
+file = "scripts/board.py"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+surface = "maintainer"
+old = '''            short_of_count(
+                memberships["nodes"], memberships.get("totalCount"),
+                f"#{issue['number']} project membership",
+            )
+'''
+new = ''''''
+
+[[rows]]
+id = "M2_issue_count_dropped"
+description = "an issue read shorter than the repository count is trusted"
+file = "scripts/board.py"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+surface = "maintainer"
+old = '''    short_of_count(seen, total, "project membership")
+'''
+new = ''''''
+
+[[rows]]
+id = "C1_no_cursor_trusted"
+description = "a page that says more and gives no cursor is followed from the start again"
+file = "scripts/board.py"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+surface = "maintainer"
+old = '''        if not after:
+            raise Truncated("the project membership read said there was more and gave no cursor")
+'''
+new = ''''''
+
+[[rows]]
+id = "C2_page_bound_short"
+description = "the page bound drops its last page, a read of 317 issues refused"
+file = "scripts/board.py"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+surface = "maintainer"
+old = '''    for _ in range(READ_LIMIT // 100 + 1):'''
+new = '''    for _ in range(READ_LIMIT // 100):'''
+
+[[rows]]
+id = "F1_cursor_typed"
+description = "the cursor goes as -F, which gh would type"
+file = "scripts/board.py"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+surface = "maintainer"
+old = '''            args += ["-f", f"after={after}"]'''
+new = '''            args += ["-F", f"after={after}"]'''
+
+[[rows]]
+id = "A1_archived_read"
+description = "archived cards are read as on the board"
+file = "scripts/board.py"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+surface = "maintainer"
+old = '''includeArchived: false'''
+new = '''includeArchived: true'''
+
+[[rows]]
+id = "U1_unblocks_always_written"
+description = "Unblocks is rewritten on every card again, the U151 cost"
+file = "scripts/board.py"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+surface = "maintainer"
+old = ''' and apply and item.get("unblocks") != unblocks:'''
+new = ''' and apply:'''
+
+[[rows]]
+id = "U2_added_card_zero"
+description = "a card sync just added reads as holding 0, so a derived 0 is never written"
+file = "scripts/board.py"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+surface = "maintainer"
+old = '''"status": None, "unblocks": None}'''
+new = '''"status": None, "unblocks": 0}'''
+
+[[rows]]
+id = "X1_next_skips_context"
+description = "next trusts the card read without asking for the project first"
+file = "scripts/board.py"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+surface = "maintainer"
+old = '''        project_context(owner)
+        items = project_items(owner)'''
+new = '''        items = project_items(owner)'''
+
+[[rows]]
+id = "X2_no_org_fallback"
+description = "the context never asks for an organization project"
+file = "scripts/board.py"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+surface = "maintainer"
+old = '''    for kind in ("user", "organization"):'''
+new = '''    for kind in ("user",):'''
+
+[[rows]]
+id = "X3_status_refusal_dropped"
+description = "a project with no Status field is not refused"
+file = "scripts/board.py"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+surface = "maintainer"
+old = '''    if not status or "options" not in status:
+        raise Fail('''
+new = '''    if False:
+        raise Fail('''
+
+[[rows]]
+id = "X4_unseen_project_trusted"
+description = "a project the token cannot see is not refused"
+file = "scripts/board.py"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+surface = "maintainer"
+old = '''    if not project:
+        raise Fail('''
+new = '''    if False:
+        raise Fail('''
+
+[[rows]]
+id = "X5_field_count_dropped"
+description = "a project whose fields come back short is trusted"
+file = "scripts/board.py"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+surface = "maintainer"
+old = '''    short_of_count(fields["nodes"], fields.get("totalCount"), "project field")
+'''
+new = ''''''
