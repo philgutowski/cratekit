@@ -6,7 +6,8 @@ drift no sync could repair because the next read dropped the same cards.
 
 The double here is `gh` itself, at the one boundary a test cannot cross, and it
 behaves the way the real one does: it pages internally and returns at most
-`--limit` rows, silently. Everything downstream, `load_issues`, `project_items`
+`--limit` rows, silently, and since U151 it serves the cards as GraphQL pages
+of the issues' own memberships. Everything downstream, `load_issues`, `project_items`
 and `reconcile`, runs for real on what it serves.
 """
 
@@ -56,7 +57,7 @@ def _items(issues: list[dict], count: int) -> list[dict]:
         {
             "id": f"item-{issue['number']}",
             "status": "Done" if issue["state"] == "CLOSED" else "Ready",
-            "content": {"number": issue["number"]},
+            "number": issue["number"],
         }
         for issue in issues[:count]
     ]
@@ -65,32 +66,78 @@ def _items(issues: list[dict], count: int) -> list[dict]:
 #: Leaves a count as the true one, as distinct from None, which drops the key.
 TRUE = object()
 
+STATUSES = ["Ready", "In Progress", "In review", "Blocked", "Attended", "Done"]
 
-def _fake_gh(issues: list[dict], items: list[dict], *, total=TRUE, issue_total=TRUE):
-    """A `gh` that honours `--limit` the way the real one does, by cutting short."""
+
+def _membership(item: dict, *, number: int = 2, login: str = "owner") -> dict:
+    """One card as the issue reads it back: its project, Status and Unblocks."""
+    unblocks = item.get("unblocks")
+    return {
+        "id": item["id"],
+        "project": {"number": number, "owner": {"login": login}},
+        "status": {"name": item["status"]} if item.get("status") else None,
+        "unblocks": None if unblocks is None else {"number": float(unblocks)},
+    }
+
+
+def _fake_gh(issues: list[dict], items: list[dict], *, total=TRUE, issue_total=TRUE, extra=None):
+    """A `gh` that honours `--limit` the way the real one does, by cutting short.
+
+    The card read is GraphQL over the issues, served a page of a hundred at a
+    time with a cursor, the way GitHub serves it. `extra` maps an issue number
+    to further memberships, another project's or another owner's.
+    """
     calls: list[tuple[str, ...]] = []
+    by_number = {item["number"]: item for item in items}
+    extra = extra or {}
 
     def gh(*args: str, parse: bool = False):
         calls.append(args)
         limit = int(args[args.index("--limit") + 1]) if "--limit" in args else None
-        if args[:2] == ("api", "graphql"):
+        query = " ".join(args)
+        if args[:2] == ("api", "graphql") and "issues { totalCount }" in query:
             # `--jq` prints the bare count, and `gh` hands back text
-            assert "issues { totalCount }" in " ".join(args)
             return str(len(issues) if issue_total is TRUE else issue_total)
-        if args[:2] == ("issue", "list"):
-            return issues[:limit]
-        if args[:2] == ("project", "item-list"):
-            served = {"items": items[:limit], "totalCount": len(items)}
+        if args[:2] == ("api", "graphql") and "projectItems" in query:
+            after = next((a.split("=", 1)[1] for a in args if a.startswith("after=")), "0")
+            start = int(after)
+            page = issues[start:start + 100]
+            nodes = []
+            for issue in page:
+                cards = [_membership(by_number[issue["number"]])] if issue["number"] in by_number else []
+                cards += extra.get(issue["number"], [])
+                nodes.append(
+                    {"number": issue["number"], "projectItems": {"totalCount": len(cards), "nodes": cards}}
+                )
+            more = start + 100 < len(issues)
+            served = {
+                "totalCount": len(issues),
+                "pageInfo": {"hasNextPage": more, "endCursor": str(start + 100) if more else None},
+                "nodes": nodes,
+            }
             if total is None:
                 del served["totalCount"]
             elif total is not TRUE:
                 served["totalCount"] = total
-            return served
-        if args[:2] == ("project", "field-list"):
-            options = [{"name": s, "id": s} for s in ("Ready", "Done", "Blocked")]
-            return {"fields": [{"name": "Status", "id": "status", "options": options}]}
-        if args[:2] == ("project", "view"):
-            return {"id": "project", "url": "https://example.invalid/project"}
+            return {"data": {"repository": {"issues": served}}}
+        if args[:2] == ("api", "graphql") and "projectV2(number" in query:
+            fields = [
+                {"name": "Status", "id": "status", "options": [{"name": s, "id": s} for s in STATUSES]},
+                {"name": "Unblocks", "id": "unblocks"},
+            ]
+            kind = "organization" if "organization(login" in query else "user"
+            project = {
+                "id": "project",
+                "url": "https://example.invalid/project",
+                "fields": {"totalCount": len(fields), "nodes": fields},
+            }
+            return {"data": {kind: {"projectV2": project}}}
+        if args[:2] == ("issue", "list"):
+            return issues[:limit]
+        if args[:2] == ("project", "item-add"):
+            return {"id": "item-added"}
+        if args[:2] in (("project", "item-edit"), ("issue", "edit")):
+            return ""
         if args[:2] == ("repo", "view"):
             return {"owner": {"login": "owner"}, "name": "repo"}
         raise AssertionError(f"the fake gh was not expecting {args}")
@@ -127,8 +174,6 @@ def test_the_old_three_hundred_limit_is_what_lost_them(board, monkeypatch):
 
     with pytest.raises(board.Truncated, match="issue read returned 300 rows"):
         board.load_issues()
-    with pytest.raises(board.Truncated, match="project item read returned 300 rows"):
-        board.project_items("owner")
 
 
 @pytest.mark.parametrize("limit", [ITEMS, ITEMS - 1])
@@ -140,8 +185,6 @@ def test_a_read_that_fills_the_limit_is_refused_by_name(board, monkeypatch, limi
 
     with pytest.raises(board.Truncated, match=f"the whole limit of {limit}"):
         board.load_issues()
-    with pytest.raises(board.Truncated, match=f"the whole limit of {limit}"):
-        board.project_items("owner")
 
 
 def test_one_row_under_the_limit_is_taken_as_whole(board, monkeypatch):
@@ -153,8 +196,8 @@ def test_one_row_under_the_limit_is_taken_as_whole(board, monkeypatch):
     assert len(board.project_items("owner")) == ITEMS
 
 
-def test_items_short_of_the_projects_own_count_are_refused(board, monkeypatch):
-    """The project's totalCount checks the read without trusting the limit."""
+def test_items_short_of_the_repositorys_own_count_are_refused(board, monkeypatch):
+    """The issue count checks the card read, which reads cards off the issues."""
     issues = _issues(ITEMS)
     monkeypatch.setattr(board, "gh", _fake_gh(issues, _items(issues, ITEMS), total=ITEMS + 1))
 
@@ -200,7 +243,7 @@ def test_an_issue_count_that_is_not_a_number_is_refused(board, monkeypatch):
         board.load_issues()
 
 
-def test_both_reads_ask_gh_for_the_limit(board, monkeypatch):
+def test_the_issue_read_asks_gh_for_the_limit_and_the_card_read_pages(board, monkeypatch):
     issues = _issues(3)
     fake = _fake_gh(issues, _items(issues, 3))
     monkeypatch.setattr(board, "gh", fake)
@@ -209,7 +252,7 @@ def test_both_reads_ask_gh_for_the_limit(board, monkeypatch):
     board.project_items("owner")
 
     limits = [call[call.index("--limit") + 1] for call in fake.calls if "--limit" in call]
-    assert limits == [str(board.READ_LIMIT)] * 2
+    assert limits == [str(board.READ_LIMIT)]
 
 
 def test_next_refuses_a_truncated_item_read_rather_than_blame_the_token(
@@ -218,6 +261,7 @@ def test_next_refuses_a_truncated_item_read_rather_than_blame_the_token(
     """`next` reads a failed item read as a token problem; a truncation is not one."""
     monkeypatch.setattr(board, "repo_slug", lambda: ("owner", "repo"))
     monkeypatch.setattr(board, "load_issues", lambda: _issues(2))
+    monkeypatch.setattr(board, "project_context", lambda owner: {})
 
     def truncated(owner):
         raise board.Truncated("cut short")
@@ -235,6 +279,7 @@ def test_next_still_names_a_token_that_cannot_read_the_board(board, monkeypatch,
     def refused(owner):
         raise board.Fail("token cannot reach the project")
 
+    monkeypatch.setattr(board, "project_context", lambda owner: {})
     monkeypatch.setattr(board, "project_items", refused)
     assert board.cmd_next(None) == 0
     assert "cannot read the project board with this token" in capsys.readouterr().out

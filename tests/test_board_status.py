@@ -7,7 +7,7 @@ card, and `sync` acting on it pulls a card out from under its build (U122).
 
 The board's own issues are fed in as data through `build_graph`, so every node
 here has the shape the real reconcile hands `derive_status`. Nothing touches the
-network: `cmd_next` runs with its three readers replaced.
+network: `cmd_next` runs with its four readers replaced.
 """
 
 from __future__ import annotations
@@ -113,6 +113,7 @@ def test_next_lists_a_held_card_as_busy_and_never_offers_it(board, monkeypatch, 
     ]
     monkeypatch.setattr(board, "repo_slug", lambda: ("owner", "repo"))
     monkeypatch.setattr(board, "load_issues", lambda: issues)
+    monkeypatch.setattr(board, "project_context", lambda owner: {})
     monkeypatch.setattr(
         board,
         "project_items",
