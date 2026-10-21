@@ -38541,3 +38541,43 @@ existing row the way it reads an owned heart's, folding an uncoloured one into
 the colour set and a coloured one into `held`, and `favorites_facts` counts
 only the rows actually to be coloured. Ledger only unless a present coloured
 hearted file is driven and shown to mislead, which would meet board bar (b).
+
+---
+
+## R-1035. The U151 board read is unmeasured on the live board, for want of a token that can see the project
+
+**Found:** at the build of #332, U151, 2026-10-21.
+
+**The mechanism.** The session that built U151 held a token that reads the
+repository but cannot resolve user project 2, so `project_context` refuses and
+the live `board.py audit` and `board.py sync` the brief asks for were not run.
+The membership query itself ran against the live repository, 324 issues for 2
+points, but every membership came back empty to that token.
+
+**Measured cost.** Not driven. The expected no drift sync is about 6 points of
+reads and no writes, against roughly 850 before, and that figure is arithmetic,
+not a reading.
+
+**Closes when:** a session holding `BOARD_TOKEN` or Phillip's own `gh` login
+runs `board.py audit`, then `board.py sync`, reading `rateLimit { remaining }`
+before and after, and the audit agrees with the old script's on the same board.
+Ledger only.
+
+---
+
+## R-1036. The U151 mutation table is unmeasured, because the driver needs a green full suite and Linux cannot give one
+
+**Found:** at the build of #332, U151, 2026-10-21.
+
+**The mechanism.** `scripts/mutate.py` refuses a batch whose full baseline is
+red, and drops an inherited `PYTEST_ADDOPTS`, so a session on Linux cannot run
+any table: 93 tests in 13 files fail there for want of `hdiutil`, `rclone` and
+macOS filesystem and FFmpeg behaviour. U151 was built on Linux, so its sixteen
+rows in `docs/mutation/u151-rows.toml` were authored and not run.
+
+**Measured cost.** Not driven. Which of the sixteen guards a test would let
+through is unknown; `docs/mutation/u151-notes.md` names the test meant to kill
+each.
+
+**Closes when:** a session on a Mac runs the table and records the result in
+`docs/mutation/u151-notes.md`. Ledger only.
