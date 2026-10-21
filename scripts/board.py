@@ -767,13 +767,6 @@ def project_context(owner: str) -> dict:
     }
 
 
-def _stored_number(value):
-    """A number field reads back as a float, compared here as the int it holds."""
-    if isinstance(value, float) and value.is_integer():
-        return int(value)
-    return value
-
-
 def project_items(owner: str) -> dict:
     """Every issue's card on the project, read from the issues, never the project.
 
@@ -817,7 +810,7 @@ def project_items(owner: str) -> dict:
                 items[issue["number"]] = {
                     "id": item["id"],
                     "status": (item.get("status") or {}).get("name"),
-                    "unblocks": _stored_number((item.get("unblocks") or {}).get("number")),
+                    "unblocks": (item.get("unblocks") or {}).get("number"),
                 }
         info = page["pageInfo"]
         if not info["hasNextPage"]:

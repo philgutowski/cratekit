@@ -298,7 +298,9 @@ def test_next_asks_for_the_project_before_trusting_an_empty_card_read(board, mon
     assert "cannot read the project board with this token" in capsys.readouterr().out
 
 
-def test_a_stored_unblocks_float_compares_as_the_int_it_holds(board):
-    assert board._stored_number(2.0) == 2
-    assert board._stored_number(None) is None
-    assert board._stored_number(2.5) == 2.5
+def test_a_project_whose_fields_come_back_short_is_refused(board, monkeypatch):
+    fields = {"totalCount": 101, "nodes": [{"name": "Status", "id": "s", "options": []}]}
+    project = {"id": "p", "url": "u", "fields": fields}
+    monkeypatch.setattr(board, "gh", lambda *a, parse=False: {"data": {"user": {"projectV2": project}}})
+    with pytest.raises(board.Truncated, match="project field read returned 1 of the 101"):
+        board.project_context("owner")
