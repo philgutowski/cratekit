@@ -700,15 +700,64 @@ def _report(problems: list[str]) -> int:
 # writing the board
 
 
+# The project and its fields, asked of the owner by number. One query, one
+# point, where `gh project field-list` and `gh project view` were a listing each
+# (U151). The owner is a user or an organization and GraphQL asks each by its
+# own field, so the user is asked first and the organization second.
+CONTEXT_QUERY = (
+    "query($login: String!, $number: Int!) { %s(login: $login) { "
+    "projectV2(number: $number) { id url fields(first: 100) { totalCount nodes { "
+    "... on ProjectV2SingleSelectField { id name options { id name } } "
+    "... on ProjectV2Field { id name } } } } } }"
+)
+
+# Each issue's own cards, a page of a hundred issues at a time. GitHub meters
+# GraphQL by the node, 5,000 points an hour for the whole account, and this
+# costs one point a page, where `gh project item-list` cost about 101 a page of
+# a hundred cards (measured 2026-10-14). Archived cards are left out, as the
+# item listing left them out: an archived card reads as not on the board and
+# `sync` adds it again, which is what it did before U151, and archiving Done
+# cards is a decision of its own.
+MEMBERSHIP_QUERY = (
+    "query($owner: String!, $name: String!, $after: String) { "
+    "repository(owner: $owner, name: $name) { "
+    "issues(first: 100, after: $after) { totalCount pageInfo { hasNextPage endCursor } "
+    "nodes { number projectItems(first: 20, includeArchived: false) { totalCount nodes { "
+    "id project { number owner { ... on User { login } ... on Organization { login } } } "
+    'status: fieldValueByName(name: "Status") { '
+    "... on ProjectV2ItemFieldSingleSelectValue { name } } "
+    'unblocks: fieldValueByName(name: "Unblocks") { '
+    "... on ProjectV2ItemFieldNumberValue { number } } } } } } } }"
+)
+
+
 def project_context(owner: str) -> dict:
-    fields = gh(
-        "project", "field-list", PROJECT_NUMBER, "--owner", owner, "--format", "json", parse=True
-    )
-    status = next(f for f in fields["fields"] if f["name"] == "Status")
-    unblocks = next((f for f in fields["fields"] if f["name"] == "Unblocks"), None)
-    project = gh(
-        "project", "view", PROJECT_NUMBER, "--owner", owner, "--format", "json", parse=True
-    )
+    project = None
+    refusals = []
+    for kind in ("user", "organization"):
+        try:
+            data = gh(
+                "api", "graphql", "-F", f"login={owner}", "-F", f"number={PROJECT_NUMBER}",
+                "-f", f"query={CONTEXT_QUERY % kind}", parse=True,
+            )
+        except Fail as refused:
+            refusals.append(str(refused))
+            continue
+        project = ((data.get("data") or {}).get(kind) or {}).get("projectV2")
+        if project:
+            break
+    if not project:
+        raise Fail(
+            f"project {PROJECT_NUMBER} of {owner} cannot be read with this token\n"
+            + "\n".join(refusals)
+        )
+    fields = project["fields"]
+    whole_fields = [f for f in fields["nodes"] if f]
+    short_of_count(fields["nodes"], fields.get("totalCount"), "project field")
+    status = next((f for f in whole_fields if f.get("name") == "Status"), None)
+    if not status or "options" not in status:
+        raise Fail(f"project {PROJECT_NUMBER} of {owner} has no single select Status field")
+    unblocks = next((f for f in whole_fields if f.get("name") == "Unblocks"), None)
     return {
         "id": project["id"],
         "url": project["url"],
@@ -719,26 +768,62 @@ def project_context(owner: str) -> dict:
 
 
 def project_items(owner: str) -> dict:
-    data = gh(
-        "project",
-        "item-list",
-        PROJECT_NUMBER,
-        "--owner",
-        owner,
-        "--limit",
-        str(READ_LIMIT),
-        "--format",
-        "json",
-        parse=True,
-    )
-    rows = whole(data["items"], "project item")
-    short_of_count(rows, data.get("totalCount"), "project item")
-    items = {}
-    for item in rows:
-        content = item.get("content") or {}
-        number = content.get("number")
-        if number is not None:
-            items[number] = {"id": item["id"], "status": item.get("status")}
+    """Every issue's card on the project, read from the issues, never the project.
+
+    A card is an issue's membership of project `PROJECT_NUMBER` owned by
+    `owner`; a membership of any other project, or of another owner's project
+    with the same number, is not this board's. Refused as `Truncated`, like the
+    issue read, when the pages come back short of the repository's own issue
+    count or an issue's memberships come back short of their count.
+    """
+    items: dict = {}
+    seen: list[int] = []
+    total = None
+    after = None
+    # A page per hundred issues, so this bound is READ_LIMIT issues, and a
+    # cursor that never ends is refused rather than followed for ever.
+    for _ in range(READ_LIMIT // 100 + 1):
+        args = [
+            "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}",
+            "-f", f"query={MEMBERSHIP_QUERY}",
+        ]
+        if after:
+            # `-f`, never `-F`: a cursor is text and `-F` would type it.
+            args += ["-f", f"after={after}"]
+        page = gh(*args, parse=True)["data"]["repository"]["issues"]
+        if total is None:
+            total = page.get("totalCount")
+        for issue in page["nodes"]:
+            seen.append(issue["number"])
+            memberships = issue["projectItems"]
+            short_of_count(
+                memberships["nodes"], memberships.get("totalCount"),
+                f"#{issue['number']} project membership",
+            )
+            for item in memberships["nodes"]:
+                project = item.get("project") or {}
+                login = (project.get("owner") or {}).get("login") or ""
+                if str(project.get("number")) != PROJECT_NUMBER:
+                    continue
+                if login.lower() != owner.lower():
+                    continue
+                items[issue["number"]] = {
+                    "id": item["id"],
+                    "status": (item.get("status") or {}).get("name"),
+                    "unblocks": (item.get("unblocks") or {}).get("number"),
+                }
+        info = page["pageInfo"]
+        if not info["hasNextPage"]:
+            break
+        after = info.get("endCursor")
+        if not after:
+            raise Truncated("the project membership read said there was more and gave no cursor")
+    else:
+        raise Truncated(
+            f"the project membership read ran past {READ_LIMIT} issues, so it is "
+            f"truncated. Raise READ_LIMIT in scripts/board.py."
+        )
+    short_of_count(seen, total, "project membership")
     return items
 
 
@@ -750,6 +835,10 @@ def cmd_next(args) -> int:
     owner, _ = repo_slug()
     graph = build_graph(load_issues())
     try:
+        # The context first: a token that cannot see the project still reads the
+        # issues' memberships, as none at all, and an empty read is not a board
+        # with nothing underway.
+        project_context(owner)
         items = project_items(owner)
     except Truncated:
         # A cut short read is not a token that cannot see the board, and the
@@ -1208,7 +1297,7 @@ def reconcile(owner: str, apply: bool, labels_only: bool = False) -> list[str]:
                     "project", "item-add", PROJECT_NUMBER, "--owner", owner,
                     "--url", url, "--format", "json", parse=True,
                 )
-                items[number] = {"id": added["id"], "status": None}
+                items[number] = {"id": added["id"], "status": None, "unblocks": None}
                 item = items[number]
             else:
                 continue
@@ -1243,11 +1332,15 @@ def reconcile(owner: str, apply: bool, labels_only: bool = False) -> list[str]:
                     for label in want_labels - has:
                         gh("issue", "edit", str(number), "--add-label", label)
 
-        if item and ctx and ctx["unblocks_field"] and apply:
+        # Written only when the stored number differs, so a sync over a board
+        # with no drift writes nothing. It used to rewrite every card on every
+        # sync, about 300 mutations a run (U151).
+        unblocks = len(node["unblocks"])
+        if item and ctx and ctx["unblocks_field"] and apply and item.get("unblocks") != unblocks:
             gh(
                 "project", "item-edit", "--id", item["id"],
                 "--project-id", ctx["id"], "--field-id", ctx["unblocks_field"],
-                "--number", str(len(node["unblocks"])),
+                "--number", str(unblocks),
             )
     return drift
 
