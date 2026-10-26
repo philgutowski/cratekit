@@ -38563,6 +38563,20 @@ runs `board.py audit`, then `board.py sync`, reading `rateLimit { remaining }`
 before and after, and the audit agrees with the old script's on the same board.
 Ledger only.
 
+**Closed 2026-10-26 on `residual/r1036-u151-mutation`.** Phillip's own `gh`
+login, which can see project 2, drove both scripts on the live board, the old
+one as `scripts/board.py` at `cb2bb7b4` run from a scratch copy. Both audits
+read 156 units, 152 done, 3 ready, 1 blocked, and both said the board matches
+the repository, so they agree. The first live audit after U151 merged found
+one drift, #332 still Ready, because the building session could not move its
+own card; `sync` corrected it. Readings of `rateLimit { remaining }`, which are
+approximate because another client was spending from the same budget during
+the run: the old audit 101 points, the new audit between 3 and 11, a no drift
+sync on the new script 6 and 8 on two runs with nothing written, and the old
+script's no drift sync about 1,240 points for the part it finished before a
+GitHub 502 stopped it in its Unblocks rewrites. The audit after that 502 read
+clean, since the old script was rewriting values the cards already held.
+
 ---
 
 ## R-1036. The U151 mutation table is unmeasured, because the driver needs a green full suite and Linux cannot give one
@@ -38581,3 +38595,9 @@ each.
 
 **Closes when:** a session on a Mac runs the table and records the result in
 `docs/mutation/u151-notes.md`. Ledger only.
+
+**Closed 2026-10-26 on `residual/r1036-u151-mutation`.** Measured on a Mac at
+`dfa1b505`: a green baseline of 14121 collected, a null control that killed 0,
+and all sixteen rows killed, each by the test the notes name, every row's
+restore verified against HEAD. The table is `docs/mutation/u151.md` and the
+notes record it.
