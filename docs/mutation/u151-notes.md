@@ -1,18 +1,22 @@
-# U151 mutation table, authored and UNMEASURED
+# U151 mutation table, measured
 
 Sixteen rows in `docs/mutation/u151-rows.toml`, a light pass on
 `scripts/board.py`, all maintainer surface. None dropped.
 
-`scripts/mutate.py docs/mutation/u151-rows.toml` refused before any row ran,
-as it should: the full baseline is not green on the Linux machine the unit was
-built on. 93 tests fail there in 13 files, every one for want of macOS tooling
-or behaviour (`hdiutil`, `rclone`, an NFD filename fixture, an FFmpeg channel
-layout), none in a board file. The driver drops an inherited `PYTEST_ADDOPTS`
-on purpose, so the platform files cannot be ignored around it, and a hand
-rolled driver is not allowed. So the table is authored and unmeasured, and a
-residual says so.
+**Measured 2026-10-26 on a Mac, closing R-1036.** All sixteen killed. The
+baseline was green at 14121 collected, the null control killed 0, every row
+collected 59 on its three file subset, and every row's restore was verified
+against HEAD. Each row was killed by the test named below; M2, U1 and X4 were
+killed by more than one. The table is `docs/mutation/u151.md`, its sidecar
+`docs/mutation/u151.json`.
 
-To measure it, on a Mac with a green suite:
+It was authored and unmeasured at the build. The unit was built on Linux,
+where 93 tests in 13 files fail for want of macOS tooling or behaviour
+(`hdiutil`, `rclone`, an NFD filename fixture, an FFmpeg channel layout), and
+`scripts/mutate.py` refuses a red full baseline and drops an inherited
+`PYTEST_ADDOPTS`, so no row could run there.
+
+To measure it again, on a Mac with a green suite:
 
     .venv/bin/python scripts/mutate.py docs/mutation/u151-rows.toml
 
