@@ -146,6 +146,13 @@ def _load(cfg: config.Config) -> dict[str, Any]:
     misses = raw.get("mirror_misses", {})
     if not isinstance(misses, Mapping):
         raise _unusable(path, "mirror_misses must be a map of content row to its miss")
+    # THE LINKS A MISS GIVES WAY TO are the ones read below, never a raw entry
+    # with no account track, which would forget the miss and link nothing.
+    linked = {
+        str(content_id)
+        for content_id, value in links.items()
+        if isinstance(value, Mapping) and value.get("remote")
+    }
     return {
         "version": LEDGER_VERSION,
         "playlists": {str(key): dict(value) for key, value in playlists.items()
@@ -205,7 +212,7 @@ def _load(cfg: config.Config) -> dict[str, Any]:
             for content_id, value in misses.items()
             if isinstance(value, Mapping)
             and isinstance(value.get("under"), list)
-            and str(content_id) not in links
+            and str(content_id) not in linked
         },
     }
 

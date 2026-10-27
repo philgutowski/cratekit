@@ -59,7 +59,7 @@ from typing import Any
 from cratekit.core import config
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.modules.outbound import ledger
-from cratekit.modules.outbound.service import RemoteAccount
+from cratekit.modules.outbound.service import UNREADABLE_CANDIDATE, RemoteAccount
 
 _ORIGIN = ("outbound", "mirror")
 
@@ -84,8 +84,9 @@ NO_ISRC = "the row carries no ISRC, in the database or in its file"
 NO_MATCH = "the account has no track this row's ISRC names"
 
 #: What a miss says when a candidate track could not be read, which is not an
-#: answer about the row, so the miss is never remembered (R-1031).
-UNREAD = "could not be read"
+#: answer about the row, so the miss is never remembered (R-1031). The
+#: adapter formats its reason from the same constant.
+UNREAD = UNREADABLE_CANDIDATE
 
 
 def title(folder: str, playlist: str) -> str:

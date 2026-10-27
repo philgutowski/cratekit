@@ -18,7 +18,7 @@ import os
 import pytest
 
 from cratekit.core import config
-from cratekit.modules.outbound import ledger, mirror
+from cratekit.modules.outbound import ledger, mirror, service
 from cratekit.organize import account_mirror, mirror_frozen
 from cratekit.organize.steps import Area
 from tests.test_label_workers import installed as installed  # noqa: PLC0414 - fixture
@@ -195,8 +195,10 @@ def test_a_miss_over_a_candidate_that_could_not_be_read_is_never_remembered(
     installed, monkeypatch
 ):
     world = World(installed, monkeypatch, unmatched=(4, 5))
+    # THE ADAPTER'S OWN WORDS, from the constant it formats its reason with.
     world.account.reasons["c4"] = (
-        "the ISRC X names 2 provider tracks, 1 could not be read and none of the rest agrees"
+        f"the ISRC X names 2 provider tracks, 1 {service.UNREADABLE_CANDIDATE} and none "
+        f"of the rest agrees"
     )
     world.account.reasons["c5"] = "the ISRC Y names 2 provider tracks and none of them agrees"
     world.mirror(folder("Techno", Low=(4, 5)))
@@ -459,3 +461,131 @@ def test_a_ledger_that_cannot_take_the_links_leaves_the_plan_standing_and_says_s
         account_mirror.FROZEN_FACT
     ]
     assert not os.path.exists(_frozen_path(installed))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 3. The review's round: each guard alone, and the frozen matches themselves
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_the_tidal_reason_for_an_unread_candidate_carries_the_words_the_mirror_reads():
+    import inspect
+
+    from cratekit.modules.outbound import tidal_account
+
+    assert mirror.UNREAD == service.UNREADABLE_CANDIDATE
+    assert "{UNREADABLE_CANDIDATE}" in inspect.getsource(tidal_account.TidalAccount._among)
+
+
+def test_the_frozen_matches_answer_a_row_the_ledger_could_not_remember(installed, monkeypatch):
+    """A miss over an unread candidate is not in the ledger; the frozen plan still holds it."""
+    world = World(installed, monkeypatch, unmatched=(4,))
+    world.account.reasons["c4"] = f"the ISRC X names 2 provider tracks, 1 {service.UNREADABLE_CANDIDATE}"
+    world.mirror(folder("Techno", Low=(1, 4)))
+    shown = _plan(world, _shown())
+    assert "c4" not in ledger.mirror_misses(installed)
+    # The candidate reads now, so a plan asking again would add the track.
+    world.account.catalog["c4"] = "r4"
+    world.account.matches.clear()
+
+    applied = _plan(world, _decided())
+
+    assert world.account.matches == []
+    assert applied.digest() == shown.digest()
+
+
+def test_the_frozen_matches_stand_over_a_link_recorded_between_the_acts(installed, monkeypatch):
+    world = World(installed, monkeypatch, unmatched=(5,))
+    world.mirror(folder("Techno", Low=(1, 5)))
+    shown = _plan(world, _shown())
+    # Another run links the row between the two acts.
+    ledger.record_mirror_links(installed, {"c5": ("r5", "ISRC00005")})
+
+    applied = _plan(world, _decided())
+    world.apply(applied)
+
+    assert applied.digest() == shown.digest()
+    assert world.held("Techno Low") == ["r1"]
+
+
+def test_rematch_on_the_run_that_answers_asks_nothing_and_says_so(installed, monkeypatch):
+    world = World(installed, monkeypatch, unmatched=(5,))
+    world.mirror(folder("Techno", Low=(1, 5)))
+    _plan(world, _shown())
+    world.account.matches.clear()
+
+    area = _plan(world, account_mirror.Run(run_id=RUN, record=True, decided=True, rematch=True))
+
+    assert world.account.matches == []
+    assert "--rematch on this run asked nothing" in area.facts[account_mirror.FROZEN_FACT]
+
+
+def test_a_coded_rows_miss_is_kept_whatever_its_file_does(installed, monkeypatch):
+    """The file is read only for a row with no code, so only then does it key the miss."""
+    world = World(installed, monkeypatch, unmatched=(3,))
+    signature = {"now": "100:1"}
+    monkeypatch.setattr(account_mirror, "file_signature", lambda _cfg: lambda _one: signature["now"])
+    world.mirror(folder("Techno", Low=(3,)))
+    world.run()
+    before = len(_asked(world))
+
+    signature["now"] = "120:2"
+    world.plan()
+
+    assert len(_asked(world)) == before
+
+
+def test_a_link_with_no_account_track_does_not_hide_a_miss(installed):
+    ledger.record_mirror_misses(installed, {"c7": ("why", ("a",))})
+    path = config.state_path("outbound_writes", installed)
+    document = json.loads(path.read_text())
+    document["mirror_links"]["c7"] = {"isrc": "X"}
+    path.write_text(json.dumps(document))
+
+    assert ledger.mirror_links(installed) == {}
+    assert ledger.mirror_misses(installed) == {"c7": ("why", ("a",))}
+
+
+def test_a_ledger_holding_a_link_and_a_miss_of_one_row_reads_the_link(installed):
+    """A document an older build or a hand left in both maps: the miss gives way."""
+    ledger.record_mirror_links(installed, {"c7": ("r7", "ISRC00007")})
+    path = config.state_path("outbound_writes", installed)
+    document = json.loads(path.read_text())
+    document["mirror_misses"]["c7"] = {"reason": "why", "under": ["a"]}
+    path.write_text(json.dumps(document))
+
+    assert ledger.mirror_misses(installed) == {}
+
+
+def test_linking_a_row_takes_its_miss_out_of_the_document(installed):
+    ledger.record_mirror_misses(installed, {"c7": ("why", ("a",))})
+
+    ledger.record_mirror_links(installed, {"c7": ("r7", "ISRC00007")})
+
+    raw = json.loads(config.state_path("outbound_writes", installed).read_text())
+    assert "c7" not in raw["mirror_misses"]
+
+
+def test_a_miss_over_a_linked_row_is_never_written_to_the_document(installed):
+    ledger.record_mirror_links(installed, {"c7": ("r7", "ISRC00007")})
+
+    ledger.record_mirror_misses(installed, {"c7": ("why", ("a",)), "c8": ("why", ("b",))})
+
+    raw = json.loads(config.state_path("outbound_writes", installed).read_text())
+    assert set(raw["mirror_misses"]) == {"c8"}
+
+
+def test_a_plan_that_cannot_be_frozen_stands_and_the_apply_plans_afresh(installed, monkeypatch):
+    world = World(installed, monkeypatch)
+    world.mirror(folder("Techno", Low=(1,)))
+    blocked = config.state_path("mirror_plans", installed)
+    blocked.parent.mkdir(parents=True, exist_ok=True)
+    blocked.write_text("a file where the directory goes", encoding="utf-8")
+
+    shown = _plan(world, _shown())
+    applied = _plan(world, _decided())
+
+    assert shown.steps[0].state == "planned"
+    assert shown.facts[account_mirror.FROZEN_FACT].startswith("not frozen (")
+    assert "so it was planned afresh" in applied.facts[account_mirror.FROZEN_FACT]
+    assert applied.digest() == shown.digest()

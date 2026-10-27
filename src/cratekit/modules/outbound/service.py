@@ -61,6 +61,11 @@ from __future__ import annotations
 
 from typing import Protocol
 
+#: The words an unmatched reason carries when a candidate track could not be
+#: read, formatted into the reason by the adapter and read by the mirror, which
+#: never remembers such a miss since it is not an answer about the row (R-1031).
+UNREADABLE_CANDIDATE = "could not be read"
+
 
 class RemoteAccount(Protocol):
     """Writes against one streaming account: adds, a retitle, and one narrow remove."""

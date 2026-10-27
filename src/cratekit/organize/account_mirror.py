@@ -420,7 +420,12 @@ def add_steps(
             f"asked again, since nothing they were asked under changed; --rematch asks them"
         )
     if frozen is not None:
-        area.facts[FROZEN_FACT] = f"rebuilt from the plan frozen on run {run.run_id}"
+        area.facts[FROZEN_FACT] = f"rebuilt from the plan frozen on run {run.run_id}" + (
+            ", whose matches stand, so --rematch on this run asked nothing; give it on "
+            "a new run to ask the remembered misses again"
+            if run.rematch
+            else ""
+        )
     elif run is not None and run.record:
         area.facts[FROZEN_FACT] = _record(cfg, run, library, matcher, unfrozen)
 

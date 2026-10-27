@@ -31,9 +31,12 @@ in both. An unknown kind is refused by name by the parser, before anything is
 read. With no ``--only`` the verb is exactly U112's.
 
 THE MIRROR'S PLAN IS FROZEN ON THE RUN THAT SHOWS ITS GATE (R-1031), and the
-run that answers rebuilds it from that record, so its digest is the one the
-person approved however the library moved between the two acts. ``--rematch``
-asks the provider again about every row the mirror remembers as unmatched.
+run that answers rebuilds it from that record, so the mirror's digest is the
+one the person approved however the library moved between the two acts. The
+other account steps are planned again as before, so a write one of them reads,
+a set landing for the sets step, can still stale the account gate.
+``--rematch`` asks the provider again about every row the mirror remembers as
+unmatched, on the run that shows the gate.
 
 Layer: modules. The builder's parameters are unannotated so this file does not
 import the CLI registry (KTD23).

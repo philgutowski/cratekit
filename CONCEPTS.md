@@ -2015,8 +2015,9 @@ under `mirrors`), which is a track the provider would not ADD, already matched.
 The library and the matches the account mirror's plan read on the organize run
 that showed its gate, written to the library's `mirror_plans` state directory
 under that run's identifier, built by R-1031. The run that answers the gate
-rebuilds the mirror from it and reads the account listing alone, so the digest
-approved is the digest applied however the library moved between the two acts.
+rebuilds the mirror from it and reads the account listing alone, so the
+mirror's digest approved is the digest applied however the library moved
+between the two acts; the area's other steps are planned again as before.
 A missing or unreadable record plans afresh and says so; `--report` writes none.
 
 *Avoid:* reading it as the run record (`runs/`), which holds the decisions and
