@@ -1172,6 +1172,31 @@ def test_without_the_frozen_plan_the_same_two_acts_are_refused_stale(world, monk
     assert done["cause"]["reason"] == "decision-stale"
 
 
+def test_a_run_resumed_with_no_account_answer_plans_the_mirror_afresh(world, monkeypatch):
+    """R-1031. Only an answered account gate rebuilds from the frozen plan.
+
+    A run resumed before its account gate is answered asks the gate again, and
+    it is shown the library as it is now, not the plan the first act froze.
+    """
+    cfg, _fake, held, _inbox, _ids = world
+    assert _answered()[0] == int(ExitCode.OK)
+    monkeypatch.setattr(rekordbox, "plan_area", _not_planned)
+    only = [*VERB, "--only", account_area.MIRROR]
+    collection.reset_cache()
+    code, refused = drive(only)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    _node(cfg, "Made After The Gate", under=_mirrored_folder(cfg), tracks=("r-one",))
+
+    collection.reset_cache()
+    code, again = drive(["--run", refused["run_id"], *only])
+
+    assert code == int(ExitCode.DECISION_REQUIRED), again
+    shown = again["cause"]["detail"]["shown"]
+    assert not shown["mirror plan frozen"].startswith("rebuilt"), shown["mirror plan frozen"]
+    planned = [item for step in shown["items"] for item in step["plan"]]
+    assert any(" Made After The Gate" in str(item.get("playlist", "")) for item in planned), planned
+
+
 def test_only_file_moves_a_marked_playlist_as_the_full_verb_does_and_then_plans_nothing(world):
     cfg, fake, held, _inbox, _ids = world
     _marked(cfg, fake, held)

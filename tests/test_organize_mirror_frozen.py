@@ -468,13 +468,9 @@ def test_a_ledger_that_cannot_take_the_links_leaves_the_plan_standing_and_says_s
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_the_tidal_reason_for_an_unread_candidate_carries_the_words_the_mirror_reads():
-    import inspect
-
-    from cratekit.modules.outbound import tidal_account
-
-    assert mirror.UNREAD == service.UNREADABLE_CANDIDATE
-    assert "{UNREADABLE_CANDIDATE}" in inspect.getsource(tidal_account.TidalAccount._among)
+def test_the_mirror_reads_the_words_the_seam_gives_an_unread_candidate():
+    """The adapter's reason is pinned by its own suite, ``1 could not be read``."""
+    assert mirror.UNREAD == service.UNREADABLE_CANDIDATE == "could not be read"
 
 
 def test_the_frozen_matches_answer_a_row_the_ledger_could_not_remember(installed, monkeypatch):
