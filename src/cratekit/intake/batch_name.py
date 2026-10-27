@@ -187,14 +187,41 @@ def source_words(
 
 
 def taken(cfg: config.Config, name: str) -> bool:
-    """Whether a batch folder of ``name`` is under the music folder.
+    """Whether a batch folder of ``name`` is under the music folder, or was shelved from it.
 
     A link of that name counts as taken whether or not it leads anywhere, since
     a landing could not make its folder there either. Asked by :func:`free` to
     choose and by the landing again under its lock, since the choice is made
     before the gate and another landing can take the name in between.
+
+    AND A NAME ``intake shelve`` FILED AWAY STAYS TAKEN (U154). The rule above
+    rested on the folder staying under the music folder for as long as its
+    tracks are in the library; shelving ends that, while the batch's INBOX
+    playlist keeps the name, and the native writer adds to an INBOX playlist by
+    name. A second landing on the day the first was shelved would merge into
+    it silently. The shelve's session record names every batch it moved, and
+    that record is read here, so the question needs no database handle and is
+    answered the same before the gate and under the lock.
     """
-    return os.path.lexists(landing.target_dir(cfg, name))
+    return os.path.lexists(landing.target_dir(cfg, name)) or name in shelved_names(cfg)
+
+
+def shelved_names(cfg: config.Config) -> frozenset[str]:
+    """Every batch name a shelve's session record says it moved out of the music folder."""
+    from cratekit.core import session
+    from cratekit.intake import shelve
+
+    names: set[str] = set()
+    for record in session.records(cfg):
+        if record.workflow != shelve.WORKFLOW:
+            continue
+        moved = record.detail.get(shelve.SHELVED_KEY)
+        if not isinstance(moved, list):
+            continue
+        names.update(
+            str(one["batch"]) for one in moved if isinstance(one, dict) and one.get("batch")
+        )
+    return frozenset(names)
 
 
 def free(cfg: config.Config, base: str) -> str:
@@ -237,7 +264,6 @@ def readable(
     """The batch name a landing takes when ``--name`` is not given."""
     words = source_words(cfg, label_rows=label_rows, pass_name=pass_name)
     return free(cfg, f"{today().isoformat()} {words}")
-
 
 
 #: The shape a set's permanent playlist opens with (U121, U136): naming day,
