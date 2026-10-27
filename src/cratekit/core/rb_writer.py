@@ -2690,6 +2690,25 @@ FILE_ID_POLICY = FieldPolicy(
     fields=MappingProxyType({FILE_ID_COLUMN: Ownership.OWNED}),
 )
 
+#: The column rekordbox keys a row's file by on disk, the full path of the
+#: audio file as the row was imported.
+FOLDER_PATH_COLUMN = "FolderPath"
+
+#: The one write that moves a row's file (U154). ``intake shelve`` renames a
+#: landed batch folder into the processed tree and points every row it holds
+#: at the new path, in one commit. Registered by that verb alone and never at
+#: baseline, as the two row repairs are, so no other writer gains the column by
+#: its existing: a path write is how a row comes to point at nothing.
+#:
+#: OWNED, because the value it replaces is present and about to be wrong. The
+#: file is renamed before the row is written, so the path on the row at the
+#: commit names a folder that is no longer there, and the planned path is the
+#: one rekordbox would have recorded had it imported the file where it now is.
+SHELVE_POLICY = FieldPolicy(
+    owner="shelve",
+    fields=MappingProxyType({FOLDER_PATH_COLUMN: Ownership.OWNED}),
+)
+
 #: The column the binding's ``add_content`` sets from the TRACK menu item's
 #: ``rb_local_usn`` and rekordbox sets to one value on nearly every row it
 #: makes (A32, R-928). Measured on the live library on 2026-10-10: every row
@@ -3608,6 +3627,8 @@ __all__ = [
     "ENV_APP_PATH",
     "FIELD_EMPTIES",
     "FILE_ID_COLUMN",
+    "FOLDER_PATH_COLUMN",
+    "SHELVE_POLICY",
     "FILE_ID_POLICY",
     "ISRC_COLUMN",
     "ROW_PROBE_COLUMNS",
