@@ -528,7 +528,7 @@ def apply(
         except BaseException as exc:
             trees._rollback_quietly(db)
             if witness.landed:
-                _record(record, plan, cfg)
+                _record_shelve_commit(record, plan, cfg)
                 raise
             if not moved and isinstance(exc, CratekitError):
                 # A refusal before the first rename, a stale plan or a row that
@@ -557,7 +557,7 @@ def apply(
                 },
                 inner=inner,
             ) from exc
-        _record(record, plan, cfg)
+        _record_shelve_commit(record, plan, cfg)
         read = _read_back(db, plan, before)
         session_id = record.session_id
     return Shelved(batches=plan.batches, rows=tuple(read), session_id=session_id)
@@ -596,7 +596,7 @@ def _assert_still_as_planned(db: Any, one: ShelfBatch) -> None:
             )
 
 
-def _record(record: session.SessionRecord, plan: ShelfPlan, cfg: config.Config) -> None:
+def _record_shelve_commit(record: session.SessionRecord, plan: ShelfPlan, cfg: config.Config) -> None:
     """Name every batch moved on the record, and the rows under the content table."""
     record.detail[SHELVED_KEY] = [
         {"batch": one.batch, "to": str(one.target), "rows": len(one.rows)} for one in plan.batches

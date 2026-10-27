@@ -462,6 +462,29 @@ mark` finds a bridge pass by its intake file's name and a native pass by
 `--pass`, since R-777, and the engine waits on a `marks.NativeLanding` there in
 place of the file.
 
+### Shelve
+The step after the import that the landing left to a person: moving an imported
+batch folder out of `Music/<batch>/` into the processed tree,
+`Music/<processed_dir>/<year>/<MM_DD_YY subject>/`, and pointing every content
+row the folder holds at its new path, in one gated commit. The author kept that
+tree by hand before Cratekit and the landing did not continue it, so fifteen
+batches sat under `Music` beside it (U154). `crate intake shelve` is the verb,
+`intake/shelve.py` the engine. The folder is renamed first, one rename on one
+filesystem, then the rows are written through the `FolderPath` policy
+registered for that commit alone and confined from SQL to the planned rows; a
+commit that fails renames the folder back. `FileNameL`, the file id and
+`AnalysisDataPath` are read back unchanged, since a rename keeps the inode and
+the grids are keyed by UUID under the share. The folder name is the hand
+convention's: the date the batch name carries, in the landing's default shape or
+a run identifier's, zero padded, then the words after it, `Downloads` when
+there are none, or the subject `--as` gives. A batch with a file the collection
+does not hold is left whole with its reason, since moving it would strand the
+import. **`library.processed_dir`** is the tree's name under the music folder,
+a setup answer with the default `Processed_Tracks`. A shelved batch's name
+stays taken for the landing's default name rule in `intake/batch_name.py`,
+read off the shelve's session record, because the INBOX playlist keeps the
+name after the folder is gone and the native writer adds to a playlist by name.
+
 ### File id
 The column rekordbox keys a row's file by, `rb_file_id`, and what it holds:
 the file's inode number at the moment rekordbox imported it, found at sitting

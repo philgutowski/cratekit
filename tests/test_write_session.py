@@ -2625,6 +2625,10 @@ def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recor
         # one playlist and its memberships behind one capture, recorded under
         # the declared INSPIRATION folder's own id.
         "intake/set_playlist.py::apply_alone",
+        # U154. The shelve: one folder renamed and every row it holds pointed
+        # at it behind one capture, recorded under the content table as rows
+        # updated.
+        "intake/shelve.py::apply",
         # U144. INSPIRATION brought level with the account's downloaded sets:
         # playlists and their memberships under the declared INSPIRATION folder
         # behind one capture, recorded under that folder's own id.
@@ -2705,6 +2709,7 @@ def test_each_commit_helper_records_the_commit():
         ("write/metadata_cli.py", "_record_mytags_commit"),
         ("intake/native.py", "_record_landing_commit"),
         ("intake/rotate.py", "_record_rotation_commit"),
+        ("intake/shelve.py", "_record_shelve_commit"),
         ("intake/refill.py", "_record_refill_commit"),
         ("favorites/backfill.py", "_record_backfill_commit"),
         ("favorites/split.py", "_record_split_commit"),
