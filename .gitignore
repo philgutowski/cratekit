@@ -57,3 +57,6 @@ docs/backlog.md
 
 # Compound Engineering local scratch
 .context/compound-engineering/
+
+# scripts/cloud_battery.py, the machine bound failures measured on this container
+.cloud-battery/
