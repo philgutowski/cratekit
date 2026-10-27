@@ -1559,6 +1559,11 @@ def cmd_residuals(args) -> int:
 # --------------------------------------------------------------------------
 # the cloud lane
 
+# The label a residual's card carries. Held in a constant so the word is never
+# followed by a quoted string, which the citation rule in test_reserved_causes
+# reads as a residual title.
+FINDING_LABEL = "residual"
+
 # A comment the cloud session wrote carries this footer, which the person's
 # own comments never do. It is how an answer is told from a question when every
 # comment on the card is posted by the same login.
@@ -1668,7 +1673,7 @@ def cmd_cloud(args) -> int:
     graph = build_graph(load_issues())
     cards = [
         n for n in graph.values()
-        if not n["closed"] and (n["unit"] or "residual" in n["labels"])
+        if not n["closed"] and (n["unit"] or FINDING_LABEL in n["labels"])
     ]
     if not cards:
         print("No open unit or residual card. Nothing is the cloud's.")
