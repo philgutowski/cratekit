@@ -1495,6 +1495,88 @@ the 7 tracks acquired for the Tidal playlist of job `673e`, run `d66b`. No
 verb renames a filed folder and a rename in Finder breaks 61 rows, so they
 keep their names until a unit gives shelve a rename.
 
+## Sitting 46, 2026-10-27, the attended session, the first Bandcamp batch, PULS
+
+Phillip asked for a command line tool that batch downloads his Bandcamp
+purchases and for those files to go through the intake chain. The tool
+chosen is `bandcampsync` 0.8.0 (meeb/bandcampsync, pipx), which syncs the
+account's purchases into `Artist/Album/` folders, tracks what it has fetched
+by an ignore file of item ids and a checkpoint, and downloads FLAC by
+default. It signs in with the browser's cookie copied by hand from the
+Network tab, kept at `~/.config/bandcampsync/cookies.txt` (mode 600, outside
+every repository), since Bandcamp's login form has a CAPTCHA. Nothing of
+this is in the product yet: the download, the flatten and the ownership
+check ran as shell steps, the verbs took over from `tag folder` on.
+
+The account holds 102 purchases. A dry run listed them; a name match of each
+release against the 10,581 audio files on the volume read 49 as already
+owned, spread from the 3rd purchase to the 101st, so no date cutoff separates
+owned from new and the ignore file is the instrument. Phillip then scoped
+the batch to one seller: the collection endpoint's `item_url` names the
+seller's account, and 55 of the 102 are `pulsromania.bandcamp.com`, 10 of
+them owned by the title match. An ignore file of 57 ids (the 47 other
+sellers and those 10) left 45 releases, 97 FLAC, 5.5 GB, every file with
+cover art embedded and artist, title, album, album artist, year and track
+number tags, no genre and no label tag (PULS appears only as a comment
+reading `Visit https://pulsromania.bandcamp.com`). A track level check of
+the 97 against the volume found one duplicate, LRNT `Dumbellz` on
+*Deep Rollers Compilation*, already in the library from *Wavy Attitude VA*
+(`Processed_Tracks/2026/bandcamp_2_3_26`); it was left in the Bandcamp tree
+and not staged. The real run appended the 45 ids below the ignore file's
+delimiter and wrote the checkpoint, so later runs look at newer purchases
+only: a release skipped today comes back only if its line is removed and
+`.bandcampsync-state.json` deleted.
+
+Another Cratekit session was live on this machine the whole sitting, driving
+its own batch of 116 in `Downloads` through `analyze run` and holding a
+native land plan at its gate. The two sessions coordinated by message: this
+one staged beside `Downloads` rather than in it, told the other before
+taking the rehearsal copy and before opening rekordbox, and the other held
+every verb until told rekordbox was closed. The product's locks (the write
+session lock, the per batch landing lock, the job lock) would have
+serialised the database writes either way; what they do not prevent is two
+sessions sweeping one folder, which is why the staging folder was separate.
+
+Phillip's two decisions for the batch: every PULS track is `Rominimal`, and
+PULS gets a label folder. `Rominimal` reaches `minimal_deep_tech` by the
+`minimal` fuzzy rule today, so the tag was written on the files; its own
+place under Minimal / Deep Tech cannot be declared, since a bucket that
+routes by source genre never consults energy (`routing.py`'s
+`sub_by_source` branch, `taxonomy._band_names`), and a Rominimal sub would
+take the three energy bands off every track in the bucket. Phillip chose to
+card it rather than make Rominimal a top level bucket: **U155, #336**. The
+label folder cannot be filed by a native landing (R-771: `--manifest` is
+refused, and the Record Labels tree has no database writer), so it was built
+by hand in rekordbox below and carded as **U156, #337**, which closes R-771.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `bandcampsync --dry-run`, then the seller split | read | 102 purchases, 24 sellers; 55 PULS. Owned by title match: 49 of 102, 10 of the 55. | read |
+| `bandcampsync` into the volume's `Bandcamp` folder with the ignore file | yes, 3m24s | 45 releases, 97 FLAC, 5.5 GB; 42 releases of two tracks, one of three, two of five. No tag, name or art problem; longest name 76 bytes, no two alike. | live |
+| The flatten and the duplicate | by hand | 96 files moved flat into a staging folder with `mv -n`; the one `Dumbellz` left behind. First staged at `Bandcamp-staging/2026-10-27 PULS` beside `Downloads`, which the landing refused (`intake-list-unusable`: inside the library and outside download staging, so already owned), then moved to `Downloads/2026-10-27 PULS`, which it took. The other session's sweep of `Downloads` had finished by then. | live |
+| `tag folder` | job `2026-10-27T20:06:04Z-2ce2` | 96 of 96 settled, 96 untagged: Traxsource and Bandcamp blocked on all 96 (as every sitting since 32), Deezer not asked for want of an ISRC, Beatport no hit. Art present on all, so none fetched. | live |
+| `GENRE=Rominimal` on the 96 | by hand, mutagen, verified | every other tag and the picture block unchanged on every file. | live |
+| `analyze run`, `analyze restamp` | jobs `2026-10-27T20:15:29Z-e818`, `2026-10-27T20:54:48Z-9d61` | 96 of 96 each; `initialkey`, `energylevel`, `voxlevel` and the vox gender fields written. The restamp's `db-metadata-not-written` warning as always. | live |
+| `name apply --root` | run `2026-10-27T21:01:08Z-d7e1`, answered abort | **0 renames, 0 held**: a Bandcamp file is named `Artist - Album - NN Title` by the seller's zip, a stem carrying text, which the verb carries as it is (R-168). The key and tempo prefix the library's names carry is therefore absent on this batch. | no_op |
+| `intake land --name "2026-10-27 PULS"`, native, rehearsal | on the copy (`copy_setup.sh`, state redirected, doctor reading the scratch registry), run `2026-10-27T21:05:15Z-5ef7`, applied | digest `ddeb6620b2dc2056`, 96 adds, 0 present, content link 2950670, 1 vox My Tag at the other session's new cut of 3. The 96 files moved back by the plan's own mapping and the empty batch folder removed. | rehearsed |
+| `intake land`, native, live | run `2026-10-27T21:06:02Z-77d5`, the live database's sha256 `a865f4bc` unchanged since the copy, digest `215aba93d37bc186` against the rehearsal's, the only differing lines the digest and the database path (R-922), approved as `session` | **96 rows into `Music/2026-10-27 PULS`, the playlist `INBOX / 2026-10-27 PULS`**, staging left empty, each row with the ten columns rekordbox derives left empty. Doctor clean after, no new open session. | live |
+| rekordbox, desktop control | opened 17:11 after `pgrep` showed no crate process and both rekordbox processes gone, once the other session had released the desktop control lock at Phillip's word; every `screenshot` call failed, so the session drove it from `screencapture` images (the learning filed with this record); quit from the application menu at 17:35, both processes confirmed gone | **Analyze Tracks on the 96** with BPM/Grid, high precision and Phrase on and KEY off (sitting 45's settings), about eleven minutes for 96, read as done when the analysis store held 96 new `ANLZ0000.DAT`; **Reload Tags** filled key, year, artist and the `Rominimal` genre on all 96. The Year column read 0 on every landed row before the reload, so the native landing carries no year. **`Record Labels / PULS` built by hand**, `PULS 2018` and `PULS 2020` to `PULS 2026`: 3, 16, 26, 2, 10, 8, 6 and 25 tracks, filed by sorting the INBOX playlist on the Year column and dragging each run, every count equal to the files' date tags, 96 in all. Two rekordbox rules paid for on the way: a folder or playlist cannot be made while the tree's search filter is set (`Playlist cannot be edited or deleted while searching`), and the Playlist menu's Create New Playlist creates nothing while a playlist rather than its folder is selected, with the typed name going to the tree's type ahead instead. | live |
+| `board.py sync` and `audit` after the two cards | yes | #336 and #337 Ready; 159 units, 153 done, 5 ready, 1 blocked; the board matches the repository. | measured |
+
+The desktop control lock was held by the other session, idle since its
+acquisition, and it had no tool to release it; Phillip had its lock file
+deleted. Every `screenshot` call then failed in this session while the
+clicks worked, so the sitting was driven from `screencapture` images read
+by the session, with the capture's own pixels as the click coordinates. The
+learning is filed with this record.
+
+Left for Phillip: the rehearsal's scratch copy at the volume root, `copyrun`
+and `.cratekit-copyrun`, since the session's recursive removal was refused
+by its permission check; the next backup mirrors them until removed. The
+`Bandcamp` tree on the volume holds the 45 album folders with their
+`cover.jpg`, `bandcamp_item_id.txt` and the one unstaged `Dumbellz`, plus
+the ignore file and checkpoint, and is the folder the next sync writes into.
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
