@@ -1,67 +1,51 @@
-**The cloud lane, set up 2026-10-27 in an attended cloud session, on
-`claude/happy-rubin-chqmd5`.** A Claude Code cloud session can now take a
-card labelled `cloud` on its own, from a scheduled task, and run METHOD's
-pipeline to "Ready for the watcher": `board.py cloud` reads every open cloud
-card's comments over REST and names the one to take by state (fresh, a
-brainstorm Phillip answered, or a review the watcher posted), the
-`cloud-unit` skill is the sequence, the `opus-builder` and `fable-reviewer`
-agents fix the models (Opus 5.5 at high effort builds, Fable at high effort
-reviews), the project settings fix the effort, and a session hook builds the
-venv on a fresh container. `scripts/cloud_battery.py` measures the machine
-bound failures of the Linux suite on the base and reads the branch against
-them, 167 on this container at `82bdfb3` by its own measure, mostly
-`tests/test_doctor.py` and the backup and restore suites, because root reads
-every directory. The branch read against that baseline: 167 still failing,
-none gone, one newly failing that passed alone three times,
-`tests/test_repair_rows.py::test_the_real_bound_is_a_fresh_files_inode_and_leaves_no_file_behind`,
-which asserts a fresh file's inode is greater than an older file's: true on
-APFS, and on ext4 under a parallel run an inode is reused, so it is the
-container's and intermittent, and a cloud session that meets it reruns it
-alone before calling it its own. The repo
-scan no longer reads the container's mounts as a person's under
-`CLAUDE_CODE_REMOTE`; one of them is named `skills`, which flagged nine test
-files. `board.py` falls back to REST when GraphQL is refused and parses the
-remote when `gh repo view` is, with `gh api --paginate` avoided because the
-proxy rejects the numeric paths GitHub's Link header carries. The board
-workflow now also runs on an issue opened, edited, labelled or unlabelled, so
-a new card is labelled at once. The `file-card` skill files a request as a
-unit issue in the brief form with the `cloud` label.
+**The cloud lane, set up 2026-10-27 in an attended cloud session, and made
+the place Cratekit is built the same day, on Phillip's word that Relay and
+the board lanes are abandoned and only cards that must be built locally
+are.** A scheduled task on the cloud environment starts a fresh Opus 5.5
+session every hour, and the `cloud-unit` skill runs METHOD's whole pipeline
+on the card `board.py cloud` names: brainstorm if it is an idea, plan, build,
+review with the `fable-reviewer` agent to the merge bar, the mutation table,
+the record, the merge to `main` with the closing trailer, and `Landed` on the
+card. A card that needs the machine is set aside with the local steps, and a
+card labelled `attended` is never offered; #29 was given that label, which it
+had lacked, since the queue offered it first by reach.
 
-**OWED.** The scheduled task on the cloud environment is created disabled and
-is enabled once this lands on `main`, because a fresh session clones `main`
-and reads the skills from there. The first unattended run is the proof: one
-card taken, one `Started`, one `Plan`, one `Ready for the watcher`, and the
-watcher landing it. `BOARD_TOKEN` as a repository secret with the `project`
-scope is what lets the board workflow move cards as well as labels; without
-it the cards are added by the project's own auto-add workflow and the labels
-are the queue. The macOS battery and the full suite were not run here, and
-the mutation table for `board.py cloud` is owed to the watcher: the rows are
-not written, since this is a chore and not a unit, and the fourteen tests in
-`tests/test_board_cloud.py` are what hold it.
+What carries it. `board.py cloud` reads every open unit and residual card's
+comments over REST and states each by its session's last heading (`Started`,
+`Resumed`, `Plan`, `Progress`, `Brainstorm`, `Question for Phillip`, `Needs
+the machine`, `Withdrawn`, `Landed`), told from Phillip's by the harness
+footer: one held card holds the lane, two holds name the earlier as the
+keeper, a hold silent for eight hours is offered as `resume`, any session
+comment refreshes it, and a landing note read by its first word is never
+retaken. `board.py` falls back to REST a numbered page at a time when
+GraphQL is refused, because the proxy refuses GraphQL and the numeric paths
+in GitHub's `Link` header. `scripts/cloud_battery.py` measures the base's
+failures on the container, 167 at `82bdfb3`, and reads a branch against
+them; `scripts/mutate.py --known-failures` subtracts the same ids from every
+mutation run. The repo scan reads a container's mounts as the harness's
+under `CLAUDE_CODE_REMOTE`. The board workflow labels a card on open, edit
+and label change. The project settings set the effort to high, the session
+hook builds the venv, and `file-card` files a request in the brief form.
 
-**The cloud became the build, 2026-10-27, the same session, on Phillip's
-word that Relay and the board lanes are abandoned and only cards that must
-be built locally are.** The lane no longer stops for a watcher: the
-`cloud-unit` skill now runs the whole pipeline, measures the mutation table
-and merges to `main` with the closing trailer. `scripts/mutate.py` takes
-`--known-failures`, the base's failing ids from `cloud_battery.py baseline`,
-and subtracts them from every run, so its baseline is green net of them and
-its table names the file; `tests/test_mutation_driver.py` drives a batch
-over a fixture red by one known id to a valid table with that id never
-credited, and the same batch with an unrelated id still refused. `board.py
-cloud` now reads every open unit and residual card rather than a label, one
-held card holds the whole lane, a hold silent for eight hours is offered as
-`resume` rather than reported, any session comment refreshes the hold, and a
-card that landed while still open is reported. #29 was given the `attended`
-label it had lacked, since the queue offered it first by reach. METHOD's Relay
-section is a retirement note and its cloud lane section the rule; CLAUDE.md
-names the cloud as where the project is built.
+Verified here: the battery read against the base, 167 still failing, none
+gone, and the one test newly failing at the first pass, a citation rule the
+queue's label tripped, fixed. One test, an ext4 inode ordering assertion in
+`tests/test_repair_rows.py`, failed once under the parallel run and passed
+alone three times. Fable reviewed the cloud-first commits and found nothing
+blocking and twelve residuals; one fix round took seven of them (tests for
+the known set on the promoted run and the missing file, the indented
+comment, a landing note by its first word, the hold posted before
+classification with the earlier hold winning a race, the full battery after
+a refused push, no hand edits to the baseline file, and this record), and
+four are filed as residuals in `docs/residuals/`. The last, that a resumed
+mutation batch reports the current known count over rows measured under an
+older one, is recorded here and not filed, since no producer was named.
 
-**OWED, superseding the paragraph above where they differ.** The first
-scheduled run is the proof, fired by hand from this session and watched: the
-scheduled task's configuration carries no repository source, so its prompt
-tells a session with no checkout to attach and clone the repository itself,
-and whether it needs to is measured on that run. `BOARD_TOKEN` is now the only
-way the project's cards move, since nothing local runs `board.py sync`. The
-merged `cloud/` branches, and this session's own, are pruned locally because
-the proxy refuses a branch deletion.
+**OWED.** The first scheduled run is the proof, fired by hand from this
+session and watched: the task's configuration carries no repository source,
+so its prompt tells a session with no checkout to attach and clone the
+repository itself. The macOS battery over everything this lane lands, at
+Phillip's next local session. `BOARD_TOKEN` as a repository secret with the
+`project` scope, now the only way the project's cards move, since nothing
+local runs `board.py sync`. The merged `cloud/` branches and this session's
+own are pruned locally, because the proxy refuses a branch deletion.
