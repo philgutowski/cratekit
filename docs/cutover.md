@@ -1423,6 +1423,41 @@ master.db is SQLCipher encrypted, so the binding's read-back is the only
 direct read; a visual check in rekordbox is the one belt-and-braces step not
 taken, and Phillip will see the pink dots on next open.
 
+## Sitting 44, 2026-10-26, the attended session, U154's live shelve
+
+Phillip asked why his batch folders had piled up under `Music` beside the
+`Processed_Tracks` tree he kept by hand. The landing put each batch at
+`Music/<batch>` and nothing moved it on. U154 was filed, built, reviewed,
+merged and pushed (`main` at `ec944239`, issue #335), then this sitting filed
+the batches live.
+
+Backup first: both ages were 11 days, over the five day rule, so `backup run`
+ran before anything, 2 of 2 settled, 198 files sent, both ages 0 days.
+Rehearsed on a disposable copy (`.cratekit` cloned to `.cratekit-copyrun` on
+the volume with `cp -Rpc`, the database copied into it, config and state dirs
+redirected, doctor reading the scratch registry): `intake shelve --report
+--all` planned 14 batches and 447 rows, digest `87b1a90cb27e56e5`, equal on
+the copy and live. Two batches left with their reasons: `rekordbox_djoid` has
+no date shape, and `2026-10-01-labels-1pct` holds 36 files of 186 with no
+row in the collection, so it is not wholly imported. The copy apply shelved
+the one file batch `2026-09-29-favorites` and read the row back under the
+recorded base drive, the one `location_prefix_map`'s rule names, which is
+where this library stores its paths,
+file id and analysis path unchanged; the real folder was renamed back by hand
+before the live plan, and the live report digest was the same after.
+
+Live, the ack was minted as `session` (both ages under two hours), the live
+gate's digest equalled the rehearsal's, approved as `session`, and the verb
+moved 14 folders into `Processed_Tracks/2026/` and rewrote 447 rows, every
+one read back at its planned path, session `2026-10-27T02:29:15Z-f964`.
+Doctor afterwards reads the same 167 rows resolving to no file as before, so
+no moved row was lost. The two run identifier batches filed as `09_23_26
+Downloads` and `09_23_26 Downloads 2`, since nothing says what they came
+from; renaming them is Phillip's. Undo is a restore of the shelve's session.
+The 14 GB clone `.cratekit-copyrun` is left on the volume for Phillip to
+remove, since the session's permission check refuses a removal at a volume's
+top level.
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
