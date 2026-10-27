@@ -56,6 +56,10 @@ jobs:
           GH_TOKEN: ${{ secrets.BOARD_TOKEN || secrets.GITHUB_TOKEN }}
           HAS_BOARD_TOKEN: ${{ secrets.BOARD_TOKEN != '' }}
         run: |
+          # The sync is piped through tee for the summary, and a pipeline's
+          # status is its last command's, so without this a sync that failed
+          # reported success. Measured on the first BOARD_TOKEN run, 2026-10-27.
+          set -o pipefail
           if [ "$HAS_BOARD_TOKEN" = "true" ]; then
             echo "Running with BOARD_TOKEN: labels and cards." >> "$GITHUB_STEP_SUMMARY"
             python scripts/board.py sync | tee -a "$GITHUB_STEP_SUMMARY"
