@@ -23,33 +23,28 @@ one. Both are relevant when starting work in an area either one covers, and
 ## How a session runs, decided 2026-09-07
 
 **The compound engineering plugin is not used here.** No `ce-plan`, `ce-work`,
-`ce-code-review`, `ce-compound`. Native Relay, which runs METHOD's pipeline and
-none of those skills, drives unattended runs, and METHOD's Relay section says
-how. A session does the whole of one unit itself: plan mode against the issue brief,
-build, the built in `/code-review`, an author's mutation table capped at 25
-rows, the record, the merge. METHOD's pipeline section is the exact sequence.
+`ce-code-review`, `ce-compound`. A session does the whole of one unit itself:
+the plan against the issue brief, build, review, an author's mutation table
+capped at 25 rows, the record, the merge. METHOD's pipeline section is the
+exact sequence.
+
+**The cloud is where Cratekit is built**, decided by Phillip on 2026-10-27.
+Native Relay, the board lanes and `/board-up` are abandoned. A scheduled task
+on the cloud environment starts a fresh Opus 5.5 session every hour; it runs
+the `cloud-unit` skill, which takes the card `board.py cloud` names, plans
+and builds it at high effort, has Fable review it to the merge bar, measures
+the mutation table against the Linux suite's known failures, merges to `main`
+with the closing trailer and pushes `main`. An idea gets a brainstorm posted
+on its card and waits for Phillip's answer. **Only a card that cannot be
+built without the machine is built locally**, and the cloud session sets it
+aside with a comment carrying the steps. The `file-card` skill turns a
+request into a card in the brief form. METHOD's cloud lane section is the
+rule.
 
 A restart prompt names a board item and nothing else, because the issue is the
 brief. "Take #56" is a complete instruction once this file and METHOD are read.
 Nobody is watching a session while it runs, so a question is a stop: make the
 conservative call, record it as a residual, and keep going.
-
-**The unattended build system starts with one word: `/board-up`** (the
-`board-up` skill, decided 2026-10-10). It checks that nothing is running, that
-cards are Ready, that rekordbox is closed and the checkout free, then starts
-the Relay feeder, the watcher, the fable builder and the operator seat from
-`~/.relay/manifests/cratekit-board.lanes.toml`, one step at a time. Nothing
-else needs remembering to launch it; `board-lanes` is the skill underneath.
-
-**The cloud lane takes the cards labelled `cloud`**, decided 2026-10-27. A
-scheduled task on the cloud environment starts a fresh Opus 5.5 session every
-hour; it runs the `cloud-unit` skill, which reads the queue with
-`board.py cloud`, plans and builds the card, has Fable review it to the merge
-bar, and pushes a `cloud/N-slug` branch with a comment headed "Ready for the
-watcher". The watcher on this machine runs the macOS battery, measures the
-mutation table and merges. A card that needs the machine is set aside with
-the steps to run it locally. The `file-card` skill turns a request into a
-card in the brief form. METHOD's cloud lane section is the rule.
 
 ## The board is the queue
 
@@ -79,7 +74,8 @@ guaranteed: U38 is issue #51. Look it up before writing a trailer.
 
 That prints what is ready, ranked by how much of the remaining build each unit
 releases, and names the one to take. **It will name #29 and you must not take
-it.** U29 is attended. METHOD's do-not-touch section says why.
+it.** U29 is attended. METHOD's do-not-touch section says why. A cloud session
+reads `board.py cloud` instead, which never offers an attended card.
 
 **Take a unit:**
 
@@ -170,8 +166,8 @@ lists what.
 - **rekordbox is opened by an attended session and by nothing else**, decided
   2026-09-29. A session Phillip is present for may open, drive and quit
   rekordbox on the live library through the desktop control tool, to import,
-  to let it analyse, and to read what it shows. A Relay run, a job, a verb and
-  a test never launch rekordbox or its background agent. Before opening it: no
+  to let it analyse, and to read what it shows. A cloud session, a job, a verb
+  and a test never launch rekordbox or its background agent. Before opening it: no
   Cratekit job is running, and `crate doctor` reads both backup ages under five
   days. After quitting it: `rekordbox` and `rekordboxAgent` are both confirmed
   gone before any verb runs.
@@ -203,12 +199,12 @@ lists what.
   replacement is proven. Its `docs/` are the exception.
 - **Do not symlink `.venv` into a worktree.** The editable install names the
   checkout it was installed from, so a worktree would verify code it cannot see.
-- **No pull requests.** Feature branch per unit, merge to `main` locally, push
-  `main`, delete the branch. **An attended cloud session merges and pushes
-  `main` itself**, authorized by Phillip on 2026-10-27 ("I authorize you to
-  merge to main here in the cloud now and going forward"); the unattended
-  cloud lane still stops at "Ready for the watcher", because the mutation
-  measure needs the macOS battery's green baseline.
+- **No pull requests.** Feature branch per unit, merge to `main`, push `main`,
+  delete the branch. **A cloud session merges and pushes `main` itself**,
+  attended or not, authorized by Phillip on 2026-10-27 ("I authorize you to
+  merge to main here in the cloud now and going forward"). A cloud session
+  cannot delete a remote branch, so merged `cloud/` branches are pruned
+  locally.
 - **No em dashes, en dashes, or double hyphens** in any prose, code comment,
   commit message, or issue body. Do not swap a dash for a colon; favor commas,
   and keep colons for a genuine list or definition.

@@ -38,3 +38,30 @@ are the queue. The macOS battery and the full suite were not run here, and
 the mutation table for `board.py cloud` is owed to the watcher: the rows are
 not written, since this is a chore and not a unit, and the fourteen tests in
 `tests/test_board_cloud.py` are what hold it.
+
+**The cloud became the build, 2026-10-27, the same session, on Phillip's
+word that Relay and the board lanes are abandoned and only cards that must
+be built locally are.** The lane no longer stops for a watcher: the
+`cloud-unit` skill now runs the whole pipeline, measures the mutation table
+and merges to `main` with the closing trailer. `scripts/mutate.py` takes
+`--known-failures`, the base's failing ids from `cloud_battery.py baseline`,
+and subtracts them from every run, so its baseline is green net of them and
+its table names the file; `tests/test_mutation_driver.py` drives a batch
+over a fixture red by one known id to a valid table with that id never
+credited, and the same batch with an unrelated id still refused. `board.py
+cloud` now reads every open unit and residual card rather than a label, one
+held card holds the whole lane, a hold silent for eight hours is offered as
+`resume` rather than reported, any session comment refreshes the hold, and a
+card that landed while still open is reported. #29 was given the `attended`
+label it had lacked, since the queue offered it first by reach. METHOD's Relay
+section is a retirement note and its cloud lane section the rule; CLAUDE.md
+names the cloud as where the project is built.
+
+**OWED, superseding the paragraph above where they differ.** The first
+scheduled run is the proof, fired by hand from this session and watched: the
+scheduled task's configuration carries no repository source, so its prompt
+tells a session with no checkout to attach and clone the repository itself,
+and whether it needs to is measured on that run. `BOARD_TOKEN` is now the only
+way the project's cards move, since nothing local runs `board.py sync`. The
+merged `cloud/` branches, and this session's own, are pruned locally because
+the proxy refuses a branch deletion.

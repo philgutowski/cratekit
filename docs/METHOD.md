@@ -391,94 +391,75 @@ the brief.
 
 **#29, U29, stays attended and is never a session's to take.** See below.
 
-## Relay
+## Relay, retired 2026-10-27
 
-Native Relay runs this file's pipeline, one fresh headless session per board
-item, merging and pushing each. It lives at `~/Documents/PhilAI/native-relay`,
-and its manifests, gate wrapper and run state live in `~/.relay`, outside this
-repository on purpose. The original Relay ran the compound engineering chain
-and is not used here.
-
-**A feeder keeps the run continuous**, `~/.relay/manifests/cratekit-feeder.py`.
-It appends ready board items to the manifest a few at a time in the priority
-order of `cratekit-parity.order`, runs them, syncs the board and repeats. It
-appends only what the board derives as READY, so a unit never launches before
-the units it depends on have landed. A task that halts twice is excluded with
-its reason rather than retried for ever, and a cycle whose tasks all died
-inside ten minutes is read as a usage limit and waited out.
-
-**Under Relay a session is on `relay/N`, not on `main`**, so `board.py start`
-is not run and the closing trailer is still owed on the merge. Before building,
-run `board.py show N`. If any issue on its `Depends on` line is still open, the
-outcome is BLOCKED, not a build against a tree missing its foundation.
-
-**Relay owns `main` while it runs.** One writer at a time. Attended work goes
-to a worktree with its own venv and merges between tasks, never during one. A
-merge that lands mid task halts that task as `remote_advanced`.
-
-**The runner lands a task's residual files unnumbered.** It does not run
-`board.py residuals --land`, so whoever writes to `main` next, the watcher or
-an attended session, runs it between tasks and commits what it numbered.
-`board.py audit` names the files still waiting, which is how they are noticed.
+Native Relay, the feeder, the watcher, the fable builder and `/board-up` ran
+this file's pipeline on Phillip's machine from 2026-09-07 to 2026-10-27. They
+are abandoned, decided by Phillip on 2026-10-27, and the cloud lane below
+replaces them. Their manifests and run state live outside this repository and
+are not read. What they taught stays in `docs/solutions/` and in the driver
+rules above, and `docs/history/` has how they ran.
 
 ## The cloud lane, decided 2026-10-27
 
-A Claude Code cloud session builds a card the way this file says, and stops
-where a Mac is needed. The `cloud-unit` skill in the repository's Claude Code
-skills directory is the exact sequence; this section is what the lane is and
-where it ends. It replaces the hand written handoff of 2026-10-13 (the
-standing instructions on #319), which it carries forward, with the pickup
-made automatic.
+**The cloud is where Cratekit is built.** A scheduled task on the Claude Code
+cloud environment starts a fresh session on Opus 5.5 every hour. The session
+runs the `cloud-unit` skill, in the repository's Claude Code skills
+directory, which is this file's pipeline with what a cloud container changes:
+it takes the card `board.py cloud` names, brainstorms it if it is an idea,
+plans, builds, reviews, measures the mutation table, writes the record,
+merges to `main` with the closing trailer and pushes `main`. Phillip
+authorized the cloud to write `main` on 2026-10-27. **Only a card that
+cannot be built without the machine is built locally**: the live database,
+the library volume, the live account, rekordbox, or Phillip at the desktop.
+The session sets it aside with a comment carrying the local steps, and a card
+labelled `attended` is never offered at all.
 
-**A card is the cloud's only with the `cloud` label.** The feeder and the
-fable builder skip that label, so the two never hold one card. Adding the
-label sends a card to the cloud; filing one with the `file-card` skill adds it.
-A scheduled task on the cloud environment starts a fresh session on Opus 5.5
-every hour, and each session runs `board.py cloud`, which reads every open
-cloud card's comments over REST and names the one to take. The session's hold
-is its own comment headed `Started`; its brainstorm, its set-aside, its plan
-and its ready report are comments headed `Brainstorm`, `Needs the machine`,
-`Plan` and `Ready for the watcher`; Phillip's answer is any comment without
-the session footer written after the question; and the watcher's review is
-the comment headed `Review from the watcher`. The session never writes a
-label or a status. `board.py cloud` reads those headings and nothing else.
+**The queue is every open unit and residual card that is ready**, read by
+`board.py cloud` from each card's comments over REST. The session writes no
+label and no status. Its hold is its own comment headed `Started`, and its
+plan, progress notes, brainstorm, set-aside and landing are comments headed
+`Plan`, `Progress`, `Brainstorm`, `Needs the machine` and `Landed`; Phillip's
+answer is any comment without the session footer after the question. **One
+card holds the whole lane**, because two builders would each merge `main`
+under the other, which is the halt Relay called `remote_advanced`. A hold
+with no comment for eight hours is a session that died, and the next one
+resumes it from its pushed branch.
 
-**Opus 5.5 at high effort plans and builds; Fable at high effort reviews.**
-The project settings fix the effort, the scheduled task fixes the session's
-model, and the review is the `fable-reviewer` agent whatever the session
-runs. A session on another model hands the plan and the build to the
-`opus-builder` agent. The merge bar and the two round cap are unchanged.
+**Opus 5.5 at high effort brainstorms, plans and builds; Fable at high
+effort reviews.** The project settings fix the effort, the scheduled task
+fixes the session's model, and the review is the `fable-reviewer` agent
+whatever the session runs. A session on another model hands the plan and the
+build to the `opus-builder` agent. The plan is posted on the card rather than
+proposed in plan mode, because plan mode waits for an approval nobody is
+there to give. The merge bar and the two round cap are unchanged.
 
-**The lane ends at "Ready for the watcher."** The battery is a macOS proof:
-on the Linux container about 170 tests fail for reasons bound to the machine
-(root reads every directory, no `hdiutil`, the timing calibration pinned to
-one Mac, darwin paths), so the session measures the base's failures with
-`scripts/cloud_battery.py baseline` before it branches and reads the branch
-against them with `compare`, fixing only what is newly failing. Nothing is
-skipped or marked. `scripts/mutate.py` needs a green baseline the container
-cannot give, so the session writes the rows file and the watcher measures it.
-The watcher runs the full gate on macOS, merges, lands the residual files
-and pushes `main`, as it did for U142. **A card the container cannot build**,
-because it needs the live database, the library volume, the live account,
-rekordbox or Phillip at the desktop, is set aside with a comment headed
-`Needs the machine` carrying the steps to run it locally, and the session
-takes the next card.
+**The battery on Linux is read against the base's own failures.** About 170
+tests fail on the container for reasons bound to the machine (root reads
+every directory, no `hdiutil`, the timing calibration pinned to one Mac,
+darwin paths). `scripts/cloud_battery.py baseline` measures them on the base
+commit before the first edit, `compare` reads the branch against them, and
+`scripts/mutate.py --known-failures` subtracts them from every mutation run,
+so the driver's baseline is green net of them and its table says so. Nothing
+is skipped or marked, a newly failing test is the branch's, and a test that
+fails only under a parallel run on ext4 is rerun alone before it is called
+either. The macOS battery is owed on a Mac and named in each record's OWED
+paragraph; it runs whenever Phillip next builds or sits locally.
 
 **GitHub GraphQL is refused on the container**, so `gh issue`, `gh repo`,
 `gh project` and `gh api --paginate` all fail there, and `board.py` reads the
 issues over REST a numbered page at a time when the GraphQL count is refused.
-`start`, `sync` and `audit` without `--labels-only` stay local. The repo
-scan reads the container's mounts as the harness's, not a person's, under
-`CLAUDE_CODE_REMOTE`, so the declared identity tiers still apply and the
-detected one does not.
+`start`, `sync` and a plain `audit` stay local; `audit --labels-only` runs
+in the cloud. The project's cards move only with a `BOARD_TOKEN` secret on
+the board workflow, since no cloud session can write the project. Deleting a
+remote branch is refused too, so merged `cloud/` branches stay until someone
+prunes them locally. The repo scan reads the container's mounts as the
+harness's under `CLAUDE_CODE_REMOTE`.
 
-**One writer on `main` is still the rule.** The unattended cloud lane never
-writes it, so `/board-up` and the cloud task run at the same time without a
-conflict: the feeder owns `main`, the cloud owns its `cloud/N-slug`
-branches, and the watcher joins them. **An attended cloud session may merge
-and push `main`**, authorized by Phillip on 2026-10-27, and does so only
-when `/board-up` is not running, since the feeder halts a task whose base
-moves under it (`remote_advanced`).
+**A local session merges between cloud units, never during one.** When
+`board.py cloud` says the lane is held, a local merge to `main` waits until
+the card lands, or the cloud session meets a moved `main` at its merge and
+has to merge it in and run the battery again.
 
 ## Do not touch
 
