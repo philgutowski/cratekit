@@ -550,3 +550,127 @@ def test_an_unreadable_session_record_makes_the_name_rule_refuse_rather_than_rea
     with pytest.raises(Exception) as caught:
         batch_name.free(cfg, BATCH)
     assert "cannot read" in str(caught.value)
+
+
+# ---------------------------------------------------------------------------
+# The guards the first table found no test for
+# ---------------------------------------------------------------------------
+
+
+def _plant_ghost_row(cfg: config.Config, path: Path) -> None:
+    """Point one row rekordbox made at ``path``, a folder nothing on disk holds."""
+    conn = sqlite3.connect(cfg.library.db_path)
+    try:
+        conn.execute(
+            "UPDATE djmdContent SET FolderPath = ? WHERE ID = (SELECT MIN(ID) FROM djmdContent "
+            "WHERE Title NOT LIKE '01A - 124 - %')",
+            (str(path),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_a_row_under_the_target_that_the_plan_did_not_put_there_refuses_the_commit(
+    native_library, silence, monkeypatch
+):
+    """The confinement check on its own, with the free target rule held back so
+    the plan chooses a folder the collection already stores a row under."""
+    cfg, _root = native_library
+    before = _land_three(cfg, silence)
+    _plant_ghost_row(cfg, _processed(cfg) / "2026" / FILED / "ghost.flac")
+    real = shelve._free_target
+    monkeypatch.setattr(
+        shelve,
+        "_free_target",
+        lambda root, name, planned, *, stored_dirs, spell: real(
+            root, name, planned, stored_dirs=frozenset(), spell=spell
+        ),
+    )
+
+    code, acted, _ = _two_acts_of(_shelve(BATCH), GATE)
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), acted
+    assert "did not plan" in acted["cause"]["message"]
+    assert acted["cause"]["detail"]["renamed_back"] == [str(_music(cfg) / BATCH)]
+    assert (_music(cfg) / BATCH).is_dir() and _rows(cfg) == before
+    assert not (_processed(cfg) / "2026" / FILED).exists()
+
+
+def test_a_row_under_a_folder_differing_only_in_case_is_not_this_plans_business(
+    native_library, silence
+):
+    cfg, _root = native_library
+    _land_three(cfg, silence)
+    _plant_ghost_row(cfg, _processed(cfg) / "2026" / FILED.upper() / "ghost.flac")
+
+    code, acted, _ = _two_acts_of(_shelve(BATCH), GATE)
+
+    assert code == int(ExitCode.OK), acted
+    assert acted["data"]["items"][0]["to"] == str(_processed(cfg) / "2026" / FILED)
+
+
+def _open(cfg: config.Config):
+    return rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
+
+
+def test_the_engine_refuses_a_target_made_between_its_plan_and_its_apply_in_its_own_words(
+    native_library, silence
+):
+    from cratekit.core import analysis_store
+    from cratekit.core.cause import CratekitError
+
+    cfg, _root = native_library
+    before = _land_three(cfg, silence)
+    db = _open(cfg)
+    try:
+        planned = shelve.plan(cfg, db, [BATCH])
+        (_processed(cfg) / "2026" / FILED).mkdir(parents=True)
+        with pytest.raises(CratekitError) as caught:
+            shelve.apply(cfg, db, planned, analysis_roots=analysis_store.watch_roots(cfg))
+    finally:
+        rb_writer.close_db(db)
+    assert caught.value.cause.reason == "decision-stale"
+    assert "could not be written" not in caught.value.cause.message
+    assert "exists now" in caught.value.cause.message
+    assert (_music(cfg) / BATCH).is_dir() and _rows(cfg) == before
+
+
+@pytest.mark.parametrize(
+    ("alter", "said"),
+    [
+        (lambda path, kept: (path + "x", kept), "not the planned"),
+        (lambda path, kept: (path, ("other", *kept[1:])), "changed a column"),
+    ],
+    ids=["path", "kept-column"],
+)
+def test_the_read_back_refuses_a_row_that_did_not_take_or_lost_a_column(
+    native_library, silence, monkeypatch, alter, said
+):
+    from cratekit.core import analysis_store
+    from cratekit.core.cause import CratekitError
+
+    cfg, _root = native_library
+    _land_three(cfg, silence)
+    real = shelve._select_rows
+    calls: list[int] = []
+
+    def tampered(db, content_ids):
+        rows = real(db, content_ids)
+        calls.append(1)
+        if len(calls) < 2:
+            return rows
+        first = next(iter(rows))
+        path, kept = rows[first]
+        return {**rows, first: alter(path, kept)}
+
+    monkeypatch.setattr(shelve, "_select_rows", tampered)
+    db = _open(cfg)
+    try:
+        planned = shelve.plan(cfg, db, [BATCH])
+        with pytest.raises(CratekitError) as caught:
+            shelve.apply(cfg, db, planned, analysis_roots=analysis_store.watch_roots(cfg))
+    finally:
+        rb_writer.close_db(db)
+    assert caught.value.cause.reason == "internal-error"
+    assert said in caught.value.cause.message

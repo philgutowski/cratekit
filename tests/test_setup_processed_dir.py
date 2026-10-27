@@ -72,3 +72,42 @@ def test_the_processed_root_composes_from_the_two_keys(configured):
     config.reset_cache()
     cfg = config.load()
     assert shelve.processed_root(cfg) == Path(cfg.library.root) / cfg.library.music_dir / "Filed"
+
+
+def test_a_clean_machine_records_the_default_when_no_flag_names_one(tmp_path, monkeypatch):
+    """The four source rule's last two sources, on the one run where no answer is
+    recorded yet: no flag, nothing on disk, standard input trapped, so the
+    derived default is what reaches the file."""
+    from cratekit.cli import doctor
+    from tests.test_doctor import VOLUME, probes
+
+    root = tmp_path / "fresh"
+    (root / "Music").mkdir(parents=True)
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
+    monkeypatch.setattr(doctor, "Probes", lambda: probes())
+
+    code, _out, err = drive(
+        [
+            "--output",
+            "json",
+            "setup",
+            "--library-root",
+            str(root),
+            "--db-path",
+            str(root / "db" / "master.db"),
+            "--volume-id",
+            VOLUME,
+            "--staging",
+            str(tmp_path / "staging"),
+            "--profile",
+            "slim",
+            "--taxonomy",
+            "default",
+        ]
+    )
+    assert code in {int(ExitCode.OK), int(ExitCode.PRECONDITION)}, err
+    config.reset_cache()
+    assert config.load().library.processed_dir == config.DEFAULT_PROCESSED_DIR
+    assert f'processed_dir = "{config.DEFAULT_PROCESSED_DIR}"' in config.config_path().read_text(
+        encoding="utf-8"
+    )
