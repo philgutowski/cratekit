@@ -1458,6 +1458,34 @@ The 14 GB clone `.cratekit-copyrun` is left on the volume for Phillip to
 remove, since the session's permission check refuses a removal at a volume's
 top level.
 
+## Sitting 45, 2026-10-27, the attended session, the labels batch shelved and the 36 settled
+
+Phillip asked for sitting 44's leftovers to be finished with rekordbox driven
+on his desktop. No desktop control tool was present in the session, so
+rekordbox was not opened; everything below ran from the shell against the
+database, and the rekordbox side is read through `doctor` and a file by file
+comparison of the filed tree with the collection instead. Sitting 44's clone
+was removed first. A second clone made for this sitting's rehearsal was
+refused at the volume's top level, so its four subfolders were removed by full
+path and the empty `.cratekit-copyrun` shell is left for Phillip.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| The 36 files of `2026-10-01-labels-1pct` with no row | read | All 186 rows were in the collection on 2026-10-01 (the 12:47Z snapshot holds 186) and the 36 were gone by the 2026-10-02 20:36Z snapshot: sitting 29's removal of the label test's non dance tracks through rekordbox's own dialog, ten Torr, ten Metanoia, eight Deodato, two Robsoul and six others. The live database holds no row for any of them, active or soft deleted, and no file of theirs sits elsewhere. They are rejections, not a failed import, and importing them again would undo sitting 29. | read |
+| `crate delete review`, answered abort | refused before the gate | `deletion-reference-set-incomplete`: 153 active rows under no prefix rule, the streamed tracks and tombstones of R-675, so nothing is offered. It could not have offered the 36 anyway, since the pass reads the soft delete marker and these rows are gone outright. Filed as a residual. | refused |
+| The 36 to the Trash through `deletion.trash` | refused | The session's permission check refused the move as a deletion. Not retried. | not done |
+| The 36 out of the batch | yes | A plain rename, each file to `Removed_from_collection/2026-10-01-labels-1pct` at the volume root, 919 MB, nothing deleted. The batch folder then held 150 files, every one with a row. Phillip drags that folder to the Trash or keeps it. | live |
+| `intake shelve --report 2026-10-01-labels-1pct` | copy and live | 1 batch, 150 rows, digest `42b3168abd3f6e00` on both. | measured |
+| The copy apply | yes | Run `2026-10-27T11:31:20Z-ec82`, approved as `session`: 150 rows read back under the base drive at `Processed_Tracks/2026/10_01_26 labels-1pct`, none under the old path, file id and analysis path equal to the live rows'. The real folder was renamed back by hand and the live report's digest was unchanged after. | rehearsed |
+| The live apply | yes | Sitting 44's backup acknowledgment was still valid, until 14:28Z. Run `2026-10-27T11:32:04Z-6ff1`, the gate's digest equal to the rehearsal's, approved as `session`, 150 rows rewritten, session `2026-10-27T11:32:42Z-b2a8`. Doctor reads 167 rows resolving to no file, as before. `Music` holds `Processed_Tracks`, `Set_Recordings`, `rekordbox_djoid` and the search results file, and no active row records a path under `Music` outside those three folders. | live |
+| Every folder under `Processed_Tracks/2026` against the collection | read | The fifteen folders Cratekit filed match file for file, 597 rows. One name in `09_23_26 Downloads` differs in composition form only, the row composed and the file decomposed, and the row's path opens on disk. The hand filed folders carry their old shapes: playlist files and `already_in_library.txt` beside tracks, a few files with no row, a few rows spelled in the other form, subfolders the comparison did not descend into, none of it made here and the rowless files counted nowhere by doctor. | read |
+
+The two run identifier batches are now known: `09_23_26 Downloads` is
+sitting 8's 54 Tidal favourites, run `4773`, and `09_23_26 Downloads 2` is
+the 7 tracks acquired for the Tidal playlist of job `673e`, run `d66b`. No
+verb renames a filed folder and a rename in Finder breaks 61 rows, so they
+keep their names until a unit gives shelve a rename.
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
@@ -1487,9 +1515,10 @@ live proof still stands as owed: the first native landing on the rebuilt
 copy, one landed row dragged to a deck and recorded here, and
 `link-majority-unclear` on its gate is R-969.
 
-One thing is left of the genre work, and it is the author's: `crate delete
-review` over the 36 tracks removed from the collection at sitting 29, run
-from his Terminal, since the session's permission check refuses that verb.
+The genre work's last item, `crate delete review` over the 36 tracks removed
+at sitting 29, closed at sitting 45 another way: the rows are gone outright,
+so the pass cannot offer them (the residual filed there), and the files sit in
+`Removed_from_collection` at the volume root for Phillip to trash by hand.
 
 Owed by the author: the 2,416 label releases in review and a look at the
 339 held; a genre on the rows that still carry none, 1,308 by adoption's
