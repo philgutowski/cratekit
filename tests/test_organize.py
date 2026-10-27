@@ -1141,6 +1141,9 @@ def test_a_library_write_between_the_mirrors_two_acts_applies_the_approved_plan(
     # THE APPROVED PLAN, not the moved library: the playlist made after the
     # gate is not on the account until the next refresh plans it.
     assert not any("Made After The Gate" in title for title in held.titles.values())
+    frozen = config.state_path("mirror_plans", cfg)
+    before = sorted(path.name for path in frozen.glob("*.json"))
+    assert f"{done['run_id']}.json" in before
     collection.reset_cache()
     code, again = drive([*VERB, "--only", account_area.MIRROR, "--report"])
     assert code == int(ExitCode.OK), again
@@ -1151,6 +1154,8 @@ def test_a_library_write_between_the_mirrors_two_acts_applies_the_approved_plan(
         for item in step["plan"]
     ]
     assert any(" Made After The Gate" in str(item.get("playlist", "")) for item in planned), planned
+    # A REPORT FREEZES NOTHING.
+    assert sorted(path.name for path in frozen.glob("*.json")) == before
 
 
 def test_without_the_frozen_plan_the_same_two_acts_are_refused_stale(world, monkeypatch):
