@@ -204,7 +204,11 @@ lists what.
 - **Do not symlink `.venv` into a worktree.** The editable install names the
   checkout it was installed from, so a worktree would verify code it cannot see.
 - **No pull requests.** Feature branch per unit, merge to `main` locally, push
-  `main`, delete the branch.
+  `main`, delete the branch. **An attended cloud session merges and pushes
+  `main` itself**, authorized by Phillip on 2026-10-27 ("I authorize you to
+  merge to main here in the cloud now and going forward"); the unattended
+  cloud lane still stops at "Ready for the watcher", because the mutation
+  measure needs the macOS battery's green baseline.
 - **No em dashes, en dashes, or double hyphens** in any prose, code comment,
   commit message, or issue body. Do not swap a dash for a colon; favor commas,
   and keep colons for a genuine list or definition.

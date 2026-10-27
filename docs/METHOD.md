@@ -472,10 +472,13 @@ scan reads the container's mounts as the harness's, not a person's, under
 `CLAUDE_CODE_REMOTE`, so the declared identity tiers still apply and the
 detected one does not.
 
-**One writer on `main` is still the rule.** The cloud lane never writes it,
-so `/board-up` and the cloud task run at the same time without a conflict:
-the feeder owns `main`, the cloud owns its `cloud/N-slug` branches, and the
-watcher joins them.
+**One writer on `main` is still the rule.** The unattended cloud lane never
+writes it, so `/board-up` and the cloud task run at the same time without a
+conflict: the feeder owns `main`, the cloud owns its `cloud/N-slug`
+branches, and the watcher joins them. **An attended cloud session may merge
+and push `main`**, authorized by Phillip on 2026-10-27, and does so only
+when `/board-up` is not running, since the feeder halts a task whose base
+moves under it (`remote_advanced`).
 
 ## Do not touch
 
