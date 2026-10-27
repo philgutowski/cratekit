@@ -1674,8 +1674,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def read_known_failures(path: Path) -> frozenset[str]:
-    lines = path.read_text(encoding="utf-8").splitlines()
-    return frozenset(line.strip() for line in lines if line.strip() and not line.startswith("#"))
+    lines = (line.strip() for line in path.read_text(encoding="utf-8").splitlines())
+    return frozenset(line for line in lines if line and not line.startswith("#"))
 
 
 def main(argv: list[str]) -> int:

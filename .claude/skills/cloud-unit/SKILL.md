@@ -77,9 +77,13 @@ footer marks it as yours:
 | `Brainstorm` | the card is an idea; the questions wait on Phillip |
 | `Question for Phillip` | one decision the brief leaves open that cannot be made conservatively |
 | `Needs the machine` | set aside, with the steps to build it locally |
+| `Withdrawn` | this session lost a race for the lane and released the card |
 | `Landed` | merged and pushed on `main` |
 
 Post with `gh api -X POST repos/<owner>/<repo>/issues/N/comments -F body=@file.md`.
+Phillip's comments are read only as answers to a `Brainstorm` or a
+`Question for Phillip`. To stop the cloud building a card he labels it
+`attended` or closes it, and a session that finds either on its card stops.
 A hold with no comment for eight hours is read as a dead session and offered
 to the next one as `resume`, so post a `Progress` note at each phase: built,
 each review round, mutation measured.
@@ -91,14 +95,21 @@ each review round, mutation measured.
 
 It lists every open unit and residual card by state and names the one to take.
 If it says the lane is held, or names nothing, say so in one line and stop:
-one builder at a time is how `main` keeps one writer. Otherwise take the card
-it names, in its state:
+one builder at a time is how `main` keeps one writer. Otherwise **post
+`Started` on the card it names at once**, before reading anything else, so a
+second session reading the queue a minute later finds the lane held, then run
+`board.py cloud` again. If it now says two cards are held, two sessions read
+the lane free in the same minute: it names the one that held first, and if
+that is not yours, post `Withdrawn` on your card and stop. A `Brainstorm` or
+`Needs the machine` posted later replaces the hold. Take the card in its
+state:
 
 - `answered`: Phillip replied to a brainstorm or a question. Fold his answer
   into the brief (step 2's brainstorm paragraph) and go to step 3.
-- `resume`: a session holding it died. Post `Resumed`, then check out
-  `origin/cloud/N-...` if it exists and read its log against the card's
-  comments to see how far it got; otherwise start fresh from step 3.
+- `resume`: a session holding it died. Post `Resumed` rather than
+  `Started`, then check out `origin/cloud/N-...` if it exists and read its
+  log against the card's comments to see how far it got; otherwise start
+  fresh from step 3.
 - `ready`: nobody has taken it. Go to step 2.
 
 Read the brief with `board.py show N` and every comment on the card:
@@ -143,7 +154,7 @@ and writes them to `.cloud-battery/baseline.txt`. Run it as a tracked
 background job before the first edit, so it measures the base and not your
 work in progress, and edit nothing under `src` or `tests` until it reports.
 
-Post `Started`: the branch, the base commit, the session URL if you know it.
+Post `Progress`: the branch, the base commit, the session URL if you know it.
 
 ## 4. Plan
 
@@ -188,9 +199,12 @@ nothing else against the tree until it reports:
 
 The driver subtracts the machine's failures from every run, so its baseline
 is green net of them and its table says so. If it still refuses a red
-baseline, the failure it names is either intermittent on ext4 (rerun that
-test alone, and if it passes, add its id to the baseline file with a comment
-saying why) or yours (fix it). A zero row is driven the way METHOD says. Commit
+baseline, rerun the test it names alone. If it fails alone it is yours: fix
+it. If it passes alone it is intermittent under the parallel run: run the
+driver again, and if the same test reddens the baseline a second time, treat
+it as yours. **Never write an id into the baseline file by hand**: it is
+measured, and a hand added id is a regression excused for every later run.
+A zero row is driven the way METHOD says. Commit
 the table, `docs/mutation/uN.md` and `.json`, and post `Progress`.
 
 ## 8. The battery
@@ -233,7 +247,8 @@ this unit a module, merge without it and say so in `Landed`. Then:
     git push origin main
 
 If the push is refused because `main` moved, fetch, merge `origin/main` into
-`main`, run step 8's static checks, and push again. Never force push `main`.
+`main`, run step 8 again in full, since two units can be green apart and red
+together, and push again. Never force push `main`.
 For each residual `--land` named as meeting the board bar, file its issue
 over REST, titled `R-N: ` and the ledger heading exactly, with a body opening
 `**Depends on:** none` and the goal, key files, approach, test scenarios and

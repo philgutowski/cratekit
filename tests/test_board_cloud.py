@@ -159,8 +159,9 @@ def test_progress_keeps_a_long_build_from_reading_as_dead(board):
 
 def test_a_landed_card_still_open_is_reported_and_never_retaken(board):
     node = _node(board, _issue(1, "U1: a"))
-    landed = [_mine("Started", 3), _mine("Landed", 1)]
-    assert board.cloud_state(node, landed)[0] == "landed-open"
+    for heading in ("Landed", "Landed: abc", "Landed on main as abc"):
+        landed = [_mine("Started", board.STALE_HOURS + 3), _mine(heading, board.STALE_HOURS + 1)]
+        assert board.cloud_state(node, landed)[0] == "landed-open", heading
 
 
 def test_a_brainstorm_waits_for_phillip_and_his_reply_releases_it(board):
@@ -240,3 +241,18 @@ def test_cloud_says_so_when_no_card_is_open(board, monkeypatch, capsys):
     _wire(board, monkeypatch, [_issue(1, "U1: a", state="closed")])
     assert board.cmd_cloud(None) == 0
     assert "No open unit or residual card" in capsys.readouterr().out
+
+
+def test_two_holds_at_once_are_named_and_nothing_is_offered(board, monkeypatch, capsys):
+    issues = [_issue(1, "U1: a"), _issue(2, "U2: b"), _issue(3, "U3: c")]
+    _wire(board, monkeypatch, issues, {1: [_mine("Started", 0.5)], 2: [_mine("Started", 1)]})
+    assert board.cmd_cloud(None) == 1
+    out = capsys.readouterr().out
+    assert "#2, #1" in out, "the earlier hold is named first"
+    assert "#2 held first and keeps the lane" in out
+    assert "Take #" not in out
+
+
+def test_a_withdrawn_hold_releases_the_card(board):
+    node = _node(board, _issue(1, "U1: a"))
+    assert board.cloud_state(node, [_mine("Started", 2), _mine("Withdrawn", 1)])[0] == "ready"

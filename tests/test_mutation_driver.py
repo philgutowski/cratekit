@@ -710,6 +710,37 @@ def test_a_baseline_red_only_by_the_machines_known_failures_is_green(red_repo, t
         )
 
 
+def test_a_zero_row_promoted_on_a_known_red_suite_stays_a_zero(red_repo):
+    """The promoted full run reads the known set too.
+
+    A row its subset cannot kill is promoted to the full suite, which on this
+    fixture includes the machine's known failure. Without the set on that run
+    the known failure would read as the row's kill.
+    """
+    known = frozenset({"tests/test_red.py::test_that_fails"})
+    batch = mutate.measure_batch(
+        red_repo,
+        "red-zero",
+        [_row("Z1", "return value * 2", "return value * 3", tests=("tests/test_guards.py",))],
+        known=known,
+    )
+    assert batch.valid, batch.invalid_reason
+    row = batch.results[0]
+    assert row.promoted is True
+    assert row.status == "zero"
+    assert row.killed == []
+
+
+def test_known_failures_ignore_indented_comments_and_refuse_a_missing_file(tmp_path, capsys):
+    listed = tmp_path / "known.txt"
+    listed.write_text("# header\n  # indented\n\n  tests/a.py::t  \n", encoding="utf-8")
+    assert mutate.read_known_failures(listed) == frozenset({"tests/a.py::t"})
+    spec = tmp_path / "rows.toml"
+    spec.write_text('name = "x"\npass_kind = "light"\n', encoding="utf-8")
+    code = mutate.main(["mutate.py", str(spec), "--known-failures", str(tmp_path / "absent.txt")])
+    assert code == 2
+
+
 def test_the_child_inherits_the_callers_environment(env_repo, monkeypatch):
     """Inherit and add, never build fresh.
 

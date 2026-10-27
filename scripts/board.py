@@ -1579,6 +1579,7 @@ HEAD_BRAINSTORM = "brainstorm"
 HEAD_QUESTION = "question for phillip"
 HEAD_MACHINE = "needs the machine"
 HEAD_LANDED = "landed"
+HEAD_WITHDRAWN = "withdrawn"
 
 # A hold older than this with nothing landed after it is read as a session
 # that died, and the next session resumes the card from whatever it pushed.
@@ -1634,9 +1635,14 @@ def cloud_state(node: dict, comments: list[dict]) -> tuple[str, str]:
         c for c in ordered
         if _when(c) > since and SESSION_MARK not in (c.get("body") or "")
     ]
+    if heading == HEAD_WITHDRAWN:
+        return "ready", f"withdrawn {since[:16]}, no session holds it"
     if heading == HEAD_MACHINE:
         return "set-aside", f"needs the machine, set aside {since[:10]}"
-    if heading == HEAD_LANDED:
+    if heading == HEAD_LANDED or heading.startswith(HEAD_LANDED + " "):
+        # Read by its first word, so "Landed on main as abc" is a landing too;
+        # a drifted heading would otherwise be a hold, then a resume of a
+        # merged branch.
         return "landed-open", f"landed {since[:16]} and the card is still open; close it by hand"
     if heading in (HEAD_BRAINSTORM, HEAD_QUESTION):
         if after:
@@ -1697,6 +1703,17 @@ def cmd_cloud(args) -> int:
             print(f"  #{node['number']:<4} {state:<19} {why}")
             print(f"        {node['title'][:72]}")
         print()
+    if len(held) > 1:
+        # Two sessions read the lane free in the same minute. The earlier hold
+        # keeps it; the later one withdraws. Times come from the states' own
+        # lines, which end in the hold's timestamp.
+        held.sort(key=lambda n: states[n["number"]][1].rsplit(" ", 1)[-1])
+        print("TWO OR MORE CARDS ARE HELD: " + ", ".join(f"#{n['number']}" for n in held))
+        for node in held:
+            print(f"  #{node['number']:<4} {states[node['number']][1]}")
+        print(f"#{held[0]['number']} held first and keeps the lane. Every later holder")
+        print("posts Withdrawn on its own card and stops. Nothing is offered.")
+        return 1
     if held:
         # One builder at a time. Two sessions on two cards would each merge
         # main under the other, which is the halt the feeder called
