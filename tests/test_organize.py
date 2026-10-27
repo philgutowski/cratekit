@@ -1092,6 +1092,111 @@ def test_only_mirror_plans_and_writes_the_mirror_alone_and_a_rerun_plans_nothing
     assert "planned" not in states and "refused" not in states, again
 
 
+def _mirrored_folder(cfg: config.Config) -> str:
+    """One genre folder the mirror copies, by its database identifier."""
+    from cratekit.organize import account_mirror
+
+    names = [folder.name for folder in account_mirror.read_library(cfg).folders]
+    assert names, "the tree holds no folder for the mirror to copy"
+    ((found,),) = _query(
+        cfg, "SELECT ID FROM djmdPlaylist WHERE Name = ? AND Attribute = 1", names[0]
+    )
+    return str(found)
+
+
+def _mirror_between_acts(cfg, held, monkeypatch) -> tuple[int, dict, int]:
+    """``--only mirror``'s two acts with a library write between them (R-1031).
+
+    Answers the run's code and envelope and how many matches the apply asked.
+    """
+    monkeypatch.setattr(rekordbox, "plan_area", _not_planned)
+    only = [*VERB, "--only", account_area.MIRROR]
+    collection.reset_cache()
+    code, refused = drive(only)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    # A PLAYLIST MADE IN A MIRRORED FOLDER after the gate was shown, which a
+    # plan read afresh would have to create, so its digest would move.
+    _node(cfg, "Made After The Gate", under=_mirrored_folder(cfg), tracks=("r-one",))
+    code, decided = drive(["run", "decide", run_id, ACCOUNT_GATE, "apply", "--actor", "a-person"])
+    assert code == int(ExitCode.OK), decided
+    asked = len(held.matches)
+    collection.reset_cache()
+    code, done = drive(["--run", run_id, *only])
+    return code, done, len(held.matches) - asked
+
+
+def test_a_library_write_between_the_mirrors_two_acts_applies_the_approved_plan(world, monkeypatch):
+    """R-1031, AE3. The apply rebuilds the frozen plan: no stale decision, no match asked."""
+    cfg, _fake, held, _inbox, _ids = world
+    assert _answered()[0] == int(ExitCode.OK)
+
+    code, done, asked = _mirror_between_acts(cfg, held, monkeypatch)
+
+    assert code == int(ExitCode.OK), done
+    area = done["data"]["summary"]["areas"][account_area.AREA]
+    assert area["facts"]["mirror plan frozen"].startswith("rebuilt from the plan frozen on run ")
+    assert "rebuild" in area["facts"]["mirror plan"], area["facts"]
+    assert asked == 0
+    # THE APPROVED PLAN, not the moved library: the playlist made after the
+    # gate is not on the account until the next refresh plans it.
+    assert not any("Made After The Gate" in title for title in held.titles.values())
+    frozen = config.state_path("mirror_plans", cfg)
+    before = sorted(path.name for path in frozen.glob("*.json"))
+    assert f"{done['run_id']}.json" in before
+    collection.reset_cache()
+    code, again = drive([*VERB, "--only", account_area.MIRROR, "--report"])
+    assert code == int(ExitCode.OK), again
+    planned = [
+        item
+        for step in again["data"]["summary"]["areas"][account_area.AREA]["steps"]
+        if step["state"] == "planned"
+        for item in step["plan"]
+    ]
+    assert any(" Made After The Gate" in str(item.get("playlist", "")) for item in planned), planned
+    # A REPORT FREEZES NOTHING.
+    assert sorted(path.name for path in frozen.glob("*.json")) == before
+
+
+def test_without_the_frozen_plan_the_same_two_acts_are_refused_stale(world, monkeypatch):
+    """The contrast to the drive above: what the frozen plan holds, shown by its absence."""
+    from cratekit.organize import mirror_frozen
+
+    cfg, _fake, held, _inbox, _ids = world
+    assert _answered()[0] == int(ExitCode.OK)
+    monkeypatch.setattr(mirror_frozen, "load", lambda _cfg, run_id: (None, "none, by the test"))
+
+    code, done, _asked = _mirror_between_acts(cfg, held, monkeypatch)
+
+    assert code == int(ExitCode.DECISION_STALE), done
+    assert done["cause"]["reason"] == "decision-stale"
+
+
+def test_a_run_resumed_with_no_account_answer_plans_the_mirror_afresh(world, monkeypatch):
+    """R-1031. Only an answered account gate rebuilds from the frozen plan.
+
+    A run resumed before its account gate is answered asks the gate again, and
+    it is shown the library as it is now, not the plan the first act froze.
+    """
+    cfg, _fake, held, _inbox, _ids = world
+    assert _answered()[0] == int(ExitCode.OK)
+    monkeypatch.setattr(rekordbox, "plan_area", _not_planned)
+    only = [*VERB, "--only", account_area.MIRROR]
+    collection.reset_cache()
+    code, refused = drive(only)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    _node(cfg, "Made After The Gate", under=_mirrored_folder(cfg), tracks=("r-one",))
+
+    collection.reset_cache()
+    code, again = drive(["--run", refused["run_id"], *only])
+
+    assert code == int(ExitCode.DECISION_REQUIRED), again
+    shown = again["cause"]["detail"]["shown"]
+    assert not shown["mirror plan frozen"].startswith("rebuilt"), shown["mirror plan frozen"]
+    planned = [item for step in shown["items"] for item in step["plan"]]
+    assert any(" Made After The Gate" in str(item.get("playlist", "")) for item in planned), planned
+
+
 def test_only_file_moves_a_marked_playlist_as_the_full_verb_does_and_then_plans_nothing(world):
     cfg, fake, held, _inbox, _ids = world
     _marked(cfg, fake, held)

@@ -2154,6 +2154,24 @@ STATE_FILES: tuple[StateFile, ...] = (
             "here shares."
         ),
     ),
+    StateFile(
+        key="mirror_plans",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.DIRECTORY,
+        relative="mirror_plans",
+        why=(
+            "The account mirror's plan frozen on the organize run whose gate it "
+            "was shown at, one JSON file per run: the library it read and every "
+            "match it made (R-1031). The run that applies rebuilds the mirror "
+            "from it, reading the account listing alone, so the digest approved "
+            "is the digest applied and a library write between the two acts "
+            "does not stale the decision. Library-scoped because it names this "
+            "library's content rows. NEVER_RESTORED for the run record's "
+            "reason: a frozen plan belongs to a run, and restoring one would "
+            "apply a plan nobody was shown against the restored library."
+        ),
+    ),
 )
 
 _STATE_BY_KEY: Mapping[str, StateFile] = MappingProxyType({s.key: s for s in STATE_FILES})

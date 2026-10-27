@@ -22,7 +22,9 @@ THE PLAN READS AND WRITES NOTHING. It reads the root folders, each mirrored
 folder's playlists and each recorded playlist's tracks, and matches every
 library row to an account track through ``match_track``, the matcher ``export
 playlist`` uses. A row matched once is linked in the ledger, so a refresh asks
-the provider only about rows it has not matched before. What exists is reused,
+the provider only about rows it has not matched before, and a row it could not
+match is remembered with what it was asked under and not asked again until that
+changes (R-1031). What exists is reused,
 by the ledger's record first and by exact name second, never made twice:
 
 * the folder: the one recorded, or the one root folder of the exact name, or a
@@ -57,7 +59,7 @@ from typing import Any
 from cratekit.core import config
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.modules.outbound import ledger
-from cratekit.modules.outbound.service import RemoteAccount
+from cratekit.modules.outbound.service import UNREADABLE_CANDIDATE, RemoteAccount
 
 _ORIGIN = ("outbound", "mirror")
 
@@ -80,6 +82,11 @@ CHUNK = 100
 #: Why a row is left out of its mirrored playlist, when the account says no more.
 NO_ISRC = "the row carries no ISRC, in the database or in its file"
 NO_MATCH = "the account has no track this row's ISRC names"
+
+#: What a miss says when a candidate track could not be read, which is not an
+#: answer about the row, so the miss is never remembered (R-1031). The
+#: adapter formats its reason from the same constant.
+UNREAD = UNREADABLE_CANDIDATE
 
 
 def title(folder: str, playlist: str) -> str:
@@ -174,6 +181,17 @@ class Matcher:
     matched under, so a row retagged in the database with another code is
     matched again rather than kept on the old track. ``fresh`` gathers every
     link a plan used that the ledger does not yet hold, for an apply to record.
+
+    A MISS IS REUSED while the row is asked under what it was missed under
+    (R-1031): its database code, title, artist and path, and for a row with no
+    database code its file's ``signature``, since the file's code is read only
+    then. Anything else changing asks the provider again, and ``rematch`` asks
+    every remembered miss. ``missed`` gathers each miss a plan found, for the
+    ledger, except one whose reason says a candidate could not be read.
+
+    ``seen`` IS A FROZEN PLAN'S MATCHES, every row's answer as the gate's plan
+    found it, so a plan rebuilt from them asks the provider about no row they
+    carry.
     """
 
     def __init__(
@@ -181,12 +199,27 @@ class Matcher:
         account: RemoteAccount,
         links: Mapping[str, tuple[str, str]],
         identify: Callable[[Row], Identity],
+        *,
+        misses: Mapping[str, tuple[str, Sequence[str]]] | None = None,
+        signature: Callable[[Row], str] | None = None,
+        rematch: bool = False,
+        seen: Mapping[str, tuple[str, str, str]] | None = None,
     ) -> None:
         self._account = account
         self._links = dict(links)
         self._identify = identify
-        self._seen: dict[str, tuple[str, str, str]] = {}
+        self._misses = {} if rematch else dict(misses or {})
+        self._signature = signature or (lambda _row: "")
+        self._seen: dict[str, tuple[str, str, str]] = dict(seen or {})
         self.fresh: dict[str, tuple[str, str]] = {}
+        self.missed: dict[str, tuple[str, tuple[str, ...]]] = {}
+        #: How many rows a remembered miss answered, never asked of the provider.
+        self.remembered = 0
+
+    @property
+    def seen(self) -> dict[str, tuple[str, str, str]]:
+        """Every row's answer so far, ``(account track, ISRC, reason)``, for freezing."""
+        return dict(self._seen)
 
     def match(self, row: Row) -> tuple[str, str]:
         """``(account track, "")`` for a matched row, ``("", reason)`` otherwise."""
@@ -199,13 +232,28 @@ class Matcher:
             self.fresh[row.content_id] = (remote, isrc)
         return remote, reason
 
+    def under(self, row: Row) -> tuple[str, ...]:
+        """What a miss of this row is remembered under, and reused while it holds."""
+        return (
+            row.isrc,
+            row.title,
+            row.artist,
+            row.path,
+            "" if row.isrc else self._signature(row),
+        )
+
     def _match(self, row: Row) -> tuple[str, str, str]:
         linked = self._links.get(row.content_id)
         if linked is not None and (not row.isrc or row.isrc == linked[1]):
             return linked[0], linked[1], ""
+        under = self.under(row)
+        missed = self._misses.get(row.content_id)
+        if missed is not None and tuple(missed[1]) == under:
+            self.remembered += 1
+            return "", "", missed[0]
         said = self._identify(row)
         if not said.isrc:
-            return "", "", NO_ISRC
+            return self._missed(row, under, NO_ISRC)
         remote = self._account.match_track(
             identity=row.content_id,
             isrc=said.isrc,
@@ -215,8 +263,15 @@ class Matcher:
             album=said.album,
         )
         if not remote:
-            return "", "", self._account.unmatched_reason(row.content_id) or NO_MATCH
+            return self._missed(
+                row, under, self._account.unmatched_reason(row.content_id) or NO_MATCH
+            )
         return str(remote), said.isrc, ""
+
+    def _missed(self, row: Row, under: tuple[str, ...], reason: str) -> tuple[str, str, str]:
+        if UNREAD not in reason:
+            self.missed[row.content_id] = (reason, under)
+        return "", "", reason
 
     def links_of(self, rows: Sequence[Row]) -> dict[str, tuple[str, str]]:
         """The fresh links among these rows, what one folder's apply records."""
@@ -592,6 +647,7 @@ __all__ = [
     "REUSE",
     "Row",
     "Source",
+    "UNREAD",
     "UNREADABLE",
     "ambiguous",
     "apply",

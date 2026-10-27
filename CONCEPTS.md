@@ -1999,6 +1999,30 @@ under its own title and `Favorites 2026-10`, `Favorites Undated`.
 *Avoid:* reading it as an export (`crate export playlist`, add only, filed in
 `Exports`) or as a pair (`crate sync pair`, merged both ways).
 
+### Remembered miss
+A library row the account mirror could not match, recorded in the outbound
+ledger under `mirror_misses` with its reason and what it was asked under (its
+database code, title, artist, path, and for a row with no code its file's size
+and mtime), built by R-1031. A refresh does not ask the provider about it again
+until one of those changes, or until `crate organize --rematch`. A miss whose
+reason says a candidate track could not be read is never remembered, since it
+is not an answer about the row.
+
+*Avoid:* reading it as a refusal recorded on a mirrored playlist (`refused`
+under `mirrors`), which is a track the provider would not ADD, already matched.
+
+### Frozen mirror plan
+The library and the matches the account mirror's plan read on the organize run
+that showed its gate, written to the library's `mirror_plans` state directory
+under that run's identifier, built by R-1031. The run that answers the gate
+rebuilds the mirror from it and reads the account listing alone, so the
+mirror's digest approved is the digest applied however the library moved
+between the two acts; the area's other steps are planned again as before.
+A missing or unreadable record plans afresh and says so; `--report` writes none.
+
+*Avoid:* reading it as the run record (`runs/`), which holds the decisions and
+the digests offered, not any plan.
+
 ### Month playlist
 The playlist under the Favorites folder named for the UTC month a heart was
 hearted in, `2026-10`, decided on 2026-10-14 to replace the quarter playlist

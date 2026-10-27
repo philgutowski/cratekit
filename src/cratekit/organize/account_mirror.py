@@ -30,6 +30,15 @@ folder, and no folder is planned over a listing that failed.
 EVERY RUN SAYS ITS REQUEST COUNT AND DURATION: the plan's in the area's facts,
 and each applied folder's in its applied totals.
 
+THE PLAN A GATE SHOWS IS THE PLAN ITS APPLY APPLIES (R-1031). A run that asks
+its gate records every link and miss its plan found in the ledger, a fact about
+a row and a provider track rather than a write to the account, and freezes the
+library it read and its matches on the run (:mod:`mirror_frozen`). The run that
+answers the gate rebuilds the mirror from them, reading the account listing
+alone, so a library write between the two acts no longer moves the digest and
+the provider is asked only about rows the frozen plan does not carry. A report
+records and freezes nothing.
+
 Layer: modules.
 """
 
@@ -38,12 +47,14 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from cratekit.cli.output import digest_of
 from cratekit.core import config
 from cratekit.core.cause import Cause, CratekitError, Scope, refuse
 from cratekit.modules.outbound import ledger, mirror
+from cratekit.organize import mirror_frozen
 from cratekit.organize.steps import LISTED, NOTHING, PLANNED, Area, Step, refused
 
 #: The step kind ``--only`` names the mirror by.
@@ -53,6 +64,27 @@ TITLE = "mirror the genre tree and the Favorites folder onto the account"
 
 #: The fact the area shows for the plan's own request count and duration.
 PLAN_FACT = "mirror plan"
+#: The fact naming the misses a plan reused rather than asked again.
+MISSES_FACT = "mirror misses remembered"
+#: The fact saying whether the plan was frozen on the run, or rebuilt from one.
+FROZEN_FACT = "mirror plan frozen"
+
+
+@dataclass(frozen=True, slots=True)
+class Run:
+    """The organize run the mirror is planned on (R-1031).
+
+    ``record`` is a run that asks its gate, so its plan records what it
+    learned and freezes itself; a report does neither. ``decided`` is a run
+    whose account gate already holds a recorded answer, so the mirror is
+    rebuilt from the plan frozen on it. ``rematch`` asks every remembered miss
+    again.
+    """
+
+    run_id: str
+    record: bool = False
+    decided: bool = False
+    rematch: bool = False
 
 _ORIGIN = ("organize", "account_mirror")
 
@@ -216,6 +248,34 @@ def identify(cfg: config.Config) -> Callable[[mirror.Row], mirror.Identity]:
     return said
 
 
+def file_signature(cfg: config.Config) -> Callable[[mirror.Row], str]:
+    """A row's file as a miss remembers it, its size and mtime, or ``""`` unreadable.
+
+    Resolved as ``pair_cli.file_identity`` resolves the path it reads the code
+    from, so a file that gains a code, which changes its mtime, is asked again.
+    """
+    from cratekit.core import locations
+    from cratekit.modules.outbound import source
+
+    rules = source.prefix_rules(cfg)
+
+    def signature(row: mirror.Row) -> str:
+        if not row.path:
+            return ""
+        resolved = locations.resolve_recorded_path(
+            row.path, root=cfg.library.root, prefix_map=rules
+        )
+        if resolved.path is None:
+            return ""
+        try:
+            held = Path(resolved.path).stat()
+        except OSError:
+            return ""
+        return f"{held.st_size}:{held.st_mtime_ns}"
+
+    return signature
+
+
 def _detail(planned: mirror.FolderPlan) -> str:
     counts = planned.counts()
     if not planned.writes:
@@ -244,8 +304,9 @@ def _apply(
         account.lap()
         done = mirror.Applied()
         try:
-            # EVERY ROW THE RUN MATCHED, not only this folder's, so a folder
-            # with nothing to write leaves no row to be matched again.
+            # EVERY ROW THE RUN MATCHED OR MISSED, not only this folder's, so
+            # a folder with nothing to write leaves no row to be asked again.
+            ledger.record_mirror_misses(cfg, matcher.missed)
             mirror.apply(cfg, account, planned, done, links=matcher.fresh)
         finally:
             requests, seconds = account.lap()
@@ -261,23 +322,38 @@ def _apply(
     return apply
 
 
-def add_steps(cfg: config.Config, area: Area, account_of: Callable[[], Any]) -> None:
+def add_steps(
+    cfg: config.Config, area: Area, account_of: Callable[[], Any], run: Run | None = None
+) -> None:
     """Plan every mirrored folder into ``area``, one step each.
 
     ``account_of`` is the area's own lazy account, so a refusal to resolve it
-    is this kind's refusal with its own reason.
+    is this kind's refusal with its own reason. ``run`` is the organize run,
+    or ``None`` for a plan that neither records, freezes nor rebuilds.
     """
     started = time.monotonic()
+    frozen, unfrozen = None, ""
+    if run is not None and run.decided:
+        frozen, unfrozen = mirror_frozen.load(cfg, run.run_id)
     try:
-        library = read_library(cfg)
+        library = frozen.library if frozen is not None else read_library(cfg)
         recorded = ledger.mirror_folders(cfg)
         links = ledger.mirror_links(cfg)
+        misses = ledger.mirror_misses(cfg)
         account = mirror.Counted(account_of())
         root = account.folders()
     except CratekitError as exc:
         area.steps.append(refused(MIRROR, TITLE, exc.cause))
         return
-    matcher = mirror.Matcher(account, links, identify(cfg))
+    matcher = mirror.Matcher(
+        account,
+        links,
+        identify(cfg),
+        misses=misses,
+        signature=file_signature(cfg),
+        rematch=run is not None and run.rematch,
+        seen=frozen.matches if frozen is not None else None,
+    )
     for folder in library.folders:
         key = f"{MIRROR}:{folder.name}"
         title = f"mirror {folder.name} onto the account"
@@ -333,10 +409,57 @@ def add_steps(cfg: config.Config, area: Area, account_of: Callable[[], Any]) -> 
             )
         )
     requests, _seconds = account.lap()
+    read = "read the account and rebuild" if frozen is not None else "read the library and the account and plan"
     area.facts[PLAN_FACT] = (
         f"{requests} account request(s) in {round(time.monotonic() - started, 2)} s to "
-        f"read the library and the account and plan {len(library.folders)} folder(s)"
+        f"{read} {len(library.folders)} folder(s)"
     )
+    if matcher.remembered:
+        area.facts[MISSES_FACT] = (
+            f"{matcher.remembered} row(s) the mirror could not match before were not "
+            f"asked again, since nothing they were asked under changed; --rematch asks them"
+        )
+    if frozen is not None:
+        area.facts[FROZEN_FACT] = f"rebuilt from the plan frozen on run {run.run_id}" + (
+            ", whose matches stand, so --rematch on this run asked nothing; give it on "
+            "a new run to ask the remembered misses again"
+            if run.rematch
+            else ""
+        )
+    elif run is not None and run.record:
+        area.facts[FROZEN_FACT] = _record(cfg, run, library, matcher, unfrozen)
 
 
-__all__ = ["MIRROR", "PLAN_FACT", "Library", "add_steps", "identify", "read_library"]
+def _record(
+    cfg: config.Config, run: Run, library: Library, matcher: mirror.Matcher, unfrozen: str
+) -> str:
+    """Record what the plan learned and freeze it on the run; what the gate says of it.
+
+    NEITHER FAILURE REFUSES THE PLAN. A ledger that cannot take the links
+    refuses the apply on its own, and a plan that cannot be frozen is planned
+    again by the run that applies, which is what every run did before R-1031.
+    """
+    said = f"{unfrozen}, so it was planned afresh; " if unfrozen else ""
+    try:
+        ledger.record_mirror_links(cfg, matcher.fresh)
+        ledger.record_mirror_misses(cfg, matcher.missed)
+    except CratekitError as exc:
+        return f"{said}not frozen: what the plan matched could not be recorded ({exc.cause.message})"
+    try:
+        return said + mirror_frozen.freeze(cfg, run.run_id, library, matcher.seen)
+    except OSError as exc:
+        return f"{said}not frozen ({exc}), so the apply plans again"
+
+
+__all__ = [
+    "FROZEN_FACT",
+    "MIRROR",
+    "MISSES_FACT",
+    "PLAN_FACT",
+    "Library",
+    "Run",
+    "add_steps",
+    "file_signature",
+    "identify",
+    "read_library",
+]

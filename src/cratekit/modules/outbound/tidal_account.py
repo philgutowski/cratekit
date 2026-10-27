@@ -68,6 +68,7 @@ from cratekit.acquire.adapter import TrackOutcome, classify_unavailable
 from cratekit.core import provider_gate
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.modules.outbound import account, kinds, ledger, pairs
+from cratekit.modules.outbound.service import UNREADABLE_CANDIDATE
 
 #: How many times a write or a single lookup is retried after its first attempt.
 WRITE_RETRIES = 1
@@ -435,7 +436,7 @@ class TidalAccount:
             return agreeing[0], ""
         aside = (
             (f", {withdrawn} cannot be streamed" if withdrawn else "")
-            + (f", {unreadable} could not be read" if unreadable else "")
+            + (f", {unreadable} {UNREADABLE_CANDIDATE}" if unreadable else "")
         )
         if not agreeing:
             rest = "the rest" if aside else "them"

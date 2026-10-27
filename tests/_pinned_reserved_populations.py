@@ -1546,6 +1546,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'session-committed-unverified',
         'two-of-one-name',
     ],
+    # 2026-10-27, R-1031: the frozen mirror plan's encoding name joined.
+    'organize/mirror_frozen.py': ['utf-8'],
     'organize/rekordbox.py': ['organize-inspiration-unread', 'record-labels', 'tree-unconverged'],
     # 2026-10-13, U143: the root step's kept refusal problems joined.
     'organize/root.py': [

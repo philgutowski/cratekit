@@ -30,6 +30,14 @@ and its gate shows and its digest covers only those, with the selection named
 in both. An unknown kind is refused by name by the parser, before anything is
 read. With no ``--only`` the verb is exactly U112's.
 
+THE MIRROR'S PLAN IS FROZEN ON THE RUN THAT SHOWS ITS GATE (R-1031), and the
+run that answers rebuilds it from that record, so the mirror's digest is the
+one the person approved however the library moved between the two acts. The
+other account steps are planned again as before, so a write one of them reads,
+a set landing for the sets step, can still stale the account gate.
+``--rematch`` asks the provider again about every row the mirror remembers as
+unmatched, on the run that shows the gate.
+
 Layer: modules. The builder's parameters are unannotated so this file does not
 import the CLI registry (KTD23).
 """
@@ -45,7 +53,7 @@ from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebu
 from cratekit.core.exit_codes import Remedy
 from cratekit.intake import rotate_cli
 from cratekit.modules.outbound import shell
-from cratekit.organize import account, rekordbox
+from cratekit.organize import account, account_mirror, rekordbox
 from cratekit.organize.steps import FAILED, Area, area_check, check, selection
 
 #: The two gates, one per area. Looked up on ``ctx.entry.gates`` by name.
@@ -92,6 +100,15 @@ def build(parser, entry) -> None:
         help=(
             "the ISO date INBOX batches are aged against; today by default. Give "
             "the same date on the run that applies, or the plan is a different one"
+        ),
+    )
+    parser.add_argument(
+        "--rematch",
+        action="store_true",
+        default=False,
+        help=(
+            "ask the provider again about every row the account mirror remembers "
+            "as unmatched, rather than only the rows that changed"
         ),
     )
     parser.set_defaults(_handler=organize)
@@ -269,12 +286,19 @@ def organize(ctx) -> Envelope:
         areas.append(database)
         gates.append((database, REKORDBOX_GATE, APPROVE))
     if _named(account.STEPS, only):
+        state = ctx.gate.state
         remote = account.plan_area(
             cfg,
             available=membership.available,
             followed=followed,
             unfollowed=unfollowed,
             only=only,
+            run=account_mirror.Run(
+                run_id=state.run_id,
+                record=not report,
+                decided=not report and ACCOUNT_GATE in state.decisions,
+                rematch=bool(getattr(ctx.args, "rematch", False)),
+            ),
         )
         areas.append(remote)
         gates.append((remote, ACCOUNT_GATE, APPLY))
