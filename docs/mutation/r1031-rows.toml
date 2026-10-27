@@ -1,0 +1,239 @@
+name = "r1031"
+pass_kind = "light"
+
+# The unit's own guards, R-1031: remembered misses in the matcher and the
+# ledger, the plan frozen on the run, and the run handed in by the verb.
+
+[[rows]]
+id = "M1_miss_reused_whatever_changed"
+description = "Matcher._match: reuse a remembered miss whatever the row is now asked under"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror.py"]
+old = '''        if missed is not None and tuple(missed[1]) == under:'''
+new = '''        if missed is not None:'''
+
+[[rows]]
+id = "M2_rematch_ignored"
+description = "Matcher: keep the remembered misses under rematch, so --rematch asks nothing"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror.py"]
+old = '''        self._misses = {} if rematch else dict(misses or {})'''
+new = '''        self._misses = dict(misses or {})'''
+
+[[rows]]
+id = "M3_signature_keys_a_coded_row"
+description = "Matcher.under: key every miss on its file signature, so a coded row is asked again on any file touch"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror.py"]
+old = '''            "" if row.isrc else self._signature(row),'''
+new = '''            self._signature(row),'''
+
+[[rows]]
+id = "M4_signature_dropped"
+description = "Matcher.under: drop the file signature, so a file that gains a code is never asked again"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror.py"]
+old = '''            "" if row.isrc else self._signature(row),'''
+new = '''            "",'''
+
+[[rows]]
+id = "M5_unread_miss_remembered"
+description = "Matcher._missed: remember a miss over a candidate that could not be read"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror.py"]
+old = '''        if UNREAD not in reason:'''
+new = '''        if True:'''
+
+[[rows]]
+id = "M6_misses_never_gathered"
+description = "Matcher._missed: gather no miss, so nothing is remembered"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror.py"]
+old = '''            self.missed[row.content_id] = (reason, under)'''
+new = '''            pass'''
+
+[[rows]]
+id = "M7_remembered_not_counted"
+description = "Matcher._match: count no remembered miss, so the gate never says misses were reused"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror.py"]
+old = '''            self.remembered += 1'''
+new = '''            self.remembered += 0'''
+
+[[rows]]
+id = "M8_misses_not_a_map_read"
+description = "ledger._load: read a mirror_misses that is not a map instead of refusing"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror.py"]
+old = '''    if not isinstance(misses, Mapping):
+        raise _unusable(path, "mirror_misses must be a map of content row to its miss")'''
+new = '''    if False:
+        raise _unusable(path, "mirror_misses must be a map of content row to its miss")'''
+
+[[rows]]
+id = "M9_malformed_miss_kept"
+description = "ledger._load: keep a miss whose key is not a list"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "maintainer"
+tests = ["tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror.py"]
+old = '''            and isinstance(value.get("under"), list)'''
+new = '''            and True'''
+
+[[rows]]
+id = "M10_filter_against_raw_links"
+description = "ledger._load: drop a miss beside a raw link entry with no account track, the review's round one finding"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror.py"]
+old = '''            and str(content_id) not in linked'''
+new = '''            and str(content_id) not in links'''
+
+[[rows]]
+id = "M11_filter_removed"
+description = "ledger._load: keep a miss of a row the ledger links"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror.py"]
+old = '''            and str(content_id) not in linked'''
+new = '''            and True'''
+
+[[rows]]
+id = "M12_link_keeps_its_miss"
+description = "ledger.record_mirror_links: leave the row's miss in the document when it is linked"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "maintainer"
+tests = ["tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror.py"]
+old = '''                document["mirror_misses"].pop(str(content_id), None)'''
+new = '''                pass'''
+
+[[rows]]
+id = "M13_miss_written_over_a_link"
+description = "ledger.record_mirror_misses: write a miss for a row the ledger already links"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "maintainer"
+tests = ["tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror.py"]
+old = '''            if str(content_id) in document["mirror_links"]:
+                continue'''
+new = '''            if False:
+                continue'''
+
+[[rows]]
+id = "M14_decided_ignored"
+description = "add_steps: never load the frozen plan, so the apply plans afresh as before R-1031"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror.py", "tests/test_organize.py"]
+old = '''    if run is not None and run.decided:'''
+new = '''    if run is not None and False:'''
+
+[[rows]]
+id = "M15_seen_not_seeded"
+description = "add_steps: rebuild from the frozen library with no frozen matches, the review's row one"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror.py", "tests/test_organize.py"]
+old = '''        seen=frozen.matches if frozen is not None else None,'''
+new = '''        seen=None,'''
+
+[[rows]]
+id = "M16_report_records"
+description = "add_steps: record and freeze on a run that does not ask its gate"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror.py", "tests/test_organize.py"]
+old = '''    elif run is not None and run.record:'''
+new = '''    elif run is not None:'''
+
+[[rows]]
+id = "M17_apply_records_no_miss"
+description = "_apply: record no miss at the apply, so a plan with no run remembers nothing"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror.py"]
+old = '''            ledger.record_mirror_misses(cfg, matcher.missed)
+            mirror.apply(cfg, account, planned, done, links=matcher.fresh)'''
+new = '''            mirror.apply(cfg, account, planned, done, links=matcher.fresh)'''
+
+[[rows]]
+id = "M18_unrecordable_ledger_refuses_the_plan"
+description = "_record: let a ledger that cannot take the links escape the plan instead of saying so"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror.py"]
+old = '''    except CratekitError as exc:
+        return f"{said}not frozen: what the plan matched could not be recorded ({exc.cause.message})"'''
+new = '''    except ValueError as exc:
+        return f"{said}not frozen: what the plan matched could not be recorded ({exc})"'''
+
+[[rows]]
+id = "M19_unfreezable_plan_refuses"
+description = "_record: let a frozen plan that cannot be written escape the plan instead of saying so"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror.py"]
+old = '''    except OSError as exc:
+        return f"{said}not frozen ({exc}), so the apply plans again"'''
+new = '''    except ValueError as exc:
+        return f"{said}not frozen ({exc}), so the apply plans again"'''
+
+[[rows]]
+id = "M20_signature_constant"
+description = "file_signature: answer one value for every readable file, so a rewritten file looks unchanged"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror.py"]
+old = '''        return f"{held.st_size}:{held.st_mtime_ns}"'''
+new = '''        return "1:1"'''
+
+[[rows]]
+id = "M21_run_id_unchecked"
+description = "mirror_frozen._path: name a file from any run identifier"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen.py", "tests/test_organize.py"]
+old = '''    if not _RUN_ID.match(run_id):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M22_record_binding_unchecked"
+description = "mirror_frozen.load: rebuild from a record of another version or another run"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen.py", "tests/test_organize.py"]
+old = '''        if data.get("version") != VERSION or data.get("run_id") != run_id:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M23_prune_window_halved"
+description = "mirror_frozen._prune: halve the kept window's coefficient"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "maintainer"
+tests = ["tests/test_organize_mirror_frozen.py"]
+old = '''    cutoff = time.time() - KEPT_DAYS * 86400'''
+new = '''    cutoff = time.time() - KEPT_DAYS * 43200'''
+
+[[rows]]
+id = "M24_report_freezes_at_the_verb"
+description = "organize: hand the mirror a recording run under --report"
+file = "src/cratekit/organize/cli.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''                record=not report,'''
+new = '''                record=True,'''
+
+[[rows]]
+id = "M25_decided_without_the_account_answer"
+description = "organize: read a run as decided with no answer on the account gate, the review's row five"
+file = "src/cratekit/organize/cli.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''                decided=not report and ACCOUNT_GATE in state.decisions,'''
+new = '''                decided=not report,'''
