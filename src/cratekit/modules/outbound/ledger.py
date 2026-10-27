@@ -37,6 +37,12 @@ the provider would not add. Every mirrored playlist is one the product created,
 so a track may be taken off it. ``mirror_links`` maps a library content row to
 the account track it matched and the ISRC it matched under, so a refresh does
 not ask the provider to match the same row again.
+
+SINCE R-1031 IT REMEMBERS EACH ROW THE MIRROR COULD NOT MATCH, under
+``mirror_misses``: the reason, and what the row was asked under, its database
+code, title, artist, path and, for a row with no code, its file's size and
+mtime. A refresh asks the provider about it again only once one of those
+changes, or on ``--rematch``. A row linked later loses its miss.
 """
 
 from __future__ import annotations
@@ -76,6 +82,7 @@ def _empty() -> dict[str, Any]:
         "kind_folders": {},
         "mirrors": {},
         "mirror_links": {},
+        "mirror_misses": {},
     }
 
 
@@ -136,6 +143,9 @@ def _load(cfg: config.Config) -> dict[str, Any]:
     links = raw.get("mirror_links", {})
     if not isinstance(links, Mapping):
         raise _unusable(path, "mirror_links must be a map of content row to account track")
+    misses = raw.get("mirror_misses", {})
+    if not isinstance(misses, Mapping):
+        raise _unusable(path, "mirror_misses must be a map of content row to its miss")
     return {
         "version": LEDGER_VERSION,
         "playlists": {str(key): dict(value) for key, value in playlists.items()
@@ -184,6 +194,18 @@ def _load(cfg: config.Config) -> dict[str, Any]:
             }
             for content_id, value in links.items()
             if isinstance(value, Mapping) and value.get("remote")
+        },
+        # A MISS THAT CANNOT BE READ IS DROPPED, never refused: dropping one
+        # costs a provider request on the next refresh, and nothing else.
+        "mirror_misses": {
+            str(content_id): {
+                "reason": str(value.get("reason") or ""),
+                "under": [str(one) for one in value["under"]],
+            }
+            for content_id, value in misses.items()
+            if isinstance(value, Mapping)
+            and isinstance(value.get("under"), list)
+            and str(content_id) not in links
         },
     }
 
@@ -1362,6 +1384,41 @@ def record_mirror_links(cfg: config.Config, links: Mapping[str, tuple[str, str]]
         for content_id, (remote, isrc) in links.items():
             if remote:
                 document["mirror_links"][str(content_id)] = {"remote": str(remote), "isrc": str(isrc)}
+                document["mirror_misses"].pop(str(content_id), None)
+        _write(cfg, document)
+    finally:
+        lock.__exit__(None, None, None)
+
+
+def mirror_misses(cfg: config.Config) -> dict[str, tuple[str, tuple[str, ...]]]:
+    """Each content row the mirror could not match, to ``(reason, what it was asked under)``."""
+    return {
+        content_id: (str(value["reason"]), tuple(value["under"]))
+        for content_id, value in _load(cfg)["mirror_misses"].items()
+    }
+
+
+def record_mirror_misses(
+    cfg: config.Config, misses: Mapping[str, tuple[str, Iterable[str]]]
+) -> None:
+    """Remember rows the mirror could not match, so a refresh does not ask again (R-1031).
+
+    A row the ledger already links is never recorded as a miss, so a link is
+    never overwritten by one: a linked row retagged with a code that misses is
+    asked again on each refresh rather than forgotten.
+    """
+    if not misses:
+        return
+    lock = _locked(cfg)
+    try:
+        document = _load(cfg)
+        for content_id, (reason, under) in misses.items():
+            if str(content_id) in document["mirror_links"]:
+                continue
+            document["mirror_misses"][str(content_id)] = {
+                "reason": str(reason),
+                "under": [str(one) for one in under],
+            }
         _write(cfg, document)
     finally:
         lock.__exit__(None, None, None)

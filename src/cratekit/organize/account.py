@@ -603,6 +603,7 @@ def plan_area(
     followed,
     unfollowed: CratekitError | None = None,
     only: frozenset[str] | None = None,
+    run: account_mirror.Run | None = None,
 ) -> Area:
     """Plan every account step; a step that refuses is shown and hides no other.
 
@@ -614,6 +615,9 @@ def plan_area(
     planned, so nothing it would read is read. The filing is handed the labels
     and the same lazy readers either way, and ``yours`` with no filing selected
     excludes nothing as moving.
+
+    ``run`` is the organize run the mirror records, freezes and rebuilds its
+    plan on (R-1031), or ``None`` for a mirror that does none of them.
     """
     from cratekit.label import catalogue
     from cratekit.modules.outbound import account
@@ -649,7 +653,7 @@ def plan_area(
     if area.wants(ROOT):
         _root_step(cfg, area, followed, catalogue_of, remote_of, filed_of)
     if area.wants(MIRROR):
-        account_mirror.add_steps(cfg, area, remote_of.get)
+        account_mirror.add_steps(cfg, area, remote_of.get, run)
     if area.wants(YOURS):
         # AN EMPTY ROOT PLAYLIST IS THE ROOT STEP'S, not one of the author's
         # left alone, read off the filing plan so ``--only yours`` makes none
