@@ -672,6 +672,44 @@ def test_a_red_baseline_is_refused_and_the_failures_are_named(red_repo):
         )
 
 
+def test_a_baseline_red_only_by_the_machines_known_failures_is_green(red_repo, tmp_path):
+    """A Linux container fails about 170 of this suite's tests for want of a Mac.
+
+    Those ids, measured on the base commit by the cloud battery, are subtracted
+    from every run, so the baseline reads green net of them and a row is
+    credited only with deaths it caused. The same batch with no such set is the
+    refusal above; the set never excuses a failure it does not name.
+    """
+    red_id = "tests/test_red.py::test_that_fails"
+    known = tmp_path / "baseline.txt"
+    known.write_text(f"# commit abc host here\n{red_id}\n", encoding="utf-8")
+    read = mutate.read_known_failures(known)
+    assert read == frozenset({red_id})
+
+    batch = mutate.measure_batch(
+        red_repo,
+        "red-known",
+        [_row("K1", "if value > limit:", "if value > 10000:")],
+        known=read,
+        known_source=str(known),
+    )
+    assert batch.valid, batch.invalid_reason
+    assert batch.known_failures == 1
+    row = batch.results[0]
+    assert row.status == "killed"
+    assert row.killed == ["tests/test_guards.py::test_clamp_caps_at_the_limit"]
+    assert red_id not in row.killed
+
+    not_it = frozenset({"tests/test_red.py::test_some_other"})
+    with pytest.raises(mutate.DriverRefusal, match="BASELINE IS NOT GREEN"):
+        mutate.measure_batch(
+            red_repo,
+            "red-still",
+            [_row("K1", "if value > limit:", "if value > 10000:")],
+            known=not_it,
+        )
+
+
 def test_the_child_inherits_the_callers_environment(env_repo, monkeypatch):
     """Inherit and add, never build fresh.
 

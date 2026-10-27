@@ -926,8 +926,19 @@ def run_pytest(
     timeout: int = 3600,
     guard: StateGuard | None = None,
     label: str = "a child run",
+    known: frozenset[str] = frozenset(),
 ) -> RunResult:
-    """Run pytest once, synchronously, and read the result off report objects."""
+    """Run pytest once, synchronously, and read the result off report objects.
+
+    ``known`` is the set of node ids whose failure is the machine's and not the
+    tree's: on a Linux container about 170 of this suite's tests fail for want
+    of a Mac (root reads every directory, no hdiutil, a timing calibration
+    pinned to one machine). They are subtracted from every run, the baselines
+    and the rows alike, so a baseline red only by them reads green and a row
+    that kills one of them kills nothing it could be credited for. The set is
+    measured on the base commit by ``scripts/cloud_battery.py baseline``; a
+    hand written one would be the list this driver exists to refuse.
+    """
     with tempfile.TemporaryDirectory(prefix="mutate-run-") as tmp:
         workspace = Path(tmp)
         (workspace / f"{PLUGIN_MODULE}.py").write_text(PLUGIN_SOURCE, encoding="utf-8")
@@ -1012,8 +1023,8 @@ def run_pytest(
 
     return RunResult(
         collected=int(state["collected"]),
-        failed=tuple(state["failed"]),
-        errored=tuple(state["errored"]),
+        failed=tuple(i for i in state["failed"] if i not in known),
+        errored=tuple(i for i in state["errored"] if i not in known),
         collect_errors=tuple(state["collect_errors"]),
         exit_code=done.returncode,
     )
@@ -1065,6 +1076,7 @@ def measure_row(
     timeout: int = 3600,
     head_verify: bool = True,
     guard: StateGuard | None = None,
+    known: frozenset[str] = frozenset(),
 ) -> RowResult:
     """Apply one row, measure it, restore it, and describe what happened."""
     common = dict(
@@ -1092,7 +1104,8 @@ def measure_row(
             head_verify=head_verify,
         ):
             result = run_pytest(
-                repo_root, subset, timeout=timeout, guard=guard, label=f"row {row.id}"
+                repo_root, subset, timeout=timeout, guard=guard, label=f"row {row.id}",
+                known=known,
             )
             promoted = False
             final = result
@@ -1109,6 +1122,7 @@ def measure_row(
                     timeout=timeout,
                     guard=guard,
                     label=f"row {row.id}, promoted to the full suite",
+                    known=known,
                 )
                 promoted = True
     except DriverRefusal as refusal:
@@ -1172,6 +1186,8 @@ class Batch:
     pytest_runs: int
     state_guarded: str = ""
     reused_rows: int = 0
+    known_failures: int = 0
+    known_source: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -1187,6 +1203,8 @@ class Batch:
             "pytest_runs": self.pytest_runs,
             "state_guarded": self.state_guarded,
             "reused_rows": self.reused_rows,
+            "known_failures": self.known_failures,
+            "known_source": self.known_source,
             "control": self.control.to_dict() if self.control else None,
             "rows": [one.to_dict() for one in self.results],
             "dropped": [one.__dict__ for one in self.dropped],
@@ -1205,6 +1223,8 @@ def measure_batch(
     prior: dict | None = None,
     progress_path: Path | None = None,
     guard: StateGuard | None = None,
+    known: frozenset[str] = frozenset(),
+    known_source: str = "",
 ) -> Batch:
     """Run a whole batch: preflight, baselines, the control, then the rows.
 
@@ -1223,6 +1243,8 @@ def measure_batch(
         head=head_sha(repo_root),
         when=when,
         dropped=dropped,
+        known_failures=len(known),
+        known_source=known_source,
     )
 
     control = null_control_row(rows)
@@ -1250,7 +1272,7 @@ def measure_batch(
 
     # ---- baselines ------------------------------------------------------
     full_baseline = run_pytest(
-        repo_root, None, timeout=timeout, guard=guard, label="the full baseline"
+        repo_root, None, timeout=timeout, guard=guard, label="the full baseline", known=known
     )
     runs += 1
     if not full_baseline.is_green:
@@ -1291,6 +1313,7 @@ def measure_batch(
                 timeout=timeout,
                 guard=guard,
                 label=f"the subset baseline for {', '.join(subset)}",
+                known=known,
             )
             runs += 1
             if not measured.is_green:
@@ -1312,6 +1335,7 @@ def measure_batch(
         timeout=timeout,
         head_verify=control.file not in set(dirty),
         guard=guard,
+        known=known,
     )
     runs += control_result.runs
     if control_result.deaths or control_result.status != "zero":
@@ -1359,6 +1383,7 @@ def measure_batch(
                     timeout=timeout,
                     head_verify=row.file not in set(dirty),
                     guard=guard,
+                    known=known,
                 )
             )
         except RestoreVerificationError:
@@ -1465,6 +1490,16 @@ def render_markdown(batch: Batch) -> str:
         f"Baseline: green, {batch.baseline_collected} collected. "
         f"pytest invocations for this batch: {batch.pytest_runs}."
     )
+    if batch.known_failures:
+        add("")
+        add(
+            f"Known failures: {batch.known_failures} node ids whose failure is this "
+            f"machine's and not the tree's, read from `{batch.known_source}` and "
+            "subtracted from every run, the baselines and the rows alike. The "
+            "baseline is green net of them, and a death among them is not counted. "
+            "This is a Linux measure of a macOS suite; the full battery is owed on "
+            "a Mac."
+        )
     add("")
     add(
         "Environment: inherited from the calling shell, then added to. Added: "
@@ -1625,7 +1660,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="reuse rows already in the JSON sidecar whose text has not changed",
     )
     parser.add_argument("--timeout", type=int, default=3600, help="seconds per pytest run")
+    parser.add_argument(
+        "--known-failures",
+        type=Path,
+        default=None,
+        help=(
+            "a file of node ids that fail on this machine and not for the tree, one "
+            "a line, # comments allowed, as scripts/cloud_battery.py baseline writes "
+            "it; subtracted from every run"
+        ),
+    )
     return parser
+
+
+def read_known_failures(path: Path) -> frozenset[str]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    return frozenset(line.strip() for line in lines if line.strip() and not line.startswith("#"))
 
 
 def main(argv: list[str]) -> int:
@@ -1636,6 +1686,13 @@ def main(argv: list[str]) -> int:
         print(f"refused: {refusal}", file=sys.stderr)
         return 2
     name = args.name or name
+
+    known: frozenset[str] = frozenset()
+    if args.known_failures is not None:
+        if not args.known_failures.is_file():
+            print(f"refused: no known failures file at {args.known_failures}", file=sys.stderr)
+            return 2
+        known = read_known_failures(args.known_failures)
 
     prior = None
     sidecar = args.out_dir / f"{name}.json"
@@ -1653,6 +1710,8 @@ def main(argv: list[str]) -> int:
             timeout=args.timeout,
             prior=prior,
             progress_path=sidecar,
+            known=known,
+            known_source=str(args.known_failures) if args.known_failures else "",
         )
     except DriverRefusal as refusal:
         print(f"refused: {refusal}", file=sys.stderr)
