@@ -123,6 +123,13 @@ def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
         help="the library volume's own identity, a UUID or serial and never a mount path",
     )
     parser.add_argument("--staging", help="where fresh downloads land before they are moved")
+    parser.add_argument(
+        "--processed-dir",
+        help=(
+            "the folder under the music folder where intake shelve files an imported "
+            f"batch, by year and date (default: {config.DEFAULT_PROCESSED_DIR})"
+        ),
+    )
     parser.add_argument("--profile", choices=profiles.PROFILE_NAMES, help="the module preset")
     # A CLOSED SET, exactly like the profile beside it. Without the choices, a
     # typed name reached validation, was written to the configuration file, and
@@ -1563,6 +1570,20 @@ def setup(ctx: "Context") -> Envelope:
             flag=args.staging,
             question="Where should fresh downloads land before they are moved",
             default=str(Path(root) / STAGING_DIRNAME),
+        ),
+    )
+    # A NAME UNDER THE MUSIC FOLDER, NOT A PATH (U154). The key composes with
+    # ``library.root`` and ``library.music_dir`` wherever it is read, so a
+    # library that moves keeps its processed tree, which a recorded absolute
+    # path would not. The default is the tree the author kept by hand.
+    _put(
+        document,
+        "library.processed_dir",
+        wizard.resolve(
+            "library.processed_dir",
+            flag=args.processed_dir,
+            question="Which folder under the music folder holds filed batches",
+            default=config.DEFAULT_PROCESSED_DIR,
         ),
     )
     _put(
