@@ -9,8 +9,15 @@ agents fix the models (Opus 5.5 at high effort builds, Fable at high effort
 reviews), the project settings fix the effort, and a session hook builds the
 venv on a fresh container. `scripts/cloud_battery.py` measures the machine
 bound failures of the Linux suite on the base and reads the branch against
-them, 169 on this container at `82bdfb3`, mostly `tests/test_doctor.py` and
-the backup and restore suites, because root reads every directory. The repo
+them, 167 on this container at `82bdfb3` by its own measure, mostly
+`tests/test_doctor.py` and the backup and restore suites, because root reads
+every directory. The branch read against that baseline: 167 still failing,
+none gone, one newly failing that passed alone three times,
+`tests/test_repair_rows.py::test_the_real_bound_is_a_fresh_files_inode_and_leaves_no_file_behind`,
+which asserts a fresh file's inode is greater than an older file's: true on
+APFS, and on ext4 under a parallel run an inode is reused, so it is the
+container's and intermittent, and a cloud session that meets it reruns it
+alone before calling it its own. The repo
 scan no longer reads the container's mounts as a person's under
 `CLAUDE_CODE_REMOTE`; one of them is named `skills`, which flagged nine test
 files. `board.py` falls back to REST when GraphQL is refused and parses the
