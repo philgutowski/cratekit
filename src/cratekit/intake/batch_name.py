@@ -186,7 +186,7 @@ def source_words(
     return DOWNLOADS
 
 
-def taken(cfg: config.Config, name: str) -> bool:
+def taken(cfg: config.Config, name: str, *, shelved: frozenset[str] | None = None) -> bool:
     """Whether a batch folder of ``name`` is under the music folder, or was shelved from it.
 
     A link of that name counts as taken whether or not it leads anywhere, since
@@ -201,18 +201,39 @@ def taken(cfg: config.Config, name: str) -> bool:
     name. A second landing on the day the first was shelved would merge into
     it silently. The shelve's session record names every batch it moved, and
     that record is read here, so the question needs no database handle and is
-    answered the same before the gate and under the lock.
+    answered the same before the gate and under the lock. ``shelved`` is the
+    set already read, for a caller that asks about several names in a row.
     """
-    return os.path.lexists(landing.target_dir(cfg, name)) or name in shelved_names(cfg)
+    shelved = shelved_names(cfg) if shelved is None else shelved
+    return os.path.lexists(landing.target_dir(cfg, name)) or name in shelved
 
 
 def shelved_names(cfg: config.Config) -> frozenset[str]:
-    """Every batch name a shelve's session record says it moved out of the music folder."""
+    """Every batch name a shelve's session record says it moved out of the music folder.
+
+    FAILS CLOSED ON A RECORD IT CANNOT READ. The reporting scan drops an
+    unreadable record, and a name rule that borrowed that policy would read a
+    shelved name as free the day one record is damaged, which is the silent
+    merge this rule exists to prevent. The refusal names the files, as the
+    session gate's own refusal does.
+    """
     from cratekit.core import session
+    from cratekit.core.cause import Remedy, refuse
     from cratekit.intake import shelve
 
+    parsed, unreadable = session.scan_log(cfg)
+    if unreadable:
+        raise refuse(
+            "internal-error",
+            f"the session log holds {len(unreadable)} entr"
+            + ("y" if len(unreadable) == 1 else "ies")
+            + " this build cannot read, so no batch name can be called free; refusing "
+            "rather than naming a batch after one a shelve may have filed",
+            remedy=Remedy.REPORT_DEFECT,
+            detail={"unreadable": [str(path) for path in unreadable]},
+        )
     names: set[str] = set()
-    for record in session.records(cfg):
+    for record in parsed:
         if record.workflow != shelve.WORKFLOW:
             continue
         moved = record.detail.get(shelve.SHELVED_KEY)
@@ -226,8 +247,9 @@ def shelved_names(cfg: config.Config) -> frozenset[str]:
 
 def free(cfg: config.Config, base: str) -> str:
     """``base``, or ``base 2``, ``base 3`` and on, the first no batch folder holds."""
+    shelved = shelved_names(cfg)
     candidate, count = base, 1
-    while taken(cfg, candidate):
+    while taken(cfg, candidate, shelved=shelved):
         count += 1
         candidate = f"{base} {count}"
     return candidate

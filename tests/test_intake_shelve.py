@@ -466,3 +466,87 @@ def test_a_library_whose_drive_was_renamed_stores_and_confines_under_the_base_dr
     for was, now in zip(before, _rows(cfg)):
         assert now[1] == f"{stored_target}/{was[2]}", "the row is not stored under the base drive"
         assert now[2:] == was[2:]
+
+
+# ---------------------------------------------------------------------------
+# Review round one
+# ---------------------------------------------------------------------------
+
+
+def test_a_target_free_on_disk_but_holding_rows_in_the_collection_is_passed_over(
+    native_library, silence
+):
+    """A folder filed by hand and moved since leaves rows stored under its name
+    with nothing on disk; a target chosen by disk alone would put this batch's
+    rows beside them and the confinement check would refuse its own commit."""
+    cfg, _root = native_library
+    _land_three(cfg, silence)
+    ghost = _processed(cfg) / "2026" / FILED
+    conn = sqlite3.connect(cfg.library.db_path)
+    try:
+        conn.execute(
+            "UPDATE djmdContent SET FolderPath = ? WHERE ID = (SELECT MIN(ID) FROM djmdContent "
+            "WHERE Title NOT LIKE '01A - 124 - %')",
+            (str(ghost / "ghost.flac"),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    assert not ghost.exists()
+
+    code, acted, _ = _two_acts_of(_shelve(BATCH), GATE)
+
+    assert code == int(ExitCode.OK), acted
+    (item,) = acted["data"]["items"]
+    assert item["to"] == str(_processed(cfg) / "2026" / f"{FILED} 2")
+    assert (_processed(cfg) / "2026" / f"{FILED} 2").is_dir()
+
+
+def test_a_subject_with_a_path_part_is_refused(native_library, silence):
+    cfg, _root = native_library
+    before = _land_three(cfg, silence)
+    code, envelope = drive(_shelve("--as", "Tidal/Favorites", BATCH))
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["remediation"]["remedy"] == "fix-command-line"
+    assert (_music(cfg) / BATCH).is_dir() and _rows(cfg) == before
+
+
+def test_a_batch_named_twice_is_planned_once(native_library, silence):
+    cfg, _root = native_library
+    _land_three(cfg, silence)
+    code, acted, _ = _two_acts_of(_shelve(BATCH, BATCH), GATE)
+    assert code == int(ExitCode.OK), acted
+    assert acted["data"]["totals"]["batches"] == 1
+    assert (_processed(cfg) / "2026" / FILED).is_dir()
+    assert not (_processed(cfg) / "2026" / f"{FILED} 2").exists()
+
+
+def test_a_processed_tree_on_another_device_refuses_before_any_plan(
+    native_library, silence, monkeypatch
+):
+    from cratekit.intake import landing
+
+    cfg, _root = native_library
+    before = _land_three(cfg, silence)
+    music = _music(cfg)
+    monkeypatch.setattr(landing, "_device_of", lambda path: 1 if Path(path) == music else 2)
+    code, envelope = drive(_shelve("--report", BATCH))
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert "different device" in envelope["cause"]["message"]
+    assert envelope["cause"]["remediation"]["remedy"] == "fix-config-values"
+    assert _rows(cfg) == before
+
+
+def test_an_unreadable_session_record_makes_the_name_rule_refuse_rather_than_read_a_name_free(
+    native_library, silence
+):
+    cfg, _root = native_library
+    _land_three(cfg, silence)
+    code, acted, _ = _two_acts_of(_shelve(BATCH), GATE)
+    assert code == int(ExitCode.OK), acted
+    assert batch_name.taken(cfg, BATCH)
+    (session.log_dir(cfg) / "2026-10-26T00-00-00Z-dead.json").write_text("{not json")
+
+    with pytest.raises(Exception) as caught:
+        batch_name.free(cfg, BATCH)
+    assert "cannot read" in str(caught.value)

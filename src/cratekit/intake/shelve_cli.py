@@ -12,8 +12,10 @@ for the landing's reason: a path write on the collection is answered by a
 separate recorded act with an actor (R34).
 
 ``--report`` PLANS AGAINST A READ ONLY COPY AND WRITES NOTHING, so a person
-can see what a shelve would do with rekordbox open and no acknowledgment
-standing. Its plan carries the same digest the gate would show.
+can see what a shelve would do with no acknowledgment standing and no gate
+asked. rekordbox still has to be closed, since the copy is taken by the
+guarded writer's own opener. Its plan carries the same digest the gate would
+show.
 
 ``--as`` NAMES ONE BATCH'S SUBJECT. It replaces the words the batch name
 carries, which is what a batch named for its run needs, and is refused with
@@ -32,7 +34,7 @@ from cratekit.cli.output import Envelope
 from cratekit.core import analysis_store, rb_writer
 from cratekit.core.cause import Outcome, Remedy, refuse
 from cratekit.intake import cli as intake_cli
-from cratekit.intake import land_cli, shelve
+from cratekit.intake import land_cli, landing, shelve
 
 #: The gate the verb asks. Looked up by name, as the landing's are.
 SHELVE_GATE = "intake.shelve.native"
@@ -209,6 +211,15 @@ def intake_shelve(ctx) -> Envelope:
             "filed folder's name",
             remedy=Remedy.FIX_COMMAND_LINE,
             origin=_ORIGIN,
+        )
+    if subject is not None and not landing.plain_name(subject.strip()):
+        raise refuse(
+            "intake-list-unusable",
+            f"--as {subject!r} is not one plain folder name; a slash or a path part "
+            f"would file the batch somewhere other than its year folder",
+            remedy=Remedy.FIX_COMMAND_LINE,
+            origin=_ORIGIN,
+            detail={"subject": subject},
         )
 
     def make_plan(db) -> shelve.ShelfPlan:

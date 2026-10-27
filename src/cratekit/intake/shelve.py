@@ -49,7 +49,7 @@ import re
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Callable, Iterable, Sequence
 
 from cratekit.cli.output import digest_of
 from cratekit.core import config, locations, rb_writer, session, snapshot
@@ -211,10 +211,24 @@ def _folder_of(cfg: config.Config, batch: str) -> Path:
     return folder
 
 
-def _free_target(root: Path, name: str, planned: set[Path]) -> Path:
-    """``root / name``, or `` 2``, `` 3`` and on, the first neither disk nor this plan holds."""
+def _free_target(
+    root: Path,
+    name: str,
+    planned: set[Path],
+    *,
+    stored_dirs: frozenset[str],
+    spell: Callable[[Path], str],
+) -> Path:
+    """``root / name``, or `` 2``, `` 3`` and on, the first that disk, this plan and the collection all leave free.
+
+    THE COLLECTION IS ASKED TOO. A folder a person filed by hand and later
+    moved leaves rows stored under its name with nothing on disk, and a target
+    chosen by disk alone would put this batch's rows beside them, which the
+    confinement check then refuses as rows it did not plan. The stored
+    spelling is compared, since that is what the rows carry.
+    """
     candidate, count = root / name, 1
-    while os.path.lexists(candidate) or candidate in planned:
+    while os.path.lexists(candidate) or candidate in planned or spell(candidate) in stored_dirs:
         count += 1
         candidate = root / f"{name} {count}"
     return candidate
@@ -256,13 +270,21 @@ def plan(
     ``subject`` replaces the words the batch name carries, and is accepted for
     one named batch only, which the shell holds to.
     """
-    wanted = _candidates(cfg) if everything else list(names)
+    wanted = _candidates(cfg) if everything else list(dict.fromkeys(names))
     base_drive, current_drive = rb_writer.recorded_db_drives(db)
+
+    def spell(path: Path) -> str:
+        return native.stored_folder_path(path, base_drive=base_drive, current_drive=current_drive)
+
     prefix_map = [locations.PrefixRule(a, b) for a, b in cfg.resolved_prefix_map()]
     content = list(routing_pass.content_rows(db))
     recorded = {row.content_id: row.recorded for row in content}
+    stored_dirs = frozenset(
+        os.path.dirname(locations.norm_for_compare(path)) for path in recorded.values() if path
+    )
     index = trees.index_active_rows(content, root=cfg.library.root, prefix_map=prefix_map)
     root = processed_root(cfg)
+    _assert_one_device(cfg, root)
 
     batches: list[ShelfBatch] = []
     skipped: list[Skipped] = []
@@ -312,16 +334,20 @@ def plan(
             leave(batch, _why_unmatched(*unmatched))
             continue
         said = (subject if subject is not None else words).strip() or batch_name.DOWNLOADS
-        target = _free_target(root / f"{when.year}", filed_name(when, said), planned)
+        target = _free_target(
+            root / f"{when.year}",
+            filed_name(when, said),
+            planned,
+            stored_dirs=stored_dirs,
+            spell=spell,
+        )
         planned.add(target)
         rows = tuple(
             ShelfRow(
                 content_id=str(match.content_id),
                 file_name=file.name,
                 recorded=recorded.get(str(match.content_id), ""),
-                folder_path=native.stored_folder_path(
-                    target / file.name, base_drive=base_drive, current_drive=current_drive
-                ),
+                folder_path=spell(target / file.name),
             )
             for file, match in zip(files, matches)
         )
@@ -330,9 +356,7 @@ def plan(
                 batch=batch,
                 source=folder,
                 target=target,
-                stored_target=native.stored_folder_path(
-                    target, base_drive=base_drive, current_drive=current_drive
-                ),
+                stored_target=spell(target),
                 filed_on=when,
                 subject=said,
                 rows=rows,
@@ -343,6 +367,27 @@ def plan(
         skipped=tuple(skipped),
         digest=digest_of(_identity(batches, skipped)),
     )
+
+
+def _assert_one_device(cfg: config.Config, root: Path) -> None:
+    """Refuse a processed tree on another device, since a rename there would be a copy.
+
+    The landing's own probe, asked of the music folder and of the processed
+    root's nearest existing ancestor, before any plan names a target, so the
+    refusal arrives with its remedy and not as an EXDEV wrapped as a defect.
+    """
+    music = Path(cfg.library.root) / cfg.library.music_dir
+    here, there = landing._device_of(music), landing._device_of(root)
+    if here is None or there is None or here != there:
+        raise refuse(
+            "intake-staging-refused",
+            f"{root} is on a different device from the music folder at {music}, so a "
+            f"shelve would be a copy and not a move; keep library.processed_dir on the "
+            f"library's volume, nothing was moved",
+            remedy=Remedy.FIX_CONFIG_VALUES,
+            origin=_ORIGIN,
+            detail={"music": str(music), "processed": str(root)},
+        )
 
 
 def _identity(batches: Iterable[ShelfBatch], skipped: Iterable[Skipped]) -> dict[str, Any]:
@@ -385,19 +430,19 @@ class Shelved:
     session_id: str
 
 
-def _kept(db: Any, content_ids: Sequence[str]) -> dict[str, tuple[Any, ...]]:
-    """The columns a shelve must not change, per row, from SQL."""
-    from sqlalchemy import text
+def _select_rows(db: Any, content_ids: Sequence[str]) -> dict[str, tuple[str, tuple[Any, ...]]]:
+    """Each row's path and the columns a shelve must not change, from SQL, in one query."""
+    from sqlalchemy import bindparam, text
 
-    out: dict[str, tuple[Any, ...]] = {}
+    if not content_ids:
+        return {}
     selected = ", ".join(_KEPT_COLUMNS)
-    for content_id in content_ids:
-        row = db.session.execute(
-            text(f"SELECT {selected} FROM {rb_writer.CONTENT_TABLE} WHERE ID = :id"),
-            {"id": content_id},
-        ).first()
-        out[content_id] = tuple(row) if row is not None else ()
-    return out
+    statement = text(
+        f"SELECT ID, {rb_writer.FOLDER_PATH_COLUMN}, {selected} FROM {rb_writer.CONTENT_TABLE} "
+        f"WHERE ID IN :ids"
+    ).bindparams(bindparam("ids", expanding=True))
+    rows = db.session.execute(statement, {"ids": list(content_ids)}).all()
+    return {str(row[0]): (str(row[1] or ""), tuple(row[2:])) for row in rows}
 
 
 def _assert_confined(db: Any, plan: ShelfPlan) -> None:
@@ -425,7 +470,14 @@ def _assert_confined(db: Any, plan: ShelfPlan) -> None:
             ),
             {"prefix": _like_prefix(one.stored_target)},
         ).all()
-        found = {str(row[0]): str(row[1] or "") for row in under}
+        # LIKE IS CASE BLIND FOR ASCII, so the fetch is broad and the judgement
+        # is exact: a row under a folder differing only in case is not under
+        # this target and is not this plan's business.
+        found = {
+            str(row[0]): str(row[1] or "")
+            for row in under
+            if str(row[1] or "").startswith(one.stored_target + os.sep)
+        }
         for content_id, path in found.items():
             if content_id not in planned:
                 violations.append(
@@ -510,7 +562,7 @@ def apply(
         capture = snapshot.capture(cfg, db=db)
         session.attach_capture(record, capture.root, cfg)
         snapshot.assert_verified(capture)
-        before = _kept(db, content_ids)
+        before = {cid: kept for cid, (_path, kept) in _select_rows(db, content_ids).items()}
         try:
             for one in plan.batches:
                 _assert_still_as_planned(db, one)
@@ -535,6 +587,12 @@ def apply(
                 # moved since, keeps its own words: nothing here changed.
                 raise
             failed = _rename_back(moved)
+            if not isinstance(exc, Exception):
+                # An interrupt or an exit is put back as far as it can be and
+                # then re-raised as itself, as the landing re-raises, so the
+                # process ends the way it was told to and nobody is asked to
+                # report pressing Ctrl-C as a defect.
+                raise
             inner = exc.cause if isinstance(exc, CratekitError) else None
             put_back = [str(source) for source, _target in moved if str(source) not in failed]
             raise refuse(
@@ -596,7 +654,9 @@ def _assert_still_as_planned(db: Any, one: ShelfBatch) -> None:
             )
 
 
-def _record_shelve_commit(record: session.SessionRecord, plan: ShelfPlan, cfg: config.Config) -> None:
+def _record_shelve_commit(
+    record: session.SessionRecord, plan: ShelfPlan, cfg: config.Config
+) -> None:
     """Name every batch moved on the record, and the rows under the content table."""
     record.detail[SHELVED_KEY] = [
         {"batch": one.batch, "to": str(one.target), "rows": len(one.rows)} for one in plan.batches
@@ -613,19 +673,12 @@ def _record_shelve_commit(record: session.SessionRecord, plan: ShelfPlan, cfg: c
 
 def _read_back(db: Any, plan: ShelfPlan, before: dict[str, tuple[Any, ...]]) -> list[ReadBack]:
     """Every planned row after the commit, refusing one that did not take or lost a column."""
-    from sqlalchemy import text
-
     out: list[ReadBack] = []
-    after = _kept(db, [row.content_id for one in plan.batches for row in one.rows])
+    selected = _select_rows(db, [row.content_id for one in plan.batches for row in one.rows])
+    after = {cid: kept for cid, (_path, kept) in selected.items()}
     for one in plan.batches:
         for row in one.rows:
-            stored = db.session.execute(
-                text(
-                    f"SELECT {rb_writer.FOLDER_PATH_COLUMN} FROM {rb_writer.CONTENT_TABLE} "
-                    f"WHERE ID = :id"
-                ),
-                {"id": row.content_id},
-            ).scalar()
+            stored = selected.get(row.content_id, ("", ()))[0]
             if str(stored or "") != row.folder_path:
                 raise refuse(
                     "internal-error",
