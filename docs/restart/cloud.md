@@ -41,11 +41,22 @@ four are filed as residuals in `docs/residuals/`. The last, that a resumed
 mutation batch reports the current known count over rows measured under an
 older one, is recorded here and not filed, since no producer was named.
 
-**OWED.** The first scheduled run is the proof, fired by hand from this
-session and watched: the task's configuration carries no repository source,
-so its prompt tells a session with no checkout to attach and clone the
-repository itself. The macOS battery over everything this lane lands, at
-Phillip's next local session. `BOARD_TOKEN` as a repository secret with the
-`project` scope, now the only way the project's cards move, since nothing
-local runs `board.py sync`. The merged `cloud/` branches and this session's
-own are pruned locally, because the proxy refuses a branch deletion.
+**The first hand fired run, 20:45 UTC, did nothing, and said why.** The
+scheduled task was created through the session's own tool, which sets no
+repository, so its session started with an empty home, no tool to attach
+one, and GitHub refusing it as "access not enabled for this session". A
+scheduled task's repositories are set only in its edit dialog at
+claude.ai/code/routines, under Repositories, and each is cloned at the start
+of every run; the prompt's attach fallback is gone and the task is paused
+until the repository is selected there. **`BOARD_TOKEN` is in place**: the
+Board workflow ran with it at 20:54 and moved #29 from Ready to Attended. A
+classic token needs `repo`, `project`, `read:org` and `read:discussion`,
+because `gh project item-edit` refuses without the last two, and the
+workflow now sets pipefail, since the first run with the token hid that
+refusal behind a green step.
+
+**OWED.** The repository selected on the scheduled task, then a run fired by
+hand and watched to its first `Started`. The macOS battery over everything
+this lane lands, at Phillip's next local session. The merged `cloud/`
+branches and this session's own are pruned locally, because the proxy
+refuses a branch deletion.
