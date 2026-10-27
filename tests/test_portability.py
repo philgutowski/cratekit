@@ -608,3 +608,25 @@ def test_the_scanner_does_not_resolve_away_the_link_it_is_asked_about(tmp_path):
     )
     assert result.returncode == 1, result.stdout + result.stderr
     assert "absolute path" in result.stderr
+
+
+def test_a_cloud_container_detects_no_machine_identity(monkeypatch, tmp_path):
+    """The detected tier reads the machine, and a cloud container is not a person's.
+
+    The harness mounts its fixtures under the mount root with ordinary words for
+    names, and one of them is a word this tree uses in file names, so the scan
+    flagged the skills tests on every cloud session. The declared tiers are
+    untouched there: a name written in the identity file or the environment
+    variable is still caught.
+    """
+    monkeypatch.setattr(scan.socket, "gethostname", lambda: "zz-cloud-host.internal")
+    (tmp_path / scan.IDENTITY_FILE).write_text("DeclaredVolume\n")
+    monkeypatch.setenv("CRATEKIT_SCAN_IDENTITY", "DeclaredEnv")
+
+    monkeypatch.delenv("CLAUDE_CODE_REMOTE", raising=False)
+    assert "zz-cloud-host" in scan.machine_identity_tokens(tmp_path)
+
+    monkeypatch.setenv("CLAUDE_CODE_REMOTE", "true")
+    tokens = scan.machine_identity_tokens(tmp_path)
+    assert "zz-cloud-host" not in tokens
+    assert {"DeclaredVolume", "DeclaredEnv"} <= tokens

@@ -245,6 +245,15 @@ def machine_identity_tokens(root: Path | None = None) -> set[str]:
     for declared in os.environ.get("CRATEKIT_SCAN_IDENTITY", "").split(","):
         _add(declared)
 
+    # A Claude Code cloud session runs in a container whose account, hostname
+    # and mounts are the platform's, not a person's: its mount root holds
+    # directories named for the harness's own fixtures, and one of those names
+    # is an ordinary English word that appears in file names across this tree.
+    # Reading them as identity flagged every such file. The declared tiers
+    # above still apply there; only the detected tier is the machine's.
+    if os.environ.get("CLAUDE_CODE_REMOTE"):
+        return tokens
+
     try:
         _add(getpass.getuser())
     except Exception:  # pragma: no cover - getuser can fail with no passwd entry
