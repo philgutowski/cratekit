@@ -41,6 +41,16 @@ the Relay feeder, the watcher, the fable builder and the operator seat from
 `~/.relay/manifests/cratekit-board.lanes.toml`, one step at a time. Nothing
 else needs remembering to launch it; `board-lanes` is the skill underneath.
 
+**The cloud lane takes the cards labelled `cloud`**, decided 2026-10-27. A
+scheduled task on the cloud environment starts a fresh Opus 5.5 session every
+hour; it runs the `cloud-unit` skill, which reads the queue with
+`board.py cloud`, plans and builds the card, has Fable review it to the merge
+bar, and pushes a `cloud/N-slug` branch with a comment headed "Ready for the
+watcher". The watcher on this machine runs the macOS battery, measures the
+mutation table and merges. A card that needs the machine is set aside with
+the steps to run it locally. The `file-card` skill turns a request into a
+card in the brief form. METHOD's cloud lane section is the rule.
+
 ## The board is the queue
 
 Work is not picked from a plan document, a backlog, or a conversation. It is
@@ -194,7 +204,11 @@ lists what.
 - **Do not symlink `.venv` into a worktree.** The editable install names the
   checkout it was installed from, so a worktree would verify code it cannot see.
 - **No pull requests.** Feature branch per unit, merge to `main` locally, push
-  `main`, delete the branch.
+  `main`, delete the branch. **An attended cloud session merges and pushes
+  `main` itself**, authorized by Phillip on 2026-10-27 ("I authorize you to
+  merge to main here in the cloud now and going forward"); the unattended
+  cloud lane still stops at "Ready for the watcher", because the mutation
+  measure needs the macOS battery's green baseline.
 - **No em dashes, en dashes, or double hyphens** in any prose, code comment,
   commit message, or issue body. Do not swap a dash for a colon; favor commas,
   and keep colons for a genuine list or definition.

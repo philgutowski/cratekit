@@ -23,6 +23,12 @@ Subcommands:
                     and a residual file the landing could not read
     residuals       the residual files waiting for a number; `--land` numbers
                     them on main
+    cloud           the cloud lane's queue: every open card labelled cloud, by
+                    the state its comments give it, and the one to take
+
+A Claude Code cloud session sits behind a proxy that refuses GraphQL, so the
+reads fall back to REST there (`load_issues_rest`), `start`, `sync` and
+`audit` without `--labels-only` are not for it, and `cloud` is.
 
 `sync` is safe to run at any time and is the one that matters. Everything the
 board says about readiness is derived from issue closure state and the graph, so
@@ -106,8 +112,51 @@ def gh(*args: str, parse: bool = False):
 
 def repo_slug() -> tuple[str, str]:
     """Owner and name from the git remote, never hardcoded."""
-    data = gh("repo", "view", "--json", "owner,name", parse=True)
+    try:
+        data = gh("repo", "view", "--json", "owner,name", parse=True)
+    except Fail:
+        # `gh repo view` is a GraphQL call, which the proxy in front of a Claude
+        # Code cloud session refuses outright. The checkout already names the
+        # remote, so read it from there rather than fail before the first read.
+        return remote_slug()
     return data["owner"]["login"], data["name"]
+
+
+REMOTE_RE = re.compile(r"github\.com[:/]([^/\s]+)/([^/\s]+?)(?:\.git)?/?$")
+
+
+def remote_slug() -> tuple[str, str]:
+    """Owner and name parsed from the origin remote, for a session with no GraphQL."""
+    url = subprocess.run(
+        ["git", "remote", "get-url", "origin"], capture_output=True, text=True
+    ).stdout.strip()
+    match = REMOTE_RE.search(url)
+    if not match:
+        raise Fail(f"the origin remote {url!r} does not name a GitHub repository")
+    return match.group(1), match.group(2)
+
+
+def rest_pages(path: str, what: str) -> list:
+    """Every row of a REST listing, a page of a hundred at a time, or refused.
+
+    `gh api --paginate` cannot be used here: the proxy a cloud session sits
+    behind rejects the numeric `repositories/<id>/` paths GitHub writes into
+    its `Link` headers, so the second page fails by name. Page numbers are
+    asked for explicitly instead, and the read ends on the first short page,
+    which is whole by construction: a page shorter than a hundred is the last
+    one. The read is still refused past READ_LIMIT, like every other read here.
+    """
+    joiner = "&" if "?" in path else "?"
+    rows: list = []
+    for page in range(1, READ_LIMIT // 100 + 2):
+        batch = gh("api", f"{path}{joiner}per_page=100&page={page}", parse=True) or []
+        rows.extend(batch)
+        if len(batch) < 100:
+            return rows
+    raise Truncated(
+        f"the {what} read ran past {READ_LIMIT} rows, so it is truncated. "
+        f"Raise READ_LIMIT in scripts/board.py."
+    )
 
 
 # --------------------------------------------------------------------------
@@ -132,11 +181,16 @@ def short_of_count(rows: list, total, what: str) -> None:
 def load_issues() -> list[dict]:
     # Counted BEFORE the read, so an issue filed between the two makes the read
     # longer than the count rather than shorter, and is never refused.
-    total = gh(
-        "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}",
-        "-f", f"query={ISSUE_COUNT_QUERY}",
-        "--jq", ".data.repository.issues.totalCount",
-    )
+    try:
+        total = gh(
+            "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}",
+            "-f", f"query={ISSUE_COUNT_QUERY}",
+            "--jq", ".data.repository.issues.totalCount",
+        )
+    except Fail:
+        # No GraphQL at all is a cloud session's proxy, not a short read, and
+        # the same issues are there over REST.
+        return load_issues_rest()
     issues = gh(
         "issue",
         "list",
@@ -151,6 +205,32 @@ def load_issues() -> list[dict]:
     whole(issues, "issue")
     short_of_count(issues, int(total) if total.isdigit() else total, "issue")
     return issues
+
+
+def load_issues_rest() -> list[dict]:
+    """Every issue over REST, in the shape `gh issue list --json` gives.
+
+    This is the read a Claude Code cloud session gets, where the GitHub proxy
+    refuses every GraphQL call and allows the repository's own REST paths. REST
+    lists pull requests among the issues, so those are dropped, and it writes
+    states in lower case, so they are raised to the GraphQL spelling the graph
+    reads. There is no separate count to check the read against; the page
+    loop in `rest_pages` ends on a short page, which is the whole listing.
+    """
+    owner, name = repo_slug()
+    rows = rest_pages(f"repos/{owner}/{name}/issues?state=all", "issue")
+    issues = [
+        {
+            "number": row["number"],
+            "title": row["title"],
+            "state": str(row.get("state", "")).upper(),
+            "body": row.get("body") or "",
+            "labels": [{"name": label["name"]} for label in row.get("labels") or []],
+        }
+        for row in rows
+        if "pull_request" not in row
+    ]
+    return whole(issues, "issue")
 
 
 def parse_deps(body: str) -> list[int] | None:
@@ -1476,6 +1556,162 @@ def cmd_residuals(args) -> int:
     return 0
 
 
+# --------------------------------------------------------------------------
+# the cloud lane
+
+# A card the cloud lane may take carries this label. The feeder skips it, the
+# fable builder skips it, and a card without it is never the cloud's.
+CLOUD_LABEL = "cloud"
+
+# A comment the cloud session wrote carries this footer, which the person's
+# own comments never do. It is how an answer is told from a question when every
+# comment on the card is posted by the same login.
+SESSION_MARK = "Generated by [Claude Code]"
+
+# The headings a cloud session writes, as the watcher and this reader read
+# them. The watcher reads headings and nothing else, so the spelling is fixed.
+HEAD_STARTED = "started"
+HEAD_PLAN = "plan"
+HEAD_BRAINSTORM = "brainstorm"
+HEAD_QUESTION = "question for phillip"
+HEAD_MACHINE = "needs the machine"
+HEAD_READY = "ready for the watcher"
+HEAD_ADDRESSED = "review addressed"
+HEAD_REVIEW = "review from the watcher"
+
+# A hold older than this with no "Ready for the watcher" after it is reported
+# as stale. It is reported, never taken over: a session that died mid build
+# may have pushed commits, and only a person decides what becomes of them.
+STALE_HOURS = 8
+
+CLOUD_TAKE = ("review-owed", "answered", "ready")
+CLOUD_SKIP = ("underway", "with-watcher", "waiting-on-phillip", "set-aside", "blocked", "attended")
+
+
+def comment_heading(body: str) -> str:
+    """The first line of a comment, as a heading: markdown and emphasis stripped,
+    anything after a colon or comma dropped, lower case."""
+    for line in (body or "").splitlines():
+        text = line.strip().lstrip("#").strip().strip("*_").strip()
+        if text:
+            return re.split(r"[:,]", text, maxsplit=1)[0].strip().strip("*_").lower()
+    return ""
+
+
+def _when(comment: dict) -> str:
+    return comment.get("created_at") or ""
+
+
+def cloud_state(node: dict, comments: list[dict]) -> tuple[str, str]:
+    """What the cloud lane owes a card, read from the card's comments alone.
+
+    The cloud session never writes a label or a status, so its hold on a card
+    is its own last comment, by heading, and the person's reply is any comment
+    without the session footer written after it. Returns a state and a line
+    saying why.
+    """
+    if node["attended"]:
+        return "attended", "needs Phillip at the machine"
+    if node["open_deps"]:
+        return "blocked", "waits on " + ", ".join(f"#{d}" for d in node["open_deps"])
+
+    ordered = sorted(comments, key=_when)
+    last_mine = None
+    for comment in ordered:
+        if SESSION_MARK not in (comment.get("body") or ""):
+            continue
+        heading = comment_heading(comment.get("body") or "")
+        if heading == HEAD_PLAN:
+            continue  # a plan is information under a hold, not a hold of its own
+        last_mine = (heading, _when(comment))
+    if last_mine is None:
+        return "ready", "no cloud session has taken it"
+
+    heading, since = last_mine
+    after = [
+        c for c in ordered
+        if _when(c) > since and SESSION_MARK not in (c.get("body") or "")
+    ]
+    if heading == HEAD_MACHINE:
+        return "set-aside", f"needs the machine, set aside {since[:10]}"
+    if heading in (HEAD_BRAINSTORM, HEAD_QUESTION):
+        if after:
+            return "answered", f"Phillip replied {_when(after[-1])[:16]} to the {heading}"
+        return "waiting-on-phillip", f"{heading} posted {since[:16]}, no reply yet"
+    if heading in (HEAD_READY, HEAD_ADDRESSED):
+        reviews = [c for c in after if comment_heading(c.get("body") or "") == HEAD_REVIEW]
+        if reviews:
+            return "review-owed", f"review from the watcher {_when(reviews[-1])[:16]}"
+        return "with-watcher", f"ready since {since[:16]}"
+    # Started, or any heading this reader does not know, is a hold.
+    age = _hours_since(since)
+    if age is not None and age > STALE_HOURS:
+        return "underway", f"STALE, started {since[:16]}, {age:.0f} hours ago and never ready"
+    return "underway", f"started {since[:16]}"
+
+
+def _hours_since(stamp: str) -> float | None:
+    from datetime import datetime, timezone
+
+    try:
+        then = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return (datetime.now(timezone.utc) - then).total_seconds() / 3600
+
+
+def load_comments(number: int) -> list[dict]:
+    owner, name = repo_slug()
+    return rest_pages(f"repos/{owner}/{name}/issues/{number}/comments", f"#{number} comment")
+
+
+def cloud_branch(node: dict) -> str:
+    return f"cloud/{node['number']}-{slugify(node['title'])[:32].rstrip('-')}"
+
+
+def cmd_cloud(args) -> int:
+    """The cloud lane's queue: every open card labelled cloud, by state."""
+    graph = build_graph(load_issues())
+    cards = [
+        n for n in graph.values()
+        if not n["closed"] and CLOUD_LABEL in n["labels"]
+    ]
+    if not cards:
+        print(f"No open card carries the {CLOUD_LABEL} label. Nothing is the cloud's.")
+        return 0
+    states = {n["number"]: cloud_state(n, load_comments(n["number"])) for n in cards}
+    take = [n for n in cards if states[n["number"]][0] in CLOUD_TAKE]
+    take.sort(
+        key=lambda n: (
+            CLOUD_TAKE.index(states[n["number"]][0]),
+            -n["reach"],
+            -len(n["unblocks"]),
+            n["number"],
+        )
+    )
+    skipped = [n for n in cards if states[n["number"]][0] in CLOUD_SKIP]
+    if skipped:
+        print("Not the cloud's to take right now:")
+        for node in sorted(skipped, key=lambda n: n["number"]):
+            state, why = states[node["number"]]
+            print(f"  #{node['number']:<4} {state:<19} {why}")
+            print(f"        {node['title'][:72]}")
+        print()
+    if not take:
+        print("Nothing for the cloud to take. Every cloud card is held, waiting, or set aside.")
+        return 0
+    print(f"The cloud may take ({len(take)}):")
+    for node in take:
+        state, why = states[node["number"]]
+        print(f"  #{node['number']:<4} {state:<12} {why}")
+        print(f"        {node['title'][:72]}")
+    print()
+    top = take[0]
+    state, _ = states[top["number"]]
+    print(f"Take #{top['number']} ({state}). Branch: {cloud_branch(top)}, from origin/main.")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -1519,6 +1755,10 @@ def main() -> int:
         help="on main, give each file the next R number and append it to the ledger",
     )
     residuals.set_defaults(func=cmd_residuals)
+    cloud = sub.add_parser(
+        "cloud", help="the cloud lane's queue, read from the cards' comments over REST"
+    )
+    cloud.set_defaults(func=cmd_cloud)
     args = parser.parse_args()
     try:
         return args.func(args)
