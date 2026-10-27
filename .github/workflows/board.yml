@@ -17,7 +17,12 @@ name: Board
 
 on:
   issues:
-    types: [closed, reopened, deleted]
+    # A new or edited card gets its ready or blocked label at once, so the
+    # cloud lane, which reads labels and never the project, sees it on its
+    # next pass; a label change re-derives the rest. A sync over a board with
+    # no drift writes nothing, so the run this workflow's own label writes
+    # fire is a no-op, not a loop.
+    types: [opened, edited, labeled, unlabeled, closed, reopened, deleted]
   schedule:
     # Monday morning UTC. The event triggers above cover every ordinary change;
     # this catches the ones nothing fires for, such as an issue body edited to
