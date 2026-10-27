@@ -1,0 +1,724 @@
+{
+  "name": "u154",
+  "pass_kind": "light",
+  "branch": "unit/u154-crate-intake-shelve-files-an-imported-ba",
+  "head": "d94fb8eb",
+  "when": "2026-10-27 01:57 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 14174,
+  "baseline_exit": 0,
+  "pytest_runs": 27,
+  "state_guarded": "~/Library/Application Support/cratekit (430030 entries)",
+  "reused_rows": 0,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/shelve.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/shelve.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "da083e52b3269ce6",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 14174,
+    "baseline_collected": 14174,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "G1_policy_not_registered",
+      "description": "the path column is written with no field policy registered for the commit",
+      "file": "src/cratekit/intake/shelve.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f306ed3d8e8f76eb",
+      "subset": [
+        "tests/test_intake_shelve.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 11,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_shelve.py::test_a_batch_named_twice_is_planned_once",
+        "tests/test_intake_shelve.py::test_a_library_whose_drive_was_renamed_stores_and_confines_under_the_base_drive",
+        "tests/test_intake_shelve.py::test_a_row_under_a_folder_differing_only_in_case_is_not_this_plans_business",
+        "tests/test_intake_shelve.py::test_a_shelved_batch_name_stays_taken_so_a_landing_that_day_takes_the_next",
+        "tests/test_intake_shelve.py::test_a_target_free_on_disk_but_holding_rows_in_the_collection_is_passed_over",
+        "tests/test_intake_shelve.py::test_an_unreadable_session_record_makes_the_name_rule_refuse_rather_than_read_a_name_free",
+        "tests/test_intake_shelve.py::test_apply_moves_the_folder_rewrites_the_paths_and_keeps_every_other_column",
+        "tests/test_intake_shelve.py::test_nothing_under_the_processed_tree_is_touched_by_a_shelve",
+        "tests/test_intake_shelve.py::test_the_grid_suites_still_see_no_tempo_on_the_moved_rows",
+        "tests/test_intake_shelve.py::test_the_read_back_refuses_a_row_that_did_not_take_or_lost_a_column[kept-column]",
+        "tests/test_intake_shelve.py::test_the_read_back_refuses_a_row_that_did_not_take_or_lost_a_column[path]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            with rb_writer.field_policies_for_commit(rb_writer.SHELVE_POLICY):\n                _assert_confined(db, plan)\n                rb_writer.commit_guarded(db)\n",
+      "new": "            if True:\n                _assert_confined(db, plan)\n                rb_writer.commit_guarded(db)\n"
+    },
+    {
+      "id": "G2_confinement_dropped",
+      "description": "the SQL confinement check is skipped before the commit",
+      "file": "src/cratekit/intake/shelve.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "eb2304e0ef7e3ebc",
+      "subset": [
+        "tests/test_intake_shelve.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_shelve.py::test_a_row_under_the_target_that_the_plan_did_not_put_there_refuses_the_commit"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                _assert_confined(db, plan)\n                rb_writer.commit_guarded(db)\n",
+      "new": "                rb_writer.commit_guarded(db)\n"
+    },
+    {
+      "id": "G3_rename_back_dropped",
+      "description": "a failure past the rename leaves the folder at its new name",
+      "file": "src/cratekit/intake/shelve.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0735971e418e6d78",
+      "subset": [
+        "tests/test_intake_shelve.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_shelve.py::test_a_commit_that_fails_after_the_rename_puts_the_folder_back",
+        "tests/test_intake_shelve.py::test_a_row_under_the_target_that_the_plan_did_not_put_there_refuses_the_commit"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            failed = _rename_back(moved)\n",
+      "new": "            failed: list[str] = []\n"
+    },
+    {
+      "id": "G4_stale_target_check_dropped",
+      "description": "a target made after the plan is renamed over at apply",
+      "file": "src/cratekit/intake/shelve.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bb0613f4a950b833",
+      "subset": [
+        "tests/test_intake_shelve.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_shelve.py::test_the_engine_refuses_a_target_made_between_its_plan_and_its_apply_in_its_own_words"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if os.path.lexists(one.target):\n        raise refuse(\n            \"decision-stale\",\n            f\"{one.target} exists now and did not when the plan was made, so nothing \"\n",
+      "new": "    if False:\n        raise refuse(\n            \"decision-stale\",\n            f\"{one.target} exists now and did not when the plan was made, so nothing \"\n"
+    },
+    {
+      "id": "G5_unmatched_file_shelved_anyway",
+      "description": "a batch with a file the collection does not hold is moved anyway",
+      "file": "src/cratekit/intake/shelve.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "54b6928082efeae8",
+      "subset": [
+        "tests/test_intake_shelve.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_shelve.py::test_a_batch_whose_file_has_no_row_is_refused_whole_and_nothing_moves"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if unmatched is not None:\n            leave(batch, _why_unmatched(*unmatched))\n            continue\n",
+      "new": "        if False:\n            leave(batch, _why_unmatched(*unmatched))\n            continue\n"
+    },
+    {
+      "id": "G6_subfolder_check_dropped",
+      "description": "a batch folder holding a subfolder is planned",
+      "file": "src/cratekit/intake/shelve.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8ceedfb9b9eedb18",
+      "subset": [
+        "tests/test_intake_shelve.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_shelve.py::test_a_folder_with_a_subfolder_and_a_name_of_neither_shape_are_skipped_under_all"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if any(entry.is_dir() for entry in folder.iterdir()):\n",
+      "new": "        if False:\n"
+    },
+    {
+      "id": "G7_run_id_shape_unread",
+      "description": "a batch named for its run identifier fits neither shape",
+      "file": "src/cratekit/intake/shelve.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c4ef5412e4075a45",
+      "subset": [
+        "tests/test_intake_shelve.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_shelve.py::test_a_run_identifier_named_batch_files_as_downloads_or_as_the_subject_given",
+        "tests/test_intake_shelve.py::test_parse_name_reads_the_two_shapes_and_refuses_the_rest[2026-09-23T222241Z-4773-expected5]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    run = _RUN_ID.match(batch)\n    if run is not None:\n",
+      "new": "    run = None\n    if run is not None:\n"
+    },
+    {
+      "id": "G8_free_target_no_suffix",
+      "description": "a taken target is reused rather than given the next suffix",
+      "file": "src/cratekit/intake/shelve.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c1eaee7ea927a2a5",
+      "subset": [
+        "tests/test_intake_shelve.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_shelve.py::test_a_target_free_on_disk_but_holding_rows_in_the_collection_is_passed_over",
+        "tests/test_intake_shelve.py::test_a_target_made_after_the_plan_is_stale_and_the_folder_stays",
+        "tests/test_intake_shelve.py::test_two_batches_filing_to_one_name_get_two_and_a_taken_target_is_passed_over"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    while os.path.lexists(candidate) or candidate in planned or spell(candidate) in stored_dirs:\n",
+      "new": "    while False:\n"
+    },
+    {
+      "id": "G9_shelved_names_unread",
+      "description": "a shelved batch's name reads free once its folder is gone",
+      "file": "src/cratekit/intake/batch_name.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4917912a0cfe0e67",
+      "subset": [
+        "tests/test_intake_shelve.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_shelve.py::test_a_shelved_batch_name_stays_taken_so_a_landing_that_day_takes_the_next",
+        "tests/test_intake_shelve.py::test_an_unreadable_session_record_makes_the_name_rule_refuse_rather_than_read_a_name_free"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return os.path.lexists(landing.target_dir(cfg, name)) or name in shelved\n",
+      "new": "    return os.path.lexists(landing.target_dir(cfg, name))\n"
+    },
+    {
+      "id": "G10_read_back_path_unchecked",
+      "description": "a row committed with a path other than the planned one is reported as shelved",
+      "file": "src/cratekit/intake/shelve.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "541a2d1f41b5ecb9",
+      "subset": [
+        "tests/test_intake_shelve.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_shelve.py::test_the_read_back_refuses_a_row_that_did_not_take_or_lost_a_column[path]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if str(stored or \"\") != row.folder_path:\n",
+      "new": "            if False:\n"
+    },
+    {
+      "id": "G11_kept_columns_unchecked",
+      "description": "a column the shelve does not own may change without the read back saying so",
+      "file": "src/cratekit/intake/shelve.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8f2e1b809d751084",
+      "subset": [
+        "tests/test_intake_shelve.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_shelve.py::test_the_read_back_refuses_a_row_that_did_not_take_or_lost_a_column[kept-column]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if before.get(row.content_id) != after.get(row.content_id):\n",
+      "new": "            if False:\n"
+    },
+    {
+      "id": "G12_empty_plan_asks_a_gate",
+      "description": "a plan that moves nothing is put to the gate",
+      "file": "src/cratekit/intake/shelve_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6d4c7e261afa62be",
+      "subset": [
+        "tests/test_intake_shelve.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_shelve.py::test_a_plan_of_nothing_refuses_before_a_gate_is_asked"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if planned.batches:\n        return\n    raise refuse(\n",
+      "new": "    if True:\n        return\n    raise refuse(\n"
+    },
+    {
+      "id": "G13_as_with_all_admitted",
+      "description": "one subject is applied to every batch under --all",
+      "file": "src/cratekit/intake/shelve_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "140d51b0161a7a2d",
+      "subset": [
+        "tests/test_intake_shelve.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_shelve.py::test_the_command_line_refusals_name_the_flag"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if subject is not None and (everything or len(names) != 1):\n",
+      "new": "    if False:\n"
+    },
+    {
+      "id": "G14_reserved_folders_are_candidates",
+      "description": "the processed tree and the sets folder are planned as batches under --all",
+      "file": "src/cratekit/intake/shelve.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6820b0293f9e03a5",
+      "subset": [
+        "tests/test_intake_shelve.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_shelve.py::test_two_batches_filing_to_one_name_get_two_and_a_taken_target_is_passed_over"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if entry.name.startswith(\".\") or entry.name in reserved:\n",
+      "new": "        if entry.name.startswith(\".\"):\n"
+    },
+    {
+      "id": "G15_stored_target_under_mounted_path",
+      "description": "the confinement check reads under the mounted target and not the stored one",
+      "file": "src/cratekit/intake/shelve.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "adae5a59d9a25672",
+      "subset": [
+        "tests/test_intake_shelve.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_shelve.py::test_a_library_whose_drive_was_renamed_stores_and_confines_under_the_base_drive"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            {\"prefix\": _like_prefix(one.stored_target)},\n",
+      "new": "            {\"prefix\": _like_prefix(str(one.target))},\n"
+    },
+    {
+      "id": "G16_wizard_default_dropped",
+      "description": "setup records no processed_dir when nothing answers",
+      "file": "src/cratekit/cli/setup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bbfd2bf9248f01d0",
+      "subset": [
+        "tests/test_setup_processed_dir.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 6,
+      "baseline_collected": 6,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_setup_processed_dir.py::test_a_clean_machine_records_the_default_when_no_flag_names_one"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            question=\"Which folder under the music folder holds filed batches\",\n            default=config.DEFAULT_PROCESSED_DIR,\n",
+      "new": "            question=\"Which folder under the music folder holds filed batches\",\n            default=\"Filed_Elsewhere\",\n"
+    },
+    {
+      "id": "G17_refusal_before_rename_rewrapped",
+      "description": "a stale plan refusal before any rename is rewrapped as a write failure",
+      "file": "src/cratekit/intake/shelve.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8f2a60cbc34bb61c",
+      "subset": [
+        "tests/test_intake_shelve.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_shelve.py::test_the_engine_refuses_a_target_made_between_its_plan_and_its_apply_in_its_own_words"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if not moved and isinstance(exc, CratekitError):\n",
+      "new": "            if False:\n"
+    },
+    {
+      "id": "R1_rows_under_target_not_consulted",
+      "description": "a target free on disk but holding collection rows is chosen",
+      "file": "src/cratekit/intake/shelve.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "43e93e96f4950bfe",
+      "subset": [
+        "tests/test_intake_shelve.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_shelve.py::test_a_target_free_on_disk_but_holding_rows_in_the_collection_is_passed_over"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    while os.path.lexists(candidate) or candidate in planned or spell(candidate) in stored_dirs:\n",
+      "new": "    while os.path.lexists(candidate) or candidate in planned:\n"
+    },
+    {
+      "id": "R2_subject_path_part_admitted",
+      "description": "a subject carrying a slash composes a nested target",
+      "file": "src/cratekit/intake/shelve_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9fd51a56910da553",
+      "subset": [
+        "tests/test_intake_shelve.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_shelve.py::test_a_subject_with_a_path_part_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if subject is not None and not landing.plain_name(subject.strip()):\n",
+      "new": "    if False:\n"
+    },
+    {
+      "id": "R3_repeated_name_planned_twice",
+      "description": "a batch named twice is planned twice",
+      "file": "src/cratekit/intake/shelve.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "58e7a16f774c8bb3",
+      "subset": [
+        "tests/test_intake_shelve.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_shelve.py::test_a_batch_named_twice_is_planned_once"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    wanted = _candidates(cfg) if everything else list(dict.fromkeys(names))\n",
+      "new": "    wanted = _candidates(cfg) if everything else list(names)\n"
+    },
+    {
+      "id": "R5_unreadable_record_fails_open",
+      "description": "an unreadable session record is dropped and a shelved name reads free",
+      "file": "src/cratekit/intake/batch_name.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "91d521276ef5f14c",
+      "subset": [
+        "tests/test_intake_shelve.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_shelve.py::test_an_unreadable_session_record_makes_the_name_rule_refuse_rather_than_read_a_name_free"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if unreadable:\n        raise refuse(\n",
+      "new": "    if False:\n        raise refuse(\n"
+    },
+    {
+      "id": "R6_device_probe_dropped",
+      "description": "a processed tree on another device is planned and renamed into",
+      "file": "src/cratekit/intake/shelve.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "65aaa60271c2ef29",
+      "subset": [
+        "tests/test_intake_shelve.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_shelve.py::test_a_processed_tree_on_another_device_refuses_before_any_plan"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    _assert_one_device(cfg, root)\n",
+      "new": "    pass\n"
+    },
+    {
+      "id": "R7_exact_prefix_filter_dropped",
+      "description": "the confinement check judges the case blind LIKE result as is",
+      "file": "src/cratekit/intake/shelve.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "3fa3b5378f79d89f",
+      "subset": [
+        "tests/test_intake_shelve.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_shelve.py::test_a_row_under_a_folder_differing_only_in_case_is_not_this_plans_business"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if str(row[1] or \"\").startswith(one.stored_target + os.sep)\n",
+      "new": "            if True\n"
+    }
+  ],
+  "dropped": []
+}

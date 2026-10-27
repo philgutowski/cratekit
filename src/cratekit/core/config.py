@@ -2416,6 +2416,11 @@ PREFIX_VOLUME_IDENTITY_KEY = "volume_id"
 #: remounting the library somewhere else without a rewrite.
 LIBRARY_ROOT_TOKEN = "{library.root}"
 
+#: The processed tree's default name, the one the author kept by hand before
+#: the product filed anything (U154). Named once so the setup wizard's default
+#: and the dataclass default cannot come to differ.
+DEFAULT_PROCESSED_DIR = "Processed_Tracks"
+
 
 @dataclass(frozen=True, slots=True)
 class LibraryConfig:
@@ -2448,7 +2453,11 @@ class LibraryConfig:
     #: database, rather than at the first snapshot, when they cannot.
     db_outside_root_acknowledged_on: str | None = None
     music_dir: str = "Music"
-    processed_dir: str = "Processed_Tracks"
+    #: The directory under ``music_dir`` where ``intake shelve`` files a landed
+    #: batch once it is imported, ``<processed_dir>/<year>/<MM_DD_YY subject>``
+    #: (U154). A setup answer, asked once with this default and kept, so the
+    #: layout a person already keeps by hand is the one the verb continues.
+    processed_dir: str = DEFAULT_PROCESSED_DIR
     sets_dir: str = "Set_Recordings"
     #: The library-scoped state root's directory name, relative to ``root``.
     state_dirname: str = ".cratekit"

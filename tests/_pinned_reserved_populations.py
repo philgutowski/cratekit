@@ -1168,7 +1168,12 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     'intake/collection_xml.py': ['intake-export-is-stub', 'library-export-unusable', 'utf-8'],
     'intake/fetch.py': ['utf-8'],
+    # 2026-10-26, U154: the shelved name rule fails closed on an unreadable record.
+    'intake/batch_name.py': ['internal-error'],
     'intake/file_cli.py': ['intake-list-unusable', 'internal-error'],
+    # 2026-10-26, U154: the shelve engine and its shell joined.
+    'intake/shelve.py': ['decision-stale', 'intake-list-unusable', 'intake-staging-refused', 'internal-error', 'whitelist-violation'],
+    'intake/shelve_cli.py': ['batch-skipped', 'intake-list-unusable'],
     'intake/imported_cli.py': [
         'intake-export-is-stub',
         'intake-list-unusable',
@@ -2414,7 +2419,12 @@ PINNED_LITERAL_HOLDERS = {
         'unavailable-transient',
     ],
     'intake/collection_xml.py': ['intake-export-is-stub', 'library-export-unusable'],
+    # 2026-10-26, U154: the shelved name rule fails closed on an unreadable record.
+    'intake/batch_name.py': ['internal-error'],
     'intake/file_cli.py': ['intake-list-unusable', 'internal-error'],
+    # 2026-10-26, U154: the shelve engine and its shell joined.
+    'intake/shelve.py': ['decision-stale', 'intake-list-unusable', 'intake-staging-refused', 'internal-error', 'whitelist-violation'],
+    'intake/shelve_cli.py': ['intake-list-unusable'],
     'intake/imported_cli.py': [
         'intake-export-is-stub',
         'intake-list-unusable',

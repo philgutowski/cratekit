@@ -1671,6 +1671,11 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # so the verb shows its plan, writes nothing and asks nothing. LAZY,
         # because it puts a file under the library.
         "intake.file": lambda: [str(_a_file_in_the_library())],
+        # U154. The report plans every batch under the music folder against a
+        # read only copy and asks nothing, and the fixture's music folder holds
+        # no batch folder, so the plan is empty and the verb ends OK. The gate
+        # is asked only by a plan that moves a batch, see UNREACHABLE_GATES.
+        "intake.shelve": ["--report", "--all"],
         # U72. A folder under the CONFIGURED library that holds no audio, so
         # the verb refuses from the vocabulary before its gate is reached.
         "intake.land": [str(library / "Music"), "--export", str(library / "no-such.xml")],
@@ -2434,6 +2439,15 @@ UNREACHABLE_GATES: Mapping[str, str] = MappingProxyType(
             "explicit two act answer and its refusals are driven in "
             "tests/test_intake_land_native.py on a library whose intake tree has "
             "cut over."
+        ),
+        "intake.shelve.native": (
+            "asked only over a plan that moves a batch, and approving one writes "
+            "a path on the collection, which the conformance fixture refuses for "
+            "its unpinned rekordbox, since a pin is never adopted on a user's "
+            "behalf (S2). The sample is --report, which plans against a read only "
+            "copy and asks nothing by design (U154). The gate, its explicit two "
+            "act answer, the write and its refusals are driven in "
+            "tests/test_intake_shelve.py on a library whose batch has landed."
         ),
         "write.cloudsync.unreadable": (
             "raised by the guarded writer only when rekordbox's Cloud Library "
@@ -3792,12 +3806,19 @@ EXPECTED_UNREACHABLE_GATES = frozenset(
         "intake.file.native",
         "export.set.rename",
         "favorites.split.approve",
+        "intake.shelve.native",
     }
 )
 
 
 def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
-    """Five gates are exempt. A sixth one is a decision, not a diff.
+    """Six gates are exempt. A seventh one is a decision, not a diff.
+
+    The sixth, ``intake.shelve.native``, joined with U154, decided there: the
+    verb asks only over a plan that moves a batch, approving one writes a path
+    on the collection, which the unpinned conformance fixture refuses, and the
+    sample is the report, which asks nothing by design. Its own suite,
+    tests/test_intake_shelve.py, drives the gate's two acts and the write.
 
     The second, ``intake.land.native``, joined with R-746: one verb, two media,
     one drive per fixture, and the conformance fixture's intake tree is on the

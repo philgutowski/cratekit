@@ -1206,6 +1206,43 @@ ENTRIES: tuple[Entry, ...] = (
         ),
     ),
     Entry(
+        name="intake.shelve",
+        summary=(
+            "file an imported batch folder into the processed tree, by year and date, "
+            "and point its rows at it"
+        ),
+        module="cratekit.intake.shelve_cli",
+        builder="build_shelve",
+        handler_key="intake.shelve",
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: ONE FOLDER RENAME AND ONE COLUMN ON THE ROWS IT HOLDS (U154). The
+        #: path column is a metadata column rekordbox keys the file by, written
+        #: through a field policy registered for this commit alone, so the
+        #: surface is the metadata one and the files one, and never the tree.
+        writes=frozenset({"files", "db_metadata"}),
+        destructive=True,
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+            "library.paths_resolved",
+        ),
+        gates=(
+            # A path write on the collection is answered by a separate recorded
+            # act, never inline (R34), over a plan naming every batch, every
+            # row and the path each one will carry.
+            GateSpec(
+                name="intake.shelve.native",
+                options=("apply", "abort"),
+                prompt="Move these batches into the processed tree and point their rows at it?",
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
+    Entry(
         name="tag.folder",
         summary="tag a folder of audio with genre and album art",
         module="cratekit.tagging.cli",
