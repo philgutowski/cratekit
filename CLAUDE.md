@@ -41,6 +41,16 @@ the Relay feeder, the watcher, the fable builder and the operator seat from
 `~/.relay/manifests/cratekit-board.lanes.toml`, one step at a time. Nothing
 else needs remembering to launch it; `board-lanes` is the skill underneath.
 
+**The cloud lane takes the cards labelled `cloud`**, decided 2026-10-27. A
+scheduled task on the cloud environment starts a fresh Opus 5.5 session every
+hour; it runs the `cloud-unit` skill, which reads the queue with
+`board.py cloud`, plans and builds the card, has Fable review it to the merge
+bar, and pushes a `cloud/N-slug` branch with a comment headed "Ready for the
+watcher". The watcher on this machine runs the macOS battery, measures the
+mutation table and merges. A card that needs the machine is set aside with
+the steps to run it locally. The `file-card` skill turns a request into a
+card in the brief form. METHOD's cloud lane section is the rule.
+
 ## The board is the queue
 
 Work is not picked from a plan document, a backlog, or a conversation. It is

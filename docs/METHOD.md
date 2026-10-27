@@ -421,6 +421,62 @@ merge that lands mid task halts that task as `remote_advanced`.
 an attended session, runs it between tasks and commits what it numbered.
 `board.py audit` names the files still waiting, which is how they are noticed.
 
+## The cloud lane, decided 2026-10-27
+
+A Claude Code cloud session builds a card the way this file says, and stops
+where a Mac is needed. The `cloud-unit` skill in the repository's Claude Code
+skills directory is the exact sequence; this section is what the lane is and
+where it ends. It replaces the hand written handoff of 2026-10-13 (the
+standing instructions on #319), which it carries forward, with the pickup
+made automatic.
+
+**A card is the cloud's only with the `cloud` label.** The feeder and the
+fable builder skip that label, so the two never hold one card. Adding the
+label sends a card to the cloud; filing one with the `file-card` skill adds it.
+A scheduled task on the cloud environment starts a fresh session on Opus 5.5
+every hour, and each session runs `board.py cloud`, which reads every open
+cloud card's comments over REST and names the one to take. The session's hold
+is its own comment headed `Started`; its brainstorm, its set-aside, its plan
+and its ready report are comments headed `Brainstorm`, `Needs the machine`,
+`Plan` and `Ready for the watcher`; Phillip's answer is any comment without
+the session footer written after the question; and the watcher's review is
+the comment headed `Review from the watcher`. The session never writes a
+label or a status. `board.py cloud` reads those headings and nothing else.
+
+**Opus 5.5 at high effort plans and builds; Fable at high effort reviews.**
+The project settings fix the effort, the scheduled task fixes the session's
+model, and the review is the `fable-reviewer` agent whatever the session
+runs. A session on another model hands the plan and the build to the
+`opus-builder` agent. The merge bar and the two round cap are unchanged.
+
+**The lane ends at "Ready for the watcher."** The battery is a macOS proof:
+on the Linux container about 170 tests fail for reasons bound to the machine
+(root reads every directory, no `hdiutil`, the timing calibration pinned to
+one Mac, darwin paths), so the session measures the base's failures with
+`scripts/cloud_battery.py baseline` before it branches and reads the branch
+against them with `compare`, fixing only what is newly failing. Nothing is
+skipped or marked. `scripts/mutate.py` needs a green baseline the container
+cannot give, so the session writes the rows file and the watcher measures it.
+The watcher runs the full gate on macOS, merges, lands the residual files
+and pushes `main`, as it did for U142. **A card the container cannot build**,
+because it needs the live database, the library volume, the live account,
+rekordbox or Phillip at the desktop, is set aside with a comment headed
+`Needs the machine` carrying the steps to run it locally, and the session
+takes the next card.
+
+**GitHub GraphQL is refused on the container**, so `gh issue`, `gh repo`,
+`gh project` and `gh api --paginate` all fail there, and `board.py` reads the
+issues over REST a numbered page at a time when the GraphQL count is refused.
+`start`, `sync` and `audit` without `--labels-only` stay local. The repo
+scan reads the container's mounts as the harness's, not a person's, under
+`CLAUDE_CODE_REMOTE`, so the declared identity tiers still apply and the
+detected one does not.
+
+**One writer on `main` is still the rule.** The cloud lane never writes it,
+so `/board-up` and the cloud task run at the same time without a conflict:
+the feeder owns `main`, the cloud owns its `cloud/N-slug` branches, and the
+watcher joins them.
+
 ## Do not touch
 
 U30's board state, U20, R-9, A1, A2.
