@@ -77,9 +77,10 @@ def static_checks() -> bool:
 
 def failing_ids() -> tuple[set[str], str]:
     """Run the suite and return the failing and erroring ids with the summary line."""
-    result = run(
-        [str(PYTHON), "-m", "pytest", "-q", "--tb=no", "-rfE", "-p", "no:cacheprovider"]
-    )
+    # No `-q` here: pyproject's addopts already carry one, and a second makes
+    # `-qq`, which hides the summary line this reads. The mutation driver's
+    # docstring records the same trap, met the same way.
+    result = run([str(PYTHON), "-m", "pytest", "--tb=no", "-rfE", "-p", "no:cacheprovider"])
     ids = set()
     summary = ""
     for line in result.stdout.splitlines():
