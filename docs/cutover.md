@@ -1577,6 +1577,63 @@ by its permission check; the next backup mirrors them until removed. The
 `cover.jpg`, `bandcamp_item_id.txt` and the one unstaged `Dumbellz`, plus
 the ignore file and checkpoint, and is the folder the next sync writes into.
 
+## Sitting 47, 2026-10-27, the attended session, a sync pass landed and both of the day's batches reanalysed
+
+Phillip asked what a sync includes, then for `crate sync all`, and took the
+pass through to rekordbox. This session ran beside sitting 46's, which held
+the rehearsal copy and rekordbox in turn; the two coordinated by message and
+neither ran a verb while the other held the library.
+
+The pass went out of order first. The download was landed straight after
+`acquire download`, skipping `tag folder`, `analyze run`, `analyze restamp`
+and `name apply`, and the first land plan showed it: 116 rows named by
+provider id and no vox score on any. That plan was aborted, the four steps
+were run, and the land replanned. Phillip set the vocal cut from 5 to 3 by
+hand after reading the scores (`crate analyze calibrate --vocal-cut 3`,
+run `ad54`), which holds library wide from now on.
+
+**The analysis settings sittings 45 and 46 recorded are not Phillip's
+standard.** Both rows above say BPM/Grid, high precision and Phrase on and
+KEY off, which is the state the dialog remembered, with Analysis Mode on
+Dynamic. Phillip's standard, stated here: **Analysis Mode Normal, high
+precision off, BPM/Grid, Phrase and KEY on, Reload Tags before Analyze
+Tracks** (Reload Tags reads the file's key tag and would overwrite
+rekordbox's detected key if run after). KEY is on because the Key column is
+rekordbox's key and the title head is Cratekit's, and a disagreement between
+them is information for the DJ. Dynamic is for tracks whose tempo really
+moves, which U157 will mark.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `sync all` | run `2026-10-27T19:07:06Z-21c7` | Playlists: 3 intake jobs. Favourites inbound: 1 job, 265 hearts listed of 274 declared, 9 withheld by the provider. Favourites outbound not queued, no export named. Labels left to `label sync`. 36 provider calls. | queued |
+| The four intake jobs | `job resume`, each a detached worker | `9309`, `9d5f`, `f74c`, `6dd9`: 1, 18, 99 and 265 settled, none failed. `intake missing --run 21c7`: **117 missing**, 262 owned, 1 offered for review. | live |
+| `acquire download` | job `2026-10-27T19:24:31Z-75b0` | **116 landed in staging; Calvin Harris `Satisfy` `lossy-refused`** (offered lossy only, as at sitting 15). 699 provider calls, no rate limit. | live |
+| `intake land`, first plan | run `2026-10-27T19:43:33Z-571e`, not answered | 116 adds named `<id>.flac`, vox 0 of 116, every file unscored: the chain had been skipped. Superseded. | aborted by replan |
+| `analyze run`, `name apply`, `tag folder`, `analyze restamp` | jobs `add0`, run `8a40`, job `6167`, job `8b6f` | 116 analysed. `name apply --root Downloads` from the repository checkout planned 0; the absolute path planned and applied **116 renames**, none held. `tag folder`: 87 given a genre, 2 left for unread sources, one `Latin Electronic` outside the taxonomy, Traxsource and Bandcamp blocked on 24. Restamp energy only, its `db-metadata-not-written` warning as always. | live |
+| The vocal cut | `analyze calibrate --vocal-cut 3` | 5 to 3, set by hand. Of the 116: 80 score 0, 10 under 2, 14 from 2 to under 5, 12 at 5 or more; **19 tagged at 3**. | live |
+| The backup acknowledgment | `session ack`, the gate answered with `run decide` | Both ages about 19 hours. The answer was recorded without `--actor session`, so it took the default actor `cli` and the terminal rule, and the verb refused with no controlling terminal (`backup-acknowledgment-no-terminal`). Minted under `script -q /dev/null`, recorded `decided_by: cli`, `rule: terminal`. The session's error, not U138's: answering as `session` takes the session rule with no terminal. | live |
+| `intake land`, native, rehearsal | on the copy (`copy_setup.sh` rebuilt over sitting 46's, live and copy sha256 `baf3db37`), run `2026-10-27T21:54:27Z-0d57`, applied as `session` | digest `7fe79a59192ac844`, 116 adds, 19 vox, 8 hearts Pink into All Favorites and 2026-10. Copy read back: 10,631 to **10,747** active rows, the 116 with no BPM and not analysed, integrity ok. The 116 files moved back to staging by the plan's mapping and the empty folder removed; the live database's hash unchanged. | rehearsed |
+| `intake land`, native, live | run `2026-10-27T21:55:36Z-5f8e`, approved as `session` | digest `4cf4cc4d41ec79b9`; against the rehearsal the only differing lines the run, the database path and the digest (R-922). **116 rows into `Music/2026-10-27 Tidal playlists and Favorites`**, batch playlist 5, Lisa_10_27_26 1, Idris precise beats 92 new of 98, The LIVING room 18. 10,747 active rows, integrity ok. Isolée `you are` left out of Idris precise beats: owned on disk, no row for its file. | live |
+| rekordbox, first analysis | desktop control, the dialog as it opened: Dynamic, high precision on, KEY off | **All 116 grids variable**, 69 spanning more than 10 BPM inside one track (Feater 89 to 179, Floating Points 79 to 167, Shed 94 to 137). The 96 PULS rows of sitting 46 measured the same way: **96 of 96 variable**, a median span of 1.2 BPM. A random 40 of the older library: 6 variable, all live or orchestral. Every Cratekit batch analysed from 2026-09-29 to 2026-10-16: constant grids but 3 on 2026-10-15. | superseded |
+| rekordbox, second analysis | the 92 Idris rows, Dynamic, high precision off | still variable, about 0.4 BPM drift. Phillip had it stopped: rekordbox quit mid run, both processes gone. | stopped |
+| rekordbox, the standard | reopened; Reload Tags on the 116 (PULS had it at sitting 46), then Analyze Tracks on **all 212**, Normal, high precision off, BPM/Grid, Phrase and KEY on | **212 of 212 single tempo grids.** Key column filled on all 212. Quit, both processes gone; integrity ok. | live |
+| Key agreement | read from the database | Title key against rekordbox's Key column: **98 equal, 114 differ, 23 of those one Camelot step**. Consistent with `_HEAD_AGREEMENT`'s 158 of 299 measured on 2026-09-30, not a regression. Carded as **U158, #341**. | measured |
+| Cards | filed | **U157, #338**: a `dyn` My Tag on variable tempo rows so Analyze runs Normal and Dynamic on the right sets; the evidence above added to it. **U158, #341**: the key estimator. | Ready |
+| `board.py sync` and `audit` | yes | 163 units, 153 done, 8 ready, 2 blocked; the board matches the repository. | measured |
+
+Two desktop control facts. The lock passed back to this session by deleting
+its file again, and `screenshot` failed again while clicks worked, so the
+shell capture learning of sitting 46 held a second time; a clean `/mcp`
+release is still untested. **The Analysis Mode control opens only while the
+mouse is held down on it**: a click does nothing, so a drive presses, moves
+to the item, and releases.
+
+Left for Phillip: `crate intake shelve` for `2026-10-27 Tidal playlists and
+Favorites` and `2026-10-27 PULS`, with `--report` first; the scratch copy
+`copyrun` and `.cratekit-copyrun` at the volume root; `Satisfy` from another
+source; a genre on the 29 rows `tag folder` could not give one; a taxonomy
+alias for `Latin Electronic`; the one review item.
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
