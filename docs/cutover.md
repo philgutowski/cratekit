@@ -1469,6 +1469,11 @@ was removed first. A second clone made for this sitting's rehearsal was
 refused at the volume's top level, so its four subfolders were removed by full
 path and the empty `.cratekit-copyrun` shell was removed with `rmdir` once
 Phillip had finished his hand step, which the check allows.
+A second session that afternoon reached the desktop control tool: outside the
+desktop app the `computer-use` server is off per project until it is enabled
+once from `/mcp`, and the work config directory had never had it enabled for
+Cratekit while the personal one had. The three rekordbox rows below are that
+session's, on the live library.
 
 | Workflow | Ran | Observed | State |
 |---|---|---|---|
@@ -1480,6 +1485,9 @@ Phillip had finished his hand step, which the check allows.
 | The copy apply | yes | Run `2026-10-27T11:31:20Z-ec82`, approved as `session`: 150 rows read back under the base drive at `Processed_Tracks/2026/10_01_26 labels-1pct`, none under the old path, file id and analysis path equal to the live rows'. The real folder was renamed back by hand and the live report's digest was unchanged after. | rehearsed |
 | The live apply | yes | Sitting 44's backup acknowledgment was still valid, until 14:28Z. Run `2026-10-27T11:32:04Z-6ff1`, the gate's digest equal to the rehearsal's, approved as `session`, 150 rows rewritten, session `2026-10-27T11:32:42Z-b2a8`. Doctor reads 167 rows resolving to no file, as before. `Music` holds `Processed_Tracks`, `Set_Recordings`, `rekordbox_djoid` and the search results file, and no active row records a path under `Music` outside those three folders. | live |
 | Every folder under `Processed_Tracks/2026` against the collection | read | The fifteen folders Cratekit filed match file for file, 597 rows. One name in `09_23_26 Downloads` differs in composition form only, the row composed and the file decomposed, and the row's path opens on disk. The hand filed folders carry their old shapes: playlist files and `already_in_library.txt` beside tracks, a few files with no row, a few rows spelled in the other form, subfolders the comparison did not descend into, none of it made here and the rowless files counted nowhere by doctor. | read |
+| rekordbox, desktop control | opened 14:38 after `pgrep` showed nothing, the job list read empty and `doctor` read both backup ages at 0 days; quit with `cmd+q` at 14:45, both processes confirmed gone | The collection shows 10,384 tracks against 10,535 active rows, the 151 streaming rows as at sitting 17. The labels batch read by search: `Are You Feeling Lonely` (Coss) and `Toy Carousel (Kadosh Remix)` (Zakir), each one row with preview waveform and artwork and no missing marker, dragged to decks 1 and 2, each loading with its full waveform, Coss 1A 105.00, Zakir 12B 120.00 against the 96 in its file name. Monologue's transparent window refused the first drag, as at sitting 20, and was granted for the session. | read |
+| Sitting 44's folders, two spot checks | by search and drag | `Same Girl (with Usher)` from `09_29_26 favorites` and `Bottled Up` from `10_08_26 Labels` each loaded to a deck with a full waveform; Same Girl reads 2B 140.00 against the 03B 144 in its name. The Bottled Up search listed three Afriqua rows, the two dubs beside it, all with previews. | read |
+| Missing files, rekordbox's own list | File, Display All Missing Files, closed with OK, nothing relocated or deleted | **8 tracks**, every one a rekordbox demo track (`House 1` to `House 4`, `Breaks 1` to `Breaks 3`, `Techno 1`, artist `rekordbox`, album `GROOVE CIRCUIT`) under the rekordbox folder of another user account's home on this machine. Nothing under `Processed_Tracks`, so none of the 150 shelved today and none of sitting 44's 447 rows is missing to rekordbox. Doctor's 167 rows resolving to no file are a different count: 153 are rows under no prefix rule, the streamed tracks and tombstones of R-675, and how the remaining 14 relate to these 8 was not read. | read |
 
 The two run identifier batches are now known: `09_23_26 Downloads` is
 sitting 8's 54 Tidal favourites, run `4773`, and `09_23_26 Downloads 2` is
