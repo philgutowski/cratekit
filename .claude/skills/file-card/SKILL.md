@@ -1,6 +1,6 @@
 ---
 name: file-card
-description: Turn a feature request, a bug or an idea into a unit card on the Cratekit board, in the brief form every unit issue carries, labelled for the cloud lane. Use when Phillip asks for something new to be built, reports a defect to fix, or asks to file, queue or card a piece of work.
+description: Turn a feature request, a bug or an idea into a unit card on the Cratekit board, in the brief form every unit issue carries, so the cloud lane builds it. Use when Phillip asks for something new to be built, reports a defect to fix, or asks to file, queue or card a piece of work.
 ---
 
 # File a card
@@ -8,7 +8,8 @@ description: Turn a feature request, a bug or an idea into a unit card on the Cr
 The board is the queue and the issue is the brief, so a request becomes work
 only when it is a card. This files one the way the existing unit issues are
 written, so `board.py` reads it, the board workflow labels it, and the cloud
-lane takes it on its next pass.
+lane takes it on its next pass. The cloud lane builds every open unit and
+residual card that is ready, so no label sends a card there.
 
 ## Before filing
 
@@ -57,13 +58,14 @@ Body, in this order, and the first line is read by the graph so it is exact:
 body. Never write a literal path to the skills directory. No em dashes, en
 dashes or double hyphens.
 
-Labels: `unit`, `cloud`, and a priority (`P2` unless told otherwise). Add
-`attended` when the work itself needs Phillip at the machine, and `idea` when
-the brief is not yet a specification.
+Labels: `unit` and a priority (`P2` unless told otherwise). Add `attended`
+when the work itself needs Phillip at the machine, which is the one way to
+keep a card out of the cloud, and `idea` when the brief is not yet a
+specification.
 
 File it:
 
-    gh api -X POST repos/<owner>/<repo>/issues -f title='U<N>: ...' -F body=@card.md -f 'labels[]=unit' -f 'labels[]=cloud' -f 'labels[]=P2'
+    gh api -X POST repos/<owner>/<repo>/issues -f title='U<N>: ...' -F body=@card.md -f 'labels[]=unit' -f 'labels[]=P2'
 
 `gh issue create` is refused on a cloud container; the REST call above works
 everywhere. The board workflow labels it `ready` or `blocked` on open, and the
@@ -71,6 +73,6 @@ project's own auto-add workflow puts the card on the board.
 
 ## After filing
 
-Reply with the issue number and title, one line on where it sits (ready or
-blocked, and on what), and that the cloud lane takes it on its next pass if
-it is ready, or that `board-up` will if it is not the cloud's.
+Reply with the issue number and title, and one line on where it sits: ready,
+and the cloud lane takes it within the hour unless another card holds the
+lane; blocked, and on what; or attended, and why it is built locally.

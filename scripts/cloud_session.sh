@@ -27,5 +27,5 @@ if .venv/bin/python -c 'import cratekit, pytest, xdist' >/dev/null 2>&1; then
 else
     note "Cratekit cloud session: .venv could not be built by the session hook. Build it by hand: uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -e '.[dev]'."
 fi
-note "This is a cloud container: GitHub GraphQL is refused here, so gh issue, gh repo and gh project fail; gh api on repos/... REST paths works. scripts/board.py cloud is the queue. The Linux suite carries about 170 machine bound failures; scripts/cloud_battery.py tells yours from the machine's. The cloud-unit skill is the pipeline for a cloud session."
+note "This is a cloud container, where Cratekit is built: the cloud-unit skill is the pipeline and scripts/board.py cloud the queue. GitHub GraphQL is refused here, so gh issue, gh repo and gh project fail; gh api on repos/... REST paths works. The Linux suite carries about 170 machine bound failures; scripts/cloud_battery.py tells yours from the machine's, and scripts/mutate.py --known-failures subtracts them."
 exit 0

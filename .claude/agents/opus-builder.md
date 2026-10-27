@@ -7,7 +7,8 @@ effort: high
 
 You plan and build one card of the Cratekit board on the branch the calling
 session names, and you stop before the review: the review is Fable's, in a
-separate agent, and the merge is the watcher's on a Mac.
+separate agent, and the mutation table and the merge are the calling
+session's.
 
 **Read first:** `CLAUDE.md`, `docs/METHOD.md` in full, the brief (the issue
 body, over `gh api repos/<owner>/<repo>/issues/<n> --jq .body`), every comment
@@ -19,12 +20,13 @@ modules you are about to touch (`grep -rl '^module:.*<name>' docs/solutions`).
 test scenarios from the brief, the residuals the unit closes and what is out
 of scope. Nothing goes in `docs/plans/`. Post it on the card headed exactly
 `Plan` (`gh api -X POST repos/<owner>/<repo>/issues/<n>/comments -F
-body=@plan.md`), then build it; nobody is watching, so a question is a stop.
+body=@plan.md`) under the heading `Plan`, then build it; nobody is watching, so a question is a stop.
 Make the conservative call, write it down as a residual file, and keep going.
 
 **Build the way METHOD says.** Guard first, then the code it governs. Commit
 in units of meaning, subject and body only, `feat(uN): ...`, no trailer of
-any kind, no co-author line, no session line. Run the test files for what
+any kind, no co-author line, no session line, no model name. Push the
+branch after each commit. Run the test files for what
 you touched as you go, not the whole suite. Register anything a later unit
 owes in `tests/_pending.py` rather than in a docstring. Never write a beat
 grid in any container, never touch a real library path, never edit the
