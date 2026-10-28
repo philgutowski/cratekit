@@ -971,6 +971,19 @@ def collection_facts(rows: native.NativePlan) -> dict[str, Any]:
         "adds": len(rows.to_add()),
         "already present": len(rows.present()),
         "vox My Tag": vox_fact(rows),
+        # U166: the one playlist every added row joins for the rekordbox visit.
+        "analyze": (
+            (
+                f"{rows.root_name} / {native.ANALYZE}, every added row, "
+                + (
+                    f"found (row {rows.analyze_playlist_id})"
+                    if rows.analyze_playlist_id
+                    else "made"
+                )
+            )
+            if rows.to_add()
+            else "nothing, since no row is added"
+        ),
     }
     if rows.set_job_id:
         facts["inbox playlist"] = rows.playlist
@@ -1772,17 +1785,18 @@ def awaiting_analysis(collection: native.NativeLanded) -> list[dict[str, str]]:
     """
     if not collection.added:
         return []
-    names = collection.names() or (collection.playlist,)
-    said = f"the {ingest.spoken(names)} playlist" + ("s" if len(names) > 1 else "")
+    # ONE PLAYLIST, ANALYZE (U166), which holds every row still waiting and
+    # only those, so the visit is one selection rather than one per batch.
     return [
         {
             "code": AWAITING_ANALYSIS,
             "message": (
                 f"{len(collection.added)} row(s) joined the collection with no "
                 f"tempo, grid, key or waveform, and rekordbox analyses nothing on its "
-                f"own with Auto Analysis off; open rekordbox, select "
-                f"{said} under the intake folder and "
-                f"run Analyze Track"
+                f"own with Auto Analysis off; open rekordbox, select the "
+                f"{collection.analyze_name} playlist, which holds every row waiting "
+                f"for analysis, and run Analyze Track; then crate inbox analyzed takes "
+                f"out each row rekordbox analysed"
             ),
         }
     ]

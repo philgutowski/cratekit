@@ -308,7 +308,8 @@ def test_one_file_becomes_one_row_and_one_playlist_under_the_adopted_root(
     # no vox My Tag and the second warning says why.
     warning, vox = acted["warnings"]
     assert warning["code"] == land_cli.AWAITING_ANALYSIS
-    assert path.stem in warning["message"] and "Analyze" in warning["message"]
+    # U166: the one playlist the visit selects, not the batch the row joined.
+    assert f"{DECLARED.intake.display} / {native.ANALYZE}" in warning["message"]
     assert vox["code"] == land_cli.VOX_NOT_WRITTEN
     assert native.VOX_UNCALIBRATED in vox["message"]
 
@@ -317,8 +318,9 @@ def test_one_file_becomes_one_row_and_one_playlist_under_the_adopted_root(
     assert record.session_id == playlist["session"]
     assert record.state is session.SessionState.CLOSED
     assert record.sources == {INTAKE: "committed"}
+    # U166: the batch's one membership and INBOX / Analyze's one.
     assert {change.tree: change.created for change in record.change.trees} == {
-        INTAKE: 1,
+        INTAKE: 2,
         rb_writer.CONTENT_TABLE: 1,
     }
 

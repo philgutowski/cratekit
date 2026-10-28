@@ -3098,6 +3098,45 @@ ENTRIES: tuple[Entry, ...] = (
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
+    # ── INBOX / Analyze, cleared (U166) ─────────────────────────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives. Every
+    # native landing adds the rows it creates to the one playlist the
+    # rekordbox visit selects; this takes out each row rekordbox analysed.
+    Entry(
+        name="inbox.analyzed",
+        summary="take every row rekordbox has analysed out of INBOX / Analyze, leaving "
+        "each row still waiting, memberships only",
+        module="cratekit.intake.analyzed_cli",
+        builder="build",
+        handler_key="inbox.analyzed",
+        # NO FEATURE ROW. The source system never kept an analysis queue.
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: The database tree and nothing else: memberships of one playlist
+        #: under the intake root, soft deleted. No content row, no playlist
+        #: row, no file.
+        writes=frozenset({"db_tree"}),
+        taxonomy_terms=("inbox",),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+        ),
+        gates=(
+            GateSpec(
+                name="inbox.analyzed.approve",
+                options=("apply", "abort"),
+                prompt="Take these analysed tracks out of INBOX / Analyze, keeping "
+                "every track in the collection?",
+                #: EXPLICIT (R34). A removal from a playlist, answered by a
+                #: recorded act, as the refill's addition is.
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
     # ── The set's permanent playlist (U121) ─────────────────────────────────
     #
     # Appended, for the reason the deferred routing block above gives. The

@@ -1988,6 +1988,12 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # asked over it, and the verb ends NO_OP. The writing path is driven
         # in tests/test_inbox_refill.py.
         "inbox.refill": _finished_account_playlist_pass_on_a_native_tree,
+        # U166. LAZY, for the rotation's reason: the clear refuses a bridge
+        # tree by name, so the sample cuts the intake tree over. INBOX holds
+        # no Analyze playlist on the fixture, so the plan clears nothing, the
+        # explicit gate is still asked over it, and the verb ends NO_OP. The
+        # writing path is driven in tests/test_inbox_analyzed.py.
+        "inbox.analyzed": _intake_cut_over,
         # U112. No argument. Its database area reads the backup acknowledgment
         # first, see ACKNOWLEDGED_BEFORE_THE_GATE; on this fixture every step
         # either plans nothing or refuses on its own, and both areas still ask.
@@ -2510,6 +2516,10 @@ def _assert_gate_reach(entry: registry.Entry, reached: list[str]) -> None:
 #: That each of these refuses without one is driven in its own suite, which
 #: the guard below holds this table to.
 ACKNOWLEDGED_BEFORE_THE_GATE = {
+    "inbox.analyzed": (
+        "tests/test_inbox_analyzed.py::"
+        "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
+    ),
     "inbox.refill": (
         "tests/test_inbox_refill.py::"
         "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
