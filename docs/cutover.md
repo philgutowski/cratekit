@@ -1634,6 +1634,26 @@ Favorites` and `2026-10-27 PULS`, with `--report` first; the scratch copy
 source; a genre on the 29 rows `tag folder` could not give one; a taxonomy
 alias for `Latin Electronic`; the one review item.
 
+## Sitting 48, 2026-10-28, the attended session, the account side of two passes marked and filed
+
+Phillip noticed the playlists sitting 47 landed still sat at the account root
+under their own names. Nothing had failed: sitting 47 stopped at the
+rekordbox analysis, and `sync mark` and `organize --only file` are separate
+verbs that no sync driver runs (#333, U152, scopes `sync mark` out). Neither
+verb writes the database, so no rehearsal or backup gate applies; rekordbox
+stayed closed and no job was running throughout.
+
+**There was no 2026-10-14 sync.** `Aa-Phil 10-14-26` was landed by the pass
+`2026-10-15T234532Z-9c32_synced` (landing session `2026-10-16T00:38:54Z-ef36`),
+the only native landing between 2026-10-09 and 2026-10-27 in the session log.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `sync mark --pass 2026-10-27T190706Z-21c7_synced` | run `2026-10-28T14:43:39Z-dbcc`, approved as `session` | **3 renamed**: `Lisa_10_27_26`, `Idris precise beats`, `The LIVING room`, each to `DOWNLOADED <name>`; left alone none. Idris counts Isolée `you are` as owned (on disk, no row), so it marks. 47 provider calls. | live |
+| `organize --only root --report` | run `2026-10-28T14:44:47Z-4f25`, report only | Would move 53 playlists out of `2026 Custom Playlists` (52 `DOWNLOADED`, plus `lisa_7/16`) into the 2026 folder and remove the emptied folder on a later run. **Phillip said no**: `2026 Custom Playlists` stays as he arranged it. The root step does not file newly marked playlists; `--only file` does. | declined |
+| `sync mark --pass 2026-10-15T234532Z-9c32_synced` | run `2026-10-28T14:51:09Z-58b3`, approved as `session` after Phillip read the gate | **2 renamed**: `Aa-Phil 10-14-26` and `lisa_10_11_26`. The gate takes both or neither, since `sync mark` has no per playlist narrowing. 44 provider calls. | live |
+| `organize --only file` | run `2026-10-28T14:55:10Z-8273`, approved as `session` after Phillip read the report (digest `f8e834767a89e3c1`) | **5 moved from the root** into the existing 2026 folder: the five `DOWNLOADED` playlists above. None came from a folder, so `lisa_10_11_26` was not taken out of a hand filed place. 0 folders created. A report after it planned nothing. 154 provider calls. | live |
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
