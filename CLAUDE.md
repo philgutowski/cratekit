@@ -34,8 +34,8 @@ session, woken hourly and by every worker that takes or frees a lane, keeps
 three fresh Opus 5.5 workers building at once; each runs the `cloud-unit`
 skill, which takes its card from `board.py cloud`, plans
 and builds it at high effort, has Fable review it to the merge bar, measures
-the mutation table against the Linux suite's known failures, merges to `main`
-with the closing trailer and pushes `main`. An idea gets a brainstorm posted
+the mutation table against the Linux suite's known failures, opens a pull
+request and merges it to `main` with the closing trailer once CI is green. An idea gets a brainstorm posted
 on its card and waits for Phillip's answer, and every question for him goes
 on the decisions page, https://claude.ai/artifact/FUqChoK5qKhztLdzzEADaS, where he answers it
 with a tap. **Only a card that cannot be
@@ -202,12 +202,16 @@ lists what.
   replacement is proven. Its `docs/` are the exception.
 - **Do not symlink `.venv` into a worktree.** The editable install names the
   checkout it was installed from, so a worktree would verify code it cannot see.
-- **No pull requests.** Feature branch per unit, merge to `main`, push `main`,
-  delete the branch. **A cloud session merges and pushes `main` itself**,
-  attended or not, authorized by Phillip on 2026-10-27 ("I authorize you to
-  merge to main here in the cloud now and going forward"). A cloud session
-  cannot delete a remote branch, so merged `cloud/` branches are pruned
-  locally.
+- **A pull request per unit, merged by the session that opened it once CI is
+  green**, decided by U158, replacing the old no pull requests rule. Feature
+  branch per unit, open a pull request against `main`, merge it through the
+  API as `merge(uN): ...` ending with the closing trailer once every check on
+  its head is green, delete the branch. Never a pull request that waits on a
+  person, and never a closing keyword in its body. **A cloud session merges
+  itself**, attended or not, authorized by Phillip on 2026-10-27 ("I
+  authorize you to merge to main here in the cloud now and going forward").
+  A cloud session cannot delete a remote branch, so merged `cloud/` branches
+  are pruned locally.
 - **No em dashes, en dashes, or double hyphens** in any prose, code comment,
   commit message, or issue body. Do not swap a dash for a colon; favor commas,
   and keep colons for a genuine list or definition.

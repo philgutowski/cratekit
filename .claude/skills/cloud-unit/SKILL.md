@@ -9,8 +9,8 @@ The cloud is where Cratekit is built, decided by Phillip on 2026-10-27. A
 cloud session takes one card from the queue and runs METHOD's whole pipeline
 on it: brainstorm if it is an idea, plan, build with Opus 5.5 at high effort,
 review with Fable at high effort, drive the findings to the merge bar, measure
-the mutation table, write the record, merge to `main` with the closing
-trailer, push `main`. A card that cannot be built without the machine is set
+the mutation table, write the record, open a pull request and merge it to
+`main` with the closing trailer once CI on its head is green. A card that cannot be built without the machine is set
 aside with the steps to build it locally, and only those are built locally.
 
 Read `CLAUDE.md` and `docs/METHOD.md` before anything here. This skill says
@@ -53,7 +53,8 @@ itself. A session on any other model hands the plan and the build to the
 ## Writes you never make
 
 A beat grid in any container. Anything under a real config path or a real
-library. A pull request. A ready or blocked label, or a project status; those
+library. A pull request that waits on a person, a reviewer requested on one,
+or a closing keyword in a pull request's body. A ready or blocked label, or a project status; those
 are derived. Anything in `.github/` unless the card is about it. A trailer of
 any kind, a co author line or a session line on a branch commit; the merge
 commit carries exactly one trailer, the closing one. A model name in any
@@ -274,28 +275,75 @@ one. A residual is `docs/residuals/uN-<slug>.md` in the form
 something a future session would get wrong without it. Commit the record as
 `record(uN): ...` and push the branch.
 
-## 10. Merge and land
+## 10. Merge and land, through a pull request
 
-METHOD's step 6, done here.
+METHOD's step 6, done here, decided by U158: the unit reaches `main` through
+a pull request this session opens and merges itself once CI is green. Nobody
+reviews it and nothing waits on a person.
 
     git fetch origin main
-    git merge origin/main          # only if main moved; then step 8 again
+    git merge origin/main          # only if main moved; then step 8 again in full
     .venv/bin/python scripts/board.py closing --since origin/main
     git log origin/main..HEAD --format=%B | grep -inE '\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\b[[:space:]]*#[0-9]+'
+    git push -u origin cloud/N-<slug>
 
 The closing check must exit 0, and the keyword scan must print nothing. Check
 `tests/_pending.py` before writing the trailer: if the register still owes
-this unit a module, merge without it and say so in `Landed`. Then:
+this unit a module, merge without it and say so in `Landed`.
 
-    git checkout -B main origin/main
-    git merge --no-ff cloud/N-<slug>     # message: merge(uN): <what landed>, ending with the line Closes #N
+**Open the pull request** over REST, since `gh pr` needs GraphQL (the GitHub
+MCP `create_pull_request` tool works as well):
+
+    gh api -X POST repos/<owner>/<repo>/pulls -f title='UN: <what landed>' \
+      -f head=cloud/N-<slug> -f base=main -F body=@pr.md --jq .number
+
+The body is the landing's record: a line naming the card by its link (the
+issue URL, never a keyword and a number), the `cloud_battery.py compare`
+counts, the review rounds and what each drove, the mutation table's result,
+the residual files filed, and what is OWED. **No closing keyword anywhere in
+it**: GitHub closes from a pull request body on merge, which would bypass
+`board.py closing`, so the merge commit's trailer is the one close.
+
+**Wait for CI on the head commit**, as a tracked background job, never a
+foreground sleep. Every check run on the head must be `completed`, and green
+means each conclusion is `success`, `neutral` or `skipped`:
+
+    SHA=$(git rev-parse HEAD)
+    gh api repos/<owner>/<repo>/commits/$SHA/check-runs \
+      --jq '.check_runs[] | "\(.name) \(.status) \(.conclusion)"'
+
+CI judges the pull request's own range and the card its head branch names
+(`board.py closing --pull-request-head`), so a branch whose card a register
+still owes is red here. **If CI is red**, fix it on the branch and push again,
+inside the two fix rounds METHOD allows; a failure that is the machine's and
+not the branch's is said in the body. **If `main` moved** while you waited,
+merge `origin/main` into the branch, run step 8 again in full, push, and wait
+on the new head.
+
+**Merge it** through the API as a merge commit, the title and the trailer
+exactly as a local merge would carry them, and `sha` pinned to the head CI
+judged:
+
+    printf '%s\n\nCloses #N\n' '<what the merge carried, one paragraph>' > msg.txt
+    gh api -X PUT repos/<owner>/<repo>/pulls/<pr>/merge -f merge_method=merge \
+      -f sha=$SHA -f commit_title='merge(uN): <what landed>' -F commit_message=@msg.txt
+
+The trailer is the message's last line and the only closing keyword in it.
+**If the merge endpoint is refused**, merge locally with the same message
+(`git checkout -B main origin/main`, `git merge --no-ff cloud/N-<slug>`) and
+push `main`; GitHub then marks the pull request merged on its own, and the
+refusal is a residual file if no residual already records it.
+
+Then on `main`:
+
+    git fetch origin main && git checkout -B main origin/main
     .venv/bin/python scripts/board.py residuals --land
     git add docs/residual-findings.md docs/residuals && git commit -m "docs(residuals): number what landed"   # only if it numbered any
     git push origin main
 
 If the push is refused because `main` moved, fetch, merge `origin/main` into
-`main`, run step 8 again in full, since two units can be green apart and red
-together, and push again. Never force push `main`.
+`main`, and push again; the numbering commit carries no code, so the battery
+need not run again for it. Never force push `main`.
 For each residual `--land` named as meeting the board bar, file its issue
 over REST, titled `R-N: ` and the ledger heading exactly, with a body opening
 `**Depends on:** none` and the goal, key files, approach, test scenarios and
@@ -303,8 +351,8 @@ out of scope:
 
     gh api -X POST repos/<owner>/<repo>/issues -f title='R-N: ...' -F body=@r.md -f 'labels[]=residual'
 
-Then `board.py audit --labels-only`, and post `Landed` on the card: the merge
-commit, the commits it carried, the battery counts from `compare`, the review
+Then `board.py audit --labels-only`, and post `Landed` on the card: the pull
+request, the merge commit, the commits it carried, the battery counts from `compare`, the review
 rounds and what each drove, the mutation table's result, tests added by file
 and count, residuals numbered and issues filed, and what is OWED. The push of
 the trailer closes the card and the board workflow relabels what it released.
