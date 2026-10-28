@@ -543,8 +543,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'library-volume-unmounted',
         'utf-8',
     ],
-    # 2026-10-28, U152: the sync pass driver joined, with one new literal, its
-    # download refusal warning code.
+    # 2026-10-28, U152: the sync pass driver joined, with two new literals, its
+    # download refusal and left open intake warning codes.
     'cli/sync_land.py': [
         'backup-acknowledgment-missing',
         'config-unusable',
@@ -554,6 +554,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'outbound-export-required',
         'source-missing',
         'sync-land-download-refused',
+        'sync-land-intake-left-open',
     ],
     'cli/verbs/login.py': ['credential-missing', 'utf-8'],
     'cli/verbs/profile.py': ['config-unusable'],

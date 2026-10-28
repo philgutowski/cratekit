@@ -1020,3 +1020,175 @@ def test_the_acknowledgment_stop_names_the_gate_the_replanned_landing_will_ask(
     replan = next(i for i, step in enumerate(steps) if step.startswith("then plan the landing"))
     assert "answer it as the session" in steps[replan + 1]
     assert "Reload Tags" in steps[replan + 2]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 7. The review's second round
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_an_earlier_pass_left_open_beside_a_new_one_is_named_with_its_way_on(
+    machine, monkeypatch, tail
+):
+    """A hand typed pass queued one playlist; a new playlist arrives and is passed.
+
+    The new pass drives only its own run, so the earlier job is named, failing,
+    with the command that takes it, rather than left out of every later pass.
+    """
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    code, earlier = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), earlier
+    (held,) = _by_key("intake.playlist")
+    script.landings["201"] = Landing()
+    bind_playlists(
+        monkeypatch,
+        (_playlist("pl-a", "Warmup"), _tracks("101")),
+        (_playlist("pl-b", "Peak"), _tracks("201")),
+    )
+
+    code, envelope = drive(["sync", "land"])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert _summary(envelope)["pass_run"] != earlier["run_id"]
+    row = _check(envelope, "left-open")
+    assert row["status"] == "fail"
+    assert held.job_id in row["detail"]
+    assert f"crate sync land --pass-run {earlier['run_id']}" in row["detail"]
+    assert _summary(envelope)["left_open"] == [held.job_id]
+    assert any(w["code"] == "sync-land-intake-left-open" for w in envelope["warnings"])
+
+
+def test_an_intake_job_queued_by_hand_with_no_pass_is_named_not_passed_over(
+    machine, monkeypatch, tail
+):
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    code, queued = drive(["intake", "playlist", "pl-a"])
+    assert code == int(ExitCode.OK), queued
+    job_id = queued["data"]["job_id"]
+
+    code, envelope = drive(["sync", "land"])
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    row = _check(envelope, "left-open")
+    assert row["status"] == "fail"
+    assert f"crate intake playlist pl-a --job {job_id}" in row["detail"]
+
+
+def test_the_newest_download_over_the_list_is_the_one_the_pass_reads(
+    machine, monkeypatch, tail
+):
+    """A first download refused both tracks; a second, typed by hand, landed both."""
+    cfg, script = machine
+    _account(monkeypatch, script, "101", "102", lossy=("101", "102"))
+    code, first = drive(["sync", "land"])
+    assert code == int(ExitCode.OK) and first["outcome"] == "no_op", first
+    listed = _summary(first)["list"]
+    script.landings["101"] = Landing()
+    script.landings["102"] = Landing()
+    code, queued = drive(["acquire", "download", listed])
+    assert code == int(ExitCode.OK), queued
+    code, driven = drive(["acquire", "download", "--job", queued["data"]["job_id"]])
+    assert code == int(ExitCode.OK), driven
+
+    code, again = drive(["sync", "land", "--pass-run", _summary(first)["pass_run"]])
+
+    assert code == int(ExitCode.PENDING_HUMAN), again
+    assert _summary(again)["download_job"] == queued["data"]["job_id"]
+    assert _summary(again)["download_refused"] == []
+    assert ("intake", "land") in tail.verbs()
+
+
+def test_every_download_refused_lands_nothing_on_a_failing_row(machine, monkeypatch, tail):
+    cfg, script = machine
+    _account(monkeypatch, script, "101", "102", lossy=("101", "102"))
+
+    code, envelope = drive(["sync", "land"])
+
+    assert envelope["outcome"] == "no_op", envelope
+    row = _check(envelope, sync_land.DOWNLOAD)
+    assert row["status"] == "fail" and "landed no track; 2 refused" in row["detail"]
+    assert ("tag", "folder") not in tail.verbs()
+
+
+def test_a_stale_answer_from_a_step_is_the_steps_own_and_never_resumes_this_run(
+    machine, monkeypatch, tail
+):
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    tail.landing = lambda _argv: _refused(
+        Cause(
+            reason="decision-stale",
+            message="the plan moved since the answer",
+            remediation=Remediation(remedy=Remedy.ANSWER_DECISION),
+            retryable=True,
+            origin=("test",),
+            detail={"gate": sync_land.LAND_GATE, "run_id": "land-run"},
+        ),
+        outcome="blocked",
+    )
+
+    code, envelope = drive(["sync", "land"])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["resumable"] is False
+    land = " ".join(tail.calls[-1])
+    assert f"then run the step again: crate {land}" in envelope["pending_human_action"]["steps"]
+
+
+def test_a_job_command_that_stops_at_a_gate_is_that_commands_gate(
+    machine, monkeypatch, tail
+):
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    real = tail._job
+
+    def gated(step, verb, argv):
+        if step == sync_land.TAG and "--job" in argv:
+            return _refused(_gate("tag-run", "write.cloudsync.unreadable"), outcome="blocked")
+        return real(step, verb, argv)
+
+    monkeypatch.setattr(tail, "_job", gated)
+
+    code, envelope = drive(["sync", "land"])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["resumable"] is False
+    assert "crate run decide tag-run write.cloudsync.unreadable" in (
+        envelope["pending_human_action"]["steps"][0]
+    )
+
+
+def test_an_earlier_pass_that_ended_or_belongs_to_another_library_is_not_continued(
+    machine, monkeypatch, tail
+):
+    cfg, script = machine
+    key = registry.entry("intake.playlist").handler_key
+    with jobs.open_store() as store:
+        foreign = jobs.enqueue(
+            store,
+            handler_key=key,
+            payload={"source": "pl-x", "run_id": "foreign-run"},
+            cfg=dataclasses_replace_library(cfg),
+            item_ids=("1",),
+        )
+        ended = jobs.enqueue(
+            store,
+            handler_key=key,
+            payload={"source": "pl-y", "run_id": "ended-run"},
+            cfg=cfg,
+            item_ids=("2",),
+        )
+        jobs.cancel(store, ended.job_id)
+    bind_playlists(monkeypatch)
+
+    code, envelope = drive(["sync", "land"])
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert _summary(envelope)["pass_run"] not in ("foreign-run", "ended-run")
+    assert not any(argv[:2] == ["intake", "playlist"] for argv in tail.calls)
+    with jobs.open_store() as store:
+        assert jobs.get(store, foreign.job_id).state is jobs.JobState.QUEUED

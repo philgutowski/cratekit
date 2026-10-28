@@ -65,7 +65,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
-from cratekit.cli import registry, render
+from cratekit.cli import gates, registry, render
 from cratekit.cli.output import Envelope, PendingHumanAction
 from cratekit.core import config, jobs, rb_writer
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
@@ -170,7 +170,8 @@ def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
         metavar="RUN_ID",
         help=(
             "continue the pass crate sync all queued under this run, rather than "
-            "starting a new one; every step already settled is read, not redone"
+            "starting a new one; a job that already ended is read, not driven "
+            "again, and the tail runs again over the staging folder"
         ),
     )
     parser.set_defaults(_handler=sync_land)
@@ -336,7 +337,7 @@ def _required(report: _Pass, step: str, argv: Sequence[str]) -> dict[str, Any]:
     code, envelope = report.call(step, argv)
     if not _succeeded(code, envelope):
         cause = _cause_of(step, argv, code, envelope)
-        if cause.reason == GATE_STOP:
+        if cause.code in gates.GATE_CODES:
             raise _Attend(step, argv, cause)
         raise _Stop.of(step, cause)
     return envelope
@@ -424,22 +425,78 @@ def _lift_failed_checks(report: _Pass, envelope: dict[str, Any]) -> None:
         )
 
 
-def _open_passes(cfg: config.Config) -> dict[str, list[str]]:
-    """Every pass run with an intake job still open, and those jobs, oldest first."""
+def _open_intake(cfg: config.Config) -> list[jobs.Job]:
+    """Every intake job of this library still open, whoever queued it."""
     from cratekit.intake import cli as intake_cli  # noqa: PLC0415 - one module's keys
 
     open_states = [state for state in jobs.JobState if state not in jobs.TERMINAL_STATES]
-    found: dict[str, list[str]] = {}
     with jobs.open_store() as store:
-        for job in jobs.list_jobs(store, states=open_states):
-            run_id = str((job.payload or {}).get("run_id") or "")
-            if (
-                run_id
-                and job.handler_key in intake_cli.INTAKE_KEYS
-                and job.library_id == cfg.library.volume_id
-            ):
-                found.setdefault(run_id, []).append(job.job_id)
+        return [
+            job
+            for job in jobs.list_jobs(store, states=open_states)
+            if job.handler_key in intake_cli.INTAKE_KEYS
+            and job.library_id == cfg.library.volume_id
+        ]
+
+
+def _run_of(job: jobs.Job) -> str:
+    return str((job.payload or {}).get("run_id") or "")
+
+
+def _open_passes(cfg: config.Config) -> dict[str, list[str]]:
+    """Every pass run with an intake job still open, and those jobs."""
+    found: dict[str, list[str]] = {}
+    for job in _open_intake(cfg):
+        if _run_of(job):
+            found.setdefault(_run_of(job), []).append(job.job_id)
     return found
+
+
+def _left_behind(report: _Pass, cfg: config.Config, taken: str | None) -> None:
+    """Name every open intake job this pass will not drive, with the way on to each.
+
+    ``sync all`` leaves a playlist out of a new pass while an intake job for it
+    is still open, whether an earlier pass queued that job or a person typed
+    ``intake playlist``, and that job holds the playlist out of every later
+    pass until it is driven. The pass drives only its own run's jobs, so the
+    rest are said here, on a failing row, rather than nowhere.
+    """
+    left = [job for job in _open_intake(cfg) if not taken or _run_of(job) != taken]
+    if not left:
+        return
+    ways = []
+    for job in left:
+        run_id = _run_of(job)
+        ways.append(
+            f"{job.job_id} ({job.state}), continue its pass with: crate sync land "
+            f"--pass-run {run_id}"
+            if run_id
+            else f"{job.job_id} ({job.state}), queued by hand, drive it with: crate "
+            + " ".join(_argv_for(job))
+        )
+    report.summary["left_open"] = [job.job_id for job in left]
+    report.checks.append(
+        {
+            "key": "sync.land.left-open",
+            "title": "left open",
+            "status": "fail",
+            "detail": (
+                f"{len(left)} intake job(s) this pass does not drive are still open, "
+                f"and each holds its playlist out of every pass until it is: "
+                + "; ".join(ways)
+            ),
+            "remedy": None,
+        }
+    )
+    report.warnings.append(
+        {
+            "code": "sync-land-intake-left-open",
+            "message": (
+                f"{len(left)} open intake job(s) outside this pass: "
+                + ", ".join(job.job_id for job in left)
+            ),
+        }
+    )
 
 
 def _sync(report: _Pass, cfg: config.Config) -> str | None:
@@ -517,7 +574,7 @@ def _settle(report: _Pass, step: str, job: jobs.Job) -> jobs.Job:
         # where the job row, which records no cause yet, says nothing. A gate
         # it stopped at is the command's own, as in ``_required``.
         cause = _cause_of(step, argv, code, envelope)
-        if cause.reason == GATE_STOP:
+        if cause.code in gates.GATE_CODES:
             raise _Attend(step, argv, cause)
         raise _Stop.of(step, cause)
     return settled
@@ -632,7 +689,8 @@ def _download_job(store: jobs.JobStore, listed: Path, cfg: config.Config) -> job
 
     key = registry.entry(DOWNLOAD_VERB).handler_key
     wanted = str(listed.expanduser().absolute())
-    for job in reversed(jobs.list_jobs(store)):
+    # ``list_jobs`` IS NEWEST FIRST already, so the first match is the newest.
+    for job in jobs.list_jobs(store):
         if (
             job.handler_key == key
             and job.library_id == cfg.library.volume_id
@@ -798,7 +856,7 @@ def _land(report: _Pass, folder: Path, land_name: str) -> None:
         report.check(LAND, "info", "intake land planned nothing to land")
         raise _Done(LAND)
     cause = _cause_of(LAND, argv, code, envelope)
-    if cause.reason in (GATE_STOP, ACK_STOP):
+    if cause.reason == ACK_STOP or cause.code in gates.GATE_CODES:
         raise _Attend(LAND, argv, cause)
     raise _Stop.of(LAND, cause)
 
@@ -833,6 +891,21 @@ def _attended(ctx: Context, report: _Pass, stop: _Attend) -> Envelope:
         report.summary["stopped_at"] = gate
         report.check(stop.step, "info", f"crate {command} waits on {gate} under run {run_id}")
         summary = f"the pass waits on {gate} under run {run_id}, at its {stop.step} step"
+        kind = "external_step"
+    elif stop.cause.reason != ACK_STOP:
+        # A STALE ANSWER, or any other gate code: the step's own run holds the
+        # question, and the step's own remediation says how it is answered again.
+        remedy = stop.cause.remediation.remedy
+        words = render.remedy_text(remedy) if remedy is not None else None
+        steps = (
+            *stop.cause.remediation.steps,
+            *((words,) if words else ()),
+            f"then run the step again: crate {command}",
+            *after,
+        )
+        report.summary["stopped_at"] = stop.cause.reason
+        report.check(stop.step, "info", f"crate {command} stopped: {stop.cause.message}")
+        summary = f"the pass stopped at its {stop.step} step: {stop.cause.message}"
         kind = "external_step"
     else:
         remedy = stop.cause.remediation.remedy
@@ -945,8 +1018,9 @@ def sync_land(ctx: Context) -> Envelope:
             report.check(SYNC, "info", f"continuing the pass queued under run {run_id}")
         else:
             run_id = _sync(report, cfg)
-            if run_id is None:
-                raise _Done(SYNC)
+        _left_behind(report, cfg, run_id)
+        if run_id is None:
+            raise _Done(SYNC)
         _intake(report, run_id, cfg)
         listed = _missing(report, run_id)
         _download(report, listed, cfg)
