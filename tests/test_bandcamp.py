@@ -455,3 +455,21 @@ def test_a_page_listing_no_formats_is_unavailable_not_an_empty_offer():
 
     with pytest.raises(bandcamp.BandcampUnavailable, match="lists no formats"):
         bandcamp.download_offers(Formatless(), COOKIE, download_page("1"))
+
+
+def test_an_empty_page_ends_the_listing_even_when_it_says_more_is_available():
+    """The empty page is what ends a listing, whatever ``more_available`` says,
+    so the more flag is never the only thing standing between the last page and
+    a request past it (mutation row C5 of U176)."""
+
+    class Optimistic(FakeAccount):
+        def _page(self, items, end, *, more):
+            page = super()._page(items, end, more=more)
+            page["more_available"] = True
+            page["last_token"] = page["last_token"] or "tokend"
+            return page
+
+    account = Optimistic(four(), page_size=2)
+    found = bandcamp.read_collection(account, COOKIE, now=NOW)
+    assert [one.item_id for one in found.purchases] == ["1", "2", "3", "4"]
+    assert len([url for url, _payload in account.posted if url.endswith(bandcamp.ITEMS_PATH)]) == 3
