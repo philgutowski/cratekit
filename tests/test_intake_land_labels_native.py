@@ -13,12 +13,16 @@ D1 applies. Nothing here names a real volume, a real person or a real track.
 
 from __future__ import annotations
 
+import sqlite3
+import unicodedata
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from cratekit.acquire import listdoc
 from cratekit.core import config, rb_writer, session, tags, taxonomy
+from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import label_filing, landing
 from tests import cutover_fixtures
@@ -444,8 +448,6 @@ def test_a_playlist_where_the_label_folder_belongs_is_refused_before_the_gate(
 def test_a_taxonomy_with_no_catalog_tree_is_refused_by_name(native_library, silence, monkeypatch):
     cfg, _root = native_library
     _dated(cfg, silence, "One.flac", "2021")
-    from dataclasses import replace
-
     from cratekit.intake import ingest
 
     real = ingest.intake_medium
@@ -497,3 +499,166 @@ def test_the_plan_refuses_a_library_whose_intake_tree_is_on_the_bridge(acknowled
         rb_writer.close_db(handle)
     assert caught.value.cause.reason == "internal-error"
     assert "xml bridge" in caught.value.cause.message
+
+
+# ---------------------------------------------------------------------------
+# What the tree already holds, and what changes between the plan and the write
+# ---------------------------------------------------------------------------
+
+
+def _playlist(cfg: config.Config, name: str, folder: str) -> str:
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        row = handle.create_playlist(name, parent=handle.get_playlist(ID=folder))
+        handle.session.commit()
+        return str(row.ID)
+    finally:
+        rb_writer.close_db(handle)
+
+
+def _remove(cfg: config.Config, row_id: str) -> None:
+    """Mark one node removed, as rekordbox does when a person deletes it."""
+    conn = sqlite3.connect(cfg.library.db_path)
+    try:
+        conn.execute("UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE ID = ?", (row_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_a_label_folder_spelled_decomposed_is_the_same_folder(native_library, silence):
+    """The bridge's NFC rule: one name drawn two ways is one folder, never a second."""
+    cfg, _root = native_library
+    tree = cutover_fixtures.add_folder(cfg, TREE)
+    composed = "Café"
+    folder = cutover_fixtures.add_folder(cfg, unicodedata.normalize("NFD", composed), under=tree)
+    _dated(cfg, silence, "One.flac", "2021")
+
+    code, acted, _ = _two_acts(_land("--label", composed))
+
+    assert code == int(ExitCode.OK), acted
+    assert [node for node, _n, _a in _children(cfg, tree)] == [folder]
+    assert [name for _i, name, _a in _children(cfg, folder)] == [f"{composed} 2021"]
+
+
+def test_a_removed_year_playlist_is_not_added_to_and_a_live_one_is_made(native_library, silence):
+    cfg, _root = native_library
+    tree = cutover_fixtures.add_folder(cfg, TREE)
+    label = cutover_fixtures.add_folder(cfg, "PULS", under=tree)
+    removed = _playlist(cfg, "PULS 2021", label)
+    _remove(cfg, removed)
+    _dated(cfg, silence, "One.flac", "2021")
+
+    code, acted, _ = _two_acts(_land("--label", "PULS"))
+
+    assert code == int(ExitCode.OK), acted
+    assert _members(cfg, removed) == []
+    ((live, name, _a),) = _children(cfg, label)
+    assert name == "PULS 2021" and live != removed
+    assert len(_members(cfg, live)) == 1
+
+
+def test_a_year_playlist_made_after_the_answer_makes_the_answer_stale(native_library, silence):
+    """The plan named a playlist to make; one there now is a different write."""
+    cfg, _root = native_library
+    tree = cutover_fixtures.add_folder(cfg, TREE)
+    label = cutover_fixtures.add_folder(cfg, "PULS", under=tree)
+    _dated(cfg, silence, "One.flac", "2021")
+    code, refused = drive(_land("--label", "PULS"))
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    decided, _ = drive(["run", "decide", run_id, land_gate(), "apply", "--actor", "a-person"])
+    assert decided == int(ExitCode.OK)
+    made = _playlist(cfg, "PULS 2021", label)
+
+    code, acted = drive(["--run", run_id, *_land("--label", "PULS")])
+
+    assert code == int(ExitCode.DECISION_STALE), acted
+    assert _members(cfg, made) == []
+    assert _staged_names(cfg) == ["One.flac"]
+
+
+def test_a_file_the_move_refused_is_named_and_its_year_holds_the_rest(native_library, silence):
+    cfg, _root = native_library
+    _dated(cfg, silence, "One.flac", "2021")
+    code, acted, _ = _two_acts(_land("--label", "PULS"))
+    assert code == int(ExitCode.OK), acted
+    # One.flac again, its target occupied, so the move refuses it; Two.flac lands.
+    _dated(cfg, silence, "One.flac", "2021")
+    _dated(cfg, silence, "Two.flac", "2021")
+
+    code, acted, _ = _two_acts(_land("--label", "PULS"))
+
+    assert code == int(ExitCode.OK), acted
+    assert _filed(cfg) == {"PULS": {"PULS 2021": ["One", "Two"]}}
+    left = [w["message"] for w in acted["warnings"] if w["code"] == landing.NOT_WRITTEN]
+    assert any("One.flac" in one and "did not land" in one for one in left), acted["warnings"]
+
+
+def test_a_year_whose_every_file_the_move_refused_makes_no_playlist(native_library, silence):
+    cfg, _root = native_library
+    _dated(cfg, silence, "One.flac", "2021")
+    code, acted, _ = _two_acts(_land("--label", "PULS"))
+    assert code == int(ExitCode.OK), acted
+    _dated(cfg, silence, "One.flac", "2020")
+    _dated(cfg, silence, "Two.flac", "2021")
+
+    code, acted, _ = _two_acts(_land("--label", "PULS"))
+
+    assert code == int(ExitCode.OK), acted
+    assert _filed(cfg) == {"PULS": {"PULS 2021": ["One", "Two"]}}
+
+
+def test_the_write_refuses_a_planned_node_removed_since_the_plan(native_library):
+    cfg, _root = native_library
+    tree = cutover_fixtures.add_folder(cfg, TREE)
+    label = cutover_fixtures.add_folder(cfg, "PULS", under=tree)
+    year = _playlist(cfg, "PULS 2021", label)
+    plan = label_filing.LabelPlan(
+        tree_id=DECLARED.catalog.id,
+        tree_display=TREE,
+        tree_folder=tree,
+        source=label_filing.LABEL,
+        label="PULS",
+        manifest="",
+        manifest_digest="",
+        folders=(("PULS", label),),
+        years=(label_filing.YearPlan(label="PULS", year=2021, playlist_id=year, targets=("t",)),),
+        unfiled=(),
+    )
+    for gone in (year, label, tree):
+        _remove(cfg, gone)
+        handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+        try:
+            with pytest.raises(CratekitError) as caught:
+                label_filing.write(handle, plan, by_target={"t": "1"})
+        finally:
+            handle.session.rollback()
+            rb_writer.close_db(handle)
+        assert caught.value.cause.reason == "decision-stale"
+
+
+def test_an_answer_the_database_does_not_hold_is_refused():
+    written = label_filing.Written(
+        tree_id="record_labels",
+        tree_folder="9",
+        tree_created=False,
+        folders_created=(),
+        years=(
+            label_filing.WrittenYear(
+                label="PULS", year=2021, playlist_id="7", created=True, ids=("1", "2"),
+                added=2, read_back=("1",),
+            ),
+        ),
+        left=(),
+    )
+    with pytest.raises(CratekitError) as caught:
+        label_filing.assert_read_back(written)
+    assert caught.value.cause.reason == "session-committed-unverified"
+    assert caught.value.cause.detail["missing"] == ["2"]
+    label_filing.assert_read_back(
+        label_filing.Written(
+            tree_id="record_labels", tree_folder="9", tree_created=False, folders_created=(),
+            years=(replace(written.years[0], read_back=("2", "1", "3")),), left=(),
+        )
+    )
