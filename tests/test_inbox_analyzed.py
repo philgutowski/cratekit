@@ -21,6 +21,10 @@ from cratekit.core import config, rb_writer, session, taxonomy, tree_registry
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import analyzed, analyzed_cli, land_cli, native, rotate
 from tests.cli_drive import drive
+from tests.test_inbox_refill import offline as offline  # noqa: PLC0414
+from tests.test_intake_land_account_playlists_native import (
+    pinned_day as pinned_day,  # noqa: PLC0414
+)
 from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_intake_land_native import _query, _stage
 from tests.test_intake_land_native import (
@@ -570,3 +574,58 @@ def test_a_track_held_twice_is_one_row_cleared_and_counted_once(native_library, 
     assert _titles(cfg, analyze_id) == []
     (record,) = [r for r in session.records(cfg) if r.workflow == analyzed.WORKFLOW]
     assert {c.tree: c.updated for c in record.change.trees} == {DECLARED.intake.id: 2}
+
+
+def test_inbox_refill_never_takes_analyze_for_an_account_playlist_of_that_name(
+    native_library, silence, offline
+):
+    """The second review's drive: an account playlist named Analyze, every track owned.
+
+    The pass's landing writes nothing, so no record names a mirror, and the
+    refill's fallback to the account's name must not find the queue.
+    """
+    from tests.test_inbox_refill import _two_acts as _refill_acts
+    from tests.test_intake_land_account_playlists_native import PASS, _owned, swept
+
+    cfg, root_id = native_library
+    _owned(cfg, silence, ("Held1", "Held2"))
+    analyze_id = _analyze_id(cfg, root_id)
+    conn = sqlite3.connect(cfg.library.db_path)
+    with conn:
+        conn.execute(
+            "UPDATE djmdContent SET Analysed = 105, AnalysisDataPath = ? WHERE Title LIKE 'Held%'",
+            (ANALYSIS_PATH,),
+        )
+    conn.close()
+    code, acted, _ = _clear_acts()
+    assert code == int(ExitCode.OK) and acted["data"]["totals"]["removed"] == 2, acted
+    swept(cfg, {"pl-a": (native.ANALYZE, ("Held1", "Held2"))})
+    drive(["intake", "land", "--pass", PASS])
+
+    code, refused = drive(["inbox", "refill", "--pass", PASS])
+
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    items = refused["cause"]["detail"]["shown"]["items"]
+    assert [item["action"] for item in items] == ["unfound"], items
+    code, acted, _ = _refill_acts(["inbox", "refill", "--pass", PASS])
+    assert code == int(ExitCode.OK), acted
+    assert _titles(cfg, analyze_id) == []
+
+
+def test_the_rotation_never_takes_analyze_for_a_batch_whatever_a_record_says():
+    """A landing named Analyze before the name was reserved left a record naming it."""
+    from types import SimpleNamespace
+
+    row = SimpleNamespace(ID="q", Name=native.ANALYZE, Attribute=0, rb_local_deleted=0)
+    found = rotate._classify(
+        None,
+        None,
+        row,
+        place="INBOX",
+        in_old=False,
+        recorded={"q": date(2025, 1, 1)},
+        today=date(2026, 10, 28),
+        stale_days=30,
+        expired_days=90,
+    )
+    assert isinstance(found, rotate.Left) and found.kind == "analyze", found
