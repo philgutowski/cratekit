@@ -1,0 +1,258 @@
+name = "u156"
+pass_kind = "light"
+
+[[rows]]
+id = "L1_year_bound"
+description = "_read_year: take any four digits as a release year, so a 0000 placeholder files under year 0"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''    if not FIRST_YEAR <= year <= _today().year + 1:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "L2_bridge_guard"
+description = "_catalog_node: drop the refusal of a library whose intake tree is on the bridge, so the tree is appended beside an intake file"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''    if declared is None or not medium.native:'''
+new = '''    if declared is None:'''
+
+[[rows]]
+id = "L3_wrong_kind"
+description = "_sole: drop the refusal of a node of the other kind, so a playlist named for the label stands where its folder belongs"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''        if not _of_kind(row, folder=folder):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "L4_two_of_a_name"
+description = "_sole: admit two siblings of one name, so the first the query yields is written into"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''    if len(named) > 1:'''
+new = '''    if len(named) > 2:'''
+
+[[rows]]
+id = "L5_nfc_fold"
+description = "_folded: compare names as stored, so a decomposed label folder is not found and a second is made"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''    return unicodedata.normalize("NFC", name)'''
+new = '''    return name'''
+
+[[rows]]
+id = "L6_removed_nodes"
+description = "_live_children: keep removed nodes, so a playlist a person deleted in rekordbox is written into"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''    return [row for row in under if not rb_writer.node_removed(row)]'''
+new = '''    return under'''
+
+[[rows]]
+id = "L7_year_boundary"
+description = "_YEAR: drop the digit boundary, so 20210305 reads as 2021"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''_YEAR = re.compile(r"^\s*(\d{4})(?!\d)")'''
+new = '''_YEAR = re.compile(r"^\s*(\d{4})")'''
+
+[[rows]]
+id = "L8_year_anchor"
+description = "year_of: search the tag rather than read its head, so a year anywhere in the text is taken"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''    found = _YEAR.match(stored)'''
+new = '''    found = re.search(r"(\d{4})(?!\d)", stored)'''
+
+[[rows]]
+id = "L9_no_year_named"
+description = "plan_for_label: file a file with no year under a year of none instead of naming it"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''        year, why = _read_year(source)
+        if year is None:'''
+new = '''        year, why = _read_year(source)
+        if False:'''
+
+[[rows]]
+id = "L10_staging_dropped"
+description = "supported_only: keep the targets a landing leaves in staging, so a year playlist plans members no row answers"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''        held = tuple(target for target in one.targets if target in kept)'''
+new = '''        held = one.targets'''
+
+[[rows]]
+id = "L11_unlanded_named"
+description = "write: drop the member whose file did not land without naming it"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''            if held:
+                ids.append(held)
+            else:
+                left.append('''
+new = '''            if held:
+                ids.append(held)
+            elif False:
+                left.append('''
+
+[[rows]]
+id = "L12_empty_year"
+description = "write: make a year playlist even when no member of it landed"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''        if ids:
+            wanted.append((one, tuple(dict.fromkeys(ids))))'''
+new = '''        wanted.append((one, tuple(dict.fromkeys(ids))))'''
+
+[[rows]]
+id = "L13_tree_reused"
+description = "write: make a new tree folder even when the plan found one, so Record Labels doubles"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''    if plan.tree_folder:
+        tree = _live_row('''
+new = '''    if False:
+        tree = _live_row('''
+
+[[rows]]
+id = "L14_folder_reused"
+description = "write: make a new label folder even when the plan found one"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''            if planned:
+                folder = _live_row('''
+new = '''            if False:
+                folder = _live_row('''
+
+[[rows]]
+id = "L15_year_reused"
+description = "write: make a new year playlist even when the plan found one, so the year doubles"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''        if one.playlist_id:
+            playlist = _live_row('''
+new = '''        if False:
+            playlist = _live_row('''
+
+[[rows]]
+id = "L16_live_at_write"
+description = "_live_row: take a planned node removed since the plan, so the write files into a playlist nobody sees"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''    if row is None or rb_writer.node_removed(row) or not _of_kind(row, folder=folder):'''
+new = '''    if row is None:'''
+
+[[rows]]
+id = "L17_digest_years"
+description = "identity: leave the year playlists out of the digest, so an answer survives a playlist made since"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''        "years": [one.identity() for one in plan.years],'''
+new = '''        "years": [],'''
+
+[[rows]]
+id = "L18_digest_native"
+description = "native.identity: leave the label plan out of the landing's digest"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py", "tests/test_intake_land_native.py"]
+old = '''    filed = {"labels": label_filing.identity(plan.labels)} if plan.labels is not None else {}'''
+new = '''    filed = {}'''
+
+[[rows]]
+id = "L19_write_called"
+description = "apply_rows: plan the labels and never write them"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py", "tests/test_intake_land_native.py"]
+old = '''                labels_written = label_filing.write(db, plan.labels, by_target=by_target)'''
+new = '''                labels_written = None'''
+
+[[rows]]
+id = "L20_recorded"
+description = "_record_landing_commit: write the labels and record nothing of them on the session"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py", "tests/test_intake_land_native.py"]
+old = '''    if labels_written is not None:
+        label_filing.record_commit(record, labels_written, cfg)'''
+new = '''    if False:
+        label_filing.record_commit(record, labels_written, cfg)'''
+
+[[rows]]
+id = "L21_read_back"
+description = "assert_read_back: accept a year playlist that does not hold what the plan named"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''        missing = [content for content in one.ids if content not in live]
+        if missing:'''
+new = '''        missing = [content for content in one.ids if content not in live]
+        if False:'''
+
+[[rows]]
+id = "L22_blank_label"
+description = "_label_flag: accept a blank --label, so a playlist named for nothing is made"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py", "tests/test_intake_land_native.py"]
+old = '''    if not given.strip():'''
+new = '''    if False:'''
+
+[[rows]]
+id = "L23_label_beside_manifest"
+description = "_label_flag: accept --label beside --manifest, so one of two answers silently wins"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py", "tests/test_intake_land_native.py"]
+old = '''    if manifest is not None:
+        raise refuse(
+            "intake-list-unusable",
+            f"{flag} and --manifest'''
+new = '''    if False:
+        raise refuse(
+            "intake-list-unusable",
+            f"{flag} and --manifest'''
+
+[[rows]]
+id = "L24_label_on_the_bridge"
+description = "_label_flag: accept --label on the bridge, where the landing files nothing from it"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py", "tests/test_intake_land_native.py", "tests/test_intake_land.py"]
+old = '''    if not medium.native:
+        raise refuse(
+            "intake-list-unusable",
+            f"{flag} files the batch'''
+new = '''    if False:
+        raise refuse(
+            "intake-list-unusable",
+            f"{flag} files the batch'''
+
+[[rows]]
+id = "L25_shared_rule_near_match"
+description = "match_label_rows: file a row the batch holds only something close to, on both media"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_landing_labels.py", "tests/test_intake_land_labels_native.py"]
+old = '''        if found.state is match.MatchState.NEEDS_REVIEW:'''
+new = '''        if False:'''
