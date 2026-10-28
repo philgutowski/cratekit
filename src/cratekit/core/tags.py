@@ -152,6 +152,11 @@ FIELDS: dict[str, TagSpec] = {
     # account can tell a single from its album cut when both are spelled alike.
     # ``TALB`` is the ID3 frame for it and the Vorbis comment is ``album``.
     "album": TagSpec("album", "TALB", "\xa9alb"),
+    # U156. The release date, read for its year when a landing files a label's
+    # tracks under ``<Label> <year>`` without a manifest. ``TDRC`` is the ID3
+    # recording time frame, and the downloader writes the Vorbis ``date``
+    # comment and the MP4 day atom on every file it delivers.
+    "date": TagSpec("date", "TDRC", "\xa9day"),
 }
 
 FLAC_SUFFIXES = (".flac",)

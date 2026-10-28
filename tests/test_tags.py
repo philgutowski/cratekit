@@ -82,6 +82,7 @@ ALL_FIELDS = {
     "voxgenderconf": 80,
     "isrc": "ZZ0000000001",
     "album": "Probe Album",
+    "date": "2021-03-05",
 }
 
 
