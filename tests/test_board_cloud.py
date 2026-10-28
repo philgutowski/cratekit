@@ -21,6 +21,7 @@ import importlib.util
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -173,6 +174,20 @@ def test_a_brainstorm_waits_for_phillip_and_his_reply_releases_it(board):
     assert board.cloud_state(node, question)[0] == "waiting-on-phillip"
 
 
+def test_an_answer_relayed_from_the_decisions_page_releases_the_card(board):
+    node = _node(board, _issue(1, "U1: a"))
+    asked = [_mine("Brainstorm", 3, "which of A or B?")]
+    relayed = asked + [_mine("Answer from Phillip", 1, "B, because")]
+    assert board.cloud_state(node, relayed)[0] == "answered"
+    question = [_mine("Question for Phillip", 3), _mine("Answer from Phillip", 1)]
+    assert board.cloud_state(node, question)[0] == "answered"
+
+
+def test_a_relayed_answer_alone_is_not_a_hold(board):
+    node = _node(board, _issue(1, "U1: a"))
+    assert board.cloud_state(node, [_mine("Answer from Phillip", 1)])[0] == "ready"
+
+
 def test_a_card_that_needs_the_machine_is_set_aside_for_good(board):
     node = _node(board, _issue(1, "U1: a"))
     aside = [_mine("Needs the machine", 3), _theirs("ok", 1)]
@@ -222,13 +237,45 @@ def test_cloud_offers_answered_before_resumable_before_fresh(board, monkeypatch,
     assert "cloud/2-answered" in out
 
 
-def test_one_held_card_holds_the_whole_lane(board, monkeypatch, capsys):
+def _lanes(n):
+    return SimpleNamespace(lanes=n)
+
+
+def test_with_one_lane_one_held_card_holds_it(board, monkeypatch, capsys):
     issues = [_issue(1, "U1: a"), _issue(2, "U2: b")]
     _wire(board, monkeypatch, issues, {1: [_mine("Started", 1)]})
-    assert board.cmd_cloud(None) == 0
+    assert board.cmd_cloud(_lanes(1)) == 0
     out = capsys.readouterr().out
-    assert "held by #1" in out
+    assert "Every lane is held" in out
     assert "Take #" not in out
+
+
+def test_a_free_lane_is_offered_the_next_card_beside_the_held_ones(board, monkeypatch, capsys):
+    issues = [_issue(n, f"U{n}: card {n}") for n in range(1, 6)]
+    held = {1: [_mine("Started", 2)], 2: [_mine("Started", 1)]}
+    _wire(board, monkeypatch, issues, held)
+    assert board.cmd_cloud(_lanes(3)) == 0
+    out = capsys.readouterr().out
+    assert "Held, 2 of 3 lane(s): #1, #2" in out
+    assert "Take #3 (ready)" in out
+
+
+def test_every_lane_held_offers_nothing(board, monkeypatch, capsys):
+    issues = [_issue(n, f"U{n}: card {n}") for n in range(1, 5)]
+    held = {n: [_mine("Started", n)] for n in (1, 2, 3)}
+    _wire(board, monkeypatch, issues, held)
+    assert board.cmd_cloud(_lanes(3)) == 0
+    out = capsys.readouterr().out
+    assert "Every lane is held" in out
+    assert "Take #" not in out
+
+
+def test_the_default_is_the_configured_lane_count(board, monkeypatch, capsys):
+    issues = [_issue(n, f"U{n}: card {n}") for n in range(1, board.CLOUD_LANES + 2)]
+    held = {n: [_mine("Started", n)] for n in range(1, board.CLOUD_LANES)}
+    _wire(board, monkeypatch, issues, held)
+    assert board.cmd_cloud(None) == 0
+    assert f"Take #{board.CLOUD_LANES}" in capsys.readouterr().out
 
 
 def test_cloud_says_so_when_every_card_waits(board, monkeypatch, capsys):
@@ -243,14 +290,24 @@ def test_cloud_says_so_when_no_card_is_open(board, monkeypatch, capsys):
     assert "No open unit or residual card" in capsys.readouterr().out
 
 
-def test_two_holds_at_once_are_named_and_nothing_is_offered(board, monkeypatch, capsys):
+def test_more_holds_than_lanes_keep_the_earliest_and_offer_nothing(board, monkeypatch, capsys):
     issues = [_issue(1, "U1: a"), _issue(2, "U2: b"), _issue(3, "U3: c")]
     _wire(board, monkeypatch, issues, {1: [_mine("Started", 0.5)], 2: [_mine("Started", 1)]})
-    assert board.cmd_cloud(None) == 1
+    assert board.cmd_cloud(_lanes(1)) == 1
     out = capsys.readouterr().out
     assert "#2, #1" in out, "the earlier hold is named first"
-    assert "#2 held first and keeps the lane" in out
+    assert "#2 held first and keep its lane" in out
     assert "Take #" not in out
+
+
+def test_four_holds_for_three_lanes_keep_the_three_earliest(board, monkeypatch, capsys):
+    issues = [_issue(n, f"U{n}: card {n}") for n in range(1, 6)]
+    held = {1: [_mine("Started", 4)], 2: [_mine("Started", 3)], 3: [_mine("Started", 1)],
+            4: [_mine("Started", 2)]}
+    _wire(board, monkeypatch, issues, held)
+    assert board.cmd_cloud(_lanes(3)) == 1
+    out = capsys.readouterr().out
+    assert "#1, #2, #4 held first and keep their lanes" in out
 
 
 def test_a_withdrawn_hold_releases_the_card(board):
