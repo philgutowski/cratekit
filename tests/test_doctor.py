@@ -8338,3 +8338,10 @@ def test_the_release_read_parses_ls_remote_and_refuses_on_failure(monkeypatch):
 
     monkeypatch.setattr(doctor.subprocess, "run", timed_out)
     assert doctor._release_tags(_REPO_URL) is None
+
+
+def test_an_unparseable_installed_version_is_unknown_never_a_downgrade():
+    finding, _ = _release_finding(_vcs("0.2.0.dev1"), ("v0.1.0",))
+    assert finding.status is doctor.Status.INFO
+    assert "unknown" in finding.detail
+    assert "pipx install" not in finding.detail, "it told a newer copy to downgrade"

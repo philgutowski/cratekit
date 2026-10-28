@@ -367,3 +367,83 @@ def test_the_repository_is_read_off_the_origin_url(url, slug):
         return subprocess.CompletedProcess(list(argv), 0, url + "\n", "")
 
     assert release.repo_slug(runner) == slug
+
+
+# --------------------------------------------------------------------------
+# the review's round: a shallow clone, origin's tags, the atomic push
+
+
+def test_a_shallow_clone_is_refused_before_anything_is_read(repo, tmp_path, monkeypatch):
+    for n in range(3):
+        _commit(repo, f"c{n}.txt", f"feat: {n}")
+    _git(repo, "push", "-q", "origin", "main")
+    shallow = tmp_path / "shallow"
+    _git(tmp_path, "clone", "-q", "--depth", "1", f"file://{tmp_path / 'origin.git'}", str(shallow))
+    monkeypatch.chdir(shallow)
+    with pytest.raises(release.ReleaseError, match="shallow"):
+        release.sync_history(release.run)
+    args = SimpleNamespace(bump="minor", mac_battery=False, repo="o/r")
+    with pytest.raises(release.ReleaseError, match="shallow"):
+        release.cmd_cut(args, runner=_fake_gh()[0], root=shallow)
+    assert release.read_versions(shallow) == ("0.1.0", "0.1.0")
+
+
+def test_a_tag_only_origin_carries_is_where_the_range_starts(repo, tmp_path, monkeypatch):
+    _merge(repo, "cloud/1-old", "merge(u1): shipped in v0.1.0")
+    _git(repo, "tag", "-a", "v0.1.0", "-m", "v0.1.0")
+    _git(repo, "push", "-q", "origin", "main", "v0.1.0")
+    _merge(repo, "cloud/2-new", "merge(u2): after the tag")
+    _git(repo, "push", "-q", "origin", "main")
+    fresh = tmp_path / "fresh"
+    _git(tmp_path, "clone", "-q", "--no-tags", str(tmp_path / "origin.git"), str(fresh))
+    monkeypatch.chdir(fresh)
+    runner, _calls = _fake_gh()
+    release.sync_history(runner)
+    since, _prs, direct = release.gather(runner, "o/r")
+    assert since == "v0.1.0", "a clone without tags planned from the root commit"
+    assert [d.title for d in direct] == ["merge(u2): after the tag"]
+
+
+def test_a_refused_tag_push_leaves_main_without_the_release_commit(repo, tmp_path):
+    hook = tmp_path / "origin.git" / "hooks" / "pre-receive"
+    hook.write_text(
+        "#!/bin/sh\nwhile read old new ref; do\n"
+        '  case "$ref" in refs/tags/*) echo refused >&2; exit 1;; esac\ndone\n'
+    )
+    hook.chmod(0o755)
+    _merge(repo, "cloud/2-a", "merge(u2): a verb")
+    _git(repo, "push", "-q", "origin", "main")
+    before = _git(tmp_path / "origin.git", "rev-parse", "main")
+    _clean_verdict(repo)
+    runner, calls = _fake_gh()
+    args = SimpleNamespace(bump="minor", mac_battery=False, repo="o/r")
+    with pytest.raises(release.ReleaseError):
+        release.cmd_cut(args, runner=runner, root=repo)
+    assert _git(tmp_path / "origin.git", "rev-parse", "main") == before, (
+        "main carries a release commit that no tag names"
+    )
+    assert not [c for c in calls if "releases" in " ".join(c)]
+
+
+def test_a_refused_release_prints_the_command_that_publishes_the_kept_notes(repo, capsys):
+    _merge(repo, "cloud/2-a", "merge(u2): a verb")
+    _git(repo, "push", "-q", "origin", "main")
+    _clean_verdict(repo)
+    runner, _calls = _fake_gh(release_ok=False)
+    args = SimpleNamespace(bump="minor", mac_battery=False, repo="o/r")
+    assert release.cmd_cut(args, runner=runner, root=repo) == 1
+    out = capsys.readouterr().out
+    line = next(x for x in out.splitlines() if "gh api -X POST repos/o/r/releases" in x)
+    notes_file = Path(line.rsplit("body=@", 1)[1])
+    assert "merge(u2): a verb" in notes_file.read_text()
+    notes_file.unlink()
+
+
+def test_plan_caps_a_break_below_1_0_0_at_minor(repo, capsys, monkeypatch):
+    _merge(repo, "cloud/2-a", "feat(config)!: rename a key")
+    monkeypatch.setattr(release, "ROOT", repo)
+    runner, _calls = _fake_gh()
+    assert release.cmd_plan(SimpleNamespace(repo="o/r"), runner=runner) == 0
+    out = capsys.readouterr().out
+    assert "proposed bump: minor, v0.1.0 to v0.2.0" in out
+    assert "Phillip's to choose" in out

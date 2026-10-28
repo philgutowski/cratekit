@@ -41,8 +41,12 @@ care about, and keep a current backup either way.
 
 ## Install
 
-The repository is private, so your GitHub account needs an invitation first. If
-git asks for a password, give it a personal access token, since GitHub no longer
+The repository is private, so your GitHub account needs an invitation first,
+and git on your Mac needs to be signed in to that account, since both the
+install and `crate doctor`'s release check read the repository with your own
+git credentials. The simplest way is GitHub's command line tool:
+`brew install gh`, then `gh auth login` and `gh auth setup-git`. If git asks for
+a password instead, give it a personal access token, since GitHub no longer
 accepts account passwords for git.
 
 Cratekit installs with pipx, which gives a command line tool its own private

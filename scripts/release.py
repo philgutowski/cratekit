@@ -380,6 +380,23 @@ def repo_slug(runner: Runner) -> str:
     return f"{match.group(1)}/{match.group(2)}"
 
 
+def sync_history(runner: Runner) -> None:
+    """Refuse a shallow clone, and fetch origin's tags, before anything is read.
+
+    A cloud container clones fifty commits deep with no tags, so the range
+    since the last tag read there is whatever the window holds, and a plan
+    from it said "from the root commit" over a fraction of the history. The
+    tags are fetched so a tag cut from another clone is the one the range
+    starts at. This updates refs only, never the tree.
+    """
+    if git(runner, "rev-parse", "--is-shallow-repository") == "true":
+        raise ReleaseError(
+            "this clone is shallow, so the history since the last tag is incomplete; "
+            "run `git fetch --unshallow --tags origin` first"
+        )
+    git(runner, "fetch", "--quiet", "--tags", "origin")
+
+
 def gather(runner: Runner, repo: str):
     tags = git(runner, "tag", "--list", "v*").splitlines()
     since = latest_tag(tags)
@@ -388,6 +405,7 @@ def gather(runner: Runner, repo: str):
 
 
 def cmd_plan(args, runner: Runner = run) -> int:
+    sync_history(runner)
     repo = args.repo or repo_slug(runner)
     since, prs, direct = gather(runner, repo)
     current = read_versions(ROOT)[0]
@@ -399,12 +417,18 @@ def cmd_plan(args, runner: Runner = run) -> int:
     print(f"{len(prs)} pull request(s), {len(direct)} merge(s) without one")
     for line in reasons:
         print(f"  {line}")
+    if bump == "major" and parse_dotted(current)[0] == 0:
+        # Below 1.0.0 a break is a minor bump with the break said first in the
+        # notes; 1.0.0 is Phillip's to choose, never a proposal's.
+        print("  a break below 1.0.0 is proposed as minor; 1.0.0 is Phillip's to choose")
+        bump = "minor"
     nxt = dotted(bumped(parse_dotted(current), bump))
     print(f"proposed bump: {bump}, v{current} to v{nxt}")
     return 0
 
 
 def cmd_cut(args, runner: Runner = run, root: Path = ROOT) -> int:
+    sync_history(runner)
     problems = refusals(runner, root, mac_battery=args.mac_battery)
     if problems:
         print("release: refused")
@@ -427,8 +451,9 @@ def cmd_cut(args, runner: Runner = run, root: Path = ROOT) -> int:
     git(runner, "add", str(PYPROJECT), str(INIT))
     git(runner, "commit", "-m", f"release: {tag}")
     git(runner, "tag", "-a", tag, "-m", f"Cratekit {tag}")
-    git(runner, "push", "origin", "main")
-    git(runner, "push", "origin", tag)
+    # ONE ATOMIC PUSH, so `main` never carries a release commit no tag names:
+    # either both refs land or neither does.
+    git(runner, "push", "--atomic", "origin", "main", tag)
     with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False) as handle:
         handle.write(body)
     done = runner(
@@ -438,11 +463,18 @@ def cmd_cut(args, runner: Runner = run, root: Path = ROOT) -> int:
             "-F", f"body=@{handle.name}", "--jq", ".html_url",
         ]
     )
-    Path(handle.name).unlink(missing_ok=True)
     if done.returncode != 0:
+        # The tag is out, so a second `cut` finds nothing landed. The notes are
+        # kept and the one command that publishes them is printed instead.
         print(f"release: {tag} is tagged and pushed, but the GitHub release was refused:")
         print(f"  {done.stderr.strip()}")
+        print("publish it with:")
+        print(
+            f"  gh api -X POST repos/{repo}/releases -f tag_name={tag} "
+            f"-f 'name=Cratekit {tag}' -F body=@{handle.name}"
+        )
         return 1
+    Path(handle.name).unlink(missing_ok=True)
     print(f"released {tag}: {done.stdout.strip()}")
     print()
     print(body)

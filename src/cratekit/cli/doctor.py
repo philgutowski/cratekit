@@ -3151,7 +3151,19 @@ def _check_release(inputs: _Inputs) -> Finding:
             detail=f"no release has been published yet; this copy is {origin.version}",
         )
     newest, tag = releases[-1]
-    if installed is not None and installed >= newest:
+    if installed is None:
+        # A version this parser cannot read is not behind every release, and
+        # telling it to "upgrade" to an older tag would be a downgrade.
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"this copy's version {origin.version!r} is not X.Y.Z, so whether "
+                f"the latest release, {tag}, is newer is unknown"
+            ),
+        )
+    if installed >= newest:
         return Finding(
             key=key,
             title=title,

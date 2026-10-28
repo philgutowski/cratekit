@@ -47,9 +47,14 @@ It refuses off `main`, on a dirty tree, behind or ahead of `origin/main`, and
 without a clean battery on the commit. Otherwise it writes the version into
 `pyproject.toml` and `src/cratekit/__init__.py`, commits `release: vX.Y.Z`,
 makes the annotated tag, pushes `main` and the tag, and publishes the GitHub
-release with the notes over REST. If the push of `main` is refused because it
+release with the notes over REST. `main` and the tag go in one atomic push,
+so either both land or neither does. If that push is refused because `main`
 moved, delete the local tag (`git tag -d vX.Y.Z`), reset `main` to
-`origin/main`, and start again at step 1; never force push.
+`origin/main`, and start again at step 1; never force push. If only the
+GitHub release is refused, the tag is out and a second `cut` finds nothing
+landed: run the one `gh api` command `cut` printed, which publishes the notes
+it kept. A shallow clone is refused; `git fetch --unshallow --tags origin`
+first.
 
 ## 5. Report
 
