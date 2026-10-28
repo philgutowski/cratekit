@@ -38959,3 +38959,126 @@ and the trust check is covered by the one in `fetch`. Maintainer facing.
 
 **Closes when:** a test counts the library walks of one fetch and asserts the
 order. Ledger only.
+
+---
+
+## R-1055. A downloaded file's date tag can carry the day the release became available, not the day it was released
+
+**Found:** at the review of #337, U156, 2026-10-28.
+
+**The mechanism.** `intake land --label` files each file under the year its
+date tag names. The vendored downloader writes that tag from the album's
+`available_release_date` when the provider gives one, and its `release_date`
+only otherwise (`_vendor/tidal_dl_ng/download.py`, the metadata step). A
+catalogue reissued or added to a service years after its release would then
+be filed under the year it arrived, not the year it came out. A Bandcamp
+purchase, the case the unit was cut for, is tagged by its own download and
+was not read.
+
+**Measured cost.** Not measured on a real file. The gate screen names every
+file's playlist, so a wrong year is shown before anything is written.
+
+**Closes when:** the year a `--label` landing files under is read from a
+source that is the release's own date, or a sitting measures that the tag
+agrees with the release year on the files the cloud lane lands. Ledger only.
+
+---
+
+## R-1056. label mark still asks for an intake file, so a label batch landed natively with its filing cannot be marked
+
+**Found:** at the plan of #337, U156, 2026-10-28.
+
+**The mechanism.** U156 lets a native landing file a label batch under Record
+Labels, from `--manifest` or `--label`, which R-916 recorded as the thing
+standing in front of it. `label/mark_cli.py` still calls
+`marks.require_output(xml)` and reads the pass and the filed years off the
+intake file `intake land` wrote on the bridge, and a native landing writes
+none. The session record of a native landing now names every year it filed,
+under the `labels` key (`intake/label_filing.py`, `RECORD_KEY`), beside the
+pass under `PASS_KEY`, which is what `sync mark --pass` already reads through
+`native.landings_of_pass`. The brief allowed this half to be split to its own
+unit, and it was, to keep U156 to the landing.
+
+**Measured cost.** Read, not driven: a person who lands a followed label's
+batch natively has no path to prefix that label's year playlists on the
+account `DOWNLOADED `, so the account keeps offering the years as unheard.
+R-916 carries the earlier record of the same mechanism.
+
+**Closes when:** `label mark` takes a native pass by name the way `sync mark
+--pass` does, and reads the label and years filed from the `labels` key of
+that pass's committed landings in place of the intake file. On the board,
+since a workflow a DJ needs cannot finish.
+
+---
+
+## R-1057. A node the native label filing makes goes last among its siblings, where the bridge puts a label first and a year newest first
+
+**Found:** at the plan of #337, U156, 2026-10-28.
+
+**The mechanism.** `rbxml.insert_catalog_folder` puts a new label folder first
+under Record Labels and a new year playlist before the first held year that
+sorts below it, so the bridge's tree reads newest first. The binding's
+`create_playlist` takes a `seq`, and an insert at a position renumbers every
+sibling after it, a write to rows the landing otherwise never touches and
+that the guarded commit has not been asked to admit. `intake/label_filing.py`
+passes none, so a node it makes goes last: a label folder it makes takes its
+years newest first, since it makes them in that order, and a year added to a
+label folder that already held years sits below them.
+
+**Measured cost.** Driven in `tests/test_intake_land_labels_native.py`: a
+2022 playlist added to a folder holding 2021 and 2019 reads after both. Order
+only, nothing lost, and rekordbox sorts a folder by name on a click.
+
+**Closes when:** the writer places a new node by the bridge's rule, with the
+renumbered siblings admitted by the guarded commit and pinned by a test, or
+the order is accepted as rekordbox's own and this is closed. Ledger only.
+
+---
+
+## R-1058. A manifest row a native landing finds only something close to says that file is in the intake playlist when it may have stayed in staging
+
+**Found:** at the second review of #337, U156, 2026-10-28.
+
+**The mechanism.** `landing.match_label_rows` is the bridge's rule, shared by
+both media since U156, and its sentence for a row the batch holds only
+something close to ends "that file is in the intake playlist". On the bridge
+every file lands, so it is true. On the native medium the near file may be
+left in staging, its suffix having no database file type, or refused at the
+move, and the sentence names no target `label_filing` could restate, since a
+manifest row carries none.
+
+**Measured cost.** Driven at the second review of #337: a manifest row
+"Two" beside a staged `Two (Extended Mix).opus` showed the sentence while the
+same screen marked the file left in staging. No producer the review read
+makes an unsupported suffix (the Bandcamp downloader, the fallback and the
+vendored downloader write FLAC, MP3 or M4A), so the input needed a hand
+placed file.
+
+**Closes when:** the near match carries its file's path out of the matcher
+and the native filing restates the sentence by it, as it does for a file with
+no year. Ledger only.
+
+---
+
+## R-1059. The set playlist and the INBOX batch playlist find a smart playlist of their name and fail at the write, after the moves
+
+**Found:** at the review of #337, U156, 2026-10-28.
+
+**The mechanism.** `set_playlist._named_playlist_row`, `native._batch_playlist_row`
+and `native.live_inbox_named` skip a folder and a removed node and take any
+other node of the name under the parent, a smart playlist included. The
+binding refuses a membership in a smart playlist, so a set's INSPIRATION
+playlist, or an INBOX batch playlist, whose name a smart playlist already
+carries under the same folder fails at the write, when the files are already
+in the library. U156's label filing refuses the same shape before the gate
+(`label_filing._of_kind`); these three were left as they were, since they are
+outside the unit.
+
+**Measured cost.** Driven for the label filing only, at the review of #337:
+the landing refused with `internal-error` after the moves, its files in the
+library, no row added. For these three, read and not driven; a smart playlist
+named exactly as a set or a dated INBOX batch is unlikely and was not
+measured on a real library.
+
+**Closes when:** the three take a plain playlist only and refuse a smart one
+by name before the gate, the way the label filing does. Ledger only.
