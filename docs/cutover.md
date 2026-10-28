@@ -1663,6 +1663,15 @@ the only native landing between 2026-10-09 and 2026-10-27 in the session log.
 | A40 (#364), the macOS battery | the same run | The cut's battery is A40's three commands on `main` at the release. It covers R-1031, U161, U152, U176, U156, U158 and U159, all landed by then. **U166 had not landed** (#347 open), so its macOS run is owed by its own landing. | clean |
 | The upgrade, A39 (#363) | `pipx install --force "cratekit[analysis] @ git+https://github.com/philgutowski/cratekit@v0.2.0"` | The old copy was 0.1.0 from a local checkout with librosa injected by hand; the `analysis` extra replaces the injection (librosa, numpy, scipy import). No vocals or web extra was installed before, none after. `crate --version` 0.2.0; `crate doctor` `install.release`: **this copy is 0.2.0, and the latest release is v0.2.0.** | live |
 
+## Sitting 50, 2026-10-28, the attended session, the first `crate sync land`, with nothing to land
+
+From the installed v0.2.0, rekordbox closed, both backup ages 1 day. A43 (#367) stays open: the pass had nothing to land, so no landing gate was reached, and A42 (#366) waits on the same gate.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `crate sync land` | run `2026-10-28T15:55:17Z-edca`, no answer asked | Steps 1 to 5 of 10 ran in order and stopped: preflight ok; `sync all` queued 1 job (favourites inbound, 268 hearts listed of 277 declared, 9 withheld by the provider); the job succeeded; **1 missing**, Calvin Harris `Satisfy`; the download refused it `lossy-refused`, as at sittings 15 and 47. `no_op`, 28 provider calls. Every playlist marked at sitting 48 had nothing missing. | no landing |
+| Open intake jobs | named by the same run | **17 intake jobs from 2026-09-17 are still open** (`2026-09-17T16:44:44Z-3ea9` and 16 more), each holding its playlist out of every pass; the verb names `crate sync land --pass-run 2026-09-17T16:43:08Z-c92f` to continue them. Not run: left for Phillip to decide. | found |
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
