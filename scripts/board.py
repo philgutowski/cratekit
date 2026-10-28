@@ -1674,8 +1674,17 @@ def cloud_branch(node: dict) -> str:
     return f"cloud/{node['number']}-{slugify(node['title'])[:32].rstrip('-')}"
 
 
+# How many cards the cloud builds at once, decided by Phillip's backlog on
+# 2026-10-28. Each worker merges the latest main and runs the battery again
+# before it merges, and the repository lands parallel units in either order
+# (restart fragments, residuals numbered at landing, per module pins), so
+# lanes are a throughput setting rather than a correctness one.
+CLOUD_LANES = 3
+
+
 def cmd_cloud(args) -> int:
     """The cloud lane's queue: every open unit or residual card, by state."""
+    lanes = max(1, getattr(args, "lanes", None) or CLOUD_LANES)
     graph = build_graph(load_issues())
     cards = [
         n for n in graph.values()
@@ -1703,22 +1712,24 @@ def cmd_cloud(args) -> int:
             print(f"  #{node['number']:<4} {state:<19} {why}")
             print(f"        {node['title'][:72]}")
         print()
-    if len(held) > 1:
-        # Two sessions read the lane free in the same minute. The earlier hold
-        # keeps it; the later one withdraws. Times come from the states' own
-        # lines, which end in the hold's timestamp.
-        held.sort(key=lambda n: states[n["number"]][1].rsplit(" ", 1)[-1])
-        print("TWO OR MORE CARDS ARE HELD: " + ", ".join(f"#{n['number']}" for n in held))
+    # Times come from the states' own lines, which end in the hold's timestamp.
+    held.sort(key=lambda n: states[n["number"]][1].rsplit(" ", 1)[-1])
+    if len(held) > lanes:
+        # More sessions read a lane free in the same minute than there are
+        # lanes. The earliest holds keep theirs; every later one withdraws.
+        keep = held[:lanes]
+        print(f"MORE CARDS ARE HELD THAN THERE ARE LANES ({len(held)} for {lanes}): "
+              + ", ".join(f"#{n['number']}" for n in held))
         for node in held:
             print(f"  #{node['number']:<4} {states[node['number']][1]}")
-        print(f"#{held[0]['number']} held first and keeps the lane. Every later holder")
+        print(f"{', '.join('#' + str(n['number']) for n in keep)} held first and keep "
+              f"{'its lane' if lanes == 1 else 'their lanes'}. Every later holder")
         print("posts Withdrawn on its own card and stops. Nothing is offered.")
         return 1
     if held:
-        # One builder at a time. Two sessions on two cards would each merge
-        # main under the other, which is the halt the feeder called
-        # remote_advanced, so a held card holds the whole lane.
-        print(f"The lane is held by #{held[0]['number']}. Nothing to take until it lands.")
+        print(f"Held, {len(held)} of {lanes} lane(s): " + ", ".join(f"#{n['number']}" for n in held))
+    if len(held) >= lanes:
+        print("Every lane is held. Nothing to take until one of them lands.")
         return 0
     if not take:
         print("Nothing for the cloud to take. Every open card is waiting, set aside, blocked or attended.")
@@ -1780,6 +1791,10 @@ def main() -> int:
     residuals.set_defaults(func=cmd_residuals)
     cloud = sub.add_parser(
         "cloud", help="the cloud lane's queue, read from the cards' comments over REST"
+    )
+    cloud.add_argument(
+        "--lanes", type=int, default=None,
+        help=f"how many cards the cloud builds at once (default {CLOUD_LANES})",
     )
     cloud.set_defaults(func=cmd_cloud)
     args = parser.parse_args()
