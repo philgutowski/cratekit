@@ -25,7 +25,7 @@ from cratekit.cli import jobs as cli_jobs
 from cratekit.core import active_taxonomy, config, jobs, preflight, rb_writer, review, session, tags
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode, Remedy
-from cratekit.intake import batch_name, inspiration_cli, land_cli, set_playlist
+from cratekit.intake import batch_name, inspiration_cli, land_cli, native, set_playlist
 from cratekit.intake import cli as intake_cli
 from tests import adopt_fixtures, cutover_fixtures
 from tests.cli_drive import drive
@@ -434,7 +434,10 @@ def test_a_landing_from_a_set_job_writes_the_set_playlist_with_owned_and_landed_
     ((batch_id, batch_parent, _a, _r),) = _under_parent(cfg, NAME, root_id)
     assert str(batch_parent) == root_id
     assert _members(cfg, str(batch_id)) == [rows["One"], rows["Two"]]
-    assert _children(cfg, root_id) == [str(batch_id)]
+    # And INBOX / Analyze (U166), which holds every row the landing made.
+    ((analyze_id, _p, _a, _r),) = _under_parent(cfg, native.ANALYZE, root_id)
+    assert sorted(_children(cfg, root_id)) == sorted([str(batch_id), str(analyze_id)])
+    assert _members(cfg, str(analyze_id)) == [rows["One"], rows["Two"]]
 
     totals = acted["data"]["totals"]
     assert totals["memberships"] == 2, "the set's memberships are not the batch's"
@@ -455,8 +458,9 @@ def test_a_landing_from_a_set_job_writes_the_set_playlist_with_owned_and_landed_
         "job": job_id,
         "folder": folder_id,
     }
+    # U166: the batch's two memberships and INBOX / Analyze's two.
     assert {change.tree: change.created for change in record.change.trees} == {
-        INTAKE: 2,
+        INTAKE: 4,
         rb_writer.CONTENT_TABLE: 2,
         DECLARED.inspiration.id: 3,
     }

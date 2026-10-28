@@ -2621,6 +2621,10 @@ def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recor
         # U134. The INBOX refill: memberships of playlists under the intake
         # root behind one capture, recorded under the intake tree.
         "intake/refill.py::apply_refill",
+        # U166. The INBOX / Analyze clear: memberships of one playlist under
+        # the intake root soft removed behind one capture, recorded under the
+        # intake tree as rows updated.
+        "intake/analyzed.py::apply_clear",
         # U121. The set's permanent playlist written for a set already landed:
         # one playlist and its memberships behind one capture, recorded under
         # the declared INSPIRATION folder's own id.
