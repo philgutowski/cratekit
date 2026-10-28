@@ -1,0 +1,280 @@
+name = "u152"
+pass_kind = "light"
+
+# Rows 1 and 2 are the preflight, 3 to 5 the reads of a step's answer, 6 to 13
+# the pass and its intake jobs, 14 to 20 the download, 21 to 24 the tail and
+# 25 the landing's stop. Every row is a guard this unit added.
+
+[[rows]]
+id = "R1_preflight_rekordbox"
+description = "_preflight: drop the rekordbox refusal, so a pass runs every step while rekordbox holds the database"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''    rb_writer.assert_rekordbox_closed("crate sync land")
+'''
+new = '''    pass
+'''
+
+[[rows]]
+id = "R2_preflight_backup"
+description = "_preflight: drop the backup driver check, so a pass runs beside a live backup"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''        try:
+            jobs.assert_free(job.job_id)
+        except jobs.DriverHeld as exc:'''
+new = '''        try:
+            pass
+        except jobs.DriverHeld as exc:'''
+
+[[rows]]
+id = "R3_required_gate_divert"
+description = "_required: raise a step's gate as this verb's own refusal, so the run is marked resumable over a question it never declared"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''        if cause.code in gates.GATE_CODES:
+            raise _Attend(step, argv, cause)
+        raise _Stop.of(step, cause)
+    return envelope'''
+new = '''        raise _Stop.of(step, cause)
+    return envelope'''
+
+[[rows]]
+id = "R4_settle_gate_divert"
+description = "_settle: raise a job command's gate as this verb's own refusal"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''        if cause.code in gates.GATE_CODES:
+            raise _Attend(step, argv, cause)
+        raise _Stop.of(step, cause)
+    return settled'''
+new = '''        raise _Stop.of(step, cause)
+    return settled'''
+
+[[rows]]
+id = "R5_settle_still_open"
+description = "_settle: read a job still queued or running after its command as settled"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''    if settled.is_open() and settled.state is not jobs.JobState.BLOCKED:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "R6_lift_failed_checks"
+description = "_lift_failed_checks: carry no step's failing row, so the withheld hearts and the unnameable tracks are said nowhere"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''        if check.get("key") in held:
+            continue
+        report.checks.append(dict(check))'''
+new = '''        if check.get("key") in held:
+            continue'''
+
+[[rows]]
+id = "R7_outbound_held"
+description = "_lift_failed_checks: lift the unasked outbound write's refusal as a FAIL row on every pass"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''        if check.get("key") in held:
+            continue
+'''
+new = ''''''
+
+[[rows]]
+id = "R8_continue_open_pass"
+description = "_sync: never continue the one earlier pass sync all left out, so a hand typed pass ends no_op"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''        if len(earlier) == 1:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "R9_open_passes_library"
+description = "_open_intake: drop the library filter, so another library's open pass is continued"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''            if job.handler_key in intake_cli.INTAKE_KEYS
+            and job.library_id == cfg.library.volume_id
+        ]
+
+
+def _run_of'''
+new = '''            if job.handler_key in intake_cli.INTAKE_KEYS
+        ]
+
+
+def _run_of'''
+
+[[rows]]
+id = "R10_left_behind"
+description = "_left_behind: name no open intake job outside the pass"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''    left = [job for job in _open_intake(cfg) if not taken or _run_of(job) != taken]
+    if not left:'''
+new = '''    left = []
+    if not left:'''
+
+[[rows]]
+id = "R11_intake_success"
+description = "_intake: accept an intake job that did not succeed, leaving the listing's own refusal as the only guard"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''        if job.state is not jobs.JobState.SUCCEEDED:
+            error = _job_error(job)'''
+new = '''        if False:
+            error = _job_error(job)'''
+
+[[rows]]
+id = "R12_intake_no_continuation"
+description = "_intake: name a continuation after an intake job that ended, which meets the same refusal every time"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''            raise _Stop(INTAKE, _with_steps(error, way_on), continues=False)'''
+new = '''            raise _Stop(INTAKE, _with_steps(error, way_on), continues=True)'''
+
+[[rows]]
+id = "R13_missing_lift"
+description = "_missing: carry none of the listing's failing rows"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''    # cannot name exactly above all: it is in no download list, and the pass
+    # would otherwise say nothing of it.
+    _lift_failed_checks(report, envelope)
+'''
+new = '''    # cannot name exactly above all: it is in no download list, and the pass
+    # would otherwise say nothing of it.
+'''
+
+[[rows]]
+id = "R14_download_list_match"
+description = "_download_job: drop the list match, so another list's download job is read as the pass's"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''            and str((job.payload or {}).get(acquire_cli.LIST) or "") == wanted
+'''
+new = ''''''
+
+[[rows]]
+id = "R15_download_newest"
+description = "_download_job: read the oldest job over the list, the round two defect"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''    for job in jobs.list_jobs(store):
+        if (
+            job.handler_key == key'''
+new = '''    for job in reversed(jobs.list_jobs(store)):
+        if (
+            job.handler_key == key'''
+
+[[rows]]
+id = "R16_download_cancelled"
+description = "_download_job: read a cancelled download as the pass's claim on the list"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''            and job.state is not jobs.JobState.CANCELLED
+'''
+new = ''''''
+
+[[rows]]
+id = "R17_download_retry"
+description = "_download: never retry a download that failed transiently, so a continued pass reads it as settled"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''            job = jobs.retry(store, job.job_id)'''
+new = '''            pass'''
+
+[[rows]]
+id = "R18_refusals_permanent"
+description = "_download: read any failed download as settled with refusals, so a transient failure is landed as a partial pass"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''    settled_with_refusals = job.state is jobs.JobState.FAILED and len(permanent) == len(failed)'''
+new = '''    settled_with_refusals = job.state is jobs.JobState.FAILED'''
+
+[[rows]]
+id = "R19_refusals_skipped"
+description = "_download: end the pass on a permanent refusal, so one lossy track stops eight"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''    if job.state is not jobs.JobState.SUCCEEDED and not settled_with_refusals:'''
+new = '''    if job.state is not jobs.JobState.SUCCEEDED:'''
+
+[[rows]]
+id = "R20_nothing_downloaded"
+description = "_download: go on to the tail when the download landed nothing"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''    if not done:
+        report.check('''
+new = '''    if False:
+        report.check('''
+
+[[rows]]
+id = "R21_stale_folder"
+description = "_replace_stale: drop the folder match, so every open tail job of the library is cancelled"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''            and str((job.payload or {}).get("folder") or "") == str(folder)
+'''
+new = ''''''
+
+[[rows]]
+id = "R22_stale_live_driver"
+description = "_replace_stale: cancel a tail job a live driver holds"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''            jobs.assert_free(job.job_id)
+            jobs.cancel(store, job.job_id)'''
+new = '''            jobs.cancel(store, job.job_id)'''
+
+[[rows]]
+id = "R23_tail_success"
+description = "_tail_step: accept a tail job that did not succeed, so the landing is planned over files the tail did not run on"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''    if job.state is not jobs.JobState.SUCCEEDED:
+        raise _Stop(step, _job_error(job))
+    report.check(step, "ok"'''
+new = '''    report.check(step, "ok"'''
+
+[[rows]]
+id = "R24_name_inline_answer"
+description = "_name: drop the inline answer, so name apply stops at its confirm every pass"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''    argv = ["-d", f"{NAME_GATE}={NAME_OPTION}", "name", "apply", "--root", str(folder)]'''
+new = '''    argv = ["name", "apply", "--root", str(folder)]'''
+
+[[rows]]
+id = "R25_land_ack_stop"
+description = "_land: read the backup acknowledgment refusal as a failure rather than a stop for the session"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''    if cause.reason == ACK_STOP or cause.code in gates.GATE_CODES:'''
+new = '''    if cause.code in gates.GATE_CODES:'''
