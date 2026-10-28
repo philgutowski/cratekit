@@ -32,6 +32,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'backup-facts-unreadable',
     'backup-nothing-ran',
     'backup-transfer-failed',
+    'bandcamp-record-unusable',  # 2026-10-28, U176: the Bandcamp fetched record joined.
     'blocked-by-pending-action',
     'canary-read-failed',
     'cancelled',
@@ -257,6 +258,25 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'provider-blocked',
         'rate-limit',
         'rate-limited',
+    ],
+    # 2026-10-28, U176: the Bandcamp client and its two verbs joined.
+    'acquire/bandcamp.py': ['aiff-lossless', 'content-disposition', 'mp3-320'],
+    'acquire/bandcamp_cli.py': [
+        'auth-failed',
+        'bandcamp-fetch',
+        'bandcamp-record-unusable',
+        'bandcamp-seller-unmatched',
+        'credential-missing',
+        'intake-list-unusable',
+        'internal-error',
+        'library-volume-unmounted',
+        'lossy-refused',
+        'not-downloadable',
+        'nothing-new',
+        'output-exists',
+        'unavailable-permanent',
+        'unavailable-transient',
+        'utf-8',
     ],
     'acquire/fallback.py': ['fallback-candidate', 'no-candidates', 'yt-dlp'],
     'acquire/fallback_cli.py': [
@@ -616,6 +636,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'backup-facts-unreadable',
         'backup-nothing-ran',
         'backup-transfer-failed',
+        'bandcamp-record-unusable',  # 2026-10-28, U176
         'blocked-by-pending-action',
         'canary-read-failed',
         'catalog-tree-undeclared',
@@ -974,6 +995,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     'core/routing.py': ['not-judged'],
     'core/secrets.py': [
+        'bandcamp-session',  # 2026-10-28, U176
         'credential-index-unreadable',
         'identify-key',
         'identify-signing-key',
@@ -1983,6 +2005,8 @@ PINNED_NAMED_WITHOUT_OWN = {
 
 # Modules holding a name that resolves to a cause, counting each file's own enum declarations.
 PINNED_NAMED_WITH_OWN = {
+    # 2026-10-28, U176: the plan's disposition enum.
+    'acquire/bandcamp_cli.py': ['not-downloadable'],
     # 2026-10-28, U152: the sync pass driver's two stops and the unasked write.
     'cli/sync_land.py': [
         'backup-acknowledgment-missing',
@@ -2189,6 +2213,19 @@ PINNED_LITERAL_HOLDERS = {
         'adapter-broken',
         'auth-failed',
         'refused-by-policy',
+        'unavailable-permanent',
+        'unavailable-transient',
+    ],
+    # 2026-10-28, U176: the Bandcamp verbs.
+    'acquire/bandcamp_cli.py': [
+        'auth-failed',
+        'bandcamp-record-unusable',
+        'credential-missing',
+        'intake-list-unusable',
+        'internal-error',
+        'library-volume-unmounted',
+        'lossy-refused',
+        'output-exists',
         'unavailable-permanent',
         'unavailable-transient',
     ],

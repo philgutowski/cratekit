@@ -97,6 +97,10 @@ class Credential(StrEnum):
     IDENTIFY_KEY = "identify-key"
     IDENTIFY_SIGNING_KEY = "identify-signing-key"
     PROVIDER_SESSION = "provider-session"
+    #: The Bandcamp session: the browser's cookie for bandcamp.com, whose
+    #: ``identity`` value is the login (U176). Recorded from a file, since the
+    #: sign in form carries a CAPTCHA and the cookie is the only way in.
+    BANDCAMP_SESSION = "bandcamp-session"
 
 
 class Remedy(StrEnum):

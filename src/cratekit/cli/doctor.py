@@ -1708,6 +1708,12 @@ def _check_keychain(inputs: _Inputs) -> Finding:
 #: added there cannot be silently unchecked (P3, P4).
 CREDENTIALS_BY_CHECK: Mapping[str, tuple[secrets.Credential, ...]] = MappingProxyType(
     {
+        # U176. Declared by no verb, so it reports and never fails, and the
+        # setup wizard does not ask every installation for a Bandcamp cookie.
+        # A session is needed only by someone who buys there, the verbs that
+        # spend it refuse naming the login step, and ``_SPENT_WHEN_ASKED``
+        # says which verbs those are rather than that none needs it.
+        "credential.bandcamp": (secrets.Credential.BANDCAMP_SESSION,),
         "credential.provider": (secrets.Credential.PROVIDER_SESSION,),
         "credential.recognition": (
             secrets.Credential.IDENTIFY_KEY,
@@ -1722,9 +1728,18 @@ CREDENTIALS_BY_CHECK: Mapping[str, tuple[secrets.Credential, ...]] = MappingProx
 #: names three separate failure types to avoid.
 _CREDENTIAL_REMEDY: Mapping[str, Remedy] = MappingProxyType(
     {
+        "credential.bandcamp": Remedy.AUTHENTICATE_PROVIDER,
         "credential.provider": Remedy.AUTHENTICATE_PROVIDER,
         "credential.recognition": Remedy.SET_CREDENTIAL,
     }
+)
+
+
+#: Credentials no verb declares, because asking for them is the person's choice,
+#: and the verbs that spend one when asked. The finding names those verbs, since
+#: "no verb needs it" would be false of every one of these.
+_SPENT_WHEN_ASKED: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {"credential.bandcamp": ("acquire bandcamp", "acquire bandcamp-fetch")}
 )
 
 
@@ -1755,12 +1770,17 @@ def _check_credential(key: str, inputs: _Inputs) -> Finding:
             detail=f"recorded: {', '.join(str(n) for n in names)}",
         )
     if not inputs.required(key):
+        spenders = _SPENT_WHEN_ASKED.get(key)
         return Finding(
             key=key,
             title=title,
             status=Status.INFO,
             detail=(
-                f"not recorded ({', '.join(missing)}), and no verb this profile "
+                f"not recorded ({', '.join(missing)}); only "
+                f"{' and '.join(f'crate {verb}' for verb in spenders)} use it, and "
+                f"each refuses without it naming crate login"
+                if spenders
+                else f"not recorded ({', '.join(missing)}), and no verb this profile "
                 f"switches on needs it"
             ),
         )

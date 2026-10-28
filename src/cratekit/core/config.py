@@ -1724,6 +1724,39 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="bandcamp_fetched",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="bandcamp_fetched.json",
+        why=(
+            "U176. Every Bandcamp purchase this library has fetched into "
+            "download staging, by purchase id, so a later run plans only what "
+            "it has not taken. Kept by purchase and never as a checkpoint, "
+            "because a checkpoint hides every purchase older than it, which is "
+            "how a purchase filtered out once was never offered again. "
+            "Library-scoped because the files it records were staged for this "
+            "library. NEVER_RESTORED because what it records happened on disk "
+            "and at the account, and a database restore takes back neither: "
+            "rolled back, it would fetch a release again into staging beside "
+            "the copy already there."
+        ),
+    ),
+    StateFile(
+        key="bandcamp_fetched_lock",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="bandcamp_fetched.lock",
+        why=(
+            "The sibling lock for the record above. Two fetches finishing at "
+            "once would both read it, both add their purchase, and the second "
+            "rename would drop the first one's, so that purchase is fetched "
+            "again on the next run. NEVER_RESTORED for the inode reason every "
+            "lock here shares."
+        ),
+    ),
+    StateFile(
         key="sync_mark_record",
         snapshot=SnapshotRole.NEVER_RESTORED,
         root=StateRoot.LIBRARY,

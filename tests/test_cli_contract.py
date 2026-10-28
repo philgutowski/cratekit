@@ -1545,6 +1545,11 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # U81. The same absent list, refused from the vocabulary before any
         # library walk, queue or download.
         "acquire.fallback-fetch": [str(library / "no-such-list.txt")],
+        # U176. No session is recorded in the isolated keychain, so both refuse
+        # as auth-failed before the transport seam is looked up, and no
+        # contract run can reach Bandcamp.
+        "acquire.bandcamp": [],
+        "acquire.bandcamp-fetch": [],
         # U23. The census takes no positional argument at all: a taxonomy
         # declares exactly one routing tree by stable identifier, so a flag
         # naming one would be a second opinion about a value the template

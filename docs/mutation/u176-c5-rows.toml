@@ -1,0 +1,14 @@
+name = "u176-c5"
+pass_kind = "light"
+
+[[rows]]
+id = "C5_empty_page_ends"
+description = "_pages: an empty page does not end the listing, so the listing walks past the end and refuses"
+file = "src/cratekit/acquire/bandcamp.py"
+surface = "user"
+tests = ["tests/test_bandcamp.py", "tests/test_bandcamp_cli.py"]
+old = '''        if not items:
+            return'''
+new = '''        if not items and False:
+            return'''
+

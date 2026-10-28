@@ -1452,6 +1452,44 @@ ENTRIES: tuple[Entry, ...] = (
         # files into download staging, and every upload was chosen in review.
     ),
     Entry(
+        name="acquire.bandcamp",
+        summary=(
+            "list the Bandcamp account's purchases, newest first, each with what "
+            "the library already owns; downloads nothing"
+        ),
+        module="cratekit.acquire.bandcamp_cli",
+        builder="build",
+        handler_key="acquire.bandcamp",
+        feature_rows=(6,),
+        # U176. A plan a person reads, so the diagnostic surface: one check per
+        # disposition and every purchase in the summary.
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
+        # NO WRITE SURFACE: it reads the account, the library and the record.
+        doctor_checks=("library.mounted", "keychain.reachable"),
+    ),
+    Entry(
+        name="acquire.bandcamp-fetch",
+        summary=(
+            "download the Bandcamp purchases the library does not own into a "
+            "batch folder under download staging, what it owns held back"
+        ),
+        module="cratekit.acquire.bandcamp_cli",
+        builder="build_fetch",
+        handler_key="acquire.bandcamp-fetch",
+        feature_rows=(6,),
+        argv_builder="fetch_argv",
+        long_running=True,
+        emits=frozenset({"job_state"}),
+        output_schema="job_state/1",
+        writes=frozenset({"files"}),
+        destructive=True,
+        doctor_checks=("library.mounted", "keychain.reachable"),
+        # No gate, for the reason ``acquire.download`` declares none: it adds
+        # files into its own batch folder under download staging and replaces
+        # nothing, and the purchases are the account's own.
+    ),
+    Entry(
         name="match.run",
         summary="resolve an external list against the library: matched, needs review, or missing",
         module="cratekit.acquire.match_cli",

@@ -1299,6 +1299,10 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # The per-label last-pulled document is present and cannot be
         # understood. Same shape as sync-watermark-unusable.
         "label-watermark-unusable": ExitCode.PRECONDITION,
+        # U176. The record of the Bandcamp purchases this library fetched is
+        # present and cannot be understood, or cannot be locked. Read as empty
+        # it would fetch every purchase again, so the verb refuses instead.
+        "bandcamp-record-unusable": ExitCode.PRECONDITION,
         # Harvest could not list the named playlist. An invented label list
         # would be a guess, so the verb refuses rather than offering one.
         "label-playlist-unreadable": ExitCode.UPSTREAM_UNAVAILABLE,
