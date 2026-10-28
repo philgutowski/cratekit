@@ -43,6 +43,11 @@ dependencies = [
     "Pillow>=10.0",        # album art normalization for tagging (Core, feature 8)
     "tidalapi>=0.8.10,<0.9",  # Tidal playlist read + search (Core, feature 3); see below
     "pyrekordbox==0.4.4",  # guarded rekordbox database access; pinned because it is schema-coupled
+    # Bandcamp purchases (U176). Bandcamp answers a plain HTTP client with a bot
+    # check, and curl_cffi presents a browser's TLS fingerprint. A compiled
+    # extension with wheels for CPython 3.12 and 3.13 on macOS, Linux and
+    # Windows, imported only when a real Bandcamp request is made.
+    "curl_cffi>=0.7,<1",
 
     # -----------------------------------------------------------------------
     # Transitive dependencies of the VENDORED downloader (KTD4, R8).

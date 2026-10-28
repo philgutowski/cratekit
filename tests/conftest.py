@@ -249,6 +249,31 @@ def _no_real_mix_download():
 
 
 @pytest.fixture(autouse=True)
+def _no_live_bandcamp():
+    """Refuse the shipped Bandcamp transport in every test, structurally.
+
+    U176 bound ``acquire bandcamp`` to a transport looked up on the module at
+    call time, so a test that records a session in the isolated keychain and
+    forgets to bind a fake would reach the real account with the battery green.
+    The process level caches of signed links and library views are dropped on
+    both sides, so one test's listing cannot answer the next test's worker.
+    """
+    from cratekit.acquire import bandcamp_cli
+
+    def refused():
+        raise AssertionError(
+            "a test reached the shipped Bandcamp transport; set "
+            "bandcamp_cli.transport to a fake"
+        )
+
+    bandcamp_cli.forget()
+    with _own_patch() as monkeypatch:
+        monkeypatch.setattr(bandcamp_cli, "transport", refused)
+        yield
+    bandcamp_cli.forget()
+
+
+@pytest.fixture(autouse=True)
 def _no_live_general_catalogue():
     """Refuse the general catalogue's live lookup in every test, structurally.
 

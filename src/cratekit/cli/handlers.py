@@ -73,6 +73,7 @@ ItemHandler = Callable[[jobs.Job, jobs.Item, "config.Config"], "jobs.Produced | 
 #: ``handler_key`` to ``"dotted.module:function"``. Strings, never functions.
 HANDLERS: Mapping[str, str] = {
     "acquire.download": "cratekit.acquire.cli:handle",
+    "acquire.bandcamp-fetch": "cratekit.acquire.bandcamp_cli:handle_fetch",
     "acquire.fallback-fetch": "cratekit.acquire.fallback_cli:handle_fetch",
     "adopt.apply": "cratekit.adopt.apply_cli:handle",
     "adopt.move": "cratekit.adopt.move_cli:handle",
