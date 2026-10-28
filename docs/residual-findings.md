@@ -38774,3 +38774,63 @@ outside the digest, pinned on the run the way U161 pins the native write's
 file, and a copy rehearsal of a cutover or a revert matches the live plan.
 Ledger only: it closes at an attended sitting and costs latency, not
 correctness.
+
+---
+
+## R-1044. a continued crate sync land pass queues and drives the whole tail again over the staging folder
+
+**Found:** at the review of #333, U152, 2026-10-28.
+
+**The mechanism.** A continued pass reads every job that already ended (its intake jobs, its download) and does not drive them again, but the tail, `tag folder`, `analyze run` and `analyze restamp`, is queued fresh over the staging folder on every run, since a tail job is frozen against the folder as it stood and a stale one is replaced rather than resumed. A succeeded tail job over the same folder is not read as settled.
+
+**Measured cost.** Driven at the review: tail job counts went from one to two each on a continuation. Time only: the analysis skips a file that already carries its Camelot head, and tagging and restamping again write the same values. The flag's help says the tail runs again.
+
+**Closes when:** a succeeded tail job over the same folder, with no file added since, is read as settled. Ledger only.
+
+---
+
+## R-1045. crate sync land ends no_op with exit 0 when every download was refused for good
+
+**Found:** at the review of #333, U152, 2026-10-28.
+
+**The mechanism.** The brief makes a download refused for good (a lossy only track) recorded and skipped, never fatal. When every track of the list is refused, `_download` in `src/cratekit/cli/sync_land.py` ends the pass with outcome `no_op` and exit 0, a failing `sync.land.download` row naming the count, and the `sync-land-download-refused` warning naming each track.
+
+**Measured cost.** Driven (`test_every_download_refused_lands_nothing_on_a_failing_row`). The rows a person reads are honest; a wrapper that reads only the exit status or the outcome sees a clean pass that acquired nothing. `doctor` sets the same precedent, failing rows on an OK outcome. Whether an all refused pass should exit non zero is a product call, left as it is.
+
+**Closes when:** the `/crate-sync` wrapper (#355, U174) decides how it reads a pass, and the outcome is made to match. Ledger only.
+
+---
+
+## R-1046. a plain crate sync land after a pass stopped at its landing gate ends no_op while the staged tracks wait
+
+**Found:** at the review of #333, U152, 2026-10-28.
+
+**The mechanism.** A pass that reached the landing's gate leaves its intake jobs succeeded and its tracks staged. A second `crate sync land` with no `--pass-run` runs `sync all`, which finds nothing new, and with no intake job open the pass ends `no_op`, saying nothing of the staged tracks or of the landing still waiting on its gate.
+
+**Measured cost.** Driven at the first review. The first pass's pending envelope named the gate run and the commands that answer and apply it, so the person holds the way on; the second answer is silent rather than false.
+
+**Closes when:** a pass with nothing new reads the staging folder or the open landing gate and names it. Ledger only.
+
+---
+
+## R-1047. crate sync land runs name apply over the staging root, which may walk the acquire verb's own staging folder of refused files
+
+**Found:** at the review of #333, U152, 2026-10-28.
+
+**The mechanism.** `crate sync land` runs `crate name apply --root <staging>` over the absolute download staging folder after the tail. `name apply` walks its root recursively, and the download leaves each file it refused for good (a lossy only track) under `<staging>/.cratekit-acquire-staging/<job>/<n>/`, which `tag folder` skips and `intake land` does not list, since it reads one level. Whether `name apply` plans renames inside that hidden folder was read and not driven.
+
+**Measured cost.** Not driven. If it does, a refused file kept as evidence is renamed in place; nothing is lost and nothing lands, but the evidence no longer carries the provider id the refusal names.
+
+**Closes when:** a test drives `name apply` over a staging root holding a refused file under the acquire staging folder and shows it untouched, or `name apply` skips that folder the way `tag folder` does. Ledger only.
+
+---
+
+## R-1048. crate sync land's stop names Reload Tags and the landed batch, not INBOX / Analyze
+
+**Found:** at the plan of #333, U152, 2026-10-28.
+
+**The mechanism.** The brief's addendum says the stop names `INBOX / Analyze` (#347, U166) and that Reload Tags is not needed once #344 (U163) writes the row fields. Neither unit is built, so `REKORDBOX_STEPS` in `src/cratekit/cli/sync_land.py` names Reload Tags before Analyze Tracks, on Phillip's standard settings, over the batch playlist the applied landing names.
+
+**Measured cost.** None today: the steps are right for the landing as it is built. They go stale the day U163 or U166 lands.
+
+**Closes when:** U166 lands and the stop names `INBOX / Analyze`, and U163 lands and the Reload Tags step is dropped. Ledger only.
