@@ -1383,7 +1383,9 @@ def _point_at_a_copy(cfg: config.Config) -> Path:
     whose file is elsewhere. The device, the master id and every row are the
     database's own, so only the path differs.
     """
-    copy = Path(cfg.library.root) / "rehearsal" / "master.db"
+    # ANOTHER FILE NAME AS WELL AS ANOTHER FOLDER, so a digest of the bare
+    # name would differ too.
+    copy = Path(cfg.library.root) / "rehearsal" / "master-copy.db"
     copy.parent.mkdir(parents=True)
     shutil.copyfile(cfg.library.db_path, copy)
     data = valid_data(
@@ -1551,3 +1553,49 @@ def test_a_decision_recorded_against_the_path_bearing_digest_is_stale_and_writes
     assert _staged_names(cfg) == ["One.flac"]
     assert _landed_rows(cfg) == []
     assert _batch_playlist(cfg) == []
+
+
+def test_an_answer_given_over_one_file_is_stale_when_the_continuation_opens_another(
+    native_library, silence
+):
+    """The review of U161, driven. With the path out of the digest, the config
+    pointed at a copy of the same library between the answer and the
+    continuation digests equal, and the write used to land in the copy the
+    screen never named. The file is pinned on the run, so the continuation is
+    refused stale naming both files, and neither database gains a row."""
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    live_path = str(cfg.library.db_path)
+    code, refused = drive(_land())
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["detail"]["shown"]["reads and writes"] == live_path
+    run_id = refused["run_id"]
+    decided, envelope = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
+    assert decided == int(ExitCode.OK), envelope
+
+    copy = _point_at_a_copy(cfg)
+    code, acted = drive(["--run", run_id, *_land()])
+
+    assert code == int(ExitCode.DECISION_STALE), acted
+    detail = acted["cause"]["detail"]
+    assert detail["pinned"] == land_cli.DATABASE_PIN
+    assert detail["expected"] == live_path and detail["actual"] == str(copy)
+    assert _staged_names(cfg) == ["One.flac"]
+    for database in (live_path, str(copy)):
+        conn = sqlite3.connect(database)
+        try:
+            landed = conn.execute(
+                "SELECT ID FROM djmdContent WHERE FolderPath LIKE ?", (f"%{BATCH}%",)
+            ).fetchall()
+        finally:
+            conn.close()
+        assert landed == [], database
+
+
+def test_an_answer_continued_over_the_file_it_was_given_over_lands(native_library, silence):
+    """The pin's other side: the same file at both acts takes the answer."""
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    code, acted, _refused = _two_acts(_land())
+    assert code == int(ExitCode.OK), acted
+    assert len(_landed_rows(cfg)) == 1
