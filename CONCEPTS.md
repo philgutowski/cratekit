@@ -462,6 +462,16 @@ mark` finds a bridge pass by its intake file's name and a native pass by
 `--pass`, since R-777, and the engine waits on a `marks.NativeLanding` there in
 place of the file.
 
+### The tail
+The four verbs that must run over staged files, in this order, before a landing
+is planned: `tag folder`, `analyze run`, `analyze restamp` and `name apply`.
+Sitting 47 planned a landing straight after the download and got rows named by
+provider id with no vox score. Since U152 `crate sync land` runs the tail on the
+absolute staging path and plans no landing unless every step of it succeeded;
+a tail job left open over the staging folder by an earlier pass is replaced,
+never resumed, because it was frozen against the folder and the build as they
+stood then.
+
 ### Shelve
 The step after the import that the landing left to a person: moving an imported
 batch folder out of `Music/<batch>/` into the processed tree,
