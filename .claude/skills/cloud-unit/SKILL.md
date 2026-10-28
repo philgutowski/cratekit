@@ -303,6 +303,13 @@ out of scope:
 
     gh api -X POST repos/<owner>/<repo>/issues -f title='R-N: ...' -F body=@r.md -f 'labels[]=residual'
 
+For each live check the record's OWED paragraph names (a run on the live
+library, the account, rekordbox, or the macOS battery), file one attended card
+for Phillip's Mac, titled `A<N>: <the check>` with N one past the highest `A`
+title on the board, labelled `attended` and nothing else, with a body opening
+`**Depends on:** #<the release card or this card>` and saying what to run and
+when it is done. METHOD's local attended work section is the form.
+
 Then `board.py audit --labels-only`, and post `Landed` on the card: the merge
 commit, the commits it carried, the battery counts from `compare`, the review
 rounds and what each drove, the mutation table's result, tests added by file
