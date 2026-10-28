@@ -443,11 +443,14 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     # the cause the taxonomy.schema check reads to tell a shipped template defect
     # from the copy's. Measured on the merged tree; do not bring back a
     # package-wide total tuple.
+    # U159, 2026-10-28: ls-remote joined, the git subcommand install.release
+    # reads the published tags with.
     'cli/doctor.py': [
         'commit-msg',
         'doctor-check-failed',
         'hook-impl',
         'internal-error',
+        'ls-remote',
         'merge-commit',
         'post-checkout',
         'post-commit',

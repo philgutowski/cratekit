@@ -81,6 +81,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
 import shlex
 import subprocess
 import sys
@@ -481,6 +483,126 @@ def _probe_trash(path: Path) -> trash.TrashStatus:
     return trash.probe(path, create=False)
 
 
+#: Where a release install comes from when a check has to say how to move to one.
+RELEASE_REPOSITORY = "https://github.com/philgutowski/cratekit"
+
+#: How long the release read may take before it is reported as unread. Short,
+#: because doctor runs before every gated verb and a hung remote is not a
+#: reason to hold one up.
+RELEASE_READ_TIMEOUT = 10.0
+
+
+@dataclass(frozen=True, slots=True)
+class InstallOrigin:
+    """How this copy was installed, read off its PEP 610 record (U159).
+
+    ``kind`` is one of ``vcs`` (installed from a git repository, the release
+    install), ``editable`` (a checkout installed in place), ``folder`` (a
+    directory or an archive installed as a copy), ``index`` (no
+    ``direct_url.json`` at all, so from a package index) or ``unknown`` (no
+    distribution, or a record that does not parse).
+    """
+
+    kind: str
+    version: str | None = None
+    url: str | None = None
+    extras: tuple[str, ...] = ()
+
+
+_REQUIREMENT_NAME_RE = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
+_EXTRA_MARKER_RE = re.compile(r"""extra\s*==\s*["']([^"']+)["']""")
+
+
+def _canonical(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def _installed_extras(dist: metadata.Distribution) -> tuple[str, ...]:
+    """The extras whose every requirement is installed beside this copy.
+
+    pipx keeps no record of the extras an install named, and PEP 610 does not
+    either, so they are read back from what is present: an extra counts when
+    each distribution it requires can be found. An extra that names this
+    package itself (``all``) is an alias for others and is left out, since the
+    others it names are listed in their own right.
+    """
+    own = _canonical(dist.metadata["Name"] or "cratekit")
+    wanted: dict[str, list[str]] = {}
+    for requirement in dist.requires or ():
+        marker = _EXTRA_MARKER_RE.search(requirement)
+        name = _REQUIREMENT_NAME_RE.match(requirement)
+        if marker is None or name is None:
+            continue
+        wanted.setdefault(marker.group(1), []).append(_canonical(name.group(1)))
+    present = []
+    for extra, names in sorted(wanted.items()):
+        if own in names:
+            continue
+        try:
+            for name in names:
+                metadata.distribution(name)
+        except metadata.PackageNotFoundError:
+            continue
+        present.append(extra)
+    return tuple(present)
+
+
+def _install_origin() -> InstallOrigin:
+    try:
+        dist = metadata.distribution("cratekit")
+    except metadata.PackageNotFoundError:
+        return InstallOrigin(kind="unknown")
+    version = dist.version
+    text = dist.read_text("direct_url.json")
+    if text is None:
+        return InstallOrigin(kind="index", version=version)
+    try:
+        record = json.loads(text)
+    except json.JSONDecodeError:
+        return InstallOrigin(kind="unknown", version=version)
+    if not isinstance(record, dict):
+        return InstallOrigin(kind="unknown", version=version)
+    url = record.get("url")
+    if isinstance(record.get("vcs_info"), dict):
+        return InstallOrigin(
+            kind="vcs", version=version, url=url, extras=_installed_extras(dist)
+        )
+    dir_info = record.get("dir_info")
+    if isinstance(dir_info, dict) and dir_info.get("editable"):
+        return InstallOrigin(kind="editable", version=version, url=url)
+    return InstallOrigin(kind="folder", version=version, url=url)
+
+
+def _release_tags(url: str) -> tuple[str, ...] | None:
+    """The tag names the repository at ``url`` publishes, or None if unread.
+
+    The one network read doctor makes, and it is behind this one function so no
+    test reaches the network. The person's own git credentials answer it, and
+    ``GIT_TERMINAL_PROMPT=0`` makes a missing credential a refusal rather than a
+    prompt that hangs the report.
+    """
+    try:
+        done = subprocess.run(
+            ["git", "ls-remote", "--tags", "--refs", url],
+            capture_output=True,
+            text=True,
+            timeout=RELEASE_READ_TIMEOUT,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if done.returncode != 0:
+        return None
+    tags = []
+    for line in done.stdout.splitlines():
+        _sha, _tab, ref = line.partition("\t")
+        if ref.startswith("refs/tags/"):
+            tags.append(ref.removeprefix("refs/tags/"))
+    return tuple(tags)
+
+
+
 @dataclass(frozen=True, slots=True)
 class Probes:
     """Every seam a check reaches the outside world through.
@@ -532,6 +654,11 @@ class Probes:
     path_survey: Callable[[config.Config], metadata_cli.ResolutionTotals | None] = (
         _survey_paths
     )
+    #: How this copy was installed, read off its PEP 610 record (U159).
+    install_origin: Callable[[], InstallOrigin] = _install_origin
+    #: The tags a repository publishes, or None when they could not be read.
+    #: The one network read doctor makes, so every test replaces it.
+    release_tags: Callable[[str], tuple[str, ...] | None] = _release_tags
 
 
 # ---------------------------------------------------------------------------
@@ -2953,6 +3080,107 @@ def _check_tree_registry(inputs: _Inputs) -> Finding:
 # ---------------------------------------------------------------------------
 
 
+def _release_version(tag: str) -> tuple[int, ...] | None:
+    """A ``vX.Y.Z`` tag as a tuple; any tag that is not one is None and ignored."""
+    if not tag.startswith("v"):
+        return None
+    release = _parse_release(tag[1:])
+    return release if release is not None and len(release) == 3 else None
+
+
+def release_upgrade_command(url: str, tag: str, extras: Sequence[str]) -> str:
+    """The one pipx command that moves this install to ``tag``, keeping its extras."""
+    named = f"cratekit[{','.join(extras)}]" if extras else "cratekit"
+    return f'pipx install --force "{named} @ git+{url}@{tag}"'
+
+
+def _check_release(inputs: _Inputs) -> Finding:
+    """Whether a newer release than this copy is published (U159).
+
+    NEVER A FAIL. A copy behind the latest release still works, and this check
+    runs inside ``crate setup``, which must not refuse a person over it. A newer
+    release is INFO carrying the one command that upgrades. A read that fails is
+    INFO saying the releases could not be read, and never OK, because a check
+    that could not look has not established that the copy is current.
+    """
+    key, title = "install.release", "installed release"
+    origin = inputs.probes.install_origin()
+    move = release_upgrade_command(RELEASE_REPOSITORY, "<tag>", ())
+    if origin.kind in ("editable", "folder"):
+        what = "an editable checkout" if origin.kind == "editable" else "a folder"
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"this copy was installed from {what}, so the release check does "
+                f"not apply. To move to a release install, name the latest tag: {move}"
+            ),
+        )
+    if origin.kind != "vcs" or not origin.url or not origin.version:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                "this copy was not installed from the GitHub repository, so the "
+                f"release check does not apply. A release install is: {move}"
+            ),
+        )
+    installed = _parse_release(origin.version)
+    tags = inputs.probes.release_tags(origin.url)
+    if tags is None:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"the releases at {origin.url} could not be read (offline, no git "
+                f"credentials, or the read timed out), so whether {origin.version} "
+                f"is current is unknown"
+            ),
+        )
+    releases = sorted(
+        (version, tag) for tag in tags if (version := _release_version(tag)) is not None
+    )
+    if not releases:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.OK,
+            detail=f"no release has been published yet; this copy is {origin.version}",
+        )
+    newest, tag = releases[-1]
+    if installed is None:
+        # A version this parser cannot read is not behind every release, and
+        # telling it to "upgrade" to an older tag would be a downgrade.
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"this copy's version {origin.version!r} is not X.Y.Z, so whether "
+                f"the latest release, {tag}, is newer is unknown"
+            ),
+        )
+    if installed >= newest:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.OK,
+            detail=f"this copy is {origin.version}, and the latest release is {tag}",
+        )
+    return Finding(
+        key=key,
+        title=title,
+        status=Status.INFO,
+        detail=(
+            f"a newer release, {tag}, is published; this copy is {origin.version}. "
+            f"Upgrade with: {release_upgrade_command(origin.url, tag, origin.extras)}"
+        ),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class Check:
     """One named question and the function that answers it."""
@@ -3003,6 +3231,9 @@ CHECKS: tuple[Check, ...] = (
     # library state, and after the taxonomy check, which it lists trees from.
     Check("tree.registry", _check_tree_registry),
     Check("repo.commit_hook", _check_commit_hook),
+    # U159. Last, because it is the one check that reaches the network, and a
+    # slow read should hold up nothing a person is waiting to see.
+    Check("install.release", _check_release),
 )
 
 #: The keys this doctor can answer, in run order. ``tests/test_cli_contract.py``

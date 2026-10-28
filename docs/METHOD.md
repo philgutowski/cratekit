@@ -497,6 +497,26 @@ harness's under `CLAUDE_CODE_REMOTE`.
 the card lands, or the cloud session meets a moved `main` at its merge and
 has to merge it in and run the battery again.
 
+## Releases, decided by U159 on 2026-10-28
+
+**People install tagged releases, never raw `main`.** A release is cut when
+Phillip asks, in any session, by the `release` skill in the repository's
+Claude Code skills directory: `scripts/release.py plan` lists the pull
+requests (and, before U158, the merges) since the last `vX.Y.Z` tag and
+proposes a semantic version bump with a reason for each; the session judges
+it; `scripts/release.py cut --bump <kind>` refuses off a clean `main` equal
+to `origin/main` and without a clean battery on that commit, then writes the
+version into `pyproject.toml` and `src/cratekit/__init__.py` together, commits
+`release: vX.Y.Z`, tags it, pushes `main` and the tag, and publishes the
+GitHub release with its notes. The release commit is the one commit that
+reaches `main` without a pull request, because it carries nothing but the
+version. `crate doctor`'s `install.release` check tells an installed copy
+when a newer release exists and prints the pipx command that upgrades it,
+keeping its extras. No package index, no automatic upgrade, no cadence.
+**The cut is the Mac's**: a cloud session's proxy refuses tag pushes and the
+releases API, so a cloud session plans and judges the bump and hands the cut
+to an attended card, which runs it with `--mac-battery`.
+
 ## Local attended work, decided 2026-10-28
 
 **Work only Phillip's Mac can do is an attended card**, titled `A<N>:` and
