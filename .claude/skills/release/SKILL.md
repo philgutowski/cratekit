@@ -10,6 +10,13 @@ never raw `main` (U159). A release is cut when Phillip asks, never on a
 schedule and never on a session's own initiative. METHOD's releases section
 is the rule; this is the procedure.
 
+**A cloud session cannot cut.** Its git proxy refuses a tag push and the
+REST git tags path, and the releases API refuses "this session type", all
+measured on 2026-10-28. A cloud session asked for a release runs steps 1 to 3,
+reports the bump it judged, and hands the cut to Phillip's Mac: an attended
+card carrying `scripts/release.py cut --bump <kind> --mac-battery`. The Mac's
+own git and `gh` credentials permit both.
+
 ## 1. Be on a clean, current main
 
     git fetch origin main

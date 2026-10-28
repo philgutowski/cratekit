@@ -513,6 +513,9 @@ reaches `main` without a pull request, because it carries nothing but the
 version. `crate doctor`'s `install.release` check tells an installed copy
 when a newer release exists and prints the pipx command that upgrades it,
 keeping its extras. No package index, no automatic upgrade, no cadence.
+**The cut is the Mac's**: a cloud session's proxy refuses tag pushes and the
+releases API, so a cloud session plans and judges the bump and hands the cut
+to an attended card, which runs it with `--mac-battery`.
 
 ## Local attended work, decided 2026-10-28
 
