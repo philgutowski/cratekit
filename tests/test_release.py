@@ -358,7 +358,7 @@ def test_cut_refuses_before_writing_anything_on_a_refusal(repo):
     ("url", "slug"),
     [
         ("https://github.com/philgutowski/cratekit.git", "philgutowski/cratekit"),
-        ("git@github.com:philgutowski/cratekit.git", "philgutowski/cratekit"),
+        ("ssh://github.com/philgutowski/cratekit.git", "philgutowski/cratekit"),
         ("http://proxy@127.0.0.1:1234/git/philgutowski/cratekit", "philgutowski/cratekit"),
     ],
 )
