@@ -65,6 +65,7 @@ the record.
 
 from __future__ import annotations
 
+import filecmp
 import json
 import re
 import shutil
@@ -207,9 +208,10 @@ def _unavailable(exc: bandcamp.BandcampError, origin: Sequence[str], **detail: A
     )
 
 
-def collection(origin: Sequence[str]) -> bandcamp.Collection:
+def collection(origin: Sequence[str], cookie: str | None = None) -> bandcamp.Collection:
     """The account's purchases, read through the seam with the recorded session."""
-    cookie = session_cookie(origin)
+    if cookie is None:
+        cookie = session_cookie(origin)
     try:
         return bandcamp.read_collection(transport(), cookie)
     except bandcamp.SessionRejected as exc:
@@ -433,16 +435,20 @@ def _load() -> config.Config:
     return match_cli._load()
 
 
-def _planned(cfg: config.Config, sellers: frozenset[str], origin: Sequence[str]) -> tuple[bandcamp.Collection, tuple[Planned, ...]]:
+def _planned(
+    cfg: config.Config, sellers: frozenset[str], origin: Sequence[str]
+) -> tuple[bandcamp.Collection, tuple[Planned, ...], Library]:
     """The plan, with each question asked before the one that costs more.
 
-    The record and the library are read BEFORE the account, so a refusal over
-    either costs no request, and the session is asked for last of all.
+    The session is asked of the keychain first, since that is local and a
+    missing one would make the library walk wasted. The record and the library
+    come next, so a refusal over either costs no request, and the account last.
     """
+    cookie = session_cookie(origin)
     record = fetched(cfg)
     library = Library(cfg, origin)
-    found = collection(origin)
-    return found, plan(found.purchases, library, sellers=sellers, record=record)
+    found = collection(origin, cookie)
+    return found, plan(found.purchases, library, sellers=sellers, record=record), library
 
 
 def _count(planned: Sequence[Planned]) -> dict[str, int]:
@@ -517,7 +523,7 @@ def acquire_bandcamp(ctx) -> Envelope:
     """List every purchase with its disposition. Writes nothing."""
     cfg = _load()
     sellers = _sellers(ctx.args.seller)
-    found, planned = _planned(cfg, sellers, ORIGIN)
+    found, planned, _library = _planned(cfg, sellers, ORIGIN)
     counts = _count(planned)
     to_fetch = [one for one in planned if one.disposition in TO_FETCH]
     checks = [
@@ -663,7 +669,7 @@ def acquire_bandcamp_fetch(ctx) -> Envelope:
     cfg = _load()
     batch = _batch_name(ctx.args.batch)
     sellers = _sellers(ctx.args.seller)
-    found, planned = _planned(cfg, sellers, FETCH_ORIGIN)
+    found, planned, library = _planned(cfg, sellers, FETCH_ORIGIN)
     warnings = _seller_warnings(_unmatched_sellers(sellers, found.purchases))
     releases = {
         one.purchase.item_id: frozen_release(one) for one in planned if one.disposition in TO_FETCH
@@ -688,6 +694,7 @@ def acquire_bandcamp_fetch(ctx) -> Envelope:
             for purchase in found.purchases
             if purchase.item_id in releases
         }
+        _LIBRARIES[job.job_id] = library
         _, drift = ctx.run_job(store, job)
         job = jobs.get(store, job.job_id)
         jobs.raise_for_state(job)
@@ -711,9 +718,11 @@ def _links_for(job_id: str) -> dict[str, str]:
     try:
         listed = collection(FETCH_ORIGIN)
     except CratekitError as exc:
-        if exc.cause.reason in ("auth-failed", "credential-missing"):
-            raise _parked(exc.cause) from None
-        raise
+        # PARKED WHATEVER THE REASON. The listing is the account's, not one
+        # release's: a refused session and an outage both meet every later
+        # item the same way, and failing each one in turn would spend a
+        # listing per item and strand the job failed rather than resumable.
+        raise _parked(exc.cause) from None
     known = {purchase.item_id: purchase.download_page for purchase in listed.purchases}
     _LINKS[job_id] = known
     return known
@@ -732,12 +741,23 @@ def _library_for(job_id: str, cfg: config.Config) -> Library:
     return known
 
 
-#: ``NN`` in a release's file name, ``Artist - Album - NN Title``.
-_NUMBERED = re.compile(r" - (?P<number>\d{1,3}) ")
+#: ``NN`` at the front of what follows ``Artist - Album - `` in a file's name.
+_NUMBERED = re.compile(r"(?P<number>\d{1,3}) ")
 
 
-def _number_in(name: str) -> int | None:
-    found = _NUMBERED.search(name)
+def number_in(name: str, artist: str, title: str) -> int | None:
+    """The track number in a release's file name, ``Artist - Album - NN Title``.
+
+    READ AFTER THE PREFIX THE RELEASE IS KNOWN BY, never as the first `` - NN ``
+    in the name: an album titled ``2 Step Anthems`` puts a number there that
+    is not a track's, and holding by it held every file of the release. A name
+    that does not begin with the release's own artist and title gives no
+    number, and only the file's tags can hold it back.
+    """
+    prefix = f"{artist} - {title} - "
+    if not artist or not title or not name.startswith(prefix):
+        return None
+    found = _NUMBERED.match(name[len(prefix):])
     return int(found["number"]) if found else None
 
 
@@ -760,8 +780,9 @@ def file_holding(path: Path, library: Library, artist: str) -> tuple[str, tuple[
 
 def _encoding(cfg: config.Config, offers: Mapping[str, str], detail: dict[str, Any]) -> tuple[str, bool]:
     """The format to fetch and whether it is lossy, by the frozen policy."""
-    if bandcamp.LOSSLESS_ENCODING in offers:
-        return bandcamp.LOSSLESS_ENCODING, False
+    for encoding in bandcamp.LOSSLESS_ENCODINGS:
+        if encoding in offers:
+            return encoding, False
     policy = AdapterSettings.from_config(cfg).lossless_policy
     decision = decide_lossless(policy, source_is_lossless=False)
     offered = sorted(offers)
@@ -779,8 +800,8 @@ def _encoding(cfg: config.Config, offers: Mapping[str, str], detail: dict[str, A
     if bandcamp.LOSSY_ENCODING not in offers:
         raise refuse(
             "unavailable-permanent",
-            f"{detail['artist']} - {detail['title']} is offered in neither "
-            f"{bandcamp.LOSSLESS_ENCODING} nor {bandcamp.LOSSY_ENCODING} "
+            f"{detail['artist']} - {detail['title']} is offered in no lossless "
+            f"format and not as {bandcamp.LOSSY_ENCODING} "
             f"(offered: {', '.join(offered) or 'nothing'}), so nothing was downloaded",
             scope=Scope.ITEM,
             origin=FETCH_ORIGIN,
@@ -804,6 +825,28 @@ def _item_failure(exc: bandcamp.BandcampError, detail: dict[str, Any]) -> Cratek
     )
 
 
+def _empty_holding(holding_dir: Path, *, keep: Iterable[Path]) -> None:
+    """Empty a release's holding folder, but for the copies a collision refused.
+
+    A refused copy IS KEPT, because it is the only copy of a track the person
+    paid for that this run has, and the refusal tells them to compare it with
+    the file already in the batch. Everything else, the archive's cover and
+    whatever the release held back, goes.
+    """
+    kept = {path.resolve() for path in keep}
+    if not kept:
+        shutil.rmtree(holding_dir, ignore_errors=True)
+        return
+    for leftover in sorted(holding_dir.rglob("*"), reverse=True):
+        if leftover.is_file() and leftover.resolve() not in kept:
+            leftover.unlink()
+        elif leftover.is_dir():
+            try:
+                leftover.rmdir()
+            except OSError:
+                continue
+
+
 def handle_fetch(job, item, cfg) -> jobs.Produced:
     """Fetch ONE purchase into the batch folder, the library's tracks held back.
 
@@ -821,9 +864,11 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
       place every acquisition's file passes, and against the library again by
       its own tags and by the track numbers the plan held;
     * a name already in the batch folder is refused for that file alone, after
-      the rest are moved, and the refusal names it;
-    * the holding folder is emptied and the purchase recorded whatever was
-      refused, since the release itself was taken.
+      the rest are moved, unless the file there holds the same bytes; the
+      refusal names it and the downloaded copy is kept where it names;
+    * a file is marked lossy by what it IS, not only by the format offered;
+    * the holding folder is emptied of all but a refused copy and the purchase
+      recorded whatever was refused, since the release itself was taken.
     """
     said = dict(((job.payload or {}).get(RELEASES) or {}).get(item.item_id) or {})
     batch = str((job.payload or {}).get(BATCH) or "")
@@ -895,18 +940,29 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
     config._mkdir_private(target)
     staged: list[str] = []
     held: list[str] = []
-    refused: list[str] = []
+    refused: dict[str, Path] = {}
     for path in checked:
-        if _number_in(path.name) in held_numbers or file_holding(path, library, detail["artist"]):
+        number = number_in(path.name, detail["artist"], detail["title"])
+        if (number is not None and number in held_numbers) or file_holding(
+            path, library, detail["artist"]
+        ):
             held.append(path.name)
             continue
-        final = target / acquire_cli.marked_name(path, marker, required=lossy)
+        marked = lossy or acquire_cli.lossy_landing(path, policy=policy)
+        final = target / acquire_cli.marked_name(path, marker, required=marked)
         if final.exists():
-            refused.append(final.name)
+            if final.is_file() and filecmp.cmp(path, final, shallow=False):
+                # THE SAME BYTES ARE ALREADY THERE, which is what a resume after
+                # a kill between these moves and the record finds. Staged, not
+                # refused: nothing differs for a person to choose between.
+                staged.append(final.name)
+                path.unlink()
+                continue
+            refused[final.name] = path
             continue
         path.replace(final)
         staged.append(final.name)
-    shutil.rmtree(holding_dir, ignore_errors=True)
+    _empty_holding(holding_dir, keep=refused.values())
     record_fetched(
         cfg,
         item.item_id,
@@ -918,23 +974,32 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
             "encoding": encoding,
             "staged": staged,
             "held": held,
-            "refused": refused,
+            "refused": sorted(refused),
+            "kept": {name: str(path) for name, path in sorted(refused.items())},
         },
     )
     if refused:
         raise refuse(
             "output-exists",
             f"{len(refused)} file(s) of {detail['artist']} - {detail['title']} were "
-            f"already in {target} and were not put in their place: "
-            f"{'; '.join(refused)}. The other {len(staged)} file(s) were staged and "
-            f"the purchase is recorded as fetched",
+            f"already in {target} with different contents and were not put in their "
+            f"place: {'; '.join(sorted(refused))}. The downloaded copies are kept at "
+            f"{'; '.join(str(path) for _name, path in sorted(refused.items()))}. The "
+            f"other {len(staged)} file(s) were staged and the purchase is recorded as "
+            f"fetched",
             steps=(
-                "compare each file named with the one already there, and keep the one "
-                "you want",
+                "compare each downloaded copy named with the file of the same name in "
+                "the batch folder, and move the one you want into the batch folder",
             ),
             scope=Scope.ITEM,
             origin=FETCH_ORIGIN,
-            detail={**detail, "batch": str(target), "refused": refused, "staged": staged},
+            detail={
+                **detail,
+                "batch": str(target),
+                "refused": sorted(refused),
+                "kept": [str(path) for _name, path in sorted(refused.items())],
+                "staged": staged,
+            },
         )
     return jobs.Produced()
 

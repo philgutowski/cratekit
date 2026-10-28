@@ -20,6 +20,7 @@ import pytest
 from cratekit.acquire import bandcamp_cli
 from cratekit.cli import jobs as cli_jobs
 from cratekit.core import config, jobs, secrets, tags
+from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from tests._containers import synth_container
 from tests.acquire_fakes import mp3_bytes
@@ -523,3 +524,223 @@ def test_no_output_log_or_file_holds_the_identity_or_a_signed_link(
             for one in jobs.items(store, job.job_id):
                 if one.cause is not None:
                     assert SIGNED not in json.dumps(one.cause.to_json())
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Review round one: each guard driven alone
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_refused_copy_is_kept_and_named_never_deleted(signed_in, account):
+    batch = Path(signed_in.paths.download_staging) / "Batch One"
+    batch.mkdir(parents=True)
+    (batch / "Aurora Bloom - Sun Path - 02 Tide.flac").write_bytes(b"a different file")
+    fetch("--seller", "pulsromania", "--batch", "Batch One")
+    with jobs.open_store() as store:
+        by_id = {one.item_id: one for one in jobs.items(store, _last_job())}
+    [kept] = by_id["1"].cause.detail["kept"]
+    assert Path(kept).is_file(), "the only downloaded copy of the refused track survives"
+    assert Path(kept).name == "Aurora Bloom - Sun Path - 02 Tide.flac"
+    assert kept in by_id["1"].cause.message
+    assert bandcamp_cli.fetched(signed_in)["1"]["kept"] == {"Aurora Bloom - Sun Path - 02 Tide.flac": kept}
+    holding = Path(kept).parents[1]
+    assert sorted(path.name for path in holding.rglob("*") if path.is_file()) == [Path(kept).name]
+
+
+def test_the_same_bytes_already_in_the_batch_count_as_staged(signed_in, account, tmp_path, silence):
+    """A kill between the moves and the record, then a resume: the files the
+    first attempt moved are there with the same bytes, and nothing is refused."""
+    fetch("--seller", "otherlabel", "--batch", "Batch One")
+    path = config.state_path("bandcamp_fetched", signed_in)
+    path.write_text(json.dumps({"version": 1, "purchases": {}}), encoding="utf-8")
+    code, envelope = fetch("--seller", "otherlabel", "--batch", "Batch One")
+    assert code == int(ExitCode.OK), envelope
+    assert bandcamp_cli.fetched(signed_in)["4"]["staged"] == ["Coral Arc - Drift - 01 Drift.flac"]
+    assert bandcamp_cli.fetched(signed_in)["4"]["refused"] == []
+
+
+def test_an_album_title_opening_with_a_number_holds_only_the_track_it_names(
+    signed_in, tmp_path, silence, library, monkeypatch
+):
+    owned(library, "Coral Arc - Tide.flac")
+    account = FakeAccount(
+        [item("7", seller="otherlabel", artist="Coral Arc", title="2 Step Anthems",
+              purchased="27 Oct 2026 10:00:00 GMT", tracks=[("", "Glass"), ("", "Tide"), ("", "Shore")])],
+        archives={"7": archive({
+            f"Coral Arc - 2 Step Anthems - 0{n} {title}.flac":
+                track_file(tmp_path, silence, f"n{n}.flac", "Coral Arc", title)
+            for n, title in ((1, "Glass"), (2, "Tide"), (3, "Shore"))
+        })},
+    )
+    bind(monkeypatch, account)
+    code, envelope = fetch("--batch", "Batch One")
+    assert code == int(ExitCode.OK), envelope
+    assert staged(signed_in, "Batch One") == [
+        "Coral Arc - 2 Step Anthems - 01 Glass.flac",
+        "Coral Arc - 2 Step Anthems - 03 Shore.flac",
+    ]
+
+
+def test_number_in_reads_after_the_release_prefix_only():
+    assert bandcamp_cli.number_in("A - 2 Step - 03 Tide.flac", "A", "2 Step") == 3
+    assert bandcamp_cli.number_in("A - 2 Step - Tide.flac", "A", "2 Step") is None
+    assert bandcamp_cli.number_in("B - 2 Step - 03 Tide.flac", "A", "2 Step") is None
+
+
+def test_a_lossy_file_under_a_lossless_offer_is_marked_by_what_it_is(library, tmp_path, silence, monkeypatch):
+    permissive = _configure(library, "allow_lossy_marked")
+    secrets.set(SESSION, COOKIE)
+    account = collection(tmp_path, silence)
+    account.archives["4"] = archive({"Coral Arc - Drift - 01 Drift.mp3": mp3_bytes()})
+    bind(monkeypatch, account)
+    code, envelope = fetch("--seller", "otherlabel", "--batch", "Batch One")
+    assert code == int(ExitCode.OK), envelope
+    assert staged(permissive, "Batch One") == [f"Coral Arc - Drift - 01 Drift {MARKER}.mp3"]
+
+
+def test_the_lossless_formats_are_taken_in_order_before_any_lossy_one(signed_in):
+    detail = {"artist": "A", "title": "B"}
+    take = bandcamp_cli._encoding
+    assert take(signed_in, {"alac": "x", "mp3-320": "y"}, detail) == ("alac", False)
+    assert take(signed_in, {"flac": "x", "alac": "y"}, detail) == ("flac", False)
+    assert take(signed_in, {"aiff-lossless": "x"}, detail) == ("aiff-lossless", False)
+
+
+def test_a_track_the_library_deleted_on_purpose_is_held(signed_in, account):
+    from cratekit.deletion import stores
+    from cratekit.deletion.stores import RemovedRow
+
+    stores.record_tombstone(
+        signed_in,
+        RemovedRow(
+            content_id="9001", recorded="2026-09-18", sequence=1, size=None,
+            artist="Coral Arc", title="Drift",
+        ),
+        actor="deletion",
+    )
+    _code, envelope = plan("otherlabel")
+    row = rows(envelope)["4"]
+    assert row["disposition"] == "owned"
+    assert row["held"][0]["paths"] == []
+
+
+def test_a_compilation_listing_artist_and_title_together_is_read_as_both(signed_in, account):
+    account.items[2]["_tracks"] = [
+        {"track_number": 1, "artist": "", "title": "Coral Arc - Glass"},
+        {"track_number": 2, "artist": "", "title": "Nova Reef - Shore"},
+    ]
+    _code, envelope = plan("pulsromania")
+    assert [(one["artist"], one["title"]) for one in rows(envelope)["3"]["held"]] == [("", "Nova Reef - Shore")]
+
+
+def test_a_track_the_plan_held_is_held_by_its_number_when_its_file_says_nothing(
+    signed_in, account, tmp_path, silence
+):
+    """The plan's hold by track number, alone: the file carries no tags, so the
+    check by tags cannot be what holds it back."""
+    account.archives["3"] = archive({
+        "Various Artists - Compiled - 01 Coral Arc - Glass.flac":
+            track_file(tmp_path, silence, "g.flac", "Coral Arc", "Glass"),
+        "Various Artists - Compiled - 02 Untitled.flac": silence,
+    })
+    fetch("--seller", "pulsromania", "--batch", "Batch One")
+    assert "Various Artists - Compiled - 02 Untitled.flac" not in staged(signed_in, "Batch One")
+    assert bandcamp_cli.fetched(signed_in)["3"]["held"] == ["Various Artists - Compiled - 02 Untitled.flac"]
+
+
+def test_a_purchase_already_recorded_is_done_when_its_item_runs_again(signed_in, account):
+    """A cancel between the record and the item's completion: the resume fetches
+    nothing a second time and leaves the record as it was."""
+    code, envelope = fetch("--seller", "otherlabel", "--batch", "Batch One")
+    assert code == int(ExitCode.OK), envelope
+    job_id = _last_job()
+    downloads = list(account.downloaded)
+    recorded = bandcamp_cli.fetched(signed_in)["4"]
+    with jobs.open_store() as store:
+        job = jobs.get(store, job_id)
+        [one] = jobs.items(store, job_id)
+    assert bandcamp_cli.handle_fetch(job, one, signed_in) == jobs.Produced()
+    assert account.downloaded == downloads
+    assert bandcamp_cli.fetched(signed_in)["4"] == recorded
+
+
+def test_a_purchase_no_longer_downloadable_fails_permanently(signed_in, account):
+    original = account._page
+
+    def without_link(items, end, *, more):
+        page = original(items, end, more=more)
+        page["redownload_urls"].pop("p2004", None)
+        return page
+
+    fetch("--seller", "otherlabel")  # queues and drives with the planned link
+    bandcamp_cli.forget()
+    account._page = without_link
+    with jobs.open_store() as store:
+        job = jobs.get(store, _last_job())
+        [one] = jobs.items(store, job.job_id)
+    # The record holds it now; drop the record so the item runs again.
+    config.state_path("bandcamp_fetched", signed_in).unlink()
+    with pytest.raises(CratekitError) as caught:
+        bandcamp_cli.handle_fetch(job, one, signed_in)
+    assert caught.value.cause.reason == "unavailable-permanent"
+
+
+def _parked_job(account) -> str:
+    """A fetch parked on its first download page, with its item still pending."""
+    original = account.get
+
+    def refusing(url, *, cookie):
+        if url.startswith("https://bandcamp.com/download"):
+            return type(original(url, cookie=cookie))(403, "forbidden")
+        return original(url, cookie=cookie)
+
+    account.get = refusing
+    fetch("--seller", "otherlabel")
+    account.get = original
+    bandcamp_cli.forget()
+    job_id = _last_job()
+    with jobs.open_store() as store:
+        assert str(jobs.get(store, job_id).state) == "blocked"
+    return job_id
+
+
+def _resume(job_id: str) -> tuple[jobs.Job, jobs.Item]:
+    with jobs.open_store() as store:
+        drive(cli_jobs.argv_for(jobs.get(store, job_id)))
+        job = jobs.get(store, job_id)
+        [one] = jobs.items(store, job_id)
+    return job, one
+
+
+def test_a_listing_the_session_is_refused_at_parks_the_resumed_job(signed_in, account):
+    job_id = _parked_job(account)
+    account.expired = True
+    job, one = _resume(job_id)
+    assert str(job.state) == "blocked" and job.cause.reason == "auth-failed"
+    assert str(one.state) == "pending"
+
+
+def test_a_listing_bandcamp_cannot_answer_parks_the_resumed_job(signed_in, account):
+    job_id = _parked_job(account)
+    account.post_json = lambda url, payload, *, cookie: type(account.get("x", cookie=COOKIE))(503, "down")
+    job, one = _resume(job_id)
+    assert str(job.state) == "blocked" and job.cause.reason == "unavailable-transient"
+    assert str(one.state) == "pending"
+
+
+def test_a_session_removed_since_the_queue_parks_the_resumed_job(signed_in, account):
+    job_id = _parked_job(account)
+    secrets.delete(SESSION)
+    job, one = _resume(job_id)
+    assert str(job.state) == "blocked" and job.cause.reason == "auth-failed"
+    assert str(one.state) == "pending"
+
+
+def test_a_library_unmounted_since_the_queue_parks_the_resumed_job(signed_in, account, library):
+    import shutil as _shutil
+
+    job_id = _parked_job(account)
+    _shutil.rmtree(library / "Music")
+    job, one = _resume(job_id)
+    assert str(job.state) == "blocked" and job.cause.reason == "library-volume-unmounted"
+    assert str(one.state) == "pending"

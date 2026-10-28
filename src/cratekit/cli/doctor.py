@@ -1708,6 +1708,10 @@ def _check_keychain(inputs: _Inputs) -> Finding:
 #: added there cannot be silently unchecked (P3, P4).
 CREDENTIALS_BY_CHECK: Mapping[str, tuple[secrets.Credential, ...]] = MappingProxyType(
     {
+        # U176. Declared by no verb, so it reports and never fails: a Bandcamp
+        # session is needed only by someone who buys there, and the verbs
+        # that spend it refuse with the login step themselves.
+        "credential.bandcamp": (secrets.Credential.BANDCAMP_SESSION,),
         "credential.provider": (secrets.Credential.PROVIDER_SESSION,),
         "credential.recognition": (
             secrets.Credential.IDENTIFY_KEY,
@@ -1722,6 +1726,7 @@ CREDENTIALS_BY_CHECK: Mapping[str, tuple[secrets.Credential, ...]] = MappingProx
 #: names three separate failure types to avoid.
 _CREDENTIAL_REMEDY: Mapping[str, Remedy] = MappingProxyType(
     {
+        "credential.bandcamp": Remedy.AUTHENTICATE_PROVIDER,
         "credential.provider": Remedy.AUTHENTICATE_PROVIDER,
         "credential.recognition": Remedy.SET_CREDENTIAL,
     }

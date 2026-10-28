@@ -47,6 +47,7 @@ import zipfile
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
+from email.message import Message
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
 from urllib.parse import urlsplit, urlunsplit
@@ -69,11 +70,20 @@ MAX_PAGES = 1000
 LOSSLESS_ENCODING = "flac"
 LOSSY_ENCODING = "mp3-320"
 
+#: Every lossless format a release may offer, in the order one is taken. FLAC
+#: first, since it carries its tags the way the rest of the library does.
+LOSSLESS_ENCODINGS = (LOSSLESS_ENCODING, "alac", "aiff-lossless", "wav")
+
 #: Statuses that judge the SESSION, as against the request.
 REJECTED_STATUSES = frozenset({401, 403})
 
 #: The suffix of a seller account's own address.
 _ACCOUNT_HOST = ".bandcamp.com"
+
+#: The hosts the session is ever sent to: Bandcamp itself and the file servers
+#: its download pages name. A link anywhere else, or over plain http, is never
+#: requested, because every request carries the session.
+TRUSTED_HOSTS = ("bandcamp.com", "bcbits.com")
 
 #: Suffixes a release may carry that are audio. Everything else in a release's
 #: archive, the cover image above all, stays in the holding folder and goes
@@ -220,6 +230,15 @@ def seller_of(item_url: str) -> str:
     return host
 
 
+def trusted(link: str) -> bool:
+    """Whether ``link`` may be requested with the session: https, to Bandcamp."""
+    parts = urlsplit(link)
+    host = (parts.hostname or "").lower()
+    return parts.scheme == "https" and any(
+        host == domain or host.endswith("." + domain) for domain in TRUSTED_HOSTS
+    )
+
+
 def _number(value: object) -> int | None:
     try:
         number = int(str(value))
@@ -293,13 +312,15 @@ def _pages(
         )
         if not isinstance(page, Mapping):
             raise BandcampUnavailable(f"a page of {what} is not an object")
-        items = page.get("items")
-        if items is None and page.get("error"):
+        if page.get("error"):
             raise SessionRejected(f"Bandcamp refused the session when asked for {what}")
+        items = page.get("items")
+        if not isinstance(items, list):
+            # A page with no list at all is not the empty page that ends a
+            # listing; read as one it would call every purchase absent.
+            raise BandcampUnavailable(f"a page of {what} holds no list of items")
         if not items:
             return
-        if not isinstance(items, list):
-            raise BandcampUnavailable(f"a page of {what} holds no list of items")
         for item in items:
             if isinstance(item, Mapping):
                 yield _purchase(item, page, hidden=hidden)
@@ -395,7 +416,7 @@ def download_offers(transport: Transport, cookie: str, page_url: str) -> dict[st
     offers: dict[str, str] = {}
     for encoding, offer in downloads.items():
         link = offer.get("url") if isinstance(offer, Mapping) else None
-        if isinstance(link, str) and link.startswith("http"):
+        if isinstance(link, str) and trusted(link):
             offers[str(encoding)] = link
     return offers
 
@@ -428,7 +449,7 @@ def _prepared(transport: Transport, cookie: str, link: str) -> str:
     link a browser follows, and the archive is checked when it arrives.
     """
     parts = urlsplit(link)
-    if "/download/" not in parts.path:
+    if "/download/" not in parts.path or not trusted(link):
         return link
     stat = urlunsplit(
         (
@@ -450,11 +471,17 @@ def _prepared(transport: Transport, cookie: str, link: str) -> str:
     if answer.get("result") != "ok":
         raise BandcampUnavailable("Bandcamp has not finished preparing the release")
     ready = answer.get("download_url") or answer.get("retry_url")
-    return ready if isinstance(ready, str) and ready.startswith("http") else link
+    return ready if isinstance(ready, str) and trusted(ready) else link
 
 
 def fetch(transport: Transport, cookie: str, link: str, holding: Path) -> Path:
-    """Stream one release into ``holding`` and return the file that arrived."""
+    """Stream one release into ``holding`` and return the file that arrived.
+
+    A link that is not :func:`trusted` is refused before any request, since the
+    request would carry the session to it.
+    """
+    if not trusted(link):
+        raise BandcampUnavailable("the release's link does not lead to Bandcamp over https")
     holding.mkdir(parents=True, exist_ok=True)
     return transport.download(_prepared(transport, cookie, link), holding, cookie=cookie)
 
@@ -512,20 +539,21 @@ IMPERSONATE = "chrome"
 #: Seconds to wait for an answer to begin.
 TIMEOUT_S = 60
 
-_DISPOSITION = re.compile(r"""filename\*?=(?:UTF-8'')?["']?(?P<name>[^"';]+)""", re.IGNORECASE)
-
-
 def _disposition_name(headers: Mapping[str, str]) -> str:
+    """The file name a download's ``Content-Disposition`` gives, as a base name.
+
+    Read by the standard library's header parser, which knows the quoted and the
+    encoded forms, so a name holding an apostrophe or a semicolon arrives whole.
+    """
     for key, value in headers.items():
         if key.lower() != "content-disposition":
             continue
-        found = _DISPOSITION.search(value or "")
-        if found:
-            from urllib.parse import unquote
-
-            name = PurePosixPath(unquote(found.group("name")).replace("\\", "/")).name
-            if name and not name.startswith("."):
-                return name
+        parsed = Message()
+        parsed["content-disposition"] = value or ""
+        given = parsed.get_filename() or ""
+        name = PurePosixPath(given.replace("\\", "/")).name
+        if name and not name.startswith("."):
+            return name
     return ""
 
 
@@ -601,6 +629,7 @@ __all__ = [
     "HIDDEN_PATH",
     "ITEMS_PATH",
     "LOSSLESS_ENCODING",
+    "LOSSLESS_ENCODINGS",
     "LOSSY_ENCODING",
     "PAGE_SIZE",
     "Purchase",
@@ -608,11 +637,13 @@ __all__ = [
     "SUMMARY_PATH",
     "SessionRejected",
     "Track",
+    "TRUSTED_HOSTS",
     "Transport",
     "download_offers",
     "fetch",
     "newest_first",
     "read_collection",
     "seller_of",
+    "trusted",
     "unpack",
 ]

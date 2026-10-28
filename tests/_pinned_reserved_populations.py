@@ -260,7 +260,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'rate-limited',
     ],
     # 2026-10-28, U176: the Bandcamp client and its two verbs joined.
-    'acquire/bandcamp.py': ['content-disposition', 'mp3-320'],
+    'acquire/bandcamp.py': ['aiff-lossless', 'content-disposition', 'mp3-320'],
     'acquire/bandcamp_cli.py': [
         'auth-failed',
         'bandcamp-fetch',
