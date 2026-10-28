@@ -39104,3 +39104,97 @@ so nothing has paid it.
 **Closes when:** local units open pull requests, and the head reader learns
 `unit/uN-` with the unit to issue map `board.py` already keeps; or METHOD says
 local units keep the local merge. Ledger only.
+
+---
+
+## R-1061. install.release infers the installed extras from what is present, so a vocals install reads as analysis too
+
+**Found:** at the review of #340, U159, 2026-10-28.
+
+**The mechanism.** `_installed_extras` in `src/cratekit/cli/doctor.py` counts
+an extra as installed when every distribution it requires is present. The
+vocals extra's `panns-inference` pulls in librosa, numpy and scipy, which is
+the whole analysis extra, so the upgrade command names an extra the person
+never chose.
+
+**Measured cost.** Read off real metadata at the review; a torch install was
+not driven. The extra costs disk and install time, nothing in the library.
+
+**Closes when:** the check reads pipx's own record of the spec as typed,
+`pipx_metadata.json`'s `main_package.package_or_url`, when it is present, and
+falls back to the inference only without it. Ledger only.
+
+---
+
+## R-1062. The missing extra stub still prints a folder install command on a release install
+
+**Found:** at the build of #340, U159, 2026-10-28.
+
+**The mechanism.** A module switched on without its extra attaches a stub
+that prints `pipx install --force '.[analysis,vocals]'`
+(`extras.install_command`), pointed at the folder a person installed from.
+Since U159 the README installs a release tag from GitHub, so a person who
+followed it has no folder, and the command the stub prints installs nothing
+from where they stand.
+
+**Measured cost.** Not driven. Read from `tests/test_install_command.py`,
+which pins the folder form. The person's way out is the README's own extras
+command with the tag, which the stub does not print.
+
+**Closes when:** the stub reads the install origin doctor's `install.release`
+check reads (`doctor._install_origin`) and prints the release form,
+`"cratekit[...] @ git+<url>@<tag>"`, for a release install. Ledger only.
+
+---
+
+## R-1063. A pull request whose branch merged main before landing is listed in the notes without its number
+
+**Found:** at the review of #340, U159, 2026-10-28.
+
+**The mechanism.** `landings_since` in `scripts/release.py` matches a pull
+request by its merge commit or by its head being the second parent of a first
+parent merge. Pull requests 306, 312 and 313 merged `main` into their branch
+after their last head, so neither matches, and each lands under "Merged
+without a pull request" with its merge subject.
+
+**Measured cost.** Driven on a full clone; cosmetic, the landing is listed.
+
+**Closes when:** a head that is an ancestor of a merge's second parent also
+matches. Ledger only.
+
+---
+
+## R-1064. Twenty three tests build a real Probes and read the suite's own install origin
+
+**Found:** at the review of #340, U159, 2026-10-28.
+
+**The mechanism.** `tests/test_backup_comparison.py`, `tests/test_cutover_cli.py`,
+`tests/test_cli_contract.py`, `tests/test_config.py` and one test in
+`tests/test_doctor.py` build `doctor.Probes()` with its defaults, so the new
+`install_origin` seam reads the copy the suite runs on. Today that reads as an
+index install because the source tree's egg-info comes first on the path, so
+no test reaches `git ls-remote`.
+
+**Measured cost.** None here: a spy over the full suite saw 0 release reads.
+On a checkout without the egg-info and a copy installed from git, each of the
+23 would run `git ls-remote` with a ten second timeout.
+
+**Closes when:** those tests build their probes from `doctor_machines.green`
+or pass the two release seams. Ledger only.
+
+---
+
+## R-1065. A battery verdict does not name the baseline it was read against, so a baseline on the same commit clears a release
+
+**Found:** at the review of #340, U159, 2026-10-28.
+
+**The mechanism.** `cloud_battery.py compare` records `<sha> clean` for the
+commit it measured, and `release.py cut` reads only that. A fresh container
+that measures its baseline on the release commit and compares on the same
+commit gets a vacuous clean: every failure is the baseline's.
+
+**Measured cost.** Not driven to a wrong release. The release skill measures
+the baseline only when none exists on the machine, which is where it bites.
+
+**Closes when:** the verdict carries the baseline's commit and `cut` refuses a
+verdict whose baseline is the commit it clears. Ledger only.
