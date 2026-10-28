@@ -1255,6 +1255,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'internal-error',
         'land-native',
         'library-export-unusable',
+        # 2026-10-28, U156: --label on an unreachable library root.
+        'library-root-unreachable',
         'rows-await-analysis',
         'vox-not-written',
         'vox-unscored',
@@ -2537,6 +2539,8 @@ PINNED_LITERAL_HOLDERS = {
         'intake-list-unusable',
         'internal-error',
         'library-export-unusable',
+        # 2026-10-28, U156: --label on an unreachable library root.
+        'library-root-unreachable',
     ],
     'intake/landing.py': [
         'decision-stale',

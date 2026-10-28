@@ -270,8 +270,9 @@ def _record_labels(declared) -> Step:
     else:
         detail = (
             f"no verb files a landed label batch into {catalog.display} after its "
-            f"landing: the landing files it there itself, from its manifest or "
-            f"--label, so nothing is planned here"
+            f"landing: a landing files it there itself, from its manifest into "
+            f"its intake file on the xml bridge, and from its manifest or --label "
+            f"through the database on a native intake tree, so nothing is planned here"
         )
     return Step(key=RECORD_LABELS, title="file landed label batches", state=LISTED, detail=detail)
 

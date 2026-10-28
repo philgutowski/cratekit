@@ -292,7 +292,11 @@ def build_land(parser, entry) -> None:
 
 
 def _label_flag(
-    given: str | None, *, manifest: landing.LabelManifest | None, native: bool
+    given: str | None,
+    *,
+    manifest: landing.LabelManifest | None,
+    medium: ingest.IntakeMedium,
+    cfg: config.Config,
 ) -> str | None:
     """The label ``--label`` names, or a refusal before the gate with nothing moved (U156).
 
@@ -300,7 +304,10 @@ def _label_flag(
     alone, and a flag it would ignore is a label batch landed filed under
     nothing. NOT BESIDE A MANIFEST, whose rows name their own labels, since
     two answers to one question is a guess at which one wins. NOT BLANK, since
-    a playlist named for nothing sits in the tree for good.
+    a playlist named for nothing sits in the tree for good. AND NOT ON A
+    LIBRARY WHOSE ROOT IS NOT THERE, said as that: the medium was not read, so
+    telling the person their tree is on the bridge, and to drop the flag, would
+    land the batch filed under nothing once the volume is back.
     """
     if given is None:
         return None
@@ -322,7 +329,16 @@ def _label_flag(
             origin=_ORIGIN,
             detail={"label": given, "manifest": str(manifest.path)},
         )
-    if not native:
+    if medium.declared is None:
+        raise refuse(
+            "library-root-unreachable",
+            f"the library root {cfg.library.root} is not reachable, so its taxonomy and "
+            f"its intake tree could not be read and {flag} has no tree to file the "
+            f"batch under; mount the library volume and run it again, nothing was moved",
+            origin=_ORIGIN,
+            detail={"root": str(cfg.library.root), "label": given},
+        )
+    if not medium.native:
         raise refuse(
             "intake-list-unusable",
             f"{flag} files the batch under its label through the database, and this "
@@ -668,7 +684,7 @@ def intake_land(ctx) -> Envelope:
         )
     if ctx.args.set_job:
         set_playlist.assert_native(medium, landing=True)
-    label = _label_flag(ctx.args.label, manifest=manifest, native=medium.native)
+    label = _label_flag(ctx.args.label, manifest=manifest, medium=medium, cfg=cfg)
     if medium.native:
         # AND WHICH FILES ARE HEARTS (U120), read from the same jobs the same
         # way, each with the month the account dated it into. The native

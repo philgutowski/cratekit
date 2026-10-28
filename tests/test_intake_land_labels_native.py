@@ -664,3 +664,132 @@ def test_an_answer_the_database_does_not_hold_is_refused():
             years=(replace(written.years[0], read_back=("2", "1", "3")),), left=(),
         )
     )
+
+
+# ---------------------------------------------------------------------------
+# The first review round
+# ---------------------------------------------------------------------------
+
+
+def test_label_on_an_unreachable_library_names_the_volume_and_not_the_bridge(
+    native_library, silence
+):
+    """The medium was not read, so the refusal must not say the tree is on the
+    bridge or tell the person to drop --label, which would land the batch
+    filed under nothing once the volume is back."""
+    cfg, _root = native_library
+    _dated(cfg, silence, "One.flac", "2021")
+    root = Path(cfg.library.root)
+    root.rename(root.with_name("unmounted"))
+
+    code, envelope = drive(_land("--label", "PULS"))
+
+    assert code != int(ExitCode.OK)
+    assert envelope["cause"]["reason"] == "library-root-unreachable", envelope
+    message = envelope["cause"]["message"]
+    assert "mount the library volume" in message and "bridge" not in message
+    assert _staged_names(cfg) == ["One.flac"]
+
+
+def test_a_smart_playlist_where_a_year_playlist_belongs_is_refused_before_the_gate(
+    native_library, silence
+):
+    """The binding refuses a membership in one at the write, after the moves."""
+    cfg, _root = native_library
+    tree = cutover_fixtures.add_folder(cfg, TREE)
+    label = cutover_fixtures.add_folder(cfg, "PULS", under=tree)
+    smart = _playlist(cfg, "PULS 2021", label)
+    conn = sqlite3.connect(cfg.library.db_path)
+    try:
+        conn.execute("UPDATE djmdPlaylist SET Attribute = 4 WHERE ID = ?", (smart,))
+        conn.commit()
+    finally:
+        conn.close()
+    _dated(cfg, silence, "One.flac", "2021")
+
+    code, envelope = drive(_land("--label", "PULS"))
+
+    _assert_refused_before_the_gate(cfg, code, envelope, "intake-list-unusable")
+    assert "a smart playlist named 'PULS 2021'" in envelope["cause"]["message"]
+
+
+def test_one_label_spelled_two_ways_in_a_manifest_is_one_folder(native_library, silence, tmp_path):
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    _stage(cfg, silence, "Two.flac")
+    composed = "Kölsch"
+    manifest = _manifest(
+        tmp_path,
+        [
+            ("1", "Probe", "One", composed, 2025),
+            ("2", "Probe", "Two", unicodedata.normalize("NFD", composed), 2025),
+        ],
+    )
+
+    code, acted, _ = _two_acts(_land("--manifest", str(manifest)))
+
+    assert code == int(ExitCode.OK), acted
+    assert _filed(cfg) == {composed: {f"{composed} 2025": ["One", "Two"]}}
+
+
+def test_a_file_two_rows_file_in_two_years_names_both_on_its_item(
+    native_library, silence, tmp_path
+):
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    manifest = _manifest(
+        tmp_path,
+        [("1", "Probe", "One", "PULS", 2020), ("2", "Probe", "One", "PULS", 2023)],
+    )
+
+    code, acted, refused = _two_acts(_land("--manifest", str(manifest)))
+
+    assert code == int(ExitCode.OK), acted
+    assert _item_labels(refused) == {"One.flac": "PULS 2023, PULS 2020"}
+    assert _filed(cfg) == {"PULS": {"PULS 2023": ["One"], "PULS 2020": ["One"]}}
+
+
+def test_a_screen_with_nothing_to_file_says_so(native_library, silence):
+    cfg, _root = native_library
+    _dated(cfg, silence, "Undated.flac", None)
+
+    code, acted, refused = _two_acts(_land("--label", "PULS"))
+
+    assert code == int(ExitCode.OK), acted
+    assert _shown(refused)["labels filed under"].startswith("nothing")
+    assert _shown(refused)["label playlists"] == []
+    assert _tree_folders(cfg) == []
+
+
+@pytest.mark.parametrize(
+    ("day", "why"),
+    [
+        (None, "carries no date tag"),
+        ("0000", "names 0, which is no release year"),
+        ("1899-01-01", "names 1899"),
+        ("2999", "names 2999"),
+        ("soon", "names no year"),
+    ],
+)
+def test_a_year_with_no_reason_behind_it_is_named_with_why(tmp_path, day, why):
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    path = synth_container(scratch, ".flac")
+    if day is not None:
+        assert tags.write_tags(path, {"date": day})
+    year, said = label_filing._read_year(path)
+    assert year is None and why in said
+
+
+def test_next_year_is_a_release_year_and_a_failed_read_is_said_apart(tmp_path):
+    from datetime import date
+
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    path = synth_container(scratch, ".flac")
+    assert tags.write_tags(path, {"date": str(date.today().year + 1)})
+    assert label_filing.year_of(path) == date.today().year + 1
+    broken = tmp_path / "broken.flac"
+    broken.write_bytes(b"not a container at all")
+    year, said = label_filing._read_year(broken)
+    assert year is None and "could not be read" in said

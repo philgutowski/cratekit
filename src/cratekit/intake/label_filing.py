@@ -55,6 +55,7 @@ import re
 import unicodedata
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -219,14 +220,31 @@ def _live_children(db: Any, parent_id: str | None) -> list[Any]:
     return [row for row in under if not rb_writer.node_removed(row)]
 
 
+def _kind_of(row: Any) -> str:
+    """What a node is, in a person's words: a folder, a playlist or a smart playlist."""
+    if rb_writer.is_folder(row):
+        return "folder"
+    return "playlist" if int(getattr(row, "Attribute", 0) or 0) == 0 else "smart playlist"
+
+
+def _of_kind(row: Any, *, folder: bool) -> bool:
+    """Whether a node is a folder, or for ``folder=False`` a plain playlist.
+
+    A SMART PLAYLIST IS NEITHER. The binding refuses a membership in one at
+    the write, after the files have moved, so it is refused here, before the
+    gate, as a node of the other kind.
+    """
+    return _kind_of(row) == ("folder" if folder else "playlist")
+
+
 def _sole(children: Sequence[Any], name: str, *, folder: bool, where: str) -> str:
     """The id of the one live child named ``name`` of the kind asked for, or empty, or a refusal."""
     wanted = _folded(name)
     named = [row for row in children if _folded(str(getattr(row, "Name", "") or "")) == wanted]
     kind = "folder" if folder else "playlist"
     for row in named:
-        if rb_writer.is_folder(row) != folder:
-            other = "playlist" if folder else "folder"
+        if not _of_kind(row, folder=folder):
+            other = _kind_of(row)
             raise refuse(
                 "intake-list-unusable",
                 f"a {other} named {name!r} sits {where} where the label filing "
@@ -287,10 +305,39 @@ def _resolve(
     return tree_folder, tuple(folders), tuple(years)
 
 
+#: The first year a release can carry. A date tag below it, ``0000`` the commonest,
+#: is a placeholder and not a year, and a year after next is a typing slip.
+FIRST_YEAR = 1900
+
+
+def _read_year(path: Path) -> tuple[int | None, str]:
+    """The year a file's date tag names and, when there is none, why, in a person's words.
+
+    A TAG THAT COULD NOT BE READ IS NOT A TAG THAT IS ABSENT (pattern 1), so the
+    two are said apart: one is a fact about the file, the other about the read.
+    """
+    try:
+        stored = tags.read_tags_checked(path, ("date",))["date"]
+    except tags.TagReadFailed as exc:
+        return None, f"its tags could not be read ({exc})"
+    if not stored:
+        return None, "it carries no date tag"
+    found = _YEAR.match(stored)
+    if found is None:
+        return None, f"its date tag {stored!r} names no year"
+    year = int(found.group(1))
+    if not FIRST_YEAR <= year <= _today().year + 1:
+        return None, f"its date tag {stored!r} names {year}, which is no release year"
+    return year, ""
+
+
+def _today() -> date:
+    return date.today()
+
+
 def year_of(path: Path) -> int | None:
-    """The year a file's date tag names, its leading four digits, or None."""
-    found = _YEAR.match(tags.read_tag(path, "date") or "")
-    return int(found.group(1)) if found else None
+    """The year a file's date tag names, its leading four digits within reason, or None."""
+    return _read_year(path)[0]
 
 
 def plan_for_label(
@@ -309,11 +356,11 @@ def plan_for_label(
     from cratekit.intake import landing
 
     node = _catalog_node(medium)
-    name = label.strip()
+    name = _folded(label.strip())
     filed: dict[str, dict[int, list[str]]] = {}
     unfiled: list[Unfiled] = []
     for source, target in files:
-        year = year_of(source)
+        year, why = _read_year(source)
         if year is None:
             unfiled.append(
                 Unfiled(
@@ -321,7 +368,7 @@ def plan_for_label(
                     reason=landing.NO_LABEL,
                     sentence=(
                         f"{target.name} was filed under no {name} year playlist, because "
-                        f"its date tag names no year; it is in the intake playlist"
+                        f"{why}; it is in the intake playlist"
                     ),
                 )
             )
@@ -363,13 +410,14 @@ def plan_for_manifest(
     index = match.index_paths(sources, template=match_cli.library_template(cfg))
     ids = {source.resolve(): str(target) for source, target in files}
     matched, unmatched = landing.match_label_rows(manifest.rows, index, ids)
-    filed = {
-        label: {
-            year: [target for _row, targets in rows for target in targets]
-            for year, rows in by_year.items()
-        }
-        for label, by_year in matched.items()
-    }
+    # ONE LABEL UNDER ITS FOLDED NAME: two rows spelling one label composed and
+    # decomposed are one folder, never two siblings that fold to one name.
+    filed: dict[str, dict[int, list[str]]] = {}
+    for label, by_year in matched.items():
+        for year, rows in by_year.items():
+            filed.setdefault(_folded(label), {}).setdefault(year, []).extend(
+                target for _row, targets in rows for target in targets
+            )
     tree_folder, folders, years = _resolve(db, node, filed)
     return LabelPlan(
         tree_id=node.id,
@@ -437,8 +485,16 @@ def supported_only(plan: LabelPlan, kept: set[str]) -> LabelPlan:
 
 
 def label_of(plan: LabelPlan) -> dict[str, str]:
-    """Each filed target and the playlist it goes in, for the gate screen's items."""
-    return {target: one.name for one in plan.years for target in one.targets}
+    """Each filed target and every playlist it goes in, for the gate screen's items.
+
+    EVERY ONE, since two manifest rows can tie one file to two years, and a
+    column naming the first would hide the second write.
+    """
+    named: dict[str, list[str]] = {}
+    for one in plan.years:
+        for target in one.targets:
+            named.setdefault(target, []).append(one.name)
+    return {target: ", ".join(names) for target, names in named.items()}
 
 
 def facts(plan: LabelPlan) -> dict[str, Any]:
@@ -453,6 +509,8 @@ def facts(plan: LabelPlan) -> dict[str, Any]:
         if plan.source == MANIFEST
         else f"--label {plan.label}, each file's year from its date tag"
     )
+    if not plan.years:
+        where = "nothing, since no file has a label and year to be filed under"
     shown: dict[str, Any] = {
         "labels filed from": said,
         "labels filed under": where,
@@ -524,7 +582,7 @@ class Written:
 def _live_row(db: Any, row_id: str, *, folder: bool, what: str) -> Any:
     """The planned node, refused as stale when it is gone, removed or of the other kind."""
     row = db.get_playlist(ID=row_id)
-    if row is None or rb_writer.node_removed(row) or rb_writer.is_folder(row) != folder:
+    if row is None or rb_writer.node_removed(row) or not _of_kind(row, folder=folder):
         raise refuse(
             "decision-stale",
             f"the {what} (row {row_id}) the plan files into is not live any more, so "
