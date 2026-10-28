@@ -1580,6 +1580,10 @@ HEAD_QUESTION = "question for phillip"
 HEAD_MACHINE = "needs the machine"
 HEAD_LANDED = "landed"
 HEAD_WITHDRAWN = "withdrawn"
+# Phillip answers on the decisions page, and the dispatcher carries the answer
+# to the card in a comment of its own, which the harness footer marks as a
+# session's. Under this heading it is read as his reply, never as a hold.
+HEAD_ANSWER = "answer from phillip"
 
 # A hold older than this with nothing landed after it is read as a session
 # that died, and the next session resumes the card from whatever it pushed.
@@ -1601,6 +1605,10 @@ def comment_heading(body: str) -> str:
     return ""
 
 
+def _relayed_answer(comment: dict) -> bool:
+    return comment_heading(comment.get("body") or "") == HEAD_ANSWER
+
+
 def _when(comment: dict) -> str:
     return comment.get("created_at") or ""
 
@@ -1619,7 +1627,7 @@ def cloud_state(node: dict, comments: list[dict]) -> tuple[str, str]:
         return "blocked", "waits on " + ", ".join(f"#{d}" for d in node["open_deps"])
 
     ordered = sorted(comments, key=_when)
-    mine = [c for c in ordered if SESSION_MARK in (c.get("body") or "")]
+    mine = [c for c in ordered if SESSION_MARK in (c.get("body") or "") and not _relayed_answer(c)]
     if not mine:
         return "ready", "no cloud session has taken it"
     # The state is the session's last comment that is not a progress note,
@@ -1633,7 +1641,7 @@ def cloud_state(node: dict, comments: list[dict]) -> tuple[str, str]:
     heading, since = last_mine
     after = [
         c for c in ordered
-        if _when(c) > since and SESSION_MARK not in (c.get("body") or "")
+        if _when(c) > since and (SESSION_MARK not in (c.get("body") or "") or _relayed_answer(c))
     ]
     if heading == HEAD_WITHDRAWN:
         return "ready", f"withdrawn {since[:16]}, no session holds it"

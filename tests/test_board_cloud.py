@@ -174,6 +174,20 @@ def test_a_brainstorm_waits_for_phillip_and_his_reply_releases_it(board):
     assert board.cloud_state(node, question)[0] == "waiting-on-phillip"
 
 
+def test_an_answer_relayed_from_the_decisions_page_releases_the_card(board):
+    node = _node(board, _issue(1, "U1: a"))
+    asked = [_mine("Brainstorm", 3, "which of A or B?")]
+    relayed = asked + [_mine("Answer from Phillip", 1, "B, because")]
+    assert board.cloud_state(node, relayed)[0] == "answered"
+    question = [_mine("Question for Phillip", 3), _mine("Answer from Phillip", 1)]
+    assert board.cloud_state(node, question)[0] == "answered"
+
+
+def test_a_relayed_answer_alone_is_not_a_hold(board):
+    node = _node(board, _issue(1, "U1: a"))
+    assert board.cloud_state(node, [_mine("Answer from Phillip", 1)])[0] == "ready"
+
+
 def test_a_card_that_needs_the_machine_is_set_aside_for_good(board):
     node = _node(board, _issue(1, "U1: a"))
     aside = [_mine("Needs the machine", 3), _theirs("ok", 1)]
