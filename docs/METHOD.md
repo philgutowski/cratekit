@@ -402,11 +402,16 @@ rules above, and `docs/history/` has how they ran.
 
 ## The cloud lane, decided 2026-10-27
 
-**The cloud is where Cratekit is built.** A scheduled task on the Claude Code
-cloud environment starts a fresh session on Opus 5.5 every hour. The session
+**The cloud is where Cratekit is built.** A dispatcher, one long lived cloud
+session with the repository attached, fills the cloud's lanes with fresh
+worker sessions on Opus 5.5, one card each, following the `cloud-dispatch`
+skill. A scheduled task wakes it every hour, and a worker wakes it the moment
+it takes or frees a lane. A scheduled task made from the web dialog came out
+as a chat task with no repository twice on 2026-10-27, which is why the
+dispatcher exists: a session it creates carries the repository. Each worker
 runs the `cloud-unit` skill, in the repository's Claude Code skills
 directory, which is this file's pipeline with what a cloud container changes:
-it takes the card `board.py cloud` names, brainstorms it if it is an idea,
+it takes its card, brainstorms it if it is an idea,
 plans, builds, reviews, measures the mutation table, writes the record,
 merges to `main` with the closing trailer and pushes `main`. Phillip
 authorized the cloud to write `main` on 2026-10-27. **Only a card that
@@ -420,9 +425,13 @@ labelled `attended` is never offered at all.
 label and no status. Its hold is its own comment headed `Started`, and its
 plan, progress notes, brainstorm, set-aside and landing are comments headed
 `Plan`, `Progress`, `Brainstorm`, `Needs the machine` and `Landed`; Phillip's
-answer is any comment without the session footer after the question. **One
-card holds the whole lane**, because two builders would each merge `main`
-under the other, which is the halt Relay called `remote_advanced`. A hold
+answer is any comment without the session footer after the question. **The
+cloud builds three cards at once**, decided 2026-10-28 for the backlog
+(`CLOUD_LANES` in `scripts/board.py`): each worker merges the latest `main`
+into its branch and runs the battery again before it merges, so two builders
+landing in either order is the case the repository was already built for
+(restart fragments, residuals numbered at landing, per module pins). A hold
+beyond the lane count withdraws, the earliest holds keeping theirs. A hold
 with no comment for eight hours is a session that died, and the next one
 resumes it from its pushed branch.
 
