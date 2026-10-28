@@ -70,8 +70,8 @@ description = "_check_release: any parseable installed version passes, so a copy
 file = "src/cratekit/cli/doctor.py"
 surface = "user"
 tests = ["tests/test_doctor.py"]
-old = '''    if installed is not None and installed >= newest:'''
-new = '''    if installed is not None:'''
+old = '''    if installed >= newest:'''
+new = '''    if True:'''
 
 [[rows]]
 id = "M9_extras_dropped"
