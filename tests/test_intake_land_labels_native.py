@@ -312,6 +312,8 @@ def test_an_existing_year_playlist_gains_members_and_loses_none(native_library, 
     assert [name for _i, name, _a in _children(cfg, tree)] == ["PULS"]
     nodes = {name: node for node, name, _a in _children(cfg, label)}
     assert nodes["PULS 2021"] == year_id and nodes["PULS 2019"] == held_id
+    # A node this write makes goes last among its siblings, the residual's order.
+    assert [name for _i, name, _a in _children(cfg, label)] == ["PULS 2021", "PULS 2019", "PULS 2022"]
     members = _members(cfg, year_id)
     assert members[0] == "1", "the member the playlist held was lost or moved"
     assert len(members) == 2
