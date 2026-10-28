@@ -713,3 +713,310 @@ def test_a_job_another_driver_holds_ends_the_pass_with_that_drivers_refusal(
     assert envelope["cause"]["reason"] == "job-driver-held"
     assert intake.job_id in envelope["cause"]["message"]
     assert ("intake", "missing") not in tail.verbs()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6. The review's first round
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_pass_queued_by_hand_and_never_driven_is_the_one_this_verb_takes(
+    machine, monkeypatch, tail
+):
+    """Sitting 47's starting state: sync all typed by hand, its jobs queued and idle.
+
+    The second sync all leaves the playlist out as in flight and queues nothing,
+    and that is not a pass with nothing to do.
+    """
+    cfg, script = machine
+    _account(monkeypatch, script, "101", "102")
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    (intake,) = _by_key("intake.playlist")
+    assert intake.state is jobs.JobState.QUEUED
+
+    code, envelope = drive(["sync", "land"])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert _summary(envelope)["pass_run"] == passed["run_id"]
+    (intake,) = _by_key("intake.playlist")
+    assert intake.state is jobs.JobState.SUCCEEDED
+    assert ("intake", "land") in tail.verbs()
+    notes = [c["detail"] for c in envelope["data"]["checks"] if c["key"] == "sync.land.sync"]
+    assert any(passed["run_id"] in note and intake.job_id in note for note in notes)
+
+
+def test_two_earlier_passes_holding_open_jobs_are_a_choice_named_not_made(
+    machine, monkeypatch, tail
+):
+    cfg, script = machine
+    runs = []
+    with jobs.open_store() as store:
+        for run_id in ("run-one", "run-two"):
+            jobs.enqueue(
+                store,
+                handler_key=registry.entry("intake.playlist").handler_key,
+                payload={"source": f"pl-{run_id}", "run_id": run_id},
+                cfg=cfg,
+                item_ids=("101",),
+            )
+            runs.append(run_id)
+    bind_playlists(monkeypatch)
+
+    code, envelope = drive(["sync", "land"])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    steps = envelope["pending_human_action"]["steps"]
+    assert steps == [f"continue one pass: crate sync land --pass-run {run}" for run in runs]
+    assert not any(argv[:2] == ["intake", "playlist"] for argv in tail.calls), "a pass was chosen"
+
+
+def test_a_listing_with_nothing_nameable_says_so_and_carries_its_failing_row(
+    machine, monkeypatch, tail
+):
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    real = tail.real
+    unlisted = {
+        "key": "intake.missing.unlisted",
+        "title": "unlisted",
+        "status": "fail",
+        "detail": "1 missing track(s) the provider cannot name exactly are NOT in the list",
+        "remedy": None,
+    }
+
+    def listing(argv):
+        if argv[:2] == ["intake", "missing"]:
+            return _ok(
+                {
+                    "checks": [unlisted],
+                    "summary": {"list": None, "unlisted": 1, "owned": 0, "offered": 0},
+                },
+                outcome="no_op",
+            )
+        return real(argv)
+
+    tail.real = listing
+
+    code, envelope = drive(["sync", "land"])
+
+    assert code == int(ExitCode.OK), envelope
+    assert unlisted in envelope["data"]["checks"]
+    detail = _check(envelope, sync_land.MISSING)["detail"]
+    assert "missing and not nameable 1" in detail and "found nothing missing" not in detail
+
+
+def test_an_intake_job_that_ended_failed_names_its_retry_not_a_continuation(
+    machine, monkeypatch, tail
+):
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    code, passed = drive(["sync", "all"])
+    (intake,) = _by_key("intake.playlist")
+    with jobs.open_store() as store:
+        jobs.transition(
+            store,
+            intake.job_id,
+            jobs.JobState.FAILED,
+            cause=Cause(
+                reason="adapter-broken",
+                message="the catalogue broke",
+                remediation=Remediation(remedy=Remedy.REPORT_DEFECT),
+                origin=("test",),
+            ),
+        )
+
+    code, envelope = drive(["sync", "land", "--pass-run", passed["run_id"]])
+
+    assert envelope["cause"]["reason"] == "adapter-broken", envelope
+    steps = envelope["cause"]["remediation"]["steps"]
+    assert not any("--pass-run" in step for step in steps), "a continuation that cannot advance"
+    assert any("start a new pass with: crate sync land" in step for step in steps)
+
+
+def test_a_transient_download_failure_ends_the_pass_and_lands_nothing(
+    machine, monkeypatch, tail
+):
+    """Only a refusal for good is skipped; a failure that waiting mends is not landed."""
+    cfg, script = machine
+    _account(monkeypatch, script, "101", "102")
+    script.landings["102"] = Landing(fetch_raises=TimeoutError("the provider timed out"))
+
+    code, envelope = drive(["sync", "land"])
+
+    assert code != int(ExitCode.OK), envelope
+    (download,) = _by_key("acquire.download")
+    assert download.state is jobs.JobState.FAILED and download.cause.retryable
+    assert ("tag", "folder") not in tail.verbs()
+    assert ("intake", "land") not in tail.verbs()
+
+
+def test_a_continued_pass_retries_a_download_that_failed_transiently(
+    machine, monkeypatch, tail
+):
+    cfg, script = machine
+    _account(monkeypatch, script, "101", "102")
+    script.landings["102"] = Landing(
+        fetch_raises=TimeoutError("the provider timed out"), fetch_raises_times=1
+    )
+    code, first = drive(["sync", "land"])
+    assert code != int(ExitCode.OK), first
+    run_id = _summary(first)["pass_run"]
+
+    code, again = drive(["sync", "land", "--pass-run", run_id])
+
+    assert code == int(ExitCode.PENDING_HUMAN), again
+    (download,) = _by_key("acquire.download")
+    assert download.state is jobs.JobState.SUCCEEDED
+    assert [request.key for request in script.fetched].count("101") == 1
+
+
+def test_a_cancelled_download_over_the_same_list_is_not_reused(machine, monkeypatch, tail):
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    real = tail.real
+
+    def undriven(argv):
+        # THE DOWNLOAD'S COMMAND ANSWERS WITHOUT DRIVING IT, so the job stays
+        # queued and the first pass stops there, the shape a person cancels.
+        if argv[:2] == ["acquire", "download"] and "--job" in argv:
+            return _refused(
+                refuse("job-driver-held", "held elsewhere", origin=("test",)).cause
+            )
+        return real(argv)
+
+    tail.real = undriven
+    code, first = drive(["sync", "land"])
+    assert code != int(ExitCode.OK), first
+    (download,) = _by_key("acquire.download")
+    with jobs.open_store() as store:
+        jobs.cancel(store, download.job_id)
+    tail.real = real
+
+    code, again = drive(["sync", "land", "--pass-run", _summary(first)["pass_run"]])
+
+    assert code == int(ExitCode.PENDING_HUMAN), again
+    assert _summary(again)["download_job"] != download.job_id
+    assert len(_by_key("acquire.download")) == 2
+
+
+def test_a_fresh_pass_never_reuses_another_lists_download_job(machine, monkeypatch, tail):
+    cfg, script = machine
+    other = cfg.library.root / "other.list.json"
+    from tests.acquire_fakes import tidal_list
+
+    other.write_text(tidal_list([("901", "Other", "Track")]))
+    with jobs.open_store() as store:
+        queued = acquire_cli.queue_list(
+            store, cfg, other, handler_key=registry.entry("acquire.download").handler_key
+        )
+    _account(monkeypatch, script, "101")
+
+    code, envelope = drive(["sync", "land"])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert _summary(envelope)["download_job"] != queued.job_id
+    with jobs.open_store() as store:
+        assert jobs.get(store, queued.job_id).state is jobs.JobState.QUEUED
+
+
+def test_a_name_apply_refusal_ends_the_pass_before_the_landing(machine, monkeypatch, tail):
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    original = tail.__call__
+
+    def refusing(argv):
+        if "name" in argv and "apply" in argv:
+            tail.calls.append(list(argv))
+            return _refused(
+                refuse("rename-incomplete", "two renames did not land", origin=("test",)).cause
+            )
+        return original(argv)
+
+    monkeypatch.setattr(sync_land, "dispatch", refusing)
+
+    code, envelope = drive(["sync", "land"])
+
+    assert envelope["cause"]["reason"] == "rename-incomplete", envelope
+    assert not any(argv[:2] == ["intake", "land"] for argv in tail.calls)
+
+
+def test_a_stale_job_over_another_folder_or_library_is_left_alone(machine, monkeypatch, tail):
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    elsewhere = cfg.library.root / "elsewhere"
+    elsewhere.mkdir()
+    key = registry.entry("analyze.run").handler_key
+    with jobs.open_store() as store:
+        other_folder = jobs.enqueue(
+            store, handler_key=key, payload={"folder": str(elsewhere)}, cfg=cfg, item_ids=("a",)
+        )
+        other_library = jobs.enqueue(
+            store,
+            handler_key=key,
+            payload={"folder": str(_staged(cfg))},
+            cfg=dataclasses_replace_library(cfg),
+            item_ids=("b",),
+        )
+
+    code, envelope = drive(["sync", "land"])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    with jobs.open_store() as store:
+        assert jobs.get(store, other_folder.job_id).state is jobs.JobState.QUEUED
+        assert jobs.get(store, other_library.job_id).state is jobs.JobState.QUEUED
+    assert _summary(envelope)["replaced"] == []
+
+
+def dataclasses_replace_library(cfg: config.Config) -> config.Config:
+    """The same machine naming another library, so a job queued under it is not ours."""
+    import dataclasses
+
+    return dataclasses.replace(
+        cfg, library=dataclasses.replace(cfg.library, volume_id="another-volume")
+    )
+
+
+def test_a_stale_job_a_live_driver_holds_is_not_cancelled(machine, monkeypatch, tail):
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    staging = _staged(cfg)
+    staging.mkdir(parents=True, exist_ok=True)
+    with jobs.open_store() as store:
+        held = jobs.enqueue(
+            store,
+            handler_key=registry.entry("tag.folder").handler_key,
+            payload={"folder": str(staging)},
+            cfg=cfg,
+            item_ids=("x.wav",),
+        )
+
+    with jobs.driver_lock(held.job_id):
+        code, envelope = drive(["sync", "land"])
+
+    assert envelope["cause"]["reason"] == "job-driver-held", envelope
+    with jobs.open_store() as store:
+        assert jobs.get(store, held.job_id).state is jobs.JobState.QUEUED
+    assert not any(argv[:2] == ["tag", "folder"] for argv in tail.calls)
+
+
+def test_the_acknowledgment_stop_names_the_gate_the_replanned_landing_will_ask(
+    machine, monkeypatch, tail
+):
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    tail.landing = lambda _argv: _refused(
+        refuse(
+            "backup-acknowledgment-missing",
+            "no backup acknowledgment is recorded",
+            remedy=Remedy.ACKNOWLEDGE_BACKUP,
+            origin=("test",),
+        ).cause
+    )
+
+    code, envelope = drive(["sync", "land"])
+
+    steps = envelope["pending_human_action"]["steps"]
+    replan = next(i for i, step in enumerate(steps) if step.startswith("then plan the landing"))
+    assert "answer it as the session" in steps[replan + 1]
+    assert "Reload Tags" in steps[replan + 2]

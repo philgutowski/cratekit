@@ -203,15 +203,27 @@ class _Stop(Exception):
     ends this verb blocked and not failed (``cause.rebuilt``).
     """
 
-    def __init__(self, step: str, error: CratekitError) -> None:
+    def __init__(self, step: str, error: CratekitError, *, continues: bool = True) -> None:
         super().__init__(error.cause.message)
         self.step = step
         self.error = error
+        #: Whether continuing the pass can get past this stop once its cause is
+        #: mended. A job that ENDED cannot be driven again by the pass, so a
+        #: continuation would meet the same refusal every time.
+        self.continues = continues
 
     @classmethod
     def of(cls, step: str, cause: Cause) -> _Stop:
         """A stop whose cause arrived over a child's envelope, with no exception in hand."""
         return cls(step, CratekitError(cause))
+
+
+class _Choose(Exception):
+    """Several earlier passes hold open intake jobs, and which to take is a person's."""
+
+    def __init__(self, runs: Sequence[str]) -> None:
+        super().__init__(", ".join(runs))
+        self.runs = list(runs)
 
 
 class _Attend(Exception):
@@ -412,14 +424,52 @@ def _lift_failed_checks(report: _Pass, envelope: dict[str, Any]) -> None:
         )
 
 
-def _sync(report: _Pass) -> str | None:
-    """Run ``sync all`` and return the pass's run, or None when it queued nothing."""
+def _open_passes(cfg: config.Config) -> dict[str, list[str]]:
+    """Every pass run with an intake job still open, and those jobs, oldest first."""
+    from cratekit.intake import cli as intake_cli  # noqa: PLC0415 - one module's keys
+
+    open_states = [state for state in jobs.JobState if state not in jobs.TERMINAL_STATES]
+    found: dict[str, list[str]] = {}
+    with jobs.open_store() as store:
+        for job in jobs.list_jobs(store, states=open_states):
+            run_id = str((job.payload or {}).get("run_id") or "")
+            if (
+                run_id
+                and job.handler_key in intake_cli.INTAKE_KEYS
+                and job.library_id == cfg.library.volume_id
+            ):
+                found.setdefault(run_id, []).append(job.job_id)
+    return found
+
+
+def _sync(report: _Pass, cfg: config.Config) -> str | None:
+    """Run ``sync all`` and return the pass's run, or None when there is none to take.
+
+    A PASS THAT QUEUED NOTHING IS NOT A PASS WITH NOTHING TO DO. ``sync all``
+    leaves out a playlist whose intake job is still open from an earlier pass,
+    the state sitting 47 started from: ``sync all`` typed by hand, its jobs
+    queued and never driven. That earlier pass is then the one to take, and
+    when there are several, which is a person's choice and the pass names them.
+    """
     envelope = _required(report, SYNC, ["sync", "all"])
     _lift_failed_checks(report, envelope)
     summary = _summary_of(envelope)
     run_id = str(summary.get("run_id") or envelope.get("run_id") or "")
     report.summary["pass_run"] = run_id
     if envelope.get("outcome") == str(Outcome.NO_OP):
+        earlier = _open_passes(cfg)
+        if len(earlier) == 1:
+            ((held, job_ids),) = earlier.items()
+            report.summary["pass_run"] = held
+            report.check(
+                SYNC,
+                "info",
+                f"sync all queued nothing new; continuing the pass queued under run "
+                f"{held}, whose intake job(s) {', '.join(job_ids)} are still open",
+            )
+            return held
+        if earlier:
+            raise _Choose(sorted(earlier))
         report.check(SYNC, "info", f"sync all queued nothing new under run {run_id}")
         return None
     report.check(
@@ -464,8 +514,12 @@ def _settle(report: _Pass, step: str, job: jobs.Job) -> jobs.Job:
     if settled.is_open() and settled.state is not jobs.JobState.BLOCKED:
         # STILL QUEUED OR RUNNING: the command never drove it, a live driver
         # elsewhere holding it above all. The command's own refusal says why,
-        # where the job row, which records no cause yet, says nothing.
-        raise _Stop.of(step, _cause_of(step, argv, code, envelope))
+        # where the job row, which records no cause yet, says nothing. A gate
+        # it stopped at is the command's own, as in ``_required``.
+        cause = _cause_of(step, argv, code, envelope)
+        if cause.reason == GATE_STOP:
+            raise _Attend(step, argv, cause)
+        raise _Stop.of(step, cause)
     return settled
 
 
@@ -476,13 +530,32 @@ def _intake(report: _Pass, run_id: str, cfg: config.Config) -> None:
     settled = [_settle(report, INTAKE, job) for job in found]
     for job in settled:
         if job.state is not jobs.JobState.SUCCEEDED:
-            raise _Stop(INTAKE, _job_error(job))
+            error = _job_error(job)
+            if job.is_open():
+                raise _Stop(INTAKE, error)
+            # AN INTAKE JOB THAT ENDED is not driven again by a continued pass,
+            # so the way on is the job's own retry or a new pass.
+            way_on = (
+                f"retry the job, then continue the pass: crate job resume {job.job_id}"
+                if job.cause is not None and job.cause.retryable
+                else "the job cannot succeed on resume; start a new pass with: crate sync land"
+            )
+            raise _Stop(INTAKE, _with_steps(error, way_on), continues=False)
     report.check(
         INTAKE,
         "ok",
         f"{len(settled)} intake job(s) of run {run_id} succeeded: "
         + ", ".join(job.job_id for job in settled),
     )
+
+
+def _with_steps(error: CratekitError, *steps: str) -> CratekitError:
+    """The refusal with ``steps`` added to its remediation, its type kept."""
+    cause = error.cause
+    remediation = dataclasses.replace(
+        cause.remediation, steps=(*cause.remediation.steps, *steps)
+    )
+    return rebuilt(error, dataclasses.replace(cause, remediation=remediation))
 
 
 def _job_error(job: jobs.Job) -> CratekitError:
@@ -520,15 +593,21 @@ class _Listed:
 
 def _missing(report: _Pass, run_id: str) -> _Listed:
     envelope = _required(report, MISSING, ["intake", "missing", "--run", run_id])
+    # THE LISTING'S OWN FAILING ROWS RIDE THROUGH, a missing track the provider
+    # cannot name exactly above all: it is in no download list, and the pass
+    # would otherwise say nothing of it.
+    _lift_failed_checks(report, envelope)
     summary = _summary_of(envelope)
     listed = summary.get("list")
     land_name = str(summary.get("land_name") or "")
     if envelope.get("outcome") == str(Outcome.NO_OP) or not listed:
+        unlisted = int(summary.get("unlisted") or 0)
         report.check(
             MISSING,
             "info",
-            f"the pass found nothing missing (owned {summary.get('owned', 0)}, "
-            f"offered {summary.get('offered', 0)}), so nothing is downloaded or landed",
+            f"the pass listed nothing to download (owned {summary.get('owned', 0)}, "
+            f"offered {summary.get('offered', 0)}, missing and not nameable "
+            f"{unlisted}), so nothing is downloaded or landed",
         )
         raise _Done(MISSING)
     report.summary["list"] = str(listed)
@@ -762,6 +841,8 @@ def _attended(ctx: Context, report: _Pass, stop: _Attend) -> Envelope:
             *stop.cause.remediation.steps,
             *((words,) if words else ()),
             f"then plan the landing again: crate {command}",
+            "it stops at its own gate: answer it as the session with crate run "
+            "decide, then apply it with --run, as its output names",
             *after,
         )
         report.summary["stopped_at"] = stop.cause.reason
@@ -792,6 +873,37 @@ def _attended(ctx: Context, report: _Pass, stop: _Attend) -> Envelope:
     )
 
 
+def _choose(ctx: Context, report: _Pass, choose: _Choose) -> Envelope:
+    """The PENDING envelope a pass ends on when several earlier passes are open."""
+    report.summary["stopped_at"] = SYNC
+    report.summary["open_passes"] = list(choose.runs)
+    steps = tuple(f"continue one pass: crate sync land --pass-run {run}" for run in choose.runs)
+    report.check(
+        SYNC,
+        "info",
+        f"sync all queued nothing new, and {len(choose.runs)} earlier passes hold "
+        f"open intake jobs: {', '.join(choose.runs)}",
+    )
+    report.summary["attended"] = list(steps)
+    pending = PendingHumanAction(
+        kind="external_step",
+        id=f"sync-land-{ctx.run.run_id}",
+        summary=(
+            f"{len(choose.runs)} earlier sync passes hold open intake jobs; choose "
+            f"which one to continue"
+        ),
+        verify_verb=ctx.entry.name,
+        steps=steps,
+    )
+    return ctx.envelope(
+        data=report.data(),
+        outcome=Outcome.PENDING,
+        code=ExitCode.PENDING_HUMAN,
+        pending=pending,
+        warnings=report.warnings,
+    )
+
+
 # ---------------------------------------------------------------------------
 # The verb
 # ---------------------------------------------------------------------------
@@ -805,7 +917,7 @@ def _ended(report: _Pass, stop: _Stop) -> CratekitError:
     report.check(stop.step, "fail", cause.message, remedy=str(remedy) if remedy else None)
     steps = cause.remediation.steps
     resume = report.summary.get("pass_run")
-    if resume:
+    if resume and stop.continues:
         steps = (
             *steps,
             f"every step before {stop.step} is kept; continue the pass with: "
@@ -832,7 +944,7 @@ def sync_land(ctx: Context) -> Envelope:
             report.summary["pass_run"] = run_id
             report.check(SYNC, "info", f"continuing the pass queued under run {run_id}")
         else:
-            run_id = _sync(report)
+            run_id = _sync(report, cfg)
             if run_id is None:
                 raise _Done(SYNC)
         _intake(report, run_id, cfg)
@@ -848,6 +960,8 @@ def sync_land(ctx: Context) -> Envelope:
         report.summary["stopped_at"] = done.step
     except _Attend as stop:
         return _attended(ctx, report, stop)
+    except _Choose as choose:
+        return _choose(ctx, report, choose)
     except _Stop as stop:
         raise _ended(report, stop) from None
     return ctx.envelope(data=report.data(), outcome=Outcome.NO_OP, warnings=report.warnings)
