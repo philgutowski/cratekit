@@ -629,3 +629,54 @@ def test_the_rotation_never_takes_analyze_for_a_batch_whatever_a_record_says():
         expired_days=90,
     )
     assert isinstance(found, rotate.Left) and found.kind == "analyze", found
+
+
+def test_a_membership_whose_collection_row_is_missing_stays_and_is_named(
+    native_library, silence
+):
+    """The first mutation table's zero: a row nothing in the collection answers is never cleared."""
+    cfg, root_id = native_library
+    _land(cfg, silence, "2026-10-28_one", ("Alpha",))
+    analyze_id = _analyze_id(cfg, root_id)
+    _analysed(cfg, "Alpha")
+    conn = sqlite3.connect(cfg.library.db_path)
+    with conn:
+        conn.execute(
+            "INSERT INTO djmdSongPlaylist (ID, PlaylistID, ContentID, TrackNo, rb_local_deleted, "
+            "created_at, updated_at) VALUES ('sp-ghost', ?, 'ghost', 9, 0, '2026-10-28', "
+            "'2026-10-28')",
+            (analyze_id,),
+        )
+        conn.execute(
+            "UPDATE AgentRegistry SET int_1 = int_1 + 1 WHERE registry_id = 'localUpdateCount'"
+        )
+    conn.close()
+
+    code, acted, _ = _clear_acts()
+
+    assert code == int(ExitCode.OK), acted
+    (ghost,) = [item for item in acted["data"]["items"] if item["content_id"] == "ghost"]
+    assert ghost["action"] == analyzed.WAIT and ghost["why"] == analyzed.NO_ROW
+    assert _query(
+        cfg, "SELECT rb_local_deleted FROM djmdSongPlaylist WHERE ID = 'sp-ghost'"
+    ) == [(0,)]
+    assert acted["data"]["totals"]["removed"] == 1
+
+
+def test_a_removal_that_did_not_take_is_refused_after_the_commit(
+    native_library, silence, monkeypatch
+):
+    """The first mutation table's zero: the verb holds its answer to the read back."""
+    cfg, root_id = native_library
+    _land(cfg, silence, "2026-10-28_two", TWO)
+    _analysed(cfg, *TWO)
+    # A writer that answers the ids and marks nothing, so the commit holds no change.
+    monkeypatch.setattr(
+        analyzed.rb_writer, "remove_memberships", lambda db, playlist, ids: list(ids)
+    )
+
+    code, acted, _ = _clear_acts()
+
+    assert code != int(ExitCode.OK), acted
+    assert acted["cause"]["reason"] == "session-committed-unverified", acted
+    assert _titles(cfg, _analyze_id(cfg, root_id)) == list(TWO)
