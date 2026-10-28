@@ -1750,6 +1750,31 @@ ENTRIES: tuple[Entry, ...] = (
         ),
     ),
     Entry(
+        name="sync.land",
+        summary=(
+            "take a sync pass to its landing in one verb: the pass, its intake "
+            "jobs, the missing list, the download and the tail, stopping at the "
+            "landing's gate"
+        ),
+        module="cratekit.cli.sync_land",
+        builder="build",
+        handler_key="sync.land",
+        feature_rows=(25,),
+        # NOT long_running, AND NO argv_builder (U152). Like ``sync all`` it
+        # queues nothing under its own key: every job it drives is queued by
+        # its own verb under that verb's key, and is driven here through that
+        # verb's own ``--job`` command line, in the foreground.
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
+        # THE STEPS' FILES, written by the verbs it runs: the download, the
+        # tags, the restamp and the renames. No database write: the landing it
+        # plans stops at its explicit gate on its own run, so the collection is
+        # written only by that verb, after a separate recorded answer.
+        writes=frozenset({"files"}),
+        destructive=True,
+        doctor_checks=("library.mounted", "rekordbox.closed", "credential.provider"),
+    ),
+    Entry(
         name="sync.labels",
         # RETIRED BY REDUCTION (U109). ``label.sync`` takes label releases now,
         # and ``sync.all`` no longer composes this source. The entry stays, its

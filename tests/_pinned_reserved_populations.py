@@ -543,6 +543,19 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'library-volume-unmounted',
         'utf-8',
     ],
+    # 2026-10-28, U152: the sync pass driver joined, with two new literals, its
+    # download refusal and left open intake warning codes.
+    'cli/sync_land.py': [
+        'backup-acknowledgment-missing',
+        'config-unusable',
+        'decision-required',
+        'internal-error',
+        'job-driver-held',
+        'outbound-export-required',
+        'source-missing',
+        'sync-land-download-refused',
+        'sync-land-intake-left-open',
+    ],
     'cli/verbs/login.py': ['credential-missing', 'utf-8'],
     'cli/verbs/profile.py': ['config-unusable'],
     'cli/verbs/runs.py': ['decision-unknown-gate'],
@@ -1898,6 +1911,12 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
 
 # Modules holding a name that resolves to a cause declared elsewhere (own enum declarations excluded from the key set).
 PINNED_NAMED_WITHOUT_OWN = {
+    # 2026-10-28, U152: the sync pass driver's two stops and the unasked write.
+    'cli/sync_land.py': [
+        'backup-acknowledgment-missing',
+        'decision-required',
+        'outbound-export-required',
+    ],
     # 2026-10-15, U147: the account mirror joined.
     'modules/outbound/mirror.py': ['account-mirror-ambiguous'],
     'acquire/adapter.py': [
@@ -1964,6 +1983,12 @@ PINNED_NAMED_WITHOUT_OWN = {
 
 # Modules holding a name that resolves to a cause, counting each file's own enum declarations.
 PINNED_NAMED_WITH_OWN = {
+    # 2026-10-28, U152: the sync pass driver's two stops and the unasked write.
+    'cli/sync_land.py': [
+        'backup-acknowledgment-missing',
+        'decision-required',
+        'outbound-export-required',
+    ],
     # 2026-10-15, U147: the account mirror joined.
     'modules/outbound/mirror.py': ['account-mirror-ambiguous'],
     'acquire/adapter.py': [
@@ -2150,6 +2175,16 @@ PINNED_NAMED_WITH_INTEGER = frozenset({
 
 # Modules holding a cause as a string literal under the old constant-only key rule.
 PINNED_LITERAL_HOLDERS = {
+    # 2026-10-28, U152: the sync pass driver joined.
+    'cli/sync_land.py': [
+        'backup-acknowledgment-missing',
+        'config-unusable',
+        'decision-required',
+        'internal-error',
+        'job-driver-held',
+        'outbound-export-required',
+        'source-missing',
+    ],
     'acquire/adapter.py': [
         'adapter-broken',
         'auth-failed',
