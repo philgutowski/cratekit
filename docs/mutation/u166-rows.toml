@@ -1,0 +1,245 @@
+name = "u166"
+pass_kind = "full"
+
+[[rows]]
+id = "A1_parent_check"
+description = "analyze_playlist: take a live Analyze anywhere, not only directly under the root"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_set_inspiration_playlist.py", "tests/test_u135_set_inbox_join.py", "tests/test_intake_land_hearts_native.py"]
+old = '''        if str(getattr(row, "ParentID", "") or "") != str(root_id):
+            continue
+        if rb_writer.node_removed(row)'''
+new = '''        if False:
+            continue
+        if rb_writer.node_removed(row)'''
+
+[[rows]]
+id = "A2_removed_check"
+description = "analyze_playlist: take a removed Analyze as the queue"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_set_inspiration_playlist.py", "tests/test_u135_set_inbox_join.py", "tests/test_intake_land_hearts_native.py"]
+old = '''        if rb_writer.node_removed(row) or int(getattr(row, "Attribute", -1)) != 0:'''
+new = '''        if int(getattr(row, "Attribute", -1)) != 0:'''
+
+[[rows]]
+id = "A3_plain_check"
+description = "analyze_playlist: take a folder or smart playlist named Analyze as the queue"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_set_inspiration_playlist.py", "tests/test_u135_set_inbox_join.py", "tests/test_intake_land_hearts_native.py"]
+old = '''        if rb_writer.node_removed(row) or int(getattr(row, "Attribute", -1)) != 0:'''
+new = '''        if rb_writer.node_removed(row):'''
+
+[[rows]]
+id = "A4_no_add"
+description = "apply_rows: add nothing to Analyze"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_set_inspiration_playlist.py", "tests/test_u135_set_inbox_join.py", "tests/test_intake_land_hearts_native.py"]
+old = '''            if added_ids:
+                analyze = _analyze_row(db, plan, anchor)'''
+new = '''            if False:
+                analyze = _analyze_row(db, plan, anchor)'''
+
+[[rows]]
+id = "A5_present_rows_too"
+description = "apply_rows: add every row the plan names, present ones too"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_set_inspiration_playlist.py", "tests/test_u135_set_inbox_join.py", "tests/test_intake_land_hearts_native.py"]
+old = '''                        db, analyze, [content_id for _row, content_id in added_ids]'''
+new = '''                        db, analyze, list(by_target.values())'''
+
+[[rows]]
+id = "A6_always_create"
+description = "_analyze_row: make a new Analyze every landing"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_set_inspiration_playlist.py", "tests/test_u135_set_inbox_join.py", "tests/test_intake_land_hearts_native.py"]
+old = '''    return found if found is not None else db.create_playlist(ANALYZE, parent=anchor)'''
+new = '''    return db.create_playlist(ANALYZE, parent=anchor)'''
+
+[[rows]]
+id = "A7_record_count"
+description = "apply_rows: record the batch's memberships only on success"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_set_inspiration_playlist.py", "tests/test_u135_set_inbox_join.py", "tests/test_intake_land_hearts_native.py"]
+old = '''        _record_landing_commit(
+            record,
+            plan,
+            len(added_ids),
+            memberships + analyze_added,'''
+new = '''        _record_landing_commit(
+            record,
+            plan,
+            len(added_ids),
+            memberships,'''
+
+[[rows]]
+id = "A8_digest_key"
+description = "identity: leave the found Analyze out of the digest"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_set_inspiration_playlist.py", "tests/test_u135_set_inbox_join.py", "tests/test_intake_land_hearts_native.py"]
+old = '''    analyze = {"analyze": plan.analyze_playlist_id} if plan.to_add() else {}'''
+new = '''    analyze = {}'''
+
+[[rows]]
+id = "A9_reserved_batch"
+description = "plan_rows: let a batch take the name Analyze"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_set_inspiration_playlist.py", "tests/test_u135_set_inbox_join.py", "tests/test_intake_land_hearts_native.py"]
+old = '''    if batch == ANALYZE:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A10_reserved_account"
+description = "inbox_names: stop holding Analyze for account playlists"
+file = "src/cratekit/intake/batch_name.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_names.py"]
+old = '''    taken = {*held, batch, ANALYZE}'''
+new = '''    taken = {*held, batch}'''
+
+[[rows]]
+id = "A11_warning_names_batch"
+description = "awaiting_analysis: name the batch playlist again instead of Analyze"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_set_inspiration_playlist.py", "tests/test_u135_set_inbox_join.py", "tests/test_intake_land_hearts_native.py"]
+old = '''                f"{collection.analyze_name} playlist, which holds every row waiting "'''
+new = '''                f"{collection.playlist} playlist, which holds every row waiting "'''
+
+[[rows]]
+id = "C1_removed_row"
+description = "_member: clear a row whose collection row was removed"
+file = "src/cratekit/intake/analyzed.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_cli_contract.py", "tests/test_inbox_rotate.py"]
+old = '''    if removed:
+        return Member(content_id=content_id, title=title, action=WAIT, why=ROW_REMOVED)'''
+new = '''    if False:
+        return Member(content_id=content_id, title=title, action=WAIT, why=ROW_REMOVED)'''
+
+[[rows]]
+id = "C2_analysed_flag"
+description = "_member: clear a row whose Analysed is unset"
+file = "src/cratekit/intake/analyzed.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_cli_contract.py", "tests/test_inbox_rotate.py"]
+old = '''    if not int(getattr(row, "Analysed", 0) or 0):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "C3_analysis_path"
+description = "_member: clear a row with no analysis path"
+file = "src/cratekit/intake/analyzed.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_cli_contract.py", "tests/test_inbox_rotate.py"]
+old = '''    if not str(getattr(row, "AnalysisDataPath", "") or "").strip():'''
+new = '''    if False:'''
+
+[[rows]]
+id = "C4_blank_path"
+description = "_member: read a blank analysis path as present"
+file = "src/cratekit/intake/analyzed.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_cli_contract.py", "tests/test_inbox_rotate.py"]
+old = '''    if not str(getattr(row, "AnalysisDataPath", "") or "").strip():'''
+new = '''    if not str(getattr(row, "AnalysisDataPath", "") or ""):'''
+
+[[rows]]
+id = "C5_missing_row"
+description = "_member: clear a membership whose collection row is missing"
+file = "src/cratekit/intake/analyzed.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_cli_contract.py", "tests/test_inbox_rotate.py"]
+old = '''    if row is None:
+        return Member(content_id=content_id, title="", action=WAIT, why=NO_ROW)'''
+new = '''    if row is None:
+        return Member(content_id=content_id, title="", action=CLEAR)'''
+
+[[rows]]
+id = "C6_stale_check"
+description = "apply_clear: apply a plan whose digest moved"
+file = "src/cratekit/intake/analyzed.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_cli_contract.py", "tests/test_inbox_rotate.py"]
+old = '''    if again.digest != plan.digest:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "C7_clear_waits_too"
+description = "apply_clear: remove every member, waiting ones too"
+file = "src/cratekit/intake/analyzed.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_cli_contract.py", "tests/test_inbox_rotate.py"]
+old = '''rb_writer.remove_memberships(db, playlist, plan.clears())'''
+new = '''rb_writer.remove_memberships(db, playlist, [m.content_id for m in plan.members])'''
+
+[[rows]]
+id = "C8_read_back_lost"
+description = "assert_read_back: stop refusing a waiting row gone"
+file = "src/cratekit/intake/analyzed.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_cli_contract.py", "tests/test_inbox_rotate.py"]
+old = '''    if lost or kept:'''
+new = '''    if kept:'''
+
+[[rows]]
+id = "C9_read_back_kept"
+description = "assert_read_back: stop refusing a cleared row kept"
+file = "src/cratekit/intake/analyzed.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_cli_contract.py", "tests/test_inbox_rotate.py"]
+old = '''    if lost or kept:'''
+new = '''    if lost:'''
+
+[[rows]]
+id = "C10_live_filter"
+description = "live_members: count a removed membership as held"
+file = "src/cratekit/intake/analyzed.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_cli_contract.py", "tests/test_inbox_rotate.py"]
+old = '''        if not rb_writer.membership_removed(song)'''
+new = '''        if True'''
+
+[[rows]]
+id = "C12_ack_first"
+description = "inbox_analyzed: drop the backup acknowledgment before the plan"
+file = "src/cratekit/intake/analyzed_cli.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_cli_contract.py", "tests/test_inbox_rotate.py"]
+old = '''    session.assert_backup_acknowledged(cfg)'''
+new = '''    pass'''
+
+[[rows]]
+id = "C13_read_back_call"
+description = "inbox_analyzed: skip the read back after the commit"
+file = "src/cratekit/intake/analyzed_cli.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_cli_contract.py", "tests/test_inbox_rotate.py"]
+old = '''    analyzed.assert_read_back(plan, cleared)'''
+new = '''    pass'''
+
+[[rows]]
+id = "R1_refill_reserved"
+description = "refill.locate: let the name fallback answer with Analyze"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_inbox_refill.py"]
+old = '''            and name != native.ANALYZE'''
+new = '''            and True'''
+
+[[rows]]
+id = "R2_rotate_reserved"
+description = "_classify: let the rotation take Analyze for a batch"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_inbox_rotate.py", "tests/test_inbox_rotate_account_playlists.py"]
+old = '''    if not in_old and name == native.ANALYZE:'''
+new = '''    if False:'''

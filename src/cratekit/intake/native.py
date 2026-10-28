@@ -68,6 +68,14 @@ the first one recorded, under its first name.
 The record names every one by identifier, which is what ``inbox rotate`` ages
 them by.
 
+EVERY ROW A LANDING CREATES ALSO JOINS ONE PLAYLIST, :data:`ANALYZE` (U166),
+directly under the intake root, found live or made in the same commit, so the
+rekordbox visit selects that one playlist and runs Analyze Track over exactly
+the rows waiting for it. Nothing else adds to it; ``crate inbox analyzed``
+takes out each row rekordbox has analysed. A row the collection already held
+is not added, since rekordbox has had it. No record names it as a batch, so
+the rotation leaves it where it is.
+
 ``plan_rows`` AND ``apply_rows`` MEAN SOMETHING ELSE IN ``cratekit.tagging.rows``,
 where a row is one that exists and whose genre is written from its file. Here
 a row is a content row this engine adds. The two are not interchangeable.
@@ -147,6 +155,15 @@ PASS_KEY = "pass"
 #: by identifier and name (U113). The intake's one spelling, shared with the
 #: intake file's record.
 INBOX_PLAYLISTS_KEY = ingest.INBOX_PLAYLISTS_KEY
+
+#: The playlist directly under the intake root every row a landing creates
+#: joins (U166), so the rekordbox visit selects one playlist. Its display
+#: form is ``<intake root> / Analyze``. Reserved: :func:`plan_rows` refuses a
+#: batch of the name and an account playlist of it is named ``Analyze 2``,
+#: through :data:`cratekit.intake.batch_name.ANALYZE`, which spells the same
+#: value because that module reaches this one through the landing; a test
+#: holds the two equal.
+ANALYZE = "Analyze"
 
 #: Why a playlist member is not in its INBOX playlist when its file made no
 #: row (U128), the words the landing's warning names it with on both media.
@@ -443,6 +460,9 @@ class NativePlan:
     vox_cut: float | None = None
     #: Why no added row is given the vox My Tag at all, a sentence, else empty.
     vox_blocked: str = ""
+    #: The live :data:`ANALYZE` playlist under the root the plan found (U166),
+    #: empty when the write makes it.
+    analyze_playlist_id: str = ""
 
     def to_add(self) -> tuple[RowPlan, ...]:
         return tuple(row for row in self.rows if row.action == ADD)
@@ -523,6 +543,12 @@ class NativeLanded:
     vox_missing: tuple[Path, ...] = ()
     #: Why adoption's reader could not answer after the commit, else empty.
     vox_unread: str = ""
+    #: The :data:`ANALYZE` playlist the commit added the rows to (U166), and
+    #: its display name, empty when no row was added.
+    analyze_id: str = ""
+    analyze_name: str = ""
+    #: How many memberships of it the commit added.
+    analyze_added: int = 0
 
     def names(self) -> tuple[str, ...]:
         """Every INBOX playlist the commit wrote, the batch's first when it wrote one."""
@@ -693,6 +719,18 @@ def plan_rows(
     count. Two active rows on one path count as present too: adding a third
     is not the answer to a duplicate.
     """
+    # THE QUEUE'S NAME IS RESERVED (U166). A batch playlist of that name would
+    # be found as the queue and written into, and recorded as a batch the
+    # rotation then moves into Old with every row still waiting in it.
+    if batch == ANALYZE:
+        raise refuse(
+            "intake-list-unusable",
+            f"the batch name {batch!r} is the playlist under INBOX every landing "
+            f"fills with the rows awaiting analysis, so no batch may take it and "
+            f"nothing was planned; land with another --name, or rename the file",
+            origin=_ORIGIN,
+            detail={"batch": batch},
+        )
     root_id = anchored_intake_root(db, tree_id, registry)
     root = db.get_playlist(ID=root_id)
     device_id, master_db_id = choose_device(db)
@@ -795,6 +833,9 @@ def plan_rows(
         vox_cut=vox_cut,
         vox_blocked=vox_blocked,
     )
+    found = analyze_playlist(db, str(root_id))
+    if found is not None:
+        planned = replace(planned, analyze_playlist_id=str(found.ID))
     return replace(planned, digest=digest_of(identity(planned)))
 
 
@@ -1045,6 +1086,24 @@ def leftover_set_inbox(
     return tuple(named)
 
 
+def analyze_playlist(db: Any, root_id: str) -> Any | None:
+    """The live, ordinary :data:`ANALYZE` playlist directly under the root, or None (U166).
+
+    THE ONE FIND, for the landing that fills it and the clear that empties it,
+    so the two never disagree about which playlist it is. A removed node is
+    not found, for :func:`_batch_playlist_row`'s reason, and neither is a
+    folder or a smart playlist of the name, which holds no membership a
+    writer may add. Of two live ones the first the table lists is taken.
+    """
+    for row in list(db.get_playlist(Name=ANALYZE)):
+        if str(getattr(row, "ParentID", "") or "") != str(root_id):
+            continue
+        if rb_writer.node_removed(row) or int(getattr(row, "Attribute", -1)) != 0:
+            continue
+        return row
+    return None
+
+
 def inbox_held(db: Any, root_id: str) -> tuple[str, ...]:
     """Every name a live node anywhere under the intake root carries (U113).
 
@@ -1135,6 +1194,9 @@ def identity(plan: NativePlan) -> dict[str, Any]:
         if plan.to_add()
         else {}
     )
+    # THE ANALYZE PLAYLIST ONLY WHEN A ROW IS ADDED (U166), found or made, so
+    # a plan that adds none digests as it did before this unit.
+    analyze = {"analyze": plan.analyze_playlist_id} if plan.to_add() else {}
     return {
         **split,
         **unplanned,
@@ -1142,6 +1204,7 @@ def identity(plan: NativePlan) -> dict[str, Any]:
         **kept,
         **filed,
         **vox,
+        **analyze,
         "kind": "land-native",
         "tree": plan.tree_id,
         "root": plan.root_id,
@@ -1401,6 +1464,8 @@ def apply_rows(
     present: list[RowPlan] = list(plan.present())
     memberships = 0
     vox_written = 0
+    analyze_id = ""
+    analyze_added = 0
     with (
         session.assert_gates(
             cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
@@ -1522,6 +1587,17 @@ def apply_rows(
                         tracks=count,
                     )
                 )
+            # EVERY ROW THIS LANDING MADE JOINS ANALYZE (U166), in the same
+            # commit and in the plan's order, so the visit selects one playlist.
+            # A row already held is not added: rekordbox has had it.
+            if added_ids:
+                analyze = _analyze_row(db, plan, anchor)
+                analyze_id = str(analyze.ID)
+                analyze_added = len(
+                    rb_writer.add_memberships(
+                        db, analyze, [content_id for _row, content_id in added_ids]
+                    )
+                )
             # THE HEARTS, IN THE SAME COMMIT (U120): into All Favorites and
             # each one's month, a row already present as much as a row
             # added, so a heart landed twice is one membership. And the
@@ -1569,7 +1645,7 @@ def apply_rows(
                     record,
                     plan,
                     len(added_ids),
-                    memberships,
+                    memberships + analyze_added,
                     cfg,
                     playlist_id=playlist_id,
                     written=written,
@@ -1584,7 +1660,7 @@ def apply_rows(
             record,
             plan,
             len(added_ids),
-            memberships,
+            memberships + analyze_added,
             cfg,
             playlist_id=playlist_id,
             written=written,
@@ -1647,6 +1723,9 @@ def apply_rows(
             row.target for row, content_id in added_ids if row.vox and content_id not in voxed
         ),
         vox_unread=vox_unread,
+        analyze_id=analyze_id,
+        analyze_name=f"{plan.root_name} / {ANALYZE}" if analyze_id else "",
+        analyze_added=analyze_added,
     )
 
 
@@ -1712,6 +1791,19 @@ def _batch_playlist_row(db: Any, plan: NativePlan, anchor: Any) -> Any:
         if str(getattr(row, "ParentID", "") or "") == parent_id:
             return row
     return db.create_playlist(plan.playlist, parent=anchor)
+
+
+def _analyze_row(db: Any, plan: NativePlan, anchor: Any) -> Any:
+    """The :data:`ANALYZE` playlist the added rows join: found live under the root, else made.
+
+    FOUND AGAIN AT THE WRITE rather than taken from the plan, so a playlist
+    made by another landing since this plan was read is joined and never made
+    a second time. The plan's identifier is what the screen said; a playlist
+    removed since is not written into, and a new one is made in its place.
+    """
+    del plan
+    found = analyze_playlist(db, str(anchor.ID))
+    return found if found is not None else db.create_playlist(ANALYZE, parent=anchor)
 
 
 def live_inbox_named(db: Any, name: str, root_id: str) -> bool:
@@ -1945,6 +2037,7 @@ __all__ = [
     "ADD",
     "BATCH_PLAYLIST_KEY",
     "FILE_ID_AT_LANDING",
+    "ANALYZE",
     "INBOX_JOB_KEY",
     "INBOX_PLAYLISTS_KEY",
     "LEFT_EMPTY",

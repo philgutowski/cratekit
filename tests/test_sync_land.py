@@ -434,7 +434,10 @@ def test_the_stop_at_the_landing_gate_names_the_session_commands_and_the_visit(
     )
     land = " ".join(tail.calls[-1])
     assert steps[1] == f"apply it: crate --run land-run {land}"
-    assert any("Reload Tags" in step and "batch playlist" in step for step in steps)
+    # U166: the visit selects the one playlist every landing fills, and the
+    # clear that takes the analysed rows out of it closes the visit.
+    assert any("Reload Tags" in step and "INBOX / Analyze" in step for step in steps)
+    assert steps[-1].endswith("crate inbox analyzed")
     analyse = [step for step in steps if "Analyze Tracks" in step]
     assert analyse and "KEY on" in analyse[0] and "Normal" in analyse[0]
     assert steps.index([s for s in steps if "Reload Tags" in s][0]) < steps.index(analyse[0])

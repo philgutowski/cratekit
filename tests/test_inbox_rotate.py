@@ -792,6 +792,9 @@ def test_only_the_rotation_asks_its_commit_to_admit_a_removed_playlist():
         # playlist with its own memberships in its second commit, the
         # rotation's pair, behind its own explicit gate.
         "favorites/split.py": ["REMOVALS"],
+        # U166. The Analyze clear takes each analysed row out of its one
+        # playlist, the membership table alone, behind its explicit gate.
+        "intake/analyzed.py": ["(rb_writer.MEMBERSHIP_TABLE,)"],
     }
     assert set(rotate.REMOVALS) == {rb_writer.PLAYLIST_TABLE, rb_writer.MEMBERSHIP_TABLE}
     from cratekit.favorites import split

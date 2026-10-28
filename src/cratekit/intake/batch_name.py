@@ -255,6 +255,15 @@ def free(cfg: config.Config, base: str) -> str:
     return candidate
 
 
+#: The name of the playlist under INBOX every native landing fills with the
+#: rows it creates (U166), RESERVED: no batch or account playlist takes it,
+#: since one that did would be found as that playlist and written into, and
+#: aged and moved by the rotation with the rows still waiting in it.
+#: :data:`cratekit.intake.native.ANALYZE` spells the same value, since this
+#: module reaches that one through the landing; a test holds the two equal.
+ANALYZE = "Analyze"
+
+
 def inbox_names(wanted: Iterable[str], held: Iterable[str], *, batch: str) -> tuple[str, ...]:
     """The INBOX playlist each account playlist lands as, in order (U113).
 
@@ -263,9 +272,10 @@ def inbox_names(wanted: Iterable[str], held: Iterable[str], *, batch: str) -> tu
     name already ``held`` under INBOX, the batch's own, or one an earlier
     playlist of this landing took, gets `` 2``, `` 3`` and on, so one landing
     never adds its tracks to another's playlist. Compared exactly, the way the
-    database writer finds a playlist by its name.
+    database writer finds a playlist by its name. :data:`ANALYZE` is always
+    held (U166), whether or not INBOX holds it yet.
     """
-    taken = {*held, batch}
+    taken = {*held, batch, ANALYZE}
     named: list[str] = []
     for base in wanted:
         candidate, count = base, 1

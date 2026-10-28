@@ -43,12 +43,16 @@ from tests.test_set_inspiration_playlist import pinned_day as pinned_day  # noqa
 
 
 def _inbox_under(cfg: config.Config, root_id: str) -> dict[str, list[str]]:
-    """Each live child playlist of the intake root, its member titles in order."""
+    """Each live child playlist of the intake root, its member titles in order.
+
+    All but INBOX / Analyze (U166), whose own suite is ``tests/test_inbox_analyzed.py``.
+    """
     rows = _query(
         cfg,
         "SELECT ID, Name FROM djmdPlaylist WHERE ParentID = ? AND Attribute = 0 "
-        "AND rb_local_deleted = 0 ORDER BY Name",
+        "AND rb_local_deleted = 0 AND Name != ? ORDER BY Name",
         root_id,
+        native.ANALYZE,
     )
     out: dict[str, list[str]] = {}
     for playlist_id, name in rows:

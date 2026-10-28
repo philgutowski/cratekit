@@ -242,7 +242,8 @@ def test_the_record_carries_the_hearts_placed_under_their_own_key(native_library
     assert record.detail[native.PASS_KEY] == PASS
     changes = {c.tree: c.created for c in record.change.trees}
     assert changes[placement.RECORD_KEY] == 2
-    assert changes[DECLARED.intake.id] == 1 and changes[rb_writer.CONTENT_TABLE] == 1
+    # U166: the batch's one membership and INBOX / Analyze's one.
+    assert changes[DECLARED.intake.id] == 2 and changes[rb_writer.CONTENT_TABLE] == 1
 
 
 def test_once_a_band_holds_the_heart_the_additive_refresh_puts_it_in_that_folders_favorites(

@@ -378,7 +378,10 @@ def locate(
     THE ACCOUNT'S NAME IS ASKED ONLY WHEN NO RECORD NAMES IT, and then only of
     playlists no landing record gives another pass or another account
     (``others``), and only while every session record could be read: a record
-    nobody could read may name the playlist this name would take.
+    nobody could read may name the playlist this name would take. NEVER OF
+    INBOX / Analyze (U166): its name is reserved, an account playlist of that
+    name lands as ``Analyze 2``, and filling it would put rows already
+    analysed back in front of the visit.
     """
 
     def unfound(why: str, rows: Sequence[Any] = ()) -> Unfound:
@@ -419,6 +422,7 @@ def locate(
             if key not in others
             and not rb_writer.is_folder(row)
             and str(getattr(row, "Name", "") or "") == name
+            and name != native.ANALYZE
         ]
         if len(rows) != 1:
             return unfound(TWO_FOUND if rows else NOT_FOUND, rows)

@@ -319,8 +319,10 @@ def test_three_files_become_three_rows_and_one_playlist_under_the_adopted_root(
     (record,) = session.records(cfg)
     assert record.state is session.SessionState.CLOSED
     assert record.sources == {INTAKE: "committed"}
+    # U166: the intake tree's six are the batch's three and INBOX / Analyze's
+    # three, every row the landing made joining the one playlist the visit selects.
     assert {change.tree: change.created for change in record.change.trees} == {
-        INTAKE: 3,
+        INTAKE: 6,
         rb_writer.CONTENT_TABLE: 3,
     }
     assert record.snapshot_path, "the capture the commit happened behind is not attached"

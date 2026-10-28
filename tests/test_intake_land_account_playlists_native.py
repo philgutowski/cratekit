@@ -102,12 +102,17 @@ def _land(pass_name: str = PASS) -> list[str]:
 
 
 def _inbox(cfg: config.Config, root_id: str) -> dict[str, list[str]]:
-    """Every live playlist directly under the intake root and the titles it holds."""
+    """Every live playlist directly under the intake root and the titles it holds.
+
+    All but INBOX / Analyze (U166), which every landing fills with the rows it
+    made and whose own suite is ``tests/test_inbox_analyzed.py``.
+    """
     rows = _query(
         cfg,
         "SELECT ID, Name FROM djmdPlaylist WHERE ParentID = ? AND rb_local_deleted = 0 "
-        "ORDER BY Seq",
+        "AND Name != ? ORDER BY Seq",
         root_id,
+        native.ANALYZE,
     )
     held = _query(cfg, "SELECT ID, Title FROM djmdContent")
     titles = {str(content_id): str(title) for content_id, title in held}
@@ -191,7 +196,10 @@ def test_a_file_no_account_playlist_claimed_stays_in_the_batch_playlist(native_l
     batch = "2026-10-03 Tidal playlists and Favorites"
     assert _inbox(cfg, root_id) == {batch: ["Hearted"], "Sunset Warmup": ["One"]}
     (warning,) = [w for w in acted["warnings"] if w["code"] == "rows-await-analysis"]
-    assert f"the {batch} and Sunset Warmup playlists" in warning["message"]
+    # U166: the warning names the one playlist the visit selects, every row
+    # either playlist holds being in it, and neither of the two.
+    assert f"the {DECLARED.intake.display} / {native.ANALYZE} playlist" in warning["message"]
+    assert batch not in warning["message"] and "Sunset Warmup" not in warning["message"]
 
 
 def test_a_job_queued_with_no_name_lands_in_the_batch_playlist_as_before(native_library, silence):

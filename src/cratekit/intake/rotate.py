@@ -437,6 +437,15 @@ def _classify(
         return left("folder", "a folder is never a batch, and nothing inside it is rotated")
     if int(getattr(row, "Attribute", -1)) != 0:
         return left("smart playlist", "a smart playlist is never a batch")
+    # INBOX / ANALYZE IS NEVER A BATCH (U166), whatever a record from before
+    # its name was reserved says of it: it holds the rows waiting for analysis,
+    # and moving it into Old would take them out of the visit.
+    if not in_old and name == native.ANALYZE:
+        return left(
+            "analyze",
+            "the playlist every landing fills with the rows awaiting analysis is "
+            "never a batch; crate inbox analyzed takes out what rekordbox analysed",
+        )
     named = named or {}
     recognised_by = _recognised(cfg, row, recorded, named)
     if recognised_by is None:
