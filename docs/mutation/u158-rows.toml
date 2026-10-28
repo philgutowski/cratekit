@@ -5,7 +5,7 @@ pass_kind = "light"
 id = "M1_card_not_judged"
 description = "cmd_closing: never judge the card a pull request's head names, so an owed unit merges"
 file = "scripts/board.py"
-surface = "developer"
+surface = "maintainer"
 tests = ["tests/test_pending_units.py"]
 old = '''        if card is not None:'''
 new = '''        if False:'''
@@ -14,7 +14,7 @@ new = '''        if False:'''
 id = "M2_any_branch_names_a_card"
 description = "pull_request_card: read a card off any owner/N-slug branch, not only a cloud one"
 file = "scripts/board.py"
-surface = "developer"
+surface = "maintainer"
 tests = ["tests/test_pending_units.py"]
 old = '''CLOUD_BRANCH_RE = re.compile(r"^cloud/(\d+)-")'''
 new = '''CLOUD_BRANCH_RE = re.compile(r"^\w+/(\d+)-")'''
@@ -23,7 +23,7 @@ new = '''CLOUD_BRANCH_RE = re.compile(r"^\w+/(\d+)-")'''
 id = "M3_implied_close_not_a_reference"
 description = "cmd_closing: write the implied trailer without its hash, so it closes nothing"
 file = "scripts/board.py"
-surface = "developer"
+surface = "maintainer"
 tests = ["tests/test_pending_units.py"]
 old = '''            problems += unresolved_closes(f"Closes #{card}", raw=False)'''
 new = '''            problems += unresolved_closes(f"Closes {card}", raw=False)'''
@@ -32,7 +32,7 @@ new = '''            problems += unresolved_closes(f"Closes {card}", raw=False)'
 id = "M4_shallow_checkout"
 description = "ci.yml: drop the full history checkout, so the range is the tip alone"
 file = ".github/workflows/ci.yml"
-surface = "developer"
+surface = "maintainer"
 tests = ["tests/test_pending_units.py"]
 old = '''        with:
           fetch-depth: 0
@@ -44,7 +44,7 @@ new = '''
 id = "M5_head_not_passed"
 description = "ci.yml: judge a pull request's range without its head, so its merge's close is unread"
 file = ".github/workflows/ci.yml"
-surface = "developer"
+surface = "maintainer"
 tests = ["tests/test_pending_units.py"]
 old = '''            python scripts/board.py closing --since "$PR_BASE" --pull-request-head "$PR_HEAD_REF"'''
 new = '''            python scripts/board.py closing --since "$PR_BASE"'''
@@ -53,7 +53,7 @@ new = '''            python scripts/board.py closing --since "$PR_BASE"'''
 id = "M6_pull_request_from_previous_tip"
 description = "ci.yml: judge a pull request from the event's previous tip rather than its base"
 file = ".github/workflows/ci.yml"
-surface = "developer"
+surface = "maintainer"
 tests = ["tests/test_pending_units.py"]
 old = '''            python scripts/board.py closing --since "$PR_BASE" --pull-request-head "$PR_HEAD_REF"'''
 new = '''            python scripts/board.py closing --since "$PUSHED_FROM" --pull-request-head "$PR_HEAD_REF"'''
@@ -62,7 +62,7 @@ new = '''            python scripts/board.py closing --since "$PUSHED_FROM" --pu
 id = "M7_no_base_refuses"
 description = "ci.yml: a pull request event with no base sha fails the step instead of saying why"
 file = ".github/workflows/ci.yml"
-surface = "developer"
+surface = "maintainer"
 tests = ["tests/test_pending_units.py"]
 old = '''              echo "pull request event carries no base sha; nothing to judge"
               exit 0'''
@@ -73,7 +73,7 @@ new = '''              echo "pull request event carries no base sha; nothing to 
 id = "M8_zero_tip_judged"
 description = "ci.yml: a created ref's all zero previous tip is handed to the check as a range"
 file = ".github/workflows/ci.yml"
-surface = "developer"
+surface = "maintainer"
 tests = ["tests/test_pending_units.py"]
 old = '''            ""|0000000000000000000000000000000000000000)'''
 new = '''            "")'''
