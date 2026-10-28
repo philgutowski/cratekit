@@ -21,10 +21,10 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import analyzed, analyzed_cli, land_cli, native, rotate
 from tests.cli_drive import drive
 from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
+from tests.test_intake_land_native import _query, _stage
 from tests.test_intake_land_native import (
     _release_process_locks as _release_process_locks,  # noqa: PLC0414
 )
-from tests.test_intake_land_native import _query, _stage
 from tests.test_intake_land_native import _two_acts as _land_acts
 from tests.test_intake_land_native import acknowledged as acknowledged  # noqa: PLC0414
 from tests.test_intake_land_native import library as library  # noqa: PLC0414

@@ -1296,6 +1296,14 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'intake/normalize.py': ['intake-list-unusable', 'utf-8-sig'],
     'intake/pipeline.py': ['lossy-refused'],
     'intake/recognize.py': ['intake-recognition-unready'],
+    # U166, 2026-10-28: the INBOX / Analyze clear, its engine and its verb.
+    'intake/analyzed.py': ['decision-stale', 'inbox-analyzed', 'session-committed-unverified'],
+    'intake/analyzed_cli.py': [
+        'analyzed-cleared',
+        'analyzed-nothing-planned',
+        'analyzed-rows-waiting',
+        'config-unusable',
+    ],
     # U134, 2026-10-12: the INBOX refill, its engine and its verb.
     'intake/refill.py': [
         'decision-stale',
@@ -2570,6 +2578,9 @@ PINNED_LITERAL_HOLDERS = {
     'intake/normalize.py': ['intake-list-unusable'],
     'intake/pipeline.py': ['lossy-refused'],
     'intake/recognize.py': ['intake-recognition-unready'],
+    # U166, 2026-10-28: the INBOX / Analyze clear, its engine and its verb.
+    'intake/analyzed.py': ['decision-stale', 'session-committed-unverified'],
+    'intake/analyzed_cli.py': ['config-unusable'],
     # U134, 2026-10-12: the INBOX refill, its engine and its verb.
     'intake/refill.py': [
         'decision-stale',
