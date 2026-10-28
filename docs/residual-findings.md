@@ -38834,3 +38834,128 @@ correctness.
 **Measured cost.** None today: the steps are right for the landing as it is built. They go stale the day U163 or U166 lands.
 
 **Closes when:** U166 lands and the stop names `INBOX / Analyze`, and U163 lands and the Reload Tags step is dropped. Ledger only.
+
+---
+
+## R-1049. A Bandcamp download whose header names its file both encoded and plain is saved under the plain name
+
+**Found:** at the second review of #357, U176, 2026-10-28.
+
+**The mechanism.** `bandcamp._disposition_name` reads `Content-Disposition`
+with the standard library's parser, whose `get_filename` takes the plain
+`filename` parameter over the encoded `filename*` one when both are present.
+A single track sold as a bare file, with a name outside ASCII, would be saved
+under the ASCII fallback.
+
+**Measured cost.** Driven on the parser alone. A release arrives as an
+archive and its members keep their own names, so only a bare single track is
+affected, and its name is the one the person sees in staging. Bandcamp's real
+header is unmeasured.
+
+**Closes when:** the attended run reads a real download's header, and the
+encoded form is preferred if both are sent. Ledger only.
+
+---
+
+## R-1050. The Bandcamp plan calls a purchase with no track list new, and a compilation crediting Various Artists per track is not read as Artist - Title
+
+**Found:** at the first review of #357, U176, 2026-10-28.
+
+**The mechanism.** `bandcamp_cli.plan` resolves a purchase per track from its
+track list. A purchase whose list is absent has nothing to resolve and is
+planned `new`, which the plan's own wording reads as nothing of it in the
+library. A compilation whose tracks carry the release artist, `Various
+Artists`, with `Artist - Title` titles, is resolved under `Various Artists`
+and planned `new`; the split into artist and title applies only when the
+track names no artist.
+
+**Measured cost.** Driven: the plan misreports, and the worker's check of each
+downloaded file by its own tags holds the owned tracks back, so nothing owned
+is staged. The cost is a plan line that overstates what will arrive, and a
+download of a release whose files are then all held.
+
+**Closes when:** an absent track list is its own disposition or a note on the
+row, and a track artist equal to the release artist is read the way an empty
+one is. Ledger only.
+
+---
+
+## R-1051. A Bandcamp fetch holds a track by its number only when the file name begins with the release's own artist and title
+
+**Found:** at the second review of #357, U176, 2026-10-28.
+
+**The mechanism.** `bandcamp_cli.number_in` reads the track number only after
+the prefix `band_name - item_title - `, which round one made strict so an album
+titled with a leading number no longer held every file. A release whose file
+names spell the album differently from `item_title` (a slash written as a
+hyphen, say) gives no number, so the plan's hold by track number does not
+apply and only the file's own tags can hold it back.
+
+**Measured cost.** Driven with a fixture: an untagged file of an owned track,
+under a title Bandcamp would have to rewrite, is staged again. A duplicate in
+staging, never a loss; the landing finds it owned. Whether Bandcamp rewrites
+characters in file names, and whether a release arrives untagged, is
+unmeasured: sitting 46's 96 files carried their tags.
+
+**Closes when:** the attended run reads a release whose title holds a
+character a file name cannot carry, and either the prefix is read with the
+same rewrite or the hold falls back to the track's title. Ledger only.
+
+---
+
+## R-1052. The doctor never requires the Bandcamp session, and the setup wizard never offers it
+
+**Found:** at the second review of #357, U176, 2026-10-28.
+
+**The mechanism.** `credential.bandcamp` is in `doctor.CREDENTIALS_BY_CHECK`
+and no verb declares it in `doctor_checks`, so it is never required: the
+doctor reports it as information naming the two verbs that spend it, and the
+setup wizard, which offers only required credentials, does not ask for it.
+Declaring it would make the doctor fail on every installation whose profile
+switches on feature row 6 and has no Bandcamp account, and would make the
+wizard ask each of them for a browser cookie.
+
+**Measured cost.** None to the verbs: each refuses `auth-failed` naming
+`crate login bandcamp-session --from-file PATH` when no session is recorded.
+The choice is the conservative one, taken with nobody to ask; whether
+Phillip wants the doctor to fail without a session is his.
+
+**Closes when:** Phillip decides whether a Bandcamp session is required where
+the verbs are switched on. Ledger only.
+
+---
+
+## R-1053. The Bandcamp worker, like the download and fallback workers, says an item stays queued when the item has failed
+
+**Found:** at the first review of #357, U176, 2026-10-28.
+
+**The mechanism.** A transient failure of one release in
+`bandcamp_cli.handle_fetch` is refused with "it stays queued", the wording
+`acquire.cli` and `acquire.fallback_cli` use for the same case. The engine
+records the item failed and, when nothing else succeeded, the job failed;
+`job retry` re-arms it.
+
+**Measured cost.** Driven: the message says queued while the envelope's state
+and the exit code say failed. The envelope is right, so nothing is lost; the
+sentence is wrong in three workers.
+
+**Closes when:** the three workers say the item failed and can be retried,
+with the retry command. Ledger only, a wording fix.
+
+---
+
+## R-1054. Three Bandcamp guards kill no test, the session asked before the library walk, the library view reused, and the stat request trust check
+
+**Found:** at the second review of #357, U176, 2026-10-28.
+
+**The mechanism.** Mutated alone in memory by the second review, each of these
+survives the unit's tests: `_planned` asking the keychain before the library
+walk, the queue path seeding `_LIBRARIES` so its worker walks the library
+once, and `_prepared` declining to ask the stat endpoint for an untrusted
+link. Each is a cost guard or is covered by `fetch` refusing the same link.
+
+**Measured cost.** None measured: the order and the reuse save a library walk,
+and the trust check is covered by the one in `fetch`. Maintainer facing.
+
+**Closes when:** a test counts the library walks of one fetch and asserts the
+order. Ledger only.
