@@ -23,6 +23,7 @@ Subcommands:
                     and a residual file the landing could not read
     residuals       the residual files waiting for a number; `--land` numbers
                     them on main
+    local           the attended cards, the work only Phillip's Mac can do
     cloud           the cloud lane's queue: every open unit or residual card, by
                     the state its comments give it, and the one to take
 
@@ -1754,6 +1755,32 @@ def cmd_cloud(args) -> int:
     return 0
 
 
+def cmd_local(args) -> int:
+    """The work only Phillip's Mac can do: every open card labelled attended."""
+    graph = build_graph(load_issues())
+    cards = sorted((n for n in graph.values() if n["attended"] and not n["closed"]),
+                   key=lambda n: n["number"])
+    if not cards:
+        print("Nothing waits on your Mac.")
+        return 0
+    ready, waiting = [], []
+    for node in cards:
+        deps = parse_deps(node["body"]) or []
+        still = [d for d in deps if d in graph and not graph[d]["closed"]]
+        (waiting if still else ready).append((node, still))
+    if ready:
+        print(f"Ready at your Mac ({len(ready)}):")
+        for node, _ in ready:
+            print(f"  #{node['number']:<4} {node['title'][:76]}")
+    if waiting:
+        print(f"Waiting on the cloud ({len(waiting)}):")
+        for node, still in waiting:
+            on = ", ".join(f"#{d}" for d in still)
+            print(f"  #{node['number']:<4} {node['title'][:60]}  (after {on})")
+    print("Read one with: .venv/bin/python scripts/board.py show N")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -1805,6 +1832,8 @@ def main() -> int:
         help=f"how many cards the cloud builds at once (default {CLOUD_LANES})",
     )
     cloud.set_defaults(func=cmd_cloud)
+    local = sub.add_parser("local", help="the attended cards only Phillip's Mac can do")
+    local.set_defaults(func=cmd_local)
     args = parser.parse_args()
     try:
         return args.func(args)
