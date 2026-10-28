@@ -435,6 +435,16 @@ beyond the lane count withdraws, the earliest holds keeping theirs. A hold
 with no comment for eight hours is a session that died, and the next one
 resumes it from its pushed branch.
 
+**A decision that is Phillip's goes on the decisions page**, https://claude.ai/artifact/FUqChoK5qKhztLdzzEADaS,
+decided 2026-10-28. A worker that reaches one, a brainstorm's questions or a
+question a brief leaves open, writes each question there as a multiple choice
+with its recommendation first, says so on the card, and moves to the next
+card. Phillip answers on the page whenever he likes; the dispatcher, at its
+next `Dispatch`, posts each answer on its card under `Answer from Phillip`
+(which `board.py cloud` reads as his reply and offers the card as
+`answered`) or sends it to the session that asked, and marks it relayed.
+Any session, attended or not, asks him this way rather than stopping.
+
 **Opus 5.5 at high effort brainstorms, plans and builds; Fable at high
 effort reviews.** The project settings fix the effort, the scheduled task
 fixes the session's model, and the review is the `fable-reviewer` agent

@@ -36,7 +36,9 @@ skill, which takes its card from `board.py cloud`, plans
 and builds it at high effort, has Fable review it to the merge bar, measures
 the mutation table against the Linux suite's known failures, merges to `main`
 with the closing trailer and pushes `main`. An idea gets a brainstorm posted
-on its card and waits for Phillip's answer. **Only a card that cannot be
+on its card and waits for Phillip's answer, and every question for him goes
+on the decisions page, https://claude.ai/artifact/FUqChoK5qKhztLdzzEADaS, where he answers it
+with a tap. **Only a card that cannot be
 built without the machine is built locally**, and the cloud session sets it
 aside with a comment carrying the steps. The `file-card` skill turns a
 request into a card in the brief form. METHOD's cloud lane section is the

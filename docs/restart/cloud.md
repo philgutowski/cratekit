@@ -72,3 +72,16 @@ cards ready, `board.py cloud` now runs `CLOUD_LANES` lanes, three, and a
 worker sends the dispatcher `Dispatch` when it takes a card and when it frees
 one, so no lane waits for the hour. The paused chat task "Cratekit Cloud
 Lane" is Phillip's to delete.
+
+**The decisions page, 2026-10-28**, https://claude.ai/artifact/FUqChoK5qKhztLdzzEADaS, asked for by
+Phillip: every decision that blocks a session on him is a multiple choice
+with its recommendation first, stored in the page's `decisions` collection.
+A worker writes its brainstorm or question there as well as on the card; the
+dispatcher relays each answer as an `Answer from Phillip` comment on the
+card, or by message to the session that asked, and marks it relayed;
+`board.py cloud` reads that heading as his reply. The first question on it
+is the lane count. A second test bound to this container's inode numbers,
+`test_an_id_above_the_bound_that_is_the_files_inode_is_not_random` in
+`tests/test_repair_rows.py`, passed in the base measurement and then failed
+alone on `main` itself, so a session that meets it new runs it on `main`
+before calling it its own.
