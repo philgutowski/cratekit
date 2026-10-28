@@ -1,0 +1,200 @@
+name = "u161"
+pass_kind = "light"
+
+# The unit's one change is an absence: the database path left out of the
+# native digest. Rows 1 to 3 put a path back in three spellings, rows 4 and
+# 5 take out the library identity that replaces it, row 6 takes the path off
+# the screen, and the rest sample the identity's existing guards that the
+# unit's tests now also assert on.
+
+[[rows]]
+id = "P1_path_back_in_digest"
+description = "native.identity: digest str(plan.database) again, the line U161 removed, so a copy rehearsal can never match"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''        "device": plan.device_id,
+        "master_db_id": plan.master_db_id,'''
+new = '''        "database": str(plan.database),
+        "device": plan.device_id,
+        "master_db_id": plan.master_db_id,'''
+
+[[rows]]
+id = "P2_parent_in_digest"
+description = "native.identity: digest the database's folder under another key, a path the old key's name check would not see"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''        "device": plan.device_id,
+        "master_db_id": plan.master_db_id,'''
+new = '''        "where": str(plan.database.parent),
+        "device": plan.device_id,
+        "master_db_id": plan.master_db_id,'''
+
+[[rows]]
+id = "P3_file_name_in_digest"
+description = "native.identity: digest the database's file name alone, which a copy named differently from master.db would not share"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''        "device": plan.device_id,
+        "master_db_id": plan.master_db_id,'''
+new = '''        "file": plan.database.name,
+        "device": plan.device_id,
+        "master_db_id": plan.master_db_id,'''
+
+[[rows]]
+id = "P4_device_out"
+description = "native.identity: drop the device, so an answer for one library is not stale for another with the same master id"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''        "device": plan.device_id,
+        "master_db_id": plan.master_db_id,'''
+new = '''        "master_db_id": plan.master_db_id,'''
+
+[[rows]]
+id = "P5_master_out"
+description = "native.identity: drop the master id, the other half of the library identity that replaced the path"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''        "device": plan.device_id,
+        "master_db_id": plan.master_db_id,'''
+new = '''        "device": plan.device_id,'''
+
+[[rows]]
+id = "P6_screen_drops_path"
+description = "collection_facts: show the root's name where the database path was, so the screen no longer says which file is written"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''        "reads and writes": str(rows.database),'''
+new = '''        "reads and writes": str(rows.root_name),'''
+
+[[rows]]
+id = "S1_playlist_out"
+description = "native.identity: drop the batch playlist's name from the engine digest (sample of an existing guard)"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''        "playlist": plan.playlist,
+        "batch_playlist": plan.batch_playlist_id,'''
+new = '''        "batch_playlist": plan.batch_playlist_id,'''
+
+[[rows]]
+id = "S2_columns_out"
+description = "native.identity: drop each row's columns from the engine digest (sample of an existing guard)"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''                "content_id": row.content_id,
+                "columns": row.columns(),'''
+new = '''                "content_id": row.content_id,'''
+
+[[rows]]
+id = "S3_link_counts_out"
+description = "native.identity: digest the content link's value and not its counts (sample of an existing guard, U126)"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''            {"value": plan.link.value, "carriers": plan.link.carriers, "rows": plan.link.rows}'''
+new = '''            {"value": plan.link.value}'''
+
+[[rows]]
+id = "S4_collection_out_of_payload"
+description = "land_cli._native_payload: drop the engine digest from the gate's identity, so nothing of the rows is approved (sample)"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''        "files": planned.digest,
+        "collection": rows.digest,
+    }
+    if rows.favorites is not None and rows.favorites.skipped:'''
+new = '''        "files": planned.digest,
+    }
+    if rows.favorites is not None and rows.favorites.skipped:'''
+
+[[rows]]
+id = "S5_batch_out_of_payload"
+description = "land_cli._native_payload: drop the batch name from the gate's identity (sample of an existing guard)"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''        "folder": str(planned.folder),
+        "batch": planned.batch,
+        "target": str(target),
+        "files": planned.digest,
+        "collection": rows.digest,'''
+new = '''        "folder": str(planned.folder),
+        "target": str(target),
+        "files": planned.digest,
+        "collection": rows.digest,'''
+
+[[rows]]
+id = "S6_file_collection_out"
+description = "file_cli._native_payload: drop the engine digest from intake file's gate identity, the other verb folding it"
+file = "src/cratekit/intake/file_cli.py"
+surface = "user"
+old = '''    identity = {"kind": "file", "file": plan["digest"], "collection": rows.digest}'''
+new = '''    identity = {"kind": "file", "file": plan["digest"]}'''
+
+# The fix round's pin: each layer removed alone.
+
+[[rows]]
+id = "G1_pin_never_compared"
+description = "Gates.require: skip the pin comparison, so an answer given over one file is used by a run that opened another"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_pins.py", "tests/test_intake_land_native.py", "tests/test_gate_shown_plan.py"]
+old = '''        if recorded is not None and inline is None:
+            held = self.state.pins.get(spec.name, {})'''
+new = '''        if False:
+            held = self.state.pins.get(spec.name, {})'''
+
+[[rows]]
+id = "G2_pin_overwritten_before_compare"
+description = "Gates.require: record the pin on every call, so the continuation replaces the answered pin before comparing it"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_pins.py", "tests/test_intake_land_native.py", "tests/test_gate_shown_plan.py"]
+old = '''        if recorded is None and pins:'''
+new = '''        if pins:'''
+
+[[rows]]
+id = "G3_absence_read_as_agreement"
+description = "Gates.require: compare only keys both sides pinned, so a run that pinned nothing passes a gate that now pins"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_pins.py", "tests/test_intake_land_native.py", "tests/test_gate_shown_plan.py"]
+old = '''                if held.get(key) != pins.get(key):'''
+new = '''                if key in held and key in pins and held[key] != pins[key]:'''
+
+[[rows]]
+id = "G4_pins_not_written"
+description = "RunState.to_json: never write the pins, so the answer's file is lost when the first act exits"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_pins.py", "tests/test_intake_land_native.py", "tests/test_gate_shown_plan.py"]
+old = '''        if self.pins:
+            record["pins"]'''
+new = '''        if False:
+            record["pins"]'''
+
+[[rows]]
+id = "G5_pins_not_read"
+description = "RunState.from_json: read no pins back, so a continuation sees none"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_pins.py", "tests/test_intake_land_native.py", "tests/test_gate_shown_plan.py"]
+old = '''                for name, one in (data.get("pins") or {}).items()'''
+new = '''                for name, one in {}.items()'''
+
+[[rows]]
+id = "L1_landing_pins_nothing"
+description = "ask_then_write: pin nothing, so every native write's answer is free of the file again"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py"]
+old = '''            spec, plan=data, context=shown(rows), pinned={DATABASE_PIN: str(opened)}'''
+new = '''            spec, plan=data, context=shown(rows), pinned={}'''
