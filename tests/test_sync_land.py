@@ -694,3 +694,22 @@ def test_the_default_output_prints_each_step_and_what_the_session_does_next(
     assert "sync.land.download" in text
     assert "--actor session" in text
     assert "Analyze Tracks" in text
+
+
+def test_a_job_another_driver_holds_ends_the_pass_with_that_drivers_refusal(
+    machine, monkeypatch, tail
+):
+    """A job still running elsewhere was never driven here, and the pass says whose it is."""
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    (intake,) = _by_key("intake.playlist")
+
+    with jobs.driver_lock(intake.job_id):
+        code, envelope = drive(["sync", "land", "--pass-run", passed["run_id"]])
+
+    assert code == int(ExitCode.LIBRARY_BUSY), envelope
+    assert envelope["cause"]["reason"] == "job-driver-held"
+    assert intake.job_id in envelope["cause"]["message"]
+    assert ("intake", "missing") not in tail.verbs()

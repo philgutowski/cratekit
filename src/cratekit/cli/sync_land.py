@@ -455,10 +455,18 @@ def _settle(report: _Pass, step: str, job: jobs.Job) -> jobs.Job:
     job's own; the caller reads the state and decides. What it never does is
     read the command's exit as the job's state, since the queue is the truth.
     """
-    if job.is_open():
-        report.call(step, _argv_for(job))
+    if not job.is_open():
+        return job
+    argv = _argv_for(job)
+    code, envelope = report.call(step, argv)
     with jobs.open_store() as store:
-        return jobs.get(store, job.job_id)
+        settled = jobs.get(store, job.job_id)
+    if settled.is_open() and settled.state is not jobs.JobState.BLOCKED:
+        # STILL QUEUED OR RUNNING: the command never drove it, a live driver
+        # elsewhere holding it above all. The command's own refusal says why,
+        # where the job row, which records no cause yet, says nothing.
+        raise _Stop.of(step, _cause_of(step, argv, code, envelope))
+    return settled
 
 
 def _intake(report: _Pass, run_id: str, cfg: config.Config) -> None:
@@ -724,9 +732,13 @@ def _attended(ctx: Context, report: _Pass, stop: _Attend) -> Envelope:
     minted by the session through its own verb.
     """
     command = " ".join(stop.argv)
-    after = REKORDBOX_STEPS if stop.step == LAND else (
-        f"then continue the pass: crate sync land --pass-run {report.summary['pass_run']}",
-    )
+    resume = report.summary.get("pass_run")
+    if stop.step == LAND:
+        after = REKORDBOX_STEPS
+    elif resume:
+        after = (f"then continue the pass: crate sync land --pass-run {resume}",)
+    else:
+        after = ("then run the pass again: crate sync land",)
     detail = stop.cause.detail or {}
     if stop.cause.reason == GATE_STOP:
         run_id = str(detail.get("run_id") or "")
