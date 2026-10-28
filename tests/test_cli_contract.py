@@ -1614,6 +1614,11 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
             "--export",
             str(outbound_fakes.write_export(library / "outbound")),
         ],
+        # U152. The driver takes no argument: on this fixture its first step,
+        # the pass, refuses for want of a provider session, and the driver ends
+        # with that step's own refusal. The chain is driven in
+        # tests/test_sync_land.py.
+        "sync.land": [],
         # U20. Inbox, unplaced and pending take no positional argument: an empty
         # intake folder and an empty ledger are the state a fresh install is
         # genuinely in, and each verb must still emit a well-formed plan and
