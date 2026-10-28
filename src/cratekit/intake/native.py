@@ -98,7 +98,7 @@ from cratekit.core import (
 from cratekit.core.cause import CratekitError, Remedy, refuse
 from cratekit.favorites import colour as colour_mod
 from cratekit.favorites import placement
-from cratekit.intake import ingest, set_playlist
+from cratekit.intake import ingest, label_filing, set_playlist
 from cratekit.write import metadata_cli, routing_pass, row_link, trees
 
 if TYPE_CHECKING:
@@ -416,6 +416,9 @@ class NativePlan:
     #: the declared INSPIRATION folder, for a landing given ``--set``. None
     #: for every other landing.
     set_playlist: set_playlist.SetPlaylistPlan | None = None
+    #: The label filing under the Record Labels tree (U156), planned by the
+    #: caller on this handle over the same targets, or None when not asked for.
+    labels: label_filing.LabelPlan | None = None
     #: The INBOX playlist an earlier landing of the same set job made (U135),
     #: which this write adds to; empty when the write finds or makes the
     #: playlist by its set name under the intake root.
@@ -501,6 +504,8 @@ class NativeLanded:
     favorites: placement.Placed | None = None
     #: The set's permanent playlist written under INSPIRATION (U121), or None.
     set_playlist: set_playlist.Written | None = None
+    #: What the commit filed under the Record Labels tree (U156), or None.
+    labels: label_filing.Written | None = None
     #: The ContentLink the plan gave every added row (U126), which the read
     #: back is held to. None when the plan added no row.
     content_link: int | None = None
@@ -655,6 +660,7 @@ def plan_rows(
     set_job_id: str = "",
     inbox_leftovers: Sequence[str] = (),
     inbox_found_by_name: bool = False,
+    labels: label_filing.LabelPlan | None = None,
 ) -> NativePlan:
     """Plan one row per file and one playlist, against the open database.
 
@@ -676,7 +682,9 @@ def plan_rows(
     ``unplanned_left``, the left rows of the account playlists the caller found
     holding nothing (U128). ``set_plan`` is the
     set's permanent playlist (U121), planned by the caller on this same handle
-    over the same targets, and part of the digest the same way.
+    over the same targets, and part of the digest the same way. So is
+    ``labels``, the label filing (U156), less any file this plan leaves in
+    staging, each of which it names as filed nowhere.
 
     A FILE THE COLLECTION HOLDS IS PRESENT, NOT ADDED TWICE. The target is
     matched against every active row the way the membership writers match,
@@ -755,6 +763,10 @@ def plan_rows(
         ]
     rows, vox_cut, vox_blocked = _vox_plan(cfg, db, rows)
     kept, dropped = _supported_only(split, rows)
+    if labels is not None:
+        labels = label_filing.supported_only(
+            labels, {str(row.target) for row in rows if row.action != UNSUPPORTED}
+        )
     planned = NativePlan(
         tree_id=tree_id,
         root_id=str(root_id),
@@ -775,6 +787,7 @@ def plan_rows(
             db, hearts, rows, source=favorites_source, owned=owned_hearts
         ),
         set_playlist=set_plan,
+        labels=labels,
         batch_playlist_id=batch_playlist_id,
         set_job_id=set_job_id,
         inbox_leftovers=tuple(inbox_leftovers),
@@ -1107,6 +1120,7 @@ def identity(plan: NativePlan) -> dict[str, Any]:
         if plan.set_playlist is not None
         else {}
     )
+    filed = {"labels": label_filing.identity(plan.labels)} if plan.labels is not None else {}
     # THE VOX TAG ONLY WHEN A ROW IS ADDED (U127), the cut, why none, and each
     # added row's score and answer, so an approval given before a file was
     # rescored or the library recalibrated is stale for the tags it would write.
@@ -1126,6 +1140,7 @@ def identity(plan: NativePlan) -> dict[str, Any]:
         **unplanned,
         **favorites,
         **kept,
+        **filed,
         **vox,
         "kind": "land-native",
         "tree": plan.tree_id,
@@ -1414,6 +1429,7 @@ def apply_rows(
         ]
         placed: placement.Placed | None = None
         set_written: set_playlist.Written | None = None
+        labels_written: label_filing.Written | None = None
         try:
             # BEFORE THE FIRST ROW, so a refusal adds nothing. A name the plan
             # chose free that INBOX holds now would show two playlists of one
@@ -1540,6 +1556,11 @@ def apply_rows(
             # could not make a row for is left and listed, never guessed.
             if plan.set_playlist is not None:
                 set_written = set_playlist.write_members(db, plan.set_playlist, by_target=by_target)
+            # THE LABEL FILING, IN THE SAME COMMIT (U156): appended under the
+            # Record Labels tree by target, a member whose file made no row
+            # left and named, nothing found there removed.
+            if plan.labels is not None:
+                labels_written = label_filing.write(db, plan.labels, by_target=by_target)
             rb_writer.commit_guarded(db, creations=(rb_writer.CONTENT_TABLE,))
         except BaseException:
             trees._rollback_quietly(db)
@@ -1555,6 +1576,7 @@ def apply_rows(
                     placed=placed,
                     set_written=set_written,
                     vox_written=vox_written,
+                    labels_written=labels_written,
                 )
             raise
 
@@ -1569,12 +1591,15 @@ def apply_rows(
             placed=placed,
             set_written=set_written,
             vox_written=vox_written,
+            labels_written=labels_written,
         )
         convergence.record_fingerprint(cfg, db)
         if set_written is not None and set_written.playlist_id:
             set_written = replace(
                 set_written, read_back=set_playlist.read_back(db, set_written.playlist_id)
             )
+        if labels_written is not None:
+            labels_written = label_filing.read_back(db, labels_written)
 
         landed = []
         # ONLY WHEN A TAG WAS PLANNED: a row this landing just made carries no
@@ -1610,6 +1635,7 @@ def apply_rows(
         playlists=tuple(written),
         favorites=placed,
         set_playlist=set_written,
+        labels=labels_written,
         content_link=plan.link.value if plan.link is not None else None,
         left=tuple(left),
         vox_written=vox_written,
@@ -1732,6 +1758,7 @@ def _record_landing_commit(
     placed: placement.Placed | None = None,
     set_written: set_playlist.Written | None = None,
     vox_written: int = 0,
+    labels_written: label_filing.Written | None = None,
 ) -> None:
     """Record the commit on the session, once anything landed.
 
@@ -1749,6 +1776,7 @@ def _record_landing_commit(
         and hearts <= 0
         and coloured <= 0
         and not (set_written and set_written.playlist_id)
+        and not (labels_written and labels_written.changed())
     ):
         return
     # THE BATCH PLAYLIST IS NAMED ON THE RECORD (U111), by identifier as well
@@ -1812,6 +1840,10 @@ def _record_landing_commit(
     # the record counts the batch's memberships and the set's apart.
     if set_written is not None and plan.set_playlist is not None:
         set_playlist.record_commit(record, set_written, plan.set_playlist, cfg)
+    # AND THE LABEL FILING (U156), under the catalogue tree's own id, so the
+    # record counts the batch's memberships and the labels' apart.
+    if labels_written is not None:
+        label_filing.record_commit(record, labels_written, cfg)
     # AND THE VOX TAGS (U127), under the vocals verb's own key, so a restore
     # counts the tag associations apart from the rows they hang on.
     if vox_written > 0:

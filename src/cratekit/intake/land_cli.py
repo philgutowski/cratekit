@@ -34,6 +34,9 @@ provenance ``label approved`` wrote beside its list. Its bytes are part of what
 the gate compares, so an answer given against one manifest is stale for
 another. A label row that no landed file matches is a warning that names the
 track, never a failure: the file, if there is one, is in the intake playlist.
+On a database native intake tree the same rows, or one label named with
+``--label`` and each file's date tag, are filed under the Record Labels tree in
+the landing's own commit (U156, :mod:`cratekit.intake.label_filing`).
 """
 
 from __future__ import annotations
@@ -48,7 +51,15 @@ from cratekit.core.cause import CratekitError, Outcome, Remedy, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.favorites import backfill, placement
 from cratekit.favorites import colour as colour_mod
-from cratekit.intake import account_playlists, batch_name, ingest, landing, native, set_playlist
+from cratekit.intake import (
+    account_playlists,
+    batch_name,
+    ingest,
+    label_filing,
+    landing,
+    native,
+    set_playlist,
+)
 from cratekit.intake import cli as intake_cli
 from cratekit.write import metadata_cli
 
@@ -254,6 +265,17 @@ def build_land(parser, entry) -> None:
         ),
     )
     parser.add_argument(
+        "--label",
+        default=None,
+        metavar="NAME",
+        help=(
+            "file every landed file under this label in the record labels tree, in "
+            "the year its date tag names, for a label batch with no manifest such as "
+            "a Bandcamp purchase from the label's own account (database native intake "
+            "trees only; a file with no date tag is named and filed nowhere)"
+        ),
+    )
+    parser.add_argument(
         "--set",
         dest="set_job",
         default=None,
@@ -267,6 +289,67 @@ def build_land(parser, entry) -> None:
     )
     set_playlist.add_word_arguments(parser)
     parser.set_defaults(_handler=intake_land)
+
+
+def _label_flag(
+    given: str | None,
+    *,
+    manifest: landing.LabelManifest | None,
+    medium: ingest.IntakeMedium,
+    cfg: config.Config,
+) -> str | None:
+    """The label ``--label`` names, or a refusal before the gate with nothing moved (U156).
+
+    NATIVE ONLY: the bridge files labels into its intake file from a manifest
+    alone, and a flag it would ignore is a label batch landed filed under
+    nothing. NOT BESIDE A MANIFEST, whose rows name their own labels, since
+    two answers to one question is a guess at which one wins. NOT BLANK, since
+    a playlist named for nothing sits in the tree for good. AND NOT ON A
+    LIBRARY WHOSE ROOT IS NOT THERE, said as that: the medium was not read, so
+    telling the person their tree is on the bridge, and to drop the flag, would
+    land the batch filed under nothing once the volume is back.
+    """
+    if given is None:
+        return None
+    flag = "--label"
+    if not given.strip():
+        raise refuse(
+            "intake-list-unusable",
+            f"{flag} names no label, so there is nothing to file the batch under; "
+            f"name the label or drop {flag}, nothing was moved",
+            remedy=Remedy.FIX_COMMAND_LINE,
+            origin=_ORIGIN,
+        )
+    if manifest is not None:
+        raise refuse(
+            "intake-list-unusable",
+            f"{flag} and --manifest both say which label each file is filed under, and "
+            f"the manifest's rows name their own; pass one of them, nothing was moved",
+            remedy=Remedy.FIX_COMMAND_LINE,
+            origin=_ORIGIN,
+            detail={"label": given, "manifest": str(manifest.path)},
+        )
+    if medium.declared is None:
+        raise refuse(
+            "library-root-unreachable",
+            f"the library root {cfg.library.root} is not reachable, so its taxonomy and "
+            f"its intake tree could not be read and {flag} has no tree to file the "
+            f"batch under; mount the library volume and run it again, nothing was moved",
+            origin=_ORIGIN,
+            detail={"root": str(cfg.library.root), "label": given},
+        )
+    if not medium.native:
+        raise refuse(
+            "intake-list-unusable",
+            f"{flag} files the batch under its label through the database, and this "
+            f"library's intake tree is on the xml bridge, whose landing files labels "
+            f"from a manifest alone; land with --manifest or without {flag}, "
+            f"nothing was moved",
+            remedy=Remedy.FIX_COMMAND_LINE,
+            origin=_ORIGIN,
+            detail={"label": given},
+        )
+    return given.strip()
 
 
 def _payload(
@@ -601,6 +684,7 @@ def intake_land(ctx) -> Envelope:
         )
     if ctx.args.set_job:
         set_playlist.assert_native(medium, landing=True)
+    label = _label_flag(ctx.args.label, manifest=manifest, medium=medium, cfg=cfg)
     if medium.native:
         # AND WHICH FILES ARE HEARTS (U120), read from the same jobs the same
         # way, each with the month the account dated it into. The native
@@ -618,6 +702,8 @@ def intake_land(ctx) -> Envelope:
             declared=declared,
             registry=registry,
             manifest=manifest,
+            label=label,
+            medium=medium,
             claims=claims,
             hearted=hearted,
             owned=owned,
@@ -766,6 +852,7 @@ def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: P
         if rows.favorites is not None
         else {}
     )
+    filed = label_filing.label_of(rows.labels) if rows.labels is not None else {}
     items = []
     for item in planned.items:
         row = by_target[str(target / item.name)]
@@ -781,6 +868,10 @@ def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: P
             entry["why"] = row.why
         if str(row.target) in hearts:
             entry["heart"] = hearts[str(row.target)] or "month left to the backfill"
+        if rows.labels is not None:
+            # U156: the label playlist each file is filed in, or none, which
+            # the screen's facts say why for.
+            entry["label"] = filed.get(str(row.target), "none")
         if row.action == native.ADD and rows.vox_cut is not None and not rows.vox_blocked:
             # U127: the score each added row was read at and whether it is tagged.
             entry["voxlevel"] = row.voxlevel
@@ -951,6 +1042,8 @@ def _native_shown(rows: native.NativePlan, *, folder: Path, target: Path) -> dic
         )
     if rows.favorites is not None:
         shown.update(favorites_facts(rows.favorites))
+    if rows.labels is not None:
+        shown.update(label_filing.facts(rows.labels))
     return shown
 
 
@@ -1059,6 +1152,18 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
             "set playlist tracks": kept.members,
             "set playlist left out": len(kept.left),
         }
+    filed = landed.collection.labels
+    if filed is not None:
+        items.extend(
+            label_filing.item(one, tree=filed.tree_id, session_id=landed.collection.session_id)
+            for one in filed.years
+        )
+        totals = {
+            **totals,
+            "label playlists": len(filed.years),
+            "label memberships": filed.added(),
+            "filed under no label": len(filed.left),
+        }
     return {**payload, "items": items, "totals": totals}
 
 
@@ -1087,6 +1192,8 @@ def _land_native(
     declared,
     registry,
     manifest: landing.LabelManifest | None,
+    label: str | None = None,
+    medium: ingest.IntakeMedium,
     claims: tuple[account_playlists.Claim, ...] = (),
     hearted: tuple[account_playlists.Hearted, ...] = (),
     owned: tuple[account_playlists.HeartRow, ...] = (),
@@ -1108,6 +1215,11 @@ def _land_native(
     AN EMPTY STAGING FOLDER STILL PLACES THE PASS'S OWNED HEARTS (U146): a
     heart on a track the library holds joins All Favorites whether or not a
     file was downloaded, under this same gate, through :func:`_place_owned`.
+
+    A MANIFEST OR A ``--label`` FILES THE BATCH UNDER ITS LABEL (U156), planned
+    on the same handle by :mod:`cratekit.intake.label_filing` and written in the
+    same commit, so the batch and its label playlists land together or not at
+    all.
     """
     tree_id = declared.intake.id
     if ctx.args.export is not None:
@@ -1119,16 +1231,6 @@ def _land_native(
             remedy=Remedy.FIX_COMMAND_LINE,
             origin=_ORIGIN,
             detail={"tree_id": tree_id, "export": str(ctx.args.export)},
-        )
-    if manifest is not None:
-        raise refuse(
-            "intake-list-unusable",
-            f"the intake tree {tree_id!r} is database native and label filing from a "
-            f"manifest is written into an intake file, which this medium does not "
-            f"make; land without --manifest, nothing was moved",
-            remedy=Remedy.FIX_COMMAND_LINE,
-            origin=_ORIGIN,
-            detail={"tree_id": tree_id, "manifest": str(manifest.path)},
         )
     spec = gate_named(ctx.entry, NATIVE_GATE)
     if not planned.items:
@@ -1183,6 +1285,15 @@ def _land_native(
         )
         set_planned.append(made)
         return made
+
+    def label_plan(db) -> label_filing.LabelPlan | None:
+        # A MANIFEST WITH NO LABEL ROW FILES NOTHING, and asks nothing of the
+        # catalogue tree, as the bridge's own check returns early on it.
+        if manifest is not None and manifest.rows:
+            return label_filing.plan_for_manifest(cfg, db, medium, manifest=manifest, files=files)
+        if label is not None:
+            return label_filing.plan_for_label(db, medium, label=label, files=files)
+        return None
 
     archive_notes: list[dict[str, str]] = []
 
@@ -1271,6 +1382,7 @@ def _land_native(
             set_job_id=set_job_id,
             inbox_leftovers=leftovers,
             inbox_found_by_name=inbox_found_by_name,
+            labels=label_plan(db),
         )
 
     payload, landed = ask_then_write(
@@ -1305,6 +1417,10 @@ def _land_native(
         # members whose files did not land as well as the plan's left rows.
         warnings.extend(set_playlist.nothing_note(set_planned[0], left=len(kept.left)))
         warnings.extend(set_playlist.left_warning(kept.left))
+    filed = landed.collection.labels
+    if filed is not None:
+        label_filing.assert_read_back(filed)
+        warnings.extend(label_filing.unfiled_warning(filed.left))
     return ctx.envelope(data=_native_reported(payload, landed), warnings=warnings)
 
 

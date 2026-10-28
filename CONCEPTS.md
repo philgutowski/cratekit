@@ -1499,6 +1499,24 @@ the years it created (R-836), see Prune.
 *Avoid:* reading a year playlist as the label's releases in the library, which
 the Record Labels tree is, or as intake.
 
+### Appended tree
+A tree the database writer adds to and never rebuilds, decided by U156 for
+the Record Labels tree. Its registry record stays on the xml bridge, since a
+catalogue crawl is not rebuildable (R39) and so the tree may never cut over,
+yet a native landing files a label batch into it directly: the tree's folder
+at the playlist root, the label's folder, the `<Label> <year>` playlist,
+each found live by name or made, and only the memberships a playlist lacks
+added. Nothing in it is renamed, moved, emptied or removed, and a new node
+goes last among its siblings. Only a landing on a database native intake
+tree writes it, which is when the bridge landing, the tree's one xml writer,
+no longer runs. The year is a manifest row's, or the leading four digits of
+a file's date tag for `intake land --label`, and a file with neither is
+named and filed nowhere.
+
+*Avoid:* reading it as a cutover, which records a medium, adopts a root and
+lets a rebuild rewrite the tree, or as the Label folder above, which is the
+account's.
+
 ### Set playlist
 The private playlist on the streaming account that an identified set or a
 typed tracklist became through `crate export set` (R-837), or through

@@ -1234,6 +1234,15 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     # Re-pinned on the merge of main at e686759 into grok/297, 2026-10-10:
     # TWO kebab literals joined in intake/land_cli.py and nothing left,
     # account-archive and intake-land-archive-failed, the archive path U129 adds.
+    # 2026-10-28, U156: the native label filing joined.
+    'intake/label_filing.py': [
+        'catalog-tree-undeclared',
+        'decision-stale',
+        'intake-list-unusable',
+        'internal-error',
+        'label-filing',
+        'session-committed-unverified',
+    ],
     'intake/land_cli.py': [
         # 2026-10-16, U153: the held colour warning joined.
         'account-archive',
@@ -1246,6 +1255,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'internal-error',
         'land-native',
         'library-export-unusable',
+        # 2026-10-28, U156: --label on an unreachable library root.
+        'library-root-unreachable',
         'rows-await-analysis',
         'vox-not-written',
         'vox-unscored',
@@ -2515,11 +2526,21 @@ PINNED_LITERAL_HOLDERS = {
         'tree-unconverged',
     ],
     'intake/inspiration_cli.py': ['config-unusable'],
+    # 2026-10-28, U156: the native label filing joined.
+    'intake/label_filing.py': [
+        'catalog-tree-undeclared',
+        'decision-stale',
+        'intake-list-unusable',
+        'internal-error',
+        'session-committed-unverified',
+    ],
     'intake/land_cli.py': [
         'decision-stale',
         'intake-list-unusable',
         'internal-error',
         'library-export-unusable',
+        # 2026-10-28, U156: --label on an unreachable library root.
+        'library-root-unreachable',
     ],
     'intake/landing.py': [
         'decision-stale',
