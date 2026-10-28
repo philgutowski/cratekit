@@ -62,7 +62,7 @@ import unicodedata
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Iterator, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Mapping, Sequence, TypeVar
 
 from cratekit.acquire import listdoc, match, match_cli
 from cratekit.core import (
@@ -844,6 +844,8 @@ def _unlabelled(row: listdoc.ManifestRow, reason: str, because: str) -> Unlabell
 #: A label's years, and under each the rows filed there with their track ids.
 _Filed = dict[str, dict[int, list[tuple[listdoc.ManifestRow, list[int]]]]]
 
+_Key = TypeVar("_Key")
+
 
 def _file_labels(
     label_rows: tuple[listdoc.ManifestRow, ...],
@@ -867,7 +869,24 @@ def _file_labels(
     """
     ids = {item.path.resolve(): item.track_id for item in placed}
     index = match.index_library(batch_dir, template=template)
-    filed: _Filed = {}
+    return match_label_rows(label_rows, index, ids)
+
+
+def match_label_rows(
+    label_rows: Sequence[listdoc.ManifestRow],
+    index: match.LibraryIndex,
+    ids: Mapping[Path, _Key],
+) -> tuple[dict[str, dict[int, list[tuple[listdoc.ManifestRow, list[_Key]]]]], list[Unlabelled]]:
+    """Each label row tied to the keys of the files it matched, and every row filed nowhere.
+
+    THE ONE RULE BOTH MEDIA FILE A MANIFEST BY (U156). ``index`` holds only the
+    files this landing moves and ``ids`` maps each one, resolved, to the key the
+    caller files it by: the bridge's track id in its intake file, the native
+    landing's target. A row matched to a file ``ids`` does not name is a row no
+    file of this landing answers, said by name, never filed against a copy the
+    library held already.
+    """
+    filed: dict[str, dict[int, list[tuple[listdoc.ManifestRow, list[_Key]]]]] = {}
     unfiled: list[Unlabelled] = []
     for position, row in enumerate(label_rows, start=1):
         label, year = _label_of(row), row.provenance.year

@@ -1235,23 +1235,6 @@ def test_an_analysis_product_row_for_the_new_row_is_refused_from_sql_before_the_
     assert _query(cfg, "SELECT COUNT(*) FROM djmdMixerParam")[0] == (0,)
 
 
-def test_a_manifest_on_a_native_tree_is_refused_before_the_gate(native_library, silence, tmp_path):
-    """Label filing writes the catalog tree into the intake file, and this
-    medium makes none; a person who asked for it is told, not quietly denied."""
-    from cratekit.acquire import listdoc
-
-    cfg, _root = native_library
-    _stage(cfg, silence, "One.flac")
-    rows = [listdoc.Row(ref="1", artist="Probe", title="One")]
-    provenance = {"1": listdoc.Provenance(source="label", label_name="Kompakt", year=2025)}
-    written = listdoc.write(tmp_path, "label-approved-verb", rows, provenance)
-    assert written.manifest_path is not None
-
-    code, envelope = drive(_land("--manifest", str(written.manifest_path)))
-    _assert_refused_before_the_gate(cfg, code, envelope, "intake-list-unusable")
-    assert "--manifest" in envelope["cause"]["message"]
-
-
 # ---------------------------------------------------------------------------
 # What is stored: the base drive form
 # ---------------------------------------------------------------------------
