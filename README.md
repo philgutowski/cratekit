@@ -56,34 +56,30 @@ pipx ensurepath
 
 `pipx ensurepath` adds pipx's folder to your PATH by editing your shell startup
 files. Open a new terminal window afterwards so it takes effect. Then install
-Cratekit:
+the latest release of Cratekit, a tagged version straight from GitHub:
 
 ```bash
-git clone https://github.com/philgutowski/cratekit.git
-cd cratekit
-pipx install --python python3.12 .
+pipx install --python python3.12 "cratekit @ git+https://github.com/philgutowski/cratekit@v0.2.0"
 ```
 
-That installs the `crate` command. `--python python3.12` pins the Python version,
-because Cratekit needs 3.12 or 3.13 and pipx otherwise uses whichever Python
-Homebrew currently ships, which can be newer and is refused. If you only have
-3.13, write `python3.13`. pipx copies Cratekit into its own environment, so the
-folder is needed again only when you update. Do not add `--editable`, which links
-the command to the folder instead of copying it. An editable install makes
-`crate doctor` treat your machine as a developer checkout and fail a check about
-commit hooks, and that failure stops `crate setup`. Every example in these docs
-writes the command as plain `crate`. If a command answers
-`command not found: crate`, open a new terminal window, because
+Install a release tag, never the moving `main`. The releases are listed at
+https://github.com/philgutowski/cratekit/releases; put the newest tag where
+the command says `v0.2.0`. That installs the `crate` command.
+`--python python3.12` pins the Python version, because Cratekit needs 3.12 or
+3.13 and pipx otherwise uses whichever Python Homebrew currently ships, which
+can be newer and is refused. If you only have 3.13, write `python3.13`. Every
+example in these docs writes the command as plain `crate`. If a command
+answers `command not found: crate`, open a new terminal window, because
 `pipx ensurepath` only affects windows opened after it ran.
 
 That is the slim install: no audio DSP, no web framework, no machine-learning
 stack. Feature modules that need heavy dependencies declare them as extras named
 after the module. `analysis` adds key, BPM and energy detection, and `vocals`
-adds vocal presence and singer gender. Add the ones you will use, from inside the
-cratekit folder, and list every extra you want in one command:
+adds vocal presence and singer gender. Name every extra you want in one
+command, in brackets after `cratekit`:
 
 ```bash
-pipx install --force '.[analysis,vocals]'
+pipx install --force "cratekit[analysis,vocals] @ git+https://github.com/philgutowski/cratekit@v0.2.0"
 ```
 
 `--force` reuses the environment you already made and keeps its Python version,
@@ -91,18 +87,21 @@ so this command takes no `--python`, and pipx ignores one with a warning. The
 quotes matter, since zsh reads square brackets as a pattern and refuses the
 command without them. Turning on a module without its extra is not a crash. The
 CLI attaches a stub that prints an install command and exits non-zero, so
-`crate --help` keeps working on a slim machine. The printed command is the pipx
-one above, pointed at the folder you installed from and keeping the extras you
-already chose. Outside pipx it is `pip`, run by the Python `crate` itself runs on.
+`crate --help` keeps working on a slim machine. Outside pipx it is `pip`, run by
+the Python `crate` itself runs on.
 
-To update, pull and reinstall from inside the cratekit folder. Pulling alone
-changes nothing, since pipx holds its own copy. A reinstall keeps the extras you
-chose:
+**To upgrade**, run `crate doctor`. When a newer release is published, its
+`install.release` line says so and prints the one pipx command that moves to
+it, keeping the extras you installed. It is the install command above with the
+new tag, and you can run that yourself as well. If doctor cannot reach GitHub
+(offline, or git has no credentials), it says it could not read the releases
+rather than that your copy is current.
 
-```bash
-git pull
-pipx reinstall --python python3.12 cratekit
-```
+A developer working on Cratekit itself installs from a clone instead, with
+`pipx install --python python3.12 .` inside the folder. Do not add
+`--editable`, which links the command to the folder: an editable install makes
+`crate doctor` treat your machine as a developer checkout and fail a check
+about commit hooks, and that failure stops `crate setup`.
 
 ## First run
 
