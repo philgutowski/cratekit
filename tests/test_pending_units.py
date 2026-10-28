@@ -1281,9 +1281,10 @@ class _ClosingArgs:
     of the CI path.
     """
 
-    def __init__(self, *, since=None, message_file=None):
+    def __init__(self, *, since=None, message_file=None, pull_request_head=None):
         self.since = since
         self.message_file = message_file
+        self.pull_request_head = pull_request_head
 
 
 def _seeded_repo(root: Path):
@@ -1451,3 +1452,170 @@ def test_the_message_file_path_reads_the_file_and_refuses_on_it(tmp_path, monkey
         "the diff below the scissors line was judged, so a commit --verbose "
         "would be refused over a trailer it never wrote"
     )
+
+
+# --------------------------------------------------------------------------
+# U158: a pull request's own range, and the close its merge will write
+
+
+def _owed_36(board, monkeypatch, owed=True):
+    monkeypatch.setattr(
+        board,
+        "owed_by_unit",
+        lambda: {36: ["cratekit.write.converge_cli"]} if owed else {},
+    )
+
+
+def _branch_commit(tmp_path):
+    """A seeded repository with one trailer free commit after its base."""
+    repo = tmp_path / "fixture"
+    run, base = _seeded_repo(repo)
+    (repo / "one.txt").write_text("one\n")
+    run("git", "add", "one.txt")
+    run("git", "commit", "-q", "--no-verify", "-m", "feat(u36): converge")
+    return repo, base
+
+
+def test_a_pull_request_range_closing_a_unit_still_owed_is_refused(tmp_path, monkeypatch):
+    """The trailer a merge will write is in no commit, so the head branch names it.
+
+    Units reach main through a pull request since U158, and the merge commit
+    that carries the closing trailer is written by the merge, after CI has
+    answered. A check that read only the range would pass every such pull
+    request, so the card its `cloud/N-slug` head names is judged as closed.
+    """
+    board = _board()
+    repo, base = _branch_commit(tmp_path)
+    _owed_36(board, monkeypatch)
+    monkeypatch.chdir(repo)
+    args = _ClosingArgs(since=base, pull_request_head="cloud/36-converge")
+    assert board.cmd_closing(args) == 2, (
+        "a pull request whose card a register still owes passed CI, so the merge "
+        "would close a unit the repository says is unfinished"
+    )
+
+
+def test_the_same_pull_request_passes_once_the_register_is_discharged(tmp_path, monkeypatch):
+    board = _board()
+    repo, base = _branch_commit(tmp_path)
+    _owed_36(board, monkeypatch, owed=False)
+    monkeypatch.chdir(repo)
+    args = _ClosingArgs(since=base, pull_request_head="cloud/36-converge")
+    assert board.cmd_closing(args) == 0
+
+
+def test_a_push_to_main_is_judged_exactly_as_before(tmp_path, monkeypatch):
+    """No head branch, no implied close: only the trailers in the range count."""
+    board = _board()
+    repo, base = _branch_commit(tmp_path)
+    _owed_36(board, monkeypatch)
+    monkeypatch.chdir(repo)
+    assert board.cmd_closing(_ClosingArgs(since=base)) == 0, (
+        "a range with no trailer was refused, so a push now judges a close "
+        "nobody wrote"
+    )
+
+
+@pytest.mark.parametrize(
+    ("head", "card"),
+    [
+        ("cloud/339-pull-request-per-unit", 339),
+        ("cloud/36-x", 36),
+        ("main", None),
+        ("feature/36-x", None),
+        ("cloud/no-number", None),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_only_a_cloud_branch_names_the_card_its_merge_closes(head, card):
+    assert _board().pull_request_card(head) == card
+
+
+def _closing_step_script() -> str:
+    workflow = (TESTS_DIR.parent / ".github" / "workflows" / "ci.yml").read_text()
+    step = workflow[workflow.index("A unit may not close while a register") :]
+    step = step[step.index("        run: |\n") + len("        run: |\n") :]
+    lines = []
+    for line in step.splitlines():
+        if line.strip() and not line.startswith("          "):
+            break
+        lines.append(line[10:])
+    return "\n".join(lines) + "\n"
+
+
+def _drive_closing_step(tmp_path, env):
+    """Run the workflow step's own shell with a `python` that records its argv."""
+    import os
+    import subprocess
+
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    record = tmp_path / "argv.txt"
+    fake = bindir / "python"
+    fake.write_text(f'#!/bin/sh\necho "$@" > "{record}"\nexit 0\n')
+    fake.chmod(0o755)
+    done = subprocess.run(
+        ["bash", "-eo", "pipefail", "-c", _closing_step_script()],
+        env={"PATH": f"{bindir}:{os.environ['PATH']}", **env},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return done, (record.read_text().strip() if record.exists() else None)
+
+
+def test_the_ci_step_judges_a_pull_request_from_its_base_with_its_head(tmp_path):
+    done, argv = _drive_closing_step(
+        tmp_path,
+        {
+            "EVENT": "pull_request",
+            "PUSHED_FROM": "",
+            "PR_BASE": "abc123",
+            "PR_HEAD_REF": "cloud/339-pull-request-per-unit",
+        },
+    )
+    assert done.returncode == 0, done.stderr
+    assert argv == (
+        "scripts/board.py closing --since abc123 "
+        "--pull-request-head cloud/339-pull-request-per-unit"
+    ), "the step no longer judges a pull request's own range and the card it closes"
+
+
+def test_a_pull_request_event_with_no_base_sha_exits_0_and_says_why(tmp_path):
+    done, argv = _drive_closing_step(
+        tmp_path,
+        {"EVENT": "pull_request", "PUSHED_FROM": "", "PR_BASE": "", "PR_HEAD_REF": "x"},
+    )
+    assert done.returncode == 0
+    assert argv is None
+    assert "no base sha" in done.stdout
+
+
+@pytest.mark.parametrize("before", ["", "0" * 40])
+def test_a_push_with_no_previous_tip_exits_0_and_says_why(tmp_path, before):
+    done, argv = _drive_closing_step(
+        tmp_path, {"EVENT": "push", "PUSHED_FROM": before, "PR_BASE": "", "PR_HEAD_REF": ""}
+    )
+    assert done.returncode == 0
+    assert argv is None
+    assert "no previous tip" in done.stdout
+
+
+def test_a_push_is_judged_from_its_previous_tip_with_no_head(tmp_path):
+    done, argv = _drive_closing_step(
+        tmp_path,
+        {"EVENT": "push", "PUSHED_FROM": "def456", "PR_BASE": "", "PR_HEAD_REF": ""},
+    )
+    assert done.returncode == 0, done.stderr
+    assert argv == "scripts/board.py closing --since def456"
+
+
+def test_the_closing_check_reads_full_history_in_ci():
+    """A depth one checkout judges one commit whatever range it is handed."""
+    workflow = (TESTS_DIR.parent / ".github" / "workflows" / "ci.yml").read_text()
+    scan = workflow[workflow.index("  scan:") : workflow.index("A unit may not close")]
+    assert "fetch-depth: 0" in scan
+    step = workflow[workflow.index("A unit may not close while a register") :]
+    step = step[: step.index("\n  portable:")]
+    assert "--depth" not in step, "a shallow fetch would truncate the full history again"

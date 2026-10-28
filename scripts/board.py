@@ -743,8 +743,27 @@ def cmd_closing(args) -> int:
                 # POST-cleanup messages. Nothing to strip, and stripping could
                 # only lose a real trailer.
                 problems += unresolved_closes(message, raw=False)
+        card = pull_request_card(getattr(args, "pull_request_head", None))
+        if card is not None:
+            # THE CLOSE A PULL REQUEST WILL MAKE IS IN NO COMMIT YET (U158). The
+            # trailer is written by the merge, after CI has answered, so the
+            # range alone can never refuse it. The card the head branch names is
+            # judged as if its trailer were already here, which is exactly the
+            # message the merge will carry.
+            problems += unresolved_closes(f"Closes #{card}", raw=False)
         return _report(problems)
     return _report(unresolved_closes(text, raw=True))
+
+
+#: A cloud worker's branch, `cloud/<card>-<slug>`, the only head a pull request
+#: merged with a closing trailer comes from (U158).
+CLOUD_BRANCH_RE = re.compile(r"^cloud/(\d+)-")
+
+
+def pull_request_card(head_ref: str | None) -> int | None:
+    """The card a pull request's head branch will close at its merge, if any."""
+    match = CLOUD_BRANCH_RE.match(head_ref or "")
+    return int(match.group(1)) if match else None
 
 
 def _report(problems: list[str]) -> int:
@@ -1785,6 +1804,13 @@ def main() -> int:
         "--since",
         default="main",
         help="judge every commit after this ref instead of one message file",
+    )
+    closing.add_argument(
+        "--pull-request-head",
+        help=(
+            "a pull request's head branch; a `cloud/N-slug` head is judged as "
+            "closing card N, the trailer its merge will write"
+        ),
     )
     closing.set_defaults(func=cmd_closing)
     residuals = sub.add_parser(
