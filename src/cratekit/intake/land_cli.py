@@ -72,6 +72,10 @@ FAVORITES_COLOUR_HELD = "favorites-colour-held"
 #: new kind of write and R34 forbids a blanket answer for it.
 XML_GATE = "intake.land.confirm"
 NATIVE_GATE = "intake.land.native"
+#: The fact a native write's answer is pinned to outside its digest (U161):
+#: the database file the handle opened, as the screen's reads and writes line
+#: names it.
+DATABASE_PIN = "database"
 
 #: The warning a native landing carries: the rows are in the collection and
 #: rekordbox has not analysed them, which it does on request and not on sight.
@@ -750,9 +754,11 @@ def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: P
 
     EVERY COLUMN THE ROW WOULD CARRY IS ON THE ITEM, and the digest is taken
     over the files, the folder, the batch and the collection plan together, so
-    an answer given for one folder, one batch name, one database or one set of
-    rows is stale for another. The engine's own digest already covers the rows
-    and the root; the files' fingerprint covers what is on disk.
+    an answer given for one folder, one batch name, one library or one set of
+    rows is stale for another. The engine's own digest already covers the rows,
+    the root and the library's device and master id, and not the database's
+    path, which the screen shows (U161); the files' fingerprint covers what is
+    on disk.
     """
     by_target = {str(row.target): row for row in rows.rows}
     hearts = (
@@ -1617,6 +1623,11 @@ def ask_then_write(
     * the gate is asked over the digested plan, and only ``apply`` writes;
     * the handle is closed whatever happened.
 
+    * THE ANSWER IS PINNED TO THE FILE THE HANDLE OPENED (U161). The digest
+      names the library and not the file, so a copy rehearsal digests as the
+      live plan; the file is pinned on the run beside it, and a continuation
+      that opens another file is refused stale rather than writing there.
+
     ``written`` is None when the answer was not ``apply``, and the payload is
     then the plan as it was shown.
     """
@@ -1625,7 +1636,10 @@ def ask_then_write(
         rows = plan(db)
         data = payload(rows)
         session.assert_backup_acknowledged(cfg)
-        option = ctx.gate.require(spec, plan=data, context=shown(rows))
+        opened = rb_writer.handle_path(db) or rb_writer.live_db_path(cfg)
+        option = ctx.gate.require(
+            spec, plan=data, context=shown(rows), pinned={DATABASE_PIN: str(opened)}
+        )
         if option != "apply":
             return data, None
         return data, write(db, rows)

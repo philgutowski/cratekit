@@ -1276,6 +1276,18 @@ total from the modules, removes the shared edit point. U125 moved the reserved
 cause suite onto that shape: each module (or slug) has its own pin line, and the
 totals are derived.
 
+### Pinned fact
+A fact a gate's answer binds to outside its digest, built by U161. The gate
+records it on the run while it is open, `RunState.pins`, never replaces it
+once the gate is answered, and refuses the recorded answer `decision-stale`,
+naming the fact and both values, when the continuation reads another or
+none. Every native intake write pins the database file its handle opened,
+so the digest can name the library alone and a copy rehearsal digest as the
+live plan, while the answer still holds only for the file the screen named.
+
+*Avoid:* reading it as a PINNED POPULATION, which is a count a test fixes,
+or putting a pinned fact in the digest, which is what it exists to keep out.
+
 ## Queued work
 
 ### Job

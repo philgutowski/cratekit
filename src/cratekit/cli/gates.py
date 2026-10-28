@@ -109,26 +109,45 @@ class DecisionRequired(CratekitError):
 class DecisionStale(CratekitError):
     """A decision was supplied, but the artifact it was made against moved."""
 
-    def __init__(self, spec: GateSpec, run_id: str, expected: str, actual: str) -> None:
+    def __init__(
+        self,
+        spec: GateSpec,
+        run_id: str,
+        expected: str,
+        actual: str,
+        *,
+        pinned: str | None = None,
+    ) -> None:
         self.spec = spec
         self.run_id = run_id
+        message = (
+            f"the decision on {spec.name!r} was made against a "
+            f"{spec.digest_source} that has since changed"
+        )
+        if pinned is not None:
+            # A PINNED FACT MOVED, not the digest (U161): name both values,
+            # since the plan itself digests the same.
+            message = (
+                f"the decision on {spec.name!r} was answered with its {pinned} "
+                f"{expected!r} on the screen, and this run reads {actual!r}"
+            )
+        detail: dict[str, Any] = {
+            "gate": spec.name,
+            "run_id": run_id,
+            "expected": expected,
+            "actual": actual,
+        }
+        if pinned is not None:
+            detail["pinned"] = pinned
         super().__init__(
             Cause(
                 reason="decision-stale",
-                message=(
-                    f"the decision on {spec.name!r} was made against a "
-                    f"{spec.digest_source} that has since changed"
-                ),
+                message=message,
                 remediation=Remediation(remedy=Remedy.REPLAN_THEN_DECIDE),
                 scope=Scope.RUN,
                 retryable=True,
                 origin=("gates",),
-                detail={
-                    "gate": spec.name,
-                    "run_id": run_id,
-                    "expected": expected,
-                    "actual": actual,
-                },
+                detail=detail,
             )
         )
 
@@ -209,11 +228,18 @@ class RunState:
     #: regathered today, which is the "approve one plan, run a wider one"
     #: failure the source system's digest check exists to prevent.
     offers: dict[str, str] = field(default_factory=dict)
+    #: gate name -> the facts the person was shown that the answer binds to
+    #: OUTSIDE the digest (U161), recorded when the gate is left open and
+    #: compared when a recorded answer is used. A native landing pins the
+    #: database file here, so its digest can name the library alone and a
+    #: copy rehearsal digest the same, while the answer still holds only for
+    #: the file the screen named.
+    pins: dict[str, dict[str, str]] = field(default_factory=dict)
     pending: output.PendingHumanAction | None = None
     open_gate: str | None = None
 
     def to_json(self) -> dict[str, Any]:
-        return {
+        record = {
             "version": RUN_SCHEMA_VERSION,
             "run_id": self.run_id,
             "verb": self.verb,
@@ -223,6 +249,11 @@ class RunState:
             "pending_human_action": self.pending.to_json() if self.pending else None,
             "open_gate": self.open_gate,
         }
+        # ONLY WHEN THERE ARE ANY, so a run no pinning gate reached keeps the
+        # record it had before U161.
+        if self.pins:
+            record["pins"] = {name: dict(sorted(one.items())) for name, one in sorted(self.pins.items())}
+        return record
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> RunState:
@@ -249,6 +280,10 @@ class RunState:
                 for name, value in (data.get("decisions") or {}).items()
             },
             offers=dict(data.get("offers") or {}),
+            pins={
+                name: {str(key): str(value) for key, value in (one or {}).items()}
+                for name, one in (data.get("pins") or {}).items()
+            },
             pending=output.PendingHumanAction.from_json(pending) if pending else None,
             open_gate=data.get("open_gate"),
         )
@@ -402,8 +437,16 @@ class Gates:
         digest: str | None = None,
         context: Mapping[str, Any] | None = None,
         plan: Mapping[str, Any] | None = None,
+        pinned: Mapping[str, str] | None = None,
     ) -> str:
         """Return the chosen option, or raise so the CLI can exit resumably.
+
+        ``pinned`` IS WHAT THE ANSWER BINDS TO OUTSIDE THE DIGEST (U161): facts
+        the screen shows that two equal plans may differ by, such as which
+        database file a copy rehearsal reads. They are recorded on the run
+        when the gate is left open, and a recorded answer whose run pinned
+        other values is refused stale, naming the fact, so a digest left free
+        of a path for the sake of a rehearsal does not free the answer of it.
 
         ``context`` rides through to both refusals unchanged. BOTH, and that is
         the point rather than an implementation detail: this method refuses at
@@ -433,6 +476,11 @@ class Gates:
         inline = self.supplied.get(spec.name)
         if spec.digest_source is not None and digest is not None:
             self.state.offers[spec.name] = digest
+        pins = {str(key): str(value) for key, value in (pinned or {}).items()}
+        if recorded is None and pins:
+            # Recorded while the gate is open, so ``run decide`` answers over
+            # the facts this process showed; never replaced once answered.
+            self.state.pins[spec.name] = pins
 
         if inline is not None and spec.explicit:
             # R34. An explicit gate is answered by a deliberate, separate act
@@ -478,6 +526,18 @@ class Gates:
             against = recorded.digest if recorded is not None else None
             if against is not None and against != digest:
                 raise DecisionStale(spec, self.state.run_id, against, digest)
+
+        if recorded is not None and inline is None:
+            held = self.state.pins.get(spec.name, {})
+            for key in sorted(set(held) | set(pins)):
+                if held.get(key) != pins.get(key):
+                    raise DecisionStale(
+                        spec,
+                        self.state.run_id,
+                        held.get(key, ""),
+                        pins.get(key, ""),
+                        pinned=key,
+                    )
 
         if recorded is None:
             self.state.decisions[spec.name] = Decision(
