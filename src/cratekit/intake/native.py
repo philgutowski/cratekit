@@ -158,7 +158,11 @@ INBOX_PLAYLISTS_KEY = ingest.INBOX_PLAYLISTS_KEY
 
 #: The playlist directly under the intake root every row a landing creates
 #: joins (U166), so the rekordbox visit selects one playlist. Its display
-#: form is ``<intake root> / Analyze``.
+#: form is ``<intake root> / Analyze``. Reserved: :func:`plan_rows` refuses a
+#: batch of the name and an account playlist of it is named ``Analyze 2``,
+#: through :data:`cratekit.intake.batch_name.ANALYZE`, which spells the same
+#: value because that module reaches this one through the landing; a test
+#: holds the two equal.
 ANALYZE = "Analyze"
 
 #: Why a playlist member is not in its INBOX playlist when its file made no
@@ -715,6 +719,18 @@ def plan_rows(
     count. Two active rows on one path count as present too: adding a third
     is not the answer to a duplicate.
     """
+    # THE QUEUE'S NAME IS RESERVED (U166). A batch playlist of that name would
+    # be found as the queue and written into, and recorded as a batch the
+    # rotation then moves into Old with every row still waiting in it.
+    if batch == ANALYZE:
+        raise refuse(
+            "intake-list-unusable",
+            f"the batch name {batch!r} is the playlist under INBOX every landing "
+            f"fills with the rows awaiting analysis, so no batch may take it and "
+            f"nothing was planned; land with another --name, or rename the file",
+            origin=_ORIGIN,
+            detail={"batch": batch},
+        )
     root_id = anchored_intake_root(db, tree_id, registry)
     root = db.get_playlist(ID=root_id)
     device_id, master_db_id = choose_device(db)

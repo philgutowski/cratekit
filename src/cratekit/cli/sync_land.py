@@ -126,15 +126,24 @@ OUTBOUND_UNASKED = "outbound-export-required"
 GATE_STOP = "decision-required"
 ACK_STOP = "backup-acknowledgment-missing"
 
+#: The one playlist every native landing fills with the rows awaiting analysis
+#: (U166), as the shipped taxonomy names INBOX. Spelled here rather than
+#: imported, for the lazy imports' reason below; a test holds it to
+#: :data:`cratekit.intake.native.ANALYZE` under the declared intake folder.
+ANALYZE_PLAYLIST = "INBOX / Analyze"
+
 #: The rekordbox visit an attended session makes once the landing is applied,
 #: on Phillip's standard since 2026-10-27. Reload Tags comes BEFORE Analyze.
+#: Over the one playlist every landing fills (U166), which holds every row
+#: still waiting and only those, then the clear that takes the analysed out.
 REKORDBOX_STEPS: tuple[str, ...] = (
-    "in rekordbox, select the batch playlist the applied landing names and run "
-    "Reload Tags",
+    f"in rekordbox, select the {ANALYZE_PLAYLIST} playlist, which holds every "
+    f"landed row waiting for analysis, and run Reload Tags",
     "then run Analyze Tracks on it: Analysis Mode Normal, high precision off, "
     "BPM/Grid, Phrase and KEY on",
     "quit rekordbox and confirm rekordbox and rekordboxAgent are both gone "
     "before any other verb runs",
+    "then take the analysed rows out of it: crate inbox analyzed",
 )
 
 #: A child run's answer: its exit status and its envelope as JSON.

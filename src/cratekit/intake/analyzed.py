@@ -236,7 +236,11 @@ def apply_clear(
         snapshot.assert_verified(capture)
         try:
             playlist = db.get_playlist(ID=plan.playlist_id)
-            removed = rb_writer.remove_memberships(db, playlist, plan.clears())
+            # ONE PER ROW, though a track the playlist held twice has each of
+            # its memberships marked, so the count is the plan's rows.
+            removed = list(
+                dict.fromkeys(rb_writer.remove_memberships(db, playlist, plan.clears()))
+            )
             rb_writer.commit_guarded(db, removals=(rb_writer.MEMBERSHIP_TABLE,))
         except BaseException:
             trees._rollback_quietly(db)

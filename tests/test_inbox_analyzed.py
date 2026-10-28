@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from cratekit.cli import sync_land
 from cratekit.core import config, rb_writer, session, taxonomy, tree_registry
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import analyzed, analyzed_cli, land_cli, native, rotate
@@ -455,3 +456,117 @@ def test_the_digest_names_every_row_and_its_answer():
         members=(member(content_id="1", title="a", action=analyzed.WAIT, why="x"),),
     )
     assert analyzed.identity(base) != analyzed.identity(waiting)
+
+
+# ---------------------------------------------------------------------------
+# The name is reserved, and the guards the first review found unpinned
+# ---------------------------------------------------------------------------
+
+
+def test_the_playlist_is_inbox_slash_analyze_as_the_brief_names_it():
+    """A literal, so a rename of the constant is a failure and not X equals X."""
+    assert native.ANALYZE == "Analyze"
+    assert sync_land.ANALYZE_PLAYLIST == f"{DECLARED.intake.display} / {native.ANALYZE}"
+    assert sync_land.ANALYZE_PLAYLIST == "INBOX / Analyze"
+
+
+def test_a_batch_named_analyze_is_refused_before_the_gate_and_nothing_moves(
+    native_library, silence
+):
+    cfg, root_id = native_library
+    _stage(cfg, silence, "Alpha.flac")
+
+    code, refused = drive(["intake", "land", "--name", native.ANALYZE])
+
+    assert code not in (int(ExitCode.OK), int(ExitCode.DECISION_REQUIRED)), refused
+    assert refused["cause"]["reason"] == "intake-list-unusable", refused
+    assert "no batch may take it" in refused["cause"]["message"]
+    assert _analyze_nodes(cfg, root_id) == []
+    assert sorted(p.name for p in (Path(cfg.paths.download_staging)).glob("*.flac")) == [
+        "Alpha.flac"
+    ]
+
+
+def test_an_account_playlist_named_analyze_lands_as_analyze_two():
+    from cratekit.intake import batch_name
+
+    assert batch_name.ANALYZE == native.ANALYZE
+    assert batch_name.inbox_names(["Analyze", "Sunset"], (), batch="2026-10-28 x") == (
+        "Analyze 2",
+        "Sunset",
+    )
+    assert batch_name.inbox_names(["Analyze"], ("Analyze 2",), batch="b") == ("Analyze 3",)
+
+
+def test_an_analyze_playlist_outside_the_root_is_never_written_into(native_library, silence):
+    cfg, root_id = native_library
+    conn = sqlite3.connect(cfg.library.db_path)
+    with conn:
+        conn.execute(
+            "INSERT INTO djmdPlaylist (ID, Seq, Name, Attribute, ParentID, rb_local_deleted, "
+            "created_at, updated_at) VALUES ('p-elsewhere', 1, ?, 0, 'root', 0, '2026-10-01', "
+            "'2026-10-01')",
+            (native.ANALYZE,),
+        )
+    conn.close()
+
+    _land(cfg, silence, "2026-10-28_two", TWO)
+
+    assert _titles(cfg, "p-elsewhere") == []
+    assert _titles(cfg, _analyze_id(cfg, root_id)) == list(TWO)
+
+
+def test_analyze_removed_after_the_approval_is_refused_and_nothing_lands(
+    native_library, silence
+):
+    """The digest names the playlist the plan found, so its removal is another plan."""
+    cfg, root_id = native_library
+    _land(cfg, silence, "2026-10-28_one", ("Alpha",))
+    analyze_id = _analyze_id(cfg, root_id)
+    _stage(cfg, silence, "Bravo.flac")
+    verb = ["intake", "land", "--name", "2026-10-28_two"]
+    code, refused = drive(verb)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    decided, envelope = drive(
+        ["run", "decide", run_id, land_cli.NATIVE_GATE, "apply", "--actor", "a-person"]
+    )
+    assert decided == int(ExitCode.OK), envelope
+    conn = sqlite3.connect(cfg.library.db_path)
+    with conn:
+        conn.execute("UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE ID = ?", (analyze_id,))
+        conn.execute(
+            "UPDATE AgentRegistry SET int_1 = int_1 + 1 WHERE registry_id = 'localUpdateCount'"
+        )
+    conn.close()
+
+    code, acted = drive(["--run", run_id, *verb])
+
+    assert code != int(ExitCode.OK), acted
+    assert acted["cause"]["reason"] in ("decision-stale", "decision-digest-mismatch"), acted
+    live = [node for node in _analyze_nodes(cfg, root_id) if not int(node[2] or 0)]
+    assert live == []
+
+
+def test_a_track_held_twice_is_one_row_cleared_and_counted_once(native_library, silence):
+    cfg, root_id = native_library
+    _land(cfg, silence, "2026-10-28_two", TWO)
+    analyze_id = _analyze_id(cfg, root_id)
+    foxtrot = _content_id(cfg, "Foxtrot")
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        # A second membership of the same track, the way the binding adds one.
+        handle.add_to_playlist(handle.get_playlist(ID=analyze_id), foxtrot)
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    _analysed(cfg, *TWO)
+
+    code, acted, _ = _clear_acts()
+
+    assert code == int(ExitCode.OK), acted
+    totals = acted["data"]["totals"]
+    assert (totals["count"], totals["clear"], totals["removed"]) == (2, 2, 2)
+    assert _titles(cfg, analyze_id) == []
+    (record,) = [r for r in session.records(cfg) if r.workflow == analyzed.WORKFLOW]
+    assert {c.tree: c.updated for c in record.change.trees} == {DECLARED.intake.id: 2}
