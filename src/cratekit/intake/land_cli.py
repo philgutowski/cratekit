@@ -1287,7 +1287,9 @@ def _land_native(
         return made
 
     def label_plan(db) -> label_filing.LabelPlan | None:
-        if manifest is not None:
+        # A MANIFEST WITH NO LABEL ROW FILES NOTHING, and asks nothing of the
+        # catalogue tree, as the bridge's own check returns early on it.
+        if manifest is not None and manifest.rows:
             return label_filing.plan_for_manifest(cfg, db, medium, manifest=manifest, files=files)
         if label is not None:
             return label_filing.plan_for_label(db, medium, label=label, files=files)

@@ -433,6 +433,33 @@ def plan_for_manifest(
     )
 
 
+def _restated(
+    unfiled: Sequence[Unfiled], held: Mapping[str, object] | set[str], because: str
+) -> tuple[Unfiled, ...]:
+    """Every unfiled file whose file will not reach INBOX said so, in place of the plan's words.
+
+    A FILE WITH NO YEAR IS STILL SAID TO BE IN THE INTAKE PLAYLIST by its plan,
+    which is true of a file that lands and false of one left in staging or
+    refused at the move. Rows a manifest names with no file carry no target and
+    keep their words, and so does a file already said not to be written.
+    """
+    from cratekit.intake import landing
+
+    return tuple(
+        one
+        if not one.target or one.target in held or one.reason == landing.NOT_WRITTEN
+        else Unfiled(
+            target=one.target,
+            reason=landing.NOT_WRITTEN,
+            sentence=(
+                f"{Path(one.target).name} was filed under no label playlist, because "
+                f"{because}"
+            ),
+        )
+        for one in unfiled
+    )
+
+
 def supported_only(plan: LabelPlan, kept: set[str]) -> LabelPlan:
     """The plan without the targets the landing will leave in staging, each named as unfiled.
 
@@ -462,7 +489,8 @@ def supported_only(plan: LabelPlan, kept: set[str]) -> LabelPlan:
             years.append(
                 YearPlan(label=one.label, year=one.year, playlist_id=one.playlist_id, targets=held)
             )
-    if not left:
+    restated = _restated(plan.unfiled, kept, "its file stays in staging")
+    if not left and restated == plan.unfiled:
         return plan
     labels = {one.label for one in years}
     return LabelPlan(
@@ -475,7 +503,7 @@ def supported_only(plan: LabelPlan, kept: set[str]) -> LabelPlan:
         manifest_digest=plan.manifest_digest,
         folders=tuple(one for one in plan.folders if one[0] in labels),
         years=tuple(years),
-        unfiled=(*plan.unfiled, *left),
+        unfiled=(*restated, *left),
     )
 
 
@@ -520,6 +548,11 @@ def facts(plan: LabelPlan) -> dict[str, Any]:
             for one in plan.years
         ],
     }
+    made = [label for label, folder in plan.folders if not folder]
+    if made:
+        # Named, since a folder this write makes beside one spelled with
+        # another case (R-453) is visible here and nowhere else.
+        shown["label folders made"] = made
     if plan.unfiled:
         shown["filed under no label"] = [one.sentence for one in plan.unfiled]
     return shown
@@ -633,7 +666,7 @@ def write(db: Any, plan: LabelPlan, *, by_target: Mapping[str, str]) -> Written:
             tree_created=False,
             folders_created=(),
             years=(),
-            left=(*plan.unfiled, *left),
+            left=(*_restated(plan.unfiled, by_target, "its file did not land"), *left),
         )
     if plan.tree_folder:
         tree = _live_row(db, plan.tree_folder, folder=True, what=f"{plan.tree_display!r} folder")
@@ -677,7 +710,7 @@ def write(db: Any, plan: LabelPlan, *, by_target: Mapping[str, str]) -> Written:
         tree_created=tree_created,
         folders_created=tuple(made),
         years=tuple(written),
-        left=(*plan.unfiled, *left),
+        left=(*_restated(plan.unfiled, by_target, "its file did not land"), *left),
     )
 
 

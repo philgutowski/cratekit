@@ -793,3 +793,87 @@ def test_next_year_is_a_release_year_and_a_failed_read_is_said_apart(tmp_path):
     broken.write_bytes(b"not a container at all")
     year, said = label_filing._read_year(broken)
     assert year is None and "could not be read" in said
+
+
+# ---------------------------------------------------------------------------
+# The second review round
+# ---------------------------------------------------------------------------
+
+
+def test_an_undated_file_left_in_staging_is_not_said_to_be_in_the_intake_playlist(
+    native_library, silence
+):
+    cfg, _root = native_library
+    _dated(cfg, silence, "One.flac", "2021")
+    odd = _dated(cfg, silence, "Two.flac", None)
+    odd.rename(odd.with_suffix(".opus"))
+
+    code, acted, refused = _two_acts(_land("--label", "PULS"))
+
+    assert code == int(ExitCode.OK), acted
+    (said,) = [one for one in _shown(refused)["filed under no label"] if "Two.opus" in one]
+    assert "stays in staging" in said and "intake playlist" not in said
+    (warned,) = [w["message"] for w in acted["warnings"] if "Two.opus" in w["message"] and "label" in w["message"]]
+    assert "stays in staging" in warned
+
+
+def test_an_undated_file_the_move_refused_is_said_not_to_have_landed(native_library, silence):
+    cfg, _root = native_library
+    _dated(cfg, silence, "Undated.flac", None)
+    _dated(cfg, silence, "One.flac", "2021")
+    code, acted, _ = _two_acts(_land("--label", "PULS"))
+    assert code == int(ExitCode.OK), acted
+    # Undated.flac again, its target occupied, so the move refuses it.
+    _dated(cfg, silence, "Undated.flac", None)
+    _dated(cfg, silence, "Two.flac", "2021")
+
+    code, acted, _ = _two_acts(_land("--label", "PULS"))
+
+    assert code == int(ExitCode.OK), acted
+    (warned,) = [
+        w["message"]
+        for w in acted["warnings"]
+        if "Undated.flac" in w["message"] and "label playlist" in w["message"]
+    ]
+    assert "did not land" in warned and "intake playlist" not in warned
+
+
+def test_the_screen_names_each_label_folder_the_write_makes(native_library, silence):
+    cfg, _root = native_library
+    tree = cutover_fixtures.add_folder(cfg, TREE)
+    cutover_fixtures.add_folder(cfg, "Puls", under=tree)
+    _dated(cfg, silence, "One.flac", "2021")
+
+    code, refused = drive(_land("--label", "PULS"))
+
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert _shown(refused)["label folders made"] == ["PULS"]
+    code, again = drive(_land("--label", "Puls"))
+    assert "label folders made" not in _shown(again)
+
+
+def test_a_manifest_with_no_label_row_asks_nothing_of_the_catalogue_tree(
+    native_library, silence, tmp_path, monkeypatch
+):
+    """As the bridge's own check returns early on it: a list manifest files nothing."""
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    rows = [listdoc.Row(ref="1", artist="Probe", title="One")]
+    provenance = {"1": listdoc.Provenance(source="list")}
+    written = listdoc.write(tmp_path, "intake-missing-test", rows, provenance)
+    assert written.manifest_path is not None
+    from cratekit.intake import ingest
+
+    real = ingest.intake_medium
+
+    def without_catalog(cfg_):
+        medium = real(cfg_)
+        return replace(medium, declared=replace(medium.declared, catalog=None))
+
+    monkeypatch.setattr(ingest, "intake_medium", without_catalog)
+
+    code, acted, refused = _two_acts(_land("--manifest", str(written.manifest_path)))
+
+    assert code == int(ExitCode.OK), acted
+    assert "labels filed under" not in _shown(refused)
+    assert _tree_folders(cfg) == []
