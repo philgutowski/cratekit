@@ -167,12 +167,14 @@ def propose(landings: Sequence[Landing]) -> tuple[str | None, list[str]]:
 def first_parent_range(runner: Runner, since: str | None, tip: str) -> list[tuple[str, str, list[str]]]:
     """Each first parent commit after ``since`` up to ``tip``: sha, subject, parents."""
     span = f"{since}..{tip}" if since else tip
-    out = git(runner, "log", "--first-parent", "--format=%H%x1f%s%x1f%P", span)
+    # The subject last: the root commit's parents are empty, and the unit
+    # separator is whitespace to `str.strip`, so a trailing empty field is lost.
+    out = git(runner, "log", "--first-parent", "--format=%H%x1f%P%x1f%s", span)
     commits = []
     for line in out.splitlines():
         if not line.strip():
             continue
-        sha, subject, parents = line.split("\x1f")
+        sha, parents, subject = line.split("\x1f", 2)
         commits.append((sha, subject, parents.split()))
     return commits
 

@@ -28,6 +28,7 @@ import ast
 import errno
 import json
 import os
+import subprocess
 import sys
 import tomllib
 from datetime import datetime, timedelta, timezone
@@ -227,6 +228,7 @@ def test_every_check_key_and_its_place_in_the_run_order_is_written_out():
         "session.unresolved",
         "tree.registry",
         "repo.commit_hook",
+        "install.release",
     )
     assert doctor.BINARY_NAMES == (
         *binaries.INSTALLABLE_BINARIES,
@@ -8135,3 +8137,204 @@ def test_the_bandcamp_session_check_names_the_verbs_that_spend_it(configured):
     assert "no verb" not in finding.detail
     other = doctor._check_credential("credential.recognition", inputs)
     assert other.status is doctor.Status.FAIL or "no verb" in other.detail
+
+
+# ---------------------------------------------------------------------------
+# U159: install.release, whether a newer release than this copy is published
+# ---------------------------------------------------------------------------
+
+_REPO_URL = "https://github.com/philgutowski/cratekit"
+
+
+def _release_finding(origin, tags=None, *, read=None):
+    seen = []
+
+    def release_tags(url):
+        seen.append(url)
+        return tags if read is None else read(url)
+
+    inputs = doctor._Inputs(
+        None, None, probes(install_origin=lambda: origin, release_tags=release_tags)
+    )
+    return doctor._check_release(inputs), seen
+
+
+def _vcs(version="0.2.0", extras=()):
+    return doctor.InstallOrigin(kind="vcs", version=version, url=_REPO_URL, extras=extras)
+
+
+def test_a_newer_release_warns_with_the_one_pipx_command_keeping_the_extras():
+    finding, seen = _release_finding(
+        _vcs("0.2.0", ("analysis", "vocals")), ("v0.1.0", "v0.2.0", "v0.3.0")
+    )
+    assert seen == [_REPO_URL]
+    assert finding.status is doctor.Status.INFO, "a copy behind a release still works"
+    assert "v0.3.0" in finding.detail and "0.2.0" in finding.detail
+    assert (
+        f'pipx install --force "cratekit[analysis,vocals] @ git+{_REPO_URL}@v0.3.0"'
+        in finding.detail
+    )
+
+
+def test_a_newer_release_without_extras_names_plain_cratekit():
+    finding, _ = _release_finding(_vcs("0.2.0"), ("v0.2.1",))
+    assert f'pipx install --force "cratekit @ git+{_REPO_URL}@v0.2.1"' in finding.detail
+
+
+@pytest.mark.parametrize("tags", [("v0.2.0",), ("v0.1.9", "v0.2.0"), ("v0.1.0",)])
+def test_an_equal_or_newer_installed_version_passes(tags):
+    finding, _ = _release_finding(_vcs("0.2.0"), tags)
+    assert finding.status is doctor.Status.OK
+    assert "latest release" in finding.detail
+
+
+def test_no_tags_passes_and_says_none_is_published():
+    finding, _ = _release_finding(_vcs("0.1.0"), ())
+    assert finding.status is doctor.Status.OK
+    assert "no release has been published" in finding.detail
+
+
+def test_a_failed_read_says_it_could_not_read_and_never_passes():
+    finding, _ = _release_finding(_vcs("0.1.0"), read=lambda _url: None)
+    assert finding.status is not doctor.Status.OK, (
+        "a check that could not look reported the copy as current"
+    )
+    assert finding.status is doctor.Status.INFO
+    assert "could not be read" in finding.detail
+    assert "unknown" in finding.detail
+
+
+def test_tags_that_are_not_versions_are_ignored():
+    finding, _ = _release_finding(
+        _vcs("0.2.0"), ("v0.2.0", "nightly", "v9", "v10.0.0-rc1", "release-11.0.0", "v1.0")
+    )
+    assert finding.status is doctor.Status.OK
+    assert "v0.2.0" in finding.detail
+
+
+@pytest.mark.parametrize(("kind", "said"), [("editable", "editable checkout"), ("folder", "a folder")])
+def test_a_folder_or_editable_install_says_the_check_does_not_apply(kind, said):
+    finding, seen = _release_finding(
+        doctor.InstallOrigin(kind=kind, version="0.1.0", url="file:///somewhere"), ("v9.0.0",)
+    )
+    assert seen == [], "a folder install has no release to read"
+    assert finding.status is doctor.Status.INFO
+    assert said in finding.detail and "does not apply" in finding.detail
+    assert f"git+{_REPO_URL}@" in finding.detail, "it says how to move to a release install"
+
+
+@pytest.mark.parametrize("kind", ["index", "unknown"])
+def test_an_install_not_from_the_repository_does_not_apply(kind):
+    finding, seen = _release_finding(doctor.InstallOrigin(kind=kind), ("v9.0.0",))
+    assert seen == []
+    assert finding.status is doctor.Status.INFO
+    assert "does not apply" in finding.detail
+
+
+def test_the_check_never_fails_setup_on_any_answer():
+    """INFO or OK for every shape, because a release behind is no reason to refuse."""
+    for origin, read in (
+        (_vcs("0.1.0"), lambda _u: ("v0.9.0",)),
+        (_vcs("0.1.0"), lambda _u: None),
+        (_vcs("not-a-version"), lambda _u: ("v0.1.0",)),
+        (doctor.InstallOrigin(kind="editable"), lambda _u: None),
+    ):
+        finding, _ = _release_finding(origin, read=read)
+        assert not finding.failed
+
+
+def _distribution(tmp_path, direct_url, requires=()):
+    """A real dist-info directory, read through importlib.metadata as installed."""
+    info = tmp_path / "cratekit-0.2.0.dist-info"
+    info.mkdir()
+    lines = ["Metadata-Version: 2.1", "Name: cratekit", "Version: 0.2.0"]
+    lines += [f"Requires-Dist: {r}" for r in requires]
+    (info / "METADATA").write_text("\n".join(lines) + "\n")
+    if direct_url is not None:
+        (info / "direct_url.json").write_text(direct_url)
+    from importlib import metadata
+
+    return metadata.PathDistribution(info)
+
+
+@pytest.mark.parametrize(
+    ("record", "kind"),
+    [
+        (
+            '{"url": "https://github.com/philgutowski/cratekit", '
+            '"vcs_info": {"vcs": "git", "requested_revision": "v0.2.0", "commit_id": "abc"}}',
+            "vcs",
+        ),
+        ('{"url": "file:///src/cratekit", "dir_info": {"editable": true}}', "editable"),
+        ('{"url": "file:///src/cratekit", "dir_info": {}}', "folder"),
+        ('{"url": "file:///x.tar.gz", "archive_info": {}}', "folder"),
+        (None, "index"),
+        ("not json", "unknown"),
+    ],
+)
+def test_the_install_origin_is_read_off_the_pep_610_record(tmp_path, monkeypatch, record, kind):
+    dist = _distribution(tmp_path, record)
+    monkeypatch.setattr(doctor.metadata, "distribution", lambda name: dist)
+    origin = doctor._install_origin()
+    assert origin.kind == kind
+    if kind != "unknown":
+        assert origin.version == "0.2.0"
+    if kind == "vcs":
+        assert origin.url == _REPO_URL
+
+
+def test_the_installed_extras_are_the_ones_whose_requirements_are_present(tmp_path, monkeypatch):
+    from importlib import metadata
+
+    dist = _distribution(
+        tmp_path,
+        '{"url": "https://github.com/philgutowski/cratekit", "vcs_info": {"vcs": "git"}}',
+        requires=(
+            "platformdirs>=4.0",
+            'librosa>=0.10; extra == "analysis"',
+            'numpy>=1.24; extra == "analysis"',
+            'torch>=2.2; extra == "vocals"',
+            'cratekit[analysis,vocals]; extra == "all"',
+        ),
+    )
+    present = {"cratekit", "librosa", "numpy", "platformdirs"}
+
+    def distribution(name):
+        if name == "cratekit":
+            return dist
+        if name in present:
+            return dist
+        raise metadata.PackageNotFoundError(name)
+
+    monkeypatch.setattr(doctor.metadata, "distribution", distribution)
+    assert doctor._install_origin().extras == ("analysis",), (
+        "vocals is missing torch and all is an alias, so only analysis is kept"
+    )
+
+
+def test_the_release_read_parses_ls_remote_and_refuses_on_failure(monkeypatch):
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        calls.append((argv, kwargs))
+        out = "abc\trefs/tags/v0.1.0\ndef\trefs/tags/v0.2.0\n"
+        return subprocess.CompletedProcess(argv, 0, out, "")
+
+    monkeypatch.setattr(doctor.subprocess, "run", fake_run)
+    assert doctor._release_tags(_REPO_URL) == ("v0.1.0", "v0.2.0")
+    argv, kwargs = calls[0]
+    assert argv[:3] == ["git", "ls-remote", "--tags"]
+    assert kwargs["timeout"] == doctor.RELEASE_READ_TIMEOUT
+    assert kwargs["env"]["GIT_TERMINAL_PROMPT"] == "0"
+
+    def refused(argv, **kwargs):
+        return subprocess.CompletedProcess(argv, 128, "", "fatal: could not read Username")
+
+    monkeypatch.setattr(doctor.subprocess, "run", refused)
+    assert doctor._release_tags(_REPO_URL) is None
+
+    def timed_out(argv, **kwargs):
+        raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+
+    monkeypatch.setattr(doctor.subprocess, "run", timed_out)
+    assert doctor._release_tags(_REPO_URL) is None
