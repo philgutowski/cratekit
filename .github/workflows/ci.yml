@@ -29,8 +29,9 @@ jobs:
   #    a personal path is exactly the kind of thing that lands in a branch whose
   #    dependencies are also broken, and that is the worst moment to have the
   #    guard silently not run.
-  # 2. It needs the FULL history-free checkout and nothing else, so it reports in
-  #    seconds. A guard that reports after a fifteen-minute matrix gets ignored.
+  # 2. It needs a checkout and nothing else, so it reports in seconds. A guard
+  #    that reports after a fifteen-minute matrix gets ignored. The checkout is
+  #    full history for the closing check (U158), which costs seconds here.
   #
   # The same script is wired as a pre-commit hook. The hook is the one that
   # matters, because a secret that reaches a commit is already in the history;
@@ -90,8 +91,16 @@ jobs:
           PUSHED_FROM: ${{ github.event.before }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           if [ "$EVENT" = "pull_request" ]; then
+            # The merge commit's trailer is the one close. GitHub also closes
+            # from a pull request's body at the merge, which no range check
+            # sees, so a closing keyword in the body is refused outright.
+            if printf '%s' "$PR_BODY" | grep -qiE '\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\b[[:space:]]*#[0-9]+'; then
+              echo "the pull request body carries a closing keyword next to an issue number; remove it"
+              exit 2
+            fi
             if [ -z "$PR_BASE" ]; then
               echo "pull request event carries no base sha; nothing to judge"
               exit 0

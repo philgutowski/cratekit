@@ -313,3 +313,24 @@ def test_four_holds_for_three_lanes_keep_the_three_earliest(board, monkeypatch, 
 def test_a_withdrawn_hold_releases_the_card(board):
     node = _node(board, _issue(1, "U1: a"))
     assert board.cloud_state(node, [_mine("Started", 2), _mine("Withdrawn", 1)])[0] == "ready"
+
+
+def test_local_lists_attended_cards_ready_and_waiting(board, monkeypatch, capsys):
+    issues = [
+        _issue(1, "U1: build"),
+        _issue(2, "A1: run it live", labels=("attended",), body="**Depends on:** #1 (U1)"),
+        _issue(3, "A2: run the battery", labels=("attended",), body="**Depends on:** none"),
+        _issue(4, "A3: done", labels=("attended",), state="closed"),
+    ]
+    _wire(board, monkeypatch, issues)
+    assert board.cmd_local(None) == 0
+    out = capsys.readouterr().out
+    assert "Ready at your Mac (1):" in out and "#3" in out
+    assert "Waiting on the cloud (1):" in out and "(after #1)" in out
+    assert "#4" not in out
+
+
+def test_local_says_so_when_nothing_waits(board, monkeypatch, capsys):
+    _wire(board, monkeypatch, [_issue(1, "U1: a")])
+    assert board.cmd_local(None) == 0
+    assert "Nothing waits on your Mac." in capsys.readouterr().out

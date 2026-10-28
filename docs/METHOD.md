@@ -497,6 +497,31 @@ harness's under `CLAUDE_CODE_REMOTE`.
 the card lands, or the cloud session meets a moved `main` at its merge and
 has to merge it in and run the battery again.
 
+## Local attended work, decided 2026-10-28
+
+**Work only Phillip's Mac can do is an attended card**, titled `A<N>:` and
+labelled `attended`, so the cloud never offers it. `board.py local` lists
+them, ready first, and a local Claude Code session shows that list when it
+starts. A cloud worker files one card per live check its landing owes, rather
+than leaving it in a comment.
+
+**How a local session takes one without colliding with the cloud**, which
+writes `main` at any hour:
+
+1. Start from a fresh `main`: `git checkout main && git pull --ff-only`.
+2. **A run and its record** (most attended cards): do the run, write the
+   record (`docs/cutover.md` or the card's own file), commit on `main`, then
+   `git pull` (a merge, never a rebase or a force) and push. Records are
+   append only and per sitting, so a merge of them is clean.
+3. **A run that shows code must change:** do not fix it locally. File a card
+   with the `file-card` skill, carrying what the run showed, and let the cloud
+   build it. Only a card that cannot be built without the machine is built
+   locally, on a branch from `board.py start N` and merged after the battery,
+   between cloud landings: check `board.py cloud` shows no held card touching
+   the same files, merge `origin/main` in again just before the merge, and
+   run the battery once more if it moved.
+4. Close the card with a comment naming the record's commit.
+
 ## Do not touch
 
 U30's board state, U20, R-9, A1, A2.

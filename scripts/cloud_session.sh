@@ -7,8 +7,20 @@
 # laptop has its venv already and CLAUDE_CODE_REMOTE is unset there.
 #
 # Stdout reaches the model as context. Facts only, briefly.
-[ -n "$CLAUDE_CODE_REMOTE" ] || exit 0
 cd "${CLAUDE_PROJECT_DIR:-$(pwd)}" || exit 0
+
+# On Phillip's Mac: show the attended cards, the work only that machine can
+# do, so a local session opens on them. Never fails the session start.
+if [ -z "$CLAUDE_CODE_REMOTE" ]; then
+    if [ -x .venv/bin/python ]; then
+        out=$(timeout 20 .venv/bin/python scripts/board.py local 2>/dev/null) && {
+            printf '%s\n' "Cratekit local work, from the board's attended cards:"
+            printf '%s\n' "$out"
+            printf '%s\n' "Offer Phillip the first ready card; each card's body says what to run and when it is done, and METHOD's local attended work section says how to branch and commit it without colliding with the cloud."
+        }
+    fi
+    exit 0
+fi
 
 note() { printf '%s\n' "$*"; }
 

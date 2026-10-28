@@ -288,8 +288,9 @@ reviews it and nothing waits on a person.
     git push -u origin cloud/N-<slug>
 
 The closing check must exit 0, and the keyword scan must print nothing. Check
-`tests/_pending.py` before writing the trailer: if the register still owes
-this unit a module, merge without it and say so in `Landed`.
+`tests/_pending.py` first: a register that still owes this unit a module makes
+CI red on the pull request whatever the trailer says, so discharge the entry
+or point it at the later unit that owes it before you open one.
 
 **Open the pull request** over REST, since `gh pr` needs GraphQL (the GitHub
 MCP `create_pull_request` tool works as well):
@@ -311,6 +312,15 @@ means each conclusion is `success`, `neutral` or `skipped`:
     SHA=$(git rev-parse HEAD)
     gh api repos/<owner>/<repo>/commits/$SHA/check-runs \
       --jq '.check_runs[] | "\(.name) \(.status) \(.conclusion)"'
+    gh api "repos/<owner>/<repo>/actions/runs?event=pull_request&head_sha=$SHA" \
+      --jq '.workflow_runs[] | "\(.name) \(.status) \(.conclusion)"'
+
+The push of the branch runs CI too, and its check runs land on the same head,
+so green over the check runs alone can be the push's run only. **Wait until
+the second command lists a completed `success` run for the pull request**:
+that run is the one that judges the pull request's range and its card. A pull
+request that conflicts with `main` gets no `pull_request` run at all, so
+merge `origin/main` into the branch first.
 
 CI judges the pull request's own range and the card its head branch names
 (`board.py closing --pull-request-head`), so a branch whose card a register
@@ -350,6 +360,13 @@ over REST, titled `R-N: ` and the ledger heading exactly, with a body opening
 out of scope:
 
     gh api -X POST repos/<owner>/<repo>/issues -f title='R-N: ...' -F body=@r.md -f 'labels[]=residual'
+
+For each live check the record's OWED paragraph names (a run on the live
+library, the account, rekordbox, or the macOS battery), file one attended card
+for Phillip's Mac, titled `A<N>: <the check>` with N one past the highest `A`
+title on the board, labelled `attended` and nothing else, with a body opening
+`**Depends on:** #<the release card or this card>` and saying what to run and
+when it is done. METHOD's local attended work section is the form.
 
 Then `board.py audit --labels-only`, and post `Landed` on the card: the pull
 request, the merge commit, the commits it carried, the battery counts from `compare`, the review

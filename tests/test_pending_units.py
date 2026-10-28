@@ -1619,3 +1619,50 @@ def test_the_closing_check_reads_full_history_in_ci():
     step = workflow[workflow.index("A unit may not close while a register") :]
     step = step[: step.index("\n  portable:")]
     assert "--depth" not in step, "a shallow fetch would truncate the full history again"
+
+
+def test_the_card_a_head_names_is_judged_even_when_the_range_is_unreadable(
+    tmp_path, monkeypatch
+):
+    """The implied close needs no history, so an unreadable base cannot excuse it."""
+    board = _board()
+    repo, _base = _branch_commit(tmp_path)
+    _owed_36(board, monkeypatch)
+    monkeypatch.chdir(repo)
+    args = _ClosingArgs(since="no-such-ref", pull_request_head="cloud/36-converge")
+    assert board.cmd_closing(args) == 2
+
+
+@pytest.mark.parametrize(
+    "body",
+    ["Closes #339", "this fixes #12 too", "Resolved   #7", "Card\nCloses #339\n"],
+)
+def test_a_closing_keyword_in_the_pull_request_body_is_refused(tmp_path, body):
+    done, argv = _drive_closing_step(
+        tmp_path,
+        {
+            "EVENT": "pull_request",
+            "PUSHED_FROM": "",
+            "PR_BASE": "abc123",
+            "PR_HEAD_REF": "cloud/339-x",
+            "PR_BODY": body,
+        },
+    )
+    assert done.returncode == 2
+    assert argv is None, "the range was judged after the body had already refused"
+    assert "closing keyword" in done.stdout
+
+
+def test_a_card_link_in_the_pull_request_body_is_not_a_keyword(tmp_path):
+    done, argv = _drive_closing_step(
+        tmp_path,
+        {
+            "EVENT": "pull_request",
+            "PUSHED_FROM": "",
+            "PR_BASE": "abc123",
+            "PR_HEAD_REF": "cloud/339-x",
+            "PR_BODY": "Card: https://github.com/philgutowski/cratekit/issues/339\nThe closing check.",
+        },
+    )
+    assert done.returncode == 0, done.stdout
+    assert argv is not None
