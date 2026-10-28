@@ -1369,3 +1369,185 @@ def test_the_landing_engine_module_is_the_only_caller_that_admits_a_content_row(
     """The counterpart of the guard's own source test, read from the verb's side."""
     source = Path(landing.__file__).read_text(encoding="utf-8")
     assert "creations=" not in source, "the landing module asks the writer itself"
+
+
+# ---------------------------------------------------------------------------
+# The digest names the library, not the database file (U161, R-922)
+# ---------------------------------------------------------------------------
+
+
+def _point_at_a_copy(cfg: config.Config) -> Path:
+    """Copy the disposable database to another path under the library and point the config at it.
+
+    What a rehearsal does by design: the same library, read through a copy
+    whose file is elsewhere. The device, the master id and every row are the
+    database's own, so only the path differs.
+    """
+    copy = Path(cfg.library.root) / "rehearsal" / "master.db"
+    copy.parent.mkdir(parents=True)
+    shutil.copyfile(cfg.library.db_path, copy)
+    data = valid_data(
+        Path(cfg.library.root),
+        rekordbox={"pinned_app_version": RECORDED_APP_VERSION, "validated_on": "2026-08-01"},
+    )
+    data["library"]["db_path"] = str(copy)
+    moved = config.from_dict(data)
+    config.save(moved)
+    config.reset_cache()
+    return copy
+
+
+def _spy_identity(monkeypatch) -> list[dict]:
+    """Every identity the engine digests, in the order it was taken."""
+    taken: list[dict] = []
+    real = native.identity
+
+    def spying(plan):
+        found = real(plan)
+        taken.append(found)
+        return found
+
+    monkeypatch.setattr(native, "identity", spying)
+    return taken
+
+
+def _strings(value) -> list[str]:
+    """Every string anywhere in a nested identity, keys and values both."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for key, one in value.items() for s in (*_strings(key), *_strings(one))]
+    if isinstance(value, (list, tuple)):
+        return [s for one in value for s in _strings(one)]
+    return []
+
+
+def test_the_same_files_against_a_copy_at_another_path_digest_equal_and_each_screen_names_its_path(
+    native_library, silence
+):
+    """R-922. A rehearsal reads a copy at another path, so a digest that named
+    the file could never equal the live one. The same staged files planned
+    against the database and against its copy digest the same, and each gate
+    screen still says which file it reads and writes."""
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    _stage(cfg, silence, "Two.flac")
+    live_path = str(cfg.library.db_path)
+    code, live = drive(_land())
+    assert code == int(ExitCode.DECISION_REQUIRED), live
+
+    copy = _point_at_a_copy(cfg)
+    code, rehearsed = drive(_land())
+    assert code == int(ExitCode.DECISION_REQUIRED), rehearsed
+
+    shown_live = live["cause"]["detail"]["shown"]
+    shown_copy = rehearsed["cause"]["detail"]["shown"]
+    assert shown_live["reads and writes"] == live_path
+    assert shown_copy["reads and writes"] == str(copy)
+    assert shown_live["items"] == shown_copy["items"]
+    assert shown_live["digest"] == shown_copy["digest"]
+    # Nothing moved and nothing was written by either plan.
+    assert _staged_names(cfg) == ["One.flac", "Two.flac"]
+    assert _landed_rows(cfg) == []
+
+
+def test_the_engine_identity_names_the_device_and_master_id_and_no_database_path(
+    native_library, silence, monkeypatch
+):
+    """The device and the master id are what identify the library, so they stay
+    in what is digested; the file path is nowhere in it, as a key or a value."""
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    taken = _spy_identity(monkeypatch)
+    code, refused = drive(_land())
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+
+    assert taken, "the engine took no identity"
+    for one in taken:
+        assert one["device"] == MY_DEVICE[0]
+        assert one["master_db_id"] == MY_DEVICE[1]
+        assert "database" not in one
+        database = Path(cfg.library.db_path)
+        named = _strings(one)
+        assert not [s for s in named if str(database) in s or str(database.parent) == s], named
+
+
+def test_a_changed_playlist_or_an_added_file_still_moves_the_digest(native_library, silence):
+    """Taking the path out takes nothing else out: the batch playlist's name and
+    one more row each move the digest."""
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    code, first = drive(_land())
+    assert code == int(ExitCode.DECISION_REQUIRED), first
+    code, renamed = drive(["intake", "land", "--name", f"{BATCH}_other"])
+    assert code == int(ExitCode.DECISION_REQUIRED), renamed
+    _stage(cfg, silence, "Two.flac")
+    code, grown = drive(_land())
+    assert code == int(ExitCode.DECISION_REQUIRED), grown
+
+    digests = {
+        envelope["cause"]["detail"]["shown"]["digest"] for envelope in (first, renamed, grown)
+    }
+    assert len(digests) == 3, digests
+
+
+def test_the_engine_digest_moves_with_one_row_and_one_playlist_and_not_with_the_path(
+    native_library, silence, monkeypatch
+):
+    """The engine's own digest, read off the plan it returns: the copy's path
+    leaves it alone, and one row's column or the playlist's name moves it."""
+    from dataclasses import replace
+
+    from cratekit.cli.output import digest_of
+
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    plans: list[native.NativePlan] = []
+    real = native.identity
+
+    def keeping(plan):
+        plans.append(plan)
+        return real(plan)
+
+    monkeypatch.setattr(native, "identity", keeping)
+    code, refused = drive(_land())
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    plan = plans[-1]
+    base = digest_of(real(plan))
+
+    elsewhere = replace(plan, database=Path(cfg.library.root) / "rehearsal" / "master.db")
+    assert digest_of(real(elsewhere)) == base
+    (row,) = plan.rows
+    renamed_row = replace(row, title=f"{row.title} (edit)")
+    assert digest_of(real(replace(plan, rows=(renamed_row,)))) != base
+    assert digest_of(real(replace(plan, playlist=f"{plan.playlist}_other"))) != base
+    assert digest_of(real(replace(plan, device_id=OTHER_DEVICE[0]))) != base
+    assert digest_of(real(replace(plan, master_db_id=OTHER_DEVICE[1]))) != base
+
+
+def test_a_decision_recorded_against_the_path_bearing_digest_is_stale_and_writes_nothing(
+    native_library, silence, monkeypatch
+):
+    """An answer recorded by a build whose digest still named the file is bound
+    to that digest. The continuation plans the new one, refuses stale, and
+    moves and writes nothing, rather than accepting the old answer."""
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    real = native.identity
+    monkeypatch.setattr(
+        native, "identity", lambda plan: {**real(plan), "database": str(plan.database)}
+    )
+    code, refused = drive(_land())
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    decided, envelope = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
+    assert decided == int(ExitCode.OK), envelope
+    monkeypatch.setattr(native, "identity", real)
+
+    code, acted = drive(["--run", run_id, *_land()])
+
+    assert acted["cause"]["reason"] == "decision-stale", acted
+    assert acted["cause"]["detail"]["expected"] == refused["cause"]["detail"]["shown"]["digest"]
+    assert _staged_names(cfg) == ["One.flac"]
+    assert _landed_rows(cfg) == []
+    assert _batch_playlist(cfg) == []

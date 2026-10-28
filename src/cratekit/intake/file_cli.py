@@ -163,9 +163,10 @@ def _native_payload(plan: dict, rows: native.NativePlan) -> dict:
 
     EVERY COLUMN THE ROW WOULD CARRY IS ON THE ITEM, and the digest is taken
     over the file as the verb read it and the collection plan together. The
-    engine's own digest covers the row's columns, the root, the playlist, the
-    device and the database, so an answer given for one file, one title, one
-    size or one library is stale for another.
+    engine's own digest covers the row's columns, the root, the playlist and
+    the library's device and master id, so an answer given for one file, one
+    title, one size or one library is stale for another. The database's path
+    is on the screen and not in the digest (U161).
     """
     (row,) = rows.rows
     item: dict[str, Any] = {

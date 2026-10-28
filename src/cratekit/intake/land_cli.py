@@ -750,9 +750,11 @@ def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: P
 
     EVERY COLUMN THE ROW WOULD CARRY IS ON THE ITEM, and the digest is taken
     over the files, the folder, the batch and the collection plan together, so
-    an answer given for one folder, one batch name, one database or one set of
-    rows is stale for another. The engine's own digest already covers the rows
-    and the root; the files' fingerprint covers what is on disk.
+    an answer given for one folder, one batch name, one library or one set of
+    rows is stale for another. The engine's own digest already covers the rows,
+    the root and the library's device and master id, and not the database's
+    path, which the screen shows (U161); the files' fingerprint covers what is
+    on disk.
     """
     by_target = {str(row.target): row for row in rows.rows}
     hearts = (

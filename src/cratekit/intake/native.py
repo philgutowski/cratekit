@@ -1085,7 +1085,12 @@ def _playlist_identity(one: PlaylistPlan) -> dict[str, Any]:
 
 
 def identity(plan: NativePlan) -> dict[str, Any]:
-    """What the digest covers: every fact the screen shows and the apply writes."""
+    """What the digest covers: every fact the apply writes, and the library it writes to.
+
+    The database's path is the one fact the screen shows that is left out
+    (U161), since two copies of one library carry the same device, master id
+    and rows and a rehearsal on one must digest as the other.
+    """
     split = (
         {"playlists": [_playlist_identity(one) for one in plan.playlists]}
         if plan.playlists
@@ -1130,7 +1135,10 @@ def identity(plan: NativePlan) -> dict[str, Any]:
         "set_job": plan.set_job_id,
         "inbox_leftovers": list(plan.inbox_leftovers),
         "inbox_found_by_name": plan.inbox_found_by_name,
-        "database": str(plan.database),
+        # THE LIBRARY BY ITS DEVICE AND MASTER ID, NEVER THE FILE (U161, R-922).
+        # A rehearsal reads a copy at another path by design, so a digest that
+        # named the file could never equal the live one; the screen names the
+        # path, outside the digest.
         "device": plan.device_id,
         "master_db_id": plan.master_db_id,
         "rows": [
