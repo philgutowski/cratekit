@@ -39224,3 +39224,107 @@ version no tag names.
 Phillip's Mac with `scripts/release.py cut --bump <kind> --mac-battery`, and
 the release skill and METHOD say a cloud session plans a release and hands
 the cut to the Mac, as they now do. Ledger only.
+
+---
+
+## R-1067. A folder named Analyze under INBOX gets a plain Analyze playlist made beside it
+
+**Found:** at the first review of #347, U166, 2026-10-28.
+
+**The mechanism.** `native.analyze_playlist` takes only a live, ordinary
+playlist (attribute 0) named `Analyze` directly under the intake root, so a
+folder of that name is passed over and the first landing makes the queue
+playlist beside it. INBOX then shows two nodes named Analyze, one a folder.
+
+**Measured cost.** Driven with a folder row inserted from SQL, so the
+producer, a person making that folder in rekordbox, was not driven. The
+landing writes nothing into the folder; the visit would see two entries of
+one name and has to pick the playlist.
+
+**Closes when:** the landing refuses, or names the queue otherwise, when a
+non playlist node holds the name, or the attended sitting confirms no such
+folder exists. Ledger only.
+
+---
+
+## R-1068. A native landing's memberships total leaves out the INBOX / Analyze memberships it wrote
+
+**Found:** at the first review of #347, U166, 2026-10-28.
+
+**The mechanism.** `NativeLanded.memberships_added`, which the landing's
+envelope reports as `totals.memberships`, counts the batch and account
+playlist memberships. The Analyze memberships are counted on the session
+record under the intake tree and named in the `rows-await-analysis` warning,
+but not in that total, and nothing reads them back after the commit the way
+the set playlist's are.
+
+**Measured cost.** A landing of five reads `memberships: 5` in its envelope
+and `created: 10` under the intake tree on its record. Nobody is told
+anything false about the tracks, since the total has always meant the
+batch's, and every membership is on the record a restore reads.
+
+**Closes when:** the envelope carries the Analyze count beside the batch's,
+and the landing reads the Analyze memberships back after the commit. Ledger
+only.
+
+---
+
+## R-1069. A set whose frozen playlist name is Analyze is refused with a remedy that cannot work for a set
+
+**Found:** at the second review of #347, U166, 2026-10-28.
+
+**The mechanism.** `native.plan_rows` refuses a batch named `Analyze`, the
+reserved queue name, telling the person to land with another `--name` or
+rename the file. A set landing's INBOX playlist keeps the set's frozen name
+whatever `--name` says, so for a set frozen as `Analyze` neither remedy
+changes anything and the set cannot land.
+
+**Measured cost.** Driven with the frozen name written straight into the set
+job, both `--name` values refused `intake-list-unusable` with the files left
+in staging. The producer, renaming the INSPIRATION playlist to Analyze and
+exporting the set again, was not driven, so reachability is unmeasured.
+
+**Closes when:** the refusal names the set's own remedy for a set, or a set
+of that name takes `Analyze 2` the way an account playlist does. Ledger only.
+
+---
+
+## R-1070. The sync land stop spells INBOX / Analyze as a constant, not the adopted intake root's name
+
+**Found:** at the second review of #347, U166, 2026-10-28.
+
+**The mechanism.** `sync_land.ANALYZE_PLAYLIST` is the literal
+`INBOX / Analyze`, held by a test to the shipped taxonomy's intake folder.
+The landing's own warning names the playlist under the adopted root's live
+name, so a library whose intake folder is called something else would read
+one name in the warning and another in the stop.
+
+**Measured cost.** Not driven. Phillip's library uses the shipped name, and
+no taxonomy with another intake display was produced.
+
+**Closes when:** the stop reads the name from the landing's own answer or
+the active taxonomy. Ledger only.
+
+---
+
+## R-1071. U166 landed by a local merge pushed to main, not through the pull request U158 asks for
+
+**Found:** at the landing of #347, U166, 2026-10-28.
+
+**The mechanism.** U158 landed on `main` while U166 was being built, and from
+it a unit reaches `main` through a pull request its session opens and merges
+once CI on its head is green. This session's own instruction, written before
+U158, said to merge to `main`, push `main` and open no pull request, and the
+harness forbids a pull request nobody asked for. The conservative call was to
+follow the session's instruction: the same merge commit and trailer, merged
+locally and pushed, which is the fallback U158 names for a refused merge
+endpoint. The battery was run on the merged tree before the push; CI judged
+it after.
+
+**Measured cost.** None to a person: the merge commit, its trailer and the
+battery are what a pull request would have carried. The record a pull request
+holds is in the card's Landed comment instead.
+
+**Closes when:** the scheduled task's prompt that starts cloud workers is
+brought in line with U158, so a worker's instruction and the repository's
+rule agree. Ledger only.
