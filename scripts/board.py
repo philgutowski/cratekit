@@ -23,6 +23,7 @@ Subcommands:
                     and a residual file the landing could not read
     residuals       the residual files waiting for a number; `--land` numbers
                     them on main
+    local           the attended cards, the work only Phillip's Mac can do
     cloud           the cloud lane's queue: every open unit or residual card, by
                     the state its comments give it, and the one to take
 
@@ -731,13 +732,22 @@ def cmd_closing(args) -> int:
             capture_output=True,
             text=True,
         )
+        problems: list[str] = []
+        card = pull_request_card(getattr(args, "pull_request_head", None))
+        if card is not None:
+            # THE CLOSE A PULL REQUEST WILL MAKE IS IN NO COMMIT YET (U158). The
+            # trailer is written by the merge, after CI has answered, so the
+            # range alone can never refuse it. The card the head branch names is
+            # judged as if its trailer were already here, which is exactly the
+            # message the merge will carry, and judged whether or not the range
+            # below can be read: it needs no history at all.
+            problems += unresolved_closes(f"Closes #{card}", raw=False)
         if result.returncode != 0:
             # No such ref, a shallow clone, or no repository. Nothing to judge
             # rather than a refusal, because a check that fails on a machine it
             # cannot read is a check somebody removes from the hook.
             print("board: no commit range to read; no trailer checked")
-            return _report([])
-        problems: list[str] = []
+            return _report(problems)
         for message in result.stdout.split("\0"):
             if message.strip():
                 # POST-cleanup messages. Nothing to strip, and stripping could
@@ -745,6 +755,17 @@ def cmd_closing(args) -> int:
                 problems += unresolved_closes(message, raw=False)
         return _report(problems)
     return _report(unresolved_closes(text, raw=True))
+
+
+#: A cloud worker's branch, `cloud/<card>-<slug>`, the only head a pull request
+#: merged with a closing trailer comes from (U158).
+CLOUD_BRANCH_RE = re.compile(r"^cloud/(\d+)-")
+
+
+def pull_request_card(head_ref: str | None) -> int | None:
+    """The card a pull request's head branch will close at its merge, if any."""
+    match = CLOUD_BRANCH_RE.match(head_ref or "")
+    return int(match.group(1)) if match else None
 
 
 def _report(problems: list[str]) -> int:
@@ -1754,6 +1775,32 @@ def cmd_cloud(args) -> int:
     return 0
 
 
+def cmd_local(args) -> int:
+    """The work only Phillip's Mac can do: every open card labelled attended."""
+    graph = build_graph(load_issues())
+    cards = sorted((n for n in graph.values() if n["attended"] and not n["closed"]),
+                   key=lambda n: n["number"])
+    if not cards:
+        print("Nothing waits on your Mac.")
+        return 0
+    ready, waiting = [], []
+    for node in cards:
+        deps = parse_deps(node["body"]) or []
+        still = [d for d in deps if d in graph and not graph[d]["closed"]]
+        (waiting if still else ready).append((node, still))
+    if ready:
+        print(f"Ready at your Mac ({len(ready)}):")
+        for node, _ in ready:
+            print(f"  #{node['number']:<4} {node['title'][:76]}")
+    if waiting:
+        print(f"Waiting on the cloud ({len(waiting)}):")
+        for node, still in waiting:
+            on = ", ".join(f"#{d}" for d in still)
+            print(f"  #{node['number']:<4} {node['title'][:60]}  (after {on})")
+    print("Read one with: .venv/bin/python scripts/board.py show N")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -1786,6 +1833,13 @@ def main() -> int:
         default="main",
         help="judge every commit after this ref instead of one message file",
     )
+    closing.add_argument(
+        "--pull-request-head",
+        help=(
+            "a pull request's head branch; a `cloud/N-slug` head is judged as "
+            "closing card N, the trailer its merge will write"
+        ),
+    )
     closing.set_defaults(func=cmd_closing)
     residuals = sub.add_parser(
         "residuals",
@@ -1805,6 +1859,8 @@ def main() -> int:
         help=f"how many cards the cloud builds at once (default {CLOUD_LANES})",
     )
     cloud.set_defaults(func=cmd_cloud)
+    local = sub.add_parser("local", help="the attended cards only Phillip's Mac can do")
+    local.set_defaults(func=cmd_local)
     args = parser.parse_args()
     try:
         return args.func(args)

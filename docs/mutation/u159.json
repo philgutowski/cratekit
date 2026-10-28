@@ -1,0 +1,340 @@
+{
+  "name": "u159",
+  "pass_kind": "light",
+  "branch": "cloud/340-releases",
+  "head": "0d892b0",
+  "when": "2026-10-28 14:29 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 14531,
+  "baseline_exit": 1,
+  "pytest_runs": 14,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 169,
+  "known_source": "/tmp/claude-0/-home-user-cratekit/121fcc2e-fb23-5f6d-99be-fec1c86886ba/scratchpad/known159.txt",
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to scripts/release.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "scripts/release.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "4a8ac72bc38f8275",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 14531,
+    "baseline_collected": 14531,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "M1_off_main_cut",
+      "description": "refusals: drop the refusal off main, so a release is cut from a branch",
+      "file": "scripts/release.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "c8850c637a431116",
+      "subset": [
+        "tests/test_release.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_release.py::test_cut_refuses_off_main"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if branch != \"main\":",
+      "new": "    if False:"
+    },
+    {
+      "id": "M2_dirty_tree_cut",
+      "description": "refusals: drop the clean tree refusal, so uncommitted work rides into a release",
+      "file": "scripts/release.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "d7fd1e8ea356aeae",
+      "subset": [
+        "tests/test_release.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_release.py::test_cut_refuses_on_a_dirty_tree"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if git(runner, \"status\", \"--porcelain\"):",
+      "new": "    if False:"
+    },
+    {
+      "id": "M3_behind_origin_cut",
+      "description": "refusals: drop the origin/main equality, so a stale or unpushed main is released",
+      "file": "scripts/release.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "d7e6c96515e06e6e",
+      "subset": [
+        "tests/test_release.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_release.py::test_cut_refuses_ahead_of_origin_main",
+        "tests/test_release.py::test_cut_refuses_behind_origin_main"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    elif remote.stdout.strip() != head:",
+      "new": "    elif False:"
+    },
+    {
+      "id": "M4_red_battery_cut",
+      "description": "verdict_problem: accept a red verdict",
+      "file": "scripts/release.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "69390d9fe759d1d2",
+      "subset": [
+        "tests/test_release.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_release.py::test_cut_refuses_on_a_red_battery[dirty]",
+        "tests/test_release.py::test_cut_refuses_on_a_red_battery[red]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if fields[1] != \"clean\":",
+      "new": "    if False:"
+    },
+    {
+      "id": "M5_other_commit_verdict",
+      "description": "verdict_problem: accept a verdict measured on another commit",
+      "file": "scripts/release.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "3d01b638499925d4",
+      "subset": [
+        "tests/test_release.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_release.py::test_cut_refuses_without_a_verdict_or_with_another_commit_s"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if len(fields) < 2 or fields[0] != head:",
+      "new": "    if len(fields) < 2:"
+    },
+    {
+      "id": "M6_local_merge_pr_lost",
+      "description": "landings_since: drop the head as second parent match, so a pull request merged locally is missing from the notes",
+      "file": "scripts/release.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "31ee226a69b212f7",
+      "subset": [
+        "tests/test_release.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_release.py::test_the_notes_list_exactly_the_pull_requests_since_the_last_tag"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        elif head_sha in second_parents:",
+      "new": "        elif False:"
+    },
+    {
+      "id": "M7_unit_is_patch",
+      "description": "classify: a unit asks for a patch, so new behaviour ships as a repair",
+      "file": "scripts/release.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "f942e8ac8ef6269a",
+      "subset": [
+        "tests/test_release.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_release.py::test_the_bump_a_title_asks_for[U158: a unit reaches main through a pull request-minor]",
+        "tests/test_release.py::test_the_bump_a_title_asks_for[merge(u57): the converge verb-minor]",
+        "tests/test_release.py::test_the_bump_a_title_asks_for[merge(u99-b): label registry verbs-minor]",
+        "tests/test_release.py::test_the_proposal_is_the_largest_bump_with_a_reason_per_landing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return \"minor\", \"a unit, new verbs or behaviour\"",
+      "new": "        return \"patch\", \"a unit, new verbs or behaviour\""
+    },
+    {
+      "id": "M8_behind_reads_current",
+      "description": "_check_release: any parseable installed version passes, so a copy behind reads as current",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d35d8bc0824a216a",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 367,
+      "baseline_collected": 367,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_newer_release_warns_with_the_one_pipx_command_keeping_the_extras",
+        "tests/test_doctor.py::test_a_newer_release_without_extras_names_plain_cratekit"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if installed >= newest:",
+      "new": "    if True:"
+    },
+    {
+      "id": "M9_extras_dropped",
+      "description": "_check_release: the upgrade command drops the installed extras",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3b62605668e96aae",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 367,
+      "baseline_collected": 367,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_newer_release_warns_with_the_one_pipx_command_keeping_the_extras"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            f\"Upgrade with: {release_upgrade_command(origin.url, tag, origin.extras)}\"",
+      "new": "            f\"Upgrade with: {release_upgrade_command(origin.url, tag, ())}\""
+    },
+    {
+      "id": "M10_unread_reads_none_published",
+      "description": "_release_tags: a refused read answers no tags, so doctor says none is published",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e748a6c4acb5e1c8",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 367,
+      "baseline_collected": 367,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_the_release_read_parses_ls_remote_and_refuses_on_failure"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if done.returncode != 0:\n        return None\n    tags = []",
+      "new": "    if done.returncode != 0:\n        return ()\n    tags = []"
+    }
+  ],
+  "dropped": []
+}

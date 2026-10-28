@@ -1634,6 +1634,44 @@ Favorites` and `2026-10-27 PULS`, with `--report` first; the scratch copy
 source; a genre on the 29 rows `tag folder` could not give one; a taxonomy
 alias for `Latin Electronic`; the one review item.
 
+## Sitting 48, 2026-10-28, the attended session, the account side of two passes marked and filed
+
+Phillip noticed the playlists sitting 47 landed still sat at the account root
+under their own names. Nothing had failed: sitting 47 stopped at the
+rekordbox analysis, and `sync mark` and `organize --only file` are separate
+verbs that no sync driver runs (#333, U152, scopes `sync mark` out). Neither
+verb writes the database, so no rehearsal or backup gate applies; rekordbox
+stayed closed and no job was running throughout.
+
+**There was no 2026-10-14 sync.** `Aa-Phil 10-14-26` was landed by the pass
+`2026-10-15T234532Z-9c32_synced` (landing session `2026-10-16T00:38:54Z-ef36`),
+the only native landing between 2026-10-09 and 2026-10-27 in the session log.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `sync mark --pass 2026-10-27T190706Z-21c7_synced` | run `2026-10-28T14:43:39Z-dbcc`, approved as `session` | **3 renamed**: `Lisa_10_27_26`, `Idris precise beats`, `The LIVING room`, each to `DOWNLOADED <name>`; left alone none. Idris counts Isolée `you are` as owned (on disk, no row), so it marks. 47 provider calls. | live |
+| `organize --only root --report` | run `2026-10-28T14:44:47Z-4f25`, report only | Would move 53 playlists out of `2026 Custom Playlists` (52 `DOWNLOADED`, plus `lisa_7/16`) into the 2026 folder and remove the emptied folder on a later run. **Phillip said no**: `2026 Custom Playlists` stays as he arranged it. The root step does not file newly marked playlists; `--only file` does. | declined |
+| `sync mark --pass 2026-10-15T234532Z-9c32_synced` | run `2026-10-28T14:51:09Z-58b3`, approved as `session` after Phillip read the gate | **2 renamed**: `Aa-Phil 10-14-26` and `lisa_10_11_26`. The gate takes both or neither, since `sync mark` has no per playlist narrowing. 44 provider calls. | live |
+| `organize --only file` | run `2026-10-28T14:55:10Z-8273`, approved as `session` after Phillip read the report (digest `f8e834767a89e3c1`) | **5 moved from the root** into the existing 2026 folder: the five `DOWNLOADED` playlists above. None came from a folder, so `lisa_10_11_26` was not taken out of a hand filed place. 0 folders created. A report after it planned nothing. 154 provider calls. | live |
+
+## Sitting 49, 2026-10-28, the attended session, the first release cut and installed
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `release.py plan` | on `main` at 75205bb0 | Proposed minor, v0.1.0 to v0.2.0, nothing marked breaking. Read and agreed. | read |
+| `release.py cut --bump minor --mac-battery`, A47 (#375) | on the Mac | The full macOS battery (ruff, pytest, `scan_repo.py`) clean on the cut commit; release commit 40addf24, tag `v0.2.0` pushed with `main` atomically, release published: https://github.com/philgutowski/cratekit/releases/tag/v0.2.0 | live |
+| A40 (#364), the macOS battery | the same run | The cut's battery is A40's three commands on `main` at the release. It covers R-1031, U161, U152, U176, U156, U158 and U159, all landed by then. **U166 had not landed** (#347 open), so its macOS run is owed by its own landing. | clean |
+| The upgrade, A39 (#363) | `pipx install --force "cratekit[analysis] @ git+https://github.com/philgutowski/cratekit@v0.2.0"` | The old copy was 0.1.0 from a local checkout with librosa injected by hand; the `analysis` extra replaces the injection (librosa, numpy, scipy import). No vocals or web extra was installed before, none after. `crate --version` 0.2.0; `crate doctor` `install.release`: **this copy is 0.2.0, and the latest release is v0.2.0.** | live |
+
+## Sitting 50, 2026-10-28, the attended session, the first `crate sync land`, with nothing to land
+
+From the installed v0.2.0, rekordbox closed, both backup ages 1 day. A43 (#367) stays open: the pass had nothing to land, so no landing gate was reached, and A42 (#366) waits on the same gate.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `crate sync land` | run `2026-10-28T15:55:17Z-edca`, no answer asked | Steps 1 to 5 of 10 ran in order and stopped: preflight ok; `sync all` queued 1 job (favourites inbound, 268 hearts listed of 277 declared, 9 withheld by the provider); the job succeeded; **1 missing**, Calvin Harris `Satisfy`; the download refused it `lossy-refused`, as at sittings 15 and 47. `no_op`, 28 provider calls. Every playlist marked at sitting 48 had nothing missing. | no landing |
+| Open intake jobs | named by the same run | **17 intake jobs from 2026-09-17 are still open** (`2026-09-17T16:44:44Z-3ea9` and 16 more), each holding its playlist out of every pass; the verb names `crate sync land --pass-run 2026-09-17T16:43:08Z-c92f` to continue them. Not run: left for Phillip to decide. | found |
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**

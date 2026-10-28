@@ -68,13 +68,14 @@ takes a lane or frees one, so no lane waits for the hour.
      > Skill tool (or read it from the repository's Claude Code skills
      > directory, under cloud-unit) and follow it to the end on card #N:
      > brainstorm it if it is an idea, otherwise plan and build it to METHOD's
-     > merge bar with the Fable review, measure its mutation table, merge it
-     > to main with the closing trailer, push main, and comment Landed. Wake
-     > the dispatcher as the skill says. Push the cloud/N-slug branch the
-     > skill names and main, not a claude/ branch. Merging and pushing main is
-     > authorized by Phillip, as CLAUDE.md records. Open no pull request
-     > unless the skill says to. A question is a stop, so make the
-     > conservative call, record it as a residual file, and keep going.
+     > merge bar with the Fable review, measure its mutation table, open its
+     > pull request and merge it to main with the closing trailer once CI is
+     > green, as the skill says, and comment Landed. Wake the dispatcher as
+     > the skill says. Push the cloud/N-slug branch the skill names, not a
+     > claude/ branch. Merging to main is authorized by Phillip, as CLAUDE.md
+     > records, and no pull request waits on a person. A question is a stop,
+     > so make the conservative call, record it as a residual file, and keep
+     > going.
 
 6. Reply `started worker <session id> on #N`. Start one worker per
    `Dispatch`: the worker's own `Dispatch`, sent once it holds its card, fills

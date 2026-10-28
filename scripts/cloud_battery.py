@@ -42,6 +42,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 STATE = ROOT / ".cloud-battery"
 BASELINE = STATE / "baseline.txt"
+VERDICT = STATE / "last-compare.txt"
 PYTHON = ROOT / ".venv" / "bin" / "python"
 RUFF = ROOT / ".venv" / "bin" / "ruff"
 
@@ -147,7 +148,22 @@ def cmd_compare(_args) -> int:
     print(f"NEWLY FAILING, yours: {len(new)}")
     for i in new:
         print(f"  {i}")
+    record_verdict("red" if new else "clean")
     return 1 if new else 0
+
+
+def record_verdict(verdict: str) -> None:
+    """Write the verdict for the commit just measured, for `release.py cut` (U159).
+
+    The full sha, so a release refuses a verdict from any other commit, and
+    `dirty` in place of the verdict when the tree carried uncommitted changes,
+    since then the run measured something no commit holds.
+    """
+    sha = run(["git", "rev-parse", "HEAD"]).stdout.strip()
+    if run(["git", "status", "--porcelain"]).stdout.strip():
+        verdict = "dirty"
+    STATE.mkdir(exist_ok=True)
+    VERDICT.write_text(f"{sha} {verdict}\n")
 
 
 def main(argv: list[str]) -> int:

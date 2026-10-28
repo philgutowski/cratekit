@@ -29,6 +29,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
+from cratekit.cli.doctor import InstallOrigin as _InstallOrigin
 from cratekit.cli.doctor import Probes as _Probes
 from cratekit.deletion.trash import TrashLayout, TrashStatus
 from cratekit.write.metadata_cli import ResolutionTotals
@@ -110,6 +111,12 @@ def green(**overrides) -> _Probes:
         # the real seam copies and opens a database and no green machine here
         # has one.
         path_survey=lambda _cfg: ResolutionTotals(active=10, unresolved=0, unmapped=0),
+        # A release install that is current, so no green run reaches the
+        # network and none depends on how the suite's own copy was installed.
+        install_origin=lambda: _InstallOrigin(
+            kind="vcs", version="0.1.0", url="https://github.com/philgutowski/cratekit"
+        ),
+        release_tags=lambda _url: ("v0.1.0",),
     )
     defaults.update(overrides)
     return _Probes(**defaults)

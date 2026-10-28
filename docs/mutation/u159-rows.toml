@@ -1,0 +1,96 @@
+name = "u159"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_off_main_cut"
+description = "refusals: drop the refusal off main, so a release is cut from a branch"
+file = "scripts/release.py"
+surface = "maintainer"
+tests = ["tests/test_release.py"]
+old = '''    if branch != "main":'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M2_dirty_tree_cut"
+description = "refusals: drop the clean tree refusal, so uncommitted work rides into a release"
+file = "scripts/release.py"
+surface = "maintainer"
+tests = ["tests/test_release.py"]
+old = '''    if git(runner, "status", "--porcelain"):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M3_behind_origin_cut"
+description = "refusals: drop the origin/main equality, so a stale or unpushed main is released"
+file = "scripts/release.py"
+surface = "maintainer"
+tests = ["tests/test_release.py"]
+old = '''    elif remote.stdout.strip() != head:'''
+new = '''    elif False:'''
+
+[[rows]]
+id = "M4_red_battery_cut"
+description = "verdict_problem: accept a red verdict"
+file = "scripts/release.py"
+surface = "maintainer"
+tests = ["tests/test_release.py"]
+old = '''    if fields[1] != "clean":'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M5_other_commit_verdict"
+description = "verdict_problem: accept a verdict measured on another commit"
+file = "scripts/release.py"
+surface = "maintainer"
+tests = ["tests/test_release.py"]
+old = '''    if len(fields) < 2 or fields[0] != head:'''
+new = '''    if len(fields) < 2:'''
+
+[[rows]]
+id = "M6_local_merge_pr_lost"
+description = "landings_since: drop the head as second parent match, so a pull request merged locally is missing from the notes"
+file = "scripts/release.py"
+surface = "maintainer"
+tests = ["tests/test_release.py"]
+old = '''        elif head_sha in second_parents:'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "M7_unit_is_patch"
+description = "classify: a unit asks for a patch, so new behaviour ships as a repair"
+file = "scripts/release.py"
+surface = "maintainer"
+tests = ["tests/test_release.py"]
+old = '''        return "minor", "a unit, new verbs or behaviour"'''
+new = '''        return "patch", "a unit, new verbs or behaviour"'''
+
+[[rows]]
+id = "M8_behind_reads_current"
+description = "_check_release: any parseable installed version passes, so a copy behind reads as current"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    if installed >= newest:'''
+new = '''    if True:'''
+
+[[rows]]
+id = "M9_extras_dropped"
+description = "_check_release: the upgrade command drops the installed extras"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''            f"Upgrade with: {release_upgrade_command(origin.url, tag, origin.extras)}"'''
+new = '''            f"Upgrade with: {release_upgrade_command(origin.url, tag, ())}"'''
+
+[[rows]]
+id = "M10_unread_reads_none_published"
+description = "_release_tags: a refused read answers no tags, so doctor says none is published"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    if done.returncode != 0:
+        return None
+    tags = []'''
+new = '''    if done.returncode != 0:
+        return ()
+    tags = []'''

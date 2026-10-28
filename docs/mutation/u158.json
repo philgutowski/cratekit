@@ -1,0 +1,278 @@
+{
+  "name": "u158",
+  "pass_kind": "light",
+  "branch": "cloud/339-pull-request-per-unit",
+  "head": "dded7fc",
+  "when": "2026-10-28 13:13 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 14469,
+  "baseline_exit": 1,
+  "pytest_runs": 11,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 168,
+  "known_source": ".cloud-battery/baseline.txt",
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to scripts/board.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "scripts/board.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "47ef6028b991eabc",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 14469,
+    "baseline_collected": 14469,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "M1_card_not_judged",
+      "description": "cmd_closing: never judge the card a pull request's head names, so an owed unit merges",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "3db0396c6717e4cf",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_a_pull_request_range_closing_a_unit_still_owed_is_refused",
+        "tests/test_pending_units.py::test_the_card_a_head_names_is_judged_even_when_the_range_is_unreadable"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if card is not None:",
+      "new": "        if False:"
+    },
+    {
+      "id": "M2_any_branch_names_a_card",
+      "description": "pull_request_card: read a card off any owner/N-slug branch, not only a cloud one",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "2e4898b0cca280c1",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_only_a_cloud_branch_names_the_card_its_merge_closes[feature/36-x-None]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "CLOUD_BRANCH_RE = re.compile(r\"^cloud/(\\d+)-\")",
+      "new": "CLOUD_BRANCH_RE = re.compile(r\"^\\w+/(\\d+)-\")"
+    },
+    {
+      "id": "M3_implied_close_not_a_reference",
+      "description": "cmd_closing: write the implied trailer without its hash, so it closes nothing",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "62409cb7bdb288b3",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_a_pull_request_range_closing_a_unit_still_owed_is_refused",
+        "tests/test_pending_units.py::test_the_card_a_head_names_is_judged_even_when_the_range_is_unreadable"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            problems += unresolved_closes(f\"Closes #{card}\", raw=False)",
+      "new": "            problems += unresolved_closes(f\"Closes {card}\", raw=False)"
+    },
+    {
+      "id": "M4_shallow_checkout",
+      "description": "ci.yml: drop the full history checkout, so the range is the tip alone",
+      "file": ".github/workflows/ci.yml",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "d0d4ee4705afda72",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_the_closing_check_reads_full_history_in_ci"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        with:\n          fetch-depth: 0\n",
+      "new": ""
+    },
+    {
+      "id": "M5_head_not_passed",
+      "description": "ci.yml: judge a pull request's range without its head, so its merge's close is unread",
+      "file": ".github/workflows/ci.yml",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "808a0b03f629e8f7",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_the_ci_step_judges_a_pull_request_from_its_base_with_its_head"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            python scripts/board.py closing --since \"$PR_BASE\" --pull-request-head \"$PR_HEAD_REF\"",
+      "new": "            python scripts/board.py closing --since \"$PR_BASE\""
+    },
+    {
+      "id": "M6_pull_request_from_previous_tip",
+      "description": "ci.yml: judge a pull request from the event's previous tip rather than its base",
+      "file": ".github/workflows/ci.yml",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "1e664c4d6821809f",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_the_ci_step_judges_a_pull_request_from_its_base_with_its_head"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            python scripts/board.py closing --since \"$PR_BASE\" --pull-request-head \"$PR_HEAD_REF\"",
+      "new": "            python scripts/board.py closing --since \"$PUSHED_FROM\" --pull-request-head \"$PR_HEAD_REF\""
+    },
+    {
+      "id": "M7_no_base_refuses",
+      "description": "ci.yml: a pull request event with no base sha fails the step instead of saying why",
+      "file": ".github/workflows/ci.yml",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "eb5e7dc6d9980127",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_a_pull_request_event_with_no_base_sha_exits_0_and_says_why"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "              echo \"pull request event carries no base sha; nothing to judge\"\n              exit 0",
+      "new": "              echo \"pull request event carries no base sha; nothing to judge\"\n              exit 1"
+    },
+    {
+      "id": "M8_zero_tip_judged",
+      "description": "ci.yml: a created ref's all zero previous tip is handed to the check as a range",
+      "file": ".github/workflows/ci.yml",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "d9a85ebe575f315d",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_a_push_with_no_previous_tip_exits_0_and_says_why[0000000000000000000000000000000000000000]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"\"|0000000000000000000000000000000000000000)",
+      "new": "            \"\")"
+    }
+  ],
+  "dropped": []
+}

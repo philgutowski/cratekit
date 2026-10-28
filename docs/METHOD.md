@@ -54,7 +54,8 @@ one.
    paragraph in `RESTART-cratekit.md`, which `scan_repo.py` refuses. No
    explainer, see below.
 6. **Merge.** The battery from inside the checkout, the closing keyword scan
-   over the whole range, merge to `main` locally, then on `main`
+   over the whole range, a pull request merged once CI on its head is green
+   (Committing and merging below), then on `main`
    `board.py residuals --land` and commit what it numbered, push `main`,
    delete the branch in both places, `board.py audit`. File the issue for
    each residual `--land` names as meeting the board bar.
@@ -296,9 +297,22 @@ it.
 
 ## Committing and merging
 
-- **No pull requests.** Feature branch per unit, merge to `main` locally, push
-  `main`, delete the branch in both places: `git branch -d <branch>` then
-  `git push origin --delete <branch>`.
+- **A pull request per unit, merged by the session that opened it once CI is
+  green**, decided by U158 on 2026-10-28, replacing the old no pull requests
+  rule. Feature branch per unit, push it, open a pull request against `main`,
+  wait for every check on its head commit to finish green, then merge it
+  through the GitHub API as a merge commit titled `merge(uN): <what landed>`
+  whose message ends with the closing trailer. **Never a pull request that
+  waits on a person**: no reviewer is requested and nobody approves it. The
+  body is the landing's record (the battery, the review rounds, the mutation
+  table, the residuals, what is OWED) and carries no closing keyword, because
+  a close from the body would bypass the closing check; the merge commit's
+  trailer is the one close. CI judges the pull request's own range and the
+  card its head branch names, so a unit a register still owes cannot merge.
+  If the merge endpoint is refused, merge locally with the same message and
+  push `main`, and the pull request stays as the record. Delete the branch
+  where you can: `git branch -d <branch>` then `git push origin --delete
+  <branch>`.
 - **`git push origin --all` fails on this connection** with `RPC failed; HTTP
   400`. Push one branch at a time.
 - **No em dashes, no en dashes, no double hyphens** in prose, comments, commit
@@ -413,8 +427,11 @@ runs the `cloud-unit` skill, in the repository's Claude Code skills
 directory, which is this file's pipeline with what a cloud container changes:
 it takes its card, brainstorms it if it is an idea,
 plans, builds, reviews, measures the mutation table, writes the record,
-merges to `main` with the closing trailer and pushes `main`. Phillip
-authorized the cloud to write `main` on 2026-10-27. **Only a card that
+opens a pull request, and merges it to `main` with the closing trailer once
+CI on its head is green (U158). Phillip authorized the cloud to write `main`
+on 2026-10-27, and a pull request the worker merges itself is that same
+authority with a record and a CI run before the merge rather than after it.
+No pull request waits on a person. **Only a card that
 cannot be built without the machine is built locally**: the live database,
 the library volume, the live account, rekordbox, or Phillip at the desktop.
 The session sets it aside with a comment carrying the local steps, and a card
@@ -479,6 +496,51 @@ harness's under `CLAUDE_CODE_REMOTE`.
 `board.py cloud` says the lane is held, a local merge to `main` waits until
 the card lands, or the cloud session meets a moved `main` at its merge and
 has to merge it in and run the battery again.
+
+## Releases, decided by U159 on 2026-10-28
+
+**People install tagged releases, never raw `main`.** A release is cut when
+Phillip asks, in any session, by the `release` skill in the repository's
+Claude Code skills directory: `scripts/release.py plan` lists the pull
+requests (and, before U158, the merges) since the last `vX.Y.Z` tag and
+proposes a semantic version bump with a reason for each; the session judges
+it; `scripts/release.py cut --bump <kind>` refuses off a clean `main` equal
+to `origin/main` and without a clean battery on that commit, then writes the
+version into `pyproject.toml` and `src/cratekit/__init__.py` together, commits
+`release: vX.Y.Z`, tags it, pushes `main` and the tag, and publishes the
+GitHub release with its notes. The release commit is the one commit that
+reaches `main` without a pull request, because it carries nothing but the
+version. `crate doctor`'s `install.release` check tells an installed copy
+when a newer release exists and prints the pipx command that upgrades it,
+keeping its extras. No package index, no automatic upgrade, no cadence.
+**The cut is the Mac's**: a cloud session's proxy refuses tag pushes and the
+releases API, so a cloud session plans and judges the bump and hands the cut
+to an attended card, which runs it with `--mac-battery`.
+
+## Local attended work, decided 2026-10-28
+
+**Work only Phillip's Mac can do is an attended card**, titled `A<N>:` and
+labelled `attended`, so the cloud never offers it. `board.py local` lists
+them, ready first, and a local Claude Code session shows that list when it
+starts. A cloud worker files one card per live check its landing owes, rather
+than leaving it in a comment.
+
+**How a local session takes one without colliding with the cloud**, which
+writes `main` at any hour:
+
+1. Start from a fresh `main`: `git checkout main && git pull --ff-only`.
+2. **A run and its record** (most attended cards): do the run, write the
+   record (`docs/cutover.md` or the card's own file), commit on `main`, then
+   `git pull` (a merge, never a rebase or a force) and push. Records are
+   append only and per sitting, so a merge of them is clean.
+3. **A run that shows code must change:** do not fix it locally. File a card
+   with the `file-card` skill, carrying what the run showed, and let the cloud
+   build it. Only a card that cannot be built without the machine is built
+   locally, on a branch from `board.py start N` and merged after the battery,
+   between cloud landings: check `board.py cloud` shows no held card touching
+   the same files, merge `origin/main` in again just before the merge, and
+   run the battery once more if it moved.
+4. Close the card with a comment naming the record's commit.
 
 ## Do not touch
 
