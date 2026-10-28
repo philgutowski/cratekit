@@ -399,7 +399,15 @@ def download_offers(transport: Transport, cookie: str, page_url: str) -> dict[st
 
     THE RETURN VALUE IS A CREDENTIAL. A caller reads one link out of it and
     hands that to :func:`fetch`, and keeps it out of every message.
+
+    THE PAGE IS CHECKED BEFORE IT IS ASKED, the way every file link is, because
+    this is the first request of a fetch that carries the session. A page that
+    lists no formats, or only formats whose links lead outside Bandcamp, is
+    :class:`BandcampUnavailable`: read as an empty offer it would tell the
+    person to relax the lossless policy over a release that offers FLAC.
     """
+    if not trusted(page_url):
+        raise BandcampUnavailable("the release's download page does not lead to Bandcamp over https")
     response = transport.get(page_url, cookie=cookie)
     if response.status in REJECTED_STATUSES:
         raise SessionRejected("Bandcamp refused the session on the release's download page")
@@ -412,12 +420,22 @@ def download_offers(transport: Transport, cookie: str, page_url: str) -> dict[st
         raise BandcampUnavailable("the release's download page lists no item to download")
     downloads = items[0].get("downloads")
     if not isinstance(downloads, Mapping):
-        return {}
+        raise BandcampUnavailable("the release's download page lists no formats")
     offers: dict[str, str] = {}
+    untrusted = 0
     for encoding, offer in downloads.items():
         link = offer.get("url") if isinstance(offer, Mapping) else None
-        if isinstance(link, str) and trusted(link):
+        if not isinstance(link, str):
+            continue
+        if trusted(link):
             offers[str(encoding)] = link
+        else:
+            untrusted += 1
+    if untrusted and not offers:
+        raise BandcampUnavailable(
+            "the release's download links do not lead to Bandcamp over https, so "
+            "none was asked"
+        )
     return offers
 
 

@@ -364,8 +364,9 @@ def test_a_purchase_in_both_listings_is_read_once():
         "http://p4.bcbits.com/download/album?enc=flac&id=1",
         "https://elsewhere.example/download/album?enc=flac&id=1",
         "https://bcbits.com.elsewhere.example/download/album?id=1",
+        "https://notbcbits.com/download/album?id=1",
     ],
-    ids=["plain-http", "other-host", "lookalike-host"],
+    ids=["plain-http", "other-host", "lookalike-host", "suffix-host"],
 )
 def test_the_session_is_never_sent_to_a_link_outside_bandcamp(tmp_path, link):
     class Elsewhere(FakeAccount):
@@ -376,8 +377,8 @@ def test_the_session_is_never_sent_to_a_link_outside_bandcamp(tmp_path, link):
             ))
 
     account = Elsewhere(archives={"1": archive({"a.flac": b"x"})})
-    offers = bandcamp.download_offers(account, COOKIE, download_page("1"))
-    assert offers == {}
+    with pytest.raises(bandcamp.BandcampUnavailable, match="do not lead to Bandcamp"):
+        bandcamp.download_offers(account, COOKIE, download_page("1"))
     with pytest.raises(bandcamp.BandcampUnavailable):
         bandcamp.fetch(account, COOKIE, link, tmp_path / "hold")
     assert account.downloaded == []
@@ -429,3 +430,28 @@ def test_the_stat_request_refusing_the_session_is_rejected(tmp_path):
 )
 def test_the_content_disposition_name_arrives_whole(header, name):
     assert bandcamp._disposition_name({"Content-Disposition": header}) == name
+
+
+@pytest.mark.parametrize(
+    "page",
+    [
+        "https://evil.example/download?sitem_id=1&sig=SIGNED1",
+        "http://bandcamp.com/download?sitem_id=1&sig=SIGNED1",
+    ],
+    ids=["other-host", "plain-http"],
+)
+def test_the_download_page_itself_is_never_asked_outside_bandcamp(page):
+    account = FakeAccount(archives={"1": archive({"a.flac": b"x"})})
+    with pytest.raises(bandcamp.BandcampUnavailable):
+        bandcamp.download_offers(account, COOKIE, page)
+    assert account.requests == []
+
+
+def test_a_page_listing_no_formats_is_unavailable_not_an_empty_offer():
+    class Formatless(FakeAccount):
+        def get(self, url, *, cookie):
+            blob = html_escape(json.dumps({"digital_items": [{"title": "x"}]}))
+            return bandcamp.Response(200, f'<div data-blob="{blob}"></div>')
+
+    with pytest.raises(bandcamp.BandcampUnavailable, match="lists no formats"):
+        bandcamp.download_offers(Formatless(), COOKIE, download_page("1"))

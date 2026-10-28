@@ -8121,3 +8121,17 @@ def test_a_shipped_template_that_does_not_load_is_a_defect_and_not_the_copy(
     assert finding.status is doctor.Status.FAIL
     assert finding.remedy is Remedy.REPORT_DEFECT
     assert "shipped" in finding.detail
+
+
+
+def test_the_bandcamp_session_check_names_the_verbs_that_spend_it(configured):
+    """U176, review round two. No verb declares the Bandcamp session, so it is
+    never required, and the finding must not say no verb needs it: the two
+    Bandcamp verbs do, and refuse without it."""
+    inputs = doctor._Inputs(configured, None, probes(credential_recorded=lambda _name: False))
+    finding = doctor._check_credential("credential.bandcamp", inputs)
+    assert finding.status is doctor.Status.INFO
+    assert "crate acquire bandcamp and crate acquire bandcamp-fetch" in finding.detail
+    assert "no verb" not in finding.detail
+    other = doctor._check_credential("credential.recognition", inputs)
+    assert other.status is doctor.Status.FAIL or "no verb" in other.detail
