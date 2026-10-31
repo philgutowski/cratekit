@@ -26,11 +26,13 @@ from cratekit.intake import land_cli, landing, native
 from tests.cli_drive import drive
 from tests.test_intake_land_native import (
     _land,
+    _land_first,
     _landed_rows,
     _music,
     _stage,
     _staged_names,
     _staging,
+    _two_acts,
 )
 from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_intake_land_native import (
@@ -397,7 +399,9 @@ def test_a_name_the_live_batch_folder_holds_is_refused_at_the_area_as_it_will_be
     live folder's names too and the rehearsal refuses the file the live landing
     will refuse, rather than reporting it landed."""
     cfg, _root = native_library
-    _music(cfg).mkdir(parents=True)
+    # A batch landed into again by its own name goes back to its filed folder
+    # (U164), so an earlier landing makes it, and a name in it is then held.
+    _land_first(cfg, silence)
     (_music(cfg) / "One.flac").write_bytes(b"left by an earlier landing")
     _stage(cfg, silence, "One.flac")
     _stage(cfg, silence, "Two.flac")
@@ -408,7 +412,7 @@ def test_a_name_the_live_batch_folder_holds_is_refused_at_the_area_as_it_will_be
     facts = rehearsed["data"]["totals"]["rehearsal"]
     assert facts["landed"] == 1 and facts["refused"] == 1 and facts["added"] == 1
     assert (_music(cfg) / "One.flac").read_bytes() == b"left by an earlier landing"
-    assert sorted(p.name for p in _music(cfg).iterdir()) == ["One.flac"]
+    assert sorted(p.name for p in _music(cfg).iterdir()) == ["One.flac", "Zero.flac"]
     assert _staged_names(cfg) == ["One.flac", "Two.flac"]
 
 
@@ -432,6 +436,42 @@ def test_a_rehearsal_that_touched_the_live_library_is_refused_as_a_defect(
     assert "rehearsal changed" in refused["cause"]["message"]
     assert str(_staging(cfg)) in refused["cause"]["message"]
     assert all(Path(path).is_dir() for path in refused["cause"]["detail"]["kept"])
+
+
+def test_a_rehearsal_that_touched_a_batch_filed_in_another_year_is_refused(
+    native_library, silence, monkeypatch
+):
+    """A batch landed into again by its own name goes back to its recorded
+    folder (U164), which may sit under another year than today's, and the
+    rehearsal watches that folder too."""
+    from datetime import date
+
+    from cratekit.intake import batch_name
+
+    cfg, _root = native_library
+    monkeypatch.setattr(batch_name, "today", lambda: date(2025, 12, 31))
+    verb = ["intake", "land", "--name", "Friday warmup"]
+    _stage(cfg, silence, "One.flac")
+    code, first, _refused = _two_acts(verb)
+    assert code == int(ExitCode.OK), first
+    filed = Path(cfg.library.root) / cfg.library.music_dir / "Processed_Tracks" / "2025"
+    filed = filed / "12_31_25 Friday warmup"
+    assert (filed / "One.flac").is_file()
+    monkeypatch.setattr(batch_name, "today", lambda: date(2026, 10, 27))
+    _stage(cfg, silence, "Two.flac")
+    real = landing.apply_native
+
+    def straying(*args, **kwargs):
+        landed = real(*args, **kwargs)
+        (filed / "Stray.flac").write_bytes(b"x")
+        return landed
+
+    monkeypatch.setattr(landing, "apply_native", straying)
+
+    code, refused = drive([*verb, "--rehearse"])
+
+    assert refused["cause"]["reason"] == "internal-error", refused
+    assert str(filed) in refused["cause"]["message"]
 
 
 def test_a_copy_that_fails_its_integrity_check_is_refused_naming_the_area(

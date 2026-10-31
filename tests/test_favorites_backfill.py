@@ -176,8 +176,10 @@ def test_the_plan_lists_exactly_the_landed_hearts_and_the_approval_places_them(
     assert "6 membership(s) placed: 3 into" in note["message"]
     assert "for 3 owned heart(s)" in note["message"]
     assert "2026-09 (made)" in note["message"]
-    # Every item of the plan names the file by its path under the library.
-    assert all(item["path"].startswith(f"Music/{BATCH}/") for item in shown["items"])
+    # Every item of the plan names the file by its path under the library,
+    # the folder the landing filed the batch in (U164).
+    filed = "Music/Processed_Tracks/2026/09_29_26 favorites/"
+    assert all(item["path"].startswith(filed) for item in shown["items"])
 
 
 def test_a_second_run_finds_the_same_hearts_and_writes_nothing(native_library, silence, monkeypatch):

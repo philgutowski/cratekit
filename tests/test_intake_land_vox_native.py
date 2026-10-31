@@ -25,7 +25,14 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import land_cli, native
 from cratekit.write import metadata_cli
 from tests.cli_drive import drive
-from tests.test_intake_land_native import _land, _music, _query, _stage, _two_acts
+from tests.test_intake_land_native import (
+    _advance_usn,
+    _land,
+    _music,
+    _query,
+    _stage,
+    _two_acts,
+)
 from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_intake_land_native import (
     _release_process_locks as _release_process_locks,  # noqa: PLC0414
@@ -335,6 +342,11 @@ def test_a_hand_placed_tag_on_a_row_already_present_survives(calibrated, silence
     """The landing tags only rows it adds and removes none: a row the
     collection held, tagged by hand, keeps its tag whatever its file scores."""
     cfg = calibrated
+    # Landed into again by its own name (U164), so the batch goes back to its
+    # filed folder, where the collection holds a row for one of the files.
+    _scored(cfg, silence, "Zero.flac", 1)
+    code, first, _refused = _two_acts(_land())
+    assert code == int(ExitCode.OK), first
     _scored(cfg, silence, "One.flac", 60)
     _scored(cfg, silence, "Two.flac", 1)
     held = str(_music(cfg) / "Two.flac")
@@ -344,6 +356,7 @@ def test_a_hand_placed_tag_on_a_row_already_present_survives(calibrated, silence
         "updated_at) VALUES ('held-2', 'held', ?, 0, '2026-01-01', '2026-01-01')",
         (held,),
     )
+    _advance_usn(conn)
     conn.commit()
     conn.close()
     _seed_vocals(cfg, "held-2")

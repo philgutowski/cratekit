@@ -1222,7 +1222,13 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'intake/file_cli.py': ['intake-list-unusable', 'internal-error'],
     # 2026-10-26, U154: the shelve engine and its shell joined.
     'intake/shelve.py': ['decision-stale', 'intake-list-unusable', 'intake-staging-refused', 'internal-error', 'whitelist-violation'],
-    'intake/shelve_cli.py': ['batch-skipped', 'intake-list-unusable'],
+    # 2026-10-31, U164: a batch a landing filed is reported as already filed.
+    'intake/shelve_cli.py': [
+        'already-filed',
+        'batch-already-filed',
+        'batch-skipped',
+        'intake-list-unusable',
+    ],
     'intake/imported_cli.py': [
         'intake-export-is-stub',
         'intake-list-unusable',

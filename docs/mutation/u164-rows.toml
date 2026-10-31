@@ -1,0 +1,155 @@
+name = "u164"
+pass_kind = "light"
+
+[[rows]]
+id = "T1_filed_target"
+description = "landing_target: land in the music folder's batch path rather than the filed folder"
+file = "src/cratekit/intake/shelve.py"
+surface = "user"
+tests = ["tests/test_intake_land_filed.py", "tests/test_intake_land_native.py", "tests/test_intake_shelve.py", "tests/test_intake_land_rehearse.py"]
+old = '''    when, said = filed_parts(batch, on=on)
+    spell = _speller(db)'''
+new = '''    return landing.target_dir(cfg, batch)
+    when, said = filed_parts(batch, on=on)
+    spell = _speller(db)'''
+
+[[rows]]
+id = "T2_free_disk"
+description = "_free_target: never pass over a folder already on disk"
+file = "src/cratekit/intake/shelve.py"
+surface = "user"
+tests = ["tests/test_intake_land_filed.py", "tests/test_intake_shelve.py"]
+old = '''    while os.path.lexists(candidate) or candidate in planned or spell(candidate) in stored_dirs:'''
+new = '''    while candidate in planned or spell(candidate) in stored_dirs:'''
+
+[[rows]]
+id = "T3_free_stored"
+description = "landing_target: ask the disk alone, not the collection's stored folders"
+file = "src/cratekit/intake/shelve.py"
+surface = "user"
+tests = ["tests/test_intake_land_filed.py", "tests/test_intake_land_native.py"]
+old = '''        stored_dirs=_stored_dirs(recorded),'''
+new = '''        stored_dirs=frozenset(),'''
+
+[[rows]]
+id = "T4_undated_name"
+description = "filed_parts: file a name with no date under the whole name as a date-free folder"
+file = "src/cratekit/intake/shelve.py"
+surface = "user"
+tests = ["tests/test_intake_land_filed.py"]
+old = '''    when, words = parsed if parsed is not None else (on, " ".join(batch.split()))'''
+new = '''    when, words = parsed if parsed is not None else (on, "")'''
+
+[[rows]]
+id = "T5_empty_subject"
+description = "filed_parts: leave an empty subject empty instead of Downloads"
+file = "src/cratekit/intake/shelve.py"
+surface = "user"
+tests = ["tests/test_intake_land_filed.py", "tests/test_intake_shelve.py"]
+old = '''    return when, words or batch_name.DOWNLOADS'''
+new = '''    return when, words'''
+
+[[rows]]
+id = "T6_reuse_recorded"
+description = "landing_target: never go back to the folder recorded for a batch landed into again"
+file = "src/cratekit/intake/shelve.py"
+surface = "user"
+tests = ["tests/test_intake_land_filed.py", "tests/test_intake_land_native.py", "tests/test_intake_land_rehearse.py"]
+old = '''    if again is not None and os.path.isdir(again) and not os.path.islink(again):
+        return Path(again)'''
+new = '''    if False:
+        return Path(again)'''
+
+[[rows]]
+id = "T7_reuse_gone"
+description = "landing_target: reuse a recorded folder even when it is gone from disk"
+file = "src/cratekit/intake/shelve.py"
+surface = "user"
+tests = ["tests/test_intake_land_filed.py"]
+old = '''    if again is not None and os.path.isdir(again) and not os.path.islink(again):'''
+new = '''    if again is not None:'''
+
+[[rows]]
+id = "W1_apply_folder"
+description = "apply_native: move into the music folder's batch path whatever the plan chose"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land_filed.py", "tests/test_intake_land_native.py"]
+old = '''    target = rows.folder if rows.folder is not None else target_dir(cfg, plan.batch)'''
+new = '''    target = target_dir(cfg, plan.batch)'''
+
+[[rows]]
+id = "W2_preflight_target"
+description = "apply_native: check the library against the music folder rather than the chosen folder"
+file = "src/cratekit/intake/landing.py"
+surface = "maintainer"
+tests = ["tests/test_intake_land_native.py", "tests/test_intake_land_filed.py"]
+old = '''    preflight_native(plan, cfg=cfg, target=target)'''
+new = '''    preflight_native(plan, cfg=cfg)'''
+
+[[rows]]
+id = "R1_record_filed"
+description = "_record_landing_commit: never record the filed batch and its folder"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_filed.py", "tests/test_intake_land_native.py", "tests/test_intake_land_rehearse.py"]
+old = '''    if plan.folder is not None and plan.batch:
+        record.detail[FILED_BATCH_KEY]'''
+new = '''    if False:
+        record.detail[FILED_BATCH_KEY]'''
+
+[[rows]]
+id = "B1_taken_recorded"
+description = "taken: read the music folder alone, as before U164"
+file = "src/cratekit/intake/batch_name.py"
+surface = "user"
+tests = ["tests/test_intake_land_filed.py", "tests/test_intake_land_native.py", "tests/test_intake_shelve.py", "tests/test_intake_land_names.py"]
+old = '''    return os.path.lexists(landing.target_dir(cfg, name)) or name in recorded'''
+new = '''    return os.path.lexists(landing.target_dir(cfg, name))'''
+
+[[rows]]
+id = "B2_native_names"
+description = "recorded_names: read shelve records alone and skip native landings"
+file = "src/cratekit/intake/batch_name.py"
+surface = "user"
+tests = ["tests/test_intake_land_filed.py", "tests/test_intake_land_native.py", "tests/test_intake_shelve.py"]
+old = '''        elif record.workflow == native.WORKFLOW:
+            for key in (native.BATCH_PLAYLIST_KEY, native.FILED_BATCH_KEY):'''
+new = '''        elif False:
+            for key in (native.BATCH_PLAYLIST_KEY, native.FILED_BATCH_KEY):'''
+
+[[rows]]
+id = "S1_already_filed"
+description = "intake shelve: plan a filed batch as before, refusing it as no folder"
+file = "src/cratekit/intake/shelve_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_filed.py", "tests/test_intake_shelve.py"]
+old = '''    filed = _already_filed(cfg, names)'''
+new = '''    filed = {}'''
+
+[[rows]]
+id = "S2_music_folder_wins"
+description = "_already_filed: call a batch filed even when a folder of its name is under the music folder"
+file = "src/cratekit/intake/shelve_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_filed.py", "tests/test_intake_shelve.py"]
+old = '''        if name in folders and not os.path.lexists(landing.target_dir(cfg, name))'''
+new = '''        if name in folders'''
+
+[[rows]]
+id = "H1_watch_recorded"
+description = "_filed_watch: watch today's year folder alone, never the recorded folder"
+file = "src/cratekit/intake/land_cli.py"
+surface = "maintainer"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''        watched.extend((Path(again).parent, Path(again)))'''
+new = '''        pass'''
+
+[[rows]]
+id = "H2_scratch_folder"
+description = "_rehearse_in: map the scratch plan back from the live folder instead of its own"
+file = "src/cratekit/intake/land_cli.py"
+surface = "maintainer"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''        scratch_target = _folder(scratch_rows)'''
+new = '''        scratch_target = landing.target_dir(area.cfg, planned.batch)'''

@@ -71,9 +71,38 @@ def _land_three(cfg: config.Config, silence: Path, *, name: str = BATCH) -> list
         _two_acts(verb) if name == BATCH else _two_acts_of(verb, "intake.land.native")
     )
     assert code == int(ExitCode.OK), acted
+    _as_landed_before_u164(cfg, name)
     rows = _rows(cfg)
     assert len(rows) >= 3
     return rows
+
+
+def _as_landed_before_u164(cfg: config.Config, batch: str) -> None:
+    """Put a batch where a landing put one before U164, ``Music/<batch>``, rows and all.
+
+    A native landing now files its batch under the processed tree from the
+    first commit, so what a shelve is for, a batch landed before that or on
+    the bridge, is made here: the filed folder renamed back to the music
+    folder and every row's stored folder rewritten to match, as it read then.
+    """
+    from cratekit.intake import batch_name as names
+
+    when, said = shelve.filed_parts(batch, on=names.today())
+    filed = shelve.processed_root(cfg) / f"{when.year}" / shelve.filed_name(when, said)
+    os.rename(filed, _music(cfg) / batch)
+    for emptied in (filed.parent, filed.parent.parent):
+        if not any(emptied.iterdir()):
+            emptied.rmdir()
+    suffix = f"/{cfg.library.processed_dir}/{when.year}/{shelve.filed_name(when, said)}/"
+    conn = sqlite3.connect(cfg.library.db_path)
+    try:
+        conn.execute(
+            "UPDATE djmdContent SET FolderPath = replace(FolderPath, ?, ?) WHERE FolderPath LIKE ?",
+            (suffix, f"/{batch}/", f"%{suffix}%"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _two_acts_of(verb: list[str], gate: str) -> tuple[int, dict, dict]:
@@ -242,6 +271,7 @@ def test_two_batches_filing_to_one_name_get_two_and_a_taken_target_is_passed_ove
         _stage(cfg, silence, file)
     code, acted, _ = _two_acts_of(["intake", "land", "--name", second], "intake.land.native")
     assert code == int(ExitCode.OK), acted
+    _as_landed_before_u164(cfg, second)
     (_processed(cfg) / "2026" / FILED).mkdir(parents=True)
 
     code, envelope = drive(_shelve("--report", "--all"))

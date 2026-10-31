@@ -36,7 +36,7 @@ from tests.test_intake_land_account_playlists_native import (
 from tests.test_intake_land_account_playlists_native import (
     pinned_day as pinned_day,  # noqa: PLC0414
 )
-from tests.test_intake_land_native import _members, _query, _two_acts
+from tests.test_intake_land_native import _members, _music, _query, _two_acts
 from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_intake_land_native import (
     _release_process_locks as _release_process_locks,  # noqa: PLC0414
@@ -183,8 +183,8 @@ def test_a_hearted_file_lands_in_its_batch_all_favorites_and_a_month_made_for_it
     assert shown["hearts"] == f"1 file(s) the account hearts, into {SOURCE!r} under 'Favorites' and their month"
     assert shown["month playlists"] == ["2026-11 (1 file(s)), made"]
     plan_items = {item["to"]: item for item in shown["items"]}
-    assert plan_items[str(Path(cfg.library.root) / cfg.library.music_dir / batch / "Hearted.flac")]["heart"] == "2026-11"
-    assert "heart" not in plan_items[str(Path(cfg.library.root) / cfg.library.music_dir / batch / "One.flac")]
+    assert plan_items[str(_music(cfg, batch) / "Hearted.flac")]["heart"] == "2026-11"
+    assert "heart" not in plan_items[str(_music(cfg, batch) / "One.flac")]
     # And the report says what it placed.
     placed = [item for item in acted["data"]["items"] if item["action"] == land_cli.FAVORITES]
     assert [(i["playlist"], i["count"], i.get("created")) for i in placed] == [
