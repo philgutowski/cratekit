@@ -946,6 +946,23 @@ def test_a_gate_is_answerable_from_a_different_process_in_a_later_session(config
     assert state.decisions["profile.set.apply"].actor == "test"
 
 
+def test_run_decide_continue_resumes_the_owning_verb_with_its_own_arguments(configured):
+    """U168: one command answers the gate and continues the run, arguments and all."""
+    _, out, _ = drive(["--output", "json", "profile", "set", "slim"])
+    run_id = json.loads(out)["run_id"]
+    assert gates.load(run_id).argv == ("profile", "set", "slim")
+
+    code, out, _ = drive(
+        ["--output", "json", "run", "decide", run_id, "profile.set.apply", "apply", "--continue"]
+    )
+
+    assert code == int(ExitCode.OK), out
+    envelope = json.loads(out)
+    assert envelope["verb"] == "profile.set" and envelope["run_id"] == run_id
+    config.reset_cache()
+    assert config.load().profile.name == "slim"
+
+
 def test_a_decision_answered_against_a_plan_that_has_since_moved_is_stale(configured):
     """The property that stops a user approving one plan and running a wider one."""
     _, out, _ = drive(["--output", "json", "profile", "set", "slim"])

@@ -581,7 +581,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     'cli/verbs/login.py': ['credential-missing', 'utf-8'],
     'cli/verbs/profile.py': ['config-unusable'],
-    'cli/verbs/runs.py': ['decision-unknown-gate'],
+    # 2026-10-31, U168: run decide --continue names the answer it continued on.
+    'cli/verbs/runs.py': ['decision-recorded', 'decision-required', 'decision-unknown-gate'],
     # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
     # a new module, crate taxonomy upgrade (U132). Its three WARNING codes are
     # the literals new to the package; the rest were already declared.
@@ -2375,7 +2376,8 @@ PINNED_LITERAL_HOLDERS = {
     ],
     'cli/verbs/login.py': ['credential-missing'],
     'cli/verbs/profile.py': ['config-unusable'],
-    'cli/verbs/runs.py': ['decision-unknown-gate'],
+    # 2026-10-31, U168: a run with no command line to continue is refused.
+    'cli/verbs/runs.py': ['decision-required', 'decision-unknown-gate'],
     # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
     # a new module, crate taxonomy upgrade (U132). Measured on the merged tree.
     'cli/verbs/taxonomy.py': ['config-unusable', 'internal-error'],

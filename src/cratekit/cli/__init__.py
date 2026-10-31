@@ -465,34 +465,62 @@ def _unhandled_cause(exc: BaseException) -> Cause:
     )
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Parse, dispatch, and return the process status.
+def _verb_argv(argv: Sequence[str], entry: Entry) -> tuple[str, ...] | None:
+    """The verb's path and every argument after it, out of the whole command line (U168).
 
-    The console-script wrapper turns the return value into the exit status, so
-    this returning an ``ExitCode`` is what gives every verb a real status. It
-    returns rather than exiting: a caller inside a test, and the job engine
-    reading a child's result, both get an integer instead of an exception.
+    The global options come before the verb, so the verb's own words start at
+    the first place its path appears. None when it cannot be found, which a
+    caller reads as a command line it cannot give back.
     """
-    return run(sys.argv[1:] if argv is None else argv, stdout=sys.stdout, stderr=sys.stderr)
+    path = list(entry.path)
+    tokens = list(argv)
+    for index in range(len(tokens) - len(path) + 1):
+        if tokens[index : index + len(path)] == path:
+            return tuple(tokens[index:])
+    return None
 
 
-def run(argv: list[str], *, stdout, stderr) -> int:
-    """The dispatcher, with its streams injected so a test drives the real path."""
+def dispatch(argv: Sequence[str], *, stderr) -> Envelope:
+    """Parse and run one command line and answer its envelope, without writing it (U168).
+
+    What ``run decide --continue`` calls to continue the verb that owns a run
+    in this same process, so the one envelope the caller writes is that verb's.
+    A command line argparse refuses is a defect here, since it is a recorded
+    one given back.
+    """
     parser = build_parser()
     try:
-        args = parser.parse_args(argv)
+        args = parser.parse_args(list(argv))
     except SystemExit as exc:
-        # argparse owns status 2, and this is the boundary that keeps it owning
-        # it. Its --help and --version paths exit 0 and pass straight through.
-        return int(exc.code or 0)
-
+        raise CratekitError(
+            Cause(
+                reason="internal-error",
+                message=(
+                    f"the recorded command line {' '.join(argv)!r} no longer parses "
+                    f"(status {exc.code!r}), so the run cannot be continued from it"
+                ),
+                remediation=Remediation(remedy=Remedy.REPORT_DEFECT),
+                origin=("cli",),
+            )
+        ) from None
     entry = getattr(args, "_entry", None)
     if entry is None:
-        parser.print_help(file=stdout)
-        return int(ExitCode.OK)
+        raise CratekitError(
+            Cause(
+                reason="internal-error",
+                message=f"the recorded command line {' '.join(argv)!r} names no verb",
+                remediation=Remediation(remedy=Remedy.REPORT_DEFECT),
+                origin=("cli",),
+            )
+        )
+    return _dispatched(args, list(argv), entry, as_json=args.output == "json", stderr=stderr)
 
+
+def _dispatched(
+    args: argparse.Namespace, argv: Sequence[str], entry: Entry, *, as_json: bool, stderr
+) -> Envelope:
+    """Run one parsed verb and answer its envelope; every refusal is converted here."""
     started = output.timestamp()
-    as_json = args.output == "json"
     state: gates.RunState | None = None
     spent_before = _provider_spend()
 
@@ -503,6 +531,10 @@ def run(argv: list[str], *, stdout, stderr) -> int:
 
         supplied = gates.parse_decision_flags(args.decision)
         state = _run_state_for(entry, args)
+        # THE COMMAND LINE, ON A NEW RUN ONLY (U168): what ``run decide
+        # --continue`` dispatches again. A continued run keeps its first one.
+        if not args.run:
+            state.argv = _verb_argv(argv, entry)
         blocked = gates.blocked_by(state, entry.name)
         if blocked is not None:
             raise CratekitError(blocked)
@@ -603,6 +635,37 @@ def run(argv: list[str], *, stdout, stderr) -> int:
     # AFTER EVERY BRANCH ABOVE, the refusals included: the sitting's failed
     # downloads spent calls into a live limit and nothing on the screen said so.
     envelope = _with_provider_spend(envelope, spent_before)
+    return envelope
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Parse, dispatch, and return the process status.
+
+    The console-script wrapper turns the return value into the exit status, so
+    this returning an ``ExitCode`` is what gives every verb a real status. It
+    returns rather than exiting: a caller inside a test, and the job engine
+    reading a child's result, both get an integer instead of an exception.
+    """
+    return run(sys.argv[1:] if argv is None else argv, stdout=sys.stdout, stderr=sys.stderr)
+
+
+def run(argv: list[str], *, stdout, stderr) -> int:
+    """The dispatcher, with its streams injected so a test drives the real path."""
+    parser = build_parser()
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        # argparse owns status 2, and this is the boundary that keeps it owning
+        # it. Its --help and --version paths exit 0 and pass straight through.
+        return int(exc.code or 0)
+
+    entry = getattr(args, "_entry", None)
+    if entry is None:
+        parser.print_help(file=stdout)
+        return int(ExitCode.OK)
+
+    as_json = args.output == "json"
+    envelope = _dispatched(args, argv, entry, as_json=as_json, stderr=stderr)
     _emit(envelope, as_json=as_json, stdout=stdout, stderr=stderr)
     return int(envelope.exit_code)
 
