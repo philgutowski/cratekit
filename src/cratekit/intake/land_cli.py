@@ -1645,6 +1645,15 @@ def _rehearse_native(
             detail={**dict(inner.detail), "rehearsal_area": [str(path) for path in area.paths]},
             inner=inner,
         ) from exc
+    except KeyboardInterrupt as exc:
+        rehearsal.assert_untouched(before, kept=area.paths)
+        raise refuse(
+            "cancelled",
+            f"the rehearsal was interrupted; the rehearsal area is kept at "
+            f"{', '.join(str(path) for path in area.paths)}",
+            origin=_ORIGIN,
+            detail={"rehearsal_area": [str(path) for path in area.paths]},
+        ) from exc
     except Exception as exc:
         rehearsal.assert_untouched(before, kept=area.paths)
         raise refuse(
@@ -1716,6 +1725,14 @@ def _rehearse_in(
                 origin=_ORIGIN,
                 detail={"differs": differ},
             )
+        # A NAME THE LIVE BATCH FOLDER ALREADY HOLDS IS HELD AT THE AREA TOO,
+        # by an empty file of that name, so the area's move refuses the same
+        # files the live move will and the facts say so. Occupancy is asked at
+        # the move and not in the plan, so the plans alone cannot see it.
+        for item in staged.items:
+            if (target / item.name).exists() or (target / item.name).is_symlink():
+                scratch_target.mkdir(parents=True, exist_ok=True)
+                (scratch_target / item.name).touch()
         with rehearsal.redirected(area):
             session.assert_backup_acknowledged(area.cfg)
             rows_before = _active_rows(db)

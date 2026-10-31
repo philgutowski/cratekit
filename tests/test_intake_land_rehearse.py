@@ -22,7 +22,7 @@ import pytest
 from cratekit.core import config, rb_writer, rehearsal
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
-from cratekit.intake import land_cli, native
+from cratekit.intake import land_cli, landing, native
 from tests.cli_drive import drive
 from tests.test_intake_land_native import (
     _land,
@@ -383,3 +383,123 @@ def test_land_cli_reads_the_newest_rehearsal_of_its_folder_and_batch(native_libr
     assert (
         rehearsal.latest(verb=land_cli.REHEARSAL_VERB, key={"folder": "/f", "batch": "c"}) is None
     )
+
+
+# ---------------------------------------------------------------------------
+# The review's round one
+# ---------------------------------------------------------------------------
+
+
+def test_a_name_the_live_batch_folder_holds_is_refused_at_the_area_as_it_will_be_live(
+    native_library, silence
+):
+    """Occupancy is asked at the move, not in the plan, so the area holds the
+    live folder's names too and the rehearsal refuses the file the live landing
+    will refuse, rather than reporting it landed."""
+    cfg, _root = native_library
+    _music(cfg).mkdir(parents=True)
+    (_music(cfg) / "One.flac").write_bytes(b"left by an earlier landing")
+    _stage(cfg, silence, "One.flac")
+    _stage(cfg, silence, "Two.flac")
+
+    code, rehearsed = _rehearse()
+
+    assert code == int(ExitCode.OK), rehearsed
+    facts = rehearsed["data"]["totals"]["rehearsal"]
+    assert facts["landed"] == 1 and facts["refused"] == 1 and facts["added"] == 1
+    assert (_music(cfg) / "One.flac").read_bytes() == b"left by an earlier landing"
+    assert sorted(p.name for p in _music(cfg).iterdir()) == ["One.flac"]
+    assert _staged_names(cfg) == ["One.flac", "Two.flac"]
+
+
+def test_a_rehearsal_that_touched_the_live_library_is_refused_as_a_defect(
+    native_library, silence, monkeypatch
+):
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    real = landing.apply_native
+
+    def straying(*args, **kwargs):
+        landed = real(*args, **kwargs)
+        (_staging(cfg) / "Stray.flac").write_bytes(b"x")
+        return landed
+
+    monkeypatch.setattr(landing, "apply_native", straying)
+
+    code, refused = _rehearse()
+
+    assert refused["cause"]["reason"] == "internal-error", refused
+    assert "rehearsal changed" in refused["cause"]["message"]
+    assert str(_staging(cfg)) in refused["cause"]["message"]
+    assert all(Path(path).is_dir() for path in refused["cause"]["detail"]["kept"])
+
+
+def test_a_copy_that_fails_its_integrity_check_is_refused_naming_the_area(
+    native_library, silence, monkeypatch
+):
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    monkeypatch.setattr(rb_writer, "integrity_ok", lambda *_args, **_kwargs: False)
+
+    code, refused = _rehearse()
+
+    assert refused["cause"]["reason"] == "snapshot-integrity-failed", refused
+    assert "rehearsal area is kept at" in refused["cause"]["message"]
+
+
+def test_a_landed_row_read_back_with_a_grid_is_refused_and_never_reported_gridless(
+    native_library, silence, monkeypatch
+):
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+
+    calls: list[object] = []
+
+    def refusing(landed):
+        calls.append(landed)
+        raise land_cli.refuse("internal-error", "a landed row carries an analysis value")
+
+    monkeypatch.setattr(native, "assert_rows_gridless", refusing)
+
+    code, refused = _rehearse()
+
+    assert calls, "the rehearsal never read its landed rows back"
+    assert refused["cause"]["reason"] == "internal-error", refused
+    assert "analysis value" in refused["cause"]["message"]
+    assert "gridless" not in str(refused.get("data"))
+
+
+def test_a_landed_row_whose_file_id_did_not_take_is_refused_in_the_rehearsal(
+    native_library, silence, monkeypatch
+):
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+
+    def unidentified(_landed):
+        raise land_cli.refuse("internal-error", "a landed row has no file id")
+
+    monkeypatch.setattr(native, "assert_rows_identified", unidentified)
+
+    code, refused = _rehearse()
+
+    assert refused["cause"]["reason"] == "internal-error", refused
+    assert "no file id" in refused["cause"]["message"]
+
+
+def test_an_interrupted_rehearsal_is_a_cancel_that_names_its_area(
+    native_library, silence, monkeypatch
+):
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+
+    def interrupted(*_args, **_kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(native, "apply_rows", interrupted)
+
+    code, refused = _rehearse()
+
+    assert refused["cause"]["reason"] == "cancelled", refused
+    area = refused["cause"]["detail"]["rehearsal_area"]
+    assert all(Path(path).is_dir() and path in refused["cause"]["message"] for path in area)
+    assert _staged_names(cfg) == ["One.flac"]

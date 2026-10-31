@@ -2553,6 +2553,7 @@ PINNED_LITERAL_HOLDERS = {
         'session-committed-unverified',
     ],
     'intake/land_cli.py': [
+        'cancelled',  # 2026-10-31, U162: an interrupted rehearsal.
         'decision-stale',
         'intake-list-unusable',
         'internal-error',
