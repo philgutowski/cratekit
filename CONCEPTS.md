@@ -284,7 +284,10 @@ label that `crate tag folder` finds with no genre, without asking any
 catalogue (U178). It is set with `crate label registry set NAME --genre WORD`
 and cleared with `--genre default`. A file's label is its label tag, or the
 verb's `--label NAME` for a file that carries none; the tag wins when both are
-there. The file's record names the label and its source is `label-genre`, a
+there, and a sweep given `--label` counts and names the files whose own tag
+kept them from it. A file that will not take the genre, locked or on a read
+only volume, fails its item with `tag-folder-unwritten` rather than being
+counted as tagged. The file's record names the label and its source is `label-genre`, a
 disposition of its own: not a catalogue hit, so it is counted apart from the
 record shops and the general catalogue, and not **off taxonomy**, since the
 word was checked against the taxonomy when it was set.

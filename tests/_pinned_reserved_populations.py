@@ -198,6 +198,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'sync-pair-unknown',
     'sync-source-lookups-failed',
     'sync-watermark-unusable',
+    'tag-folder-unwritten',  # 2026-10-31, U178: a file that would not take its genre.
     'tag-remap-unwritten',
     'tag-retag-folder-unknown',
     'tag-suggest-unwritten',
@@ -825,6 +826,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-pair-unknown',
         'sync-source-lookups-failed',
         'sync-watermark-unusable',
+        'tag-folder-unwritten',
         'tag-remap-unwritten',
         'tag-retag-folder-unknown',
         'tag-suggest-unwritten',
@@ -1731,7 +1733,9 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'source-missing',
         'tag-folder-absent',
         'tag-folder-label-no-genre',
+        'tag-folder-label-on-resume',
         'tag-folder-label-registry-unread',
+        'tag-folder-label-tag-outranked',
         'tag-folder-no-audio',
         'tag-folder-no-isrc',
         'tag-folder-off-taxonomy',
@@ -1842,6 +1846,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'no-hit',
         'no-isrc',
         'sources-unread',
+        'tag-folder-unwritten',
         'unmapped-genre',
     ],
     'vocals/cli.py': [
@@ -2044,6 +2049,8 @@ PINNED_NAMED_WITHOUT_OWN = {
         'source-unsupported',
     ],
     'tagging/searchers.py': ['catalogue-parse-broken', 'catalogue-unreachable'],
+    # 2026-10-31, U178: the engine refuses a file that would not take its genre.
+    'tagging/tag.py': ['tag-folder-unwritten'],
     'write/genre_favorites.py': ['favorites-class-undeclared', 'favorites-source-missing'],
     'write/metadata_cli.py': ['library-paths-majority-unresolved'],
     'write/row_link.py': [
@@ -2220,6 +2227,8 @@ PINNED_NAMED_WITH_OWN = {
         'set-playlist',
     ],
     'tagging/searchers.py': ['catalogue-parse-broken', 'catalogue-unreachable', 'parse-break'],
+    # 2026-10-31, U178: the engine refuses a file that would not take its genre.
+    'tagging/tag.py': ['tag-folder-unwritten'],
     'write/genre_favorites.py': ['favorites-class-undeclared', 'favorites-source-missing'],
     'write/metadata_cli.py': ['library-paths-majority-unresolved'],
     'write/routing_pass.py': ['not-imported', 'not-ready'],
@@ -2796,6 +2805,8 @@ PINNED_LITERAL_HOLDERS = {
         'review-selection-invalid',
         'tag-suggest-unwritten',
     ],
+    # 2026-10-31, U178: the engine refuses a file that would not take its genre.
+    'tagging/tag.py': ['tag-folder-unwritten'],
     'vocals/cli.py': [
         'analysis-write-failed',
         'config-unusable',

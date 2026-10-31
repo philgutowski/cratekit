@@ -1913,6 +1913,15 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # decides. PRECONDITION on ``label-playlists-ambiguous``'s argument:
         # the remedy is a rename by hand. Nothing was written for that folder.
         "account-mirror-ambiguous": ExitCode.PRECONDITION,
+        # ── U178's one, appended for the same reason ───────────────────────────
+        #
+        # ``tag folder`` had a genre to write, a label's or a catalogue's, and the
+        # file would not take it: locked, on a read only volume, or not a tag
+        # block the writer could save. Its item fails rather than reporting a
+        # tag the file does not carry. PRECONDITION on
+        # ``tag-suggest-unwritten``'s argument: the cure is the file's, which is
+        # named, and a second run over the folder asks again.
+        "tag-folder-unwritten": ExitCode.PRECONDITION,
     }
 )
 

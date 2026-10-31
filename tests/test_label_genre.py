@@ -30,7 +30,7 @@ from cratekit.tagging.tag import LabelAnswer, SearchHit
 from tests._containers import synth_container
 from tests.cli_drive import drive
 from tests.test_config import valid_data
-from tests.test_tag_workers import bound, resume_argv, tag_job
+from tests.test_tag_workers import bound, item_causes, resume_argv, tag_job
 from tests.test_tagging_engine import SPECIFIC, _jpeg, answering, plant
 
 LABEL = "PULS"
@@ -226,13 +226,20 @@ def test_a_genre_survives_a_rename(cfg):
     assert held("PULS Romania").genre == GENRE
 
 
-@pytest.mark.parametrize("value", ["", "   ", "---", "Romi\nnimal", "x" * (labels.GENRE_MAX + 1)])
+@pytest.mark.parametrize("value", ["", "   ", "---", "Romi\nnimal", "x" * 65])
 def test_a_genre_that_could_never_be_one_refuses_at_the_store(cfg, value):
     registered()
     with pytest.raises(CratekitError) as caught:
         labels.RegistryStore().edit(LABEL, genre=value)
     assert caught.value.cause.reason == "label-name-invalid"
     assert held().genre is None
+
+
+def test_the_longest_genre_a_label_may_carry_is_sixty_four_characters(cfg):
+    """A literal bound, so a drift of the constant is a failure and not a new bound."""
+    registered()
+    labels.RegistryStore().edit(LABEL, genre="x" * 64)
+    assert held().genre == "x" * 64
 
 
 def test_a_registry_written_before_genres_existed_reads_with_none(cfg):
@@ -494,3 +501,114 @@ def test_an_unreadable_registry_warns_and_refuses_only_a_sweep_that_named_a_labe
     code, queued = drive(["tag", "folder", str(folder)])
     assert code == int(ExitCode.OK), queued
     assert [warning["code"] for warning in queued["warnings"]] == [tag_cli.LABEL_REGISTRY_UNREAD]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 4. Review round one: what the first build reported and did not do
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def refusing_writes(monkeypatch) -> None:
+    """A file that will not take a genre, a locked file or a read only volume.
+
+    ``write_genre`` answers False for every such file rather than raising, which
+    is the return the first build ignored.
+    """
+    monkeypatch.setattr(tags, "write_genre", lambda path, genre: False)
+
+
+def test_a_file_that_will_not_take_its_labels_genre_fails_and_is_never_counted_tagged(
+    cfg, folder, silence, monkeypatch
+):
+    registered("--genre", GENRE)
+    track(folder, silence, "a")
+    bound(monkeypatch, never_searched)
+    refusing_writes(monkeypatch)
+    drive(["tag", "folder", str(folder), "--label", LABEL])
+    job = tag_job()
+    drive(resume_argv(job.job_id))
+    assert item_causes(job.job_id) == {"a.flac": tag.UNWRITTEN_REASON}
+    assert tags.read_genre_from_file(folder / "a.flac") is None
+    claimed = [r for r in artifacts.committed(cfg, job.job_id) if r.get("genre_written")]
+    assert claimed == [], "no report says a genre the file does not carry"
+
+
+def test_a_file_that_will_not_take_a_catalogues_genre_fails_too(folder, silence, monkeypatch):
+    path = track(folder, silence, "a")
+    refusing_writes(monkeypatch)
+    with pytest.raises(CratekitError) as caught:
+        tag.tag_one(
+            path, searcher=answering({"a": SearchHit(genre=SPECIFIC, source=searchers.BEATPORT)})
+        )
+    assert caught.value.cause.reason == tag.UNWRITTEN_REASON
+    assert caught.value.cause.detail["source"] == searchers.BEATPORT
+
+
+def test_an_art_search_for_a_labelled_file_never_offers_the_general_catalogue_its_isrc(
+    folder, silence
+):
+    path = track(folder, silence, "a", label=LABEL, picture=False)
+    assert tags.write_tags(path, {"isrc": "ZZTST2600001"})
+    offered: list[object] = []
+
+    def published(hit, isrc):
+        offered.append(isrc)
+        return hit
+
+    searcher = answering({"a": SearchHit(source=searchers.BEATPORT, answers=())})
+    tag.tag_one(path, searcher=searcher, published=published, label_genre=seam({LABEL: GENRE}))
+    assert offered == [None], "the genre was the label's, so no ISRC is offered for one"
+    assert tags.read_genre_from_file(path) == GENRE
+
+
+def test_a_label_tag_that_could_never_name_a_label_is_searched_and_never_fails(
+    cfg, folder, silence, monkeypatch
+):
+    registered("--genre", GENRE)
+    track(folder, silence, "a", label="---")
+    searcher = bound(monkeypatch, answering({"a": SearchHit(genre=SPECIFIC, source=searchers.BEATPORT)}))
+    sweep(str(folder))
+    assert searcher.asked == [("", "a")]
+    assert tags.read_genre_from_file(folder / "a.flac") == SPECIFIC
+
+
+def test_files_whose_own_tag_outranked_the_label_are_counted_and_named(
+    cfg, folder, silence, monkeypatch
+):
+    registered("--genre", GENRE)
+    track(folder, silence, "a", label="PULS Records")
+    track(folder, silence, "b", label="PULS Records")
+    track(folder, silence, "c")
+    bound(monkeypatch, answering({}))
+    _job, resumed = sweep(str(folder), "--label", LABEL)
+    tagging = resumed["data"]["progress"]["tagging"]
+    assert tagging["label_tags"] == {"PULS Records": 2}
+    assert tagging["label_genres"] == {LABEL: 1}
+    warnings = {warning["code"]: warning["message"] for warning in resumed["warnings"]}
+    assert tag_cli.LABEL_TAG_OUTRANKED == "tag-folder-label-tag-outranked"
+    assert "2 files were not given PULS's genre" in warnings[tag_cli.LABEL_TAG_OUTRANKED]
+    assert "PULS Records on 2" in warnings[tag_cli.LABEL_TAG_OUTRANKED]
+
+
+def test_a_tag_naming_no_genre_says_nothing_on_a_sweep_given_no_label(
+    cfg, folder, silence, monkeypatch
+):
+    registered("--genre", GENRE)
+    track(folder, silence, "a", label="Other Label")
+    bound(monkeypatch, answering({"a": SearchHit(genre=SPECIFIC, source=searchers.BEATPORT)}))
+    _job, resumed = sweep(str(folder))
+    assert tag_cli.LABEL_TAG_OUTRANKED not in [warning["code"] for warning in resumed["warnings"]]
+
+
+def test_a_label_typed_on_a_resume_is_not_applied_and_says_so(cfg, folder, silence, monkeypatch):
+    registered("--genre", GENRE)
+    track(folder, silence, "a")
+    searcher = bound(monkeypatch, answering({"a": SearchHit(genre=SPECIFIC, source=searchers.BEATPORT)}))
+    code, queued = drive(["tag", "folder", str(folder)])
+    assert code == int(ExitCode.OK), queued
+    code, resumed = drive([*resume_argv(tag_job().job_id), "--label", LABEL])
+    assert code == int(ExitCode.OK), resumed
+    assert tag_cli.LABEL_ON_RESUME == "tag-folder-label-on-resume"
+    assert tag_cli.LABEL_ON_RESUME in [warning["code"] for warning in resumed["warnings"]]
+    assert searcher.asked == [("", "a")]
+    assert tags.read_genre_from_file(folder / "a.flac") == SPECIFIC

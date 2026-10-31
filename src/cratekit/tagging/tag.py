@@ -58,7 +58,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from cratekit.core import art, tags
-from cratekit.core.cause import CratekitError
+from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.naming import AUDIO_EXTS
 
 Searcher = Callable[[str, str], "SearchHit | None"]
@@ -96,6 +96,37 @@ LabelGenre = Callable[[str], "LabelAnswer | None"]
 #: ``off_taxonomy``, since the word was checked against the taxonomy when it
 #: was registered.
 LABEL_GENRE = "label-genre"
+
+#: The refusal a file that would not take its genre fails its item with (U178).
+UNWRITTEN_REASON = "tag-folder-unwritten"
+
+
+def _written(path: Path, genre: str, source: str) -> str:
+    """Write ``genre`` onto ``path`` and return it, or refuse when the file would not take it.
+
+    THE WRITER'S FALSE IS A FAILURE, NOT A TAG (U178). ``tags.write_genre``
+    returns False rather than raising, so one bad file cannot abort a batch,
+    and a caller that ignored it reported a genre the file does not carry: a
+    locked file came back ``tagged`` while it sat untagged, which is the clean
+    report over a write never performed. The item fails with the file named
+    and the rest of the folder goes on, as a catalogue nobody could read does.
+    The catalogue path had the same unchecked write before this unit and is
+    checked by the same call.
+    """
+    if not tags.write_genre(path, genre):
+        raise refuse(
+            UNWRITTEN_REASON,
+            f"{path} would not take the genre {genre!r} from {source}, so it carries "
+            f"none; nothing else about it was changed",
+            steps=(
+                "check the file can be written, is not locked and is not on a read "
+                "only volume, then run the tagging verb over the folder again",
+            ),
+            origin=("tagging", "tag"),
+            detail={"path": str(path), "genre": genre, "source": source},
+        )
+    return genre
+
 
 #: Directory names :func:`audio_files` does not descend into: this product's own
 #: per item staging trees, whose contents belong to an attempt rather than to the
@@ -279,6 +310,10 @@ class TagResult:
     record says what every catalogue answered. Both are empty for a file nothing
     was asked about.
 
+    ``label_tag`` is the file's own label tag when it was read and named no label
+    with a genre, and empty otherwise. The verb reads it to say when a file's
+    tag outranked ``--label`` and the file was searched instead (U178).
+
     ``label`` names the registered label whose genre was written, and is empty
     for every other file (U178). On that file ``source`` is :data:`LABEL_GENRE`
     and ``source_genre`` the label's word, whatever catalogue was asked about
@@ -298,6 +333,7 @@ class TagResult:
     art_fetch: str = ART_UNCHECKED
     art_fetch_detail: str = ""
     label: str = ""
+    label_tag: str = ""
 
 
 def audio_files(root: Path) -> tuple[Path, ...]:
@@ -438,8 +474,13 @@ def _art_embedded(path: Path, hit: SearchHit | None, fetch_image: FetchImage | N
     return result(ART_EMBEDDED, f"{cdj.width} by {cdj.height} from {pictured_by or url}")
 
 
-def _by_label(path: Path, label_genre: LabelGenre, label: str | None) -> LabelAnswer | None:
-    """The registered genre for this file's label, or None. Read only for a file needing a genre.
+def _by_label(
+    path: Path, label_genre: LabelGenre, label: str | None
+) -> tuple[LabelAnswer | None, str]:
+    """The registered genre for this file's label, and the file's own label tag.
+
+    Read only for a file needing a genre. The tag comes back beside the answer
+    so a file whose tag named no label with a genre can say so in its record.
 
     THE FILE'S OWN TAG WINS, and ``label`` names the label of a file that
     carries none. A folder the verb was told is one label's can still hold a
@@ -447,10 +488,11 @@ def _by_label(path: Path, label_genre: LabelGenre, label: str | None) -> LabelAn
     right about itself: if its own label has no genre it is searched as
     before, rather than given a genre the person meant for the rest.
     """
-    named = tags.read_tag(path, "label") or (label or "").strip()
+    own = tags.read_tag(path, "label") or ""
+    named = own or (label or "").strip()
     if not named:
-        return None
-    return label_genre(named)
+        return None, own
+    return label_genre(named), own
 
 
 def tag_one(
@@ -533,10 +575,13 @@ def tag_one(
         return TagResult(
             path=path, genre_written=None, skipped=HAS_GENRE, **repaired, **settled
         )
-    by_label = None if existing or label_genre is None else _by_label(path, label_genre, label)
+    by_label, label_tag = (
+        (None, "") if existing or label_genre is None else _by_label(path, label_genre, label)
+    )
     labelled: dict = {}
     if by_label is not None:
-        tags.write_genre(path, by_label.genre)
+        label_tag = ""
+        _written(path, by_label.genre, f"its label {by_label.label}")
         labelled = {
             "genre_written": by_label.genre,
             "source": LABEL_GENRE,
@@ -595,8 +640,7 @@ def tag_one(
             skipped = NO_HIT
     else:
         skipped = None
-        tags.write_genre(path, hit.genre)
-        written = hit.genre
+        written = _written(path, hit.genre, hit.source or "a catalogue")
         # THE FLAG IS TAKEN HERE AND NOWHERE ELSE, on the one branch that put a
         # word on the file. A file that already had a genre carries a hit too,
         # because it was searched for its art, and reading that hit's flag would
@@ -626,6 +670,7 @@ def tag_one(
         genre_written=written,
         skipped=skipped,
         off_taxonomy=off_taxonomy,
+        label_tag=label_tag,
         **found,
         **repaired,
         **pictured,
@@ -683,6 +728,7 @@ __all__ = [
     "Searcher",
     "SourceAnswer",
     "TagResult",
+    "UNWRITTEN_REASON",
     "audio_files",
     "tag_folder",
     "tag_one",
