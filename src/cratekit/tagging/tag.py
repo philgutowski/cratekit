@@ -30,6 +30,15 @@ catalogue by the file's ISRC. It is a parameter beside the image fetch rather
 than a change to the searcher's signature, so the searcher is asked exactly as
 it was, and what is read here is only the ISRC tag the seam needs.
 
+A REGISTERED LABEL'S GENRE IS A TIER BEFORE THE SEARCH (U178). A label Phillip
+follows for one style carries that style in the label registry, and a file of
+it with no genre is given it through :data:`LabelGenre` without any catalogue
+being asked, so a label whose records the shops refuse or do not carry costs
+no blocked searches. The seam is handed a label NAME, the file's label tag or
+the verb's ``--label`` for a file that carries none, and the registry lookup
+behind it is the shell's, so this module reads one more tag and knows nothing
+of where labels are stored.
+
 THE FOLDER WALK AND THE PER FILE WORK ARE TWO FUNCTIONS, and the split is
 what makes this engine drivable as a job. :func:`audio_files` is what a
 verb queues one item per, and :func:`tag_one` is what its worker runs for
@@ -61,6 +70,32 @@ Searcher = Callable[[str, str], "SearchHit | None"]
 #: :func:`cratekit.tagging.published.second_opinion`. It answers and does not
 #: raise: a general catalogue that could not be read is recorded on the hit.
 PublishedGenre = Callable[["SearchHit", "str | None"], "SearchHit"]
+
+@dataclass(frozen=True, slots=True)
+class LabelAnswer:
+    """A registered label and the genre it carries, as :data:`LabelGenre` answers.
+
+    ``label`` is the registry's display name for the label, which is what the
+    file's record names, whatever spelling the file's tag used to reach it.
+    """
+
+    label: str
+    genre: str
+
+
+#: The label registry's seam (U178). Given a label's name, as a file's label
+#: tag or the verb's ``--label`` gives it, the label and its genre, or None for
+#: a label the registry does not hold or holds with no genre. The shipped one is
+#: built by ``cratekit.tagging.cli`` over the genres frozen into the job. It
+#: answers and does not raise.
+LabelGenre = Callable[[str], "LabelAnswer | None"]
+
+#: The source a file's record names when its genre came from its label's
+#: registered genre rather than from a catalogue (U178). A DISPOSITION OF ITS
+#: OWN: not a catalogue hit, so it is never counted as one of theirs, and not
+#: ``off_taxonomy``, since the word was checked against the taxonomy when it
+#: was registered.
+LABEL_GENRE = "label-genre"
 
 #: Directory names :func:`audio_files` does not descend into: this product's own
 #: per item staging trees, whose contents belong to an attempt rather than to the
@@ -243,6 +278,11 @@ class TagResult:
     ``answers`` and ``unread`` are carried off the hit as they came, so the
     record says what every catalogue answered. Both are empty for a file nothing
     was asked about.
+
+    ``label`` names the registered label whose genre was written, and is empty
+    for every other file (U178). On that file ``source`` is :data:`LABEL_GENRE`
+    and ``source_genre`` the label's word, whatever catalogue was asked about
+    its picture, so a count of what each catalogue tagged never takes it in.
     """
 
     path: Path
@@ -257,6 +297,7 @@ class TagResult:
     art_repair_detail: str = ""
     art_fetch: str = ART_UNCHECKED
     art_fetch_detail: str = ""
+    label: str = ""
 
 
 def audio_files(root: Path) -> tuple[Path, ...]:
@@ -397,12 +438,29 @@ def _art_embedded(path: Path, hit: SearchHit | None, fetch_image: FetchImage | N
     return result(ART_EMBEDDED, f"{cdj.width} by {cdj.height} from {pictured_by or url}")
 
 
+def _by_label(path: Path, label_genre: LabelGenre, label: str | None) -> LabelAnswer | None:
+    """The registered genre for this file's label, or None. Read only for a file needing a genre.
+
+    THE FILE'S OWN TAG WINS, and ``label`` names the label of a file that
+    carries none. A folder the verb was told is one label's can still hold a
+    file whose tag says otherwise, and that file is the one most likely to be
+    right about itself: if its own label has no genre it is searched as
+    before, rather than given a genre the person meant for the rest.
+    """
+    named = tags.read_tag(path, "label") or (label or "").strip()
+    if not named:
+        return None
+    return label_genre(named)
+
+
 def tag_one(
     path: Path,
     *,
     searcher: Searcher,
     fetch_image: FetchImage | None = None,
     published: PublishedGenre | None = None,
+    label_genre: LabelGenre | None = None,
+    label: str | None = None,
 ) -> TagResult:
     """Tag ONE file, or report why it was passed over. The per item work.
 
@@ -451,6 +509,16 @@ def tag_one(
     nothing else explains the file, no declined word and no unread source, and
     the general catalogue's answer is ``no-isrc``, that is the skip reason.
 
+    A REGISTERED LABEL'S GENRE IS WRITTEN BEFORE ANY SEARCH (U178). A file with
+    no genre whose label ``label_genre`` answers for is given the label's word,
+    and neither the searcher nor the general catalogue is asked about its genre.
+    FILL IF EMPTY STILL HOLDS: a file that already carries a genre keeps it and
+    is never looked up. A file of the label with no picture is still searched,
+    for its art only, exactly as a tagged file with no picture is, and a
+    refusal there is an ``unavailable`` picture and never a failed item. The
+    genre is saved first so that refusal cannot cost it. ``label`` is the
+    verb's ``--label``, the label of a file whose tag names none.
+
     THE ART REPAIR RUNS FIRST, before the genre check can return. A file that
     already carries a genre is exactly the file the source system repaired, so a
     repair placed after that return would never reach it. The repair never
@@ -465,17 +533,34 @@ def tag_one(
         return TagResult(
             path=path, genre_written=None, skipped=HAS_GENRE, **repaired, **settled
         )
+    by_label = None if existing or label_genre is None else _by_label(path, label_genre, label)
+    labelled: dict = {}
+    if by_label is not None:
+        tags.write_genre(path, by_label.genre)
+        labelled = {
+            "genre_written": by_label.genre,
+            "source": LABEL_GENRE,
+            "source_genre": by_label.genre,
+            "label": by_label.label,
+        }
+        if settled is not None:
+            return TagResult(path=path, **labelled, **repaired, **settled)
+    # A FILE NEEDS ITS GENRE FROM A CATALOGUE only when it has none and its
+    # label gave none. Every other file reaching this line is asked for its art.
+    needs_genre = not existing and by_label is None
     artist = tags.read_tag(path, "artist") or ""
     title = tags.read_tag(path, "title") or path.stem
     try:
         hit = searcher(artist, title)
     except CratekitError as exc:
-        if not existing:
+        if needs_genre:
             raise
         unread = {
             "art_fetch": ART_UNAVAILABLE,
             "art_fetch_detail": f"{exc.cause.reason}: {exc.cause.message}",
         }
+        if by_label is not None:
+            return TagResult(path=path, **labelled, **repaired, **unread)
         return TagResult(path=path, genre_written=None, skipped=HAS_GENRE, **repaired, **unread)
     if published is not None and hit is not None:
         # THE ISRC TAG IS READ ONLY FOR A FILE THE SEAM COULD BE ASKED ABOUT, one
@@ -483,12 +568,16 @@ def tag_one(
         # nothing is to be asked, which is a different fact from a tag that is
         # there and empty, and it spares the open on every file a record shop
         # already settled.
-        wanted = not existing and not hit.genre
+        wanted = needs_genre and not hit.genre
         hit = published(hit, (tags.read_tag(path, "isrc") or "") if wanted else None)
     written: str | None = None
     off_taxonomy = False
     if existing:
         skipped: str | None = HAS_GENRE
+    elif by_label is not None:
+        # WRITTEN ABOVE, before the search, and only reported here.
+        skipped = None
+        written = by_label.genre
     elif hit is None:
         skipped = NO_HIT
     elif not hit.genre:
@@ -527,6 +616,11 @@ def tag_one(
         if hit
         else {}
     )
+    if by_label is not None:
+        # THE LABEL IS WHERE THE GENRE CAME FROM, whatever catalogue answered
+        # about the picture, so the record's source is the label's and only the
+        # answers say what the catalogues were asked.
+        found = {**found, **{key: labelled[key] for key in ("source", "source_genre", "label")}}
     return TagResult(
         path=path,
         genre_written=written,
@@ -544,6 +638,8 @@ def tag_folder(
     searcher: Searcher,
     fetch_image: FetchImage | None = None,
     published: PublishedGenre | None = None,
+    label_genre: LabelGenre | None = None,
+    label: str | None = None,
 ) -> list[TagResult]:
     """Tag every audio file under ``root``. ``searcher`` is required.
 
@@ -551,7 +647,14 @@ def tag_folder(
     decision lives one function down, where the job worker reaches it too.
     """
     return [
-        tag_one(path, searcher=searcher, fetch_image=fetch_image, published=published)
+        tag_one(
+            path,
+            searcher=searcher,
+            fetch_image=fetch_image,
+            published=published,
+            label_genre=label_genre,
+            label=label,
+        )
         for path in audio_files(root)
     ]
 
@@ -565,6 +668,7 @@ __all__ = [
     "ART_UNAVAILABLE",
     "ART_UNCHECKED",
     "HAS_GENRE",
+    "LABEL_GENRE",
     "SKIPPED_DIRNAMES",
     "SKIP_REASONS",
     "NO_HIT",
@@ -572,6 +676,8 @@ __all__ = [
     "SOURCES_UNREAD",
     "UNMAPPED_GENRE",
     "FetchImage",
+    "LabelAnswer",
+    "LabelGenre",
     "PublishedGenre",
     "SearchHit",
     "Searcher",

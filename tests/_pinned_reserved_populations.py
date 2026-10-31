@@ -1723,11 +1723,15 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     'sync/watermarks.py': ['sync-watermark-unusable', 'utf-8'],
     'tagging/artifacts.py': ['tag-artifacts', 'tag-staging', 'utf-8'],
+    # 2026-10-31, U178: the --label refusal and the two label genre warnings joined.
     'tagging/cli.py': [
         'config-unusable',
+        'label-unknown',
         'no-op',
         'source-missing',
         'tag-folder-absent',
+        'tag-folder-label-no-genre',
+        'tag-folder-label-registry-unread',
         'tag-folder-no-audio',
         'tag-folder-no-isrc',
         'tag-folder-off-taxonomy',
@@ -1831,8 +1835,10 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'suggest-unmatched',
         'tag-suggest-unwritten',
     ],
+    # 2026-10-31, U178: the label genre disposition joined.
     'tagging/tag.py': [
         'has-genre',
+        'label-genre',
         'no-hit',
         'no-isrc',
         'sources-unread',
@@ -2771,7 +2777,8 @@ PINNED_LITERAL_HOLDERS = {
     'sync/run.py': ['sync-source-lookups-failed'],
     'sync/unmark_cli.py': ['internal-error', 'sync-marks-blocked'],
     'sync/watermarks.py': ['sync-watermark-unusable'],
-    'tagging/cli.py': ['config-unusable', 'source-missing'],
+    # 2026-10-31, U178: tag folder refuses a --label nobody registered.
+    'tagging/cli.py': ['config-unusable', 'label-unknown', 'source-missing'],
     'tagging/remap_cli.py': ['config-unusable', 'internal-error', 'tag-remap-unwritten'],
     'tagging/retag_cli.py': [
         'config-unusable',

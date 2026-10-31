@@ -1,0 +1,496 @@
+"""U178: a registered label can carry its genre, so tag folder tags its files with it.
+
+Sitting 46 measured the cost this unit removes. ``tag folder`` settled 96 of 96
+PULS tracks and wrote no genre, because Traxsource and Bandcamp refused every
+search with a bot check, the general catalogue could not be asked without an
+ISRC, and Beatport had no hit. Phillip answered for all of them: every PULS
+track is ``Rominimal``. So a label in the registry carries a genre, checked
+against the taxonomy when it is set, and ``tag folder`` writes it onto every
+file of the label with no genre without asking any catalogue.
+
+Three layers, three sections: the registry and its verb, the engine's tier,
+and the sweep end to end through the real dispatcher and a resume.
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+from pathlib import Path
+
+import pytest
+
+from cratekit.core import config, jobs, tags
+from cratekit.core.cause import CratekitError, refuse
+from cratekit.core.exit_codes import ExitCode, Remedy
+from cratekit.label import registry as labels
+from cratekit.tagging import artifacts, searchers, tag
+from cratekit.tagging import cli as tag_cli
+from cratekit.tagging.tag import LabelAnswer, SearchHit
+from tests._containers import synth_container
+from tests.cli_drive import drive
+from tests.test_config import valid_data
+from tests.test_tag_workers import bound, resume_argv, tag_job
+from tests.test_tagging_engine import SPECIFIC, _jpeg, answering, plant
+
+LABEL = "PULS"
+GENRE = "Rominimal"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Fixtures
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.fixture
+def cfg(tmp_path, monkeypatch) -> config.Config:
+    """A configured machine on the full profile, which turns the label verbs on,
+    so the registry verb has a taxonomy to ask."""
+    library = tmp_path / "library"
+    (library / "Music").mkdir(parents=True)
+    (library / "db").mkdir(parents=True)
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(library))
+    data = valid_data(library)
+    data["profile"] = {"name": "full"}
+    built = config.from_dict(data)
+    config.save(built)
+    config.reset_cache()
+    return built
+
+
+@pytest.fixture(scope="module")
+def silence(tmp_path_factory) -> Path:
+    """One real FLAC container, so every write is read back off a real file."""
+    return synth_container(tmp_path_factory.mktemp("silence"), ".flac")
+
+
+@pytest.fixture
+def folder(tmp_path) -> Path:
+    out = tmp_path / "downloads"
+    out.mkdir()
+    return out
+
+
+def track(
+    folder: Path,
+    silence: Path,
+    name: str,
+    *,
+    label: str | None = None,
+    genre: str | None = None,
+    picture: bool = True,
+) -> Path:
+    """One FLAC file carrying the label tag, genre and picture asked for.
+
+    A PICTURE BY DEFAULT, because a file with none is searched for its art, and
+    the property most cases assert is that a label genre asks no catalogue.
+    """
+    path = folder / f"{name}.flac"
+    shutil.copy2(silence, path)
+    fields: dict[str, object] = {}
+    if label is not None:
+        fields["label"] = label
+    if genre is not None:
+        fields["genre"] = genre
+    if fields:
+        assert tags.write_tags(path, fields)
+    if picture:
+        plant(path, _jpeg(320, 200), dims=(320, 200, 24))
+    return path
+
+
+def registered(*argv: str, name: str = LABEL) -> dict:
+    code, envelope = drive(["label", "registry", "add", name, *argv])
+    assert code == int(ExitCode.OK), envelope
+    return envelope
+
+
+def held(name: str = LABEL) -> labels.LabelEntry:
+    entry = labels.RegistryStore().load().by_name(name)
+    assert entry is not None, name
+    return entry
+
+
+def seam(table: dict[str, str]):
+    """A label seam over ``{label: genre}`` that records every name it was asked."""
+    asked: list[str] = []
+
+    def answer(name: str) -> LabelAnswer | None:
+        asked.append(name)
+        genre = table.get(name)
+        return LabelAnswer(label=name, genre=genre) if genre else None
+
+    answer.asked = asked  # type: ignore[attr-defined]
+    return answer
+
+
+def never_searched(artist: str, title: str):
+    raise AssertionError(f"a catalogue was searched for {title!r}")
+
+
+def never_published(hit, isrc):
+    raise AssertionError("the general catalogue was offered a file")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 1. The registry carries a label's genre, checked against the taxonomy
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_genre_the_taxonomy_routes_is_stored_as_typed_and_the_screen_says_where(cfg):
+    envelope = registered("--genre", GENRE)
+    assert held().genre == GENRE, "kept as typed, since it is the word written onto files"
+    route = envelope["data"]["summary"]["genre_route"]
+    assert route == {
+        "genre": GENRE,
+        "bucket": "minimal_deep_tech",
+        "bucket_display": "Minimal / Deep Tech",
+        "match": "fuzzy",
+        "matched_on": "minimal",
+    }
+    detail = envelope["data"]["checks"][0]["detail"]
+    assert "genre Rominimal routes to Minimal / Deep Tech by the taxonomy's keyword rule 'minimal'" in detail
+
+    code, listed = drive(["label", "registry", "list"])
+    assert code == int(ExitCode.OK), listed
+    assert "genre Rominimal" in listed["data"]["checks"][0]["detail"]
+    assert listed["data"]["summary"]["labels"][0]["genre"] == GENRE
+
+
+def test_a_genre_routed_by_an_alias_says_so(cfg):
+    registered()
+    code, envelope = drive(["label", "registry", "set", LABEL, "--genre", SPECIFIC])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["summary"]["genre_route"]["match"] == "exact"
+    assert "by an alias the taxonomy declares" in envelope["data"]["checks"][0]["detail"]
+
+
+def test_a_genre_routing_only_to_the_fallback_is_refused_and_nothing_is_written(cfg):
+    registered()
+    before = labels.RegistryStore().path.read_bytes()
+    code, envelope = drive(["label", "registry", "set", LABEL, "--genre", "Polka"])
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "label-name-invalid"
+    assert "fallback, Electronica / Other" in envelope["cause"]["message"]
+    assert envelope["cause"]["detail"]["match"] == "fallback"
+    assert labels.RegistryStore().path.read_bytes() == before
+    code, envelope = drive(["label", "registry", "add", "New Label", "--genre", "Polka"])
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert labels.RegistryStore().load().by_name("New Label") is None
+
+
+def test_a_fallback_genre_is_kept_when_confirmed_and_the_screen_says_it(cfg):
+    registered()
+    code, envelope = drive(
+        ["label", "registry", "set", LABEL, "--genre", "Polka", "--accept-fallback"]
+    )
+    assert code == int(ExitCode.OK), envelope
+    assert held().genre == "Polka"
+    assert envelope["data"]["summary"]["genre_route"]["match"] == "fallback"
+    assert "only as the taxonomy's fallback" in envelope["data"]["checks"][0]["detail"]
+
+
+def test_accept_fallback_with_no_genre_is_refused(cfg):
+    registered()
+    code, envelope = drive(["label", "registry", "set", LABEL, "--accept-fallback"])
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert "--accept-fallback confirms a --genre" in envelope["cause"]["message"]
+    code, envelope = drive(["label", "registry", "remove", LABEL, "--accept-fallback"])
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert labels.RegistryStore().load().by_name(LABEL) is not None
+
+
+def test_a_verb_that_sets_no_field_refuses_a_genre(cfg):
+    registered()
+    code, envelope = drive(["label", "registry", "remove", LABEL, "--genre", GENRE])
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert "--genre" in envelope["cause"]["message"]
+    assert labels.RegistryStore().load().by_name(LABEL) is not None
+
+
+def test_the_word_default_clears_a_genre_and_none_keeps_it(cfg):
+    registered("--genre", GENRE)
+    labels.RegistryStore().edit(LABEL, track_limit=5)
+    assert held().genre == GENRE, "a genre of None keeps what is held"
+    code, envelope = drive(["label", "registry", "set", LABEL, "--genre", "Default"])
+    assert code == int(ExitCode.OK), envelope
+    assert held().genre is None
+    registered("--genre", GENRE)
+    registered("--genre", "default")
+    assert held().genre is None
+
+
+def test_a_genre_survives_a_rename(cfg):
+    registered("--genre", GENRE)
+    labels.RegistryStore().rename(held().label_id, "PULS Romania")
+    assert held("PULS Romania").genre == GENRE
+
+
+@pytest.mark.parametrize("value", ["", "   ", "---", "Romi\nnimal", "x" * (labels.GENRE_MAX + 1)])
+def test_a_genre_that_could_never_be_one_refuses_at_the_store(cfg, value):
+    registered()
+    with pytest.raises(CratekitError) as caught:
+        labels.RegistryStore().edit(LABEL, genre=value)
+    assert caught.value.cause.reason == "label-name-invalid"
+    assert held().genre is None
+
+
+def test_a_registry_written_before_genres_existed_reads_with_none(cfg):
+    registered()
+    path = labels.RegistryStore().path
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    for entry in raw["labels"].values():
+        entry.pop("genre", None)
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    assert held().genre is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 2. The engine: a label's genre is a tier before the catalogue search
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_puls_file_with_no_genre_gets_its_labels_genre_with_no_searcher_called(folder, silence):
+    path = track(folder, silence, "a", label=LABEL)
+    result = tag.tag_one(
+        path,
+        searcher=never_searched,
+        published=never_published,
+        label_genre=seam({LABEL: GENRE}),
+    )
+    assert tags.read_genre_from_file(path) == GENRE
+    assert result.genre_written == GENRE
+    assert result.skipped is None
+    assert (result.source, result.source_genre, result.label) == (tag.LABEL_GENRE, GENRE, LABEL)
+    assert result.off_taxonomy is False, "a label genre is not a catalogue's own word"
+    assert result.answers == ()
+    assert result.art_fetch == tag.ART_PRESENT
+
+
+def test_a_file_of_a_label_with_no_genre_is_searched_as_today(folder, silence):
+    path = track(folder, silence, "a", label="Other Label")
+    searcher = answering({"a": SearchHit(genre=SPECIFIC, source=searchers.BEATPORT, source_genre="deep house")})
+    labelled = seam({LABEL: GENRE})
+    result = tag.tag_one(path, searcher=searcher, label_genre=labelled)
+    assert labelled.asked == ["Other Label"]
+    assert searcher.asked == [("", "a")]
+    assert tags.read_genre_from_file(path) == SPECIFIC
+    assert (result.source, result.label) == (searchers.BEATPORT, "")
+
+
+def test_a_puls_file_already_tagged_keeps_its_genre_and_the_label_is_never_asked(folder, silence):
+    path = track(folder, silence, "a", label=LABEL, genre=SPECIFIC)
+    labelled = seam({LABEL: GENRE})
+    result = tag.tag_one(path, searcher=never_searched, label_genre=labelled)
+    assert tags.read_genre_from_file(path) == SPECIFIC
+    assert result.skipped == tag.HAS_GENRE
+    assert result.genre_written is None
+    assert labelled.asked == []
+
+
+def test_a_puls_file_already_tagged_with_no_picture_keeps_its_genre_too(folder, silence):
+    path = track(folder, silence, "a", label=LABEL, genre=SPECIFIC, picture=False)
+    labelled = seam({LABEL: GENRE})
+    searcher = answering({"a": SearchHit(genre="Techno", source=searchers.BEATPORT)})
+    result = tag.tag_one(path, searcher=searcher, label_genre=labelled)
+    assert tags.read_genre_from_file(path) == SPECIFIC
+    assert result.skipped == tag.HAS_GENRE
+    assert labelled.asked == []
+
+
+def test_the_verbs_label_names_the_label_of_a_file_with_no_tag_and_the_tag_wins(folder, silence):
+    bare = track(folder, silence, "bare")
+    other = track(folder, silence, "other", label="Other Label")
+    searcher = answering({"other": SearchHit(genre=SPECIFIC, source=searchers.BEATPORT)})
+    labelled = seam({LABEL: GENRE})
+    results = {
+        result.path.stem: result
+        for result in tag.tag_folder(folder, searcher=searcher, label_genre=labelled, label=LABEL)
+    }
+    assert tags.read_genre_from_file(bare) == GENRE
+    assert results["bare"].label == LABEL
+    assert tags.read_genre_from_file(other) == SPECIFIC, "a file's own label tag outranks --label"
+    assert searcher.asked == [("", "other")]
+
+
+def test_a_folder_of_mixed_labels_tags_each_by_its_own(folder, silence):
+    for name, label in (("a", LABEL), ("b", "Sudbeat"), ("c", "Other Label"), ("d", None)):
+        track(folder, silence, name, label=label)
+    searcher = answering(
+        {
+            "c": SearchHit(genre=SPECIFIC, source=searchers.BEATPORT),
+            "d": SearchHit(genre="Techno", source=searchers.BEATPORT),
+        }
+    )
+    results = tag.tag_folder(
+        folder, searcher=searcher, label_genre=seam({LABEL: GENRE, "Sudbeat": "Progressive House"})
+    )
+    assert [tags.read_genre_from_file(result.path) for result in results] == [
+        GENRE,
+        "Progressive House",
+        SPECIFIC,
+        "Techno",
+    ]
+    assert [result.label for result in results] == [LABEL, "Sudbeat", "", ""]
+    assert searcher.asked == [("", "c"), ("", "d")]
+
+
+def test_a_puls_file_with_no_picture_is_searched_for_its_art_only(folder, silence):
+    path = track(folder, silence, "a", label=LABEL, picture=False)
+    searcher = answering(
+        {"a": SearchHit(genre="Techno", source=searchers.BEATPORT, source_genre="techno", art_url="https://img/a.jpg")}
+    )
+    fetched: list[str] = []
+
+    def fetch(url: str) -> bytes:
+        fetched.append(url)
+        return _jpeg(640, 640)
+
+    result = tag.tag_one(path, searcher=searcher, fetch_image=fetch, label_genre=seam({LABEL: GENRE}))
+    assert searcher.asked == [("", "a")]
+    assert fetched == ["https://img/a.jpg"]
+    assert result.art_fetch == tag.ART_EMBEDDED
+    assert tags.read_genre_from_file(path) == GENRE, "the catalogue's genre never replaces the label's"
+    assert (result.genre_written, result.source, result.source_genre) == (GENRE, tag.LABEL_GENRE, GENRE)
+
+
+def test_a_refusal_on_the_art_search_does_not_fail_a_puls_file(folder, silence):
+    path = track(folder, silence, "a", label=LABEL, picture=False)
+
+    def refusing(artist: str, title: str):
+        raise refuse(
+            searchers.UNREACHABLE_REASON,
+            "no catalogue could be read",
+            remedy=Remedy.RETRY_LATER,
+            retryable=True,
+            origin=("tests",),
+        )
+
+    result = tag.tag_one(path, searcher=refusing, label_genre=seam({LABEL: GENRE}))
+    assert tags.read_genre_from_file(path) == GENRE, "the genre was saved before the search"
+    assert result.genre_written == GENRE
+    assert result.label == LABEL
+    assert result.art_fetch == tag.ART_UNAVAILABLE
+    assert searchers.UNREACHABLE_REASON in result.art_fetch_detail
+
+
+def test_no_seam_reads_no_label_and_tags_exactly_as_before(folder, silence):
+    path = track(folder, silence, "a", label=LABEL)
+    searcher = answering({"a": SearchHit(genre=SPECIFIC, source=searchers.BEATPORT)})
+    result = tag.tag_one(path, searcher=searcher, label=LABEL)
+    assert tags.read_genre_from_file(path) == SPECIFIC
+    assert result.label == ""
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 3. The sweep, through the real dispatcher and a resume
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def sweep(*argv: str) -> tuple[jobs.Job, dict]:
+    code, queued = drive(["tag", "folder", *argv])
+    assert code == int(ExitCode.OK), queued
+    job = tag_job()
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+    return job, resumed
+
+
+def test_a_puls_batch_is_tagged_by_the_label_and_the_report_counts_it_apart(
+    cfg, folder, silence, monkeypatch
+):
+    registered("--genre", GENRE)
+    registered("--genre", "Progressive House", name="Sudbeat")
+    for name in ("a", "b", "c"):
+        track(folder, silence, name)
+    track(folder, silence, "d", label="Sudbeat")
+    track(folder, silence, "e", label="Other Label")
+    searcher = bound(monkeypatch, answering({"e": SearchHit(genre=SPECIFIC, source=searchers.BEATPORT)}))
+
+    job, resumed = sweep(str(folder), "--label", LABEL)
+
+    assert searcher.asked == [("", "e")], "only the file of a label with no genre was searched"
+    assert [tags.read_genre_from_file(folder / f"{name}.flac") for name in "abcde"] == [
+        GENRE,
+        GENRE,
+        GENRE,
+        "Progressive House",
+        SPECIFIC,
+    ]
+    tagging = resumed["data"]["progress"]["tagging"]
+    assert tagging["tagged"] == 5
+    assert tagging["tagged_by"][tag.LABEL_GENRE] == 4
+    assert tagging["tagged_by"][searchers.BEATPORT] == 1
+    assert tagging["label_genres"] == {LABEL: 3, "Sudbeat": 1}
+    assert tagging["off_taxonomy"] == {}
+    reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
+    assert (reports["a.flac"]["source"], reports["a.flac"]["label"]) == (tag.LABEL_GENRE, LABEL)
+    assert reports["e.flac"]["label"] == ""
+    assert job.payload["label"] == LABEL
+
+
+def test_the_genres_are_frozen_when_the_sweep_is_queued(cfg, folder, silence, monkeypatch):
+    registered("--genre", GENRE)
+    track(folder, silence, "a")
+    bound(monkeypatch, never_searched)
+    code, queued = drive(["tag", "folder", str(folder), "--label", LABEL])
+    assert code == int(ExitCode.OK), queued
+    labels.RegistryStore().edit(LABEL, genre=SPECIFIC)
+    job = tag_job()
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+    assert tags.read_genre_from_file(folder / "a.flac") == GENRE
+
+
+def test_a_label_tag_reaches_its_genre_with_no_label_named(cfg, folder, silence, monkeypatch):
+    registered("--genre", GENRE)
+    track(folder, silence, "a", label="puls")
+    bound(monkeypatch, never_searched)
+    sweep(str(folder))
+    assert tags.read_genre_from_file(folder / "a.flac") == GENRE, "matched as the registry matches a name"
+
+
+def test_a_sweep_with_no_label_genres_queues_the_payload_it_always_did(cfg, folder, silence, monkeypatch):
+    registered()
+    track(folder, silence, "a")
+    bound(monkeypatch, answering({"a": SearchHit(genre=SPECIFIC, source=searchers.BEATPORT)}))
+    job, _resumed = sweep(str(folder))
+    assert job.payload == {"folder": str(folder)}
+
+
+def test_a_label_nobody_registered_is_refused_and_nothing_is_queued(cfg, folder, silence):
+    track(folder, silence, "a")
+    code, envelope = drive(["tag", "folder", str(folder), "--label", "PLUS"])
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "label-unknown"
+    with jobs.open_store() as store:
+        assert tuple(jobs.list_jobs(store)) == ()
+
+
+def test_a_label_with_no_genre_is_swept_as_before_and_says_so(cfg, folder, silence, monkeypatch):
+    registered()
+    track(folder, silence, "a")
+    searcher = bound(monkeypatch, answering({"a": SearchHit(genre=SPECIFIC, source=searchers.BEATPORT)}))
+    code, queued = drive(["tag", "folder", str(folder), "--label", LABEL])
+    assert code == int(ExitCode.OK), queued
+    assert tag_cli.LABEL_NO_GENRE == "tag-folder-label-no-genre"
+    assert [warning["code"] for warning in queued["warnings"]] == [tag_cli.LABEL_NO_GENRE]
+    code, _resumed = drive(resume_argv(tag_job().job_id))
+    assert code == int(ExitCode.OK)
+    assert searcher.asked == [("", "a")]
+    assert tags.read_genre_from_file(folder / "a.flac") == SPECIFIC
+
+
+def test_an_unreadable_registry_warns_and_refuses_only_a_sweep_that_named_a_label(
+    cfg, folder, silence, monkeypatch
+):
+    track(folder, silence, "a")
+    path = labels.RegistryStore().path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("not json", encoding="utf-8")
+    code, envelope = drive(["tag", "folder", str(folder), "--label", LABEL])
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "label-intent-unusable"
+    code, queued = drive(["tag", "folder", str(folder)])
+    assert code == int(ExitCode.OK), queued
+    assert [warning["code"] for warning in queued["warnings"]] == [tag_cli.LABEL_REGISTRY_UNREAD]

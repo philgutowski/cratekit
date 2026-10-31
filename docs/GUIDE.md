@@ -567,6 +567,23 @@ review, then `label registry adopt` adds each accepted label the registry does
 not already hold, under any spelling of its name, and reports the rest as
 already held. Running it again adds nothing new.
 
+A label you follow for one style can carry that style as its genre, so its
+tracks are tagged with it and none waits for a hand tag:
+
+```bash
+crate label registry set PULS --genre Rominimal
+crate tag folder /path/to/staging --label PULS
+```
+
+The genre is checked against your taxonomy when you set it, and the screen says
+which folder it routes to and how. A genre that reaches only the fallback folder
+is refused unless you pass `--accept-fallback`, and `--genre default` clears it.
+`tag folder` gives the label's genre to every file of the label that has no
+genre, without asking any catalogue, and counts those files apart in its report
+under `label-genre`. A file's label is its label tag, or `--label` for a file
+that carries none. A file that already has a genre keeps it, and a file of the
+label with no picture is still searched, for its art only.
+
 `sync labels` is retired. It queues nothing and names `label sync`, and `sync
 all` no longer sweeps labels either. A labels sweep queued before the guided
 sync replaced it still runs with `crate sync labels --job JOB_ID`, so a job

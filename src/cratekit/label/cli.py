@@ -17,7 +17,7 @@ from pathlib import Path
 
 from cratekit.acquire import match_cli
 from cratekit.cli.output import Envelope
-from cratekit.core import active_taxonomy, config, jobs, review, taxonomy
+from cratekit.core import active_taxonomy, config, jobs, review, routing, taxonomy
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.label import catalogue, harvest, sweep
@@ -130,6 +130,26 @@ def build_registry(parser, entry) -> None:
             "kind, and --kind default clears a kind back to none"
         ),
     )
+    parser.add_argument(
+        "--genre",
+        dest="genre",
+        default=None,
+        metavar="WORD",
+        help=(
+            "the genre every track of this label is tagged with when it has none, "
+            "so tag folder asks no catalogue for it; checked against the "
+            "library's taxonomy, and --genre default clears it back to none"
+        ),
+    )
+    parser.add_argument(
+        "--accept-fallback",
+        dest="accept_fallback",
+        action="store_true",
+        help=(
+            "keep a --genre the library's taxonomy routes only to its fallback "
+            "bucket, knowing every track of the label would be filed there"
+        ),
+    )
     parser.set_defaults(_handler=registry_cmd)
 
 
@@ -199,12 +219,17 @@ def _detail(entry: labels.LabelEntry) -> str:
         )
     if entry.kind is not None:
         parts.append(f"kind {entry.kind}")
+    if entry.genre is not None:
+        parts.append(f"genre {entry.genre}")
     if entry.seed_artists:
         parts.append("seeds " + " | ".join(entry.seed_artists))
     return ", ".join(parts)
 
 
-def _checks_for(held: labels.Registry) -> list[dict]:
+def _checks_for(held: labels.Registry, routed: dict[str, str] | None = None) -> list[dict]:
+    """One check per label. ``routed`` adds, for the label a verb just gave a
+    genre, the sentence saying where that genre routes (U178)."""
+    routed = routed or {}
     if not held.labels:
         return [
             {
@@ -220,7 +245,8 @@ def _checks_for(held: labels.Registry) -> list[dict]:
             "key": f"labels.{entry.label_id}",
             "title": entry.name,
             "status": "ok",
-            "detail": _detail(entry),
+            "detail": _detail(entry)
+            + (f", {routed[entry.label_id]}" if entry.label_id in routed else ""),
             "remedy": None,
         }
         for entry in held.labels.values()
@@ -263,6 +289,78 @@ def _declared_kind(kind: str) -> str:
     )
 
 
+#: The ``--genre`` word that clears a label's genre, the word ``--kind`` clears
+#: with, so the two fields are undone alike. Matched whatever its case.
+CLEAR_GENRE = taxonomy.NO_KIND
+
+#: How a genre reached its bucket, in the words the registry's screen uses.
+_ROUTED_BY: dict[routing.Match, str] = {
+    routing.Match.EXACT: "by an alias the taxonomy declares",
+    routing.Match.PASSTHROUGH: "as that bucket's own name",
+    routing.Match.FUZZY: "by the taxonomy's keyword rule",
+    routing.Match.FALLBACK: "only as the taxonomy's fallback, kept with --accept-fallback",
+}
+
+
+def _declared_genre(genre: str, accept_fallback: bool) -> tuple[str, dict | None]:
+    """``--genre`` as stored, and where the library's taxonomy routes it.
+
+    CHECKED BY ROUTING, NOT BY TAGGING (U178). The word is written onto every
+    file of the label and then filed by :func:`cratekit.core.routing.resolve_bucket`,
+    so that is the question asked: a word reaching a bucket by an alias, a
+    bucket's own name or a keyword rule is stored and the screen says which
+    bucket and how. A WORD THAT REACHES ONLY THE FALLBACK IS REFUSED unless the
+    person confirms it, because every track of the label would land in the
+    catch-all, and that is a choice to make knowingly rather than a typo to
+    find a hundred tracks later. Checked here and not in the store, for the
+    reason a kind is: the registry is the installation's and the taxonomy is
+    the library's.
+
+    Returns the word and a mapping describing the route, or None for the word
+    that clears a genre, which needs no taxonomy.
+    """
+    wanted = labels.check_genre(genre)
+    if wanted.casefold() == CLEAR_GENRE:
+        return CLEAR_GENRE, None
+    declared = active_taxonomy.load(_load())
+    resolution = routing.resolve_bucket(declared, wanted)
+    display = declared.bucket(resolution.bucket_id).display
+    if resolution.match is routing.Match.FALLBACK and not accept_fallback:
+        raise refuse(
+            "label-name-invalid",
+            f"{wanted!r} reaches no bucket of the library's taxonomy but its "
+            f"fallback, {display}, so every track of this label would be filed "
+            f"there; nothing was written",
+            steps=(
+                "pass --accept-fallback to keep the genre anyway, or a genre the "
+                "taxonomy routes, or add an alias for it to the taxonomy",
+            ),
+            origin=("label.cli",),
+            detail={"genre": wanted, "bucket": resolution.bucket_id, "match": resolution.match.value},
+        )
+    rule = f" {resolution.matched_on!r}" if resolution.match is routing.Match.FUZZY else ""
+    return wanted, {
+        "genre": wanted,
+        "bucket": resolution.bucket_id,
+        "bucket_display": display,
+        "match": resolution.match.value,
+        "matched_on": resolution.matched_on,
+        "sentence": f"genre {wanted} routes to {display} {_ROUTED_BY[resolution.match]}{rule}",
+    }
+
+
+def _routed(label_id: str, route: dict | None) -> dict[str, str]:
+    """The routing sentence for the label a verb just gave a genre, keyed for :func:`_checks_for`."""
+    return {label_id: route["sentence"]} if route else {}
+
+
+def _route(route: dict | None) -> dict:
+    """The route a verb's summary carries, for a reader that is not a person."""
+    if not route:
+        return {}
+    return {"genre_route": {key: value for key, value in route.items() if key != "sentence"}}
+
+
 def registry_cmd(ctx) -> Envelope:
     store = labels.RegistryStore()
     action = ctx.args.action
@@ -270,13 +368,17 @@ def registry_cmd(ctx) -> Envelope:
     track_limit = ctx.args.track_limit
     offer = ctx.args.offer
     kind = ctx.args.kind
-    fields_given = (seeds, track_limit, ctx.args.match, offer, kind)
-    if action not in ("add", "set") and any(given is not None for given in fields_given):
+    genre = ctx.args.genre
+    accept_fallback = bool(ctx.args.accept_fallback)
+    fields_given = (seeds, track_limit, ctx.args.match, offer, kind, genre)
+    if action not in ("add", "set") and (
+        accept_fallback or any(given is not None for given in fields_given)
+    ):
         raise refuse(
             "label-name-invalid",
             f"label registry {action} does not set --seed, --track-limit, "
-            f"--offer, --kind or --match, and ignoring them would report a change "
-            f"that was never written",
+            f"--offer, --kind, --genre or --match, and ignoring them would report "
+            f"a change that was never written",
             steps=("use label registry set, or add, to change those fields",),
             origin=("label.cli",),
         )
@@ -298,8 +400,22 @@ def registry_cmd(ctx) -> Envelope:
             steps=("pass the label name after the action",),
             origin=("label.cli",),
         )
+    if accept_fallback and genre is None:
+        raise refuse(
+            "label-name-invalid",
+            "--accept-fallback confirms a --genre and none was given, so there is "
+            "nothing for it to confirm",
+            steps=("pass --genre with the genre to keep, beside --accept-fallback",),
+            origin=("label.cli",),
+        )
     if kind is not None:
         kind = _declared_kind(kind)
+    route: dict | None = None
+    if genre is not None:
+        genre, route = _declared_genre(genre, accept_fallback)
+    # ``--genre default`` CLEARS IT, as ``--kind default`` clears a kind.
+    clear_genre = genre == CLEAR_GENRE
+    genre = None if clear_genre else genre
     # ``--kind default`` CLEARS IT. The store keeps None for a label that
     # follows the taxonomy's default, so a later change of that default
     # reaches it, which a stored copy of today's default would not.
@@ -314,12 +430,14 @@ def registry_cmd(ctx) -> Envelope:
             offer=offer,
             kind=kind,
             clear_kind=clear_kind,
+            genre=genre,
+            clear_genre=clear_genre,
         )
         held = store.load()
         return ctx.envelope(
             data={
-                "checks": _checks_for(held),
-                "summary": {"added": label_id, "count": len(held.labels)},
+                "checks": _checks_for(held, _routed(label_id, route)),
+                "summary": {"added": label_id, "count": len(held.labels), **_route(route)},
             }
         )
     if action == "set":
@@ -328,7 +446,7 @@ def registry_cmd(ctx) -> Envelope:
                 "label-name-invalid",
                 "label registry set needs a field to change, and a set that "
                 "changed nothing would report an edit that never happened",
-                steps=("pass --track-limit, --offer, --kind, --seed, or --match",),
+                steps=("pass --track-limit, --offer, --kind, --genre, --seed, or --match",),
                 origin=("label.cli",),
             )
         edited = store.edit(
@@ -339,12 +457,18 @@ def registry_cmd(ctx) -> Envelope:
             offer=offer,
             kind=kind,
             clear_kind=clear_kind,
+            genre=genre,
+            clear_genre=clear_genre,
         )
         held = store.load()
         return ctx.envelope(
             data={
-                "checks": _checks_for(held),
-                "summary": {"updated": edited.label_id, "count": len(held.labels)},
+                "checks": _checks_for(held, _routed(edited.label_id, route)),
+                "summary": {
+                    "updated": edited.label_id,
+                    "count": len(held.labels),
+                    **_route(route),
+                },
             }
         )
     if action == "remove":
