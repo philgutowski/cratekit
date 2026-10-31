@@ -87,7 +87,7 @@ opens no database of its own.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Mapping, Sequence
 
@@ -107,7 +107,7 @@ from cratekit.core.cause import CratekitError, Remedy, refuse
 from cratekit.favorites import colour as colour_mod
 from cratekit.favorites import placement
 from cratekit.intake import ingest, label_filing, set_playlist
-from cratekit.write import metadata_cli, routing_pass, row_link, trees
+from cratekit.write import metadata, metadata_cli, routing_pass, row_link, trees
 
 if TYPE_CHECKING:
     # The landing's own types, imported for annotation only: the module that
@@ -197,6 +197,65 @@ VOX_UNREADABLE = (
 _ORIGIN = ("intake.native",)
 
 
+#: The content columns a landing links to a lookup row (U163), and the one it
+#: writes the date tag's year to.
+ARTIST_COLUMN = "ArtistID"
+ALBUM_COLUMN = "AlbumID"
+GENRE_COLUMN = "GenreID"
+YEAR_COLUMN = "ReleaseYear"
+#: The album's own artist, read back beside the row's words (U163).
+ALBUM_ARTIST = "AlbumArtistID"
+
+#: What the screen and the digest show for a word the commit mints a lookup
+#: row for, in place of the id of the active row it would link (U163).
+MINTED = "mint"
+
+#: The lookup table each linked column names, and the tag its word is read from.
+_WORD_TABLES: Mapping[str, str] = {
+    ARTIST_COLUMN: rb_writer.ARTIST_TABLE,
+    ALBUM_COLUMN: rb_writer.ALBUM_TABLE,
+    GENRE_COLUMN: rb_writer.GENRE_TABLE,
+}
+
+#: The tags a row's words are read from, in one container open (U163).
+_WORD_TAGS: tuple[str, ...] = ("artist", "album", "albumartist", "genre", "date")
+
+
+@dataclass(frozen=True, slots=True)
+class Word:
+    """One artist, album or genre word a row to be added carries, and the lookup row it takes (U163).
+
+    THE FIRST ACTIVE ROW BY EXACT NAME, or a row the commit mints when the
+    library has none, which is what Reload Tags did by hand. An album is found
+    by its name and its album artist together, so two albums of one name by
+    two artists stay two, and an album whose artist is minted is minted too.
+    """
+
+    table: str
+    name: str
+    #: The active row the plan found, empty when the commit mints one.
+    row_id: str = ""
+    #: The album artist an album word links, by its own artist word.
+    album_artist: Word | None = None
+    #: What a minted artist or album row stores in ``SearchStr``, the
+    #: library's own convention for the table; None stores NULL.
+    search: str | None = None
+
+    def key(self) -> tuple[str, str, str]:
+        """What one commit mints once: the table, the name and an album's artist."""
+        artist = self.album_artist.name if self.album_artist is not None else ""
+        return (self.table, self.name, artist)
+
+    def shown(self) -> dict[str, Any]:
+        """The word, its row or ``mint``, and what a mint stores, for the screen and the digest."""
+        shown: dict[str, Any] = {"name": self.name, "row": self.row_id or MINTED}
+        if self.album_artist is not None:
+            shown["album artist"] = self.album_artist.shown()
+        if not self.row_id and self.table != rb_writer.GENRE_TABLE:
+            shown["SearchStr"] = self.search
+        return shown
+
+
 @dataclass(frozen=True, slots=True)
 class RowPlan:
     """One file, the row it would add, and every column that row would carry."""
@@ -223,9 +282,26 @@ class RowPlan:
     voxlevel: int | None = None
     #: Whether the row is given the vox My Tag, its score clearing the cut.
     vox: bool = False
+    #: The file's artist, album and genre words and the lookup row each takes
+    #: (U163), read off the source for a row to be added and None for a word
+    #: the file does not carry, which leaves rekordbox's empty.
+    artist: Word | None = None
+    album: Word | None = None
+    genre: Word | None = None
+    #: The year of the file's date tag, written to ``ReleaseYear`` (U163).
+    year: int | None = None
 
     def columns(self) -> dict[str, Any]:
         """Every column the writer sets on the row, by name, for the screen."""
+        words = {
+            column: word.shown()
+            for column, word in (
+                (ARTIST_COLUMN, self.artist),
+                (ALBUM_COLUMN, self.album),
+                (GENRE_COLUMN, self.genre),
+            )
+            if word is not None
+        }
         return {
             "Title": self.title,
             "FolderPath": self.folder_path,
@@ -238,6 +314,22 @@ class RowPlan:
                 if self.content_link is not None
                 else {}
             ),
+            **words,
+            **({YEAR_COLUMN: self.year} if self.year is not None else {}),
+        }
+
+    def words(self) -> dict[str, Any]:
+        """The words the row is planned to read back with, by column (U163)."""
+        return {
+            ARTIST_COLUMN: self.artist.name if self.artist is not None else "",
+            ALBUM_COLUMN: self.album.name if self.album is not None else "",
+            ALBUM_ARTIST: (
+                self.album.album_artist.name
+                if self.album is not None and self.album.album_artist is not None
+                else ""
+            ),
+            GENRE_COLUMN: self.genre.name if self.genre is not None else "",
+            YEAR_COLUMN: self.year,
         }
 
 
@@ -503,6 +595,10 @@ class AddedRow:
     content_link: int | None = None
     #: Whether the row carries the vox My Tag as adoption reads it, after the commit (U127).
     vox: bool = False
+    #: The row's words and year as the table holds them after the commit,
+    #: through active lookup rows only, and as the plan gave them (U163).
+    words: dict[str, Any] = field(default_factory=dict)
+    planned: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -800,6 +896,7 @@ def plan_rows(
             replace(row, content_link=link.value) if row.action == ADD else row for row in rows
         ]
     rows, vox_cut, vox_blocked = _vox_plan(cfg, db, rows)
+    rows = _words_plan(db, rows)
     kept, dropped = _supported_only(split, rows)
     if labels is not None:
         labels = label_filing.supported_only(
@@ -883,6 +980,180 @@ def _vox_plan(
         values = metadata_cli.vocal_tag_values(level, None, cut)
         scored.append(replace(row, voxlevel=level, vox=metadata_cli.VALUE_VOX in values))
     return scored, cut, ""
+
+
+def _words_plan(db: Any, rows: list[RowPlan]) -> list[RowPlan]:
+    """Each row to be added with its artist, album and genre words and its year (U163).
+
+    R-921'S ANSWER: THE LANDING WRITES WHAT RELOAD TAGS WROTE, so a landed row
+    reads whole in rekordbox before anyone opens it and the visit is Analyze
+    Tracks alone. Read off the source, since the tags do not move. Each word is
+    resolved to the first active lookup row of its exact name, or planned as a
+    mint, and the screen and the digest say which per row.
+
+    NEVER THE KEY. ``KeyID`` is rekordbox's analysis and stays empty, as
+    :data:`cratekit.core.rb_writer.CONTENT_ROW_EMPTY_COLUMNS` holds it, and the
+    padded key the title head carries is Cratekit's own answer.
+
+    ONLY A ROW THIS LANDING ADDS, as the vox tag is planned. A row the
+    collection already held is ``crate tag rows``' to repair.
+    """
+    if not any(row.action == ADD for row in rows):
+        return rows
+    resolver = _Resolver(db)
+    planned: list[RowPlan] = []
+    for row in rows:
+        if row.action != ADD:
+            planned.append(row)
+            continue
+        read = tags.read_tags(row.source, _WORD_TAGS)
+        artist = resolver.word(rb_writer.ARTIST_TABLE, _word(read["artist"]))
+        album_artist = resolver.word(rb_writer.ARTIST_TABLE, _word(read["albumartist"]))
+        planned.append(
+            replace(
+                row,
+                artist=artist,
+                album=resolver.album(_word(read["album"]), album_artist),
+                genre=resolver.word(rb_writer.GENRE_TABLE, _word(read["genre"])),
+                year=year_of(read["date"]),
+            )
+        )
+    return planned
+
+
+def _word(value: str | None) -> str:
+    """A tag's first value as a lookup row's name, empty for a tag that holds only space.
+
+    THE FIRST VALUE IN EVERY CONTAINER. The ID3 reader answers a multi-value
+    frame as its values joined on NUL, where Vorbis and MP4 answer the first,
+    and a NUL joined name is a lookup row no other row will ever share and a
+    genre adoption files under nothing.
+    """
+    first = (value or "").split("\x00")[0]
+    if not first.strip():
+        return ""
+    return first
+
+
+def year_of(date: str | None) -> int | None:
+    """The year a date tag opens with, as rekordbox's ``ReleaseYear`` holds it, else None (U163).
+
+    The first four characters, when they are digits naming a year after zero,
+    which covers the bare year, the ISO date and the ISO timestamp every
+    tagger writes. Anything else is no year rather than a guess.
+    """
+    head = (date or "").strip()[:4]
+    if len(head) != 4 or not head.isdigit() or int(head) == 0:
+        return None
+    return int(head)
+
+
+class _Resolver:
+    """The plan's lookup reads for one handle: each word resolved once, each table's convention read once (U163)."""
+
+    def __init__(self, db: Any) -> None:
+        self._db = db
+        self._found: dict[tuple[str, str, str], str] = {}
+        self._search: dict[str, str] = {}
+
+    def word(self, table: str, name: str) -> Word | None:
+        """The word for ``name`` in ``table``, linked or minted, or None for no name."""
+        if not name:
+            return None
+        row_id = self._resolved((table, name, ""), lambda: _active_id(self._db, table, name))
+        return self._shaped(Word(table=table, name=name, row_id=row_id))
+
+    def album(self, name: str, album_artist: Word | None) -> Word | None:
+        """The album word for ``name`` by ``album_artist``, or None for no name."""
+        if not name:
+            return None
+        key = (rb_writer.ALBUM_TABLE, name, album_artist.name if album_artist else "")
+        row_id = self._resolved(key, lambda: _active_album_id(self._db, name, album_artist))
+        return self._shaped(
+            Word(table=rb_writer.ALBUM_TABLE, name=name, row_id=row_id, album_artist=album_artist)
+        )
+
+    def _resolved(self, key: tuple[str, str, str], find: Any) -> str:
+        if key not in self._found:
+            self._found[key] = find()
+        return self._found[key]
+
+    def _shaped(self, word: Word) -> Word:
+        """A mint given what its table stores in ``SearchStr``, a link as it is."""
+        if word.row_id or word.table == rb_writer.GENRE_TABLE:
+            return word
+        if word.table not in self._search:
+            self._search[word.table] = search_convention(self._db, word.table)
+        convention = self._search[word.table]
+        return replace(word, search=word.name if convention == SEARCH_NAME else convention)
+
+
+def _lookup_class(table: str) -> Any:
+    from pyrekordbox.db6 import tables
+
+    return {
+        rb_writer.ARTIST_TABLE: tables.DjmdArtist,
+        rb_writer.ALBUM_TABLE: tables.DjmdAlbum,
+        rb_writer.GENRE_TABLE: tables.DjmdGenre,
+    }[table]
+
+
+def _active_id(db: Any, table: str, name: str) -> str:
+    """The first active row of ``table`` named exactly ``name``, as text, else empty."""
+    rows = db.session.query(_lookup_class(table)).filter_by(Name=name)
+    found = metadata.first_active_id(rows, table=table, name=name)
+    return "" if found is None else str(found)
+
+
+def _active_album_id(db: Any, name: str, album_artist: Word | None) -> str:
+    """The first active album named ``name`` whose album artist is ``album_artist``'s row, else empty.
+
+    An album artist the commit mints has no album yet, so its album is minted
+    too. No album artist matches an album whose artist is empty.
+    """
+    if album_artist is not None and not album_artist.row_id:
+        return ""
+    want = album_artist.row_id if album_artist is not None else ""
+    rows = [
+        row
+        for row in db.session.query(_lookup_class(rb_writer.ALBUM_TABLE)).filter_by(Name=name)
+        if str(getattr(row, ALBUM_ARTIST, None) or "") == want
+    ]
+    found = metadata.first_active_id(rows, table=rb_writer.ALBUM_TABLE, name=name)
+    return "" if found is None else str(found)
+
+
+#: The ``SearchStr`` conventions :func:`search_convention` answers (U163): the
+#: row's own name, the empty string, or NULL.
+SEARCH_NAME = "name"
+SEARCH_EMPTY = ""
+
+
+def search_convention(db: Any, table: str) -> str | None:
+    """What most active rows of ``table`` store in ``SearchStr``: their name, empty, or NULL (U163).
+
+    UNMEASURED IN REKORDBOX, SO THE LIBRARY IS ASKED. What Reload Tags stores
+    there was never read off a copy (the ideation's open question), and the
+    library's own rows are the nearest witness, so a mint follows the
+    majority of them, tombstones counted with the rest since they were stored
+    by the same hand. A row storing anything else is not counted. A tie or a
+    table with no counted row answers NULL, the binding's own default.
+    """
+    from collections import Counter
+
+    counted: Counter[str | None] = Counter()
+    for row in db.session.query(_lookup_class(table)):
+        stored = getattr(row, "SearchStr", None)
+        if stored is None:
+            counted[None] += 1
+        elif stored == "":
+            counted[SEARCH_EMPTY] += 1
+        elif stored == getattr(row, "Name", None):
+            counted[SEARCH_NAME] += 1
+    ranked = counted.most_common()
+    if not ranked or (len(ranked) > 1 and ranked[0][1] == ranked[1][1]):
+        return None
+    return ranked[0][0]
 
 
 def _favorites_plan(
@@ -1321,6 +1592,151 @@ def _read_back(db: Any, content_id: str) -> tuple[dict[str, Any], str, str, str,
     )
 
 
+def _words_back(db: Any, content_id: str) -> dict[str, Any]:
+    """One row's artist, album, album artist, genre and year, from SQL after the commit (U163).
+
+    THROUGH ACTIVE LOOKUP ROWS ONLY, so a row linked to a tombstone reads as
+    carrying no word, which is what rekordbox shows for it.
+    """
+    from sqlalchemy import text
+
+    active = f"{rb_writer.SOFT_DELETE_COLUMN} = 0"
+    row = db.session.execute(
+        text(
+            f"SELECT a.Name, al.Name, aa.Name, g.Name, c.{YEAR_COLUMN} "
+            f"FROM {rb_writer.CONTENT_TABLE} c "
+            f"LEFT JOIN {rb_writer.ARTIST_TABLE} a ON a.ID = c.{ARTIST_COLUMN} AND a.{active} "
+            f"LEFT JOIN {rb_writer.ALBUM_TABLE} al ON al.ID = c.{ALBUM_COLUMN} AND al.{active} "
+            f"LEFT JOIN {rb_writer.ARTIST_TABLE} aa ON aa.ID = al.{ALBUM_ARTIST} AND aa.{active} "
+            f"LEFT JOIN {rb_writer.GENRE_TABLE} g ON g.ID = c.{GENRE_COLUMN} AND g.{active} "
+            f"WHERE c.ID = :id"
+        ),
+        {"id": content_id},
+    ).first()
+    if row is None:
+        return {}
+    return {
+        ARTIST_COLUMN: str(row[0] or ""),
+        ALBUM_COLUMN: str(row[1] or ""),
+        ALBUM_ARTIST: str(row[2] or ""),
+        GENRE_COLUMN: str(row[3] or ""),
+        YEAR_COLUMN: int(row[4]) if row[4] else None,
+    }
+
+
+def _resolved_now(resolver: _Resolver, word: Word) -> Word | None:
+    """``word`` resolved again on the apply's handle, by the plan's own rule."""
+    if word.table == rb_writer.ALBUM_TABLE:
+        artist = (
+            resolver.word(rb_writer.ARTIST_TABLE, word.album_artist.name)
+            if word.album_artist is not None
+            else None
+        )
+        return resolver.album(word.name, artist)
+    return resolver.word(word.table, word.name)
+
+
+def _rows_of(word: Word | None) -> tuple[str, str]:
+    """The rows a word takes, its own and an album's artist, empty for a mint."""
+    if word is None:
+        return ("", "")
+    artist = word.album_artist.row_id if word.album_artist is not None else ""
+    return (word.row_id, artist)
+
+
+def _assert_words_unmoved(db: Any, rows: Sequence[RowPlan]) -> None:
+    """Refuse when a word resolves to another row now than the plan found (U163).
+
+    The plan is what was approved and it is not rebuilt. A lookup row minted,
+    retired or renamed since then changes which row a word links or whether
+    it is minted, which the screen showed, so the answer is stale for it.
+    """
+    resolver = _Resolver(db)
+    moved = []
+    for row in rows:
+        for word in (row.artist, row.album, row.genre):
+            if word is None:
+                continue
+            now = _resolved_now(resolver, word)
+            if _rows_of(now) != _rows_of(word):
+                moved.append(
+                    f"{row.target.name}: {word.table} {word.name!r} was "
+                    f"{word.row_id or MINTED} and is {(now.row_id if now else '') or MINTED}"
+                )
+    if moved:
+        raise refuse(
+            "decision-stale",
+            "a word a row would carry resolves to another lookup row than the plan "
+            "found, so nothing was written; plan the landing again: " + "; ".join(moved),
+            origin=_ORIGIN,
+            detail={"moved": moved},
+        )
+
+
+class _Mints:
+    """The lookup rows one commit mints, each once per word, and the links to them (U163).
+
+    BY HAND, NOT THROUGH THE BINDING'S ``add_artist`` AND KIN, which refuse a
+    name any row holds, a tombstone included, and so would refuse exactly the
+    word whose only namesake rekordbox retired. MINTED AND LINKED IN ONE
+    COMMIT, because rekordbox garbage collects a lookup row nothing references
+    (A4): a mint is pending on the landing's handle beside the row that links
+    it, and a refusal rolls both back.
+    """
+
+    def __init__(self, db: Any) -> None:
+        self._db = db
+        self._made: dict[tuple[str, str, str], str] = {}
+
+    def tables(self) -> tuple[str, ...]:
+        """The lookup tables this commit minted a row in, to name in ``creations``."""
+        return tuple(sorted({table for table, _name, _artist in self._made}))
+
+    def link(self, content: Any, row: RowPlan) -> None:
+        """Link the content row to each of its words' rows, minting a word's once, and write its year."""
+        for column, word in (
+            (ARTIST_COLUMN, row.artist),
+            (ALBUM_COLUMN, row.album),
+            (GENRE_COLUMN, row.genre),
+        ):
+            if word is not None:
+                setattr(content, column, self.id_of(word))
+        if row.year is not None:
+            setattr(content, YEAR_COLUMN, row.year)
+
+    def id_of(self, word: Word) -> str:
+        """The row ``word`` links: the plan's active row, or the one this commit minted for it."""
+        if word.row_id:
+            return word.row_id
+        key = word.key()
+        if key not in self._made:
+            self._made[key] = self._mint(word)
+        return self._made[key]
+
+    def _mint(self, word: Word) -> str:
+        from uuid import uuid4
+
+        kind = _lookup_class(word.table)
+        # TEXT, AS THE STORED ROWS ARE (U153): the binding mints an int.
+        columns: dict[str, Any] = {
+            "ID": str(self._db.generate_unused_id(kind)),
+            "Name": word.name,
+            "UUID": str(uuid4()),
+        }
+        if word.table != rb_writer.GENRE_TABLE:
+            columns["SearchStr"] = word.search
+        if word.table == rb_writer.ALBUM_TABLE:
+            columns[ALBUM_ARTIST] = (
+                self.id_of(word.album_artist) if word.album_artist is not None else None
+            )
+        made = kind.create(**columns)
+        self._db.add(made)
+        # FLUSHED AT ONCE, as the binding's own writers flush, so the next
+        # mint's unused id is drawn against this one.
+        self._db.flush()
+        return str(made.ID)
+
+
 def _holding(match: trees.RowMatch) -> str | None:
     """The active row a match names, the first of several when two claim it."""
     if match.content_id:
@@ -1502,6 +1918,11 @@ def apply_rows(
             assert_names_still_free(db, plan)
             to_add = plan.to_add()
             taken = _taken_since_the_plan(db, cfg, to_add)
+            # THE WORDS ARE ASKED AGAIN BEFORE THE FIRST ROW (U163), as the
+            # targets are, so a lookup row made or retired since the approval
+            # refuses rather than linking what nobody approved.
+            _assert_words_unmoved(db, [row for row in to_add if str(row.target) not in taken])
+            mints = _Mints(db)
             for row in to_add:
                 held = taken.get(str(row.target))
                 if held is not None:
@@ -1509,6 +1930,7 @@ def apply_rows(
                     continue
                 content = db.add_content(row.target, Title=row.title)
                 _restamp(content, row, plan)
+                mints.link(content, row)
                 added_ids.append((row, str(content.ID)))
             # THE VOX MY TAG, IN THE SAME COMMIT (U127), on the rows this
             # landing made and only those the plan tagged. Additive: the writer
@@ -1637,7 +2059,11 @@ def apply_rows(
             # left and named, nothing found there removed.
             if plan.labels is not None:
                 labels_written = label_filing.write(db, plan.labels, by_target=by_target)
-            rb_writer.commit_guarded(db, creations=(rb_writer.CONTENT_TABLE,))
+            # THE LOOKUP TABLES ONLY WHEN A WORD WAS MINTED (U163), so a
+            # landing that links every word admits what it did before.
+            rb_writer.commit_guarded(
+                db, creations=(rb_writer.CONTENT_TABLE, *mints.tables())
+            )
         except BaseException:
             trees._rollback_quietly(db)
             if witness.landed:
@@ -1695,6 +2121,8 @@ def apply_rows(
                     file_id=file_id,
                     content_link=link,
                     vox=content_id in voxed,
+                    words=_words_back(db, content_id),
+                    planned=row.words(),
                 )
             )
         session_id = record.session_id
@@ -2021,11 +2449,20 @@ def assert_rows_identified(landed: NativeLanded) -> None:
         for row in landed.added
         if landed.content_link is None or row.content_link != landed.content_link
     ]
+    # THE WORDS AND THE YEAR (U163), read through active lookup rows, so a
+    # link that did not take or names a tombstone reads as a word missing.
+    wrong += [
+        f"{row.content_id}: {column} reads {row.words.get(column)!r}, the file's is {want!r}"
+        for row in landed.added
+        for column, want in row.planned.items()
+        if row.words.get(column) != want
+    ]
     if wrong:
         raise refuse(
             "internal-error",
-            "a landed row does not carry the file id or link it was given after "
-            "the commit, so rekordbox will not load it to a deck: " + "; ".join(wrong),
+            "a landed row does not carry the file id, link or words it was given "
+            "after the commit, so rekordbox will not load it to a deck or will "
+            "show it without them: " + "; ".join(wrong),
             remedy=Remedy.REPORT_DEFECT,
             steps=(f"the write is durable; restore session {landed.session_id} to undo it",),
             origin=_ORIGIN,
@@ -2045,6 +2482,15 @@ __all__ = [
     "UNSUPPORTED",
     "WORKFLOW",
     "AddedRow",
+    "ALBUM_ARTIST",
+    "ALBUM_COLUMN",
+    "ARTIST_COLUMN",
+    "GENRE_COLUMN",
+    "MINTED",
+    "SEARCH_EMPTY",
+    "SEARCH_NAME",
+    "YEAR_COLUMN",
+    "Word",
     "FavoritesPlan",
     "HeartItem",
     "NativeLanded",
@@ -2069,6 +2515,8 @@ __all__ = [
     "leftover_set_inbox",
     "plan_rows",
     "recorded_inbox_playlist",
+    "search_convention",
     "single_rows_for",
     "stored_folder_path",
+    "year_of",
 ]

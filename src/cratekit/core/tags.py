@@ -157,6 +157,10 @@ FIELDS: dict[str, TagSpec] = {
     # recording time frame, and the downloader writes the Vorbis ``date``
     # comment and the MP4 day atom on every file it delivers.
     "date": TagSpec("date", "TDRC", "\xa9day"),
+    # U163. The album's own artist, which a native landing links the album row
+    # to as Reload Tags does. ``TPE2`` is the ID3 frame every tagger writes it
+    # to, ``albumartist`` the Vorbis comment and ``aART`` the MP4 atom.
+    "albumartist": TagSpec("albumartist", "TPE2", "aART"),
 }
 
 FLAC_SUFFIXES = (".flac",)

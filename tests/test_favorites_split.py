@@ -137,8 +137,8 @@ def test_a_member_no_job_dates_takes_the_accounts_date_and_one_dated_nowhere_goe
     shown = refused["cause"]["detail"]["shown"]
     assert shown["month playlists"] == ["2026-08 (1), made", "Undated (1), made"]
     rows = _rows(cfg)
-    # The landing writes no artist row, so the screen names the title alone.
-    assert shown["undated"] == [f"Nowhere (row {rows['Nowhere']}, from 2026-Q3)"]
+    # U163: the landing links the file's artist, so the screen names it.
+    assert shown["undated"] == [f"Probe - Nowhere (row {rows['Nowhere']}, from 2026-Q3)"]
     totals = acted["data"]["totals"]
     assert (totals["dates from the account"], totals["dates from jobs"], totals["undated"]) == (1, 0, 1)
     # Listed once per plan, and the two acts are two plans.
@@ -543,7 +543,7 @@ def test_a_member_taken_out_of_all_favorites_goes_to_no_month_and_its_quarter_st
     shown = refused["cause"]["detail"]["shown"]
     assert shown["month playlists"] == ["2026-11 (1), made"]
     assert shown["taken back"] == [
-        f"Dropped (row {rows['Dropped']}, from 2026-Q4), removed from {SOURCE!r} in rekordbox"
+        f"Probe - Dropped (row {rows['Dropped']}, from 2026-Q4), removed from {SOURCE!r} in rekordbox"
     ]
     assert _favorites(cfg, folder_id)["2026-11"] == ["Kept"]
     assert _removed(cfg, q4)

@@ -1,0 +1,175 @@
+name = "u163"
+pass_kind = "light"
+
+[[rows]]
+id = "W1_words_planned"
+description = "plan_rows: never plan the words, so no row carries artist, album, genre or year"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_words.py", "tests/test_intake_land_native.py", "tests/test_rb_writer_guard.py"]
+old = '''    rows = _words_plan(db, rows)
+'''
+new = '''    rows = rows
+'''
+
+[[rows]]
+id = "W2_first_value"
+description = "_word: keep the NUL joined ID3 value whole (round one's fix)"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_words.py", "tests/test_intake_land_native.py", "tests/test_rb_writer_guard.py"]
+old = '''    first = (value or "").split("\x00")[0]'''
+new = '''    first = value or ""'''
+
+[[rows]]
+id = "W3_year_digits"
+description = "year_of: accept any four characters as a year"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_words.py", "tests/test_intake_land_native.py", "tests/test_rb_writer_guard.py"]
+old = '''    if len(head) != 4 or not head.isdigit() or int(head) == 0:'''
+new = '''    if len(head) != 4:'''
+
+[[rows]]
+id = "W4_year_written"
+description = "_Mints.link: drop the ReleaseYear write"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_words.py", "tests/test_intake_land_native.py", "tests/test_rb_writer_guard.py"]
+old = '''        if row.year is not None:
+            setattr(content, YEAR_COLUMN, row.year)'''
+new = '''        if False:
+            setattr(content, YEAR_COLUMN, row.year)'''
+
+[[rows]]
+id = "W5_album_artist_mint"
+description = "_active_album_id: look up an album whose album artist is minted, instead of minting it"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_words.py", "tests/test_intake_land_native.py", "tests/test_rb_writer_guard.py"]
+old = '''    if album_artist is not None and not album_artist.row_id:
+        return ""'''
+new = '''    if False:
+        return ""'''
+
+[[rows]]
+id = "W6_album_by_artist"
+description = "_active_album_id: find the album by name alone, ignoring its album artist"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_words.py", "tests/test_intake_land_native.py", "tests/test_rb_writer_guard.py"]
+old = '''        if str(getattr(row, ALBUM_ARTIST, None) or "") == want'''
+new = '''        if True'''
+
+[[rows]]
+id = "W7_unmoved"
+description = "_assert_words_unmoved: never refuse a word that moved since the plan"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_words.py", "tests/test_intake_land_native.py", "tests/test_rb_writer_guard.py"]
+old = '''            if _rows_of(now) != _rows_of(word):'''
+new = '''            if False:'''
+
+[[rows]]
+id = "W8_mint_once"
+description = "_Mints.id_of: mint a new word again for every row"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_words.py", "tests/test_intake_land_native.py", "tests/test_rb_writer_guard.py"]
+old = '''        if key not in self._made:
+            self._made[key] = self._mint(word)'''
+new = '''        if True:
+            self._made[key] = self._mint(word)'''
+
+[[rows]]
+id = "W9_creations_named"
+description = "apply_rows: name only the content table in creations, so a mint is refused"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_words.py", "tests/test_intake_land_native.py", "tests/test_rb_writer_guard.py"]
+old = '''                db, creations=(rb_writer.CONTENT_TABLE, *mints.tables())'''
+new = '''                db, creations=(rb_writer.CONTENT_TABLE,)'''
+
+[[rows]]
+id = "W10_search_convention"
+description = "_Resolver._shaped: store NULL in SearchStr whatever the library's convention"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_words.py", "tests/test_intake_land_native.py", "tests/test_rb_writer_guard.py"]
+old = '''        return replace(word, search=word.name if convention == SEARCH_NAME else convention)'''
+new = '''        return replace(word, search=None)'''
+
+[[rows]]
+id = "W11_search_tie"
+description = "search_convention: answer the first ranked convention on a tie"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_words.py", "tests/test_intake_land_native.py", "tests/test_rb_writer_guard.py"]
+old = '''    if not ranked or (len(ranked) > 1 and ranked[0][1] == ranked[1][1]):'''
+new = '''    if not ranked:'''
+
+[[rows]]
+id = "W12_readback_active"
+description = "_words_back: read the artist through any row, tombstones included"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_words.py", "tests/test_intake_land_native.py", "tests/test_rb_writer_guard.py"]
+old = '''            f"LEFT JOIN {rb_writer.ARTIST_TABLE} a ON a.ID = c.{ARTIST_COLUMN} AND a.{active} "'''
+new = '''            f"LEFT JOIN {rb_writer.ARTIST_TABLE} a ON a.ID = c.{ARTIST_COLUMN} "'''
+
+[[rows]]
+id = "W13_identified_words"
+description = "assert_rows_identified: never compare the words read back"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_words.py", "tests/test_intake_land_native.py", "tests/test_rb_writer_guard.py"]
+old = '''        if row.words.get(column) != want'''
+new = '''        if False'''
+
+[[rows]]
+id = "W14_album_artist_link"
+description = "_Mints._mint: mint an album with no album artist"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_words.py", "tests/test_intake_land_native.py", "tests/test_rb_writer_guard.py"]
+old = '''        if word.table == rb_writer.ALBUM_TABLE:
+            columns[ALBUM_ARTIST]'''
+new = '''        if False:
+            columns[ALBUM_ARTIST]'''
+
+[[rows]]
+id = "W15_lookup_policy"
+description = "guard_violations: wave an admitted lookup row through without the creation policy"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_intake_land_words.py", "tests/test_intake_land_native.py", "tests/test_rb_writer_guard.py"]
+old = '''            declared = {column for column in columns if column in GRIDLESS_ON_CREATE_COLUMNS}
+            if declared:
+                violations.append(
+                    f"creates a row in {table!r} declaring analysis column(s): "
+                    f"{sorted(declared)}; a row this product creates is gridless and "
+                    f"rekordbox derives the grid from the audio"
+                )
+            continue
+        if table == CONTENT_TABLE:'''
+new = '''            continue
+        if table == CONTENT_TABLE:'''
+
+[[rows]]
+id = "W16_admittable_key"
+description = "ADMITTABLE_ROW_TABLES: admit djmdKey beside the lookups"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_intake_land_words.py", "tests/test_intake_land_native.py", "tests/test_rb_writer_guard.py"]
+old = '''ADMITTABLE_ROW_TABLES = frozenset({CONTENT_TABLE, *LOOKUP_TABLES})'''
+new = '''ADMITTABLE_ROW_TABLES = frozenset({CONTENT_TABLE, *LOOKUP_TABLES, "djmdKey"})'''
+
+[[rows]]
+id = "W17_first_active"
+description = "first_active_id: take the first row, tombstone or not"
+file = "src/cratekit/write/metadata.py"
+surface = "user"
+tests = ["tests/test_intake_land_words.py", "tests/test_intake_land_native.py", "tests/test_rb_writer_guard.py"]
+old = '''        if not marker:
+            return row.ID'''
+new = '''        return row.ID'''

@@ -228,22 +228,42 @@ def resolve_genre_id(db: Any, genre_name: str) -> Any | None:
     """
     if not genre_name:
         return None
-    for row in db.get_genre(Name=genre_name):
+    return first_active_id(db.get_genre(Name=genre_name), table="djmdGenre", name=genre_name)
+
+
+#: The key a lookup word is named under in a refusal's detail, by table.
+_WORD_KEYS = MappingProxyType(
+    {"djmdGenre": "genre", "djmdArtist": "artist", "djmdAlbum": "album"}
+)
+
+
+def first_active_id(rows: Iterable[Any], *, table: str, name: str) -> Any | None:
+    """The identifier of the first active lookup row among ``rows``, or None.
+
+    :func:`resolve_genre_id`'s rule for any lookup table, so a native landing
+    resolving an artist, album or genre word (U163) reads the soft delete
+    marker the way the genre writers read it: a tombstone is skipped, the next
+    row may be the live namesake, and a row that cannot report its marker
+    refuses rather than resolving. ``rows`` are the table's rows by exact name,
+    in the binding's order.
+    """
+    for row in rows:
         marker = getattr(row, rb_writer.SOFT_DELETE_COLUMN, _MARKER_ABSENT)
         if marker is _MARKER_ABSENT or marker is None:
+            word = _WORD_KEYS.get(table, "word")
             raise refuse(
                 "soft-delete-marker-unreadable",
-                f"the genre row {getattr(row, 'ID', '?')!r} cannot say whether "
+                f"the {word} row {getattr(row, 'ID', '?')!r} cannot say whether "
                 f"it is a tombstone, and treating that as 'not deleted' would "
-                f"point a track's genre at a row rekordbox has already retired",
+                f"point a track's {word} at a row rekordbox has already retired",
                 remedy=Remedy.RUN_DOCTOR,
                 scope=Scope.RUN,
                 origin=("write", "metadata"),
                 detail={
-                    "table": "djmdGenre",
+                    "table": table,
                     "row_id": str(getattr(row, "ID", "")),
                     "column": rb_writer.SOFT_DELETE_COLUMN,
-                    "genre": genre_name,
+                    word: name,
                 },
             )
         if not marker:
@@ -610,6 +630,7 @@ __all__ = [
     "assert_within_policy",
     "database_stars",
     "enable",
+    "first_active_id",
     "plan_genre_retag",
     "plan_rating_backfill",
     "plan_title_padding",

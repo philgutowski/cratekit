@@ -986,9 +986,47 @@ _LANDED_ROW = {
 }
 
 
-def test_the_admittable_tables_are_exactly_the_content_table():
-    assert W.ADMITTABLE_ROW_TABLES == frozenset({"djmdContent"})
+def test_the_admittable_tables_are_exactly_the_content_table_and_the_three_lookups():
+    # WIDENED 2026-10-31 BY U163, so a landing mints the artist, album and
+    # genre rows its rows link (R-921). The key is not among them.
+    assert W.ADMITTABLE_ROW_TABLES == frozenset(
+        {"djmdContent", "djmdArtist", "djmdAlbum", "djmdGenre"}
+    )
     assert W.CONTENT_TABLE not in W.PERMITTED_ROW_TABLES
+    assert not set(W.LOOKUP_TABLES) & W.PERMITTED_ROW_TABLES
+    assert "djmdKey" not in W.ADMITTABLE_ROW_TABLES
+
+
+@pytest.mark.parametrize("table", ["djmdArtist", "djmdGenre", "djmdAlbum"])
+def test_a_lookup_row_is_created_only_by_a_commit_that_names_its_table(table):
+    """U163: admitted by name on the landing's commit and nowhere else."""
+    row = {"ID", "Name", "UUID"}
+    assert W.guard_violations([(table, row)], [], [], creations={table}) == []
+    refused = W.guard_violations([(table, row)], [], [])
+    assert len(refused) == 1 and "non-whitelisted" in refused[0]
+    # Naming another lookup table admits nothing in this one.
+    other = next(one for one in W.LOOKUP_TABLES if one != table)
+    assert W.guard_violations([(table, row)], [], [], creations={other}) != []
+
+
+@pytest.mark.parametrize("column", sorted(W.GRIDLESS_ON_CREATE_COLUMNS))
+def test_an_admitted_lookup_row_declaring_an_analysis_column_is_refused(column):
+    violations = W.guard_violations(
+        [(W.ARTIST_TABLE, {"ID", "Name", column})], [], [], creations={W.ARTIST_TABLE}
+    )
+    assert len(violations) == 1, violations
+    assert column in violations[0] and "analysis" in violations[0]
+
+
+def test_a_creation_naming_the_key_table_is_refused():
+    """U163: the key is rekordbox's analysis, and no commit may ask for it.
+
+    ``djmdKey`` is in the whitelist on the A4 verdict, so the row itself is
+    not what is refused; the asking is, and the commit with it.
+    """
+    violations = W.guard_violations([("djmdKey", {"ID", "ScaleName"})], [], [], creations={"djmdKey"})
+    assert len(violations) == 1, violations
+    assert "asks to create" in violations[0]
 
 
 def test_a_commit_that_asks_may_create_a_content_row_carrying_what_the_file_says():
@@ -1018,7 +1056,7 @@ def test_the_wider_content_policy_contains_the_playlist_policy():
     assert {"KeyID", "SampleRate", "BitRate", "BitDepth", "ImagePath"} < W.CONTENT_ROW_EMPTY_COLUMNS
 
 
-@pytest.mark.parametrize("table", ["djmdArtist", "djmdGenre", "djmdAlbum", "djmdBeatGrid"])
+@pytest.mark.parametrize("table", ["djmdLabel", "djmdColor", "djmdCue", "djmdBeatGrid"])
 def test_asking_for_a_creation_in_any_other_table_is_itself_refused(table):
     """The set is a ceiling a caller cannot raise by asking (P5)."""
     violations = W.guard_violations([(table, set())], [], [], creations={table})

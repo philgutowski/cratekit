@@ -2391,6 +2391,13 @@ def add_my_tag(db: Any, value_row: Any, content_id: str) -> bool:
 #: The content table, named once so the judge and the registry cannot disagree.
 CONTENT_TABLE = "djmdContent"
 
+#: The lookup tables a landing links a row's artist, album and genre to (U163),
+#: named once so the admission and the writer cannot disagree.
+ARTIST_TABLE = "djmdArtist"
+ALBUM_TABLE = "djmdAlbum"
+GENRE_TABLE = "djmdGenre"
+LOOKUP_TABLES: tuple[str, ...] = (ARTIST_TABLE, ALBUM_TABLE, GENRE_TABLE)
+
 #: Tables a writer may CREATE rows in. A new content row is forbidden because
 #: new-track intake stays in the XML bridge, where the user performs, reviews and
 #: can undo the import. A beat-grid row cannot even be modelled, since the
@@ -2536,7 +2543,15 @@ CONTENT_ANALYSIS_TABLES: tuple[str, ...] = ("djmdCue", "djmdMixerParam", "conten
 #: still carries the column policy :data:`CONTENT_ROW_EMPTY_COLUMNS` states,
 #: judged in memory and then from SQL. Static, for the reason
 #: :data:`REMOVABLE_TABLES` is.
-ADMITTABLE_ROW_TABLES = frozenset({CONTENT_TABLE})
+#:
+#: THE THREE LOOKUP TABLES JOINED WITH U163, so a landing writes artist,
+#: album and genre on the rows it makes (R-921). Admitted on the landing's
+#: commit by name and only when it mints a word the library has no active row
+#: for, and under rekordbox's own rule for a lookup row: minted and linked in
+#: the same commit, because rekordbox garbage collects one nothing references
+#: (A4). A lookup row carries no analysis column, so the creation policy is the
+#: whitelist's own: none of :data:`GRIDLESS_ON_CREATE_COLUMNS`.
+ADMITTABLE_ROW_TABLES = frozenset({CONTENT_TABLE, *LOOKUP_TABLES})
 
 #: rekordbox's soft-delete marker, named once so a reader can be BOUND to it
 #: rather than to a string that looks like it.
@@ -2900,6 +2915,17 @@ def guard_violations(
                     f"creates a {CONTENT_TABLE} row declaring analysis column(s): "
                     f"{sorted(declared)}; a row this product creates carries what "
                     f"the file says and rekordbox derives the rest from the audio"
+                )
+            continue
+        if table in LOOKUP_TABLES and table in creatable:
+            # U163. A lookup row a landing mints carries a name and nothing
+            # rekordbox derives, judged as any other creation is.
+            declared = {column for column in columns if column in GRIDLESS_ON_CREATE_COLUMNS}
+            if declared:
+                violations.append(
+                    f"creates a row in {table!r} declaring analysis column(s): "
+                    f"{sorted(declared)}; a row this product creates is gridless and "
+                    f"rekordbox derives the grid from the audio"
                 )
             continue
         if table == CONTENT_TABLE:

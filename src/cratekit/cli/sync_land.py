@@ -133,14 +133,14 @@ ACK_STOP = "backup-acknowledgment-missing"
 ANALYZE_PLAYLIST = "INBOX / Analyze"
 
 #: The rekordbox visit an attended session makes once the landing is applied,
-#: on Phillip's standard since 2026-10-27. Reload Tags comes BEFORE Analyze.
-#: Over the one playlist every landing fills (U166), which holds every row
-#: still waiting and only those, then the clear that takes the analysed out.
+#: on Phillip's standard since 2026-10-27, over the one playlist every landing
+#: fills (U166), which holds every row still waiting and only those, then the
+#: clear that takes the analysed out. NO RELOAD TAGS SINCE U163: a landed row
+#: carries its artist, album, genre and year from the commit that made it.
 REKORDBOX_STEPS: tuple[str, ...] = (
     f"in rekordbox, select the {ANALYZE_PLAYLIST} playlist, which holds every "
-    f"landed row waiting for analysis, and run Reload Tags",
-    "then run Analyze Tracks on it: Analysis Mode Normal, high precision off, "
-    "BPM/Grid, Phrase and KEY on",
+    f"landed row waiting for analysis, and run Analyze Tracks on it: Analysis "
+    f"Mode Normal, high precision off, BPM/Grid, Phrase and KEY on",
     "quit rekordbox and confirm rekordbox and rekordboxAgent are both gone "
     "before any other verb runs",
     "then take the analysed rows out of it: crate inbox analyzed",

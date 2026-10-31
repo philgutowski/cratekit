@@ -352,13 +352,15 @@ taken before the commit. The plan shows every row with every column it will
 set, the playlist and its parent, and the database it writes, and its gate,
 `intake.land.native`, is answered by a separate `crate run decide` and never
 inline. A file already in the collection is reported present and not added
-twice. **Nothing about the audio is written**: no tempo, no grid, no key, no
-waveform, and the run says so. rekordbox does not analyse a row it did not
-make until you ask, so open it, select the batch playlist and run Analyze
-Track with KEY unticked, then Reload Tags on the same selection. **The rows
-carry no artist, album, genre or key until Reload Tags reads them from the
-files** (R-921), and adoption places a track by the genre on its row, so
-skipping it leaves nameless rows that file nowhere. A row landed before
+twice. Each row carries the artist, album, album artist, genre and year its
+file's tags name, linked to the library's own artist, album and genre entries
+where one of that exact name exists and made in the same commit where none
+does, and the plan says which for every row. A file with no artist tag lands
+with no artist, as rekordbox would show it. **Nothing about the audio is
+written**: no tempo, no grid, no key, no waveform, and the run says so.
+rekordbox does not analyse a row it did not make until you ask, so open it,
+select INBOX / Analyze and run Analyze Tracks; Reload Tags is not needed, and
+adoption reads each row's genre from the moment it lands. A row landed before
 2026-10-09 also lacks the defaults rekordbox writes on every row it makes, and
 will not load to a deck until `crate repair rows` fills them (R-923); a row
 landed since carries them from the start. There is no import, no drag and no `intake imported` on this path.
