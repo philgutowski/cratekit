@@ -1698,6 +1698,24 @@ below is recorded. Still owed from this sitting: the rekordbox visit over
 INBOX / Analyze (Reload Tags, then Analyze Tracks) and `crate inbox analyzed`,
 which A48 (#376) carries.
 
+## Sitting 52, 2026-10-31, the attended session, sitting 51's rows analysed and cleared from INBOX / Analyze
+
+From the installed v0.3.0. Both backup ages 4 days, so no backup ran first.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| rekordbox, the analysis visit | by Phillip's hand, INBOX / Analyze only | Reload Tags on the 19 rows, then Analyze Tracks: Normal, high precision off, BPM/Grid, Phrase and KEY on, and Vocal on as well (rekordbox's own vocal position marks on the waveform, which Cratekit does not read). Completed; rekordbox quit, and `rekordbox` and `rekordboxAgent` both confirmed gone before any verb ran. | live |
+| `crate inbox analyzed`, live plan | run `2026-10-31T10:23:06Z-34c0` | **clears 19** rows rekordbox analysed, **keeps 0**; writes the memberships of INBOX / Analyze only. digest **`792e43d7c999931f`**. | planned |
+| `crate inbox analyzed`, rehearsal | on a fresh copy (`copy_setup.sh`, live sha256 `5cb744998d362700`), run `2026-10-31T10:28:50Z-48f8`, applied as `session` | The same digest, `792e43d7c999931f`; the two screens differ only in the run id. Applied: 19 cleared, INBOX / Analyze holds 0, read back. The copy's backup acknowledgment came from a terminal, since a copy has no recorded backup ages. **The setup script left the copy's library state with only `local/`**, so the first plan refused `tree-unconverged`; copying `coupled/` in by hand fixed it. | rehearsed |
+| `crate inbox analyzed`, live | run `2026-10-31T10:23:06Z-34c0`, approved as `session` on the equal digest, session `2026-10-31T10:29:27Z-5d96` | **19 analysed rows left INBOX / Analyze, which now holds 0**, read back from the database; every track stays in the collection and its other playlists. The live database's sha256 was still `5cb744998d362700` just before the apply, so the rehearsal left it unchanged. | live |
+
+**A48 (#376) and A43 (#367) are met.** A48: no stray `Analyze` playlist
+before the landing (sitting 51), the landing put exactly 19 rows in the queue,
+rekordbox analysed them, and the clear took out every analysed row and left
+none. Its macOS battery passed inside the v0.3.0 cut (`release.py cut
+--mac-battery`). A43: the landing `crate sync land` reached at sitting 51 is
+now analysed in rekordbox.
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
