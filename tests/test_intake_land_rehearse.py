@@ -218,7 +218,10 @@ def test_a_scratch_plan_that_is_not_the_live_plan_applies_nothing(
     assert refused["cause"]["reason"] == "decision-stale", refused
     assert "nothing was applied" in refused["cause"]["message"]
     differs = refused["cause"]["detail"]["differs"]
-    assert any(line.startswith("+ ") and "rehearsals" in line for line in differs)
+    # The area's lines are marked - and the live plan's +, as the gate screen
+    # marks the rehearsal's and the live plan's (U188).
+    assert any(line.startswith("- ") and "rehearsals" in line for line in differs)
+    assert not any(line.startswith("+ ") and "rehearsals" in line for line in differs)
     (volume, local) = refused["cause"]["detail"]["rehearsal_area"]
     # Kept and named, and nothing was landed even on the copy's staging clones.
     assert sorted(p.name for p in (Path(volume) / "staging").iterdir()) == ["One.flac"]
@@ -628,6 +631,9 @@ def test_on_a_renamed_drive_a_file_name_that_differs_still_refuses_and_names_the
 
     def planted(value, pairs):
         back = real(value, pairs)
+        if isinstance(back, str):
+            # The engine maps each line through the module's own name.
+            return back
         return [
             line.replace("One.flac", "Uno.flac") if "columns.FolderPath" in line else line
             for line in back
