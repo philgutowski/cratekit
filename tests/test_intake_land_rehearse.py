@@ -15,6 +15,7 @@ D1 applies. Nothing here names a real volume, a real person or a real track.
 from __future__ import annotations
 
 import hashlib
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -543,3 +544,160 @@ def test_an_interrupted_rehearsal_is_a_cancel_that_names_its_area(
     area = refused["cause"]["detail"]["rehearsal_area"]
     assert all(Path(path).is_dir() and path in refused["cause"]["message"] for path in area)
     assert _staged_names(cfg) == ["One.flac"]
+
+
+# ---------------------------------------------------------------------------
+# A library whose rekordbox base drive is not its mount (U188)
+# ---------------------------------------------------------------------------
+
+
+def _renamed_drive(cfg: config.Config, tmp_path: Path) -> str:
+    """Record the database as made on a drive this machine no longer mounts.
+
+    The live library's shape: rekordbox stores every ``FolderPath`` under the
+    drive the database was made on and remaps it to the current one, so the
+    stored spelling of a path differs from the mounted one in its prefix.
+    Answers the base drive, as the stored paths begin.
+    """
+    base = str(tmp_path.parent / "old-drive")
+    conn = sqlite3.connect(cfg.library.db_path)
+    conn.execute(
+        "UPDATE djmdProperty SET BaseDBDrive = ?, CurrentDBDrive = ?",
+        (base + "/", str(tmp_path) + "/"),
+    )
+    conn.commit()
+    conn.close()
+    return base
+
+
+def test_a_library_whose_base_drive_is_not_its_mount_rehearses_equal_and_the_gate_says_so(
+    native_library, silence, tmp_path
+):
+    """Run 2026-10-31T12:26:03Z-0821: every row's FolderPath differed only by
+    the area's prefix under the base drive, which no mounted pair can reach."""
+    cfg, _root = native_library
+    base = _renamed_drive(cfg, tmp_path)
+    _stage(cfg, silence, "One.flac")
+    _stage(cfg, silence, "Two.flac")
+    staged = _bytes(_staging(cfg))
+    database = _database(cfg)
+
+    code, rehearsed = _rehearse()
+
+    assert code == int(ExitCode.OK), rehearsed
+    facts = rehearsed["data"]["totals"]["rehearsal"]
+    assert facts["landed"] == 2 and facts["added"] == 2 and facts["refused"] == 0
+    assert facts["area removed"] is True
+    assert _areas(cfg) == [], "a rehearsal that ended left its area"
+    # The plan shown is the live one, its rows stored under the base drive.
+    stored = sorted(item["row"]["FolderPath"] for item in rehearsed["data"]["items"])
+    assert stored == [
+        str(
+            native.stored_folder_path(
+                _music(cfg) / name, base_drive=base, current_drive=str(tmp_path)
+            )
+        )
+        for name in ("One.flac", "Two.flac")
+    ]
+    assert all(path.startswith(base + "/library/") for path in stored), stored
+    # Nothing live moved.
+    assert _bytes(_staging(cfg)) == staged
+    assert not _music(cfg).exists(), "the rehearsal made the live batch folder"
+    assert _database(cfg) == database
+    assert _landed_rows(cfg) == []
+
+    code, live = drive(_land())
+
+    assert code == int(ExitCode.DECISION_REQUIRED), live
+    shown = live["cause"]["detail"]["shown"]
+    assert shown["digest"] == rehearsed["data"]["digest"]
+    assert "equal to this plan's" in shown["rehearsal"], shown["rehearsal"]
+    assert "differs from the rehearsal" not in shown
+
+
+def test_on_a_renamed_drive_a_file_name_that_differs_still_refuses_and_names_the_line(
+    native_library, silence, tmp_path, monkeypatch
+):
+    """The stored pair maps the prefix and nothing else: a FolderPath that
+    differs past it is a real difference, refused and named with the spellings
+    the comparison mapped, and the area is kept."""
+    cfg, _root = native_library
+    base = _renamed_drive(cfg, tmp_path)
+    _stage(cfg, silence, "One.flac")
+    real = rehearsal.mapped
+
+    def planted(value, pairs):
+        back = real(value, pairs)
+        return [
+            line.replace("One.flac", "Uno.flac") if "columns.FolderPath" in line else line
+            for line in back
+        ]
+
+    monkeypatch.setattr(rehearsal, "mapped", planted)
+
+    code, refused = _rehearse()
+
+    assert code != int(ExitCode.OK), refused
+    cause = refused["cause"]
+    assert cause["reason"] == "decision-stale", refused
+    differs = cause["detail"]["differs"]
+    assert any(
+        line.startswith("- ") and "FolderPath" in line and "Uno.flac" in line for line in differs
+    )
+    assert any(
+        line.startswith("+ ") and "FolderPath" in line and "One.flac" in line for line in differs
+    )
+    assert len(differs) == 2, differs
+    # The message names the field and both spellings it compared under.
+    message = cause["message"]
+    assert "FolderPath" in message
+    area_folder = cause["detail"]["mapped"]
+    assert any(
+        scratch.startswith(base + "/") and live.startswith(base + "/")
+        for scratch, live in area_folder
+    )
+    for scratch, live in area_folder:
+        assert scratch in message and live in message
+    (volume, local) = cause["detail"]["rehearsal_area"]
+    assert Path(volume).is_dir() and Path(local).is_dir()
+    assert _staged_names(cfg) == ["One.flac"]
+    assert _landed_rows(cfg) == []
+
+
+def test_on_a_drive_recorded_as_its_own_mount_the_rehearsal_is_as_it_was(
+    native_library, silence, tmp_path
+):
+    """A library whose base drive is its mount stores the mounted spelling, so
+    the stored pair adds nothing and the rehearsal compares equal as before."""
+    cfg, _root = native_library
+    conn = sqlite3.connect(cfg.library.db_path)
+    conn.execute(
+        "UPDATE djmdProperty SET BaseDBDrive = ?, CurrentDBDrive = ?",
+        (str(tmp_path) + "/", str(tmp_path) + "/"),
+    )
+    conn.commit()
+    conn.close()
+    _stage(cfg, silence, "One.flac")
+
+    code, rehearsed = _rehearse()
+
+    assert code == int(ExitCode.OK), rehearsed
+    (item,) = rehearsed["data"]["items"]
+    assert item["row"]["FolderPath"] == str(_music(cfg) / "One.flac")
+    code, live = drive(_land())
+    assert code == int(ExitCode.DECISION_REQUIRED), live
+    assert "equal to this plan's" in live["cause"]["detail"]["shown"]["rehearsal"]
+
+
+def test_mapped_applies_the_longest_scratch_spelling_first_and_ignores_an_empty_one():
+    """A pair whose scratch spelling holds another's must not be half mapped by
+    the shorter one, whichever order the caller gave them in."""
+    short = ("/Volumes/X/area", "/Volumes/X/live")
+    long = ("/old/Volumes/X/area", "/old/stored")
+    value = {"a": "/old/Volumes/X/area/Music/a.flac", "b": ["/Volumes/X/area/Music/b.flac"]}
+
+    for pairs in ((short, long), (long, short)):
+        assert rehearsal.mapped(value, pairs + (("", "/nowhere"),)) == {
+            "a": "/old/stored/Music/a.flac",
+            "b": ["/Volumes/X/live/Music/b.flac"],
+        }
