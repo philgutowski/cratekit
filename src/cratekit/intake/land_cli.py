@@ -1530,7 +1530,7 @@ REHEARSAL_LINES_SHOWN = 40
 
 def rehearsal_key(planned: landing.Plan) -> dict[str, str]:
     """What a live landing and its rehearsal share: the staging folder and the batch."""
-    return {"folder": str(planned.folder), "batch": planned.batch}
+    return {"folder": str(planned.folder.resolve()), "batch": planned.batch}
 
 
 def plan_lines(
@@ -1617,7 +1617,9 @@ def _rehearse_native(
     A FAILURE KEEPS THE AREA AND NAMES IT, so whoever reads the refusal can
     look at what the rehearsal saw. A rehearsal that ends removes it.
     """
-    before = rehearsal.witness(cfg, (planned.folder, target))
+    before = rehearsal.witness(
+        cfg, (planned.folder, Path(cfg.library.root) / cfg.library.music_dir, target)
+    )
     area = rehearsal.open_area(cfg, ctx.run.run_id, files=planned.items, staging=planned.folder)
     try:
         facts, payload, lines = _rehearse_in(
@@ -1694,24 +1696,27 @@ def _rehearse_in(
         rows = planner(cfg, planned, target)(db)
         payload = payload_of(rows)
         lines = plan_lines(planned, rows, target=target, archived=archived)
+        # THE AREA'S PLAN IS MADE OUTSIDE THE REDIRECTION, reading the same
+        # installation state the live plan read (a pass's jobs, a set's job),
+        # so the only difference between the two plans is where the files are.
         staged = landing.plan(area.staging, area.cfg, planned.batch)
         scratch_target = landing.target_dir(area.cfg, planned.batch)
-        with rehearsal.redirected(area):
-            scratch_rows = planner(area.cfg, staged, scratch_target)(db)
-            back = rehearsal.mapped(
-                plan_lines(staged, scratch_rows, target=scratch_target, archived=archived),
-                ((str(area.staging), str(planned.folder)), (str(scratch_target), str(target))),
+        scratch_rows = planner(area.cfg, staged, scratch_target)(db)
+        back = rehearsal.mapped(
+            plan_lines(staged, scratch_rows, target=scratch_target, archived=archived),
+            ((str(area.staging), str(planned.folder)), (str(scratch_target), str(target))),
+        )
+        differ = rehearsal.differing(lines, back)
+        if differ:
+            raise refuse(
+                "decision-stale",
+                f"the plan made at the rehearsal area is not the live plan in "
+                f"{len(differ)} line(s), so nothing was applied there: "
+                + "; ".join(differ[:REHEARSAL_LINES_SHOWN]),
+                origin=_ORIGIN,
+                detail={"differs": differ},
             )
-            differ = rehearsal.differing(lines, back)
-            if differ:
-                raise refuse(
-                    "decision-stale",
-                    f"the plan made at the rehearsal area is not the live plan in "
-                    f"{len(differ)} line(s), so nothing was applied there: "
-                    + "; ".join(differ[:REHEARSAL_LINES_SHOWN]),
-                    origin=_ORIGIN,
-                    detail={"differs": differ},
-                )
+        with rehearsal.redirected(area):
             session.assert_backup_acknowledged(area.cfg)
             rows_before = _active_rows(db)
             with landing.batch_lock(planned.batch):
