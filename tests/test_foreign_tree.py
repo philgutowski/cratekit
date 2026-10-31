@@ -293,3 +293,30 @@ def test_a_tree_declared_with_the_folders_name_is_refused_so_none_adopts_it(sect
     with pytest.raises(taxonomy.TaxonomyError) as excinfo:
         taxonomy.load_taxonomy(text.replace(f'display = "{display}"', 'display = "DEADCA7"', 1))
     assert f"[{section}] display 'DEADCA7'" in str(excinfo.value)
+
+
+def test_a_push_that_lands_while_a_handle_is_open_refuses_that_handles_commit(
+    library, cloud_sync_off  # noqa: F811 - the imported fixtures
+):
+    """Two writers on one library, serialised by refusal rather than interleaved.
+
+    The push happens after this handle read the subtree, so its next commit
+    finds rows that were not there at open, and is refused rather than landing
+    over a library it no longer describes. A handle opened after the push
+    commits the same write.
+    """
+    path = library / "db" / "master.db"
+    _build_disposable_database(path)
+    db = W.open_db(path, unlock=False)
+    try:
+        dc7.push(path, ("1", "2"))
+        db.create_playlist("mine at the top")
+        assert "appeared under DEADCA7's folder" in _refused(db)
+    finally:
+        W.close_db(db)
+    db = W.open_db(path, unlock=False)
+    try:
+        db.create_playlist("mine at the top")
+        W.commit_guarded(db)
+    finally:
+        W.close_db(db)

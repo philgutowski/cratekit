@@ -136,6 +136,30 @@ def written(db_path: Path | str, pushed: Pushed) -> dict[str, list[tuple]]:
         conn.close()
 
 
+def push_analysis_files(share: Path) -> dict[Path, tuple[bytes, int]]:
+    """The analysis files a push writes for its grid and waveforms, under ``share``.
+
+    Answers each file's bytes and modification time, so a test can assert no
+    step rewrote, moved or removed one.
+    """
+    folder = Path(share) / "PIONEER" / "USBANLZ" / "dc7" / "0001"
+    folder.mkdir(parents=True, exist_ok=True)
+    written: dict[Path, tuple[bytes, int]] = {}
+    for suffix in ("DAT", "EXT", "2EX"):
+        path = folder / f"ANLZ0000.{suffix}"
+        path.write_bytes(f"PMAI pushed {suffix}".encode("ascii"))
+        written[path] = (path.read_bytes(), path.stat().st_mtime_ns)
+    return written
+
+
+def analysis_files_now(files: dict[Path, tuple[bytes, int]]) -> dict[Path, tuple[bytes, int]]:
+    """The same files read again, absent ones as ``None``."""
+    return {
+        path: (path.read_bytes(), path.stat().st_mtime_ns) if path.exists() else None
+        for path in files
+    }
+
+
 def nested_namesake(db_path: Path | str, parent_id: str, node_id: str = "88900") -> str:
     """A folder named ``DEADCA7`` BELOW the root, under ``parent_id``: a namesake."""
     conn = sqlite3.connect(db_path)
@@ -151,4 +175,13 @@ def nested_namesake(db_path: Path | str, parent_id: str, node_id: str = "88900")
     return node_id
 
 
-__all__ = ["FOLDER", "FOLDER_ID", "Pushed", "nested_namesake", "push", "written"]
+__all__ = [
+    "FOLDER",
+    "FOLDER_ID",
+    "Pushed",
+    "analysis_files_now",
+    "nested_namesake",
+    "push",
+    "push_analysis_files",
+    "written",
+]
