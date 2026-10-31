@@ -442,8 +442,9 @@ label and no status. Its hold is its own comment headed `Started`, and its
 plan, progress notes, brainstorm, set-aside and landing are comments headed
 `Plan`, `Progress`, `Brainstorm`, `Needs the machine` and `Landed`; Phillip's
 answer is any comment without the session footer after the question. **The
-cloud builds three cards at once**, decided 2026-10-28 for the backlog
-(`CLOUD_LANES` in `scripts/board.py`): each worker merges the latest `main`
+cloud builds five cards at once**, three decided 2026-10-28 for the backlog
+and raised to five by Phillip on 2026-10-31 (`CLOUD_LANES` in
+`scripts/board.py`): each worker merges the latest `main`
 into its branch and runs the battery again before it merges, so two builders
 landing in either order is the case the repository was already built for
 (restart fragments, residuals numbered at landing, per module pins). A hold
