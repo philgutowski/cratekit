@@ -524,6 +524,10 @@ def test_a_landing_nothing_recorded_refuses_rather_than_reading_empty(native_lib
 
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "analysis-check-landing-unknown"
+    # NO LANDING RECORDED, said as that and not as a landing whose rows went:
+    # the two share a slug, and the mutation table's zero on this guard was the
+    # sentence nothing pinned.
+    assert "no closed landing is recorded" in envelope["cause"]["message"]
 
 
 def test_an_empty_analyze_playlist_falls_to_every_row_not_analysed(native_library, silence):
