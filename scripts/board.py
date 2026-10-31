@@ -1601,7 +1601,7 @@ HEAD_QUESTION = "question for phillip"
 HEAD_MACHINE = "needs the machine"
 HEAD_LANDED = "landed"
 HEAD_WITHDRAWN = "withdrawn"
-# Phillip answers on the decisions page, and the dispatcher carries the answer
+# Phillip answers on the decisions page, and the coordinator carries the answer
 # to the card in a comment of its own, which the harness footer marks as a
 # session's. Under this heading it is read as his reply, never as a hold.
 HEAD_ANSWER = "answer from phillip"

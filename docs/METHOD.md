@@ -416,18 +416,17 @@ rules above, and `docs/history/` has how they ran.
 
 ## The cloud lane, decided 2026-10-27
 
-**The cloud is where Cratekit is built.** A dispatcher, one long lived cloud
-session with the repository attached, fills the cloud's lanes with fresh
-worker sessions on Opus 5.5, one card each, following the `cloud-dispatch`
-skill. A scheduled task wakes it every hour, and a worker wakes it the moment
-it takes or frees a lane. A scheduled task made from the web dialog came out
-as a chat task with no repository twice on 2026-10-27, which is why the
-dispatcher exists: a session it creates carries the repository. Each worker
-runs the `cloud-unit` skill, in the repository's Claude Code skills
-directory, which is this file's pipeline with what a cloud container changes:
-it takes its card, brainstorms it if it is an idea,
-plans, builds, reviews, measures the mutation table, writes the record,
-opens a pull request, and merges it to `main` with the closing trailer once
+**The cloud is where Cratekit is built.** The coordinator, the Claude that
+talks with Phillip in his Claude project's chat, turns each idea or bug he
+brings into a card and fills the cloud's lanes with fresh build threads on
+Opus 5.5, one card each, waking hourly to fill any lane that freed. It
+replaced the lane dispatcher, a long lived cloud session woken by a
+scheduled task, which ran from 2026-10-27 and was retired on 2026-10-31.
+Each build thread runs the `cloud-unit` skill, in the repository's Claude
+Code skills directory, which is this file's pipeline with what a cloud
+container changes: it takes its card, brainstorms it if it is an idea, plans,
+builds, reviews, measures the mutation table, writes the record, opens a pull
+request, and merges it to `main` with the closing trailer once
 CI on its head is green (U158). Phillip authorized the cloud to write `main`
 on 2026-10-27, and a pull request the worker merges itself is that same
 authority with a record and a CI run before the merge rather than after it.
@@ -456,15 +455,15 @@ resumes it from its pushed branch.
 decided 2026-10-28. A worker that reaches one, a brainstorm's questions or a
 question a brief leaves open, writes each question there as a multiple choice
 with its recommendation first, says so on the card, and moves to the next
-card. Phillip answers on the page whenever he likes; the dispatcher, at its
-next `Dispatch`, posts each answer on its card under `Answer from Phillip`
+card. Phillip answers on the page whenever he likes; the coordinator posts
+each answer on its card under `Answer from Phillip`
 (which `board.py cloud` reads as his reply and offers the card as
 `answered`) or sends it to the session that asked, and marks it relayed.
 Any session, attended or not, asks him this way rather than stopping.
 
 **Opus 5.5 at high effort brainstorms, plans and builds; Fable at high
-effort reviews.** The project settings fix the effort, the scheduled task
-fixes the session's model, and the review is the `fable-reviewer` agent
+effort reviews.** The coordinator starts each build thread on Opus 5.5 at
+high effort, and the review is the `fable-reviewer` agent
 whatever the session runs. A session on another model hands the plan and the
 build to the `opus-builder` agent. The plan is posted on the card rather than
 proposed in plan mode, because plan mode waits for an approval nobody is
