@@ -300,3 +300,79 @@ def test_a_collection_read_before_the_commit_does_not_hide_the_landed_rows(
     assert code == int(ExitCode.OK), acted
     assert acted["data"]["totals"]["filing"] == filing.FILED
     assert _homes(cfg, _content_id(cfg, "One.flac")) != set()
+
+
+# ---------------------------------------------------------------------------
+# The parts a landing composes, each held to its own rule
+# ---------------------------------------------------------------------------
+
+
+def test_a_landed_row_the_tree_could_not_place_refuses_before_the_ledger_is_marked():
+    """The adopt worker's rule (R-148): a skipped membership stops the filing."""
+    from types import SimpleNamespace
+
+    from cratekit.core.cause import CratekitError
+
+    filing._refuse_unplaced(SimpleNamespace(skipped=()))
+    skipped = SimpleNamespace(skipped=(SimpleNamespace(requested="Deep House / Mid"),))
+
+    with pytest.raises(CratekitError) as caught:
+        filing._refuse_unplaced(skipped)
+
+    assert caught.value.cause.reason == "adopt-entries-failed"
+    assert caught.value.cause.detail["unplaced"] == ["Deep House / Mid"]
+
+
+def test_a_band_the_taxonomy_declares_no_sub_for_predicts_undeclared(monkeypatch):
+    """The plan files such a track nowhere, so the prediction must say so too."""
+    from cratekit.adopt import plan as plan_engine
+    from cratekit.adopt.scan import Disposition
+
+    monkeypatch.setattr(plan_engine, "_sub_for", lambda *_args: None)
+
+    place = plan_engine.predicted_place(DECLARED, "Deep House", 7, vox=False)
+
+    assert place == plan_engine.Predicted(disposition=Disposition.UNDECLARED)
+
+
+def test_an_entry_whose_vocal_is_not_added_reads_no_vocal_sub():
+    """A vocal sub the plan will not write is not a place the landing predicted."""
+    from cratekit.adopt import plan as plan_engine
+    from cratekit.adopt.scan import Disposition, Readability
+
+    entry = plan_engine.PlanEntry(
+        entry_id="e",
+        content_id="9",
+        recorded="One.flac",
+        disposition=Disposition.ROUTE,
+        category=next(iter(Readability)),
+        genre="Deep House",
+        tree=DECLARED.tree.id,
+        bucket="deep_house",
+        sub="mid",
+        vocal=plan_engine.VOCAL_PRESENT,
+        vocal_sub="vocal",
+    )
+
+    assert plan_engine.Predicted.of(entry).vocal_sub == ""
+    added = replace(entry, vocal=plan_engine.VOCAL_ADD)
+    assert plan_engine.Predicted.of(added).vocal_sub == "vocal"
+
+
+def test_the_census_a_landing_files_walks_only_the_rows_it_made(monkeypatch):
+    """Scope names the landed ids; every other row stays out of the scan."""
+    from types import SimpleNamespace
+
+    rows = (SimpleNamespace(content_id="1"), SimpleNamespace(content_id="2"))
+    scanned: list[tuple] = []
+    monkeypatch.setattr(apply_cli.collection, "read_collection", lambda _cfg: rows)
+    monkeypatch.setattr(apply_cli.collection, "prefix_rules", lambda _cfg: ())
+    monkeypatch.setattr(
+        apply_cli.scan, "scan_rows", lambda got, *_a, **_k: scanned.append(tuple(got)) or ()
+    )
+    cfg = SimpleNamespace(library=SimpleNamespace(root="/library"))
+
+    apply_cli.census(cfg, DECLARED, scope=frozenset({"2"}))
+    apply_cli.census(cfg, DECLARED)
+
+    assert [[row.content_id for row in got] for got in scanned] == [["2"], ["1", "2"]]
