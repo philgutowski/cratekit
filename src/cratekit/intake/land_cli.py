@@ -871,10 +871,19 @@ def intake_land(ctx) -> Envelope:
 # ---------------------------------------------------------------------------
 
 
-def _year_folder(cfg: config.Config, planned: landing.Plan) -> Path:
-    """The year folder a native landing files its batch under, which a rehearsal watches."""
+def _filed_watch(cfg: config.Config, planned: landing.Plan) -> tuple[Path, ...]:
+    """The live folders a native landing could file its batch in, which a rehearsal watches.
+
+    The year folder the batch name or today names, where a new folder would
+    appear, and for a batch landed into again by its name the folder recorded
+    for it and that folder's own year folder, which may be another year's.
+    """
     when, _said = shelve.filed_parts(planned.batch, on=batch_name.today())
-    return shelve.processed_root(cfg) / f"{when.year}"
+    watched = [shelve.processed_root(cfg) / f"{when.year}"]
+    again = batch_name.filed_folders(cfg).get(planned.batch)
+    if again is not None:
+        watched.extend((Path(again).parent, Path(again)))
+    return tuple(dict.fromkeys(watched))
 
 
 def _folder(rows: native.NativePlan) -> Path:
@@ -1709,7 +1718,12 @@ def _rehearse_native(
     look at what the rehearsal saw. A rehearsal that ends removes it.
     """
     before = rehearsal.witness(
-        cfg, (planned.folder, Path(cfg.library.root) / cfg.library.music_dir, _year_folder(cfg, planned))
+        cfg,
+        (
+            planned.folder,
+            Path(cfg.library.root) / cfg.library.music_dir,
+            *_filed_watch(cfg, planned),
+        ),
     )
     area = rehearsal.open_area(cfg, ctx.run.run_id, files=planned.items, staging=planned.folder)
     try:

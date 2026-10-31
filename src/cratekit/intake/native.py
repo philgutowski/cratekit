@@ -2339,7 +2339,7 @@ def _record_landing_commit(
         record.detail[BATCH_PLAYLIST_KEY] = kept
     # AND THE BATCH AND ITS FILED FOLDER (U164), so the next landing of the
     # same name goes back to the folder and the name stays taken.
-    if plan.folder is not None and plan.batch and rows > 0:
+    if plan.folder is not None and plan.batch:
         record.detail[FILED_BATCH_KEY] = {"batch": plan.batch, "folder": str(plan.folder)}
     # AND THE PASS (R-777), which is what ``sync mark --pass`` reads as the
     # proof this pass landed. Only with the commit, never for a plan.
