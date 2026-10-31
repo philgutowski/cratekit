@@ -702,3 +702,20 @@ def test_a_named_landing_whose_every_row_left_the_collection_refuses(native_libr
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "analysis-check-landing-unknown"
     assert "has left the collection" in envelope["cause"]["message"]
+
+
+def test_a_removed_dyn_mark_does_not_excuse_a_variable_grid(native_library, silence):
+    cfg, _root = native_library
+    _land(cfg, silence, "2026-10-31_five", FIVE)
+    for stem in FIVE:
+        _visit(cfg, stem, tempos=VARIABLE_GRID if stem == "Charlie" else CONSTANT_GRID)
+    _mark_dyn(cfg, "Charlie")
+    conn = sqlite3.connect(cfg.library.db_path)
+    with conn:
+        conn.execute("UPDATE djmdSongMyTag SET rb_local_deleted = 1 WHERE MyTagID = 't-dyn'")
+    conn.close()
+
+    code, envelope = drive(VERB)
+
+    assert code == int(ExitCode.LIBRARY_PREREQUISITE), envelope
+    assert _items(envelope)["Charlie"]["dyn"] is False

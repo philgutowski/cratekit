@@ -1,0 +1,253 @@
+name = "u167"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_file_kind"
+description = "grid_ticks: accept any first four bytes, so a file that is not an analysis file is walked"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''    if kind != _FILE_KIND:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M2_file_length"
+description = "grid_ticks: drop the stated length against the size, so a file cut off mid write is walked"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''    if file_length != len(data):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M3_tag_fits"
+description = "grid_ticks: drop the tag fits check, so an overrunning or undersized tag is parsed"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''        if tag_length < _HEADER.size or offset + tag_length > len(data):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M4_grid_parse_failure"
+description = "grid_ticks: read a grid tag that will not parse as a file with no grid"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''                raise ValueError(f"the grid tag would not parse: {exc}") from exc'''
+new = '''                return None'''
+
+[[rows]]
+id = "M5_short_header"
+description = "grid_ticks: drop the short file refusal, so ten bytes reach the unpack"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''    if len(data) < _HEADER.size:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M6_constant_test"
+description = "read_grid: call a grid constant when its ends are within a whole beat per minute"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''        state=CONSTANT if low == high else VARIABLE, beats=len(ticks), low=low, high=high'''
+new = '''        state=CONSTANT if high - low < 1000 else VARIABLE, beats=len(ticks), low=low, high=high'''
+
+[[rows]]
+id = "M7_missing_folded"
+description = "read_grid: read a missing analysis file as a file with no grid"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''        return Grid(state=MISSING, why=f"no analysis file at {path}")'''
+new = '''        return Grid(state=ABSENT, why=f"no analysis file at {path}")'''
+
+[[rows]]
+id = "M8_empty_grid"
+description = "read_grid: read a grid tag with no beats as constant"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''    if not ticks:
+        return Grid(state=ABSENT, why=f"{path} holds no beat grid")'''
+new = '''    if ticks is None:
+        return Grid(state=ABSENT, why=f"{path} holds no beat grid")
+    if not ticks:
+        return Grid(state=CONSTANT)'''
+
+[[rows]]
+id = "M9_relative_key"
+description = "key_relation: the relative major or minor reads far, not one step"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''    if number == other_number:
+        return KEY_ONE_STEP'''
+new = '''    if number == other_number:
+        return KEY_FAR'''
+
+[[rows]]
+id = "M10_wheel_wrap"
+description = "key_relation: forget the wheel wraps, so 12 and 1 read far"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''    if letter == other_letter and (number - other_number) % 12 in (1, 11):'''
+new = '''    if letter == other_letter and abs(number - other_number) == 1:'''
+
+[[rows]]
+id = "M11_sigmas"
+description = "KEY_AGREEMENT_SIGMAS: two standard errors rather than three"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''KEY_AGREEMENT_SIGMAS = 3.0'''
+new = '''KEY_AGREEMENT_SIGMAS = 2.0'''
+
+[[rows]]
+id = "M12_floor_rate"
+description = "key_floor: take the rate over differs alone rather than over every compared key"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''    total = measured["equal"] + measured["differs"]'''
+new = '''    total = measured["differs"]'''
+
+[[rows]]
+id = "M13_suspect_state_guard"
+description = "suspect_grid: judge the grid of a row that is not analysed"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''        if self.state != ANALYSED:
+            return False
+        if self.grid.state == VARIABLE:'''
+new = '''        if self.grid.state == VARIABLE:'''
+
+[[rows]]
+id = "M14_dyn_excuses"
+description = "suspect_grid: a dyn mark no longer excuses a variable grid"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''            return not self.dyn'''
+new = '''            return True'''
+
+[[rows]]
+id = "M15_unread_suspect"
+description = "suspect_grid: a missing or unreadable grid on an analysed row is not suspect"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''        return self.grid.state in (ABSENT, MISSING, UNREADABLE)'''
+new = '''        return False'''
+
+[[rows]]
+id = "M16_suspect_outranks"
+description = "verdict: waiting outranks suspect"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''        if any(row.suspect_grid for row in self.rows) or self.key_suspect:
+            return SUSPECT
+        if self.counted(NOT_ANALYSED):
+            return WAITING'''
+new = '''        if self.counted(NOT_ANALYSED):
+            return WAITING
+        if any(row.suspect_grid for row in self.rows) or self.key_suspect:
+            return SUSPECT'''
+
+[[rows]]
+id = "M17_gone_counts_as_nothing"
+description = "verdict: drop the all gone case, so a scope of removed rows reads done"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''        if not self.rows or self.counted(GONE) == len(self.rows):'''
+new = '''        if not self.rows:'''
+
+[[rows]]
+id = "M18_unknown_landing"
+description = "resolve_scope: a named landing nothing recorded reads as an empty scope"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''        if not records:
+            unread = ('''
+new = '''        if False:
+            unread = ('''
+
+[[rows]]
+id = "M19_landing_without_rows"
+description = "resolve_scope: a named landing whose playlists hold no live row reads as an empty scope"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''        if not members:
+            raise refuse('''
+new = '''        if False:
+            raise refuse('''
+
+[[rows]]
+id = "M20_session_state"
+description = "_landed: a session is taken whatever its state, open or refused"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''            and record.state is session.SessionState.CLOSED
+            and str(session.SourceState.COMMITTED) in record.sources.values()
+        }'''
+new = '''        }'''
+
+[[rows]]
+id = "M21_name_wins"
+description = "resolve_scope: the playlist wins over a named pass when it holds rows"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''    if pass_name is not None or session_id is not None:
+        kind'''
+new = '''    if (pass_name is not None or session_id is not None) and not _analyze_members(db, declared, registry)[0]:
+        kind'''
+
+[[rows]]
+id = "M22_analysed_reading"
+description = "read_row: a row the clear would leave waiting is read as analysed"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''    if one.action != analyzed.CLEAR:'''
+new = '''    if one.why == analyzed.NOT_ANALYSED:'''
+
+[[rows]]
+id = "M23_waiting_exit"
+description = "analyze_check: waiting ends ok with exit 0 rather than pending"
+file = "src/cratekit/analysis/check_cli.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''    if verdict == rc.WAITING:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M24_suspect_exit"
+description = "analyze_check: suspect ends ok with exit 0 rather than refusing"
+file = "src/cratekit/analysis/check_cli.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''    if verdict == rc.SUSPECT:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M25_dyn_removed"
+description = "dyn_marked: a removed dyn membership still marks its row"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''                detail={"song_my_tag_id": str(getattr(song, "ID", ""))},
+            ):
+                continue'''
+new = '''                detail={"song_my_tag_id": str(getattr(song, "ID", ""))},
+            ):
+                pass'''
