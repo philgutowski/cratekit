@@ -612,3 +612,23 @@ def test_a_label_typed_on_a_resume_is_not_applied_and_says_so(cfg, folder, silen
     assert tag_cli.LABEL_ON_RESUME in [warning["code"] for warning in resumed["warnings"]]
     assert searcher.asked == [("", "a")]
     assert tags.read_genre_from_file(folder / "a.flac") == SPECIFIC
+
+
+def test_a_file_its_own_label_answered_for_is_never_named_as_outranked(
+    cfg, folder, silence, monkeypatch
+):
+    """The mutation table's one zero, E9: the reset of the file's tag on the label path.
+
+    Only a labelled file with NO picture reaches the return that carries the
+    tag, since it is searched for its art, so that is the file this drives.
+    """
+    registered("--genre", GENRE)
+    registered("--genre", "Progressive House", name="Sudbeat")
+    track(folder, silence, "a", label="Sudbeat", picture=False)
+    bound(monkeypatch, answering({"a": SearchHit(source=searchers.BEATPORT)}))
+    _job, resumed = sweep(str(folder), "--label", LABEL)
+    tagging = resumed["data"]["progress"]["tagging"]
+    assert tags.read_genre_from_file(folder / "a.flac") == "Progressive House"
+    assert tagging["label_genres"] == {"Sudbeat": 1}
+    assert tagging["label_tags"] == {}
+    assert tag_cli.LABEL_TAG_OUTRANKED not in [warning["code"] for warning in resumed["warnings"]]
