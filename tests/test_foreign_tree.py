@@ -154,6 +154,18 @@ def test_a_membership_added_to_a_pushed_playlist_is_refused(handle):
     assert dc7.written(path, pushed) == before
 
 
+def test_a_pushed_membership_rewritten_to_another_owner_is_refused(handle):
+    """Read by its new owner alone, the row would leave the push's playlist unseen."""
+    db, path, pushed = handle
+    before = dc7.written(path, pushed)
+    mine = db.create_playlist("mine at the top")
+    W.commit_guarded(db)
+    member = db.get_playlist_songs(PlaylistID=pushed.playlist_ids[0]).first()
+    member.PlaylistID = mine.ID
+    assert "membership" in _refused(db)
+    assert dc7.written(path, pushed) == before
+
+
 def test_a_playlist_made_inside_the_folder_is_refused(handle):
     db, path, pushed = handle
     before = dc7.written(path, pushed)

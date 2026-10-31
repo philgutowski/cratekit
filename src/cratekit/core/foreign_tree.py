@@ -256,7 +256,10 @@ def pending_touches(
                 found.append(f"moves the {_PLAYLISTS} row {key!r} into {OWNER}'s folder")
         elif table == _MEMBERSHIPS:
             owner = str(getattr(obj, "PlaylistID", ""))
-            if owner in ids:
+            # A pushed membership is asked by its own identifier too, so one
+            # whose owner is rewritten to another playlist is not read by its
+            # new owner alone.
+            if owner in ids or str(getattr(obj, "ID", "")) in reading.memberships:
                 found.append(
                     f"{'adds' if op == 'create' else 'changes'} a membership of the "
                     f"playlist {owner!r} in {OWNER}'s folder"

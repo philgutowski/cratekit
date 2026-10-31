@@ -2308,6 +2308,18 @@ def _check_deadca7_push(inputs: _Inputs) -> Finding:
             ),
         )
     database = next(entry for entry in ages if entry.portion is backup_facts.Portion.DATABASE)
+    if database.state is backup_facts.AgeState.RECORDED_IN_THE_FUTURE:
+        # A record backup.age.database calls unusable holds nothing here either.
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"DEADCA7 last pushed into rekordbox's database at {when}; whether this "
+                f"product's last backup holds it cannot be said, since that backup is "
+                f"recorded ahead of now (see backup.age.database)"
+            ),
+        )
     if database.state is backup_facts.AgeState.NEVER_RECORDED:
         return Finding(
             key=key,

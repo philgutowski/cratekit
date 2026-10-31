@@ -8432,3 +8432,16 @@ def test_a_backup_folder_that_cannot_be_read_is_said_as_unread_and_does_not_fail
     (support / doctor.DEADCA7_BACKUPS / "gone").symlink_to(tmp_path / "nowhere")
     finding = _push_check(configured, support)
     assert "cannot be said: its backup folder could not be read" in finding.detail
+
+
+def test_a_push_beside_a_backup_recorded_ahead_of_now_is_not_called_held(configured, tmp_path):
+    now = doctor_machines.green().now
+    backup_facts.record(
+        configured,
+        backup_facts.Portion.DATABASE,
+        completed_at=now + timedelta(days=10),
+        destination="remote:backups",
+    )
+    finding = _push_check(configured, _deadca7(tmp_path, pushed_at=now - timedelta(days=1)))
+    assert "cannot be said, since that backup is recorded ahead of now" in finding.detail
+    assert "which holds it" not in finding.detail
