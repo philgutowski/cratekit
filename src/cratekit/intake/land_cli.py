@@ -46,7 +46,7 @@ from pathlib import Path
 from typing import Any, Callable, TypeVar
 
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import analysis_store, config, jobs, rb_writer, session
+from cratekit.core import analysis_store, config, jobs, rb_writer, rehearsal, session
 from cratekit.core.cause import CratekitError, Outcome, Remedy, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.favorites import backfill, placement
@@ -285,6 +285,18 @@ def build_land(parser, entry) -> None:
             "also writes the whole set, owned and landed tracks in set order, as one "
             "permanent playlist under the INSPIRATION folder, in the same commit as "
             "the batch (database native intake trees only)"
+        ),
+    )
+    parser.add_argument(
+        "--rehearse",
+        action="store_true",
+        help=(
+            "rehearse the landing instead of asking to apply it: copy the database "
+            "and the library state to a scratch area of this run's own, apply the "
+            "landing there over clones of the staged files, read the copy back, "
+            "report the plan's digest, and remove the area; nothing live is "
+            "written or moved, and the live landing then says whether its plan "
+            "equals this rehearsal's (database native intake trees only)"
         ),
     )
     set_playlist.add_word_arguments(parser)
@@ -685,6 +697,17 @@ def intake_land(ctx) -> Envelope:
     if ctx.args.set_job:
         set_playlist.assert_native(medium, landing=True)
     label = _label_flag(ctx.args.label, manifest=manifest, medium=medium, cfg=cfg)
+    rehearse = bool(getattr(ctx.args, "rehearse", False))
+    if rehearse and not medium.native:
+        raise refuse(
+            "intake-list-unusable",
+            "--rehearse rehearses a landing into the database on a copy of it, and "
+            "this intake tree is on the xml bridge, where a landing writes no "
+            "database; drop --rehearse, nothing was copied",
+            remedy=Remedy.FIX_COMMAND_LINE,
+            origin=_ORIGIN,
+            detail={"tree_id": declared.intake.id if declared is not None else None},
+        )
     if medium.native:
         # AND WHICH FILES ARE HEARTS (U120), read from the same jobs the same
         # way, each with the month the account dated it into. The native
@@ -707,6 +730,7 @@ def intake_land(ctx) -> Envelope:
             claims=claims,
             hearted=hearted,
             owned=owned,
+            rehearse=rehearse,
         )
     if ctx.args.export is None and declared is not None:
         raise refuse(
@@ -835,6 +859,20 @@ def intake_land(ctx) -> Envelope:
 # ---------------------------------------------------------------------------
 
 
+def _native_identity(
+    planned: landing.Plan, rows: native.NativePlan, *, target: Path
+) -> dict[str, Any]:
+    """What the native gate digests: the folder, batch, target, files and rows."""
+    return {
+        "kind": "land-native",
+        "folder": str(planned.folder),
+        "batch": planned.batch,
+        "target": str(target),
+        "files": planned.digest,
+        "collection": rows.digest,
+    }
+
+
 def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: Path) -> dict:
     """The plan as the approval gate shows it: one item per file, with its row.
 
@@ -877,14 +915,7 @@ def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: P
             entry["voxlevel"] = row.voxlevel
             entry["vox"] = row.vox
         items.append(entry)
-    identity = {
-        "kind": "land-native",
-        "folder": str(planned.folder),
-        "batch": planned.batch,
-        "target": str(target),
-        "files": planned.digest,
-        "collection": rows.digest,
-    }
+    identity = _native_identity(planned, rows, target=target)
     if rows.favorites is not None and rows.favorites.skipped:
         # THE SKIP IS AN ITEM OF THE PLAN, since the payload's keys are closed
         # (``plan/1``) and the apply reports it back unchanged.
@@ -1210,6 +1241,7 @@ def _land_native(
     claims: tuple[account_playlists.Claim, ...] = (),
     hearted: tuple[account_playlists.Hearted, ...] = (),
     owned: tuple[account_playlists.HeartRow, ...] = (),
+    rehearse: bool = False,
 ) -> Envelope:
     """Plan the rows against the database, ask, then move and write.
 
@@ -1249,6 +1281,20 @@ def _land_native(
     if not planned.items:
         identity = {"kind": "land-native", "folder": str(planned.folder), "batch": planned.batch}
         empty = {"digest": digest_of(identity), "items": [], "totals": {"count": 0}, "chunk": None}
+        if rehearse:
+            # NOTHING TO REHEARSE, and never the owned hearts' write instead: a
+            # rehearsal asks no gate, so it must not reach one (U162).
+            if owned:
+                raise refuse(
+                    "intake-list-unusable",
+                    f"{planned.folder} holds no file to land, and a rehearsal of the "
+                    f"pass's {len(owned)} owned heart(s) alone is not built; run the "
+                    f"landing without --rehearse to plan them, nothing was copied",
+                    remedy=Remedy.FIX_COMMAND_LINE,
+                    origin=_ORIGIN,
+                    detail={"folder": str(planned.folder), "owned_hearts": len(owned)},
+                )
+            return ctx.envelope(data=empty, outcome=Outcome.NO_OP)
         if owned:
             return _place_owned(ctx, cfg, spec, declared=declared, owned=owned, empty=empty)
         return ctx.envelope(data=empty, outcome=Outcome.NO_OP)
@@ -1258,7 +1304,6 @@ def _land_native(
     # without a snapshot copy of anything. Once here, and again by the engine
     # before its first move, as the xml landing's preflight is.
     landing.preflight_native(planned, cfg=cfg)
-    files = [(item, target / item.name) for item in planned.items]
     # THE SET AND ITS NAME BEFORE THE GATE (U121): a job that is not a finished
     # set, and a name the page and the flags cannot complete, refuse with the
     # files still in staging and nothing shown.
@@ -1283,30 +1328,105 @@ def _land_native(
         pass_name=ctx.args.pass_name or planned.batch,
     )
 
-    def set_plan(db) -> set_playlist.SetPlaylistPlan | None:
-        if set_job is None or words is None:
-            return None
-        made = set_playlist.plan_for_landing(
-            cfg,
-            db,
-            declared,
-            set_job,
-            words,
-            reports,
-            files=files,
-            posted=getattr(ctx.args, "posted", None),
-        )
-        set_planned.append(made)
-        return made
+    def planner(
+        cfg: config.Config, planned: landing.Plan, target: Path
+    ) -> Callable[[Any], native.NativePlan]:
+        # ONE PLANNER, TWO PLACES (U162): the live landing plans its own staging
+        # folder and music folder, and a rehearsal plans the same files again at
+        # its scratch area, through this same code, to apply them there.
+        files = [(item, target / item.name) for item in planned.items]
 
-    def label_plan(db) -> label_filing.LabelPlan | None:
-        # A MANIFEST WITH NO LABEL ROW FILES NOTHING, and asks nothing of the
-        # catalogue tree, as the bridge's own check returns early on it.
-        if manifest is not None and manifest.rows:
-            return label_filing.plan_for_manifest(cfg, db, medium, manifest=manifest, files=files)
-        if label is not None:
-            return label_filing.plan_for_label(db, medium, label=label, files=files)
-        return None
+        def set_plan(db) -> set_playlist.SetPlaylistPlan | None:
+            if set_job is None or words is None:
+                return None
+            made = set_playlist.plan_for_landing(
+                cfg,
+                db,
+                declared,
+                set_job,
+                words,
+                reports,
+                files=files,
+                posted=getattr(ctx.args, "posted", None),
+            )
+            set_planned.append(made)
+            return made
+
+        def label_plan(db) -> label_filing.LabelPlan | None:
+            # A MANIFEST WITH NO LABEL ROW FILES NOTHING, and asks nothing of the
+            # catalogue tree, as the bridge's own check returns early on it.
+            if manifest is not None and manifest.rows:
+                return label_filing.plan_for_manifest(
+                    cfg, db, medium, manifest=manifest, files=files
+                )
+            if label is not None:
+                return label_filing.plan_for_label(db, medium, label=label, files=files)
+            return None
+
+        def plan(db) -> native.NativePlan:
+            # THE INBOX PLAYLIST FOR A SET (U135): named for the set, and an earlier
+            # landing of the same job's playlist is added to under its first name.
+            # The batch folder stays the dated (or --name) landing name so two
+            # landings never share a folder; only the playlist joins.
+            inbox_name = planned.batch
+            batch_playlist_id = ""
+            set_job_id = ""
+            leftovers: tuple[str, ...] = ()
+            inbox_found_by_name = False
+            if set_job is not None and words is not None:
+                set_job_id = set_job.job_id
+                root_id = native.anchored_intake_root(db, tree_id, registry)
+                recorded = native.recorded_inbox_playlist(cfg, db, set_job_id, root_id)
+                if recorded is not None:
+                    batch_playlist_id, inbox_name = recorded
+                else:
+                    inbox_name = set_playlist.frozen_name(set_job) or set_playlist.playlist_name(
+                        words
+                    )
+                    inbox_found_by_name = native.live_inbox_named(db, inbox_name, root_id)
+                leftovers = native.leftover_set_inbox(
+                    cfg, db, set_job_id, root_id, inbox_name, keep_id=batch_playlist_id
+                )
+            split, emptied = _native_split(
+                db,
+                cfg,
+                claims,
+                tree_id=tree_id,
+                registry=registry,
+                batch=inbox_name,
+                target=target,
+            )
+            return native.plan_rows(
+                cfg,
+                db,
+                tree_id=tree_id,
+                registry=registry,
+                batch=inbox_name,
+                files=files,
+                split=split,
+                unplanned_left=emptied,
+                pass_name=ctx.args.pass_name,
+                hearts=tuple(
+                    native.HeartItem(target=target / one.path.name, month=one.month, ref=one.ref)
+                    for one in hearted
+                ),
+                favorites_source=placement.source_name(declared),
+                owned_hearts=tuple(
+                    native.OwnedHeartItem(
+                        content_id=one.content_id, month=one.month, ref=one.ref, title=one.title
+                    )
+                    for one in backfill.owned_in_library(cfg, db, owned)
+                ),
+                set_plan=set_plan(db),
+                batch_playlist_id=batch_playlist_id,
+                set_job_id=set_job_id,
+                inbox_leftovers=leftovers,
+                inbox_found_by_name=inbox_found_by_name,
+                labels=label_plan(db),
+            )
+
+
+        return plan
 
     archive_notes: list[dict[str, str]] = []
 
@@ -1334,68 +1454,29 @@ def _land_native(
         shown = _native_shown(rows, folder=planned.folder, target=target)
         if archive_planned is not None:
             shown["account archive"] = archive_planned.shown
+        # THE REHEARSAL THIS PLAN IS COMPARED AGAINST (U162), named, and equal
+        # or not; a plan that differs prints the lines that differ.
+        shown.update(
+            rehearsal_facts(
+                planned,
+                digest=payload_of(rows)["digest"],
+                plan=plan_lines(planned, rows, target=target, archived=archive_planned),
+            )
+        )
         return shown
 
-    def plan(db) -> native.NativePlan:
-        # THE INBOX PLAYLIST FOR A SET (U135): named for the set, and an earlier
-        # landing of the same job's playlist is added to under its first name.
-        # The batch folder stays the dated (or --name) landing name so two
-        # landings never share a folder; only the playlist joins.
-        inbox_name = planned.batch
-        batch_playlist_id = ""
-        set_job_id = ""
-        leftovers: tuple[str, ...] = ()
-        inbox_found_by_name = False
-        if set_job is not None and words is not None:
-            set_job_id = set_job.job_id
-            root_id = native.anchored_intake_root(db, tree_id, registry)
-            recorded = native.recorded_inbox_playlist(cfg, db, set_job_id, root_id)
-            if recorded is not None:
-                batch_playlist_id, inbox_name = recorded
-            else:
-                inbox_name = set_playlist.frozen_name(set_job) or set_playlist.playlist_name(
-                    words
-                )
-                inbox_found_by_name = native.live_inbox_named(db, inbox_name, root_id)
-            leftovers = native.leftover_set_inbox(
-                cfg, db, set_job_id, root_id, inbox_name, keep_id=batch_playlist_id
-            )
-        split, emptied = _native_split(
-            db,
+    plan = planner(cfg, planned, target)
+
+    if rehearse:
+        return _rehearse_native(
+            ctx,
             cfg,
-            claims,
-            tree_id=tree_id,
-            registry=registry,
-            batch=inbox_name,
+            planned,
             target=target,
-        )
-        return native.plan_rows(
-            cfg,
-            db,
-            tree_id=tree_id,
-            registry=registry,
-            batch=inbox_name,
-            files=files,
-            split=split,
-            unplanned_left=emptied,
-            pass_name=ctx.args.pass_name,
-            hearts=tuple(
-                native.HeartItem(target=target / one.path.name, month=one.month, ref=one.ref)
-                for one in hearted
-            ),
-            favorites_source=placement.source_name(declared),
-            owned_hearts=tuple(
-                native.OwnedHeartItem(
-                    content_id=one.content_id, month=one.month, ref=one.ref, title=one.title
-                )
-                for one in backfill.owned_in_library(cfg, db, owned)
-            ),
-            set_plan=set_plan(db),
-            batch_playlist_id=batch_playlist_id,
-            set_job_id=set_job_id,
-            inbox_leftovers=leftovers,
-            inbox_found_by_name=inbox_found_by_name,
-            labels=label_plan(db),
+            planner=planner,
+            payload_of=payload_of,
+            archived=archive_planned,
+            declared=declared,
         )
 
     payload, landed = ask_then_write(
@@ -1435,6 +1516,256 @@ def _land_native(
         label_filing.assert_read_back(filed)
         warnings.extend(label_filing.unfiled_warning(filed.left))
     return ctx.envelope(data=_native_reported(payload, landed), warnings=warnings)
+
+
+#: The verb a rehearsal record names, so a live landing reads only its own (U162).
+REHEARSAL_VERB = "intake land"
+
+#: The warning a set landing's rehearsal carries: its account archive was not rehearsed.
+REHEARSAL_ARCHIVE_SKIPPED = "intake-rehearsal-archive-skipped"
+
+#: At most this many differing lines on a live gate screen; the rest are counted.
+REHEARSAL_LINES_SHOWN = 40
+
+
+def rehearsal_key(planned: landing.Plan) -> dict[str, str]:
+    """What a live landing and its rehearsal share: the staging folder and the batch."""
+    return {"folder": str(planned.folder.resolve()), "batch": planned.batch}
+
+
+def plan_lines(
+    planned: landing.Plan, rows: native.NativePlan, *, target: Path, archived=None
+) -> list[str]:
+    """The native plan as ``path = value`` lines: the gate's identity and the engine's."""
+    # NOT THE ENGINE'S OWN DIGEST, which is a hash of the plan lines below and
+    # so names every path in a form no mapping back can reach.
+    gate = {
+        key: value
+        for key, value in _native_identity(planned, rows, target=target).items()
+        if key != "collection"
+    }
+    if archived is not None:
+        gate = {**gate, "archive": archived.payload["digest"]}
+    return rehearsal.lines({"gate": gate, "plan": native.identity(rows)})
+
+
+def rehearsal_facts(planned: landing.Plan, *, digest: str, plan: list[str]) -> dict[str, Any]:
+    """The gate screen's lines naming the rehearsal a live plan is compared against, or none.
+
+    THE NEWEST REHEARSAL OF THE SAME FOLDER AND BATCH, named by its run and
+    time, and whether its digest equals this plan's. When it does not, the
+    lines only the rehearsal had and the lines only this plan has, so the
+    session reading the screen sees what moved and not merely that it moved.
+    No line at all when no rehearsal was kept: the screen is as it was.
+    """
+    found = rehearsal.latest(verb=REHEARSAL_VERB, key=rehearsal_key(planned))
+    if found is None:
+        return {}
+    equal = found.get("digest") == digest
+    facts: dict[str, Any] = {
+        "rehearsal": (
+            f"run {found.get('run_id')} at {found.get('at')}: digest {found.get('digest')}, "
+            + ("equal to this plan's" if equal else f"differs from this plan's {digest}")
+        )
+    }
+    if not equal:
+        lines = rehearsal.differing(found["plan"], plan)
+        shown = lines[:REHEARSAL_LINES_SHOWN]
+        if len(lines) > len(shown):
+            shown.append(f"and {len(lines) - len(shown)} more line(s)")
+        facts["differs from the rehearsal"] = shown
+    return facts
+
+
+def _active_rows(db) -> int:
+    from sqlalchemy import text
+
+    return int(
+        db.session.execute(
+            text("SELECT COUNT(*) FROM djmdContent WHERE rb_local_deleted = 0")
+        ).scalar()
+    )
+
+
+def _rehearse_native(
+    ctx,
+    cfg: config.Config,
+    planned: landing.Plan,
+    *,
+    target: Path,
+    planner: Callable[..., Callable[[Any], native.NativePlan]],
+    payload_of: Callable[[native.NativePlan], dict],
+    archived,
+    declared,
+) -> Envelope:
+    """Rehearse the landing on a scratch area of this run's own, then remove it (U162).
+
+    THE LIVE PLAN IS MADE FIRST, over the live staging folder and music folder
+    and against the database copy, so its digest is the one the live landing
+    will show; it is what the rehearsal reports and records. THEN THE SAME
+    FILES ARE PLANNED AGAIN AT THE AREA, over their clones and the area's music
+    folder, and applied there. The area's plan with every scratch path mapped
+    back to its live one must read line for line as the live plan, or nothing
+    is applied and the lines that differ are named: what the rehearsal applied
+    is the plan the live run will be asked, not a plan like it.
+
+    NOTHING LIVE IS WRITTEN OR MOVED. The live database file set is hashed and
+    the live staging and music folders listed before and after, and a change
+    is refused as the defect it would be. The account archive of a set
+    landing is account side and is never rehearsed; the report says so.
+
+    A FAILURE KEEPS THE AREA AND NAMES IT, so whoever reads the refusal can
+    look at what the rehearsal saw. A rehearsal that ends removes it.
+    """
+    before = rehearsal.witness(
+        cfg, (planned.folder, Path(cfg.library.root) / cfg.library.music_dir, target)
+    )
+    area = rehearsal.open_area(cfg, ctx.run.run_id, files=planned.items, staging=planned.folder)
+    try:
+        facts, payload, lines = _rehearse_in(
+            cfg,
+            planned,
+            area=area,
+            target=target,
+            planner=planner,
+            payload_of=payload_of,
+            archived=archived,
+            declared=declared,
+        )
+    except CratekitError as exc:
+        rehearsal.assert_untouched(before, kept=area.paths)
+        inner = exc.cause
+        raise refuse(
+            inner.reason,
+            f"{inner.message}; the rehearsal area is kept at "
+            f"{', '.join(str(path) for path in area.paths)}",
+            remedy=inner.remediation.remedy,
+            steps=inner.remediation.steps,
+            origin=_ORIGIN,
+            detail={**dict(inner.detail), "rehearsal_area": [str(path) for path in area.paths]},
+            inner=inner,
+        ) from exc
+    except KeyboardInterrupt as exc:
+        rehearsal.assert_untouched(before, kept=area.paths)
+        raise refuse(
+            "cancelled",
+            f"the rehearsal was interrupted; the rehearsal area is kept at "
+            f"{', '.join(str(path) for path in area.paths)}",
+            origin=_ORIGIN,
+            detail={"rehearsal_area": [str(path) for path in area.paths]},
+        ) from exc
+    except Exception as exc:
+        rehearsal.assert_untouched(before, kept=area.paths)
+        raise refuse(
+            "internal-error",
+            f"the rehearsal failed ({exc}); the rehearsal area is kept at "
+            f"{', '.join(str(path) for path in area.paths)}",
+            origin=_ORIGIN,
+            detail={"rehearsal_area": [str(path) for path in area.paths]},
+        ) from exc
+    rehearsal.assert_untouched(before, kept=area.paths)
+    rehearsal.remove(area)
+    facts["area removed"] = True
+    recorded = rehearsal.record(
+        ctx.run.run_id,
+        verb=REHEARSAL_VERB,
+        key=rehearsal_key(planned),
+        digest=payload["digest"],
+        plan=lines,
+        facts=facts,
+    )
+    facts["record"] = str(recorded)
+    data = {**payload, "totals": {**payload["totals"], "rehearsal": facts}}
+    warnings = []
+    if archived is not None:
+        warnings.append(
+            {
+                "code": REHEARSAL_ARCHIVE_SKIPPED,
+                "message": "the account archive this set landing would rename was planned "
+                "and digested and not rehearsed, since it is a write to the account",
+            }
+        )
+    return ctx.envelope(data=data, warnings=warnings)
+
+
+def _rehearse_in(
+    cfg: config.Config,
+    planned: landing.Plan,
+    *,
+    area: rehearsal.Area,
+    target: Path,
+    planner,
+    payload_of,
+    archived,
+    declared,
+) -> tuple[dict[str, Any], dict, list[str]]:
+    """Plan live, plan at the area, compare, apply at the area, read back. Answers the facts."""
+    db = rb_writer.open_db(area.database, require_closed=True, cfg=area.cfg)
+    try:
+        rows = planner(cfg, planned, target)(db)
+        payload = payload_of(rows)
+        lines = plan_lines(planned, rows, target=target, archived=archived)
+        # THE AREA'S PLAN IS MADE OUTSIDE THE REDIRECTION, reading the same
+        # installation state the live plan read (a pass's jobs, a set's job),
+        # so the only difference between the two plans is where the files are.
+        staged = landing.plan(area.staging, area.cfg, planned.batch)
+        scratch_target = landing.target_dir(area.cfg, planned.batch)
+        scratch_rows = planner(area.cfg, staged, scratch_target)(db)
+        back = rehearsal.mapped(
+            plan_lines(staged, scratch_rows, target=scratch_target, archived=archived),
+            ((str(area.staging), str(planned.folder)), (str(scratch_target), str(target))),
+        )
+        differ = rehearsal.differing(lines, back)
+        if differ:
+            raise refuse(
+                "decision-stale",
+                f"the plan made at the rehearsal area is not the live plan in "
+                f"{len(differ)} line(s), so nothing was applied there: "
+                + "; ".join(differ[:REHEARSAL_LINES_SHOWN]),
+                origin=_ORIGIN,
+                detail={"differs": differ},
+            )
+        # A NAME THE LIVE BATCH FOLDER ALREADY HOLDS IS HELD AT THE AREA TOO,
+        # by an empty file of that name, so the area's move refuses the same
+        # files the live move will and the facts say so. Occupancy is asked at
+        # the move and not in the plan, so the plans alone cannot see it.
+        for item in staged.items:
+            if (target / item.name).exists() or (target / item.name).is_symlink():
+                scratch_target.mkdir(parents=True, exist_ok=True)
+                (scratch_target / item.name).touch()
+        with rehearsal.redirected(area):
+            session.assert_backup_acknowledged(area.cfg)
+            rows_before = _active_rows(db)
+            with landing.batch_lock(planned.batch):
+                landed = landing.apply_native(
+                    staged, cfg=area.cfg, db=db, rows=scratch_rows, declared=declared
+                )
+            native.assert_rows_gridless(landed.collection)
+            native.assert_rows_identified(landed.collection)
+            rows_after = _active_rows(db)
+    finally:
+        rb_writer.close_db(db)
+    if not rb_writer.integrity_ok(area.database):
+        raise refuse(
+            "snapshot-integrity-failed",
+            f"the database copy {area.database} fails SQLite's integrity check after "
+            f"the rehearsal's landing",
+            origin=_ORIGIN,
+            detail={"database": str(area.database)},
+        )
+    facts: dict[str, Any] = {
+        "run": area.run_id,
+        "landed": len(landed.moved),
+        "refused": len(landed.refused),
+        "added": len(landed.collection.added),
+        "already present": len(landed.collection.present),
+        "memberships": landed.collection.memberships_added,
+        "active rows before": rows_before,
+        "active rows after": rows_after,
+        "landed rows gridless": True,
+        "integrity": "ok",
+    }
+    return facts, payload, lines
 
 
 def _place_owned(

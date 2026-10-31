@@ -1,0 +1,219 @@
+name = "u162"
+pass_kind = "light"
+
+[[rows]]
+id = "L1_bridge_refusal"
+description = "intake_land: drop the refusal of --rehearse on an intake tree on the xml bridge"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''    if rehearse and not medium.native:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "L2_area_plan_compare"
+description = "_rehearse_in: drop the refusal of an area plan that is not the live plan, so a differing plan is applied"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''        if differ:
+            raise refuse('''
+new = '''        if False:
+            raise refuse('''
+
+[[rows]]
+id = "L3_target_mapping"
+description = "_rehearse_in: map only the staging folder back, not the area's batch folder, so the compare reads every target as differing"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''            ((str(area.staging), str(planned.folder)), (str(scratch_target), str(target))),'''
+new = '''            ((str(area.staging), str(planned.folder)),),'''
+
+[[rows]]
+id = "L4_occupied_hold"
+description = "_rehearse_in: drop the hold of the live batch folder's names at the area (round one's fix)"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''            if (target / item.name).exists() or (target / item.name).is_symlink():'''
+new = '''            if False:'''
+
+[[rows]]
+id = "L5_integrity"
+description = "_rehearse_in: drop the integrity check of the copy after the apply"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''    if not rb_writer.integrity_ok(area.database):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "L6_gridless_read_back"
+description = "_rehearse_in: drop the gridless read back of the landed rows"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''            native.assert_rows_gridless(landed.collection)
+            native.assert_rows_identified(landed.collection)
+            rows_after'''
+new = '''            native.assert_rows_identified(landed.collection)
+            rows_after'''
+
+[[rows]]
+id = "L7_identified_read_back"
+description = "_rehearse_in: drop the file id read back of the landed rows"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''            native.assert_rows_gridless(landed.collection)
+            native.assert_rows_identified(landed.collection)
+            rows_after'''
+new = '''            native.assert_rows_gridless(landed.collection)
+            rows_after'''
+
+[[rows]]
+id = "L8_success_witness"
+description = "_rehearse_native: drop the witness on the success path, so a rehearsal that touched the live library reports clean"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''    rehearsal.assert_untouched(before, kept=area.paths)
+    rehearsal.remove(area)'''
+new = '''    rehearsal.remove(area)'''
+
+[[rows]]
+id = "L9_kept_area_named"
+description = "_rehearse_native: a refusal inside the rehearsal no longer carries the kept area in its detail"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''            detail={**dict(inner.detail), "rehearsal_area": [str(path) for path in area.paths]},'''
+new = '''            detail=dict(inner.detail),'''
+
+[[rows]]
+id = "L10_interrupt_cancel"
+description = "_rehearse_native: an interrupt reported as internal-error rather than cancelled"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''            "cancelled",'''
+new = '''            "internal-error",'''
+
+[[rows]]
+id = "L11_witness_music_folder"
+description = "_rehearse_native: witness the staging and batch folders only, not the music folder itself"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''        cfg, (planned.folder, Path(cfg.library.root) / cfg.library.music_dir, target)'''
+new = '''        cfg, (planned.folder, target)'''
+
+[[rows]]
+id = "L12_rehearsal_equal"
+description = "rehearsal_facts: report every rehearsal as equal to the live plan"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''    equal = found.get("digest") == digest'''
+new = '''    equal = True'''
+
+[[rows]]
+id = "R1_area_exists"
+description = "open_area: drop the refusal of an area that already exists, so one area is shared"
+file = "src/cratekit/core/rehearsal.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''        if path.exists():'''
+new = '''        if False:'''
+
+[[rows]]
+id = "R2_rekordbox_closed"
+description = "open_area: drop the closed rekordbox check before the copy"
+file = "src/cratekit/core/rehearsal.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''    rb_writer.assert_rekordbox_closed("copying the database for a rehearsal")
+'''
+new = ''''''
+
+[[rows]]
+id = "R3_clone_is_a_link"
+description = "clone: a hard link where the volume does not clone"
+file = "src/cratekit/core/rehearsal.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''    shutil.copy2(source, destination)'''
+new = '''    os.link(source, destination)'''
+
+[[rows]]
+id = "R4_snapshots_copied"
+description = "_NOT_COPIED: copy the snapshots directory into the area"
+file = "src/cratekit/core/rehearsal.py"
+surface = "maintainer"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''        "snapshots",
+'''
+new = ''''''
+
+[[rows]]
+id = "R5_locks_copied"
+description = "_copy_library_state: copy lock files into the area"
+file = "src/cratekit/core/rehearsal.py"
+surface = "maintainer"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''        if entry.key in _NOT_COPIED or entry.key.endswith("_lock"):'''
+new = '''        if entry.key in _NOT_COPIED:'''
+
+[[rows]]
+id = "R6_state_env"
+description = "redirected: leave the installation state directory pointed at the live one"
+file = "src/cratekit/core/rehearsal.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''    os.environ[config.ENV_STATE_DIR] = str(area.local / "state")
+'''
+new = ''''''
+
+[[rows]]
+id = "R7_witness_database"
+description = "assert_untouched: drop the live database hash comparison"
+file = "src/cratekit/core/rehearsal.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''    if _hashes(before.database) != before.hashes:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "R8_witness_folders"
+description = "assert_untouched: drop the live folder listing comparison"
+file = "src/cratekit/core/rehearsal.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''        if _listed(Path(folder)) != listing:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "R9_latest_key"
+description = "latest: match a record by verb alone, so another batch's rehearsal is compared"
+file = "src/cratekit/core/rehearsal.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''            and body.get("key") == dict(key)
+'''
+new = ''''''
+
+[[rows]]
+id = "R10_latest_verb"
+description = "latest: match a record by key alone, so another verb's rehearsal is compared"
+file = "src/cratekit/core/rehearsal.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''            and body.get("verb") == verb
+'''
+new = ''''''
+
+[[dropped]]
+id = "L13_owned_hearts_alone"
+description = "the rehearse empty path: drop the refusal of owned hearts alone"
+reason = "no fixture here builds a pass with owned hearts; the zero is recorded as a residual rather than spent on a full suite run"
