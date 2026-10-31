@@ -884,7 +884,13 @@ def test_the_gate_screen_names_every_row_its_columns_the_playlist_and_the_databa
         "FileType",
         rb_writer.FILE_ID_COLUMN,
         rb_writer.CONTENT_LINK_COLUMN,
+        # U163: the file's artist and genre, each with the row it takes. The
+        # fixture writes no album and no date, so neither column is shown.
+        native.ARTIST_COLUMN,
+        native.GENRE_COLUMN,
     }
+    assert item["row"][native.ARTIST_COLUMN]["name"] == "Probe"
+    assert item["row"][native.GENRE_COLUMN]["name"] == "Deep House"
     # THE LIBRARY'S VALUE, shown with its count, never the binding's (U126).
     assert item["row"][rb_writer.CONTENT_LINK_COLUMN] == LIBRARY_LINK
     assert shown["content link"] == (

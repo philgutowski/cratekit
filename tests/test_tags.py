@@ -83,6 +83,7 @@ ALL_FIELDS = {
     "isrc": "ZZ0000000001",
     "album": "Probe Album",
     "date": "2021-03-05",
+    "albumartist": "Probe Album Artist",
 }
 
 

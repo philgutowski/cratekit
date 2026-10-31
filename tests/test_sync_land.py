@@ -436,11 +436,13 @@ def test_the_stop_at_the_landing_gate_names_the_session_commands_and_the_visit(
     assert steps[1] == f"apply it: crate --run land-run {land}"
     # U166: the visit selects the one playlist every landing fills, and the
     # clear that takes the analysed rows out of it closes the visit.
-    assert any("Reload Tags" in step and "INBOX / Analyze" in step for step in steps)
     assert steps[-1].endswith("crate inbox analyzed")
     analyse = [step for step in steps if "Analyze Tracks" in step]
     assert analyse and "KEY on" in analyse[0] and "Normal" in analyse[0]
-    assert steps.index([s for s in steps if "Reload Tags" in s][0]) < steps.index(analyse[0])
+    assert "INBOX / Analyze" in analyse[0]
+    # U163: the row carries its artist, album, genre and year from the
+    # landing, so the visit is Analyze Tracks alone and never Reload Tags.
+    assert not any("Reload Tags" in step for step in steps)
     assert envelope["cause"]["reason"] == "awaiting-human-action"
     assert _summary(envelope)["gate_run"] == "land-run"
 
@@ -1022,7 +1024,7 @@ def test_the_acknowledgment_stop_names_the_gate_the_replanned_landing_will_ask(
     steps = envelope["pending_human_action"]["steps"]
     replan = next(i for i, step in enumerate(steps) if step.startswith("then plan the landing"))
     assert "answer it as the session" in steps[replan + 1]
-    assert "Reload Tags" in steps[replan + 2]
+    assert "Analyze Tracks" in steps[replan + 2]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
