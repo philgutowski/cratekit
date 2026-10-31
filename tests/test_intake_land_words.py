@@ -14,6 +14,7 @@ D1 applies. Nothing here names a real volume, a real person or a real track.
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,7 @@ from cratekit.core import config, rb_writer, tags, tree_registry
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import native
+from tests._containers import synth_container
 from tests.test_intake_land_native import (
     BATCH,
     INTAKE,
@@ -31,6 +33,7 @@ from tests.test_intake_land_native import (
     _music,
     _query,
     _stage,
+    _staging,
     _two_acts,
 )
 from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
@@ -277,6 +280,32 @@ def test_a_mint_follows_the_librarys_searchstr_convention(native_library, silenc
     assert _shown_row(refused)[native.ARTIST_COLUMN]["SearchStr"] == "Probe"
     ((stored,),) = _query(cfg, "SELECT SearchStr FROM djmdArtist WHERE Name = 'Probe'")
     assert stored == "Probe"
+
+
+def test_a_multi_value_id3_frame_lands_its_first_value_as_the_word(
+    native_library, tmp_path
+):
+    """Review round one: the ID3 reader joins a frame's values on NUL, and a
+    NUL joined name minted a lookup row nothing shares and adoption files
+    under no rule. Every container now answers its first value."""
+    from mutagen.id3 import ID3, TCON, TPE1
+
+    cfg, _root = native_library
+    scratch = tmp_path / "mp3"
+    scratch.mkdir()
+    path = _staging(cfg) / "One.mp3"
+    shutil.copyfile(synth_container(scratch, ".mp3"), path)
+    assert tags.write_tags(path, {"title": "01A - 124 - One"})
+    frames = ID3(path)
+    frames.add(TPE1(encoding=3, text=["Alpha", "Beta"]))
+    frames.add(TCON(encoding=3, text=["House", "Techno"]))
+    frames.save(path)
+
+    code, acted, _refused = _two_acts(_land())
+
+    assert code == int(ExitCode.OK), acted
+    assert [row[1] for row in _names(cfg, rb_writer.ARTIST_TABLE)] == ["Alpha"]
+    assert [row[1] for row in _names(cfg, rb_writer.GENRE_TABLE)] == ["House"]
 
 
 @pytest.mark.parametrize(

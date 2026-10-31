@@ -1022,10 +1022,17 @@ def _words_plan(db: Any, rows: list[RowPlan]) -> list[RowPlan]:
 
 
 def _word(value: str | None) -> str:
-    """A tag's value as a lookup row's name, empty for a tag that holds only space."""
-    if value is None or not value.strip():
+    """A tag's first value as a lookup row's name, empty for a tag that holds only space.
+
+    THE FIRST VALUE IN EVERY CONTAINER. The ID3 reader answers a multi-value
+    frame as its values joined on NUL, where Vorbis and MP4 answer the first,
+    and a NUL joined name is a lookup row no other row will ever share and a
+    genre adoption files under nothing.
+    """
+    first = (value or "").split("\x00")[0]
+    if not first.strip():
         return ""
-    return value
+    return first
 
 
 def year_of(date: str | None) -> int | None:
