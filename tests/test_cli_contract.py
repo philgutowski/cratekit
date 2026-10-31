@@ -963,6 +963,16 @@ def test_run_decide_continue_resumes_the_owning_verb_with_its_own_arguments(conf
     assert config.load().profile.name == "slim"
 
 
+def test_a_run_continued_by_hand_keeps_the_command_line_its_first_invocation_recorded(configured):
+    """U168: what --continue gives back is the run's first command line, never a later one."""
+    _, out, _ = drive(["--output", "json", "profile", "set", "slim"])
+    run_id = json.loads(out)["run_id"]
+
+    drive(["--output", "json", "--run", run_id, "profile", "set", "full"])
+
+    assert gates.load(run_id).argv == ("profile", "set", "slim")
+
+
 def test_a_decision_answered_against_a_plan_that_has_since_moved_is_stale(configured):
     """The property that stops a user approving one plan and running a wider one."""
     _, out, _ = drive(["--output", "json", "profile", "set", "slim"])
