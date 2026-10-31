@@ -119,6 +119,19 @@ def checks_of(found: rc.Check) -> list[dict[str, Any]]:
             f"{len(found.rows)} row(s) from {scope.name}" + (f" ({passed})" if passed else ""),
         )
     ]
+    gone = [row for row in found.rows if row.state == rc.GONE]
+    if gone:
+        # NAMED, NOT ONLY COUNTED (review round one): a row the scope held
+        # whose collection row is missing or removed is read by nobody, and a
+        # person reading an ok verdict should see which rows it did not cover.
+        checks.append(
+            _check(
+                "check.gone",
+                "info",
+                f"{len(gone)} row(s) in scope are no longer in the collection and were "
+                f"not checked: " + _named(gone, lambda row: f"{_title(row)} ({row.why})"),
+            )
+        )
     waiting = [row for row in found.rows if row.state == rc.NOT_ANALYSED]
     checks.append(
         _check(

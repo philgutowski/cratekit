@@ -605,3 +605,75 @@ def test_no_file_under_the_library_is_opened_for_writing(native_library, silence
     assert under_library == []
     after = {path: path.read_bytes() for path in before}
     assert after == before
+
+
+# ---------------------------------------------------------------------------
+# Review round one
+# ---------------------------------------------------------------------------
+
+
+def test_a_row_not_analysed_never_reads_suspect_whatever_grid_it_carries():
+    """The state guard on ``suspect_grid``: only an analysed row's grid is judged."""
+    waiting = rc.Row(
+        content_id="c", title="t", state=rc.NOT_ANALYSED, grid=rc.Grid(state=rc.VARIABLE)
+    )
+    assert waiting.suspect_grid is False
+    assert _verdict(_row(), waiting) == rc.WAITING
+
+
+def test_a_pass_whose_playlists_hold_no_live_row_refuses_rather_than_reading_empty(
+    native_library, silence
+):
+    cfg, _root = native_library
+    for name in ("Foxtrot", "Golf"):
+        _stage(cfg, silence, f"{name}.flac")
+    code, acted, _refused = _land_acts(
+        ["intake", "land", "--name", "2026-10-31_two", "--pass", "pass-two"]
+    )
+    assert code == int(ExitCode.OK), acted
+    batch = _query(cfg, "SELECT ID FROM djmdPlaylist WHERE Name = '2026-10-31_two'")[0][0]
+    conn = sqlite3.connect(cfg.library.db_path)
+    with conn:
+        conn.execute("DELETE FROM djmdSongPlaylist WHERE PlaylistID = ?", (batch,))
+        conn.execute("DELETE FROM djmdPlaylist WHERE ID = ?", (batch,))
+    conn.close()
+
+    code, envelope = drive([*VERB, "--pass", "pass-two"])
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "analysis-check-landing-unknown"
+    assert "hold no live row" in envelope["cause"]["message"]
+
+
+def test_a_row_gone_from_the_collection_is_named_and_does_not_hold_the_visit(
+    native_library, silence
+):
+    cfg, _root = native_library
+    _land(cfg, silence, "2026-10-31_five", FIVE)
+    for stem in FIVE[1:]:
+        _visit(cfg, stem)
+    conn = sqlite3.connect(cfg.library.db_path)
+    with conn:
+        conn.execute(
+            "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", (_content_id(cfg, "Alpha"),)
+        )
+    conn.close()
+
+    code, envelope = drive(VERB)
+
+    assert code == int(ExitCode.OK), envelope
+    summary = envelope["data"]["summary"]
+    assert (summary["gone"], summary["analysed"], summary["not_analysed"]) == (1, 4, 0)
+    (gone,) = [c for c in envelope["data"]["checks"] if c["key"] == "check.gone"]
+    assert gone["status"] == "info" and "Alpha" in gone["detail"]
+
+
+def test_an_intake_tree_not_cut_over_falls_to_every_row_not_analysed_and_says_why(acknowledged):
+    """The playlist step is passed over with its refusal named, never read as an empty playlist."""
+    code, envelope = drive(VERB)
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    summary = envelope["data"]["summary"]
+    assert summary["scope"] == rc.SCOPE_UNANALYSED and summary["not_analysed"] > 0
+    (scope,) = [c for c in envelope["data"]["checks"] if c["key"] == "check.scope"]
+    assert f"INBOX / {native.ANALYZE} was not read" in scope["detail"]

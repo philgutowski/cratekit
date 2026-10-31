@@ -317,11 +317,9 @@ def _landed(
 
 
 def _live_members(db: Any, playlist_ids: Iterable[str]) -> tuple[str, ...]:
-    """Every live member of the playlists, first appearance kept, a playlist gone skipped."""
+    """Every live member of the playlists, first appearance kept; a playlist gone holds none."""
     seen: dict[str, None] = {}
     for playlist_id in playlist_ids:
-        if db.get_playlist(ID=playlist_id) is None:
-            continue
         for content_id in analyzed.live_members(db, playlist_id):
             seen.setdefault(content_id, None)
     return tuple(seen)
@@ -388,10 +386,24 @@ def resolve_scope(
                 detail={"kind": kind, "name": name, "unreadable_records": unreadable},
             )
         playlists = [one for record in records for one in _recorded_playlists(record)]
+        members = _live_members(db, playlists)
+        # A LANDING WHOSE PLAYLISTS HOLD NO LIVE ROW REFUSES TOO (review round
+        # one): its rows were landed, so a scope that finds none of them is a
+        # playlist removed or emptied since, and answering "nothing to check"
+        # would exit 0, done's status, over rows nobody read.
+        if not members:
+            raise refuse(
+                "analysis-check-landing-unknown",
+                f"the {kind} {name!r} is recorded as landed, and the playlists it filed "
+                f"into ({', '.join(playlists) or 'none recorded'}) hold no live row now, "
+                f"so its landed rows cannot be found to check",
+                origin=_ORIGIN,
+                detail={"kind": kind, "name": name, "playlists": playlists},
+            )
         return Scope(
             kind=kind,
             name=name,
-            content_ids=_live_members(db, playlists),
+            content_ids=members,
             unreadable_records=unreadable,
         )
     members, why = _analyze_members(db, declared, registry)
