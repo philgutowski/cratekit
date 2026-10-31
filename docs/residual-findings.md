@@ -39328,3 +39328,111 @@ holds is in the card's Landed comment instead.
 **Closes when:** the scheduled task's prompt that starts cloud workers is
 brought in line with U158, so a worker's instruction and the repository's
 rule agree. Ledger only.
+
+---
+
+## R-1072. A rehearsal reports a landing clean when the music folder holds a file named as the batch, and the live apply then fails as an internal error
+
+**Found:** at the second review of #343, U162, 2026-10-31.
+
+**The mechanism.** The rehearsal holds at its area each staged name the live batch folder holds, so the area's move refuses what the live move will. It does not look at the batch folder itself: a plain file in the music folder named as the batch (`--name`) leaves the area's batch folder free, and the rehearsal lands, while the live apply's `target.mkdir` raises `FileExistsError`, reported as `internal-error` with nothing moved. `preflight_native` does not ask either; the live crash predates U162.
+
+**Measured cost.** Driven by the second review with a hand placed file: the rehearsal reports landed 1, the live landing ends `internal-error`, the file stays in staging, nothing is lost. No Cratekit code was found that places such a file (a default batch name skips a taken name through `batch_name.taken`), so the producer is a person or another program.
+
+**Closes when:** `preflight_native` refuses a batch path that exists and is not a folder, by name, which closes the live crash and the rehearsal's silence together. Ledger only.
+
+---
+
+## R-1073. Two of the rehearsal's guards kill no test, the refusal of owned hearts alone and the hold of a dangling link's name
+
+**Found:** at the review of #343, U162, 2026-10-31.
+
+**The mechanism.** The review reverted four of the rehearsal's guards and found none killed a test. The fix round gave three of them a test each (the witness on the success path, the integrity check, the two read backs). The fourth, `--rehearse` on an empty staging folder whose pass holds owned hearts refusing by name rather than reaching the owned hearts' own write, has none, because building a pass with owned hearts is a fixture of its own. The second review found a fifth: the hold of a staged name the live batch folder carries as a dangling symbolic link (`is_symlink()` beside `exists()`) is handled, driven by hand, and pinned by no test.
+
+**Measured cost.** Not driven. With the guard gone, the rehearsal would fall through to the owned hearts' path, which asks its explicit gate: the session is asked a live question it did not mean to ask, and nothing is written without an answer.
+
+**Closes when:** a test of a dangling link in the live batch folder, and a test over the owned hearts fixture of `tests/test_favorites_backfill.py` drives `--rehearse` with an empty staging folder. Ledger only.
+
+---
+
+## R-1074. A rehearsal interrupted outside its apply, during the copies, leaves nothing named on the screen
+
+**Found:** at the review of #343, U162, 2026-10-31.
+
+**The mechanism.** The fix round turned an interrupt during the rehearsal's plan, apply and read back into the `cancelled` refusal naming the kept area. An interrupt inside `rehearsal.open_area`, while the database or the staged files are being copied, is caught by `open_area`'s own cleanup, which removes both halves and re raises, so nothing is left behind there; but an interrupt between `open_area` returning and the rehearsal's first step, or a kill that no handler sees, leaves the area under the library state directory's `rehearsals` folder with only the run id to find it by.
+
+**Measured cost.** Not driven past the interrupt the round tested. A stale folder on the volume, which the next backup would mirror until removed. Nothing false, nothing lost.
+
+**Closes when:** `crate doctor` lists rehearsal areas older than a day with their run ids, or the next rehearsal removes areas whose run ended. Ledger only.
+
+---
+
+## R-1075. Whether a clone keeps a staged file's modification time to the nanosecond on the library volume is unmeasured, and a rehearsal depends on it
+
+**Found:** at the review of #343, U162, 2026-10-31.
+
+**The mechanism.** A landing's gate digests the staged folder as each file's name, size and `st_mtime_ns`, and a rehearsal refuses unless the plan at its area, over clones of those files, reads line for line as the live plan. The clone is `cp -c -p` on macOS and `shutil.copy2` elsewhere or where the volume does not clone. On Linux ext4 `copy2` round trips the nanoseconds and every rehearsal passes. On APFS through `cp -c -p`, or on exFAT through `copy2`, it was not measured.
+
+**Measured cost.** Unmeasured; not drivable on the cloud container. If the time does not round trip, every rehearsal on that volume refuses `decision-stale` on the one `gate.files` line, which the refusal prints, and the feature is unusable there until fixed. Nothing is written or moved either way.
+
+**Closes when:** the attended landing approved on `--rehearse` alone, which the record owes, reads a rehearsal that passed on the real volume, or a refusal on `gate.files` is driven and the clone is made to keep the time (an explicit `os.utime` with `ns=`). Ledger only.
+
+---
+
+## R-1076. Whether a rehearsal reports landed over a live batch folder the live move cannot write is undriven
+
+**Found:** at the second review of #343, U162, 2026-10-31.
+
+**The mechanism.** The area is always writable. A live batch folder the live user cannot write would refuse the live move with `path-permission-denied` while the rehearsal lands.
+
+**Measured cost.** Not driven: the cloud container runs as root, which writes any mode, and no Cratekit code changes a folder's mode, so the producer was not driven either.
+
+**Closes when:** driven on a Mac with a folder made read only, and the area mirrors the live batch folder's writability if it holds. Ledger only.
+
+---
+
+## R-1077. Rehearsal records accumulate in the installation state with nothing that prunes them, and every live landing gate reads them all
+
+**Found:** at the review of #343, U162, 2026-10-31.
+
+**The mechanism.** Each finished rehearsal writes `rehearsals/<run>.json` under the installation state, holding its digest and plan lines, and `rehearsal.latest` reads every record on every native landing gate to find the newest of the same folder and batch. Nothing removes a record.
+
+**Measured cost.** None at today's counts: a few records a sitting, each a few hundred kilobytes for a large batch. A slower gate screen after many hundreds.
+
+**Closes when:** records older than the run retention, or beyond the newest few per folder and batch, are removed when a new one is written. Ledger only.
+
+---
+
+## R-1078. A rehearsal does not rehearse a set landing's account archive or a pass's owned hearts landed with no file
+
+**Found:** at the build of #343, U162, 2026-10-31.
+
+**The mechanism.** A set landing folds the account archive's rename into its digest and applies it after the rows write. A rehearsal plans and digests it and never applies it, since it is a write to the account, and says so in a warning. A landing of an empty staging folder whose pass holds owned hearts is the owned hearts' own write; `--rehearse` refuses it by name rather than reaching that write's gate. A set landing's write also records against the job in the installation state, which the rehearsal redirects to its area, so whether a set landing rehearses through to the end is undriven.
+
+**Measured cost.** None false: the archive is reported not rehearsed and the owned hearts are refused by name. A session wanting a matched rehearsal for either has none, and the live gate shows no rehearsal line.
+
+**Closes when:** a card asks for either, and the rehearsal of a set landing is driven end to end on a fixture. Ledger only.
+
+---
+
+## R-1079. A rehearsal under an absolute library.state_dirname refuses with a bare ValueError instead of naming the setting
+
+**Found:** at the review of #343, U162, 2026-10-31.
+
+**The mechanism.** `rehearsal.open_area` makes the area's volume half under the library state directory and redirects the config by that half's path relative to the library root. A `library.state_dirname` set to an absolute path puts the state directory outside the root, so `volume.relative_to(cfg.library.root)` raises a `ValueError`, which the verb reports as `internal-error` with the exception's text. `open_area` removes what it made.
+
+**Measured cost.** Driven by the review with a hand edited config: exit 1, `internal-error`, the staging folder intact, nothing live touched. No verb writes `state_dirname`, so the producer is a hand edit only. A traceback sentence where a refusal naming the setting belongs.
+
+**Closes when:** `open_area` refuses an area outside the library root by name, under `config-unusable`, before it copies anything. Ledger only.
+
+---
+
+## R-1080. Each rehearsal holds two full copies of the database on the library volume, its own and its session's capture
+
+**Found:** at the second review of #343, U162, 2026-10-31.
+
+**The mechanism.** A rehearsal copies the database file set into its area, and the guarded session its landing runs under takes its own pre write capture of that copy into the area's library state. Both go when the area is removed; a kept area keeps both.
+
+**Measured cost.** Measured on a fixture database only: two times the database's size on the library volume per rehearsal, and the time to copy it twice. On the live library, a few hundred megabytes for the length of a rehearsal. Not a false report.
+
+**Closes when:** the rehearsal's session is told its capture is the area's copy, or a kept area is reported with its size. Ledger only.
