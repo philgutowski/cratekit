@@ -365,6 +365,20 @@ adoption reads each row's genre from the moment it lands. A row landed before
 will not load to a deck until `crate repair rows` fills them (R-923); a row
 landed since carries them from the start. There is no import, no drag and no `intake imported` on this path.
 
+On this path the files go straight to where they live, the folder a shelve
+would have filed them in: `Music/Processed_Tracks/<year>/<MM_DD_YY subject>`,
+the date and subject read off the batch name (`2026-10-27 Tidal playlists and
+Favorites` lands in `Processed_Tracks/2026/10_27_26 Tidal playlists and
+Favorites`), and a `--name` with no date filed under the day it landed. A
+folder of that name already on disk, or one the collection stores rows under,
+is passed over for ` 2`, ` 3` and on. The gate screen's `lands in` line names
+the final folder, every row carries its final path from the first commit, and
+the INBOX playlist keeps the batch's readable name. Landing into a batch again
+by its own `--name` goes back to its folder. So no `crate intake shelve`
+follows a native landing: run against such a batch, it says it was already
+filed and does nothing. Batches landed before this change, and every batch on
+the xml bridge, are still under `Music/<batch>` until you shelve them.
+
 To see a native landing work before you approve it, run the same command with
 `--rehearse` first. A rehearsal asks no question and writes nothing live: it
 copies the database and the library's state into a scratch folder of its own

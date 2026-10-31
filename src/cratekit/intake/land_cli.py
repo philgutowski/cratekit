@@ -42,6 +42,7 @@ the landing's own commit (U156, :mod:`cratekit.intake.label_filing`).
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable, TypeVar
 
@@ -60,6 +61,7 @@ from cratekit.intake import (
     landing,
     native,
     set_playlist,
+    shelve,
 )
 from cratekit.intake import cli as intake_cli
 from cratekit.write import metadata_cli
@@ -732,7 +734,6 @@ def intake_land(ctx) -> Envelope:
             ctx,
             cfg,
             planned,
-            target=target,
             declared=declared,
             registry=registry,
             manifest=manifest,
@@ -868,6 +869,24 @@ def intake_land(ctx) -> Envelope:
 # ---------------------------------------------------------------------------
 # The native medium (R-746)
 # ---------------------------------------------------------------------------
+
+
+def _year_folder(cfg: config.Config, planned: landing.Plan) -> Path:
+    """The year folder a native landing files its batch under, which a rehearsal watches."""
+    when, _said = shelve.filed_parts(planned.batch, on=batch_name.today())
+    return shelve.processed_root(cfg) / f"{when.year}"
+
+
+def _folder(rows: native.NativePlan) -> Path:
+    """The folder a native landing's plan chose for its files (U164)."""
+    if rows.folder is None:
+        raise refuse(
+            "internal-error",
+            "a native landing's plan carries no folder to land in, so nothing was moved",
+            remedy=Remedy.REPORT_DEFECT,
+            origin=_ORIGIN,
+        )
+    return rows.folder
 
 
 def _native_identity(
@@ -1247,7 +1266,6 @@ def _land_native(
     cfg: config.Config,
     planned: landing.Plan,
     *,
-    target: Path,
     declared,
     registry,
     manifest: landing.LabelManifest | None,
@@ -1358,15 +1376,12 @@ def _land_native(
         pass_name=ctx.args.pass_name or planned.batch,
     )
 
-    def planner(
-        cfg: config.Config, planned: landing.Plan, target: Path
-    ) -> Callable[[Any], native.NativePlan]:
+    def planner(cfg: config.Config, planned: landing.Plan) -> Callable[[Any], native.NativePlan]:
         # ONE PLANNER, TWO PLACES (U162): the live landing plans its own staging
         # folder and music folder, and a rehearsal plans the same files again at
         # its scratch area, through this same code, to apply them there.
-        files = [(item, target / item.name) for item in planned.items]
 
-        def set_plan(db) -> set_playlist.SetPlaylistPlan | None:
+        def set_plan(db, files) -> set_playlist.SetPlaylistPlan | None:
             if set_job is None or words is None:
                 return None
             made = set_playlist.plan_for_landing(
@@ -1382,7 +1397,7 @@ def _land_native(
             set_planned.append(made)
             return made
 
-        def label_plan(db) -> label_filing.LabelPlan | None:
+        def label_plan(db, files) -> label_filing.LabelPlan | None:
             # A MANIFEST WITH NO LABEL ROW FILES NOTHING, and asks nothing of the
             # catalogue tree, as the bridge's own check returns early on it.
             if manifest is not None and manifest.rows:
@@ -1394,6 +1409,11 @@ def _land_native(
             return None
 
         def plan(db) -> native.NativePlan:
+            # THE FILED FOLDER, CHOSEN ON THIS HANDLE (U164): the batch lands
+            # where a shelve would have filed it, so every row carries its
+            # final FolderPath from the first commit and no shelve follows.
+            target = shelve.landing_target(cfg, db, planned.batch, on=batch_name.today())
+            files = [(item, target / item.name) for item in planned.items]
             # THE INBOX PLAYLIST FOR A SET (U135): named for the set, and an earlier
             # landing of the same job's playlist is added to under its first name.
             # The batch folder stays the dated (or --name) landing name so two
@@ -1447,13 +1467,14 @@ def _land_native(
                     )
                     for one in backfill.owned_in_library(cfg, db, owned)
                 ),
-                set_plan=set_plan(db),
+                set_plan=set_plan(db, files),
                 batch_playlist_id=batch_playlist_id,
                 set_job_id=set_job_id,
                 inbox_leftovers=leftovers,
                 inbox_found_by_name=inbox_found_by_name,
-                labels=label_plan(db),
+                labels=label_plan(db, files),
             )
+            made = replace(made, folder=target, batch=planned.batch)
             # WHERE EACH NEW ROW WILL BE FILED, BEFORE IT EXISTS (U165), shown
             # and digested, so the one answer covers the filing after the commit.
             if unfiled:
@@ -1483,11 +1504,11 @@ def _land_native(
         return landed_native
 
     def payload_of(rows: native.NativePlan) -> dict:
-        data = _native_payload(planned, rows, target=target)
+        data = _native_payload(planned, rows, target=_folder(rows))
         return _with_archive(data, archive_planned)
 
     def shown_of(rows: native.NativePlan) -> dict[str, Any]:
-        shown = _native_shown(rows, folder=planned.folder, target=target)
+        shown = _native_shown(rows, folder=planned.folder, target=_folder(rows))
         shown["files after landing"] = filing.fact(rows.filing, why=unfiled, tree=declared.tree.id)
         if archive_planned is not None:
             shown["account archive"] = archive_planned.shown
@@ -1497,19 +1518,18 @@ def _land_native(
             rehearsal_facts(
                 planned,
                 digest=payload_of(rows)["digest"],
-                plan=plan_lines(planned, rows, target=target, archived=archive_planned),
+                plan=plan_lines(planned, rows, target=_folder(rows), archived=archive_planned),
             )
         )
         return shown
 
-    plan = planner(cfg, planned, target)
+    plan = planner(cfg, planned)
 
     if rehearse:
         return _rehearse_native(
             ctx,
             cfg,
             planned,
-            target=target,
             planner=planner,
             payload_of=payload_of,
             archived=archive_planned,
@@ -1664,7 +1684,6 @@ def _rehearse_native(
     cfg: config.Config,
     planned: landing.Plan,
     *,
-    target: Path,
     planner: Callable[..., Callable[[Any], native.NativePlan]],
     payload_of: Callable[[native.NativePlan], dict],
     archived,
@@ -1690,7 +1709,7 @@ def _rehearse_native(
     look at what the rehearsal saw. A rehearsal that ends removes it.
     """
     before = rehearsal.witness(
-        cfg, (planned.folder, Path(cfg.library.root) / cfg.library.music_dir, target)
+        cfg, (planned.folder, Path(cfg.library.root) / cfg.library.music_dir, _year_folder(cfg, planned))
     )
     area = rehearsal.open_area(cfg, ctx.run.run_id, files=planned.items, staging=planned.folder)
     try:
@@ -1698,7 +1717,6 @@ def _rehearse_native(
             cfg,
             planned,
             area=area,
-            target=target,
             planner=planner,
             payload_of=payload_of,
             archived=archived,
@@ -1765,7 +1783,6 @@ def _rehearse_in(
     planned: landing.Plan,
     *,
     area: rehearsal.Area,
-    target: Path,
     planner,
     payload_of,
     archived,
@@ -1774,15 +1791,16 @@ def _rehearse_in(
     """Plan live, plan at the area, compare, apply at the area, read back. Answers the facts."""
     db = rb_writer.open_db(area.database, require_closed=True, cfg=area.cfg)
     try:
-        rows = planner(cfg, planned, target)(db)
+        rows = planner(cfg, planned)(db)
+        target = _folder(rows)
         payload = payload_of(rows)
         lines = plan_lines(planned, rows, target=target, archived=archived)
         # THE AREA'S PLAN IS MADE OUTSIDE THE REDIRECTION, reading the same
         # installation state the live plan read (a pass's jobs, a set's job),
         # so the only difference between the two plans is where the files are.
         staged = landing.plan(area.staging, area.cfg, planned.batch)
-        scratch_target = landing.target_dir(area.cfg, planned.batch)
-        scratch_rows = planner(area.cfg, staged, scratch_target)(db)
+        scratch_rows = planner(area.cfg, staged)(db)
+        scratch_target = _folder(scratch_rows)
         back = rehearsal.mapped(
             plan_lines(staged, scratch_rows, target=scratch_target, archived=archived),
             ((str(area.staging), str(planned.folder)), (str(scratch_target), str(target))),

@@ -252,6 +252,65 @@ def _why_unmatched(file: Path, match: trees.RowMatch) -> str:
     )
 
 
+def _speller(db: Any) -> Callable[[Path], str]:
+    """A path as rekordbox stores one under this library's drives."""
+    base_drive, current_drive = rb_writer.recorded_db_drives(db)
+
+    def spell(path: Path) -> str:
+        return native.stored_folder_path(path, base_drive=base_drive, current_drive=current_drive)
+
+    return spell
+
+
+def _stored_dirs(recorded: Iterable[str]) -> frozenset[str]:
+    """Every folder the collection's rows are stored under, compared as stored."""
+    return frozenset(os.path.dirname(locations.norm_for_compare(path)) for path in recorded if path)
+
+
+def filed_parts(batch: str, *, on: date) -> tuple[date, str]:
+    """The date and the subject a landed batch is filed by, as :func:`landing_target` reads them."""
+    parsed = parse_name(batch)
+    when, words = parsed if parsed is not None else (on, " ".join(batch.split()))
+    return when, words or batch_name.DOWNLOADS
+
+
+def landing_target(cfg: config.Config, db: Any, batch: str, *, on: date) -> Path:
+    """The folder a database native landing puts ``batch`` in, filed from the first commit (U164).
+
+    THE SHELVE'S OWN RULE, SO A LANDED BATCH IS WHERE A SHELVE WOULD HAVE PUT
+    IT. The date and the subject :func:`parse_name` reads off the batch name,
+    or, for a name it cannot read, ``on`` (the landing's date) and the whole
+    name as the subject, since a person who gave ``--name`` gave the subject.
+    An empty subject is the landing's own word for a batch that says nothing
+    about its source. The year folder, then :func:`filed_name`, then the first
+    name the disk and the collection both leave free, by :func:`_free_target`.
+
+    A BATCH LANDED INTO AGAIN BY ITS OWN NAME GOES BACK TO ITS FOLDER. The
+    name rule keeps a landed name taken, so only a ``--name`` a person gave
+    twice reaches here with a folder already recorded for it, and that person
+    is landing into the batch again, as a landing into ``Music/<batch>`` always
+    allowed: a file it already holds is present, or refused at the move. A
+    recorded folder that is no longer there is not reused.
+
+    ASKED ON THE PLAN'S HANDLE, so the collection's stored folders are the
+    ones the plan is made against and a continuation asks the same question
+    of the same library.
+    """
+    again = batch_name.filed_folders(cfg).get(batch)
+    if again is not None and os.path.isdir(again) and not os.path.islink(again):
+        return Path(again)
+    when, said = filed_parts(batch, on=on)
+    spell = _speller(db)
+    recorded = (row.recorded for row in routing_pass.content_rows(db))
+    return _free_target(
+        processed_root(cfg) / f"{when.year}",
+        filed_name(when, said),
+        set(),
+        stored_dirs=_stored_dirs(recorded),
+        spell=spell,
+    )
+
+
 def plan(
     cfg: config.Config,
     db: Any,
@@ -271,17 +330,11 @@ def plan(
     one named batch only, which the shell holds to.
     """
     wanted = _candidates(cfg) if everything else list(dict.fromkeys(names))
-    base_drive, current_drive = rb_writer.recorded_db_drives(db)
-
-    def spell(path: Path) -> str:
-        return native.stored_folder_path(path, base_drive=base_drive, current_drive=current_drive)
-
+    spell = _speller(db)
     prefix_map = [locations.PrefixRule(a, b) for a, b in cfg.resolved_prefix_map()]
     content = list(routing_pass.content_rows(db))
     recorded = {row.content_id: row.recorded for row in content}
-    stored_dirs = frozenset(
-        os.path.dirname(locations.norm_for_compare(path)) for path in recorded.values() if path
-    )
+    stored_dirs = _stored_dirs(recorded.values())
     index = trees.index_active_rows(content, root=cfg.library.root, prefix_map=prefix_map)
     root = processed_root(cfg)
     _assert_one_device(cfg, root)
@@ -719,6 +772,8 @@ __all__ = [
     "Skipped",
     "apply",
     "filed_name",
+    "filed_parts",
+    "landing_target",
     "parse_name",
     "plan",
     "processed_root",

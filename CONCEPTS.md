@@ -494,6 +494,10 @@ a setup answer with the default `Processed_Tracks`. A shelved batch's name
 stays taken for the landing's default name rule in `intake/batch_name.py`,
 read off the shelve's session record, because the INBOX playlist keeps the
 name after the folder is gone and the native writer adds to a playlist by name.
+Since U164 a database native landing files its batch in that folder from the
+first commit, by `shelve.landing_target`, records the batch and its folder on
+its session record, and keeps the name taken the same way; shelving is for
+batches landed before it and on the xml bridge.
 
 ### File id
 The column rekordbox keys a row's file by, `rb_file_id`, and what it holds:

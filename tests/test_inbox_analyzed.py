@@ -25,8 +25,8 @@ from tests.test_inbox_refill import offline as offline  # noqa: PLC0414
 from tests.test_intake_land_account_playlists_native import (
     pinned_day as pinned_day,  # noqa: PLC0414
 )
+from tests.test_intake_land_native import _advance_usn, _music, _query, _stage
 from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
-from tests.test_intake_land_native import _query, _stage
 from tests.test_intake_land_native import (
     _release_process_locks as _release_process_locks,  # noqa: PLC0414
 )
@@ -174,9 +174,15 @@ def test_the_gate_screen_names_analyze_and_whether_it_is_found_or_made(native_li
 def test_a_row_the_collection_already_held_is_not_added_to_analyze(native_library, silence):
     """Only a row the landing created awaits analysis; a held row is rekordbox's already."""
     cfg, root_id = native_library
+    # Landed into again by its own name (U164), so the batch goes back to its
+    # filed folder, where the collection holds a row for one of the files.
+    verb = ["intake", "land", "--name", "2026-10-28_held"]
+    _stage(cfg, silence, "Zero.flac")
+    code, first, _refused = _land_acts(verb)
+    assert code == int(ExitCode.OK), first
     _stage(cfg, silence, "Alpha.flac")
     _stage(cfg, silence, "Bravo.flac")
-    held = str(Path(cfg.library.root) / cfg.library.music_dir / "2026-10-28_held" / "Bravo.flac")
+    held = str(_music(cfg, "2026-10-28_held") / "Bravo.flac")
     conn = sqlite3.connect(cfg.library.db_path)
     with conn:
         conn.execute(
@@ -184,13 +190,14 @@ def test_a_row_the_collection_already_held_is_not_added_to_analyze(native_librar
             "updated_at) VALUES ('held-2', 'held', ?, 0, '2026-01-01', '2026-01-01')",
             (held,),
         )
+        _advance_usn(conn)
     conn.close()
 
-    code, acted, _refused = _land_acts(["intake", "land", "--name", "2026-10-28_held"])
+    code, acted, _refused = _land_acts(verb)
 
     assert code == int(ExitCode.OK), acted
     assert acted["data"]["totals"]["already present"] == 1
-    assert _titles(cfg, _analyze_id(cfg, root_id)) == ["Alpha"]
+    assert _titles(cfg, _analyze_id(cfg, root_id)) == ["Zero", "Alpha"]
     (warning,) = [w for w in acted["warnings"] if w["code"] == land_cli.AWAITING_ANALYSIS]
     assert warning["message"].startswith("1 row(s)")
 

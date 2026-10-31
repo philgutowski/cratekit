@@ -28,10 +28,12 @@ nothing that says                           ``Downloads``
 
 TWO LANDINGS ON ONE DAY FROM ONE SOURCE NEVER SHARE A PLAYLIST. The second gets
 `` 2``, the third `` 3``. A name is taken while a folder of that name is under
-the music folder, because both media make that folder and it stays as long as
-the tracks it holds are in the library. The native writer finds a playlist by
-its name under INBOX and adds to it, so a name reused there would merge two
-batches silently.
+the music folder, which the bridge makes and keeps as long as the tracks it
+holds are in the library, or while a session record keeps it: a shelve's, or
+a database native landing's, which files its batch under the processed tree
+and makes no folder under the music folder at all (U164). The native writer
+finds a playlist by its name under INBOX and adds to it, so a name reused
+there would merge two batches silently.
 
 A PLAYLIST THE AUTHOR MADE ON THE ACCOUNT KEEPS ITS OWN NAME (U113). The files
 of a pass still land in the one batch folder named above, and the tracks each
@@ -186,40 +188,88 @@ def source_words(
     return DOWNLOADS
 
 
-def taken(cfg: config.Config, name: str, *, shelved: frozenset[str] | None = None) -> bool:
-    """Whether a batch folder of ``name`` is under the music folder, or was shelved from it.
+def taken(cfg: config.Config, name: str, *, recorded: frozenset[str] | None = None) -> bool:
+    """Whether a batch folder of ``name`` is under the music folder, or a record keeps the name.
 
     A link of that name counts as taken whether or not it leads anywhere, since
     a landing could not make its folder there either. Asked by :func:`free` to
     choose and by the landing again under its lock, since the choice is made
     before the gate and another landing can take the name in between.
 
-    AND A NAME ``intake shelve`` FILED AWAY STAYS TAKEN (U154). The rule above
-    rested on the folder staying under the music folder for as long as its
-    tracks are in the library; shelving ends that, while the batch's INBOX
-    playlist keeps the name, and the native writer adds to an INBOX playlist by
-    name. A second landing on the day the first was shelved would merge into
-    it silently. The shelve's session record names every batch it moved, and
-    that record is read here, so the question needs no database handle and is
-    answered the same before the gate and under the lock. ``shelved`` is the
-    set already read, for a caller that asks about several names in a row.
+    AND A NAME A RECORD KEEPS STAYS TAKEN. The folder rule rested on the folder
+    staying under the music folder for as long as its tracks are in the
+    library, while the batch's INBOX playlist keeps the name, and the native
+    writer adds to an INBOX playlist by name. Two things end that: ``intake
+    shelve`` filing the folder away (U154), and a database native landing
+    putting its files straight into the processed tree (U164), which makes no
+    folder under the music folder at all. A second landing on the same day
+    would merge into the first one's playlist silently. Both write a session
+    record naming the batch, and those records are read here, so the question
+    needs no database handle and is answered the same before the gate and
+    under the lock. ``recorded`` is the set already read, for a caller that
+    asks about several names in a row.
     """
-    shelved = shelved_names(cfg) if shelved is None else shelved
-    return os.path.lexists(landing.target_dir(cfg, name)) or name in shelved
+    recorded = recorded_names(cfg) if recorded is None else recorded
+    return os.path.lexists(landing.target_dir(cfg, name)) or name in recorded
 
 
-def shelved_names(cfg: config.Config) -> frozenset[str]:
-    """Every batch name a shelve's session record says it moved out of the music folder.
+def recorded_names(cfg: config.Config) -> frozenset[str]:
+    """Every batch name a shelve moved out of the music folder or a native landing kept (U164).
+
+    A native landing names its batch playlist on its record with the commit,
+    by :data:`cratekit.intake.native.BATCH_PLAYLIST_KEY`, and the batch it
+    filed by :data:`cratekit.intake.native.FILED_BATCH_KEY`; both names are
+    kept. A landing that committed nothing wrote neither and made no playlist
+    to merge into.
+    """
+    from cratekit.intake import native, shelve
+
+    names: set[str] = set()
+    for record in _records(cfg):
+        if record.workflow == shelve.WORKFLOW:
+            moved = record.detail.get(shelve.SHELVED_KEY)
+            if isinstance(moved, list):
+                names.update(
+                    str(one["batch"]) for one in moved if isinstance(one, dict) and one.get("batch")
+                )
+        elif record.workflow == native.WORKFLOW:
+            for key in (native.BATCH_PLAYLIST_KEY, native.FILED_BATCH_KEY):
+                kept = record.detail.get(key)
+                name = kept.get("name") or kept.get("batch") if isinstance(kept, dict) else None
+                if name:
+                    names.add(str(name))
+    return frozenset(names)
+
+
+def filed_folders(cfg: config.Config) -> dict[str, str]:
+    """The folder each batch was last filed in by a native landing, by batch name (U164).
+
+    The records in the order the session log holds them, so a later landing of
+    the same name names the folder last.
+    """
+    from cratekit.intake import native
+
+    folders: dict[str, str] = {}
+    for record in _records(cfg):
+        if record.workflow != native.WORKFLOW:
+            continue
+        kept = record.detail.get(native.FILED_BATCH_KEY)
+        if isinstance(kept, dict) and kept.get("batch") and kept.get("folder"):
+            folders[str(kept["batch"])] = str(kept["folder"])
+    return folders
+
+
+def _records(cfg: config.Config) -> list:
+    """Every session record, or the refusal naming the ones this build cannot read.
 
     FAILS CLOSED ON A RECORD IT CANNOT READ. The reporting scan drops an
     unreadable record, and a name rule that borrowed that policy would read a
-    shelved name as free the day one record is damaged, which is the silent
+    recorded name as free the day one record is damaged, which is the silent
     merge this rule exists to prevent. The refusal names the files, as the
     session gate's own refusal does.
     """
     from cratekit.core import session
     from cratekit.core.cause import Remedy, refuse
-    from cratekit.intake import shelve
 
     parsed, unreadable = session.scan_log(cfg)
     if unreadable:
@@ -228,28 +278,18 @@ def shelved_names(cfg: config.Config) -> frozenset[str]:
             f"the session log holds {len(unreadable)} entr"
             + ("y" if len(unreadable) == 1 else "ies")
             + " this build cannot read, so no batch name can be called free; refusing "
-            "rather than naming a batch after one a shelve may have filed",
+            "rather than naming a batch after one a shelve or a landing may have filed",
             remedy=Remedy.REPORT_DEFECT,
             detail={"unreadable": [str(path) for path in unreadable]},
         )
-    names: set[str] = set()
-    for record in parsed:
-        if record.workflow != shelve.WORKFLOW:
-            continue
-        moved = record.detail.get(shelve.SHELVED_KEY)
-        if not isinstance(moved, list):
-            continue
-        names.update(
-            str(one["batch"]) for one in moved if isinstance(one, dict) and one.get("batch")
-        )
-    return frozenset(names)
+    return list(parsed)
 
 
 def free(cfg: config.Config, base: str) -> str:
     """``base``, or ``base 2``, ``base 3`` and on, the first no batch folder holds."""
-    shelved = shelved_names(cfg)
+    recorded = recorded_names(cfg)
     candidate, count = base, 1
-    while taken(cfg, candidate, shelved=shelved):
+    while taken(cfg, candidate, recorded=recorded):
         count += 1
         candidate = f"{base} {count}"
     return candidate
@@ -334,6 +374,7 @@ __all__ = [
     "LABELS",
     "PLAYLISTS",
     "SET",
+    "filed_folders",
     "free",
     "inbox_names",
     "is_default_shape",
@@ -342,6 +383,7 @@ __all__ = [
     "label_words",
     "pass_jobs",
     "readable",
+    "recorded_names",
     "set_playlist_form",
     "set_month_word",
     "set_day_word",

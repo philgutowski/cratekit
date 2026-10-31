@@ -34,6 +34,9 @@ from tests.test_rb_writer_db import RECORDED_APP_VERSION, _row
 DECLARED = taxonomy.default_taxonomy()
 INTAKE = DECLARED.intake.id
 BATCH = "2026-09-29_favourites"
+#: The folder a native landing files BATCH in (U164), under Processed_Tracks/2026,
+#: spelled here rather than through the engine.
+FILED_AS = "09_29_26 favourites"
 GATE = land_cli.NATIVE_GATE
 TODAY = date(2026, 9, 29)
 
@@ -201,6 +204,15 @@ def _stage(cfg: config.Config, silence: Path, name: str, *, head: str = "01A - 1
 
 
 def _music(cfg: config.Config, batch: str = BATCH) -> Path:
+    """Where a native landing files ``batch`` (U164): its year folder under the processed tree."""
+    from cratekit.intake import batch_name, shelve
+
+    when, said = shelve.filed_parts(batch, on=batch_name.today())
+    return shelve.processed_root(cfg) / f"{when.year}" / shelve.filed_name(when, said)
+
+
+def _batch_folder(cfg: config.Config, batch: str = BATCH) -> Path:
+    """The batch's folder under the music folder, which a native landing no longer makes (U164)."""
     return Path(cfg.library.root) / cfg.library.music_dir / batch
 
 
@@ -225,12 +237,12 @@ def _query(cfg: config.Config, sql: str, *params) -> list[tuple]:
 
 
 def _landed_rows(cfg: config.Config) -> list[tuple]:
-    """(ID, Title, FolderPath) of every row under the batch folder, by name."""
+    """(ID, Title, FolderPath) of every row under the batch's filed folder, by name."""
     return _query(
         cfg,
         "SELECT ID, Title, FolderPath FROM djmdContent WHERE FolderPath LIKE ? "
         "ORDER BY FileNameL",
-        f"%{BATCH}%",
+        f"%/{FILED_AS}/%",
     )
 
 
@@ -245,6 +257,25 @@ def _members(cfg: config.Config, playlist_id: str) -> list[str]:
         playlist_id,
     )
     return [str(row[0]) for row in rows]
+
+
+def _advance_usn(conn: sqlite3.Connection) -> None:
+    """Advance the library's local update count by one, as rekordbox does when it adds a row."""
+    conn.execute(
+        "UPDATE agentRegistry SET int_1 = int_1 + 1 WHERE registry_id = 'localUpdateCount'"
+    )
+
+
+def _land_first(cfg: config.Config, silence: Path, name: str = "Zero.flac") -> None:
+    """Land one file under BATCH, so its filed folder exists and is recorded (U164).
+
+    A fresh landing passes over a folder the collection already stores rows
+    under, so a test of a row already present lands into the batch again by
+    its own name, which goes back to the recorded folder.
+    """
+    _stage(cfg, silence, name)
+    code, acted, _ = _two_acts(_land())
+    assert code == int(ExitCode.OK), acted
 
 
 def _two_acts(verb: list[str]) -> tuple[int, dict, dict]:
@@ -422,7 +453,7 @@ def test_the_rows_carry_the_library_device_and_not_the_bindings_first(native_lib
     code, acted, _ = _two_acts(_land())
     assert code == int(ExitCode.OK), acted
     ((device_id, master),) = _query(
-        cfg, "SELECT DeviceID, MasterDBID FROM djmdContent WHERE FolderPath LIKE ?", f"%{BATCH}%"
+        cfg, "SELECT DeviceID, MasterDBID FROM djmdContent WHERE FolderPath LIKE ?", f"%/{FILED_AS}/%"
     )
     assert (str(device_id), str(master)) == MY_DEVICE
 
@@ -440,7 +471,7 @@ def test_the_rows_carry_every_default_rekordbox_writes_on_a_row_it_makes(native_
     rows = _query(
         cfg,
         f"SELECT ID, {', '.join(columns)} FROM djmdContent WHERE FolderPath LIKE ?",
-        f"%{BATCH}%",
+        f"%/{FILED_AS}/%",
     )
     assert len(rows) == 2
     # COMPARED AS TEXT. The binding declares ``DJPlayCount`` a string and the
@@ -468,7 +499,7 @@ def test_the_rows_carry_the_landed_files_inode_as_their_file_id(native_library, 
     rows = _query(
         cfg,
         f"SELECT ID, FolderPath, {rb_writer.FILE_ID_COLUMN} FROM djmdContent WHERE FolderPath LIKE ?",
-        f"%{BATCH}%",
+        f"%/{FILED_AS}/%",
     )
     assert len(rows) == 2
     by_id: dict[str, str] = {}
@@ -511,7 +542,7 @@ def test_a_row_whose_file_id_did_not_take_is_refused_after_the_commit_naming_the
     (record,) = session.records(cfg)
     assert record.session_id in " ".join(acted["cause"]["remediation"]["steps"])
     ((file_id, folder_path),) = _query(
-        cfg, f"SELECT {rb_writer.FILE_ID_COLUMN}, FolderPath FROM djmdContent WHERE FolderPath LIKE ?", f"%{BATCH}%"
+        cfg, f"SELECT {rb_writer.FILE_ID_COLUMN}, FolderPath FROM djmdContent WHERE FolderPath LIKE ?", f"%/{FILED_AS}/%"
     )
     assert int(file_id) == Path(folder_path).stat().st_ino + 1, "the write is durable"
 
@@ -572,7 +603,7 @@ def test_the_rows_carry_the_librarys_content_link_and_not_the_bindings(native_li
     rows = _query(
         cfg,
         f"SELECT ID, {rb_writer.CONTENT_LINK_COLUMN} FROM djmdContent WHERE FolderPath LIKE ?",
-        f"%{BATCH}%",
+        f"%/{FILED_AS}/%",
     )
     assert len(rows) == 2
     assert {link for _id, link in rows} == {LIBRARY_LINK}
@@ -667,7 +698,7 @@ def test_a_row_whose_content_link_did_not_take_is_refused_after_the_commit(
     assert record.session_id in " ".join(acted["cause"]["remediation"]["steps"])
     ((link,),) = _query(
         cfg, f"SELECT {rb_writer.CONTENT_LINK_COLUMN} FROM djmdContent WHERE FolderPath LIKE ?",
-        f"%{BATCH}%",
+        f"%/{FILED_AS}/%",
     )
     assert link == BINDING_LINK, "the write is durable"
 
@@ -703,6 +734,7 @@ def test_a_landing_that_adds_no_row_needs_no_majority(native_library, silence):
     alone, so a library with no majority ContentLink does not refuse it, and
     no row on the screen claims a link it would not be given."""
     cfg, _root = native_library
+    _land_first(cfg, silence)
     _stage(cfg, silence, "One.flac")
     held = str(_music(cfg) / "One.flac")
     conn = sqlite3.connect(cfg.library.db_path)
@@ -711,6 +743,9 @@ def test_a_landing_that_adds_no_row_needs_no_majority(native_library, silence):
         "created_at, updated_at) VALUES ('held-1', 'held', ?, 30, 0, '2026-01-01', '2026-01-01')",
         (held,),
     )
+    # rekordbox bumps its update count with every row it adds, and a row
+    # added at a standstill after a landing reads as another database.
+    _advance_usn(conn)
     conn.commit()
     conn.close()
     _set_links(cfg, {"2": 31})
@@ -847,7 +882,7 @@ def test_after_the_write_no_analysis_value_exists_on_the_new_rows_column_by_colu
     assert code == int(ExitCode.OK), acted
 
     selected = ", ".join(native.LEFT_EMPTY)
-    rows = _query(cfg, f"SELECT ID, {selected} FROM djmdContent WHERE FolderPath LIKE ?", f"%{BATCH}%")
+    rows = _query(cfg, f"SELECT ID, {selected} FROM djmdContent WHERE FolderPath LIKE ?", f"%/{FILED_AS}/%")
     assert len(rows) == 2
     for row in rows:
         content_id, *values = row
@@ -935,7 +970,10 @@ def test_an_abort_moves_nothing_and_writes_nothing(native_library, silence):
 
 
 def test_a_file_already_in_the_collection_is_present_and_not_added_twice(native_library, silence):
+    """Landed into again by its own name (U164), so the batch goes back to its
+    filed folder, where the collection holds a row for one of the files."""
     cfg, root_id = native_library
+    _land_first(cfg, silence)
     _stage(cfg, silence, "One.flac")
     _stage(cfg, silence, "Two.flac")
     # A row rekordbox already holds for the path Two.flac will land at.
@@ -946,6 +984,9 @@ def test_a_file_already_in_the_collection_is_present_and_not_added_twice(native_
         "updated_at) VALUES ('held-2', 'held', ?, 0, '2026-01-01', '2026-01-01')",
         (held,),
     )
+    # rekordbox bumps its update count with every row it adds, and a row
+    # added at a standstill after a landing reads as another database.
+    _advance_usn(conn)
     conn.commit()
     conn.close()
 
@@ -968,7 +1009,8 @@ def test_a_file_already_in_the_collection_is_present_and_not_added_twice(native_
     assert rows == [("held-2",)], "the held file gained a second row"
     (playlist,) = _batch_playlist(cfg)
     members = _members(cfg, str(playlist[0]))
-    assert len(members) == 2 and members[1] == "held-2", "the batch playlist is the batch, in order"
+    # The first landing's file, then this one's two, in order.
+    assert len(members) == 3 and members[2] == "held-2", "the batch playlist is the batch, in order"
 
 
 def test_a_second_approved_run_over_the_landed_files_adds_nothing(native_library, silence):
@@ -1269,7 +1311,7 @@ def test_folder_path_is_stored_under_the_base_drive_rekordbox_records(
 
     code, refused = drive(_land())
     shown = refused["cause"]["detail"]["shown"]
-    expected = base + "/library/Music/" + BATCH + "/One.flac"
+    expected = base + "/library/Music/Processed_Tracks/2026/" + FILED_AS + "/One.flac"
     assert shown["items"][0]["row"]["FolderPath"] == expected
     assert shown["paths stored"].startswith(f"under the base drive {base}")
 
@@ -1576,7 +1618,7 @@ def test_an_answer_given_over_one_file_is_stale_when_the_continuation_opens_anot
         conn = sqlite3.connect(database)
         try:
             landed = conn.execute(
-                "SELECT ID FROM djmdContent WHERE FolderPath LIKE ?", (f"%{BATCH}%",)
+                "SELECT ID FROM djmdContent WHERE FolderPath LIKE ?", (f"%/{FILED_AS}/%",)
             ).fetchall()
         finally:
             conn.close()

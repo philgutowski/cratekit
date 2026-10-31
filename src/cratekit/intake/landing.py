@@ -5,7 +5,9 @@
 stamped from staging dies the moment staging is cleaned (the 2026-06-29
 flood). This engine is the step between them: N files in a staging folder
 become N files under ``library.root / music_dir / <batch>`` and one intake
-file naming every one of them.
+file naming every one of them. On the database native medium there is no
+intake file, and since U164 the files go to the folder the plan chose under
+the processed tree, :func:`cratekit.intake.shelve.landing_target`.
 
 THE ORDER IS THE WHOLE CONTRACT. Move first, then splice over the moved
 paths. A splice before the rename stamps the staging Location.
@@ -1332,16 +1334,18 @@ class LandedNative:
     collection: native.NativeLanded
 
 
-def preflight_native(plan: Plan, *, cfg: config.Config) -> None:
+def preflight_native(plan: Plan, *, cfg: config.Config, target: Path | None = None) -> None:
     """Every check the native apply makes before its first move, in its order.
 
     The library half of :func:`preflight` and none of the export half: there is
     no export and no intake file on this medium. Asked before the gate by the
     verb and again by :func:`apply_native` before the moves, from one place, for
-    the reason :func:`preflight` gives.
+    the reason :func:`preflight` gives. ``target`` is the folder the plan
+    chose (U164); before there is a plan the music folder's batch path stands
+    for it, on the same volume.
     """
     _check_batch(plan.batch)
-    _check_library(cfg, plan.folder, target_dir(cfg, plan.batch))
+    _check_library(cfg, plan.folder, target if target is not None else target_dir(cfg, plan.batch))
 
 
 def apply_native(
@@ -1376,8 +1380,10 @@ def apply_native(
     with the registry, so the placement check and the medium agree (R-685).
     """
     _assert_unchanged(plan)
-    preflight_native(plan, cfg=cfg)
-    target = target_dir(cfg, plan.batch)
+    # INTO THE FOLDER THE PLAN CHOSE (U164), the filed one under the processed
+    # tree, which every planned row's target already names.
+    target = rows.folder if rows.folder is not None else target_dir(cfg, plan.batch)
+    preflight_native(plan, cfg=cfg, target=target)
     planned = {str(row.target): row for row in rows.rows}
     unplanned = [item.name for item in plan.items if str(target / item.name) not in planned]
     if unplanned:

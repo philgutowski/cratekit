@@ -26,6 +26,7 @@ from cratekit.intake import land_cli, landing, native
 from tests.cli_drive import drive
 from tests.test_intake_land_native import (
     _land,
+    _land_first,
     _landed_rows,
     _music,
     _stage,
@@ -397,7 +398,9 @@ def test_a_name_the_live_batch_folder_holds_is_refused_at_the_area_as_it_will_be
     live folder's names too and the rehearsal refuses the file the live landing
     will refuse, rather than reporting it landed."""
     cfg, _root = native_library
-    _music(cfg).mkdir(parents=True)
+    # A batch landed into again by its own name goes back to its filed folder
+    # (U164), so an earlier landing makes it, and a name in it is then held.
+    _land_first(cfg, silence)
     (_music(cfg) / "One.flac").write_bytes(b"left by an earlier landing")
     _stage(cfg, silence, "One.flac")
     _stage(cfg, silence, "Two.flac")
@@ -408,7 +411,7 @@ def test_a_name_the_live_batch_folder_holds_is_refused_at_the_area_as_it_will_be
     facts = rehearsed["data"]["totals"]["rehearsal"]
     assert facts["landed"] == 1 and facts["refused"] == 1 and facts["added"] == 1
     assert (_music(cfg) / "One.flac").read_bytes() == b"left by an earlier landing"
-    assert sorted(p.name for p in _music(cfg).iterdir()) == ["One.flac"]
+    assert sorted(p.name for p in _music(cfg).iterdir()) == ["One.flac", "Zero.flac"]
     assert _staged_names(cfg) == ["One.flac", "Two.flac"]
 
 

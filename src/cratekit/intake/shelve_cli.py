@@ -28,13 +28,14 @@ import the CLI registry (KTD23).
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import analysis_store, rb_writer
 from cratekit.core.cause import Outcome, Remedy, refuse
+from cratekit.intake import batch_name, land_cli, landing, shelve
 from cratekit.intake import cli as intake_cli
-from cratekit.intake import land_cli, landing, shelve
 
 #: The gate the verb asks. Looked up by name, as the landing's are.
 SHELVE_GATE = "intake.shelve.native"
@@ -46,6 +47,10 @@ SKIPPED = "skipped"
 
 #: The warning a plan carries for each batch it left where it was.
 BATCH_SKIPPED = "batch-skipped"
+#: What a named batch a native landing already filed is marked (U164), and
+#: the warning a plan carries for it beside batches that are shelved.
+ALREADY_FILED = "already-filed"
+BATCH_ALREADY_FILED = "batch-already-filed"
 
 _ORIGIN = ("intake.shelve_cli",)
 
@@ -175,6 +180,18 @@ def _assert_nothing_to_ask(planned: shelve.ShelfPlan) -> None:
     )
 
 
+def _already_filed(cfg, names: list[str]) -> dict[str, str]:
+    """Each named batch a native landing filed and the music folder holds no folder of, by its folder."""
+    if not names:
+        return {}
+    folders = batch_name.filed_folders(cfg)
+    return {
+        name: folders[name]
+        for name in dict.fromkeys(names)
+        if name in folders and not os.path.lexists(landing.target_dir(cfg, name))
+    }
+
+
 def intake_shelve(ctx) -> Envelope:
     cfg = intake_cli._load()
     names: list[str] = list(ctx.args.batch)
@@ -222,13 +239,44 @@ def intake_shelve(ctx) -> Envelope:
             detail={"subject": subject},
         )
 
+    # A BATCH LANDED STRAIGHT INTO THE PROCESSED TREE HAS NOTHING TO SHELVE
+    # (U164): no folder under the music folder, and a landing's record naming
+    # the folder it was filed in. Said, and never refused as a missing folder.
+    filed = _already_filed(cfg, names)
+    names = [name for name in names if name not in filed]
+    filed_warnings = [
+        {
+            "code": BATCH_ALREADY_FILED,
+            "message": f"{name!r} was landed straight into {folder}, so there is nothing to shelve",
+        }
+        for name, folder in filed.items()
+    ]
+    if filed and not names:
+        return ctx.envelope(
+            data={
+                "digest": digest_of({"kind": "shelve", "already_filed": sorted(filed.items())}),
+                "items": [
+                    {"action": ALREADY_FILED, "batch": name, "folder": folder}
+                    for name, folder in filed.items()
+                ],
+                "totals": {"count": len(filed), "batches": 0, "rows": 0, "already filed": len(filed)},
+                "chunk": None,
+            },
+            outcome=Outcome.NO_OP,
+            warnings=filed_warnings,
+        )
+
     def make_plan(db) -> shelve.ShelfPlan:
         return shelve.plan(cfg, db, names, subject=subject, everything=everything)
 
     if ctx.args.report:
         with rb_writer.read_only_copy(rb_writer.live_db_path(cfg), cfg=cfg) as db:
             planned = make_plan(db)
-        return ctx.envelope(data=_payload(planned), outcome=Outcome.OK, warnings=_warnings(planned))
+        return ctx.envelope(
+            data=_payload(planned),
+            outcome=Outcome.OK,
+            warnings=[*filed_warnings, *_warnings(planned)],
+        )
 
     def plan_then_check(db) -> shelve.ShelfPlan:
         planned = make_plan(db)
@@ -248,9 +296,15 @@ def intake_shelve(ctx) -> Envelope:
         write=write,
     )
     planned_warnings = [
-        {"code": BATCH_SKIPPED, "message": f"{item['batch']!r} was left where it is: {item['why']}"}
-        for item in payload["items"]
-        if item["action"] == SKIPPED
+        *filed_warnings,
+        *(
+            {
+                "code": BATCH_SKIPPED,
+                "message": f"{item['batch']!r} was left where it is: {item['why']}",
+            }
+            for item in payload["items"]
+            if item["action"] == SKIPPED
+        ),
     ]
     if shelved is None:
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP, warnings=planned_warnings)
@@ -258,6 +312,8 @@ def intake_shelve(ctx) -> Envelope:
 
 
 __all__ = [
+    "ALREADY_FILED",
+    "BATCH_ALREADY_FILED",
     "BATCH_SKIPPED",
     "SHELVE",
     "SHELVED",

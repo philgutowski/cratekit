@@ -141,6 +141,13 @@ WORKFLOW = ingest.INTAKE_WORKFLOW
 #: :data:`INBOX_JOB_KEY`, so a later landing of the same job finds that
 #: playlist and adds to it under its first name.
 BATCH_PLAYLIST_KEY = "batch_playlist"
+#: The session record field naming the batch a landing filed and the folder
+#: it filed it in (U164), written with the commit when the landing chose a
+#: folder under the processed tree. Read by ``intake land`` so a batch landed
+#: into again by its own name goes back to its folder, by the batch name rule
+#: so the name stays taken, and by ``intake shelve`` to say there is nothing
+#: to move.
+FILED_BATCH_KEY = "filed_batch"
 #: The key on a :data:`BATCH_PLAYLIST_KEY` entry naming the set job the
 #: INBOX playlist was written for (U135). Absent on every landing that is
 #: not a set, and on set landings from before this unit.
@@ -555,6 +562,12 @@ class NativePlan:
     #: The live :data:`ANALYZE` playlist under the root the plan found (U166),
     #: empty when the write makes it.
     analyze_playlist_id: str = ""
+    #: The folder a landing moves its files into (U164), chosen on the plan's
+    #: handle and carried so the screen, the write and every row's target name
+    #: one folder. None for a plan whose files are already in place.
+    folder: Path | None = None
+    #: The batch the folder is filed for, recorded with it (U164).
+    batch: str = ""
     #: Where adoption would file each row to be added (U165), a
     #: :class:`cratekit.intake.filing.Prediction` per row, given by
     #: :func:`with_filing`. None for a landing that files nothing after it.
@@ -2324,6 +2337,10 @@ def _record_landing_commit(
         if plan.set_job_id:
             kept[INBOX_JOB_KEY] = plan.set_job_id
         record.detail[BATCH_PLAYLIST_KEY] = kept
+    # AND THE BATCH AND ITS FILED FOLDER (U164), so the next landing of the
+    # same name goes back to the folder and the name stays taken.
+    if plan.folder is not None and plan.batch and rows > 0:
+        record.detail[FILED_BATCH_KEY] = {"batch": plan.batch, "folder": str(plan.folder)}
     # AND THE PASS (R-777), which is what ``sync mark --pass`` reads as the
     # proof this pass landed. Only with the commit, never for a plan.
     if plan.pass_name:
@@ -2489,6 +2506,7 @@ def assert_rows_identified(landed: NativeLanded) -> None:
 __all__ = [
     "ADD",
     "BATCH_PLAYLIST_KEY",
+    "FILED_BATCH_KEY",
     "FILE_ID_AT_LANDING",
     "ANALYZE",
     "INBOX_JOB_KEY",

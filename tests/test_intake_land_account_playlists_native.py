@@ -29,6 +29,7 @@ from tests.cli_drive import drive
 from tests.test_intake_land_native import (
     DECLARED,
     _members,
+    _music,
     _query,
     _two_acts,
 )
@@ -143,7 +144,7 @@ def test_two_swept_playlists_land_as_two_playlist_rows_under_their_exact_names(
 
     acted = _landed(cfg)
 
-    folder = Path(cfg.library.root) / cfg.library.music_dir / BATCH
+    folder = _music(cfg, BATCH)
     assert sorted(p.name for p in folder.iterdir()) == ["One.flac", "Three.flac", "Two.flac"]
     assert _inbox(cfg, root_id) == {"Sunset Warmup": ["One", "Two"], "Deep Cuts": ["Three"]}
     written = [item for item in acted["data"]["items"] if item["action"] == "playlist"]
