@@ -224,3 +224,43 @@ def test_shelve_over_a_batch_landed_filed_reports_nothing_to_do(native_library, 
     assert [one["code"] for one in envelope["warnings"]] == [shelve_cli.BATCH_ALREADY_FILED]
     assert _paths(cfg) == before
     assert "gate" not in envelope["data"]
+
+
+def test_a_name_that_is_a_date_alone_files_as_downloads(native_library, silence):
+    """The shelve's word for a batch that says nothing about its source."""
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+
+    _landed("--name", "2026-10-27")
+
+    assert (_processed(cfg) / "2026" / "10_27_26 Downloads" / "One.flac").is_file()
+
+
+def test_a_filed_folder_on_another_device_is_refused_at_the_move(
+    native_library, silence, monkeypatch
+):
+    """The apply checks the device against the folder the plan chose, since a
+    move there would be a copy, and nothing leaves staging."""
+    from cratekit.intake import landing
+
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    code, refused = drive(["intake", "land", "--name", NAMED])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    real = landing._device_of
+    processed = str(_processed(cfg))
+
+    def elsewhere(path):
+        return -1 if str(path).startswith(processed) else real(path)
+
+    monkeypatch.setattr(landing, "_device_of", elsewhere)
+    run_id = refused["run_id"]
+    decided, _ = drive(["run", "decide", run_id, refused["cause"]["detail"]["gate"], "apply", "--actor", "a"])
+    assert decided == int(ExitCode.OK)
+
+    code, acted = drive(["--run", run_id, "intake", "land", "--name", NAMED])
+
+    assert code != int(ExitCode.OK), acted
+    assert acted["cause"]["reason"] == "intake-staging-refused", acted
+    assert (Path(cfg.paths.download_staging) / "One.flac").is_file()
+    assert not (_processed(cfg) / "2026").exists()
