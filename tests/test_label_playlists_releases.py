@@ -14,15 +14,17 @@ D1 applies. Nothing here names a real volume, a real person, or a real track.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
-from cratekit.cli.output import timestamp
+from cratekit.cli.output import digest_of, timestamp
 from cratekit.core.exit_codes import ExitCode
 from cratekit.label import playlists_cli, sync_cli
 from cratekit.modules.outbound import folders, ledger
 from tests.cli_drive import drive
 from tests.label_fakes import FakePagedArtist, FakeRelease, FakeTrack
-from tests.test_label_playlists import BUILD, LABEL, LABEL_ID, LISTED, _years
+from tests.test_label_playlists import BUILD, LABEL, LABEL_ID, LISTED, _entry, _years
 from tests.test_label_playlists import followed as followed  # noqa: PLC0414 - fixture
 from tests.test_label_workers import installed as installed  # noqa: PLC0414 - fixture
 
@@ -340,3 +342,76 @@ def test_the_crawl_gate_is_asked_again_when_the_listing_grows(
     assert code == int(ExitCode.DECISION_STALE), refused
     assert refused["cause"]["detail"]["gate"] == CRAWL
     assert fake.releases_asked_for == [] and account._writes == 0
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 3. What the review of round 1 drove
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_go_whose_every_release_is_gone_says_so_and_not_that_nothing_was_taken(followed):
+    cfg, fake, account = followed
+    _took(cfg, ("r7", "2020"))
+
+    code, done = _releases()
+    assert code == int(ExitCode.OK), done
+    assert [w["code"] for w in done["warnings"]] == ["label-playlists-nothing-left"]
+    assert "1 gone from the provider" in done["warnings"][0]["message"]
+    assert account._writes == 0 and account.folders_created == []
+
+
+def test_a_release_named_only_by_its_review_item_is_never_asked_for_or_shown_as_read(followed):
+    cfg, fake, _account = followed
+    _took(cfg, ("item:abc123", "2023"), ("r3", "2023"))
+
+    code, refused = drive(RELEASES)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["releases read"] == ["Some Artist - Title r3 (2023)"]
+    assert "0 the provider no longer has, 1 named by no release" in shown["catalogue"]
+    assert fake.releases_asked_for == ["r3"]
+
+
+def test_a_release_the_provider_dates_by_nothing_takes_the_year_its_answer_recorded(followed):
+    cfg, _fake, account = followed
+    # r5 carries no year at the provider. Its answer recorded 2019 for one and
+    # nothing usable for the other, which is left out as undated.
+    _took(cfg, ("r5", "2019"))
+    assert _releases()[0] == int(ExitCode.OK)
+    (folder_id,) = account.folder_names
+    assert _years(account, folder_id) == {"Kompakt 2019": ["t8"]}
+
+
+def test_a_recorded_year_that_is_not_four_digits_is_undated(followed):
+    cfg, _fake, account = followed
+    _took(cfg, ("r5", "19"))
+    code, done = _releases()
+    assert code == int(ExitCode.OK), done
+    assert [w["code"] for w in done["warnings"]] == ["label-playlists-nothing-left"]
+    assert "1 with no year" in done["warnings"][0]["message"]
+    assert account._writes == 0
+
+
+def test_a_full_builds_digest_is_the_plan_identity_alone(followed):
+    cfg, fake, account = followed
+    planned = folders.plan(
+        cfg, playlists_cli.read_catalogue(cfg, _entry(), fake), account
+    )
+    assert playlists_cli.plan_payload(planned, name=LABEL)["digest"] == digest_of(
+        planned.identity()
+    )
+
+
+def test_the_estimate_reads_the_configured_pace(followed):
+    cfg, fake, _account = followed
+    listed = playlists_cli.list_catalogue(cfg, _entry(), fake)
+    paced = SimpleNamespace(provider=SimpleNamespace(min_interval_s=3.0))
+    counted = playlists_cli.estimate(paced, _entry(), listed)
+    assert (counted.releases, counted.pace_s, counted.seconds) == (len(LISTED), 3.0, 42)
+
+
+def test_a_full_build_lists_the_label_once_per_run(followed):
+    _cfg, fake, _account = followed
+    code, _refused = drive(["label", "playlists", LABEL])
+    assert code == int(ExitCode.DECISION_REQUIRED)
+    assert fake.asked_for == [LABEL_ID]

@@ -3869,8 +3869,8 @@ EXPECTED_UNREACHABLE_GATES = frozenset(
 )
 
 
+def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
     """Seven gates are exempt. An eighth one is a decision, not a diff.
-    """Six gates are exempt. A seventh one is a decision, not a diff.
 
     The sixth, ``intake.shelve.native``, joined with U154, decided there: the
     verb asks only over a plan that moves a batch, approving one writes a path

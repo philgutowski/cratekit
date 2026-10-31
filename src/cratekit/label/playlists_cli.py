@@ -92,6 +92,19 @@ NOTHING_TAKEN_SAID = (
     "no label sync go has taken a release of this label, so there is nothing to "
     "add without reading its whole catalogue"
 )
+#: What it says when a go took releases and none of them has a dated track to
+#: add: every one is gone from the provider, dated by nothing, or named by no
+#: release. Not "nothing taken", which would be false.
+NOTHING_LEFT_SAID = (
+    "label sync goes took {taken} release(s) of this label and none of them has "
+    "a dated track the provider still lists: {gone} gone from the provider, "
+    "{undated} with no year, {unnamed} named by no release"
+)
+
+
+def _unnamed(identity: str) -> bool:
+    """A release the sync named only by its review item, which no provider read can name."""
+    return not identity or identity.startswith("item:")
 
 
 def build_playlists(parser, entry) -> None:
@@ -327,9 +340,10 @@ def read_taken(
     """The taken releases' tracks grouped by year, and nothing else the label has.
 
     A release the sync named only by its review item, ``item:...``, names no
-    release the provider can be asked about, and is counted with the gone.
+    release the provider can be asked about, so it is never asked for; the
+    screen counts it on its own.
     """
-    readable = [one for one in taken if one.identity and not one.identity.startswith("item:")]
+    readable = [one for one in taken if not _unnamed(one.identity)]
     grouped = _grouped(entry, found, [(one.identity, one.year) for one in readable])
     return folders.LabelCatalogue(
         label_id=entry.label_id,
@@ -337,7 +351,7 @@ def read_taken(
         years=grouped.years,
         releases=len(readable),
         undated=grouped.undated,
-        gone=grouped.gone + len(taken) - len(readable),
+        gone=grouped.gone,
         by_release=grouped.by_release,
     )
 
@@ -410,6 +424,11 @@ class Estimate:
             "instead": shlex.join(["crate", "label", "playlists", self.name, "--releases"])
             + " adds only the releases a label sync took",
             "nothing read yet": "no release's tracks have been read and nothing was written",
+            "then": (
+                "answered crawl, the build reads the catalogue to show its plan, and "
+                "the run that applies an approved plan reads it again, so a whole "
+                "build spends about twice this"
+            ),
         }
 
 
@@ -492,16 +511,31 @@ def _named(one: TakenRelease) -> str:
     return f"{said} ({one.year})" if one.year else said
 
 
+def _nothing_said(
+    taken: Sequence[TakenRelease], read: folders.LabelCatalogue | None
+) -> str:
+    """Why a releases build of a followed label plans nothing to make."""
+    if not taken or read is None:
+        return NOTHING_TAKEN_SAID
+    return NOTHING_LEFT_SAID.format(
+        taken=len(taken),
+        gone=read.gone,
+        undated=read.undated,
+        unnamed=sum(1 for one in taken if _unnamed(one.identity)),
+    )
+
+
 def _shown(
     planned: folders.Plan | None,
     *,
     name: str,
     taken: Sequence[TakenRelease] | None = None,
     listed: Estimate | None = None,
+    read: folders.LabelCatalogue | None = None,
 ) -> dict[str, Any]:
     if planned is None:
         if taken is not None:
-            return {"label": name, "nothing to build": NOTHING_TAKEN_SAID}
+            return {"label": name, "nothing to build": _nothing_said(taken, read)}
         return {"label": name, "nothing to build": NOT_FOLLOWED_SAID}
     read = planned.catalogue
     folder = {
@@ -516,10 +550,12 @@ def _shown(
             f"{read.gone} the provider no longer has, {read.suppressed} deleted on purpose"
         )
     else:
+        unnamed = sum(1 for one in taken if _unnamed(one.identity))
         said = (
-            f"only the {len(taken)} release(s) a label sync took were read, and none "
-            f"of the rest of the catalogue; left out {read.undated} with no year, "
-            f"{read.gone} the provider no longer has"
+            f"only the {len(taken) - unnamed} release(s) a label sync took were read, "
+            f"and none of the rest of the catalogue; left out {read.undated} with no "
+            f"year, {read.gone} the provider no longer has, {unnamed} named by no "
+            f"release and never asked for"
         )
     shown: dict[str, Any] = {
         "label": read.name,
@@ -529,7 +565,7 @@ def _shown(
         "removes": "nothing, ever: no track, playlist or folder is taken away",
     }
     if taken is not None:
-        shown["releases read"] = [_named(one) for one in taken]
+        shown["releases read"] = [_named(one) for one in taken if not _unnamed(one.identity)]
     if listed is not None:
         shown["provider calls"] = (
             f"{listed.releases} release(s) listed, at least {listed.calls} provider "
@@ -673,6 +709,7 @@ def label_playlists(ctx) -> Envelope:
     #: The releases read, when the build is a releases build of a followed label.
     taken: tuple[TakenRelease, ...] | None = None
     counted: Estimate | None = None
+    read: folders.LabelCatalogue | None = None
     if entry is not None:
         from cratekit.modules.outbound import account
 
@@ -706,7 +743,7 @@ def label_playlists(ctx) -> Envelope:
     option = ctx.gate.require(
         _gate(ctx, BUILD_GATE),
         plan=payload,
-        context=_shown(planned, name=name, taken=taken, listed=counted),
+        context=_shown(planned, name=name, taken=taken, listed=counted, read=read),
     )
     if planned is None:
         if entry is None:
@@ -714,10 +751,15 @@ def label_playlists(ctx) -> Envelope:
                 "code": "label-playlists-not-followed",
                 "message": f"{name}: {NOT_FOLLOWED_SAID}",
             }
-        else:
+        elif not taken:
             warning = {
                 "code": "label-playlists-nothing-taken",
                 "message": f"{name}: {NOTHING_TAKEN_SAID}",
+            }
+        else:
+            warning = {
+                "code": "label-playlists-nothing-left",
+                "message": f"{name}: {_nothing_said(taken, read)}",
             }
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP, warnings=[warning])
     if option != "apply" or not planned.writes:
