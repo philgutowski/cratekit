@@ -135,9 +135,19 @@ def test_both_verbs_write_only_the_account_behind_an_explicit_gate():
         entry = registry.entry(name)
         assert entry.writes == frozenset({"remote"}), name
         assert entry.module_id == "labels" and entry.feature_rows == (23,)
-        (spec,) = entry.gates
+        spec = entry.gates[0]
         assert (spec.name, spec.options, spec.explicit) == (gate, ("apply", "abort"), True)
         assert spec.digest_source == "plan"
+    # U191: the build's second gate is the full crawl's, explicit too, and the
+    # mark has no second gate.
+    assert len(registry.entry("label.mark").gates) == 1
+    (_build, crawl) = registry.entry("label.playlists").gates
+    assert (crawl.name, crawl.options, crawl.explicit, crawl.digest_source) == (
+        playlists_cli.CRAWL_GATE,
+        ("crawl", "abort"),
+        True,
+        "plan",
+    )
 
 
 def test_feature_row_23_is_a_module_row_and_no_longer_deferred():
