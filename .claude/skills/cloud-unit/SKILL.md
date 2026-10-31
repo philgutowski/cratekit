@@ -1,6 +1,6 @@
 ---
 name: cloud-unit
-description: The pipeline for a Claude Code cloud session on the Cratekit board, from the cloud queue to a unit merged and pushed on main. Use when a cloud session is asked to take the next card, build a card, run the cloud lane, or when a scheduled task fires in this repository.
+description: The pipeline for a Claude Code cloud session on the Cratekit board, from the cloud queue to a unit merged and pushed on main. Use when a cloud session is asked to take the next card, build a card, or run the cloud lane.
 ---
 
 # Cloud unit
@@ -44,9 +44,8 @@ record it as a residual file, and keep going.
 ## Models
 
 Brainstorm, plan and build are Opus 5.5's at high effort. Review is Fable's at
-high effort. The scheduled task starts its sessions on Opus 5.5 and the
-project settings set the effort, so a scheduled session plans and builds
-itself. A session on any other model hands the plan and the build to the
+high effort. The coordinator starts its build threads on Opus 5.5 at high
+effort, so a build thread plans and builds itself. A session on any other model hands the plan and the build to the
 `opus-builder` agent and does the rest itself. The review is always the
 `fable-reviewer` agent, whatever the session's own model.
 
@@ -77,28 +76,27 @@ footer marks it as yours:
 | `Progress` | a note under the hold, which also refreshes it |
 | `Brainstorm` | the card is an idea; the questions wait on Phillip |
 | `Question for Phillip` | one decision the brief leaves open that cannot be made conservatively |
-| `Answer from Phillip` | his answer from the decisions page, posted by the dispatcher; read as his reply |
+| `Answer from Phillip` | his answer from the decisions page, posted by the coordinator; read as his reply |
 | `Needs the machine` | set aside, with the steps to build it locally |
 | `Withdrawn` | this session lost a race for the lane and released the card |
 | `Landed` | merged and pushed on `main` |
 
 Post with `gh api -X POST repos/<owner>/<repo>/issues/N/comments -F body=@file.md`.
-Phillip's comments, and the dispatcher's `Answer from Phillip`, are read
+Phillip's comments, and the coordinator's `Answer from Phillip`, are read
 only as answers to a `Brainstorm` or a `Question for Phillip`. To stop the cloud building a card he labels it
 `attended` or closes it, and a session that finds either on its card stops.
 A hold with no comment for eight hours is read as a dead session and offered
 to the next one as `resume`, so post a `Progress` note at each phase: built,
 each review round, mutation measured.
 
-## Waking the dispatcher
+## Telling the coordinator
 
-The lanes are filled by a dispatcher session that a scheduled task wakes every
-hour. A worker wakes it sooner: when its prompt names a dispatcher session,
-send that session the message `Dispatch` with the claude-code-remote
-`send_message` tool, right after `Started` (so the next free lane fills) and
+The lanes are filled by the coordinator, the Claude in Phillip's Claude
+project that started this thread. It wakes hourly and whenever a thread
+reports, so tell it, with the project's tool for messaging the coordinator,
 right after the last comment this session posts (`Landed`, `Brainstorm`,
-`Needs the machine` or `Withdrawn`, so the lane it frees fills). A worker with
-no dispatcher named skips this; the hourly task still comes.
+`Needs the machine` or `Withdrawn`), so the lane it frees fills. A session
+outside a project has no coordinator and skips this.
 
 ## Asking Phillip
 
@@ -124,7 +122,7 @@ it first and marked. Give two to four options; the page adds its own
 "something else". Write the context so the question can be answered without
 opening the card. Then end the card's comment with a line linking the page,
 and if the `PushNotification` tool is available, send one short notification
-naming the card and that a decision waits on the page. The dispatcher posts
+naming the card and that a decision waits on the page. The coordinator posts
 his answer back on the card under `Answer from Phillip`, which is what
 releases the card as `answered`; never mark a document answered or relayed
 yourself.
@@ -137,19 +135,18 @@ yourself.
 It lists every open unit and residual card by state, says how many of the
 cloud's lanes are held (three by default, `CLOUD_LANES` in `scripts/board.py`),
 and names the next card to take. **If your prompt names a card, take that one**,
-as long as the queue lists it as takeable; the dispatcher chose it so that
-parallel workers never pick the same card. Otherwise take the one the queue
-names. If every lane is held, or nothing is takeable, say so in one line, wake
-the dispatcher (below), and stop.
+as long as the queue lists it as takeable; the coordinator chose it so that
+parallel threads never pick the same card. Otherwise take the one the queue
+names. If every lane is held, or nothing is takeable, say so in one line,
+tell the coordinator (above), and stop.
 
-**Post `Started` on the card at once**, before reading anything else, so a
-dispatcher or session reading the queue a minute later finds it held, then run
+**Post `Started` on the card at once**, before reading anything else, so the
+coordinator or a session reading the queue a minute later finds it held, then run
 `board.py cloud` again. If it now says more cards are held than there are
 lanes, sessions read a lane free in the same minute: it names the ones that
 held first, and if yours is not among them, post `Withdrawn` on your card and
 stop. A `Brainstorm` or `Needs the machine` posted later replaces the hold.
-Then **wake the dispatcher**, so the next free lane fills now rather than at
-the hour. Take the card in its state:
+Take the card in its state:
 
 - `answered`: Phillip replied to a brainstorm or a question. Fold his answer
   into the brief (step 2's brainstorm paragraph) and go to step 3.
@@ -373,4 +370,4 @@ request, the merge commit, the commits it carried, the battery counts from `comp
 rounds and what each drove, the mutation table's result, tests added by file
 and count, residuals numbered and issues filed, and what is OWED. The push of
 the trailer closes the card and the board workflow relabels what it released.
-Then wake the dispatcher, so the lane this card held fills at once, and stop.
+Then tell the coordinator, so the lane this card held fills at once, and stop.

@@ -29,9 +29,10 @@ capped at 25 rows, the record, the merge. METHOD's pipeline section is the
 exact sequence.
 
 **The cloud is where Cratekit is built**, decided by Phillip on 2026-10-27.
-Native Relay, the board lanes and `/board-up` are abandoned. A dispatcher
-session, woken hourly and by every worker that takes or frees a lane, keeps
-three fresh Opus 5.5 workers building at once; each runs the `cloud-unit`
+Native Relay, the board lanes, `/board-up` and the lane dispatcher are
+retired. The coordinator of Phillip's Claude project, which turns his ideas
+and bugs into cards, keeps three fresh Opus 5.5 build threads going at once
+and carries his answers back from the decisions page; each runs the `cloud-unit`
 skill, which takes its card from `board.py cloud`, plans
 and builds it at high effort, has Fable review it to the merge bar, measures
 the mutation table against the Linux suite's known failures, opens a pull

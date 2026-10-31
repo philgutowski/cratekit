@@ -85,3 +85,15 @@ is the lane count. A second test bound to this container's inode numbers,
 `tests/test_repair_rows.py`, passed in the base measurement and then failed
 alone on `main` itself, so a session that meets it new runs it on `main`
 before calling it its own.
+
+**The dispatcher retired, 2026-10-31**, asked for by Phillip. His Claude
+project's coordinator now does both of its jobs: it turns his ideas and bugs
+into cards and starts one build thread per free lane, and it carries each
+answer from the decisions page back as an `Answer from Phillip` comment. The
+`cloud-dispatch` skill is deleted, a build thread tells the coordinator when
+it frees a lane rather than sending `Dispatch`, and CLAUDE.md, METHOD's cloud
+lane section, the `cloud-unit` skill and `scripts/board.py` say coordinator
+where they said dispatcher. The dispatcher session was already archived,
+and the paused scheduled tasks "Cratekit lane dispatch" and "Cratekit Cloud
+Lane" were deleted on Phillip's word. The paragraphs above are the record of
+how it ran.
