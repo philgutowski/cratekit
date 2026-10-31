@@ -1197,6 +1197,11 @@ def open_db(
         path=target,
     )
     assert_schema_version(db, force=force_schema, cfg=cfg)
+    # U185. Another app's folder at the top of the tree, read as the handle
+    # opens, so a commit through this handle can be refused if it changed it.
+    from cratekit.core import foreign_tree
+
+    foreign_tree.remember(db)
     return db
 
 
@@ -3207,6 +3212,82 @@ def pending_changes(
     return list(created.values()), list(modified.values()), list(removed.values())
 
 
+def pending_objects(session: Any, db: Any = None) -> list[tuple[Any, str, frozenset[str]]]:
+    """Every object this session will write, with what it does and which columns.
+
+    The same two sources :func:`pending_changes` unions, the session's pending
+    collections and the binding's update buffer, kept as OBJECTS rather than
+    as table names, for a guard whose question is which rows and not which
+    tables (U185). ``op`` is ``create``, ``modify`` or ``delete``; creation
+    wins over modification for one object, as it does there. An entry whose
+    shape the buffer reader does not understand is left out here, since the
+    whitelist already refuses it under its own name.
+    """
+    found: dict[int, tuple[Any, str, set[str]]] = {}
+
+    def note(obj: Any, op: str, columns: Iterable[str]) -> None:
+        seen = found.get(id(obj))
+        if seen is not None and seen[1] == "create":
+            return
+        if seen is not None and op == "modify" and seen[1] == "modify":
+            found[id(obj)] = (obj, op, seen[2] | set(columns))
+            return
+        found[id(obj)] = (obj, op, set(columns))
+
+    for _entry, op, key, instances in _buffer_entries(db):
+        for obj in instances:
+            if op == "create":
+                note(obj, "create", _declared_columns(obj))
+            elif op == "delete":
+                note(obj, "delete", ())
+            elif op == "update":
+                note(obj, "modify", (key or UNINSPECTABLE,))
+            elif op == "move":
+                note(obj, "modify", (MOVED,))
+    if session is not None:
+        for obj in list(getattr(session, "new", ())):
+            note(obj, "create", _declared_columns(obj))
+        for obj in list(getattr(session, "dirty", ())):
+            note(obj, "modify", _columns_of(obj))
+        for obj in list(getattr(session, "deleted", ())):
+            note(obj, "delete", ())
+    return [(obj, op, frozenset(columns)) for obj, op, columns in found.values()]
+
+
+def assert_foreign_untouched(db: Any) -> None:
+    """Refuse a commit that would change another app's folder at the top (U185).
+
+    ASKED TWO WAYS, because neither sees everything. The pending objects are
+    what the session will write and have not yet flushed; the subtree read
+    again from SQL is what a flush or raw SQL already put in the transaction,
+    compared with the reading :func:`open_db` kept. A handle with no reading,
+    or one whose reading at open failed, REFUSES: whether the write leaves the
+    folder alone is then a question nobody looked at.
+    """
+    from cratekit.core import foreign_tree
+
+    before = foreign_tree.reading_at_open(db)
+    if before is None:
+        raise _unavailable(
+            "whitelist-violation",
+            f"{foreign_tree.OWNER}'s folder at the top of the playlist tree was not "
+            f"read when this database handle opened, so whether this write leaves it "
+            f"alone cannot be said; nothing was written",
+            detail={"violations": ["the foreign folder was not read at open"]},
+        )
+    session = getattr(db, "session", None)
+    violations = foreign_tree.pending_touches(pending_objects(session, db), before)
+    violations += foreign_tree.differences(before, foreign_tree.read(session))
+    if violations:
+        raise _unavailable(
+            "whitelist-violation",
+            f"the pending write would change {foreign_tree.OWNER}'s folder at the top "
+            f"of the playlist tree, which another app owns and this product leaves "
+            f"exactly as it is; nothing was written:\n  - " + "\n  - ".join(violations),
+            detail={"violations": list(violations)},
+        )
+
+
 def _registry_created_instances(db: Any) -> dict[int, Any]:
     """The INSTANCES the binding's buffer records a creation for, keyed by identity.
 
@@ -3634,6 +3715,7 @@ def commit_guarded(
                 db.session, db, removals=removals, creations=creations
             )
             assert_created_rows_are_gridless(db)
+            assert_foreign_untouched(db)
         except RekordboxUnavailable:
             # Rolled back rather than left pending: carrying rejected objects
             # forward would land a refused write later, under whatever operation
@@ -3698,6 +3780,7 @@ __all__ = [
     "add_memberships",
     "add_my_tag",
     "assert_app_version",
+    "assert_foreign_untouched",
     "assert_binding_version",
     "assert_cloud_sync_readable",
     "assert_rekordbox_closed",
@@ -3726,6 +3809,7 @@ __all__ = [
     "row_probe_policy",
     "guard_violations",
     "pending_changes",
+    "pending_objects",
     "integration_db_path",
     "integrity_ok",
     "is_folder",

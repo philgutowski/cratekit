@@ -719,6 +719,13 @@ class Taxonomy:
 # ---------------------------------------------------------------------------
 
 
+def _foreign_root_names() -> frozenset[str]:
+    """The top level folder names another app owns, read late (U185)."""
+    from cratekit.core import foreign_tree
+
+    return foreign_tree.FOREIGN_ROOT_NAMES
+
+
 def load_taxonomy(text: str) -> Taxonomy:
     """Parse and validate a template from TOML text.
 
@@ -1004,6 +1011,12 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
             problems.append(f"[{label}] id {node.id!r} must match {_ID.pattern}")
         if not node.display:
             problems.append(f"[{label}] display must be a non-empty string")
+        elif node.display in _foreign_root_names():
+            # U185. A declared tree of that name would adopt another app's folder.
+            problems.append(
+                f"[{label}] display {node.display!r} is the folder another app owns at "
+                f"the top of rekordbox's tree, and a tree of that name would adopt it"
+            )
     # KTD14: the XML bridge's indentation constants encode exactly three levels.
     # A template that declares another depth is refused BY NAME here, rather than
     # emitting bytes that rekordbox reads as a different tree.
