@@ -275,3 +275,28 @@ def test_a_rehearsal_digests_as_the_live_landing_that_files(filing_library, sile
     assert shown["digest"] == rehearsed["data"]["digest"]
     assert "equal to this plan's" in shown["rehearsal"]
     assert all("files into" in item for item in shown["items"])
+
+
+def test_a_collection_read_before_the_commit_does_not_hide_the_landed_rows(
+    filing_library, silence
+):
+    """The collection cache may hold the library as it was before the landing;
+    the filing forgets it first, or it plans the new rows as absent."""
+    from cratekit.adopt import collection
+    from tests.test_intake_land_native import GATE
+
+    cfg, _root = filing_library
+    _file(cfg, silence, "One.flac", genre="Deep House", energylevel=7)
+    code, refused = drive(_land())
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    decided, _ = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
+    assert decided == int(ExitCode.OK)
+    collection.reset_cache()
+    collection.read_collection(cfg)
+
+    code, acted = drive(["--run", run_id, *_land()])
+
+    assert code == int(ExitCode.OK), acted
+    assert acted["data"]["totals"]["filing"] == filing.FILED
+    assert _homes(cfg, _content_id(cfg, "One.flac")) != set()
