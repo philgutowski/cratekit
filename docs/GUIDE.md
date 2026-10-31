@@ -362,6 +362,19 @@ skipping it leaves nameless rows that file nowhere. A row landed before
 2026-10-09 also lacks the defaults rekordbox writes on every row it makes, and
 will not load to a deck until `crate repair rows` fills them (R-923); a row
 landed since carries them from the start. There is no import, no drag and no `intake imported` on this path.
+
+To see a native landing work before you approve it, run the same command with
+`--rehearse` first. A rehearsal asks no question and writes nothing live: it
+copies the database and the library's state into a scratch folder of its own
+(one per run, so two rehearsals never share one), clones the staged files
+there, applies the landing to the copy, reads it back, reports the plan's
+digest with the rows added and the copy's integrity, and removes the scratch
+folder. Your staging folder, your music folder and your database are left
+exactly as they were, and rekordbox running refuses it as it refuses the
+landing. When the rehearsal fails, the scratch folder is kept and the refusal
+names it. The landing you then run without `--rehearse` names the newest
+rehearsal of the same folder and batch on its gate screen and says whether
+its plan equals it, printing the lines that differ when it does not.
 Filing the batch into your genre tree is `adopt scan` and `adopt apply`.
 
 Once you have imported the landed file, quit rekordbox, take a new export with

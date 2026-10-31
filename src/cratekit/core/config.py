@@ -2205,6 +2205,38 @@ STATE_FILES: tuple[StateFile, ...] = (
             "apply a plan nobody was shown against the restored library."
         ),
     ),
+    StateFile(
+        key="rehearsal_areas",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.DIRECTORY,
+        relative="rehearsals",
+        why=(
+            "The volume half of each rehearsal's scratch area, one folder per "
+            "run (U162): a copy of the database file set, a copy of the library "
+            "state it reads, and clones of the files the verb moves. On the "
+            "library volume so a clone stays a clone. Removed when the "
+            "rehearsal ends and kept, named, only when it failed. "
+            "NEVER_RESTORED: a scratch copy is nobody's state, and restoring one "
+            "would put a rehearsal's files back beside a library that never "
+            "had them."
+        ),
+    ),
+    StateFile(
+        key="rehearsals",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.DIRECTORY,
+        relative="rehearsals",
+        why=(
+            "The local half of each rehearsal's scratch area, the redirected "
+            "config and installation state a rehearsal runs under, and one "
+            "record per finished rehearsal, its plan digest and plan lines, "
+            "which the live run of the same verb over the same input compares "
+            "its own plan against (U162). Installation-scoped beside the run "
+            "records, since a rehearsal is a run on this machine."
+        ),
+    ),
 )
 
 _STATE_BY_KEY: Mapping[str, StateFile] = MappingProxyType({s.key: s for s in STATE_FILES})

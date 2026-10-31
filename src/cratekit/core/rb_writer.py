@@ -1266,6 +1266,17 @@ def _copy_file_set(source: Path, destination: Path) -> Path:
     return copied
 
 
+def copy_file_set(source: Path | str, destination: Path) -> Path:
+    """Copy a database's whole file set into an existing ``destination``, answering the copy.
+
+    For a caller that keeps the copy where it chooses, a rehearsal's scratch
+    area (U162), through the one loop the snapshot and the disposable copy
+    use. THE CALLER ESTABLISHES THAT REKORDBOX IS CLOSED, as for
+    :func:`disposable_copy`.
+    """
+    return _copy_file_set(Path(source), destination)
+
+
 @contextmanager
 def disposable_copy(source: Path | str) -> Iterator[Path]:
     """A throwaway copy of a database in a private temporary directory, then gone.
