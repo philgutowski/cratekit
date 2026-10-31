@@ -1,0 +1,132 @@
+name = "u168"
+pass_kind = "light"
+
+[[rows]]
+id = "C1_no_continue"
+description = "decide: ignore --continue and answer with the recorded decision alone"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_run_decide_continue.py", "tests/test_cli_contract.py"]
+old = '''    if ctx.args.continue_run:
+        return _continued(ctx, state, spec.name, actor=actor)'''
+new = '''    if False:
+        return _continued(ctx, state, spec.name, actor=actor)'''
+
+[[rows]]
+id = "C2_continue_before_save"
+description = "decide: continue the verb before the answer is saved"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_run_decide_continue.py"]
+old = '''    gates.record(state, spec, ctx.args.option, actor=actor)
+    gates.save(state)
+    if ctx.args.continue_run:'''
+new = '''    gates.record(state, spec, ctx.args.option, actor=actor)
+    if ctx.args.continue_run:
+        return _continued(ctx, state, spec.name, actor=actor)
+    gates.save(state)
+    if ctx.args.continue_run:'''
+
+[[rows]]
+id = "C3_default_actor_cli"
+description = "_actor: default to cli whatever the terminal"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_run_decide_continue.py"]
+old = '''    if session.has_controlling_terminal():
+        return TERMINAL_ACTOR, "a terminal, and no --actor"'''
+new = '''    if True:
+        return TERMINAL_ACTOR, "a terminal, and no --actor"'''
+
+[[rows]]
+id = "C4_default_actor_session"
+description = "_actor: default to session even at a terminal"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_run_decide_continue.py"]
+old = '''    if session.has_controlling_terminal():
+        return TERMINAL_ACTOR, "a terminal, and no --actor"'''
+new = '''    if False:
+        return TERMINAL_ACTOR, "a terminal, and no --actor"'''
+
+[[rows]]
+id = "C5_given_actor_ignored"
+description = "_actor: ignore an actor given with --actor"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_run_decide_continue.py"]
+old = '''    if given is not None:
+        return given, "given with --actor"'''
+new = '''    if False:
+        return given, "given with --actor"'''
+
+[[rows]]
+id = "C6_no_argv_continues"
+description = "_continued: skip the refusal for a run that keeps no command line"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_run_decide_continue.py"]
+old = '''    if state.argv is None:
+        raise CratekitError('''
+new = '''    if state.argv is None and False:
+        raise CratekitError('''
+
+[[rows]]
+id = "C7_continue_without_run"
+description = "_continued: dispatch the verb again without --run, as a new run"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_run_decide_continue.py", "tests/test_cli_contract.py"]
+old = '''    envelope = cli.dispatch(["--run", state.run_id, *state.argv], stderr=sys.stderr)'''
+new = '''    envelope = cli.dispatch([*state.argv], stderr=sys.stderr)'''
+
+[[rows]]
+id = "C8_no_note"
+description = "_continued: answer the continued envelope without the decision-recorded warning"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_run_decide_continue.py"]
+old = '''    return dataclasses.replace(envelope, warnings=(note, *envelope.warnings))'''
+new = '''    return envelope'''
+
+[[rows]]
+id = "C9_argv_on_every_run"
+description = "_dispatched: record the command line on a continued run too, overwriting the first"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_run_decide_continue.py", "tests/test_cli_contract.py"]
+old = '''        if not args.run:
+            state.argv = _verb_argv(argv, entry)'''
+new = '''        if True:
+            state.argv = _verb_argv(argv, entry)'''
+
+[[rows]]
+id = "C10_argv_never"
+description = "_dispatched: never record the command line"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_run_decide_continue.py", "tests/test_cli_contract.py"]
+old = '''        if not args.run:
+            state.argv = _verb_argv(argv, entry)'''
+new = '''        if False:
+            state.argv = _verb_argv(argv, entry)'''
+
+[[rows]]
+id = "C11_argv_whole_line"
+description = "_verb_argv: keep the global options before the verb"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_run_decide_continue.py", "tests/test_cli_contract.py"]
+old = '''            return tuple(tokens[index:])'''
+new = '''            return tuple(tokens)'''
+
+[[rows]]
+id = "C12_argv_not_saved"
+description = "RunState.to_json: drop the command line from the saved record"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_decide_continue.py", "tests/test_cli_contract.py", "tests/test_gate_pins.py"]
+old = '''        if self.argv is not None:
+            record["argv"] = list(self.argv)'''
+new = '''        if False:
+            record["argv"] = list(self.argv)'''
