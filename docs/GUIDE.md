@@ -377,7 +377,18 @@ landing. When the rehearsal fails, the scratch folder is kept and the refusal
 names it. The landing you then run without `--rehearse` names the newest
 rehearsal of the same folder and batch on its gate screen and says whether
 its plan equals it, printing the lines that differ when it does not.
-Filing the batch into your genre tree is `adopt scan` and `adopt apply`.
+
+When your genre tree is database native too, the same landing files its new
+rows into BY GENRE + ENERGY under the same answer. Its gate screen shows, for
+every file, the bucket and sub adoption will file it in, its vocal sub when it
+gets the vox tag, or why it is placed nowhere (a file with no genre lands and
+is listed, filed nowhere), and the `files after landing` line counts them.
+After the commit the landing plans adoption over the rows it made and files
+them only when every one is where the screen said. If any differs, nothing is
+filed, the rows stay landed, and the run says which rows differ and to run
+`crate adopt apply`. `--land-only` lands without filing, and a genre tree on
+the xml bridge files nothing, which the screen names; either way filing the
+batch is then `adopt scan` and `adopt apply`.
 
 Once you have imported the landed file, quit rekordbox, take a new export with
 `crate export collection` or from rekordbox's own menu, and run

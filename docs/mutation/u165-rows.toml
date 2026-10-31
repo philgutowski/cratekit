@@ -1,0 +1,181 @@
+name = "u165"
+pass_kind = "light"
+
+[[rows]]
+id = "F1_reset_cache"
+description = "file_landed: plan over the cached collection without forgetting it (round one's test)"
+file = "src/cratekit/intake/filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py", "tests/test_intake_land_native.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''    collection.reset_cache()
+'''
+new = '''    pass
+'''
+
+[[rows]]
+id = "F2_compare"
+description = "file_landed: never compare the plan after the commit with the prediction"
+file = "src/cratekit/intake/filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py", "tests/test_intake_land_native.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''        if now != one.place:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "F3_differing_files"
+description = "file_landed: file even when a row differs from its prediction"
+file = "src/cratekit/intake/filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py", "tests/test_intake_land_native.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''    if differing:
+        return Filed(state=FILED_DIFFERENTLY'''
+new = '''    if False:
+        return Filed(state=FILED_DIFFERENTLY'''
+
+[[rows]]
+id = "F4_vox_predicted"
+description = "predict: never predict the vocal sub"
+file = "src/cratekit/intake/filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py", "tests/test_intake_land_native.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''vox=row.vox),'''
+new = '''vox=False),'''
+
+[[rows]]
+id = "F5_report_failed"
+description = "file_landed: report a filing whose entries failed as filed"
+file = "src/cratekit/intake/filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py", "tests/test_intake_land_native.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''    if report.failed:
+        return Filed(
+            state=NOT_FILED,'''
+new = '''    if False:
+        return Filed(
+            state=NOT_FILED,'''
+
+[[rows]]
+id = "F6_unplaced"
+description = "_refuse_unplaced: never refuse a landed row the tree writer could not place"
+file = "src/cratekit/intake/filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py", "tests/test_intake_land_native.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''    if not membership.skipped:
+        return
+    unplaced = sorted({str(match.requested) for match in membership.skipped})
+    raise refuse(
+        "adopt-entries-failed",
+        f"{len(unplaced)} landed row(s)'''
+new = '''    if True:
+        return
+    unplaced = sorted({str(match.requested) for match in membership.skipped})
+    raise refuse(
+        "adopt-entries-failed",
+        f"{len(unplaced)} landed row(s)'''
+
+[[rows]]
+id = "P1_undeclared"
+description = "predicted_place: route a band the taxonomy declares no sub for"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py", "tests/test_intake_land_native.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''        return Predicted(disposition=Disposition.UNDECLARED)'''
+new = '''        return Predicted(disposition=disposition, bucket=bucket)'''
+
+[[rows]]
+id = "P2_vocal_sub"
+description = "predicted_place: give every route the vocal sub, vox or not"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py", "tests/test_intake_land_native.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''    vocal = (vocal_sub(declared, bucket) or "") if vox else ""'''
+new = '''    vocal = vocal_sub(declared, bucket) or ""'''
+
+[[rows]]
+id = "P3_of_vocal"
+description = "Predicted.of: read the vocal sub of an entry whatever its vocal state"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py", "tests/test_intake_land_native.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''            vocal_sub=entry.vocal_sub if entry.vocal == VOCAL_ADD else "",'''
+new = '''            vocal_sub=entry.vocal_sub,'''
+
+[[rows]]
+id = "A1_scope"
+description = "census: ignore the scope and walk the whole collection"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py", "tests/test_intake_land_native.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''        rows = tuple(row for row in rows if row.content_id in scope)'''
+new = '''        rows = tuple(rows)'''
+
+[[rows]]
+id = "A2_refuse_unplaced_called"
+description = "file_plan: skip the unplaced refusal before the ledger is marked"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py", "tests/test_intake_land_native.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''    refuse_unplaced(membership)
+'''
+new = '''    pass
+'''
+
+[[rows]]
+id = "A3_grant_first"
+description = "file_plan: mint no approval before the memberships are written"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py", "tests/test_intake_land_native.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''    grant(plan, actor=actor)
+
+    membership = _write_memberships'''
+new = '''    membership = _write_memberships'''
+
+[[rows]]
+id = "L1_bridge_skip"
+description = "_land_native: predict a filing on a routing tree still on the bridge"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py", "tests/test_intake_land_native.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''            if medium.files_natively'''
+new = '''            if True'''
+
+[[rows]]
+id = "L2_land_only"
+description = "planner: predict and file under --land-only too"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py", "tests/test_intake_land_native.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''            if unfiled:
+                return made'''
+new = '''            if False:
+                return made'''
+
+[[rows]]
+id = "L3_filing_tail"
+description = "_land_native: never file after the landing"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py", "tests/test_intake_land_native.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''    if predicted is not None:
+        # THE FILING'''
+new = '''    if False:
+        # THE FILING'''
+
+[[rows]]
+id = "L4_files_into"
+description = "_native_payload: drop each item's files into"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py", "tests/test_intake_land_native.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''        if str(row.target) in sorted_into:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "N1_digest"
+description = "identity: leave the predictions out of the digest"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py", "tests/test_intake_land_native.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''        {"filing": [one.identity() for one in plan.filing]} if plan.filing is not None else {}'''
+new = '''        {}'''

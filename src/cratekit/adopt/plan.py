@@ -72,7 +72,7 @@ import hashlib
 from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Mapping, Sequence
 
-from cratekit.adopt.scan import Disposition, Readability, ScannedTrack
+from cratekit.adopt.scan import Disposition, Readability, ScannedTrack, classify_genre
 from cratekit.cli.output import canonical_json, digest_of
 from cratekit.core import routing, taxonomy
 from cratekit.core.review import Option, Queue, ReviewStore, offer
@@ -640,6 +640,56 @@ def _sub_for(
     """
     sub = routing.energy_sub(declared, bucket_id, level, source_genre=genre)
     return None if sub is None else sub.id
+
+
+@dataclass(frozen=True, slots=True)
+class Predicted:
+    """Where the plan would file a track that is not in the library yet (U165).
+
+    What a native landing shows and digests before its rows exist, so the
+    one answer to the landing covers the filing that follows it.
+    """
+
+    disposition: Disposition
+    bucket: str = ""
+    sub: str = ""
+    #: The bucket's vocal sub when the track will carry the vox tag, else empty.
+    vocal_sub: str = ""
+
+    def identity(self) -> list[str]:
+        return [str(self.disposition), self.bucket, self.sub, self.vocal_sub]
+
+    @classmethod
+    def of(cls, entry: PlanEntry) -> Predicted:
+        """What a built entry answers, in the prediction's own shape."""
+        return cls(
+            disposition=entry.disposition,
+            bucket=entry.bucket,
+            sub=entry.sub,
+            vocal_sub=entry.vocal_sub if entry.vocal == VOCAL_ADD else "",
+        )
+
+
+def predicted_place(
+    declared: taxonomy.Taxonomy, genre: str, energy: int | None, *, vox: bool
+) -> Predicted:
+    """Where :func:`build_adoption_plan` would file a new track, by its own rule (U165).
+
+    ONE OPINION, THE PLAN'S. The genre through
+    :func:`cratekit.adopt.scan.classify_genre`, the sub through
+    :func:`_sub_for` off the energy reading, and the vocal sub through
+    :func:`vocal_sub` when the track will carry the vox tag. A new track holds
+    no place yet, so nothing can withhold it; a later plan that reads one, or
+    a vocal sub under another name, answers differently and the caller says so.
+    """
+    disposition, bucket, _match = classify_genre(declared, genre)
+    if disposition is not Disposition.ROUTE:
+        return Predicted(disposition=disposition)
+    sub = _sub_for(declared, bucket, genre, energy)
+    if sub is None:
+        return Predicted(disposition=Disposition.UNDECLARED)
+    vocal = (vocal_sub(declared, bucket) or "") if vox else ""
+    return Predicted(disposition=disposition, bucket=bucket, sub=sub, vocal_sub=vocal)
 
 
 def review_row(entry: PlanEntry) -> dict[str, Any]:
@@ -1286,6 +1336,8 @@ def to_json(plan: AdoptionPlan) -> dict[str, Any]:
 
 
 __all__ = [
+    "Predicted",
+    "predicted_place",
     "COLLISION_ADOPT",
     "COLLISION_SEPARATE",
     "ENTRY_ID_PREFIX",

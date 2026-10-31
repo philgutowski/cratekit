@@ -136,7 +136,9 @@ def _load() -> config.Config:
         ) from exc
 
 
-def census(cfg: config.Config, declared: taxonomy.Taxonomy) -> tuple:
+def census(
+    cfg: config.Config, declared: taxonomy.Taxonomy, *, scope: frozenset[str] | None = None
+) -> tuple:
     """The scanned rows this run applies: the person's own collection, classified.
 
     THE READER LANDED IN U55 AND THIS BODY IS WHAT IT WAS FOR. Everything this
@@ -158,10 +160,17 @@ def census(cfg: config.Config, declared: taxonomy.Taxonomy) -> tuple:
     exactly that call with a modified taxonomy and would have kept passing. That
     is an assertion measuring nothing while genuinely exercising the code, which
     is the first thing ``docs/METHOD.md`` says a green suite cannot see.
+
+    ``scope`` NAMES THE ROWS A LANDING JUST MADE (U165), so the census a
+    landing files is over its own content ids and walks no other file. None
+    is the whole collection, as before.
     """
+    rows = collection.read_collection(cfg)
+    if scope is not None:
+        rows = tuple(row for row in rows if row.content_id in scope)
     return tuple(
         scan.scan_rows(
-            collection.read_collection(cfg),
+            rows,
             declared,
             root=cfg.library.root,
             prefix_map=collection.prefix_rules(cfg),
@@ -170,7 +179,11 @@ def census(cfg: config.Config, declared: taxonomy.Taxonomy) -> tuple:
 
 
 def current_plan(
-    cfg: config.Config, declared: taxonomy.Taxonomy, *, vocals: bool = True
+    cfg: config.Config,
+    declared: taxonomy.Taxonomy,
+    *,
+    vocals: bool = True,
+    scope: frozenset[str] | None = None,
 ) -> plan_engine.AdoptionPlan:
     """Rebuild the plan this run is approving, from the census rather than a file.
 
@@ -202,9 +215,13 @@ def current_plan(
 
     WHETHER THE LIBRARY CAN BE FILED VOCALLY IS ASKED BEFORE THE CENSUS, so a
     calibration that cannot be read refuses before a library is walked.
+
+    ``scope`` is :func:`census`'s, and narrows the census alone: the tree and
+    the vox tag are read whole, so a scoped plan withholds and files exactly
+    as the whole one would for the same rows (U165).
     """
     standing = placements.vocal_standing(cfg, declared) if vocals else False
-    scanned = census(cfg, declared)
+    scanned = census(cfg, declared, scope=scope)
     held, sung = (
         placements.read_holdings(cfg, declared, standing=standing)
         if vocals
@@ -873,46 +890,13 @@ def handle(job, item, cfg) -> jobs.Produced:
     # result is discarded because the loop owns its own; what is wanted here is
     # the refusal, at the moment it still costs nothing.
     actor = str((job.payload or {}).get(ACTOR_KEY) or "")
-    grant(plan, actor=actor)
-
-    membership = _write_memberships(cfg, plan, declared)
-    _refuse_unplaced(membership, job, cfg)
-
-    report, gathered = apply_outstanding(cfg, plan, declared, actor=actor)
-
-    # THE GENRE FAVORITES, AT THE END OF AN ADOPTION THAT FILED A TRACK (U119):
-    # the additive half only, adoption's own contract, in a session of its own
-    # after the apply's. A favourite the apply just filed into a folder joins
-    # that folder's Favorites; what the mirror would take OUT is counted and
-    # owed to crate favorites refresh, which is the one path that removes. A
-    # library with no class, no source or a tree on the bridge is a skip with
-    # its reason, never a failure of the adoption that ran.
-    #
-    # A LIBRARY THAT DECLARES NO CLASS IS TOLD SO ON EVERY APPLY (U132), not
-    # only on one that filed a track: the step passes over it either way, and
-    # the live library went without a Favorites in any genre folder while
-    # every apply said nothing. The engine answers that case before it opens
-    # anything.
-    favorites: dict[str, object] = {}
-    if membership.added or genre_favorites.favorites_class(declared) is None:
-        outcome = genre_favorites.refresh_additive(
-            cfg, declared, analysis_roots=analysis_store.watch_roots(cfg)
-        )
-        refreshed = outcome.refreshed
-        favorites = {
-            "added": refreshed.added if refreshed else 0,
-            "created": list(refreshed.created) if refreshed else [],
-            "removals_owed": refreshed.removals_owed if refreshed else 0,
-            # THE READ BACK TRAVELS. The verb refuses on it; an adoption that
-            # has landed reports it, since its own writes are already true.
-            "disagreements": list(refreshed.disagreements) if refreshed else [],
-            "skipped": outcome.skipped,
-            "cause": outcome.cause,
-            # THE VERSION THE SKIP SAW, read back by the resume rather than
-            # the declaration as it stands then: an upgrade between the drive
-            # and the report must not turn the note into a false sentence.
-            "schema_version": declared.schema_version,
-        }
+    membership, report, gathered, favorites = file_plan(
+        cfg,
+        plan,
+        declared,
+        actor=actor,
+        refuse_unplaced=lambda found: _refuse_unplaced(found, job, cfg),
+    )
 
     produced = artifacts.produced(
         cfg,
@@ -954,6 +938,72 @@ def handle(job, item, cfg) -> jobs.Produced:
             detail={"failed": sorted(report.failed)},
         )
     return produced
+
+
+def file_plan(
+    cfg: config.Config,
+    plan: plan_engine.AdoptionPlan,
+    declared: taxonomy.Taxonomy,
+    *,
+    actor: str,
+    refuse_unplaced: Callable[[trees.MembershipReport], None],
+) -> tuple[
+    trees.MembershipReport,
+    apply_engine.ApplyReport,
+    Mapping[tuple[str, str], list[str]],
+    dict[str, object],
+]:
+    """Steps three and four of :func:`handle` and the genre Favorites after them, held once.
+
+    SHARED BY THIS VERB'S WORKER AND A NATIVE LANDING THAT FILES ITS OWN ROWS
+    (U165), so the order the worker's docstring argues is one order: the
+    approval minted before anything is written, the memberships in their own
+    session, ``refuse_unplaced`` asked before the ledger is marked, the apply,
+    then the additive Favorites. Answers the membership report, the apply's
+    report, what it gathered and the Favorites summary.
+    """
+    grant(plan, actor=actor)
+
+    membership = _write_memberships(cfg, plan, declared)
+    refuse_unplaced(membership)
+
+    report, gathered = apply_outstanding(cfg, plan, declared, actor=actor)
+
+    # THE GENRE FAVORITES, AT THE END OF AN ADOPTION THAT FILED A TRACK (U119):
+    # the additive half only, adoption's own contract, in a session of its own
+    # after the apply's. A favourite the apply just filed into a folder joins
+    # that folder's Favorites; what the mirror would take OUT is counted and
+    # owed to crate favorites refresh, which is the one path that removes. A
+    # library with no class, no source or a tree on the bridge is a skip with
+    # its reason, never a failure of the adoption that ran.
+    #
+    # A LIBRARY THAT DECLARES NO CLASS IS TOLD SO ON EVERY APPLY (U132), not
+    # only on one that filed a track: the step passes over it either way, and
+    # the live library went without a Favorites in any genre folder while
+    # every apply said nothing. The engine answers that case before it opens
+    # anything.
+    favorites: dict[str, object] = {}
+    if membership.added or genre_favorites.favorites_class(declared) is None:
+        outcome = genre_favorites.refresh_additive(
+            cfg, declared, analysis_roots=analysis_store.watch_roots(cfg)
+        )
+        refreshed = outcome.refreshed
+        favorites = {
+            "added": refreshed.added if refreshed else 0,
+            "created": list(refreshed.created) if refreshed else [],
+            "removals_owed": refreshed.removals_owed if refreshed else 0,
+            # THE READ BACK TRAVELS. The verb refuses on it; an adoption that
+            # has landed reports it, since its own writes are already true.
+            "disagreements": list(refreshed.disagreements) if refreshed else [],
+            "skipped": outcome.skipped,
+            "cause": outcome.cause,
+            # THE VERSION THE SKIP SAW, read back by the resume rather than
+            # the declaration as it stands then: an upgrade between the drive
+            # and the report must not turn the note into a false sentence.
+            "schema_version": declared.schema_version,
+        }
+
+    return membership, report, gathered, favorites
 
 
 def _refuse_unplaced(
@@ -1146,6 +1196,7 @@ __all__ = [
     "WORKFLOW",
     "applied_summary",
     "digested",
+    "file_plan",
     "adopt_apply_argv",
     "apply_adoption",
     "apply_outstanding",

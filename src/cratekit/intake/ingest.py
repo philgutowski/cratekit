@@ -111,6 +111,17 @@ class IntakeMedium:
             return False
         return self.registry.is_database_native(self.declared.intake.id)
 
+    @property
+    def files_natively(self) -> bool:
+        """Whether the routing tree a landing files into is recorded database native (U165).
+
+        Asked of the same read as :attr:`native`, so the landing's two
+        questions about the medium are answered from one registry.
+        """
+        if self.declared is None or self.registry is None:
+            return False
+        return self.registry.is_database_native(self.declared.tree.id)
+
 
 def intake_medium(cfg: config.Config) -> IntakeMedium:
     """THE ONE SWITCH (R-770). Every verb that writes the intake tree reads it.
