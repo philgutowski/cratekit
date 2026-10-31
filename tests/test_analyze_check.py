@@ -565,7 +565,7 @@ def test_with_rekordbox_running_the_check_refuses_as_every_reader_does(
     assert code == int(ExitCode.REKORDBOX_OPEN), envelope
 
 
-def test_no_file_under_the_library_is_opened_for_writing(native_library, silence, monkeypatch):
+def test_no_file_under_the_library_is_opened_for_writing(native_library, silence):
     """Every open the check makes is watched: none writes, and no byte under the library moves."""
     cfg, _root = native_library
     _land(cfg, silence, "2026-10-31_five", FIVE)
@@ -594,13 +594,13 @@ def test_no_file_under_the_library_is_opened_for_writing(native_library, silence
             writes.append((str(path), f"flags {flags:#o}"))
         return real_os_open(path, flags, *args, **kwargs)
 
-    monkeypatch.setattr(builtins, "open", watching_open)
-    monkeypatch.setattr(io, "open", watching_open)
-    monkeypatch.setattr(os, "open", watching_os_open)
-    try:
+    # A WATCH OF ITS OWN, undone when the drive ends, so the fixtures' shared
+    # patches stay in place for their own teardown.
+    with pytest.MonkeyPatch.context() as watch:
+        watch.setattr(builtins, "open", watching_open)
+        watch.setattr(io, "open", watching_open)
+        watch.setattr(os, "open", watching_os_open)
         code, envelope = drive(VERB)
-    finally:
-        monkeypatch.undo()
 
     assert code == int(ExitCode.LIBRARY_PREREQUISITE), envelope
     # The analysis files were opened, so the watch saw the reads it guards.
