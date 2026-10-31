@@ -360,7 +360,14 @@ with no artist, as rekordbox would show it. **Nothing about the audio is
 written**: no tempo, no grid, no key, no waveform, and the run says so.
 rekordbox does not analyse a row it did not make until you ask, so open it,
 select INBOX / Analyze and run Analyze Tracks; Reload Tags is not needed, and
-adoption reads each row's genre from the moment it lands. A row landed before
+adoption reads each row's genre from the moment it lands. Once rekordbox and its
+agent have quit, `crate analyze check` says whether the visit is done and done
+right: every row analysed, every grid one tempo (or moving on a row marked
+`dyn`), the Key column filled, and how often the title's key agrees with
+rekordbox's. It exits 0 when the visit is done, 12 when rows still wait for
+analysis, and 27 when what rekordbox wrote looks wrong, naming the rows; it
+reads INBOX / Analyze, or the landing you name with `--pass` or `--session`,
+and writes nothing. A row landed before
 2026-10-09 also lacks the defaults rekordbox writes on every row it makes, and
 will not load to a deck until `crate repair rows` fills them (R-923); a row
 landed since carries them from the start. There is no import, no drag and no `intake imported` on this path.
