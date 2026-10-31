@@ -627,7 +627,21 @@ def check(
         scope = resolve_scope(
             cfg, db, declared=declared, registry=registry, pass_name=pass_name, session_id=session_id
         )
-        return check_rows(cfg, db, scope, template=template)
+        found = check_rows(cfg, db, scope, template=template)
+    # A NAMED LANDING WHOSE EVERY ROW HAS LEFT THE COLLECTION REFUSES TOO (review
+    # round two), for the reason a landing whose playlists hold no live row
+    # does: its rows were landed, none of them could be read, and nothing,
+    # exit 0, would read as done over a landing nobody checked.
+    if found.verdict == NOTHING and scope.kind in (SCOPE_PASS, SCOPE_SESSION):
+        raise refuse(
+            "analysis-check-landing-unknown",
+            f"the {scope.kind} {scope.name!r} is recorded as landed, and every one of its "
+            f"{len(found.rows)} row(s) has left the collection, so there is nothing of it "
+            f"left to check",
+            origin=_ORIGIN,
+            detail={"kind": scope.kind, "name": scope.name, "gone": len(found.rows)},
+        )
+    return found
 
 
 __all__: Sequence[str] = (

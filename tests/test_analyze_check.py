@@ -146,6 +146,12 @@ def test_a_missing_file_reads_missing(tmp_path):
             id="a-tag-shorter-than-its-header",
         ),
         pytest.param(
+            # A tag ahead of the grid declaring no length at all, which without
+            # the length guard would walk in place for ever (review round two).
+            lambda data: data[:28] + struct.pack(">4sII", b"PPTH", 16, 0) + data[40:],
+            id="a-tag-of-length-zero-before-the-grid",
+        ),
+        pytest.param(
             lambda data: data[:44] + struct.pack(">I", 0x70000) + data[48:],
             id="a-grid-tag-that-will-not-parse",
         ),
@@ -677,3 +683,22 @@ def test_an_intake_tree_not_cut_over_falls_to_every_row_not_analysed_and_says_wh
     assert summary["scope"] == rc.SCOPE_UNANALYSED and summary["not_analysed"] > 0
     (scope,) = [c for c in envelope["data"]["checks"] if c["key"] == "check.scope"]
     assert f"INBOX / {native.ANALYZE} was not read" in scope["detail"]
+
+
+def test_a_named_landing_whose_every_row_left_the_collection_refuses(native_library, silence):
+    cfg, _root = native_library
+    _land(cfg, silence, "2026-10-31_five", FIVE)
+    (landing,) = [r.session_id for r in native_records(cfg)]
+    conn = sqlite3.connect(cfg.library.db_path)
+    with conn:
+        for stem in FIVE:
+            conn.execute(
+                "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", (_content_id(cfg, stem),)
+            )
+    conn.close()
+
+    code, envelope = drive([*VERB, "--session", landing])
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "analysis-check-landing-unknown"
+    assert "has left the collection" in envelope["cause"]["message"]
