@@ -39445,3 +39445,76 @@ rule agree. Ledger only.
 **Measured cost.** Measured on a fixture database only: two times the database's size on the library volume per rehearsal, and the time to copy it twice. On the live library, a few hundred megabytes for the length of a rehearsal. Not a false report.
 
 **Closes when:** the rehearsal's session is told its capture is the area's copy, or a kept area is reported with its size. Ledger only.
+
+---
+
+## R-1081. An album's artist comes only from the album artist tag, and an album the library holds with none is not linked by a file that names one
+
+**Found:** at the build of #344, U163, 2026-10-31.
+
+**The mechanism.** A landing links `AlbumArtistID` only from the file's
+`albumartist` tag (TPE2, `aART`), never from the track artist, and finds an
+album by its name and album artist together. A file naming an album artist
+therefore mints a second album beside one of the same name the library holds
+with no album artist, and a file with no album artist tag leaves the album's
+artist empty.
+
+**Measured cost.** None driven against rekordbox. Whether Reload Tags falls
+back to the track artist, and how it matches an album, is unmeasured, so a
+landed album may group differently in rekordbox's album view from one it made.
+
+**Closes when:** an attended landing compares a Reload Tags album with a landed
+one for the same tags, and the rule follows rekordbox's. Ledger only.
+
+---
+
+## R-1082. The SearchStr convention reads every artist and album row once per plan and again per apply
+
+**Found:** at the review of #344, U163, 2026-10-31.
+
+**The mechanism.** `native.search_convention` walks the whole of `djmdArtist`
+or `djmdAlbum` the first time a plan mints in it, and `_assert_words_unmoved`
+builds a fresh resolver at the apply, which walks it again.
+
+**Measured cost.** Unmeasured on the live library, about ten thousand artist
+rows; probably under a second per walk.
+
+**Closes when:** a landing on the live library is timed and the walk is either
+cached on the plan or shown to cost nothing worth caching. Ledger only.
+
+---
+
+## R-1083. A file with two artists or two genres lands its first value alone
+
+**Found:** at the review of #344, U163, 2026-10-31.
+
+**The mechanism.** `native._word` takes a tag's first value in every container,
+so a multi-value artist or genre frame (what Picard and beets write for a
+collaboration) lands the first artist or genre and drops the rest. Before the
+review round the ID3 reader's NUL joined value was minted whole.
+
+**Measured cost.** The second artist is absent from rekordbox's Artist column
+for such a file until somebody edits it; filing reads the first genre, which
+is the one adoption would match.
+
+**Closes when:** rekordbox's own rendering of a multi-value frame is read on a
+copy and the landing joins the values the same way. Ledger only.
+
+---
+
+## R-1084. A minted lookup row's SearchStr follows the library's majority, not a measured rekordbox rule
+
+**Found:** at the build of #344, U163, 2026-10-31.
+
+**The mechanism.** `native.search_convention` counts what the library's artist
+and album rows store in `SearchStr` (their name, the empty string, or NULL) and
+a mint follows the majority, NULL on a tie. What rekordbox's own Reload Tags
+stores there was never read off a copy, so the library is the nearest witness,
+and the screen shows the value per mint.
+
+**Measured cost.** None driven. rekordbox may search a minted artist or album
+differently from one it made if its rule differs from the library's majority.
+
+**Closes when:** an attended landing reads what rekordbox stores on a row it
+made by Reload Tags beside a minted one, and the rule is set from that. Ledger
+only.
