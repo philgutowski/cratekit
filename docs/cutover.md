@@ -1672,6 +1672,52 @@ From the installed v0.2.0, rekordbox closed, both backup ages 1 day. A43 (#367) 
 | `crate sync land` | run `2026-10-28T15:55:17Z-edca`, no answer asked | Steps 1 to 5 of 10 ran in order and stopped: preflight ok; `sync all` queued 1 job (favourites inbound, 268 hearts listed of 277 declared, 9 withheld by the provider); the job succeeded; **1 missing**, Calvin Harris `Satisfy`; the download refused it `lossy-refused`, as at sittings 15 and 47. `no_op`, 28 provider calls. Every playlist marked at sitting 48 had nothing missing. | no landing |
 | Open intake jobs | named by the same run | **17 intake jobs from 2026-09-17 are still open** (`2026-09-17T16:44:44Z-3ea9` and 16 more), each holding its playlist out of every pass; the verb names `crate sync land --pass-run 2026-09-17T16:43:08Z-c92f` to continue them. Not run: left for Phillip to decide. | found |
 
+## Sitting 51, 2026-10-30, the attended session, a sync pass landed natively on an equal digest
+
+From the installed v0.3.0, rekordbox closed. Written up at sitting 52 from the
+sitting's run files, its session record and the plan screens it saved, since
+the sitting itself left the record in a comment on A48 (#376). Times are UTC,
+so the runs carry 2026-10-31.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `crate sync land`, the first pass | run `2026-10-31T01:19:10Z-6dc3`, pass `2026-10-31T01:19:11Z-d351`, no answer asked | Steps 1 to 5 and stopped, as at sitting 50: one job (favourites inbound, 278 hearts listed of 287 declared, 9 withheld by the provider), **1 missing**, Calvin Harris `Satisfy`, refused `lossy-refused`; `no_op`, 30 provider calls. **17 intake jobs from 2026-09-17 still open**, the finding sitting 50 left for Phillip. | live |
+| The 17 stale intake jobs | `crate job cancel` on each, at Phillip's word to clear them if still relevant | Judged by `job show`, which names tracks and a config drift warning but not the playlist: all 17 queued, six weeks old, frozen against an older configuration, five of them copies of one 144 track list and five of one 197 track list. All 17 cancelled, `job list` then showing none open. **They had been holding six playlists out of every pass**: the next pass queued 7 jobs where the first had queued 1, and found the 20 missing tracks below. Carded as **U182, #379**. | live |
+| `crate sync land` | run `2026-10-31T01:24:02Z-5f08`, then continued as run `2026-10-31T01:39:41Z-65f2` over the pass `2026-10-31T012402Z-a951_synced` | **7 intake jobs** succeeded over the INBOX playlists and the favourites; **20 missing**, 19 downloaded, 1 refused `lossy-refused`; `tag folder` (Traxsource and Bandcamp blocked on every search), `analyze run`, `analyze restamp` (its `db-metadata-not-written` warning as always) and `name apply` ran in order. Step 10 stopped `PENDING_HUMAN` on the backup acknowledgment, which the verb never mints. A first continue named the wrong run and failed `job-unknown`, carded as **U183, #380**. | live |
+| Vocal scores | `crate analyze vocals` from the development checkout | The installed copy carries `analysis` and not `vocals`, so the tail's `analyze run` wrote no `voxlevel`, and a second run skipped all 19 as done. Scored by hand and the rehearsal redone, about forty minutes. Carded as **U181, #378**. | live |
+| `crate session ack` | run `2026-10-31T01:49:02Z-8648`, as `session` | Both backup ages under five days. Carded as **U184, #381**, one command for the session's ack. | live |
+| `intake land`, native, rehearsal | on the copy in `copyrun` on the library volume, run `2026-10-31T02:00:02Z-db2a`, applied as `session` | digest **`b6744643eade55fe`**: 19 adds, 0 already present, 1 vox My Tag at cut 3, INBOX / Analyze made, 0 left in staging, 12 owned hearts into All Favorites and 2026-10 and coloured Pink, one account track left out (Alex Kaminski `Mana`, neither owned nor landed). | rehearsed |
+| `intake land`, native, live | run `2026-10-31T02:00:59Z-99ba`, approved as `session` (run `2026-10-31T02:01:18Z-2e99`), session `2026-10-31T02:01:27Z-1031` | digest **`b6744643eade55fe`, equal to the rehearsal's**. The two plan screens differ only in the run id and the "reads and writes" path. Committed: 19 rows into `djmdContent`, 49 INBOX memberships, 24 favourites memberships and 12 rows coloured, 1 vocals association. 10,747 to 10,766 active rows, integrity ok, **INBOX / Analyze holds exactly 19**, files in `Music/2026-10-30 Tidal playlists and Favorites`, staging empty. | live |
+| INBOX before the landing | read from the database | No playlist named `Analyze` directly under INBOX, the first check A48 (#376) owes. | read |
+| Cards | filed | U181 to U184, #378 to #381, from the sitting's friction review. **U186, #394**, filed after it: two local sessions drove `crate inbox analyzed` at once (sitting 52's runs `2026-10-31T10:23:06Z-34c0` and an unanswered plan `2026-10-31T10:27:29Z-8f60`), and nothing told either that the other existed. | Ready |
+
+**A42 (#366) is met here.** A native landing rehearsed on a disposable copy
+and planned live gave the same digest, the case R-922 said could never occur
+while the digest carried the database path. R-922 closes on this sitting.
+**A43 (#367) reached its landing gate** through `crate sync land`'s own step
+10, answered and applied as the session; it closes when the rekordbox visit
+below is recorded. Still owed from this sitting: the rekordbox visit over
+INBOX / Analyze (Reload Tags, then Analyze Tracks) and `crate inbox analyzed`,
+which A48 (#376) carries.
+
+## Sitting 52, 2026-10-31, the attended session, sitting 51's rows analysed and cleared from INBOX / Analyze
+
+From the installed v0.3.0. Both backup ages 4 days, so no backup ran first.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| rekordbox, the analysis visit | by Phillip's hand, INBOX / Analyze only | Reload Tags on the 19 rows, then Analyze Tracks: Normal, high precision off, BPM/Grid, Phrase and KEY on, and Vocal on as well (rekordbox's own vocal position marks on the waveform, which Cratekit does not read). Completed; rekordbox quit, and `rekordbox` and `rekordboxAgent` both confirmed gone before any verb ran. | live |
+| `crate inbox analyzed`, live plan | run `2026-10-31T10:23:06Z-34c0` | **clears 19** rows rekordbox analysed, **keeps 0**; writes the memberships of INBOX / Analyze only. digest **`792e43d7c999931f`**. | planned |
+| `crate inbox analyzed`, rehearsal | on a fresh copy (`copy_setup.sh`, live sha256 `5cb744998d362700`), run `2026-10-31T10:28:50Z-48f8`, applied as `session` | The same digest, `792e43d7c999931f`; the two screens differ only in the run id. Applied: 19 cleared, INBOX / Analyze holds 0, read back. The copy's backup acknowledgment came from a terminal, since a copy has no recorded backup ages. **The setup script left the copy's library state with only `local/`**, so the first plan refused `tree-unconverged`; copying `coupled/` in by hand fixed it. | rehearsed |
+| `crate inbox analyzed`, live | run `2026-10-31T10:23:06Z-34c0`, approved as `session` on the equal digest, session `2026-10-31T10:29:27Z-5d96` | **19 analysed rows left INBOX / Analyze, which now holds 0**, read back from the database; every track stays in the collection and its other playlists. The live database's sha256 was still `5cb744998d362700` just before the apply, so the rehearsal left it unchanged. | live |
+
+**A48 (#376) and A43 (#367) are met.** A48: no stray `Analyze` playlist
+before the landing (sitting 51), the landing put exactly 19 rows in the queue,
+rekordbox analysed them, and the clear took out every analysed row and left
+none. Its macOS battery passed inside the v0.3.0 cut (`release.py cut
+--mac-battery`). A43: the landing `crate sync land` reached at sitting 51 is
+now analysed in rekordbox.
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
