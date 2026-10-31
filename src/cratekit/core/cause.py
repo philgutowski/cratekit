@@ -887,6 +887,13 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # ``job-unknown``, which means the job or the state is not one the queue
         # knows, and this job is known exactly.
         "job-not-retryable": ExitCode.PRECONDITION,
+        # U168. ``run decide --continue`` recorded the answer, and the run keeps
+        # no command line to continue its verb with, since it was recorded
+        # before runs kept one. Deliberately NOT ``decision-required``: the
+        # dispatcher reads that one as an open gate and offers to answer it
+        # again, and the answer is already recorded. The fix is the verb run
+        # again by hand under ``--run``, which the steps name.
+        "run-not-continuable": ExitCode.PRECONDITION,
         # U11, the review queue. Six slugs on one code, and the code is right for
         # all six: none of them is the library refusing, none is upstream, and
         # none is a command line the parser could have rejected. What differs is

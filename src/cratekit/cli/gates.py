@@ -237,6 +237,11 @@ class RunState:
     pins: dict[str, dict[str, str]] = field(default_factory=dict)
     pending: output.PendingHumanAction | None = None
     open_gate: str | None = None
+    #: The verb's own command line as its first invocation gave it (U168),
+    #: the verb's path and every argument after it, without the global
+    #: ``--run``, ``-d`` and ``--output``. What ``run decide --continue``
+    #: dispatches again under ``--run``. None for a run recorded before it.
+    argv: tuple[str, ...] | None = None
 
     def to_json(self) -> dict[str, Any]:
         record = {
@@ -253,6 +258,9 @@ class RunState:
         # record it had before U161.
         if self.pins:
             record["pins"] = {name: dict(sorted(one.items())) for name, one in sorted(self.pins.items())}
+        # AND THE COMMAND LINE ONLY WHEN THERE IS ONE (U168), for the same reason.
+        if self.argv is not None:
+            record["argv"] = list(self.argv)
         return record
 
     @classmethod
@@ -286,6 +294,11 @@ class RunState:
             },
             pending=output.PendingHumanAction.from_json(pending) if pending else None,
             open_gate=data.get("open_gate"),
+            argv=(
+                tuple(str(one) for one in data["argv"])
+                if isinstance(data.get("argv"), list)
+                else None
+            ),
         )
 
 

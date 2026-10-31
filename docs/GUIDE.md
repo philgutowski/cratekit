@@ -920,7 +920,20 @@ crate --run RUN_ID route inbox
 ```
 
 The last line matters. Starting a fresh invocation mints a new run, which meets
-the same gate with nothing recorded and refuses again. Gates you will meet:
+the same gate with nothing recorded and refuses again. Or answer and continue in
+one command: `--continue` records the answer, then runs the verb that owns the
+run again with the arguments it was first given and `--run`, and prints that
+verb's result.
+
+```bash
+crate run decide RUN_ID route.inbox.apply apply --continue
+```
+
+With no `--actor`, the answer is recorded as `cli` when you are at a terminal
+and as `session` when nothing is, which is how a session working for you is told
+apart; the summary says which. An explicit gate still takes no answer on the
+verb's own command line, so `--continue` is always the second command. Gates you
+will meet:
 
 | Gate | Go option | Verb |
 |---|---|---|
@@ -975,9 +988,12 @@ A session working for you may answer it as the actor `session`, with no
 terminal, but only on young backups:
 
 ```bash
-crate run decide RUN_ID session.ack.backup acknowledged --actor session
-crate --run RUN_ID session ack
+crate session ack
+crate run decide RUN_ID session.ack.backup acknowledged --continue
 ```
+
+With no terminal the answer is the session's without `--actor`, and
+`--continue` mints in the same command; no `script` wrapper is needed.
 
 The verb then checks the ages itself and mints only while both portions are
 under five days old. An older portion, or one with no completion recorded, is

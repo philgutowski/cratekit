@@ -17,10 +17,13 @@ ever happened.
 from __future__ import annotations
 
 import argparse
+import dataclasses
+import sys
 from typing import TYPE_CHECKING
 
 from cratekit.cli import gates, registry
 from cratekit.cli.output import Envelope
+from cratekit.core import session
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
 from cratekit.core.exit_codes import ExitCode, Remedy
 
@@ -88,10 +91,37 @@ def build_decide(parser: argparse.ArgumentParser, entry: registry.Entry) -> None
     parser.add_argument("option", help="one of the gate's declared options")
     parser.add_argument(
         "--actor",
-        default="cli",
-        help="who is making this decision; recorded with it (R34)",
+        default=None,
+        help=(
+            "who is making this decision; recorded with it (R34). Defaults to "
+            "'cli' at a terminal and 'session' with none"
+        ),
+    )
+    parser.add_argument(
+        "--continue",
+        dest="continue_run",
+        action="store_true",
+        help="then continue the verb that owns the run, with its own arguments and --run",
     )
     parser.set_defaults(_handler=decide)
+
+
+#: Who answered when ``--actor`` is not given (U168): a person at a terminal,
+#: or a session with none, which is how the 2026-10-09 rule tells them apart.
+TERMINAL_ACTOR = "cli"
+SESSION_ACTOR = "session"
+
+#: The warning a continued run carries, naming the answer it continued on.
+DECISION_RECORDED = "decision-recorded"
+
+
+def _actor(given: str | None) -> tuple[str, str]:
+    """Who the decision is recorded as, and why, in words."""
+    if given is not None:
+        return given, "given with --actor"
+    if session.has_controlling_terminal():
+        return TERMINAL_ACTOR, "a terminal, and no --actor"
+    return SESSION_ACTOR, "no controlling terminal, and no --actor"
 
 
 def decide(ctx: "Context") -> Envelope:
@@ -112,8 +142,11 @@ def decide(ctx: "Context") -> Envelope:
             )
         )
 
-    gates.record(state, spec, ctx.args.option, actor=ctx.args.actor)
+    actor, why = _actor(ctx.args.actor)
+    gates.record(state, spec, ctx.args.option, actor=actor)
     gates.save(state)
+    if ctx.args.continue_run:
+        return _continued(ctx, state, spec.name, actor=actor)
     return ctx.envelope(
         data={
             "checks": [
@@ -130,7 +163,47 @@ def decide(ctx: "Context") -> Envelope:
                 "verb": state.verb,
                 "gate": spec.name,
                 "option": ctx.args.option,
-                "actor": ctx.args.actor,
+                "actor": actor,
+                "actor_because": why,
             },
         }
     )
+
+
+def _continued(ctx: "Context", state: gates.RunState, gate: str, *, actor: str) -> Envelope:
+    """Continue the verb that owns ``state`` with its recorded arguments, and answer as it did (U168).
+
+    THE ANSWER IS RECORDED AND SAVED FIRST, so a continuation that refuses
+    leaves the answer standing and the run continuable by hand. The verb runs
+    in this process through the dispatcher's own path, and its envelope, exit
+    code included, is the one this call answers, with a warning naming the
+    answer it continued on. An explicit gate is untouched: its answer is still
+    this second call, never a flag on the verb's own.
+    """
+    if state.argv is None:
+        raise CratekitError(
+            Cause(
+                reason="run-not-continuable",
+                message=(
+                    f"the answer to {gate} was recorded, and run {state.run_id} keeps no "
+                    f"command line to continue it with, since it was recorded before "
+                    f"run decide could continue one; run the verb again yourself"
+                ),
+                remediation=Remediation(
+                    steps=(f"crate --run {state.run_id} {state.verb.replace('.', ' ')} ...",),
+                ),
+                origin=("cli.verbs.runs",),
+                detail={"run_id": state.run_id, "verb": state.verb, "gate": gate},
+            )
+        )
+    from cratekit import cli
+
+    envelope = cli.dispatch(["--run", state.run_id, *state.argv], stderr=sys.stderr)
+    note = {
+        "code": DECISION_RECORDED,
+        "message": (
+            f"{gate} answered {ctx.args.option} as {actor} on run {state.run_id}, "
+            f"then {' '.join(state.argv)} continued"
+        ),
+    }
+    return dataclasses.replace(envelope, warnings=(note, *envelope.warnings))
