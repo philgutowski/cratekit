@@ -36,6 +36,7 @@ from tests.test_intake_land_native import (
     LIBRARY_LINK,
     _cut_over_intake,
     _members,
+    _music,
     _query,
     _seed_binding_rows,
     _two_acts,
@@ -1284,11 +1285,15 @@ def test_when_every_landed_members_file_is_refused_the_left_list_names_them(
     cfg, _root_id = native_library
     cutover_fixtures.add_folder(cfg, FOLDER)
     job_id = set_job(cfg, ("One", "Two"))
+    # The batch landed into again by its own name goes back to its filed
+    # folder (U164), so an earlier landing makes it and its names are held.
+    _stage(cfg, silence, "Zero")
+    code, first, _refused = _two_acts(_land())
+    assert code == int(ExitCode.OK), first
     _stage(cfg, silence, "One")
     _stage(cfg, silence, "Two")
     _stage(cfg, silence, "Extra")
-    occupied = Path(cfg.library.root) / cfg.library.music_dir / BATCH
-    occupied.mkdir(parents=True)
+    occupied = _music(cfg, BATCH)
     (occupied / "One.flac").write_bytes(b"taken")
     (occupied / "Two.flac").write_bytes(b"taken")
 
@@ -1305,7 +1310,8 @@ def test_when_every_landed_members_file_is_refused_the_left_list_names_them(
     (left,) = [w for w in acted["warnings"] if w["code"] == set_playlist.LEFT_OUT]
     assert "1. Probe - One (its file did not land)" in left["message"]
     assert "2. Probe - Two (its file did not land)" in left["message"]
-    (record,) = session.records(cfg)
+    # The first landing's record, then this one's.
+    _first_record, record = session.records(cfg)
     assert set_playlist.RECORD_KEY not in record.detail
 
 
