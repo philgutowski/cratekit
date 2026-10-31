@@ -696,14 +696,14 @@ def test_on_a_drive_recorded_as_its_own_mount_the_rehearsal_is_as_it_was(
 def test_mapped_applies_the_longest_scratch_spelling_first_and_ignores_an_empty_one():
     """A pair whose scratch spelling holds another's must not be half mapped by
     the shorter one, whichever order the caller gave them in."""
-    short = ("/Volumes/X/area", "/Volumes/X/live")
-    long = ("/old/Volumes/X/area", "/old/stored")
-    value = {"a": "/old/Volumes/X/area/Music/a.flac", "b": ["/Volumes/X/area/Music/b.flac"]}
+    short = ("/drive/area", "/drive/live")
+    long = ("/old/drive/area", "/old/stored")
+    value = {"a": "/old/drive/area/Music/a.flac", "b": ["/drive/area/Music/b.flac"]}
 
     for pairs in ((short, long), (long, short)):
         assert rehearsal.mapped(value, pairs + (("", "/nowhere"),)) == {
             "a": "/old/stored/Music/a.flac",
-            "b": ["/Volumes/X/live/Music/b.flac"],
+            "b": ["/drive/live/Music/b.flac"],
         }
 
 
