@@ -22,6 +22,7 @@ import io
 import os
 import sqlite3
 import struct
+import threading
 from pathlib import Path
 
 import pytest
@@ -161,7 +162,15 @@ def test_a_damaged_file_reads_unreadable_never_absent(tmp_path, damage):
     path = tmp_path / "ANLZ0000.DAT"
     path.write_bytes(damage(anlz(CONSTANT_GRID)))
 
-    grid = rc.read_grid(path)
+    # READ ON A THREAD WITH A BOUND, because one damage here (a tag of length
+    # zero) walks in place for ever without the guard that refuses it, and a
+    # read that never returns must fail this test rather than hang the suite.
+    answered: list[rc.Grid] = []
+    reader = threading.Thread(target=lambda: answered.append(rc.read_grid(path)), daemon=True)
+    reader.start()
+    reader.join(timeout=10)
+    assert answered, "the read did not return within ten seconds"
+    (grid,) = answered
 
     assert grid.state == rc.UNREADABLE, grid
     assert str(path) in grid.why
