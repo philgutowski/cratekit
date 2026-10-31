@@ -387,8 +387,11 @@ there, applies the landing to the copy, reads it back, reports the plan's
 digest with the rows added and the copy's integrity, and removes the scratch
 folder. Your staging folder, your music folder and your database are left
 exactly as they were, and rekordbox running refuses it as it refuses the
-landing. When the rehearsal fails, the scratch folder is kept and the refusal
-names it. The landing you then run without `--rehearse` names the newest
+landing. A library whose drive was renamed since rekordbox made it, so that
+rekordbox stores every path under the old drive name, rehearses as any other:
+each row's stored path is compared under the name rekordbox recorded. When the
+rehearsal fails, the scratch folder is kept and the refusal names it, the
+fields that differ, and the spellings it compared. The landing you then run without `--rehearse` names the newest
 rehearsal of the same folder and batch on its gate screen and says whether
 its plan equals it, printing the lines that differ when it does not.
 
