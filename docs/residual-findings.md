@@ -35695,6 +35695,15 @@ a landed row reads whole before rekordbox is opened, and the tail in
 **Not on the board bar.** The hand step is known and recorded in the tail;
 nothing is lost, only delayed.
 
+**Closed 2026-10-31, U163 (issue #344).** A native landing reads each added
+file's artist, album, album artist, genre and date tags, links each word to
+the first active lookup row of its exact name or mints one in the same
+commit, writes `ReleaseYear` from the date tag, and reads them back through
+active rows before it reports. The key stays rekordbox's analysis by
+Phillip's standard of 2026-10-27, so `KeyID` is never written. The rekordbox
+visit and `docs/GUIDE.md` drop Reload Tags. The live proof is owed to the
+next attended landing.
+
 ---
 
 ## R-922. A native landing's digest names the database file, so no copy rehearsal can match it
