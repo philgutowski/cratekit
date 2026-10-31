@@ -15,6 +15,7 @@ D1 applies. Nothing here names a real volume, a real person or a real track.
 from __future__ import annotations
 
 import shutil
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -416,3 +417,68 @@ def test_a_landed_row_whose_word_reads_back_wrong_is_refused():
     with pytest.raises(CratekitError) as caught:
         native.assert_rows_identified(wrong)
     assert native.ARTIST_COLUMN in caught.value.cause.message
+
+
+# ---------------------------------------------------------------------------
+# The mutation table's zeros, each given the test that kills it
+# ---------------------------------------------------------------------------
+
+
+def test_an_album_whose_album_artist_is_minted_is_minted_beside_a_namesake_with_none(
+    native_library, silence
+):
+    """A new album artist holds no album yet, so the album the library holds
+    under the same name with no album artist is not the one it links."""
+    cfg, _root = native_library
+    _seed(cfg, rb_writer.ALBUM_TABLE, {"ID": "701", "Name": "Probe Album"})
+    _tag(_stage(cfg, silence, "One.flac"), album="Probe Album", albumartist="Probe Various")
+
+    code, acted, _refused = _two_acts(_land())
+
+    assert code == int(ExitCode.OK), acted
+    ((content_id, _title, _path),) = _landed_rows(cfg)
+    album = str(_words(cfg, str(content_id))[1])
+    assert album != "701"
+    ((album_artist,),) = _query(cfg, "SELECT AlbumArtistID FROM djmdAlbum WHERE ID = ?", album)
+    ((various,),) = _query(cfg, "SELECT ID FROM djmdArtist WHERE Name = 'Probe Various'")
+    assert str(album_artist) == str(various)
+
+
+def test_a_tied_searchstr_convention_mints_null(native_library, silence):
+    cfg, _root = native_library
+    _seed(
+        cfg,
+        rb_writer.ARTIST_TABLE,
+        {"ID": "501", "Name": "Alpha", "SearchStr": "Alpha"},
+        {"ID": "502", "Name": "Beta"},
+    )
+    _stage(cfg, silence, "One.flac")
+
+    code, acted, refused = _two_acts(_land())
+
+    assert code == int(ExitCode.OK), acted
+    assert _shown_row(refused)[native.ARTIST_COLUMN]["SearchStr"] is None
+    ((stored,),) = _query(cfg, "SELECT SearchStr FROM djmdArtist WHERE Name = 'Probe'")
+    assert stored is None
+
+
+def test_the_read_back_takes_no_word_through_a_tombstoned_lookup_row(native_library, silence):
+    """A link to a retired row reads as no word, which is what rekordbox shows."""
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    code, acted, _refused = _two_acts(_land())
+    assert code == int(ExitCode.OK), acted
+    ((content_id, _title, _path),) = _landed_rows(cfg)
+    connection = sqlite3.connect(cfg.library.db_path)
+    try:
+        connection.execute("UPDATE djmdArtist SET rb_local_deleted = 1")
+        connection.commit()
+    finally:
+        connection.close()
+    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
+    try:
+        words = native._words_back(db, str(content_id))
+    finally:
+        rb_writer.close_db(db)
+    assert words[native.ARTIST_COLUMN] == ""
+    assert words[native.GENRE_COLUMN] == "Deep House"
