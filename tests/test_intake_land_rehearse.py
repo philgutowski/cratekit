@@ -707,3 +707,14 @@ def test_mapped_applies_the_longest_scratch_spelling_first_and_ignores_an_empty_
             "a": "/old/stored/Music/a.flac",
             "b": ["/Volumes/X/live/Music/b.flac"],
         }
+
+
+def test_the_refusal_names_each_field_once_and_strips_every_index():
+    assert land_cli._fields_of(
+        [
+            '- plan.rows[0].columns.FolderPath = "/a"',
+            '+ plan.rows[1].columns.FolderPath = "/b"',
+            "- plan.vox.rows[0][1] = 2",
+            '+ gate.target = "/c"',
+        ]
+    ) == ["FolderPath", "rows", "target"]

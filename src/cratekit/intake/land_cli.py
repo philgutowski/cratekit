@@ -1931,7 +1931,7 @@ def _fields_of(differ: list[str]) -> list[str]:
     names = []
     for line in differ:
         path = line[2:].split(" = ", 1)[0]
-        names.append(re.sub(r"\[\d+\]$", "", path.rsplit(".", 1)[-1]))
+        names.append(re.sub(r"(\[\d+\])+$", "", path.rsplit(".", 1)[-1]))
     return list(dict.fromkeys(names))
 
 
