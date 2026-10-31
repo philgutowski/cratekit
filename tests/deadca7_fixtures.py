@@ -9,6 +9,12 @@ writes those rows straight through SQLite, as another app would, never through
 this product's writer, and reads them back whole so a test can assert they are
 byte for byte what they were.
 
+THE CONTENT ROW UPDATE IS A SUPERSET. The note's SQL reading found only
+SELECTs against ``djmdContent``, while the same note says the push sets
+``AnalysisUpdated`` and ``CueUpdated``; this fixture writes those columns so
+the proof covers them either way. A fixture that writes more than the push
+cannot make the guard weaker, only the proof wider than the app needs.
+
 THE FOLDER'S POSITION IS PAST THE ROOT'S ROW COUNT on purpose: rekordbox's
 binding renumbers every root sibling at or past a position a caller names, so
 the folder sits where such a write would move it, and a test that writes beside

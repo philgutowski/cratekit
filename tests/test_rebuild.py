@@ -851,10 +851,12 @@ def test_a_rebuild_and_its_check_beside_deadca7s_folder_leave_it_and_report_no_d
 ):
     """U185. The push holds the very tracks the tree places, in its own folder.
 
-    Two rebuilds and a check: the tree converges, the check counts nothing in
-    the push's folder as missing, unexpected or foreign, and every row the
-    push wrote, its cues and the pushed track's analysis columns are byte for
-    byte what they were.
+    Two rebuilds and a check: the tree converges with nothing missing,
+    unexpected or foreign, and every row the push wrote, its cues, the pushed
+    track's analysis columns and its analysis files are byte for byte what they
+    were. The check walks down from the adopted root by identifier, so a folder
+    at the top is outside what it can count by construction; what this pins is
+    that the rebuild's writes leave the push alone.
     """
     db, path, push = pushed
     before = deadca7_fixtures.written(path, push)
@@ -873,10 +875,7 @@ def test_a_rebuild_and_its_check_beside_deadca7s_folder_leave_it_and_report_no_d
     assert first.repaired == 2 and second.repaired == 0
     report = _check(cfg, db, adopted, declared, _placements(cfg, declared, *names))
     assert report.converged
-    assert not report.missing and not report.unexpected
-    assert not [node for node in report.foreign if deadca7_fixtures.FOLDER in node]
-    for name in deadca7_fixtures.PLAYLISTS.values():
-        assert not [node for node in report.foreign if name in node]
+    assert not report.missing and not report.unexpected and not report.foreign
     assert deadca7_fixtures.written(path, push) == before
     assert deadca7_fixtures.analysis_files_now(files) == files
 

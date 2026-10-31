@@ -719,11 +719,11 @@ class Taxonomy:
 # ---------------------------------------------------------------------------
 
 
-def _foreign_root_names() -> frozenset[str]:
-    """The top level folder names another app owns, read late (U185)."""
-    from cratekit.core import foreign_tree
-
-    return foreign_tree.FOREIGN_ROOT_NAMES
+#: The names of the top level folders another app owns in rekordbox's tree,
+#: exactly as it writes them (U185). Declared HERE, in the domain layer, since
+#: it is a fact about names a declared tree may not take; the writer's guard,
+#: :mod:`cratekit.core.foreign_tree`, reads it from here, downward.
+FOREIGN_ROOT_NAMES: frozenset[str] = frozenset({"DEADCA7"})
 
 
 def load_taxonomy(text: str) -> Taxonomy:
@@ -1011,7 +1011,7 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
             problems.append(f"[{label}] id {node.id!r} must match {_ID.pattern}")
         if not node.display:
             problems.append(f"[{label}] display must be a non-empty string")
-        elif node.display in _foreign_root_names():
+        elif node.display in FOREIGN_ROOT_NAMES:
             # U185. A declared tree of that name would adopt another app's folder.
             problems.append(
                 f"[{label}] display {node.display!r} is the folder another app owns at "

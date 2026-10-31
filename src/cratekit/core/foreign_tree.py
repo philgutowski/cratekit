@@ -42,9 +42,12 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from cratekit.core import taxonomy
+
 #: The names of the top level folders another app owns. Exactly as the app
-#: writes them: the match is on the whole name and its case.
-FOREIGN_ROOT_NAMES: frozenset[str] = frozenset({"DEADCA7"})
+#: writes them: the match is on the whole name and its case. Declared in the
+#: taxonomy, the layer below this one, which refuses a tree of the name.
+FOREIGN_ROOT_NAMES: frozenset[str] = taxonomy.FOREIGN_ROOT_NAMES
 
 #: The app each foreign root belongs to, for the one line a report gives it.
 OWNER = "DEADCA7"

@@ -2246,8 +2246,14 @@ def _check_deadca7_push(inputs: _Inputs) -> Finding:
     into it, so the newest entry there is when it last wrote the library. INFO
     IN EVERY CASE: an app that is not installed is nothing to fix, and a push
     newer than this product's last database backup is a reason to run one, which
-    the detail says, rather than a broken machine. Nothing here launches the app
-    or reads its catalog.
+    the detail says, rather than a broken machine, and a backup folder this
+    account cannot list is said as unread. Nothing here launches the app or
+    reads its catalog.
+
+    THE PUSH TIME IS THE NEWEST ENTRY'S MODIFICATION TIME, which is only the
+    push's own time if the app writes a fresh file rather than copying the
+    database with its date kept. Not yet measured on a real push; the attended
+    card this unit owes reads one.
     """
     key, title = "deadca7.push", "DEADCA7 pushes into the library"
     if inputs.cfg is None:
@@ -2261,7 +2267,21 @@ def _check_deadca7_push(inputs: _Inputs) -> Finding:
             detail="DEADCA7 is not installed here, so nothing else writes the library beside rekordbox",
         )
     backups = home / DEADCA7_BACKUPS
-    pushed = _newest_entry(backups) if backups.is_dir() else None
+    try:
+        pushed = _newest_entry(backups) if backups.is_dir() else None
+    except OSError as exc:
+        # Unread is not none: the answer says it could not look, never that
+        # nothing was pushed.
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"DEADCA7 is installed here, and when it last pushed into rekordbox's "
+                f"database cannot be said: its backup folder could not be read "
+                f"({type(exc).__name__}: {exc})"
+            ),
+        )
     if pushed is None:
         return Finding(
             key=key,

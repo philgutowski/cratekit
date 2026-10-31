@@ -8423,3 +8423,12 @@ def test_a_push_with_no_database_backup_recorded_warns(configured, tmp_path):
     finding = _push_check(configured, _deadca7(tmp_path, pushed_at=now - timedelta(days=1)))
     assert finding.detail.startswith("warning:")
     assert "no database backup is recorded here" in finding.detail
+
+
+def test_a_backup_folder_that_cannot_be_read_is_said_as_unread_and_does_not_fail(
+    configured, tmp_path
+):
+    support = _deadca7(tmp_path)
+    (support / doctor.DEADCA7_BACKUPS / "gone").symlink_to(tmp_path / "nowhere")
+    finding = _push_check(configured, support)
+    assert "cannot be said: its backup folder could not be read" in finding.detail
