@@ -1672,6 +1672,32 @@ From the installed v0.2.0, rekordbox closed, both backup ages 1 day. A43 (#367) 
 | `crate sync land` | run `2026-10-28T15:55:17Z-edca`, no answer asked | Steps 1 to 5 of 10 ran in order and stopped: preflight ok; `sync all` queued 1 job (favourites inbound, 268 hearts listed of 277 declared, 9 withheld by the provider); the job succeeded; **1 missing**, Calvin Harris `Satisfy`; the download refused it `lossy-refused`, as at sittings 15 and 47. `no_op`, 28 provider calls. Every playlist marked at sitting 48 had nothing missing. | no landing |
 | Open intake jobs | named by the same run | **17 intake jobs from 2026-09-17 are still open** (`2026-09-17T16:44:44Z-3ea9` and 16 more), each holding its playlist out of every pass; the verb names `crate sync land --pass-run 2026-09-17T16:43:08Z-c92f` to continue them. Not run: left for Phillip to decide. | found |
 
+## Sitting 51, 2026-10-30, the attended session, a sync pass landed natively on an equal digest
+
+From the installed v0.3.0, rekordbox closed. Written up at sitting 52 from the
+sitting's run files, its session record and the plan screens it saved, since
+the sitting itself left the record in a comment on A48 (#376). Times are UTC,
+so the runs carry 2026-10-31.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `crate sync land` | run `2026-10-31T01:24:02Z-5f08`, then continued as run `2026-10-31T01:39:41Z-65f2` over the pass `2026-10-31T012402Z-a951_synced` | **7 intake jobs** succeeded over the INBOX playlists and the favourites; **20 missing**, 19 downloaded, 1 refused `lossy-refused`; `tag folder` (Traxsource and Bandcamp blocked on every search), `analyze run`, `analyze restamp` (its `db-metadata-not-written` warning as always) and `name apply` ran in order. Step 10 stopped `PENDING_HUMAN` on the backup acknowledgment, which the verb never mints. A first continue named the wrong run and failed `job-unknown`, carded as **U183, #380**. | live |
+| Vocal scores | `crate analyze vocals` from the development checkout | The installed copy carries `analysis` and not `vocals`, so the tail's `analyze run` wrote no `voxlevel`, and a second run skipped all 19 as done. Scored by hand and the rehearsal redone, about forty minutes. Carded as **U181, #378**. | live |
+| `crate session ack` | run `2026-10-31T01:49:02Z-8648`, as `session` | Both backup ages under five days. Carded as **U184, #381**, one command for the session's ack. | live |
+| `intake land`, native, rehearsal | on the copy in `copyrun` on the library volume, run `2026-10-31T02:00:02Z-db2a`, applied as `session` | digest **`b6744643eade55fe`**: 19 adds, 0 already present, 1 vox My Tag at cut 3, INBOX / Analyze made, 0 left in staging, 12 owned hearts into All Favorites and 2026-10 and coloured Pink, one account track left out (Alex Kaminski `Mana`, neither owned nor landed). | rehearsed |
+| `intake land`, native, live | run `2026-10-31T02:00:59Z-99ba`, approved as `session` (run `2026-10-31T02:01:18Z-2e99`), session `2026-10-31T02:01:27Z-1031` | digest **`b6744643eade55fe`, equal to the rehearsal's**. The two plan screens differ only in the run id and the "reads and writes" path. Committed: 19 rows into `djmdContent`, 49 INBOX memberships, 24 favourites memberships and 12 rows coloured, 1 vocals association. 10,747 to 10,766 active rows, integrity ok, **INBOX / Analyze holds exactly 19**, files in `Music/2026-10-30 Tidal playlists and Favorites`, staging empty. | live |
+| INBOX before the landing | read from the database | No playlist named `Analyze` directly under INBOX, the first check A48 (#376) owes. | read |
+| Cards | filed | U181 to U184, #378 to #381, from the sitting's friction review. | Ready |
+
+**A42 (#366) is met here.** A native landing rehearsed on a disposable copy
+and planned live gave the same digest, the case R-922 said could never occur
+while the digest carried the database path. R-922 closes on this sitting.
+**A43 (#367) reached its landing gate** through `crate sync land`'s own step
+10, answered and applied as the session; it closes when the rekordbox visit
+below is recorded. Still owed from this sitting: the rekordbox visit over
+INBOX / Analyze (Reload Tags, then Analyze Tracks) and `crate inbox analyzed`,
+which A48 (#376) carries.
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**

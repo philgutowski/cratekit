@@ -35732,6 +35732,13 @@ path outside the digest, and a copy rehearsal matches a live plan.
 **Not on the board bar.** The author can always approve; the cost is
 latency, not correctness.
 
+**Closed 2026-10-31, A42 (#366), `docs/cutover.md` sitting 51.** A native
+landing rehearsed on a disposable copy (run `2026-10-31T02:00:02Z-db2a`) and
+planned live (run `2026-10-31T02:00:59Z-99ba`) gave the same digest,
+`b6744643eade55fe`; the two screens differ only in the run id and the "reads
+and writes" path, which the digest no longer carries. The session approved
+the live gate on that equal digest.
+
 ---
 
 ## R-923. A row the native landing creates leaves rekordbox's own defaults empty, and rekordbox will not load it to a deck
