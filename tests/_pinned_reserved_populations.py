@@ -956,6 +956,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'unconverged-tree',
         'utf-8',
     ],
+    # 2026-10-31, U162: the rehearsal area helper joined.
+    'core/rehearsal.py': ['internal-error', 'output-exists'],
     'core/restore.py': [
         'bare-metal-recovery',
         'capture-restore',
@@ -1255,12 +1257,15 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'favorites-placement-skipped',
         'intake-land-archive-failed',
         'intake-list-unusable',
+        # 2026-10-31, U162: the rehearsal's archive warning and its read back.
+        'intake-rehearsal-archive-skipped',
         'internal-error',
         'land-native',
         'library-export-unusable',
         # 2026-10-28, U156: --label on an unreachable library root.
         'library-root-unreachable',
         'rows-await-analysis',
+        'snapshot-integrity-failed',
         'vox-not-written',
         'vox-unscored',
     ],
@@ -2411,6 +2416,8 @@ PINNED_LITERAL_HOLDERS = {
         'write-lock-held',
     ],
     'core/reconcile.py': ['restore-reconciliation-outstanding', 'restore-record-unusable'],
+    # 2026-10-31, U162: the rehearsal area helper joined.
+    'core/rehearsal.py': ['internal-error', 'output-exists'],
     'core/restore.py': [
         'internal-error',
         'recovery-target-refused',
@@ -2552,6 +2559,8 @@ PINNED_LITERAL_HOLDERS = {
         'library-export-unusable',
         # 2026-10-28, U156: --label on an unreachable library root.
         'library-root-unreachable',
+        # 2026-10-31, U162: a rehearsal's copy failing its integrity check.
+        'snapshot-integrity-failed',
     ],
     'intake/landing.py': [
         'decision-stale',
@@ -2838,6 +2847,7 @@ PINNED_LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     'core/exit_codes.py',
     'core/rb_writer.py',
     'core/reconcile.py',
+    'core/rehearsal.py',  # 2026-10-31, U162: the rehearsal area helper joined.
     'core/restore.py',
     'core/review.py',
     'core/session.py',
@@ -2846,6 +2856,7 @@ PINNED_LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     'intake/acrcloud.py',
     'intake/cli.py',
     'intake/imported_cli.py',
+    'intake/land_cli.py',  # 2026-10-31, U162: the rehearsal's counts joined.
     'label/catalogue.py',
     'modules/outbound/prune.py',
     'modules/outbound/tidal_account.py',

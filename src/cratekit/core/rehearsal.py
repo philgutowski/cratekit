@@ -196,7 +196,12 @@ def open_area(
             clone(one, volume / "staging" / one.name)
         (local / "config").mkdir()
         (local / "state").mkdir()
-        config.save(redirected_cfg, local / "config" / config.CONFIG_FILENAME)
+        # A NEW DOCUMENT IN A NEW FOLDER, written through the one locked cycle
+        # every writer uses; there is nothing on disk there for it to erase.
+        config.update(
+            lambda _absent: redirected_cfg.to_toml_dict(),
+            local / "config" / config.CONFIG_FILENAME,
+        )
     except BaseException:
         for path in made:
             shutil.rmtree(path, ignore_errors=True)
