@@ -211,7 +211,7 @@ def test_a_scratch_plan_that_is_not_the_live_plan_applies_nothing(
     apply and names the lines."""
     cfg, _root = native_library
     _stage(cfg, silence, "One.flac")
-    monkeypatch.setattr(rehearsal, "mapped", lambda value, _pairs: list(value))
+    monkeypatch.setattr(rehearsal, "mapped", lambda value, _pairs: value)
 
     code, refused = _rehearse()
 
@@ -631,13 +631,11 @@ def test_on_a_renamed_drive_a_file_name_that_differs_still_refuses_and_names_the
 
     def planted(value, pairs):
         back = real(value, pairs)
-        if isinstance(back, str):
-            # The engine maps each line through the module's own name.
-            return back
-        return [
-            line.replace("One.flac", "Uno.flac") if "columns.FolderPath" in line else line
-            for line in back
-        ]
+        if isinstance(back, dict) and "plan" in back:
+            # The area's plan, mapped back, with one row's file name changed.
+            columns = back["plan"]["rows"][0]["columns"]
+            columns["FolderPath"] = columns["FolderPath"].replace("One.flac", "Uno.flac")
+        return back
 
     monkeypatch.setattr(rehearsal, "mapped", planted)
 
@@ -656,7 +654,7 @@ def test_on_a_renamed_drive_a_file_name_that_differs_still_refuses_and_names_the
     assert len(differs) == 2, differs
     # The message names the field and both spellings it compared under.
     message = cause["message"]
-    assert "FolderPath" in message
+    assert "in rows.columns.FolderPath, so nothing was applied there" in message, message
     area_folder = cause["detail"]["mapped"]
     assert any(
         scratch.startswith(base + "/") and live.startswith(base + "/")
@@ -717,4 +715,27 @@ def test_the_refusal_names_each_field_once_and_strips_every_index():
             "- plan.vox.rows[0][1] = 2",
             '+ gate.target = "/c"',
         ]
-    ) == ["FolderPath", "rows", "target"]
+    ) == ["rows.columns.FolderPath", "vox.rows", "target"]
+
+
+def test_a_batch_whose_name_is_not_ascii_rehearses_equal_and_the_gate_says_so(
+    native_library, silence, tmp_path
+):
+    """The review's round one: every line is a JSON value, and an escaped
+    accent is a spelling no mapped pair holds, so a batch named with one
+    refused on every path in it while the two plans were the same."""
+    cfg, _root = native_library
+    _renamed_drive(cfg, tmp_path)
+    name = "2026-09-29_café"
+    _stage(cfg, silence, "One.flac")
+
+    code, rehearsed = drive(["intake", "land", "--name", name, "--rehearse"])
+
+    assert code == int(ExitCode.OK), rehearsed
+    assert rehearsed["data"]["totals"]["rehearsal"]["landed"] == 1
+    assert _areas(cfg) == []
+    code, live = drive(["intake", "land", "--name", name])
+    assert code == int(ExitCode.DECISION_REQUIRED), live
+    shown = live["cause"]["detail"]["shown"]
+    assert "equal to this plan's" in shown["rehearsal"], shown["rehearsal"]
+    assert "differs from the rehearsal" not in shown
