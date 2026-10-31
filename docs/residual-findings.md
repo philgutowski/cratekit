@@ -39570,3 +39570,48 @@ nothing is waiting.
 **Closes when:** `--all` over a music folder with no batch folder ends with
 nothing to do, naming the filed batches it knows of, rather than refusing.
 Ledger only.
+
+---
+
+## R-1087. The session's acknowledgment is still two commands until U184's one command mint lands
+
+**Found:** at the plan of #349, U168, 2026-10-31.
+
+**The mechanism.** U168's brief asks that `crate session ack` with no terminal
+and both backup ages under five days mint in one call. U184 (#381) specifies
+that same mint as `crate session ack --as session`, with its own scenarios: no
+gate opened, no blocked run left, a valid acknowledgment reported rather than
+minted again. Building an implicit form here, on the terminal test alone, would
+make two rules for one record, so U168 stops at `session ack` and then
+`run decide RUN session.ack.backup acknowledged --continue`, which records the
+actor `session` with no terminal and mints under U138's age rule.
+
+**Measured cost.** Two commands where the brief asked for one, and no `script`
+wrapper or `--actor` to forget. Driven in `tests/test_run_decide_continue.py`.
+
+**Closes when:** #381 lands. Ledger only.
+
+---
+
+## R-1088. A continued run reports its provider spend twice, and a recorded line that no longer parses prints usage on stderr
+
+**Found:** in Fable's review of #349, U168, 2026-10-31.
+
+**The mechanism.** `run decide --continue` dispatches the owning verb inside
+the outer `_dispatched`, and both add the provider spend counted since their
+own start, so calls the continued verb spends reach the envelope as two
+identical `provider-spend` warnings. Separately, `cli.dispatch` turns a
+recorded command line argparse refuses into `internal-error`, and argparse has
+already written its usage text to the real stderr by then; stdout stays one
+JSON object.
+
+**Measured cost.** Fable drove both with synthetic inputs: a two call bump
+inside the inner dispatch, and a recorded line edited to carry an unknown
+flag. No landed verb both opens a gate and reaches the provider gate directly,
+and no landed path writes a command line that fails to parse, so neither has a
+measured producer today. The cost when one appears is a doubled count on the
+screen, or a line of noise above a correct refusal.
+
+**Closes when:** a gated verb reaches the provider in the same process, at
+which point the outer dispatch should skip its spend line for a continued run.
+Ledger only.
