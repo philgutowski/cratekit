@@ -54,6 +54,7 @@ from cratekit.favorites import colour as colour_mod
 from cratekit.intake import (
     account_playlists,
     batch_name,
+    filing,
     ingest,
     label_filing,
     landing,
@@ -297,6 +298,16 @@ def build_land(parser, entry) -> None:
             "report the plan's digest, and remove the area; nothing live is "
             "written or moved, and the live landing then says whether its plan "
             "equals this rehearsal's (database native intake trees only)"
+        ),
+    )
+    parser.add_argument(
+        "--land-only",
+        action="store_true",
+        help=(
+            "land the files and write their rows without filing them into the "
+            "library tree afterwards; by default a database native landing shows "
+            "where adoption would file each new row, and files them under the "
+            "same answer when the plan after the commit agrees"
         ),
     )
     set_playlist.add_word_arguments(parser)
@@ -891,6 +902,8 @@ def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: P
         else {}
     )
     filed = label_filing.label_of(rows.labels) if rows.labels is not None else {}
+    # U165: where adoption files each new row after the commit, by target.
+    sorted_into = {str(one.target): one for one in rows.filing or ()}
     items = []
     for item in planned.items:
         row = by_target[str(target / item.name)]
@@ -914,6 +927,8 @@ def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: P
             # U127: the score each added row was read at and whether it is tagged.
             entry["voxlevel"] = row.voxlevel
             entry["vox"] = row.vox
+        if str(row.target) in sorted_into:
+            entry["files into"] = sorted_into[str(row.target)].shown()
         items.append(entry)
     identity = _native_identity(planned, rows, target=target)
     if rows.favorites is not None and rows.favorites.skipped:
@@ -1243,7 +1258,7 @@ def _land_native(
     owned: tuple[account_playlists.HeartRow, ...] = (),
     rehearse: bool = False,
 ) -> Envelope:
-    """Plan the rows against the database, ask, then move and write.
+    """Plan the rows against the database, ask, then move, write and file.
 
     THE ORDER IS :func:`ask_then_write`'s, which ``intake file`` shares: the
     database opened with write intent before the plan, the acknowledgment read
@@ -1267,6 +1282,21 @@ def _land_native(
     all.
     """
     tree_id = declared.intake.id
+    # WHY THE LANDING FILES NOTHING AFTER IT, empty when it files (U165): asked,
+    # or a routing tree still on the bridge, where no database writer may write
+    # its membership and a filing could only end refused.
+    unfiled = (
+        "asked with --land-only"
+        if getattr(ctx.args, "land_only", False)
+        else (
+            ""
+            if medium.files_natively
+            else (
+                f"the tree {declared.tree.id!r} is on the xml bridge; cut it over with "
+                f"crate tree cutover {declared.tree.id}"
+            )
+        )
+    )
     if ctx.args.export is not None:
         raise refuse(
             "intake-list-unusable",
@@ -1396,7 +1426,7 @@ def _land_native(
                 batch=inbox_name,
                 target=target,
             )
-            return native.plan_rows(
+            made = native.plan_rows(
                 cfg,
                 db,
                 tree_id=tree_id,
@@ -1424,13 +1454,19 @@ def _land_native(
                 inbox_found_by_name=inbox_found_by_name,
                 labels=label_plan(db),
             )
-
+            # WHERE EACH NEW ROW WILL BE FILED, BEFORE IT EXISTS (U165), shown
+            # and digested, so the one answer covers the filing after the commit.
+            if unfiled:
+                return made
+            return native.with_filing(made, filing.predict(declared, made.to_add()))
 
         return plan
 
     archive_notes: list[dict[str, str]] = []
+    applied: list[native.NativePlan] = []
 
     def write(db, rows: native.NativePlan) -> landing.LandedNative:
+        applied.append(rows)
         # ONE LANDING PER BATCH NAME, HELD ACROSS THE WHOLE APPLY (R-432), as on
         # the bridge: the engine checks a target free and then renames over it.
         with landing.batch_lock(planned.batch):
@@ -1452,6 +1488,7 @@ def _land_native(
 
     def shown_of(rows: native.NativePlan) -> dict[str, Any]:
         shown = _native_shown(rows, folder=planned.folder, target=target)
+        shown["files after landing"] = filing.fact(rows.filing, why=unfiled, tree=declared.tree.id)
         if archive_planned is not None:
             shown["account archive"] = archive_planned.shown
         # THE REHEARSAL THIS PLAN IS COMPARED AGAINST (U162), named, and equal
@@ -1515,7 +1552,42 @@ def _land_native(
     if filed is not None:
         label_filing.assert_read_back(filed)
         warnings.extend(label_filing.unfiled_warning(filed.left))
-    return ctx.envelope(data=_native_reported(payload, landed), warnings=warnings)
+    reported = _native_reported(payload, landed)
+    predicted = applied[-1].filing if applied else None
+    if predicted is not None:
+        # THE FILING, AFTER EVERY READ BACK OF THE LANDING (U165), under the
+        # actor who answered its gate. It never fails the landing it follows.
+        sorted_in = filing.file_landed(
+            cfg,
+            declared,
+            predicted,
+            landed.collection,
+            actor=_gate_actor(ctx, spec),
+        )
+        warnings.extend(filing.warnings(sorted_in))
+        reported = _with_filing(reported, sorted_in)
+    return ctx.envelope(data=reported, warnings=warnings)
+
+
+def _gate_actor(ctx, spec) -> str:
+    """Who the run record says answered the landing's gate, as the adopt verb reads it."""
+    decision = ctx.run.decisions.get(spec.name)
+    return decision.actor if decision is not None else ""
+
+
+def _with_filing(reported: dict, filed: filing.Filed) -> dict:
+    """The landed payload with what the filing after it did, in its totals (U165)."""
+    totals = {**reported["totals"], "filing": filed.state}
+    if filed.state == filing.FILED:
+        totals = {
+            **totals,
+            "filed": filed.filed,
+            "filing memberships": filed.memberships,
+            "placed nowhere": len(filed.nowhere),
+        }
+    # EACH ITEM ALREADY SAYS WHERE IT FILES, or why nowhere, in its
+    # ``files into``; the payload's keys are closed (``plan/1``).
+    return {**reported, "totals": totals}
 
 
 #: The verb a rehearsal record names, so a live landing reads only its own (U162).

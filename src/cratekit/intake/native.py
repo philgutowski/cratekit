@@ -555,6 +555,10 @@ class NativePlan:
     #: The live :data:`ANALYZE` playlist under the root the plan found (U166),
     #: empty when the write makes it.
     analyze_playlist_id: str = ""
+    #: Where adoption would file each row to be added (U165), a
+    #: :class:`cratekit.intake.filing.Prediction` per row, given by
+    #: :func:`with_filing`. None for a landing that files nothing after it.
+    filing: tuple[Any, ...] | None = None
 
     def to_add(self) -> tuple[RowPlan, ...]:
         return tuple(row for row in self.rows if row.action == ADD)
@@ -1468,6 +1472,11 @@ def identity(plan: NativePlan) -> dict[str, Any]:
     # THE ANALYZE PLAYLIST ONLY WHEN A ROW IS ADDED (U166), found or made, so
     # a plan that adds none digests as it did before this unit.
     analyze = {"analyze": plan.analyze_playlist_id} if plan.to_add() else {}
+    # THE FILING ONLY WHEN THE LANDING FILES (U165), every prediction, so an
+    # answer given for a landing that files is stale for one that does not.
+    filing = (
+        {"filing": [one.identity() for one in plan.filing]} if plan.filing is not None else {}
+    )
     return {
         **split,
         **unplanned,
@@ -1476,6 +1485,7 @@ def identity(plan: NativePlan) -> dict[str, Any]:
         **filed,
         **vox,
         **analyze,
+        **filing,
         "kind": "land-native",
         "tree": plan.tree_id,
         "root": plan.root_id,
@@ -1508,6 +1518,12 @@ def identity(plan: NativePlan) -> dict[str, Any]:
             else None
         ),
     }
+
+
+def with_filing(plan: NativePlan, predicted: Sequence[Any]) -> NativePlan:
+    """``plan`` with where adoption would file its rows, digested again (U165)."""
+    filed = replace(plan, filing=tuple(predicted))
+    return replace(filed, digest=digest_of(identity(filed)))
 
 
 def _restamp(content: Any, row: RowPlan, plan: NativePlan) -> None:
@@ -2518,5 +2534,6 @@ __all__ = [
     "search_convention",
     "single_rows_for",
     "stored_folder_path",
+    "with_filing",
     "year_of",
 ]

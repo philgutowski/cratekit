@@ -872,7 +872,7 @@ def test_an_approval_recorded_against_a_plan_that_has_since_moved_is_refused(
             probe=_readable,
         )
     )
-    monkeypatch.setattr(apply_cli, "census", lambda _cfg, _declared: scanned)
+    monkeypatch.setattr(apply_cli, "census", lambda _cfg, _declared, **_scope: scanned)
     assert apply_cli.current_plan(installed, taxonomy.default_taxonomy()).digest() != (
         plan_before.digest()
     ), "the fixture did not actually move the plan, so the assertion below is empty"
