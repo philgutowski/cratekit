@@ -66,7 +66,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Iterable, Mapping, Sequence
 
-from cratekit.core import rb_writer, taxonomy
+from cratekit.core import foreign_tree, rb_writer, taxonomy
 from cratekit.core.cause import CratekitError, Remedy, refuse
 from cratekit.favorites import colour, placeholders
 from cratekit.modules.outbound import source as outbound_source
@@ -152,7 +152,12 @@ def resolve_home(db: Any, name: str) -> Home:
     only added. A folder of the name is not it, a smart playlist of the name
     is not it, and a removed one is not there.
     """
-    live = _live_plain(list(db.get_playlist(Name=name)))
+    # U185. A playlist another app pushed into its own folder is not the home,
+    # whatever it is called: counted, it would refuse the landing as a second
+    # source, and chosen, a heart would be written into that app's folder.
+    live = foreign_tree.outside(
+        _live_plain(list(db.get_playlist(Name=name))), list(db.get_playlist())
+    )
     if len(live) != 1:
         count = "no live playlist" if not live else f"{len(live)} live playlists"
         raise refuse(

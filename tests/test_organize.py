@@ -28,7 +28,7 @@ from cratekit.label.catalogue import AccountPlaylist
 from cratekit.organize import account as account_area
 from cratekit.organize import cli as organize_cli
 from cratekit.organize import filing, own, rekordbox
-from tests import adopt_fixtures, cutover_fixtures, outbound_fakes
+from tests import adopt_fixtures, cutover_fixtures, deadca7_fixtures, outbound_fakes
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, FakePagedArtist, catalogue_factory
 from tests.test_adoption import _bucket_and_genre
@@ -377,6 +377,45 @@ def test_what_the_author_made_is_listed_with_a_home_and_never_a_write(world):
                 continue
             assert MINE_ON_ACCOUNT not in str(step["plan"])
             assert MINE_IN_REKORDBOX not in str(step["plan"])
+
+
+def test_deadca7s_folder_is_named_once_as_foreign_and_a_full_apply_leaves_it_as_it_was(world):
+    """U185. Another app's folder at the top, holding the very tracks organize files.
+
+    The report names it once, as a fact, and never among the author's own with
+    a home; both gates applied leave every row the push wrote, its cues and the
+    pushed track's analysis columns byte for byte as they were, and a second
+    report reads it the same way.
+    """
+    cfg, _fake, _held, _inbox, _ids = world
+    pushed = deadca7_fixtures.push(cfg.library.db_path, ("r-one", "r-two"))
+    before = deadca7_fixtures.written(cfg.library.db_path, pushed)
+
+    envelope = _report()
+    area = envelope["data"]["summary"]["areas"][rekordbox.AREA]
+    assert deadca7_fixtures.FOLDER not in {one["name"] for one in area["yours"]}
+    assert area["facts"][rekordbox.FOREIGN_FACT].startswith(f"{deadca7_fixtures.FOLDER} at")
+    # NAMED ONCE, as the folder: the playlists in it are never listed.
+    for name in deadca7_fixtures.PLAYLISTS.values():
+        assert name not in str(envelope)
+
+    code, done, _first = _answered()
+    assert code == int(ExitCode.OK), done
+    assert deadca7_fixtures.written(cfg.library.db_path, pushed) == before
+    # Organize filed the tracks the push holds, into its own tree, and that
+    # took nothing from the push's playlists.
+    filed_outside = _query(
+        cfg,
+        "SELECT s.ContentID FROM djmdSongPlaylist s JOIN djmdPlaylist p ON p.ID = s.PlaylistID "
+        "WHERE COALESCE(s.rb_local_deleted, 0) = 0 AND p.ParentID != ? AND p.Name NOT IN (?, ?)",
+        pushed.folder_id,
+        RUN_NAMED,
+        DATED,
+    )
+    assert {"r-one", "r-two"} <= {str(content) for (content,) in filed_outside}
+    again = _report()["data"]["summary"]["areas"][rekordbox.AREA]
+    assert deadca7_fixtures.FOLDER not in {one["name"] for one in again["yours"]}
+    assert rekordbox.FOREIGN_FACT in again["facts"]
 
 
 def test_approving_rekordbox_and_aborting_the_account_writes_only_rekordbox(world):

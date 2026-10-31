@@ -176,6 +176,30 @@ def test_the_home_is_the_one_plain_live_source_its_folder_and_the_months_there(c
     assert home.identity() == {"source": str(source.ID), "folder": str(folder.ID)}
 
 
+def test_a_playlist_of_the_sources_name_inside_deadca7s_folder_is_not_a_second_source(cfg, db):
+    """U185. Another app's folder holds a playlist of the name; the home is still the one.
+
+    A namesake folder BELOW the top is somebody's own and still counts, so the
+    same playlist there refuses as a second source, which is what pins the
+    exclusion to the top level folder alone.
+    """
+    folder, source = _home(db, "1")
+    pushed = db.create_playlist_folder("DEADCA7")
+    db.create_playlist(SOURCE, parent=pushed)
+    db.session.commit()
+
+    home = placement.resolve_home(db, SOURCE)
+    assert (home.source_id, home.folder_id) == (str(source.ID), str(folder.ID))
+
+    mine = db.create_playlist_folder("Mine")
+    nested = db.create_playlist_folder("DEADCA7", parent=mine)
+    db.create_playlist(SOURCE, parent=nested)
+    db.session.commit()
+    with pytest.raises(CratekitError) as caught:
+        placement.resolve_home(db, SOURCE)
+    assert len(caught.value.cause.detail["ids"]) == 2
+
+
 def test_an_empty_source_is_a_home_here_where_the_refresh_refuses_it(cfg, db):
     _home(db)
     assert placement.resolve_home(db, SOURCE).source_name == SOURCE
