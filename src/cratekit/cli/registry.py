@@ -3137,6 +3137,28 @@ ENTRIES: tuple[Entry, ...] = (
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
+    # ── The rekordbox visit, checked (U167) ─────────────────────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives. After
+    # the visit, one read only answer: is every landed row analysed, is each
+    # grid right, is the Key column filled, and how far rekordbox's key agrees
+    # with the title's. Its exit status is the verdict, so a skill can wait on it.
+    Entry(
+        name="analyze.check",
+        summary="read rekordbox's analysis of the landed rows and say whether the visit "
+        "is done, still waiting, or suspect; reads a copy, writes nothing",
+        module="cratekit.analysis.check_cli",
+        builder="build",
+        handler_key="analyze.check",
+        # NO FEATURE ROW. The source system never read rekordbox's result back.
+        # CORE, NOT THE ANALYSIS MODULE: it runs no detector and needs no
+        # extra, it reads rekordbox's own analysis through the binding every
+        # install has, and the landing it follows is core, so a slim install
+        # that lands rows can ask whether rekordbox finished with them.
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
+        doctor_checks=("library.mounted", "rekordbox.closed"),
+    ),
     # ── The set's permanent playlist (U121) ─────────────────────────────────
     #
     # Appended, for the reason the deferred routing block above gives. The

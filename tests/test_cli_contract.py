@@ -1994,6 +1994,11 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # explicit gate is still asked over it, and the verb ends NO_OP. The
         # writing path is driven in tests/test_inbox_analyzed.py.
         "inbox.analyzed": _intake_cut_over,
+        # U167. No argument: the check reads INBOX / Analyze, or every row
+        # rekordbox has not analysed, off a copy of whatever database the
+        # fixture holds, and answers or refuses with a code from the
+        # vocabulary. The verdicts are driven in tests/test_analyze_check.py.
+        "analyze.check": [],
         # U112. No argument. Its database area reads the backup acknowledgment
         # first, see ACKNOWLEDGED_BEFORE_THE_GATE; on this fixture every step
         # either plans nothing or refuses on its own, and both areas still ask.
