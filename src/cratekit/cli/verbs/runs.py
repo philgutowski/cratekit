@@ -183,14 +183,13 @@ def _continued(ctx: "Context", state: gates.RunState, gate: str, *, actor: str) 
     if state.argv is None:
         raise CratekitError(
             Cause(
-                reason="decision-required",
+                reason="run-not-continuable",
                 message=(
                     f"the answer to {gate} was recorded, and run {state.run_id} keeps no "
                     f"command line to continue it with, since it was recorded before "
                     f"run decide could continue one; run the verb again yourself"
                 ),
                 remediation=Remediation(
-                    remedy=Remedy.ANSWER_DECISION,
                     steps=(f"crate --run {state.run_id} {state.verb.replace('.', ' ')} ...",),
                 ),
                 origin=("cli.verbs.runs",),

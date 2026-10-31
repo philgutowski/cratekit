@@ -113,8 +113,10 @@ def test_a_run_that_keeps_no_command_line_is_refused_with_the_answer_recorded(
 
     code, envelope = _drive(["run", "decide", run_id, ACK_GATE, "acknowledged", "--continue"])
 
-    assert code == int(ExitCode.DECISION_REQUIRED), envelope
-    assert envelope["cause"]["reason"] == "decision-required"
+    # NOT A GATE: the answer is recorded, so nothing offers to answer it again.
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "run-not-continuable"
+    assert not envelope.get("resumable"), envelope
     assert f"crate --run {run_id} session ack" in envelope["cause"]["remediation"]["steps"][0]
     assert gates.load(run_id).decisions[ACK_GATE].option == "acknowledged"
 

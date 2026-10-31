@@ -3745,6 +3745,7 @@ def test_human_mode_renders_what_the_verb_showed_and_is_unchanged_without_it(con
         "  options: proceed, abort",
         "",
         "  answer:  crate run decide r context.probe <option>",
+        "  then:    add --continue to answer and carry on the run in one command",
         "  or:      rerun with -d context.probe=<option>",
     ]
 

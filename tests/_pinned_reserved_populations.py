@@ -173,6 +173,8 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'routing-destination-renamed',
     'routing-ledger-unusable',
     'routing-outstanding',
+    # 2026-10-31, U168: run decide --continue over a run that keeps no command line.
+    'run-not-continuable',
     'session-committed-unverified',
     'session-lock-held',
     'set-playlist-unnamed',
@@ -582,7 +584,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'cli/verbs/login.py': ['credential-missing', 'utf-8'],
     'cli/verbs/profile.py': ['config-unusable'],
     # 2026-10-31, U168: run decide --continue names the answer it continued on.
-    'cli/verbs/runs.py': ['decision-recorded', 'decision-required', 'decision-unknown-gate'],
+    'cli/verbs/runs.py': ['decision-recorded', 'decision-unknown-gate', 'run-not-continuable'],
     # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
     # a new module, crate taxonomy upgrade (U132). Its three WARNING codes are
     # the literals new to the package; the rest were already declared.
@@ -793,6 +795,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'routing-destination-renamed',
         'routing-ledger-unusable',
         'routing-outstanding',
+        'run-not-continuable',  # 2026-10-31, U168
         'session-committed-unverified',
         'session-lock-held',
         'set-playlist-unnamed',
@@ -2377,7 +2380,7 @@ PINNED_LITERAL_HOLDERS = {
     'cli/verbs/login.py': ['credential-missing'],
     'cli/verbs/profile.py': ['config-unusable'],
     # 2026-10-31, U168: a run with no command line to continue is refused.
-    'cli/verbs/runs.py': ['decision-required', 'decision-unknown-gate'],
+    'cli/verbs/runs.py': ['decision-unknown-gate', 'run-not-continuable'],
     # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
     # a new module, crate taxonomy upgrade (U132). Measured on the merged tree.
     'cli/verbs/taxonomy.py': ['config-unusable', 'internal-error'],

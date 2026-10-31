@@ -828,6 +828,8 @@ def render_gate(cause: Cause) -> str:
     lines += [
         "",
         f"  answer:  crate run decide {run_id} {gate} <option>",
+        # U168: the same answer, carried straight on into the verb's next step.
+        "  then:    add --continue to answer and carry on the run in one command",
     ]
     if not detail.get("explicit"):
         lines.append(f"  or:      rerun with -d {gate}=<option>")
