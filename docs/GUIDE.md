@@ -360,7 +360,14 @@ with no artist, as rekordbox would show it. **Nothing about the audio is
 written**: no tempo, no grid, no key, no waveform, and the run says so.
 rekordbox does not analyse a row it did not make until you ask, so open it,
 select INBOX / Analyze and run Analyze Tracks; Reload Tags is not needed, and
-adoption reads each row's genre from the moment it lands. A row landed before
+adoption reads each row's genre from the moment it lands. Once rekordbox and its
+agent have quit, `crate analyze check` says whether the visit is done and done
+right: every row analysed, every grid one tempo (or moving on a row marked
+`dyn`), the Key column filled, and how often the title's key agrees with
+rekordbox's. It exits 0 when the visit is done, 12 when rows still wait for
+analysis, and 27 when what rekordbox wrote looks wrong, naming the rows; it
+reads INBOX / Analyze, or the landing you name with `--pass` or `--session`,
+and writes nothing. A row landed before
 2026-10-09 also lacks the defaults rekordbox writes on every row it makes, and
 will not load to a deck until `crate repair rows` fills them (R-923); a row
 landed since carries them from the start. There is no import, no drag and no `intake imported` on this path.
@@ -387,8 +394,11 @@ there, applies the landing to the copy, reads it back, reports the plan's
 digest with the rows added and the copy's integrity, and removes the scratch
 folder. Your staging folder, your music folder and your database are left
 exactly as they were, and rekordbox running refuses it as it refuses the
-landing. When the rehearsal fails, the scratch folder is kept and the refusal
-names it. The landing you then run without `--rehearse` names the newest
+landing. A library whose drive was renamed since rekordbox made it, so that
+rekordbox stores every path under the old drive name, rehearses as any other:
+each row's stored path is compared under the name rekordbox recorded. When the
+rehearsal fails, the scratch folder is kept and the refusal names it, the
+fields that differ, and the spellings it compared. The landing you then run without `--rehearse` names the newest
 rehearsal of the same folder and batch on its gate screen and says whether
 its plan equals it, printing the lines that differ when it does not.
 
@@ -519,6 +529,8 @@ crate label sync --go
 crate review list --queue label-release
 crate review resolve ITEM_ID --verdict accepted --actor YOUR_NAME
 crate label approved
+crate label playlists "Some Label" --releases
+crate label playlists "Some Label"
 ```
 
 `label sync` is the guided way through your labels. It walks them one at a
@@ -567,6 +579,23 @@ review, then `label registry adopt` adds each accepted label the registry does
 not already hold, under any spelling of its name, and reports the rest as
 already held. Running it again adds nothing new.
 
+A label you follow for one style can carry that style as its genre, so its
+tracks are tagged with it and none waits for a hand tag:
+
+```bash
+crate label registry set PULS --genre Rominimal
+crate tag folder /path/to/staging --label PULS
+```
+
+The genre is checked against your taxonomy when you set it, and the screen says
+which folder it routes to and how. A genre that reaches only the fallback folder
+is refused unless you pass `--accept-fallback`, and `--genre default` clears it.
+`tag folder` gives the label's genre to every file of the label that has no
+genre, without asking any catalogue, and counts those files apart in its report
+under `label-genre`. A file's label is its label tag, or `--label` for a file
+that carries none. A file that already has a genre keeps it, and a file of the
+label with no picture is still searched, for its art only.
+
 `sync labels` is retired. It queues nothing and names `label sync`, and `sync
 all` no longer sweeps labels either. A labels sweep queued before the guided
 sync replaced it still runs with `crate sync labels --job JOB_ID`, so a job
@@ -588,6 +617,22 @@ you fetch the same tracks twice. A release the provider has withdrawn is reporte
 a failing line and the other releases are still listed. A track you hold in
 another version becomes a review question, and is listed on a later run once you
 answer it.
+
+`label playlists` keeps a label's folder on the streaming account: one
+`<Label>` folder holding a private `<Label> <year>` playlist per release year.
+It adds and never removes, and asks one explicit gate, `label.playlists.confirm`,
+over a plan naming every playlist and how many tracks it adds. After a `label
+sync --go`, `--releases` adds only the releases that go took for the label: it
+reads just those releases from the provider, two calls each, creates the folder
+or a year playlist if either is missing, and leaves every other year alone. A
+second run plans nothing. Without `--releases` the build reads the label's
+whole catalogue, two calls for every release it lists, which on a label of
+thousands of releases is hours of calls. So it counts the listing first, and
+when the estimate is over 500 calls it stops at its own explicit gate,
+`label.playlists.crawl`, showing the release count, the calls and the time,
+and reads nothing more until you answer `crawl`. A full build that the
+provider's rate limit stops part way keeps nothing it read, so the next run
+starts the crawl again.
 
 ### Sync from streaming
 

@@ -161,6 +161,13 @@ FIELDS: dict[str, TagSpec] = {
     # to as Reload Tags does. ``TPE2`` is the ID3 frame every tagger writes it
     # to, ``albumartist`` the Vorbis comment and ``aART`` the MP4 atom.
     "albumartist": TagSpec("albumartist", "TPE2", "aART"),
+    # U178. The record label a file was released on, read so ``tag folder`` can
+    # give a registered label's genre to every file of it. The keys are the
+    # ones MusicBrainz Picard writes, the Vorbis ``label`` comment, the ID3
+    # publisher frame ``TPUB`` and a freeform MP4 atom. Which field rekordbox
+    # shows in its Label column is U177's to measure on a copy, and the entry
+    # moves here, for reader and writer at once, if the measurement differs.
+    "label": TagSpec("label", "TPUB", "----:com.apple.iTunes:LABEL"),
 }
 
 FLAC_SUFFIXES = (".flac",)

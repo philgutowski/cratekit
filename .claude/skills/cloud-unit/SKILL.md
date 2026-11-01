@@ -133,7 +133,7 @@ yourself.
     .venv/bin/python scripts/board.py cloud
 
 It lists every open unit and residual card by state, says how many of the
-cloud's lanes are held (three by default, `CLOUD_LANES` in `scripts/board.py`),
+cloud's lanes are held (five by default, `CLOUD_LANES` in `scripts/board.py`),
 and names the next card to take. **If your prompt names a card, take that one**,
 as long as the queue lists it as takeable; the coordinator chose it so that
 parallel threads never pick the same card. Otherwise take the one the queue

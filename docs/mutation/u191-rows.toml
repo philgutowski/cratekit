@@ -1,0 +1,204 @@
+name = "u191"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_crawl_gate_skipped"
+description = "label_playlists: never stop at the crawl gate, so a full build over the threshold reads every release before asking anything"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_releases.py", "tests/test_label_playlists.py"]
+old = '''            if counted.over:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "M2_crawl_declined_crawls"
+description = "label_playlists: read the catalogue even when the crawl gate is answered abort"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_releases.py", "tests/test_label_playlists.py"]
+old = '''                if option != "crawl":'''
+new = '''                if False:'''
+
+[[rows]]
+id = "M3_crawl_asks_the_build_gate"
+description = "label_playlists: ask the build gate where the crawl gate belongs, so one answer covers both"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_releases.py", "tests/test_label_playlists.py"]
+old = '''                    _gate(ctx, CRAWL_GATE), plan=crawl, context=counted.shown()'''
+new = '''                    _gate(ctx, BUILD_GATE), plan=crawl, context=counted.shown()'''
+
+[[rows]]
+id = "M4_threshold_boundary"
+description = "Estimate.over: stop at the threshold itself rather than over it"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_releases.py"]
+old = '''        return self.calls > FULL_BUILD_CALLS'''
+new = '''        return self.calls >= FULL_BUILD_CALLS'''
+
+[[rows]]
+id = "M5_threshold_value"
+description = "FULL_BUILD_CALLS: a threshold ten times higher, so a label of two thousand releases crawls unasked"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_releases.py"]
+old = '''FULL_BUILD_CALLS = 500'''
+new = '''FULL_BUILD_CALLS = 5000'''
+
+[[rows]]
+id = "M6_calls_per_release_coefficient"
+description = "CALLS_PER_RELEASE: one call a release, halving every estimate"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_releases.py"]
+old = '''CALLS_PER_RELEASE = 2'''
+new = '''CALLS_PER_RELEASE = 1'''
+
+[[rows]]
+id = "M7_calls_ignore_coefficient"
+description = "Estimate.calls: count releases, not calls"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_releases.py"]
+old = '''        return self.releases * CALLS_PER_RELEASE'''
+new = '''        return self.releases'''
+
+[[rows]]
+id = "M8_time_ignores_pace"
+description = "Estimate.seconds: one second a call whatever the pace"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_releases.py"]
+old = '''        return round(self.calls * self.pace_s)'''
+new = '''        return round(self.calls * 1.0)'''
+
+[[rows]]
+id = "M9_pace_not_configured"
+description = "estimate: the default pace instead of the configured one"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_releases.py"]
+old = '''        pace_s=float(cfg.provider.min_interval_s),'''
+new = '''        pace_s=1.0,'''
+
+[[rows]]
+id = "M10_crawl_digest_count"
+description = "Estimate.plan: drop the release count from the crawl digest, so an answer outlives a grown listing"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_releases.py"]
+old = '''                {"kind": CRAWL_GATE, "label": self.label_id, "releases": self.releases}'''
+new = '''                {"kind": CRAWL_GATE, "label": self.label_id}'''
+
+[[rows]]
+id = "M11_releases_scope_unmarked"
+description = "_payload: never mark a releases plan, so a full build's answer approves it"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_releases.py", "tests/test_label_playlists.py"]
+old = '''    if scope:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M12_empty_releases_plan_makes_folder"
+description = "label_playlists: plan the account even when no taken release has a year, so an empty folder is made"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_releases.py"]
+old = '''        if not (from_releases and not read.years):'''
+new = '''        if True:'''
+
+[[rows]]
+id = "M13_gone_refused"
+description = "_grouped: refuse the plan over a release the provider no longer has, instead of counting it"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_releases.py", "tests/test_label_playlists.py"]
+old = '''            gone += 1
+            continue'''
+new = '''            raise incomplete(entry, "gone")'''
+
+[[rows]]
+id = "M14_review_item_identity_asked"
+description = "_unnamed: treat an item identity as a release, so the provider is asked for it"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_releases.py"]
+old = '''    return not identity or identity.startswith("item:")'''
+new = '''    return not identity'''
+
+[[rows]]
+id = "M15_nothing_left_said_as_nothing_taken"
+description = "label_playlists: warn that nothing was taken when a go took releases and all were gone"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_releases.py"]
+old = '''        elif not taken:'''
+new = '''        elif True:'''
+
+[[rows]]
+id = "M16_recorded_year_unchecked"
+description = "_year: take a recorded year whatever its shape"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_releases.py", "tests/test_label_playlists.py"]
+old = '''    return listed if len(listed) == 4 and listed.isdigit() else ""'''
+new = '''    return listed'''
+
+[[rows]]
+id = "M17_recorded_year_dropped"
+description = "read_taken: ignore the year the answer recorded, so a release the provider dates by nothing is undated"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_releases.py"]
+old = '''    grouped = _grouped(entry, found, [(one.identity, one.year) for one in readable])'''
+new = '''    grouped = _grouped(entry, found, [(one.identity, "") for one in readable])'''
+
+[[rows]]
+id = "M18_listing_relisted"
+description = "read_catalogue: list the label again even when the build already listed it"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "maintainer"
+tests = ["tests/test_label_playlists_releases.py", "tests/test_label_playlists.py"]
+old = '''    if listed is None:
+        listed = list_catalogue(cfg, entry, found)
+    try:'''
+new = '''    if True:
+        listed = list_catalogue(cfg, entry, found)
+    try:'''
+
+[[rows]]
+id = "M19_unread_listing_accepted"
+description = "list_catalogue: plan from a listing read in part (existing guard, moved by this unit)"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_releases.py", "tests/test_label_playlists.py", "tests/test_prune.py"]
+old = '''    if listed.unread:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M20_tombstone_ignored"
+description = "confirm_listed: confirm a tombstoned release (existing guard, moved by this unit)"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_playlists.py", "tests/test_prune.py", "tests/test_organize.py", "tests/test_label_playlists_releases.py"]
+old = '''        if tombstoned(release):
+            suppressed += 1
+            continue
+        verdict = label_verify.verify_release(listed.claimed, release, search=listed.verify)'''
+new = '''        if False:
+            suppressed += 1
+            continue
+        verdict = label_verify.verify_release(listed.claimed, release, search=listed.verify)'''
+
+[[rows]]
+id = "M21_unsettled_answers_read"
+description = "taken_by_goes: read an answer no go has settled (existing guard, newly on this unit's path)"
+file = "src/cratekit/label/dated.py"
+surface = "user"
+tests = ["tests/test_label_playlists_releases.py", "tests/test_label_dated.py", "tests/test_organize.py"]
+old = '''        if not isinstance(settled, Mapping):
+            continue'''
+new = '''        if not isinstance(settled, Mapping):
+            settled = {"at": "2026-10-31T12:00:00+00:00"}'''

@@ -2021,6 +2021,11 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # explicit gate is still asked over it, and the verb ends NO_OP. The
         # writing path is driven in tests/test_inbox_analyzed.py.
         "inbox.analyzed": _intake_cut_over,
+        # U167. No argument: the check reads INBOX / Analyze, or every row
+        # rekordbox has not analysed, off a copy of whatever database the
+        # fixture holds, and answers or refuses with a code from the
+        # vocabulary. The verdicts are driven in tests/test_analyze_check.py.
+        "analyze.check": [],
         # U112. No argument. Its database area reads the backup acknowledgment
         # first, see ACKNOWLEDGED_BEFORE_THE_GATE; on this fixture every step
         # either plans nothing or refuses on its own, and both areas still ask.
@@ -2491,6 +2496,15 @@ UNREACHABLE_GATES: Mapping[str, str] = MappingProxyType(
             "copy and asks nothing by design (U154). The gate, its explicit two "
             "act answer, the write and its refusals are driven in "
             "tests/test_intake_shelve.py on a library whose batch has landed."
+        ),
+        "label.playlists.crawl": (
+            "asked only by a full build of a FOLLOWED label whose listing "
+            "estimates more provider calls than playlists_cli.FULL_BUILD_CALLS, "
+            "and the conformance sample names a label nobody follows, which is a "
+            "plan of nothing decided before a catalogue is resolved and asks "
+            "label.playlists.confirm instead (U191). The crawl gate, its explicit "
+            "two act answer, a decline and a stale answer over a grown listing "
+            "are driven in tests/test_label_playlists_releases.py."
         ),
         "write.cloudsync.unreadable": (
             "raised by the guarded writer only when rekordbox's Cloud Library "
@@ -3855,12 +3869,13 @@ EXPECTED_UNREACHABLE_GATES = frozenset(
         "export.set.rename",
         "favorites.split.approve",
         "intake.shelve.native",
+        "label.playlists.crawl",
     }
 )
 
 
 def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
-    """Six gates are exempt. A seventh one is a decision, not a diff.
+    """Seven gates are exempt. An eighth one is a decision, not a diff.
 
     The sixth, ``intake.shelve.native``, joined with U154, decided there: the
     verb asks only over a plan that moves a batch, approving one writes a path
@@ -3882,6 +3897,11 @@ def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
     approving one writes, which the unpinned conformance fixture refuses, while
     a library with no quarter asks nothing by the brief. Its own suite,
     tests/test_favorites_split.py, drives the gate's two acts and the write.
+    The seventh, ``label.playlists.crawl``, joined with U191: it is asked only
+    by a full build of a followed label whose listing is over the call
+    threshold, and the conformance sample follows no label. Its own suite,
+    tests/test_label_playlists_releases.py, drives its two acts, a decline and
+    a stale answer.
 
     Note what this pin does NOT prove, so nobody reads more into a green run than
     is there: the map is still a named exemption, not a drive of the unreadable
