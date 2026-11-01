@@ -720,7 +720,15 @@ crate converge
 `route unplaced` lists tracks no tree files, and `audit coverage` asks the same
 question from an export. `audit duplicates` never deletes. Run `route resort`
 after a genre or energy change, and `converge` to check that each tree matches
-the database. Reports and audits are read only. `repair paths` proposes a
+the database. `route resort` also fills a genre sub, a playlist beside a genre
+folder's energy bands for one genre: in the shipped taxonomy, every track
+tagged exactly `Rominimal` sits in its Minimal / Deep Tech band and in
+`Minimal / Deep Tech / Rominimal` too. A library whose taxonomy copy predates
+it gains it by hand, since `crate taxonomy upgrade` adds only whole folders
+and classes: add `"Rominimal"` to the Minimal / Deep Tech bucket's `aliases`,
+add the `[[bucket.genre_sub]]` table the shipped template carries under it, and
+set `schema_version = 5`. A track landed after that reaches the genre sub at
+the next `route resort`. Reports and audits are read only. `repair paths` proposes a
 shorter name for each audio file whose name is over the path budget or repeats
 its own title at the end, which are the names rekordbox rejects on import, and
 you accept or reject each one with `crate review resolve`. Nothing is inferred.
