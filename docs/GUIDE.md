@@ -599,8 +599,11 @@ answer for one label, and both write the same record. To ask about one label
 without reaching it through the labels above it, name it: `--next --label "Some
 Label"` lists only that label and prints its question, says it has nothing
 new, or says its listing failed, and leaves every other label as it was. A
-failed listing is a `[FAIL]` line on a run that still exits 0, so read the
-line, not only the exit status. A newly followed label is
+label whose listing failed is a `[FAIL]` line and is never counted as having
+nothing new: the closing line names only the labels that were listed, and a
+run in which no label could be read at all, each listing having failed or
+confirmed nothing, ends refused, exit 30, reason `label-sync-unlisted`, with
+every label's line still shown and a line saying what to do about each kind. A newly followed label is
 asked about its newest few releases, the `labels.offer_per_sweep` count, not its
 whole catalogue.
 
