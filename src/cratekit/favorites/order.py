@@ -45,7 +45,7 @@ from typing import Any, Iterable, Mapping
 from cratekit.cli.output import digest_of
 from cratekit.core import config, convergence, rb_writer, session, snapshot, tree_registry
 from cratekit.core.cause import Remedy, refuse
-from cratekit.favorites import placement
+from cratekit.favorites import placeholders, placement
 from cratekit.write import trees
 
 #: The session workflow the order is recorded under, and its plan's kind.
@@ -56,7 +56,12 @@ WORKFLOW = "favorites-order"
 _SEATED_COLUMNS = frozenset({"Seq", "updated_at", "usn", "rb_local_usn"})
 
 #: A child's place in the rule, by the first element of its rank.
-KINDS = {0: "source", 1: "month", 2: "undated", 3: "other"}
+KINDS = {
+    placeholders.RANK_SOURCE: "source",
+    placeholders.RANK_MONTH: "month",
+    placeholders.RANK_UNDATED: "undated",
+    placeholders.RANK_OTHER: "other",
+}
 
 _ORIGIN = ("favorites", "order")
 

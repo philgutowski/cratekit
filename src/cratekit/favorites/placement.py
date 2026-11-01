@@ -581,11 +581,18 @@ def _seat_new(db: Any, made: Any, folder_id: str, source_id: str) -> tuple[str, 
     It goes before the first live child that ranks after it, so in a folder in
     order it lands directly under All Favorites and any newer month, and in a
     folder not yet in order it still lands above every older month below it.
+    NEVER ABOVE ALL FAVORITES: in a folder where something reads above it, a
+    month is looked for a place only below it, so the landing never makes
+    the folder read less in order than it found it.
     """
     db.session.flush()
     others = [row for row in children(db, folder_id) if str(row.ID) != str(made.ID)]
     mine = rank(made, source_id)
-    at = next((n for n, row in enumerate(others) if rank(row, source_id) > mine), len(others))
+    floor = next((n + 1 for n, row in enumerate(others) if str(row.ID) == str(source_id)), 0)
+    at = next(
+        (n for n, row in enumerate(others) if n >= floor and rank(row, source_id) > mine),
+        len(others),
+    )
     return seat(db, [*others[:at], made, *others[at:]], when=datetime.now())
 
 

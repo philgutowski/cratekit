@@ -726,3 +726,19 @@ def test_the_slots_are_the_rows_own_positions_with_a_shared_one_lifted(held, giv
             self.Seq = seq
 
     assert placement.slots([Row(seq) for seq in held]) == given
+
+
+def test_a_month_is_never_seated_above_all_favorites(cfg, db):
+    """Round one of the review: a folder with something above All Favorites."""
+    folder, source = _home(db)
+    _month(db, folder, "2026-08")
+    _month(db, folder, "Undated")
+    source.Seq = 9
+    db.session.commit()
+    assert _shown(db, folder) == ["2026-08", "Undated", SOURCE]
+    home = placement.resolve_home(db, SOURCE)
+
+    placement.place(db, home, [("1", "2026-11")])
+    db.session.commit()
+
+    assert _shown(db, folder) == ["2026-08", "Undated", SOURCE, "2026-11"]
