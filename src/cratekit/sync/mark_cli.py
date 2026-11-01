@@ -243,21 +243,30 @@ def _locations(xml: Path) -> frozenset[str]:
     return frozenset(named)
 
 
+#: Where a sync pass's name comes from, as a native proof's refusal says it.
+SYNC_PASS_NAMED = "the name crate intake missing --run gave"
+
+
 def _native_proof(
-    cfg: config.Config, name: str, *, verb: str = "crate sync mark"
+    cfg: config.Config,
+    name: str,
+    *,
+    verb: str = "crate sync mark",
+    named: str = SYNC_PASS_NAMED,
 ) -> marks.NativeLanding:
     """The native proof for a pass named on the command line, or the refusal.
 
     THE MEDIUM IS ``ingest.intake_medium`` AND NO COPY OF IT (R-770), the one
     switch every verb that writes the intake tree reads. ``verb`` is the one a
-    refusal tells the person to run again, since ``label mark --pass`` takes
-    its pass by this same proof (R-1056).
+    refusal tells the person to run again and ``named`` where the pass's name
+    came from, since ``label mark --pass`` takes its pass by this same proof
+    and a label batch's name is not one ``intake missing`` gave (R-1056).
     """
     if not landing.plain_name(name):
         raise _blocked(
             f"{name!r} is not a pass name a landing could have been given, so it names "
             f"no pass and nothing was marked",
-            "pass the name crate intake missing --run told the landing to use as --pass",
+            f"pass {named} to the landing as --pass, and mark by that same name",
             pass_name=name,
         )
     medium = ingest.intake_medium(cfg)
@@ -282,8 +291,8 @@ def _native_proof(
         raise _blocked(
             f"no landing of {name!r} into the database native intake tree committed, so "
             f"nothing proves the pass landed and nothing was marked",
-            "land the pass with crate intake land --pass and the name crate intake missing "
-            "--run gave, then mark it by that same name",
+            f"land the pass with crate intake land --pass and {named}, then run {verb} "
+            f"--pass with that same name",
             pass_name=name,
         )
     return marks.NativeLanding(

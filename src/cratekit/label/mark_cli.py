@@ -94,8 +94,10 @@ NOTHING_FILED_SAID = (
     "the landed batch filed no track under this label in any year built for it, "
     "so no year playlist is marked"
 )
-#: The verb a native proof's refusal tells the person to run again.
+#: The verb a native proof's refusal tells the person to run again, and where
+#: a label batch's pass name comes from.
 _VERB = "crate label mark"
+_NAMED = "the pass name crate label sync --go printed for the batch"
 
 
 def build_mark(parser, entry) -> None:
@@ -363,7 +365,7 @@ def label_mark(ctx) -> Envelope:
         pass_name = pass_name_of(xml)
         marks.require_output(xml)
     else:
-        native = native_proof(cfg, str(ctx.args.pass_name), verb=_VERB)
+        native = native_proof(cfg, str(ctx.args.pass_name), verb=_VERB, named=_NAMED)
         pass_name = native.pass_name
     name = str(ctx.args.name)
     entry = labels.RegistryStore().load().resolve(name)
@@ -419,7 +421,7 @@ def label_mark(ctx) -> Envelope:
     if option != "apply" or not planned or remote is None:
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP, warnings=said)
 
-    if native is not None and native_proof(cfg, pass_name, verb=_VERB) != native:
+    if native is not None and native_proof(cfg, pass_name, verb=_VERB, named=_NAMED) != native:
         # THE PROOF AGAIN, before the first rename, as ``sync mark --pass``
         # reads it: a tree reverted to the bridge or a landing since the plan
         # is not what the answer covered.

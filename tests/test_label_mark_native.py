@@ -28,6 +28,7 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import label_filing, native
 from cratekit.label import catalogue
 from cratekit.label import mark_cli as label_mark_cli
+from cratekit.label import registry as labels
 from cratekit.label.catalogue import AccountPlaylist
 from cratekit.sync import mark_record
 from tests import outbound_fakes
@@ -231,6 +232,26 @@ def test_a_pass_no_closed_committed_native_landing_names_is_refused_by_name(
     assert refused["cause"]["reason"] == "sync-marks-blocked"
     assert f"no landing of {PASS!r}" in refused["cause"]["message"]
     assert account._writes == calls and account.renamed == []
+    # The label batch's own remedy, not the sync pass's.
+    (step,) = refused["cause"]["remediation"]["steps"]
+    assert "crate label sync --go" in step and "intake missing" not in step
+    assert step.endswith("then run crate label mark --pass with that same name")
+
+
+def test_a_label_named_by_its_registry_identifier_is_compared_under_its_name(
+    native_followed,
+):
+    """The record holds the label's name, so the identifier given on the command
+    line is resolved before the years are read."""
+    cfg, _fake, account = native_followed
+    _record_landing(cfg, _filed(2021))
+    entry = labels.RegistryStore().load().resolve(LABEL)
+    assert entry is not None and entry.label_id != LABEL
+
+    code, done = _two_acts(["label", "mark", entry.label_id, "--pass", PASS], MARK)
+
+    assert code == int(ExitCode.OK), done
+    assert account.renamed == [("pl-1", "DOWNLOADED Kompakt 2021")]
 
 
 def test_pass_on_an_intake_tree_on_the_bridge_is_refused_naming_xml(followed):
@@ -282,9 +303,18 @@ def test_the_pass_is_named_by_exactly_one_of_the_file_and_the_name(native_follow
         [{"label": LABEL, "year": "2021", "tracks": 1}],
         [{"label": LABEL, "year": 2021}],
         [{"label": LABEL, "year": True, "tracks": 1}],
+        [{"label": LABEL, "year": 2021, "tracks": True}],
         [{"year": 2021, "tracks": 1}],
     ],
-    ids=["a-string", "a-list-of-strings", "a-text-year", "no-tracks", "a-bool-year", "no-label"],
+    ids=[
+        "a-string",
+        "a-list-of-strings",
+        "a-text-year",
+        "no-tracks",
+        "a-bool-year",
+        "a-bool-tracks",
+        "no-label",
+    ],
 )
 def test_a_record_naming_its_filing_in_a_form_this_build_cannot_read_is_refused(
     native_followed, labels
@@ -331,12 +361,12 @@ def test_a_landing_between_the_plan_and_the_first_rename_renames_nothing(
     real = label_mark_cli.native_proof
     seen: list[str] = []
 
-    def proving(cfg, name, *, verb):
+    def proving(cfg, name, *, verb, named):
         seen.append(verb)
         if len(seen) == 3:
             # The applying run's second read: a landing since its plan.
             _record_landing(cfg, _filed(2021), stamp="130000")
-        return real(cfg, name, verb=verb)
+        return real(cfg, name, verb=verb, named=named)
 
     monkeypatch.setattr(label_mark_cli, "native_proof", proving)
 
