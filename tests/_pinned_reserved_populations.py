@@ -243,6 +243,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'unavailable-transient',
     ],
     'acquire/cli.py': [
+        'acquire-refused',  # 2026-11-01, U169: the warning naming a declined track.
         'adapter-broken',
         'auth-failed',
         'config-unusable',

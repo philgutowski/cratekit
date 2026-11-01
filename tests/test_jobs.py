@@ -1382,3 +1382,136 @@ def test_parked_is_not_the_item_boundary(queue, cfg):
     }
     assert result.job.state is jobs.JobState.BLOCKED
     assert result.failed == 1
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Declining (U169): the item is settled as skipped, and the job can succeed
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _lossy() -> Cause:
+    return Cause(
+        reason="lossy-refused",
+        message="the provider offers this track lossy only",
+        remediation=Remediation(remedy=Remedy.RELAX_LOSSLESS_POLICY),
+        scope=Scope.ITEM,
+        retryable=False,
+    )
+
+
+def _declining(*declined: str, failing: tuple[str, ...] = ()):
+    def handle(_job, item):
+        if item.item_id in declined:
+            raise jobs.Declined(_lossy())
+        if item.item_id in failing:
+            raise CratekitError(_throttled())
+        return None
+
+    return handle
+
+
+def test_a_declined_item_is_skipped_with_its_cause_and_the_job_succeeds(queue, cfg):
+    """Sitting 47: three landed and one refused by policy is a finished job."""
+    store, root = queue
+    job = jobs.enqueue(
+        store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["a", "b", "c", "d"]
+    )
+
+    result = jobs.drive(store, job.job_id, _declining("c"), root=root)
+
+    assert result.job.state is jobs.JobState.SUCCEEDED
+    assert result.job.cause is None
+    assert (result.processed, result.failed, result.declined) == (3, 0, 1)
+    held = {item.item_id: item for item in jobs.items(store, job.job_id)}
+    assert held["c"].state is jobs.ItemState.SKIPPED
+    assert held["c"].cause is not None and held["c"].cause.reason == "lossy-refused"
+    assert held["c"].claimed_by is None
+    assert all(held[key].state is jobs.ItemState.DONE for key in "abd")
+    assert jobs.progress(store, job.job_id)["settled"] == 4
+
+
+def test_a_job_every_item_of_which_was_declined_succeeds_rather_than_failing(queue, cfg):
+    store, root = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["a"])
+
+    result = jobs.drive(store, job.job_id, _declining("a"), root=root)
+
+    assert result.job.state is jobs.JobState.SUCCEEDED
+    assert (result.processed, result.failed, result.declined) == (0, 0, 1)
+
+
+def test_a_real_failure_beside_a_declined_item_still_fails_the_job_and_names_both(queue, cfg):
+    store, root = queue
+    job = jobs.enqueue(
+        store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["a", "b", "c"]
+    )
+
+    result = jobs.drive(store, job.job_id, _declining("b", failing=("c",)), root=root)
+
+    assert result.job.state is jobs.JobState.FAILED
+    cause = result.job.cause
+    assert cause is not None
+    assert cause.reason == "unavailable-transient", "a decline leaked into the verdict"
+    assert cause.retryable is True
+    assert cause.detail["declined"] == 1
+    assert "1 more were declined and skipped" in cause.message
+    states = {item.item_id: item.state for item in jobs.items(store, job.job_id)}
+    assert states == {
+        "a": jobs.ItemState.DONE,
+        "b": jobs.ItemState.SKIPPED,
+        "c": jobs.ItemState.FAILED,
+    }
+
+
+def test_a_retry_re_arms_the_failure_and_leaves_the_declined_item_settled(queue, cfg):
+    """The policy that refused it is frozen on the job, so asking again would
+    only be refused again."""
+    store, root = queue
+    job = jobs.enqueue(
+        store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["a", "b", "c"]
+    )
+    jobs.drive(store, job.job_id, _declining("a", failing=("b",)), root=root)
+    jobs.retry(store, job.job_id)
+
+    states = {item.item_id: item.state for item in jobs.items(store, job.job_id)}
+    assert states == {
+        "a": jobs.ItemState.SKIPPED,
+        "b": jobs.ItemState.PENDING,
+        "c": jobs.ItemState.DONE,
+    }
+
+
+def test_a_job_with_no_decline_reports_no_declined_count(queue, cfg):
+    store, root = queue
+    job = jobs.enqueue(
+        store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["a", "b"]
+    )
+
+    result = jobs.drive(store, job.job_id, _declining(failing=("a",)), root=root)
+
+    assert result.job.cause is not None
+    assert "declined" not in result.job.cause.detail
+    assert "declined" not in result.job.cause.message
+
+
+def test_a_retryable_cause_cannot_decline_an_item():
+    with pytest.raises(ValueError, match="cannot decline"):
+        jobs.Declined(_throttled())
+
+
+def test_a_handler_that_declines_a_retryable_cause_fails_the_item_rather_than_skipping_it(
+    queue, cfg
+):
+    """The guard bites inside a drive: the item boundary turns it into a failure."""
+    store, root = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["a"])
+
+    def handle(_job, item):
+        raise jobs.Declined(_throttled())
+
+    with pytest.raises(CratekitError):
+        jobs.drive(store, job.job_id, handle, root=root)
+
+    (item,) = jobs.items(store, job.job_id)
+    assert item.state is jobs.ItemState.FAILED
+    assert item.cause is not None and item.cause.reason == "internal-error"
