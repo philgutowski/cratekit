@@ -270,7 +270,7 @@ def _land_record(run_id: str) -> gates.RunState | None:
         return None
     try:
         state = gates.load(run_id)
-    except (CratekitError, KeyError, TypeError, ValueError, OSError):
+    except (CratekitError, AttributeError, KeyError, TypeError, ValueError, OSError):
         return None
     return state if state.verb == LAND_VERB_NAME else None
 

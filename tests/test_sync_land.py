@@ -1353,11 +1353,16 @@ def test_a_run_record_that_is_not_an_object_leaves_the_refusal_whole(machine, mo
     code, first = drive(["sync", "land"])
     assert code == int(ExitCode.PENDING_HUMAN), first
     (gates.run_dir() / "2026-01-01T00:00:02Z-dead.json").write_text("[]\n")
+    misshapen = {**_record(first["run_id"]), "run_id": "2026-01-01T00:00:03Z-dead"}
+    misshapen["pins"] = {"gate": [1]}
+    (gates.run_dir() / "2026-01-01T00:00:03Z-dead.json").write_text(json.dumps(misshapen))
 
-    code, envelope = drive(["sync", "land", "--pass-run", "2026-01-01T00:00:02Z-dead"])
+    for given in ("2026-01-01T00:00:02Z-dead", "2026-01-01T00:00:03Z-dead"):
+        code, envelope = drive(["sync", "land", "--pass-run", given])
 
-    assert envelope["cause"]["reason"] == "job-unknown", envelope
-    assert envelope["cause"]["detail"]["land_runs"] == {_summary(first)["pass_run"]: first["run_id"]}
+        assert envelope["cause"]["reason"] == "job-unknown", envelope
+        lands = envelope["cause"]["detail"]["land_runs"]
+        assert lands == {_summary(first)["pass_run"]: first["run_id"]}
 
 
 def test_a_record_with_no_related_runs_is_the_record_it_was_and_one_with_them_round_trips():
