@@ -1,0 +1,171 @@
+name = "r1103"
+pass_kind = "light"
+
+[[rows]]
+id = "W1_writer_answer_ignored"
+description = "retag_one: drop the check of the writer's answer, so a file that refused reports the genre as written (the defect R-1103 records)"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    if not tags.write_genre(candidate.path, answer):'''
+new = '''    if tags.write_genre(candidate.path, answer) and False:'''
+
+[[rows]]
+id = "W2_unwritten_reason_blank"
+description = "retag_one: the unwritten result carries no reason, so it reads as neither written nor refused and the worker commits a report for it"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''            reason=UNWRITTEN_REASON,'''
+new = '''            reason="",'''
+
+[[rows]]
+id = "W3_unwritten_reason_wrong"
+description = "retag_one: the unwritten result carries another selection reason, no-answer, a realistic neighbour that sends it to the asked count"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''            reason=UNWRITTEN_REASON,'''
+new = '''            reason=NO_ANSWER,'''
+
+[[rows]]
+id = "W4_unwritten_proposed_dropped"
+description = "retag_one: the unwritten result loses the answer it could not write, so the refusal names no genre"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''            reason=UNWRITTEN_REASON,
+            proposed=answer,'''
+new = '''            reason=UNWRITTEN_REASON,
+            proposed="",'''
+
+[[rows]]
+id = "W5_unwritten_claims_written"
+description = "retag_one: the unwritten result also claims the genre as written, so the sweep's written set and the library plan take it"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''            reason=UNWRITTEN_REASON,
+            proposed=answer,'''
+new = '''            reason=UNWRITTEN_REASON,
+            written=answer,
+            proposed=answer,'''
+
+[[rows]]
+id = "W6_unwritten_current_swapped"
+description = "retag_one: the unwritten result reports the answer as the genre the file still carries"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    if not tags.write_genre(candidate.path, answer):
+        # THE WRITER'S FALSE IS AN UNWRITTEN FILE, NEVER A CORRECTION (R-1103).
+        # ``written`` stays None, so :attr:`RetagOutcome.written` leaves the file
+        # out and :func:`plan_library` plans no row for it, and the answer it
+        # could not take rides as ``proposed`` so the report can name it. A
+        # verdict the answer came from stays as it is: the next run reads it
+        # again and tries the write again, rather than asking a person twice.
+        return RetagResult(
+            path=candidate.path,
+            current=candidate.current,'''
+new = '''    if not tags.write_genre(candidate.path, answer):
+        # THE WRITER'S FALSE IS AN UNWRITTEN FILE, NEVER A CORRECTION (R-1103).
+        # ``written`` stays None, so :attr:`RetagOutcome.written` leaves the file
+        # out and :func:`plan_library` plans no row for it, and the answer it
+        # could not take rides as ``proposed`` so the report can name it. A
+        # verdict the answer came from stays as it is: the next run reads it
+        # again and tries the write again, rather than asking a person twice.
+        return RetagResult(
+            path=candidate.path,
+            current=answer,'''
+
+[[rows]]
+id = "H1_item_not_failed"
+description = "handle: drop the refusal for an unwritten result, so the item ends done with a report and the job succeeds over a file that kept its catch-all"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_genre_retag.py"]
+old = '''    if result.reason == retag.UNWRITTEN_REASON:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "H2_refusal_slug"
+description = "handle: the item fails under the general analysis-write-failed slug instead of retag's own"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_reserved_causes.py"]
+old = '''        raise refuse(
+            retag.UNWRITTEN_REASON,'''
+new = '''        raise refuse(
+            "analysis-write-failed",'''
+
+[[rows]]
+id = "H3_message_names_no_file"
+description = "handle: reword the refusal so it names no file"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '''            f"{path} would not take the genre {result.proposed!r}, so it still "'''
+new = '''            f"the file would not take the genre {result.proposed!r}, so it still "'''
+
+[[rows]]
+id = "H4_detail_path"
+description = "handle: the refusal's detail loses the file's path"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '''                "path": str(path),'''
+new = '''                "path": "",'''
+
+[[rows]]
+id = "H5_detail_genre"
+description = "handle: the refusal's detail names the genre the file still carries as the one it would not take"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '''                "genre": result.proposed,'''
+new = '''                "genre": result.current,'''
+
+[[rows]]
+id = "H6_detail_current"
+description = "handle: the refusal's detail loses the genre the file still carries"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '''                "current": result.current,'''
+new = '''                "current": "",'''
+
+[[rows]]
+id = "C1_exit_code"
+description = "cause.REASONS: tag-retag-unwritten exits USAGE, the parser's status, rather than PRECONDITION"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_reserved_causes.py", "tests/test_genre_retag.py"]
+old = '''        "tag-retag-unwritten": ExitCode.PRECONDITION,'''
+new = '''        "tag-retag-unwritten": ExitCode.USAGE,'''
+
+[[rows]]
+id = "S1_answer_too_coarse"
+description = "Sample of the unit's existing guards: retag_one writes an answer the taxonomy calls too coarse"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    if declared.is_too_coarse_as_source(answer):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "S2_rejected_verdict"
+description = "Sample of the unit's existing guards: retag_one ignores a rejected verdict and asks the searcher again"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        if item.suppressed:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "S3_written_property"
+description = "Sample: RetagOutcome.written takes every result, written or not"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+tests = ["tests/test_genre_retag.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        return tuple(result for result in self.results if result.written)'''
+new = '''        return tuple(self.results)'''
