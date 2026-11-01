@@ -343,3 +343,29 @@ def test_the_landing_the_fetch_names_is_one_the_landing_verb_parses(signed_in, a
     parsed = parser.parse_args(words[3:])
     assert parsed.label_from_tags is True
     assert parsed.folder == str(Path(signed_in.paths.download_staging) / BATCH)
+
+
+def test_a_resumed_fetch_names_the_label_landing_too(signed_in, account, puls):
+    """The second review's zero row: the ``--job`` path carried the hint unpinned."""
+    from tests.cli_drive import drive
+
+    original = account.get
+
+    def refused_once(url, *, cookie):
+        if "/download" in url and not getattr(account, "let_through", False):
+            return type(original(url, cookie=cookie))(403, "forbidden")
+        return original(url, cookie=cookie)
+
+    account.get = refused_once
+    code, envelope = fetch("--batch", BATCH, "--seller", "PULS")
+    assert code != int(ExitCode.OK), envelope
+    with jobs.open_store() as store:
+        (job,) = jobs.list_jobs(store)
+    account.let_through = True
+    bandcamp_cli.forget()
+
+    code, resumed = drive(["acquire", "bandcamp-fetch", "--job", job.job_id])
+
+    assert code == int(ExitCode.OK), resumed
+    (message,) = warned(resumed, bandcamp_cli.LAND_BY_LABEL)
+    assert bandcamp_cli.LAND_FLAG in message and "PULS" in message
