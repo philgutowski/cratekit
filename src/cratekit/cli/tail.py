@@ -58,6 +58,7 @@ from cratekit.cli import gates, registry, render
 from cratekit.core import config, jobs
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
+from cratekit.modules import foreground
 
 #: The tail's steps and the landing, in their one order. Each is a check key on
 #: the envelope of the verb that runs the chain, ``<namespace>.<step>``.
@@ -410,7 +411,10 @@ def tail_step(
         replace_stale(chain, step, verb, folder, cfg)
     except CratekitError as exc:
         raise Stop(step, rebuilt(exc, exc.cause.at(chain.namespace))) from exc
-    envelope = required(chain, step, [*words, str(folder)])
+    # ``--queue-only`` (U192): run by hand these verbs drive what they queue,
+    # and the chain drives it itself below, through the ``--job`` command, so
+    # each step reads as two commands and no job is driven twice.
+    envelope = required(chain, step, [*words, foreground.QUEUE_ONLY, str(folder)])
     job_id = str((envelope.get("data") or {}).get("job_id") or "")
     if envelope.get("outcome") == str(Outcome.NO_OP) or not job_id:
         # NOTHING TO QUEUE over a folder the download just landed tracks into is

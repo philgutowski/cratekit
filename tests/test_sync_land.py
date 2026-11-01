@@ -417,6 +417,28 @@ def test_the_pass_runs_every_step_in_its_order_and_the_tail_on_the_absolute_stag
         assert job.payload["folder"] == staging
 
 
+def test_each_tail_step_queues_only_and_drives_its_job_through_one_job_command(
+    machine, monkeypatch, tail
+):
+    """U192. Run by hand the tail verbs drive what they queue, so the pass, which
+    drives each job itself, must ask for the queue alone, and then drive once."""
+    from cratekit.modules import foreground
+
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+
+    code, envelope = drive(["sync", "land"])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    for _step, verb, words in sync_land.TAIL:
+        calls = [argv for argv in tail.calls if tuple(argv[: len(words)]) == words]
+        queued = [argv for argv in calls if "--job" not in argv]
+        driven = [argv for argv in calls if "--job" in argv]
+        assert len(queued) == 1 and foreground.QUEUE_ONLY in queued[0], (verb, calls)
+        (job,) = _by_key(verb)
+        assert driven == [[*words, job.payload["folder"], "--job", job.job_id]], (verb, calls)
+
+
 def test_the_stop_at_the_landing_gate_names_the_session_commands_and_the_visit(
     machine, monkeypatch, tail
 ):

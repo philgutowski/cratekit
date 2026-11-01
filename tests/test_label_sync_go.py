@@ -941,7 +941,7 @@ def test_the_chain_runs_on_the_absolute_folder_whatever_it_is_handed(
 
     absolute = str(Path(installed.library.root) / "staged-here")
     assert chain.summary["staging"] == absolute
-    assert tail.calls[0] == ["tag", "folder", absolute]
+    assert tail.calls[0] == ["tag", "folder", "--queue-only", absolute]
 
 
 def test_a_failing_analyze_run_stops_the_go_and_plans_no_landing(

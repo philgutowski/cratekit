@@ -10,6 +10,12 @@ terminal it was started in. So this verb freezes the folder and the configuratio
 the run will use (KTD9), queues one job with one item per audio file, and reports
 the job. :func:`handle` at the foot of this module is the worker behind it.
 
+RUN BY HAND IT DRIVES THAT JOB BEFORE IT RETURNS (U192). The queue is still the
+record and the resume, but a person typing the verb wants the folder tagged, so
+the queue path runs the ``--job`` path on the job it just queued, through
+:func:`cratekit.modules.foreground.settle`. ``--queue-only`` keeps the queue
+and return answer for a caller that drives the job itself.
+
 THE ITEMS ARE THE ENGINE'S OWN WALK, and that is KTD7 rather than a convenience.
 :func:`cratekit.tagging.tag.audio_files` is what the engine tags one file per, so
 it is what this shell queues one item per. A shell that walked the folder itself
@@ -46,6 +52,7 @@ from cratekit.core import active_taxonomy, art, config, jobs
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.label import registry as labels
+from cratekit.modules import foreground
 from cratekit.tagging import artifacts, published, searchers, shell
 
 # THE ENGINE IS ALIASED because this module already defines ``tag_folder`` and
@@ -144,12 +151,7 @@ def build(parser, entry) -> None:
     would be this modules-ranked file importing the layer above it (KTD23).
     """
     parser.add_argument("folder", help="folder of audio to tag")
-    parser.add_argument(
-        "--job",
-        default=None,
-        metavar="JOB_ID",
-        help="continue the tagging job already queued under this identifier",
-    )
+    foreground.add_job_options(parser, what="tagging")
     parser.add_argument(
         "--label",
         default=None,
@@ -526,7 +528,7 @@ def _empty(reason: str, detail: str) -> tuple[dict, tuple[dict[str, str], ...]]:
 
 
 def tag_folder(ctx) -> Envelope:
-    """Queue one tagging sweep over a folder, and drive it on a resume.
+    """Queue one tagging sweep over a folder and drive it, or drive it on a resume.
 
     The handler key comes off the entry rather than being spelled again here, so
     the job the queue holds and the verb the registry declares cannot name two
@@ -550,7 +552,7 @@ def tag_folder(ctx) -> Envelope:
     """
     cfg = _load()
     if ctx.args.job:
-        return _resume(ctx, cfg)
+        return _resume(ctx, cfg, ctx.args.job, typed_label=ctx.args.label)
 
     named = str(ctx.args.folder or "")
     if not named.strip():
@@ -591,7 +593,17 @@ def tag_folder(ctx) -> Envelope:
             item_ids=tuple(str(path.relative_to(folder)) for path in files),
             cfg=cfg,
         )
-        return ctx.envelope(data=shell.reported(store, job), warnings=label_warnings)
+        if foreground.queue_only(ctx.args):
+            return ctx.envelope(data=shell.reported(store, job), warnings=label_warnings)
+    # DRIVEN HERE THROUGH THE RESUME, U192. The ``--label`` this call typed is
+    # the one the sweep froze, so the resume is told none was typed on it, and
+    # the queue's own label warnings lead the settled envelope.
+    return foreground.settle(
+        job.job_id,
+        lambda: _resume(ctx, cfg, job.job_id, typed_label=None, queued=label_warnings),
+        argv=tag_argv(job),
+        origin="tagging.cli",
+    )
 
 
 def _label_payload(label: str | None) -> tuple[dict, tuple[dict[str, str], ...]]:
@@ -745,8 +757,20 @@ def _label_seam(payload: Mapping) -> tag_engine.LabelGenre | None:
     return answer
 
 
-def _resume(ctx, cfg: config.Config) -> Envelope:
+def _resume(
+    ctx,
+    cfg: config.Config,
+    job_id: str,
+    *,
+    typed_label: str | None,
+    queued: tuple[dict[str, str], ...] = (),
+) -> Envelope:
     """Continue the sweep already queued under this identifier, and drive it.
+
+    ``typed_label`` is the ``--label`` typed on a ``--job`` command, which a
+    resume does not apply and says so; None from the queue path, whose label
+    is the one frozen. ``queued`` is the queue's own warnings, leading the
+    settled envelope when the sweep is driven at its queue (U192).
 
     EVERY RULE OF THE RESUME LIVES IN :func:`cratekit.tagging.shell.advance`,
     which reconciles a claim left by a driver that died, refuses a job carrying
@@ -758,7 +782,7 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
         job, warnings = shell.advance(
             ctx,
             store,
-            jobs.get(store, ctx.args.job),
+            jobs.get(store, job_id),
             origin=("tagging", "cli"),
             nothing_to_run="report a tagging sweep over a folder it never walked",
         )
@@ -768,8 +792,9 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
         summary = _summary(cfg, job.job_id)
         return ctx.envelope(
             data=shell.reported(store, job, {"tagging": summary}),
-            warnings=tuple(warnings)
-            + _label_warnings(ctx.args.label, job.payload or {}, summary)
+            warnings=queued
+            + tuple(warnings)
+            + _label_warnings(typed_label, job.payload or {}, summary)
             + _off_taxonomy_warning(summary)
             + _unread_warnings(summary)
             + _published_warnings(summary),

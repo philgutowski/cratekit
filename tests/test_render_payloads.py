@@ -283,7 +283,7 @@ def test_a_builder_that_raises_leaves_the_queued_verb_a_success(tmp_path, monkey
         raise TypeError("a frozen payload this builder did not expect")
 
     monkeypatch.setattr(cli_jobs, "argv_for", broken)
-    code, text = drive_human(["tag", "folder", str(folder)])
+    code, text = drive_human(["tag", "folder", "--queue-only", str(folder)])
 
     assert code == 0, text
     assert text.splitlines()[0] == "tag.folder: ok", text
