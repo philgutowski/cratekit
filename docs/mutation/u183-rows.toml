@@ -176,7 +176,7 @@ id = "M18_load_refuses_non_object"
 description = "gates.load: drop the refusal of a record that is not a JSON object"
 file = "src/cratekit/cli/gates.py"
 surface = "user"
-tests = ["tests/test_sync_land.py", "tests/test_doctor.py", "tests/test_run_retire.py"]
+tests = ["tests/test_sync_land.py", "tests/test_run_retire.py"]
 old = '''    if not isinstance(raw, dict):
         raise CratekitError('''
 new = '''    if False:
