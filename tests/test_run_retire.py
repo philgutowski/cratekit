@@ -333,11 +333,31 @@ def test_a_gate_whose_verb_is_gone_is_old_and_kept(configured):
     assert "not a verb in this build" in old.kept
 
 
-def test_a_run_waiting_only_on_a_person_is_never_old(configured):
+def test_a_run_with_no_open_gate_is_never_old_however_long_it_sat(configured):
+    """Aged by both clocks, so only the open gate check can keep it out (the table's G7)."""
+    then = datetime.now(timezone.utc) - timedelta(days=40)
     state = gates.new_run(registry.entry(ORDINARY[0]))
-    state.created = output.timestamp(datetime.now(timezone.utc) - timedelta(days=40))
+    state.created = output.timestamp(then)
     path = gates.save(state)
+    os.utime(path, (then.timestamp(), then.timestamp()))
     assert gates.old_gate(state, path, older_than=timedelta(days=7), now=datetime.now(timezone.utc)) is None
+
+
+def test_retire_says_nothing_about_an_old_run_already_answered(configured):
+    """A month old run whose gate was answered is neither retired nor listed as kept."""
+    run_id = _open(ORDINARY, idle_days=30)
+    state = gates.load(run_id)
+    gates.record(state, registry.entry(ORDINARY[0]).gates[0], "apply", actor="a-person")
+    path = gates.save(state)
+    then = (datetime.now(timezone.utc) - timedelta(days=30)).timestamp()
+    os.utime(path, (then, then))
+
+    code, envelope = _json(["run", "retire"])
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert envelope["data"]["checks"] == []
+    assert envelope["data"]["summary"]["kept"] == 0
 
 
 # ---------------------------------------------------------------------------
