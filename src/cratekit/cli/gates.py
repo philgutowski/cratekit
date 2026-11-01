@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -742,22 +743,136 @@ def new_run(entry: Entry, run_id: str | None = None) -> RunState:
     )
 
 
+# ---------------------------------------------------------------------------
+# Open gates nobody will answer (U170)
+# ---------------------------------------------------------------------------
+
+#: The option an old open gate is retired with, and the only one. Every gate
+#: but two offers it, and a retirement answers nothing but no.
+RETIRE_OPTION = "abort"
+
+
+@dataclass(frozen=True, slots=True)
+class OldGate:
+    """One open gate that has sat idle for longer than a threshold (U170).
+
+    ``idle_since`` is the LATER of the run's ``created`` stamp and the last
+    write of its record, because the dispatcher saves a run each time it is
+    resumed: a run started a month ago and resumed yesterday is a run somebody
+    is still working, and its age runs from yesterday.
+
+    ``kept`` is None when the gate can be retired, and otherwise says why not
+    in words. A gate whose verb no longer declares it, or whose options carry
+    no ``abort``, is old and still never answered by a retirement, since the
+    only safe answer to give on a person's behalf is no.
+    """
+
+    run_id: str
+    verb: str
+    gate: str
+    created: str
+    idle_since: str
+    kept: str | None = None
+
+    @property
+    def retirable(self) -> bool:
+        return self.kept is None
+
+    def item(self) -> dict[str, str]:
+        """What a retirement's confirm shows and digests for this gate."""
+        return {
+            "run_id": self.run_id,
+            "verb": self.verb,
+            "gate": self.gate,
+            "idle_since": self.idle_since,
+        }
+
+
+def _instant(stamp: str) -> datetime | None:
+    try:
+        moment = datetime.fromisoformat(stamp)
+    except (TypeError, ValueError):
+        return None
+    return moment if moment.tzinfo is not None else moment.replace(tzinfo=timezone.utc)
+
+
+def idle_since(state: RunState, path: Path) -> datetime:
+    """When this run was last touched: its start, or its record's last write if later.
+
+    A record whose file cannot be read for its time is as new as now, so a
+    gate whose age cannot be measured is never called old (absence of a
+    reading is not age).
+    """
+    try:
+        written = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+    except OSError:
+        return datetime.now(timezone.utc)
+    started = _instant(state.created)
+    return written if started is None else max(started, written)
+
+
+def old_gate(
+    state: RunState, path: Path, *, older_than: timedelta, now: datetime
+) -> OldGate | None:
+    """This run's open gate when it has been idle for longer than ``older_than``.
+
+    THE ONE PREDICATE ``crate status`` AND ``crate run retire`` BOTH READ, so the
+    line status collapses and the set the command retires cannot be two sets.
+    None for a run with no open gate, a run waiting only on a pending human
+    action included, and for one touched within the threshold.
+    """
+    if state.open_gate is None:
+        return None
+    since = idle_since(state, path)
+    if now - since <= older_than:
+        return None
+    try:
+        owner = declared_entry(state.verb)
+    except KeyError:
+        owner = None
+    spec = (
+        next((g for g in owner.gates if g.name == state.open_gate), None)
+        if owner is not None
+        else None
+    )
+    if owner is None:
+        kept: str | None = f"{state.verb} is not a verb in this build"
+    elif spec is None:
+        kept = f"{state.verb} no longer declares the gate {state.open_gate}"
+    elif RETIRE_OPTION not in spec.options:
+        kept = f"{state.open_gate} offers {', '.join(spec.options)}, and no {RETIRE_OPTION}"
+    else:
+        kept = None
+    return OldGate(
+        run_id=state.run_id,
+        verb=state.verb,
+        gate=state.open_gate,
+        created=state.created,
+        idle_since=since.replace(microsecond=0).isoformat(),
+        kept=kept,
+    )
+
+
 #: Codes this module raises, listed so the dispatcher's mapping is checkable.
 GATE_CODES: tuple[ExitCode, ...] = (ExitCode.DECISION_REQUIRED, ExitCode.DECISION_STALE)
 
 
 __all__ = [
     "GATE_CODES",
+    "RETIRE_OPTION",
     "RUN_SCHEMA_VERSION",
     "Decision",
     "DecisionRequired",
     "DecisionStale",
     "Gates",
+    "OldGate",
     "RunState",
     "UnknownOption",
     "blocked_by",
+    "idle_since",
     "load",
     "new_run",
+    "old_gate",
     "parse_decision_flags",
     "record",
     "run_dir",

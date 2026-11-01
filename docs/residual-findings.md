@@ -40314,3 +40314,148 @@ the gate, saying so, with a test. Ledger only, a wording and a step.
 **Measured cost.** Driven by the review: dropping the flag from `sync_land` killed only the assertion naming it. Nothing a person sees differs today; a later rewrite of the pass could keep the name and change the behaviour.
 
 **Closes when:** the tests read what the flag decides, which call drove the job and how a failure in the queue call reaches the pass, rather than the flag's spelling. Ledger only, maintainer facing.
+
+---
+
+## R-1123. The rekordbox visit skill's drift guard leaves its release claims and its wait thresholds unpinned
+
+**Found:** at the second Fable review of #354, U173, 2026-11-01.
+
+**The mechanism.** `tests/test_rekordbox_visit_skill.py` reads every value the skill spells from the module that owns it, except four: the claim that `crate analyze check` landed after v0.4.0, the claim that rows landed by v0.4.0 or later need no Reload Tags, and the wait loop's twenty second quiet and five minute stall. A mutation of each survived the review's table. The rehearsal's own backup acknowledgment in the redirected state is also left to the solutions entry the skill cites, rather than said in the skill.
+
+**Measured cost.** None today: each claim was verified true by hand at the review (`git show v0.4.0` has `inbox.analyzed` and no `analyze.check`; U163 is in v0.4.0). The release claims go stale the day a release carries U167, when the precondition reads as a copy problem that no longer exists.
+
+**Closes when:** the release that carries `crate analyze check` rewords the precondition to name that version, or the claims are read from the tags by the test. Ledger only, a maintainer facing gap.
+
+---
+
+## R-1124. Whether the rekordbox visit runs Analyze Tracks with Vocal on or off waits on Phillip
+
+**Found:** while building #354, U173, 2026-11-01.
+
+**The mechanism.** The brief, filed at Phillip's request on 2026-10-27, lists Vocal off as his standard, and the skill's settings table follows it. Sitting 52 on 2026-10-31 ran the visit by his hand with Vocal on as well, which adds rekordbox's own vocal position marks to the waveform. Cratekit reads none of them, so the choice changes only analysis time and what rekordbox draws.
+
+**Measured cost.** Not driven; no live visit has run from the skill. The question is on the decisions page as `354-vocal-setting-1`, with Vocal off recommended.
+
+**Closes when:** Phillip answers. Off closes it as written; on is one row of the table and its pinned dict in the drift test.
+
+---
+
+## R-1125. intake land --label-from-tags files a file under any label tag it carries, so an unregistered Bandcamp seller's own tag makes a folder nobody registered
+
+**Found:** at the review of #359, U177, 2026-11-01.
+
+**The mechanism.** `crate acquire bandcamp-fetch` writes the label tag only on
+a registered seller's files and leaves every other file as it came, and
+`crate intake land --label-from-tags` (`intake/label_filing.py`,
+`plan_for_tags`) files each file under whatever its label tag names, without
+asking the registry. A seller no label names whose archive already carries a
+label tag is therefore filed under that tag's text, and a folder for it is
+made under `Record Labels`. The same holds for a file from any other source
+landed with the flag, and two spellings that differ only in case make two
+sibling folders, which is R-453's rule and not this unit's.
+
+**Measured cost.** Driven at the review with a fake seller serving a FLAC
+tagged `label=Somebody Else`: the plan said the seller is unregistered, the
+staged file kept its tag, the record said `label: None`, and the landing
+filed it under `Somebody Else`. The gate screen names every label folder the
+write makes before anything is written, so the person sees it. Whether a real
+Bandcamp archive carries a label tag is unmeasured: sitting 46 read none on
+55 releases of one seller.
+
+**Closes when:** a real archive with a label tag is seen, and the landing then
+either files only a label the registry holds or the fetch clears a seller's
+own tag. Ledger only: the write is shown on the gate before it happens.
+
+---
+
+## R-1126. A label renamed between a Bandcamp fetch and its landing is filed under the name its files were tagged with
+
+**Found:** at the review of #359, U177, 2026-11-01.
+
+**The mechanism.** The fetch freezes each release's label display name in
+the job and writes it into the label tag of every staged file, and
+`--label-from-tags` reads the tag, never the registry. A rename made with
+`crate label registry rename` after the fetch and before the landing files
+the batch under the old name, beside a folder of the new one if that exists.
+
+**Measured cost.** Not driven end to end. The freeze is pinned by
+`tests/test_bandcamp_labels.py`'s rename test, which is the KTD9 rule the job
+engine holds everywhere. The gate screen names each label folder the write
+makes, so a second folder for one label is shown before it is written.
+
+**Closes when:** a landing that resolves each tag through the registry, by
+name or by the label's identifier written beside the name, is built, if a
+rename between the two steps is ever seen. Ledger only.
+
+---
+
+## R-1127. acquire bandcamp --seller reads a followed label's name before an account of the same spelling, with no warning
+
+**Found:** at the second review of #359, U177, 2026-11-01.
+
+**The mechanism.** `_sellers` in `acquire/bandcamp_cli.py` resolves each
+`--seller` value through the label registry first, so a value that is both a
+followed label's name and another seller's account plans the label's account.
+A label registered as `otherlabel` selling from `pulsromania` makes
+`--seller otherlabel` plan the pulsromania purchases and mark the otherlabel
+account's own purchases filtered.
+
+**Measured cost.** Driven at the second review. No warning says the value was
+read as a label, though the summary's `sellers` names the account planned and
+each row names its seller and label. The producer, a label named exactly like
+an unrelated seller's account, was built by hand and is not known on a real
+account.
+
+**Closes when:** a value that resolves both ways is warned about by name, or
+planned as both. Ledger only.
+
+---
+
+## R-1128. The test that the ledger's old tie misses are asked again builds the stored wording from the constant it pins, so a rewording of the constant's tail would leave them unasked with a green suite
+
+**Found:** at the second review of #329, R-1032, 2026-11-01.
+
+**The mechanism.** `test_a_tie_remembered_as_a_miss_before_the_tie_was_broken_is_asked_again`
+in `tests/test_organize_mirror_tie.py` writes its remembered miss from
+`service.AGREEING_RELEASES`, and the adapter formats its reason from the
+same constant, so the test cannot see the wording the live ledger actually
+holds, which `main` at `f08defe` wrote from its own f string. The review
+reworded the constant's tail to "of them agree with this row's artist and
+title" on a copy and ran the five files that read it: 329 passed, none
+killed. A full rewording is killed by three adapter tests, so only the tail
+is unpinned.
+
+**Measured cost.** None today: the review built `main`'s stored wording from
+`f08defe`'s f string and the branch's constant is a substring of it, so the
+4,304 tie misses of sitting 42 are recognised and asked again. The cost is
+latent, a later rewording of the tail leaving every miss remembered under the
+old words unasked and reported as remembered.
+
+**Closes when:** the test stores its miss in `main`'s literal wording, the
+words `f08defe` formatted, rather than from the constant. Ledger only: a
+maintainer facing pin, after the unit's two fix rounds were spent.
+
+---
+
+## R-1129. An empty lossy marker under the permissive policy is declined as a refusal for good, though the cure is one configuration value
+
+**Found:** at the review of #350, U169, 2026-11-01.
+
+**The mechanism.** Under `allow_lossy_marked` with `naming.lossy_marker` empty, `acquire.cli.marked_name` refuses a lossy landing as `lossy-refused`, not retryable. Since U169 `acquire.cli.handle` declines every non retryable cause in the `REFUSED_BY_POLICY` class, so the item is skipped, the job succeeds, and the `acquire-refused` warning calls the track refused for good. The warning's message does name the missing marker text.
+
+**Measured cost.** Driven by the review with the fake adapter: exit 0, the item skipped, the warning naming the marker. On the base the item failed non retryable and `job resume` refused the job just the same, so no route back was lost; the cost is the words "for good" over a configuration omission.
+
+**Closes when:** the marker refusal says the configuration lacks the marker text in its own reason, outside the policy class, or the warning words a configuration cure apart from a refusal. Ledger only, a wording.
+
+---
+
+## R-1130. The Bandcamp and fallback fetch workers still fail their job over a policy refusal, where acquire download now skips it
+
+**Found:** at the build of #350, U169, 2026-11-01.
+
+**The mechanism.** U169 added `jobs.Declined`, and the `acquire download` worker raises it for a cause in the `REFUSED_BY_POLICY` class that is not retryable, so the item is skipped and a list whose only misses are policy refusals ends ok. Two more workers raise the same causes in jobs of their own and were left as they were, because the brief named the download's settle path: `acquire bandcamp-fetch` (`_encoding` in `src/cratekit/acquire/bandcamp_cli.py`, `lossy-refused` and `unavailable-permanent`) and `acquire fallback-fetch` (`src/cratekit/acquire/fallback_cli.py`, `lossy-refused` under the strict policy). A Bandcamp purchase of ten tracks with one offered only lossy still ends `failed (REFUSED_BY_POLICY)`.
+
+**Measured cost.** Not driven against either verb. The same wrong impression sitting 47 paid for on the download, on two verbs with fewer tracks per job; the item causes are correct and `job show` names them.
+
+**Closes when:** each worker wraps its body the way `acquire.cli.handle` does, declining a cause `acquire.cli.refused_for_good` accepts, with the verb naming each skipped track in a warning. Ledger only: a wording of the outcome, not data at risk.

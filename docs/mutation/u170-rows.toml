@@ -1,0 +1,238 @@
+name = "u170"
+pass_kind = "light"
+
+[[rows]]
+id = "G1_threshold_boundary"
+description = "old_gate: a gate idle exactly the threshold counts as old"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '''    if now - since <= older_than:'''
+new = '''    if now - since < older_than:'''
+
+[[rows]]
+id = "G2_idle_from_start_only"
+description = "idle_since: age from created alone, so a resumed run is old"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '''    return written if started is None else max(started, written)'''
+new = '''    return written if started is None else started'''
+
+[[rows]]
+id = "G3_idle_from_write_only"
+description = "idle_since: age from the record's write alone, so a copied record with an old date is old"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '''    return written if started is None else max(started, written)'''
+new = '''    return written'''
+
+[[rows]]
+id = "G4_unstattable_is_old"
+description = "idle_since: a record whose time cannot be read is as old as the epoch"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '''        return datetime.now(timezone.utc)'''
+new = '''        return datetime.fromtimestamp(0, tz=timezone.utc)'''
+
+[[rows]]
+id = "G5_no_abort_retired"
+description = "old_gate: drop the no abort refusal, so sync.pair gates are planned"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '''    elif RETIRE_OPTION not in spec.options:'''
+new = '''    elif False:'''
+
+[[rows]]
+id = "G6_missing_verb_branch"
+description = "old_gate: drop the missing verb reason, so the fallback reason speaks for it"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '''    if owner is None:
+        kept: str | None = f"{state.verb} is not a verb in this build"
+    elif spec is None:'''
+new = '''    if owner is None and False:
+        kept: str | None = f"{state.verb} is not a verb in this build"
+    elif spec is None:'''
+
+[[rows]]
+id = "G7_no_open_gate"
+description = "old_gate: judge a run with no open gate, so a pending only run is old"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '''    if state.open_gate is None:
+        return None
+    since'''
+new = '''    since'''
+
+[[rows]]
+id = "G8_malformed_stamp"
+description = "_instant: a malformed created stamp raises instead of reading as unknown"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '''    except (TypeError, ValueError):
+        return None
+    return moment if'''
+new = '''    except TypeError:
+        return None
+    return moment if'''
+
+[[rows]]
+id = "R1_zero_days"
+description = "older_than: accept 0d"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '''_AGE = re.compile(r"^([1-9][0-9]*)d$")'''
+new = '''_AGE = re.compile(r"^([0-9]+)d$")'''
+
+[[rows]]
+id = "R2_ceiling"
+description = "older_than: the ceiling one day higher"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '''    if not match or days > config.MAX_OPEN_GATE_STALE_DAYS:'''
+new = '''    if not match or days > config.MAX_OPEN_GATE_STALE_DAYS + 1:'''
+
+[[rows]]
+id = "R3_own_run"
+description = "old_gates: plan the asking run too"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '''        if path.stem == skip:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "R4_unreadable_dropped"
+description = "old_gates: drop an unreadable record without saying so"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '''            unreadable.append(path.stem)'''
+new = '''            pass'''
+
+[[rows]]
+id = "R5_answers_apply"
+description = "_retire_one: record the gate's first option, apply, instead of abort"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '''    gates.record(state, spec, gates.RETIRE_OPTION, actor=SESSION_ACTOR)'''
+new = '''    gates.record(state, spec, spec.options[0], actor=SESSION_ACTOR)'''
+
+[[rows]]
+id = "R6_actor_cli"
+description = "_retire_one: record the abort as cli instead of session"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '''    gates.record(state, spec, gates.RETIRE_OPTION, actor=SESSION_ACTOR)'''
+new = '''    gates.record(state, spec, gates.RETIRE_OPTION, actor=TERMINAL_ACTOR)'''
+
+[[rows]]
+id = "R7_declined_applies"
+description = "retire: an abort on the confirm still retires"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '''    if option != "apply":'''
+new = '''    if False:'''
+
+[[rows]]
+id = "R8_empty_asks"
+description = "retire: an empty plan is asked over instead of ending with no change"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '''    if not planned:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "R9_kept_planned"
+description = "retire: plan every old gate, the kept ones too"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '''    planned = [one for one in found if one.retirable]'''
+new = '''    planned = list(found)'''
+
+[[rows]]
+id = "R10_moved_guard"
+description = "_retire_one: record on a gate that moved since the plan"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '''    if state.open_gate != one.gate:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "R11_digest_ids_only"
+description = "retire: digest the planned run ids alone, not when each went idle"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '''    plan = {"digest": digest_of(items), "count": len(items), "items": items}'''
+new = '''    plan = {"digest": digest_of([one["run_id"] for one in items]), "count": len(items), "items": items}'''
+
+[[rows]]
+id = "R12_default_week"
+description = "retire: default threshold fixed at seven days, not the file's"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '''        age = timedelta(days=config.load().reports.open_gate_stale_days)'''
+new = '''        age = timedelta(days=7)'''
+
+[[rows]]
+id = "D1_kept_folded"
+description = "status: fold every old gate, the kept ones too"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '''            if aged is not None and aged.retirable:'''
+new = '''            if aged is not None:'''
+
+[[rows]]
+id = "D2_status_week"
+description = "status: threshold fixed at seven days, not the file's"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '''    runs, folded = _run_report(timedelta(days=cfg.reports.open_gate_stale_days))'''
+new = '''    runs, folded = _run_report(timedelta(days=7))'''
+
+[[rows]]
+id = "D3_open_runs_short"
+description = "status: open_runs leaves the folded gates out"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '''            "open_runs": sum(1 for f in findings if f.key.startswith("run.")) + folded,'''
+new = '''            "open_runs": sum(1 for f in findings if f.key.startswith("run.")),'''
+
+[[rows]]
+id = "D4_line_dropped"
+description = "status: fold the gates and print no line for them"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '''    if old and older_than is not None:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "C1_validation_unwired"
+description = "validate: do not check reports.open_gate_stale_days"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '''    problems += _validate_open_gate_staleness(data)
+'''
+new = ""
