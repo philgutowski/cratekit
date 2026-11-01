@@ -1293,6 +1293,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         # 2026-10-16, U153: the held colour warning joined.
         'account-archive',
         'decision-stale',
+        # 2026-11-01, U157: a variable row the commit could not mark dyn.
+        'dyn-not-written',
         'favorites-colour-held',
         'favorites-placed',
         'favorites-placement-skipped',

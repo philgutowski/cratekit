@@ -497,6 +497,19 @@ mark` finds a bridge pass by its intake file's name and a native pass by
 `--pass`, since R-777, and the engine waits on a `marks.NativeLanding` there in
 place of the file.
 
+### Drift
+How far a track's tempo moves over its length, as a percent of its middle,
+measured by `analyze run` from the tempogram the head already takes and written
+as the `driftlevel` and `drift` file tags (U157). It is never a tempo: a drift
+of 4.4 says the tempo moves by about four percent between the track's steady
+sections, and nothing about what the tempo is. Its verdict is `steady` or
+`variable` against `analysis.drift_cut`, or `unknown` when too few windows of
+the track carry a pulse to judge. A native landing gives each variable row the
+`dyn` My Tag, which is what tells the rekordbox visit to analyse that row with
+Dynamic rather than Normal, and `crate analyze check` reads the same mark to
+accept a variable grid on it. "Unscored" is the landing's word for a file that
+carries no drift at all, never a verdict a file holds.
+
 ### The tail
 The four verbs that must run over staged files, in this order, before a landing
 is planned: `tag folder`, `analyze run`, `analyze restamp` and `name apply`.
