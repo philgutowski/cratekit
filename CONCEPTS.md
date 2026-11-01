@@ -313,6 +313,24 @@ names a kind of music rather than a word written onto files, and not the label
 genre gate itself, which judges a release in a label sweep by the general
 catalogue's words and writes nothing onto a file.
 
+### Seller account
+The Bandcamp account a followed label sells its releases from, the name in
+their address, `pulsromania` for `pulsromania.bandcamp.com`, or the whole host
+of a seller on a domain of its own (U177). It is set with `crate label registry
+set NAME --bandcamp ACCOUNT`, which takes the address too, and cleared with
+`--bandcamp default`. One account names one label: a second label naming it is
+refused with the label that holds it, and two found in a file edited by hand
+answer no label. A purchase from the account is that label's, so `crate acquire
+bandcamp-fetch` writes the label's display name into the label tag of every
+file it stages from it, and `crate intake land --label-from-tags` files each
+landed file under the label its own tag names. A seller no label names is
+named on the plan with the command that registers it, and its files are
+staged as they came. `--seller` takes the label's name as its account.
+
+*Avoid:* reading Bandcamp's own `label` field as the label, which was empty on
+every release sitting 46 measured, or the **label genre**, which is written by
+`tag folder` and only onto a file with no genre.
+
 ### Held release
 A label release the genre gate kept out of review at sweep time, because it
 is not the kind of music its label is followed for (R-798). It is a row in the

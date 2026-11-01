@@ -596,6 +596,29 @@ under `label-genre`. A file's label is its label tag, or `--label` for a file
 that carries none. A file that already has a genre keeps it, and a file of the
 label with no picture is still searched, for its art only.
 
+A label that sells on Bandcamp from its own account can name that account, so
+what you buy from it arrives tagged with the label and lands filed under it:
+
+```bash
+crate label registry set PULS --bandcamp pulsromania
+crate acquire bandcamp-fetch --seller PULS
+crate intake land "/path/to/staging/Bandcamp 2026-11-01" --label-from-tags
+```
+
+The account is the name in the address the label's releases are sold from,
+`pulsromania` for `pulsromania.bandcamp.com`, and the address itself is taken
+too. One account names one label, so a second label naming it is refused with
+the label that holds it, and `--bandcamp default` clears it. `acquire bandcamp`
+names each purchase's label, and names every seller you would fetch from that no
+label names, with the command that registers it. `--seller` takes a label's
+name as well as an account. The fetch writes the label's name into the label tag
+of every file it stages from that account, and leaves a seller no label names as
+it came. `--label-from-tags` then files each landed file under `Record Labels /
+<Label> / <Label> <year>` by its own label tag and its date tag's year, so one
+batch holding several sellers files each under its own label. A file with no
+label tag or no year is named on the screen and lands in INBOX filed under no
+label. This works once the intake tree is database native, as `--label` does.
+
 `sync labels` is retired. It queues nothing and names `label sync`, and `sync
 all` no longer sweeps labels either. A labels sweep queued before the guided
 sync replaced it still runs with `crate sync labels --job JOB_ID`, so a job
