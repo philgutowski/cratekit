@@ -243,11 +243,15 @@ def _locations(xml: Path) -> frozenset[str]:
     return frozenset(named)
 
 
-def _native_proof(cfg: config.Config, name: str) -> marks.NativeLanding:
+def _native_proof(
+    cfg: config.Config, name: str, *, verb: str = "crate sync mark"
+) -> marks.NativeLanding:
     """The native proof for a pass named on the command line, or the refusal.
 
     THE MEDIUM IS ``ingest.intake_medium`` AND NO COPY OF IT (R-770), the one
-    switch every verb that writes the intake tree reads.
+    switch every verb that writes the intake tree reads. ``verb`` is the one a
+    refusal tells the person to run again, since ``label mark --pass`` takes
+    its pass by this same proof (R-1056).
     """
     if not landing.plain_name(name):
         raise _blocked(
@@ -262,7 +266,7 @@ def _native_proof(cfg: config.Config, name: str) -> marks.NativeLanding:
         raise _blocked(
             f"the library root {cfg.library.root} could not be reached, so whether the "
             f"intake tree is database native cannot be read and nothing was marked",
-            "mount the library volume, then run crate sync mark again",
+            f"mount the library volume, then run {verb} again",
             pass_name=name,
         )
     if not medium.native:
@@ -285,6 +289,11 @@ def _native_proof(cfg: config.Config, name: str) -> marks.NativeLanding:
     return marks.NativeLanding(
         tree_id=medium.declared.intake.id, pass_name=name, landings=landings
     )
+
+
+#: The native proof, public for ``label mark --pass`` (R-1056), so the two
+#: verbs that take a pass by name on a native intake tree prove it one way.
+native_proof = _native_proof
 
 
 def _pass_jobs(store, cfg: config.Config, name: str, handler_key: str) -> list[jobs.Job]:

@@ -28,6 +28,19 @@ pass, with the title before and the title written. That is what ``sync unmark
 --pass`` reads, so a label mark made by mistake is taken off by the same verb
 that takes off a sync's.
 
+A DATABASE NATIVE INTAKE TREE WRITES NO INTAKE FILE (R-1056), so there the
+pass is named with ``--pass`` instead of ``--xml``, proved the way ``sync mark
+--pass`` proves it: the intake tree reads native and a closed native landing
+committed under that name. The label and the years filed are read off those
+landings' session records, the ``labels`` entries the commit wrote, in place
+of the file's tree, and every other rule above holds unchanged. The landings
+are in the plan's digest, so a landing of the pass after the answer is
+another plan, and the proof is read again before the first rename.
+
+A BATCH THAT FILED NONE OF THE BUILT YEARS SAYS SO, on either proof, with a
+warning beside each year's own reason, so a mark of the wrong pass or label
+is not read as a mark with nothing left to do.
+
 THE FOLDER IS READ, NOT THE ACCOUNT. The year playlists live in one folder, and
 listing it is one short read where listing every playlist on the account cost
 hundreds of provider calls when ``sync unmark`` was run live. The run that
@@ -43,7 +56,9 @@ from pathlib import Path
 from typing import Any
 
 from cratekit.cli.output import Envelope, digest_of
+from cratekit.core import session
 from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
+from cratekit.intake import label_filing
 from cratekit.label import cli as label_cli
 from cratekit.label import registry as labels
 from cratekit.label.playlists_cli import NOT_FOLLOWED_SAID
@@ -56,6 +71,7 @@ from cratekit.sync.mark_cli import (
     MARKED,
     NOT_LISTED,
     SKIP,
+    native_proof,
     pass_name_of,
 )
 from cratekit.write import rbxml
@@ -73,6 +89,13 @@ NOTHING_BUILT_SAID = (
     "no year playlist was built for this label on this library, so there is "
     "nothing to mark"
 )
+#: What the warning says when the batch filed none of the built years.
+NOTHING_FILED_SAID = (
+    "the landed batch filed no track under this label in any year built for it, "
+    "so no year playlist is marked"
+)
+#: The verb a native proof's refusal tells the person to run again.
+_VERB = "crate label mark"
 
 
 def build_mark(parser, entry) -> None:
@@ -82,11 +105,20 @@ def build_mark(parser, entry) -> None:
         metavar="LABEL",
         help="a followed label, by its name or its registry identifier",
     )
-    parser.add_argument(
+    proof = parser.add_mutually_exclusive_group(required=True)
+    proof.add_argument(
         "--xml",
-        required=True,
         metavar="XML",
         help="the intake file crate intake land wrote for the landed label batch",
+    )
+    proof.add_argument(
+        "--pass",
+        dest="pass_name",
+        metavar="NAME",
+        help=(
+            "the pass the label batch was landed with, on a database native intake "
+            "tree, which writes no intake file"
+        ),
     )
     parser.set_defaults(_handler=label_mark)
 
@@ -125,6 +157,32 @@ def batch_years(xml: Path, label: str) -> frozenset[str]:
         year = path[-1][len(prefix) :]
         if len(year) == 4 and year.isdigit() and rbxml.track_keys(content, node):
             years.add(year)
+    return frozenset(years)
+
+
+def native_years(
+    cfg, proof: marks.NativeLanding, label: str
+) -> frozenset[str]:
+    """The years the pass's native landings filed tracks under ``label``, read off their records.
+
+    EVERY LANDING THE PROOF NAMES, and nothing else: a pass landed twice filed
+    what either landing filed, and a landing abandoned or refused is in no
+    proof. A record whose ``labels`` entries this build cannot read is refused
+    by name, never read as a batch that filed nothing (pattern 1).
+    """
+    years: set[str] = set()
+    for session_id in proof.landings:
+        filed = label_filing.years_filed(session.read_record(session_id, cfg), label)
+        if filed is None:
+            raise _blocked(
+                f"the record of landing {session_id} names what it filed under "
+                f"{label_filing.RECORD_KEY!r} in a form this build cannot read, so which "
+                f"years the pass filed is unknown and nothing was marked",
+                "mark the pass with the build that landed it",
+                session=session_id,
+                pass_name=proof.pass_name,
+            )
+        years |= filed
     return frozenset(years)
 
 
@@ -174,13 +232,24 @@ def _item(
     return {**base, "action": MARK}
 
 
-def _payload(items: list[dict[str, Any]], *, label: str, pass_name: str) -> dict[str, Any]:
-    identity = {
+def _payload(
+    items: list[dict[str, Any]],
+    *,
+    label: str,
+    pass_name: str,
+    native: marks.NativeLanding | None = None,
+) -> dict[str, Any]:
+    identity: dict[str, Any] = {
         "kind": "label-mark",
         "label": label,
         "pass": pass_name,
         "marks": sorted((item["id"], item["built_as"], item["to"]) for item in items if item["action"] == MARK),
     }
+    if native is not None:
+        # THE TREE AND THE LANDINGS THAT PROVE THE PASS, as ``sync mark --pass``
+        # binds them, so a landing of the pass since the plan is another plan.
+        identity["tree"] = native.tree_id
+        identity["landings"] = list(native.landings)
     return {
         "digest": digest_of(identity),
         "items": items,
@@ -193,10 +262,20 @@ def _payload(items: list[dict[str, Any]], *, label: str, pass_name: str) -> dict
     }
 
 
-def _shown(payload: dict[str, Any], *, label: str, pass_name: str) -> dict[str, Any]:
+def _shown(
+    payload: dict[str, Any],
+    *,
+    label: str,
+    pass_name: str,
+    native: marks.NativeLanding | None = None,
+) -> dict[str, Any]:
     shown: dict[str, Any] = {
         "label": label,
-        "pass": pass_name,
+        "pass": (
+            pass_name
+            if native is None
+            else f"{pass_name}, landed on the database native {native.tree_id!r} tree"
+        ),
         "renamed on the account": [
             f"{item['built_as']} -> {item['to']}" for item in payload["items"] if item["action"] == MARK
         ],
@@ -275,16 +354,25 @@ def _failed_part_way(
 
 def label_mark(ctx) -> Envelope:
     cfg = label_cli._load()
-    xml = Path(str(ctx.args.xml))
-    pass_name = pass_name_of(xml)
-    # THE PROOF FIRST, before the ledger, the account or a credential.
-    marks.require_output(xml)
+    # THE PROOF FIRST, before the ledger, the account or a credential: the
+    # intake file on the bridge, the native landings by the pass's name.
+    xml: Path | None = None
+    native: marks.NativeLanding | None = None
+    if ctx.args.xml is not None:
+        xml = Path(str(ctx.args.xml))
+        pass_name = pass_name_of(xml)
+        marks.require_output(xml)
+    else:
+        native = native_proof(cfg, str(ctx.args.pass_name), verb=_VERB)
+        pass_name = native.pass_name
     name = str(ctx.args.name)
     entry = labels.RegistryStore().load().resolve(name)
     shape = ledger.label_shape(cfg, entry.label_id) if entry is not None else None
     built = sorted((shape.years.values() if shape is not None else ()), key=lambda one: one.year)
     label = entry.name if entry is not None else name
-    filed = batch_years(xml, label) if built else frozenset()
+    filed: frozenset[str] = frozenset()
+    if built:
+        filed = batch_years(xml, label) if xml is not None else native_years(cfg, native, label)
     remote = None
     items: list[dict[str, Any]] = []
     if built and shape is not None and shape.folder_id and filed & {y.year for y in built}:
@@ -303,12 +391,12 @@ def label_mark(ctx) -> Envelope:
         # Nothing the batch filed is recorded here, or no folder is: no year
         # can be marked, so each is listed and left and the account is not read.
         items = [_item(year, {}, filed) for year in built]
-    payload = _payload(items, label=label, pass_name=pass_name)
+    payload = _payload(items, label=label, pass_name=pass_name, native=native)
     # THE PLAN ITSELF, for the reason ``label playlists`` gives (R-693).
     option = ctx.gate.require(
         ctx.entry.gates[0],
         plan=payload,
-        context=_shown(payload, label=label, pass_name=pass_name),
+        context=_shown(payload, label=label, pass_name=pass_name, native=native),
     )
     if entry is None:
         # NOT FOLLOWED is said as such, the build verb's warning, so a misspelled
@@ -324,10 +412,23 @@ def label_mark(ctx) -> Envelope:
             outcome=Outcome.NO_OP,
             warnings=[{"code": "label-mark-nothing-built", "message": f"{label}: {NOTHING_BUILT_SAID}"}],
         )
+    said: list[dict[str, str]] = []
+    if not filed & {year.year for year in built}:
+        said.append({"code": "label-mark-nothing-filed", "message": f"{label}: {NOTHING_FILED_SAID}"})
     planned = [item["id"] for item in items if item["action"] == MARK]
     if option != "apply" or not planned or remote is None:
-        return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
+        return ctx.envelope(data=payload, outcome=Outcome.NO_OP, warnings=said)
 
+    if native is not None and native_proof(cfg, pass_name, verb=_VERB) != native:
+        # THE PROOF AGAIN, before the first rename, as ``sync mark --pass``
+        # reads it: a tree reverted to the bridge or a landing since the plan
+        # is not what the answer covered.
+        raise _blocked(
+            f"the intake tree or the landings of {pass_name!r} changed since the plan "
+            f"was shown, so the answer does not cover them and nothing was marked",
+            "run crate label mark again and answer the new plan",
+            pass_name=pass_name,
+        )
     record = mark_record.MarkRecord(cfg)
     # THE RECORD IS LOCKABLE BEFORE THE FIRST RENAME, as ``sync mark`` asks.
     record.ready()
@@ -386,4 +487,4 @@ def label_mark(ctx) -> Envelope:
     )
 
 
-__all__ = ["build_mark", "label_mark"]
+__all__ = ["build_mark", "label_mark", "native_years"]
