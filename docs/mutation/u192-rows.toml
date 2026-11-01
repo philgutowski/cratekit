@@ -1,0 +1,163 @@
+name = "u192"
+pass_kind = "light"
+
+[[rows]]
+id = "F1_no_rearm_catch"
+description = "settle: let the cancelled refusal through untouched, so an interrupted drive leaves the job closed and names job resume"
+file = "src/cratekit/modules/foreground.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_analysis_workers.py"]
+old = '''    except JobCancelled as exc:
+        raise _resumable(exc, job_id, argv, origin) from exc'''
+new = '''    except ZeroDivisionError as exc:
+        raise _resumable(exc, job_id, argv, origin) from exc'''
+
+[[rows]]
+id = "F2_no_retry"
+description = "_resumable: read the job instead of re-arming it, so the named --job command meets a closed job"
+file = "src/cratekit/modules/foreground.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_analysis_workers.py"]
+old = '''        job = jobs.retry(store, job_id)'''
+new = '''        job = jobs.get(store, job_id)'''
+
+[[rows]]
+id = "F3_keep_remedy_token"
+description = "_resumable: keep the job resume token, so the fix line names the detached worker ahead of the --job command"
+file = "src/cratekit/modules/foreground.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_analysis_workers.py"]
+old = '''    remediation = dataclasses.replace(cause.remediation, remedy=None, steps=steps)'''
+new = '''    remediation = dataclasses.replace(cause.remediation, steps=steps)'''
+
+[[rows]]
+id = "F4_command_dropped"
+description = "_resumable: the first step says to resume the job without naming the command"
+file = "src/cratekit/modules/foreground.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_analysis_workers.py"]
+old = '''        f"resume it with: {command}",'''
+new = '''        "resume it with its --job command",'''
+
+[[rows]]
+id = "F5_settled_count"
+description = "_resumable: report the total in place of the settled count"
+file = "src/cratekit/modules/foreground.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_analysis_workers.py"]
+old = '''        f"the job is queued again with {progress['settled']} of {progress['total']} "'''
+new = '''        f"the job is queued again with {progress['total']} of {progress['total']} "'''
+
+[[rows]]
+id = "F6_queue_only_never"
+description = "queue_only: always False, so --queue-only drives the job anyway"
+file = "src/cratekit/modules/foreground.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_analysis_workers.py", "tests/test_label_genre.py", "tests/test_sync_land.py"]
+old = '''    return bool(getattr(args, "queue_only", False))'''
+new = '''    return False'''
+
+[[rows]]
+id = "F7_queue_only_always"
+description = "queue_only: always True, so a verb run by hand queues and returns as before U192"
+file = "src/cratekit/modules/foreground.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_analysis_workers.py", "tests/test_label_genre.py"]
+old = '''    return bool(getattr(args, "queue_only", False))'''
+new = '''    return True'''
+
+[[rows]]
+id = "F8_not_exclusive"
+description = "add_job_options: declare the two flags on the parser rather than in one exclusive group"
+file = "src/cratekit/modules/foreground.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_analysis_workers.py"]
+old = '''    chosen = parser.add_mutually_exclusive_group()'''
+new = '''    chosen = parser'''
+
+[[rows]]
+id = "F9_detail_job_id"
+description = "_resumable: leave the job identifier off the refusal's detail"
+file = "src/cratekit/modules/foreground.py"
+surface = "maintainer"
+tests = ["tests/test_tag_workers.py", "tests/test_analysis_workers.py"]
+old = '''    detail = {**cause.detail, "job_id": job_id, "state": str(job.state), "resume": list(argv)}'''
+new = '''    detail = {**cause.detail, "state": str(job.state), "resume": list(argv)}'''
+
+[[rows]]
+id = "T1_typed_label_on_queue"
+description = "tag_folder: hand the queue's own --label to the resume, so a sweep driven at its queue says its label was not applied"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_workers.py"]
+old = '''        lambda: _resume(ctx, cfg, job.job_id, typed_label=None, queued=label_warnings),'''
+new = '''        lambda: _resume(ctx, cfg, job.job_id, typed_label=ctx.args.label, queued=label_warnings),'''
+
+[[rows]]
+id = "T2_queue_warnings_lost"
+description = "tag_folder: drop the queue's label warnings from the settled answer"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_workers.py"]
+old = '''        lambda: _resume(ctx, cfg, job.job_id, typed_label=None, queued=label_warnings),'''
+new = '''        lambda: _resume(ctx, cfg, job.job_id, typed_label=None),'''
+
+[[rows]]
+id = "T3_resume_label_unsaid"
+description = "tag_folder --job: stop passing the typed --label, so a label typed on a resume is applied silently in the report's eyes"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_workers.py"]
+old = '''        return _resume(ctx, cfg, ctx.args.job, typed_label=ctx.args.label)'''
+new = '''        return _resume(ctx, cfg, ctx.args.job, typed_label=None)'''
+
+[[rows]]
+id = "T4_tag_queue_only_ignored"
+description = "tag_folder: ignore --queue-only and drive the sweep"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_label_genre.py", "tests/test_render_payloads.py"]
+old = '''        if foreground.queue_only(ctx.args):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "A1_run_queue_only_ignored"
+description = "analyze_run: ignore --queue-only and drive the job"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py", "tests/test_vocals_cli.py"]
+old = '''        if foreground.queue_only(ctx.args):
+            return ctx.envelope(data=_reported(store, job))'''
+new = '''        if False:
+            return ctx.envelope(data=_reported(store, job))'''
+
+[[rows]]
+id = "A2_restamp_queue_only_ignored"
+description = "analyze_restamp: ignore --queue-only and drive the job"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''        if foreground.queue_only(ctx.args):
+            return ctx.envelope(
+                data=_reported(store, job), warnings=(DB_NOT_WRITTEN, *extra)'''
+new = '''        if False:
+            return ctx.envelope(
+                data=_reported(store, job), warnings=(DB_NOT_WRITTEN, *extra)'''
+
+[[rows]]
+id = "A3_restamp_wrong_resume"
+description = "analyze_restamp: name the analyze run command as the one that resumes an interrupted restamp"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    return _settle(ctx, cfg, job, restamp_argv(job))'''
+new = '''    return _settle(ctx, cfg, job, analyze_argv(job))'''
+
+[[rows]]
+id = "S1_sync_land_drives_at_queue"
+description = "sync land: queue each tail step without --queue-only, so the queue call drives the job"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_analysis_workers.py"]
+old = '''    envelope = _required(report, step, [*words, foreground.QUEUE_ONLY, str(folder)])'''
+new = '''    envelope = _required(report, step, [*words, str(folder)])'''
