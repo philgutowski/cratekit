@@ -41,6 +41,7 @@ from cratekit.core.taxonomy import (
     Bucket,
     FormerPlace,
     GateRule,
+    GenreSub,
     PublishedRule,
     SplitPlace,
     Sub,
@@ -259,6 +260,17 @@ def suggest_tag(
     hit = taxonomy.tagging_alias(lowered)
     if hit is not None:
         bucket_id, sub_id = hit
+        genre = _genre_sub_by_id(taxonomy.bucket(bucket_id), sub_id)
+        if genre is not None:
+            # A GENRE SUB'S OWN SOURCE, IN ITS DECLARED SPELLING (U155). The
+            # sub's display is a name in rekordbox, and routing files a genre
+            # sub by its source exactly and case sensitively, so the word
+            # written onto the file is the source this word matched.
+            spelled = next(
+                (source for source in genre.sources if source.lower().strip() == lowered),
+                genre.sources[0],
+            )
+            return Suggestion(bucket_id=bucket_id, sub_id=sub_id, tag=spelled)
         return Suggestion(bucket_id=bucket_id, sub_id=sub_id, tag=display_of(taxonomy, hit))
 
     for rule in taxonomy.suggest:
@@ -396,6 +408,28 @@ def energy_sub(
     return Sub(last.id, bucket.energy.band_display.get(last.id, last.display))
 
 
+def genre_sub(taxonomy: Taxonomy, bucket_id: str, source_genre: str | None) -> Sub | None:
+    """The genre sub a track files into beside its band, or None (U155).
+
+    EXACT AND CASE SENSITIVE, like a ``sub_by_source`` row, since the sources
+    are the exact strings a source vendor, or a label's registry entry, puts
+    on a file. ``Rominimal`` reaches the Rominimal sub and ``Minimal`` never
+    does, though the ``minimal`` keyword rule would have filed both in the
+    bucket.
+
+    ADDITIVE. This is never :func:`energy_sub`'s answer and never one of
+    :func:`competing_subs`: the band a track is filed into is the same with
+    or without it, and a caller adds this place beside that one. The loader
+    allows a genre sub only on a bucket that splits by energy, so on any other
+    bucket the answer is None.
+    """
+    value = source_genre or ""
+    for genre in taxonomy.bucket(bucket_id).genre_subs:
+        if value in genre.sources:
+            return Sub(genre.id, genre.display)
+    return None
+
+
 class Competing(str, Enum):
     """What kind of place a bucket's exclusive subs are.
 
@@ -425,7 +459,9 @@ def competing_subs(taxonomy: Taxonomy, bucket_id: str) -> tuple[Competing, froze
     A SUB CLASS IS NEVER IN THE SET. A manual or derived sub sits beside a
     track's band rather than instead of it, which is what additive means, so
     it is removed by identifier even where a bucket happens to declare a sub
-    of the same identifier.
+    of the same identifier. NOR IS A GENRE SUB (U155), for the same reason: it
+    sits beside the band its track is filed into, and the loader keeps its
+    identifier apart from every band, so it never enters the set.
 
     Identifiers, never display names (R19, D5). A bucket that labels its bands
     differently still competes on the band's identifier.
@@ -897,6 +933,13 @@ def kind_verdict(
         f"the general catalogue calls it {said}, and no rule of the gate knows "
         f"what kind of music that is",
     )
+
+
+def _genre_sub_by_id(bucket: Bucket, sub_id: str | None) -> GenreSub | None:
+    for genre in bucket.genre_subs:
+        if genre.id == sub_id:
+            return genre
+    return None
 
 
 def _sub_by_id(bucket: Bucket, sub_id: str) -> Sub | None:
