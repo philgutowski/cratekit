@@ -57,7 +57,15 @@ Four words carry most of the rest.
   folder`, `analyze run` and `analyze restamp`, queue their job and then work
   through it before they return, so each step is one command. Stop one with
   Ctrl-C and its answer names the `--job` command that finishes the rest; pass
-  `--queue-only` to have it queue and return like the others.
+  `--queue-only` to have it queue and return like the others. An intake job
+  names the playlist it was made for in both `job list` and `job show`. An
+  open intake job holds its playlist out of every sync pass, so an old one
+  left queued keeps that playlist's new music out until it is driven or
+  cancelled: `crate job cancel --stale-days 30 --dry-run` lists every queued
+  intake job queued more than 30 days ago, with its playlist, age, track count
+  and what cancelling it frees, and the same command without `--dry-run`
+  cancels them. It never touches a running job, and of several open jobs
+  holding exactly the same tracks it keeps the newest and says so.
 - **Run.** One invocation's decision state, saved on disk so a decision can be
   answered later, from another terminal, after the process has exited.
 - **Gate.** A named question a verb stops at before it writes. There is no
@@ -591,8 +599,11 @@ answer for one label, and both write the same record. To ask about one label
 without reaching it through the labels above it, name it: `--next --label "Some
 Label"` lists only that label and prints its question, says it has nothing
 new, or says its listing failed, and leaves every other label as it was. A
-failed listing is a `[FAIL]` line on a run that still exits 0, so read the
-line, not only the exit status. A newly followed label is
+label whose listing failed is a `[FAIL]` line and is never counted as having
+nothing new: the closing line names only the labels that were listed, and a
+run in which no label could be read at all, each listing having failed or
+confirmed nothing, ends refused, exit 30, reason `label-sync-unlisted`, with
+every label's line still shown and a line saying what to do about each kind. A newly followed label is
 asked about its newest few releases, the `labels.offer_per_sweep` count, not its
 whole catalogue.
 
@@ -733,9 +744,18 @@ whole catalogue, two calls for every release it lists, which on a label of
 thousands of releases is hours of calls. So it counts the listing first, and
 when the estimate is over 500 calls it stops at its own explicit gate,
 `label.playlists.crawl`, showing the release count, the calls and the time,
-and reads nothing more until you answer `crawl`. A full build that the
-provider's rate limit stops part way keeps nothing it read, so the next run
-starts the crawl again.
+and reads nothing more until you answer `crawl`. A full build keeps the
+releases it reads for seven days, written every 50 releases and again whenever
+it stops, so a build the provider's rate limit stops part way starts again
+where it stopped, and the run that applies the plan you
+approved reads none of the catalogue again. The estimate counts only the
+releases not kept, and both screens say how many reads were reused and how old
+the oldest is. The listing itself is read again every run, so a release the
+label put out since is never missed. If the kept reads cannot be read the build
+refuses with `label-playlists-reads-unusable`; deleting the file it names is
+safe and costs only provider calls. If they cannot be written the build still
+shows its plan and warns `label-playlists-reads-unkept`, and a later run reads
+those releases again.
 
 Once a label batch has landed, `label mark` puts `DOWNLOADED ` in front of the
 year playlists that batch filed, so the account stops offering them as unheard:
@@ -1322,6 +1342,7 @@ treated like any other.
 | A job that never moves | `crate job show JOB_ID`. Queued work needs `crate job resume`. |
 | A blocked job | `job show` carries the cause, usually a review decision or a credential. |
 | A resume that refuses the same way each time | Cancel it with `crate job cancel` and queue a fresh one. |
+| `sync land` says intake jobs are left open | Its left open row lists them by playlist with their age. Old ones: `crate job cancel --stale-days DAYS --dry-run`, then without `--dry-run`; the next pass queues each freed playlist again. |
 | A verb the parser has never heard of | `crate profile show`. A module the profile leaves out has no verbs at all. |
 | A tree "unconverged" | `crate converge`, then `crate rebuild`, then `crate converge` again. |
 | A stale lock from a machine that is gone | `crate session release`, explicitly. |

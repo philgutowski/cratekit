@@ -1,0 +1,183 @@
+name = "u183"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_pass_run_as_given"
+description = "_resolve: never take the given id as a pass run, so a pass id is looked up as a land record and refused"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py"]
+old = '''        if _pass_jobs(store, given, cfg):
+            return given'''
+new = '''        if False:
+            return given'''
+
+[[rows]]
+id = "M2_land_record_resolves"
+description = "_resolve: ignore the land run's recorded pass, so the land run's own id is refused as it was before U183"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py"]
+old = '''    recorded = land.related_runs.get(PASS_ROLE) if land is not None else None
+    if recorded:'''
+new = '''    recorded = land.related_runs.get(PASS_ROLE) if land is not None else None
+    if False:'''
+
+[[rows]]
+id = "M3_recorded_pass_needs_a_job"
+description = "_resolve: take a land run's recorded pass with no intake job of this library, so the pass fails at the fourth step again"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py"]
+old = '''            if _pass_jobs(store, recorded, cfg):
+                report.check('''
+new = '''            if True:
+                report.check('''
+
+[[rows]]
+id = "M4_land_verb_only"
+description = "_land_record: accept a record of any verb as a land run"
+file = "src/cratekit/cli/sync_land.py"
+tests = ["tests/test_sync_land.py"]
+old = '''    return state if state.verb == LAND_VERB_NAME else None'''
+new = '''    return state'''
+
+[[rows]]
+id = "M5_bare_identifier"
+description = "_land_record: drop the bare identifier check, so a value with a path in it is looked up"
+file = "src/cratekit/cli/sync_land.py"
+tests = ["tests/test_sync_land.py"]
+old = '''    if not run_id or run_id != Path(run_id).name or run_id.startswith("."):
+        return None'''
+new = '''    if not run_id:
+        return None'''
+
+[[rows]]
+id = "M6_unreadable_record"
+description = "_land_record: let a record that cannot be read raise out of the resolver"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py"]
+old = '''    except (CratekitError, AttributeError, KeyError, TypeError, ValueError, OSError):
+        return None
+    return state if'''
+new = '''    except KeyError:
+        return None
+    return state if'''
+
+[[rows]]
+id = "M7_remember_saves"
+description = "_remember: record the pass on the run without saving, so a run that stops before the dispatcher saves keeps nothing"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py"]
+old = '''    ctx.run.related_runs[PASS_ROLE] = pass_run
+    gates.save(ctx.run)'''
+new = '''    ctx.run.related_runs[PASS_ROLE] = pass_run'''
+
+[[rows]]
+id = "M8_remember_called"
+description = "sync_land: never record the pass on the land run"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py"]
+old = '''        if run_id:
+            _remember(ctx, report, run_id)'''
+new = '''        if False:
+            _remember(ctx, report, run_id)'''
+
+[[rows]]
+id = "M9_recent_passes_library"
+description = "_recent_passes: name passes of every library, not this one"
+file = "src/cratekit/cli/sync_land.py"
+tests = ["tests/test_sync_land.py"]
+old = '''                and job.library_id == cfg.library.volume_id
+            ):
+                found.append(run_id)'''
+new = '''            ):
+                found.append(run_id)'''
+
+[[rows]]
+id = "M10_recent_passes_cap"
+description = "_recent_passes: name one recent pass instead of five"
+file = "src/cratekit/cli/sync_land.py"
+tests = ["tests/test_sync_land.py"]
+old = '''RECENT_PASSES = 5'''
+new = '''RECENT_PASSES = 1'''
+
+[[rows]]
+id = "M11_land_runs_named"
+description = "_unknown_pass: name no land run beside a recent pass"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py"]
+old = '''    lands = _land_runs_of(passes)'''
+new = '''    lands: dict[str, str] = {}'''
+
+[[rows]]
+id = "M12_preflight_way_back"
+description = "_preflight: a rekordbox or backup refusal no longer ends with the command that comes back"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py"]
+old = '''        raise tail.with_steps(exc, f"then run it again: {again}") from None'''
+new = '''        raise'''
+
+[[rows]]
+id = "M13_preflight_resolves_first"
+description = "_preflight: resolve nothing, so the given id is used as is and fails at the fourth step"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py"]
+old = '''    taken = _resolve(report, cfg, given) if given else None'''
+new = '''    taken = given or None'''
+
+[[rows]]
+id = "M14_retryable_intake_continues"
+description = "_intake: a retryable ended intake job stops as one that cannot continue, so its way on ends at the resume"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py"]
+old = '''                raise _Stop(INTAKE, tail.with_steps(error, retry))'''
+new = '''                raise _Stop(INTAKE, tail.with_steps(error, retry), continues=False)'''
+
+[[rows]]
+id = "M15_continue_command_words"
+description = "_continue_command: drop the flag, so every printed continuation starts a new pass"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py"]
+old = '''    return f"crate sync land --pass-run {pass_run}"'''
+new = '''    return f"crate sync land {pass_run}"'''
+
+[[rows]]
+id = "M16_record_written_only_when_set"
+description = "RunState.to_json: write related_runs always, so every record moves"
+file = "src/cratekit/cli/gates.py"
+tests = ["tests/test_sync_land.py", "tests/test_gate_pins.py", "tests/test_run_decide_continue.py", "tests/test_run_retire.py"]
+old = '''        if self.related_runs:
+            record["related_runs"]'''
+new = '''        if True:
+            record["related_runs"]'''
+
+[[rows]]
+id = "M17_record_read_back"
+description = "RunState.from_json: read related_runs as empty, so a saved pass is lost on load"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_gate_pins.py", "tests/test_run_decide_continue.py"]
+old = '''                {str(role): str(run) for role, run in data["related_runs"].items()}
+                if isinstance(data.get("related_runs"), dict)'''
+new = '''                {}
+                if isinstance(data.get("related_runs"), dict)'''
+
+[[rows]]
+id = "M18_load_refuses_non_object"
+description = "gates.load: drop the refusal of a record that is not a JSON object"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_run_retire.py"]
+old = '''    if not isinstance(raw, dict):
+        raise CratekitError('''
+new = '''    if False:
+        raise CratekitError('''

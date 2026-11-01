@@ -40339,6 +40339,8 @@ the gate, saying so, with a test. Ledger only, a wording and a step.
 
 **Closes when:** Phillip answers. Off closes it as written; on is one row of the table and its pinned dict in the drift test.
 
+**Closed 2026-11-01, by Phillip's answer.** He answered `354-vocal-setting-1` on the decisions page with Vocal off, as the card says, and called sitting 52's Vocal on a one off. The skill's table and the drift test's pinned settings already read off, so nothing in either changes; the skill now says the setting is his confirmed standard, so a session that reads sitting 52's record does not take it as the rule.
+
 ---
 
 ## R-1125. intake land --label-from-tags files a file under any label tag it carries, so an unregistered Bandcamp seller's own tag makes a folder nobody registered
@@ -41001,3 +41003,284 @@ caller that branches on it.
 **Closes when:** a job whose every item failed under one reason exits with
 that reason's class, or the record says why the engine's class is right.
 Ledger only: nothing is lost and the message is true.
+
+---
+
+## R-1158. label sync --next with some labels listed and some skipped still ends no_op
+
+**Found:** at the review of #417, R-1114, 2026-11-01.
+
+**The mechanism.** `label/sync_cli._next` refuses as `label-sync-unlisted`
+only when every label it asked about was skipped. A run in which at least one
+label was listed with nothing new and another could not be listed ends
+`no_op` with exit 0, as the brief and the plan decided: the closing line names
+only the listed labels and each skipped label keeps its `fail` line, so the
+words are true, but the outcome is the one a run with nothing to ask carries.
+
+**Measured cost.** Driven at the review: three labels, the second unlisted,
+`crate label sync --next` exits 0, outcome `no_op`, the closing line "no label
+listed has anything new to ask about: Alpha Works, Gamma Works" and Beta
+Works's `fail` line. A script that reads only the outcome reads the run as
+nothing to do while one label went unread; one that reads the checks does
+not.
+
+**Closes when:** a mixed run carries an outcome or a warning a script can read
+as partial, without turning a routine provider hiccup on one label into a
+failed run for every label that answered. Ledger only: the report names the
+failure, so it is not a clean report, and nothing is lost or written.
+
+---
+
+## R-1159. A stale cancel reconciles a running row no live driver holds and then cancels it, while the brief says never a running one
+
+**Found:** at the review of #379, U182, 2026-11-01.
+
+**The mechanism.** `crate job cancel --stale-days N` first reconciles every intake job of the library whose row says running, the disk truth every job verb reports from: a row that says running while no driver holds its lock was killed, and it reads as queued again. A job reconciled this way that is older than N days is then offered and cancelled like any queued job. Fable drove it at round one: a job 90 days old, its row set running, no lock held, a real run, state cancelled.
+
+**Measured cost.** None false: the job was not running, only its row said so, and `crate job resume` reopens it. The record reads "never a running one" as never a job a live driver holds, which the lock check under the cancel guarantees.
+
+**Closes when:** Phillip says the brief meant the row, in which case a reconciled job is listed as left with its reason. Ledger only.
+
+---
+
+## R-1160. A second stale cancel cancels the copy of a track set the first one kept, once no other copy is open
+
+**Found:** at the review of #379, U182, 2026-11-01.
+
+**The mechanism.** The stale cancel keeps the newest of several open intake jobs holding exactly the same tracks. Once the older copies are cancelled the kept job has no open copy, so the next `crate job cancel --stale-days N` reads it as a lone stale job and cancels it. Fable drove it: copies 50 and 45 days old, the command run twice, both cancelled.
+
+**Measured cost.** Nothing false: the second run's `--dry-run` names the job as one it would cancel, and the kept line of the first run does not promise to keep it. A person who wanted the copy kept and runs the command again loses it from the queue, and `crate job resume` reopens it.
+
+**Closes when:** the kept line says "until its copies are gone", or a kept job is remembered. Ledger only, a wording.
+
+---
+
+## R-1161. What a stale cancel says it frees is read from the open jobs alone, so a playlist the sweep leaves out for another reason is still said to queue again
+
+**Found:** at the build of #379, U182, 2026-11-01.
+
+**The mechanism.** `_frees` says a cancel frees a playlist, "so the next pass queues it again", when no job staying open holds the same playlist. The sweep's exclusion has other reasons before the open job one (`sync.playlists.exclusion`): a playlist the cursor recorded, a swept prefix, a placeholder name, a label or set playlist, an empty one. The cancel reads only the queue, so for such a playlist the sentence promises a queue the next pass will not make.
+
+**Measured cost.** Not driven: no fixture produced an open intake job for a playlist the sweep also excludes for another reason. A job open for a recorded playlist would have to have been queued by hand after the record, which no candidate driven produced.
+
+**Closes when:** the sentence is read through the sweep's own exclusion, or worded as "no open job holds it any longer". Ledger only.
+
+---
+
+## R-1162. The stale cancel's race guards, the queued recheck under the lock and the reconcile of running rows, are reached by no test
+
+**Found:** at the mutation table of #379, U182, 2026-11-01.
+
+**The mechanism.** `_cancel_queued` in `src/cratekit/cli/jobs.py` takes the job's driver lock and cancels only while the row still says queued, and catches a driver that took the lock between the listing and the cancel. `_cancel_stale` reconciles running rows before it reads them. Each guards a race between the listing and the cancel inside one command, and no test interleaves a driver there, so reverting any of them leaves the suite green (rows M11 and the review's M3, M4 and M10).
+
+**Measured cost.** Not driven: a driver taking a job inside the few milliseconds between the listing and its cancel was not produced. The listing's own lock check (row M6) is killed, so a job held when the command starts is never offered.
+
+**Closes when:** a test holds a job's lock from a second process between the listing and the cancel, through a seam in the loop. Ledger only, maintainer facing.
+
+---
+
+## R-1163. Two sync land tests each reddened the mutation driver's whole suite baseline once and pass alone, in their file's parallel run and in the battery
+
+**Found:** at the mutation table of #379, U182, 2026-11-01.
+
+**The mechanism.** Measuring U182's table on the Linux container, the driver refused a red baseline twice, each time over one test of `tests/test_sync_land.py`: `test_a_fresh_pass_never_reuses_another_lists_download_job` under the null control, then `test_the_pass_runs_every_step_in_its_order_and_the_tail_on_the_absolute_staging_path`. Each passed six times alone, the file passed three times under `-n auto`, and two full battery runs on the same heads counted neither. The third driver run was green.
+
+**Measured cost.** Two driver runs of about fifteen minutes each spent. No product cost: the tests drive stand ins, and no cause was measured. Whether U182's new read in the left open row takes part was not measured; neither test asserts on that row.
+
+**Closes when:** the failure is caught with its traceback, by running the driver's own command until it reddens, and its cause is named. Ledger only, maintainer facing.
+
+---
+
+## R-1164. The label sync go test of a tail run in order fails intermittently under the full parallel suite since U186 landed
+
+**Found:** at the battery of #410, R-1091, 2026-11-01.
+
+**The mechanism.** `test_a_go_over_two_answered_releases_runs_the_tail_in_order_and_stops_at_the_landing_gate`
+in `tests/test_label_sync_go.py` fails in some full parallel runs of the
+suite on the Linux container and passes alone, with its whole file, and with
+every `tests/test_label_*.py` file under all workers. It first appeared once
+U186 (`tests/test_gate_siblings.py` and the gate's sibling reads) was on
+`main`, in R-1103's battery and twice in R-1091's, and passed in R-1091's
+third full run on the same head. The failing assertion was not captured, since
+`cloud_battery.py compare` keeps node ids only, so which shared state it meets
+is unmeasured.
+
+**Measured cost.** Maintainer facing: a cloud lane's compare names it as
+newly failing, and each lane spends a rerun proving it is not its own. No
+user facing cost was found or driven.
+
+**Closes when:** a full parallel run captures its traceback, the shared state
+it reads under load is named, and the test or the code it drives no longer
+depends on it.
+
+---
+
+## R-1165. A full label build parked by the breaker while its kept reads cannot be written does not say the reads were lost
+
+**Found:** at the review of #410, R-1091, 2026-11-01.
+
+**The mechanism.** When the provider's breaker parks a full `crate label
+playlists LABEL` build, `_grouped` in `src/cratekit/label/playlists_cli.py`
+writes the kept reads once more and, if that write fails, adds a note to the
+park's exception. A note reaches neither the JSON envelope nor the human
+output, so the person is told the park and not that the reads made before it
+were not kept. The clean paths say it, on the build gate's screen and as the
+warning `label-playlists-reads-unkept`; the park path is the one that does
+not, because the park's cause is built by the provider gate and this module
+does not rewrite it.
+
+**Measured cost.** Driven by both review rounds: `FLUSH_EVERY` two, the
+writer refusing with a full disk, the park after three reads; the envelope's
+reason is `provider-cooldown` and the words "could not be kept" are nowhere
+in it, and removing the note kills no test. The cost is calls only: the next
+run reads those releases again, and nothing on the screen claims they were
+kept.
+
+**Closes when:** a park whose reads could not be written carries that on
+what the person is shown, for example as a warning the dispatcher keeps on a
+refusal, or the record says why a park's cause is not this module's to add to.
+
+---
+
+## R-1166. A Question for Phillip posted by a session that keeps building releases its lane, so the queue offers the card's lane to another thread
+
+**Found:** at the build of #410, R-1091, 2026-11-01.
+
+**The mechanism.** `cloud_state` in `scripts/board.py` reads a card's state
+from the session's last comment that is not a `Plan` or `Progress` note, and a
+`Question for Phillip` reads as `waiting-on-phillip`, which is not a hold. The
+project's standing rule is that a question never stops a thread: the session
+makes the conservative call and keeps building. A session that posts the
+question and keeps going has therefore given up its lane in the queue's
+reading while it still works the card, and `board.py cloud` counted four of
+five lanes held and offered the freed one to the next card.
+
+**Measured cost.** Driven on #410: the queue read `Held, 4 of 5` and #410 as
+`waiting-on-phillip` straight after the question, and `Held, 5 of 5` with the
+card `underway` again after a second `Started`. Nothing is lost while the
+coordinator fills lanes by the hour, but a sixth build can start, and a reply
+from Phillip would read the card as `answered` and offer it to a second
+thread while the first is still on it.
+
+**Closes when:** the cloud-unit skill says a session that asks and keeps
+building posts `Started` again after its question, or `cloud_state` reads a
+question followed by the same session's `Progress` as a hold.
+
+---
+
+## R-1167. A full label build's estimate counts kept reads among the releases listed, so a kept release the verifier now drops still lowers the calls it shows
+
+**Found:** at the review of #410, R-1091, 2026-11-01.
+
+**The mechanism.** `estimate` in `src/cratekit/label/playlists_cli.py`
+counts the listed releases whose kept read is fresh and takes them off the
+calls the crawl gate shows, before the verifier has confirmed anything. The
+build reads only the confirmed releases, so a release kept on one run and
+dropped by the verifier on the next is counted as a call saved that the
+build would never have made. The estimate already counts every listed
+release, confirmed or not, so it was an overestimate before R-1091 and is
+now less of one by that count.
+
+**Measured cost.** Driven at round 1 on the fixture: the verifier answering
+mismatch for one kept release on the second run, the crawl screen said six
+read by an earlier run and the build reused five. Off by the count of kept
+releases the verifier drops between runs, on a number the screen calls a
+floor; the live frequency is unmeasured.
+
+**Closes when:** the estimate counts kept reads among the releases it will
+read, or says the count is of listed releases.
+
+---
+
+## R-1168. A full label playlists build reads the label's listing again on every run, so a breaker trip inside the listing still starts it over
+
+**Found:** at the build of #410, R-1091, 2026-11-01.
+
+**The mechanism.** R-1091 keeps every release's tracks a full `crate label
+playlists LABEL` reads, in `src/cratekit/label/kept_reads.py`, and the build
+reads through them in `_grouped` in `src/cratekit/label/playlists_cli.py`. The
+brief also asked for the listing to be kept the same way, and it is not:
+`list_catalogue` still reads the roster, the discovery searches and every
+roster artist's paged listing on each run, the gate run, the apply run and
+every resume. A kept listing would hide a release the label put out after it
+was read, for as long as the read is kept, and U191's test
+`test_the_crawl_gate_is_asked_again_when_the_listing_grows` pins that a grown
+listing asks the crawl gate again. So a breaker trip inside the listing itself
+keeps nothing of it, as before R-1091.
+
+**Measured cost.** Not measured. The listing is the roster and its pages,
+nothing per release, so it is far fewer calls than the two a release that the
+kept reads now save; how many it is for a label the size of Defected (12,368
+releases listed on 2026-10-31) was never counted apart from the reads. Not
+driven live in the cloud.
+
+**Closes when:** the listing's own call count is measured on a large label
+at an attended sitting, and either it fits inside one breaker window, which
+closes this as measured, or the listing is kept per artist page with an age
+short enough that a new release is seen within a day.
+
+---
+
+## R-1169. The warning that a full label build's reads could not be kept says all of them when an earlier write kept some, and names the temporary file
+
+**Found:** at the review of #410, R-1091, 2026-11-01.
+
+**The mechanism.** `KeptReads.flush` in `src/cratekit/label/kept_reads.py`
+records the last write that failed as `unkept`, and the build gate's screen
+and the warning `label-playlists-reads-unkept` say "the reads made by this
+run could not be kept ... so a later run reads them again". The document is
+written whole, so a periodic write that succeeded before a later one failed
+has kept the reads up to it, and the sentence overstates how many the next
+run repeats. The error text is the operating system's, which names the
+temporary file beside the document rather than the document itself.
+
+**Measured cost.** Driven at round 2: `FLUSH_EVERY` two, the first write
+succeeding and the later ones refused with a full disk; the store held two
+reads, the next run reused those two and asked for the other four, while the
+screen had said none were kept. Calls only; nothing a person does differently.
+
+**Closes when:** the store counts the reads its last successful write held,
+and the sentence says how many were kept and how many were not, naming the
+document's path.
+
+---
+
+## R-1170. crate sync land --pass-run with an empty value starts a new pass instead of refusing
+
+**Found:** at the first review of #380, U183, 2026-11-01.
+
+**The mechanism.** `sync_land` in `src/cratekit/cli/sync_land.py` reads the
+`--pass-run` value as truthy or not, so an empty string is the same as no flag,
+and a script that passes an unset variable starts a fresh `sync all` where it
+meant to continue one. The same was true on `main` before U183.
+
+**Measured cost.** Driven: `crate sync land --pass-run ""` queues a new pass.
+No file or row is lost; the new pass is the same work a plain `crate sync land`
+does, and the earlier pass stays continuable.
+
+**Closes when:** the flag refuses an empty value at the parser. Ledger only.
+
+---
+
+## R-1171. The doctor's run scan and crate run retire raise on a run record of the wrong shape
+
+**Found:** at the second review of #380, U183, 2026-11-01.
+
+**The mechanism.** `RunState.from_json` in `src/cratekit/cli/gates.py` checks the
+schema version and nothing else, so a record that is an object but lacks
+`run_id`, or holds a string where `pending_human_action` or a list where `pins`
+or `decisions` should be a mapping, raises `KeyError`, `TypeError` or
+`AttributeError`. The doctor's run scan and `crate run retire` catch only the
+gates module's own refusal, so one such file ends either verb with an internal
+error. U183 made `gates.load` refuse a record that is not an object at all, and
+made the sync land resolver read any misshapen record as no land run; the other
+two readers keep the old shape.
+
+**Measured cost.** Driven with a hand written file in the run directory: the
+doctor and `run retire` both raise. The producer was not driven: the one writer,
+`gates.save`, writes `to_json` through an atomic write and cannot emit these
+shapes, so the cost needs a hand edit or a foreign file.
+
+**Closes when:** `from_json` validates each field's type and raises the gates
+module's unreadable record refusal, so every reader gets one refusal it already
+handles. Ledger only: no shipped verb produces the input.

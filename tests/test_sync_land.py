@@ -20,6 +20,9 @@ read of a job is a read of the queue.
 
 from __future__ import annotations
 
+import json
+import shlex
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -27,10 +30,10 @@ import pytest
 
 from cratekit import acquire
 from cratekit.acquire import cli as acquire_cli
-from cratekit.cli import registry, sync_land
+from cratekit.cli import gates, registry, sync_land
 from cratekit.cli import tail as tail_chain
 from cratekit.core import config, jobs, rb_writer
-from cratekit.core.cause import Cause, Remediation, Scope, refuse
+from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from tests.acquire_fakes import FAKE_ADAPTER, FAKE_DECLARATION, FakeAdapter, Landing, Script
 from tests.cli_drive import drive
@@ -647,12 +650,12 @@ def test_a_continued_pass_over_an_open_intake_job_drives_it_first(machine, monke
     assert intake.state is jobs.JobState.SUCCEEDED
 
 
-def test_a_continued_pass_naming_no_intake_job_is_the_listings_own_refusal(machine, tail):
+def test_a_continued_pass_naming_no_intake_job_is_refused_in_the_preflight(machine, tail):
     code, envelope = drive(["sync", "land", "--pass-run", "no-such-run"])
 
     assert code != int(ExitCode.OK), envelope
     assert envelope["cause"]["reason"] == "job-unknown"
-    assert ("acquire", "download") not in tail.verbs()
+    assert tail.calls == [], "a step ran before the unknown id was refused (U183)"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1247,6 +1250,189 @@ def test_an_earlier_pass_that_ended_or_belongs_to_another_library_is_not_continu
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# U182: stale intake jobs, named by playlist, let go by a cancel
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _age(job_id: str, days: float) -> None:
+    stamp = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    with jobs.open_store() as store, store.immediate() as conn:
+        conn.execute("UPDATE jobs SET created = ? WHERE job_id = ?", (stamp, job_id))
+
+
+def _cancelled_pass(cfg: config.Config, run_id: str) -> None:
+    """A pass ``--pass-run`` resolves (U183) whose one intake job was cancelled."""
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store,
+            handler_key=registry.entry("intake.playlist").handler_key,
+            payload={"source": "pl-gone", "run_id": run_id},
+            cfg=cfg,
+            item_ids=("901",),
+        )
+        jobs.cancel(store, job.job_id)
+
+
+def test_the_left_open_row_names_each_playlist_its_age_size_and_copies(
+    machine, monkeypatch, tail
+):
+    """Sitting 51: 17 jobs read as ids alone, ten of them copies of two lists."""
+    cfg, script = machine
+    key = registry.entry("intake.playlist").handler_key
+    with jobs.open_store() as store:
+        for job_id, source, name in (
+            ("copy-a", "pl-a", "Warmup"),
+            ("copy-b", "pl-b", "Warmup Two"),
+        ):
+            jobs.enqueue(
+                store,
+                handler_key=key,
+                payload={"source": source, "playlist_name": name, "run_id": "old-run"},
+                cfg=cfg,
+                item_ids=("101", "102"),
+                job_id=job_id,
+            )
+    _age("copy-a", 44)
+    _age("copy-b", 43)
+    bind_playlists(monkeypatch)
+    _cancelled_pass(cfg, "other-run")
+
+    code, envelope = drive(["sync", "land", "--pass-run", "other-run"])
+
+    row = _check(envelope, "left-open")
+    assert row["status"] == "fail"
+    detail = row["detail"]
+    assert "for 2 playlist(s)" in detail
+    assert "playlist 'Warmup' (pl-a): copy-a (queued, 44 day(s) old, 2 track(s), the same tracks as copy-b)" in detail
+    assert "playlist 'Warmup Two' (pl-b): copy-b (queued, 43 day(s) old" in detail
+    assert "Cancelling a job lets its playlist's increment queue again on the next pass" in detail
+    assert "crate job cancel --stale-days DAYS --dry-run" in detail
+    grouped = _summary(envelope)["left_open_playlists"]
+    # NEWEST FIRST, the order every open job is read in.
+    assert [group["playlist"] for group in grouped] == [
+        "playlist 'Warmup Two' (pl-b)",
+        "playlist 'Warmup' (pl-a)",
+    ]
+    by_job = {job["job_id"]: job for group in grouped for job in group["jobs"]}
+    assert by_job["copy-a"]["age_days"] == 44 and by_job["copy-a"]["tracks"] == 2
+    assert by_job["copy-a"]["same_tracks"] == ["copy-b"]
+
+
+def test_a_pass_after_the_stale_cancel_queues_the_freed_playlist(machine, monkeypatch, tail):
+    """The brief's last scenario: the cancel is what lets the playlist queue again."""
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    code, first = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), first
+    (stale,) = _by_key("intake.playlist")
+    _age(stale.job_id, 40)
+    code, again = drive(["sync", "all"])
+    assert again["outcome"] == "no_op", "an open job did not hold its playlist out"
+
+    code, cancelled = drive(["job", "cancel", "--stale-days", "30"])
+    assert code == int(ExitCode.OK), cancelled
+    (row,) = cancelled["data"]["progress"]["cancel"]
+    assert row["job_id"] == stale.job_id
+    assert row["frees"] == "frees playlist 'Warmup' (pl-a), so the next pass queues it again"
+
+    code, freed = drive(["sync", "all"])
+
+    assert code == int(ExitCode.OK), freed
+    queued = [job for job in _by_key("intake.playlist") if job.job_id != stale.job_id]
+    assert len(queued) == 1 and queued[0].state is jobs.JobState.QUEUED
+    assert queued[0].payload["playlist_name"] == "Warmup"
+
+
+def test_a_continued_pass_never_drives_a_cancelled_job_and_lists_the_rest(
+    machine, monkeypatch, tail
+):
+    """A cancel's copy in the same run is reported cancelled, and the kept job goes on."""
+    cfg, script = machine
+    script.landings["101"] = Landing()
+    script.landings["201"] = Landing()
+    bind_playlists(
+        monkeypatch,
+        (_playlist("pl-a", "Warmup"), _tracks("101")),
+        (_playlist("pl-b", "Peak"), _tracks("201")),
+    )
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    first, second = _by_key("intake.playlist")
+    with jobs.open_store() as store:
+        jobs.cancel(store, first.job_id)
+
+    code, envelope = drive(["sync", "land", "--pass-run", passed["run_id"]])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    with jobs.open_store() as store:
+        assert jobs.get(store, first.job_id).state is jobs.JobState.CANCELLED
+        assert jobs.get(store, second.job_id).state is jobs.JobState.SUCCEEDED
+    assert not any(first.job_id in argv for argv in tail.calls), "a cancelled job was driven"
+    notes = [c["detail"] for c in envelope["data"]["checks"] if c["key"] == "sync.land.intake"]
+    assert any(f"{first.job_id}" in note and "cancelled" in note for note in notes)
+    assert _summary(envelope)["cancelled_jobs"] == [first.job_id]
+    assert ["intake", "missing", "--run", passed["run_id"], "--skip-failed"] in tail.calls
+
+
+def test_a_continued_pass_whose_every_job_was_cancelled_names_a_new_pass_not_a_resume(
+    machine, monkeypatch, tail
+):
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    code, passed = drive(["sync", "all"])
+    (intake,) = _by_key("intake.playlist")
+    with jobs.open_store() as store:
+        jobs.cancel(store, intake.job_id)
+
+    code, envelope = drive(["sync", "land", "--pass-run", passed["run_id"]])
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    detail = _check(envelope, sync_land.INTAKE)["detail"]
+    assert "cancelled" in detail and "crate sync land" in detail
+    assert "job resume" not in detail and "--pass-run" not in detail
+    assert _summary(envelope)["stopped_at"] == sync_land.INTAKE
+    assert not any(argv[:2] == ["intake", "missing"] for argv in tail.calls)
+    with jobs.open_store() as store:
+        assert jobs.get(store, intake.job_id).state is jobs.JobState.CANCELLED
+
+
+def test_a_url_typed_by_hand_and_a_sweeps_id_are_one_playlist_on_the_left_open_row(
+    machine, monkeypatch, tail
+):
+    """Round one of the review: grouped as the pass holds them, not as typed."""
+    cfg, script = machine
+    uuid = "0f6e2c3a-1b2d-4e5f-8a9b-0c1d2e3f4a5b"
+    key = registry.entry("intake.playlist").handler_key
+    with jobs.open_store() as store:
+        jobs.enqueue(
+            store,
+            handler_key=key,
+            payload={"source": uuid, "source_id": "playlists", "playlist_name": "Warmup", "run_id": "old-run"},
+            cfg=cfg,
+            item_ids=("101",),
+            job_id="swept",
+        )
+        jobs.enqueue(
+            store,
+            handler_key=key,
+            payload={"source": f"https://tidal.com/playlist/{uuid}"},
+            cfg=cfg,
+            item_ids=("102",),
+            job_id="typed",
+        )
+    bind_playlists(monkeypatch)
+    _cancelled_pass(cfg, "other-run")
+
+    code, envelope = drive(["sync", "land", "--pass-run", "other-run"])
+
+    assert "for 1 playlist(s)" in _check(envelope, "left-open")["detail"]
+    (group,) = _summary(envelope)["left_open_playlists"]
+    # HEADED BY THE ACCOUNT'S NAME, though the typed job is the newer.
+    assert group["playlist"] == f"playlist 'Warmup' ({uuid})"
+    assert sorted(job["job_id"] for job in group["jobs"]) == ["swept", "typed"]
+
+
 # U181. A pass refuses to land rows with no vocal score, unless told to go on
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -1295,6 +1481,7 @@ def test_a_pass_whose_vocal_model_cannot_score_stops_at_its_gate_before_queueing
 
 def test_a_continued_pass_is_told_the_answer_that_continues_it(full, monkeypatch, tail):
     _model_cannot_score(monkeypatch)
+    _cancelled_pass(full[0], "run-earlier")
 
     code, envelope = drive(["sync", "land", "--pass-run", "run-earlier"])
 
@@ -1451,3 +1638,295 @@ def test_the_tail_asks_the_vocal_model_before_analyze_run_binds_its_loader(
     assert vocals.loader_bound(), "the stand in never ran, so the order was not tested"
     assert _summary(envelope)["vocal_rescore"] == "skipped"
     assert ("analyze", "vocals") not in tail.verbs()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U183. Either run id continues the pass
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _record(run_id: str) -> dict[str, Any]:
+    return json.loads(gates.run_path(run_id).read_text())
+
+
+def _land_runs() -> list[str]:
+    """Every sync land run the record directory holds, oldest first."""
+    return sorted(
+        path.stem
+        for path in gates.run_dir().glob("*.json")
+        if json.loads(path.read_text()).get("verb") == "sync.land"
+    )
+
+
+def test_a_pass_continued_by_its_land_run_id_reaches_the_same_jobs_as_by_its_pass_id(
+    machine, monkeypatch, tail
+):
+    """Sitting 51 pasted the land run's own id and was refused at the fourth step."""
+    cfg, script = machine
+    _account(monkeypatch, script, "101", "102")
+    code, first = drive(["sync", "land"])
+    assert code == int(ExitCode.PENDING_HUMAN), first
+    land_run, pass_run = first["run_id"], _summary(first)["pass_run"]
+    assert land_run != pass_run
+    assert _record(land_run)["related_runs"] == {"pass_run": pass_run}
+    fetched = len(script.fetched)
+    tail.calls.clear()
+
+    code, by_land = drive(["sync", "land", "--pass-run", land_run])
+
+    assert code == int(ExitCode.PENDING_HUMAN), by_land
+    assert _summary(by_land)["pass_run"] == pass_run
+    assert _summary(by_land)["download_job"] == _summary(first)["download_job"]
+    assert ("sync", "all") not in tail.verbs()
+    assert len(script.fetched) == fetched, "a settled download was fetched again"
+    (resolved,) = [
+        check
+        for check in by_land["data"]["checks"]
+        if check["key"] == "sync.land.preflight" and check["status"] == "info"
+    ]
+    assert f"continuing the pass it recorded, run {pass_run}" in resolved["detail"]
+
+    code, by_pass = drive(["sync", "land", "--pass-run", pass_run])
+
+    assert code == int(ExitCode.PENDING_HUMAN), by_pass
+    assert _summary(by_pass)["pass_run"] == pass_run
+    assert _summary(by_pass)["download_job"] == _summary(first)["download_job"]
+    assert len(_by_key("acquire.download")) == 1
+    assert _record(by_land["run_id"])["related_runs"] == {"pass_run": pass_run}
+
+
+def test_an_unknown_id_refuses_before_any_step_and_names_the_recent_passes(
+    machine, monkeypatch, tail
+):
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    tail.calls.clear()
+    jobs_before = [(job.job_id, job.state) for job in _all_jobs()]
+
+    code, envelope = drive(["sync", "land", "--pass-run", "2026-10-30T00:00:00Z-beef"])
+
+    assert envelope["cause"]["reason"] == "job-unknown", envelope
+    assert tail.calls == [], "a step ran for an id that names no pass"
+    assert script.fetched == []
+    assert [(job.job_id, job.state) for job in _all_jobs()] == jobs_before
+    assert passed["run_id"] in envelope["cause"]["message"]
+    steps = envelope["cause"]["remediation"]["steps"]
+    assert f"crate sync land --pass-run {passed['run_id']}" in steps[0]
+    assert steps[-1].endswith("crate sync land")
+    assert envelope["cause"]["detail"]["recent_passes"] == [passed["run_id"]]
+
+
+def test_a_refused_id_names_the_land_run_recorded_beside_each_pass(machine, monkeypatch, tail):
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    code, first = drive(["sync", "land"])
+    assert code == int(ExitCode.PENDING_HUMAN), first
+
+    code, envelope = drive(["sync", "land", "--pass-run", "../../etc/passwd"])
+
+    assert envelope["cause"]["reason"] == "job-unknown", envelope
+    pass_run = _summary(first)["pass_run"]
+    assert envelope["cause"]["detail"]["land_runs"] == {pass_run: first["run_id"]}
+    assert f"(crate sync land run {first['run_id']})" in envelope["cause"]["remediation"]["steps"][0]
+
+
+def test_a_land_run_that_recorded_no_pass_is_refused_and_says_why(machine, tail):
+    """A record an earlier build wrote, or a run that queued nothing, continues nothing."""
+    older = gates.new_run(ENTRY)
+    gates.save(older)
+    assert "related_runs" not in _record(older.run_id)
+
+    code, envelope = drive(["sync", "land", "--pass-run", older.run_id])
+
+    assert envelope["cause"]["reason"] == "job-unknown", envelope
+    assert "recorded no pass" in envelope["cause"]["message"]
+    assert tail.calls == []
+
+
+def test_a_land_run_whose_pass_no_intake_job_carries_is_refused_not_continued(machine, tail):
+    """The sitting 51 shape: a resolved id that the fourth step would refuse."""
+    stale = gates.new_run(ENTRY)
+    stale.related_runs["pass_run"] = "2026-10-30T00:00:00Z-gone"
+    gates.save(stale)
+
+    code, envelope = drive(["sync", "land", "--pass-run", stale.run_id])
+
+    assert envelope["cause"]["reason"] == "job-unknown", envelope
+    assert "2026-10-30T00:00:00Z-gone, no intake job" in envelope["cause"]["message"]
+    assert tail.calls == []
+
+
+def test_a_run_record_that_is_not_an_object_leaves_the_refusal_whole(machine, monkeypatch, tail):
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    code, first = drive(["sync", "land"])
+    assert code == int(ExitCode.PENDING_HUMAN), first
+    (gates.run_dir() / "2026-01-01T00:00:02Z-dead.json").write_text("[]\n")
+    misshapen = {**_record(first["run_id"]), "run_id": "2026-01-01T00:00:03Z-dead"}
+    misshapen["pins"] = {"gate": [1]}
+    (gates.run_dir() / "2026-01-01T00:00:03Z-dead.json").write_text(json.dumps(misshapen))
+
+    for given in ("2026-01-01T00:00:02Z-dead", "2026-01-01T00:00:03Z-dead"):
+        code, envelope = drive(["sync", "land", "--pass-run", given])
+
+        assert envelope["cause"]["reason"] == "job-unknown", envelope
+        lands = envelope["cause"]["detail"]["land_runs"]
+        assert lands == {_summary(first)["pass_run"]: first["run_id"]}
+
+
+def test_a_record_with_no_related_runs_is_the_record_it_was_and_one_with_them_round_trips():
+    state = gates.new_run(ENTRY)
+    assert "related_runs" not in state.to_json()
+    state.related_runs["pass_run"] = "2026-10-30T00:00:00Z-beef"
+    read = gates.RunState.from_json(json.loads(json.dumps(state.to_json())))
+    assert read.related_runs == {"pass_run": "2026-10-30T00:00:00Z-beef"}
+    assert read.to_json() == state.to_json()
+
+
+def test_a_run_record_that_is_not_an_object_is_the_gates_own_refusal(machine):
+    """Every reader catches the gates refusal; an AttributeError reached none of them."""
+    gates.run_dir().mkdir(parents=True, exist_ok=True)
+    gates.run_path("2026-01-01T00:00:02Z-dead").write_text("[]\n")
+
+    with pytest.raises(CratekitError) as refused:
+        gates.load("2026-01-01T00:00:02Z-dead")
+
+    assert refused.value.cause.reason == "internal-error"
+    assert "is not a JSON object" in refused.value.cause.message
+
+
+def test_a_run_interrupted_after_sync_all_continues_by_its_own_id(machine, monkeypatch, tail):
+    cfg, script = machine
+    _account(monkeypatch, script, "101", "102")
+    real = sync_land._intake
+
+    def interrupted(*_args, **_kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(sync_land, "_intake", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        drive(["sync", "land"])
+    (land_run,) = _land_runs()
+    pass_run = _record(land_run)["related_runs"]["pass_run"]
+    (intake,) = _by_key("intake.playlist")
+    assert intake.payload["run_id"] == pass_run
+    assert intake.state is jobs.JobState.QUEUED
+    monkeypatch.setattr(sync_land, "_intake", real)
+    tail.calls.clear()
+
+    code, envelope = drive(["sync", "land", "--pass-run", land_run])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert ("sync", "all") not in tail.verbs()
+    assert _summary(envelope)["pass_run"] == pass_run
+    (intake,) = _by_key("intake.playlist")
+    assert intake.state is jobs.JobState.SUCCEEDED
+
+
+def _pasted(step: str) -> list[str]:
+    """The command a way on ends with, as a person pastes it, without ``crate``."""
+    command = step.rsplit(": ", 1)[1]
+    words = shlex.split(command)
+    assert words[0] == "crate", step
+    return words[1:]
+
+
+def test_the_continue_command_a_failed_step_prints_works_when_pasted(machine, monkeypatch, tail):
+    cfg, script = machine
+    _account(monkeypatch, script, "101", "102")
+
+    def broken(_job, item):
+        raise refuse(
+            "module-extras-missing",
+            f"the analysis extra is not importable for {item.item_id}",
+            scope=Scope.ITEM,
+            origin=("test",),
+        )
+
+    tail.work[sync_land.ANALYZE] = broken
+    code, failed = drive(["sync", "land"])
+    assert code == int(ExitCode.MODULE_UNAVAILABLE), failed
+    last = failed["cause"]["remediation"]["steps"][-1]
+    assert last.endswith(f"crate sync land --pass-run {_summary(failed)['pass_run']}")
+    del tail.work[sync_land.ANALYZE]
+    tail.calls.clear()
+
+    code, again = drive(_pasted(last))
+
+    assert code == int(ExitCode.PENDING_HUMAN), again
+    assert ("sync", "all") not in tail.verbs()
+    assert _summary(again)["pass_run"] == _summary(failed)["pass_run"]
+    assert _summary(again)["stopped_at"] == sync_land.LAND_GATE
+
+
+def test_the_continue_command_a_pending_stop_prints_works_when_pasted(machine, monkeypatch, tail):
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    gated = tail._job
+
+    def name_gate(step, verb, argv):
+        if step == sync_land.ANALYZE and "--job" not in argv:
+            return _refused(_gate("analyze-run", gate="analyze-confirm"), outcome="blocked")
+        return gated(step, verb, argv)
+
+    monkeypatch.setattr(tail, "_job", name_gate)
+    code, pending = drive(["sync", "land"])
+    assert code == int(ExitCode.PENDING_HUMAN), pending
+    last = pending["pending_human_action"]["steps"][-1]
+    assert last.endswith(f"crate sync land --pass-run {_summary(pending)['pass_run']}")
+    monkeypatch.setattr(tail, "_job", gated)
+
+    code, again = drive(_pasted(last))
+
+    assert code == int(ExitCode.PENDING_HUMAN), again
+    assert _summary(again)["pass_run"] == _summary(pending)["pass_run"]
+    assert _summary(again)["stopped_at"] == sync_land.LAND_GATE
+
+
+def test_an_intake_job_that_ended_retryable_ends_its_way_on_with_the_continuation(
+    machine, monkeypatch, tail
+):
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    code, passed = drive(["sync", "all"])
+    (intake,) = _by_key("intake.playlist")
+    with jobs.open_store() as store:
+        jobs.transition(
+            store,
+            intake.job_id,
+            jobs.JobState.FAILED,
+            cause=Cause(
+                reason="adapter-broken",
+                message="the catalogue timed out",
+                remediation=Remediation(remedy=Remedy.RETRY_LATER),
+                retryable=True,
+                origin=("test",),
+            ),
+        )
+
+    code, envelope = drive(["sync", "land", "--pass-run", passed["run_id"]])
+
+    assert envelope["cause"]["reason"] == "adapter-broken", envelope
+    steps = envelope["cause"]["remediation"]["steps"]
+    assert f"crate job resume {intake.job_id}" in steps[-2]
+    assert steps[-1].endswith(f"crate sync land --pass-run {passed['run_id']}")
+
+
+def test_a_continued_pass_refused_while_rekordbox_runs_names_the_way_back(
+    machine, monkeypatch, tail
+):
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    code, first = drive(["sync", "land"])
+    assert code == int(ExitCode.PENDING_HUMAN), first
+    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
+    tail.calls.clear()
+
+    code, envelope = drive(["sync", "land", "--pass-run", first["run_id"]])
+
+    assert code == int(ExitCode.REKORDBOX_OPEN), envelope
+    assert tail.calls == []
+    steps = envelope["cause"]["remediation"]["steps"]
+    assert steps[-1].endswith(f"crate sync land --pass-run {_summary(first)['pass_run']}")

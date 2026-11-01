@@ -243,6 +243,11 @@ class RunState:
     #: ``--run``, ``-d`` and ``--output``. What ``run decide --continue``
     #: dispatches again under ``--run``. None for a run recorded before it.
     argv: tuple[str, ...] | None = None
+    #: Other runs this run is bound to, by role (U183). ``crate sync land``
+    #: names the ``sync all`` pass it queued or continued under ``pass_run``
+    #: the moment that pass is known, so the land run's own identifier
+    #: continues the pass, even after a run that failed or was interrupted.
+    related_runs: dict[str, str] = field(default_factory=dict)
 
     def to_json(self) -> dict[str, Any]:
         record = {
@@ -262,6 +267,9 @@ class RunState:
         # AND THE COMMAND LINE ONLY WHEN THERE IS ONE (U168), for the same reason.
         if self.argv is not None:
             record["argv"] = list(self.argv)
+        # AND THE RELATED RUNS ONLY WHEN THERE ARE ANY (U183), the same reason.
+        if self.related_runs:
+            record["related_runs"] = dict(sorted(self.related_runs.items()))
         return record
 
     @classmethod
@@ -299,6 +307,11 @@ class RunState:
                 tuple(str(one) for one in data["argv"])
                 if isinstance(data.get("argv"), list)
                 else None
+            ),
+            related_runs=(
+                {str(role): str(run) for role, run in data["related_runs"].items()}
+                if isinstance(data.get("related_runs"), dict)
+                else {}
             ),
         )
 
@@ -352,6 +365,19 @@ def load(run_id: str) -> RunState:
                 detail={"run_id": run_id, "error": str(exc)},
             )
         ) from None
+    # A RECORD IS AN OBJECT (U183). JSON that parses to anything else would
+    # raise AttributeError out of ``from_json``, past every reader that
+    # catches this module's refusals, the doctor's run scan among them.
+    if not isinstance(raw, dict):
+        raise CratekitError(
+            Cause(
+                reason="internal-error",
+                message=f"the run record for {run_id!r} is not a JSON object",
+                remediation=Remediation(remedy=Remedy.REPORT_DEFECT),
+                origin=("gates",),
+                detail={"run_id": run_id, "found": type(raw).__name__},
+            )
+        )
     return RunState.from_json(raw)
 
 

@@ -109,6 +109,9 @@ before pressing OK:
 | Vocal | off |
 | CUE | off |
 
+These are Phillip's standard, Vocal off included, confirmed by him on
+2026-11-01. Sitting 52 ran with Vocal on as a one off; follow the table.
+
 **The Analysis Mode list opens only while the mouse is held down on it.** A
 click does nothing. Press and hold on the control, move to the item while
 still holding, and release on it. Read the control back afterwards, since a

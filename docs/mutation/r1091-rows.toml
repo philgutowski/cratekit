@@ -1,0 +1,246 @@
+name = "r1091"
+pass_kind = "light"
+
+[[rows]]
+id = "K1_age_never_expires"
+description = "_is_fresh: drop the upper bound, so a read is kept for ever and a changed release is planned from old tracks"
+file = "src/cratekit/label/kept_reads.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
+old = '''        return timedelta(0) <= age < KEPT_FOR'''
+new = '''        return timedelta(0) <= age'''
+
+[[rows]]
+id = "K2_future_is_fresh"
+description = "_is_fresh: drop the lower bound, so a read dated in the future is kept for as long as the clock is wrong"
+file = "src/cratekit/label/kept_reads.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
+old = '''        return timedelta(0) <= age < KEPT_FOR'''
+new = '''        return age < KEPT_FOR'''
+
+[[rows]]
+id = "K3_age_boundary"
+description = "_is_fresh: a read exactly the age old is still fresh"
+file = "src/cratekit/label/kept_reads.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
+old = '''        return timedelta(0) <= age < KEPT_FOR'''
+new = '''        return timedelta(0) <= age <= KEPT_FOR'''
+
+[[rows]]
+id = "K4_age_coefficient"
+description = "KEPT_FOR: eight days instead of seven, a realistic nearby value"
+file = "src/cratekit/label/kept_reads.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
+old = '''KEPT_FOR = timedelta(days=7)'''
+new = '''KEPT_FOR = timedelta(days=8)'''
+
+[[rows]]
+id = "K5_version_unchecked"
+description = "load: read a document of another version as if it were this one"
+file = "src/cratekit/label/kept_reads.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
+old = '''        if version != VERSION:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "K6_label_unchecked"
+description = "load: read another label's document as this label's reads"
+file = "src/cratekit/label/kept_reads.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
+old = '''        if raw.get("label_id") != label_id:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "K7_gone_shape_unchecked"
+description = "_entry: accept a gone flag that is not a bool, so a string reads as gone"
+file = "src/cratekit/label/kept_reads.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
+old = '''    if not isinstance(gone, bool):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "K8_year_shape_unchecked"
+description = "_entry: accept a year of any type, so a string or bool year reaches the plan"
+file = "src/cratekit/label/kept_reads.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
+old = '''    if year is not None and (isinstance(year, bool) or not isinstance(year, int)):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "K9_track_shape_unchecked"
+description = "_entry: accept a malformed track entry"
+file = "src/cratekit/label/kept_reads.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
+old = '''            not isinstance(track, Mapping)
+            or not isinstance(track.get("id"), str)
+            or not isinstance(track.get("available"), bool)'''
+new = '''            not isinstance(track, Mapping)'''
+
+[[rows]]
+id = "K10_available_dropped"
+description = "_row: keep every track as playable, so a track the provider will not play is asked for from a kept read"
+file = "src/cratekit/label/kept_reads.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
+old = '''        "available": getattr(track, "available", True) is not False,'''
+new = '''        "available": True,'''
+
+[[rows]]
+id = "K11_year_dropped"
+description = "keep: store no year, so a release the provider dates is planned under its listed year from a kept read"
+file = "src/cratekit/label/kept_reads.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
+old = '''                year=stated,'''
+new = '''                year=None,'''
+
+[[rows]]
+id = "K12_periodic_write_off"
+description = "_hold: never write mid run, so a killed build keeps nothing it read"
+file = "src/cratekit/label/kept_reads.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
+old = '''        if self._since >= FLUSH_EVERY:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "K13_write_error_raised"
+description = "flush: let a write the filesystem refuses raise, the round 1 blocking finding"
+file = "src/cratekit/label/kept_reads.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
+old = '''        except OSError as exc:
+            self.unkept = f"{type(exc).__name__}: {exc}"
+            return'''
+new = '''        except OSError as exc:
+            raise'''
+
+[[rows]]
+id = "K14_unkept_never_cleared"
+description = "flush: leave the failure said after a later write succeeds"
+file = "src/cratekit/label/kept_reads.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
+old = '''        self._unwritten = 0
+        self.unkept = ""'''
+new = '''        self._unwritten = 0'''
+
+[[rows]]
+id = "K15_reuse_uncounted"
+description = "fresh: count no reuse, so the screen says every read was made by this run"
+file = "src/cratekit/label/kept_reads.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
+old = '''        self.reused += 1'''
+new = '''        self.reused += 0'''
+
+[[rows]]
+id = "P1_store_not_loaded"
+description = "label_playlists: hand the full build no store, so every run reads the whole catalogue again"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
+old = '''            read = read_catalogue(cfg, entry, found, listed=listed, reads=reads)'''
+new = '''            read = read_catalogue(cfg, entry, found, listed=listed, reads=None)'''
+
+[[rows]]
+id = "P2_store_after_listing"
+description = "label_playlists: load the store after the listing, so an unusable store refuses after the listing's calls"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
+old = '''            reads = kept_reads.KeptReads.load(entry.label_id)
+            listed = list_catalogue(cfg, entry, found)'''
+new = '''            listed = list_catalogue(cfg, entry, found)
+            reads = kept_reads.KeptReads.load(entry.label_id)'''
+
+[[rows]]
+id = "P3_no_write_on_a_stop"
+description = "_grouped: write nothing when the read stops, so a parked build keeps nothing"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
+old = '''        try:
+            reads.flush()
+        except Exception as lost:'''
+new = '''        try:
+            pass
+        except Exception as lost:'''
+
+[[rows]]
+id = "P4_no_write_at_the_end"
+description = "_grouped: write nothing after a clean read, so the apply run reads the catalogue again"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
+old = '''        raise
+    reads.flush()
+    return grouped'''
+new = '''        raise
+    return grouped'''
+
+[[rows]]
+id = "P5_gone_not_kept"
+description = "_read_one: keep no answer that a release is gone, so it is asked again every run"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
+old = '''            reads.keep_gone(release_id)'''
+new = '''            pass'''
+
+[[rows]]
+id = "P6_kept_gone_read_as_release"
+description = "_read_one: answer a kept gone release as a release with no tracks, so it is counted undated rather than gone"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
+old = '''        return None if held.gone else (held.tracks, held.year)'''
+new = '''        return (held.tracks, held.year)'''
+
+[[rows]]
+id = "P7_crawl_digest_over_what_is_left"
+description = "Estimate.plan: digest the releases left to read, so a resume under the same crawl answer is stale"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
+old = '''                {"kind": CRAWL_GATE, "label": self.label_id, "releases": self.releases}'''
+new = '''                {"kind": CRAWL_GATE, "label": self.label_id, "releases": self.releases - self.kept}'''
+
+[[rows]]
+id = "P8_calls_ignore_kept"
+description = "Estimate.calls: count every listed release, so a resumed build asks the crawl gate over reads it will not make"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
+old = '''        return (self.releases - self.kept) * CALLS_PER_RELEASE'''
+new = '''        return self.releases * CALLS_PER_RELEASE'''
+
+[[rows]]
+id = "P9_unkept_warning_dropped"
+description = "_unkept_warnings: say nothing on the run's warnings when the reads could not be written"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
+old = '''    if reads is None or not reads.unkept:
+        return []'''
+new = '''    if True:
+        return []'''
+
+[[rows]]
+id = "P10_unkept_screen_dropped"
+description = "_reads_said: say the reads are kept on the build gate's screen when they could not be written"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_playlists.py", "tests/test_label_playlists_releases.py"]
+old = '''        if reads.unkept:
+            return f"all {reads.read_now} release read(s) made by this run; {_unkept_said(reads)}"'''
+new = '''        if False:
+            return f"all {reads.read_now} release read(s) made by this run; {_unkept_said(reads)}"'''

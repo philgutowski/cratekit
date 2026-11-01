@@ -868,7 +868,10 @@ STATE_FILES: tuple[StateFile, ...] = (
             "Half of a source directory that straddled both roots (D4). The crawl "
             "half is what a catalog lookup returned: replayable, library-agnostic, "
             "and 53 directories of it live in the source install. What actually "
-            "LANDED in a library is the other half, and it is library-scoped."
+            "LANDED in a library is the other half, and it is library-scoped. "
+            "Since R-1091 each label's directory also holds the release reads a "
+            "full label playlists build keeps, so a build stopped part way "
+            "resumes; losing them costs provider calls and no data."
         ),
     ),
     StateFile(
