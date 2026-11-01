@@ -120,6 +120,10 @@ def green(**overrides) -> _Probes:
         # U185. No DEADCA7 on the green machine, so no run reads this account's
         # own support folder.
         deadca7_home=lambda: None,
+        # U181. A copy whose vocal model can score, so no green run imports
+        # torch, and a library never scored, so no upgrade adds an extra.
+        vocal_requirement=lambda: None,
+        vocals_scored=lambda _cfg: False,
     )
     defaults.update(overrides)
     return _Probes(**defaults)
@@ -158,6 +162,8 @@ def hostile(**overrides) -> _Probes:
         path_survey=lambda _cfg: ResolutionTotals(
             active=10, unresolved=10, unmapped=10, prefixes={"/renamed/DRIVE": 10}
         ),
+        # U181. The copy sitting 51 landed from: no vocals extra.
+        vocal_requirement=lambda: ("extra", "the 'vocals' extra is not installed here"),
     )
     defaults.update(overrides)
     return green(**defaults)

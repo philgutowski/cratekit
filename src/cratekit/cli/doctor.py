@@ -98,6 +98,7 @@ from typing import TYPE_CHECKING, Any
 import cratekit
 from cratekit import acquire
 from cratekit.acquire import adapter as adapter_contract
+from cratekit.analysis import vocals as vocal_scoring
 from cratekit.cli import gates, output, registry, render
 from cratekit.cli.output import Envelope
 from cratekit.core import (
@@ -603,6 +604,28 @@ def _release_tags(url: str) -> tuple[str, ...] | None:
 
 
 
+def _vocal_requirement() -> tuple[str, str] | None:
+    """Why the vocal model cannot score here, as a kind and a sentence, or None (U181).
+
+    The vocals module's own probe. A bound loader is taken as able, the rule
+    the vocals verb queues by.
+    """
+    return None if vocal_scoring.loader_bound() else vocal_scoring.requirement()
+
+
+def _vocals_scored(cfg: config.Config | None) -> bool:
+    """Whether this library has ever scored a track for vocals (U181).
+
+    Read as a vocal calibration recorded for it, which is fitted only from
+    files carrying a voxlevel, or set by hand to tag them. Reading every file
+    or every row for a voxlevel is not a cost doctor may spend, so a library
+    scored and never calibrated reads as never scored here.
+    """
+    if cfg is None:
+        return False
+    return config.state_path(metadata_cli.STATE_KEY_VOCAL_CALIBRATION, cfg).is_file()
+
+
 def _deadca7_home() -> Path | None:
     """DEADCA7's support folder under this account, where its app keeps state."""
     try:
@@ -667,6 +690,12 @@ class Probes:
     #: The tags a repository publishes, or None when they could not be read.
     #: The one network read doctor makes, so every test replaces it.
     release_tags: Callable[[str], tuple[str, ...] | None] = _release_tags
+    #: Why the vocal model cannot score here, a kind and a sentence, or None
+    #: (U181). A seam so a test describes a copy with and without the extra.
+    vocal_requirement: Callable[[], tuple[str, str] | None] = _vocal_requirement
+    #: Whether this library has ever scored a track for vocals (U181), which
+    #: decides whether an upgrade command keeps the vocals extra.
+    vocals_scored: Callable[[config.Config | None], bool] = _vocals_scored
     #: Where DEADCA7 keeps its own state on this machine, or None for a machine
     #: with no such place (U185). A seam so a test describes an install, a push
     #: and its age without the app.
@@ -3231,10 +3260,98 @@ def _release_version(tag: str) -> tuple[int, ...] | None:
     return release if release is not None and len(release) == 3 else None
 
 
+def _kept(inputs: _Inputs, origin: InstallOrigin) -> tuple[str, ...]:
+    """The extras an upgrade keeps: this copy's, plus ``vocals`` once the library scored (U181).
+
+    An upgrade from a copy that lost the vocals extra would otherwise install
+    without it again, and the next pass would land rows with no score.
+    """
+    if VOCALS_EXTRA in origin.extras or not inputs.probes.vocals_scored(inputs.cfg):
+        return origin.extras
+    return tuple(sorted({*origin.extras, VOCALS_EXTRA}))
+
+
 def release_upgrade_command(url: str, tag: str, extras: Sequence[str]) -> str:
     """The one pipx command that moves this install to ``tag``, keeping its extras."""
     named = f"cratekit[{','.join(extras)}]" if extras else "cratekit"
     return f'pipx install --force "{named} @ git+{url}@{tag}"'
+
+
+def _check_install_extras(inputs: _Inputs) -> Finding:
+    """Whether the vocal model can score in this copy, and the command if not (U181).
+
+    Sitting 51 landed a pass from a pipx copy installed with the analysis
+    extra and not the vocals one: ``analyze run`` finished every file with a
+    key and an energy and no voxlevel, the files took the Camelot head that
+    is its resume marker, and the landing plan said so in one line. This row
+    says it before the pass does.
+
+    THE ONE TEST IS THE VOCALS MODULE'S OWN, through its probe, so this row
+    and the refusal ``crate sync land`` gives agree by construction. A missing
+    extra prints the reinstall command with the extras this copy carries plus
+    ``vocals``; missing model files print the sentence that names them, since
+    a reinstall does not place them.
+
+    NEVER A FAIL, for the reason ``install.release`` gives: this runs inside
+    ``crate setup``, and a copy without the vocals extra still runs every verb
+    but the score. The pass that would land rows with no score refuses on its
+    own, in its preflight.
+    """
+    key, title = "install.extras", "installed extras"
+    missing = inputs.probes.vocal_requirement()
+    if missing is None:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.OK,
+            detail="the vocal model can score here, so analysed tracks carry a voxlevel",
+        )
+    kind, said = missing
+    if kind != vocal_scoring.MISSING_EXTRA:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"the vocals extra is installed and its model cannot load: {said}. "
+                f"Until it can, analysed tracks carry no voxlevel and landed rows "
+                f"get no vox My Tag"
+            ),
+        )
+    return Finding(
+        key=key,
+        title=title,
+        status=Status.INFO,
+        detail=(
+            f"the vocals extra is absent from this copy ({said}), so analysed "
+            f"tracks carry no voxlevel and landed rows get no vox My Tag. "
+            f"Reinstall with: {vocals_install_command(inputs.probes.install_origin())}"
+        ),
+    )
+
+
+def vocals_install_command(origin: InstallOrigin) -> str:
+    """The command that adds the vocals extra to this copy, keeping the rest (U181).
+
+    A release install is reinstalled at its own tag with the extras it carries
+    plus ``vocals``, in the form ``install.release`` prints. Any other install
+    is the vocals module's own command, which reads pipx's record or names this
+    interpreter's pip. A git install whose version is not ``X.Y.Z``, a branch
+    head, has no tag of its own to name, so it takes that command too.
+    """
+    if origin.kind == "vcs" and origin.url and origin.version and _is_release(origin.version):
+        extras = sorted({*origin.extras, VOCALS_EXTRA})
+        return release_upgrade_command(origin.url, f"v{origin.version}", extras)
+    return vocal_scoring.install()
+
+
+def _is_release(version: str) -> bool:
+    """Whether ``version`` is a plain ``X.Y.Z``, the one shape a release tag names."""
+    return _release_version(f"v{version}") is not None
+
+
+#: The extra that carries the vocal model, as ``pyproject.toml`` names it.
+VOCALS_EXTRA = "vocals"
 
 
 def _check_release(inputs: _Inputs) -> Finding:
@@ -3319,7 +3436,7 @@ def _check_release(inputs: _Inputs) -> Finding:
         status=Status.INFO,
         detail=(
             f"a newer release, {tag}, is published; this copy is {origin.version}. "
-            f"Upgrade with: {release_upgrade_command(origin.url, tag, origin.extras)}"
+            f"Upgrade with: {release_upgrade_command(origin.url, tag, _kept(inputs, origin))}"
         ),
     )
 
@@ -3449,6 +3566,8 @@ CHECKS: tuple[Check, ...] = (
     # library state, and after the taxonomy check, which it lists trees from.
     Check("tree.registry", _check_tree_registry),
     Check("repo.commit_hook", _check_commit_hook),
+    # U181. Beside the release check, whose upgrade command it agrees with.
+    Check("install.extras", _check_install_extras),
     # U159. Last, because it is the one check that reaches the network, and a
     # slow read should hold up nothing a person is waiting to see.
     Check("install.release", _check_release),

@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from cratekit.analysis import artifacts
+from cratekit.analysis import cli as analysis_cli
 from cratekit.analysis import vocals as scoring
 from cratekit.cli.output import Envelope
 from cratekit.core import config, discovery, jobs, tags
@@ -75,9 +76,19 @@ def _folder_of(named: str) -> Path:
     return Path(named).expanduser().absolute()
 
 
-def _nothing_to_queue(ctx, folder: Path, extra: tuple[dict[str, str], ...] = ()) -> Envelope:
+#: Every file the folder held carries a vocal score already, so ``--unscored``
+#: queued nothing (U181).
+NONE_UNSCORED = "none-unscored"
+
+#: The flag that queues only what ``analyze run`` will never score again.
+UNSCORED = "--unscored"
+
+
+def _nothing_to_queue(
+    ctx, folder: Path, extra: tuple[dict[str, str], ...] = (), *, state: str = "no-audio"
+) -> Envelope:
     if folder.is_dir():
-        return ctx.envelope(data=_no_op("no-audio"), outcome=Outcome.NO_OP, warnings=extra)
+        return ctx.envelope(data=_no_op(state), outcome=Outcome.NO_OP, warnings=extra)
     return ctx.envelope(
         data=_no_op("folder-absent"),
         outcome=Outcome.NO_OP,
@@ -209,12 +220,37 @@ def build(parser, entry) -> None:
         ),
     )
     parser.add_argument(
+        UNSCORED,
+        action="store_true",
+        help=(
+            "queue only the files whose name carries the analysis head and which "
+            "carry no voxlevel, the ones crate analyze run finalized with no vocal "
+            "score and now skips"
+        ),
+    )
+    parser.add_argument(
         "--job",
         default=None,
         metavar="JOB_ID",
         help="continue the vocals job already queued under this identifier",
     )
     parser.set_defaults(_handler=analyze_vocals)
+
+
+def _unscored(cfg: config.Config, folder: Path, items: tuple[str, ...]) -> list[str]:
+    """The items ``analyze run`` will never score again: the head, and no voxlevel (U181).
+
+    The head is the run's resume marker, so a file it finalized while the vocal
+    model could not load is skipped by every later run and keeps no score for
+    good. A file without the head is the run's to analyse, and one carrying a
+    score is left alone.
+    """
+    chosen = []
+    for item in items:
+        path = discovery.item_path(folder, item)
+        if analysis_cli.carries_head(path, cfg) and tags.read_vox_from_file(path) is None:
+            chosen.append(item)
+    return chosen
 
 
 def vocals_argv(job) -> list[str]:
@@ -283,6 +319,12 @@ def analyze_vocals(ctx) -> Envelope:
     extra = discovery.walk_warnings(scan.skipped_links, scan.unreadable)
     if not scan.items:
         return _nothing_to_queue(ctx, folder, extra)
+    items = list(scan.items)
+    unscored = bool(getattr(ctx.args, "unscored", False))
+    if unscored:
+        items = _unscored(cfg, folder, scan.items)
+        if not items:
+            return _nothing_to_queue(ctx, folder, extra, state=NONE_UNSCORED)
     _require_extra()
     with jobs.open_store() as store:
         job = jobs.enqueue(
@@ -291,9 +333,13 @@ def analyze_vocals(ctx) -> Envelope:
             # FROZEN WITH THE FOLDER. The resume replays the item list off the
             # store and never re-scans, so this records what the queue meant and
             # what it left out rather than feeding either back in.
-            payload={"folder": str(folder), **discovery.frozen_walk(scan, recursive=recursive)},
+            payload={
+                "folder": str(folder),
+                **discovery.frozen_walk(scan, recursive=recursive),
+                **({"unscored": True} if unscored else {}),
+            },
             cfg=cfg,
-            item_ids=list(scan.items),
+            item_ids=items,
         )
         return ctx.envelope(data=_reported(store, job), warnings=extra)
 

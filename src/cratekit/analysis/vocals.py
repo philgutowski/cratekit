@@ -140,8 +140,19 @@ def _installed(name: str) -> bool:
         return False
 
 
-def missing_requirement() -> str | None:
-    """The FIRST thing the vocal model cannot do without, as a sentence, or None.
+#: What :func:`requirement` says is missing (U181): the extra itself, which a
+#: reinstall mends, or the model's two files, which a reinstall does not.
+MISSING_EXTRA = "extra"
+MISSING_FILES = "files"
+
+
+def requirement() -> tuple[str, str] | None:
+    """The FIRST thing the vocal model cannot do without, as a kind and a sentence.
+
+    The kind is :data:`MISSING_EXTRA` or :data:`MISSING_FILES`, so a surface
+    that prints a reinstall command prints it only when a reinstall is the
+    remedy (U181, ``crate doctor``'s ``install.extras``). One probe, read
+    whole by :func:`missing_requirement`, so the two can never disagree.
 
     Asked at the queue so a job that could score nothing is refused before it
     is filed, and asked again for the summary warning so the person is pointed
@@ -154,25 +165,56 @@ def missing_requirement() -> str | None:
     try:
         import torch  # noqa: F401
     except Exception as exc:  # noqa: BLE001 - a torch that will not load is the case
-        return f"the 'vocals' extra is not usable here ({type(exc).__name__}: {exc}); {install()}"
+        return (
+            MISSING_EXTRA,
+            f"the 'vocals' extra is not usable here ({type(exc).__name__}: {exc}); {install()}",
+        )
     if not _installed("panns_inference"):
-        return f"the 'vocals' extra is not installed here; {install()}"
+        return MISSING_EXTRA, f"the 'vocals' extra is not installed here; {install()}"
     if not labels_ready():
         return (
+            MISSING_FILES,
             f"the vocal model's label table is not at {LABELS}; place "
-            f"class_labels_indices.csv there before scoring"
+            f"class_labels_indices.csv there before scoring",
         )
     if not checkpoint_ready():
         return (
+            MISSING_FILES,
             f"the vocal model checkpoint is not at {CHECKPOINT}, or is smaller than "
             f"{CHECKPOINT_MIN_BYTES} bytes; place Cnn14_DecisionLevelMax.pth there "
-            f"before scoring"
+            f"before scoring",
         )
     try:
         import panns_inference  # noqa: F401
     except Exception as exc:  # noqa: BLE001 - the import does file work
-        return f"the 'vocals' extra will not import ({type(exc).__name__}: {exc}); {install()}"
+        return (
+            MISSING_EXTRA,
+            f"the 'vocals' extra will not import ({type(exc).__name__}: {exc}); {install()}",
+        )
     return None
+
+
+def missing_requirement() -> str | None:
+    """The sentence half of :func:`requirement`, or None when nothing is missing."""
+    missing = requirement()
+    return None if missing is None else missing[1]
+
+
+def unavailable() -> str | None:
+    """Why the vocal model cannot score in this process, or None when it can (U181).
+
+    A bound loader is taken as able to run, the rule ``crate analyze vocals``
+    refuses its queue by, so a test that binds a fake drives the whole path.
+    Otherwise :func:`missing_requirement` is the one test. Asked by ``crate
+    sync land`` before its pass, by the tail before it rescores, and by
+    ``crate doctor``.
+
+    ASK IT BEFORE ANYTHING BINDS THE SHIPPED LOADER. The analysis workers bind
+    ``vocal.default_loader`` in the process that drives them, and a bound
+    loader is read as able here, so the answer is only the machine's while
+    nothing in this process has run an analysis yet.
+    """
+    return None if loader_bound() else missing_requirement()
 
 
 def unscored_warning(summary: Mapping[str, Any], *, verb: str) -> dict[str, str] | None:
