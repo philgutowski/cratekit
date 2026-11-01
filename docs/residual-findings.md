@@ -40495,3 +40495,94 @@ maintainer facing pin, after the unit's two fix rounds were spent.
 **Measured cost.** Not driven. Such a miss is named on the gate and the snapshot records it as an account track the twin lacks, so the next `sync pair` looks again with its own sources and adds it if it finds it; nothing is lost, the twin is short until then.
 
 **Closes when:** the backfill reads the sweep's intake jobs for each account playlist as a source, or the attended backfill shows no such miss. Ledger only.
+
+---
+
+## R-1134. A minute of hits at five over four with no beat under them reads as drift
+
+**Found:** at the second review of #338, U157, 2026-11-01.
+
+**The mechanism.** The drift band reaches a quarter either side of the head
+tempo, and five to four is exactly a quarter, so a window where only hits at
+five over four play, with no kick or other pulse under them, reads its peak at
+that rate and the track's spread jumps to it.
+
+**Measured cost.** Driven by the review on synthetic tracks at 100, 124 and
+128: a minute of bare five over four hits read 21.9 to 24.9 and variable, so
+the steady track would be marked `dyn` and analysed Dynamic. With the kick kept
+under the same hits every one read steady, as did sections at three to two,
+four to three, six to five and three to four. No real track with such a
+section was named.
+
+**Closes when:** the band stops short of five to four without losing the steps
+it now holds, or the attended calibration sitting finds no such track. Ledger
+only.
+
+---
+
+## R-1135. A tempo step of more than a quarter reads as the section the head named
+
+**Found:** at the review of #338, U157, 2026-11-01.
+
+**The mechanism.** Each drift window's peak is looked for within a quarter of
+the head tempo either way (`DRIFT_BAND`), so a window cannot read a related
+metrical level, four to three, three to two or two to one, as a drift. A track
+whose tempo really steps by more than that, 100 to 140 for instance, has its
+other section's windows passed over, and reads as steady.
+
+**Measured cost.** Driven by the review: a synthetic 100 to 140 step read 0.05
+and steady. How often a real track steps by more than a quarter is unmeasured;
+a step that large is also where a pulse at a related level and a new tempo
+cannot be told apart from the onsets alone.
+
+**Closes when:** a measurement that tells a real step from a level change, the
+key or the spectrum changing with it for instance, reads such a track as
+variable without reading the hats of a steady track as one; or the attended
+calibration sitting finds no such track in the library. Ledger only.
+
+---
+
+## R-1136. The drift cut ships at 1.5 without a reading of any real library
+
+**Found:** at the build of #338, U157, 2026-11-01.
+
+**The mechanism.** `analysis.drift_cut` defaults to 1.5 percent
+(`core.config.DEFAULT_DRIFT_CUT`), chosen from synthetic tracks: steady drum
+patterns read 0.0 to 0.3, a played part's timing wobble around a fixed tempo
+0.3, a wander of two beats either way 1.5, a three beat ramp over two minutes
+1.7, a step of 120 to 140 above 17. The brief asked for the cut to be
+calibrated against the 2026-10-27 batch, which holds both kinds, and the cloud
+cannot read it.
+
+**Measured cost.** Unmeasured on real audio. A cut too low sends steady tracks
+to Dynamic, which the brief's evidence shows lays a wobbling grid; a cut too
+high sends live tracks to Normal, which is what every track took before this
+unit. The default leans toward the second.
+
+**Closes when:** an attended sitting runs `crate analyze run` over copies of a
+batch holding both kinds, reads each file's `driftlevel`, and sets the default
+from where the two kinds part, recorded in `docs/cutover.md`. The attended card
+this unit files is that sitting. Ledger only.
+
+---
+
+## R-1137. Two of the drift measurement's constants kill no test
+
+**Found:** at the review of #338, U157, 2026-11-01.
+
+**The mechanism.** In `src/cratekit/analysis/detect.py` the onset gate's
+relative fraction, `DRIFT_ONSET_RELATIVE`, can be set to 0.0 or 0.25 and the
+window length, `DRIFT_WINDOW_SECONDS`, to 20, and `tests/test_analysis_drift.py`
+stays green. The band, `DRIFT_BAND`, killed nothing at 0.06 or 0.5 before the
+fix round; it is pinned on both sides since, by the stepped tracks below it and
+the section of hats at three to two above it.
+
+**Measured cost.** None of its own, driven by the review: the other gates
+(the pulse contrast and the absolute onset floor) pass over the same synthetic
+breakdowns. Whether a real breakdown passes the contrast gate and is held back
+only by the relative one is unmeasured, since the container has no real audio.
+
+**Closes when:** a fixture shows a window the relative gate alone holds back,
+a loud riser over a breakdown for instance, and one shows a drift the window
+length changes; or the attended calibration sitting finds the two do nothing
+on real tracks and they are removed. Ledger only.

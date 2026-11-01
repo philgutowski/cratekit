@@ -377,7 +377,15 @@ with no artist, as rekordbox would show it. **Nothing about the audio is
 written**: no tempo, no grid, no key, no waveform, and the run says so.
 rekordbox does not analyse a row it did not make until you ask, so open it,
 select INBOX / Analyze and run Analyze Tracks; Reload Tags is not needed, and
-adoption reads each row's genre from the moment it lands. Once rekordbox and its
+adoption reads each row's genre from the moment it lands. A row whose tempo
+moves, a live drummed track or an edit of two takes, joins carrying the `dyn`
+My Tag, written from the drift `analyze run` measured (below), so the visit is
+two selections and the run's warning counts each: the rows without `dyn` with
+Analysis Mode Normal, high precision off, BPM/Grid, Phrase and KEY on, and the
+rows with `dyn` with Analysis Mode Dynamic and the rest the same. A file with
+too little pulse to judge lands as steady, and a file analysed before the drift
+existed is counted as unscored on the screen and takes Normal, as every row did
+before. Once rekordbox and its
 agent have quit, `crate analyze check` says whether the visit is done and done
 right: every row analysed, every grid one tempo (or moving on a row marked
 `dyn`), the Key column filled, and how often the title's key agrees with
@@ -893,6 +901,17 @@ Analysis needs the `analysis` extra and vocals needs the `vocals` extra, both in
 the README. Cratekit never writes a beat grid, a tempo element or an average BPM
 field, in any container, and no flag turns that on. `analyze calibrate` and
 `analyze restamp` fit a threshold and carry it across the back catalogue.
+
+`analyze run` also writes how far each track's tempo moves over its length, a
+drift, as two file tags beside the vocal ones: `driftlevel`, the spread of the
+tempo between its steady sections as a percent of its middle, and `drift`,
+which reads `steady`, `variable` or `unknown` (too little pulse to judge, a
+beatless or very short file). Neither is a tempo. A drift at or above
+`analysis.drift_cut` in the config file, 1.5 by default, is variable, and a
+native landing reads the level against the cut as it is when it lands, so
+changing the cut changes which rows the next landing marks `dyn`. The default
+leans toward Normal, since a steady track analysed Dynamic comes back with a
+wobbling grid, and it has not yet been calibrated against a real library.
 
 `analyze vocals` and `analyze restamp` take `--recursive`, which queues every
 folder under the one you name as a single resumable job, so a back catalogue
