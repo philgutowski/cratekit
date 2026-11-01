@@ -908,6 +908,8 @@ def test_a_saved_question_is_printed_again_with_no_provider_call(installed, monk
         (["--release", "r1"], "go with --answer"),
         (["--next", "--answer", "all", "--label", SLUG], "one invocation does one"),
         (["--answer", "all", "--label", SLUG, "--release", "r1"], "goes with --answer pick"),
+        (["--next", "--release", "r1"], "--next would ignore the releases"),
+        (["--next", "--label", SLUG, "--release", "r1"], "--next would ignore the releases"),
     ],
 )
 def test_a_half_shaped_invocation_is_refused_and_records_nothing(installed, monkeypatch, argv, said):
@@ -1142,6 +1144,198 @@ def test_the_default_human_output_names_the_question_and_each_release(installed,
     assert "Tide Works: 3 new release(s), 7 track(s), about 277 MB" in text
     assert "Release r3 (2026), 4 track(s)" in text
     assert "crate label sync --answer all --label tide-works" in text
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U189: --next --label asks about one followed label alone
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def two_labels(monkeypatch, *, second: list[tuple[str, str, int]] | None = None) -> Provider:
+    """Two followed labels, the first with something new, in registry order."""
+    register("Alpha Works")
+    register("Beta Works")
+    return bind(
+        monkeypatch,
+        {
+            "alpha-works": [("a-r1", "2026", 2)],
+            "beta-works": [("b-r2", "2026", 3), ("b-r1", "2025", 1)] if second is None else second,
+        },
+    )
+
+
+def next_for(label: str) -> tuple[int, dict]:
+    return sync("--next", "--label", label)
+
+
+def test_next_label_asks_the_named_label_and_leaves_the_one_above_it_unlisted(
+    installed, monkeypatch
+):
+    fake = two_labels(monkeypatch)
+
+    code, envelope = next_for("Beta Works")
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "ok"
+    question = envelope["data"]["summary"]["question"]
+    assert question["label_id"] == "beta-works"
+    assert sorted(one["identity"] for one in question["releases"]) == ["b-r1", "b-r2"]
+    assert fake.asked_for == ["beta-works"]
+    assert envelope["data"]["summary"]["labels"] == [{"label_id": "beta-works", "state": "asked"}]
+    assert checks(envelope, "label.alpha-works") == []
+    assert not [one for one in envelope["data"]["checks"] if "alpha" in one["key"]]
+    (asked,) = checks(envelope, "question")
+    assert asked["key"] == "label.sync.question.beta-works"
+    assert "--label beta-works" in asked["detail"]
+    held = record(installed)["labels"]
+    assert set(held) == {"beta-works"}
+    assert held["beta-works"]["pending"]["releases"]
+
+
+def test_next_label_leaves_another_labels_saved_question_exactly_as_it_was(
+    installed, monkeypatch
+):
+    fake = two_labels(monkeypatch)
+    first = next_question()
+    assert first["label_id"] == "alpha-works"
+    path = config.state_path("label_sync", installed)
+    before = json.loads(path.read_text(encoding="utf-8"))["labels"]["alpha-works"]
+
+    code, envelope = next_for("beta-works")
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["summary"]["question"]["label_id"] == "beta-works"
+    after = json.loads(path.read_text(encoding="utf-8"))["labels"]
+    assert after["alpha-works"] == before
+    assert fake.asked_for == ["alpha-works", "beta-works"]
+    # The plain --next still prints the first label's saved question, unlisted.
+    assert next_question() == first
+    assert fake.asked_for == ["alpha-works", "beta-works"]
+
+
+def test_next_label_prints_a_saved_question_again_with_no_catalogue_call(
+    installed, monkeypatch
+):
+    fake = two_labels(monkeypatch)
+    code, shown = next_for("Beta Works")
+    assert code == int(ExitCode.OK), shown
+    listed = (list(fake.asked_for), list(fake.releases_asked_for))
+
+    code, again = next_for("Beta Works")
+
+    assert code == int(ExitCode.OK), again
+    assert again["data"]["summary"]["question"] == shown["data"]["summary"]["question"]
+    assert (fake.asked_for, fake.releases_asked_for) == listed
+    assert fake.asked_for == ["beta-works"]
+
+
+def test_next_label_prints_a_question_the_plain_next_saved_with_no_catalogue_call(
+    installed, monkeypatch
+):
+    fake = two_labels(monkeypatch)
+    first = next_question()
+    listed = (list(fake.asked_for), list(fake.releases_asked_for))
+
+    code, envelope = next_for("Alpha Works")
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["summary"]["question"] == first
+    assert (fake.asked_for, fake.releases_asked_for) == listed
+
+
+def test_next_label_with_nothing_new_says_so_in_one_check(installed, monkeypatch):
+    fake = two_labels(monkeypatch, second=[])
+
+    code, envelope = next_for("Beta Works")
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert envelope["data"]["summary"]["question"] is None
+    (line,) = envelope["data"]["checks"]
+    assert line["key"] == "label.sync.label.beta-works"
+    assert line["status"] == "ok"
+    assert "Beta Works: nothing new since it was last asked" in line["detail"]
+    assert fake.asked_for == ["beta-works"]
+    assert record(installed)["labels"] == {}
+
+
+def test_next_label_whose_listing_fails_reports_the_failure_in_one_check(
+    installed, monkeypatch
+):
+    register("Alpha Works")
+    register("Beta Works")
+    fake = bind(monkeypatch, {"alpha-works": [("a-r1", "2026", 2)]})
+
+    code, envelope = next_for("Beta Works")
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["summary"]["question"] is None
+    (line,) = envelope["data"]["checks"]
+    assert line["key"] == "label.sync.label.beta-works"
+    assert line["status"] == "fail"
+    assert "Beta Works: not asked; its catalogue could not be listed" in line["detail"]
+    assert envelope["data"]["summary"]["labels"] == [{"label_id": "beta-works", "state": "skipped"}]
+    assert fake.asked_for == ["beta-works"]
+    assert record(installed)["labels"] == {}
+
+
+@pytest.mark.parametrize("name", ["Nobody Works", ""])
+def test_next_label_for_a_label_nobody_follows_is_refused_before_any_listing(
+    installed, monkeypatch, name
+):
+    fake = two_labels(monkeypatch)
+
+    code, envelope = next_for(name)
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "label-unknown"
+    assert f"no favourite label is named {name!r}" in envelope["cause"]["message"]
+    assert fake.asked_for == []
+    assert record(installed)["labels"] == {}
+
+
+@pytest.mark.parametrize("argv", [["--label", SLUG], ["--release", "r1"]])
+def test_label_or_release_alone_refuses_and_names_next_label(installed, monkeypatch, argv):
+    register()
+    fake = three_new(monkeypatch)
+
+    code, envelope = sync(*argv)
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "review-selection-invalid"
+    assert "--label with --next" in envelope["cause"]["message"]
+    steps = envelope["cause"]["remediation"]["steps"]
+    assert "to ask about one label: crate label sync --next --label NAME" in steps
+    assert fake.asked_for == []
+    assert record(installed)["labels"] == {}
+
+
+def test_next_label_then_answer_then_next_label_says_nothing_new(installed, monkeypatch):
+    fake = two_labels(monkeypatch)
+    code, envelope = next_for("Beta Works")
+    assert code == int(ExitCode.OK), envelope
+
+    answered = answer("beta-works", "all")
+
+    assert sorted(answered["taken"]) == ["b-r1", "b-r2"]
+    code, envelope = next_for("Beta Works")
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    (line,) = envelope["data"]["checks"]
+    assert "nothing new since it was last asked" in line["detail"]
+    assert "alpha-works" not in fake.asked_for
+    assert sorted(items(installed)) == ["b-r1", "b-r2"]
+
+
+def test_next_label_human_output_names_the_one_label(installed, monkeypatch):
+    two_labels(monkeypatch)
+
+    code, text = drive_human(["label", "sync", "--next", "--label", "Beta Works"])
+
+    assert code == int(ExitCode.OK)
+    assert "Beta Works: 2 new release(s), 4 track(s)" in text
+    assert "crate label sync --answer all --label beta-works" in text
+    assert "Alpha Works" not in text
 
 
 # ═══════════════════════════════════════════════════════════════════════════

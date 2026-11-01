@@ -524,6 +524,7 @@ crate label registry adopt
 crate label import "Some Label"
 crate label sync
 crate label sync --next
+crate label sync --next --label "Some Label"
 crate label sync --answer pick --label "Some Label" --release RELEASE_ID
 crate label sync --go
 crate review list --queue label-release
@@ -546,7 +547,10 @@ it would hold never reaches a question, and the first run also offers, once per
 label, the releases already waiting in review from earlier sweeps. A taken
 release is an accepted review item; nothing is downloaded by the answer itself.
 Without a terminal, `--next` prints the next question and `--answer` records one
-answer for one label, and both write the same record. A newly followed label is
+answer for one label, and both write the same record. To ask about one label
+without reaching it through the labels above it, name it: `--next --label "Some
+Label"` lists only that label and prints its question, or says it has nothing
+new, and leaves every other label as it was. A newly followed label is
 asked about its newest few releases, the `labels.offer_per_sweep` count, not its
 whole catalogue.
 
