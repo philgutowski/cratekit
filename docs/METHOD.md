@@ -441,7 +441,8 @@ labelled `attended` is never offered at all.
 label and no status. Its hold is its own comment headed `Started`, and its
 plan, progress notes, brainstorm, set-aside and landing are comments headed
 `Plan`, `Progress`, `Brainstorm`, `Needs the machine` and `Landed`; Phillip's
-answer is any comment without the session footer after the question. **The
+answer is any comment without the session footer after the question, or
+any comment headed `Answer from Phillip` whoever posts it. **The
 cloud builds five cards at once**, three decided 2026-10-28 for the backlog
 and raised to five by Phillip on 2026-10-31 (`CLOUD_LANES` in
 `scripts/board.py`): each worker merges the latest `main`
@@ -456,11 +457,17 @@ resumes it from its pushed branch.
 decided 2026-10-28. A worker that reaches one, a brainstorm's questions or a
 question a brief leaves open, writes each question there as a multiple choice
 with its recommendation first, says so on the card, and moves to the next
-card. Phillip answers on the page whenever he likes; the coordinator posts
-each answer on its card under `Answer from Phillip`
-(which `board.py cloud` reads as his reply and offers the card as
-`answered`) or sends it to the session that asked, and marks it relayed.
-Any session, attended or not, asks him this way rather than stopping.
+card. Phillip answers on the page whenever he likes. The page cannot reach
+a project session by itself, so the relay thread, the project thread "Wire
+decisions page answers to cards" that the scheduled task "Cratekit decisions
+relay" wakes every hour at 34 minutes past, posts each answer on its card
+under `Answer from Phillip` (which `board.py cloud` reads as his reply and
+offers the card as `answered`) or sends it to the session that asked, sets
+the document `relayed`, and tells the coordinator, whose own hourly wake
+fills free lanes only. The page's "Pass on your answers" box lets Phillip
+paste his answers into the project chat, and the coordinator has the relay
+thread pass them on at once rather than on the hour. Any session, attended
+or not, asks him this way rather than stopping.
 
 **Opus 5.5 at high effort brainstorms, plans and builds; Fable at high
 effort reviews.** The coordinator starts each build thread on Opus 5.5 at
