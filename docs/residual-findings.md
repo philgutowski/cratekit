@@ -39664,3 +39664,132 @@ unaffected, so the fix is cheap.
 
 **Closes when:** `rehearsal.lines` dumps with `ensure_ascii=False`, with a test
 that a refusal names an accented path as written. Ledger only.
+
+---
+
+## R-1091. A full label playlists build stopped by the provider's breaker keeps nothing it read, so the next run starts the crawl over
+
+**Found:** at the build of #402, U191, 2026-10-31.
+
+**The mechanism.** `crate label playlists LABEL` without `--releases` reads the
+listing, then every listed release's tracks through
+`catalogue.ReleaseTracks`, two provider calls a release, all in memory. A
+breaker trip part way raises out of `_grouped` in
+`src/cratekit/label/playlists_cli.py` and everything read is dropped, so the
+next run lists and reads from the first release again. The same is true after
+a clean read: the explicit gate exits, and the run that carries out the answer
+reads the whole catalogue a second time. The brief's fourth requirement asked
+for a resume or for the reason there is none.
+
+**Why it is not built in U191.** A resumable read needs a store of release
+reads that outlives the run, and a store like that has to decide how long a
+read stays true: a release whose tracks the provider changed after it was
+cached would be planned from the old rows, and the gate's digest would bind an
+answer to a catalogue nobody read that day. That is a choice about what a
+person approves, not about code, and it was not this unit's to make without
+asking. U191 made the cost visible instead: over 500 estimated calls a full
+build stops at `label.playlists.crawl` before any release is read, and a label
+sync's releases reach the year playlists through `--releases` without the
+crawl.
+
+**Measured cost.** On 2026-10-31 a full build of Defected (12,368 releases
+listed) spent 3,026 provider calls, met 43 rate limited answers and was parked
+for 15 minutes before any plan was shown; the estimate now in front of that
+gate is about 24,700 calls and nearly seven hours at the default pace, so a
+full build of a label that size cannot finish inside one breaker window and
+starts over each time. Not driven live in the cloud.
+
+**Closes when:** a full build keeps its release reads per label in library
+state, with a stated age past which a read is taken again, resumes from them
+after a breaker trip or a gate, and shows on its screen how many reads were
+reused and how old the oldest is. Earns an issue: a workflow a DJ needs, the
+first full build of a large label, cannot finish (board bar c).
+
+---
+
+## R-1092. A label playlists build from a sync's releases does not ask the tombstone a full build asks, so a release deleted on purpose can reach its year playlist
+
+**Found:** at the review of #402, U191, 2026-10-31.
+
+**The mechanism.** A full `crate label playlists LABEL` confirms the listing
+through `sweep.confirm_listed`, which asks the version tombstone first and
+counts a suppressed release as "deleted on purpose". `--releases` reads the
+releases a go took straight from the label sync record in
+`src/cratekit/label/playlists_cli.py` (`read_taken`) and never asks the
+tombstone, and its screen counts no suppressed release.
+
+**Measured cost.** Driven at the review with a tombstone written to the store
+for a taken release's artist and title: the full build left that release out
+and said so, and `--releases` added its tracks to the year playlist with a
+screen saying nothing was left out. Reach is narrow and was not driven
+through `crate deletion`: the tombstone is keyed by a deleted track version's
+artist and title, so it matches a release only when the two coincide, as on a
+single, and the go itself would already have downloaded the release.
+
+**Closes when:** `read_taken` asks the same suppression reader over each taken
+release's recorded artist and title before reading it, and the screen counts
+what it suppressed. Ledger only: the reach is a single deleted on purpose and
+then taken again by a sync.
+
+---
+
+## R-1093. A taken release whose every track the provider will not play still makes its year playlist, empty, on a label playlists build
+
+**Found:** at the review of #402, U191, 2026-10-31.
+
+**The mechanism.** `_grouped` in `src/cratekit/label/playlists_cli.py` opens a
+year before it filters out the tracks the provider will not play, so a release
+whose every track is unavailable yields a year with no track. `folders.plan`
+then plans that year as a create with nothing to add, and the folder with it.
+The full build has had the same shape since R-835; `--releases` makes it the
+whole plan when the one taken release is that release.
+
+**Measured cost.** Driven at the review on the fake catalogue: the plan showed
+"Kompakt 2025: create it private, put it in the folder, add 0 of 0 track(s)",
+and the apply made the folder and an empty playlist. It is shown before the
+gate, so nothing is written unseen. Not driven against the provider: how often
+every track of a release a go just took stops playing is unmeasured.
+
+**Closes when:** a year opens only once a playable track is found, and a
+release with none is counted on the screen with the undated. Ledger only.
+
+---
+
+## R-1094. The full label playlists build's estimate leaves out the listing's own pages, read again on each of its runs
+
+**Found:** at the review of #402, U191, 2026-10-31.
+
+**The mechanism.** `Estimate.calls` in `src/cratekit/label/playlists_cli.py`
+counts two calls per listed release, the track reads. The listing itself, a
+page of 100 releases a call, is read before the crawl gate and again by the run
+that answers it and by the run that applies the plan, and none of those pages
+is in the figure.
+
+**Measured cost.** On Defected's 12,368 releases that is about 124 calls a run,
+about 370 across the three runs, beside an estimate of 24,736. The screen calls
+its figure a floor and says the apply reads again, so nothing false is said.
+Computed from the page size, not driven against the provider.
+
+**Closes when:** the estimate adds the listing's pages for each run it will
+spend them on, or the resume of the full build (the U191 residual on the
+breaker) keeps the listing too. Ledger only.
+
+---
+
+## R-1095. label playlists --releases asks for the provider credential before it reads the local sync record, so a run with nothing taken refuses instead of planning nothing
+
+**Found:** at the review of #402, U191, 2026-10-31.
+
+**The mechanism.** `label_playlists` in `src/cratekit/label/playlists_cli.py`
+resolves the catalogue, which needs the provider session, before it reads the
+label sync record. A label nobody follows is decided before any credential, by
+the module's own rule; a followed label whose record holds nothing a go took
+is not.
+
+**Measured cost.** Driven at the review with the catalogue refusing
+`credential-missing` and an empty record: the run exits on the credential
+rather than ending with `label-playlists-nothing-taken`. Nothing false is
+said, and the person who fixes the credential then gets the right answer.
+
+**Closes when:** the releases build reads the record first and resolves the
+catalogue only when there is a release to read. Ledger only.
