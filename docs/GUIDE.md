@@ -50,7 +50,8 @@ Four words carry most of the rest.
 
 - **Job.** Long work, such as a playlist intake, a tagging pass or a label
   sweep, is queued and handed back to you as a job identifier. Most verbs
-  return quickly. `crate job list` shows the queue, `crate job show ID` shows
+  return quickly. `crate job list` shows the queue, one line per job with its
+  verb, its state and how many of its items are settled, `crate job show ID` shows
   one job and why it is in its state, and `crate job resume ID` picks it up
   without repeating finished work. Three verbs of the acquisition tail, `tag
   folder`, `analyze run` and `analyze restamp`, queue their job and then work
@@ -302,14 +303,21 @@ the run, and the batch itself is named for the date and the playlists.
 Downloading is its own step. `crate acquire download LIST` fetches tracks into
 the download staging folder through the configured adapter, paced so the account
 is not blocked, and `crate acquire audit` reports files that break the lossless
-policy. What arrived then needs tagging, naming, landing and filing, in this
-order. `tag folder` writes genre and album art to the files only. `name apply`
+policy. A track the policy refuses for good, such as one offered lossy only, or
+one the provider no longer has, is skipped and named in an `acquire-refused`
+warning, and a download whose only misses are those ends ok; any other failure
+still fails it. What arrived then needs tagging, naming, landing and filing, in
+this order. `tag folder` writes genre and album art to the files only. `name apply`
 rebuilds filenames from your template. `intake land` moves the staged files into
 your library and writes one importable file naming every one of them, which you
 import into rekordbox. `intake imported` reads a collection export taken after
 that import and proves it happened. `route inbox` files the intake folder into
 your taxonomy, and `route pending` files the landed tracks once a tree has cut
 over to the database.
+
+A `--root` is read against your library root when it is not a full path, so
+`--root Downloads` is the library's Downloads folder wherever your shell stands,
+and a root with no folder there is refused naming the path it tried.
 
 ```bash
 crate tag folder /path/to/staging

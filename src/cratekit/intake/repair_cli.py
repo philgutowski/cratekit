@@ -70,8 +70,9 @@ def build_repair_paths(parser, entry) -> None:
         "--root",
         default=None,
         metavar="DIR",
-        help="folder to scan; the configured library root when omitted. With "
-        "--apply, only accepted proposals under it, and every one when omitted",
+        help="folder to scan, by its path from the library root or in full; the "
+        "configured library root when omitted. With --apply, only accepted "
+        "proposals under it, and every one when omitted",
     )
     parser.add_argument(
         "--apply",
@@ -85,7 +86,7 @@ def repair_paths(ctx) -> Envelope:
     cfg = _load()
     if ctx.args.apply:
         return _apply(ctx, cfg)
-    root = Path(ctx.args.root) if ctx.args.root else Path(cfg.library.root)
+    root = naming_cli.root_folder(ctx.args.root, cfg, verb="repair paths")
     findings = repair.scan(root, cfg=cfg)
     with review.open_store(cfg) as store:
         repair.offer_repairs(store, findings, handler_key=ctx.entry.handler_key)
@@ -323,7 +324,16 @@ def _incomplete_cause(
 
 
 def _apply(ctx, cfg: config.Config) -> Envelope:
-    root = Path(ctx.args.root) if ctx.args.root else None
+    # READ AGAINST THE LIBRARY ROOT like every ``--root`` (U169), and NOT
+    # refused when no folder is there. Here the root filters accepted proposals
+    # rather than naming a folder to walk, the comparison is deliberately case
+    # blind for a case blind volume, and a proposal it leaves out is counted
+    # under ``outside_root`` on the plan a person confirms.
+    root = (
+        naming_cli.root_path(ctx.args.root, cfg, verb="repair paths --apply")
+        if ctx.args.root is not None
+        else None
+    )
     with review.open_store(cfg) as store:
         decided = repair.decided(store)
     plan = _plan_for(decided, root=root, cfg=cfg)

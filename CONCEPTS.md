@@ -139,6 +139,22 @@ fact from whether that session is then served what was actually requested, and
 an adapter's own settings check confirms only the request, never the artifact
 the wrapped tool produced from it.
 
+### Declined track
+A track a download job settled without landing, because the policy the job
+was frozen under refuses it for good: offered or landed only lossy under the
+strict policy, or no longer offered at all (U169). Its item is recorded
+`skipped` with the cause that refused it, a skipped item counts as settled,
+and a download whose only misses are declined tracks succeeds, naming each
+one in an `acquire-refused` warning by its title and artist. A worker
+declines with `jobs.Declined`; any other refusal still fails the item, and a
+refusal a later attempt could clear is never declined, because `job resume`
+re-arms failed items and never skipped ones.
+
+*Avoid:* calling a declined track a failure, which is what the download said
+of a list that had done what the policy asked, or reading a succeeded job's
+`settled` count as every track landed; `crate job list` says how many were
+skipped.
+
 ### Searcher
 A boundary component that answers "what genre is this track" from a public
 music catalogue, injected into the tagging engines so the suite can prove the

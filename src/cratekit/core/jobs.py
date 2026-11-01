@@ -1361,6 +1361,9 @@ class DriveResult:
     job: Job
     processed: int = 0
     failed: int = 0
+    #: Items a handler DECLINED (U169): settled as skipped with their cause,
+    #: neither done nor failed. See :class:`Declined`.
+    declined: int = 0
     interrupted: bool = False
     drifted: tuple[str, ...] = field(default_factory=tuple)
 
@@ -1425,6 +1428,11 @@ def _partial_failure_cause(
         "retryable_failed": transient,
         "permanent_failed": permanent,
     }
+    if result.declined:
+        # U169. Said beside the failures rather than counted among them, so a
+        # reader of a failed job still learns that some tracks were settled.
+        message += f"; {result.declined} more were declined and skipped"
+        detail["declined"] = result.declined
     if not retryable:
         message += "; every failure is permanent so resuming this job cannot succeed"
         if len(reasons) > 1:
@@ -1475,6 +1483,49 @@ class Parked(CratekitError):
 
     def __init__(self, cause: Cause) -> None:
         super().__init__(cause)
+
+
+class Declined(CratekitError):
+    """A handler's answer that the item is SETTLED without being done (U169).
+
+    Raised by a per item worker when the answer about this item is permanent
+    and expected: the policy the job was frozen under refuses the track, which
+    no resume can change. The item is recorded ``skipped`` with the cause, a
+    skipped item counts as settled, and a job whose only unfinished items were
+    declined SUCCEEDS. Sitting 47 is why: a download of 117 tracks landed 116,
+    the last one existed only lossy, and the run reported ``failed`` over a
+    list that had done exactly what the policy asked of it.
+
+    A TYPE, FOR THE REASON :class:`Parked` IS ONE. Keying a skip on a field of
+    the cause would decline every refusal that happens to carry it, and each
+    worker decides for itself which of its answers are expected; the engine
+    only records what it is told, with a raise nobody makes by accident.
+
+    A RETRYABLE CAUSE IS REFUSED HERE, at construction. A skip is never re-armed
+    by ``retry``, so declining a transient failure would strand a track a second
+    attempt could have landed, and would report the run clean over it. The
+    refusal is a ``ValueError`` rather than a cause, so inside a drive it lands
+    on the item boundary as an internal failure, never as a silent skip.
+    """
+
+    def __init__(self, cause: Cause) -> None:
+        if cause.retryable:
+            raise ValueError(
+                f"a retryable cause ({cause.reason}) cannot decline an item: a "
+                f"skipped item is never retried, so it would strand work a "
+                f"second attempt could finish"
+            )
+        super().__init__(cause)
+
+
+def decline_item(store: JobStore, job_id: str, item_id: str, cause: Cause) -> None:
+    """Settle one item as SKIPPED, keeping the cause that says why (U169)."""
+    with store.immediate() as conn:
+        conn.execute(
+            "UPDATE job_items SET state = ?, cause = ?, claimed_by = NULL "
+            "WHERE job_id = ? AND item_id = ?",
+            (str(ItemState.SKIPPED), json.dumps(cause.to_json()), job_id, item_id),
+        )
 
 
 def _internal_item_cause(item: Item, exc: Exception) -> Cause:
@@ -1558,6 +1609,13 @@ def drive(
                     release_claims(store, job_id, driver=driver)
                     result.job = block(store, job_id, exc.cause.at("jobs.drive"))
                     return result
+                except Declined as exc:
+                    # SETTLED, NOT FAILED (U169). Kept apart from the failure
+                    # list, so neither the job's verdict nor its retryable
+                    # flag reads a refusal the worker called expected.
+                    decline_item(store, job_id, item.item_id, exc.cause.at("jobs.drive"))
+                    result.declined += 1
+                    continue
                 except CratekitError as exc:
                     last_cause = exc.cause.at("jobs.drive")
                     fail_item(store, job_id, item.item_id, last_cause)
@@ -1739,6 +1797,7 @@ __all__ = [
     "Item",
     "ItemState",
     "Job",
+    "Declined",
     "Parked",
     "JobState",
     "JobStore",
@@ -1749,6 +1808,7 @@ __all__ = [
     "claim",
     "commit_artifact",
     "complete_item",
+    "decline_item",
     "drift",
     "drive",
     "driver_lock",
