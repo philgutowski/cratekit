@@ -1837,3 +1837,12 @@ def test_a_row_with_no_title_to_judge_agreement_by_still_refuses_with_any_agreei
     found = adapter(releases(*_alike("101", "202", "Sun Path", "Nova Reef")))
     assert any_release(found, title="") is None
     assert "no artist and title" in found.unmatched_reason("7")
+
+
+def test_a_file_with_no_album_tag_never_narrows_to_releases_with_no_album_name():
+    """An empty tag is not a name: it must not pick out the release the provider left unnamed."""
+    client = releases(
+        on_album(Track("101", "Sun Path", None, ("Nova Reef",)), "Sun Path"),
+        on_album(Track("202", "Sun Path", None, ("Nova Reef",)), ""),
+    )
+    assert any_release(adapter(client)) == "101"
