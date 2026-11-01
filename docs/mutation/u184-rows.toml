@@ -1,0 +1,195 @@
+name = "u184"
+pass_kind = "light"
+
+# The session's one command mint (crate session ack --as session) and the
+# doctor's backup.acknowledgment check. Every row is a guard or a value this
+# unit added; the age rule itself is U138's and is sampled once (A3).
+
+[[rows]]
+id = "A1_flag_ignored"
+description = "record_ack: never take the session road, so --as session falls to the gate and leaves a run waiting"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_session.py", "tests/test_crate_sync_skill.py", "tests/test_rekordbox_visit_skill.py"]
+old = '''    if getattr(ctx.args, "as_actor", None) == session.SESSION_ACTOR:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A2_any_actor_accepted"
+description = "build_ack: drop the one value restriction, so --as names any actor and is parsed"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_session.py", "tests/test_crate_sync_skill.py", "tests/test_rekordbox_visit_skill.py"]
+old = '''        choices=(session.SESSION_ACTOR,),'''
+new = '''        choices=None,'''
+
+[[rows]]
+id = "A3_engine_rule_not_selected"
+description = "_mint_as_session: hand no actor to the engine, so the terminal rule decides and the ages are not judged"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_session.py"]
+old = '''        cfg, now=now, decided_by=session.SESSION_ACTOR
+    )'''
+new = '''        cfg, now=now, decided_by=None
+    )'''
+
+[[rows]]
+id = "A4_valid_record_minted_again"
+description = "_mint_as_session: never report a valid acknowledgment, so every call mints a fresh one"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_session.py"]
+old = '''    if recorded is not None and recorded.valid_at(now):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A5_expired_reported_valid"
+description = "_mint_as_session: drop the window check, so an expired acknowledgment is reported as on record"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_session.py"]
+old = '''    if recorded is not None and recorded.valid_at(now):'''
+new = '''    if recorded is not None:'''
+
+[[rows]]
+id = "A6_unreadable_record_refuses"
+description = "_mint_as_session: let an unreadable record raise, so a damaged file can never be replaced by the session"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_session.py"]
+old = '''    except CratekitError:
+        recorded = None'''
+new = '''    except CratekitError:
+        raise'''
+
+[[rows]]
+id = "A7_already_valid_says_ok"
+description = "_mint_as_session: report an existing acknowledgment as an ok run rather than a no op"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_session.py"]
+old = '''                "summary": _summary(recorded, minted=False),
+            },
+            outcome=Outcome.NO_OP,'''
+new = '''                "summary": _summary(recorded, minted=False),
+            },
+            outcome=Outcome.OK,'''
+
+[[rows]]
+id = "A8_expiry_row_dropped"
+description = "_mint_as_session: leave the expiry row out of a mint, so a person at a terminal is never shown it"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_session.py"]
+old = '''                _expiry_row(acknowledgment, minted=True),'''
+new = ''''''
+
+[[rows]]
+id = "A9_expiry_row_names_the_mint"
+description = "_expiry_row: name the moment recorded where the expiry belongs"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_session.py"]
+old = '''            f"{acknowledgment.expires_at.isoformat()}"'''
+new = '''            f"{acknowledgment.recorded_at.isoformat()}"'''
+
+[[rows]]
+id = "A10_summary_always_recorded"
+description = "_summary: say recorded whether or not this call minted"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_session.py"]
+old = '''        "recorded": minted,'''
+new = '''        "recorded": True,'''
+
+[[rows]]
+id = "A11_wording_swapped"
+description = "_expiry_row: swap the two phrasings, so a mint reads as already on record"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+tests = ["tests/test_session_ack_by_session.py"]
+old = '''    said = "recorded now" if minted else "already on record, not minted again"'''
+new = '''    said = "already on record, not minted again" if minted else "recorded now"'''
+
+[[rows]]
+id = "D1_volume_not_established"
+description = "_check_backup_acknowledgment: read the record off a volume nobody established, so a missing disk reads as none on record"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    unreadable = _library_state_unreadable(inputs, "the backup acknowledgment")'''
+new = '''    unreadable = None'''
+
+[[rows]]
+id = "D2_unreadable_is_a_note"
+description = "_check_backup_acknowledgment: report a record that cannot be understood as a note rather than a failure"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''            status=Status.FAIL,
+            detail=(
+                f"{exc.cause.message}. Every destructive verb refuses while the "'''
+new = '''            status=Status.INFO,
+            detail=(
+                f"{exc.cause.message}. Every destructive verb refuses while the "'''
+
+[[rows]]
+id = "D3_remedy_chosen_here"
+description = "_check_backup_acknowledgment: name a remedy chosen here instead of the reader's own"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''            remedy=exc.cause.remediation.remedy,
+        )
+    if recorded is None:'''
+new = '''            remedy=Remedy.ACKNOWLEDGE_BACKUP,
+        )
+    if recorded is None:'''
+
+[[rows]]
+id = "D4_expired_read_as_valid"
+description = "_check_backup_acknowledgment: drop the expired branch, so a lapsed record reads as valid with time left"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    if not recorded.valid_at(now):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "D5_wall_clock"
+description = "_check_backup_acknowledgment: read the wall clock rather than the run's own instant"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    now = inputs.probes.now
+    expires = recorded.expires_at.replace(microsecond=0).isoformat()'''
+new = '''    now = datetime.now(timezone.utc)
+    expires = recorded.expires_at.replace(microsecond=0).isoformat()'''
+
+[[rows]]
+id = "D6_hours_coefficient"
+description = "_check_backup_acknowledgment: halve the minutes per hour, so the time left is misstated"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    hours, minutes = divmod(int(left.total_seconds()) // 60, 60)'''
+new = '''    hours, minutes = divmod(int(left.total_seconds()) // 60, 30)'''
+
+[[rows]]
+id = "D7_rule_not_named"
+description = "_check_backup_acknowledgment: name the terminal rule whatever minted the record"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''            f"the {recorded.rule} rule"'''
+new = '''            f"the terminal rule"'''
+
+[[rows]]
+id = "D8_check_unlisted"
+description = "CHECKS: drop the new check, so doctor never shows the acknowledgment"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    Check("backup.acknowledgment", _check_backup_acknowledgment),'''
+new = ''''''

@@ -2196,6 +2196,77 @@ def _check_backup_portion(key: str, inputs: _Inputs) -> Finding:
     )
 
 
+def _check_backup_acknowledgment(inputs: _Inputs) -> Finding:
+    """The backup acknowledgment's window, beside the two ages it was minted over (U184).
+
+    A person or a session deciding whether to mint one reads the two backup ages
+    and then needs the third fact a destructive verb consults, which until this
+    check only ``crate session ack`` showed, and only as context on a refusal.
+
+    INFO IN EVERY READABLE STATE. Absent, valid and expired are all ordinary:
+    nothing has to be done until a destructive verb is about to run, and that
+    verb's own gate asks. Only a record that exists and cannot be understood is
+    a FAIL, since every destructive verb refuses on it.
+
+    AND NOT READ OFF AN ABSENT VOLUME. The record lives on the library volume, so
+    with the volume not established "no file" would say "none on record" about a
+    disk nobody read, which is the absence the session check beside this one is
+    written to refuse.
+    """
+    key, title = "backup.acknowledgment", "backup acknowledgment"
+    if inputs.cfg is None:
+        return _unchecked(key, title)
+    unreadable = _library_state_unreadable(inputs, "the backup acknowledgment")
+    if unreadable is not None:
+        return Finding(key=key, title=title, status=Status.INFO, detail=unreadable)
+    try:
+        recorded = session.read_acknowledgment(inputs.cfg)
+    except CratekitError as exc:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=(
+                f"{exc.cause.message}. Every destructive verb refuses while the "
+                f"record reads this way"
+            ),
+            remedy=exc.cause.remediation.remedy,
+        )
+    if recorded is None:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                "none on record; a destructive verb asks for one, minted with "
+                "crate session ack"
+            ),
+        )
+    now = inputs.probes.now
+    expires = recorded.expires_at.replace(microsecond=0).isoformat()
+    if not recorded.valid_at(now):
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"expired at {expires}; a destructive verb asks for a new one, "
+                f"minted with crate session ack"
+            ),
+        )
+    left = recorded.expires_at - now
+    hours, minutes = divmod(int(left.total_seconds()) // 60, 60)
+    return Finding(
+        key=key,
+        title=title,
+        status=Status.INFO,
+        detail=(
+            f"valid until {expires}, {hours}h {minutes:02d}m from now, minted by "
+            f"the {recorded.rule} rule"
+        ),
+    )
+
+
 #: How old the last full comparison may be before the check says to run one.
 #: Not a failure at any age: both modes compare every file, so what ages is
 #: only the proof that the recursive listing and the folder by folder one agree.
@@ -3441,6 +3512,75 @@ def _check_release(inputs: _Inputs) -> Finding:
     )
 
 
+#: The key of doctor's note on runs left at a gate (U186), and the age past
+#: which a run counts as left there. A day, because a plan answered within
+#: a sitting is answered within hours, and sitting 51 left two runs blocked
+#: that nobody went back to.
+OPEN_GATES_CHECK = "runs.open-gates"
+OPEN_GATE_NOTE_AGE = timedelta(days=1)
+
+
+def _age_words(age: timedelta) -> str:
+    """A whole number of days, or of hours under two days, in words."""
+    days = age.days
+    if days >= 2:
+        return f"{days} days"
+    hours = int(age.total_seconds() // 3600)
+    return f"{hours} hours"
+
+
+def _check_open_gates(inputs: _Inputs) -> Finding:
+    """Runs blocked at a gate for more than a day, with their verb, gate and age (U186).
+
+    A NOTE AND NEVER A FAILURE: a run left at a gate costs nothing until
+    somebody answers a plan the library has moved past, and that answer is
+    refused stale on the write handle. Doctor says it so a person finds the
+    run before a second session plans over the same rows.
+
+    The age is :func:`gates.idle_since`, the one ``crate status`` and ``crate
+    run retire`` read through :func:`gates.old_gate`, so the three never
+    disagree about which run is old. A record that cannot be read is named in
+    the note rather than skipped, since an unread record is not a record
+    without a gate.
+    """
+    moment = inputs.probes.now
+    try:
+        records = sorted(gates.run_dir().glob("*.json"))
+    except OSError:
+        records = []
+    blocked: list[gates.OldGate] = []
+    unreadable: list[str] = []
+    for path in records:
+        try:
+            state = gates.load(path.stem)
+        except Exception:  # noqa: BLE001 - a note never fails; an unread record is named
+            unreadable.append(path.stem)
+            continue
+        aged = gates.old_gate(state, path, older_than=OPEN_GATE_NOTE_AGE, now=moment)
+        if aged is not None:
+            blocked.append(aged)
+    if blocked:
+        listed = "; ".join(
+            f"{one.run_id} ({one.verb} at {one.gate}, "
+            f"{_age_words(moment - datetime.fromisoformat(one.idle_since))})"
+            for one in sorted(blocked, key=lambda one: (one.idle_since, one.run_id))
+        )
+        runs_word = "run has" if len(blocked) == 1 else "runs have"
+        detail = (
+            f"{len(blocked)} {runs_word} sat at a gate for more than a day: {listed}. "
+            f"crate run show describes one, and crate run decide answers it"
+        )
+    else:
+        detail = "no run has sat at a gate for more than a day"
+    if unreadable:
+        records_word = "record" if len(unreadable) == 1 else "records"
+        detail += (
+            f"; {len(unreadable)} run {records_word} could not be read "
+            f"({', '.join(unreadable)}), so a gate among them is not listed"
+        )
+    return Finding(key=OPEN_GATES_CHECK, title="runs at a gate", status=Status.INFO, detail=detail)
+
+
 @dataclass(frozen=True, slots=True)
 class Check:
     """One named question and the function that answers it."""
@@ -3483,6 +3623,8 @@ CHECKS: tuple[Check, ...] = (
         _bound(f"backup.age.{portion}", _check_backup_portion)
         for portion in backup_facts.PORTIONS
     ),
+    # U184. Right after the two ages, which are what it was minted over.
+    Check("backup.acknowledgment", _check_backup_acknowledgment),
     # R-757. After the ages it qualifies and before the remote they all name.
     Check("backup.full_comparison", _check_full_comparison),
     Check("backup.remote", _check_backup_remote),
@@ -3490,6 +3632,9 @@ CHECKS: tuple[Check, ...] = (
     # the database portion's age, and it names the same remedy they do.
     Check("deadca7.push", _check_deadca7_push),
     Check("session.unresolved", _check_unresolved_session),
+    # U186. Beside the session check: both are this installation's own runs
+    # left waiting, and a note here never fails the report.
+    Check(OPEN_GATES_CHECK, _check_open_gates),
     # R-235. Beside the session check because both report this product's own
     # library state, and after the taxonomy check, which it lists trees from.
     Check("tree.registry", _check_tree_registry),
@@ -3928,6 +4073,7 @@ __all__ = [
     "CREDENTIALS_BY_CHECK",
     "Check",
     "Finding",
+    "OPEN_GATES_CHECK",
     "Probes",
     "Report",
     "Status",

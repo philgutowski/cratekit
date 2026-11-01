@@ -208,8 +208,8 @@ On done, take the analysed rows out of the playlist:
     crate inbox analyzed
 
 It needs the backup acknowledgment, which the session mints with `crate
-session ack`, answering its `session.ack.backup` gate as the session as
-CLAUDE.md's backup acknowledgment rule says, and it stops at its own gate,
+session ack --as session` as CLAUDE.md's backup acknowledgment rule says, and
+it stops at its own gate,
 `inbox.analyzed.approve`. That gate is a database write, so it is answered by
 CLAUDE.md's rehearsal rule: the same verb driven on a disposable copy with
 library state redirected, as `docs/solutions/workflow-issues/a-disposable-database-copy-does-not-make-library-state-disposable.md`

@@ -537,6 +537,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'decision-required',
         'decision-stale',
         'decision-unknown-gate',
+        'gate-sibling-run',  # 2026-11-01, U186: the sibling run warning joined.
         'internal-error',
     ],
     'cli/handlers.py': ['config-drift', 'internal-error'],
@@ -3008,6 +3009,7 @@ PINNED_LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     'analysis/energy.py',
     'analysis/rekordbox_check.py',  # 2026-10-31, U167: the Camelot wheel's twelve.
     'cli/doctor.py',
+    'cli/gates.py',  # 2026-11-01, U186: the sibling window's twelve hours.
     'cli/output.py',
     'core/config.py',
     'core/convergence.py',

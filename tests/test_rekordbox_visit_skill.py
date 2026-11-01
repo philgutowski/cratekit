@@ -216,7 +216,12 @@ def test_the_contract_points_an_attended_session_at_it():
     assert "`rekordbox-visit` skill" in (REPO_ROOT / "CLAUDE.md").read_text()
 
 
-def test_the_acknowledgment_it_mints_is_the_session_ack_gate(flat):
-    gates = {gate.name for entry in registry.ENTRIES for gate in entry.gates}
-    named = re.search(r"`crate session ack`, answering its `([a-z.]+)` gate", flat)
-    assert named and named.group(1) in gates
+def test_the_acknowledgment_it_mints_is_the_sessions_one_command(flat):
+    """U184: minted as the session in one command, a flag the verb takes."""
+    from cratekit.cli import build_parser
+    from cratekit.core import session as core_session
+
+    named = re.search(r"`crate session ack --as ([a-z]+)`", flat)
+    assert named and named.group(1) == core_session.SESSION_ACTOR
+    args = build_parser().parse_args(["session", "ack", "--as", named.group(1)])
+    assert args.as_actor == core_session.SESSION_ACTOR

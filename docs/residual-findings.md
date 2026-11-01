@@ -40844,3 +40844,111 @@ METHOD, not driven further.
 **Closes when:** the opening paragraph and the board bar lines say Relay is
 retired, or speak of the cloud lane instead. Ledger only: a wording fix in a
 maintainer document.
+
+---
+
+## R-1152. A backup acknowledgment that is valid JSON but missing a key escapes every reader as an internal error and cannot be replaced
+
+**Found:** at the review of #381, U184, 2026-11-01.
+
+**The mechanism.** `Acknowledgment.from_json` in `src/cratekit/core/session.py`
+indexes `data["actor"]`, `data["recorded_at"]` and `data["expires_at"]` and
+parses the two dates directly, so a record such as `{"schema_version": 1}`, or
+one whose `recorded_at` is not a date, raises `KeyError` or `ValueError` rather
+than a `CratekitError`. Every reader catches only `CratekitError`: doctor's
+`backup.acknowledgment` says the check did not complete with `report-defect`,
+`crate session ack --as session` exits `internal-error` and does not replace
+the file, and the destructive gate raises the same. The default road's
+`_on_record` has had the identical `except` since U49.
+
+**Measured cost.** One candidate producer was driven, the product's own writer,
+which always writes every key, and none produces it; only a hand edit of the
+file reaches it. A person who did make one cannot replace it with the command
+whose docstring says it replaces an unreadable record, and must delete the file.
+
+**Closes when:** `from_json` turns a missing key or an unparsable date into the
+same `internal-error` refusal as unreadable JSON, so every reader treats it as
+unreadable and the one command replaces it. Ledger only.
+
+---
+
+## R-1153. crate session ack --as session ignores the run it is resumed under and any inline answer beside it
+
+**Found:** at the review of #381, U184, 2026-11-01.
+
+**The mechanism.** The flag's road in `src/cratekit/session/cli.py`,
+`_mint_as_session`, asks no gate, so it never reads the run record or the
+inline decisions. Three command lines reach that, each driven at the review:
+`crate --run RUN session ack --as session` on a run a plain `session ack` left
+at its gate mints and saves RUN with its gate still open; the same on a run
+where a person recorded `abort` mints beside the abort, so `run show RUN`
+lists the abort next to a fresh acknowledgment; and an inline
+`-d session.ack.backup=abort` (or any value, or an unknown gate) beside the
+flag is ignored with no warning while the default road refuses every inline
+answer to this explicit gate.
+
+**Measured cost.** No data loss and no false report: in every case the mint is
+the session's age rule over young backups, exactly what a plain
+`crate session ack --as session` mints, and the recorded actor is derived. What
+is left is one stale open gate that `run show` reports and `run retire` later
+lists, and a run record that disagrees with the acknowledgment file about what
+was decided. No document prescribes any of these command lines.
+
+**Closes when:** the flag refuses alongside `--run` or any `-d` answer to its
+own gate, or closes the resumed run's open gate when it mints. Ledger only: the
+cost is none of METHOD's four board bar kinds.
+
+---
+
+## R-1154. The sibling run warning and doctor's runs.open-gates note read a run directory Path.glob cannot list as holding no run
+
+**Found:** at the review of #394, U186, 2026-11-01.
+
+**The mechanism.** `gates.siblings` and doctor's `_check_open_gates` list the
+run records with `run_dir().glob("*.json")` and rescue an `OSError` as no
+records. Measured on this interpreter by the status reader's own comment
+(`cli/doctor.py`, `_run_report`), `Path.glob` swallows a `PermissionError`
+inside its scandir walk and answers an empty list, so the rescue never fires
+and a run directory this account cannot read reads as one with no run in it:
+the gate says nothing of a sibling and the note says no run has sat at a gate.
+
+**Measured cost.** Both silences were produced at the second review round of
+U186, by replacing the run directory with a regular file and by forcing
+`Path.glob` to raise: the gate answered no sibling and the note said no run
+has sat at a gate for more than a day, over a directory never read. The
+producer was not driven: the review container runs as root, where a chmod
+changes nothing, and the tool makes the directory itself, so the
+reachability on a person's machine is unmeasured. The status reader has
+carried the same limit since before U186.
+
+**Closes when:** the three readers of the run directory (`crate status`,
+`run retire`'s `old_gates`, and these two) list it through one helper that
+tells an unreadable directory from an empty one, for example by an
+`os.scandir` that raises, and each says so. Ledger only: it closes on no
+reachable producer yet, and it is maintainer facing until one is driven.
+
+---
+
+## R-1155. crate status and crate run retire stop with an internal error on a run record the gate warning and doctor's note name as unreadable
+
+**Found:** at the second review round of #394, U186, 2026-11-01.
+
+**The mechanism.** U186's two readers of the run directory, `gates.siblings`
+and doctor's `_check_open_gates`, count a record whose load raises anything
+as unreadable and go on. The two readers before them, `crate status`
+(`_run_report` in `cli/doctor.py`) and `crate run retire` (`old_gates` in
+`cli/verbs/runs.py`), catch only the structured refusal, so a record that
+parses as schema 1 and lacks a field raises `KeyError` through them.
+
+**Measured cost.** Driven at the review with a hand written
+`{"version": 1, "run_id": "half"}` in the run directory: both verbs exit 1
+with `internal-error` naming `KeyError: 'verb'`, while the gate and doctor
+name the record and carry on. The producer was not driven: `gates.save`
+writes every key atomically, and no writer of such a record was found in
+the tree (zero candidates), so a hand edit is the only input measured.
+
+**Closes when:** the four readers share one listing helper that names an
+unreadable record the same way, so they cannot disagree about one file.
+Ledger only, since it is reached only by a hand edited record so far; it
+was left out of U186 because both verbs belong to U170 and the brief names
+neither.

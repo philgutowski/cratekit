@@ -1589,8 +1589,11 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # what lets the half of adoption that is ready land while its
         # destructive sibling waits.
         # U49. Neither session verb takes a positional argument, and neither may
-        # take a flag: R34 forbids a caller naming the actor or asserting the
-        # answer, so the whole input is the recorded gate decision. Both are
+        # take a flag that names the actor or asserts the answer: R34 forbids
+        # both, so the default input is the recorded gate decision. U184's
+        # ``session ack --as session`` names a rule and not an actor, takes no
+        # other value, and is driven in tests/test_session_ack_by_session.py;
+        # the default drive here is unchanged and still asks. Both are
         # driven on a fixture whose library has no backup fact file and no lock,
         # which is the state of every install before its first backup, and both
         # must still ask their question rather than treating an empty world as a
