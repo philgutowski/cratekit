@@ -51,7 +51,7 @@ Four words carry most of the rest.
 - **Job.** Long work, such as a playlist intake, a tagging pass or a label
   sweep, is queued and handed back to you as a job identifier. Most verbs
   return quickly. `crate job list` shows the queue, one line per job with its
-verb, its state and how many of its items are settled, `crate job show ID` shows
+  verb, its state and how many of its items are settled, `crate job show ID` shows
   one job and why it is in its state, and `crate job resume ID` picks it up
   without repeating finished work. Three verbs of the acquisition tail, `tag
   folder`, `analyze run` and `analyze restamp`, queue their job and then work
