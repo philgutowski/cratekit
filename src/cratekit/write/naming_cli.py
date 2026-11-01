@@ -685,12 +685,79 @@ def _shown(plan: dict, *, root: Path) -> dict[str, object]:
     return shown
 
 
+#: The refusal for a ``--root`` that names no folder (U169).
+ROOT_MISSING = "root-folder-missing"
+
+
+def root_path(given: str | None, cfg: config.Config, *, verb: str) -> Path:
+    """The folder a ``--root`` names, read the way the person typing it means it.
+
+    RELATIVE IS RELATIVE TO THE LIBRARY ROOT (U169), never to the directory the
+    shell happens to stand in. Sitting 47 ran ``name apply --root Downloads``,
+    meaning the library's Downloads folder; it was read under the shell's
+    directory, found no files, and planned 0 renames as an ordinary empty plan.
+    ``~`` is expanded, an absolute path is taken as it is, and an omitted root
+    is the library root. An EMPTY one is refused rather than read as omitted,
+    because ``Path("")`` is the working directory and a person who typed a
+    root meant some folder.
+    """
+    library = Path(cfg.library.root)
+    if given is None:
+        return library
+    if not given.strip():
+        raise _root_refused(
+            f"--root was given an empty path, so {verb} has no folder to work on",
+            tried=None,
+            given=given,
+        )
+    named = Path(given).expanduser()
+    return named if named.is_absolute() else library / named
+
+
+def root_folder(given: str | None, cfg: config.Config, *, verb: str) -> Path:
+    """:func:`root_path`, refused unless a folder is there.
+
+    A folder that is not there is refused NAMING THE PATH IT TRIED, and for a
+    relative root saying it was read against the library root, so the person
+    sees at once which reading missed. Without it the walk over a missing
+    folder finds nothing, and nothing is the answer a tidy folder also gives.
+    """
+    tried = root_path(given, cfg, verb=verb)
+    if tried.is_dir():
+        return tried
+    if given is None:
+        said = f"the library root {tried} is not a folder on this machine"
+    elif Path(given).expanduser().is_absolute():
+        said = f"--root {tried} is not a folder on this machine"
+    else:
+        said = (
+            f"--root {given} was read against the library root as {tried}, and "
+            f"no folder is there"
+        )
+    raise _root_refused(f"{said}, so {verb} has nothing to work on", tried=tried, given=given)
+
+
+def _root_refused(message: str, *, tried: Path | None, given: str | None) -> CratekitError:
+    return refuse(
+        ROOT_MISSING,
+        message,
+        steps=(
+            "name a folder inside the library by its path from the library root, "
+            "or give its full path",
+            "if the folder is on the library volume, check the volume is mounted",
+        ),
+        origin=("write.naming_cli",),
+        detail={"tried": str(tried) if tried is not None else None, "given": given},
+    )
+
+
 def build(parser, entry) -> None:
     parser.add_argument(
         "--root",
         default=None,
         metavar="DIR",
-        help="folder to rename; the configured library root when omitted",
+        help="folder to rename, by its path from the library root or in full; "
+        "the configured library root when omitted",
     )
     parser.set_defaults(_handler=name_apply)
 
@@ -750,7 +817,7 @@ def _incomplete_cause(
 
 def name_apply(ctx) -> Envelope:
     cfg = _load()
-    root = Path(ctx.args.root) if ctx.args.root else Path(cfg.library.root)
+    root = root_folder(ctx.args.root, cfg, verb="name apply")
     plan = _plan_for(root, cfg=cfg)
     spec = ctx.entry.gates[0]
     option = ctx.gate.require(spec, digest=plan["digest"], context=_shown(plan, root=root))

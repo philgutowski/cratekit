@@ -173,6 +173,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'review-queue-undeclared',
     'review-schema-mismatch',
     'review-selection-invalid',
+    'root-folder-missing',  # 2026-11-01, U169: a --root that names no folder.
     'routing-destination-renamed',
     'routing-ledger-unusable',
     'routing-outstanding',
@@ -820,6 +821,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'review-queue-undeclared',
         'review-schema-mismatch',
         'review-selection-invalid',
+        'root-folder-missing',  # 2026-11-01, U169
         'routing-destination-renamed',
         'routing-ledger-unusable',
         'routing-outstanding',
@@ -1930,6 +1932,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'collection-unreadable',
         'config-unusable',
         'rename-incomplete',
+        'root-folder-missing',  # 2026-11-01, U169
     ],
     # 2026-10-10, U130: the pair's rekordbox writer joined.
     'write/playlist_pair.py': ['decision-stale', 'playlist-pair', 'session-committed-unverified'],
@@ -2090,6 +2093,8 @@ PINNED_NAMED_WITHOUT_OWN = {
     'tagging/tag.py': ['tag-folder-unwritten'],
     'write/genre_favorites.py': ['favorites-class-undeclared', 'favorites-source-missing'],
     'write/metadata_cli.py': ['library-paths-majority-unresolved'],
+    # 2026-11-01, U169: the --root refusal is named.
+    'write/naming_cli.py': ['root-folder-missing'],
     'write/row_link.py': [
         'link-majority-unclear',
         'link-probe-invalid',
@@ -2273,6 +2278,8 @@ PINNED_NAMED_WITH_OWN = {
     'tagging/tag.py': ['tag-folder-unwritten'],
     'write/genre_favorites.py': ['favorites-class-undeclared', 'favorites-source-missing'],
     'write/metadata_cli.py': ['library-paths-majority-unresolved'],
+    # 2026-11-01, U169: the --root refusal is named.
+    'write/naming_cli.py': ['root-folder-missing'],
     'write/routing_pass.py': ['not-imported', 'not-ready'],
     'write/row_link.py': [
         'link-majority-unclear',
@@ -2298,6 +2305,7 @@ PINNED_NAMED_WITH_INTEGER = frozenset({
     'deletion/candidates.py',
     'modules/tools/mastering.py',
     'tagging/searchers.py',
+    'write/naming_cli.py',  # 2026-11-01, U169: the --root refusal is named.
 })
 
 # Modules holding a cause as a string literal under the old constant-only key rule.
@@ -2884,6 +2892,7 @@ PINNED_LITERAL_HOLDERS = {
         'collection-unreadable',
         'config-unusable',
         'rename-incomplete',
+        'root-folder-missing',  # 2026-11-01, U169
     ],
     # 2026-10-10, U130: the pair's rekordbox writer joined.
     'write/playlist_pair.py': ['decision-stale', 'session-committed-unverified'],
