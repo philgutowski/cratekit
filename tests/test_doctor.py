@@ -229,6 +229,7 @@ def test_every_check_key_and_its_place_in_the_run_order_is_written_out():
         "session.unresolved",
         "tree.registry",
         "repo.commit_hook",
+        "install.extras",
         "install.release",
     )
     assert doctor.BINARY_NAMES == (
@@ -8445,3 +8446,126 @@ def test_a_push_beside_a_backup_recorded_ahead_of_now_is_not_called_held(configu
     finding = _push_check(configured, _deadca7(tmp_path, pushed_at=now - timedelta(days=1)))
     assert "cannot be said, since that backup is recorded ahead of now" in finding.detail
     assert "which holds it" not in finding.detail
+
+
+# ---------------------------------------------------------------------------
+# U181: install.extras, whether the vocal model can score in this copy
+# ---------------------------------------------------------------------------
+
+_NO_EXTRA = ("extra", "the 'vocals' extra is not installed here; reinstall it")
+
+
+def _extras_finding(missing, origin=None, **overrides):
+    origin = origin or _vcs("0.3.0", ("analysis",))
+    inputs = doctor._Inputs(
+        None,
+        None,
+        probes(vocal_requirement=lambda: missing, install_origin=lambda: origin, **overrides),
+    )
+    return doctor._check_install_extras(inputs)
+
+
+def test_a_copy_without_the_vocals_extra_says_so_and_prints_the_reinstall_command():
+    """Sitting 51's copy: installed with analysis and not vocals, from the release."""
+    finding = _extras_finding(_NO_EXTRA)
+    assert finding.key == "install.extras"
+    assert finding.status is doctor.Status.INFO, "it runs inside setup and must not refuse"
+    assert "vocals extra is absent" in finding.detail
+    assert "carry no voxlevel" in finding.detail
+    assert (
+        f'pipx install --force "cratekit[analysis,vocals] @ git+{_REPO_URL}@v0.3.0"'
+        in finding.detail
+    ), "the reinstall keeps the extra this copy carries and adds vocals, at its own tag"
+
+
+def test_a_copy_whose_vocal_model_can_score_is_ok():
+    finding = _extras_finding(None)
+    assert finding.status is doctor.Status.OK
+    assert "pipx" not in finding.detail
+
+
+def test_the_row_reads_the_vocals_modules_own_probe_with_the_loader_bound_or_not(
+    monkeypatch,
+):
+    """The scenario's two halves through the shipped seam: unbound on a machine
+    with no torch reports the row and the command, bound is ok."""
+    from cratekit.analysis import vocals
+
+    monkeypatch.setattr(vocals, "_VOCAL_LOADER", None)
+    monkeypatch.setattr(
+        vocals, "requirement", lambda: ("extra", "the 'vocals' extra is not installed here")
+    )
+    inputs = doctor._Inputs(None, None, doctor.Probes(install_origin=lambda: _vcs("0.3.0")))
+    unbound = doctor._check_install_extras(inputs)
+    assert unbound.status is doctor.Status.INFO
+    assert f'"cratekit[vocals] @ git+{_REPO_URL}@v0.3.0"' in unbound.detail
+
+    monkeypatch.setattr(vocals, "_VOCAL_LOADER", lambda: object())
+    assert doctor._check_install_extras(inputs).status is doctor.Status.OK
+
+
+def test_missing_model_files_are_named_and_no_reinstall_is_offered_for_them():
+    """A reinstall does not place the checkpoint, so the row does not say it would."""
+    finding = _extras_finding(("files", "the vocal model checkpoint is not at the path"))
+    assert finding.status is doctor.Status.INFO
+    assert "checkpoint is not at the path" in finding.detail
+    assert "Reinstall" not in finding.detail and "pipx" not in finding.detail
+
+
+def test_a_copy_not_installed_from_a_release_gets_the_vocals_modules_own_command(
+    monkeypatch,
+):
+    from cratekit.analysis import vocals
+
+    monkeypatch.setattr(vocals, "install", lambda: "the vocals module's own command")
+    finding = _extras_finding(_NO_EXTRA, origin=doctor.InstallOrigin(kind="editable"))
+    assert "Reinstall with: the vocals module's own command" in finding.detail
+
+
+def test_the_extras_row_never_fails_setup():
+    for missing in (_NO_EXTRA, ("files", "the label table is not at the path"), None):
+        assert not _extras_finding(missing).failed
+
+
+def test_an_upgrade_adds_vocals_when_the_library_has_scored_a_track():
+    """A copy that lost the extra would otherwise upgrade without it again."""
+    inputs = doctor._Inputs(
+        None,
+        None,
+        probes(
+            install_origin=lambda: _vcs("0.2.0", ("analysis",)),
+            release_tags=lambda _url: ("v0.3.0",),
+            vocals_scored=lambda _cfg: True,
+        ),
+    )
+    finding = doctor._check_release(inputs)
+    assert (
+        f'pipx install --force "cratekit[analysis,vocals] @ git+{_REPO_URL}@v0.3.0"'
+        in finding.detail
+    )
+
+
+def test_an_upgrade_keeps_the_extras_and_adds_nothing_for_a_library_never_scored():
+    inputs = doctor._Inputs(
+        None,
+        None,
+        probes(
+            install_origin=lambda: _vcs("0.2.0", ("analysis",)),
+            release_tags=lambda _url: ("v0.3.0",),
+            vocals_scored=lambda _cfg: False,
+        ),
+    )
+    finding = doctor._check_release(inputs)
+    assert f'"cratekit[analysis] @ git+{_REPO_URL}@v0.3.0"' in finding.detail
+
+
+def test_a_library_has_scored_when_a_vocal_calibration_is_recorded(configured):
+    """The shipped probe: the calibration a fit writes only from scored files."""
+    from cratekit.write import metadata_cli
+
+    assert doctor._vocals_scored(None) is False
+    assert doctor._vocals_scored(configured) is False
+    path = config.state_path(metadata_cli.STATE_KEY_VOCAL_CALIBRATION, configured)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"threshold": 12.0}', encoding="utf-8")
+    assert doctor._vocals_scored(configured) is True
