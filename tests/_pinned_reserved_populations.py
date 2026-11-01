@@ -106,6 +106,8 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'label-playlist-unreadable',
     'label-playlists-ambiguous',
     'label-playlists-incomplete',
+    # 2026-11-01, R-1091: the kept release reads a full build cannot read.
+    'label-playlists-reads-unusable',
     'label-registry-empty',
     'label-sweep-incomplete',
     'label-sync-unanswerable',
@@ -757,6 +759,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'label-playlist-unreadable',
         'label-playlists-ambiguous',
         'label-playlists-incomplete',
+        'label-playlists-reads-unusable',  # 2026-11-01, R-1091.
         'label-registry-empty',
         'label-sweep-incomplete',
         'label-sync-unanswerable',
@@ -1499,6 +1502,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'no-op',
         'unavailable-transient',
     ],
+    # 2026-11-01, R-1091: the kept release reads and their refusal.
+    'label/kept_reads.py': ['label-playlists-reads-unusable', 'utf-8'],
     'label/mark_cli.py': [
         'internal-error',
         'label-mark',
@@ -2104,6 +2109,8 @@ PINNED_NAMED_WITHOUT_OWN = {
     # U134, 2026-10-12.
     'intake/refill.py': ['refill-playlist-outside-inbox'],
     'intake/set_playlist.py': ['inspiration-folder-undeclared', 'set-playlist-unnamed'],
+    # 2026-11-01, R-1091: the kept reads name their refusal by a constant.
+    'label/kept_reads.py': ['label-playlists-reads-unusable'],
     'modules/tools/backup.py': [
         'database-absent',
         'destination-not-configured',
@@ -2282,6 +2289,8 @@ PINNED_NAMED_WITH_OWN = {
     # U134, 2026-10-12.
     'intake/refill.py': ['refill-playlist-outside-inbox'],
     'intake/set_playlist.py': ['inspiration-folder-undeclared', 'set-playlist-unnamed'],
+    # 2026-11-01, R-1091: the kept reads name their refusal by a constant.
+    'label/kept_reads.py': ['label-playlists-reads-unusable'],
     'modules/tools/backup.py': [
         'database-absent',
         'destination-not-configured',
@@ -2345,6 +2354,7 @@ PINNED_NAMED_WITH_INTEGER = frozenset({
     'core/review.py',
     'core/session.py',
     'deletion/candidates.py',
+    'label/kept_reads.py',  # 2026-11-01, R-1091: its version and flush count.
     'modules/tools/mastering.py',
     'tagging/searchers.py',
     'write/naming_cli.py',  # 2026-11-01, U169: the --root refusal is named.
@@ -2793,6 +2803,8 @@ PINNED_LITERAL_HOLDERS = {
         'label-unknown',
         'unavailable-transient',
     ],
+    # 2026-11-01, R-1091: the kept reads' refusal.
+    'label/kept_reads.py': ['label-playlists-reads-unusable'],
     'label/mark_cli.py': ['internal-error', 'sync-mark-record-unusable', 'sync-marks-blocked'],
     'label/marks.py': ['label-watermark-unusable'],
     # 2026-10-31, U191: the gate lookup refuses a missing declaration.
@@ -3012,6 +3024,7 @@ PINNED_LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     'intake/imported_cli.py',
     'intake/land_cli.py',  # 2026-10-31, U162: the rehearsal's counts joined.
     'label/catalogue.py',
+    'label/kept_reads.py',  # 2026-11-01, R-1091.
     'modules/outbound/prune.py',
     'modules/outbound/tidal_account.py',
     'modules/tools/mastering.py',
