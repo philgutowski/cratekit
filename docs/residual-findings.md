@@ -39615,3 +39615,52 @@ screen, or a line of noise above a correct refusal.
 **Closes when:** a gated verb reaches the provider in the same process, at
 which point the outer dispatch should skip its spend line for a continued run.
 Ledger only.
+
+---
+
+## R-1089. The longest first order in rehearsal.mapped and the dropped repeat pair in _mapped_back are pinned by no rehearsal a library can produce
+
+**Found:** at the review of #399, U188, 2026-10-31.
+
+**The mechanism.** `rehearsal.mapped` applies its pairs longest scratch
+spelling first, so a pair whose scratch spelling holds another's is not half
+mapped. The review drove the real pairs `_mapped_back` makes and found the
+unsorted order still yields the live stored spelling, because the shorter
+mounted pair rewrites the stored scratch path into the base drive followed by
+the live rest, which is the stored live spelling. Only the unit test, over a
+pair shape `stored_folder_path` does not produce, kills the order's removal.
+Likewise `_mapped_back` drops a repeated pair on a drive that never moved;
+keeping it repeats one clause in a refusal's message. Its mutation row, M5,
+killed nothing in the rehearsal and landing suites, and its one full suite
+death was `tests/test_restore_cli.py::test_what_is_offered_is_what_is_pulled`,
+a test that cannot reach the mapping.
+
+**Measured cost.** None driven. Both are guards over shapes no candidate
+layout produced: one candidate was driven, an area outside the current drive
+with its target inside it, and none produces it, since the area lives under
+the library root that holds the database the drive is recorded for.
+
+**Closes when:** a layout that needs the order is found and tested end to
+end, or the guards are judged unneeded. Ledger only.
+
+---
+
+## R-1090. A rehearsal's plan lines are JSON values, so a path with an accent prints as an escape on the refusal and the gate screen
+
+**Found:** at the review of #399, U188, 2026-10-31.
+
+**The mechanism.** `rehearsal.lines` dumps every leaf with `json.dumps`, whose
+default escapes each character outside ASCII and each quote. U188 maps the
+area's plan as values before it is printed, so the comparison is right, but a
+line the refusal or the live gate's `differs from the rehearsal` list prints
+still spells `café` as `café`, and the person reading it decodes it by
+eye.
+
+**Measured cost.** Driven with a batch named `2026-09-29_café`: the comparison
+is equal and nothing is shown. Shown only when the plans really differ, as an
+escape, which is hard to read and not false. Changing the dump changes the
+recorded lines of every kept rehearsal, which compare by digest and are
+unaffected, so the fix is cheap.
+
+**Closes when:** `rehearsal.lines` dumps with `ensure_ascii=False`, with a test
+that a refusal names an accented path as written. Ledger only.
