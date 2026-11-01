@@ -21,7 +21,12 @@ command line, the one ``job resume`` would spawn, in the foreground, and the
 chain reads the job's state off the queue once that command has returned.
 
 THE ORDER IS LOAD BEARING AND CANNOT BE SKIPPED. ``tag folder``, ``analyze
-run``, ``analyze restamp``, ``name apply``, then the landing. A tail step that
+run`` and the vocals rescore after it, ``analyze restamp``, ``name apply``,
+then the landing. The rescore (U181) is ``analyze vocals --unscored`` over the
+same folder, so a file an earlier run finalized with no voxlevel, which every
+later run skips by its head, is scored rather than left unscored for good; it
+asks nothing of a model that cannot score here, or of a profile with the
+vocals module off. A tail step that
 does not succeed ends the chain there, so a landing is never planned over
 staged files the tail has not run on. The tail is run on the ABSOLUTE staging
 path, since a relative root resolves against the working directory and once
@@ -55,7 +60,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from cratekit.cli import gates, registry, render
-from cratekit.core import config, drift, jobs
+from cratekit.core import config, drift, jobs, profiles
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.modules import foreground
@@ -79,6 +84,17 @@ TAIL: tuple[tuple[str, str, tuple[str, ...]], ...] = (
 
 NAME_VERB = "name.apply"
 LAND_VERB = "intake.land"
+
+#: The row the vocal rescore reports under, ``<namespace>.rescore`` (U181).
+RESCORE = "rescore"
+
+#: The vocals restamp the analyze step runs after ``analyze run`` (U181), over
+#: only the staged files that verb will never score again: the head, and no
+#: voxlevel. Spelled here rather than imported, since this module imports no
+#: feature module at its top; a test holds the flag to the verb's own.
+VOCALS_VERB = "analyze.vocals"
+VOCALS_WORDS: tuple[str, ...] = ("analyze", "vocals")
+VOCALS_UNSCORED = "--unscored"
 
 #: ``name apply``'s confirm, which is not explicit and is answered inline by the
 #: chain the way a person running the tail answers it.
@@ -244,6 +260,22 @@ class Chain:
         )
         if status != "fail" and step not in self.summary["steps"]:
             self.summary["steps"].append(step)
+
+    def note(self, name: str, status: str, detail: str) -> None:
+        """A row of its own, ``<namespace>.<name>``, that is not a step's (U181).
+
+        For what a step does beside its verb, the vocal rescore after ``analyze
+        run`` above all, so each step's own row stays the one row its key names.
+        """
+        self.checks.append(
+            {
+                "key": f"{self.namespace}.{name}",
+                "title": name,
+                "status": status,
+                "detail": detail,
+                "remedy": None,
+            }
+        )
 
     def say(self, step: str, what: str) -> None:
         if self.progress is not None:
@@ -444,6 +476,91 @@ def tail_step(
     chain.check(step, "ok", f"crate {' '.join(words)} job {job.job_id} succeeded over {folder}")
 
 
+def vocals_unavailable() -> str | None:
+    """Why the vocal model cannot score in this process, or None (U181).
+
+    The vocals module's one test, imported where it is asked. Read before the
+    tail runs, since ``analyze run``'s worker binds the shipped loader in this
+    process and a bound loader reads as able.
+    """
+    from cratekit.analysis import vocals  # noqa: PLC0415 - a feature module, asked once
+
+    return vocals.unavailable()
+
+
+def vocals_on(cfg: config.Config) -> bool:
+    """Whether this profile switches on the vocals module, ``analyze vocals`` with it.
+
+    A profile with the module off has no vocals verb to run, and is a person
+    who chose not to score vocals, so nothing here asks the model for them.
+    """
+    membership = profiles.resolve(cfg.profile.name, dict(cfg.modules.explicit))
+    return registry.entry(VOCALS_VERB).available_to(membership)
+
+
+def rescore(chain: Chain, folder: Path, cfg: config.Config, *, unable: str | None) -> None:
+    """Score every staged file carrying the head and no voxlevel, as part of the analyze step.
+
+    ``analyze run`` skips a name carrying the head, which is its resume marker
+    (R-277), so a file it finalized while the vocal model could not load is
+    never scored again by it: sitting 51's second run reported 19 of 19 done in
+    a fraction of a second over files with no score. ``crate analyze vocals
+    --unscored`` queues exactly those files and its worker scores them, and it
+    is driven here through its ``--job`` command like every other step's job.
+
+    ``unable`` is :func:`vocals_unavailable`, asked before the tail began. When
+    the model cannot score here nothing is queued, and the row says so: the
+    worker would refuse, and the verb that runs the chain decides whether a
+    pass goes on without vocal scores, before it starts.
+    """
+    if not vocals_on(cfg):
+        chain.summary["vocal_rescore"] = "off"
+        chain.note(
+            RESCORE,
+            "info",
+            "the vocals module is off on this profile, so no staged file was "
+            "scored for vocals after analyze run",
+        )
+        return
+    if unable is not None:
+        chain.summary["vocal_rescore"] = "skipped"
+        chain.note(
+            RESCORE,
+            "info",
+            f"staged files carrying the head and no voxlevel were not scored, since "
+            f"the vocal model cannot score here: {unable}",
+        )
+        return
+    try:
+        replace_stale(chain, ANALYZE, VOCALS_VERB, folder, cfg)
+    except CratekitError as exc:
+        raise Stop(ANALYZE, rebuilt(exc, exc.cause.at(chain.namespace))) from exc
+    envelope = required(chain, ANALYZE, [*VOCALS_WORDS, VOCALS_UNSCORED, str(folder)])
+    job_id = str((envelope.get("data") or {}).get("job_id") or "")
+    if envelope.get("outcome") == str(Outcome.NO_OP) or not job_id:
+        chain.summary["vocal_rescore"] = 0
+        chain.note(
+            RESCORE,
+            "ok",
+            f"every staged file carrying the head carries a voxlevel, so no vocal "
+            f"score was owed over {folder}",
+        )
+        return
+    with jobs.open_store() as store:
+        job = jobs.get(store, job_id)
+        count = len(jobs.items(store, job_id))
+    job = settle(chain, ANALYZE, job)
+    if job.state is not jobs.JobState.SUCCEEDED:
+        raise Stop(ANALYZE, job_error(chain, job))
+    chain.summary["vocal_rescore"] = count
+    chain.note(
+        RESCORE,
+        "ok",
+        f"crate analyze vocals job {job.job_id} scored the {count} staged file(s) "
+        f"carrying the head and no voxlevel over {folder}",
+    )
+
+
 def name_argv(folder: Path) -> list[str]:
     """``name apply`` over ``folder`` with its confirm answered, the one rule both verbs use."""
     return ["-d", f"{NAME_GATE}={NAME_OPTION}", "name", "apply", "--root", str(folder)]
@@ -476,8 +593,30 @@ def land(chain: Chain, folder: Path, landing: Sequence[str] = ()) -> None:
         raise Done(LAND)
     cause = cause_of(chain, LAND, argv, code, envelope)
     if cause.reason == ACK_STOP or cause.code in gates.GATE_CODES:
+        lift_plan_warnings(chain, cause)
         raise Attend(LAND, argv, cause)
     raise Stop.of(LAND, cause)
+
+
+def lift_plan_warnings(chain: Chain, cause: Cause) -> None:
+    """The warnings the landing's gate screen carries, onto the chain's own (U181).
+
+    A stop at the gate is a refusal, and a refusal's envelope has no warnings
+    channel, so a warning the plan carries would reach a person only as a fact
+    on the screen. ``intake land`` puts them under ``warnings`` beside the
+    facts, and they are carried here the way :meth:`Chain.call` carries a
+    child's.
+    """
+    shown = (cause.detail or {}).get("shown")
+    warned = shown.get("warnings") if isinstance(shown, dict) else None
+    for warning in warned if isinstance(warned, list) else ():
+        if isinstance(warning, dict) and warning.get("code"):
+            chain.warnings.append(
+                {
+                    "code": str(warning["code"]),
+                    "message": f"{LAND}: {warning.get('message', '')}",
+                }
+            )
 
 
 def run(chain: Chain, folder: Path, cfg: config.Config, landing: Sequence[str]) -> None:
@@ -490,8 +629,11 @@ def run(chain: Chain, folder: Path, cfg: config.Config, landing: Sequence[str]) 
     """
     folder = folder.expanduser().absolute()
     chain.summary["staging"] = str(folder)
+    unable = vocals_unavailable()
     for step, verb, words in TAIL:
         tail_step(chain, step, verb, words, folder, cfg)
+        if step == ANALYZE:
+            rescore(chain, folder, cfg, unable=unable)
     name(chain, folder)
     land(chain, folder, landing)
 
@@ -587,11 +729,15 @@ __all__ = [
     "NAME_OPTION",
     "NAME_VERB",
     "REKORDBOX_STEPS",
+    "RESCORE",
     "RESTAMP",
     "SESSION_ACTOR",
     "STEPS",
     "TAG",
     "TAIL",
+    "VOCALS_UNSCORED",
+    "VOCALS_VERB",
+    "VOCALS_WORDS",
     "Attend",
     "Attended",
     "Chain",
@@ -604,14 +750,18 @@ __all__ = [
     "dispatch",
     "job_error",
     "land",
+    "lift_plan_warnings",
     "load_config",
     "name",
     "name_argv",
     "replace_stale",
     "required",
+    "rescore",
     "run",
     "settle",
     "succeeded",
     "tail_step",
+    "vocals_on",
+    "vocals_unavailable",
     "with_steps",
 ]

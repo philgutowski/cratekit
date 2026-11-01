@@ -24,6 +24,14 @@ verbs cannot disagree. Every job either meets is driven to settled in the
 foreground and read off the queue, and a tail step that does not succeed ends
 the pass there, so a landing is never planned over files the tail did not run on.
 
+NO PASS LANDS ROWS WITH NO VOCAL SCORE UNLESS TOLD TO (U181). Before the pass
+queues anything, on a profile with the vocals module on, it asks the vocals
+module whether the model can score here, and refuses
+``vocal-scoring-unavailable`` naming the command that mends it, unless the
+named gate ``sync.land.without-vocals`` is answered ``go`` inline. Sitting 51
+landed nineteen rows with no voxlevel from a copy installed without the
+vocals extra, and found out from one clause of the landing plan.
+
 A DOWNLOAD REFUSAL IS RECORDED AND SKIPPED. An item the worker refused for good,
 a lossy only track above all, leaves the job failed with every other item
 durable. The pass names each refused track and goes on with the ones that
@@ -53,7 +61,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
-from cratekit.cli import registry, tail
+from cratekit.cli import gates, registry, tail
 from cratekit.cli.output import Envelope, PendingHumanAction
 from cratekit.cli.tail import (
     ACK_STOP,
@@ -107,6 +115,17 @@ OUTBOUND_UNASKED = "outbound-export-required"
 #: The seam every step goes through, the shared chain's own, so one stand in
 #: serves both verbs that run it.
 Child = tail.Child
+
+#: The preflight's row for the vocal model, ``sync.land.vocal-model`` (U181).
+VOCAL_MODEL = "vocal-model"
+#: The gate a pass asks when the vocal model cannot score here (U181), and the
+#: answer that takes the pass on without vocal scores. Declared on the entry.
+WITHOUT_VOCALS = "sync.land.without-vocals"
+WITHOUT_VOCALS_GO = "go"
+#: The refusal a pass gives without that answer, before it queues anything.
+VOCALS_UNAVAILABLE = "vocal-scoring-unavailable"
+#: The warning a pass carries when it went on without vocal scores.
+WITHOUT_VOCALS_WARNING = "sync-land-without-vocals"
 
 
 def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
@@ -213,6 +232,79 @@ def _preflight(report: _Pass, cfg: config.Config) -> None:
                 inner=exc.cause,
             ) from exc
     report.check(PREFLIGHT, "ok", "rekordbox is closed and no backup is running")
+
+
+def _vocals(ctx: Context, report: _Pass, cfg: config.Config) -> None:
+    """Refuse before the pass when the vocal model cannot score here, unless told to go on (U181).
+
+    Sitting 51 landed a pass from a copy installed without the vocals extra:
+    ``analyze run`` finished every file with no voxlevel, the head it wrote
+    made every later run skip them, and the landing plan said so in one line.
+    So the pass asks first, through the vocals module's one test, and refuses
+    with the command that mends it before anything is queued. A person who
+    means to land without vocal scores answers the named gate inline, and the
+    summary and a warning say the pass went on without them.
+
+    A PROFILE WITH THE VOCALS MODULE OFF IS NOT ASKED. It has no vocals verb,
+    and is a person who chose not to score vocals, so its pass goes on as it
+    always did and the row says why nothing was asked.
+    """
+    report.say(PREFLIGHT, "the vocal model")
+    if not tail.vocals_on(cfg):
+        report.summary["vocal_scoring"] = "off"
+        report.note(
+            VOCAL_MODEL,
+            "info",
+            "the vocals module is off on this profile, so the pass does not ask "
+            "whether the vocal model can score",
+        )
+        return
+    unable = tail.vocals_unavailable()
+    if unable is None:
+        report.summary["vocal_scoring"] = "available"
+        report.note(VOCAL_MODEL, "ok", "the vocal model can score here")
+        return
+    spec = next(gate for gate in ctx.entry.gates if gate.name == WITHOUT_VOCALS)
+    try:
+        option = ctx.gate.require(spec, context={"vocal model": unable})
+    except gates.DecisionRequired:
+        # UNANSWERED IS THE REFUSAL BELOW, not a gate left open on a run: the
+        # remedy is to install, or to answer inline, and neither continues
+        # this run, so no run is recorded as waiting on it.
+        ctx.run.open_gate = None
+        option = None
+    if option != WITHOUT_VOCALS_GO:
+        again = "crate -d " + f"{WITHOUT_VOCALS}={WITHOUT_VOCALS_GO} sync land" + (
+            f" --pass-run {ctx.args.pass_run}" if ctx.args.pass_run else ""
+        )
+        raise refuse(
+            VOCALS_UNAVAILABLE,
+            f"the vocal model cannot score here, so every row this pass lands would "
+            f"carry no voxlevel and no vox My Tag, and nothing was queued: {unable}",
+            remedy=Remedy.RUN_DOCTOR,
+            steps=(
+                f"make the vocal model able to score here, then run the pass again: {unable}",
+                f"or take the pass without vocal scores: {again}",
+            ),
+            origin=_ORIGIN,
+            detail={"vocal_model": unable, "gate": WITHOUT_VOCALS, "answered": option},
+        )
+    report.summary["vocal_scoring"] = "skipped"
+    report.note(
+        VOCAL_MODEL,
+        "info",
+        f"the vocal model cannot score here and {WITHOUT_VOCALS} answered "
+        f"{WITHOUT_VOCALS_GO}, so the pass goes on without vocal scores: {unable}",
+    )
+    report.warnings.append(
+        {
+            "code": WITHOUT_VOCALS_WARNING,
+            "message": (
+                f"vocal scoring was skipped, as {WITHOUT_VOCALS} answered, so the rows "
+                f"this pass lands carry no voxlevel and no vox My Tag: {unable}"
+            ),
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -637,6 +729,7 @@ def sync_land(ctx: Context) -> Envelope:
     cfg = _load()
     report = _report(ctx.progress)
     _preflight(report, cfg)
+    _vocals(ctx, report, cfg)
     try:
         run_id = ctx.args.pass_run
         if run_id:
@@ -681,6 +774,11 @@ __all__ = [
     "STEPS",
     "TAG",
     "TAIL",
+    "VOCAL_MODEL",
+    "VOCALS_UNAVAILABLE",
+    "WITHOUT_VOCALS",
+    "WITHOUT_VOCALS_GO",
+    "WITHOUT_VOCALS_WARNING",
     "build",
     "sync_land",
 ]

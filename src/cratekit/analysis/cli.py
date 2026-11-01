@@ -426,6 +426,16 @@ def _template(cfg: config.Config) -> NameTemplate:
     )
 
 
+def carries_head(path: Path, cfg: config.Config) -> bool:
+    """Whether ``path``'s name carries the head, ``analyze run``'s resume marker.
+
+    The one test :func:`handle_run` skips a file by, named so ``crate analyze
+    vocals --unscored`` picks out exactly the files a run will never score
+    again (U181, R-277).
+    """
+    return naming.has_head(path.name, template=_template(cfg))
+
+
 def _budget(cfg: config.Config) -> NameBudget:
     return NameBudget(
         path_budget_bytes=cfg.naming.path_budget_bytes,
@@ -663,7 +673,6 @@ def handle_run(job, item, cfg) -> jobs.Produced:
     a terminal skip, reported under its own name with nothing written. THE
     CONFIGURATION IS THE FROZEN ONE and is not loaded here (KTD9).
     """
-    template = _template(cfg)
     folder, path = _folder_and_path(job, item)
     if not path.is_file():
         twin = _finalized_twin(cfg, job, item)
@@ -680,7 +689,7 @@ def handle_run(job, item, cfg) -> jobs.Produced:
                 "resumed_after_rename": True,
             },
         )
-    if naming.has_head(path.name, template=template):
+    if carries_head(path, cfg):
         return artifacts.produced(
             cfg, job, item, {"item": item.item_id, "path": str(path), "status": "skipped-prefixed"}
         )
