@@ -409,6 +409,17 @@ written unless `--band` widens it, and `--set` picks a genre for one row.
 Not a **stale row**, whose row and file both carry a genre and disagree: a
 row whose file carries a genre its row lacks is left to `tag rows`.
 
+### Genre guess
+The genre `crate tag guess` (U172) writes onto a file every catalogue left with
+none, from what sits beside it: the same artist's other tracks, in the library
+and in the folder, two votes each, and each playlist on the account the pass
+downloaded it for, one voice of four votes shared out by its other members'
+genres, so a long playlist does not drown the artist. Weighed by the same
+rules and bands as a suggestion, and unlike one, always written, at any band,
+since Phillip answered on 2026-11-01 that nothing waits on him: a tie is
+written as the genre the artist's tracks weigh most, then the first by name,
+and reported as **split**. The tail runs it right after `tag folder`.
+
 ### Provider gate
 The one seam every call to the streaming provider passes, `core/provider_gate`,
 attached to the transport of each client the product builds so nothing above
@@ -545,8 +556,9 @@ accept a variable grid on it. "Unscored" is the landing's word for a file that
 carries no drift at all, never a verdict a file holds.
 
 ### The tail
-The four verbs that must run over staged files, in this order, before a landing
-is planned: `tag folder`, `analyze run`, `analyze restamp` and `name apply`.
+The verbs that must run over staged files, in this order, before a landing
+is planned: `tag folder`, `tag guess` (since U172), `analyze run`, `analyze
+restamp` and `name apply`.
 Sitting 47 planned a landing straight after the download and got rows named by
 provider id with no vox score. Since U152 `crate sync land` runs the tail on the
 absolute staging path and plans no landing unless every step of it succeeded;
