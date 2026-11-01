@@ -66,6 +66,7 @@ remove. The go behind the one gate is what writes files, see
 from __future__ import annotations
 
 import json
+import shlex
 from collections.abc import Callable, Container, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -1384,7 +1385,8 @@ def label_sync(ctx) -> Envelope:
         if args.answer == PICK and not args.releases:
             raise _selection_invalid(
                 "--answer pick needs the releases to take; to take none, answer not-now",
-                "pass --release RELEASE_ID for each release, from: crate label sync --next",
+                f"pass --release RELEASE_ID for each release, from: crate label sync "
+                f"--next --label {shlex.quote(args.label)}",
             )
     elif args.next_question and args.label is not None and not args.label.strip():
         raise _selection_invalid(
@@ -1400,7 +1402,7 @@ def label_sync(ctx) -> Envelope:
             "drop --release to print the question, then answer with: crate label sync "
             "--answer pick --label NAME --release RELEASE_ID",
         )
-    elif not args.next_question and (args.label or args.releases):
+    elif not args.next_question and (args.label is not None or args.releases):
         raise _selection_invalid(
             "--label and --release go with --answer, and --label with --next, and "
             "without one they would name a label nothing is recorded for",

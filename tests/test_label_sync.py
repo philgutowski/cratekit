@@ -1307,7 +1307,7 @@ def test_next_label_for_a_label_nobody_follows_is_refused_before_any_listing(
     assert record(installed)["labels"] == {}
 
 
-@pytest.mark.parametrize("argv", [["--label", SLUG], ["--release", "r1"]])
+@pytest.mark.parametrize("argv", [["--label", SLUG], ["--release", "r1"], ["--label", ""]])
 def test_label_or_release_alone_refuses_and_names_next_label(installed, monkeypatch, argv):
     register()
     fake = three_new(monkeypatch)
@@ -1369,6 +1369,24 @@ def test_a_pick_outside_the_question_names_next_label_for_its_identifiers(
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["remediation"]["steps"] == [
         "take the identifiers from: crate label sync --next --label beta-works"
+    ]
+
+
+@pytest.mark.parametrize(
+    "name, said", [("beta-works", "beta-works"), ("Beta Works", "'Beta Works'")]
+)
+def test_a_pick_with_no_release_names_next_label_for_the_label_it_named(
+    installed, monkeypatch, name, said
+):
+    """The name is quoted for a shell, so a name with a space pastes as one word."""
+    two_labels(monkeypatch)
+
+    code, envelope = sync("--answer", "pick", "--label", name)
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["remediation"]["steps"] == [
+        f"pass --release RELEASE_ID for each release, from: crate label sync --next "
+        f"--label {said}"
     ]
 
 
