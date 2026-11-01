@@ -40844,3 +40844,56 @@ METHOD, not driven further.
 **Closes when:** the opening paragraph and the board bar lines say Relay is
 retired, or speak of the cloud lane instead. Ledger only: a wording fix in a
 maintainer document.
+
+---
+
+## R-1152. A backup acknowledgment that is valid JSON but missing a key escapes every reader as an internal error and cannot be replaced
+
+**Found:** at the review of #381, U184, 2026-11-01.
+
+**The mechanism.** `Acknowledgment.from_json` in `src/cratekit/core/session.py`
+indexes `data["actor"]`, `data["recorded_at"]` and `data["expires_at"]` and
+parses the two dates directly, so a record such as `{"schema_version": 1}`, or
+one whose `recorded_at` is not a date, raises `KeyError` or `ValueError` rather
+than a `CratekitError`. Every reader catches only `CratekitError`: doctor's
+`backup.acknowledgment` says the check did not complete with `report-defect`,
+`crate session ack --as session` exits `internal-error` and does not replace
+the file, and the destructive gate raises the same. The default road's
+`_on_record` has had the identical `except` since U49.
+
+**Measured cost.** One candidate producer was driven, the product's own writer,
+which always writes every key, and none produces it; only a hand edit of the
+file reaches it. A person who did make one cannot replace it with the command
+whose docstring says it replaces an unreadable record, and must delete the file.
+
+**Closes when:** `from_json` turns a missing key or an unparsable date into the
+same `internal-error` refusal as unreadable JSON, so every reader treats it as
+unreadable and the one command replaces it. Ledger only.
+
+---
+
+## R-1153. crate session ack --as session ignores the run it is resumed under and any inline answer beside it
+
+**Found:** at the review of #381, U184, 2026-11-01.
+
+**The mechanism.** The flag's road in `src/cratekit/session/cli.py`,
+`_mint_as_session`, asks no gate, so it never reads the run record or the
+inline decisions. Three command lines reach that, each driven at the review:
+`crate --run RUN session ack --as session` on a run a plain `session ack` left
+at its gate mints and saves RUN with its gate still open; the same on a run
+where a person recorded `abort` mints beside the abort, so `run show RUN`
+lists the abort next to a fresh acknowledgment; and an inline
+`-d session.ack.backup=abort` (or any value, or an unknown gate) beside the
+flag is ignored with no warning while the default road refuses every inline
+answer to this explicit gate.
+
+**Measured cost.** No data loss and no false report: in every case the mint is
+the session's age rule over young backups, exactly what a plain
+`crate session ack --as session` mints, and the recorded actor is derived. What
+is left is one stale open gate that `run show` reports and `run retire` later
+lists, and a run record that disagrees with the acknowledgment file about what
+was decided. No document prescribes any of these command lines.
+
+**Closes when:** the flag refuses alongside `--run` or any `-d` answer to its
+own gate, or closes the resumed run's open gate when it mints. Ledger only: the
+cost is none of METHOD's four board bar kinds.
