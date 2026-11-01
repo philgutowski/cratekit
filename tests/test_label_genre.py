@@ -138,6 +138,8 @@ def never_published(hit, isrc):
 
 
 def test_a_genre_the_taxonomy_routes_is_stored_as_typed_and_the_screen_says_where(cfg):
+    # An exact alias since U155, which gave Rominimal a genre sub of its own
+    # under Minimal / Deep Tech; the keyword rule had filed it there before.
     envelope = registered("--genre", GENRE)
     assert held().genre == GENRE, "kept as typed, since it is the word written onto files"
     route = envelope["data"]["summary"]["genre_route"]
@@ -145,16 +147,26 @@ def test_a_genre_the_taxonomy_routes_is_stored_as_typed_and_the_screen_says_wher
         "genre": GENRE,
         "bucket": "minimal_deep_tech",
         "bucket_display": "Minimal / Deep Tech",
-        "match": "fuzzy",
-        "matched_on": "minimal",
+        "match": "exact",
+        "matched_on": GENRE,
     }
     detail = envelope["data"]["checks"][0]["detail"]
-    assert "genre Rominimal routes to Minimal / Deep Tech by the taxonomy's keyword rule 'minimal'" in detail
+    assert "genre Rominimal routes to Minimal / Deep Tech by an alias the taxonomy declares" in detail
 
     code, listed = drive(["label", "registry", "list"])
     assert code == int(ExitCode.OK), listed
     assert "genre Rominimal" in listed["data"]["checks"][0]["detail"]
     assert listed["data"]["summary"]["labels"][0]["genre"] == GENRE
+
+
+def test_a_genre_routed_by_a_keyword_rule_names_the_rule(cfg):
+    registered()
+    code, envelope = drive(["label", "registry", "set", LABEL, "--genre", "Minimal Techno"])
+    assert code == int(ExitCode.OK), envelope
+    route = envelope["data"]["summary"]["genre_route"]
+    assert (route["match"], route["matched_on"]) == ("fuzzy", "minimal")
+    detail = envelope["data"]["checks"][0]["detail"]
+    assert "genre Minimal Techno routes to Minimal / Deep Tech by the taxonomy's keyword rule 'minimal'" in detail
 
 
 def test_a_genre_routed_by_an_alias_says_so(cfg):

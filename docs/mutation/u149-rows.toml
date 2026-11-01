@@ -1,0 +1,233 @@
+name = "u149"
+pass_kind = "full"
+
+[[rows]]
+id = "T1_name_keeps_prefix"
+description = "twin_name: keep the DOWNLOADED prefix, so the twin is named as the account playlist"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '''    if name.startswith(SWEPT_PREFIX):
+        name = name[len(SWEPT_PREFIX) :]'''
+new = '''    if False:
+        name = name[len(SWEPT_PREFIX) :]'''
+
+[[rows]]
+id = "T2_two_folders_not_refused"
+description = "find_folder: drop the refusal of two live top level folders of one year, so the first is written to"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '''    if len(found) > 1:'''
+new = '''    if len(found) > 2:'''
+
+[[rows]]
+id = "T3_folder_names_unread"
+description = "find_folder: read no names inside a live folder, so a held name is not seen"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '''held=_live_children(db, found[0]))'''
+new = '''held=frozenset())'''
+
+[[rows]]
+id = "T4_removed_folder_live"
+description = "_live_top_folders: drop the soft delete filter, so a removed folder is reused"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '''        f"AND COALESCE({rb_writer.SOFT_DELETE_COLUMN}, 0) = 0 ORDER BY ID"'''
+new = '''        f"ORDER BY ID"'''
+
+[[rows]]
+id = "T5_held_name_counted_free"
+description = "place: drop the refusal of a name the folder holds, so a second twin of one name is made"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '''    if name in folder.held:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "T6_taken_name_free"
+description = "place: drop the refusal of a name this run already gave, so two twins share one name"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '''    if name in taken:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "T7_ambiguous_takes_first"
+description = "matched: take the first of several library rows, so an ambiguous track is guessed"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py"]
+old = '''        if len(found) == 1:'''
+new = '''        if found:'''
+
+[[rows]]
+id = "T8_mirror_link_skipped"
+description = "Library.find: skip the mirror's link to the very track, so the database ISRC decides"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py"]
+old = '''            self.by_remote.get(remote_id, ()),'''
+new = '''            (),'''
+
+[[rows]]
+id = "T9_removed_row_linked"
+description = "_grouped: drop the live filter, so a mirror link to a removed row is an answer"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py"]
+old = '''        if key and content_id in alive and content_id not in found.setdefault(key, []):'''
+new = '''        if key and content_id not in found.setdefault(key, []):'''
+
+[[rows]]
+id = "T10_any_year_folder"
+description = "candidates: read every root folder, not only one titled as a year"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py"]
+old = '''        if not YEAR.fullmatch(year):
+            continue'''
+new = '''        if False:
+            continue'''
+
+[[rows]]
+id = "T11_excluded_read"
+description = "candidates: drop the label, set and mirror exclusion"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py"]
+old = '''            if name is None or playlist_id in kept or playlist_id in seen:'''
+new = '''            if name is None or playlist_id in seen:'''
+
+[[rows]]
+id = "T12_undownloaded_read"
+description = "candidates: drop the DOWNLOADED prefix test, so a working playlist gets a twin"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py"]
+old = '''            if not name.startswith(SWEPT_PREFIX):
+                continue'''
+new = '''            if False:
+                continue'''
+
+[[rows]]
+id = "T13_paired_planned_again"
+description = "plan_backfill: plan a twin for an already paired playlist, so a second run plans again"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py"]
+old = '''    wanted = [one for one in listed if one[1] not in held]'''
+new = '''    wanted = list(listed)'''
+
+[[rows]]
+id = "T14_short_read_whole"
+description = "plan_backfill: read a short listing as whole, so a snapshot is recorded over withheld tracks"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py"]
+old = '''                whole=short is None,'''
+new = '''                whole=True,'''
+
+[[rows]]
+id = "T15_unplanned_membership"
+description = "addition_violations: admit a membership no twin planned"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py"]
+old = '''        if row[m_marker] or wanted is None or content_id not in wanted[2]:'''
+new = '''        if row[m_marker] or wanted is None:'''
+
+[[rows]]
+id = "T16_unplanned_playlist_row"
+description = "addition_violations: admit a playlist row no twin made"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py"]
+old = '''    for key in sorted(set(after.playlists) - set(before.playlists) - set(made)):'''
+new = '''    for key in sorted(set()):'''
+
+[[rows]]
+id = "T17_recheck_folder"
+description = "recheck: drop the folder comparison, so a folder made after the approval is not seen by the write"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py"]
+old = '''        if now.folder_id != one.folder.folder_id or now.why != one.folder.why:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "T18_recheck_name"
+description = "recheck: drop the held name check at the write"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py"]
+old = '''        if one.name in now.held:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "T19_pair_not_twin"
+description = "pair_backfilled: mark the pair as a hand pair, so a gone account playlist never unpairs it"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py"]
+old = '''        store.mark(one.account_id, made.playlist_id, name=one.account_name, twin=True)'''
+new = '''        store.mark(one.account_id, made.playlist_id, name=one.account_name, twin=False)'''
+
+[[rows]]
+id = "T20_short_snapshot"
+description = "pair_backfilled: record the account snapshot when the listing was short"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py"]
+old = '''            account=list(one.account) if one.whole else None,'''
+new = '''            account=list(one.account),'''
+
+[[rows]]
+id = "T21_landing_paired_again"
+description = "plan_landing: plan a twin for an account playlist already paired"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_intake_land_twins.py"]
+old = '''    wanted = [(account_id, name) for account_id, name in accounts if account_id not in held]'''
+new = '''    wanted = list(accounts)'''
+
+[[rows]]
+id = "T22_landing_pair_not_twin"
+description = "pair_landed: mark a landed twin's pair as a hand pair"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_intake_land_twins.py"]
+old = '''            store.mark(one.account_id, one.playlist_id, name=one.account_name, twin=True)'''
+new = '''            store.mark(one.account_id, one.playlist_id, name=one.account_name, twin=False)'''
+
+[[rows]]
+id = "P1_hand_pair_unpaired"
+description = "sync pair plan: unpair any pair whose account playlist is gone, a hand pair too"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_sync_pair.py"]
+old = '''            if pair is not None and pair.twin and target.account_id not in listed:'''
+new = '''            if pair is not None and target.account_id not in listed:'''
+
+[[rows]]
+id = "P2_unmark_any_rekordbox"
+description = "PairStore.unmark: forget the pair whatever rekordbox playlist it holds now"
+file = "src/cratekit/modules/outbound/pairs.py"
+surface = "maintainer"
+tests = ["tests/test_sync_twins.py", "tests/test_sync_pair.py"]
+old = '''            if held is None or held.rekordbox_id != str(rekordbox_id):'''
+new = '''            if held is None:'''
+
+[[rows]]
+id = "N1_landing_recheck"
+description = "native.apply_rows: drop the twins' recheck inside the transaction, behind the gate's digest"
+file = "src/cratekit/intake/native.py"
+surface = "maintainer"
+tests = ["tests/test_intake_land_twins.py", "tests/test_intake_land_account_playlists_native.py"]
+old = '''                twin_mod.recheck_landing(db, plan.twins)'''
+new = '''                pass'''

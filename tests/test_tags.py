@@ -85,6 +85,8 @@ ALL_FIELDS = {
     "date": "2021-03-05",
     "albumartist": "Probe Album Artist",
     "label": "Probe Label",
+    "driftlevel": "4.4",
+    "drift": "variable",
 }
 
 

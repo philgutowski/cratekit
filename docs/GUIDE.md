@@ -377,7 +377,15 @@ with no artist, as rekordbox would show it. **Nothing about the audio is
 written**: no tempo, no grid, no key, no waveform, and the run says so.
 rekordbox does not analyse a row it did not make until you ask, so open it,
 select INBOX / Analyze and run Analyze Tracks; Reload Tags is not needed, and
-adoption reads each row's genre from the moment it lands. Once rekordbox and its
+adoption reads each row's genre from the moment it lands. A row whose tempo
+moves, a live drummed track or an edit of two takes, joins carrying the `dyn`
+My Tag, written from the drift `analyze run` measured (below), so the visit is
+two selections and the run's warning counts each: the rows without `dyn` with
+Analysis Mode Normal, high precision off, BPM/Grid, Phrase and KEY on, and the
+rows with `dyn` with Analysis Mode Dynamic and the rest the same. A file with
+too little pulse to judge lands as steady, and a file analysed before the drift
+existed is counted as unscored on the screen and takes Normal, as every row did
+before. Once rekordbox and its
 agent have quit, `crate analyze check` says whether the visit is done and done
 right: every row analysed, every grid one tempo (or moving on a row marked
 `dyn`), the Key column filled, and how often the title's key agrees with
@@ -741,6 +749,32 @@ existed. A track you coloured otherwise by hand keeps its colour and is named,
 never overwritten, and a library whose colour table has no Pink row places the
 hearts and says it coloured none, to be run again once Pink is restored.
 
+### Keep your custom playlists in rekordbox for good
+
+```bash
+crate sync twins
+crate sync pair
+```
+
+A custom playlist you build on the account lands as an INBOX playlist, which
+rotates out of rekordbox after thirty and ninety days. Its twin is the copy that
+stays: one playlist of the same name, less `DOWNLOADED `, in the top level folder
+`Custom Playlists <year>`, holding the tracks the library owns in the account's
+order. A landing of an account playlist pass writes the twin of each custom
+playlist it lands, beside its INBOX playlist and in the same write, and pairs the
+two with no hand step. `crate sync twins` does the same once for every
+`DOWNLOADED` playlist the account already holds in a year folder, shows every
+twin and every track it will not hold on one gate, and plans nothing the second
+time. From then on `crate sync pair` keeps each twin and its account playlist
+one list: an addition on either side lands on both, a removal on either side
+comes off both, and a track the library lacks is queued once.
+
+A twin is never counted: when its folder already holds a playlist of its name,
+the twin is left and named, and you pair the one there by hand with
+`crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID`. When you delete the
+playlist on the account, the next `crate sync pair` unpairs the twin and leaves
+it in rekordbox, named.
+
 ### Publish a playlist
 
 ```bash
@@ -769,7 +803,15 @@ crate converge
 `route unplaced` lists tracks no tree files, and `audit coverage` asks the same
 question from an export. `audit duplicates` never deletes. Run `route resort`
 after a genre or energy change, and `converge` to check that each tree matches
-the database. Reports and audits are read only. `repair paths` proposes a
+the database. `route resort` also fills a genre sub, a playlist beside a genre
+folder's energy bands for one genre: in the shipped taxonomy, every track
+tagged exactly `Rominimal` sits in its Minimal / Deep Tech band and in
+`Minimal / Deep Tech / Rominimal` too. A library whose taxonomy copy predates
+it gains it by hand, since `crate taxonomy upgrade` adds only whole folders
+and classes: add `"Rominimal"` to the Minimal / Deep Tech bucket's `aliases`,
+add the `[[bucket.genre_sub]]` table the shipped template carries under it, and
+set `schema_version = 5`. A track landed after that reaches the genre sub at
+the next `route resort`. Reports and audits are read only. `repair paths` proposes a
 shorter name for each audio file whose name is over the path budget or repeats
 its own title at the end, which are the names rekordbox rejects on import, and
 you accept or reject each one with `crate review resolve`. Nothing is inferred.
@@ -876,6 +918,17 @@ Analysis needs the `analysis` extra and vocals needs the `vocals` extra, both in
 the README. Cratekit never writes a beat grid, a tempo element or an average BPM
 field, in any container, and no flag turns that on. `analyze calibrate` and
 `analyze restamp` fit a threshold and carry it across the back catalogue.
+
+`analyze run` also writes how far each track's tempo moves over its length, a
+drift, as two file tags beside the vocal ones: `driftlevel`, the spread of the
+tempo between its steady sections as a percent of its middle, and `drift`,
+which reads `steady`, `variable` or `unknown` (too little pulse to judge, a
+beatless or very short file). Neither is a tempo. A drift at or above
+`analysis.drift_cut` in the config file, 1.5 by default, is variable, and a
+native landing reads the level against the cut as it is when it lands, so
+changing the cut changes which rows the next landing marks `dyn`. The default
+leans toward Normal, since a steady track analysed Dynamic comes back with a
+wobbling grid, and it has not yet been calibrated against a real library.
 
 `analyze vocals` and `analyze restamp` take `--recursive`, which queues every
 folder under the one you name as a single resumable job, so a back catalogue

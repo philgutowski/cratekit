@@ -43,7 +43,7 @@ from __future__ import annotations
 import hashlib
 import re
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from importlib import resources
 from typing import Any, Mapping, Sequence
@@ -56,7 +56,7 @@ from cratekit.core import config
 # next rename (R19).
 _ID = re.compile(r"^[a-z][a-z0-9_]*$")
 
-SUPPORTED_SCHEMA_VERSIONS = frozenset({1, 2, 3, 4})
+SUPPORTED_SCHEMA_VERSIONS = frozenset({1, 2, 3, 4, 5})
 
 # The schema version a template has to state before it may declare a former
 # place (R-797). A former place changes what competes, and a loader ignores a
@@ -81,6 +81,13 @@ SPLIT_PLACE_SCHEMA_VERSION = 3
 # the second class as a vocal one and ask the rebuild to derive it from a
 # reading it does not have.
 PLAYLIST_SIGNAL_SCHEMA_VERSION = 4
+
+# The schema version a template has to state before it may declare a genre sub
+# (U155), for the former place's reason one version on: a build that reads
+# version 4 ignores the key, routes a Rominimal track into its band alone, and
+# reports the genre sub's playlist as one nobody declared. The version is what
+# such a build refuses by name.
+GENRE_SUB_SCHEMA_VERSION = 5
 
 # What a derived sub class is derived FROM (U119). The vocal class reads the
 # file's vocal prominence against the calibrated cut; a playlist class mirrors
@@ -305,6 +312,29 @@ class SplitPlace:
 
 
 @dataclass(frozen=True)
+class GenreSub:
+    """A sub of an energy bucket chosen by the track's source genre (U155).
+
+    WHY IT IS NOT ``sub_by_source``. A bucket that routes by source genre never
+    reads energy at all, so declaring Rominimal that way on Minimal / Deep Tech
+    would take Low, Med and High away from every track in the bucket. A genre
+    sub sits BESIDE the bands instead: a track whose genre is one of
+    ``sources`` files into its band as before and into this sub as well, the
+    way "with vox" sits beside a band. It is additive, so it never competes,
+    nothing is ever moved out of it, and no band loses a track to it.
+
+    ``sources`` are exact, case sensitive source genres, each one an exact
+    routing alias of the bucket, so a track wearing one is filed by this
+    bucket and reaches this sub, and ``Minimal`` beside ``Rominimal`` does not.
+    The first source is the word the tagger writes for the sub.
+    """
+
+    id: str
+    display: str
+    sources: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class Bucket:
     """One folder in the tree, with everything that varies about it declared."""
 
@@ -321,6 +351,7 @@ class Bucket:
     rates: bool = True
     formerly: tuple[FormerPlace, ...] = ()
     split_from: tuple[SplitPlace, ...] = ()
+    genre_subs: tuple[GenreSub, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1043,6 +1074,7 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
 
     problems += _check_former_places(buckets, energy, sub_classes, int(version))
     problems += _check_split_places(buckets, energy, sub_classes, int(version))
+    problems += _check_genre_subs(buckets, energy, sub_classes, int(version))
 
     fuzzy, fuzzy_problems = _build_fuzzy(data.get("fuzzy") or [], by_id)
     problems += fuzzy_problems
@@ -1368,6 +1400,27 @@ def _build_buckets(
             for row in split_raw
         )
 
+        # THE SAME SHAPE CHECK, for the same hand edit (U155). A row whose
+        # sources are not a list of strings is read as having none, which the
+        # genre sub check then refuses by name.
+        genre_raw = entry.get("genre_sub") or []
+        if not isinstance(genre_raw, list) or not all(
+            isinstance(row, Mapping) for row in genre_raw
+        ):
+            problems.append(
+                f"{where}: genre_sub must be an array of tables, written "
+                f"[[bucket.genre_sub]] with an id, a display and a list of sources"
+            )
+            genre_raw = []
+        genre_subs = tuple(
+            GenreSub(
+                id=str(row.get("id", "")),
+                display=str(row.get("display", "")),
+                sources=_sources(row.get("sources")),
+            )
+            for row in genre_raw
+        )
+
         buckets.append(
             Bucket(
                 id=bucket_id,
@@ -1383,12 +1436,20 @@ def _build_buckets(
                 rates=bool(entry.get("rates", True)),
                 formerly=formerly,
                 split_from=split_from,
+                genre_subs=genre_subs,
             )
         )
 
     if not buckets:
         problems.append("no [[bucket]] declared; a taxonomy with no buckets routes nothing")
     return tuple(buckets), problems
+
+
+def _sources(raw: Any) -> tuple[str, ...]:
+    """A genre sub's sources as declared, or none when they are not a list of strings."""
+    if not isinstance(raw, list) or not all(isinstance(item, str) for item in raw):
+        return ()
+    return tuple(raw)
 
 
 def live_places(
@@ -1398,7 +1459,8 @@ def live_places(
 
     The declared subs and the single sub, the bands under the bucket's own
     labels and the no reading sub when the bucket splits by energy, and every
-    sub class. This is what a former place must not be.
+    sub class, and since U155 every genre sub. This is what a former place
+    must not be.
 
     PUBLIC, because the adoption plan asks it too (R-788): handed the sub
     classes without the vocal one, it answers whether a bucket's own places
@@ -1416,6 +1478,9 @@ def live_places(
     for entry in sub_classes:
         ids.add(entry.id)
         displays.add(entry.display)
+    for genre in bucket.genre_subs:
+        ids.add(genre.id)
+        displays.add(genre.display)
     return ids, displays
 
 
@@ -1620,6 +1685,94 @@ def _check_split_places(
                 )
             else:
                 claimed[key] = bucket.id
+    return problems
+
+
+def _check_genre_subs(
+    buckets: Sequence[Bucket],
+    energy: Energy,
+    sub_classes: Sequence[SubClass],
+    version: int,
+) -> list[str]:
+    """Refuse a genre sub that is not a place of its own beside a bucket's bands (U155).
+
+    It needs a bucket that splits by energy, since it sits beside the bands; a
+    bucket that routes by source genre already files each source into a style
+    sub of its own, and one with no energy dimension has a single sub. Its
+    identifier and its name are its own: not a band under the bucket's label
+    for it, not the no reading sub, not a sub class, not a declared sub, and
+    not another genre sub of the bucket, or two places would be one playlist.
+    Each source is an exact routing alias of the bucket, so a track wearing it
+    is filed by this bucket and no other, and one source names one genre sub.
+
+    THE TEMPLATE HAS TO STATE THE VERSION THAT KNOWS ONE. See
+    :data:`GENRE_SUB_SCHEMA_VERSION`.
+    """
+    problems: list[str] = []
+    for bucket in buckets:
+        if not bucket.genre_subs:
+            continue
+        if version < GENRE_SUB_SCHEMA_VERSION:
+            problems.append(
+                f"[[bucket]] {bucket.id}: declares a genre sub under schema_version "
+                f"{version}; write schema_version = {GENRE_SUB_SCHEMA_VERSION}, since a "
+                f"build that reads version {version} ignores the declaration and files "
+                f"the genre's tracks into their band alone"
+            )
+        if not _band_names(bucket, energy):
+            problems.append(
+                f"[[bucket]] {bucket.id}: declares a genre sub and does not split by "
+                f"energy; a genre sub sits beside a bucket's bands, and a bucket that "
+                f"routes by source genre files a source into a sub through its "
+                f"sub_by_source map"
+            )
+        others = replace(bucket, genre_subs=())
+        taken_ids, taken_displays = live_places(others, energy, sub_classes)
+        aliases = set(bucket.aliases)
+        claimed: dict[str, str] = {}
+        seen_ids: set[str] = set()
+        for genre in bucket.genre_subs:
+            where = f"[[bucket]] {bucket.id} genre_sub {genre.id or genre.display!r}"
+            if not _ID.match(genre.id):
+                problems.append(f"{where}: id {genre.id!r} must match {_ID.pattern}")
+            if not genre.display:
+                problems.append(f"{where}: display must be a non-empty string")
+            if genre.id in seen_ids:
+                problems.append(
+                    f"{where}: id {genre.id!r} is already another genre sub of this "
+                    f"bucket; one identifier names one place"
+                )
+            elif genre.id in taken_ids:
+                problems.append(
+                    f"{where}: id {genre.id!r} is already a band, a sub or a sub class "
+                    f"of this bucket; a genre sub is a place of its own"
+                )
+            if genre.display in taken_displays:
+                problems.append(
+                    f"{where}: display {genre.display!r} is already the name of a band, "
+                    f"a sub or a sub class in this bucket's folder; two places of one "
+                    f"name are one playlist"
+                )
+            seen_ids.add(genre.id)
+            taken_displays.add(genre.display)
+            if not genre.sources:
+                problems.append(
+                    f"{where}: sources must be a non-empty list of source genres, "
+                    f"written sources = [\"Rominimal\"]"
+                )
+            for source in genre.sources:
+                if source not in aliases:
+                    problems.append(
+                        f"{where}: source {source!r} is not an exact alias of this "
+                        f"bucket, so a track wearing it may be filed by another bucket "
+                        f"or by a keyword rule; add it to this bucket's aliases"
+                    )
+                if source in claimed:
+                    problems.append(
+                        f"{where}: source {source!r} already names the genre sub "
+                        f"{claimed[source]!r}; one genre files into one genre sub"
+                    )
+                claimed.setdefault(source, genre.id)
     return problems
 
 
@@ -2172,5 +2325,15 @@ def _build_alias_indexes(
                         f"{existing} and ({bucket.id!r}, {sub.id!r})"
                     )
                 tagging[key] = (bucket.id, sub.id)
+    # A GENRE SUB'S SOURCE TAGS AS THAT SUB (U155), last because it is the most
+    # specific statement of all. Each source is one of its bucket's routing
+    # aliases, which the bucket level pass above answers with the bucket's own
+    # name, and the tagger would then rewrite ``Rominimal`` on a file to
+    # ``Minimal / Deep Tech`` and take the track out of the very sub its genre
+    # names. The loader has already refused a source that is not the bucket's.
+    for bucket in buckets:
+        for genre in bucket.genre_subs:
+            for source in genre.sources:
+                tagging[source.lower().strip()] = (bucket.id, genre.id)
 
     return routing, tagging, problems

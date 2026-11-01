@@ -337,6 +337,8 @@ def test_a_worker_process_with_nothing_bound_binds_the_shipped_defaults(cfg, mon
     assert light._DETECT.keywords == {
         "calibration": None,
         "tempo_window": (cfg.analysis.tempo_floor, cfg.analysis.tempo_ceiling),
+        # U157: the drift's verdict is read against the configured cut.
+        "drift_cut": cfg.analysis.drift_cut,
     }
 
 
@@ -555,6 +557,8 @@ def test_the_default_detector_is_rebound_with_a_fresh_calibration_per_item(cfg):
     assert light._DETECT.keywords == {
         "calibration": None,
         "tempo_window": (cfg.analysis.tempo_floor, cfg.analysis.tempo_ceiling),
+        # U157: the drift's verdict is read against the configured cut.
+        "drift_cut": cfg.analysis.drift_cut,
     }
     energy.save_calibration(cfg, calibration_over())
     analysis_cli._bind_defaults(cfg)

@@ -49,7 +49,7 @@ from pathlib import Path
 from typing import Any, Callable, TypeVar
 
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import analysis_store, config, jobs, rb_writer, rehearsal, session
+from cratekit.core import analysis_store, config, drift, jobs, rb_writer, rehearsal, session
 from cratekit.core.cause import CratekitError, Outcome, Remedy, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.favorites import backfill, placement
@@ -74,6 +74,10 @@ LANDED = "landed"
 REFUSED = "refused"
 #: The one item a native landing appends for the batch playlist it wrote.
 PLAYLIST = "playlist"
+#: The item a native landing appends for each custom playlist twin it wrote (U149).
+TWIN = "twin"
+#: A planned twin the landing could not make, named with why (U149).
+TWINS_LEFT = "custom-playlist-twins-left"
 #: The item a native write appends for each favourites playlist it placed hearts in (U120).
 FAVORITES = "favorites"
 
@@ -101,6 +105,10 @@ AWAITING_ANALYSIS = "rows-await-analysis"
 #: whose score could not be read, and a landing that wrote no tag at all.
 VOX_UNSCORED = "vox-unscored"
 VOX_NOT_WRITTEN = "vox-not-written"
+#: The warning a native write carries when a row whose drift read as variable
+#: does not carry the dyn My Tag after the commit (U157), naming each row, so
+#: the person still runs it with Dynamic.
+DYN_NOT_WRITTEN = "dyn-not-written"
 
 #: What the bridge's gate screen says of the vox My Tag (U127), on a
 #: calibrated library; :func:`bridge_vox_fact` says the rest.
@@ -988,6 +996,13 @@ def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: P
             # U127: the score each added row was read at and whether it is tagged.
             entry["voxlevel"] = row.voxlevel
             entry["vox"] = row.vox
+        if row.action == native.ADD and row.drift_verdict not in ("", drift.UNSCORED):
+            # U157: the drift each added row was read at, its verdict and
+            # whether it is tagged dyn. A file with no reading is the fact
+            # line's to count, so a batch from before U157 shows as it did.
+            entry["drift"] = row.drift
+            entry["drift_verdict"] = row.drift_verdict
+            entry["dyn"] = row.dyn
         if str(row.target) in sorted_into:
             entry["files into"] = sorted_into[str(row.target)].shown()
         items.append(entry)
@@ -1078,6 +1093,7 @@ def collection_facts(rows: native.NativePlan) -> dict[str, Any]:
         "adds": len(rows.to_add()),
         "already present": len(rows.present()),
         "vox My Tag": vox_fact(rows),
+        "dyn My Tag": dyn_fact(rows),
         # U166: the one playlist every added row joins for the rekordbox visit.
         "analyze": (
             (
@@ -1126,6 +1142,24 @@ def vox_fact(rows: native.NativePlan) -> str:
     )
 
 
+def dyn_fact(rows: native.NativePlan) -> str:
+    """The dyn My Tag a native plan writes, in one line, for any verb's gate screen (U157)."""
+    adding = rows.to_add()
+    if not adding:
+        return "none, since no row is added"
+    variable = len(rows.drift_variable())
+    unscored = len(rows.drift_unscored())
+    said = (
+        f"{len(rows.dyn_tagged())} of {len(adding)} added row(s), each whose drift is at "
+        f"or above the cut {rows.drift_cut:g} percent"
+    )
+    if rows.dyn_blocked:
+        said = f"none of the {variable} variable row(s), {rows.dyn_blocked}"
+    if unscored:
+        said += f"; {unscored} file(s) carry no drift reading and get no tag"
+    return said
+
+
 def playlist_item(collection: native.NativeLanded) -> dict[str, Any]:
     """The one item a native write appends for the batch playlist it wrote."""
     return {
@@ -1164,7 +1198,37 @@ def _native_shown(rows: native.NativePlan, *, folder: Path, target: Path) -> dic
         shown.update(favorites_facts(rows.favorites))
     if rows.labels is not None:
         shown.update(label_filing.facts(rows.labels))
+    if rows.twins:
+        shown["custom playlist twins"] = twin_facts(rows.twins)
     return shown
+
+
+def twin_facts(planned) -> str:
+    """The landing's custom playlist twins (U149), one line: each made, each left and why."""
+    made = [one for one in planned if not one.why]
+    left = [one for one in planned if one.why]
+    said = [f"{one.folder.name} / {one.name}" for one in made]
+    said.extend(f"{one.account_name} gets none: {one.why}" for one in left)
+    return "; ".join(said)
+
+
+def _twin_notes(cfg: config.Config, rows, collection: native.NativeLanded) -> list[dict[str, str]]:
+    """Pair each twin the commit wrote (U149), and name each planned twin it could not make."""
+    from cratekit.sync import twins
+
+    notes = twins.pair_landed(cfg, collection.twins)
+    left = [one for one in (rows.twins if rows is not None else ()) if one.why]
+    if left:
+        notes.append(
+            {
+                "code": TWINS_LEFT,
+                "message": (
+                    f"{len(left)} account playlist(s) got no custom playlist twin: "
+                    + "; ".join(f"{one.account_name}: {one.why}" for one in left)
+                ),
+            }
+        )
+    return notes
 
 
 def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
@@ -1201,6 +1265,7 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
                     },
                     "left_empty": sorted(row.empty),
                     **({"vox": row.vox} if "vox" in item else {}),
+                    **({"dyn": row.dyn} if "dyn" in item else {}),
                 }
             )
             continue
@@ -1226,6 +1291,10 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
     voxed = sum(1 for row in landed.collection.added if row.vox)
     if voxed:
         totals["vox tagged"] = voxed
+    # AND WHAT THE CHECK READS BACK (U157), on the same reading.
+    dyned = sum(1 for row in landed.collection.added if row.dyn)
+    if dyned:
+        totals["dyn tagged"] = dyned
     if landed.collection.playlist_id:
         items.append(playlist_item(landed.collection))
     items.extend(
@@ -1239,6 +1308,17 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
             "session": landed.collection.session_id,
         }
         for written in landed.collection.playlists
+    )
+    items.extend(
+        {
+            "action": TWIN,
+            "playlist": f"{twin.folder} / {twin.name}",
+            "id": twin.playlist_id,
+            "account_id": twin.account_id,
+            "count": twin.tracks,
+            "session": landed.collection.session_id,
+        }
+        for twin in landed.collection.twins
     )
     placed = landed.collection.favorites
     if placed is not None:
@@ -1491,6 +1571,17 @@ def _land_native(
                 batch=inbox_name,
                 target=target,
             )
+            # EACH ACCOUNT PLAYLIST'S TWIN (U149), planned on this handle for
+            # the ones not paired yet, into the landing year's twin folder.
+            from cratekit.modules.outbound import pairs
+            from cratekit.sync import twins
+
+            landing_twins = twins.plan_landing(
+                db,
+                [(one.account, one.account_name or one.name) for one in split],
+                year=batch_name.today().year,
+                paired=pairs.PairStore(cfg).all(),
+            )
             made = native.plan_rows(
                 cfg,
                 db,
@@ -1518,6 +1609,7 @@ def _land_native(
                 inbox_leftovers=leftovers,
                 inbox_found_by_name=inbox_found_by_name,
                 labels=label_plan(db, files),
+                twins=landing_twins,
             )
             made = replace(made, folder=target, batch=planned.batch)
             # WHERE EACH NEW ROW WILL BE FILED, BEFORE IT EXISTS (U165), shown
@@ -1596,8 +1688,10 @@ def _land_native(
     native.assert_rows_identified(landed.collection)
     warnings = [{"code": entry.reason, "message": entry.sentence} for entry in landed.refused]
     warnings.extend(account_playlists.left_warning(landed.collection.left))
+    warnings.extend(_twin_notes(cfg, applied[-1] if applied else None, landed.collection))
     warnings.extend(awaiting_analysis(landed.collection))
     warnings.extend(vox_warnings(landed.collection))
+    warnings.extend(dyn_warnings(landed.collection))
     warnings.extend(favorites_notes(payload, landed.collection))
     warnings.extend(archive_notes)
     if set_planned:
@@ -2342,6 +2436,15 @@ def awaiting_analysis(collection: native.NativeLanded) -> list[dict[str, str]]:
         return []
     # ONE PLAYLIST, ANALYZE (U166), which holds every row still waiting and
     # only those, so the visit is one selection rather than one per batch.
+    # TWO SELECTIONS IN IT (U157), each with its count and its settings: the
+    # rows without the dyn My Tag take Normal and the rows with it Dynamic.
+    dyned = sum(1 for row in collection.added if row.dyn)
+    normal = len(collection.added) - dyned
+    selections = (
+        f"run Analyze Tracks on the {normal} row(s) without the dyn My Tag with "
+        f"{drift.NORMAL_SETTINGS}, and on the {dyned} row(s) carrying it with "
+        f"{drift.DYNAMIC_SETTINGS}"
+    )
     return [
         {
             "code": AWAITING_ANALYSIS,
@@ -2350,8 +2453,47 @@ def awaiting_analysis(collection: native.NativeLanded) -> list[dict[str, str]]:
                 f"tempo, grid, key or waveform, and rekordbox analyses nothing on its "
                 f"own with Auto Analysis off; open rekordbox, select the "
                 f"{collection.analyze_name} playlist, which holds every row waiting "
-                f"for analysis, and run Analyze Track; then crate inbox analyzed takes "
+                f"for analysis, and {selections}; then crate inbox analyzed takes "
                 f"out each row rekordbox analysed"
+            ),
+        }
+    ]
+
+
+def dyn_warnings(collection: native.NativeLanded) -> list[dict[str, str]]:
+    """What a person reads when a variable row did not get the dyn My Tag (U157), else none.
+
+    SHARED WITH ``intake file`` for :func:`awaiting_analysis`' reason. A row
+    whose drift read as variable and carries no mark would be analysed with
+    Normal by a person who selects by the mark, so each is named, with why,
+    and the step owed is to run it with Dynamic by hand. A file with no drift
+    reading is the screen's to count and not a warning: every batch analysed
+    before U157 is one, and Normal is what each of its rows always took.
+    """
+    if not collection.added:
+        return []
+    untagged = set(collection.dyn_missing)
+    if collection.dyn_blocked:
+        untagged.update(collection.dyn_variable)
+    if not untagged:
+        return []
+    if collection.dyn_blocked:
+        why = collection.dyn_blocked
+    elif collection.dyn_unread:
+        why = f"the tag could not be read back as crate analyze check reads it: {collection.dyn_unread}"
+    else:
+        why = (
+            f"the {native.DYN_VALUE} value it was written under is one rekordbox removed; "
+            f"check the {native.DYN_CATEGORY} My Tag category in rekordbox"
+        )
+    names = ", ".join(path.name for path in collection.dyn_variable if path in untagged)
+    return [
+        {
+            "code": DYN_NOT_WRITTEN,
+            "message": (
+                f"{len(untagged)} row(s) whose tempo moves do not carry the dyn My Tag, "
+                f"so select them by name and run Analyze Tracks on them with "
+                f"{drift.DYNAMIC_SETTINGS}: {names}; {why}"
             ),
         }
     ]
@@ -2418,6 +2560,9 @@ def vox_warnings(collection: native.NativeLanded) -> list[dict[str, str]]:
 
 __all__ = [
     "AWAITING_ANALYSIS",
+    "DYN_NOT_WRITTEN",
+    "dyn_fact",
+    "dyn_warnings",
     "LAND_ARCHIVE_FAILED",
     "INTAKE_SUFFIX",
     "NATIVE_GATE",

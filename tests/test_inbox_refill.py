@@ -21,6 +21,7 @@ from cratekit.cli.output import digest_of
 from cratekit.core import config, jobs, rb_writer, session
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import missing_cli, native, refill, refill_cli, set_playlist
+from cratekit.sync import twins
 from tests import cutover_fixtures
 from tests.cli_drive import drive
 from tests.test_intake_land_account_playlists_native import (
@@ -66,8 +67,18 @@ def _two_acts(verb: list[str]) -> tuple[int, dict, dict]:
 
 
 def _playlist_id(cfg: config.Config, name: str) -> str:
+    """The landing's INBOX playlist of this name, never its custom playlist twin (U149).
+
+    Since U149 the landing also writes a twin of the same name into ``Custom
+    Playlists <year>``, so the name alone names two live playlists; the one this
+    suite refills is the one outside that folder.
+    """
     (row,) = _query(
-        cfg, "SELECT ID FROM djmdPlaylist WHERE Name = ? AND rb_local_deleted = 0", name
+        cfg,
+        "SELECT ID FROM djmdPlaylist WHERE Name = ? AND rb_local_deleted = 0 "
+        "AND ParentID NOT IN (SELECT ID FROM djmdPlaylist WHERE Name LIKE ? AND Attribute = 1)",
+        name,
+        f"{twins.FOLDER_PREFIX} %",
     )
     return str(row[0])
 

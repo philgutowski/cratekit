@@ -40459,3 +40459,203 @@ maintainer facing pin, after the unit's two fix rounds were spent.
 **Measured cost.** Not driven against either verb. The same wrong impression sitting 47 paid for on the download, on two verbs with fewer tracks per job; the item causes are correct and `job show` names them.
 
 **Closes when:** each worker wraps its body the way `acquire.cli.handle` does, declining a cause `acquire.cli.refused_for_good` accepts, with the verb naming each skipped track in a warning. Ledger only: a wording of the outcome, not data at risk.
+
+---
+
+## R-1131. Six guards of the custom playlist twins kill no test, most of them behind the gate's own digest
+
+**Found:** at the review of #330, U149, 2026-11-01.
+
+**The mechanism.** The review reverted each guard of `sync/twins.py`, `sync/pair_cli.py` and the landing's twin path and ran the unit's two test files. These killed nothing: `recheck`'s gone rows check, `assert_read_back`, `recheck_landing`'s held name check, the `written_for` filter in `native.plan_rows`, the unpaired term of `pair_cli.Plan.writes` (which nothing in `src` reads), and `write_landing`'s filter of a twin whose INBOX playlist holds nothing. The fix round pinned three more that had killed nothing: the SQL confinement wired through `assert_confined`, the live filter on the mirror's links, and the folding of two account tracks of one ISRC onto one row.
+
+**Measured cost.** None driven. Both rechecks were reached by drives and refused, but the gate's digest on the replan refused first, so they are race guards between the replan and the write. The rest are dead or defensive paths whose producer was not found. The second review measured that `recheck`'s gone rows check and `assert_read_back` each kill a test once the guard in front of them is removed, so they are second layers rather than guards nothing covers.
+
+**Closes when:** a test reaches each one, or it is removed as redundant. Ledger only: a guard that kills zero is maintainer facing, and the writes it sits on are each covered by another guard that does kill.
+
+---
+
+## R-1132. A pair whose two account tracks carry one ISRC honours a rekordbox removal of their row only half
+
+**Found:** at the review of #330, U149, 2026-11-01.
+
+**The mechanism.** When two tracks of an account playlist carry one ISRC, both are linked to the one library row, by the twins' backfill and equally by `sync pair`'s own `_owned`. `plan_pair` maps a row back to one remote id only, so when that row is taken out of the rekordbox playlist, the next `sync pair` takes one of the two account tracks off and adds the row back to rekordbox, since the other account track still holds it.
+
+**Measured cost.** Driven by the review on a fake account: account `[t1, t10, t2]` with `t10` carrying `t1`'s ISRC, the row removed in rekordbox, and the sync removed `t10` from the account and put the row back. The removal a DJ made in rekordbox is undone. How often the live account lists one recording twice under two identifiers was not measured.
+
+**Closes when:** a pair links each row to at most one account track, or reads a removed row as removing every account track linked to it. The class predates U149 in `sync pair`; ledger only until a live listing shows it.
+
+---
+
+## R-1133. The twins' backfill finds no row a landed track's intake job resolved, where sync pair would
+
+**Found:** at the review of #330, U149, 2026-11-01.
+
+**The mechanism.** `twins.Library.find` looks for an account track's row by the mirror's link, the database ISRC, the mirror's recorded ISRC and the INBOX playlists landed for that account playlist. `pair_cli._owned` has one more source, the intake jobs the pair queued. A row with no ISRC in the database or its file, landed long enough ago that its INBOX playlist has rotated out, is a miss on the backfill's gate.
+
+**Measured cost.** Not driven. Such a miss is named on the gate and the snapshot records it as an account track the twin lacks, so the next `sync pair` looks again with its own sources and adds it if it finds it; nothing is lost, the twin is short until then.
+
+**Closes when:** the backfill reads the sweep's intake jobs for each account playlist as a source, or the attended backfill shows no such miss. Ledger only.
+
+---
+
+## R-1134. A minute of hits at five over four with no beat under them reads as drift
+
+**Found:** at the second review of #338, U157, 2026-11-01.
+
+**The mechanism.** The drift band reaches a quarter either side of the head
+tempo, and five to four is exactly a quarter, so a window where only hits at
+five over four play, with no kick or other pulse under them, reads its peak at
+that rate and the track's spread jumps to it.
+
+**Measured cost.** Driven by the review on synthetic tracks at 100, 124 and
+128: a minute of bare five over four hits read 21.9 to 24.9 and variable, so
+the steady track would be marked `dyn` and analysed Dynamic. With the kick kept
+under the same hits every one read steady, as did sections at three to two,
+four to three, six to five and three to four. No real track with such a
+section was named.
+
+**Closes when:** the band stops short of five to four without losing the steps
+it now holds, or the attended calibration sitting finds no such track. Ledger
+only.
+
+---
+
+## R-1135. A tempo step of more than a quarter reads as the section the head named
+
+**Found:** at the review of #338, U157, 2026-11-01.
+
+**The mechanism.** Each drift window's peak is looked for within a quarter of
+the head tempo either way (`DRIFT_BAND`), so a window cannot read a related
+metrical level, four to three, three to two or two to one, as a drift. A track
+whose tempo really steps by more than that, 100 to 140 for instance, has its
+other section's windows passed over, and reads as steady.
+
+**Measured cost.** Driven by the review: a synthetic 100 to 140 step read 0.05
+and steady. How often a real track steps by more than a quarter is unmeasured;
+a step that large is also where a pulse at a related level and a new tempo
+cannot be told apart from the onsets alone.
+
+**Closes when:** a measurement that tells a real step from a level change, the
+key or the spectrum changing with it for instance, reads such a track as
+variable without reading the hats of a steady track as one; or the attended
+calibration sitting finds no such track in the library. Ledger only.
+
+---
+
+## R-1136. The drift cut ships at 1.5 without a reading of any real library
+
+**Found:** at the build of #338, U157, 2026-11-01.
+
+**The mechanism.** `analysis.drift_cut` defaults to 1.5 percent
+(`core.config.DEFAULT_DRIFT_CUT`), chosen from synthetic tracks: steady drum
+patterns read 0.0 to 0.3, a played part's timing wobble around a fixed tempo
+0.3, a wander of two beats either way 1.5, a three beat ramp over two minutes
+1.7, a step of 120 to 140 above 17. The brief asked for the cut to be
+calibrated against the 2026-10-27 batch, which holds both kinds, and the cloud
+cannot read it.
+
+**Measured cost.** Unmeasured on real audio. A cut too low sends steady tracks
+to Dynamic, which the brief's evidence shows lays a wobbling grid; a cut too
+high sends live tracks to Normal, which is what every track took before this
+unit. The default leans toward the second.
+
+**Closes when:** an attended sitting runs `crate analyze run` over copies of a
+batch holding both kinds, reads each file's `driftlevel`, and sets the default
+from where the two kinds part, recorded in `docs/cutover.md`. The attended card
+this unit files is that sitting. Ledger only.
+
+---
+
+## R-1137. Two of the drift measurement's constants kill no test
+
+**Found:** at the review of #338, U157, 2026-11-01.
+
+**The mechanism.** In `src/cratekit/analysis/detect.py` the onset gate's
+relative fraction, `DRIFT_ONSET_RELATIVE`, can be set to 0.0 or 0.25 and the
+window length, `DRIFT_WINDOW_SECONDS`, to 20, and `tests/test_analysis_drift.py`
+stays green. The band, `DRIFT_BAND`, killed nothing at 0.06 or 0.5 before the
+fix round; it is pinned on both sides since, by the stepped tracks below it and
+the section of hats at three to two above it.
+
+**Measured cost.** None of its own, driven by the review: the other gates
+(the pulse contrast and the absolute onset floor) pass over the same synthetic
+breakdowns. Whether a real breakdown passes the contrast gate and is held back
+only by the relative one is unmeasured, since the container has no real audio.
+
+**Closes when:** a fixture shows a window the relative gate alone holds back,
+a loud riser over a breakdown for instance, and one shows a drift the window
+length changes; or the attended calibration sitting finds the two do nothing
+on real tracks and they are removed. Ledger only.
+
+---
+
+## R-1138. A genre sub is filed only by the rebuild derivation, so a native landing, adoption and organize file a Rominimal track into its band alone
+
+**Found:** at the build of #336, U155, 2026-11-01.
+
+**The mechanism.** A genre sub is placed by `rebuild.derive_from_taxonomy`,
+which the tree rebuild, `route resort` and `route inbox` all call. The adoption
+plan (`adopt/plan.py`, behind `adopt apply`, the native landing of a sync pass
+and `organize --only adopt`) and the intake ledger's single placement
+(`intake/ingest.decide_placement`, behind `route pending`) route through
+`routing.energy_sub` alone, so a Rominimal track they file sits in its
+Minimal / Deep Tech band and not in `Minimal / Deep Tech / Rominimal`.
+
+**Measured cost.** Not driven past the reading of those two paths. Nothing is
+lost or misreported: their gates show the band they write, and the next
+`route resort` adds the genre sub, which `docs/GUIDE.md` and `CONCEPTS.md` say.
+A DJ who lands PULS releases through a sync pass sees them in Rominimal only
+after a resort.
+
+**Closes when:** the adoption plan carries a genre sub membership beside the
+vocal one, shown, counted and inside its digest, and the native landing's
+prediction names it, as the vocal sub's was built in R-788 and U165. Ledger
+only: the workflow finishes through `route resort`.
+
+---
+
+## R-1139. The export medium of route inbox creates no genre sub playlist, so a Rominimal track is filed into its band alone and every run warns sub-playlist not found
+
+**Found:** at the review of #336, U155, 2026-11-01.
+
+**The mechanism.** On the export medium `route inbox --export` creates a
+folder's vocal sub before it routes (`_vox_subs`), and nothing creates a genre
+sub. With no `Rominimal` playlist in the export's Minimal / Deep Tech folder
+the write skips that placement with `route-write-skipped: sub-playlist not
+found: Minimal / Deep Tech/Rominimal`, and the next fresh export plans the same
+again. Since U155's first fix round the gate shows that placement in its
+`genre` column, so the skip is said on the same run.
+
+**Measured cost.** Driven by the review on a disposable export: the track
+lands in its band only, with the warning, every run, until a person makes the
+playlist by hand. Reachability on the live library is unmeasured, since its
+tree has cut over to the database, where the rebuild engine creates the
+playlist.
+
+**Closes when:** the export sweep creates a declared genre sub the way it
+creates a vocal sub, named among the subs it created, or refuses before the
+gate. Ledger only.
+
+---
+
+## R-1140. crate taxonomy upgrade and doctor read a copy without the shipped genre sub as complete once its schema version is raised
+
+**Found:** at the review of #336, U155, 2026-11-01.
+
+**The mechanism.** `core/taxonomy_upgrade.py` compares a library's copy with
+the shipped template by whole `[[sub_class]]` and `[[bucket]]` entries, and by
+design never changes an entry the copy holds. The shipped Minimal / Deep Tech
+bucket gained the `Rominimal` alias and genre sub in U155, at schema version 5.
+A version 4 copy is read as behind only by its version: `crate taxonomy
+upgrade` raises it to 5, and doctor's `taxonomy.schema` then reads OK, "the
+copy declares every class and bucket it ships", with no word about the alias
+or the genre sub the copy still lacks.
+
+**Measured cost.** Driven by the review: after the planner's text is written,
+`load_taxonomy(after).bucket("minimal_deep_tech").genre_subs == ()`. Nothing is
+false in either sentence, and the hand edit is named in `docs/GUIDE.md` and on
+the attended card, but a DJ who trusts doctor is not told.
+
+**Closes when:** the planner names a shipped genre sub absent from a bucket of
+the copy, as a hand edit it will not make, in its gap and remedy sentences.
+Ledger only.
