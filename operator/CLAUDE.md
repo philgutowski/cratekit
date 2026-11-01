@@ -43,8 +43,9 @@ and wrongly.
 - **Answering a gate.** A gate is a named question the product stops at before
   it writes, and the answer is recorded against whoever gave it. There is no
   flag that answers them all.
-- **The backup acknowledgment.** `crate session ack` is yours. The product will
-  not accept one from a session working on your behalf, and that is deliberate
+- **The backup acknowledgment.** `crate session ack` is yours. The product
+  accepts one from a session working on your behalf only while both backup
+  ages are under five days, and never over older ones, which is deliberate
   rather than an obstacle to work around.
 - **Quitting rekordbox.** Writing verbs refuse while rekordbox or its background
   agent is running. Closing them is something you do at the machine, and nothing

@@ -1,0 +1,251 @@
+name = "u180"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_source_first"
+description = "folder_rank: All Favorites ranks as any other playlist, so it is no longer first"
+file = "src/cratekit/favorites/placeholders.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_order.py"]
+old = '''    if source:
+        return (RANK_SOURCE, 0)'''
+new = '''    if False:
+        return (RANK_SOURCE, 0)'''
+
+[[rows]]
+id = "M2_newest_first_sign"
+description = "folder_rank: the months rank oldest first, the order the brief replaces"
+file = "src/cratekit/favorites/placeholders.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_order.py"]
+old = '''        return (RANK_MONTH, -(int(year) * 12 + int(month)))'''
+new = '''        return (RANK_MONTH, (int(year) * 12 + int(month)))'''
+
+[[rows]]
+id = "M3_year_coefficient"
+description = "folder_rank: a year weighs ten months rather than twelve, so December reads above the January after it"
+file = "src/cratekit/favorites/placeholders.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_order.py"]
+old = '''        return (RANK_MONTH, -(int(year) * 12 + int(month)))'''
+new = '''        return (RANK_MONTH, -(int(year) * 10 + int(month)))'''
+
+[[rows]]
+id = "M4_month_must_be_plain"
+description = "folder_rank: a folder or smart list named as a month ranks as a month and is moved between the months"
+file = "src/cratekit/favorites/placeholders.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_order.py"]
+old = '''    if plain and MONTH_LABEL.fullmatch(text) is not None:'''
+new = '''    if MONTH_LABEL.fullmatch(text) is not None:'''
+
+[[rows]]
+id = "M5_undated_rank"
+description = "folder_rank: Undated ranks with the other playlists rather than directly after the months"
+file = "src/cratekit/favorites/placeholders.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_order.py"]
+old = '''    if plain and text == UNDATED:
+        return (RANK_UNDATED, 0)'''
+new = '''    if plain and text == UNDATED:
+        return (RANK_OTHER, 0)'''
+
+[[rows]]
+id = "M6_undated_after_others"
+description = "RANK_UNDATED: Undated reads after every other playlist rather than before them"
+file = "src/cratekit/favorites/placeholders.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_order.py"]
+old = '''RANK_UNDATED = 2'''
+new = '''RANK_UNDATED = 4'''
+
+[[rows]]
+id = "M7_children_live_only"
+description = "children: a soft deleted child is read, ranked and moved like a live one"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_order.py"]
+old = '''        for row in db.get_playlist(ParentID=str(folder_id))
+        if not rb_writer.node_removed(row)'''
+new = '''        for row in db.get_playlist(ParentID=str(folder_id))
+        if True'''
+
+[[rows]]
+id = "M8_slots_lift_shared"
+description = "slots: a position two rows share is not lifted apart, so the order is written with a tie rekordbox can read either way"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_order.py"]
+old = '''        given.append(value if not given or value > given[-1] else given[-1] + 1)'''
+new = '''        given.append(value)'''
+
+[[rows]]
+id = "M9_seat_skips_unmoved"
+description = "seat: every row is written, its position unchanged or not"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_order.py"]
+old = '''        if seq_of(row) == slot:
+            continue
+        row.Seq = slot'''
+new = '''        row.Seq = slot'''
+
+[[rows]]
+id = "M10_seat_stamps_updated_at"
+description = "seat: a moved row's updated_at is not stamped, so rekordbox's bookkeeping says the row did not change"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_order.py"]
+old = '''        with db.registry.disabled():
+            row.updated_at = when'''
+new = '''        pass'''
+
+[[rows]]
+id = "M11_new_month_seated"
+description = "month_row: a month made under the folder is left at the end, the behaviour before U180"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_order.py", "tests/test_favorites_split.py", "tests/test_intake_land_hearts_native.py", "tests/test_favorites_backfill.py"]
+old = '''    if parent is not None:
+        _seat_new(db, made, parent_id, source_id)'''
+new = '''    if False:
+        _seat_new(db, made, parent_id, source_id)'''
+
+[[rows]]
+id = "M12_new_month_knows_the_source"
+description = "_seat_new: the month just made is ranked as any other playlist, so it is seated at the end of the folder"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_order.py", "tests/test_favorites_split.py", "tests/test_intake_land_hearts_native.py", "tests/test_favorites_backfill.py"]
+old = '''    mine = rank(made, source_id)'''
+new = '''    mine = (placeholders.RANK_OTHER, 0)'''
+
+[[rows]]
+id = "M13_never_above_all_favorites"
+description = "_seat_new: the slot is looked for from the top of the folder, so a month can be seated above All Favorites, the round one finding"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_order.py", "tests/test_favorites_split.py", "tests/test_intake_land_hearts_native.py", "tests/test_favorites_backfill.py"]
+old = '''        (n for n, row in enumerate(others) if n >= floor and rank(row, source_id) > mine),'''
+new = '''        (n for n, row in enumerate(others) if rank(row, source_id) > mine),'''
+
+[[rows]]
+id = "M14_root_refused"
+description = "plan: an All Favorites at the playlist root is not refused, so the verb answers over no folder"
+file = "src/cratekit/favorites/order.py"
+surface = "user"
+tests = ["tests/test_favorites_order.py"]
+old = '''    if not home.folder_id:
+        raise refuse('''
+new = '''    if False:
+        raise refuse('''
+
+[[rows]]
+id = "M15_digest_is_the_target_order"
+description = "identity: the digest covers the set of rows and not their order, so a target that moved keeps its digest"
+file = "src/cratekit/favorites/order.py"
+surface = "user"
+tests = ["tests/test_favorites_order.py"]
+old = '''            "order": [one.row for one in self.children],'''
+new = '''            "order": sorted(one.row for one in self.children),'''
+
+[[rows]]
+id = "M16_stale_digest_refused"
+description = "apply: a digest that moved since the approval is not refused, so an order nobody approved is written"
+file = "src/cratekit/favorites/order.py"
+surface = "user"
+tests = ["tests/test_favorites_order.py"]
+old = '''    if again.digest != approved.digest:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M17_confined_seated_position"
+description = "order_violations: a seated row is not asked whether it took its planned position"
+file = "src/cratekit/favorites/order.py"
+surface = "user"
+tests = ["tests/test_favorites_order.py"]
+old = '''            or int(row[seq_at] or 0) != slot
+        ):'''
+new = '''        ):'''
+
+[[rows]]
+id = "M18_confined_unplanned_rows"
+description = "order_violations: any playlist row may change its position and bookkeeping, planned or not"
+file = "src/cratekit/favorites/order.py"
+surface = "user"
+tests = ["tests/test_favorites_order.py"]
+old = '''        allowed = _SEATED_COLUMNS if key in planned else frozenset()'''
+new = '''        allowed = _SEATED_COLUMNS'''
+
+[[rows]]
+id = "M19_confined_memberships"
+description = "order_violations: a membership that changed is not a violation"
+file = "src/cratekit/favorites/order.py"
+surface = "user"
+tests = ["tests/test_favorites_order.py"]
+old = '''        if before.memberships[key] != after.memberships[key]:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M20_confined_content"
+description = "order_violations: a content row that changed is not a violation"
+file = "src/cratekit/favorites/order.py"
+surface = "user"
+tests = ["tests/test_favorites_order.py"]
+old = '''    if before.content != after.content:
+        violations.append(
+            f"a {rb_writer.CONTENT_TABLE} row changed, and an order touches no track"'''
+new = '''    if False:
+        violations.append(
+            f"a {rb_writer.CONTENT_TABLE} row changed, and an order touches no track"'''
+
+[[rows]]
+id = "M21_confinement_called"
+description = "apply: the commit is not confined from SQL, so a write beyond the positions lands"
+file = "src/cratekit/favorites/order.py"
+surface = "user"
+tests = ["tests/test_favorites_order.py"]
+old = '''                assert_order_confined(
+                    db,
+                    before,'''
+new = '''                (lambda *a, **k: None)(
+                    db,
+                    before,'''
+
+[[rows]]
+id = "M22_read_back_compares"
+description = "_read_back: the folder read back is never compared with the plan, so a clean answer is given over any order"
+file = "src/cratekit/favorites/order.py"
+surface = "user"
+tests = ["tests/test_favorites_order.py"]
+old = '''    if found == wanted:
+        return ()'''
+new = '''    if True:
+        return ()'''
+
+[[rows]]
+id = "M23_in_order_asks_nothing"
+description = "favorites_order: a folder already in order opens the gate rather than ending NO_OP"
+file = "src/cratekit/favorites/order_cli.py"
+surface = "user"
+tests = ["tests/test_favorites_order.py", "tests/test_cli_contract.py"]
+old = '''    if not plan.writes:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M24_backup_acknowledged_first"
+description = "favorites_order: the backup acknowledgment is not read before the plan and the gate"
+file = "src/cratekit/favorites/order_cli.py"
+surface = "user"
+tests = ["tests/test_favorites_order.py", "tests/test_cli_contract.py"]
+old = '''    session.assert_backup_acknowledged(cfg)'''
+new = '''    pass'''
+
+[[rows]]
+id = "M25_read_back_asserted"
+description = "favorites_order: a read back that disagrees with the plan is not refused"
+file = "src/cratekit/favorites/order_cli.py"
+surface = "user"
+tests = ["tests/test_favorites_order.py"]
+old = '''    order.assert_read_back(done)'''
+new = '''    pass'''

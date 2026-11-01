@@ -223,12 +223,15 @@ def test_every_check_key_and_its_place_in_the_run_order_is_written_out():
         *(f"binary.{name}" for name in doctor.BINARY_NAMES),
         "adapter.contract",
         *(f"backup.age.{portion}" for portion in backup_facts.PORTIONS),
+        "backup.acknowledgment",
         "backup.full_comparison",
         "backup.remote",
         "deadca7.push",
         "session.unresolved",
+        "runs.open-gates",
         "tree.registry",
         "repo.commit_hook",
+        "install.extras",
         "install.release",
     )
     assert doctor.BINARY_NAMES == (
@@ -860,6 +863,79 @@ def test_a_recorded_backup_reports_its_age_and_its_destination(configured):
     finding = find(doctor.run(configured, probes=probes()), "backup.age.database")
     assert finding.status is doctor.Status.INFO
     assert "9 days ago" in finding.detail and "a-remote:bucket" in finding.detail
+
+
+#: U184. One clock for the acknowledgment tests, so "valid" and "expired" are
+#: measured against the instant doctor reads rather than the wall clock.
+ACK_NOW = datetime(2026, 11, 1, 12, 0, tzinfo=timezone.utc)
+
+
+def _acknowledged(cfg: config.Config, at: datetime) -> session.Acknowledgment:
+    """An acknowledgment minted at ``at`` by the session rule, over young backups."""
+    for portion in backup_facts.Portion:
+        backup_facts.record(
+            cfg, portion, completed_at=at - timedelta(days=1), destination="probe"
+        )
+    return session.record_acknowledgment(cfg, now=at, decided_by=session.SESSION_ACTOR)
+
+
+def test_doctor_shows_the_acknowledgments_expiry_beside_the_two_backup_ages(configured):
+    """U184: the third fact a destructive verb consults, after the two it was minted over."""
+    minted = _acknowledged(configured, ACK_NOW - timedelta(hours=2, minutes=30))
+
+    report = doctor.run(configured, probes=probes(now=ACK_NOW))
+
+    finding = find(report, "backup.acknowledgment")
+    assert finding.status is doctor.Status.INFO
+    expires = minted.expires_at.replace(microsecond=0).isoformat()
+    assert finding.detail == (
+        f"valid until {expires}, 9h 30m from now, minted by the session-ages rule"
+    )
+    keys = [one.key for one in report.findings]
+    ages = [keys.index(f"backup.age.{portion}") for portion in backup_facts.PORTIONS]
+    assert keys.index("backup.acknowledgment") == max(ages) + 1
+
+
+def test_doctor_names_when_an_acknowledgment_lapsed(configured):
+    minted = _acknowledged(configured, ACK_NOW - timedelta(hours=13))
+
+    finding = find(doctor.run(configured, probes=probes(now=ACK_NOW)), "backup.acknowledgment")
+
+    assert finding.status is doctor.Status.INFO
+    expires = minted.expires_at.replace(microsecond=0).isoformat()
+    assert finding.detail.startswith(f"expired at {expires};"), finding.detail
+    assert "crate session ack" in finding.detail
+
+
+def test_doctor_says_when_no_acknowledgment_is_on_record(configured):
+    finding = find(doctor.run(configured, probes=probes()), "backup.acknowledgment")
+
+    assert finding.status is doctor.Status.INFO
+    assert finding.detail.startswith("none on record"), finding.detail
+
+
+def test_an_acknowledgment_that_cannot_be_understood_is_a_failure(configured):
+    path = session.ack_path(configured)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{ not json")
+
+    finding = find(doctor.run(configured, probes=probes()), "backup.acknowledgment")
+
+    assert finding.status is doctor.Status.FAIL
+    assert "not readable as JSON" in finding.detail
+    assert finding.remedy is Remedy.REPORT_DEFECT
+
+
+def test_no_acknowledgment_is_claimed_absent_off_a_volume_nobody_read(configured, tmp_path):
+    """The record lives on the library volume, so a missing volume is not "none"."""
+    _acknowledged(configured, ACK_NOW)
+    configured.library.root.rename(tmp_path / "detached")
+
+    finding = find(doctor.run(configured, probes=probes(now=ACK_NOW)), "backup.acknowledgment")
+
+    assert finding.status is doctor.Status.INFO
+    assert "not asserted" in finding.detail
+    assert "none on record" not in finding.detail
 
 
 def test_a_remote_whose_provider_trashes_on_delete_is_reported(configured):
@@ -8445,3 +8521,137 @@ def test_a_push_beside_a_backup_recorded_ahead_of_now_is_not_called_held(configu
     finding = _push_check(configured, _deadca7(tmp_path, pushed_at=now - timedelta(days=1)))
     assert "cannot be said, since that backup is recorded ahead of now" in finding.detail
     assert "which holds it" not in finding.detail
+
+
+# ---------------------------------------------------------------------------
+# U181: install.extras, whether the vocal model can score in this copy
+# ---------------------------------------------------------------------------
+
+_NO_EXTRA = ("extra", "the 'vocals' extra is not installed here; reinstall it")
+
+
+def _extras_finding(missing, origin=None, **overrides):
+    origin = origin or _vcs("0.3.0", ("analysis",))
+    inputs = doctor._Inputs(
+        None,
+        None,
+        probes(vocal_requirement=lambda: missing, install_origin=lambda: origin, **overrides),
+    )
+    return doctor._check_install_extras(inputs)
+
+
+def test_a_copy_without_the_vocals_extra_says_so_and_prints_the_reinstall_command():
+    """Sitting 51's copy: installed with analysis and not vocals, from the release."""
+    finding = _extras_finding(_NO_EXTRA)
+    assert finding.key == "install.extras"
+    assert finding.status is doctor.Status.INFO, "it runs inside setup and must not refuse"
+    assert "vocals extra is absent" in finding.detail
+    assert "carry no voxlevel" in finding.detail
+    assert (
+        f'pipx install --force "cratekit[analysis,vocals] @ git+{_REPO_URL}@v0.3.0"'
+        in finding.detail
+    ), "the reinstall keeps the extra this copy carries and adds vocals, at its own tag"
+
+
+def test_a_copy_whose_vocal_model_can_score_is_ok():
+    finding = _extras_finding(None)
+    assert finding.status is doctor.Status.OK
+    assert "pipx" not in finding.detail
+
+
+def test_the_row_reads_the_vocals_modules_own_probe_with_the_loader_bound_or_not(
+    monkeypatch,
+):
+    """The scenario's two halves through the shipped seam: unbound on a machine
+    with no torch reports the row and the command, bound is ok."""
+    from cratekit.analysis import vocals
+
+    monkeypatch.setattr(vocals, "_VOCAL_LOADER", None)
+    monkeypatch.setattr(
+        vocals, "requirement", lambda: ("extra", "the 'vocals' extra is not installed here")
+    )
+    inputs = doctor._Inputs(None, None, doctor.Probes(install_origin=lambda: _vcs("0.3.0")))
+    unbound = doctor._check_install_extras(inputs)
+    assert unbound.status is doctor.Status.INFO
+    assert f'"cratekit[vocals] @ git+{_REPO_URL}@v0.3.0"' in unbound.detail
+
+    monkeypatch.setattr(vocals, "_VOCAL_LOADER", lambda: object())
+    assert doctor._check_install_extras(inputs).status is doctor.Status.OK
+
+
+def test_missing_model_files_are_named_and_no_reinstall_is_offered_for_them():
+    """A reinstall does not place the checkpoint, so the row does not say it would."""
+    finding = _extras_finding(("files", "the vocal model checkpoint is not at the path"))
+    assert finding.status is doctor.Status.INFO
+    assert "checkpoint is not at the path" in finding.detail
+    assert "Reinstall" not in finding.detail and "pipx" not in finding.detail
+
+
+def test_a_copy_not_installed_from_a_release_gets_the_vocals_modules_own_command(
+    monkeypatch,
+):
+    from cratekit.analysis import vocals
+
+    monkeypatch.setattr(vocals, "install", lambda: "the vocals module's own command")
+    finding = _extras_finding(_NO_EXTRA, origin=doctor.InstallOrigin(kind="editable"))
+    assert "Reinstall with: the vocals module's own command" in finding.detail
+
+
+def test_the_extras_row_never_fails_setup():
+    for missing in (_NO_EXTRA, ("files", "the label table is not at the path"), None):
+        assert not _extras_finding(missing).failed
+
+
+def test_an_upgrade_adds_vocals_when_the_library_has_scored_a_track():
+    """A copy that lost the extra would otherwise upgrade without it again."""
+    inputs = doctor._Inputs(
+        None,
+        None,
+        probes(
+            install_origin=lambda: _vcs("0.2.0", ("analysis",)),
+            release_tags=lambda _url: ("v0.3.0",),
+            vocals_scored=lambda _cfg: True,
+        ),
+    )
+    finding = doctor._check_release(inputs)
+    assert (
+        f'pipx install --force "cratekit[analysis,vocals] @ git+{_REPO_URL}@v0.3.0"'
+        in finding.detail
+    )
+
+
+def test_an_upgrade_keeps_the_extras_and_adds_nothing_for_a_library_never_scored():
+    inputs = doctor._Inputs(
+        None,
+        None,
+        probes(
+            install_origin=lambda: _vcs("0.2.0", ("analysis",)),
+            release_tags=lambda _url: ("v0.3.0",),
+            vocals_scored=lambda _cfg: False,
+        ),
+    )
+    finding = doctor._check_release(inputs)
+    assert f'"cratekit[analysis] @ git+{_REPO_URL}@v0.3.0"' in finding.detail
+
+
+def test_a_library_has_scored_when_a_vocal_calibration_is_recorded(configured):
+    """The shipped probe: the calibration a fit writes only from scored files."""
+    from cratekit.write import metadata_cli
+
+    assert doctor._vocals_scored(None) is False
+    assert doctor._vocals_scored(configured) is False
+    path = config.state_path(metadata_cli.STATE_KEY_VOCAL_CALIBRATION, configured)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"threshold": 12.0}', encoding="utf-8")
+    assert doctor._vocals_scored(configured) is True
+
+
+def test_a_git_install_of_a_branch_head_names_no_tag_that_does_not_exist(monkeypatch):
+    """Review round one: ``@v0.3.1.dev3+g...`` is no tag, so the command is the
+    vocals module's own rather than a release reinstall pipx would refuse."""
+    from cratekit.analysis import vocals
+
+    monkeypatch.setattr(vocals, "install", lambda: "the vocals module's own command")
+    origin = _vcs("0.3.1.dev3+gabc1234", ("analysis",))
+    assert doctor.vocals_install_command(origin) == "the vocals module's own command"
+    assert "@v0.3.0" in doctor.vocals_install_command(_vcs("0.3.0", ("analysis",)))

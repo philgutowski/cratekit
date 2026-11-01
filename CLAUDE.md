@@ -31,8 +31,9 @@ exact sequence.
 **The cloud is where Cratekit is built**, decided by Phillip on 2026-10-27.
 Native Relay, the board lanes, `/board-up` and the lane dispatcher are
 retired. The coordinator of Phillip's Claude project, which turns his ideas
-and bugs into cards, keeps five fresh Opus 5.5 build threads going at once
-and carries his answers back from the decisions page; each runs the `cloud-unit`
+and bugs into cards, keeps five fresh Opus 5.5 build threads going at once,
+while the project's relay thread carries his answers back from the decisions page
+every hour; each build thread runs the `cloud-unit`
 skill, which takes its card from `board.py cloud`, plans
 and builds it at high effort, has Fable review it to the merge bar, measures
 the mutation table against the Linux suite's known failures, opens a pull
@@ -201,7 +202,9 @@ lists what.
   with no controlling terminal and itself refuses unless both ages are under
   five days; until the installed copy carries U138, run it under
   `script -q /dev/null` as before. Answer as `session` either way: any other
-  actor takes the terminal rule, which checks no age.
+  actor takes the terminal rule, which checks no age. Since U184 it is one
+  command, `crate session ack --as session`, with no gate and no run left
+  waiting; until the installed copy carries U184, use the gate as before.
 - **DJ_tools is read-only for code.** It is the live system until each workflow's
   replacement is proven. Its `docs/` are the exception.
 - **Do not symlink `.venv` into a worktree.** The editable install names the

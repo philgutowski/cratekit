@@ -855,6 +855,12 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # refusal, since it does not say which one it is on.
         "rating-scale-unknown": ExitCode.PRECONDITION,
         "module-extras-missing": ExitCode.MODULE_UNAVAILABLE,
+        # U181. ``crate sync land`` stopped at its gate because the vocal
+        # model cannot score in this copy, and the gate was answered ``stop``.
+        # PRECONDITION rather than the extra's own code, because what is
+        # missing may be the model's files and not the extra, and the doctor
+        # row the remedy names says which.
+        "vocal-scoring-unavailable": ExitCode.PRECONDITION,
         "credential-missing": ExitCode.PRECONDITION,
         # Item 4 of the residual finding "Five places where "I could not look"
         # is still not said out loud". The presence sidecar ``core.secrets`` keeps so doctor can
@@ -1633,6 +1639,14 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # scriptable path, ``--next`` and ``--answer``, so PRECONDITION rather
         # than a defect.
         "label-sync-unanswerable": ExitCode.PRECONDITION,
+        # R-1114. ``label sync --next`` asked about every label it set out to
+        # ask about and could read none of them: each listing failed or
+        # confirmed nothing. An empty result from a total failure is not a
+        # label with nothing new, the ``no-evidence`` rule, so the run refuses
+        # rather than ending ``no_op``. PRECONDITION beside
+        # ``label-sweep-incomplete``, for its reason: each label's own line
+        # carries what failed, and the remedy differs per label.
+        "label-sync-unlisted": ExitCode.PRECONDITION,
         # ── U109's refusal, appended for the reason every block above gives ────
         #
         # A verb whose queueing half was retired in favour of another verb was
@@ -1826,6 +1840,12 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # PRECONDITION on ``label-sweep-incomplete``'s argument: what failed is
         # carried underneath, and another run reads the label again.
         "label-playlists-incomplete": ExitCode.PRECONDITION,
+        # R-1091. The release reads a full build keeps for a label could not be
+        # read: not JSON, another version, or an entry of the wrong shape.
+        # Refused before any release is asked, never read as empty, on
+        # ``label-sync-unusable``'s rule. PRECONDITION: the file is this
+        # installation's to repair, and deleting it costs only provider calls.
+        "label-playlists-reads-unusable": ExitCode.PRECONDITION,
         # The account holds two root folders named as the label, so which one is
         # the label's is not something a name decides. Its own slug rather than
         # ``export-playlist-ambiguous``, since the remedy is on the account and
@@ -1944,6 +1964,14 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # file does not carry. PRECONDITION on ``tag-folder-unwritten``'s
         # argument: the cure is the file's, which is named.
         "bandcamp-label-unwritten": ExitCode.PRECONDITION,
+        # ── R-1103's one, appended for the same reason ─────────────────────────
+        #
+        # ``tag retag`` had a specific genre for a file carrying a catch-all and
+        # the file would not take it. Its item fails rather than reporting a
+        # correction the file does not carry. PRECONDITION on
+        # ``tag-folder-unwritten``'s argument: the cure is the file's, which is
+        # named, and a second run over the folder asks again.
+        "tag-retag-unwritten": ExitCode.PRECONDITION,
         # ── U169's one, appended for the same reason ───────────────────────────
         #
         # A ``--root`` names a folder that is not there. A relative one is read

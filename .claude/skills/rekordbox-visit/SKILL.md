@@ -109,6 +109,9 @@ before pressing OK:
 | Vocal | off |
 | CUE | off |
 
+These are Phillip's standard, Vocal off included, confirmed by him on
+2026-11-01. Sitting 52 ran with Vocal on as a one off; follow the table.
+
 **The Analysis Mode list opens only while the mouse is held down on it.** A
 click does nothing. Press and hold on the control, move to the item while
 still holding, and release on it. Read the control back afterwards, since a
@@ -208,8 +211,8 @@ On done, take the analysed rows out of the playlist:
     crate inbox analyzed
 
 It needs the backup acknowledgment, which the session mints with `crate
-session ack`, answering its `session.ack.backup` gate as the session as
-CLAUDE.md's backup acknowledgment rule says, and it stops at its own gate,
+session ack --as session` as CLAUDE.md's backup acknowledgment rule says, and
+it stops at its own gate,
 `inbox.analyzed.approve`. That gate is a database write, so it is answered by
 CLAUDE.md's rehearsal rule: the same verb driven on a disposable copy with
 library state redirected, as `docs/solutions/workflow-issues/a-disposable-database-copy-does-not-make-library-state-disposable.md`

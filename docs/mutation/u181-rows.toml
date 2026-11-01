@@ -1,0 +1,253 @@
+name = "u181"
+pass_kind = "light"
+
+[[rows]]
+id = "V1_unavailable_ignores_bound_loader"
+description = "vocals.unavailable: ask missing_requirement even with a loader bound, so a bound fake reads as unable"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py", "tests/test_sync_land.py", "tests/test_doctor.py"]
+old = '''    return None if loader_bound() else missing_requirement()'''
+new = '''    return missing_requirement()'''
+
+[[rows]]
+id = "V2_torch_failure_kind"
+description = "vocals.requirement: a torch that will not import is named as missing files, so doctor offers no reinstall"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py", "tests/test_doctor.py"]
+old = '''        return (
+            MISSING_EXTRA,
+            f"the 'vocals' extra is not usable here ({type(exc).__name__}: {exc}); {install()}",
+        )'''
+new = '''        return (
+            MISSING_FILES,
+            f"the 'vocals' extra is not usable here ({type(exc).__name__}: {exc}); {install()}",
+        )'''
+
+[[rows]]
+id = "E1_direct_reference_unread"
+description = "extras.install_command: never read the direct reference, so the release install falls back to the folder form and drops analysis"
+file = "src/cratekit/modules/extras.py"
+surface = "user"
+tests = ["tests/test_install_command.py", "tests/test_vocals_cli.py", "tests/test_doctor.py"]
+old = '''        reference = _pipx_reference(prefix / PIPX_METADATA)
+        if reference is not None:'''
+new = '''        reference = _pipx_reference(prefix / PIPX_METADATA)
+        if False:'''
+
+[[rows]]
+id = "E2_direct_reference_drops_extras"
+description = "extras.install_command: the direct reference names only the extra asked for, dropping the ones the copy carries"
+file = "src/cratekit/modules/extras.py"
+surface = "user"
+tests = ["tests/test_install_command.py"]
+old = '''            name, chosen, url = reference
+            wanted = ",".join(sorted({*chosen, extras}))'''
+new = '''            name, chosen, url = reference
+            wanted = ",".join(sorted({extras}))'''
+
+[[rows]]
+id = "D1_extras_row_never_ok"
+description = "doctor install.extras: never report ok, so a copy whose model scores is told the extra is absent"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_cli_contract.py"]
+old = '''    missing = inputs.probes.vocal_requirement()
+    if missing is None:'''
+new = '''    missing = inputs.probes.vocal_requirement() or ("extra", "forced")
+    if missing is None:'''
+
+[[rows]]
+id = "D2_files_offered_reinstall"
+description = "doctor install.extras: treat missing model files as the extra, so a reinstall that places nothing is printed"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    if kind != vocal_scoring.MISSING_EXTRA:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "D3_release_form_dropped"
+description = "doctor vocals_install_command: ignore a release install, so the command is the folder or pip form"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    if origin.kind == "vcs" and origin.url and origin.version and _is_release(origin.version):
+        extras = sorted({*origin.extras, VOCALS_EXTRA})'''
+new = '''    if False:
+        extras = sorted({*origin.extras, VOCALS_EXTRA})'''
+
+[[rows]]
+id = "D4_release_form_no_vocals"
+description = "doctor vocals_install_command: the release form keeps the extras and does not add vocals"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''        extras = sorted({*origin.extras, VOCALS_EXTRA})'''
+new = '''        extras = sorted({*origin.extras})'''
+
+[[rows]]
+id = "D5_upgrade_never_adds_vocals"
+description = "doctor _kept: the upgrade command never adds vocals, so a scored library upgrades without it"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    if VOCALS_EXTRA in origin.extras or not inputs.probes.vocals_scored(inputs.cfg):'''
+new = '''    if True:'''
+
+[[rows]]
+id = "D6_upgrade_always_adds_vocals"
+description = "doctor _kept: the upgrade command adds vocals for a library never scored"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    if VOCALS_EXTRA in origin.extras or not inputs.probes.vocals_scored(inputs.cfg):'''
+new = '''    if VOCALS_EXTRA in origin.extras:'''
+
+[[rows]]
+id = "D7_scored_probe_false"
+description = "doctor _vocals_scored: never see the recorded calibration"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    return config.state_path(metadata_cli.STATE_KEY_VOCAL_CALIBRATION, cfg).is_file()'''
+new = '''    return False'''
+
+[[rows]]
+id = "C1_unscored_head_or_score"
+description = "analyze vocals --unscored: queue a file carrying the head OR no score, so an unheaded file is queued"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py"]
+old = '''        if analysis_cli.carries_head(path, cfg) and tags.read_vox_from_file(path) is None:'''
+new = '''        if analysis_cli.carries_head(path, cfg) or tags.read_vox_from_file(path) is None:'''
+
+[[rows]]
+id = "C2_unscored_ignores_score"
+description = "analyze vocals --unscored: queue every headed file, scored or not"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py"]
+old = '''        if analysis_cli.carries_head(path, cfg) and tags.read_vox_from_file(path) is None:'''
+new = '''        if analysis_cli.carries_head(path, cfg):'''
+
+[[rows]]
+id = "C3_unscored_flag_ignored"
+description = "analyze vocals: ignore --unscored, so the whole folder is queued"
+file = "src/cratekit/vocals/cli.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py", "tests/test_sync_land.py"]
+old = '''    unscored = bool(getattr(ctx.args, "unscored", False))'''
+new = '''    unscored = False'''
+
+[[rows]]
+id = "T1_rescore_ignores_unable"
+description = "tail.rescore: queue the rescore although the model cannot score here"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''    if unable is not None:
+        chain.summary["vocal_rescore"] = "skipped"'''
+new = '''    if False:
+        chain.summary["vocal_rescore"] = "skipped"'''
+
+[[rows]]
+id = "T2_rescore_ignores_profile"
+description = "tail.rescore: run the vocals verb on a profile with the vocals module off"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_label_sync_go.py", "tests/test_vocals_cli.py"]
+old = '''    if not vocals_on(cfg):
+        chain.summary["vocal_rescore"] = "off"'''
+new = '''    if False:
+        chain.summary["vocal_rescore"] = "off"'''
+
+[[rows]]
+id = "T3_rescore_keeps_stale"
+description = "tail.rescore: leave a stale vocals job over the folder open"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py"]
+old = '''        replace_stale(chain, ANALYZE, VOCALS_VERB, folder, cfg)'''
+new = '''        pass'''
+
+[[rows]]
+id = "T4_rescore_failure_ignored"
+description = "tail.rescore: a vocals job that did not succeed is reported scored and the chain goes on"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_vocals_cli.py"]
+old = '''    if job.state is not jobs.JobState.SUCCEEDED:
+        raise Stop(ANALYZE, job_error(chain, job))
+    chain.summary["vocal_rescore"] = count'''
+new = '''    chain.summary["vocal_rescore"] = count'''
+
+[[rows]]
+id = "T5_rescore_never_run"
+description = "tail.run: the analyze step never rescores"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''        if step == ANALYZE:
+            rescore(chain, folder, cfg, unable=unable)'''
+new = '''        if False:
+            rescore(chain, folder, cfg, unable=unable)'''
+
+[[rows]]
+id = "T6_plan_warnings_not_lifted"
+description = "tail.land: the landing gate screen's warnings are not lifted onto the chain"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''        lift_plan_warnings(chain, cause)'''
+new = '''        pass'''
+
+[[rows]]
+id = "S1_profile_off_asked"
+description = "sync land _vocals: ask the model on a profile with the vocals module off"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_cli_contract.py"]
+old = '''    if not tail.vocals_on(cfg):
+        report.summary["vocal_scoring"] = "off"'''
+new = '''    if False:
+        report.summary["vocal_scoring"] = "off"'''
+
+[[rows]]
+id = "S2_gate_never_asked"
+description = "sync land _vocals: never stop at the gate, so a pass lands rows with no score unasked"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_cli_contract.py"]
+old = '''    unable = tail.vocals_unavailable()
+    if unable is None:'''
+new = '''    unable = tail.vocals_unavailable()
+    if True:'''
+
+[[rows]]
+id = "S3_stop_goes_on"
+description = "sync land _vocals: an answer of stop takes the pass on"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py"]
+old = '''    if option != WITHOUT_VOCALS_GO:'''
+new = '''    if option is None:'''
+
+[[rows]]
+id = "L1_half_is_a_warning"
+description = "land_cli vox_plan_warnings: warn at exactly half the added rows unscored"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_vox_native.py"]
+old = '''    if not adding or 2 * len(unscored) <= len(adding):'''
+new = '''    if not adding or 2 * len(unscored) < len(adding):'''
+
+[[rows]]
+id = "L2_coefficient"
+description = "land_cli vox_plan_warnings: halve the coefficient, so only an unscored batch above the whole warns"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_vox_native.py"]
+old = '''    if not adding or 2 * len(unscored) <= len(adding):'''
+new = '''    if not adding or 1 * len(unscored) <= len(adding):'''

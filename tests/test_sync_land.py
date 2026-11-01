@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import shlex
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -74,6 +75,20 @@ def _machine(tmp_path, monkeypatch, profile: str) -> tuple[config.Config, Script
     monkeypatch.setattr(FakeAdapter, "script", script)
     monkeypatch.setattr(acquire_cli, "_SLEEP", lambda _seconds: None)
     return built, script
+
+
+@pytest.fixture(autouse=True)
+def vocal_model(monkeypatch):
+    """A vocal model able to score, so the pass's preflight goes on (U181).
+
+    Bound as a stand in loader, the vocals module's own rule for "able", since
+    this machine has no torch. A test of the refusal unbinds it.
+    """
+    from cratekit.analysis import vocals
+
+    monkeypatch.setattr(vocals, "_VOCAL_LOADER", lambda: object())
+    monkeypatch.setattr(vocals, "_VOCAL_MODEL", None)
+    monkeypatch.setattr(vocals, "_VOCAL_FAILED", False)
 
 
 @pytest.fixture
@@ -216,10 +231,15 @@ def _staged(cfg: config.Config) -> Path:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_the_verb_queues_nothing_of_its_own_and_declares_no_gate():
-    """Every job it drives is queued by its own verb; every gate is a step's own."""
+def test_the_verb_queues_nothing_of_its_own_and_declares_one_gate_of_its_own():
+    """Every job it drives is queued by its own verb; every gate a step stops at
+    is the step's own. The one gate the pass declares is U181's, asked before
+    anything runs, and answered inline since it writes nothing a pass would not."""
     assert ENTRY.landed and not ENTRY.long_running and ENTRY.argv_builder is None
-    assert ENTRY.gates == ()
+    (gate,) = ENTRY.gates
+    assert gate.name == sync_land.WITHOUT_VOCALS
+    assert set(gate.options) == {sync_land.WITHOUT_VOCALS_GO, "stop"}
+    assert not gate.explicit and gate.digest_source is None
     assert ENTRY.writes == frozenset({"files"}) and ENTRY.destructive
     assert ENTRY.module == "cratekit.cli.sync_land"
 
@@ -1230,7 +1250,398 @@ def test_an_earlier_pass_that_ended_or_belongs_to_another_library_is_not_continu
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 7. Either run id continues the pass (U183)
+# U182: stale intake jobs, named by playlist, let go by a cancel
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _age(job_id: str, days: float) -> None:
+    stamp = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    with jobs.open_store() as store, store.immediate() as conn:
+        conn.execute("UPDATE jobs SET created = ? WHERE job_id = ?", (stamp, job_id))
+
+
+def _cancelled_pass(cfg: config.Config, run_id: str) -> None:
+    """A pass ``--pass-run`` resolves (U183) whose one intake job was cancelled."""
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store,
+            handler_key=registry.entry("intake.playlist").handler_key,
+            payload={"source": "pl-gone", "run_id": run_id},
+            cfg=cfg,
+            item_ids=("901",),
+        )
+        jobs.cancel(store, job.job_id)
+
+
+def test_the_left_open_row_names_each_playlist_its_age_size_and_copies(
+    machine, monkeypatch, tail
+):
+    """Sitting 51: 17 jobs read as ids alone, ten of them copies of two lists."""
+    cfg, script = machine
+    key = registry.entry("intake.playlist").handler_key
+    with jobs.open_store() as store:
+        for job_id, source, name in (
+            ("copy-a", "pl-a", "Warmup"),
+            ("copy-b", "pl-b", "Warmup Two"),
+        ):
+            jobs.enqueue(
+                store,
+                handler_key=key,
+                payload={"source": source, "playlist_name": name, "run_id": "old-run"},
+                cfg=cfg,
+                item_ids=("101", "102"),
+                job_id=job_id,
+            )
+    _age("copy-a", 44)
+    _age("copy-b", 43)
+    bind_playlists(monkeypatch)
+    _cancelled_pass(cfg, "other-run")
+
+    code, envelope = drive(["sync", "land", "--pass-run", "other-run"])
+
+    row = _check(envelope, "left-open")
+    assert row["status"] == "fail"
+    detail = row["detail"]
+    assert "for 2 playlist(s)" in detail
+    assert "playlist 'Warmup' (pl-a): copy-a (queued, 44 day(s) old, 2 track(s), the same tracks as copy-b)" in detail
+    assert "playlist 'Warmup Two' (pl-b): copy-b (queued, 43 day(s) old" in detail
+    assert "Cancelling a job lets its playlist's increment queue again on the next pass" in detail
+    assert "crate job cancel --stale-days DAYS --dry-run" in detail
+    grouped = _summary(envelope)["left_open_playlists"]
+    # NEWEST FIRST, the order every open job is read in.
+    assert [group["playlist"] for group in grouped] == [
+        "playlist 'Warmup Two' (pl-b)",
+        "playlist 'Warmup' (pl-a)",
+    ]
+    by_job = {job["job_id"]: job for group in grouped for job in group["jobs"]}
+    assert by_job["copy-a"]["age_days"] == 44 and by_job["copy-a"]["tracks"] == 2
+    assert by_job["copy-a"]["same_tracks"] == ["copy-b"]
+
+
+def test_a_pass_after_the_stale_cancel_queues_the_freed_playlist(machine, monkeypatch, tail):
+    """The brief's last scenario: the cancel is what lets the playlist queue again."""
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    code, first = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), first
+    (stale,) = _by_key("intake.playlist")
+    _age(stale.job_id, 40)
+    code, again = drive(["sync", "all"])
+    assert again["outcome"] == "no_op", "an open job did not hold its playlist out"
+
+    code, cancelled = drive(["job", "cancel", "--stale-days", "30"])
+    assert code == int(ExitCode.OK), cancelled
+    (row,) = cancelled["data"]["progress"]["cancel"]
+    assert row["job_id"] == stale.job_id
+    assert row["frees"] == "frees playlist 'Warmup' (pl-a), so the next pass queues it again"
+
+    code, freed = drive(["sync", "all"])
+
+    assert code == int(ExitCode.OK), freed
+    queued = [job for job in _by_key("intake.playlist") if job.job_id != stale.job_id]
+    assert len(queued) == 1 and queued[0].state is jobs.JobState.QUEUED
+    assert queued[0].payload["playlist_name"] == "Warmup"
+
+
+def test_a_continued_pass_never_drives_a_cancelled_job_and_lists_the_rest(
+    machine, monkeypatch, tail
+):
+    """A cancel's copy in the same run is reported cancelled, and the kept job goes on."""
+    cfg, script = machine
+    script.landings["101"] = Landing()
+    script.landings["201"] = Landing()
+    bind_playlists(
+        monkeypatch,
+        (_playlist("pl-a", "Warmup"), _tracks("101")),
+        (_playlist("pl-b", "Peak"), _tracks("201")),
+    )
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    first, second = _by_key("intake.playlist")
+    with jobs.open_store() as store:
+        jobs.cancel(store, first.job_id)
+
+    code, envelope = drive(["sync", "land", "--pass-run", passed["run_id"]])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    with jobs.open_store() as store:
+        assert jobs.get(store, first.job_id).state is jobs.JobState.CANCELLED
+        assert jobs.get(store, second.job_id).state is jobs.JobState.SUCCEEDED
+    assert not any(first.job_id in argv for argv in tail.calls), "a cancelled job was driven"
+    notes = [c["detail"] for c in envelope["data"]["checks"] if c["key"] == "sync.land.intake"]
+    assert any(f"{first.job_id}" in note and "cancelled" in note for note in notes)
+    assert _summary(envelope)["cancelled_jobs"] == [first.job_id]
+    assert ["intake", "missing", "--run", passed["run_id"], "--skip-failed"] in tail.calls
+
+
+def test_a_continued_pass_whose_every_job_was_cancelled_names_a_new_pass_not_a_resume(
+    machine, monkeypatch, tail
+):
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    code, passed = drive(["sync", "all"])
+    (intake,) = _by_key("intake.playlist")
+    with jobs.open_store() as store:
+        jobs.cancel(store, intake.job_id)
+
+    code, envelope = drive(["sync", "land", "--pass-run", passed["run_id"]])
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    detail = _check(envelope, sync_land.INTAKE)["detail"]
+    assert "cancelled" in detail and "crate sync land" in detail
+    assert "job resume" not in detail and "--pass-run" not in detail
+    assert _summary(envelope)["stopped_at"] == sync_land.INTAKE
+    assert not any(argv[:2] == ["intake", "missing"] for argv in tail.calls)
+    with jobs.open_store() as store:
+        assert jobs.get(store, intake.job_id).state is jobs.JobState.CANCELLED
+
+
+def test_a_url_typed_by_hand_and_a_sweeps_id_are_one_playlist_on_the_left_open_row(
+    machine, monkeypatch, tail
+):
+    """Round one of the review: grouped as the pass holds them, not as typed."""
+    cfg, script = machine
+    uuid = "0f6e2c3a-1b2d-4e5f-8a9b-0c1d2e3f4a5b"
+    key = registry.entry("intake.playlist").handler_key
+    with jobs.open_store() as store:
+        jobs.enqueue(
+            store,
+            handler_key=key,
+            payload={"source": uuid, "source_id": "playlists", "playlist_name": "Warmup", "run_id": "old-run"},
+            cfg=cfg,
+            item_ids=("101",),
+            job_id="swept",
+        )
+        jobs.enqueue(
+            store,
+            handler_key=key,
+            payload={"source": f"https://tidal.com/playlist/{uuid}"},
+            cfg=cfg,
+            item_ids=("102",),
+            job_id="typed",
+        )
+    bind_playlists(monkeypatch)
+    _cancelled_pass(cfg, "other-run")
+
+    code, envelope = drive(["sync", "land", "--pass-run", "other-run"])
+
+    assert "for 1 playlist(s)" in _check(envelope, "left-open")["detail"]
+    (group,) = _summary(envelope)["left_open_playlists"]
+    # HEADED BY THE ACCOUNT'S NAME, though the typed job is the newer.
+    assert group["playlist"] == f"playlist 'Warmup' ({uuid})"
+    assert sorted(job["job_id"] for job in group["jobs"]) == ["swept", "typed"]
+
+
+# U181. A pass refuses to land rows with no vocal score, unless told to go on
+# ═══════════════════════════════════════════════════════════════════════════
+
+_NO_EXTRA = (
+    "the 'vocals' extra is not installed here; "
+    "pipx install --force 'cratekit[analysis,vocals] @ git+https://example.invalid/c@v0.3.0'"
+)
+
+
+@pytest.fixture
+def full(tmp_path, monkeypatch):
+    """The full profile, which switches on the vocals module."""
+    return _machine(tmp_path, monkeypatch, "full")
+
+
+def _model_cannot_score(monkeypatch) -> None:
+    """The copy sitting 51 ran: no loader bound, and the extra missing."""
+    from cratekit.analysis import vocals
+
+    monkeypatch.setattr(vocals, "_VOCAL_LOADER", None)
+    monkeypatch.setattr(vocals, "missing_requirement", lambda: _NO_EXTRA)
+
+
+def test_a_pass_whose_vocal_model_cannot_score_stops_at_its_gate_before_queueing_anything(
+    full, monkeypatch, tail
+):
+    cfg, script = full
+    _account(monkeypatch, script, "101")
+    _model_cannot_score(monkeypatch)
+
+    code, envelope = drive(["sync", "land"])
+
+    assert code == int(ExitCode.DECISION_REQUIRED), envelope
+    assert envelope["resumable"] is True
+    detail = envelope["cause"]["detail"]
+    assert detail["gate"] == sync_land.WITHOUT_VOCALS
+    shown = detail["shown"]
+    assert "pipx install --force 'cratekit[analysis,vocals]" in shown["vocal model"]
+    assert "no voxlevel" in shown["without it"]
+    assert shown["to go on without vocal scores"] == (
+        f"crate -d {sync_land.WITHOUT_VOCALS}={sync_land.WITHOUT_VOCALS_GO} sync land"
+    )
+    assert _all_jobs() == [], "the pass queued something before it stopped"
+    assert tail.calls == [], "a step ran before the stop"
+
+
+def test_a_continued_pass_is_told_the_answer_that_continues_it(full, monkeypatch, tail):
+    _model_cannot_score(monkeypatch)
+    _cancelled_pass(full[0], "run-earlier")
+
+    code, envelope = drive(["sync", "land", "--pass-run", "run-earlier"])
+
+    assert code == int(ExitCode.DECISION_REQUIRED), envelope
+    shown = envelope["cause"]["detail"]["shown"]
+    assert shown["to go on without vocal scores"].endswith("sync land --pass-run run-earlier")
+
+
+def test_answering_stop_refuses_with_the_command_that_mends_it(full, monkeypatch, tail):
+    _model_cannot_score(monkeypatch)
+
+    code, envelope = drive(["-d", f"{sync_land.WITHOUT_VOCALS}=stop", "sync", "land"])
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    cause = envelope["cause"]
+    assert cause["reason"] == sync_land.VOCALS_UNAVAILABLE
+    assert "pipx install --force 'cratekit[analysis,vocals]" in cause["message"]
+    assert _all_jobs() == []
+    assert tail.calls == []
+
+
+def test_the_gate_recorded_by_a_separate_act_continues_the_same_run(full, monkeypatch, tail):
+    """The second way any gate is answered: run decide, then --run."""
+    cfg, script = full
+    _account(monkeypatch, script, "101")
+    _model_cannot_score(monkeypatch)
+    code, refused = drive(["sync", "land"])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+
+    decided, answer = drive(
+        ["run", "decide", run_id, sync_land.WITHOUT_VOCALS, sync_land.WITHOUT_VOCALS_GO]
+    )
+    assert decided == int(ExitCode.OK), answer
+    code, envelope = drive(["--run", run_id, "sync", "land"])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert _summary(envelope)["vocal_scoring"] == "skipped"
+
+
+def test_the_answered_gate_takes_the_pass_on_and_the_summary_says_vocals_were_skipped(
+    full, monkeypatch, tail
+):
+    cfg, script = full
+    _account(monkeypatch, script, "101")
+    _model_cannot_score(monkeypatch)
+
+    code, envelope = drive(
+        ["-d", f"{sync_land.WITHOUT_VOCALS}={sync_land.WITHOUT_VOCALS_GO}", "sync", "land"]
+    )
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    summary = _summary(envelope)
+    assert summary["vocal_scoring"] == "skipped"
+    assert summary["vocal_rescore"] == "skipped", "the tail did not ask a model it was told is absent"
+    (row,) = [c for c in envelope["data"]["checks"] if c["key"] == "sync.land.vocal-model"]
+    assert row["status"] == "info" and _NO_EXTRA in row["detail"]
+    assert sync_land.WITHOUT_VOCALS_WARNING in [w["code"] for w in envelope["warnings"]]
+    assert ("tag", "folder") in tail.verbs(), "the pass ran on"
+
+
+def test_a_pass_whose_vocal_model_can_score_says_so_and_asks_nothing(full, monkeypatch, tail):
+    cfg, script = full
+    _account(monkeypatch, script, "101")
+
+    code, envelope = drive(["sync", "land"])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert _summary(envelope)["vocal_scoring"] == "available"
+    (row,) = [c for c in envelope["data"]["checks"] if c["key"] == "sync.land.vocal-model"]
+    assert row["status"] == "ok"
+
+
+def test_a_profile_with_the_vocals_module_off_is_not_asked(machine, monkeypatch, tail):
+    """Slim switches the module off: the person chose not to score vocals."""
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    _model_cannot_score(monkeypatch)
+
+    code, envelope = drive(["sync", "land"])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert _summary(envelope)["vocal_scoring"] == "off"
+    assert _summary(envelope)["vocal_rescore"] == "off"
+
+
+def test_the_analyze_step_rescores_after_analyze_run_and_before_the_restamp(
+    full, monkeypatch, tail
+):
+    """The vocals restamp over the staging folder, between the run and the restamp."""
+    cfg, script = full
+    _account(monkeypatch, script, "101")
+
+    code, envelope = drive(["sync", "land"])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    verbs = tail.verbs()
+    vocals_at = verbs.index(("analyze", "vocals"))
+    assert verbs.index(("analyze", "run")) < vocals_at < verbs.index(("analyze", "restamp"))
+    (call,) = [argv for argv in tail.calls if argv[:2] == ["analyze", "vocals"]]
+    assert call == ["analyze", "vocals", tail_chain.VOCALS_UNSCORED, str(_staged(cfg))]
+    (row,) = [c for c in envelope["data"]["checks"] if c["key"] == "sync.land.rescore"]
+    assert row["status"] == "ok", "a staging folder whose files carry no head owes no score"
+
+
+def test_a_warning_the_landing_plan_carries_rides_the_passes_own_warnings(
+    machine, monkeypatch, tail
+):
+    """A stop at the gate is a refusal with no warnings channel, so the plan's
+    warning reaches the pass's envelope only by being lifted off the screen."""
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    gate = _gate("land-run")
+    shown = {"warnings": [{"code": "vox-mostly-unscored", "message": "19 of the 19 row(s)"}]}
+    gate = Cause(
+        reason=gate.reason,
+        message=gate.message,
+        remediation=gate.remediation,
+        retryable=True,
+        origin=("test",),
+        detail={**gate.detail, "shown": shown},
+    )
+    tail.landing = lambda _argv: _refused(gate, outcome="blocked")
+
+    code, envelope = drive(["sync", "land"])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    lifted = [w for w in envelope["warnings"] if w["code"] == "vox-mostly-unscored"]
+    assert lifted == [{"code": "vox-mostly-unscored", "message": "land: 19 of the 19 row(s)"}]
+
+
+def test_the_tail_asks_the_vocal_model_before_analyze_run_binds_its_loader(
+    full, monkeypatch, tail
+):
+    """Review round one. ``analyze run``'s worker binds the shipped loader in
+    this process, and a bound loader reads as able, so a question asked after
+    it would queue a rescore over a machine with no model and report it done."""
+    from cratekit.analysis import vocals
+
+    cfg, script = full
+    _account(monkeypatch, script, "101")
+    _model_cannot_score(monkeypatch)
+
+    def binds_the_loader(_job, _item):
+        monkeypatch.setattr(vocals, "_VOCAL_LOADER", lambda: object())
+
+    tail.work[sync_land.ANALYZE] = binds_the_loader
+
+    code, envelope = drive(
+        ["-d", f"{sync_land.WITHOUT_VOCALS}={sync_land.WITHOUT_VOCALS_GO}", "sync", "land"]
+    )
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert vocals.loader_bound(), "the stand in never ran, so the order was not tested"
+    assert _summary(envelope)["vocal_rescore"] == "skipped"
+    assert ("analyze", "vocals") not in tail.verbs()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U183. Either run id continues the pass
 # ═══════════════════════════════════════════════════════════════════════════
 
 

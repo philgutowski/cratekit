@@ -106,9 +106,12 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'label-playlist-unreadable',
     'label-playlists-ambiguous',
     'label-playlists-incomplete',
+    # 2026-11-01, R-1091: the kept release reads a full build cannot read.
+    'label-playlists-reads-unusable',
     'label-registry-empty',
     'label-sweep-incomplete',
     'label-sync-unanswerable',
+    'label-sync-unlisted',  # R-1114, 2026-11-01
     'label-sync-unusable',
     'label-unknown',
     'label-watermark-unusable',
@@ -205,6 +208,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'tag-folder-unwritten',  # 2026-10-31, U178: a file that would not take its genre.
     'tag-remap-unwritten',
     'tag-retag-folder-unknown',
+    'tag-retag-unwritten',  # 2026-11-01, R-1103: a file that would not take its corrected genre.
     'tag-suggest-unwritten',
     'target-lufs-out-of-range',
     'trash-unavailable',
@@ -216,6 +220,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'verb-retired',
     'vocal-calibration-unreadable',
     'vocal-cut-out-of-range',
+    'vocal-scoring-unavailable',  # 2026-11-01, U181: a sync pass told to stop without vocals.
     'whitelist-violation',
     'write-lock-held',
     'yt-dlp-missing',
@@ -534,6 +539,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'decision-required',
         'decision-stale',
         'decision-unknown-gate',
+        'gate-sibling-run',  # 2026-11-01, U186: the sibling run warning joined.
         'internal-error',
     ],
     'cli/handlers.py': ['config-drift', 'internal-error'],
@@ -598,6 +604,17 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'outbound-export-required',
         'sync-land-download-refused',
         'sync-land-intake-left-open',
+        'sync-land-without-vocals',  # 2026-11-01, U181
+        'vocal-model',  # 2026-11-01, U181
+        'vocal-scoring-unavailable',  # 2026-11-01, U181
+    ],
+    # 2026-11-01, U179: the Bandcamp source of the same driver, its fetch verb's
+    # words and the closing report's three warnings.
+    'cli/sync_bandcamp.py': [
+        'bandcamp-fetch',
+        'sync-bandcamp-fetch-refused',
+        'sync-bandcamp-no-genre',
+        'sync-bandcamp-tags-unread',
     ],
     # 2026-11-01, U190: the tail and the landing, lifted out of the sync pass
     # driver so ``label sync --go`` runs the same chain.
@@ -746,9 +763,11 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'label-playlist-unreadable',
         'label-playlists-ambiguous',
         'label-playlists-incomplete',
+        'label-playlists-reads-unusable',  # 2026-11-01, R-1091.
         'label-registry-empty',
         'label-sweep-incomplete',
         'label-sync-unanswerable',
+        'label-sync-unlisted',  # R-1114, 2026-11-01
         'label-sync-unusable',
         'label-unknown',
         'label-watermark-unusable',
@@ -859,6 +878,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'tag-folder-unwritten',
         'tag-remap-unwritten',
         'tag-retag-folder-unknown',
+        'tag-retag-unwritten',  # 2026-11-01, R-1103
         'tag-suggest-unwritten',
         'target-lufs-out-of-range',
         'trash-unavailable',
@@ -870,6 +890,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'verb-retired',
         'vocal-calibration-unreadable',
         'vocal-cut-out-of-range',
+        'vocal-scoring-unavailable',  # 2026-11-01, U181
         'whitelist-violation',
         'write-lock-held',
         'yt-dlp-missing',
@@ -1178,6 +1199,9 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'favorites/placement.py': ['decision-stale', 'favorites-placement'],
     # 2026-10-15, U145: the quarters split into months, engine and verb.
     'favorites/split.py': ['decision-stale', 'favorites-split', 'session-committed-unverified', 'whitelist-violation'],
+    # 2026-11-01, U180: the Favorites folder put in order, engine and verb.
+    'favorites/order.py': ['decision-stale', 'favorites-order', 'session-committed-unverified', 'whitelist-violation'],
+    'favorites/order_cli.py': ['config-unusable', 'favorites-in-order', 'favorites-ordered'],
     'favorites/split_cli.py': [
         'config-unusable',
         'favorites-no-quarter-left',
@@ -1321,6 +1345,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'library-root-unreachable',
         'rows-await-analysis',
         'snapshot-integrity-failed',
+        'vox-mostly-unscored',  # 2026-11-01, U181
         'vox-not-written',
         'vox-unscored',
     ],
@@ -1483,6 +1508,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'no-op',
         'unavailable-transient',
     ],
+    # 2026-11-01, R-1091: the kept release reads and their refusal.
+    'label/kept_reads.py': ['label-playlists-reads-unusable', 'utf-8'],
     'label/mark_cli.py': [
         'internal-error',
         'label-mark',
@@ -1504,6 +1531,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         # 2026-10-31, U191: the releases build's two warnings and its gate lookup.
         'label-playlists-nothing-left',
         'label-playlists-nothing-taken',
+        'label-playlists-reads-unkept',  # 2026-11-01, R-1091: reads not written.
         'label-playlists-tracks-refused',
         'refused-by-policy',
     ],
@@ -1518,6 +1546,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'label-registry-empty',
         'label-sync-answered',
         'label-sync-unanswerable',
+        'label-sync-unlisted',  # R-1114, 2026-11-01
         'label-sync-unusable',
         'label-unknown',
         'not-now',
@@ -1829,6 +1858,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'no-answer',
         'no-genre',
         'row-absent',
+        # 2026-11-01, R-1103: a file that would not take its corrected genre.
+        'tag-retag-unwritten',
     ],
     'tagging/retag_cli.py': [
         'config-unusable',
@@ -1913,6 +1944,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'job-unknown',
         'module-extras-missing',
         'no-audio',
+        'none-unscored',  # 2026-11-01, U181
         'source-missing',
     ],
     'write/collection_export.py': [
@@ -2053,6 +2085,7 @@ PINNED_NAMED_WITHOUT_OWN = {
     # 2026-11-01, U190: the two stops moved to ``cli/tail.py`` with the landing.
     'cli/sync_land.py': [
         'outbound-export-required',
+        'vocal-scoring-unavailable',  # 2026-11-01, U181
     ],
     # 2026-11-01, U190: the landing's two stops, lifted out of the sync pass driver.
     'cli/tail.py': [
@@ -2086,6 +2119,8 @@ PINNED_NAMED_WITHOUT_OWN = {
     # U134, 2026-10-12.
     'intake/refill.py': ['refill-playlist-outside-inbox'],
     'intake/set_playlist.py': ['inspiration-folder-undeclared', 'set-playlist-unnamed'],
+    # 2026-11-01, R-1091: the kept reads name their refusal by a constant.
+    'label/kept_reads.py': ['label-playlists-reads-unusable'],
     'modules/tools/backup.py': [
         'database-absent',
         'destination-not-configured',
@@ -2111,6 +2146,8 @@ PINNED_NAMED_WITHOUT_OWN = {
         'source-missing',
         'source-unsupported',
     ],
+    # 2026-11-01, R-1103: a file that would not take its corrected genre.
+    'tagging/retag.py': ['tag-retag-unwritten'],
     'tagging/searchers.py': ['catalogue-parse-broken', 'catalogue-unreachable'],
     # 2026-10-31, U178: the engine refuses a file that would not take its genre.
     'tagging/tag.py': ['tag-folder-unwritten'],
@@ -2136,6 +2173,7 @@ PINNED_NAMED_WITH_OWN = {
     # 2026-11-01, U190: the two stops moved to ``cli/tail.py`` with the landing.
     'cli/sync_land.py': [
         'outbound-export-required',
+        'vocal-scoring-unavailable',  # 2026-11-01, U181
     ],
     # 2026-11-01, U190: the landing's two stops, lifted out of the sync pass driver.
     'cli/tail.py': [
@@ -2263,6 +2301,8 @@ PINNED_NAMED_WITH_OWN = {
     # U134, 2026-10-12.
     'intake/refill.py': ['refill-playlist-outside-inbox'],
     'intake/set_playlist.py': ['inspiration-folder-undeclared', 'set-playlist-unnamed'],
+    # 2026-11-01, R-1091: the kept reads name their refusal by a constant.
+    'label/kept_reads.py': ['label-playlists-reads-unusable'],
     'modules/tools/backup.py': [
         'database-absent',
         'destination-not-configured',
@@ -2296,6 +2336,8 @@ PINNED_NAMED_WITH_OWN = {
         'label-folder',
         'set-playlist',
     ],
+    # 2026-11-01, R-1103: a file that would not take its corrected genre.
+    'tagging/retag.py': ['tag-retag-unwritten'],
     'tagging/searchers.py': ['catalogue-parse-broken', 'catalogue-unreachable', 'parse-break'],
     # 2026-10-31, U178: the engine refuses a file that would not take its genre.
     'tagging/tag.py': ['tag-folder-unwritten'],
@@ -2326,6 +2368,7 @@ PINNED_NAMED_WITH_INTEGER = frozenset({
     'core/review.py',
     'core/session.py',
     'deletion/candidates.py',
+    'label/kept_reads.py',  # 2026-11-01, R-1091: its version and flush count.
     'modules/tools/mastering.py',
     'tagging/searchers.py',
     'write/naming_cli.py',  # 2026-11-01, U169: the --root refusal is named.
@@ -2339,6 +2382,7 @@ PINNED_LITERAL_HOLDERS = {
         'job-driver-held',
         'job-unknown',  # 2026-11-01, U183: a --pass-run that names no pass.
         'outbound-export-required',
+        'vocal-scoring-unavailable',  # 2026-11-01, U181
     ],
     # 2026-11-01, U190: the tail and the landing, lifted out of the sync pass driver.
     'cli/tail.py': [
@@ -2466,6 +2510,8 @@ PINNED_LITERAL_HOLDERS = {
         'rebuild-actor-required',
         'rebuild-tree-not-native',
     ],
+    # 2026-11-01, U182: the stale cancel's list says which jobs it cancelled.
+    'cli/render.py': ['cancelled'],
     'cli/reports.py': ['config-unusable', 'report-as-of-invalid'],
     'cli/review.py': ['review-file-unusable', 'review-selection-invalid'],
     'cli/setup.py': [
@@ -2619,6 +2665,9 @@ PINNED_LITERAL_HOLDERS = {
     'favorites/colour.py': ['favorites-pink-colour-missing'],
     'favorites/placement.py': ['decision-stale'],
     'favorites/refresh_cli.py': ['config-unusable', 'internal-error'],
+    # 2026-11-01, U180: the Favorites folder put in order, engine and verb.
+    'favorites/order.py': ['decision-stale', 'session-committed-unverified', 'whitelist-violation'],
+    'favorites/order_cli.py': ['config-unusable'],
     # 2026-10-15, U145: the quarters split into months, engine and verb.
     'favorites/split.py': ['decision-stale', 'session-committed-unverified', 'whitelist-violation'],
     'favorites/split_cli.py': ['config-unusable'],
@@ -2771,6 +2820,8 @@ PINNED_LITERAL_HOLDERS = {
         'label-unknown',
         'unavailable-transient',
     ],
+    # 2026-11-01, R-1091: the kept reads' refusal.
+    'label/kept_reads.py': ['label-playlists-reads-unusable'],
     'label/mark_cli.py': ['internal-error', 'sync-mark-record-unusable', 'sync-marks-blocked'],
     'label/marks.py': ['label-watermark-unusable'],
     # 2026-10-31, U191: the gate lookup refuses a missing declaration.
@@ -2783,6 +2834,7 @@ PINNED_LITERAL_HOLDERS = {
     'label/sync_cli.py': [
         'label-registry-empty',
         'label-sync-unanswerable',
+        'label-sync-unlisted',  # R-1114, 2026-11-01
         'label-sync-unusable',
         'label-unknown',
         'review-selection-invalid',
@@ -2878,6 +2930,8 @@ PINNED_LITERAL_HOLDERS = {
     # 2026-10-31, U178: tag folder refuses a --label nobody registered.
     'tagging/cli.py': ['config-unusable', 'label-unknown', 'source-missing'],
     'tagging/remap_cli.py': ['config-unusable', 'internal-error', 'tag-remap-unwritten'],
+    # 2026-11-01, R-1103: a file that would not take its corrected genre.
+    'tagging/retag.py': ['tag-retag-unwritten'],
     'tagging/retag_cli.py': [
         'config-unusable',
         'refused-by-policy',
@@ -2973,6 +3027,7 @@ PINNED_LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     'analysis/energy.py',
     'analysis/rekordbox_check.py',  # 2026-10-31, U167: the Camelot wheel's twelve.
     'cli/doctor.py',
+    'cli/gates.py',  # 2026-11-01, U186: the sibling window's twelve hours.
     'cli/output.py',
     'core/config.py',
     'core/convergence.py',
@@ -2990,6 +3045,7 @@ PINNED_LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     'intake/imported_cli.py',
     'intake/land_cli.py',  # 2026-10-31, U162: the rehearsal's counts joined.
     'label/catalogue.py',
+    'label/kept_reads.py',  # 2026-11-01, R-1091.
     'modules/outbound/prune.py',
     'modules/outbound/tidal_account.py',
     'modules/tools/mastering.py',

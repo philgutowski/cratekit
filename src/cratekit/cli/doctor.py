@@ -98,6 +98,7 @@ from typing import TYPE_CHECKING, Any
 import cratekit
 from cratekit import acquire
 from cratekit.acquire import adapter as adapter_contract
+from cratekit.analysis import vocals as vocal_scoring
 from cratekit.cli import gates, output, registry, render
 from cratekit.cli.output import Envelope
 from cratekit.core import (
@@ -603,6 +604,28 @@ def _release_tags(url: str) -> tuple[str, ...] | None:
 
 
 
+def _vocal_requirement() -> tuple[str, str] | None:
+    """Why the vocal model cannot score here, as a kind and a sentence, or None (U181).
+
+    The vocals module's own probe. A bound loader is taken as able, the rule
+    the vocals verb queues by.
+    """
+    return None if vocal_scoring.loader_bound() else vocal_scoring.requirement()
+
+
+def _vocals_scored(cfg: config.Config | None) -> bool:
+    """Whether this library has ever scored a track for vocals (U181).
+
+    Read as a vocal calibration recorded for it, which is fitted only from
+    files carrying a voxlevel, or set by hand to tag them. Reading every file
+    or every row for a voxlevel is not a cost doctor may spend, so a library
+    scored and never calibrated reads as never scored here.
+    """
+    if cfg is None:
+        return False
+    return config.state_path(metadata_cli.STATE_KEY_VOCAL_CALIBRATION, cfg).is_file()
+
+
 def _deadca7_home() -> Path | None:
     """DEADCA7's support folder under this account, where its app keeps state."""
     try:
@@ -667,6 +690,12 @@ class Probes:
     #: The tags a repository publishes, or None when they could not be read.
     #: The one network read doctor makes, so every test replaces it.
     release_tags: Callable[[str], tuple[str, ...] | None] = _release_tags
+    #: Why the vocal model cannot score here, a kind and a sentence, or None
+    #: (U181). A seam so a test describes a copy with and without the extra.
+    vocal_requirement: Callable[[], tuple[str, str] | None] = _vocal_requirement
+    #: Whether this library has ever scored a track for vocals (U181), which
+    #: decides whether an upgrade command keeps the vocals extra.
+    vocals_scored: Callable[[config.Config | None], bool] = _vocals_scored
     #: Where DEADCA7 keeps its own state on this machine, or None for a machine
     #: with no such place (U185). A seam so a test describes an install, a push
     #: and its age without the app.
@@ -2167,6 +2196,77 @@ def _check_backup_portion(key: str, inputs: _Inputs) -> Finding:
     )
 
 
+def _check_backup_acknowledgment(inputs: _Inputs) -> Finding:
+    """The backup acknowledgment's window, beside the two ages it was minted over (U184).
+
+    A person or a session deciding whether to mint one reads the two backup ages
+    and then needs the third fact a destructive verb consults, which until this
+    check only ``crate session ack`` showed, and only as context on a refusal.
+
+    INFO IN EVERY READABLE STATE. Absent, valid and expired are all ordinary:
+    nothing has to be done until a destructive verb is about to run, and that
+    verb's own gate asks. Only a record that exists and cannot be understood is
+    a FAIL, since every destructive verb refuses on it.
+
+    AND NOT READ OFF AN ABSENT VOLUME. The record lives on the library volume, so
+    with the volume not established "no file" would say "none on record" about a
+    disk nobody read, which is the absence the session check beside this one is
+    written to refuse.
+    """
+    key, title = "backup.acknowledgment", "backup acknowledgment"
+    if inputs.cfg is None:
+        return _unchecked(key, title)
+    unreadable = _library_state_unreadable(inputs, "the backup acknowledgment")
+    if unreadable is not None:
+        return Finding(key=key, title=title, status=Status.INFO, detail=unreadable)
+    try:
+        recorded = session.read_acknowledgment(inputs.cfg)
+    except CratekitError as exc:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=(
+                f"{exc.cause.message}. Every destructive verb refuses while the "
+                f"record reads this way"
+            ),
+            remedy=exc.cause.remediation.remedy,
+        )
+    if recorded is None:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                "none on record; a destructive verb asks for one, minted with "
+                "crate session ack"
+            ),
+        )
+    now = inputs.probes.now
+    expires = recorded.expires_at.replace(microsecond=0).isoformat()
+    if not recorded.valid_at(now):
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"expired at {expires}; a destructive verb asks for a new one, "
+                f"minted with crate session ack"
+            ),
+        )
+    left = recorded.expires_at - now
+    hours, minutes = divmod(int(left.total_seconds()) // 60, 60)
+    return Finding(
+        key=key,
+        title=title,
+        status=Status.INFO,
+        detail=(
+            f"valid until {expires}, {hours}h {minutes:02d}m from now, minted by "
+            f"the {recorded.rule} rule"
+        ),
+    )
+
+
 #: How old the last full comparison may be before the check says to run one.
 #: Not a failure at any age: both modes compare every file, so what ages is
 #: only the proof that the recursive listing and the folder by folder one agree.
@@ -3231,10 +3331,98 @@ def _release_version(tag: str) -> tuple[int, ...] | None:
     return release if release is not None and len(release) == 3 else None
 
 
+def _kept(inputs: _Inputs, origin: InstallOrigin) -> tuple[str, ...]:
+    """The extras an upgrade keeps: this copy's, plus ``vocals`` once the library scored (U181).
+
+    An upgrade from a copy that lost the vocals extra would otherwise install
+    without it again, and the next pass would land rows with no score.
+    """
+    if VOCALS_EXTRA in origin.extras or not inputs.probes.vocals_scored(inputs.cfg):
+        return origin.extras
+    return tuple(sorted({*origin.extras, VOCALS_EXTRA}))
+
+
 def release_upgrade_command(url: str, tag: str, extras: Sequence[str]) -> str:
     """The one pipx command that moves this install to ``tag``, keeping its extras."""
     named = f"cratekit[{','.join(extras)}]" if extras else "cratekit"
     return f'pipx install --force "{named} @ git+{url}@{tag}"'
+
+
+def _check_install_extras(inputs: _Inputs) -> Finding:
+    """Whether the vocal model can score in this copy, and the command if not (U181).
+
+    Sitting 51 landed a pass from a pipx copy installed with the analysis
+    extra and not the vocals one: ``analyze run`` finished every file with a
+    key and an energy and no voxlevel, the files took the Camelot head that
+    is its resume marker, and the landing plan said so in one line. This row
+    says it before the pass does.
+
+    THE ONE TEST IS THE VOCALS MODULE'S OWN, through its probe, so this row
+    and the refusal ``crate sync land`` gives agree by construction. A missing
+    extra prints the reinstall command with the extras this copy carries plus
+    ``vocals``; missing model files print the sentence that names them, since
+    a reinstall does not place them.
+
+    NEVER A FAIL, for the reason ``install.release`` gives: this runs inside
+    ``crate setup``, and a copy without the vocals extra still runs every verb
+    but the score. The pass that would land rows with no score refuses on its
+    own, in its preflight.
+    """
+    key, title = "install.extras", "installed extras"
+    missing = inputs.probes.vocal_requirement()
+    if missing is None:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.OK,
+            detail="the vocal model can score here, so analysed tracks carry a voxlevel",
+        )
+    kind, said = missing
+    if kind != vocal_scoring.MISSING_EXTRA:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"the vocals extra is installed and its model cannot load: {said}. "
+                f"Until it can, analysed tracks carry no voxlevel and landed rows "
+                f"get no vox My Tag"
+            ),
+        )
+    return Finding(
+        key=key,
+        title=title,
+        status=Status.INFO,
+        detail=(
+            f"the vocals extra is absent from this copy ({said}), so analysed "
+            f"tracks carry no voxlevel and landed rows get no vox My Tag. "
+            f"Reinstall with: {vocals_install_command(inputs.probes.install_origin())}"
+        ),
+    )
+
+
+def vocals_install_command(origin: InstallOrigin) -> str:
+    """The command that adds the vocals extra to this copy, keeping the rest (U181).
+
+    A release install is reinstalled at its own tag with the extras it carries
+    plus ``vocals``, in the form ``install.release`` prints. Any other install
+    is the vocals module's own command, which reads pipx's record or names this
+    interpreter's pip. A git install whose version is not ``X.Y.Z``, a branch
+    head, has no tag of its own to name, so it takes that command too.
+    """
+    if origin.kind == "vcs" and origin.url and origin.version and _is_release(origin.version):
+        extras = sorted({*origin.extras, VOCALS_EXTRA})
+        return release_upgrade_command(origin.url, f"v{origin.version}", extras)
+    return vocal_scoring.install()
+
+
+def _is_release(version: str) -> bool:
+    """Whether ``version`` is a plain ``X.Y.Z``, the one shape a release tag names."""
+    return _release_version(f"v{version}") is not None
+
+
+#: The extra that carries the vocal model, as ``pyproject.toml`` names it.
+VOCALS_EXTRA = "vocals"
 
 
 def _check_release(inputs: _Inputs) -> Finding:
@@ -3319,9 +3507,78 @@ def _check_release(inputs: _Inputs) -> Finding:
         status=Status.INFO,
         detail=(
             f"a newer release, {tag}, is published; this copy is {origin.version}. "
-            f"Upgrade with: {release_upgrade_command(origin.url, tag, origin.extras)}"
+            f"Upgrade with: {release_upgrade_command(origin.url, tag, _kept(inputs, origin))}"
         ),
     )
+
+
+#: The key of doctor's note on runs left at a gate (U186), and the age past
+#: which a run counts as left there. A day, because a plan answered within
+#: a sitting is answered within hours, and sitting 51 left two runs blocked
+#: that nobody went back to.
+OPEN_GATES_CHECK = "runs.open-gates"
+OPEN_GATE_NOTE_AGE = timedelta(days=1)
+
+
+def _age_words(age: timedelta) -> str:
+    """A whole number of days, or of hours under two days, in words."""
+    days = age.days
+    if days >= 2:
+        return f"{days} days"
+    hours = int(age.total_seconds() // 3600)
+    return f"{hours} hours"
+
+
+def _check_open_gates(inputs: _Inputs) -> Finding:
+    """Runs blocked at a gate for more than a day, with their verb, gate and age (U186).
+
+    A NOTE AND NEVER A FAILURE: a run left at a gate costs nothing until
+    somebody answers a plan the library has moved past, and that answer is
+    refused stale on the write handle. Doctor says it so a person finds the
+    run before a second session plans over the same rows.
+
+    The age is :func:`gates.idle_since`, the one ``crate status`` and ``crate
+    run retire`` read through :func:`gates.old_gate`, so the three never
+    disagree about which run is old. A record that cannot be read is named in
+    the note rather than skipped, since an unread record is not a record
+    without a gate.
+    """
+    moment = inputs.probes.now
+    try:
+        records = sorted(gates.run_dir().glob("*.json"))
+    except OSError:
+        records = []
+    blocked: list[gates.OldGate] = []
+    unreadable: list[str] = []
+    for path in records:
+        try:
+            state = gates.load(path.stem)
+        except Exception:  # noqa: BLE001 - a note never fails; an unread record is named
+            unreadable.append(path.stem)
+            continue
+        aged = gates.old_gate(state, path, older_than=OPEN_GATE_NOTE_AGE, now=moment)
+        if aged is not None:
+            blocked.append(aged)
+    if blocked:
+        listed = "; ".join(
+            f"{one.run_id} ({one.verb} at {one.gate}, "
+            f"{_age_words(moment - datetime.fromisoformat(one.idle_since))})"
+            for one in sorted(blocked, key=lambda one: (one.idle_since, one.run_id))
+        )
+        runs_word = "run has" if len(blocked) == 1 else "runs have"
+        detail = (
+            f"{len(blocked)} {runs_word} sat at a gate for more than a day: {listed}. "
+            f"crate run show describes one, and crate run decide answers it"
+        )
+    else:
+        detail = "no run has sat at a gate for more than a day"
+    if unreadable:
+        records_word = "record" if len(unreadable) == 1 else "records"
+        detail += (
+            f"; {len(unreadable)} run {records_word} could not be read "
+            f"({', '.join(unreadable)}), so a gate among them is not listed"
+        )
+    return Finding(key=OPEN_GATES_CHECK, title="runs at a gate", status=Status.INFO, detail=detail)
 
 
 @dataclass(frozen=True, slots=True)
@@ -3366,6 +3623,8 @@ CHECKS: tuple[Check, ...] = (
         _bound(f"backup.age.{portion}", _check_backup_portion)
         for portion in backup_facts.PORTIONS
     ),
+    # U184. Right after the two ages, which are what it was minted over.
+    Check("backup.acknowledgment", _check_backup_acknowledgment),
     # R-757. After the ages it qualifies and before the remote they all name.
     Check("backup.full_comparison", _check_full_comparison),
     Check("backup.remote", _check_backup_remote),
@@ -3373,10 +3632,15 @@ CHECKS: tuple[Check, ...] = (
     # the database portion's age, and it names the same remedy they do.
     Check("deadca7.push", _check_deadca7_push),
     Check("session.unresolved", _check_unresolved_session),
+    # U186. Beside the session check: both are this installation's own runs
+    # left waiting, and a note here never fails the report.
+    Check(OPEN_GATES_CHECK, _check_open_gates),
     # R-235. Beside the session check because both report this product's own
     # library state, and after the taxonomy check, which it lists trees from.
     Check("tree.registry", _check_tree_registry),
     Check("repo.commit_hook", _check_commit_hook),
+    # U181. Beside the release check, whose upgrade command it agrees with.
+    Check("install.extras", _check_install_extras),
     # U159. Last, because it is the one check that reaches the network, and a
     # slow read should hold up nothing a person is waiting to see.
     Check("install.release", _check_release),
@@ -3809,6 +4073,7 @@ __all__ = [
     "CREDENTIALS_BY_CHECK",
     "Check",
     "Finding",
+    "OPEN_GATES_CHECK",
     "Probes",
     "Report",
     "Status",

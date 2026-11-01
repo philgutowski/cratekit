@@ -46,6 +46,13 @@ the landing reads the date from there, which is U113's rule for what a
 playlist asked for. The backfill reads the same key and asks the account only
 for a heart listed by a build before the key existed.
 
+**A MONTH IS MADE IN ITS PLACE, SINCE U180.** The author asked on 2026-10-28
+for the folder to read newest first, All Favorites on top. A month this
+engine makes under the folder takes its newest first slot rather than the
+end, through :func:`month_row`, so a landing, the backfill and the split keep
+the order ``crate favorites order`` puts the folder in. See
+``favorites.order``.
+
 **A PLACED HEART IS COLOURED PINK, SINCE U153.** Pink is the author's standing
 signal that a row is a favourite, and the sweep reads it, so a heart put into
 All Favorites with no colour was a favourite the library said two things
@@ -493,8 +500,104 @@ def _live_row(db: Any, playlist_id: str, what: str) -> Any:
     return row
 
 
-def month_row(db: Any, name: str, parent: Any) -> tuple[Any, bool]:
-    """The month's playlist under the folder, found live by name, else made.
+# ---------------------------------------------------------------------------
+# The folder's order, newest first (U180)
+# ---------------------------------------------------------------------------
+
+
+def seq_of(row: Any) -> int:
+    """A row's position among its siblings, as the database holds it."""
+    return int(getattr(row, "Seq", 0) or 0)
+
+
+def _shown_at(row: Any) -> tuple[int, str, str]:
+    """The order rekordbox shows siblings in, by position, ties read by name as ``organize`` reads them."""
+    return (seq_of(row), str(getattr(row, "Name", "") or ""), str(getattr(row, "ID", "")))
+
+
+def children(db: Any, folder_id: str) -> list[Any]:
+    """Every live child of a folder, of any kind, in the order rekordbox shows them.
+
+    A soft deleted child is left out, as :func:`_under` leaves it out: a
+    person cannot see it, so it has no place in the order and is never moved.
+    """
+    rows = [
+        row
+        for row in db.get_playlist(ParentID=str(folder_id))
+        if not rb_writer.node_removed(row)
+    ]
+    return sorted(rows, key=_shown_at)
+
+
+def rank(row: Any, source_id: str) -> tuple[int, int]:
+    """Where a child of the home's folder reads, by :func:`placeholders.folder_rank`."""
+    return placeholders.folder_rank(
+        str(getattr(row, "Name", "") or ""),
+        source=str(row.ID) == str(source_id),
+        plain=int(getattr(row, "Attribute", -1) or 0) == 0,
+    )
+
+
+def slots(rows: Sequence[Any]) -> tuple[int, ...]:
+    """The positions these rows hold between them, sorted, two that share one lifted apart.
+
+    THE POSITIONS ARE THE ROWS' OWN, NOT A COUNT FROM 1 (U180). How the live
+    library numbers a folder's children when some are removed was never
+    measured, so nothing here assumes a run from 1: the rows hold a set of
+    positions, and an order gives that same set out again. A position two
+    rows share is lifted to one past the last, so the order reads one way.
+    """
+    given: list[int] = []
+    for value in sorted(seq_of(row) for row in rows):
+        given.append(value if not given or value > given[-1] else given[-1] + 1)
+    return tuple(given)
+
+
+def seat(db: Any, ordered: Sequence[Any], *, when: datetime) -> tuple[str, ...]:
+    """Give ``ordered`` the positions they hold between them, in this order. Answers the rows moved.
+
+    ONLY A ROW WHOSE POSITION CHANGES IS WRITTEN, its ``Seq`` through the
+    binding's registry as the binding's own move writes it, which is one
+    sequence bump for one move, and ``updated_at`` beside it with tracking
+    off, as the binding stamps it. No row outside ``ordered`` is read or
+    written, so a removed sibling keeps its position.
+
+    DOES NOT COMMIT. The commit is the caller's.
+    """
+    moved: list[str] = []
+    for row, slot in zip(ordered, slots(ordered)):
+        if seq_of(row) == slot:
+            continue
+        row.Seq = slot
+        with db.registry.disabled():
+            row.updated_at = when
+        moved.append(str(row.ID))
+    return tuple(moved)
+
+
+def _seat_new(db: Any, made: Any, folder_id: str, source_id: str) -> tuple[str, ...]:
+    """Move a month just made from the end of the folder to its newest first slot.
+
+    It goes before the first live child that ranks after it, so in a folder in
+    order it lands directly under All Favorites and any newer month, and in a
+    folder not yet in order it still lands above every older month below it.
+    NEVER ABOVE ALL FAVORITES: in a folder where something reads above it, a
+    month is looked for a place only below it, so the landing never makes
+    the folder read less in order than it found it.
+    """
+    db.session.flush()
+    others = [row for row in children(db, folder_id) if str(row.ID) != str(made.ID)]
+    mine = rank(made, source_id)
+    floor = next((n + 1 for n, row in enumerate(others) if str(row.ID) == str(source_id)), 0)
+    at = next(
+        (n for n, row in enumerate(others) if n >= floor and rank(row, source_id) > mine),
+        len(others),
+    )
+    return seat(db, [*others[:at], made, *others[at:]], when=datetime.now())
+
+
+def month_row(db: Any, name: str, parent: Any, *, source_id: str) -> tuple[Any, bool]:
+    """The month's playlist under the folder, found live by name, else made in its slot.
 
     PUBLIC because ``crate favorites split`` makes its months here too, so a
     landing and the split cannot disagree about which row a month is.
@@ -504,6 +607,13 @@ def month_row(db: Any, name: str, parent: Any) -> tuple[Any, bool]:
     written to, a row a person cannot see (R-758), and a source at the root
     has no parent row to scope by. The genre Favorites writer reads the same
     way for the same reason.
+
+    MADE IN ITS NEWEST FIRST SLOT (U180), under a folder, so every landing,
+    the backfill and the split keep the folder in the order ``crate favorites
+    order`` puts it in. ``source_id`` is All Favorites' row, which reads first
+    whatever it is named. At the playlist root a month is made at the end as
+    before, since the root is every playlist's and its order is not this
+    product's to change.
     """
     parent_id = "" if parent is None else str(parent.ID)
     for row in _live_plain(list(db.get_playlist(Name=name))):
@@ -512,7 +622,10 @@ def month_row(db: Any, name: str, parent: Any) -> tuple[Any, bool]:
             return row, False
         if parent is not None and held == parent_id:
             return row, False
-    return db.create_playlist(name, parent=parent), True
+    made = db.create_playlist(name, parent=parent)
+    if parent is not None:
+        _seat_new(db, made, parent_id, source_id)
+    return made, True
 
 
 def place(
@@ -558,7 +671,7 @@ def place(
     written: list[tuple[str, str, int]] = []
     created: list[str] = []
     for month, ids in by_month.items():
-        row, made = month_row(db, month, parent)
+        row, made = month_row(db, month, parent, source_id=home.source_id)
         if made:
             created.append(month)
         count = len(rb_writer.add_memberships(db, row, ids))
@@ -587,13 +700,18 @@ __all__ = [
     "RECORD_KEY",
     "Recolour",
     "SOURCE_MISSING",
+    "children",
     "filed",
     "members",
     "month_row",
     "place",
     "members_marked_removed",
     "plan_placements",
+    "rank",
     "read_pink",
     "resolve_home",
+    "seat",
+    "seq_of",
+    "slots",
     "source_name",
 ]

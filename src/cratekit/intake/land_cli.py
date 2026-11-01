@@ -105,6 +105,10 @@ AWAITING_ANALYSIS = "rows-await-analysis"
 #: whose score could not be read, and a landing that wrote no tag at all.
 VOX_UNSCORED = "vox-unscored"
 VOX_NOT_WRITTEN = "vox-not-written"
+#: The warning a native plan carries ON ITS GATE SCREEN when more than half the
+#: rows it adds carry no voxlevel (U181): the shape of a batch analysed while
+#: the vocal model could not load, which sitting 51 found by reading one line.
+VOX_MOSTLY_UNSCORED = "vox-mostly-unscored"
 #: The warning a native write carries when a row whose drift read as variable
 #: does not carry the dyn My Tag after the commit (U157), naming each row, so
 #: the person still runs it with Dynamic.
@@ -1142,6 +1146,33 @@ def vox_fact(rows: native.NativePlan) -> str:
     )
 
 
+def vox_plan_warnings(rows: native.NativePlan, *, folder: Path) -> list[dict[str, str]]:
+    """The gate screen's warning when most added rows carry no score, else none (U181).
+
+    One file in nineteen with no score is a file the model could not hear and
+    is said on the vox line. Most of a batch with no score is a batch analysed
+    with no model loaded, so it is a warning with its own code that a verb
+    running the landing lifts onto its own envelope, rather than a clause a
+    person has to notice at the end of a line.
+    """
+    adding = rows.to_add()
+    unscored = rows.vox_unscored()
+    if not adding or 2 * len(unscored) <= len(adding):
+        return []
+    return [
+        {
+            "code": VOX_MOSTLY_UNSCORED,
+            "message": (
+                f"{len(unscored)} of the {len(adding)} row(s) this landing adds carry "
+                f"no voxlevel, so they join with no vox My Tag; a batch this unscored "
+                f"was analysed with no vocal model loaded. Check crate doctor's "
+                f"install.extras row, score them with crate analyze vocals --unscored "
+                f"{folder}, then plan the landing again"
+            ),
+        }
+    ]
+
+
 def dyn_fact(rows: native.NativePlan) -> str:
     """The dyn My Tag a native plan writes, in one line, for any verb's gate screen (U157)."""
     adding = rows.to_add()
@@ -1198,6 +1229,9 @@ def _native_shown(rows: native.NativePlan, *, folder: Path, target: Path) -> dic
         shown.update(favorites_facts(rows.favorites))
     if rows.labels is not None:
         shown.update(label_filing.facts(rows.labels))
+    warned = vox_plan_warnings(rows, folder=folder)
+    if warned:
+        shown["warnings"] = warned
     if rows.twins:
         shown["custom playlist twins"] = twin_facts(rows.twins)
     return shown
@@ -2574,6 +2608,7 @@ __all__ = [
     "build_land",
     "collection_facts",
     "vox_fact",
+    "vox_plan_warnings",
     "vox_warnings",
     "VOX_NOT_WRITTEN",
     "VOX_UNSCORED",
