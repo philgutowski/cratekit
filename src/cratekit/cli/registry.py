@@ -3363,6 +3363,46 @@ ENTRIES: tuple[Entry, ...] = (
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
+    # ── The Favorites folder put in order newest first (U180) ──────────────
+    #
+    # Appended, for the reason the deferred routing block above gives. A one
+    # time verb: since U180 a month is made in its newest first slot, and this
+    # puts the months already in the folder in that order.
+    Entry(
+        name="favorites.order",
+        summary="put the folder that holds All Favorites in order: All Favorites first, "
+        "the months newest first, then Undated, then everything else as it was",
+        module="cratekit.favorites.order_cli",
+        builder="build",
+        handler_key="favorites.order",
+        # NO FEATURE ROW. The source system appended each month at the end;
+        # the author asked for newest first on 2026-10-28.
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: The database tree and nothing else: the positions of the playlists
+        #: under the Favorites folder. No membership, no content row, no name,
+        #: no parent, no removal and no file.
+        writes=frozenset({"db_tree"}),
+        destructive=True,
+        taxonomy_terms=("favorites",),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+        ),
+        gates=(
+            GateSpec(
+                name="favorites.order.approve",
+                options=("approve", "abort"),
+                prompt="Put the Favorites folder in this order, newest month first?",
+                #: EXPLICIT (R34). It writes the positions of the live
+                #: library's playlists, so no blanket affirmative satisfies it.
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
     # ── The retroactive tidy (U112) ─────────────────────────────────────────
     #
     # Appended, for the reason the deferred routing block above gives. A
