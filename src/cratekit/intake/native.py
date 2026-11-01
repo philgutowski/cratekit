@@ -2415,6 +2415,31 @@ def _record_landing_commit(
         )
 
 
+def landed_passes(cfg: config.Config) -> tuple[str, ...]:
+    """Every pass name a closed native landing committed, in name order (U174).
+
+    THE NATIVE COUNTERPART OF THE INTAKE FILES AT THE LIBRARY ROOT, which is how
+    ``crate organize`` finds the passes it marks (R-915). Read by the rule
+    :func:`landings_of_pass` reads, so a pass listed here is one that function
+    proves. A landing of no pass names none and is not listed. The names are
+    every pass's, a label's or a set's as well as a sync's: which of them a
+    sync pass owns is the mark's to decide, from its jobs.
+    """
+    records, _unreadable = session.scan_log(cfg)
+    return tuple(
+        sorted(
+            {
+                str(record.detail.get(PASS_KEY))
+                for record in records
+                if record.workflow == WORKFLOW
+                and record.state is session.SessionState.CLOSED
+                and str(session.SourceState.COMMITTED) in record.sources.values()
+                and record.detail.get(PASS_KEY)
+            }
+        )
+    )
+
+
 def landings_of_pass(cfg: config.Config, name: str) -> tuple[str, ...]:
     """The session ids of every closed native landing that committed ``name``.
 

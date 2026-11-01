@@ -1096,3 +1096,263 @@ def test_a_plan_given_both_proofs_or_neither_is_refused(slim, tmp_path):
         mark_cli.plan_pass(slim)
     with pytest.raises(CratekitError):
         mark_cli.plan_pass(slim, tmp_path / "x_inboxed.xml", pass_name="x")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U174: --playlist narrows a pass's mark to the playlists named
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_playlist_narrows_the_plan_the_gate_and_the_renames_to_the_one_named(slim, monkeypatch):
+    """Sitting 48: one playlist of a pass marked, its sibling left as it was."""
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    xml = _land(slim, name, "101", "102", "201")
+
+    code, refused = _mark(xml, "--playlist", "pl-b")
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["renamed on the account"] == ["Peak -> DOWNLOADED Peak"]
+    assert shown["left alone"] == []
+    assert shown[mark_cli.ONLY_SAID] == ["pl-b"]
+    run_id = refused["run_id"]
+    code, _ = drive(["run", "decide", run_id, CONFIRM, "apply", "--actor", "a-person"])
+    assert code == int(ExitCode.OK)
+    code, done = drive(["--run", run_id, "sync", "mark", "--xml", str(xml), "--playlist", "pl-b"])
+
+    assert code == int(ExitCode.OK), done
+    assert account.renamed == [("pl-b", "DOWNLOADED Peak")]
+    assert list(_by_id(done)) == ["pl-b"]
+    assert done["data"]["totals"] == {"count": 1, "marked": 1, "skip": 0}
+
+
+def test_an_answer_to_the_narrowed_plan_does_not_carry_out_the_whole_pass(slim, monkeypatch):
+    """The narrowing is in the digest: the run that answered for one playlist,
+    re-invoked without ``--playlist``, is asked again and renames nothing."""
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    xml = _land(slim, name, "101", "102", "201")
+    code, refused = _mark(xml, "--playlist", "pl-a", "--playlist", "pl-b")
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    assert drive(["run", "decide", run_id, CONFIRM, "apply", "--actor", "a-person"])[0] == 0
+
+    code, whole = drive(["--run", run_id, "sync", "mark", "--xml", str(xml)])
+
+    assert code != int(ExitCode.OK), whole
+    assert account.renamed == []
+
+
+def test_playlist_repeated_takes_each_named_and_no_playlist_is_the_whole_pass(slim, monkeypatch):
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    xml = _land(slim, name, "101", "102", "201")
+    both = mark_cli.plan_pass(slim, xml, playlists_named=["pl-b", "pl-a", "pl-b"])
+    whole = mark_cli.plan_pass(slim, xml)
+    assert both.named == ("pl-b", "pl-a")
+    assert sorted(both.planned) == sorted(whole.planned) == ["pl-a", "pl-b"]
+    assert whole.named == ()
+    assert mark_cli.ONLY_SAID not in mark_cli.shown(whole)
+    # The same marks, two questions: the narrowing is in the digest, so an
+    # answer to one screen is never read as an answer to the other.
+    assert both.payload["digest"] != whole.payload["digest"]
+
+
+def test_a_playlist_of_no_pass_of_this_name_is_refused_before_the_account_is_listed(
+    slim, monkeypatch
+):
+    fake, name = _swept_pass(monkeypatch, *TWO)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    xml = _land(slim, name, "101", "102", "201")
+    listings = fake.account_listings
+
+    code, refused = _mark(xml, "--playlist", "pl-b", "--playlist", "pl-elsewhere")
+
+    assert code != int(ExitCode.OK), refused
+    cause = refused["cause"]
+    assert cause["reason"] == "sync-marks-blocked"
+    assert "pl-elsewhere" in cause["message"] and "pl-b" not in cause["detail"]["not_of_pass"]
+    assert cause["detail"]["not_of_pass"] == ["pl-elsewhere"]
+    assert fake.account_listings == listings, "the account was listed for a playlist of no pass"
+    assert account.renamed == []
+
+
+def test_a_named_playlist_the_pass_did_not_complete_is_refused_by_name(slim, monkeypatch):
+    """``102`` never arrived, so naming ``pl-a`` is refused with the track, not
+    planned as a skip the person asked to be marked."""
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    xml = _land(slim, name, "101", "201")
+
+    code, refused = _mark(xml, "--playlist", "pl-a")
+
+    assert code != int(ExitCode.OK), refused
+    cause = refused["cause"]
+    assert cause["reason"] == "sync-marks-blocked"
+    assert cause["detail"]["not_complete"] == ["pl-a"]
+    assert cause["detail"]["reasons"] == {"pl-a": mark_cli.ROWS_OUTSTANDING}
+    assert "Warmup" in cause["message"] and "Artist 102 - Title 102" in cause["message"]
+    assert account.renamed == []
+    # The whole pass still plans its finished playlist, and leaves pl-a as a skip.
+    code, whole = _mark(xml)
+    assert code == int(ExitCode.DECISION_REQUIRED), whole
+    assert whole["cause"]["detail"]["shown"]["renamed on the account"] == [
+        "Peak -> DOWNLOADED Peak"
+    ]
+
+
+def test_a_named_playlist_whose_job_failed_is_refused_by_name(slim, monkeypatch):
+    _fake, name = _swept_pass(monkeypatch, *TWO, failing=("pl-a",))
+    xml = _land(slim, name, "101", "102", "201")
+    with pytest.raises(CratekitError) as refused:
+        mark_cli.plan_pass(slim, xml, playlists_named=["pl-a"])
+    assert refused.value.cause.detail["reasons"] == {"pl-a": mark_cli.JOB_UNFINISHED}
+
+
+def test_a_named_playlist_already_marked_is_a_skip_and_not_a_refusal(slim, monkeypatch):
+    """Already marked is complete: the plan says so and renames nothing."""
+    fake, name = _swept_pass(monkeypatch, *TWO)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    xml = _land(slim, name, "101", "102", "201")
+    fake.account = [_playlist("pl-a", "DOWNLOADED Warmup"), _playlist("pl-b", "Peak")]
+
+    planned = mark_cli.plan_pass(slim, xml, playlists_named=["pl-a"])
+
+    assert planned.planned == []
+    (item,) = planned.payload["items"]
+    assert (item["id"], item["action"], item["reason"]) == (
+        "pl-a",
+        mark_cli.SKIP,
+        mark_cli.ALREADY_MARKED,
+    )
+    assert account.renamed == []
+
+
+def test_the_library_is_walked_only_for_the_named_playlist(slim, monkeypatch):
+    """Narrowed before the walk, so a named playlist settles only its own tracks."""
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    xml = _land(slim, name, "101", "102")
+    asked: list[str] = []
+    real = mark_cli.match.resolve_one
+
+    def counting(wanted, *args, **kwargs):
+        asked.append(wanted.ref)
+        return real(wanted, *args, **kwargs)
+
+    monkeypatch.setattr(mark_cli.match, "resolve_one", counting)
+    planned = mark_cli.plan_pass(slim, xml, playlists_named=["pl-a"])
+    assert planned.planned == ["pl-a"]
+    assert sorted(asked) == ["101", "102"]
+
+
+def test_a_native_pass_takes_playlist_as_the_file_does(slim, monkeypatch):
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    _cut_over_intake(slim)
+    _hold(slim, "101", "102", "201")
+    _record_landing(slim, name)
+
+    planned = mark_cli.plan_pass(slim, pass_name=name, playlists_named=["pl-a"])
+    assert planned.planned == ["pl-a"]
+    data, _warnings, landed = mark_cli.apply_pass(slim, planned)
+    assert landed == ["pl-a"]
+    assert account.renamed == [("pl-a", "DOWNLOADED Warmup")]
+    assert [item["id"] for item in data["items"]] == ["pl-a"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U174, R-915: organize plans a mark for every pass a native landing committed
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _mark_steps(cfg: config.Config):
+    from cratekit.organize import account as account_area
+    from cratekit.organize.steps import Area
+
+    area = Area(name=account_area.AREA)
+    account_area._mark_steps(cfg, area)
+    return area
+
+
+def test_organize_plans_every_native_pass_not_only_the_latest(slim, monkeypatch):
+    """Sitting 48: an earlier pass's playlist sat unmarked at the account root,
+    because only the latest pass was marked and organize found none at all."""
+    fake, earlier = _swept_pass(monkeypatch, (_playlist("pl-old", "Aa-Phil 10-14-26"), _tracks("301")))
+    # A second pass, later, over the same account: rebind with both playlists
+    # listed, so the earlier one's name is still on the account.
+    _fake, later = _swept_pass(
+        monkeypatch,
+        (_playlist("pl-old", "Aa-Phil 10-14-26"), _tracks("301")),
+        *TWO,
+    )
+    assert earlier != later
+    _cut_over_intake(slim)
+    _hold(slim, "101", "102", "201", "301")
+    _record_landing(slim, earlier, stamp="100000")
+    _record_landing(slim, later, stamp="120000")
+
+    area = _mark_steps(slim)
+
+    steps = {step.key: step for step in area.steps}
+    assert set(steps) == {f"mark:{earlier}", f"mark:{later}"}
+    assert [item["id"] for item in steps[f"mark:{earlier}"].items] == ["pl-old"]
+    assert steps[f"mark:{earlier}"].state == "planned"
+    assert steps[f"mark:{later}"].state == "planned"
+    assert {item["id"] for item in steps[f"mark:{later}"].items} >= {"pl-a", "pl-b"}
+    assert "native landings of no sync pass" not in area.facts
+
+
+def test_organize_marks_a_native_pass_through_its_gate(slim, monkeypatch):
+    """Driven through the step's own apply, the rename lands and is recorded."""
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    _cut_over_intake(slim)
+    _hold(slim, "101", "102", "201")
+    _record_landing(slim, name)
+
+    (step,) = _mark_steps(slim).steps
+    assert step.counts == {"mark": 2, "skip": 0}
+    applied = step.apply()
+
+    assert applied["marked"] == 2
+    assert sorted(account.renamed) == [("pl-a", "DOWNLOADED Warmup"), ("pl-b", "DOWNLOADED Peak")]
+
+
+def test_a_native_landing_of_no_sync_pass_is_counted_and_is_no_step(slim, monkeypatch):
+    _cut_over_intake(slim)
+    _record_landing(slim, "a label batch")
+    area = _mark_steps(slim)
+    assert area.steps == []
+    assert area.facts["native landings of no sync pass"] == 1
+    assert area.facts["intake files of no sync pass"] == 0
+
+
+def test_a_pass_with_an_intake_file_is_planned_once_by_its_file(slim, monkeypatch):
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    _cut_over_intake(slim)
+    _land(slim, name, "101", "102", "201")
+    _record_landing(slim, name)
+    steps = [step.key for step in _mark_steps(slim).steps]
+    assert steps == [f"mark:{name}"]
+
+
+def test_a_tree_on_the_bridge_plans_no_native_record(slim, monkeypatch):
+    """A record left from before a revert is not planned as a refusal every run."""
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    _record_landing(slim, name)
+    assert mark_cli.native_passes(slim) == ()
+    assert _mark_steps(slim).steps == []
+
+
+def test_landed_passes_reads_only_closed_committed_landings(slim):
+    _record_landing(slim, "kept", stamp="100000")
+    _record_landing(slim, "kept", stamp="110000")
+    _record_landing(slim, "open", state=session.SessionState.OPEN, stamp="120000")
+    _record_landing(slim, "refused", source=session.SourceState.REFUSED, stamp="130000")
+    assert native.landed_passes(slim) == ("kept",)

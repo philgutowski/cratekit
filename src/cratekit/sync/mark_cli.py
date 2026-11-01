@@ -73,6 +73,7 @@ import the CLI registry (KTD23).
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -108,6 +109,14 @@ ROWS_OUTSTANDING = "rows-outstanding"
 #: Why a planned playlist was not renamed after all: the engine's recheck.
 CHANGED_SINCE = "changed-since-plan"
 
+#: The reasons that say the pass did not complete a playlist, so naming one
+#: with ``--playlist`` is refused rather than shown as a skip (U174). The other
+#: reasons are about the account or the name, not the pass, and stay skips.
+UNFINISHED = frozenset({JOB_UNFINISHED, REPORTS_UNREADABLE, ROWS_OUTSTANDING})
+
+#: The gate screen's line naming a plan narrowed by ``--playlist``.
+ONLY_SAID = "only the playlists named"
+
 #: What the gate screen and the warning say about a file of no pass.
 NO_PASS_SAID = (
     "no playlist job a sync pass queued on this library belongs to this file, so "
@@ -139,6 +148,16 @@ def build_mark(parser, entry) -> None:
         help=(
             "the sync pass to mark, by the name it was landed with, on a database "
             "native intake tree, which writes no intake file"
+        ),
+    )
+    parser.add_argument(
+        "--playlist",
+        action="append",
+        default=[],
+        metavar="ID",
+        help=(
+            "mark only this playlist of the pass, by its account identifier; "
+            "repeatable. A playlist the pass did not complete is refused by name"
         ),
     )
     parser.set_defaults(_handler=sync_mark)
@@ -287,6 +306,23 @@ def _native_proof(cfg: config.Config, name: str) -> marks.NativeLanding:
     )
 
 
+def native_passes(cfg: config.Config) -> tuple[str, ...]:
+    """The passes a database native landing committed, for a caller that marks every pass.
+
+    ``crate organize`` finds a pass on the bridge by its intake file and here by
+    its native landing's record (R-915, U174). NONE ON A TREE READ AS THE
+    BRIDGE, where the intake file is the proof and a pass named without it is
+    refused by :func:`_native_proof`, so a record left from before a revert is
+    not planned as a refusal on every run. A root that cannot be reached is not
+    read as the bridge: its passes are returned, and each one's plan refuses
+    with that reason, rather than the step vanishing.
+    """
+    medium = ingest.intake_medium(cfg)
+    if medium.declared is not None and not medium.native:
+        return ()
+    return native.landed_passes(cfg)
+
+
 def _pass_jobs(store, cfg: config.Config, name: str, handler_key: str) -> list[jobs.Job]:
     """The playlist jobs of the pass the intake file is named after, oldest first."""
     return sorted(
@@ -413,7 +449,11 @@ def _item(entry: _Playlist) -> dict[str, Any]:
 
 
 def _payload(
-    decided: list[_Playlist], *, proof: Path | marks.NativeLanding, seen
+    decided: list[_Playlist],
+    *,
+    proof: Path | marks.NativeLanding,
+    seen,
+    named: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     items = [_item(entry) for entry in decided]
     planned = sorted((item["id"], item["to"]) for item in items if item["action"] == MARK)
@@ -441,6 +481,11 @@ def _payload(
             "xml_mtime_ns": seen.st_mtime_ns,
             "marks": planned,
         }
+    if named:
+        # A NARROWED PLAN IS ANOTHER QUESTION (U174), so an answer to the
+        # screen that named one playlist never carries out the whole pass's.
+        # Left out when nothing is named, so the whole pass's digest is as it was.
+        identity["only"] = sorted(named)
     return {
         "digest": digest_of(identity),
         "items": items,
@@ -453,7 +498,12 @@ def _payload(
     }
 
 
-def _shown(payload: dict[str, Any], *, proof: Path | marks.NativeLanding) -> dict[str, Any]:
+def _shown(
+    payload: dict[str, Any],
+    *,
+    proof: Path | marks.NativeLanding,
+    named: tuple[str, ...] = (),
+) -> dict[str, Any]:
     """What the gate screen puts in front of the person, one line per fact."""
     said = (
         {"pass": f"{proof.pass_name}, landed on the database native {proof.tree_id!r} tree"}
@@ -474,6 +524,8 @@ def _shown(payload: dict[str, Any], *, proof: Path | marks.NativeLanding) -> dic
             if item["action"] == SKIP
         ],
     }
+    if named:
+        shown[ONLY_SAID] = list(named)
     if not payload["items"]:
         shown["nothing to rename"] = NO_PASS_SAID
     return shown
@@ -593,6 +645,9 @@ class PassPlan:
     #: What the engine waits for before a rename: the intake file, or on a
     #: database native intake tree the :class:`marks.NativeLanding` (R-777).
     native: marks.NativeLanding | None = None
+    #: The playlists ``--playlist`` narrowed the plan to, or empty for the
+    #: whole pass (U174).
+    named: tuple[str, ...] = ()
 
     @property
     def proof(self) -> Path | marks.NativeLanding:
@@ -619,6 +674,7 @@ def plan_pass(
     *,
     pass_name: str | None = None,
     listing=None,
+    playlists_named: Sequence[str] = (),
 ) -> PassPlan:
     """Plan the marks one intake file's pass earns, reading the account only when it has one.
 
@@ -626,7 +682,15 @@ def plan_pass(
     answering ``(catalogue, sweep)``, asked only for a file a pass owns, so
     one listing of the account serves every pass rather than one listing
     each. Absent, this pass lists the account itself, as the verb does.
+
+    ``playlists_named`` NARROWS AND NEVER WIDENS (U174), ``sync unmark``'s
+    rule: only those playlists of the pass are planned, shown and covered by
+    the digest. One that is not the pass's is refused before the account is
+    listed, since the pass's jobs alone say which playlists it holds, and one
+    the pass did not complete is refused by name with its reason, rather than
+    shown as a skip the person asked to be marked.
     """
+    named = tuple(dict.fromkeys(str(one) for one in playlists_named))
     # THE FILE FIRST, before the account is listed or a credential is asked
     # for, by the same single read the engine makes again before it renames.
     # With no file, the native proof first, for the same reason (R-777).
@@ -640,24 +704,29 @@ def plan_pass(
     if xml is not None:
         seen = marks.require_output(xml)
         name = _pass_name(xml)
-        named = _locations(xml)
+        located = _locations(xml)
     else:
         native = _native_proof(cfg, pass_name)
         seen = None
         name = native.pass_name
-        named = frozenset()
+        located = frozenset()
     proof: Path | marks.NativeLanding = native if native is not None else xml
 
     spec = next(one for one in sources.SPECS if one.source_id == playlists.SOURCE_ID)
     handler_key = str(spec.handler_key)
     with jobs.open_store() as store:
         found = _pass_jobs(store, cfg, name, handler_key)
+    _refuse_strangers(named, found, name)
     if not found:
         # BEFORE THE LISTING AND THE CREDENTIAL. Neither can change the answer,
         # and a person with no session stored is owed "this file is no pass's"
         # rather than "log in" followed by it.
         return PassPlan(
-            xml=xml, name=name, payload=_payload([], proof=proof, seen=seen), native=native
+            xml=xml,
+            name=name,
+            payload=_payload([], proof=proof, seen=seen, named=named),
+            native=native,
+            named=named,
         )
 
     if listing is None:
@@ -666,7 +735,11 @@ def plan_pass(
         catalogue_found, sweep = listing()
     with jobs.open_store() as store:
         decided = _decided(store, sweep, found)
-    _settle(decided, named, cfg)
+    if named:
+        # BEFORE THE LIBRARY IS WALKED, so naming one playlist settles that one.
+        decided = [entry for entry in decided if entry.identity in named]
+    _settle(decided, located, cfg)
+    _refuse_unfinished(named, decided, name)
 
     # THE RECORD BEFORE THE GATE (R-838). One that cannot be read or locked
     # refuses now, while nothing is on the account, and not after renames it
@@ -677,7 +750,7 @@ def plan_pass(
         for entry in mark_record.MarkRecord(cfg).ready()
         if entry.pass_name == name and entry.unmarked
     }
-    payload = _payload(decided, proof=proof, seen=seen)
+    payload = _payload(decided, proof=proof, seen=seen, named=named)
     for item in payload["items"]:
         if item["action"] == MARK and item["id"] in put_back:
             item["put_back"] = put_back[item["id"]]
@@ -689,7 +762,42 @@ def plan_pass(
         sweep=sweep,
         catalogue_found=catalogue_found,
         native=native,
+        named=named,
     )
+
+
+def _refuse_strangers(named: tuple[str, ...], found: list[jobs.Job], name: str) -> None:
+    """Refuse a named playlist that is not one of the pass's, by its jobs alone."""
+    if not named:
+        return
+    held = {playlists.playlist_of(job) for job in found}
+    strangers = [identity for identity in named if identity not in held]
+    if strangers:
+        raise _blocked(
+            f"pass {name} holds no playlist {', '.join(strangers)}, so it cannot "
+            f"mark it; nothing was marked",
+            "name only playlists of this pass, by the account identifier its plan "
+            "shows, or leave --playlist out to mark the whole pass",
+            not_of_pass=strangers,
+            pass_name=name,
+        )
+
+
+def _refuse_unfinished(named: tuple[str, ...], decided: list[_Playlist], name: str) -> None:
+    """Refuse a named playlist the pass did not complete, naming it and why."""
+    if not named:
+        return
+    unfinished = [entry for entry in decided if entry.reason in UNFINISHED]
+    if unfinished:
+        raise _blocked(
+            f"pass {name} did not complete "
+            + "; ".join(f"{entry.name or entry.identity} ({entry.why})" for entry in unfinished)
+            + ", so it is not marked; nothing was marked",
+            "finish the playlist first, the remedy its reason names, then mark it again",
+            not_complete=[entry.identity for entry in unfinished],
+            reasons={entry.identity: entry.reason for entry in unfinished},
+            pass_name=name,
+        )
 
 
 def listed(cfg: config.Config) -> tuple[Any, Any]:
@@ -707,7 +815,7 @@ def listed(cfg: config.Config) -> tuple[Any, Any]:
 
 def shown(planned: PassPlan) -> dict[str, Any]:
     """The gate screen's facts for one planned pass."""
-    return _shown(planned.payload, proof=planned.proof)
+    return _shown(planned.payload, proof=planned.proof, named=planned.named)
 
 
 def apply_pass(cfg: config.Config, planned: PassPlan) -> tuple[dict[str, Any], list[dict[str, str]], list[str]]:
@@ -785,7 +893,12 @@ def apply_pass(cfg: config.Config, planned: PassPlan) -> tuple[dict[str, Any], l
 def sync_mark(ctx) -> Envelope:
     cfg = sync_cli._load()
     xml = Path(ctx.args.xml) if ctx.args.xml is not None else None
-    planned = plan_pass(cfg, xml, pass_name=ctx.args.pass_name)
+    planned = plan_pass(
+        cfg,
+        xml,
+        pass_name=ctx.args.pass_name,
+        playlists_named=list(getattr(ctx.args, "playlist", None) or ()),
+    )
     option = ctx.gate.require(
         ctx.entry.gates[0], digest=planned.payload["digest"], context=shown(planned)
     )
@@ -808,4 +921,13 @@ def sync_mark(ctx) -> Envelope:
     )
 
 
-__all__ = ["PassPlan", "apply_pass", "build_mark", "listed", "plan_pass", "shown", "sync_mark"]
+__all__ = [
+    "PassPlan",
+    "apply_pass",
+    "build_mark",
+    "listed",
+    "native_passes",
+    "plan_pass",
+    "shown",
+    "sync_mark",
+]
