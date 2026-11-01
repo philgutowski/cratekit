@@ -1362,7 +1362,7 @@ def test_a_driven_resume_over_no_favorites_class_names_the_skipped_step(
     (warned,) = _favorites_warnings(done)
     assert set(warned) == {"code", "message"}
     assert "genre Favorites step was skipped" in warned["message"]
-    assert "schema_version 4" in warned["message"]
+    assert "schema_version 5" in warned["message"]
     assert "crate taxonomy upgrade" in warned["message"]
     code, again = _drive([*argv, "--job", job_id])
     assert code == int(ExitCode.OK), again

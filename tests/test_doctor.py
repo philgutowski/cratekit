@@ -8056,10 +8056,10 @@ def test_a_version_2_copy_without_favorites_is_named_with_both_versions(configur
     finding = _schema_finding(configured)
     assert finding.status is doctor.Status.INFO
     assert "schema_version 2" in finding.detail
-    assert "'default' template states 4" in finding.detail
+    assert "'default' template states 5" in finding.detail
     assert "lacks the class(es) favorites" in finding.detail
     assert "lacks the bucket(s) soul" in finding.detail
-    assert "crate taxonomy upgrade raises schema_version to 4 and adds favorites" in finding.detail
+    assert "crate taxonomy upgrade raises schema_version to 5 and adds favorites" in finding.detail
     assert "soul is held" in finding.detail and "'Soul'" in finding.detail
     # Reported, never repaired.
     assert config.state_path("taxonomy_active", configured).read_text(encoding="utf-8") == live_shaped()
@@ -8069,7 +8069,7 @@ def test_a_current_copy_with_every_entry_is_ok(configured):
     seed_taxonomy(configured)
     finding = _schema_finding(configured)
     assert finding.status is doctor.Status.OK
-    assert "schema_version 4" in finding.detail
+    assert "schema_version 5" in finding.detail
 
 
 def test_a_copy_that_does_not_parse_is_left_to_taxonomy_active(configured):
