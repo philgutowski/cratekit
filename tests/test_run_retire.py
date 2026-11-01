@@ -360,3 +360,82 @@ def test_a_threshold_that_is_not_a_positive_whole_number_of_days_is_named(librar
 def test_the_ceiling_itself_is_a_threshold(library):
     ceiling = config.MAX_OPEN_GATE_STALE_DAYS
     assert config.validate({**document_for(library), "reports": {"open_gate_stale_days": ceiling}}) == []
+
+
+# ---------------------------------------------------------------------------
+# review round one: the guards a first suite left unpinned
+# ---------------------------------------------------------------------------
+
+
+def test_retire_reads_its_default_threshold_from_the_file(library):
+    config.save(config.from_dict({**document_for(library), "reports": {"open_gate_stale_days": 3}}))
+    config.reset_cache()
+    four = _open(ORDINARY, idle_days=4)
+    two = _open(ORDINARY, idle_days=2)
+
+    code, done = _retire()
+
+    assert code == int(ExitCode.OK), done
+    assert done["data"]["summary"]["older_than"] == "3d"
+    assert gates.load(four).open_gate is None
+    assert gates.load(two).open_gate == ORDINARY[1]
+
+
+def test_a_gate_answered_after_the_plan_was_read_is_said_and_not_answered_again(configured):
+    """``_retire_one`` reads the run again and records nothing on a gate that moved."""
+    run_id = _open(ORDINARY, idle_days=10)
+    found, _ = runs.old_gates(older_than=timedelta(days=7), now=datetime.now(timezone.utc))
+    (planned,) = found
+    code, _out, err = drive(["run", "decide", run_id, ORDINARY[1], "apply", "--actor", "a-person"])
+    assert code == int(ExitCode.OK), err
+
+    assert runs._retire_one(planned) is False
+    decision = gates.load(run_id).decisions[ORDINARY[1]]
+    assert (decision.option, decision.actor) == ("apply", "a-person")
+    assert runs._moved_check(planned)["status"] == "moved"
+
+
+def test_an_answer_is_stale_once_a_planned_run_is_resumed_even_if_it_stays_old(configured):
+    """The digest covers when each gate went idle, not only which runs are planned."""
+    run_id = _open(ORDINARY, idle_days=20)
+    code, asked = _json(["run", "retire"])
+    assert code == int(ExitCode.DECISION_REQUIRED), asked
+    retire_run = asked["run_id"]
+    code, _out, err = drive(["run", "decide", retire_run, CONFIRM, "apply"])
+    assert code == int(ExitCode.OK), err
+
+    path = gates.run_path(run_id)
+    touched = (datetime.now(timezone.utc) - timedelta(days=12)).timestamp()
+    os.utime(path, (touched, touched))
+    code, refused = _json(["--run", retire_run, "run", "retire"])
+
+    assert code == int(ExitCode.DECISION_STALE), refused
+    assert gates.load(run_id).open_gate == ORDINARY[1]
+
+
+def test_a_hand_edited_start_stamp_is_aged_by_the_records_last_write(configured):
+    run_id = _open(ORDINARY, idle_days=10)
+    state = gates.load(run_id)
+    state.created = "yesterday"
+    path = gates.save(state)
+    written = (datetime.now(timezone.utc) - timedelta(days=10)).timestamp()
+    os.utime(path, (written, written))
+
+    data = _status()
+
+    assert f"run.{run_id}" not in {check["key"] for check in data["checks"]}
+    assert data["summary"]["old_gates"] == 1
+
+
+def test_a_record_whose_time_cannot_be_read_is_never_old(configured, monkeypatch):
+    """Absence of a reading is not age: an unstattable record is as new as now."""
+    run_id = _open(ORDINARY, idle_days=30)
+    state = gates.load(run_id)
+
+    class Gone:
+        def stat(self):
+            raise FileNotFoundError(2, "No such file or directory")
+
+    now = datetime.now(timezone.utc)
+    assert gates.idle_since(state, Gone()) >= now
+    assert gates.old_gate(state, Gone(), older_than=timedelta(days=7), now=now) is None
