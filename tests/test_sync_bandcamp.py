@@ -528,6 +528,44 @@ def test_a_release_refused_for_good_is_recorded_and_nothing_is_landed_over_none(
     assert not any(argv[:1] == ["tag"] for argv in chain.calls)
 
 
+def test_a_fetch_failed_by_a_transient_answer_ends_the_verb_and_lands_nothing(
+    signed_in, account, puls, chain
+):
+    """A release the fetch could not reach this time is still coming, so nothing goes on."""
+    original = account.get
+
+    def unavailable(url, *, cookie):
+        if "/download" in url:
+            return type(original(url, cookie=cookie))(503, "busy")
+        return original(url, cookie=cookie)
+
+    account.get = unavailable
+
+    code, envelope = run("--seller", "otherlabel", "--batch", BATCH)
+
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["outcome"] != "pending"
+    assert _summary(envelope)["stopped_at"] == "fetch"
+    assert _summary(envelope)["fetch_refused"] == []
+    assert chain.landing.landed == [] and chain.landing.rehearsed == []
+    assert not any(argv[:1] == ["tag"] for argv in chain.calls)
+
+
+def test_a_plan_holding_only_part_owned_releases_still_fetches_the_rest(
+    signed_in, account, puls, chain
+):
+    """The compilation alone: one track owned and held back, the other fetched."""
+    account.items = [one for one in account.items if str(one["item_id"]) == "3"]
+
+    code, envelope = run("--seller", "PULS", "--batch", BATCH)
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert ("acquire", "bandcamp-fetch") in _verbs(chain)
+    assert _staged(signed_in) == ["Various Artists - Compiled - 01 Coral Arc - Glass.flac"]
+    (held,) = _summary(envelope)["held"]
+    assert [one["track"] for one in held["tracks"]] == ["Nova Reef - Shore"]
+
+
 def test_a_fetch_parked_by_the_session_ends_blocked_and_the_next_run_drives_it_on(
     signed_in, account, puls, chain
 ):
