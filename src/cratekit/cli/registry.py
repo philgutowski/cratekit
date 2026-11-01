@@ -567,6 +567,27 @@ ENTRIES: tuple[Entry, ...] = (
         output_schema="diagnostic/1",
     ),
     Entry(
+        name="run.retire",
+        summary="answer abort on every open gate idle past a threshold, after one confirm",
+        module="cratekit.cli.verbs.runs",
+        builder="build_retire",
+        handler_key="run.retire",
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
+        gates=(
+            GateSpec(
+                name="run.retire.confirm",
+                options=("apply", "abort"),
+                prompt="Answer abort, as session, on each of these open gates?",
+                #: ORDINARY, as ``profile.set.apply`` is (U170). What it writes
+                #: is run state, and only ever the answer no, so it is answered
+                #: on the same line; the digest binds the answer to the gates
+                #: shown.
+                digest_source="plan",
+            ),
+        ),
+    ),
+    Entry(
         name="setup",
         summary="first-run wizard: library, credentials, taxonomy, profile",
         module="cratekit.cli.setup",
