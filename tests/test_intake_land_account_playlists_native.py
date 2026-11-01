@@ -4,7 +4,8 @@ The same scenarios ``tests/test_intake_land_account_playlists.py`` drives on the
 bridge, driven here against the disposable database the native landing suite
 builds, so both media are held to one behaviour. The rotation is then planned
 over what the landing wrote, which is how it is shown to age an account
-playlist by its landing record rather than by a name that carries no date.
+playlist by its landing record rather than by its name, whose date at the
+end (U175) is for a person to read.
 
 D1 applies. Nothing here names a real volume, a real person or a real track.
 """

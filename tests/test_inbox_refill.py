@@ -629,10 +629,17 @@ def test_one_playlist_two_jobs_answer_to_is_neither_jobs():
 def test_bridge_names_reads_only_this_accounts_entries_of_this_pass_with_no_id():
     """An intake file's recorded name is asked only for its own account and pass (U175)."""
 
-    def record(tag: str, state: session.SessionState, entries: list[dict]) -> session.SessionRecord:
+    def record(
+        tag: str,
+        state: session.SessionState,
+        entries: list[dict],
+        *,
+        session_id: str = "",
+        workflow: str = native.WORKFLOW,
+    ) -> session.SessionRecord:
         return session.SessionRecord(
-            session_id=f"20261003T1200{tag}-landing",
-            workflow=native.WORKFLOW,
+            session_id=session_id or f"20261003T1200{tag}-landing",
+            workflow=workflow,
             started=f"2026-10-03T12:00:{tag}+00:00",
             state=state,
             detail={native.INBOX_PLAYLISTS_KEY: entries},
@@ -642,7 +649,21 @@ def test_bridge_names_reads_only_this_accounts_entries_of_this_pass_with_no_id()
         return {"name": name, "batch": "b", "account": account, "pass": pass_name, **more}
 
     records = [
-        record("02", session.SessionState.CLOSED, [entry(f"{INBOX_NAME} 2", "pl-a")]),
+        # Started later, though its identifier sorts first: the order is by start.
+        record(
+            "02",
+            session.SessionState.CLOSED,
+            [entry(f"{INBOX_NAME} 2", "pl-a")],
+            session_id="20261003T000000-a-landing",
+        ),
+        # A record that no longer stands, and one of another workflow, name nothing.
+        record("03", session.SessionState.ABANDONED, [entry("Abandoned 2026-10-03", "pl-a")]),
+        record(
+            "04",
+            session.SessionState.CLOSED,
+            [entry("Elsewhere 2026-10-03", "pl-a")],
+            workflow=refill.WORKFLOW,
+        ),
         record(
             "01",
             session.SessionState.AWAITING_IMPORT,
