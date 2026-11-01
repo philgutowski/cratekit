@@ -1,0 +1,773 @@
+{
+  "name": "u173",
+  "pass_kind": "light",
+  "branch": "cloud/354-a-rekordbox-visit-skill-drives-t",
+  "head": "973a7e74",
+  "when": "2026-11-01 03:29 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 14836,
+  "baseline_exit": 1,
+  "pytest_runs": 28,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (4 entries)",
+  "reused_rows": 0,
+  "known_failures": 168,
+  "known_source": ".cloud-battery/baseline.txt",
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/analysis/rekordbox_check.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/analysis/rekordbox_check.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "084625afbccb95ba",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 14836,
+    "baseline_collected": 14836,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "M1_mode_dynamic",
+      "description": "skill table: Analysis Mode Normal to Dynamic, the setting sitting 47 ran on by mistake",
+      "file": ".claude/skills/rekordbox-visit/SKILL.md",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9d7f0b8d59c200de",
+      "subset": [
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rekordbox_visit_skill.py::test_the_settings_agree_with_the_step_crate_sync_land_prints",
+        "tests/test_rekordbox_visit_skill.py::test_the_settings_are_the_brief_s_standard"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "| Analysis Mode | Normal |",
+      "new": "| Analysis Mode | Dynamic |"
+    },
+    {
+      "id": "M2_vocal_on",
+      "description": "skill table: Vocal off to on, against the brief's standard",
+      "file": ".claude/skills/rekordbox-visit/SKILL.md",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bd7cc88f33196fad",
+      "subset": [
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rekordbox_visit_skill.py::test_the_settings_are_the_brief_s_standard"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "| Vocal | off |",
+      "new": "| Vocal | on |"
+    },
+    {
+      "id": "M3_key_off",
+      "description": "skill table: KEY on to off, the other setting sitting 47 met wrong",
+      "file": ".claude/skills/rekordbox-visit/SKILL.md",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "34fd4e2f3ea2e095",
+      "subset": [
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rekordbox_visit_skill.py::test_the_settings_agree_with_the_step_crate_sync_land_prints",
+        "tests/test_rekordbox_visit_skill.py::test_the_settings_are_the_brief_s_standard"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "| KEY | on |",
+      "new": "| KEY | off |"
+    },
+    {
+      "id": "M4_precision_row_dropped",
+      "description": "skill table: the High precision row left out, so the dialog's remembered value stands",
+      "file": ".claude/skills/rekordbox-visit/SKILL.md",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b34cd88c190a3ac2",
+      "subset": [
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rekordbox_visit_skill.py::test_the_settings_agree_with_the_step_crate_sync_land_prints",
+        "tests/test_rekordbox_visit_skill.py::test_the_settings_are_the_brief_s_standard"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "| High precision | off |\n",
+      "new": ""
+    },
+    {
+      "id": "M5_wrong_playlist",
+      "description": "skill step 2: select a playlist named Analyse rather than the one every landing fills",
+      "file": ".claude/skills/rekordbox-visit/SKILL.md",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6848f00cec8c873a",
+      "subset": [
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rekordbox_visit_skill.py::test_it_selects_the_playlist_every_landing_fills"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "`Analyze` directly under it.",
+      "new": "`Analyse` directly under it."
+    },
+    {
+      "id": "M6_agent_name",
+      "description": "skill step 6: wait on a process name the agent does not run under, so the agent is never seen",
+      "file": ".claude/skills/rekordbox-visit/SKILL.md",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a9d8bc6a8c8cf69f",
+      "subset": [
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rekordbox_visit_skill.py::test_it_waits_on_the_processes_the_product_watches"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    pgrep -x rekordboxAgent\n",
+      "new": "    pgrep -x rekordbox-agent\n"
+    },
+    {
+      "id": "M7_waiting_code",
+      "description": "skill step 7: waiting read as exit 30, so a 12 matches no branch",
+      "file": ".claude/skills/rekordbox-visit/SKILL.md",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8543b6df01a96023",
+      "subset": [
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rekordbox_visit_skill.py::test_the_exit_codes_it_branches_on_are_the_check_s"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "- **12, waiting.**",
+      "new": "- **30, waiting.**"
+    },
+    {
+      "id": "M8_suspect_code",
+      "description": "skill step 7: suspect read as exit 12, so a suspect visit reads as rows still waiting",
+      "file": ".claude/skills/rekordbox-visit/SKILL.md",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cd3bafeb2946f163",
+      "subset": [
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rekordbox_visit_skill.py::test_the_exit_codes_it_branches_on_are_the_check_s"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "- **27, suspect.**",
+      "new": "- **12, suspect.**"
+    },
+    {
+      "id": "M9_precheck_code",
+      "description": "skill step 1.5: the pre check goes on at exit 0, the code for nothing waiting",
+      "file": ".claude/skills/rekordbox-visit/SKILL.md",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9512d5917fbbdc04",
+      "subset": [
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rekordbox_visit_skill.py::test_the_exit_codes_it_branches_on_are_the_check_s"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "It must exit 12 with",
+      "new": "It must exit 0 with"
+    },
+    {
+      "id": "M10_gate_abort",
+      "description": "skill step 7: the clear's gate answered abort, so the analysed rows are never cleared",
+      "file": ".claude/skills/rekordbox-visit/SKILL.md",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9a1f0ea9c97cf836",
+      "subset": [
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rekordbox_visit_skill.py::test_the_clear_s_gate_is_answered_by_its_own_name_and_option"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "inbox.analyzed.approve apply",
+      "new": "inbox.analyzed.approve abort"
+    },
+    {
+      "id": "M11_gate_actor",
+      "description": "skill step 7: the decide line without --actor session, so the answer is not recorded as the session's",
+      "file": ".claude/skills/rekordbox-visit/SKILL.md",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f58ff8e25e3099c8",
+      "subset": [
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rekordbox_visit_skill.py::test_the_clear_s_gate_is_answered_by_its_own_name_and_option"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "crate run decide --actor session --continue",
+      "new": "crate run decide --continue"
+    },
+    {
+      "id": "M12_job_verb",
+      "description": "skill step 1.1: a verb the parser does not know, the lint's rule g",
+      "file": ".claude/skills/rekordbox-visit/SKILL.md",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "50033e374acfaac2",
+      "subset": [
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rekordbox_visit_skill.py::test_the_lint_reads_the_skills_commands_at_all",
+        "tests/test_rekordbox_visit_skill.py::test_the_skill_passes_the_shipped_skills_lint"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "crate job list --state running",
+      "new": "crate jobs list --state running"
+    },
+    {
+      "id": "M13_output_flag_after_verb",
+      "description": "skill step 1.5: the global --output flag after the verb, where the parser refuses it",
+      "file": ".claude/skills/rekordbox-visit/SKILL.md",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "11e911272eea9504",
+      "subset": [
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rekordbox_visit_skill.py::test_the_skill_passes_the_shipped_skills_lint"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "       crate --output json analyze check",
+      "new": "       crate analyze check --output json"
+    },
+    {
+      "id": "M14_scope_value",
+      "description": "skill step 1.5: the scope it must read named inbox, a value the check never writes",
+      "file": ".claude/skills/rekordbox-visit/SKILL.md",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5ac74d2a526d65d4",
+      "subset": [
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rekordbox_visit_skill.py::test_the_json_fields_it_reads_are_the_check_s"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "Read `data.summary.scope` first. It must read `analyze`",
+      "new": "Read `data.summary.scope` first. It must read `inbox`"
+    },
+    {
+      "id": "M15_postcheck_scope_dropped",
+      "description": "skill step 7: the post check stops confirming its scope, so a verdict over other rows is read as the visit's",
+      "file": ".claude/skills/rekordbox-visit/SKILL.md",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "05851c85b0e824f4",
+      "subset": [
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rekordbox_visit_skill.py::test_the_json_fields_it_reads_are_the_check_s"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "`data.summary.scope` must still read `analyze`.",
+      "new": "`data.summary.scope` names the rows it read."
+    },
+    {
+      "id": "M16_batch_counts_rows",
+      "description": "skill step 1.5: the batch is data.summary.rows again, which counts rows gone from the collection",
+      "file": ".claude/skills/rekordbox-visit/SKILL.md",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3ab9b7c37f86154d",
+      "subset": [
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rekordbox_visit_skill.py::test_the_json_fields_it_reads_are_the_check_s"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "`data.summary.analysed` plus `data.summary.not_analysed`",
+      "new": "`data.summary.rows`, which is `data.summary.analysed` and `data.summary.not_analysed`"
+    },
+    {
+      "id": "M17_count_every_anlz",
+      "description": "skill step 4: count every ANLZ file, three a track, so the wait ends at a third of the batch",
+      "file": ".claude/skills/rekordbox-visit/SKILL.md",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0bbf457cc2f28257",
+      "subset": [
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rekordbox_visit_skill.py::test_the_store_it_counts_is_the_analysis_store"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "-name ANLZ0000.DAT -newer",
+      "new": "-name 'ANLZ*' -newer"
+    },
+    {
+      "id": "M18_marker_not_handed",
+      "description": "skill step 4: the fill in line drops the marker again, the round one blocking finding",
+      "file": ".claude/skills/rekordbox-visit/SKILL.md",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6918f9080de1fe92",
+      "subset": [
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rekordbox_visit_skill.py::test_the_background_wait_is_handed_the_marker"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "expected=<the batch>; marker=\"<the path step 3 printed>\"",
+      "new": "expected=<the batch>"
+    },
+    {
+      "id": "M19_dyn_value",
+      "description": "rekordbox_check: the dyn mark renamed, so the skill's My Tag is one the check never reads",
+      "file": "src/cratekit/analysis/rekordbox_check.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d70580ba9680bd63",
+      "subset": [
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rekordbox_visit_skill.py::test_the_second_run_is_for_the_mark_the_check_reads"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "DYN_VALUE = \"dyn\"",
+      "new": "DYN_VALUE = \"dynamic\""
+    },
+    {
+      "id": "M20_agent_process",
+      "description": "processes: the agent's process name spelled otherwise, so the skill's pgrep waits on the wrong name",
+      "file": "src/cratekit/core/processes.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2db6489fa2991ad5",
+      "subset": [
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rekordbox_visit_skill.py::test_it_waits_on_the_processes_the_product_watches"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "REKORDBOX_PROCESSES: tuple[str, ...] = (\"rekordbox\", \"rekordboxAgent\")",
+      "new": "REKORDBOX_PROCESSES: tuple[str, ...] = (\"rekordbox\", \"rekordbox_agent\")"
+    },
+    {
+      "id": "M21_gate_name",
+      "description": "analyzed_cli: the clear's gate renamed, so the skill's decide line names a gate that does not exist",
+      "file": "src/cratekit/intake/analyzed_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0243c76aed08dc40",
+      "subset": [
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rekordbox_visit_skill.py::test_the_clear_s_gate_is_answered_by_its_own_name_and_option"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "APPROVE_GATE = \"inbox.analyzed.approve\"",
+      "new": "APPROVE_GATE = \"inbox.analyzed.confirm\""
+    },
+    {
+      "id": "M22_suspect_exit",
+      "description": "cause: analysis-suspect exits 30, so the skill's 27 branch never matches",
+      "file": "src/cratekit/core/cause.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ce15ac8aee309b63",
+      "subset": [
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rekordbox_visit_skill.py::test_the_exit_codes_it_branches_on_are_the_check_s"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"analysis-suspect\": ExitCode.LIBRARY_PREREQUISITE,",
+      "new": "        \"analysis-suspect\": ExitCode.PRECONDITION,"
+    },
+    {
+      "id": "M23_sync_step_key_off",
+      "description": "sync_land: the printed stop turns KEY off while the skill's table keeps it on, the round one survivor",
+      "file": "src/cratekit/cli/sync_land.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e8423f55c7c07973",
+      "subset": [
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rekordbox_visit_skill.py::test_the_settings_agree_with_the_step_crate_sync_land_prints"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    f\"Mode Normal, high precision off, BPM/Grid, Phrase and KEY on\",",
+      "new": "    f\"Mode Normal, high precision off, BPM/Grid and Phrase on, KEY off\","
+    },
+    {
+      "id": "M24_analyze_name",
+      "description": "native: the queue playlist renamed, so the skill sends a session to a playlist no landing fills",
+      "file": "src/cratekit/intake/native.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7351faa5aee417b4",
+      "subset": [
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rekordbox_visit_skill.py::test_it_selects_the_playlist_every_landing_fills"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "ANALYZE = \"Analyze\"",
+      "new": "ANALYZE = \"Analysis\""
+    },
+    {
+      "id": "M25_contract_pointer",
+      "description": "CLAUDE.md: the pointer to the skill removed, so no attended session is sent to it",
+      "file": "CLAUDE.md",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "b7c591240d838763",
+      "subset": [
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 17,
+      "baseline_collected": 17,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rekordbox_visit_skill.py::test_the_contract_points_an_attended_session_at_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "The analysis visit after a landing follows the\n  project's `rekordbox-visit` skill step by step (U173).",
+      "new": "The analysis visit after a landing is done by hand."
+    }
+  ],
+  "dropped": []
+}
