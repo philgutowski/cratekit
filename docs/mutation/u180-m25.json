@@ -1,0 +1,73 @@
+{
+  "name": "u180-m25",
+  "pass_kind": "light",
+  "branch": "cloud/361-the-favorites-folder-reads-newes",
+  "head": "fab0f65",
+  "when": "2026-11-01 10:39 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 15204,
+  "baseline_exit": 1,
+  "pytest_runs": 4,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 167,
+  "known_source": ".cloud-battery/baseline.txt",
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/favorites/order_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/favorites/order_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "2a38a4afadd65424",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 15204,
+    "baseline_collected": 15204,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "M25_read_back_asserted",
+      "description": "favorites_order: a read back that disagrees with the plan is not refused, measured again once a test drove the verb's refusal",
+      "file": "src/cratekit/favorites/order_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b827c7716b583e48",
+      "subset": [
+        "tests/test_favorites_order.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 30,
+      "baseline_collected": 30,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_favorites_order.py::test_the_verb_refuses_an_answer_the_read_back_does_not_hold"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    order.assert_read_back(done)",
+      "new": "    pass"
+    }
+  ],
+  "dropped": []
+}
