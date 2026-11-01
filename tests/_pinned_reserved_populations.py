@@ -216,6 +216,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'verb-retired',
     'vocal-calibration-unreadable',
     'vocal-cut-out-of-range',
+    'vocal-scoring-unavailable',  # 2026-11-01, U181: a sync pass told to stop without vocals.
     'whitelist-violation',
     'write-lock-held',
     'yt-dlp-missing',
@@ -534,6 +535,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'decision-required',
         'decision-stale',
         'decision-unknown-gate',
+        'gate-sibling-run',  # 2026-11-01, U186: the sibling run warning joined.
         'internal-error',
     ],
     'cli/handlers.py': ['config-drift', 'internal-error'],
@@ -597,6 +599,17 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'outbound-export-required',
         'sync-land-download-refused',
         'sync-land-intake-left-open',
+        'sync-land-without-vocals',  # 2026-11-01, U181
+        'vocal-model',  # 2026-11-01, U181
+        'vocal-scoring-unavailable',  # 2026-11-01, U181
+    ],
+    # 2026-11-01, U179: the Bandcamp source of the same driver, its fetch verb's
+    # words and the closing report's three warnings.
+    'cli/sync_bandcamp.py': [
+        'bandcamp-fetch',
+        'sync-bandcamp-fetch-refused',
+        'sync-bandcamp-no-genre',
+        'sync-bandcamp-tags-unread',
     ],
     # 2026-11-01, U190: the tail and the landing, lifted out of the sync pass
     # driver so ``label sync --go`` runs the same chain.
@@ -869,6 +882,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'verb-retired',
         'vocal-calibration-unreadable',
         'vocal-cut-out-of-range',
+        'vocal-scoring-unavailable',  # 2026-11-01, U181
         'whitelist-violation',
         'write-lock-held',
         'yt-dlp-missing',
@@ -1177,6 +1191,9 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'favorites/placement.py': ['decision-stale', 'favorites-placement'],
     # 2026-10-15, U145: the quarters split into months, engine and verb.
     'favorites/split.py': ['decision-stale', 'favorites-split', 'session-committed-unverified', 'whitelist-violation'],
+    # 2026-11-01, U180: the Favorites folder put in order, engine and verb.
+    'favorites/order.py': ['decision-stale', 'favorites-order', 'session-committed-unverified', 'whitelist-violation'],
+    'favorites/order_cli.py': ['config-unusable', 'favorites-in-order', 'favorites-ordered'],
     'favorites/split_cli.py': [
         'config-unusable',
         'favorites-no-quarter-left',
@@ -1320,6 +1337,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'library-root-unreachable',
         'rows-await-analysis',
         'snapshot-integrity-failed',
+        'vox-mostly-unscored',  # 2026-11-01, U181
         'vox-not-written',
         'vox-unscored',
     ],
@@ -1487,6 +1505,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'label-mark',
         'label-mark-changed-since-plan',
         'label-mark-nothing-built',
+        'label-mark-nothing-filed',  # 2026-11-01, R-1056: a batch that filed no built year.
         'label-playlists-not-followed',
         'not-in-batch',
         'retitled-since-built',
@@ -1911,6 +1930,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'job-unknown',
         'module-extras-missing',
         'no-audio',
+        'none-unscored',  # 2026-11-01, U181
         'source-missing',
     ],
     'write/collection_export.py': [
@@ -2051,6 +2071,7 @@ PINNED_NAMED_WITHOUT_OWN = {
     # 2026-11-01, U190: the two stops moved to ``cli/tail.py`` with the landing.
     'cli/sync_land.py': [
         'outbound-export-required',
+        'vocal-scoring-unavailable',  # 2026-11-01, U181
     ],
     # 2026-11-01, U190: the landing's two stops, lifted out of the sync pass driver.
     'cli/tail.py': [
@@ -2134,6 +2155,7 @@ PINNED_NAMED_WITH_OWN = {
     # 2026-11-01, U190: the two stops moved to ``cli/tail.py`` with the landing.
     'cli/sync_land.py': [
         'outbound-export-required',
+        'vocal-scoring-unavailable',  # 2026-11-01, U181
     ],
     # 2026-11-01, U190: the landing's two stops, lifted out of the sync pass driver.
     'cli/tail.py': [
@@ -2336,6 +2358,7 @@ PINNED_LITERAL_HOLDERS = {
     'cli/sync_land.py': [
         'job-driver-held',
         'outbound-export-required',
+        'vocal-scoring-unavailable',  # 2026-11-01, U181
     ],
     # 2026-11-01, U190: the tail and the landing, lifted out of the sync pass driver.
     'cli/tail.py': [
@@ -2618,6 +2641,9 @@ PINNED_LITERAL_HOLDERS = {
     'favorites/colour.py': ['favorites-pink-colour-missing'],
     'favorites/placement.py': ['decision-stale'],
     'favorites/refresh_cli.py': ['config-unusable', 'internal-error'],
+    # 2026-11-01, U180: the Favorites folder put in order, engine and verb.
+    'favorites/order.py': ['decision-stale', 'session-committed-unverified', 'whitelist-violation'],
+    'favorites/order_cli.py': ['config-unusable'],
     # 2026-10-15, U145: the quarters split into months, engine and verb.
     'favorites/split.py': ['decision-stale', 'session-committed-unverified', 'whitelist-violation'],
     'favorites/split_cli.py': ['config-unusable'],
@@ -2972,6 +2998,7 @@ PINNED_LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     'analysis/energy.py',
     'analysis/rekordbox_check.py',  # 2026-10-31, U167: the Camelot wheel's twelve.
     'cli/doctor.py',
+    'cli/gates.py',  # 2026-11-01, U186: the sibling window's twelve hours.
     'cli/output.py',
     'core/config.py',
     'core/convergence.py',

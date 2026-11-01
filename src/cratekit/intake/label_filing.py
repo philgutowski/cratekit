@@ -885,6 +885,43 @@ def record_commit(record: session.SessionRecord, written: Written, cfg: config.C
     session.record_commit(record, written.tree_id, session.ChangeSummary(changes), cfg)
 
 
+def years_filed(record: session.SessionRecord, label: str) -> frozenset[str] | None:
+    """The years one native landing's record says it filed a track under ``label``.
+
+    WHAT ``label mark --pass`` READS IN PLACE OF AN INTAKE FILE (R-1056): the
+    entries :func:`record_commit` wrote under :data:`RECORD_KEY`, one per year
+    playlist the commit filed into. A year counts only when its entry held a
+    track, the bridge's rule for a ``<Label> <year>`` playlist in the intake
+    file, and the label is compared under the landing's own fold, so a name
+    spelled decomposed on either side is the folder the landing filed into.
+
+    A RECORD THAT FILED NOTHING ANSWERS EMPTY, since :func:`record_commit`
+    writes the key only when the commit added or made something. ``None`` is
+    a key this build cannot read, which is not the same answer: a caller that
+    read it as nothing filed would say so of a batch that filed years.
+    """
+    filed = record.detail.get(RECORD_KEY, [])
+    if not isinstance(filed, list):
+        return None
+    wanted = _folded(label)
+    years: set[str] = set()
+    for entry in filed:
+        if not isinstance(entry, dict):
+            return None
+        named, year, tracks = entry.get("label"), entry.get("year"), entry.get("tracks")
+        if (
+            not isinstance(named, str)
+            or not isinstance(year, int)
+            or isinstance(year, bool)
+            or not isinstance(tracks, int)
+            or isinstance(tracks, bool)
+        ):
+            return None
+        if _folded(named) == wanted and tracks > 0:
+            years.add(f"{year:04d}")
+    return frozenset(years)
+
+
 def item(written: WrittenYear, *, tree: str, session_id: str) -> dict[str, Any]:
     """The one item a landing appends for each year playlist it filed into."""
     return {
@@ -922,4 +959,5 @@ __all__ = [
     "unfiled_warning",
     "write",
     "year_of",
+    "years_filed",
 ]

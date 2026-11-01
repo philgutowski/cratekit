@@ -147,9 +147,11 @@ def decide(ctx: "Context") -> Envelope:
     actor, why = _actor(ctx.args.actor)
     gates.record(state, spec, ctx.args.option, actor=actor)
     gates.save(state)
+    said = same_plan_answered(state, spec.name, ctx.args.option)
     if ctx.args.continue_run:
-        return _continued(ctx, state, spec.name, actor=actor)
+        return _continued(ctx, state, spec.name, actor=actor, said=said)
     return ctx.envelope(
+        warnings=said,
         data={
             "checks": [
                 {
@@ -172,7 +174,56 @@ def decide(ctx: "Context") -> Envelope:
     )
 
 
-def _continued(ctx: "Context", state: gates.RunState, gate: str, *, actor: str) -> Envelope:
+def same_plan_answered(state: gates.RunState, gate: str, option: str) -> list[dict[str, str]]:
+    """The sibling warning, repeated when another run already answered this plan (U186).
+
+    Named only when the other run is of the same verb, declares a database
+    writing surface, and answered the same gate with the same option as this
+    answer over the digest this run was offered, inside the dispatcher's
+    twelve hour window. The database verbs' gates say ``apply``, ``approve``
+    or ``proceed``, so "the same option" is how the brief's "answered apply"
+    reads across all three. An ``abort`` on either side races nothing and says
+    nothing. A run offered no digest has no plan to compare, so it says
+    nothing either.
+
+    It refuses nothing: the answer above is already recorded and saved, and a
+    reading that breaks says so and never costs the answer.
+    """
+    offered = state.offers.get(gate)
+    if option == gates.RETIRE_OPTION or offered is None:
+        return []
+    if not gates.writes_the_database(state.verb):
+        return []
+    try:
+        found, _ = gates.siblings(state.verb, exclude=state.run_id)
+    except Exception as exc:  # noqa: BLE001 - see the docstring, the answer stands
+        return [
+            {
+                "code": gates.SIBLING_RUN,
+                "message": (
+                    f"whether another run of {state.verb} already answered this plan "
+                    f"could not be read ({type(exc).__name__}: {exc})"
+                ),
+            }
+        ]
+    return [
+        one.warning()
+        for one in found
+        if any(
+            name == gate and held.option == option and held.digest == offered
+            for name, held in one.answers
+        )
+    ]
+
+
+def _continued(
+    ctx: "Context",
+    state: gates.RunState,
+    gate: str,
+    *,
+    actor: str,
+    said: list[dict[str, str]],
+) -> Envelope:
     """Continue the verb that owns ``state`` with its recorded arguments, and answer as it did (U168).
 
     THE ANSWER IS RECORDED AND SAVED FIRST, so a continuation that refuses
@@ -208,7 +259,9 @@ def _continued(ctx: "Context", state: gates.RunState, gate: str, *, actor: str) 
             f"then {' '.join(state.argv)} continued"
         ),
     }
-    return dataclasses.replace(envelope, warnings=(note, *envelope.warnings))
+    # A SIBLING THE CONTINUED VERB ALREADY NAMED AT A GATE OF ITS OWN is said once.
+    repeated = [one for one in said if one not in envelope.warnings]
+    return dataclasses.replace(envelope, warnings=(note, *repeated, *envelope.warnings))
 
 
 # ---------------------------------------------------------------------------

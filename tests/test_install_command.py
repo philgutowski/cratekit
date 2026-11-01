@@ -100,3 +100,46 @@ def test_the_parser_stub_and_the_workers_read_one_source(tmp_path, monkeypatch):
     for verb, slug in (("analyze.run", "analysis"), ("analyze.vocals", "vocals")):
         assert render.install_command(registry.entry(verb)) == extras.install_command(slug)
         assert render.install_command(registry.entry(verb)).startswith("pipx install")
+
+
+def test_a_release_install_pipx_recorded_as_a_direct_reference_keeps_it_and_its_extras(
+    tmp_path, monkeypatch
+):
+    """U181. ``pipx install "cratekit[analysis] @ git+...@v0.3.0"`` is recorded
+    as that reference, and the clone form fell back to ``.`` and dropped the
+    analysis extra, so the refusal's command reinstalled from whatever folder
+    the shell was in and lost what was already chosen."""
+    url = "git+https://github.com/philgutowski/cratekit@v0.3.0"
+    monkeypatch.setattr(sys, "prefix", str(_pipx_prefix(tmp_path, f"cratekit[analysis] @ {url}")))
+    assert extras.install_command("vocals") == shlex.join(
+        ["pipx", "install", "--force", f"cratekit[analysis,vocals] @ {url}"]
+    )
+    assert extras.install_command("analysis") == shlex.join(
+        ["pipx", "install", "--force", f"cratekit[analysis] @ {url}"]
+    )
+
+
+@pytest.mark.parametrize(
+    "recorded",
+    [
+        "cratekit @ git+https://github.com/philgutowski/cratekit@v0.3.0",
+        "cratekit[]@ git+https://github.com/philgutowski/cratekit@v0.3.0",
+    ],
+)
+def test_a_direct_reference_with_no_extras_gains_the_one_asked_for(
+    tmp_path, monkeypatch, recorded
+):
+    url = "git+https://github.com/philgutowski/cratekit@v0.3.0"
+    monkeypatch.setattr(sys, "prefix", str(_pipx_prefix(tmp_path, recorded)))
+    assert extras.install_command("vocals") == shlex.join(
+        ["pipx", "install", "--force", f"cratekit[vocals] @ {url}"]
+    )
+
+
+def test_a_direct_reference_to_another_package_is_not_read_as_this_install(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        sys, "prefix", str(_pipx_prefix(tmp_path, "otherkit[x] @ git+https://example.invalid/o"))
+    )
+    assert extras.install_command("vocals") == "pipx install --force '.[vocals]'"

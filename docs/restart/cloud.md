@@ -97,3 +97,26 @@ where they said dispatcher. The dispatcher session was already archived,
 and the paused scheduled tasks "Cratekit lane dispatch" and "Cratekit Cloud
 Lane" were deleted on Phillip's word. The paragraphs above are the record of
 how it ran.
+
+**The decisions relay, 2026-10-31**, asked for by Phillip in the project
+thread "Wire decisions page answers to cards": make sure the decisions page
+passes on his answers each time. The paragraph above said the coordinator
+carries each answer back, but the coordinator has no tool that reads the
+page's data. That thread does, and is the relay thread: the scheduled task
+"Cratekit decisions relay" wakes it every hour at 34 minutes past, and it
+posts each document whose `status` is `answered` on its card under `Answer
+from Phillip`, or sends it to the document's `asked_session` when it names
+no card, sets the document `relayed` with `relayed_at` and `relayed_note`,
+and tells the coordinator so the card is started. The coordinator's own
+hourly wake fills free lanes only. The page cannot wake a project session
+itself, since a comment on a page sent to Claude wakes only a session
+watching that page and no project session can watch one, so the page gained
+a "Pass on your answers" box. While any answer is saved but not relayed, it
+holds a ready prompt listing each one (card, question, answer, note and
+decision id), with a button that copies it and opens the Cratekit project
+chat in a new window and a button that only copies it. Phillip pastes it,
+the coordinator messages the relay thread, and the thread relays at once;
+without the paste an answer waits for the hourly check. U187 made the
+`cloud-unit` skill, METHOD's cloud lane section, CLAUDE.md and the comment
+above `HEAD_ANSWER` in `scripts/board.py` say the same, and gave
+`CONCEPTS.md` a flagged ambiguity on the two things called Relay.

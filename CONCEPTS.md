@@ -554,7 +554,9 @@ a tail job left open over the staging folder by an earlier pass is replaced,
 never resumed, because it was frozen against the folder and the build as they
 stood then. Since U190 the tail and the landing are one chain,
 `cratekit.cli.tail`, and `crate label sync --go` runs it too, after its
-download, so the two verbs answer every step the same way.
+download, so the two verbs answer every step the same way. Since U179 `crate
+sync bandcamp` runs it after its fetch, and rehearses the landing on a copy
+between the tail and the landing.
 
 ### Shelve
 The step after the import that the landing left to a person: moving an imported
@@ -1581,7 +1583,8 @@ each filled with that year's tracks from the label's confirmed catalogue
 build reuses and what the playlists source excludes as `label-folder`, since a
 year playlist swept as intake would list the label's catalogue as missing.
 `crate label mark` prefixes the years a landed batch filed, through the mark
-record. `crate label prune` takes a held or reattributed release's tracks off
+record, read off the intake file on the bridge or, with `--pass`, off the
+native landings' own records (R-1056). `crate label prune` takes a held or reattributed release's tracks off
 the years it created (R-836), see Prune.
 
 *Avoid:* reading a year playlist as the label's releases in the library, which
@@ -2130,6 +2133,10 @@ never makes anybody fix it.
   playlist tree, a foreign folder is another app's: since U185 the folder named
   `DEADCA7` there and everything under it, which no commit may change at all
   (`core/foreign_tree.py`). The first is read; the second is refused.
+- "Relay" names two things. Native Relay is the retired pipeline that ran
+  units on Phillip's machine until 2026-10-27. The relay thread is the project
+  thread that carries each answer from the decisions page to its card every
+  hour, since 2026-10-31. Nothing in the cloud lane runs the first.
 - "Residual" does not mean "does not stop a merge". It answers only whether a
   finding blocks on its own merits. A residual with no cost to any person still
   stops a merge whenever the battery is red on its account, and both halves are

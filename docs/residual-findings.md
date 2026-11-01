@@ -40682,3 +40682,273 @@ that kept the old name.
 **Closes when:** a test drives `crate sync land` over two passes with open
 intake jobs and reads `data.summary.open_passes` off its envelope. Ledger only,
 a maintainer facing coverage gap.
+
+---
+
+## R-1142. A native landing writes its label filing record only when the commit added or made something, so label mark by pass could say a batch filed nothing
+
+**Found:** at the review of #362, R-1056, 2026-11-01.
+
+**The mechanism.** `label_filing.record_commit` returns before writing the
+`labels` key when `written.changed()` is false, that is when every year
+playlist the commit filed into already held every track it was asked to
+hold and no node was made. `label mark --pass` reads that key as what the
+landing filed, so a landing whose filing changed nothing would be read as
+one that filed no year, and the mark would end NO_OP with
+`label-mark-nothing-filed`. The bridge writes its tree into the intake file
+whatever it added, so the two proofs could disagree here.
+
+**Measured cost.** Not driven to a cost. The one candidate driven, a second
+native landing of the same file under another pass, is refused before it
+moves anything because the file already exists in the library, so no record
+commits. No producer was found.
+
+**Closes when:** a landing that filed into year playlists names them on its
+record whether or not it added a membership, or a producer is shown not to
+exist. Ledger only, since nothing reaches it.
+
+---
+
+## R-1143. A Bandcamp release the fetch refused for good is planned and refused again by every later sync bandcamp
+
+**Found:** at the second Fable review of #360, U179, 2026-11-01.
+
+**The mechanism.** `acquire bandcamp-fetch` records a purchase only once it is fetched (U176), so a release refused for good, a lossy only offer under the strict policy, stays `new` on every plan. Each `crate sync bandcamp` therefore queues a fetch that fails the same way, and names the release as refused again.
+
+**Measured cost.** Driven by the second review with an open fetch parked and the account then offering only MP3: two fetches in one run, one refusal named once since 75205b9, and the same refusal on every later run. A queue row and two account requests per run, and a warning a person learns to read past.
+
+**Closes when:** a refusal for good is recorded beside the fetched record and the plan shows it as refused rather than new, until the policy or the offer changes. U176's rule rather than this unit's; ledger only.
+
+---
+
+## R-1144. A sync bandcamp whose every release the fetch refused ends exit 0, no_op, where the fetch alone exits non zero
+
+**Found:** at the first Fable review of #360, U179, 2026-11-01.
+
+**The mechanism.** `crate sync bandcamp` reads a fetch that failed only by refusals for good (a lossy only release under the strict policy above all) as settled, the way `sync land` skips a lossy download, and goes on with what was staged. When nothing was staged it ends `no_op` with exit 0. `crate acquire bandcamp-fetch` alone ends the same job with its failed state's refusal.
+
+**Measured cost.** Driven by `test_a_release_refused_for_good_is_recorded_and_nothing_is_landed_over_none`: the envelope names each refused release in `fetch_refused`, in a `sync-bandcamp-fetch-refused` warning and on a `fail` check row, so nothing false is said, but a caller reading only the exit code is not told. `sync land` over an all refused download carries the same shape (U152's residual).
+
+**Closes when:** the verb ends with the fetch's own refusal when every release it attempted was refused and nothing was staged, or the record states exit 0 as the contract. Ledger only.
+
+---
+
+## R-1145. A Favorites playlist with no position reads as position 0, and the order can hand 0 out as a live position
+
+**Found:** at the review of #361, U180, 2026-11-01.
+
+**The mechanism.** `placement.seq_of` reads a row's `Seq` as `int(Seq or 0)`,
+so a playlist under the Favorites folder whose `Seq` is NULL sorts first and
+contributes 0 to the slots `placement.slots` gives out. `crate favorites order`
+then writes 0 as a live row's position, which the binding's own
+`create_playlist` and `move_playlist` refuse as below 1.
+
+**Measured cost.** Driven on a disposable copy with `Seq` set to NULL by SQL:
+the verb wrote All Favorites at `Seq 0` and the folder read in the right order
+on the copy. What rekordbox shows for a position of 0 was not measured, and one
+candidate producer was driven (SQL); no verb and no known rekordbox path writes
+a NULL position.
+
+**Closes when:** the slots are floored at 1, or an attended sitting reads a
+`Seq 0` row in rekordbox and finds it shown where its neighbours say. Ledger
+only.
+
+---
+
+## R-1146. The order's write of updated_at outside the binding's tracking kills no test, so a second sequence bump per moved row would ship green
+
+**Found:** at the review of #361, U180, 2026-11-01.
+
+**The mechanism.** `placement.seat` writes a moved row's `Seq` with the
+binding's registry tracking it, one sequence bump for the move, and stamps
+`updated_at` inside `db.registry.disabled()`, as the binding's own
+`move_playlist` does. Removing the `disabled()` block leaves every test green
+(177 tests in five files, at the review), so nothing holds the write to one
+bump per move.
+
+**Measured cost.** None measured. A second bump per moved row is what a
+person would pay only if rekordbox's cloud sync read the extra increment as
+a second change, and that was not driven.
+
+**Closes when:** a test reads the row's `rb_local_usn` before and after a
+seat and holds it to one increment, or the bump count is shown not to matter
+to rekordbox. Ledger only.
+
+---
+
+## R-1147. The install.extras row prints the install command twice on a copy that is not a release install
+
+**Found:** at the review of #378, U181, 2026-11-01.
+
+**The mechanism.** `crate doctor`'s `install.extras` row quotes the vocals module's sentence, which already ends with the install command, and then adds "Reinstall with:" and the command again. On a release install the second is the release form and the two differ; on any other copy they are the same text.
+
+**Measured cost.** Seen on the real doctor output of an editable copy. Noise on one row; nothing false.
+
+**Closes when:** the row quotes the reason without the command, or the probe's sentence and its command are carried apart. Ledger only.
+
+---
+
+## R-1148. A sync pass stopped at the without vocals gate carries no checks on its envelope
+
+**Found:** at the review of #378, U181, 2026-11-01.
+
+**The mechanism.** `crate sync land` stops at `sync.land.without-vocals` by letting the gate's own decision required refusal leave the verb, and the dispatcher builds that envelope from the cause, so the preflight's ok row for rekordbox and backups and the vocal model row are not on it: `data.checks` is empty. The pass's other stops for a person keep their rows, since they end PENDING through the pass's own envelope.
+
+**Measured cost.** Driven by the review on the real verb, exit 10. The gate screen carries every fact the question is asked over, so a person is told nothing false; the run record does not say the preflight passed before the stop.
+
+**Closes when:** the gate's context carries the preflight rows, or the refusal's detail carries the pass's data the way a stopped step's does. Ledger only.
+
+---
+
+## R-1149. The tail's vocal rescore row says it scored the files it queued, not the files it wrote
+
+**Found:** at the review of #378, U181, 2026-11-01.
+
+**The mechanism.** `cli/tail.py` `rescore` reports "scored the N staged file(s)" from the number of items the `analyze vocals --unscored` job held. When the model passes the probe and then fails to load (a checkpoint of the right size that will not deserialize), every item settles inactive with `vocal-model-unavailable`, the job succeeds, and the row reads ok over files that still carry no voxlevel.
+
+**Measured cost.** Driven by the review with a loader bound that raises on load, the one way a container with no torch reaches it: the row said scored 1 and the file carried no score. The child's own `vocal-model-unavailable` warning rides beside the row on the same envelope, so the report is not clean, only the row overclaims. A real failing checkpoint on a torch machine was not driven.
+
+**Closes when:** the row counts the job's reports by status, scored and unchanged against inactive, and says the inactive ones by reason. Ledger only.
+
+---
+
+## R-1150. The upgrade command adds the vocals extra only for a library with a vocal calibration recorded
+
+**Found:** at the plan of #378, U181, 2026-11-01, and confirmed at its review.
+
+**The mechanism.** The brief asks `install.release` to keep `vocals` when the library has ever scored a track, any file or row carrying a voxlevel. `crate doctor` reads that as a vocal calibration recorded for the library, `_vocals_scored`, since a calibration is fitted only from scored files or set by hand to tag them, and reading every file or row for a voxlevel is not a cost doctor may spend.
+
+**Measured cost.** A library scored and never calibrated gets an upgrade command without `vocals`, in that one state. The `install.extras` row beside it, on a copy that lacks the extra, prints the command with `vocals`, so the report carries the right command. Not driven on a real library.
+
+**Closes when:** a cheap record of a scored track exists to read, for instance the analysis job reports carrying a voxlevel, and the probe reads it. Ledger only.
+
+---
+
+## R-1151. METHOD's opening still calls Native Relay live, though its own Relay section says it retired on 2026-10-27
+
+**Found:** at the review of #395, U187, 2026-11-01.
+
+**The mechanism.** `docs/METHOD.md` says in its opening paragraph that Native
+Relay "is in the loop" and points at "Relay below", and the board bar section
+still says "The Relay feeder picks up" cards and "Relay reads every card it is
+about to launch". The section those point at is headed "Relay, retired
+2026-10-27". U187 added a flagged ambiguity to `CONCEPTS.md` separating Native
+Relay from the decisions relay thread, and left these lines alone because the
+brief names only the decisions page paragraph of METHOD.
+
+**Measured cost.** None to a DJ. A session reading METHOD from the top meets
+Relay as live on its first page and retired further down; the later section
+and the cloud lane section are both right. Found by a grep for "Relay" over
+METHOD, not driven further.
+
+**Closes when:** the opening paragraph and the board bar lines say Relay is
+retired, or speak of the cloud lane instead. Ledger only: a wording fix in a
+maintainer document.
+
+---
+
+## R-1152. A backup acknowledgment that is valid JSON but missing a key escapes every reader as an internal error and cannot be replaced
+
+**Found:** at the review of #381, U184, 2026-11-01.
+
+**The mechanism.** `Acknowledgment.from_json` in `src/cratekit/core/session.py`
+indexes `data["actor"]`, `data["recorded_at"]` and `data["expires_at"]` and
+parses the two dates directly, so a record such as `{"schema_version": 1}`, or
+one whose `recorded_at` is not a date, raises `KeyError` or `ValueError` rather
+than a `CratekitError`. Every reader catches only `CratekitError`: doctor's
+`backup.acknowledgment` says the check did not complete with `report-defect`,
+`crate session ack --as session` exits `internal-error` and does not replace
+the file, and the destructive gate raises the same. The default road's
+`_on_record` has had the identical `except` since U49.
+
+**Measured cost.** One candidate producer was driven, the product's own writer,
+which always writes every key, and none produces it; only a hand edit of the
+file reaches it. A person who did make one cannot replace it with the command
+whose docstring says it replaces an unreadable record, and must delete the file.
+
+**Closes when:** `from_json` turns a missing key or an unparsable date into the
+same `internal-error` refusal as unreadable JSON, so every reader treats it as
+unreadable and the one command replaces it. Ledger only.
+
+---
+
+## R-1153. crate session ack --as session ignores the run it is resumed under and any inline answer beside it
+
+**Found:** at the review of #381, U184, 2026-11-01.
+
+**The mechanism.** The flag's road in `src/cratekit/session/cli.py`,
+`_mint_as_session`, asks no gate, so it never reads the run record or the
+inline decisions. Three command lines reach that, each driven at the review:
+`crate --run RUN session ack --as session` on a run a plain `session ack` left
+at its gate mints and saves RUN with its gate still open; the same on a run
+where a person recorded `abort` mints beside the abort, so `run show RUN`
+lists the abort next to a fresh acknowledgment; and an inline
+`-d session.ack.backup=abort` (or any value, or an unknown gate) beside the
+flag is ignored with no warning while the default road refuses every inline
+answer to this explicit gate.
+
+**Measured cost.** No data loss and no false report: in every case the mint is
+the session's age rule over young backups, exactly what a plain
+`crate session ack --as session` mints, and the recorded actor is derived. What
+is left is one stale open gate that `run show` reports and `run retire` later
+lists, and a run record that disagrees with the acknowledgment file about what
+was decided. No document prescribes any of these command lines.
+
+**Closes when:** the flag refuses alongside `--run` or any `-d` answer to its
+own gate, or closes the resumed run's open gate when it mints. Ledger only: the
+cost is none of METHOD's four board bar kinds.
+
+---
+
+## R-1154. The sibling run warning and doctor's runs.open-gates note read a run directory Path.glob cannot list as holding no run
+
+**Found:** at the review of #394, U186, 2026-11-01.
+
+**The mechanism.** `gates.siblings` and doctor's `_check_open_gates` list the
+run records with `run_dir().glob("*.json")` and rescue an `OSError` as no
+records. Measured on this interpreter by the status reader's own comment
+(`cli/doctor.py`, `_run_report`), `Path.glob` swallows a `PermissionError`
+inside its scandir walk and answers an empty list, so the rescue never fires
+and a run directory this account cannot read reads as one with no run in it:
+the gate says nothing of a sibling and the note says no run has sat at a gate.
+
+**Measured cost.** Both silences were produced at the second review round of
+U186, by replacing the run directory with a regular file and by forcing
+`Path.glob` to raise: the gate answered no sibling and the note said no run
+has sat at a gate for more than a day, over a directory never read. The
+producer was not driven: the review container runs as root, where a chmod
+changes nothing, and the tool makes the directory itself, so the
+reachability on a person's machine is unmeasured. The status reader has
+carried the same limit since before U186.
+
+**Closes when:** the three readers of the run directory (`crate status`,
+`run retire`'s `old_gates`, and these two) list it through one helper that
+tells an unreadable directory from an empty one, for example by an
+`os.scandir` that raises, and each says so. Ledger only: it closes on no
+reachable producer yet, and it is maintainer facing until one is driven.
+
+---
+
+## R-1155. crate status and crate run retire stop with an internal error on a run record the gate warning and doctor's note name as unreadable
+
+**Found:** at the second review round of #394, U186, 2026-11-01.
+
+**The mechanism.** U186's two readers of the run directory, `gates.siblings`
+and doctor's `_check_open_gates`, count a record whose load raises anything
+as unreadable and go on. The two readers before them, `crate status`
+(`_run_report` in `cli/doctor.py`) and `crate run retire` (`old_gates` in
+`cli/verbs/runs.py`), catch only the structured refusal, so a record that
+parses as schema 1 and lacks a field raises `KeyError` through them.
+
+**Measured cost.** Driven at the review with a hand written
+`{"version": 1, "run_id": "half"}` in the run directory: both verbs exit 1
+with `internal-error` naming `KeyError: 'verb'`, while the gate and doctor
+name the record and carry on. The producer was not driven: `gates.save`
+writes every key atomically, and no writer of such a record was found in
+the tree (zero candidates), so a hand edit is the only input measured.
+
+**Closes when:** the four readers share one listing helper that names an
+unreadable record the same way, so they cannot disagree about one file.
+Ledger only, since it is reached only by a hand edited record so far; it
+was left out of U186 because both verbs belong to U170 and the brief names
+neither.

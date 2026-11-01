@@ -392,6 +392,42 @@ def _run_state_for(entry: Entry, args: argparse.Namespace) -> gates.RunState:
 PROVIDER_SPEND = "provider-spend"
 
 
+def _with_sibling_runs(envelope: Envelope, state: gates.RunState) -> Envelope:
+    """The envelope of a run persisted at its gate, with every sibling run named (U186).
+
+    At sitting 51 two sessions planned one database clear minutes apart and
+    nothing said the other existed. So a verb declaring a database writing
+    surface, at the moment its run is persisted at a gate, names each other run
+    of the same verb with an open gate or an answer from the last twelve hours,
+    as a warning a person reads and a code a session branches on.
+
+    IT INFORMS AND REFUSES NOTHING: the exit code and the cause are the gate's,
+    unchanged, and ``decision-stale`` on the write handle stays the only guard.
+    A READING THAT BREAKS COSTS THE NAMES AND NEVER THE GATE, and says so. This
+    runs inside the boundary's own handler, so anything it raised would replace
+    the gate's envelope with a traceback; and a silent empty answer would read
+    as "no other run", which is the absence this unit exists to end.
+    """
+    if not gates.writes_the_database(state.verb):
+        return envelope
+    try:
+        found, unreadable = gates.siblings(state.verb, exclude=state.run_id)
+        said = gates.sibling_warnings(found, unreadable, state.verb)
+    except Exception as exc:  # noqa: BLE001 - see the docstring, the gate stays the gate
+        said = [
+            {
+                "code": gates.SIBLING_RUN,
+                "message": (
+                    f"whether another run of {state.verb} holds or just answered a "
+                    f"gate could not be read ({type(exc).__name__}: {exc})"
+                ),
+            }
+        ]
+    if not said:
+        return envelope
+    return dataclasses.replace(envelope, warnings=(*envelope.warnings, *said))
+
+
 def _provider_spend() -> provider_gate.Spend:
     """What THIS process has spent so far, across every gate it built.
 
@@ -581,6 +617,8 @@ def _dispatched(
             resumable=resumable,
             outcome=outcome,
         )
+        if state is not None and resumable:
+            envelope = _with_sibling_runs(envelope, state)
     except config.ConfigError as exc:
         # U2 already models configuration failures as five types with five
         # remediation TOKENS. Converting here rather than in each verb means a

@@ -109,7 +109,9 @@ A source that shows "no clean increment has completed" has simply never synced.
 Open gates that have sat idle for more than a week are one line rather than one
 line each: how many, the dates they span, and the command that retires them,
 `crate run retire --older-than 7d`. Newer gates are listed one by one. The week
-is `reports.open_gate_stale_days` in the configuration file.
+is `reports.open_gate_stale_days` in the configuration file. Doctor's
+`runs.open-gates` note lists each run that has sat at a gate for more than a
+day, with its verb, gate and age, and never fails the report.
 
 ## Where it stands
 
@@ -615,8 +617,9 @@ queue instead, and a rate limit parks the download rather than retrying. A go
 that stopped part way is picked up by the next `--go`, which resumes it before
 anything new, and a track is never asked for twice. Once the download has
 landed its tracks, the same command runs the acquisition tail on the staging
-folder the way `crate sync land` does: `tag folder`, `analyze run`, `analyze
-restamp` and `name apply`, each driven to the end, then plans `intake land
+folder the way `crate sync land` does: `tag folder`, `analyze run` followed by
+`analyze vocals --unscored`, `analyze restamp` and `name apply`, each driven to
+the end, then plans `intake land
 --manifest ... --pass ...`, which names the batch for the date and the label,
 and stops at the landing's own gate. The report names that gate's run and the
 two commands that answer and apply it, then the rekordbox visit. A tail step
@@ -678,6 +681,29 @@ batch holding several sellers files each under its own label. A file with no
 label tag or no year is named on the screen and lands in INBOX filed under no
 label. This works once the intake tree is database native, as `--label` does.
 
+Or take all of it in one command, from your new purchases to the landing's gate:
+
+```bash
+crate sync bandcamp --seller PULS
+```
+
+It plans your purchases first, so a session that has expired stops there
+with the login step before anything downloads. It fetches what you do not
+own into `Bandcamp <today's date>` under download staging (or the folder
+`--batch` names), runs `tag folder`, `analyze run`, `analyze restamp` and
+`name apply` on it the way `crate sync land` does, rehearses the landing on a
+copy, and plans the landing itself, stopping at its gate with the commands
+that answer and apply it as the session and the rekordbox visit after. The
+batch is named `<date> Bandcamp <Label>` when every file is one label's, and
+`<date> Bandcamp` otherwise, and each file is filed under its own label tag.
+Leave out `--seller` for every seller. The report names the purchases and
+tracks held back as owned with the library file each is, what the fetch
+refused, the sellers no label names, and the files left with no genre. If a
+step stops, run the same command again with the same `--batch`: what was
+fetched is not fetched again, and whatever the folder holds is taken on
+through the tail. Nothing new to fetch and nothing staged ends with no
+landing. Like the landing it plans, it needs a database native intake tree.
+
 `sync labels` is retired. It queues nothing and names `label sync`, and `sync
 all` no longer sweeps labels either. A labels sweep queued before the guided
 sync replaced it still runs with `crate sync labels --job JOB_ID`, so a job
@@ -715,6 +741,22 @@ when the estimate is over 500 calls it stops at its own explicit gate,
 and reads nothing more until you answer `crawl`. A full build that the
 provider's rate limit stops part way keeps nothing it read, so the next run
 starts the crawl again.
+
+Once a label batch has landed, `label mark` puts `DOWNLOADED ` in front of the
+year playlists that batch filed, so the account stops offering them as unheard:
+
+```bash
+crate label mark "Some Label" --xml /path/to/library/RUN_synced_inboxed.xml
+crate label mark "Some Label" --pass RUN_synced
+```
+
+Give it the intake file the landing wrote while your intake tree is on the xml
+bridge, and the pass's name once it is database native, since a native landing
+writes no file and its own record says which years it filed. Only a year the
+batch filed under that label is renamed, and only while its title is still the
+one `label playlists` built it under; every other year is listed and left, and
+a batch that filed none of them says so. Nothing is renamed until you answer
+its gate, and `crate sync unmark --pass RUN_synced` takes the marks off again.
 
 ### Sync from streaming
 
@@ -756,6 +798,15 @@ colour and the playlist agree over a library placed before the colour write
 existed. A track you coloured otherwise by hand keeps its colour and is named,
 never overwritten, and a library whose colour table has no Pink row places the
 hearts and says it coloured none, to be run again once Pink is restored.
+
+The Favorites folder reads newest first: All Favorites on top, then the month
+playlists from the newest down, then `Undated`, then anything else you keep
+there, in the order you left it. A landing, the backfill and the split each make
+a new month in its place, directly under All Favorites and any newer month,
+rather than at the bottom. A folder made before that reads oldest first, and
+`crate favorites order` puts it right once, with rekordbox closed: it shows each
+playlist's position now and after, asks one gate, and writes positions and
+nothing else, no membership and no name. A folder already in order asks nothing.
 
 ### Keep your custom playlists in rekordbox for good
 
@@ -937,6 +988,22 @@ native landing reads the level against the cut as it is when it lands, so
 changing the cut changes which rows the next landing marks `dyn`. The default
 leans toward Normal, since a steady track analysed Dynamic comes back with a
 wobbling grid, and it has not yet been calibrated against a real library.
+
+Vocal scores need the vocal model to load, and a copy installed without the
+`vocals` extra finishes every track with a key and an energy and no `voxlevel`.
+`crate doctor` says so on its `install.extras` row and prints the reinstall
+command, which keeps the extras the copy already carries. `analyze run` treats
+the Camelot head on a name as finished, so a track it finalized with no score is
+never scored by it again; `crate analyze vocals --unscored FOLDER` queues
+exactly those files, the head and no `voxlevel`, and leaves a scored one alone.
+The acquisition tail runs it after `analyze run` whenever the model can score.
+`crate sync land` asks before its pass queues anything: when the model cannot
+score here it stops at the gate `sync.land.without-vocals`, whose screen names
+what is missing and the command that mends it. Install it and run the pass
+again, or answer `crate -d sync.land.without-vocals=go sync land` to land rows
+with no vocal score, which the summary then says. A landing plan in which more
+than half the added rows carry no score carries the warning
+`vox-mostly-unscored`. A profile with the vocals module off is never asked.
 
 `analyze vocals` and `analyze restamp` take `--recursive`, which queues every
 folder under the one you name as a single resumable job, so a back catalogue
@@ -1120,7 +1187,15 @@ crate run decide RUN_ID route.inbox.apply apply --continue
 With no `--actor`, the answer is recorded as `cli` when you are at a terminal
 and as `session` when nothing is, which is how a session working for you is told
 apart; the summary says which. An explicit gate still takes no answer on the
-verb's own command line, so `--continue` is always the second command. Gates you
+verb's own command line, so `--continue` is always the second command.
+
+When a verb that writes the rekordbox database stops at its gate, it also names
+every other run of the same verb that holds its gate open or answered it in the
+last twelve hours, one `gate-sibling-run` warning per run with its identifier,
+who answered, the option and the time. `crate run decide` repeats the warning
+when another run already answered the same plan the same way. It refuses
+nothing: two runs planned over one library are told about each other, and an
+apply over a library that moved underneath it is still refused stale. Gates you
 will meet:
 
 | Gate | Go option | Verb |
@@ -1189,11 +1264,21 @@ crate --run RUN_ID session ack
 ```
 
 The gate asks whether the database and the music files are backed up, so run
-`crate doctor` first and read the two backup ages. If a verb refuses because the
-acknowledgment is missing or has expired, this is the fix.
+`crate doctor` first and read the two backup ages. The line after them,
+`backup.acknowledgment`, says whether an acknowledgment is on record and when it
+expires. If a verb refuses because the acknowledgment is missing or has expired,
+this is the fix.
 
-A session working for you may answer it as the actor `session`, with no
-terminal, but only on young backups:
+A session working for you may mint it as the actor `session`, with no
+terminal, but only on young backups, in one command:
+
+```bash
+crate session ack --as session
+```
+
+It asks no gate and leaves no run waiting. When an acknowledgment is already
+valid it says so, with its expiry, and mints nothing. `--as` takes no value
+but `session`. The older two step form still works:
 
 ```bash
 crate session ack
@@ -1203,7 +1288,7 @@ crate run decide RUN_ID session.ack.backup acknowledged --continue
 With no terminal the answer is the session's without `--actor`, and
 `--continue` mints in the same command; no `script` wrapper is needed.
 
-The verb then checks the ages itself and mints only while both portions are
+Either way the verb checks the ages itself and mints only while both portions are
 under five days old. An older portion, or one with no completion recorded, is
 refused as `backup-acknowledgment-backup-too-old` and named; run a backup, or
 acknowledge from a terminal yourself. The acknowledgment records which rule
@@ -1320,8 +1405,9 @@ describes:
 
 The right column is not a convention anybody agreed to be polite about.
 `crate session ack` refuses an acknowledgment from a session working on your
-behalf, and every writing verb refuses while rekordbox or its background agent is
-running, so neither is a thing an agent can do for you even when asked.
+behalf unless both backup ages are under five days, and every writing verb
+refuses while rekordbox or its background agent is running, so neither is a
+thing an agent can do for you over old backups or an open rekordbox.
 
 Installing to the default location instead puts the guides where an agent finds
 them for every project on the machine, which is worth avoiding if you keep other

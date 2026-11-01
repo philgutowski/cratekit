@@ -1,0 +1,11 @@
+name = "u180-m25"
+pass_kind = "light"
+
+[[rows]]
+id = "M25_read_back_asserted"
+description = "favorites_order: a read back that disagrees with the plan is not refused, measured again once a test drove the verb's refusal"
+file = "src/cratekit/favorites/order_cli.py"
+surface = "user"
+tests = ["tests/test_favorites_order.py"]
+old = '''    order.assert_read_back(done)'''
+new = '''    pass'''

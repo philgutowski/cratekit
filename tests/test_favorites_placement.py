@@ -587,3 +587,158 @@ def test_the_colour_module_sorts_rows_by_what_they_carry(cfg, db):
     assert colour.write_pink(db, PINK_ID, ["1", "2", "3", "absent"]) == ("1",)
     db.session.commit()
     assert (_colour_of(db, "1"), _colour_of(db, "2")) == (PINK_ID, RED_ID)
+
+
+# ---------------------------------------------------------------------------
+# U180: a month is made in its newest first slot
+# ---------------------------------------------------------------------------
+
+
+def _shown(db, parent) -> list[str]:
+    """The live children of a folder, or of the root, by name, in the order rekordbox shows them."""
+    parent_id = "root" if parent is None else str(parent.ID)
+    return [str(row.Name) for row in placement.children(db, parent_id)]
+
+
+@pytest.mark.parametrize(
+    ("name", "source", "plain", "rank"),
+    [
+        (SOURCE, True, True, (placeholders.RANK_SOURCE, 0)),
+        ("2026-11", True, True, (placeholders.RANK_SOURCE, 0)),
+        ("2026-11", False, True, (placeholders.RANK_MONTH, -(2026 * 12 + 11))),
+        ("2025-12", False, True, (placeholders.RANK_MONTH, -(2025 * 12 + 12))),
+        ("Undated", False, True, (placeholders.RANK_UNDATED, 0)),
+        ("2026-11", False, False, (placeholders.RANK_OTHER, 0)),
+        ("Undated", False, False, (placeholders.RANK_OTHER, 0)),
+        ("2026-Q4", False, True, (placeholders.RANK_OTHER, 0)),
+        ("2026-13", False, True, (placeholders.RANK_OTHER, 0)),
+        ("Warmup", False, True, (placeholders.RANK_OTHER, 0)),
+    ],
+)
+def test_the_folder_rank_reads_all_favorites_then_months_newest_first_then_undated(
+    name, source, plain, rank
+):
+    assert placeholders.folder_rank(name, source=source, plain=plain) == rank
+
+
+def test_a_newer_month_ranks_above_an_older_one_across_a_year():
+    december = placeholders.folder_rank("2025-12", source=False, plain=True)
+    january = placeholders.folder_rank("2026-01", source=False, plain=True)
+    assert january < december
+
+
+def test_place_makes_a_new_month_directly_under_all_favorites_in_an_ordered_folder(cfg, db):
+    folder, _source = _home(db)
+    _month(db, folder, "2026-10")
+    _month(db, folder, "2026-09")
+    _month(db, folder, "Undated")
+    _month(db, folder, "Warmup")
+    home = placement.resolve_home(db, SOURCE)
+
+    placed = placement.place(db, home, [("1", "2026-11"), ("2", "2026-08")])
+    db.session.commit()
+
+    assert placed.created == ("2026-11", "2026-08")
+    assert _shown(db, folder) == [
+        SOURCE,
+        "2026-11",
+        "2026-10",
+        "2026-09",
+        "2026-08",
+        "Undated",
+        "Warmup",
+    ]
+
+
+def test_a_month_made_in_a_folder_out_of_order_lands_above_every_older_month(cfg, db):
+    folder, _source = _home(db)
+    _month(db, folder, "2026-08")
+    _month(db, folder, "2026-09")
+    home = placement.resolve_home(db, SOURCE)
+
+    placement.place(db, home, [("1", "2026-11")])
+    db.session.commit()
+
+    assert _shown(db, folder) == [SOURCE, "2026-11", "2026-08", "2026-09"]
+
+
+def test_a_month_found_is_not_moved(cfg, db):
+    folder, _source = _home(db)
+    _month(db, folder, "2026-08")
+    ten = _month(db, folder, "2026-10")
+    seq = int(ten.Seq)
+    home = placement.resolve_home(db, SOURCE)
+
+    placed = placement.place(db, home, [("1", "2026-10")])
+    db.session.commit()
+
+    assert placed.created == ()
+    assert int(db.get_playlist(ID=ten.ID).Seq) == seq
+    assert _shown(db, folder) == [SOURCE, "2026-08", "2026-10"]
+
+
+def test_at_the_root_a_month_is_made_at_the_end_and_nothing_else_moves(cfg, db):
+    _parent, _source = _home(db, folder="")
+    db.create_playlist("Warmup")
+    db.session.commit()
+    before = {str(row.ID): int(row.Seq) for row in placement.children(db, "root")}
+    home = placement.resolve_home(db, SOURCE)
+
+    placement.place(db, home, [("1", "2026-11")])
+    db.session.commit()
+
+    after = {str(row.ID): int(row.Seq) for row in placement.children(db, "root")}
+    assert {row: after[row] for row in before} == before
+    assert _shown(db, None)[-1] == "2026-11"
+
+
+def test_a_removed_sibling_keeps_its_position_when_a_month_is_seated(cfg, db):
+    folder, _source = _home(db)
+    gone = _month(db, folder, "2026-07")
+    _month(db, folder, "2026-09")
+    gone.rb_local_deleted = 1
+    db.session.commit()
+    seq = int(gone.Seq)
+    home = placement.resolve_home(db, SOURCE)
+
+    placement.place(db, home, [("1", "2026-11")])
+    db.session.commit()
+
+    assert int(db.get_playlist(ID=gone.ID).Seq) == seq
+    assert _shown(db, folder) == [SOURCE, "2026-11", "2026-09"]
+
+
+@pytest.mark.parametrize(
+    ("held", "given"),
+    [
+        ([1, 2, 3], (1, 2, 3)),
+        ([3, 1, 2], (1, 2, 3)),
+        ([1, 4, 9], (1, 4, 9)),
+        ([1, 4, 4, 9], (1, 4, 5, 9)),
+        ([2, 2, 2], (2, 3, 4)),
+        ([1, 5, 5, 6], (1, 5, 6, 7)),
+        ([], ()),
+    ],
+)
+def test_the_slots_are_the_rows_own_positions_with_a_shared_one_lifted(held, given):
+    class Row:
+        def __init__(self, seq):
+            self.Seq = seq
+
+    assert placement.slots([Row(seq) for seq in held]) == given
+
+
+def test_a_month_is_never_seated_above_all_favorites(cfg, db):
+    """Round one of the review: a folder with something above All Favorites."""
+    folder, source = _home(db)
+    _month(db, folder, "2026-08")
+    _month(db, folder, "Undated")
+    source.Seq = 9
+    db.session.commit()
+    assert _shown(db, folder) == ["2026-08", "Undated", SOURCE]
+    home = placement.resolve_home(db, SOURCE)
+
+    placement.place(db, home, [("1", "2026-11")])
+    db.session.commit()
+
+    assert _shown(db, folder) == ["2026-08", "Undated", SOURCE, "2026-11"]

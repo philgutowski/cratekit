@@ -75,6 +75,20 @@ def _machine(tmp_path, monkeypatch, profile: str) -> tuple[config.Config, Script
     return built, script
 
 
+@pytest.fixture(autouse=True)
+def vocal_model(monkeypatch):
+    """A vocal model able to score, so the pass's preflight goes on (U181).
+
+    Bound as a stand in loader, the vocals module's own rule for "able", since
+    this machine has no torch. A test of the refusal unbinds it.
+    """
+    from cratekit.analysis import vocals
+
+    monkeypatch.setattr(vocals, "_VOCAL_LOADER", lambda: object())
+    monkeypatch.setattr(vocals, "_VOCAL_MODEL", None)
+    monkeypatch.setattr(vocals, "_VOCAL_FAILED", False)
+
+
 @pytest.fixture
 def machine(tmp_path, monkeypatch):
     """The slim profile, which composes the account playlists alone."""
@@ -215,10 +229,15 @@ def _staged(cfg: config.Config) -> Path:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_the_verb_queues_nothing_of_its_own_and_declares_no_gate():
-    """Every job it drives is queued by its own verb; every gate is a step's own."""
+def test_the_verb_queues_nothing_of_its_own_and_declares_one_gate_of_its_own():
+    """Every job it drives is queued by its own verb; every gate a step stops at
+    is the step's own. The one gate the pass declares is U181's, asked before
+    anything runs, and answered inline since it writes nothing a pass would not."""
     assert ENTRY.landed and not ENTRY.long_running and ENTRY.argv_builder is None
-    assert ENTRY.gates == ()
+    (gate,) = ENTRY.gates
+    assert gate.name == sync_land.WITHOUT_VOCALS
+    assert set(gate.options) == {sync_land.WITHOUT_VOCALS_GO, "stop"}
+    assert not gate.explicit and gate.digest_source is None
     assert ENTRY.writes == frozenset({"files"}) and ENTRY.destructive
     assert ENTRY.module == "cratekit.cli.sync_land"
 
@@ -1396,3 +1415,208 @@ def test_a_url_typed_by_hand_and_a_sweeps_id_are_one_playlist_on_the_left_open_r
     assert group["playlist"] == f"playlist 'Warmup' ({uuid})"
     assert sorted(job["job_id"] for job in group["jobs"]) == ["swept", "typed"]
 
+
+# U181. A pass refuses to land rows with no vocal score, unless told to go on
+# ═══════════════════════════════════════════════════════════════════════════
+
+_NO_EXTRA = (
+    "the 'vocals' extra is not installed here; "
+    "pipx install --force 'cratekit[analysis,vocals] @ git+https://example.invalid/c@v0.3.0'"
+)
+
+
+@pytest.fixture
+def full(tmp_path, monkeypatch):
+    """The full profile, which switches on the vocals module."""
+    return _machine(tmp_path, monkeypatch, "full")
+
+
+def _model_cannot_score(monkeypatch) -> None:
+    """The copy sitting 51 ran: no loader bound, and the extra missing."""
+    from cratekit.analysis import vocals
+
+    monkeypatch.setattr(vocals, "_VOCAL_LOADER", None)
+    monkeypatch.setattr(vocals, "missing_requirement", lambda: _NO_EXTRA)
+
+
+def test_a_pass_whose_vocal_model_cannot_score_stops_at_its_gate_before_queueing_anything(
+    full, monkeypatch, tail
+):
+    cfg, script = full
+    _account(monkeypatch, script, "101")
+    _model_cannot_score(monkeypatch)
+
+    code, envelope = drive(["sync", "land"])
+
+    assert code == int(ExitCode.DECISION_REQUIRED), envelope
+    assert envelope["resumable"] is True
+    detail = envelope["cause"]["detail"]
+    assert detail["gate"] == sync_land.WITHOUT_VOCALS
+    shown = detail["shown"]
+    assert "pipx install --force 'cratekit[analysis,vocals]" in shown["vocal model"]
+    assert "no voxlevel" in shown["without it"]
+    assert shown["to go on without vocal scores"] == (
+        f"crate -d {sync_land.WITHOUT_VOCALS}={sync_land.WITHOUT_VOCALS_GO} sync land"
+    )
+    assert _all_jobs() == [], "the pass queued something before it stopped"
+    assert tail.calls == [], "a step ran before the stop"
+
+
+def test_a_continued_pass_is_told_the_answer_that_continues_it(full, monkeypatch, tail):
+    _model_cannot_score(monkeypatch)
+
+    code, envelope = drive(["sync", "land", "--pass-run", "run-earlier"])
+
+    assert code == int(ExitCode.DECISION_REQUIRED), envelope
+    shown = envelope["cause"]["detail"]["shown"]
+    assert shown["to go on without vocal scores"].endswith("sync land --pass-run run-earlier")
+
+
+def test_answering_stop_refuses_with_the_command_that_mends_it(full, monkeypatch, tail):
+    _model_cannot_score(monkeypatch)
+
+    code, envelope = drive(["-d", f"{sync_land.WITHOUT_VOCALS}=stop", "sync", "land"])
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    cause = envelope["cause"]
+    assert cause["reason"] == sync_land.VOCALS_UNAVAILABLE
+    assert "pipx install --force 'cratekit[analysis,vocals]" in cause["message"]
+    assert _all_jobs() == []
+    assert tail.calls == []
+
+
+def test_the_gate_recorded_by_a_separate_act_continues_the_same_run(full, monkeypatch, tail):
+    """The second way any gate is answered: run decide, then --run."""
+    cfg, script = full
+    _account(monkeypatch, script, "101")
+    _model_cannot_score(monkeypatch)
+    code, refused = drive(["sync", "land"])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+
+    decided, answer = drive(
+        ["run", "decide", run_id, sync_land.WITHOUT_VOCALS, sync_land.WITHOUT_VOCALS_GO]
+    )
+    assert decided == int(ExitCode.OK), answer
+    code, envelope = drive(["--run", run_id, "sync", "land"])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert _summary(envelope)["vocal_scoring"] == "skipped"
+
+
+def test_the_answered_gate_takes_the_pass_on_and_the_summary_says_vocals_were_skipped(
+    full, monkeypatch, tail
+):
+    cfg, script = full
+    _account(monkeypatch, script, "101")
+    _model_cannot_score(monkeypatch)
+
+    code, envelope = drive(
+        ["-d", f"{sync_land.WITHOUT_VOCALS}={sync_land.WITHOUT_VOCALS_GO}", "sync", "land"]
+    )
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    summary = _summary(envelope)
+    assert summary["vocal_scoring"] == "skipped"
+    assert summary["vocal_rescore"] == "skipped", "the tail did not ask a model it was told is absent"
+    (row,) = [c for c in envelope["data"]["checks"] if c["key"] == "sync.land.vocal-model"]
+    assert row["status"] == "info" and _NO_EXTRA in row["detail"]
+    assert sync_land.WITHOUT_VOCALS_WARNING in [w["code"] for w in envelope["warnings"]]
+    assert ("tag", "folder") in tail.verbs(), "the pass ran on"
+
+
+def test_a_pass_whose_vocal_model_can_score_says_so_and_asks_nothing(full, monkeypatch, tail):
+    cfg, script = full
+    _account(monkeypatch, script, "101")
+
+    code, envelope = drive(["sync", "land"])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert _summary(envelope)["vocal_scoring"] == "available"
+    (row,) = [c for c in envelope["data"]["checks"] if c["key"] == "sync.land.vocal-model"]
+    assert row["status"] == "ok"
+
+
+def test_a_profile_with_the_vocals_module_off_is_not_asked(machine, monkeypatch, tail):
+    """Slim switches the module off: the person chose not to score vocals."""
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    _model_cannot_score(monkeypatch)
+
+    code, envelope = drive(["sync", "land"])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert _summary(envelope)["vocal_scoring"] == "off"
+    assert _summary(envelope)["vocal_rescore"] == "off"
+
+
+def test_the_analyze_step_rescores_after_analyze_run_and_before_the_restamp(
+    full, monkeypatch, tail
+):
+    """The vocals restamp over the staging folder, between the run and the restamp."""
+    cfg, script = full
+    _account(monkeypatch, script, "101")
+
+    code, envelope = drive(["sync", "land"])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    verbs = tail.verbs()
+    vocals_at = verbs.index(("analyze", "vocals"))
+    assert verbs.index(("analyze", "run")) < vocals_at < verbs.index(("analyze", "restamp"))
+    (call,) = [argv for argv in tail.calls if argv[:2] == ["analyze", "vocals"]]
+    assert call == ["analyze", "vocals", tail_chain.VOCALS_UNSCORED, str(_staged(cfg))]
+    (row,) = [c for c in envelope["data"]["checks"] if c["key"] == "sync.land.rescore"]
+    assert row["status"] == "ok", "a staging folder whose files carry no head owes no score"
+
+
+def test_a_warning_the_landing_plan_carries_rides_the_passes_own_warnings(
+    machine, monkeypatch, tail
+):
+    """A stop at the gate is a refusal with no warnings channel, so the plan's
+    warning reaches the pass's envelope only by being lifted off the screen."""
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    gate = _gate("land-run")
+    shown = {"warnings": [{"code": "vox-mostly-unscored", "message": "19 of the 19 row(s)"}]}
+    gate = Cause(
+        reason=gate.reason,
+        message=gate.message,
+        remediation=gate.remediation,
+        retryable=True,
+        origin=("test",),
+        detail={**gate.detail, "shown": shown},
+    )
+    tail.landing = lambda _argv: _refused(gate, outcome="blocked")
+
+    code, envelope = drive(["sync", "land"])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    lifted = [w for w in envelope["warnings"] if w["code"] == "vox-mostly-unscored"]
+    assert lifted == [{"code": "vox-mostly-unscored", "message": "land: 19 of the 19 row(s)"}]
+
+
+def test_the_tail_asks_the_vocal_model_before_analyze_run_binds_its_loader(
+    full, monkeypatch, tail
+):
+    """Review round one. ``analyze run``'s worker binds the shipped loader in
+    this process, and a bound loader reads as able, so a question asked after
+    it would queue a rescore over a machine with no model and report it done."""
+    from cratekit.analysis import vocals
+
+    cfg, script = full
+    _account(monkeypatch, script, "101")
+    _model_cannot_score(monkeypatch)
+
+    def binds_the_loader(_job, _item):
+        monkeypatch.setattr(vocals, "_VOCAL_LOADER", lambda: object())
+
+    tail.work[sync_land.ANALYZE] = binds_the_loader
+
+    code, envelope = drive(
+        ["-d", f"{sync_land.WITHOUT_VOCALS}={sync_land.WITHOUT_VOCALS_GO}", "sync", "land"]
+    )
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert vocals.loader_bound(), "the stand in never ran, so the order was not tested"
+    assert _summary(envelope)["vocal_rescore"] == "skipped"
+    assert ("analyze", "vocals") not in tail.verbs()
