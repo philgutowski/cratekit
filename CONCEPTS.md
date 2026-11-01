@@ -505,7 +505,9 @@ provider id with no vox score. Since U152 `crate sync land` runs the tail on the
 absolute staging path and plans no landing unless every step of it succeeded;
 a tail job left open over the staging folder by an earlier pass is replaced,
 never resumed, because it was frozen against the folder and the build as they
-stood then.
+stood then. Since U190 the tail and the landing are one chain,
+`cratekit.cli.tail`, and `crate label sync --go` runs it too, after its
+download, so the two verbs answer every step the same way.
 
 ### Shelve
 The step after the import that the landing left to a person: moving an imported
@@ -2054,6 +2056,12 @@ never makes anybody fix it.
   the table renders them identically: the suite failing to notice a real change,
   and there having been no change to notice. Only the first is a finding, and
   only the second is fixed by rewriting the mutation rather than the tests.
+- "Foreign" names two sets. Inside a routing tree, a convergence check's
+  `foreign` nodes are the ones under a governed root that no declared
+  destination names, reported and not counted as drift. At the top of the
+  playlist tree, a foreign folder is another app's: since U185 the folder named
+  `DEADCA7` there and everything under it, which no commit may change at all
+  (`core/foreign_tree.py`). The first is read; the second is refused.
 - "Residual" does not mean "does not stop a merge". It answers only whether a
   finding blocks on its own merits. A residual with no cost to any person still
   stops a merge whenever the battery is red on its account, and both halves are
@@ -2070,10 +2078,15 @@ tracks the account carries. It is a MIRROR, kept by a step of `crate organize`
 on every sitting: tracks are added and removed so each playlist equals its
 rekordbox playlist, a track added by hand on the account comes off, and a
 library track the account cannot match is named in the report and never
-substituted. The product never removes a mirrored folder or playlist, and
-never adopts a playlist: one of the same title a person made in the folder is
-left alone and named. The Favorites folder's playlists are `All Favorites`
-under its own title and `Favorites 2026-10`, `Favorites Undated`.
+substituted. The product never removes a mirrored folder, and never adopts a
+playlist: one of the same title a person made in the folder is left alone and
+named. The Favorites folder's playlists are `All Favorites` under its own
+title and `Favorites 2026-10`, `Favorites Undated`. INBOX is mirrored too
+(U150), one `INBOX <batch>` playlist per live batch directly under it, and a
+batch that leaves INBOX has its mirrored playlist REMOVED at the next refresh,
+the one mirrored playlist the product removes, and only once its title is no
+longer under INBOX at all. A row a label landing recorded its provider track
+for is matched to that track with no request.
 
 *Avoid:* reading it as an export (`crate export playlist`, add only, filed in
 `Exports`) or as a pair (`crate sync pair`, merged both ways).

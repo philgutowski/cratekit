@@ -359,6 +359,18 @@ def test_two_source_playlists_are_refused_rather_than_one_chosen(cfg, gates_pass
     assert caught.value.cause.detail["count"] == 2
 
 
+def test_a_source_namesake_inside_deadca7s_folder_is_not_a_second_source(cfg, gates_pass, db):
+    """U185. A playlist another app pushed into its own folder is not the source."""
+    tree = Tree(cfg, db)
+    tree.playlist(DEEP, "Med", "1")
+    source = tree.source("1")
+    pushed = db.create_playlist_folder("DEADCA7")
+    db.create_playlist(SOURCE, parent=pushed)
+    db.session.commit()
+    assert str(genre_favorites.source_playlist(db, SOURCE).ID) == str(source.ID)
+    _plan(cfg, db, tree)
+
+
 def test_a_folder_of_the_source_name_is_not_the_source(cfg, gates_pass, db):
     """The live library's Favorites is a FOLDER; its child All Favorites is the playlist."""
     tree = Tree(cfg, db)

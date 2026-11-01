@@ -11,7 +11,22 @@ account area reads its INSPIRATION listing (U142), with rekordbox open or not:
 * THE FAVORITES FOLDER, the folder holding the playlist every favourite is in
   (``favorites.placement``'s home), mirrored as a root folder of its own name.
   The favourites playlist keeps its own title, ``All Favorites``, and the
-  others take the folder's, ``Favorites 2026-10``, ``Favorites Undated``.
+  others take the folder's, ``Favorites 2026-10``, ``Favorites Undated``;
+* INBOX (U150), the intake tree's adopted root, mirrored as a root folder of
+  its own name holding one playlist per LIVE BATCH directly under it,
+  ``INBOX 2026-10-31 Defected``, a batch being what ``inbox rotate`` calls one
+  (:func:`cratekit.intake.rotate.live_batches`). Old, and every playlist that
+  is not a batch, is not mirrored. A batch that leaves INBOX, into Old or
+  out, has its mirrored playlist REMOVED at the next refresh, the one
+  mirrored playlist the product removes, and only when its title no longer
+  sits directly under INBOX at all. An intake tree that is not database
+  native or not adopted is listed, named and not mirrored.
+
+EACH ROW'S OWN PROVIDER TRACK IS A LINK (U150). A label landing records the
+provider track its manifest names for every row it landed
+(``label_filing.PROVIDER_KEY``), and the matcher takes it before asking the
+provider anything, so a label batch, which no account playlist holds, fills
+from its own tracks with no match request and no ISRC tie to miss on.
 
 A smart playlist and a folder inside a folder hold no membership a mirror
 could copy, and are not mirrored. Two rekordbox folders that would take one
@@ -60,7 +75,7 @@ from cratekit.organize.steps import LISTED, NOTHING, PLANNED, Area, Step, refuse
 #: The step kind ``--only`` names the mirror by.
 MIRROR = "mirror"
 
-TITLE = "mirror the genre tree and the Favorites folder onto the account"
+TITLE = "mirror the genre tree, the Favorites folder and INBOX onto the account"
 
 #: The fact the area shows for the plan's own request count and duration.
 PLAN_FACT = "mirror plan"
@@ -68,6 +83,8 @@ PLAN_FACT = "mirror plan"
 MISSES_FACT = "mirror misses remembered"
 #: The fact saying whether the plan was frozen on the run, or rebuilt from one.
 FROZEN_FACT = "mirror plan frozen"
+#: The fact naming the rows a landing's recorded provider track answered.
+KNOWN_FACT = "mirror rows answered by their landing"
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +115,8 @@ class Library:
     refused: dict[str, Cause] = field(default_factory=dict)
     #: Why the Favorites folder is not mirrored, when it is not.
     favorites: str = ""
+    #: Why INBOX is not mirrored, when it is not (U150).
+    inbox: str = ""
 
 
 def _rows(db: Any, playlist_id: str) -> tuple[mirror.Row, ...]:
@@ -160,6 +179,44 @@ def _twice(name: str, what: str) -> Cause:
     ).cause
 
 
+def _inbox(
+    cfg: config.Config, db: Any, declared: Any, registry: Any, today: Any = None
+) -> tuple[str, mirror.Folder | Cause | str]:
+    """INBOX as a retiring mirror folder, the refusal of a title two batches take, or why not.
+
+    Answers ``(name, folder or refusal)``, or ``("", why)`` when the intake
+    tree cannot be read as database native, which lists INBOX and mirrors
+    nothing of it, so no retirement is planned over a tree nobody read.
+    ``today`` is the day a batch's age is read for, the local day by default.
+    """
+    from datetime import date
+
+    from cratekit.intake import rotate
+
+    try:
+        live = rotate.live_batches(
+            cfg, db, declared=declared, registry=registry, today=today or date.today()
+        )
+    except CratekitError as exc:
+        return "", f"INBOX is not mirrored: {exc.cause.message}"
+    name = live.root_name
+    sources: list[mirror.Source] = []
+    taken: dict[str, int] = {}
+    for playlist_id, batch in live.batches:
+        titled = mirror.title(name, batch)
+        taken[titled] = taken.get(titled, 0) + 1
+        sources.append(mirror.Source(name=titled, rows=_rows(db, playlist_id)))
+    twice = sorted(one for one, count in taken.items() if count > 1)
+    if twice:
+        return name, _twice(name, f"its playlists {', '.join(repr(one) for one in twice)}")
+    return name, mirror.Folder(
+        name=name,
+        playlists=tuple(sources),
+        retire=True,
+        present=frozenset(mirror.title(name, one) for one in live.present),
+    )
+
+
 def read_library(cfg: config.Config) -> Library:
     """Every folder to mirror, read on a read handle that is closed before returning."""
     from cratekit.core import active_taxonomy, rb_writer, tree_registry
@@ -203,6 +260,12 @@ def read_library(cfg: config.Config) -> Library:
                     return shown if shown == source else mirror.title(name, shown)
 
                 found.append((name, _folder(db, name, home.folder_id, titled)))
+        inbox_name, inbox = _inbox(cfg, db, declared, registry)
+        inbox_why = ""
+        if isinstance(inbox, str):
+            inbox_why = inbox
+        else:
+            found.append((inbox_name, inbox))
     finally:
         rb_writer.close_db(db)
     counted: dict[str, int] = {}
@@ -217,7 +280,32 @@ def read_library(cfg: config.Config) -> Library:
             refusals[name] = held
         else:
             folders.append(held)
-    return Library(folders=tuple(folders), refused=refusals, favorites=favorites)
+    return Library(folders=tuple(folders), refused=refusals, favorites=favorites, inbox=inbox_why)
+
+
+def landed_tracks(cfg: config.Config) -> dict[str, str]:
+    """Each content row a landing recorded its provider track for, to that track (U150).
+
+    Read from every native landing's session record. A row two records name
+    two tracks for is left out, to be matched as any row is, since which
+    track it is is not something either record decides. Records that cannot
+    be read name nothing, which costs a match request, never a wrong track.
+    """
+    from cratekit.core import session
+    from cratekit.intake import label_filing, native
+
+    records, _unreadable = session.scan_log(cfg)
+    named: dict[str, set[str]] = {}
+    for record in records:
+        if record.workflow != native.WORKFLOW:
+            continue
+        held = record.detail.get(label_filing.PROVIDER_KEY)
+        if not isinstance(held, dict):
+            continue
+        for content_id, remote in held.items():
+            if isinstance(remote, str) and remote.strip():
+                named.setdefault(str(content_id), set()).add(remote.strip())
+    return {cid: next(iter(found)) for cid, found in named.items() if len(found) == 1}
 
 
 def identify(cfg: config.Config) -> Callable[[mirror.Row], mirror.Identity]:
@@ -289,11 +377,17 @@ def _detail(planned: mirror.FolderPlan) -> str:
         mirror.CREATE: "create the root folder",
         mirror.ADOPT: "adopt the root folder of its name",
         mirror.REUSE: "in its root folder",
+        mirror.UNMADE: "no root folder made, since nothing goes in it",
     }[planned.folder_action]
     return (
         f"{folder}, create {counts['create playlist']} playlist(s), add "
         f"{counts['add']} track(s) and remove {counts['remove']}, "
         f"{counts['unmatched']} row(s) unmatched and named"
+        + (
+            f", remove {counts['remove playlist']} playlist(s) whose batch left it"
+            if counts["remove playlist"]
+            else ""
+        )
     )
 
 
@@ -313,7 +407,7 @@ def _apply(
         step.warnings.extend(
             {
                 "code": "organize-mirror-kept",
-                "message": f"{name}: tracks were not taken off: {why}",
+                "message": f"{name}: a removal was refused, so nothing was taken off: {why}",
             }
             for name, why in done.kept
         )
@@ -337,6 +431,9 @@ def add_steps(
         frozen, unfrozen = mirror_frozen.load(cfg, run.run_id)
     try:
         library = frozen.library if frozen is not None else read_library(cfg)
+        # A FROZEN PLAN CARRIES EVERY ROW'S ANSWER ALREADY, so its rebuild
+        # reads no landing record and asks the provider about no row.
+        known = landed_tracks(cfg) if frozen is None else {}
         recorded = ledger.mirror_folders(cfg)
         links = ledger.mirror_links(cfg)
         misses = ledger.mirror_misses(cfg)
@@ -353,6 +450,7 @@ def add_steps(
         signature=file_signature(cfg),
         rematch=run is not None and run.rematch,
         seen=frozen.matches if frozen is not None else None,
+        known=known,
     )
     for folder in library.folders:
         key = f"{MIRROR}:{folder.name}"
@@ -383,6 +481,12 @@ def add_steps(
                 for one in planned.playlists
                 if one.remove
             )
+            # AND EVERY PLAYLIST REMOVED (U150), the INBOX folder's retired batch.
+            area.deletes.extend(
+                f"the mirrored playlist {name!r} ({remote_id}) off the account, since "
+                f"what it mirrors left {folder.name}"
+                for name, remote_id in planned.retire
+            )
         area.steps.append(step)
     for name, cause in sorted(library.refused.items()):
         area.steps.append(refused(f"{MIRROR}:{name}", f"mirror {name} onto the account", cause))
@@ -393,6 +497,15 @@ def add_steps(
                 title="mirror the Favorites folder onto the account",
                 state=LISTED,
                 detail=f"not mirrored: {library.favorites}",
+            )
+        )
+    if library.inbox:
+        area.steps.append(
+            Step(
+                key=f"{MIRROR}:inbox",
+                title="mirror INBOX onto the account",
+                state=LISTED,
+                detail=library.inbox,
             )
         )
     held = {folder.name for folder in library.folders} | set(library.refused)
@@ -414,6 +527,11 @@ def add_steps(
         f"{requests} account request(s) in {round(time.monotonic() - started, 2)} s to "
         f"{read} {len(library.folders)} folder(s)"
     )
+    if matcher.known:
+        area.facts[KNOWN_FACT] = (
+            f"{matcher.known} row(s) were matched by the provider track their landing "
+            f"recorded, with no request"
+        )
     if matcher.remembered:
         area.facts[MISSES_FACT] = (
             f"{matcher.remembered} row(s) the mirror could not match before were not "
@@ -453,6 +571,7 @@ def _record(
 
 __all__ = [
     "FROZEN_FACT",
+    "KNOWN_FACT",
     "MIRROR",
     "MISSES_FACT",
     "PLAN_FACT",
@@ -461,5 +580,6 @@ __all__ = [
     "add_steps",
     "file_signature",
     "identify",
+    "landed_tracks",
     "read_library",
 ]

@@ -528,6 +528,7 @@ crate label registry adopt
 crate label import "Some Label"
 crate label sync
 crate label sync --next
+crate label sync --next --label "Some Label"
 crate label sync --answer pick --label "Some Label" --release RELEASE_ID
 crate label sync --go
 crate review list --queue label-release
@@ -550,7 +551,12 @@ it would hold never reaches a question, and the first run also offers, once per
 label, the releases already waiting in review from earlier sweeps. A taken
 release is an accepted review item; nothing is downloaded by the answer itself.
 Without a terminal, `--next` prints the next question and `--answer` records one
-answer for one label, and both write the same record. A newly followed label is
+answer for one label, and both write the same record. To ask about one label
+without reaching it through the labels above it, name it: `--next --label "Some
+Label"` lists only that label and prints its question, says it has nothing
+new, or says its listing failed, and leaves every other label as it was. A
+failed listing is a `[FAIL]` line on a run that still exits 0, so read the
+line, not only the exit status. A newly followed label is
 asked about its newest few releases, the `labels.offer_per_sweep` count, not its
 whole catalogue.
 
@@ -565,10 +571,17 @@ paced through the provider gate. Only releases an `all` or a `pick` took are
 downloaded, a track the library holds in another version goes to the match
 queue instead, and a rate limit parks the download rather than retrying. A go
 that stopped part way is picked up by the next `--go`, which resumes it before
-anything new, and a track is never asked for twice. The report ends with the
-acquisition tail that lands the batch, `tag folder` through `intake land
---manifest ... --pass ...`, which names the batch for the date and the label; land each go before the next, since every go
-downloads into the same staging folder. The size and time are estimates: the
+anything new, and a track is never asked for twice. Once the download has
+landed its tracks, the same command runs the acquisition tail on the staging
+folder the way `crate sync land` does: `tag folder`, `analyze run`, `analyze
+restamp` and `name apply`, each driven to the end, then plans `intake land
+--manifest ... --pass ...`, which names the batch for the date and the label,
+and stops at the landing's own gate. The report names that gate's run and the
+two commands that answer and apply it, then the rekordbox visit. A tail step
+that fails ends the go there with its reason, plans no landing, keeps the
+download, and names the rest of the tail to run once the cause is mended. A go
+that downloaded nothing runs no tail. Every go downloads into the same staging
+folder, so land each go before the next. The size and time are estimates: the
 size from each track's duration at a FLAC rate, the time from the pacing delay
 and an assumed transfer rate.
 
@@ -742,11 +755,20 @@ name under the INSPIRATION folder in rekordbox. It also files every playlist at
 the account root
 that a sync marked downloaded into the root folder named for the year of its
 mark, creating that folder once if the account lacks it, and names every other
-playlist at the root with why it stays. Approve one area and abort the other
+playlist at the root with why it stays. It also mirrors rekordbox onto the
+account: every genre folder of BY GENRE + ENERGY, the Favorites folder and
+INBOX each become one root folder of the same name, holding one private
+playlist per rekordbox playlist, `Deep House Low` or `INBOX 2026-10-31
+Defected`, kept equal to the tracks the account carries. INBOX mirrors only its
+live batches, the playlists `inbox rotate` moves, never Old. A label batch,
+which no account playlist holds, fills from the provider track each file was
+downloaded as. Approve one area and abort the other
 and only the approved one is written. Every other playlist you made yourself,
 on either side, is listed with a suggested home where one is obvious, and is
 never moved or renamed. Nothing is deleted beyond the expired batch playlists the rotation
-removes, never a track. `--report` prints both plans and asks nothing. The
+removes, a track that left a mirrored playlist's rekordbox playlist, and the
+mirrored playlist of a batch that left INBOX, each named on the gate, and never
+a track from your library. `--report` prints both plans and asks nothing. The
 rekordbox area needs a backup acknowledged under a day old, and like every
 database write it is worth rehearsing on a copy first.
 
@@ -758,7 +780,7 @@ crate organize --only file
 ```
 
 The kinds are `adopt`, `rotate`, `record-labels` and `inspiration` on the rekordbox side,
-`labels`, `sets`, `marks` and `file` on the account, and `yours` on both. An
+`labels`, `sets`, `marks`, `file`, `root` and `mirror` on the account, and `yours` on both. An
 area with no kind named is not planned and not asked, so `--only file` files
 the playlists at the account root into their folders without reading the
 database or planning a label's catalogue, and asks only the account's
@@ -1049,6 +1071,30 @@ under five days old. An older portion, or one with no completion recorded, is
 refused as `backup-acknowledgment-backup-too-old` and named; run a backup, or
 acknowledge from a terminal yourself. The acknowledgment records which rule
 minted it, `session-ages` or `terminal`, and who answered the gate.
+
+## Using DEADCA7 beside Cratekit
+
+DEADCA7 is a catalog manager and player that can push into rekordbox's
+database. Its playlists go into one folder named `DEADCA7` at the top of the
+playlist tree, along with its hot cues and its grids and waveforms. Cratekit
+shares the library with it and leaves its work alone:
+
+- Nothing Cratekit writes can move, rename, empty or fill that folder or
+  anything in it. A write that would is refused, with nothing written.
+- `crate organize` names the folder once, as another app's, and never lists it
+  among your own playlists or suggests a home for it.
+- A playlist DEADCA7 pushed that happens to share your Favorites playlist's
+  name is not mistaken for it.
+- No tree in your taxonomy may be named `DEADCA7`.
+- `crate doctor` says whether DEADCA7 is installed, when it last pushed into
+  the database, and warns when that push is newer than your last database
+  backup. Run `crate backup run` then.
+
+Both tools refuse while rekordbox is open, so they take turns. Do not push
+from DEADCA7 while a Cratekit verb is running: the verb's next commit sees the
+push and refuses, which is the safe answer, and running it again carries on.
+A folder merely named DEADCA7 somewhere below the top is your own and is
+treated like any other.
 
 ## When something refuses or stalls
 

@@ -2599,17 +2599,18 @@ def test_an_interrupted_restamp_names_its_job_command_and_that_command_finishes_
     assert not set(done) & set(measured[2:]), "the resume measured a settled file again"
 
 
-def test_sync_lands_tail_step_queues_only_and_drives_its_job_once(
+def test_the_shared_tail_step_queues_only_and_drives_its_job_once(
     cfg, folder, silence, monkeypatch
 ):
-    """``sync land`` drives each tail job itself, so it must queue with the flag."""
-    from cratekit.cli import sync_land
+    """``sync land`` and ``label sync --go`` drive each tail job themselves through
+    one shared step, so it must queue with the flag."""
+    from cratekit.cli import sync_land, tail
 
     place(folder, silence, "a")
     bind_scoring(monkeypatch)
-    report = sync_land._Pass(progress=None)
+    report = sync_land._report(None)
 
-    sync_land._tail_step(report, "analyze", "analyze.run", ("analyze", "run"), folder, cfg)
+    tail.tail_step(report, "analyze", "analyze.run", ("analyze", "run"), folder, cfg)
 
     job = analysis_job("analyze.run")
     assert job.state is jobs.JobState.SUCCEEDED

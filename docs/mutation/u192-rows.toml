@@ -155,9 +155,9 @@ new = '''    return _settle(ctx, cfg, job, analyze_argv(job))'''
 
 [[rows]]
 id = "S1_sync_land_drives_at_queue"
-description = "sync land: queue each tail step without --queue-only, so the queue call drives the job"
-file = "src/cratekit/cli/sync_land.py"
+description = "the shared tail step: queue without --queue-only, so the queue call drives the job; measured in sync_land before the merge of U190 moved the step to cli/tail.py"
+file = "src/cratekit/cli/tail.py"
 surface = "user"
-tests = ["tests/test_sync_land.py", "tests/test_analysis_workers.py"]
-old = '''    envelope = _required(report, step, [*words, foreground.QUEUE_ONLY, str(folder)])'''
-new = '''    envelope = _required(report, step, [*words, str(folder)])'''
+tests = ["tests/test_sync_land.py", "tests/test_label_sync_go.py", "tests/test_analysis_workers.py"]
+old = '''    envelope = required(chain, step, [*words, foreground.QUEUE_ONLY, str(folder)])'''
+new = '''    envelope = required(chain, step, [*words, str(folder)])'''

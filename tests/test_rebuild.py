@@ -65,7 +65,8 @@ from cratekit.core import (
 )
 from cratekit.core.cause import REASONS, CratekitError
 from cratekit.core.exit_codes import ExitCode
-from cratekit.write import rebuild, routing_pass, trees
+from cratekit.write import metadata_cli, rebuild, routing_pass, trees
+from tests import deadca7_fixtures
 from tests.test_config import valid_data
 from tests.test_rb_writer_db import RECORDED_APP_VERSION, _build_disposable_database
 
@@ -823,6 +824,60 @@ def test_a_second_rebuild_writes_nothing(cfg, gates_pass, db, adopted_root, decl
     assert second.repaired == 0
     assert second.membership is not None and second.membership.already_present == 2
     assert second.after.converged
+
+
+@pytest.fixture
+def pushed(cfg, monkeypatch):
+    """The disposable database with a DEADCA7 push of both tracks, opened after it."""
+    path = Path(cfg.library.db_path)
+    _build_disposable_database(path)
+    _record_locations(path, {"1": _music(cfg, COMPOSED), "2": _music(cfg, PLAIN)})
+    push = deadca7_fixtures.push(path, ("1", "2"))
+    real_integrity_ok = rb_writer.integrity_ok
+    monkeypatch.setattr(
+        rb_writer,
+        "integrity_ok",
+        lambda target, **kwargs: real_integrity_ok(target, unlock=False),
+    )
+    handle = rb_writer.open_db(path, unlock=False, cfg=cfg)
+    try:
+        yield handle, path, push
+    finally:
+        rb_writer.close_db(handle)
+
+
+def test_a_rebuild_and_its_check_beside_deadca7s_folder_leave_it_and_report_no_drift(
+    cfg, gates_pass, pushed, declared
+):
+    """U185. The push holds the very tracks the tree places, in its own folder.
+
+    Two rebuilds and a check: the tree converges with nothing missing,
+    unexpected or foreign, and every row the push wrote, its cues, the pushed
+    track's analysis columns and its analysis files are byte for byte what they
+    were. The check walks down from the adopted root by identifier, so a folder
+    at the top is outside what it can count by construction; what this pins is
+    that the rebuild's writes leave the push alone.
+    """
+    db, path, push = pushed
+    before = deadca7_fixtures.written(path, push)
+    # The push's grid and waveform files, under the root the rebuild watches.
+    files = deadca7_fixtures.push_analysis_files(Path(cfg.library.root) / "Music")
+    # The pushed track, its analysis path changed by the push, is not a moved file.
+    for name in (COMPOSED, PLAIN):
+        Path(_music(cfg, name)).parent.mkdir(parents=True, exist_ok=True)
+        Path(_music(cfg, name)).write_bytes(b"audio")
+    assert metadata_cli.resolution_totals(cfg, db).unresolved == 0
+    adopted = rb_writer.ensure_folder(db, TREE_DISPLAY)
+    db.session.commit()
+    names = [COMPOSED, PLAIN]
+    first = _rebuild(cfg, db, adopted, declared, names)
+    second = _rebuild(cfg, db, adopted, declared, names)
+    assert first.repaired == 2 and second.repaired == 0
+    report = _check(cfg, db, adopted, declared, _placements(cfg, declared, *names))
+    assert report.converged
+    assert not report.missing and not report.unexpected and not report.foreign
+    assert deadca7_fixtures.written(path, push) == before
+    assert deadca7_fixtures.analysis_files_now(files) == files
 
 
 def test_a_rebuild_after_a_rename_converges_rather_than_doubling_the_tree(

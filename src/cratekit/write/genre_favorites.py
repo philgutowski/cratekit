@@ -59,6 +59,7 @@ from cratekit.cli.output import digest_of
 from cratekit.core import (
     config,
     convergence,
+    foreign_tree,
     rb_writer,
     session,
     snapshot,
@@ -184,6 +185,9 @@ def source_playlist(db: Any, name: str) -> Any:
         for row in list(db.get_playlist(Name=name))
         if int(getattr(row, "Attribute", -1) or 0) == 0 and not rb_writer.node_removed(row)
     ]
+    # U185. One another app pushed into its own folder is not the source,
+    # whatever it is called, for the reason the Favorites home gives.
+    live = foreign_tree.outside(live, list(db.get_playlist()))
     if len(live) == 1:
         if not _live_members(db, str(live[0].ID)):
             raise refuse(

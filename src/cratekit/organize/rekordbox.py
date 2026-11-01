@@ -31,7 +31,9 @@ THE STEPS, each the owning verb's plan:
 
 WHAT THE AUTHOR MADE is every top level node outside the trees the taxonomy
 declares, and every node the rotation leaves alone under INBOX. Each is listed
-with a home where :mod:`cratekit.organize.own` finds an obvious one.
+with a home where :mod:`cratekit.organize.own` finds an obvious one. ANOTHER
+APP'S FOLDER AT THE TOP, :mod:`cratekit.core.foreign_tree` (U185), is not the
+author's and not a finding: it is named once as a fact and never listed.
 
 Layer: modules.
 """
@@ -45,7 +47,15 @@ from typing import Any
 from cratekit.adopt import apply as apply_engine
 from cratekit.adopt import apply_cli
 from cratekit.adopt import shell as adopt_shell
-from cratekit.core import active_taxonomy, config, jobs, rb_writer, session, tree_registry
+from cratekit.core import (
+    active_taxonomy,
+    config,
+    foreign_tree,
+    jobs,
+    rb_writer,
+    session,
+    tree_registry,
+)
 from cratekit.core.cause import CratekitError, Remedy, refuse
 from cratekit.intake import rotate, rotate_cli
 from cratekit.organize import account as account_area
@@ -53,6 +63,9 @@ from cratekit.organize import inspiration, own
 from cratekit.organize.steps import LISTED, NOTHING, PLANNED, Area, Step, refused, selection
 
 AREA = "rekordbox"
+
+#: The fact naming another app's folder at the top of the tree (U185).
+FOREIGN_FACT = "foreign"
 
 #: The handler key ``adopt apply`` queues under, whose worker this area drives,
 #: and the verb and gate whose resume a job interrupted here goes through.
@@ -386,10 +399,17 @@ def _yours(cfg: config.Config, declared, labels: tuple[str, ...], area: Area) ->
         rb_writer.close_db(db)
     declared_roots = _declared_roots(declared)
     catalog = declared.catalog.display if declared.catalog is not None else None
+    # U185. ANOTHER APP'S FOLDER IS NAMED ONCE, as a fact, and is not yours:
+    # listed with a home it would read as something this verb might file.
+    foreign = {str(row.ID) for row in foreign_tree.roots_in(rows)}
+    if foreign:
+        area.facts[FOREIGN_FACT] = (
+            f"{foreign_tree.OWNER} at the top level, {foreign_tree.LEFT_AS_IT_IS}"
+        )
     found = 0
     for row in sorted(rows, key=lambda one: (int(getattr(one, "Seq", 0) or 0), str(one.Name))):
         name = str(row.Name)
-        if name in declared_roots:
+        if name in declared_roots or str(row.ID) in foreign:
             continue
         found += 1
         area.yours.append(

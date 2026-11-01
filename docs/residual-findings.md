@@ -40006,3 +40006,263 @@ person to the wrong place for a truncated download.
 
 **Closes when:** the refusal's step also names a file that cannot be read as
 audio, or the art repair's detail rides on the refusal. Ledger only, wording.
+
+---
+
+## R-1106. Three U150 guards kill no test, each covered by another layer
+
+**Found:** at the reviews of #331, U150, 2026-11-01.
+
+**The mechanism.** Each was reverted alone by the review with the suite green.
+`label_filing.supported_only` keeps only the refs of targets the landing makes
+or finds, and `label_filing.write` maps refs through `by_target`, which holds
+only landed targets anyway. `mirror.Matcher` drops a known track that is
+empty, and `account_mirror.landed_tracks` already strips blanks while the
+match skips an empty answer. A guard covered by another guard is a guard
+nothing covers, so the record names them.
+
+**Measured cost.** None: the second layer holds in each case.
+
+**Closes when:** each has a test that drives its own layer alone, or the
+redundant layer is dropped. Ledger only.
+
+---
+
+## R-1107. An account mirror plan reads the session log twice, once for the live batches and once for the landing tracks
+
+**Found:** at the review of #331, U150, 2026-11-01.
+
+**The mechanism.** `rotate.live_batches` reads the session log through
+`rotate.landings`, and `account_mirror.landed_tracks` reads it again for each
+row's recorded provider track, so one plan parses every record twice.
+
+**Measured cost.** Not measured on the live library. One extra parse of the
+session log per organize plan, local and without a provider request.
+
+**Closes when:** one scan feeds both, or the cost is measured and found
+negligible. Ledger only.
+
+---
+
+## R-1108. Only a native label landing with a manifest records each row's provider track, so a bridge landing's or a --label landing's batch is matched by ISRC
+
+**Found:** at the build of #331, U150, 2026-11-01.
+
+**The mechanism.** `label_filing.PROVIDER_KEY` is written by the native
+landing from the manifest rows its files were tied to. A landing on the xml
+bridge writes an intake file and records nothing of the kind, and a landing
+given `--label` has no manifest to name a track. Those rows reach the INBOX
+mirror through the ordinary matcher, by ISRC, and a row whose code ties two
+agreeing releases is unmatched and named, the tie R-1032 records.
+
+**Measured cost.** Not driven on the live library. A label batch landed that
+way has its tied rows missing from its `INBOX <batch>` playlist, each named on
+the gate.
+
+**Closes when:** the tie break lands, or the downloader's own record of each
+file's provider track reaches the landing. Ledger only.
+
+---
+
+## R-1109. A stale batch is mirrored by the same organize run that rotates it into Old, and removed from the account at the next
+
+**Found:** at the review of #331, U150, 2026-11-01.
+
+**The mechanism.** `rotate.live_batches` reads a batch as live while it sits
+under INBOX, whatever its age, and `crate organize` plans both areas before it
+applies either. So a batch past `reports.intake_stale_days` that was never
+mirrored is planned into the account's INBOX folder in the run whose
+rekordbox area moves it into Old, and the next refresh removes that playlist.
+The first fix round skipped a batch the rotation would move, and the second
+review drove what that cost: under `--as-of`, under `--only mirror`, or with
+the rekordbox gate declined or refused, the batch stays in rekordbox's INBOX
+and was silently missing from the account's. That skip was reverted.
+
+**Measured cost.** Driven at the function seam by the review: one playlist
+created and filled, then removed at the next refresh, per stale batch never
+mirrored before. No track leaves the library or any other playlist.
+
+**Closes when:** the account area learns, after the rekordbox apply, which
+batches the rotation actually moved (a second account gate, or the mirror
+planned after the database area writes, the lag the U147 solution names).
+Ledger only.
+
+---
+
+## R-1110. A batch an unreadable landing record names is left out of the INBOX mirror with nothing said, when it was never mirrored before
+
+**Found:** at the second review of #331, U150, 2026-11-01.
+
+**The mechanism.** A batch recognised only by its landing record (`run record`
+or `recorded name`) is not a batch when that record cannot be read, so
+`live_batches` leaves it out. One already mirrored is left on the account and
+named, because its title is still under INBOX. One never mirrored is simply
+absent from the plan, and under `--only mirror` the rotation's own warning
+about unreadable records is not on the screen either.
+
+**Measured cost.** Driven by the review on a hand corrupted record: the batch
+is missing from the account's INBOX folder with no line saying why. No verb
+that writes an unreadable record was driven, so reachability is unmeasured.
+
+**Closes when:** the mirror's plan states the unreadable record count, as the
+rotation's step does. Ledger only.
+
+---
+
+## R-1111. A write that renumbers the root, or a name lookup that finds a namesake inside DEADCA7's folder, is refused at commit rather than kept clear of the folder
+
+**Found:** at the review of #392, U185, 2026-10-31.
+
+**The mechanism.** The U185 commit guard holds every row of DEADCA7's folder at the top of the tree whole, its position included. Two shapes of write would reach it without meaning to. Moving one of the author's own top level nodes out of the root makes the binding renumber every root sibling above it, the folder among them; and the unscoped `rb_writer.ensure_folder(db, name)` matches a folder of the name anywhere, so a folder of the same name nested inside the push's folder would be adopted and written into. Both are refused at commit with nothing written, so the folder is never damaged; the cost is that the verb stops.
+
+**Measured cost.** Driven by the review on scratch databases: both commits refused, the push's rows byte for byte. No producer in `src`: the one caller of `move_playlist_node` moves within INBOX, and the one caller of `ensure_folder` passes a parent. Whether DEADCA7 pushes nested folders is not established.
+
+**Closes when:** a writer that moves a node at the root, or calls `ensure_folder` unscoped, either keeps the foreign folder out of what it renumbers or matches, or this is read again. Ledger only: the guard holds, and no verb reaches it today.
+
+---
+
+## R-1112. doctor reads DEADCA7's last push as its newest backup entry's modification time, unmeasured against a real push
+
+**Found:** at the review of #392, U185, 2026-10-31.
+
+**The mechanism.** `deadca7.push` in `cli/doctor.py` takes the newest entry in DEADCA7's `rekordbox-backups` folder and reads its modification time as when the app last pushed into the database. If the app makes that backup by copying `master.db` with its date kept, the time read is rekordbox's last write before the push, and a push made after this product's last database backup could be reported as one that backup holds.
+
+**Measured cost.** Not driven: it needs a real DEADCA7 push. Dated directory entries, an empty folder, an unreadable entry and an unreadable fact file were driven and answer as written.
+
+**Closes when:** the attended sitting U185 owes pushes once into a disposable copy and compares the newest entry's modification time with the push's own time. If they differ, the check reads the entry's name or its creation time instead. Ledger only, since it closes at an attended sitting.
+
+---
+
+## R-1113. Four layers of the DEADCA7 guard kill no test, each covered by another layer
+
+**Found:** at the reviews of #392, U185, 2026-10-31.
+
+**The mechanism.** The guard asks two ways, and some of its layers answer only what another already answers. In `rb_writer.pending_objects`, dropping the buffer's `move` branch, or the `session.dirty` loop, leaves every U185 test green, because the other source reports the same object. In `foreign_tree`, the `delete` branch of `pending_touches` is reached only after the additive whitelist has refused the hard delete, and the changed columns branch of `differences` is reached only by a raw column change on a row below the folder, which no test makes; a raw rename of the folder itself is refused, but as every row of the folder being gone, since a renamed root is no longer a foreign root on the second reading.
+
+**Measured cost.** None to a person: every touch the two review rounds drove is refused with nothing written. Measured as zero death rows in the review rounds' own mutation passes; the refusal's wording for a raw rename names a disappearance rather than a rename.
+
+**Closes when:** a test drives a touch only one layer sees for each: a write the binding makes with its tracking off, a raw session change, and a raw column change on a pushed playlist. Ledger only.
+
+---
+
+## R-1114. label sync --next ends with "no label has anything new" when a label's listing failed
+
+**Found:** at the review of #400, U189, 2026-11-01.
+
+**The mechanism.** `label/sync_cli._next` walks the followed labels and, when
+none yields a question, appends an `ok` check, "no label has anything new to
+ask about", and returns outcome `no_op` with exit 0. A label whose catalogue
+could not be listed is skipped with its own `fail` check, and the closing line
+is appended all the same, so a run in which every listing failed ends by saying
+every label has nothing new. U189's single label form, `--next --label NAME`,
+leaves the closing line out and reports the failure as its one check, but keeps
+the `no_op` outcome the walk uses, and the guide now says to read the line, not
+only the exit status.
+
+**Measured cost.** Driven at the review of U189: two labels followed, the
+provider bound for neither, `crate label sync --next` exits 0, outcome
+`no_op`, two `fail` lines and the `ok` closing line. An agent or a script that
+reads the exit status or the outcome reads a failed listing as nothing new,
+and the closing line says so in words. The `fail` lines are in the report, so
+it is not a clean report, but its last line is false.
+
+**Closes when:** the closing line names only the labels that were listed and
+found nothing, or is left out when any label was skipped, and a run whose every
+label was skipped is not `no_op`. Earns an issue: the product says something
+false on a shipped verb.
+
+---
+
+## R-1115. A label sync go with one track refused for good ends failed and runs no tail, where sync land skips the track and lands the rest
+
+**Found:** at the build of #401, U190, 2026-11-01.
+
+**The mechanism.** `label/go.py` drives its download through
+`acquire_cli.drive_queued`, which ends on `jobs.raise_for_state` and raises
+for a job that ended FAILED, however its items failed. A go whose release
+holds one track the provider offers only lossy therefore ends `lossy-refused`
+with every other track downloaded into staging, and no tail runs: U190 sets
+the go's tail only when its download SUCCEEDED. `crate sync land` reads the
+same state differently (`_download` in `cli/sync_land.py`): a job FAILED only
+by items refused for good is a download that landed, the refused tracks are
+named and skipped, and the tail runs on the rest.
+
+**Measured cost.** Driven on the branch with the fake adapter, one release of
+two tracks, the second landing lossy: the go exited 42 `lossy-refused`, the
+tail stand in recorded no call, and the refusal's only step was "the failed
+items cannot succeed on resume; inspect each item's cause". The downloaded
+track sits in staging with no command named to land it, and since the answer
+is settled a second go does not take it again. The live frequency of a lossy
+only track in a followed label's release was not measured.
+
+**Closes when:** the go reads a download FAILED only by items refused for
+good the way `sync land` does, names and skips them, and runs the tail on the
+tracks that landed, with a test driving one lossy track in a two track
+release. It earns an issue because a label landing a DJ needs cannot finish
+in the one command the product now offers, and the way on is not named.
+
+---
+
+## R-1116. A landing that plans nothing after a download and its tail ends the verb OK, with no way on named
+
+**Found:** at the review of #401, U190, 2026-11-01.
+
+**The mechanism.** `cratekit.cli.tail.land` reads a succeeded `intake land`
+as a landing with nothing to plan and raises `Done`, and both verbs that run
+the chain then end OK: `crate sync land` with NO_OP, and since U190 `crate
+label sync --go` with the go's own outcome. The only words are the check
+"intake land planned nothing to land", over a folder the download had just
+filled and the tail had just run on.
+
+**Measured cost.** Driven at the stand in: a three track go whose landing
+answered NO_OP exited 0 with no pending action and no command named. The real
+`intake land` answering NO_OP over a staging folder the tail had just run on
+was not reached, so the producer is unmeasured. The shape is U152's, moved
+here unchanged.
+
+**Closes when:** a landing that plans nothing after a download that landed
+tracks is a failing check naming the folder and what `intake land` read, or
+the producer is driven and shown not to exist. Ledger only, since the producer
+was not driven.
+
+---
+
+## R-1117. A tail step stopped at a gate other than the landing's names the answer as the literal word OPTION
+
+**Found:** at the review of #401, U190, 2026-11-01.
+
+**The mechanism.** `cratekit.cli.tail.attended` fills the option of `crate run
+decide` with `apply` only for the landing's gate, and with the placeholder
+`OPTION` for any other, so a person told to answer a tail step's own gate is
+handed a command that cannot be pasted as printed. The options are in the
+step's cause detail and are not read.
+
+**Measured cost.** Driven at the stand in: a `analyze restamp` queue command
+answering `decision-required` on its own gate produced `crate run decide
+restamp-run analyze.restamp.confirm OPTION --actor session`. No landed tail
+verb was found to raise a gate of its own at that step, so the producer is
+unmeasured. The wording is U152's, moved here unchanged.
+
+**Closes when:** the step names the gate's declared options from the cause
+detail, one command per option or the one a session takes, with a test.
+Ledger only, since the producer was not driven.
+
+---
+
+## R-1118. The go after a stopped tail asks its gate over nothing before saying nothing is to be done
+
+**Found:** at the review of #401, U190, 2026-11-01.
+
+**The mechanism.** A go whose tail stopped has already settled its answers
+and finished its download, so the next `crate label sync --go` summarises no
+answer and no job to resume, and still asks `label.sync.confirm` ("Download
+every release the saved answers took?") over a count of zero. U190's refusal
+names the rest of the tail as the way on, so a person who follows it never
+meets this, but one who runs the go again does.
+
+**Measured cost.** Driven by the review: one empty gate to answer, then
+nothing downloaded and no tail. Nothing is lost or written. The empty gate is
+the go's behaviour before U190.
+
+**Closes when:** a go with no answer and no job to resume ends NO_OP before
+the gate, saying so, with a test. Ledger only, a wording and a step.
