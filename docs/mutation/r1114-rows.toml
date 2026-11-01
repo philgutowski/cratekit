@@ -1,0 +1,175 @@
+name = "r1114"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_every_skipped_not_refused"
+description = "_next: drop the refusal of a run whose every label was skipped, so it ends no_op with exit 0 again, the defect R-1114 names"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''    if not nothing:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M2_single_label_not_refused"
+description = "_next: refuse only the walk over every label, so --next --label on a label whose listing failed ends no_op with exit 0"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''    if not nothing:'''
+new = '''    if not nothing and only is None:'''
+
+[[rows]]
+id = "M3_mixed_run_refused"
+description = "_next: refuse whenever any label was skipped, so a run with one label listed and nothing new also fails"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''    if not nothing:'''
+new = '''    if len(nothing) < len(entries):'''
+
+[[rows]]
+id = "M4_closing_line_ignores_skips"
+description = "_next: say no label has anything new whatever was skipped, the false closing line on a mixed run"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''            if len(nothing) == len(entries)'''
+new = '''            if True'''
+
+[[rows]]
+id = "M5_closing_line_names_every_label"
+description = "_next: name every label in the mixed closing line, the skipped ones included, as having nothing new"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''{', '.join(nothing)}"'''
+new = '''{', '.join(one.name for one in entries)}"'''
+
+[[rows]]
+id = "M6_nothing_new_not_counted"
+description = "_next: stop counting a label listed with nothing new, so every run with no question refuses as unlisted"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''                    nothing.append(entry.name)
+'''
+new = '''
+'''
+
+[[rows]]
+id = "M7_refusal_drops_the_lines"
+description = "_next: refuse without the run's checks as data, so the per label fail lines vanish from the refusal"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''            cause=_unlisted_cause(entries),
+            data=data,'''
+new = '''            cause=_unlisted_cause(entries),
+            data=None,'''
+
+[[rows]]
+id = "M8_refusal_not_retryable"
+description = "_unlisted_cause: mark the refusal not retryable, though a provider answering later clears it"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''        retryable=True,
+        origin=("label.sync",),
+        detail={"labels": [entry.label_id for entry in entries]},'''
+new = '''        retryable=False,
+        origin=("label.sync",),
+        detail={"labels": [entry.label_id for entry in entries]},'''
+
+[[rows]]
+id = "M9_reason_band_upstream"
+description = "REASONS: map label-sync-unlisted to UPSTREAM_UNAVAILABLE rather than PRECONDITION, a realistic nearby band"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_reserved_causes.py", "tests/test_cli_contract.py"]
+old = '''        "label-sync-unlisted": ExitCode.PRECONDITION,'''
+new = '''        "label-sync-unlisted": ExitCode.UPSTREAM_UNAVAILABLE,'''
+
+[[rows]]
+id = "M10_message_reworded_many"
+description = "_unlisted_cause: reword the many label message so it no longer says none could be read"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''        else f"none of the {len(entries)} labels asked about could be read ({names}), "'''
+new = '''        else f"the {len(entries)} labels asked about were skipped ({names}), "'''
+
+[[rows]]
+id = "M11_message_reworded_one"
+description = "_unlisted_cause: reword the single label message so it no longer says the label could not be read"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''        f"the label asked about could not be read ({names}), so whether it has"'''
+new = '''        f"the label asked about was skipped ({names}), so whether it has"'''
+
+[[rows]]
+id = "M12_match_step_dropped"
+description = "_UNLISTED_STEPS: drop the step naming the registry's --match needle, the remedy for a listing that confirmed nothing, from the cause and the line"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''    "a listing that confirmed nothing: check the label's --match needle "
+    "with: crate label registry",
+'''
+new = ''''''
+
+[[rows]]
+id = "M13_detail_labels_empty"
+description = "_unlisted_cause: carry no label identifiers in the detail, so a script cannot tell which labels failed"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''        detail={"labels": [entry.label_id for entry in entries]},'''
+new = '''        detail={"labels": []},'''
+
+[[rows]]
+id = "M14_withheld_reads_no_op"
+description = "_next, existing guard sampled: a run whose gate withheld an item ends no_op though it wrote"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''        # back has left review even when no question was left to ask.
+        outcome=Outcome.OK if withheld else Outcome.NO_OP,
+    )
+
+
+#: What to do about a label'''
+new = '''        # back has left review even when no question was left to ask.
+        outcome=Outcome.NO_OP,
+    )
+
+
+#: What to do about a label'''
+
+[[rows]]
+id = "M15_skipped_line_not_fail"
+description = "_skipped_check, existing guard sampled: a skipped label's line is a note rather than a fail"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''    return _check(f"label.{entry.label_id}", "fail", f"{entry.name}: not asked; {why}")'''
+new = '''    return _check(f"label.{entry.label_id}", "info", f"{entry.name}: not asked; {why}")'''
+
+[[rows]]
+id = "M16_remedy_line_dropped"
+description = "_next: refuse without the info line naming what to do, so the human rendering shows no remedy, the review's round one finding"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''        checks.append(_check("next", "info", _UNLISTED_REMEDY))'''
+new = '''        pass'''
+
+[[rows]]
+id = "M17_remedy_line_only_doctor"
+description = "_UNLISTED_REMEDY: the line carries only the first step, so a listing that confirmed nothing is told to run doctor"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''_UNLISTED_REMEDY = "; ".join(_UNLISTED_STEPS)'''
+new = '''_UNLISTED_REMEDY = _UNLISTED_STEPS[0]'''
