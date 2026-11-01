@@ -1346,3 +1346,49 @@ def test_a_download_settles_only_when_nothing_it_did_not_land_could_land_on_a_re
         assert [row["item_id"] for row in read.refused] == [
             f"i{n}" for n, (_s, cause) in enumerate(items, start=1) if cause == "permanent"
         ]
+
+
+def test_a_resumed_download_whose_every_track_was_refused_runs_no_tail_and_says_so(
+    installed, monkeypatch, script, tail
+):
+    """The resume twin of the every track refused scenario, the review's row 1."""
+    one_release_answered(monkeypatch, script, tracks=1)
+    script.landings["t-r1-1"] = Landing(fetch_raises=cooldown(), fetch_raises_times=1)
+    _first, code, _parked = approved_go()
+    assert code != int(ExitCode.PENDING_HUMAN) and tail.calls == []
+    (first,) = our_jobs()
+    already_staged(installed, "t-r1-1")
+
+    _run, code, envelope = approved_go()
+
+    assert code == int(ExitCode.OK), envelope
+    assert tail.calls == [], "the tail ran over a resumed download that landed nothing"
+    resumed = check(envelope, f"resumed.{first.job_id}")
+    assert resumed["status"] == "fail"
+    assert "every track was refused for good, so no tail was run" in resumed["detail"]
+    go_report = envelope["data"]["summary"]["go"]
+    assert go_report[go.LAND_KEY] is None and go_report["next"] == []
+    assert refused_ids(envelope) == ["t-r1-1"]
+    assert "next" not in {one["title"] for one in envelope["data"]["checks"]}
+
+
+@pytest.mark.parametrize(
+    "state",
+    [state for state in jobs.JobState if state not in (jobs.JobState.SUCCEEDED, jobs.JobState.FAILED)],
+)
+def test_no_state_but_succeeded_or_failed_settles_a_download(installed, monkeypatch, state):
+    """Derived from the enum, so a state added later is read here the day it is added."""
+    permanent = refuse("output-exists", "a file is already there").cause
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store, handler_key=go.DOWNLOAD, payload={}, cfg=config.load(), item_ids=("a",)
+        )
+        held = [
+            jobs.Item(job_id=job.job_id, item_id="i1", ordinal=1, state=jobs.ItemState.DONE),
+            jobs.Item(job_id=job.job_id, item_id="i2", ordinal=2, state=jobs.ItemState.FAILED,
+                      cause=permanent),
+        ]
+        monkeypatch.setattr(jobs, "items", lambda _store, _job_id: held)
+        read = acquire_cli.read_download(store, dataclasses.replace(job, state=state))
+
+    assert read.settled is False and read.landed is False
