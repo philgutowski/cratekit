@@ -24,6 +24,36 @@ new = '''    if False:
         return "running; a stale cancel never touches a running job"'''
 
 [[rows]]
+id = "M2c_running_composite"
+description = "composite for M2: drop the running check, the queued check and the listing's lock check together, so a job a live driver runs is offered"
+file = "src/cratekit/cli/jobs.py"
+surface = "user"
+pairs_with = "M2_running_offered"
+tests = ["tests/test_jobs.py"]
+old = '''    state = hold.job.state
+    if state is jobs.JobState.RUNNING:
+        return "running; a stale cancel never touches a running job"
+    if state is not jobs.JobState.QUEUED:
+        return (
+            f"{state}, not queued; if it is stale, cancel it by its id: "
+            f"crate job cancel {hold.job.job_id}"
+        )
+    created = _instant(hold.job.created)
+    if created is None:
+        return f"its queued time {hold.job.created!r} cannot be read, so its age is unknown"
+    if created >= cutoff:
+        return f"queued {hold.age_days} day(s) ago, within the {days} day(s) asked"
+    try:
+        jobs.assert_free(hold.job.job_id)
+    except jobs.DriverHeld:
+        return "a live driver holds it; a stale cancel never touches a running job"'''
+new = '''    created = _instant(hold.job.created)
+    if created is None:
+        return "unknown"
+    if created >= cutoff:
+        return "young"'''
+
+[[rows]]
 id = "M3_blocked_offered"
 description = "_left_reason: offer a blocked job as stale, so a parked job is cancelled"
 file = "src/cratekit/cli/jobs.py"
@@ -109,9 +139,9 @@ new = '''            if True:
 
 [[rows]]
 id = "M11_cancel_recheck"
-description = "_cancel_queued: drop the queued recheck under the lock, so a row that moved since the listing is cancelled"
+description = "_cancel_queued: drop the queued recheck under the lock, so a row that moved since the listing is cancelled. Maintainer facing: it guards only an interleaving inside one command, residual filed"
 file = "src/cratekit/cli/jobs.py"
-surface = "user"
+surface = "maintainer"
 tests = ["tests/test_jobs.py"]
 old = '''            if current.state is not jobs.JobState.QUEUED:
                 return f"{current.state} by the time it was reached, so it was left"'''
@@ -157,6 +187,18 @@ old = '''    if job.handler_key != "intake.playlist":
 new = '''    if False:
         return ""
     if source == INTAKE_HEARTS:'''
+
+[[rows]]
+id = "M14c_frees_set_composite"
+description = "composite for M14: drop _frees's own set check, the layer that holds when the identity's set branch is gone"
+file = "src/cratekit/cli/jobs.py"
+surface = "user"
+pairs_with = "M14_set_frees_none"
+tests = ["tests/test_jobs.py"]
+old = '''    if hold.job.handler_key != "intake.playlist":
+        return "frees no account playlist: a set job holds none out of a pass"'''
+new = '''    if False:
+        return "frees no account playlist: a set job holds none out of a pass"'''
 
 [[rows]]
 id = "M15_name_fallback"
