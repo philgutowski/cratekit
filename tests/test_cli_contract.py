@@ -1650,11 +1650,13 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
             "--export",
             str(outbound_fakes.write_export(library / "outbound")),
         ],
-        # U152. The driver takes no argument: on this fixture its first step,
-        # the pass, refuses for want of a provider session, and the driver ends
-        # with that step's own refusal. The chain is driven in
-        # tests/test_sync_land.py.
-        "sync.land": [],
+        # U152. The driver takes no argument. U181. LAZY, through fakes bound
+        # with ``monkeypatch``: a vocal model that cannot score, so the pass's
+        # own gate is asked before any step on every machine, and a pass that
+        # queued nothing new, so once the gate is answered the driver ends
+        # NO_OP. Unbound, its first step refuses for want of a provider
+        # session. The chain is driven in tests/test_sync_land.py.
+        "sync.land": _a_pass_with_no_vocal_model_and_nothing_new,
         # U20. Inbox, unplaced and pending take no positional argument: an empty
         # intake folder and an empty ledger are the state a fresh install is
         # genuinely in, and each verb must still emit a well-formed plan and
@@ -2172,6 +2174,30 @@ def _an_account_with_no_year_folder(monkeypatch) -> list[str]:
 
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(FakeCatalogue(account=[])))
     bind_account(monkeypatch, outbound_fakes.FakeAccount())
+    return []
+
+
+def _a_pass_with_no_vocal_model_and_nothing_new(monkeypatch) -> list[str]:
+    """No vocal model, and a ``sync all`` that queued nothing, bound through ``monkeypatch``."""
+    from cratekit.analysis import vocals
+    from cratekit.cli import tail
+
+    monkeypatch.setattr(vocals, "_VOCAL_LOADER", None)
+    monkeypatch.setattr(
+        vocals, "missing_requirement", lambda: "the 'vocals' extra is not installed here"
+    )
+    real = tail.dispatch
+
+    def nothing_new(argv):
+        if list(argv[:2]) == ["sync", "all"]:
+            return int(ExitCode.OK), {
+                "outcome": "no_op",
+                "data": {"summary": {"run_id": "conformance-pass", "queued": 0}},
+                "warnings": [],
+            }
+        return real(argv)
+
+    monkeypatch.setattr(tail, "dispatch", nothing_new)
     return []
 
 

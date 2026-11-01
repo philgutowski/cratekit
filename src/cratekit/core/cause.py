@@ -855,12 +855,11 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # refusal, since it does not say which one it is on.
         "rating-scale-unknown": ExitCode.PRECONDITION,
         "module-extras-missing": ExitCode.MODULE_UNAVAILABLE,
-        # U181. ``crate sync land`` was asked to take a pass while the vocal
-        # model cannot score in this copy, so every row it would land carries
-        # no voxlevel. PRECONDITION rather than the extra's own code, because
-        # the remedy is either act: install what is missing, or answer the
-        # pass's named gate to go on without vocal scores. Asked before the
-        # pass queues anything.
+        # U181. ``crate sync land`` stopped at its gate because the vocal
+        # model cannot score in this copy, and the gate was answered ``stop``.
+        # PRECONDITION rather than the extra's own code, because what is
+        # missing may be the model's files and not the extra, and the doctor
+        # row the remedy names says which.
         "vocal-scoring-unavailable": ExitCode.PRECONDITION,
         "credential-missing": ExitCode.PRECONDITION,
         # Item 4 of the residual finding "Five places where "I could not look"

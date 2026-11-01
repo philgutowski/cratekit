@@ -216,6 +216,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'verb-retired',
     'vocal-calibration-unreadable',
     'vocal-cut-out-of-range',
+    'vocal-scoring-unavailable',  # 2026-11-01, U181: a sync pass told to stop without vocals.
     'whitelist-violation',
     'write-lock-held',
     'yt-dlp-missing',
@@ -597,6 +598,9 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'outbound-export-required',
         'sync-land-download-refused',
         'sync-land-intake-left-open',
+        'sync-land-without-vocals',  # 2026-11-01, U181
+        'vocal-model',  # 2026-11-01, U181
+        'vocal-scoring-unavailable',  # 2026-11-01, U181
     ],
     # 2026-11-01, U190: the tail and the landing, lifted out of the sync pass
     # driver so ``label sync --go`` runs the same chain.
@@ -869,6 +873,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'verb-retired',
         'vocal-calibration-unreadable',
         'vocal-cut-out-of-range',
+        'vocal-scoring-unavailable',  # 2026-11-01, U181
         'whitelist-violation',
         'write-lock-held',
         'yt-dlp-missing',
@@ -1320,6 +1325,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'library-root-unreachable',
         'rows-await-analysis',
         'snapshot-integrity-failed',
+        'vox-mostly-unscored',  # 2026-11-01, U181
         'vox-not-written',
         'vox-unscored',
     ],
@@ -1911,6 +1917,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'job-unknown',
         'module-extras-missing',
         'no-audio',
+        'none-unscored',  # 2026-11-01, U181
         'source-missing',
     ],
     'write/collection_export.py': [
@@ -2051,6 +2058,7 @@ PINNED_NAMED_WITHOUT_OWN = {
     # 2026-11-01, U190: the two stops moved to ``cli/tail.py`` with the landing.
     'cli/sync_land.py': [
         'outbound-export-required',
+        'vocal-scoring-unavailable',  # 2026-11-01, U181
     ],
     # 2026-11-01, U190: the landing's two stops, lifted out of the sync pass driver.
     'cli/tail.py': [
@@ -2134,6 +2142,7 @@ PINNED_NAMED_WITH_OWN = {
     # 2026-11-01, U190: the two stops moved to ``cli/tail.py`` with the landing.
     'cli/sync_land.py': [
         'outbound-export-required',
+        'vocal-scoring-unavailable',  # 2026-11-01, U181
     ],
     # 2026-11-01, U190: the landing's two stops, lifted out of the sync pass driver.
     'cli/tail.py': [
@@ -2336,6 +2345,7 @@ PINNED_LITERAL_HOLDERS = {
     'cli/sync_land.py': [
         'job-driver-held',
         'outbound-export-required',
+        'vocal-scoring-unavailable',  # 2026-11-01, U181
     ],
     # 2026-11-01, U190: the tail and the landing, lifted out of the sync pass driver.
     'cli/tail.py': [

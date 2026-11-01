@@ -1836,8 +1836,8 @@ ENTRIES: tuple[Entry, ...] = (
             # U181. Asked only when the vocal model cannot score here, before
             # the pass queues anything: going on lands every row with no
             # voxlevel. Not explicit, since it writes nothing the pass would
-            # not write anyway, so it is answered inline with ``-d``; without
-            # an answer the pass refuses ``vocal-scoring-unavailable``.
+            # not write anyway, so it is answered inline with ``-d``; ``stop``
+            # refuses ``vocal-scoring-unavailable``.
             GateSpec(
                 name="sync.land.without-vocals",
                 options=("go", "stop"),

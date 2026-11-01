@@ -1270,7 +1270,7 @@ def _model_cannot_score(monkeypatch) -> None:
     monkeypatch.setattr(vocals, "missing_requirement", lambda: _NO_EXTRA)
 
 
-def test_a_pass_whose_vocal_model_cannot_score_refuses_before_queueing_anything(
+def test_a_pass_whose_vocal_model_cannot_score_stops_at_its_gate_before_queueing_anything(
     full, monkeypatch, tail
 ):
     cfg, script = full
@@ -1279,17 +1279,18 @@ def test_a_pass_whose_vocal_model_cannot_score_refuses_before_queueing_anything(
 
     code, envelope = drive(["sync", "land"])
 
-    assert code == int(ExitCode.PRECONDITION), envelope
-    cause = envelope["cause"]
-    assert cause["reason"] == sync_land.VOCALS_UNAVAILABLE
-    assert "pipx install --force 'cratekit[analysis,vocals]" in cause["message"]
-    steps = cause["remediation"]["steps"]
-    assert any(
-        f"crate -d {sync_land.WITHOUT_VOCALS}={sync_land.WITHOUT_VOCALS_GO} sync land" in step
-        for step in steps
-    ), steps
-    assert _all_jobs() == [], "the pass queued something before it refused"
-    assert tail.calls == [], "a step ran before the refusal"
+    assert code == int(ExitCode.DECISION_REQUIRED), envelope
+    assert envelope["resumable"] is True
+    detail = envelope["cause"]["detail"]
+    assert detail["gate"] == sync_land.WITHOUT_VOCALS
+    shown = detail["shown"]
+    assert "pipx install --force 'cratekit[analysis,vocals]" in shown["vocal model"]
+    assert "no voxlevel" in shown["without it"]
+    assert shown["to go on without vocal scores"] == (
+        f"crate -d {sync_land.WITHOUT_VOCALS}={sync_land.WITHOUT_VOCALS_GO} sync land"
+    )
+    assert _all_jobs() == [], "the pass queued something before it stopped"
+    assert tail.calls == [], "a step ran before the stop"
 
 
 def test_a_continued_pass_is_told_the_answer_that_continues_it(full, monkeypatch, tail):
@@ -1297,19 +1298,41 @@ def test_a_continued_pass_is_told_the_answer_that_continues_it(full, monkeypatch
 
     code, envelope = drive(["sync", "land", "--pass-run", "run-earlier"])
 
-    assert code == int(ExitCode.PRECONDITION), envelope
-    steps = envelope["cause"]["remediation"]["steps"]
-    assert any(step.endswith("sync land --pass-run run-earlier") for step in steps), steps
+    assert code == int(ExitCode.DECISION_REQUIRED), envelope
+    shown = envelope["cause"]["detail"]["shown"]
+    assert shown["to go on without vocal scores"].endswith("sync land --pass-run run-earlier")
 
 
-def test_answering_stop_refuses_the_same_way(full, monkeypatch, tail):
+def test_answering_stop_refuses_with_the_command_that_mends_it(full, monkeypatch, tail):
     _model_cannot_score(monkeypatch)
 
     code, envelope = drive(["-d", f"{sync_land.WITHOUT_VOCALS}=stop", "sync", "land"])
 
     assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == sync_land.VOCALS_UNAVAILABLE
+    cause = envelope["cause"]
+    assert cause["reason"] == sync_land.VOCALS_UNAVAILABLE
+    assert "pipx install --force 'cratekit[analysis,vocals]" in cause["message"]
     assert _all_jobs() == []
+    assert tail.calls == []
+
+
+def test_the_gate_recorded_by_a_separate_act_continues_the_same_run(full, monkeypatch, tail):
+    """The second way any gate is answered: run decide, then --run."""
+    cfg, script = full
+    _account(monkeypatch, script, "101")
+    _model_cannot_score(monkeypatch)
+    code, refused = drive(["sync", "land"])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+
+    decided, answer = drive(
+        ["run", "decide", run_id, sync_land.WITHOUT_VOCALS, sync_land.WITHOUT_VOCALS_GO]
+    )
+    assert decided == int(ExitCode.OK), answer
+    code, envelope = drive(["--run", run_id, "sync", "land"])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert _summary(envelope)["vocal_scoring"] == "skipped"
 
 
 def test_the_answered_gate_takes_the_pass_on_and_the_summary_says_vocals_were_skipped(

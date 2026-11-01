@@ -26,9 +26,9 @@ the pass there, so a landing is never planned over files the tail did not run on
 
 NO PASS LANDS ROWS WITH NO VOCAL SCORE UNLESS TOLD TO (U181). Before the pass
 queues anything, on a profile with the vocals module on, it asks the vocals
-module whether the model can score here, and refuses
-``vocal-scoring-unavailable`` naming the command that mends it, unless the
-named gate ``sync.land.without-vocals`` is answered ``go`` inline. Sitting 51
+module whether the model can score here, and when it cannot it stops at its
+named gate ``sync.land.without-vocals``, whose screen names the command that
+mends it; ``go`` takes the pass on without vocal scores. Sitting 51
 landed nineteen rows with no voxlevel from a copy installed without the
 vocals extra, and found out from one clause of the landing plan.
 
@@ -61,7 +61,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
-from cratekit.cli import gates, registry, tail
+from cratekit.cli import registry, tail
 from cratekit.cli.output import Envelope, PendingHumanAction
 from cratekit.cli.tail import (
     ACK_STOP,
@@ -122,7 +122,7 @@ VOCAL_MODEL = "vocal-model"
 #: answer that takes the pass on without vocal scores. Declared on the entry.
 WITHOUT_VOCALS = "sync.land.without-vocals"
 WITHOUT_VOCALS_GO = "go"
-#: The refusal a pass gives without that answer, before it queues anything.
+#: The refusal a pass gives when that gate is answered ``stop``.
 VOCALS_UNAVAILABLE = "vocal-scoring-unavailable"
 #: The warning a pass carries when it went on without vocal scores.
 WITHOUT_VOCALS_WARNING = "sync-land-without-vocals"
@@ -235,15 +235,22 @@ def _preflight(report: _Pass, cfg: config.Config) -> None:
 
 
 def _vocals(ctx: Context, report: _Pass, cfg: config.Config) -> None:
-    """Refuse before the pass when the vocal model cannot score here, unless told to go on (U181).
+    """Stop before the pass when the vocal model cannot score here, until told to go on (U181).
 
     Sitting 51 landed a pass from a copy installed without the vocals extra:
     ``analyze run`` finished every file with no voxlevel, the head it wrote
     made every later run skip them, and the landing plan said so in one line.
-    So the pass asks first, through the vocals module's one test, and refuses
-    with the command that mends it before anything is queued. A person who
-    means to land without vocal scores answers the named gate inline, and the
-    summary and a warning say the pass went on without them.
+    So the pass asks first, through the vocals module's one test, and before
+    anything is queued it stops at its named gate, whose screen names what is
+    missing and the command that mends it. ``go`` takes the pass on without
+    vocal scores, and the summary and a warning say so; ``stop`` refuses
+    ``vocal-scoring-unavailable`` with the same command.
+
+    THE STOP IS THE GATE'S OWN REFUSAL, decision required, rather than a
+    precondition of its own: every gate a verb declares refuses that way and
+    leaves its run resumable, so the answer is given inline with ``-d`` or
+    recorded with ``crate run decide`` and continued with ``--run``, the two
+    ways every other gate is answered.
 
     A PROFILE WITH THE VOCALS MODULE OFF IS NOT ASKED. It has no vocals verb,
     and is a person who chose not to score vocals, so its pass goes on as it
@@ -264,28 +271,26 @@ def _vocals(ctx: Context, report: _Pass, cfg: config.Config) -> None:
         report.summary["vocal_scoring"] = "available"
         report.note(VOCAL_MODEL, "ok", "the vocal model can score here")
         return
+    again = f"crate -d {WITHOUT_VOCALS}={WITHOUT_VOCALS_GO} sync land" + (
+        f" --pass-run {ctx.args.pass_run}" if ctx.args.pass_run else ""
+    )
     spec = next(gate for gate in ctx.entry.gates if gate.name == WITHOUT_VOCALS)
-    try:
-        option = ctx.gate.require(spec, context={"vocal model": unable})
-    except gates.DecisionRequired:
-        # UNANSWERED IS THE REFUSAL BELOW, not a gate left open on a run: the
-        # remedy is to install, or to answer inline, and neither continues
-        # this run, so no run is recorded as waiting on it.
-        ctx.run.open_gate = None
-        option = None
+    option = ctx.gate.require(
+        spec,
+        context={
+            "vocal model": f"cannot score here: {unable}",
+            "without it": "every row this pass lands carries no voxlevel and no vox My Tag",
+            "nothing queued": "the pass stopped before its first step",
+            "to go on without vocal scores": again,
+        },
+    )
     if option != WITHOUT_VOCALS_GO:
-        again = "crate -d " + f"{WITHOUT_VOCALS}={WITHOUT_VOCALS_GO} sync land" + (
-            f" --pass-run {ctx.args.pass_run}" if ctx.args.pass_run else ""
-        )
         raise refuse(
             VOCALS_UNAVAILABLE,
-            f"the vocal model cannot score here, so every row this pass lands would "
-            f"carry no voxlevel and no vox My Tag, and nothing was queued: {unable}",
+            f"the vocal model cannot score here and {WITHOUT_VOCALS} answered "
+            f"{option}, so the pass stopped before queueing anything: {unable}",
             remedy=Remedy.RUN_DOCTOR,
-            steps=(
-                f"make the vocal model able to score here, then run the pass again: {unable}",
-                f"or take the pass without vocal scores: {again}",
-            ),
+            steps=(f"make the vocal model able to score here, then run the pass again: {unable}",),
             origin=_ORIGIN,
             detail={"vocal_model": unable, "gate": WITHOUT_VOCALS, "answered": option},
         )
