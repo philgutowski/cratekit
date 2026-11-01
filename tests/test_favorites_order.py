@@ -514,3 +514,31 @@ def test_the_writer_refuses_an_order_that_reached_a_name(native_library, monkeyp
     assert caught.value.cause.reason == "whitelist-violation"
     assert "['Name']" in caught.value.cause.message
     assert _playlist_rows(cfg) == before
+
+
+def test_the_read_back_names_a_folder_that_does_not_read_in_the_planned_order(native_library):
+    cfg, _root_id = native_library
+    folder_id, _source_id = _home(cfg)
+    made = _make(cfg, folder_id, "2026-10", "2026-08")
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        planned = order.plan(handle, source=SOURCE)
+        assert order._read_back(handle, planned) == ()
+    finally:
+        rb_writer.close_db(handle)
+    _set_seq(cfg, made["2026-08"], 2)
+    _set_seq(cfg, made["2026-10"], 3)
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        (said,) = order._read_back(handle, planned)
+    finally:
+        rb_writer.close_db(handle)
+
+    assert said == (
+        f"the folder reads {SOURCE}, 2026-08, 2026-10 and the plan was {SOURCE}, 2026-10, 2026-08"
+    )
+    done = order.Ordered(moved=(), order=(), session_id="s1", disagreements=(said,))
+    with pytest.raises(CratekitError) as caught:
+        order.assert_read_back(done)
+    assert caught.value.cause.reason == "session-committed-unverified"
+    assert said in caught.value.cause.message
