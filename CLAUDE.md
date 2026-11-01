@@ -32,7 +32,7 @@ exact sequence.
 Native Relay, the board lanes, `/board-up` and the lane dispatcher are
 retired. The coordinator of Phillip's Claude project, which turns his ideas
 and bugs into cards, keeps five fresh Opus 5.5 build threads going at once,
-while its relay thread carries his answers back from the decisions page
+while the project's relay thread carries his answers back from the decisions page
 every hour; each build thread runs the `cloud-unit`
 skill, which takes its card from `board.py cloud`, plans
 and builds it at high effort, has Fable review it to the merge bar, measures

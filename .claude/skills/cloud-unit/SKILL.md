@@ -139,7 +139,7 @@ card. `board.py cloud` reads that heading as his reply whoever posts it, and
 offers the card as `answered`. The coordinator's own hourly wake fills free
 lanes only and never reads the page.
 
-**The fast path.** The page cannot reach a project session by itself: a
+**The fast path.** The page cannot reach a project session by itself, because a
 comment on a page sent to Claude wakes only a session watching that page,
 and no project session can watch one. So while any answer is saved but not
 relayed, the page shows a "Pass on your answers" box holding a ready prompt

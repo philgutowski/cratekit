@@ -441,7 +441,8 @@ labelled `attended` is never offered at all.
 label and no status. Its hold is its own comment headed `Started`, and its
 plan, progress notes, brainstorm, set-aside and landing are comments headed
 `Plan`, `Progress`, `Brainstorm`, `Needs the machine` and `Landed`; Phillip's
-answer is any comment without the session footer after the question. **The
+answer is any comment without the session footer after the question, or
+any comment headed `Answer from Phillip` whoever posts it. **The
 cloud builds five cards at once**, three decided 2026-10-28 for the backlog
 and raised to five by Phillip on 2026-10-31 (`CLOUD_LANES` in
 `scripts/board.py`): each worker merges the latest `main`

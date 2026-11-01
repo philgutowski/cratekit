@@ -111,11 +111,12 @@ and tells the coordinator so the card is started. The coordinator's own
 hourly wake fills free lanes only. The page cannot wake a project session
 itself, since a comment on a page sent to Claude wakes only a session
 watching that page and no project session can watch one, so the page gained
-a "Pass on your answers" box: while any answer is saved but not relayed, it
+a "Pass on your answers" box. While any answer is saved but not relayed, it
 holds a ready prompt listing each one (card, question, answer, note and
 decision id), with a button that copies it and opens the Cratekit project
 chat in a new window and a button that only copies it. Phillip pastes it,
 the coordinator messages the relay thread, and the thread relays at once;
 without the paste an answer waits for the hourly check. U187 made the
 `cloud-unit` skill, METHOD's cloud lane section, CLAUDE.md and the comment
-above `HEAD_ANSWER` in `scripts/board.py` say the same.
+above `HEAD_ANSWER` in `scripts/board.py` say the same, and gave
+`CONCEPTS.md` a flagged ambiguity on the two things called Relay.
