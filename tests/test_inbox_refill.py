@@ -624,3 +624,39 @@ def test_one_playlist_two_jobs_answer_to_is_neither_jobs():
 
     assert [type(one).__name__ for _job, one in shared] == ["Unfound", "Unfound", "Target"]
     assert {one.why for _job, one in shared[:2]} == {refill.SHARED}
+
+
+def test_bridge_names_reads_only_this_accounts_entries_of_this_pass_with_no_id():
+    """An intake file's recorded name is asked only for its own account and pass (U175)."""
+
+    def record(tag: str, state: session.SessionState, entries: list[dict]) -> session.SessionRecord:
+        return session.SessionRecord(
+            session_id=f"20261003T1200{tag}-landing",
+            workflow=native.WORKFLOW,
+            started=f"2026-10-03T12:00:{tag}+00:00",
+            state=state,
+            detail={native.INBOX_PLAYLISTS_KEY: entries},
+        )
+
+    def entry(name: str, account: str, pass_name: str = PASS, **more) -> dict:
+        return {"name": name, "batch": "b", "account": account, "pass": pass_name, **more}
+
+    records = [
+        record("02", session.SessionState.CLOSED, [entry(f"{INBOX_NAME} 2", "pl-a")]),
+        record(
+            "01",
+            session.SessionState.AWAITING_IMPORT,
+            [
+                entry(INBOX_NAME, "pl-a"),
+                entry("Deep Cuts 2026-10-03", "pl-b"),
+                entry("Other pass 2026-10-03", "pl-a", "another_synced"),
+                entry("Native 2026-10-03", "pl-a", id="77"),
+            ],
+        ),
+    ]
+
+    assert refill.bridge_names(records, pass_name=PASS, account="pl-a") == (
+        INBOX_NAME,
+        f"{INBOX_NAME} 2",
+    )
+    assert refill.bridge_names(records, pass_name=PASS, account="pl-c") == ()
