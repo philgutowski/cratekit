@@ -139,8 +139,28 @@ def build_ack(parser, entry) -> None:
     parameter that could carry either, and this shell adds none. What it is
     handed since U138 is who answered the gate, from the run record, which
     selects the rule and is recorded beside the derived actor, never as it.
+
+    ``--as session`` (U184) IS NOT AN ACTOR EITHER, and it is the one flag. It
+    accepts exactly one value, so no caller can name a person with it, and what
+    it selects is the session's rule, which is NARROWER than the terminal rule
+    it replaces: the engine mints over young backup ages only, where a person at
+    a terminal mints over any. The author decided on 2026-10-09 that a session
+    may mint on those ages, and U138 put that check in the engine; the flag only
+    takes away the round trip through a gate the session would answer itself.
+    The recorded actor is still derived.
     """
     del entry
+    parser.add_argument(
+        "--as",
+        dest="as_actor",
+        choices=(session.SESSION_ACTOR,),
+        default=None,
+        help=(
+            "mint as the session in one command, with no gate: the backup ages "
+            "are read and the acknowledgment is recorded only while both are "
+            "under five days old"
+        ),
+    )
     parser.set_defaults(_handler=record_ack)
 
 
@@ -245,7 +265,12 @@ def record_ack(ctx) -> Envelope:
     down, never read off this command line, and when it is ``session`` the
     engine mints on the backup ages instead, refusing unless every portion is
     under five days old.
+
+    ``--as session`` TAKES THE OTHER ROAD, :func:`_mint_as_session`, before
+    anything here asks the gate, so the default road below is unchanged.
     """
+    if getattr(ctx.args, "as_actor", None) == session.SESSION_ACTOR:
+        return _mint_as_session(ctx)
     cfg = _load()
     now = datetime.now(timezone.utc)
     shown = _rendered_ages(cfg, now)
@@ -313,6 +338,91 @@ def record_ack(ctx) -> Envelope:
                 "expires_at": acknowledgment.expires_at.isoformat(),
                 "shown": recorded_ages,
             },
+        }
+    )
+
+
+def _expiry_row(acknowledgment: session.Acknowledgment, *, minted: bool) -> dict[str, Any]:
+    """The check row a person reads the acknowledgment's window from.
+
+    A ROW AND NOT ONLY A SUMMARY KEY, because the default renderer prints a
+    diagnostic payload's ``checks`` and never its ``summary``: an expiry carried
+    only in the summary is one a person at a terminal is never shown.
+    """
+    said = "recorded now" if minted else "already on record, not minted again"
+    return {
+        "key": "backup.acknowledgment",
+        "status": "ok",
+        "detail": (
+            f"{said}, by the {acknowledgment.rule} rule, valid until "
+            f"{acknowledgment.expires_at.isoformat()}"
+        ),
+    }
+
+
+def _summary(acknowledgment: session.Acknowledgment, *, minted: bool) -> dict[str, Any]:
+    """What ``--as session`` reports, minted now or found on record."""
+    return {
+        "recorded": minted,
+        "already_valid": not minted,
+        "actor": acknowledgment.actor,
+        "rule": acknowledgment.rule,
+        "decided_by": acknowledgment.decided_by,
+        "recorded_at": acknowledgment.recorded_at.isoformat(),
+        "expires_at": acknowledgment.expires_at.isoformat(),
+        "shown": [entry.to_json() for entry in acknowledgment.shown],
+    }
+
+
+def _mint_as_session(ctx) -> Envelope:
+    """``crate session ack --as session`` (U184): the session's mint, in one command.
+
+    NO GATE IS ASKED, so no run is left waiting on an answer nobody else would
+    give. The session would answer ``session.ack.backup`` itself, and under the
+    author's rule of 2026-10-09 its answer is worth exactly what the ages say,
+    which the engine checks: ``record_acknowledgment`` with the actor
+    ``session`` refuses unless every backup portion is under five days old,
+    naming each that is not, and records nothing. That is the only age check;
+    a second one here would be a second rule about one record (the brief says
+    so in as many words).
+
+    A VALID ACKNOWLEDGMENT ON RECORD IS REPORTED AND NOT MINTED AGAIN, whatever
+    rule minted it, because it is exactly what every destructive verb's gate
+    accepts. An unreadable record is not valid, and is replaced, for the reason
+    :func:`_on_record` gives: refusing over it would leave a library whose
+    record somebody damaged with no way to acknowledge again.
+    """
+    cfg = _load()
+    now = datetime.now(timezone.utc)
+    try:
+        recorded = session.read_acknowledgment(cfg)
+    except CratekitError:
+        recorded = None
+    if recorded is not None and recorded.valid_at(now):
+        return ctx.envelope(
+            data={
+                "checks": [_expiry_row(recorded, minted=False)],
+                "summary": _summary(recorded, minted=False),
+            },
+            outcome=Outcome.NO_OP,
+        )
+    acknowledgment = session.record_acknowledgment(
+        cfg, now=now, decided_by=session.SESSION_ACTOR
+    )
+    return ctx.envelope(
+        data={
+            "checks": [
+                *(
+                    {
+                        "key": f"backup.age.{entry.portion}",
+                        "status": "ok",
+                        "detail": entry.state,
+                    }
+                    for entry in acknowledgment.shown
+                ),
+                _expiry_row(acknowledgment, minted=True),
+            ],
+            "summary": _summary(acknowledgment, minted=True),
         }
     )
 
