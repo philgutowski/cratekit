@@ -1436,3 +1436,22 @@ def test_a_named_playlist_whose_reports_cannot_be_read_is_refused_by_name(slim, 
         mark_cli.plan_pass(slim, xml, playlists_named=["pl-a"])
 
     assert refused.value.cause.detail["reasons"] == {"pl-a": mark_cli.REPORTS_UNREADABLE}
+
+
+def test_a_native_pass_whose_plan_refuses_is_a_refused_step_and_not_dropped(slim, monkeypatch):
+    """The account refusing its listing is that pass's refusal, shown on the gate."""
+    from cratekit.core.cause import refuse
+
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    _cut_over_intake(slim)
+    _hold(slim, "101", "102", "201")
+    _record_landing(slim, name)
+
+    def refused_listing(cfg):
+        raise refuse("credential-missing", "no session is stored for the account", origin=("test",))
+
+    monkeypatch.setattr(mark_cli, "listed", refused_listing)
+
+    (step,) = _mark_steps(slim).steps
+    assert (step.key, step.state) == (f"mark:{name}", "refused")
+    assert step.cause.reason == "credential-missing"
