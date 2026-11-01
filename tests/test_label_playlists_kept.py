@@ -592,3 +592,38 @@ def test_a_release_named_twice_is_counted_once_as_kept(installed):
 )
 def test_an_age_reads_in_minutes_then_hours_then_days(age, said):
     assert kept_reads.age_text(age) == said
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 9. What the review of round 2 found unpinned
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_resumed_run_that_cannot_write_says_both_the_reuse_and_the_loss(
+    followed, monkeypatch
+):
+    _cfg, fake, _account = followed
+    switch = _parks_after(monkeypatch, fake, 3)
+    assert drive(FULL)[0] != int(ExitCode.OK)
+    switch["after"] = None
+    _full_disk(monkeypatch)
+    code, refused = drive(FULL)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    said = refused["cause"]["detail"]["shown"]["release reads"]
+    assert said.startswith("3 release read(s) reused from an earlier run")
+    assert said.endswith(
+        "; the reads made by this run could not be kept (OSError: [Errno 28] No space "
+        "left on device), so a later run reads them again"
+    )
+
+
+def test_an_abort_after_a_failed_write_still_warns_the_reads_were_not_kept(
+    followed, monkeypatch
+):
+    _cfg, _fake, account = followed
+    _full_disk(monkeypatch)
+    code, done = _decided(FULL, (BUILD, "abort"))
+    assert code == int(ExitCode.OK), done
+    assert done["outcome"] == "no_op"
+    assert [w["code"] for w in done["warnings"]] == ["label-playlists-reads-unkept"]
+    assert account._writes == 0
