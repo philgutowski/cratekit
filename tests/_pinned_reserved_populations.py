@@ -111,6 +111,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'label-registry-empty',
     'label-sweep-incomplete',
     'label-sync-unanswerable',
+    'label-sync-unlisted',  # R-1114, 2026-11-01
     'label-sync-unusable',
     'label-unknown',
     'label-watermark-unusable',
@@ -765,6 +766,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'label-registry-empty',
         'label-sweep-incomplete',
         'label-sync-unanswerable',
+        'label-sync-unlisted',  # R-1114, 2026-11-01
         'label-sync-unusable',
         'label-unknown',
         'label-watermark-unusable',
@@ -1543,6 +1545,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'label-registry-empty',
         'label-sync-answered',
         'label-sync-unanswerable',
+        'label-sync-unlisted',  # R-1114, 2026-11-01
         'label-sync-unusable',
         'label-unknown',
         'not-now',
@@ -2505,6 +2508,8 @@ PINNED_LITERAL_HOLDERS = {
         'rebuild-actor-required',
         'rebuild-tree-not-native',
     ],
+    # 2026-11-01, U182: the stale cancel's list says which jobs it cancelled.
+    'cli/render.py': ['cancelled'],
     'cli/reports.py': ['config-unusable', 'report-as-of-invalid'],
     'cli/review.py': ['review-file-unusable', 'review-selection-invalid'],
     'cli/setup.py': [
@@ -2827,6 +2832,7 @@ PINNED_LITERAL_HOLDERS = {
     'label/sync_cli.py': [
         'label-registry-empty',
         'label-sync-unanswerable',
+        'label-sync-unlisted',  # R-1114, 2026-11-01
         'label-sync-unusable',
         'label-unknown',
         'review-selection-invalid',

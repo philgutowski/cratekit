@@ -1639,6 +1639,14 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # scriptable path, ``--next`` and ``--answer``, so PRECONDITION rather
         # than a defect.
         "label-sync-unanswerable": ExitCode.PRECONDITION,
+        # R-1114. ``label sync --next`` asked about every label it set out to
+        # ask about and could read none of them: each listing failed or
+        # confirmed nothing. An empty result from a total failure is not a
+        # label with nothing new, the ``no-evidence`` rule, so the run refuses
+        # rather than ending ``no_op``. PRECONDITION beside
+        # ``label-sweep-incomplete``, for its reason: each label's own line
+        # carries what failed, and the remedy differs per label.
+        "label-sync-unlisted": ExitCode.PRECONDITION,
         # ── U109's refusal, appended for the reason every block above gives ────
         #
         # A verb whose queueing half was retired in favour of another verb was

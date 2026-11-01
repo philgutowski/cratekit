@@ -415,6 +415,9 @@ def render_job_state(envelope: Envelope, *, drive: Sequence[str] | None = None) 
     progress = data.get("progress")
     if not isinstance(progress, Mapping):
         return lines
+    lines += _playlist_lines(progress)
+    if progress.get(_DRY_RUN) is True:
+        lines.append("  a dry run: nothing was cancelled")
     total, settled = progress.get("total"), progress.get("settled")
     if isinstance(total, int) and isinstance(settled, int):
         lines.append(f"  items: {settled} of {total} settled")
@@ -480,6 +483,10 @@ def render_job_list(envelope: Envelope) -> list[str]:
 def _job_line(row: Mapping[str, Any]) -> str:
     """One listed job: id, verb, state, then what is known of its progress."""
     parts = [_one_line(row.get(key) or "?") for key in ("job_id", "handler", "state")]
+    if isinstance(row.get(_PLAYLIST), str) and row[_PLAYLIST]:
+        parts.append(f"playlist {_one_line(row[_PLAYLIST])}")
+    elif isinstance(row.get(_SOURCE), str) and row[_SOURCE]:
+        parts.append(f"source {_one_line(row[_SOURCE])}")
     progress = row.get("progress")
     if isinstance(progress, Mapping):
         total, settled = progress.get("total"), progress.get("settled")
@@ -498,6 +505,86 @@ def _job_line(row: Mapping[str, Any]) -> str:
     if row.get("worker") == "none":
         parts.append("no worker")
     return ", ".join(parts)
+
+
+#: The verb whose ``job_state`` answer may list a stale cancel (U182), and the
+#: fields it lists under. Spelled here for :data:`_RESOLVING_VERBS`' reason; a
+#: test pins each to ``cli.jobs``.
+_CANCEL_VERB = "job.cancel"
+_STALE_DAYS = "stale_days"
+_DRY_RUN = "dry_run"
+_CANCEL_LISTS: tuple[tuple[str, str, str], ...] = (
+    ("cancel", "cancelled", "would cancel"),
+    ("kept", "kept", "would keep"),
+    ("left", "left alone", "would leave alone"),
+)
+
+
+def render_stale_cancel(envelope: Envelope) -> list[str]:
+    """What ``job cancel --stale-days`` cancelled, kept and left, one line a job (U182).
+
+    THE ANSWER CARRIES NO SINGLE JOB, so :func:`render_job_state` prints
+    nothing for it, the listing's own reason. Each line is the job, its
+    playlist, its age and track count, and why it was cancelled, kept or left;
+    a cancelled line ends with what the cancel freed. Gated on the verb and on
+    the payload naming its cutoff, so a single cancel renders as it always did.
+    """
+    if not envelope.schema.startswith("job_state/") or envelope.verb != _CANCEL_VERB:
+        return []
+    progress = envelope.data.get("progress")
+    if not isinstance(progress, Mapping) or not _whole(progress.get(_STALE_DAYS)):
+        return []
+    dry = progress.get(_DRY_RUN) is True
+    days = progress[_STALE_DAYS]
+    lines = ["", f"  queued intake jobs older than {days} day(s)" + (", a dry run" if dry else "")]
+    for field, done, would in _CANCEL_LISTS:
+        rows = progress.get(field)
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if isinstance(row, Mapping):
+                lines.append(f"  {would if dry else done}: {_stale_line(row)}")
+    if len(lines) == 2:
+        lines.append("  none open")
+    if not dry and progress.get("cancel"):
+        lines.append("  a cancelled job reopens with: crate job resume JOB_ID")
+    return lines
+
+
+def _stale_line(row: Mapping[str, Any]) -> str:
+    parts = [_one_line(row.get("job_id") or "?"), _one_line(row.get("label") or "?")]
+    age = row.get("age_days")
+    parts.append(f"{age} day(s) old" if _whole(age) else "age unknown")
+    if _whole(row.get("tracks")):
+        parts.append(f"{row['tracks']} track(s)")
+    same = row.get("same_tracks")
+    if isinstance(same, list) and same:
+        parts.append("same tracks as " + ", ".join(_one_line(job) for job in same))
+    line = ", ".join(parts)
+    if row.get("reason"):
+        line += f": {_one_line(row['reason'])}"
+    if row.get("frees"):
+        line += f"; {_one_line(row['frees'])}"
+    return line
+
+#: The fields ``job show`` and ``job list`` name an intake job's playlist in
+#: (U182). Spelled here for :data:`_RESOLVING_VERBS`' reason; a test pins them
+#: to ``cli.jobs``.
+_PLAYLIST = "playlist"
+_SOURCE = "source"
+
+
+def _playlist_lines(progress: Mapping[str, Any]) -> list[str]:
+    """The playlist an intake job was made for, and its source when that differs."""
+    named = progress.get(_PLAYLIST)
+    source = progress.get(_SOURCE)
+    if not isinstance(named, str) or not named:
+        if isinstance(source, str) and source:
+            return [f"  source: {_one_line(source)}"]
+        return []
+    if isinstance(source, str) and source and source != named:
+        return [f"  playlist: {_one_line(named)} ({_one_line(source)})"]
+    return [f"  playlist: {_one_line(named)}"]
 
 
 #: The field ``job show`` lists an intake job's frozen tracks under. Spelled
@@ -789,6 +876,7 @@ def render(envelope: Envelope, *, drive: Sequence[str] | None = None) -> str:
     lines += review_set
     lines += render_job_state(envelope, drive=drive)
     lines += render_job_list(envelope)
+    lines += render_stale_cancel(envelope)
     lines += render_import_proof(envelope)
 
     for warning in envelope.warnings:
@@ -926,5 +1014,6 @@ __all__ = [
     "render_gate",
     "render_import_proof",
     "render_job_state",
+    "render_stale_cancel",
     "render_review_set",
 ]

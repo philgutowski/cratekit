@@ -41001,3 +41001,88 @@ caller that branches on it.
 **Closes when:** a job whose every item failed under one reason exits with
 that reason's class, or the record says why the engine's class is right.
 Ledger only: nothing is lost and the message is true.
+
+---
+
+## R-1158. label sync --next with some labels listed and some skipped still ends no_op
+
+**Found:** at the review of #417, R-1114, 2026-11-01.
+
+**The mechanism.** `label/sync_cli._next` refuses as `label-sync-unlisted`
+only when every label it asked about was skipped. A run in which at least one
+label was listed with nothing new and another could not be listed ends
+`no_op` with exit 0, as the brief and the plan decided: the closing line names
+only the listed labels and each skipped label keeps its `fail` line, so the
+words are true, but the outcome is the one a run with nothing to ask carries.
+
+**Measured cost.** Driven at the review: three labels, the second unlisted,
+`crate label sync --next` exits 0, outcome `no_op`, the closing line "no label
+listed has anything new to ask about: Alpha Works, Gamma Works" and Beta
+Works's `fail` line. A script that reads only the outcome reads the run as
+nothing to do while one label went unread; one that reads the checks does
+not.
+
+**Closes when:** a mixed run carries an outcome or a warning a script can read
+as partial, without turning a routine provider hiccup on one label into a
+failed run for every label that answered. Ledger only: the report names the
+failure, so it is not a clean report, and nothing is lost or written.
+
+---
+
+## R-1159. A stale cancel reconciles a running row no live driver holds and then cancels it, while the brief says never a running one
+
+**Found:** at the review of #379, U182, 2026-11-01.
+
+**The mechanism.** `crate job cancel --stale-days N` first reconciles every intake job of the library whose row says running, the disk truth every job verb reports from: a row that says running while no driver holds its lock was killed, and it reads as queued again. A job reconciled this way that is older than N days is then offered and cancelled like any queued job. Fable drove it at round one: a job 90 days old, its row set running, no lock held, a real run, state cancelled.
+
+**Measured cost.** None false: the job was not running, only its row said so, and `crate job resume` reopens it. The record reads "never a running one" as never a job a live driver holds, which the lock check under the cancel guarantees.
+
+**Closes when:** Phillip says the brief meant the row, in which case a reconciled job is listed as left with its reason. Ledger only.
+
+---
+
+## R-1160. A second stale cancel cancels the copy of a track set the first one kept, once no other copy is open
+
+**Found:** at the review of #379, U182, 2026-11-01.
+
+**The mechanism.** The stale cancel keeps the newest of several open intake jobs holding exactly the same tracks. Once the older copies are cancelled the kept job has no open copy, so the next `crate job cancel --stale-days N` reads it as a lone stale job and cancels it. Fable drove it: copies 50 and 45 days old, the command run twice, both cancelled.
+
+**Measured cost.** Nothing false: the second run's `--dry-run` names the job as one it would cancel, and the kept line of the first run does not promise to keep it. A person who wanted the copy kept and runs the command again loses it from the queue, and `crate job resume` reopens it.
+
+**Closes when:** the kept line says "until its copies are gone", or a kept job is remembered. Ledger only, a wording.
+
+---
+
+## R-1161. What a stale cancel says it frees is read from the open jobs alone, so a playlist the sweep leaves out for another reason is still said to queue again
+
+**Found:** at the build of #379, U182, 2026-11-01.
+
+**The mechanism.** `_frees` says a cancel frees a playlist, "so the next pass queues it again", when no job staying open holds the same playlist. The sweep's exclusion has other reasons before the open job one (`sync.playlists.exclusion`): a playlist the cursor recorded, a swept prefix, a placeholder name, a label or set playlist, an empty one. The cancel reads only the queue, so for such a playlist the sentence promises a queue the next pass will not make.
+
+**Measured cost.** Not driven: no fixture produced an open intake job for a playlist the sweep also excludes for another reason. A job open for a recorded playlist would have to have been queued by hand after the record, which no candidate driven produced.
+
+**Closes when:** the sentence is read through the sweep's own exclusion, or worded as "no open job holds it any longer". Ledger only.
+
+---
+
+## R-1162. The stale cancel's race guards, the queued recheck under the lock and the reconcile of running rows, are reached by no test
+
+**Found:** at the mutation table of #379, U182, 2026-11-01.
+
+**The mechanism.** `_cancel_queued` in `src/cratekit/cli/jobs.py` takes the job's driver lock and cancels only while the row still says queued, and catches a driver that took the lock between the listing and the cancel. `_cancel_stale` reconciles running rows before it reads them. Each guards a race between the listing and the cancel inside one command, and no test interleaves a driver there, so reverting any of them leaves the suite green (rows M11 and the review's M3, M4 and M10).
+
+**Measured cost.** Not driven: a driver taking a job inside the few milliseconds between the listing and its cancel was not produced. The listing's own lock check (row M6) is killed, so a job held when the command starts is never offered.
+
+**Closes when:** a test holds a job's lock from a second process between the listing and the cancel, through a seam in the loop. Ledger only, maintainer facing.
+
+---
+
+## R-1163. Two sync land tests each reddened the mutation driver's whole suite baseline once and pass alone, in their file's parallel run and in the battery
+
+**Found:** at the mutation table of #379, U182, 2026-11-01.
+
+**The mechanism.** Measuring U182's table on the Linux container, the driver refused a red baseline twice, each time over one test of `tests/test_sync_land.py`: `test_a_fresh_pass_never_reuses_another_lists_download_job` under the null control, then `test_the_pass_runs_every_step_in_its_order_and_the_tail_on_the_absolute_staging_path`. Each passed six times alone, the file passed three times under `-n auto`, and two full battery runs on the same heads counted neither. The third driver run was green.
+
+**Measured cost.** Two driver runs of about fifteen minutes each spent. No product cost: the tests drive stand ins, and no cause was measured. Whether U182's new read in the left open row takes part was not measured; neither test asserts on that row.
+
+**Closes when:** the failure is caught with its traceback, by running the driver's own command until it reddens, and its cause is named. Ledger only, maintainer facing.
