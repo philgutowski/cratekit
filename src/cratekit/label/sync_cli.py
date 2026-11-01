@@ -864,7 +864,7 @@ def record_answer(
                     f"to stop following it with nothing to answer: crate label "
                     f"registry remove {entry.label_id}"
                     if answer == STOP
-                    else "ask it first with: crate label sync --next"
+                    else f"ask it first with: crate label sync --next --label {entry.label_id}"
                 ),
                 label=entry.label_id,
             )
@@ -885,7 +885,8 @@ def record_answer(
                         f"the question for {entry.name!r} offered; to take none, "
                         f"answer not-now"
                     ),
-                    "take the identifiers from: crate label sync --next",
+                    f"take the identifiers from: crate label sync --next --label "
+                    f"{entry.label_id}",
                     label=entry.label_id,
                     unknown=unknown,
                 )
@@ -1298,8 +1299,9 @@ def _walk(ctx, cfg: config.Config, prompter: prompt.Prompter) -> Envelope:
                     f"terminal ({exc}); the {len(answered)} answer(s) given before it are "
                     f"saved and the question is waiting",
                     steps=(
-                        "run label sync from a terminal, or drive it with: crate label "
-                        "sync --next, then crate label sync --answer ANSWER --label NAME",
+                        f"run label sync from a terminal, or drive it with: crate label "
+                        f"sync --next --label {entry.label_id}, then crate label sync "
+                        f"--answer ANSWER --label {entry.label_id}",
                     ),
                     origin=("label.sync",),
                     detail={
@@ -1384,6 +1386,13 @@ def label_sync(ctx) -> Envelope:
                 "--answer pick needs the releases to take; to take none, answer not-now",
                 "pass --release RELEASE_ID for each release, from: crate label sync --next",
             )
+    elif args.next_question and args.label is not None and not args.label.strip():
+        raise _selection_invalid(
+            "--label with --next names the one label to ask about, and an empty name "
+            "names none",
+            "pass --label with the label's name or identifier, or drop it to ask the "
+            "next label with something new",
+        )
     elif args.next_question and args.releases:
         raise _selection_invalid(
             "--release goes with --answer pick, and --next would ignore the releases "

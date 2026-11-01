@@ -1279,7 +1279,20 @@ def test_next_label_whose_listing_fails_reports_the_failure_in_one_check(
     assert record(installed)["labels"] == {}
 
 
-@pytest.mark.parametrize("name", ["Nobody Works", ""])
+@pytest.mark.parametrize("name", ["", "   "])
+def test_next_label_with_an_empty_name_is_refused_as_no_name_given(installed, monkeypatch, name):
+    fake = two_labels(monkeypatch)
+
+    code, envelope = next_for(name)
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "review-selection-invalid"
+    assert "an empty name names none" in envelope["cause"]["message"]
+    assert fake.asked_for == []
+    assert record(installed)["labels"] == {}
+
+
+@pytest.mark.parametrize("name", ["Nobody Works", "nobody-works"])
 def test_next_label_for_a_label_nobody_follows_is_refused_before_any_listing(
     installed, monkeypatch, name
 ):
@@ -1325,6 +1338,53 @@ def test_next_label_then_answer_then_next_label_says_nothing_new(installed, monk
     assert "nothing new since it was last asked" in line["detail"]
     assert "alpha-works" not in fake.asked_for
     assert sorted(items(installed)) == ["b-r1", "b-r2"]
+
+
+def test_an_answer_with_nothing_waiting_names_next_label_and_following_it_reaches_that_label(
+    installed, monkeypatch
+):
+    """The remedy names the label refused, so following it never walks the labels above."""
+    fake = two_labels(monkeypatch)
+
+    code, envelope = sync("--answer", "all", "--label", "beta-works")
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    steps = envelope["cause"]["remediation"]["steps"]
+    assert steps == ["ask it first with: crate label sync --next --label beta-works"]
+    code, asked = next_for("beta-works")
+    assert code == int(ExitCode.OK), asked
+    assert asked["data"]["summary"]["question"]["label_id"] == "beta-works"
+    assert sorted(answer("beta-works", "all")["taken"]) == ["b-r1", "b-r2"]
+    assert fake.asked_for == ["beta-works"]
+
+
+def test_a_pick_outside_the_question_names_next_label_for_its_identifiers(
+    installed, monkeypatch
+):
+    two_labels(monkeypatch)
+    next_for("beta-works")
+
+    code, envelope = sync("--answer", "pick", "--label", "beta-works", "--release", "b-r9")
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["remediation"]["steps"] == [
+        "take the identifiers from: crate label sync --next --label beta-works"
+    ]
+
+
+def test_a_walk_nobody_can_answer_names_next_label_for_the_label_it_stopped_at(
+    installed, monkeypatch
+):
+    two_labels(monkeypatch)
+    script(monkeypatch)
+
+    code, envelope = sync()
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "label-sync-unanswerable"
+    (step,) = envelope["cause"]["remediation"]["steps"]
+    assert "crate label sync --next --label alpha-works, then" in step
+    assert "--answer ANSWER --label alpha-works" in step
 
 
 def test_next_label_human_output_names_the_one_label(installed, monkeypatch):

@@ -549,8 +549,10 @@ release is an accepted review item; nothing is downloaded by the answer itself.
 Without a terminal, `--next` prints the next question and `--answer` records one
 answer for one label, and both write the same record. To ask about one label
 without reaching it through the labels above it, name it: `--next --label "Some
-Label"` lists only that label and prints its question, or says it has nothing
-new, and leaves every other label as it was. A newly followed label is
+Label"` lists only that label and prints its question, says it has nothing
+new, or says its listing failed, and leaves every other label as it was. A
+failed listing is a `[FAIL]` line on a run that still exits 0, so read the
+line, not only the exit status. A newly followed label is
 asked about its newest few releases, the `labels.offer_per_sweep` count, not its
 whole catalogue.
 
