@@ -406,3 +406,114 @@ def test_an_unmatched_title_holding_a_line_break_stays_on_its_line():
         )
     )
     assert '    unmatched: A, B - "T\\nU": r' in lines
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U169: ``job list`` prints the jobs it found, not only a run id
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _listed(handler: str, state: str, *, settled: int = 0, total: int = 0, **extra) -> dict:
+    row = {
+        "job_id": f"{handler}-{state}",
+        "handler": handler,
+        "worker": "bound",
+        "worker_reason": None,
+        "state": state,
+        "progress": {"total": total, "settled": settled, "counts": {}},
+        "cause": None,
+    }
+    row.update(extra)
+    return row
+
+
+def _job_list(rows: list[dict], **counts) -> output.Envelope:
+    every = {"queued": 0, "running": 0, "blocked": 0, "succeeded": 0, "failed": 0, "cancelled": 0}
+    every.update(counts)
+    return job_state(
+        verb="job.list",
+        job_id="",
+        state="all",
+        progress={"jobs": rows, "counts": every},
+    )
+
+
+def test_job_list_prints_one_line_per_job_with_its_verb_state_progress_and_cause():
+    """Sitting 47: 22 jobs queued and four run, and the human output was a run id."""
+    refused = {"reason": "lossy-refused", "message": "the provider offers it lossy only"}
+    rows = [
+        _listed("acquire.download", "failed", settled=117, total=117, cause=refused),
+        _listed("tag.folder", "running", settled=3, total=10),
+        _listed("intake.playlist", "queued", total=40),
+        _listed("analyze.run", "succeeded", settled=8, total=8),
+    ]
+    lines = render.render_job_list(_job_list(rows, failed=1, running=1, queued=1, succeeded=1))
+
+    assert "  jobs: 4 (queued 1, running 1, succeeded 1, failed 1)" in lines, lines
+    assert (
+        "  acquire.download-failed, acquire.download, failed, 117 of 117 settled, lossy-refused"
+        in lines
+    ), lines
+    assert "  tag.folder-running, tag.folder, running, 3 of 10 settled" in lines, lines
+    assert "  intake.playlist-queued, intake.playlist, queued, 0 of 40 settled" in lines, lines
+    assert "  analyze.run-succeeded, analyze.run, succeeded, 8 of 8 settled" in lines, lines
+    assert lines[-1] == "  each job in full: crate job show JOB_ID", lines
+
+
+def test_job_list_says_when_a_verb_has_no_worker_to_run_its_job():
+    rows = [_listed("label.sweep", "queued", total=2, worker="none")]
+    lines = render.render_job_list(_job_list(rows, queued=1))
+
+    assert "  label.sweep-queued, label.sweep, queued, 0 of 2 settled, no worker" in lines
+
+
+def test_an_empty_job_list_says_none_rather_than_printing_nothing():
+    lines = render.render_job_list(_job_list([]))
+
+    assert lines == ["", "  jobs: none"], lines
+
+
+def test_a_filtered_empty_job_list_names_the_states_it_was_filtered_to():
+    lines = render.render_job_list(
+        job_state(verb="job.list", job_id="", state="failed,blocked", progress={"jobs": [], "counts": {}})
+    )
+
+    assert lines == ["", "  jobs: none in failed,blocked"], lines
+
+
+def test_the_job_list_case_belongs_to_the_listing_alone():
+    """Another verb's ``job_state`` with a jobs key is not a listing, and a
+    listing is never read as a single job."""
+    rows = [_listed("tag.folder", "queued", total=1)]
+    other = job_state(verb="job.show", job_id="", progress={"jobs": rows, "counts": {}})
+
+    assert render.render_job_list(other) == []
+    assert render.render_job_state(_job_list(rows, queued=1)) == []
+
+
+@pytest.mark.parametrize("progress", [None, {}, {"jobs": "not a list"}, {"jobs": [3, None]}])
+def test_a_listing_progress_this_build_cannot_read_prints_nothing_rather_than_none(progress):
+    """Absence is not evidence: an unreadable listing is not an empty queue."""
+    assert render.render_job_list(job_state(verb="job.list", job_id="", progress=progress)) == []
+
+
+def test_job_list_is_driven_end_to_end_in_the_default_output(tmp_path, monkeypatch):
+    """The dispatcher's own answer, so a renderer nobody calls cannot pass."""
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(tmp_path))
+    built = config.from_dict(valid_data(tmp_path))
+    config.save(built)
+    config.reset_cache()
+    with jobs.open_store() as store:
+        queued = jobs.enqueue(
+            store,
+            handler_key="tag.folder",
+            payload={"folder": str(tmp_path)},
+            cfg=built,
+            item_ids=("a.flac", "b.flac"),
+        )
+
+    code, text = drive_human(["job", "list"])
+
+    assert code == 0, text
+    assert f"  {queued.job_id}, tag.folder, queued, 0 of 2 settled" in text.splitlines(), text
+    assert "  jobs: 1 (queued 1)" in text.splitlines(), text

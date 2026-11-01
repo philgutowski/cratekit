@@ -427,6 +427,71 @@ def render_job_state(envelope: Envelope, *, drive: Sequence[str] | None = None) 
     return lines
 
 
+#: The verb whose ``job_state`` answer lists every job rather than one (U169).
+_LISTING_VERB = "job.list"
+
+
+def render_job_list(envelope: Envelope) -> list[str]:
+    """``job list``'s jobs, one line each, under how many sit in each state (U169).
+
+    THE LISTING CARRIES NO SINGLE JOB, so :func:`render_job_state` prints
+    nothing for it, and until this case the human answer was the verb, the
+    outcome and a run id while the json held every job. Sitting 47 had 22 jobs
+    queued and four run behind that answer. Gated on the schema and on the
+    listing verb, because another verb's ``job_state`` is about one job.
+
+    Each line is the job's id, its verb, its state, how many of its items are
+    settled, the cause's reason when it ended on one, and ``no worker`` when
+    nothing is bound to run the verb, which is the job that sits queued for
+    ever. A listing that holds no job says so, naming the states it was
+    filtered to; a progress this build cannot read prints nothing rather than
+    a ``none`` it did not measure.
+    """
+    if not envelope.schema.startswith("job_state/") or envelope.verb != _LISTING_VERB:
+        return []
+    progress = envelope.data.get("progress")
+    if not isinstance(progress, Mapping):
+        return []
+    rows = progress.get("jobs")
+    if not isinstance(rows, list):
+        return []
+    listed = [row for row in rows if isinstance(row, Mapping)]
+    if rows and not listed:
+        return []
+    if not listed:
+        state = envelope.data.get("state")
+        within = f" in {state}" if isinstance(state, str) and state and state != "all" else ""
+        return ["", f"  jobs: none{within}"]
+    counts = progress.get("counts")
+    by_state = (
+        ", ".join(
+            f"{state} {count}" for state, count in counts.items() if _whole(count) and count
+        )
+        if isinstance(counts, Mapping)
+        else ""
+    )
+    lines = ["", f"  jobs: {len(listed)}" + (f" ({by_state})" if by_state else "")]
+    lines += [f"  {_job_line(row)}" for row in listed]
+    lines.append("  each job in full: crate job show JOB_ID")
+    return lines
+
+
+def _job_line(row: Mapping[str, Any]) -> str:
+    """One listed job: id, verb, state, then what is known of its progress."""
+    parts = [_one_line(row.get(key) or "?") for key in ("job_id", "handler", "state")]
+    progress = row.get("progress")
+    if isinstance(progress, Mapping):
+        total, settled = progress.get("total"), progress.get("settled")
+        if _whole(total) and _whole(settled):
+            parts.append(f"{settled} of {total} settled")
+    cause = row.get("cause")
+    if isinstance(cause, Mapping) and cause.get("reason"):
+        parts.append(_one_line(cause["reason"]))
+    if row.get("worker") == "none":
+        parts.append("no worker")
+    return ", ".join(parts)
+
+
 #: The field ``job show`` lists an intake job's frozen tracks under. Spelled
 #: here, for the reason :data:`_RESOLVING_VERBS` gives; a test pins it to
 #: ``cli.jobs.TRACKS_FIELD``.
@@ -715,6 +780,7 @@ def render(envelope: Envelope, *, drive: Sequence[str] | None = None) -> str:
     lines += checks
     lines += review_set
     lines += render_job_state(envelope, drive=drive)
+    lines += render_job_list(envelope)
     lines += render_import_proof(envelope)
 
     for warning in envelope.warnings:
