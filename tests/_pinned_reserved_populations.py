@@ -34,6 +34,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'backup-facts-unreadable',
     'backup-nothing-ran',
     'backup-transfer-failed',
+    'bandcamp-label-unwritten',  # 2026-11-01, U177: a file that would not take its label.
     'bandcamp-record-unusable',  # 2026-10-28, U176: the Bandcamp fetched record joined.
     'blocked-by-pending-action',
     'canary-read-failed',
@@ -269,8 +270,12 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'acquire/bandcamp_cli.py': [
         'auth-failed',
         'bandcamp-fetch',
+        # 2026-11-01, U177: the label a purchase is staged under.
+        'bandcamp-label-unwritten',
+        'bandcamp-land-by-label',
         'bandcamp-record-unusable',
         'bandcamp-seller-unmatched',
+        'bandcamp-seller-unregistered',
         'credential-missing',
         'intake-list-unusable',
         'internal-error',
@@ -658,6 +663,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'backup-facts-unreadable',
         'backup-nothing-ran',
         'backup-transfer-failed',
+        'bandcamp-label-unwritten',  # 2026-11-01, U177
         'bandcamp-record-unusable',  # 2026-10-28, U176
         'blocked-by-pending-action',
         'canary-read-failed',
@@ -2009,6 +2015,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
 
 # Modules holding a name that resolves to a cause declared elsewhere (own enum declarations excluded from the key set).
 PINNED_NAMED_WITHOUT_OWN = {
+    # 2026-11-01, U177: a file that would not take its label.
+    'acquire/bandcamp_cli.py': ['bandcamp-label-unwritten'],
     # 2026-10-28, U152: the sync pass driver's two stops and the unasked write.
     'cli/sync_land.py': [
         'backup-acknowledgment-missing',
@@ -2084,7 +2092,8 @@ PINNED_NAMED_WITHOUT_OWN = {
 # Modules holding a name that resolves to a cause, counting each file's own enum declarations.
 PINNED_NAMED_WITH_OWN = {
     # 2026-10-28, U176: the plan's disposition enum.
-    'acquire/bandcamp_cli.py': ['not-downloadable'],
+    # 2026-11-01, U177: a file that would not take its label.
+    'acquire/bandcamp_cli.py': ['bandcamp-label-unwritten', 'not-downloadable'],
     # 2026-10-28, U152: the sync pass driver's two stops and the unasked write.
     'cli/sync_land.py': [
         'backup-acknowledgment-missing',
@@ -2299,6 +2308,7 @@ PINNED_LITERAL_HOLDERS = {
     # 2026-10-28, U176: the Bandcamp verbs.
     'acquire/bandcamp_cli.py': [
         'auth-failed',
+        'bandcamp-label-unwritten',  # 2026-11-01, U177
         'bandcamp-record-unusable',
         'credential-missing',
         'intake-list-unusable',

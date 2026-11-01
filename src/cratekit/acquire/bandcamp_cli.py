@@ -57,10 +57,21 @@ publishes nothing. Nothing is written outside the batch folder, the holding
 folder under staging that each release is emptied out of, and the record.
 Never the music folder, never the database.
 
-WHAT IT DOES NOT DO. The label is U177's, the genre U178's, the tagging, the
-landing and the one command over all of it U179's. A purchase already recorded
-is not fetched again here; a person who wants it again takes its entry out of
-the record.
+THE LABEL IS THE REGISTRY'S (U177). A label in ``crate label registry`` names
+its Bandcamp seller account, and a purchase sold from it is that label's: the
+plan names it on the row, every file of it is staged with the label's display
+name in its ``label`` tag before it moves into the batch, and the record names
+it. A seller no label names is shown on the plan with the command that
+registers it, and its files are staged as they came, never with a guessed
+label. The label tag is what ``crate intake land --label-from-tags`` files each
+file under, so one batch folder holding several sellers' purchases files each
+under its own label and the rest under none. ``--seller`` takes a registered
+label's name as well as an account. A REGISTRY THAT CANNOT BE READ IS NOT AN
+EMPTY ONE: the plan refuses, rather than staging every purchase untagged.
+
+WHAT IT DOES NOT DO. The genre is U178's, the tagging, the landing and the one
+command over all of it U179's. A purchase already recorded is not fetched
+again here; a person who wants it again takes its entry out of the record.
 """
 
 from __future__ import annotations
@@ -68,6 +79,7 @@ from __future__ import annotations
 import filecmp
 import json
 import re
+import shlex
 import shutil
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -84,6 +96,7 @@ from cratekit.core import config, jobs, secrets, tags
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.intake import landing
+from cratekit.label import registry as labels
 
 #: The plan verb's origin on every refusal it raises.
 ORIGIN = ("acquire.bandcamp",)
@@ -116,6 +129,24 @@ RELEASES = "releases"
 
 #: The record's format version.
 RECORD_VERSION = 1
+
+#: The refusal an item fails with when a file of a registered label's purchase
+#: would not take the label tag (U177). The file is staged all the same, since
+#: it is a track the person paid for, and named, so its landing files it under
+#: no label knowingly rather than silently.
+LABEL_UNWRITTEN = "bandcamp-label-unwritten"
+
+#: The warning a plan carries for each seller it would fetch from that no
+#: label in the registry names, with the command that registers it.
+SELLER_UNREGISTERED = "bandcamp-seller-unregistered"
+
+#: The flag of ``crate intake land`` that files each file under its own label
+#: tag, which the fetch names as the landing's next step.
+LAND_FLAG = "--label-from-tags"
+
+#: The warning a fetch that staged a label's releases carries, naming that
+#: landing, since the closed ``job_state/1`` surface has no field for it.
+LAND_BY_LABEL = "bandcamp-land-by-label"
 
 
 class Disposition(StrEnum):
@@ -303,11 +334,15 @@ class Planned:
     purchase: bandcamp.Purchase
     disposition: Disposition
     held: tuple[Held, ...] = ()
+    #: The registered label the purchase's seller names, or None (U177).
+    label: labels.LabelEntry | None = None
 
     def to_json(self) -> dict[str, Any]:
         kept_back = {one.track for one in self.held}
         return {
             **self.purchase.to_json(),
+            "label": self.label.name if self.label is not None else None,
+            "label_id": self.label.label_id if self.label is not None else None,
             "disposition": str(self.disposition),
             "held": [one.to_json() for one in self.held],
             "stage": [
@@ -384,8 +419,33 @@ class Library:
         return holding(found)
 
 
-def _sellers(named: Iterable[str] | None) -> frozenset[str]:
-    return frozenset(name.strip().casefold() for name in (named or ()) if name.strip())
+def registry(origin: Sequence[str]) -> labels.Registry:
+    """The label registry, or the refusal that it could not be read (U177).
+
+    UNREADABLE IS NOT EMPTY. Every seller would read unregistered and every
+    purchase stage untagged, the clean report over state the verb could not
+    read, so the store's own refusal, ``label-intent-unusable``, stands.
+    """
+    del origin
+    return labels.RegistryStore().load()
+
+
+def _sellers(named: Iterable[str] | None, held: labels.Registry) -> frozenset[str]:
+    """The seller accounts ``--seller`` names, a registered label read as its account.
+
+    A REGISTERED LABEL'S NAME OR IDENTIFIER IS ITS ACCOUNT (U177), so ``--seller
+    PULS`` and ``--seller pulsromania`` plan the same releases. A label with no
+    account, or a name no label holds, is taken as an account name, which is
+    what the flag meant before labels carried one.
+    """
+    found: set[str] = set()
+    for raw in named or ():
+        name = raw.strip()
+        if not name:
+            continue
+        entry = held.resolve(name)
+        found.add(entry.bandcamp if entry is not None and entry.bandcamp else name.casefold())
+    return frozenset(found)
 
 
 def plan(
@@ -394,26 +454,31 @@ def plan(
     *,
     sellers: frozenset[str],
     record: Mapping[str, Any],
+    registered: labels.Registry | None = None,
 ) -> tuple[Planned, ...]:
-    """Every purchase, in the order given, with its disposition.
+    """Every purchase, in the order given, with its disposition and its label.
 
     THE ORDER OF THE QUESTIONS is the order of what each one costs to ask: a
     hidden or filtered purchase is never matched, a recorded one never fetched
     again, and only a purchase that can be downloaded is asked of the library.
+    The label is the registry's answer for the seller, asked of every row so
+    the plan names it whatever the row's disposition.
     """
+    known = registered if registered is not None else labels.empty()
     planned: list[Planned] = []
     for purchase in purchases:
+        label = known.by_bandcamp(purchase.seller) if purchase.seller else None
         if purchase.hidden:
-            planned.append(Planned(purchase, Disposition.HIDDEN))
+            planned.append(Planned(purchase, Disposition.HIDDEN, label=label))
             continue
         if sellers and purchase.seller.casefold() not in sellers:
-            planned.append(Planned(purchase, Disposition.FILTERED))
+            planned.append(Planned(purchase, Disposition.FILTERED, label=label))
             continue
         if purchase.item_id in record:
-            planned.append(Planned(purchase, Disposition.FETCHED))
+            planned.append(Planned(purchase, Disposition.FETCHED, label=label))
             continue
         if not purchase.downloadable:
-            planned.append(Planned(purchase, Disposition.NOT_DOWNLOADABLE))
+            planned.append(Planned(purchase, Disposition.NOT_DOWNLOADABLE, label=label))
             continue
         held: list[Held] = []
         for position, track in enumerate(purchase.tracks, start=1):
@@ -427,7 +492,7 @@ def plan(
             disposition = Disposition.OWNED
         else:
             disposition = Disposition.HELD
-        planned.append(Planned(purchase, disposition, tuple(held)))
+        planned.append(Planned(purchase, disposition, tuple(held), label=label))
     return tuple(planned)
 
 
@@ -435,20 +500,33 @@ def _load() -> config.Config:
     return match_cli._load()
 
 
-def _planned(
-    cfg: config.Config, sellers: frozenset[str], origin: Sequence[str]
-) -> tuple[bandcamp.Collection, tuple[Planned, ...], Library]:
+@dataclass(frozen=True, slots=True)
+class Asked:
+    """What one plan asked and was answered: the account, the plan, and what it read."""
+
+    found: bandcamp.Collection
+    planned: tuple[Planned, ...]
+    library: Library
+    held: labels.Registry
+    sellers: frozenset[str]
+
+
+def _planned(cfg: config.Config, named: Iterable[str] | None, origin: Sequence[str]) -> Asked:
     """The plan, with each question asked before the one that costs more.
 
     The session is asked of the keychain first, since that is local and a
-    missing one would make the library walk wasted. The record and the library
-    come next, so a refusal over either costs no request, and the account last.
+    missing one would make the library walk wasted. The record, the label
+    registry and the library come next, so a refusal over any of them costs no
+    request, and the account last.
     """
     cookie = session_cookie(origin)
     record = fetched(cfg)
+    held = registry(origin)
+    sellers = _sellers(named, held)
     library = Library(cfg, origin)
     found = collection(origin, cookie)
-    return found, plan(found.purchases, library, sellers=sellers, record=record), library
+    planned = plan(found.purchases, library, sellers=sellers, record=record, registered=held)
+    return Asked(found=found, planned=planned, library=library, held=held, sellers=sellers)
 
 
 def _count(planned: Sequence[Planned]) -> dict[str, int]:
@@ -463,9 +541,19 @@ def _unmatched_sellers(sellers: frozenset[str], purchases: Sequence[bandcamp.Pur
     return sorted(name for name in sellers if name not in known)
 
 
-def _seller_warnings(unmatched: Sequence[str]) -> tuple[dict[str, str], ...]:
+def _seller_warnings(
+    unmatched: Sequence[str], held: labels.Registry | None = None
+) -> tuple[dict[str, str], ...]:
     if not unmatched:
         return ()
+    known = held if held is not None else labels.empty()
+    # A FOLLOWED LABEL WITH NO ACCOUNT is said as that, since the person named
+    # the label and the cure is to give it one, not to spell the account.
+    accountless = [
+        entry.name
+        for name in unmatched
+        if (entry := known.resolve(name)) is not None and not entry.bandcamp
+    ]
     return (
         {
             "code": "bandcamp-seller-unmatched",
@@ -473,9 +561,67 @@ def _seller_warnings(unmatched: Sequence[str]) -> tuple[dict[str, str], ...]:
                 f"no purchase in the account belongs to {', '.join(unmatched)}; a "
                 f"seller is the account name in the address of its releases, as in "
                 f"<name>.bandcamp.com"
+                + (
+                    f", or a followed label that names one; {', '.join(accountless)} "
+                    f"names none, and crate label registry set <label> --bandcamp "
+                    f"<account> gives it one"
+                    if accountless
+                    else ""
+                )
             ),
         },
     )
+
+
+def register_command(seller: str) -> str:
+    """The command that makes ``seller``'s purchases a label's (U177)."""
+    return f"crate label registry add <label name> --bandcamp {seller}"
+
+
+def unregistered(planned: Sequence[Planned], held: labels.Registry) -> list[str]:
+    """Every seller with a purchase to fetch whose label the registry does not name, sorted."""
+    return sorted(
+        {
+            one.purchase.seller
+            for one in planned
+            if one.disposition in TO_FETCH and one.label is None and one.purchase.seller
+        }
+    )
+
+
+def _registration_warnings(
+    sellers: Sequence[str], held: labels.Registry
+) -> tuple[dict[str, str], ...]:
+    """One warning per unregistered seller, naming how to register it, or why two labels tie."""
+    warned: list[dict[str, str]] = []
+    for seller in sellers:
+        tied = held.claimants(seller)
+        if len(tied) > 1:
+            message = (
+                f"{seller} is named as the Bandcamp account of {len(tied)} labels, "
+                f"{', '.join(entry.name for entry in tied)}, so its purchases are "
+                f"staged with no label tag; clear it on all but one with crate label "
+                f"registry set <label> --bandcamp {labels.CLEAR_BANDCAMP}"
+            )
+        else:
+            message = (
+                f"{seller} is the seller of purchases to fetch and no followed label "
+                f"names it, so its files are staged with no label tag and land filed "
+                f"under no label; to file them under their label, run "
+                f"{register_command(seller)}, or set --bandcamp {seller} on a label "
+                f"already followed"
+            )
+        warned.append({"code": SELLER_UNREGISTERED, "message": message})
+    return tuple(warned)
+
+
+def labels_of(planned: Sequence[Planned]) -> dict[str, str]:
+    """Each seller with a purchase to fetch and the label it is staged under, sorted."""
+    return {
+        one.purchase.seller: one.label.name
+        for one in sorted(planned, key=lambda one: one.purchase.seller)
+        if one.disposition in TO_FETCH and one.label is not None
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -522,8 +668,8 @@ def fetch_command(sellers: frozenset[str]) -> str:
 def acquire_bandcamp(ctx) -> Envelope:
     """List every purchase with its disposition. Writes nothing."""
     cfg = _load()
-    sellers = _sellers(ctx.args.seller)
-    found, planned, _library = _planned(cfg, sellers, ORIGIN)
+    asked = _planned(cfg, ctx.args.seller, ORIGIN)
+    found, planned, sellers = asked.found, asked.planned, asked.sellers
     counts = _count(planned)
     to_fetch = [one for one in planned if one.disposition in TO_FETCH]
     checks = [
@@ -541,18 +687,43 @@ def acquire_bandcamp(ctx) -> Envelope:
         for disposition in Disposition
     ]
     unmatched = _unmatched_sellers(sellers, found.purchases)
+    unlabelled = unregistered(planned, asked.held)
+    staged_under = labels_of(planned)
+    checks.append(
+        _check(
+            "labels",
+            "info" if not unlabelled else "warn",
+            (
+                "staged under their label: "
+                + "; ".join(f"{seller} as {name}" for seller, name in staged_under.items())
+                if staged_under
+                else "no seller with a purchase to fetch is a followed label's"
+            )
+            + (
+                f"; no label names {', '.join(unlabelled)}, register with "
+                f"{register_command(unlabelled[0])}"
+                if unlabelled
+                else ""
+            ),
+        )
+    )
     summary = {
         "purchases": len(planned),
         **counts,
         "sellers": sorted(sellers),
         "sellers_unmatched": unmatched,
+        "labels": staged_under,
+        "sellers_unregistered": unlabelled,
         "fetch_next": fetch_command(sellers) if to_fetch else None,
         "rows": [one.to_json() for one in planned],
     }
     return ctx.envelope(
         data={"checks": checks, "summary": summary},
         outcome=Outcome.OK if to_fetch else Outcome.NO_OP,
-        warnings=_seller_warnings(unmatched),
+        warnings=(
+            *_seller_warnings(unmatched, asked.held),
+            *_registration_warnings(unlabelled, asked.held),
+        ),
     )
 
 
@@ -587,6 +758,45 @@ def fetch_argv(job) -> list[str]:
     return ["acquire", "bandcamp-fetch", "--job", job.job_id]
 
 
+def land_command(job) -> str | None:
+    """The landing that files the batch's files each under its own label tag, or None (U177).
+
+    NAMED ONLY WHEN A RELEASE OF THE JOB WAS A LABEL'S, since without one the
+    flag files nothing. The batch folder is the job's own, frozen at the queue.
+    """
+    payload = job.payload or {}
+    releases = payload.get(RELEASES) or {}
+    if not any(isinstance(one, Mapping) and one.get("label") for one in releases.values()):
+        return None
+    folder = Path(jobs.frozen_config(job).paths.download_staging) / str(payload.get(BATCH) or "")
+    return f"crate intake land {shlex.quote(str(folder))} {LAND_FLAG}"
+
+
+def _land_warnings(job) -> tuple[dict[str, str], ...]:
+    """The one line naming the landing that files the batch by label, when it has one.
+
+    A WARNING AND NOT A FIELD, since ``job_state/1`` is closed and a field
+    added to it is a schema break for every consumer; ``acquire bandcamp``'s
+    plan says the same through its own surface.
+    """
+    command = land_command(job)
+    if command is None:
+        return ()
+    releases = (job.payload or {}).get(RELEASES) or {}
+    named = sorted(
+        {str(one["label"]) for one in releases.values() if isinstance(one, Mapping) and one.get("label")}
+    )
+    return (
+        {
+            "code": LAND_BY_LABEL,
+            "message": (
+                f"the batch holds releases of {', '.join(named)}, each file tagged with "
+                f"its label; land it filed under each file's label with {command}"
+            ),
+        },
+    )
+
+
 def _reported(store, job) -> dict[str, Any]:
     return {
         "job_id": job.job_id,
@@ -601,6 +811,10 @@ def frozen_release(planned: Planned) -> dict[str, Any]:
     purchase = planned.purchase
     return {
         "seller": purchase.seller,
+        # THE LABEL IS FROZEN WITH THE RELEASE (KTD9, U177), so a resume tags by
+        # what was registered when the fetch was asked for.
+        "label": planned.label.name if planned.label is not None else None,
+        "label_id": planned.label.label_id if planned.label is not None else None,
         "artist": purchase.artist,
         "title": purchase.title,
         "item_type": purchase.item_type,
@@ -665,12 +879,17 @@ def acquire_bandcamp_fetch(ctx) -> Envelope:
                 _, warnings = ctx.run_job(store, job)
                 job = jobs.get(store, job.job_id)
             jobs.raise_for_state(job)
-            return ctx.envelope(data=_reported(store, job), warnings=warnings)
+            return ctx.envelope(
+                data=_reported(store, job), warnings=(*warnings, *_land_warnings(job))
+            )
     cfg = _load()
     batch = _batch_name(ctx.args.batch)
-    sellers = _sellers(ctx.args.seller)
-    found, planned, library = _planned(cfg, sellers, FETCH_ORIGIN)
-    warnings = _seller_warnings(_unmatched_sellers(sellers, found.purchases))
+    asked = _planned(cfg, ctx.args.seller, FETCH_ORIGIN)
+    found, planned, library = asked.found, asked.planned, asked.library
+    warnings = (
+        *_seller_warnings(_unmatched_sellers(asked.sellers, found.purchases), asked.held),
+        *_registration_warnings(unregistered(planned, asked.held), asked.held),
+    )
     releases = {
         one.purchase.item_id: frozen_release(one) for one in planned if one.disposition in TO_FETCH
     }
@@ -698,7 +917,9 @@ def acquire_bandcamp_fetch(ctx) -> Envelope:
         _, drift = ctx.run_job(store, job)
         job = jobs.get(store, job.job_id)
         jobs.raise_for_state(job)
-        return ctx.envelope(data=_reported(store, job), warnings=(*warnings, *drift))
+        return ctx.envelope(
+            data=_reported(store, job), warnings=(*warnings, *drift, *_land_warnings(job))
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -878,6 +1099,7 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
         "artist": str(said.get("artist") or ""),
         "title": str(said.get("title") or ""),
     }
+    label = str(said.get("label") or "").strip()
     if not landing.plain_name(batch):
         raise refuse(
             "internal-error",
@@ -941,6 +1163,7 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
     staged: list[str] = []
     held: list[str] = []
     refused: dict[str, Path] = {}
+    untagged: list[str] = []
     for path in checked:
         number = number_in(path.name, detail["artist"], detail["title"])
         if (number is not None and number in held_numbers) or file_holding(
@@ -950,6 +1173,14 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
             continue
         marked = lossy or acquire_cli.lossy_landing(path, policy=policy)
         final = target / acquire_cli.marked_name(path, marker, required=marked)
+        # THE LABEL IS WRITTEN BEFORE THE MOVE (U177), in the holding folder, so
+        # a file in the batch either carries its label or is named as one that
+        # would not take it. THE WRITER'S FALSE IS A FAILURE, NOT A TAG: the
+        # file is staged all the same, since it is a track the person paid for,
+        # and the item fails naming it below, so its landing files it under no
+        # label knowingly. An unregistered seller's file is left as it came.
+        if label and not tags.write_tags(path, {"label": label}):
+            untagged.append(final.name)
         if final.exists():
             if final.is_file() and filecmp.cmp(path, final, shallow=False):
                 # THE SAME BYTES ARE ALREADY THERE, which is what a resume after
@@ -976,8 +1207,13 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
             "held": held,
             "refused": sorted(refused),
             "kept": {name: str(path) for name, path in sorted(refused.items())},
+            "label": label or None,
+            "untagged": sorted(untagged),
         },
     )
+    # A NAME REFUSED AT THE MOVE IS NOT A FILE STAGED UNTAGGED: its downloaded
+    # copy is the one kept, and the collision is the refusal that names it.
+    untagged = sorted(name for name in untagged if name not in refused)
     if refused:
         raise refuse(
             "output-exists",
@@ -1001,12 +1237,32 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
                 "staged": staged,
             },
         )
+    if untagged:
+        raise refuse(
+            LABEL_UNWRITTEN,
+            f"{len(untagged)} file(s) of {detail['artist']} - {detail['title']} would "
+            f"not take the label {label!r} and were staged in {target} without it: "
+            f"{'; '.join(untagged)}. A landing files them under no label; the other "
+            f"{len(staged) - len(untagged)} file(s) carry it, and the purchase is "
+            f"recorded as fetched",
+            steps=(
+                "check each file named can be written and is not on a read only "
+                "volume, then write its label tag or land it filed under no label",
+            ),
+            scope=Scope.ITEM,
+            origin=FETCH_ORIGIN,
+            detail={**detail, "label": label, "batch": str(target), "untagged": untagged},
+        )
     return jobs.Produced()
 
 
 __all__ = [
     "BATCH",
     "BATCH_PREFIX",
+    "LABEL_UNWRITTEN",
+    "LAND_BY_LABEL",
+    "LAND_FLAG",
+    "SELLER_UNREGISTERED",
     "Disposition",
     "FETCH_ORIGIN",
     "Held",
@@ -1031,9 +1287,14 @@ __all__ = [
     "frozen_release",
     "handle_fetch",
     "holding",
+    "land_command",
+    "labels_of",
     "plan",
     "record_fetched",
+    "register_command",
+    "registry",
     "session_cookie",
     "track_wanted",
     "transport",
+    "unregistered",
 ]
