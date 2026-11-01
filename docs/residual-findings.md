@@ -40897,3 +40897,58 @@ was decided. No document prescribes any of these command lines.
 **Closes when:** the flag refuses alongside `--run` or any `-d` answer to its
 own gate, or closes the resumed run's open gate when it mints. Ledger only: the
 cost is none of METHOD's four board bar kinds.
+
+---
+
+## R-1154. The sibling run warning and doctor's runs.open-gates note read a run directory Path.glob cannot list as holding no run
+
+**Found:** at the review of #394, U186, 2026-11-01.
+
+**The mechanism.** `gates.siblings` and doctor's `_check_open_gates` list the
+run records with `run_dir().glob("*.json")` and rescue an `OSError` as no
+records. Measured on this interpreter by the status reader's own comment
+(`cli/doctor.py`, `_run_report`), `Path.glob` swallows a `PermissionError`
+inside its scandir walk and answers an empty list, so the rescue never fires
+and a run directory this account cannot read reads as one with no run in it:
+the gate says nothing of a sibling and the note says no run has sat at a gate.
+
+**Measured cost.** Both silences were produced at the second review round of
+U186, by replacing the run directory with a regular file and by forcing
+`Path.glob` to raise: the gate answered no sibling and the note said no run
+has sat at a gate for more than a day, over a directory never read. The
+producer was not driven: the review container runs as root, where a chmod
+changes nothing, and the tool makes the directory itself, so the
+reachability on a person's machine is unmeasured. The status reader has
+carried the same limit since before U186.
+
+**Closes when:** the three readers of the run directory (`crate status`,
+`run retire`'s `old_gates`, and these two) list it through one helper that
+tells an unreadable directory from an empty one, for example by an
+`os.scandir` that raises, and each says so. Ledger only: it closes on no
+reachable producer yet, and it is maintainer facing until one is driven.
+
+---
+
+## R-1155. crate status and crate run retire stop with an internal error on a run record the gate warning and doctor's note name as unreadable
+
+**Found:** at the second review round of #394, U186, 2026-11-01.
+
+**The mechanism.** U186's two readers of the run directory, `gates.siblings`
+and doctor's `_check_open_gates`, count a record whose load raises anything
+as unreadable and go on. The two readers before them, `crate status`
+(`_run_report` in `cli/doctor.py`) and `crate run retire` (`old_gates` in
+`cli/verbs/runs.py`), catch only the structured refusal, so a record that
+parses as schema 1 and lacks a field raises `KeyError` through them.
+
+**Measured cost.** Driven at the review with a hand written
+`{"version": 1, "run_id": "half"}` in the run directory: both verbs exit 1
+with `internal-error` naming `KeyError: 'verb'`, while the gate and doctor
+name the record and carry on. The producer was not driven: `gates.save`
+writes every key atomically, and no writer of such a record was found in
+the tree (zero candidates), so a hand edit is the only input measured.
+
+**Closes when:** the four readers share one listing helper that names an
+unreadable record the same way, so they cannot disagree about one file.
+Ledger only, since it is reached only by a hand edited record so far; it
+was left out of U186 because both verbs belong to U170 and the brief names
+neither.
