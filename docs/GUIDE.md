@@ -57,7 +57,15 @@ Four words carry most of the rest.
   folder`, `analyze run` and `analyze restamp`, queue their job and then work
   through it before they return, so each step is one command. Stop one with
   Ctrl-C and its answer names the `--job` command that finishes the rest; pass
-  `--queue-only` to have it queue and return like the others.
+  `--queue-only` to have it queue and return like the others. An intake job
+  names the playlist it was made for in both `job list` and `job show`. An
+  open intake job holds its playlist out of every sync pass, so an old one
+  left queued keeps that playlist's new music out until it is driven or
+  cancelled: `crate job cancel --stale-days 30 --dry-run` lists every queued
+  intake job queued more than 30 days ago, with its playlist, age, track count
+  and what cancelling it frees, and the same command without `--dry-run`
+  cancels them. It never touches a running job, and of several open jobs
+  holding exactly the same tracks it keeps the newest and says so.
 - **Run.** One invocation's decision state, saved on disk so a decision can be
   answered later, from another terminal, after the process has exited.
 - **Gate.** A named question a verb stops at before it writes. There is no
@@ -1322,6 +1330,7 @@ treated like any other.
 | A job that never moves | `crate job show JOB_ID`. Queued work needs `crate job resume`. |
 | A blocked job | `job show` carries the cause, usually a review decision or a credential. |
 | A resume that refuses the same way each time | Cancel it with `crate job cancel` and queue a fresh one. |
+| `sync land` says intake jobs are left open | Its left open row lists them by playlist with their age. Old ones: `crate job cancel --stale-days DAYS --dry-run`, then without `--dry-run`; the next pass queues each freed playlist again. |
 | A verb the parser has never heard of | `crate profile show`. A module the profile leaves out has no verbs at all. |
 | A tree "unconverged" | `crate converge`, then `crate rebuild`, then `crate converge` again. |
 | A stale lock from a machine that is gone | `crate session release`, explicitly. |

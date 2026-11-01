@@ -2497,6 +2497,8 @@ PINNED_LITERAL_HOLDERS = {
         'rebuild-actor-required',
         'rebuild-tree-not-native',
     ],
+    # 2026-11-01, U182: the stale cancel's list says which jobs it cancelled.
+    'cli/render.py': ['cancelled'],
     'cli/reports.py': ['config-unusable', 'report-as-of-invalid'],
     'cli/review.py': ['review-file-unusable', 'review-selection-invalid'],
     'cli/setup.py': [
