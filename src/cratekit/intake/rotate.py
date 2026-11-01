@@ -575,6 +575,74 @@ def plan_rotation(
     return replace(planned, digest=digest_of(identity(planned)))
 
 
+@dataclass(frozen=True, slots=True)
+class Live:
+    """The batches directly under INBOX now, what the account mirror copies (U150)."""
+
+    root_id: str
+    root_name: str
+    #: Each live batch, ``(playlist id, name)``, ordered by name then id.
+    batches: tuple[tuple[str, str], ...]
+    #: The name of every live node directly under INBOX, batch or not, Old
+    #: included, so a mirror can tell a batch that LEFT INBOX from one that
+    #: is still there and only no longer reads as a batch.
+    present: frozenset[str]
+    #: Session records that could not be read, so a batch they name may not
+    #: be recognised here.
+    unreadable_records: int
+
+
+def live_batches(
+    cfg: config.Config,
+    db: Any,
+    *,
+    declared: taxonomy.Taxonomy,
+    registry: tree_registry.Registry,
+    today: date,
+) -> Live:
+    """Every batch directly under INBOX, by this module's one rule of what a batch is.
+
+    A BATCH IS WHAT :func:`plan_rotation` CALLS ONE, read by the same
+    classifier, so the mirror and the rotation never disagree on it. Its age
+    decides nothing here: a batch with no date to age it from, or dated after
+    ``today``, is still a batch the rotation leaves in INBOX, so it is live.
+    Old and everything in it is not live, and neither is a folder, a smart
+    playlist, INBOX / Analyze or a playlist no rule recognises.
+
+    Reads, writes nothing, needs no ``[intake_old]`` declared. Refuses as
+    :func:`anchored_root` refuses, by name, on an intake tree that is not
+    database native or not adopted.
+    """
+    tree_id = declared.intake.id
+    root_id = anchored_root(db, tree_id, registry)
+    root = db.get_playlist(ID=root_id)
+    found = landings(cfg)
+    children = _live_children(db, root_id)
+    batches: list[tuple[str, str]] = []
+    for row in children:
+        classified = _classify(
+            cfg,
+            db,
+            row,
+            place=tree_id,
+            in_old=False,
+            recorded=found.by_id,
+            today=today,
+            stale_days=cfg.reports.intake_stale_days,
+            expired_days=cfg.reports.intake_expired_days,
+            named=found.by_name,
+        )
+        if isinstance(classified, Batch) or classified.kind == "batch":
+            batches.append((classified.playlist_id, classified.name))
+    return Live(
+        root_id=str(root_id),
+        root_name=str(getattr(root, "Name", "") or ""),
+        batches=tuple(sorted(batches, key=lambda one: (one[1], one[0]))),
+        present=frozenset(str(getattr(row, "Name", "") or "") for row in children),
+        unreadable_records=found.unreadable,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Writing
 # ---------------------------------------------------------------------------
@@ -786,6 +854,7 @@ __all__ = [
     "WORKFLOW",
     "Batch",
     "Left",
+    "Live",
     "Rotated",
     "RotationPlan",
     "anchored_root",
@@ -794,6 +863,7 @@ __all__ = [
     "identity",
     "Landings",
     "landings",
+    "live_batches",
     "old_node",
     "plan_rotation",
 ]

@@ -74,6 +74,11 @@ LABEL = "label"
 #: The session record field naming every year playlist a commit filed into,
 #: which is what a later ``label mark`` of a native batch reads (R-916).
 RECORD_KEY = "labels"
+#: The session record field mapping each landed content row a manifest row
+#: was tied to onto that row's provider track (U150), so the account mirror
+#: fills a label batch's INBOX playlist from the batch's own tracks rather
+#: than asking the provider to match each row by its ISRC.
+PROVIDER_KEY = "provider_tracks"
 
 #: A date tag's year: its leading four digits, ``2021`` or ``2021-03-05``.
 _YEAR = re.compile(r"^\s*(\d{4})(?!\d)")
@@ -149,6 +154,12 @@ class LabelPlan:
     folders: tuple[tuple[str, str], ...]
     years: tuple[YearPlan, ...]
     unfiled: tuple[Unfiled, ...]
+    #: Each filed target and the provider track its manifest row names, for
+    #: the record (U150). Empty for ``--label``, whose files name no track. A
+    #: target two rows naming two tracks tie is left out: which one the file
+    #: is, is not something either row decides. Not in the digest, since it
+    #: is written to no table.
+    refs: tuple[tuple[str, str], ...] = ()
 
     def folder_of(self, label: str) -> str:
         return dict(self.folders).get(label, "")
@@ -420,6 +431,7 @@ def plan_for_manifest(
             )
     tree_folder, folders, years = _resolve(db, node, filed)
     return LabelPlan(
+        refs=_refs(matched),
         tree_id=node.id,
         tree_display=node.display,
         tree_folder=tree_folder,
@@ -430,6 +442,22 @@ def plan_for_manifest(
         folders=folders,
         years=years,
         unfiled=tuple(Unfiled(target="", reason=one.reason, sentence=one.sentence) for one in unmatched),
+    )
+
+
+def _refs(matched: Mapping[str, Mapping[int, Sequence[tuple[Any, Sequence[str]]]]]) -> tuple[tuple[str, str], ...]:
+    """Each target and the one provider track the rows tied to it name, ordered by target."""
+    named: dict[str, set[str]] = {}
+    for by_year in matched.values():
+        for rows in by_year.values():
+            for row, targets in rows:
+                ref = str(getattr(row, "ref", "") or "").strip()
+                for target in targets:
+                    named.setdefault(target, set()).add(ref)
+    return tuple(
+        (target, next(iter(refs)))
+        for target, refs in sorted(named.items())
+        if len(refs) == 1 and "" not in refs
     )
 
 
@@ -504,6 +532,7 @@ def supported_only(plan: LabelPlan, kept: set[str]) -> LabelPlan:
         folders=tuple(one for one in plan.folders if one[0] in labels),
         years=tuple(years),
         unfiled=(*restated, *left),
+        refs=tuple(one for one in plan.refs if one[0] in kept),
     )
 
 
@@ -598,6 +627,9 @@ class Written:
     folders_created: tuple[str, ...]
     years: tuple[WrittenYear, ...]
     left: tuple[Unfiled, ...]
+    #: Each landed content row and its provider track, from the plan's
+    #: ``refs`` through the rows the landing made or found (U150).
+    provider: tuple[tuple[str, str], ...] = ()
 
     def added(self) -> int:
         return sum(one.added for one in self.years)
@@ -659,6 +691,9 @@ def write(db: Any, plan: LabelPlan, *, by_target: Mapping[str, str]) -> Written:
                 )
         if ids:
             wanted.append((one, tuple(dict.fromkeys(ids))))
+    provider = tuple(
+        (by_target[target], ref) for target, ref in plan.refs if by_target.get(target, "")
+    )
     if not wanted:
         return Written(
             tree_id=plan.tree_id,
@@ -667,6 +702,7 @@ def write(db: Any, plan: LabelPlan, *, by_target: Mapping[str, str]) -> Written:
             folders_created=(),
             years=(),
             left=(*_restated(plan.unfiled, by_target, "its file did not land"), *left),
+            provider=provider,
         )
     if plan.tree_folder:
         tree = _live_row(db, plan.tree_folder, folder=True, what=f"{plan.tree_display!r} folder")
@@ -711,6 +747,7 @@ def write(db: Any, plan: LabelPlan, *, by_target: Mapping[str, str]) -> Written:
         folders_created=tuple(made),
         years=tuple(written),
         left=(*_restated(plan.unfiled, by_target, "its file did not land"), *left),
+        provider=provider,
     )
 
 
@@ -791,6 +828,7 @@ def item(written: WrittenYear, *, tree: str, session_id: str) -> dict[str, Any]:
 __all__ = [
     "LABEL",
     "MANIFEST",
+    "PROVIDER_KEY",
     "RECORD_KEY",
     "LabelPlan",
     "Unfiled",
