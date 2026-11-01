@@ -98,6 +98,11 @@ crate status
 
 A source that shows "no clean increment has completed" has simply never synced.
 
+Open gates that have sat idle for more than a week are one line rather than one
+line each: how many, the dates they span, and the command that retires them,
+`crate run retire --older-than 7d`. Newer gates are listed one by one. The week
+is `reports.open_gate_stale_days` in the configuration file.
+
 ## Where it stands
 
 Summary of [`cutover.md`](cutover.md) as of 2026-09-17. Fixes made after that
@@ -1064,6 +1069,7 @@ will meet:
 | `organize.account.apply` | apply | `organize`, its account area; explicit, `crate run decide` only |
 | `restore.run.confirm` | restore | `restore run` |
 | `session.ack.backup` | acknowledged | `session ack` |
+| `run.retire.confirm` | apply | `run retire` |
 | `write.cloudsync.unreadable` | proceed | any verb that writes |
 
 Every gate also offers `abort`. An abort is a recorded answer and not a failure,
@@ -1071,6 +1077,25 @@ and the verb returns its plan with a no-op outcome. Read the last gate in the
 table before answering it. It fires when Cratekit cannot tell whether a
 cloud sync client is also touching the library, and proceeding is a decision about
 a second writer. Treat "could not read" as unknown, not as safe.
+
+### Retiring old gates
+
+A run that stopped at a gate nobody will answer stays open until something
+answers it. `crate run retire` answers every open gate idle for longer than the
+threshold, a week unless you give `--older-than` or set
+`reports.open_gate_stale_days`, and it answers each one `abort` as `session`,
+never the go option, explicit gates included. It shows every gate it would
+answer and asks once; nothing old means nothing to ask.
+
+```bash
+crate run retire --older-than 7d
+crate -d run.retire.confirm=apply run retire --older-than 7d
+```
+
+A gate is idle from its run's start or its last resume, whichever is later, so a
+run you picked up yesterday is not old. A gate whose options have no `abort`, or
+whose verb is gone, is kept and named, and stays in the status list. Queued jobs
+are not touched; `crate job cancel` is theirs.
 
 ### The backup acknowledgment
 
