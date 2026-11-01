@@ -1424,3 +1424,30 @@ def test_a_warning_the_landing_plan_carries_rides_the_passes_own_warnings(
     assert code == int(ExitCode.PENDING_HUMAN), envelope
     lifted = [w for w in envelope["warnings"] if w["code"] == "vox-mostly-unscored"]
     assert lifted == [{"code": "vox-mostly-unscored", "message": "land: 19 of the 19 row(s)"}]
+
+
+def test_the_tail_asks_the_vocal_model_before_analyze_run_binds_its_loader(
+    full, monkeypatch, tail
+):
+    """Review round one. ``analyze run``'s worker binds the shipped loader in
+    this process, and a bound loader reads as able, so a question asked after
+    it would queue a rescore over a machine with no model and report it done."""
+    from cratekit.analysis import vocals
+
+    cfg, script = full
+    _account(monkeypatch, script, "101")
+    _model_cannot_score(monkeypatch)
+
+    def binds_the_loader(_job, _item):
+        monkeypatch.setattr(vocals, "_VOCAL_LOADER", lambda: object())
+
+    tail.work[sync_land.ANALYZE] = binds_the_loader
+
+    code, envelope = drive(
+        ["-d", f"{sync_land.WITHOUT_VOCALS}={sync_land.WITHOUT_VOCALS_GO}", "sync", "land"]
+    )
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert vocals.loader_bound(), "the stand in never ran, so the order was not tested"
+    assert _summary(envelope)["vocal_rescore"] == "skipped"
+    assert ("analyze", "vocals") not in tail.verbs()

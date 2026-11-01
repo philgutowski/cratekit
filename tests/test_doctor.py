@@ -8569,3 +8569,14 @@ def test_a_library_has_scored_when_a_vocal_calibration_is_recorded(configured):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text('{"threshold": 12.0}', encoding="utf-8")
     assert doctor._vocals_scored(configured) is True
+
+
+def test_a_git_install_of_a_branch_head_names_no_tag_that_does_not_exist(monkeypatch):
+    """Review round one: ``@v0.3.1.dev3+g...`` is no tag, so the command is the
+    vocals module's own rather than a release reinstall pipx would refuse."""
+    from cratekit.analysis import vocals
+
+    monkeypatch.setattr(vocals, "install", lambda: "the vocals module's own command")
+    origin = _vcs("0.3.1.dev3+gabc1234", ("analysis",))
+    assert doctor.vocals_install_command(origin) == "the vocals module's own command"
+    assert "@v0.3.0" in doctor.vocals_install_command(_vcs("0.3.0", ("analysis",)))

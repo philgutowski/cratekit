@@ -3336,12 +3336,18 @@ def vocals_install_command(origin: InstallOrigin) -> str:
     A release install is reinstalled at its own tag with the extras it carries
     plus ``vocals``, in the form ``install.release`` prints. Any other install
     is the vocals module's own command, which reads pipx's record or names this
-    interpreter's pip.
+    interpreter's pip. A git install whose version is not ``X.Y.Z``, a branch
+    head, has no tag of its own to name, so it takes that command too.
     """
-    if origin.kind == "vcs" and origin.url and origin.version:
+    if origin.kind == "vcs" and origin.url and origin.version and _is_release(origin.version):
         extras = sorted({*origin.extras, VOCALS_EXTRA})
         return release_upgrade_command(origin.url, f"v{origin.version}", extras)
     return vocal_scoring.install()
+
+
+def _is_release(version: str) -> bool:
+    """Whether ``version`` is a plain ``X.Y.Z``, the one shape a release tag names."""
+    return _release_version(f"v{version}") is not None
 
 
 #: The extra that carries the vocal model, as ``pyproject.toml`` names it.
