@@ -41242,3 +41242,45 @@ screen had said none were kept. Calls only; nothing a person does differently.
 **Closes when:** the store counts the reads its last successful write held,
 and the sentence says how many were kept and how many were not, naming the
 document's path.
+
+---
+
+## R-1170. crate sync land --pass-run with an empty value starts a new pass instead of refusing
+
+**Found:** at the first review of #380, U183, 2026-11-01.
+
+**The mechanism.** `sync_land` in `src/cratekit/cli/sync_land.py` reads the
+`--pass-run` value as truthy or not, so an empty string is the same as no flag,
+and a script that passes an unset variable starts a fresh `sync all` where it
+meant to continue one. The same was true on `main` before U183.
+
+**Measured cost.** Driven: `crate sync land --pass-run ""` queues a new pass.
+No file or row is lost; the new pass is the same work a plain `crate sync land`
+does, and the earlier pass stays continuable.
+
+**Closes when:** the flag refuses an empty value at the parser. Ledger only.
+
+---
+
+## R-1171. The doctor's run scan and crate run retire raise on a run record of the wrong shape
+
+**Found:** at the second review of #380, U183, 2026-11-01.
+
+**The mechanism.** `RunState.from_json` in `src/cratekit/cli/gates.py` checks the
+schema version and nothing else, so a record that is an object but lacks
+`run_id`, or holds a string where `pending_human_action` or a list where `pins`
+or `decisions` should be a mapping, raises `KeyError`, `TypeError` or
+`AttributeError`. The doctor's run scan and `crate run retire` catch only the
+gates module's own refusal, so one such file ends either verb with an internal
+error. U183 made `gates.load` refuse a record that is not an object at all, and
+made the sync land resolver read any misshapen record as no land run; the other
+two readers keep the old shape.
+
+**Measured cost.** Driven with a hand written file in the run directory: the
+doctor and `run retire` both raise. The producer was not driven: the one writer,
+`gates.save`, writes `to_json` through an atomic write and cannot emit these
+shapes, so the cost needs a hand edit or a foreign file.
+
+**Closes when:** `from_json` validates each field's type and raises the gates
+module's unreadable record refusal, so every reader gets one refusal it already
+handles. Ledger only: no shipped verb produces the input.
