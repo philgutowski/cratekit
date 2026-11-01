@@ -1292,6 +1292,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'intake/land_cli.py': [
         # 2026-10-16, U153: the held colour warning joined.
         'account-archive',
+        # 2026-11-01, U149: a landing's custom playlist twin left and named.
+        'custom-playlist-twins-left',
         'decision-stale',
         'favorites-colour-held',
         'favorites-placed',
@@ -1741,6 +1743,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     # 2026-11-01, U149: the custom playlist twins and their backfill.
     'sync/twins.py': [
         'custom-playlist-twins',
+        'custom-playlist-twins-landed',
+        'custom-playlist-twins-unpaired',
         'decision-stale',
         'session-committed-unverified',
         'whitelist-violation',

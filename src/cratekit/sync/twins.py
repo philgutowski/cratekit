@@ -862,9 +862,194 @@ def pair_backfilled(cfg: config.Config, planned: Backfill, written: Written) -> 
     return marked
 
 
+# ---------------------------------------------------------------------------
+# The landing's twins, in the landing's own commit
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class LandingTwin:
+    """One twin a native landing plans beside the INBOX playlist of an account playlist.
+
+    It holds what that INBOX playlist holds, the rows this landing made and
+    the ones the library owned, in the account playlist's order, so the rows
+    are the landing's and are not planned here.
+    """
+
+    account_id: str
+    account_name: str
+    name: str
+    folder: Folder
+    action: str
+    why: str = ""
+
+    def identity(self) -> dict[str, Any]:
+        return {
+            "account_id": self.account_id,
+            "name": self.name,
+            "folder": self.folder.identity(),
+            "action": self.action,
+            "why": self.why,
+        }
+
+
+def plan_landing(
+    db: Any, accounts: Sequence[tuple[str, str]], *, year: str | int, paired: Iterable[str]
+) -> tuple[LandingTwin, ...]:
+    """The twin of each account playlist a landing writes an INBOX playlist for.
+
+    ``accounts`` is ``(account id, the account's name)`` per INBOX playlist the
+    landing plans. An account playlist already paired, as a twin or by hand,
+    gets none: its pair brings this landing's new rows at the next
+    ``sync pair``, which finds them through the landing's own record (U128).
+    """
+    held = set(paired)
+    wanted = [(account_id, name) for account_id, name in accounts if account_id not in held]
+    if not wanted:
+        return ()
+    folder = find_folder(db, year)
+    taken: set[str] = set()
+    planned: list[LandingTwin] = []
+    for account_id, account_name in wanted:
+        name = twin_name(account_name)
+        why = place(name, folder, taken)
+        planned.append(
+            LandingTwin(
+                account_id=account_id,
+                account_name=account_name,
+                name=name,
+                folder=folder,
+                action=LEFT if why else CREATE,
+                why=why,
+            )
+        )
+    return tuple(planned)
+
+
+def recheck_landing(db: Any, planned: Sequence[LandingTwin]) -> None:
+    """Refuse a landing whose twin folder or names moved since its plan was approved."""
+    made = [one for one in planned if one.action == CREATE]
+    if not made:
+        return
+    now = find_folder(db, made[0].folder.year)
+    if now.folder_id != made[0].folder.folder_id or now.why != made[0].folder.why:
+        raise _stale(
+            f"the folder {made[0].folder.name!r} is not as the approved plan read it, so "
+            f"nothing was written",
+            folder=made[0].folder.name,
+        )
+    held = sorted(one.name for one in made if one.name in now.held)
+    if held:
+        raise _stale(
+            f"{made[0].folder.name!r} holds a playlist named {held[0]!r} now, so nothing "
+            f"was written",
+            playlist=held[0],
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class LandedTwin:
+    """One twin a landing's commit wrote."""
+
+    account_id: str
+    account_name: str
+    name: str
+    folder: str
+    playlist_id: str
+    tracks: int
+
+
+def write_landing(
+    db: Any, planned: Sequence[LandingTwin], rows: Mapping[str, Sequence[str]]
+) -> tuple[LandedTwin, ...]:
+    """Make each planned twin in the landing's open transaction, holding its INBOX rows.
+
+    ``rows`` maps an account id to the content rows its INBOX playlist was
+    given, in order. A twin whose INBOX playlist holds nothing is not made.
+    Nothing is committed here: the landing's one guarded commit carries it.
+    """
+    made = [one for one in planned if one.action == CREATE and rows.get(one.account_id)]
+    if not made:
+        return ()
+    folder = made[0].folder
+    parent = (
+        db.get_playlist(ID=folder.folder_id)
+        if folder.folder_id
+        else db.create_playlist_folder(folder.name)
+    )
+    written: list[LandedTwin] = []
+    for one in made:
+        playlist = db.create_playlist(one.name, parent=parent)
+        count = len(rb_writer.add_memberships(db, playlist, rows[one.account_id]))
+        written.append(
+            LandedTwin(
+                account_id=one.account_id,
+                account_name=one.account_name,
+                name=one.name,
+                folder=folder.name,
+                playlist_id=str(playlist.ID),
+                tracks=count,
+            )
+        )
+    return tuple(written)
+
+
+def pair_landed(cfg: config.Config, written: Sequence[LandedTwin]) -> list[dict[str, str]]:
+    """Mark each landed twin's pair, with no snapshot, and say what could not be.
+
+    The landing read the account's tracks from its intake job rather than from
+    the account, so no snapshot is recorded: the pair's first ``sync pair``
+    adds only, and records both sides. A pair that cannot be marked is a
+    warning naming the twin and the hand step, never a failed landing, since
+    the landing's commit has already landed.
+    """
+    from cratekit.core.cause import CratekitError
+    from cratekit.modules.outbound import pairs
+
+    if not written:
+        return []
+    store = pairs.PairStore(cfg)
+    unpaired: list[str] = []
+    for one in written:
+        try:
+            store.mark(one.account_id, one.playlist_id, name=one.account_name, twin=True)
+        except CratekitError as exc:
+            unpaired.append(
+                f"{one.folder} / {one.name} ({exc.cause.message}); pair it with crate sync "
+                f"pair {one.account_id} --rekordbox {one.playlist_id}"
+            )
+    notes = [
+        {
+            "code": LANDED,
+            "message": (
+                f"{len(written) - len(unpaired)} custom playlist twin(s) written and paired: "
+                + ", ".join(f"{one.folder} / {one.name} ({one.tracks})" for one in written)
+            ),
+        }
+    ]
+    if unpaired:
+        notes.append(
+            {
+                "code": LANDED_UNPAIRED,
+                "message": (
+                    f"{len(unpaired)} twin(s) were written and not paired: "
+                    + "; ".join(unpaired)
+                ),
+            }
+        )
+    return notes
+
+
+#: The landing's notes on its twins.
+LANDED = "custom-playlist-twins-landed"
+LANDED_UNPAIRED = "custom-playlist-twins-unpaired"
+
+
 __all__ = [
     "AMBIGUOUS",
     "CREATE",
+    "LANDED",
+    "LANDED_UNPAIRED",
     "FOLDER_PREFIX",
     "LEFT",
     "NOT_OWNED",
@@ -872,6 +1057,8 @@ __all__ = [
     "WORKFLOW",
     "Backfill",
     "Folder",
+    "LandedTwin",
+    "LandingTwin",
     "Library",
     "Made",
     "Miss",
@@ -886,11 +1073,15 @@ __all__ = [
     "folder_name",
     "matched",
     "pair_backfilled",
+    "pair_landed",
+    "plan_landing",
     "payload",
     "place",
     "plan_backfill",
     "read_library",
     "recheck",
+    "recheck_landing",
     "twin_name",
     "write",
+    "write_landing",
 ]

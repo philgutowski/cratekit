@@ -72,6 +72,10 @@ LANDED = "landed"
 REFUSED = "refused"
 #: The one item a native landing appends for the batch playlist it wrote.
 PLAYLIST = "playlist"
+#: The item a native landing appends for each custom playlist twin it wrote (U149).
+TWIN = "twin"
+#: A planned twin the landing could not make, named with why (U149).
+TWINS_LEFT = "custom-playlist-twins-left"
 #: The item a native write appends for each favourites playlist it placed hearts in (U120).
 FAVORITES = "favorites"
 
@@ -1131,7 +1135,37 @@ def _native_shown(rows: native.NativePlan, *, folder: Path, target: Path) -> dic
         shown.update(favorites_facts(rows.favorites))
     if rows.labels is not None:
         shown.update(label_filing.facts(rows.labels))
+    if rows.twins:
+        shown["custom playlist twins"] = twin_facts(rows.twins)
     return shown
+
+
+def twin_facts(planned) -> str:
+    """The landing's custom playlist twins (U149), one line: each made, each left and why."""
+    made = [one for one in planned if not one.why]
+    left = [one for one in planned if one.why]
+    said = [f"{one.folder.name} / {one.name}" for one in made]
+    said.extend(f"{one.account_name} gets none: {one.why}" for one in left)
+    return "; ".join(said)
+
+
+def _twin_notes(cfg: config.Config, rows, collection: native.NativeLanded) -> list[dict[str, str]]:
+    """Pair each twin the commit wrote (U149), and name each planned twin it could not make."""
+    from cratekit.sync import twins
+
+    notes = twins.pair_landed(cfg, collection.twins)
+    left = [one for one in (rows.twins if rows is not None else ()) if one.why]
+    if left:
+        notes.append(
+            {
+                "code": TWINS_LEFT,
+                "message": (
+                    f"{len(left)} account playlist(s) got no custom playlist twin: "
+                    + "; ".join(f"{one.account_name}: {one.why}" for one in left)
+                ),
+            }
+        )
+    return notes
 
 
 def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
@@ -1206,6 +1240,17 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
             "session": landed.collection.session_id,
         }
         for written in landed.collection.playlists
+    )
+    items.extend(
+        {
+            "action": TWIN,
+            "playlist": f"{twin.folder} / {twin.name}",
+            "id": twin.playlist_id,
+            "account_id": twin.account_id,
+            "count": twin.tracks,
+            "session": landed.collection.session_id,
+        }
+        for twin in landed.collection.twins
     )
     placed = landed.collection.favorites
     if placed is not None:
@@ -1455,6 +1500,17 @@ def _land_native(
                 batch=inbox_name,
                 target=target,
             )
+            # EACH ACCOUNT PLAYLIST'S TWIN (U149), planned on this handle for
+            # the ones not paired yet, into the landing year's twin folder.
+            from cratekit.modules.outbound import pairs
+            from cratekit.sync import twins
+
+            landing_twins = twins.plan_landing(
+                db,
+                [(one.account, one.account_name or one.name) for one in split],
+                year=batch_name.today().year,
+                paired=pairs.PairStore(cfg).all(),
+            )
             made = native.plan_rows(
                 cfg,
                 db,
@@ -1482,6 +1538,7 @@ def _land_native(
                 inbox_leftovers=leftovers,
                 inbox_found_by_name=inbox_found_by_name,
                 labels=label_plan(db, files),
+                twins=landing_twins,
             )
             made = replace(made, folder=target, batch=planned.batch)
             # WHERE EACH NEW ROW WILL BE FILED, BEFORE IT EXISTS (U165), shown
@@ -1560,6 +1617,7 @@ def _land_native(
     native.assert_rows_identified(landed.collection)
     warnings = [{"code": entry.reason, "message": entry.sentence} for entry in landed.refused]
     warnings.extend(account_playlists.left_warning(landed.collection.left))
+    warnings.extend(_twin_notes(cfg, applied[-1] if applied else None, landed.collection))
     warnings.extend(awaiting_analysis(landed.collection))
     warnings.extend(vox_warnings(landed.collection))
     warnings.extend(favorites_notes(payload, landed.collection))
