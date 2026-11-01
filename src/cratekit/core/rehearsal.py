@@ -426,8 +426,21 @@ def mapped(value: Any, replacements: Iterable[tuple[str, str]]) -> Any:
     How a rehearsal shows the plan it applied in the area is the live plan: the
     area's plan, every path mapped back to the live path it stands for, must
     read line for line as the plan made over the live paths.
+
+    THE LONGEST SCRATCH SPELLING FIRST, whatever order the caller gave (U188).
+    A pair whose scratch spelling holds another's, as the area's folder under
+    a base drive whose path ends in the mounted drive's holds that folder
+    under the mount, would otherwise be half mapped by the shorter one and
+    read as a difference. An empty scratch spelling is dropped, since it
+    matches between every character.
     """
-    pairs = tuple(replacements)
+    pairs = tuple(
+        sorted(
+            ((scratch, live) for scratch, live in replacements if scratch),
+            key=lambda pair: len(pair[0]),
+            reverse=True,
+        )
+    )
     if isinstance(value, str):
         for scratch, live in pairs:
             value = value.replace(scratch, live)

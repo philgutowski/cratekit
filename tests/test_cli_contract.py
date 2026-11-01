@@ -2497,6 +2497,15 @@ UNREACHABLE_GATES: Mapping[str, str] = MappingProxyType(
             "act answer, the write and its refusals are driven in "
             "tests/test_intake_shelve.py on a library whose batch has landed."
         ),
+        "label.playlists.crawl": (
+            "asked only by a full build of a FOLLOWED label whose listing "
+            "estimates more provider calls than playlists_cli.FULL_BUILD_CALLS, "
+            "and the conformance sample names a label nobody follows, which is a "
+            "plan of nothing decided before a catalogue is resolved and asks "
+            "label.playlists.confirm instead (U191). The crawl gate, its explicit "
+            "two act answer, a decline and a stale answer over a grown listing "
+            "are driven in tests/test_label_playlists_releases.py."
+        ),
         "write.cloudsync.unreadable": (
             "raised by the guarded writer only when rekordbox's Cloud Library "
             "Sync state cannot be READ, which is a property of the machine "
@@ -3860,12 +3869,13 @@ EXPECTED_UNREACHABLE_GATES = frozenset(
         "export.set.rename",
         "favorites.split.approve",
         "intake.shelve.native",
+        "label.playlists.crawl",
     }
 )
 
 
 def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
-    """Six gates are exempt. A seventh one is a decision, not a diff.
+    """Seven gates are exempt. An eighth one is a decision, not a diff.
 
     The sixth, ``intake.shelve.native``, joined with U154, decided there: the
     verb asks only over a plan that moves a batch, approving one writes a path
@@ -3887,6 +3897,11 @@ def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
     approving one writes, which the unpinned conformance fixture refuses, while
     a library with no quarter asks nothing by the brief. Its own suite,
     tests/test_favorites_split.py, drives the gate's two acts and the write.
+    The seventh, ``label.playlists.crawl``, joined with U191: it is asked only
+    by a full build of a followed label whose listing is over the call
+    threshold, and the conformance sample follows no label. Its own suite,
+    tests/test_label_playlists_releases.py, drives its two acts, a decline and
+    a stale answer.
 
     Note what this pin does NOT prove, so nobody reads more into a green run than
     is there: the map is still a named exemption, not a drive of the unreadable

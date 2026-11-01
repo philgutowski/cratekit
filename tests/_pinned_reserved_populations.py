@@ -1476,7 +1476,11 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'label-playlists',
         'label-playlists-incomplete',
         'label-playlists-not-followed',
+        # 2026-10-31, U191: the releases build's two warnings and its gate lookup.
+        'label-playlists-nothing-left',
+        'label-playlists-nothing-taken',
         'label-playlists-tracks-refused',
+        'refused-by-policy',
     ],
     'label/prune_cli.py': ['label-playlists-not-followed'],
     'label/registry.py': [
@@ -2691,7 +2695,12 @@ PINNED_LITERAL_HOLDERS = {
     ],
     'label/mark_cli.py': ['internal-error', 'sync-mark-record-unusable', 'sync-marks-blocked'],
     'label/marks.py': ['label-watermark-unusable'],
-    'label/playlists_cli.py': ['internal-error', 'label-playlists-incomplete'],
+    # 2026-10-31, U191: the gate lookup refuses a missing declaration.
+    'label/playlists_cli.py': [
+        'internal-error',
+        'label-playlists-incomplete',
+        'refused-by-policy',
+    ],
     'label/registry.py': ['label-intent-unusable', 'label-name-invalid', 'label-unknown'],
     'label/sync_cli.py': [
         'label-registry-empty',

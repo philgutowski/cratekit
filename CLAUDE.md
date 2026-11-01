@@ -31,7 +31,7 @@ exact sequence.
 **The cloud is where Cratekit is built**, decided by Phillip on 2026-10-27.
 Native Relay, the board lanes, `/board-up` and the lane dispatcher are
 retired. The coordinator of Phillip's Claude project, which turns his ideas
-and bugs into cards, keeps three fresh Opus 5.5 build threads going at once
+and bugs into cards, keeps five fresh Opus 5.5 build threads going at once
 and carries his answers back from the decisions page; each runs the `cloud-unit`
 skill, which takes its card from `board.py cloud`, plans
 and builds it at high effort, has Fable review it to the merge bar, measures

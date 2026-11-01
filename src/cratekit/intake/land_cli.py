@@ -1638,6 +1638,19 @@ def plan_lines(
     planned: landing.Plan, rows: native.NativePlan, *, target: Path, archived=None
 ) -> list[str]:
     """The native plan as ``path = value`` lines: the gate's identity and the engine's."""
+    return rehearsal.lines(plan_identity(planned, rows, target=target, archived=archived))
+
+
+def plan_identity(
+    planned: landing.Plan, rows: native.NativePlan, *, target: Path, archived=None
+) -> dict[str, Any]:
+    """What :func:`plan_lines` prints, as values, so a rehearsal maps them before they are text.
+
+    MAPPED AS VALUES, NEVER AS LINES (U188). Each line is a JSON value, which
+    escapes every character outside ASCII and every quote, so a path with an
+    accent in it is spelled in a line as no pair of real paths is, and a
+    rehearsal of a batch named with one refused on every path it held.
+    """
     # NOT THE ENGINE'S OWN DIGEST, which is a hash of the plan lines below and
     # so names every path in a form no mapping back can reach.
     gate = {
@@ -1647,7 +1660,7 @@ def plan_lines(
     }
     if archived is not None:
         gate = {**gate, "archive": archived.payload["digest"]}
-    return rehearsal.lines({"gate": gate, "plan": native.identity(rows)})
+    return {"gate": gate, "plan": native.identity(rows)}
 
 
 def rehearsal_facts(planned: landing.Plan, *, digest: str, plan: list[str]) -> dict[str, Any]:
@@ -1815,19 +1828,32 @@ def _rehearse_in(
         staged = landing.plan(area.staging, area.cfg, planned.batch)
         scratch_rows = planner(area.cfg, staged)(db)
         scratch_target = _folder(scratch_rows)
-        back = rehearsal.mapped(
-            plan_lines(staged, scratch_rows, target=scratch_target, archived=archived),
-            ((str(area.staging), str(planned.folder)), (str(scratch_target), str(target))),
+        pairs = _mapped_back(
+            area,
+            planned,
+            target=target,
+            scratch_target=scratch_target,
+            rows=rows,
+            scratch_rows=scratch_rows,
         )
-        differ = rehearsal.differing(lines, back)
+        back = rehearsal.lines(
+            rehearsal.mapped(
+                plan_identity(staged, scratch_rows, target=scratch_target, archived=archived),
+                pairs,
+            )
+        )
+        differ = rehearsal.differing(back, lines)
         if differ:
             raise refuse(
                 "decision-stale",
                 f"the plan made at the rehearsal area is not the live plan in "
-                f"{len(differ)} line(s), so nothing was applied there: "
+                f"{len(differ)} line(s), in {', '.join(_fields_of(differ))}, so nothing "
+                f"was applied there; the area's paths were compared after mapping "
+                + ", ".join(f"{scratch} to {live}" for scratch, live in pairs)
+                + "; a line only the area's plan has is marked -, one only the live plan has +: "
                 + "; ".join(differ[:REHEARSAL_LINES_SHOWN]),
                 origin=_ORIGIN,
-                detail={"differs": differ},
+                detail={"differs": differ, "mapped": [list(pair) for pair in pairs]},
             )
         # A NAME THE LIVE BATCH FOLDER ALREADY HOLDS IS HELD AT THE AREA TOO,
         # by an empty file of that name, so the area's move refuses the same
@@ -1870,6 +1896,64 @@ def _rehearse_in(
         "integrity": "ok",
     }
     return facts, payload, lines
+
+
+def _mapped_back(
+    area: rehearsal.Area,
+    planned: landing.Plan,
+    *,
+    target: Path,
+    scratch_target: Path,
+    rows: native.NativePlan,
+    scratch_rows: native.NativePlan,
+) -> tuple[tuple[str, str], ...]:
+    """Each scratch spelling in the area's plan and the live spelling it stands for.
+
+    The area's staging and its batch folder in the MOUNTED spelling, the one
+    every ``from`` and ``to`` is written in, and the batch folder again in the
+    STORED spelling rekordbox keeps ``FolderPath`` under (U188). On a library
+    whose base drive is not its mount, the live one, a row's path is stored
+    under the base drive, so neither mounted pair occurs in it and every row
+    differed by the area's prefix alone. The stored pair is spelled by the
+    writer's own :func:`native.stored_folder_path`, with the drives each plan
+    read off its database, so the comparison can never use a spelling rule
+    the rows were not written by. A library whose drive never moved stores the
+    mounted spelling, and the stored pair is the mounted one, dropped as a
+    repeat.
+    """
+    stored = (
+        native.stored_folder_path(
+            scratch_target,
+            base_drive=scratch_rows.base_drive,
+            current_drive=scratch_rows.current_drive,
+        ),
+        native.stored_folder_path(
+            target, base_drive=rows.base_drive, current_drive=rows.current_drive
+        ),
+    )
+    return tuple(
+        dict.fromkeys(
+            (
+                (str(area.staging), str(planned.folder)),
+                (str(scratch_target), str(target)),
+                stored,
+            )
+        )
+    )
+
+
+def _fields_of(differ: list[str]) -> list[str]:
+    """The fields the differing lines are in, each once, ``rows.columns.FolderPath`` for a row's path.
+
+    The line's path with every index taken out and its first part, ``gate``
+    or ``plan``, left off, so a field is named as the identity spells it and
+    a leaf that is one entry of a list is named by the list it is in.
+    """
+    names = []
+    for line in differ:
+        path = re.sub(r"\[\d+\]", "", line[2:].split(" = ", 1)[0])
+        names.append(path.split(".", 1)[-1])
+    return list(dict.fromkeys(names))
 
 
 def _place_owned(
