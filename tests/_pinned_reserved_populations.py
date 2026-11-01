@@ -588,17 +588,22 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'utf-8',
     ],
     # 2026-10-28, U152: the sync pass driver joined, with two new literals, its
-    # download refusal and left open intake warning codes.
+    # download refusal and left open intake warning codes. 2026-11-01, U190: the
+    # tail and the landing moved to ``cli/tail.py``, and their five with them.
     'cli/sync_land.py': [
+        'job-driver-held',
+        'outbound-export-required',
+        'sync-land-download-refused',
+        'sync-land-intake-left-open',
+    ],
+    # 2026-11-01, U190: the tail and the landing, lifted out of the sync pass
+    # driver so ``label sync --go`` runs the same chain.
+    'cli/tail.py': [
         'backup-acknowledgment-missing',
         'config-unusable',
         'decision-required',
         'internal-error',
-        'job-driver-held',
-        'outbound-export-required',
         'source-missing',
-        'sync-land-download-refused',
-        'sync-land-intake-left-open',
     ],
     'cli/verbs/login.py': ['credential-missing', 'utf-8'],
     'cli/verbs/profile.py': ['config-unusable'],
@@ -2018,10 +2023,14 @@ PINNED_NAMED_WITHOUT_OWN = {
     # 2026-11-01, U177: a file that would not take its label.
     'acquire/bandcamp_cli.py': ['bandcamp-label-unwritten'],
     # 2026-10-28, U152: the sync pass driver's two stops and the unasked write.
+    # 2026-11-01, U190: the two stops moved to ``cli/tail.py`` with the landing.
     'cli/sync_land.py': [
+        'outbound-export-required',
+    ],
+    # 2026-11-01, U190: the landing's two stops, lifted out of the sync pass driver.
+    'cli/tail.py': [
         'backup-acknowledgment-missing',
         'decision-required',
-        'outbound-export-required',
     ],
     # 2026-10-15, U147: the account mirror joined.
     'modules/outbound/mirror.py': ['account-mirror-ambiguous'],
@@ -2095,10 +2104,14 @@ PINNED_NAMED_WITH_OWN = {
     # 2026-11-01, U177: a file that would not take its label.
     'acquire/bandcamp_cli.py': ['bandcamp-label-unwritten', 'not-downloadable'],
     # 2026-10-28, U152: the sync pass driver's two stops and the unasked write.
+    # 2026-11-01, U190: the two stops moved to ``cli/tail.py`` with the landing.
     'cli/sync_land.py': [
+        'outbound-export-required',
+    ],
+    # 2026-11-01, U190: the landing's two stops, lifted out of the sync pass driver.
+    'cli/tail.py': [
         'backup-acknowledgment-missing',
         'decision-required',
-        'outbound-export-required',
     ],
     # 2026-10-15, U147: the account mirror joined.
     'modules/outbound/mirror.py': ['account-mirror-ambiguous'],
@@ -2288,14 +2301,18 @@ PINNED_NAMED_WITH_INTEGER = frozenset({
 
 # Modules holding a cause as a string literal under the old constant-only key rule.
 PINNED_LITERAL_HOLDERS = {
-    # 2026-10-28, U152: the sync pass driver joined.
+    # 2026-10-28, U152: the sync pass driver joined. 2026-11-01, U190: five
+    # moved to ``cli/tail.py`` with the tail and the landing.
     'cli/sync_land.py': [
+        'job-driver-held',
+        'outbound-export-required',
+    ],
+    # 2026-11-01, U190: the tail and the landing, lifted out of the sync pass driver.
+    'cli/tail.py': [
         'backup-acknowledgment-missing',
         'config-unusable',
         'decision-required',
         'internal-error',
-        'job-driver-held',
-        'outbound-export-required',
         'source-missing',
     ],
     'acquire/adapter.py': [

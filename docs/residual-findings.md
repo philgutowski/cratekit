@@ -40142,3 +40142,175 @@ rotation's step does. Ledger only.
 **Measured cost.** None to a person: every touch the two review rounds drove is refused with nothing written. Measured as zero death rows in the review rounds' own mutation passes; the refusal's wording for a raw rename names a disappearance rather than a rename.
 
 **Closes when:** a test drives a touch only one layer sees for each: a write the binding makes with its tracking off, a raw session change, and a raw column change on a pushed playlist. Ledger only.
+
+---
+
+## R-1114. label sync --next ends with "no label has anything new" when a label's listing failed
+
+**Found:** at the review of #400, U189, 2026-11-01.
+
+**The mechanism.** `label/sync_cli._next` walks the followed labels and, when
+none yields a question, appends an `ok` check, "no label has anything new to
+ask about", and returns outcome `no_op` with exit 0. A label whose catalogue
+could not be listed is skipped with its own `fail` check, and the closing line
+is appended all the same, so a run in which every listing failed ends by saying
+every label has nothing new. U189's single label form, `--next --label NAME`,
+leaves the closing line out and reports the failure as its one check, but keeps
+the `no_op` outcome the walk uses, and the guide now says to read the line, not
+only the exit status.
+
+**Measured cost.** Driven at the review of U189: two labels followed, the
+provider bound for neither, `crate label sync --next` exits 0, outcome
+`no_op`, two `fail` lines and the `ok` closing line. An agent or a script that
+reads the exit status or the outcome reads a failed listing as nothing new,
+and the closing line says so in words. The `fail` lines are in the report, so
+it is not a clean report, but its last line is false.
+
+**Closes when:** the closing line names only the labels that were listed and
+found nothing, or is left out when any label was skipped, and a run whose every
+label was skipped is not `no_op`. Earns an issue: the product says something
+false on a shipped verb.
+
+---
+
+## R-1115. A label sync go with one track refused for good ends failed and runs no tail, where sync land skips the track and lands the rest
+
+**Found:** at the build of #401, U190, 2026-11-01.
+
+**The mechanism.** `label/go.py` drives its download through
+`acquire_cli.drive_queued`, which ends on `jobs.raise_for_state` and raises
+for a job that ended FAILED, however its items failed. A go whose release
+holds one track the provider offers only lossy therefore ends `lossy-refused`
+with every other track downloaded into staging, and no tail runs: U190 sets
+the go's tail only when its download SUCCEEDED. `crate sync land` reads the
+same state differently (`_download` in `cli/sync_land.py`): a job FAILED only
+by items refused for good is a download that landed, the refused tracks are
+named and skipped, and the tail runs on the rest.
+
+**Measured cost.** Driven on the branch with the fake adapter, one release of
+two tracks, the second landing lossy: the go exited 42 `lossy-refused`, the
+tail stand in recorded no call, and the refusal's only step was "the failed
+items cannot succeed on resume; inspect each item's cause". The downloaded
+track sits in staging with no command named to land it, and since the answer
+is settled a second go does not take it again. The live frequency of a lossy
+only track in a followed label's release was not measured.
+
+**Closes when:** the go reads a download FAILED only by items refused for
+good the way `sync land` does, names and skips them, and runs the tail on the
+tracks that landed, with a test driving one lossy track in a two track
+release. It earns an issue because a label landing a DJ needs cannot finish
+in the one command the product now offers, and the way on is not named.
+
+---
+
+## R-1116. A landing that plans nothing after a download and its tail ends the verb OK, with no way on named
+
+**Found:** at the review of #401, U190, 2026-11-01.
+
+**The mechanism.** `cratekit.cli.tail.land` reads a succeeded `intake land`
+as a landing with nothing to plan and raises `Done`, and both verbs that run
+the chain then end OK: `crate sync land` with NO_OP, and since U190 `crate
+label sync --go` with the go's own outcome. The only words are the check
+"intake land planned nothing to land", over a folder the download had just
+filled and the tail had just run on.
+
+**Measured cost.** Driven at the stand in: a three track go whose landing
+answered NO_OP exited 0 with no pending action and no command named. The real
+`intake land` answering NO_OP over a staging folder the tail had just run on
+was not reached, so the producer is unmeasured. The shape is U152's, moved
+here unchanged.
+
+**Closes when:** a landing that plans nothing after a download that landed
+tracks is a failing check naming the folder and what `intake land` read, or
+the producer is driven and shown not to exist. Ledger only, since the producer
+was not driven.
+
+---
+
+## R-1117. A tail step stopped at a gate other than the landing's names the answer as the literal word OPTION
+
+**Found:** at the review of #401, U190, 2026-11-01.
+
+**The mechanism.** `cratekit.cli.tail.attended` fills the option of `crate run
+decide` with `apply` only for the landing's gate, and with the placeholder
+`OPTION` for any other, so a person told to answer a tail step's own gate is
+handed a command that cannot be pasted as printed. The options are in the
+step's cause detail and are not read.
+
+**Measured cost.** Driven at the stand in: a `analyze restamp` queue command
+answering `decision-required` on its own gate produced `crate run decide
+restamp-run analyze.restamp.confirm OPTION --actor session`. No landed tail
+verb was found to raise a gate of its own at that step, so the producer is
+unmeasured. The wording is U152's, moved here unchanged.
+
+**Closes when:** the step names the gate's declared options from the cause
+detail, one command per option or the one a session takes, with a test.
+Ledger only, since the producer was not driven.
+
+---
+
+## R-1118. The go after a stopped tail asks its gate over nothing before saying nothing is to be done
+
+**Found:** at the review of #401, U190, 2026-11-01.
+
+**The mechanism.** A go whose tail stopped has already settled its answers
+and finished its download, so the next `crate label sync --go` summarises no
+answer and no job to resume, and still asks `label.sync.confirm` ("Download
+every release the saved answers took?") over a count of zero. U190's refusal
+names the rest of the tail as the way on, so a person who follows it never
+meets this, but one who runs the go again does.
+
+**Measured cost.** Driven by the review: one empty gate to answer, then
+nothing downloaded and no tail. Nothing is lost or written. The empty gate is
+the go's behaviour before U190.
+
+**Closes when:** a go with no answer and no job to resume ends NO_OP before
+the gate, saying so, with a test. Ledger only, a wording and a step.
+
+---
+
+## R-1119. A job cancelled from another terminal under a live foreground drive ends as a defect report, or queued again
+
+**Found:** at the review of #403, U192, 2026-11-01.
+
+**The mechanism.** `crate job cancel` reconciles and cancels a job without asking whether a live driver holds it. A foreground drive of that job keeps claiming and finishing items, and at the end `jobs.drive` asks to move the job from cancelled to succeeded, which the engine refuses as `internal-error` with the remedy to report a defect. If the same drive is then stopped with Ctrl-C, `modules.foreground.settle` reads the job as cancelled and re-arms it with `jobs.retry`, so a job somebody cancelled on purpose comes back queued.
+
+**Measured cost.** Driven by the review: a handler that ran the cancel verb's two calls on item 2 left all four items done, the job recorded cancelled, and an exit 1 telling the person to report a defect over a sweep that finished. With a SIGINT in the same handler the job came back queued with 1 of 4 settled. The first shape predates U192 on every `--job` drive; U192 widens its window, since every hand run of the three tail verbs is now a live drive. The second needs a concurrent cancel and a Ctrl-C inside one item. A queued job drives nothing on its own.
+
+**Closes when:** `job cancel` refuses, or signals, a job a live driver holds (`jobs.assert_free` before `jobs.cancel`), so the two endings cannot meet. Ledger only: the producer is a concurrent act in a second terminal.
+
+---
+
+## R-1120. An interrupted tail verb prints its resume command twice, as the fix line and as the first step
+
+**Found:** at the review of #403, U192, 2026-11-01.
+
+**The mechanism.** `modules.foreground` rebuilds the cancelled refusal with no remedy token and the `--job` command as its first step. `render.remediation_line` falls back to the first step for every refusal with no token, and `render_cause` then lists every step, so the human answer reads `fix: resume it with: crate ... --job ID` and the same sentence again under it.
+
+**Measured cost.** Driven by the review with `crate tag folder` interrupted: the two lines are identical and both true. Nothing is false, only repeated.
+
+**Closes when:** `render_cause` skips the first step when the fix line already printed it, for every remedy-less refusal. Ledger only, a wording fix.
+
+---
+
+## R-1121. Ctrl-C on a foreground tail drive says nothing until the item in hand finishes
+
+**Found:** at the review of #403, U192, 2026-11-01.
+
+**The mechanism.** `jobs.interruptible` records the signal and the drive honours it only between items, by design, so nothing is half written. U192 makes the drive the default answer of `tag folder`, `analyze run` and `analyze restamp` run by hand, so a person now presses Ctrl-C at a terminal holding a drive, and the verb prints nothing until the item it is working on ends.
+
+**Measured cost.** Driven by the review: a handler that slept 1.5 seconds after the signal returned 1.51 seconds later, the job queued again and its `--job` command named. On a long analysis decode the wait is the length of one track's work, and the press reads as ignored until then. The answer that follows is true.
+
+**Closes when:** the engine's signal handler writes one line, that the run will stop after the current item, the first time it records a signal. Ledger only.
+
+---
+
+## R-1122. The sync land tail test pins its queue only call by the flag's name rather than by what the flag changes
+
+**Found:** at the review of #403, U192, 2026-11-01.
+
+**The mechanism.** `tests/test_sync_land.py::test_each_tail_step_queues_only_and_drives_its_job_through_one_job_command` and the tail step test in `tests/test_analysis_workers.py` assert that the queue call carries `--queue-only` and that the commands read queue then `--job`. Without the flag the queue call drives the job and the `--job` call re-reports a succeeded job, so the job is still driven once and only those name based assertions die.
+
+**Measured cost.** Driven by the review: dropping the flag from `sync_land` killed only the assertion naming it. Nothing a person sees differs today; a later rewrite of the pass could keep the name and change the behaviour.
+
+**Closes when:** the tests read what the flag decides, which call drove the job and how a failure in the queue call reaches the pass, rather than the flag's spelling. Ledger only, maintainer facing.

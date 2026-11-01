@@ -523,7 +523,9 @@ provider id with no vox score. Since U152 `crate sync land` runs the tail on the
 absolute staging path and plans no landing unless every step of it succeeded;
 a tail job left open over the staging folder by an earlier pass is replaced,
 never resumed, because it was frozen against the folder and the build as they
-stood then.
+stood then. Since U190 the tail and the landing are one chain,
+`cratekit.cli.tail`, and `crate label sync --go` runs it too, after its
+download, so the two verbs answer every step the same way.
 
 ### Shelve
 The step after the import that the landing left to a person: moving an imported

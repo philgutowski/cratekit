@@ -49,10 +49,14 @@ never go near the live database.
 Four words carry most of the rest.
 
 - **Job.** Long work, such as a playlist intake, a tagging pass or a label
-  sweep, is queued and handed back to you as a job identifier. The verb returns
-  quickly. `crate job list` shows the queue, `crate job show ID` shows one job
-  and why it is in its state, and `crate job resume ID` picks it up without
-  repeating finished work.
+  sweep, is queued and handed back to you as a job identifier. Most verbs
+  return quickly. `crate job list` shows the queue, `crate job show ID` shows
+  one job and why it is in its state, and `crate job resume ID` picks it up
+  without repeating finished work. Three verbs of the acquisition tail, `tag
+  folder`, `analyze run` and `analyze restamp`, queue their job and then work
+  through it before they return, so each step is one command. Stop one with
+  Ctrl-C and its answer names the `--job` command that finishes the rest; pass
+  `--queue-only` to have it queue and return like the others.
 - **Run.** One invocation's decision state, saved on disk so a decision can be
   answered later, from another terminal, after the process has exited.
 - **Gate.** A named question a verb stops at before it writes. There is no
@@ -524,6 +528,7 @@ crate label registry adopt
 crate label import "Some Label"
 crate label sync
 crate label sync --next
+crate label sync --next --label "Some Label"
 crate label sync --answer pick --label "Some Label" --release RELEASE_ID
 crate label sync --go
 crate review list --queue label-release
@@ -546,7 +551,12 @@ it would hold never reaches a question, and the first run also offers, once per
 label, the releases already waiting in review from earlier sweeps. A taken
 release is an accepted review item; nothing is downloaded by the answer itself.
 Without a terminal, `--next` prints the next question and `--answer` records one
-answer for one label, and both write the same record. A newly followed label is
+answer for one label, and both write the same record. To ask about one label
+without reaching it through the labels above it, name it: `--next --label "Some
+Label"` lists only that label and prints its question, says it has nothing
+new, or says its listing failed, and leaves every other label as it was. A
+failed listing is a `[FAIL]` line on a run that still exits 0, so read the
+line, not only the exit status. A newly followed label is
 asked about its newest few releases, the `labels.offer_per_sweep` count, not its
 whole catalogue.
 
@@ -561,10 +571,17 @@ paced through the provider gate. Only releases an `all` or a `pick` took are
 downloaded, a track the library holds in another version goes to the match
 queue instead, and a rate limit parks the download rather than retrying. A go
 that stopped part way is picked up by the next `--go`, which resumes it before
-anything new, and a track is never asked for twice. The report ends with the
-acquisition tail that lands the batch, `tag folder` through `intake land
---manifest ... --pass ...`, which names the batch for the date and the label; land each go before the next, since every go
-downloads into the same staging folder. The size and time are estimates: the
+anything new, and a track is never asked for twice. Once the download has
+landed its tracks, the same command runs the acquisition tail on the staging
+folder the way `crate sync land` does: `tag folder`, `analyze run`, `analyze
+restamp` and `name apply`, each driven to the end, then plans `intake land
+--manifest ... --pass ...`, which names the batch for the date and the label,
+and stops at the landing's own gate. The report names that gate's run and the
+two commands that answer and apply it, then the rekordbox visit. A tail step
+that fails ends the go there with its reason, plans no landing, keeps the
+download, and names the rest of the tail to run once the cause is mended. A go
+that downloaded nothing runs no tail. Every go downloads into the same staging
+folder, so land each go before the next. The size and time are estimates: the
 size from each track's duration at a FLAC rate, the time from the pacing delay
 and an assumed transfer rate.
 

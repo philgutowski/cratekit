@@ -1980,7 +1980,11 @@ ENTRIES: tuple[Entry, ...] = (
             "last asked, record each answer, then download what was answered for "
             "behind one gate"
         ),
-        module="cratekit.label.sync_cli",
+        # THE CLI MODULE IN FRONT OF THE VERB'S OWN (U190). Its builder is
+        # ``label.sync_cli``'s and its handler runs that one unchanged, then the
+        # tail and the landing a go names, through the chain ``sync land`` runs,
+        # which only a CLI ranked module may reach.
+        module="cratekit.cli.label_sync",
         builder="build_sync",
         handler_key="label.sync",
         feature_rows=(21,),

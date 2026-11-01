@@ -1,0 +1,248 @@
+name = "u190"
+pass_kind = "light"
+
+# Rows 1 to 6 are the go's word that a tail runs (label/go.py), 7 to 14 the
+# CLI module that runs it (cli/label_sync.py), and 15 to 20 the shared chain
+# the go now reaches (cli/tail.py), sampled where the go is its new caller.
+
+[[rows]]
+id = "G1_landed_needs_success"
+description = "_landed: read any download state as landed, so a go whose download is still open names a tail"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py"]
+old = '''    if job.state is not jobs.JobState.SUCCEEDED:
+        return False
+    return bool('''
+new = '''    if False:
+        return False
+    return bool('''
+
+[[rows]]
+id = "G2_landed_needs_a_track"
+description = "_landed: drop the done count, so a download that landed no track still names a tail"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py"]
+old = '''    return bool(jobs.progress(store, job.job_id)["counts"][str(jobs.ItemState.DONE)])'''
+new = '''    return True'''
+
+[[rows]]
+id = "G3_new_go_names_its_tail"
+description = "go: never set the tail after a new download, so the go prints the five commands again"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py"]
+old = '''        if ran:
+            land = landing(staging, str(listing.written.manifest_path), run_id)'''
+new = '''        if False:
+            land = landing(staging, str(listing.written.manifest_path), run_id)'''
+
+[[rows]]
+id = "G4_next_check_only_without_tail"
+description = "go: print the next check even when the tail runs, so the go tells a person to type what it ran"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py"]
+old = '''        if ran:
+            land = landing(staging, str(listing.written.manifest_path), run_id)
+        else:
+            checks.append(_next_check(landed))'''
+new = '''        if ran:
+            land = landing(staging, str(listing.written.manifest_path), run_id)
+        checks.append(_next_check(landed))'''
+
+[[rows]]
+id = "G5_resume_one_job_only"
+description = "_resume: take the first earlier job's tail whatever the count, so two manifests share one landing"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py"]
+old = '''    land = lands[0] if len(lands) == 1 else None'''
+new = '''    land = lands[0] if lands else None'''
+
+[[rows]]
+id = "G6_staging_absolute"
+description = "go: take the staging folder as configured, so a relative root reaches the tail"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py"]
+old = '''    staging = Path(cfg.paths.download_staging).expanduser().absolute()'''
+new = '''    staging = Path(cfg.paths.download_staging)'''
+
+[[rows]]
+id = "L1_no_tail_returns_untouched"
+description = "label_sync: run the chain over a go that names no tail"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_cli_contract.py"]
+old = '''    if land is None:
+        return envelope
+    cfg'''
+new = '''    if land is None:
+        land = {"folder": "/nowhere", "pass": "none"}
+    cfg'''
+
+[[rows]]
+id = "L2_land_of_needs_a_mapping"
+description = "_land_of: read the go's report without its key, so no tail is ever run"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_cli_contract.py"]
+old = '''    land = report.get(go.LAND_KEY) if isinstance(report, Mapping) else None'''
+new = '''    land = report.get("tail") if isinstance(report, Mapping) else None'''
+
+[[rows]]
+id = "L3_landing_carries_manifest"
+description = "_landing_args: drop the manifest, so the landing files the label's rows under no label"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_cli_contract.py"]
+old = '''        *(["--manifest", str(manifest)] if isinstance(manifest, str) and manifest else []),'''
+new = '''        *([] if isinstance(manifest, str) and manifest else []),'''
+
+[[rows]]
+id = "L4_landing_carries_pass"
+description = "_landing_args: drop the pass, so the landing's intake file is named for nothing the go named"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_cli_contract.py"]
+old = '''        "--pass",
+        str(land["pass"]),
+    ]'''
+new = '''    ]'''
+
+[[rows]]
+id = "L5_land_stop_rekordbox_visit"
+description = "_attended: follow the landing's gate with the next tail command rather than the rekordbox visit"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_cli_contract.py"]
+old = '''    if stop.step == tail.LAND:
+        after: Sequence[str] = tail.REKORDBOX_STEPS'''
+new = '''    if False:
+        after: Sequence[str] = tail.REKORDBOX_STEPS'''
+
+[[rows]]
+id = "L6_way_on_from_the_stopped_step"
+description = "_commands: name the whole tail from its first step, so a person reruns steps that succeeded"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_cli_contract.py"]
+old = '''tail.STEPS[tail.STEPS.index(step):]'''
+new = '''tail.STEPS[0:]'''
+
+[[rows]]
+id = "L7_pending_id_names_the_go"
+description = "_attended: name the pending action for the landing's run rather than the go's"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_cli_contract.py"]
+old = '''        id=f"label-sync-{ctx.run.run_id}",'''
+new = '''        id=f"label-sync-{chain.summary.get('gate_run')}",'''
+
+[[rows]]
+id = "L8_ended_keeps_the_go_report"
+description = "_ended: leave the go's report out of the refusal, so a failed tail hides what was downloaded"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_cli_contract.py"]
+old = '''            detail={**dict(cause.detail or {}), "label_sync": _data(envelope, chain)},'''
+new = '''            detail=dict(cause.detail or {}),'''
+
+[[rows]]
+id = "T1_run_folder_absolute"
+description = "run: trust the folder handed in as absolute"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_sync_land.py", "tests/test_label_sync.py"]
+old = '''    folder = folder.expanduser().absolute()
+    chain.summary["staging"] = str(folder)'''
+new = '''    chain.summary["staging"] = str(folder)'''
+
+[[rows]]
+id = "T2_tail_step_needs_success"
+description = "tail_step: go on past a tail job that did not succeed, so a landing is planned over an unfinished tail"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_sync_land.py", "tests/test_label_sync.py"]
+old = '''    if job.state is not jobs.JobState.SUCCEEDED:
+        raise Stop(step, job_error(chain, job))
+    chain.check(step, "ok",'''
+new = '''    if False:
+        raise Stop(step, job_error(chain, job))
+    chain.check(step, "ok",'''
+
+[[rows]]
+id = "T3_stale_matches_folder"
+description = "replace_stale: cancel open tail jobs over any folder, so another folder's work is lost"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_sync_land.py", "tests/test_label_sync.py"]
+old = '''            and str((job.payload or {}).get("folder") or "") == str(folder)'''
+new = '''            and True'''
+
+[[rows]]
+id = "T4_name_answers_inline"
+description = "name_argv: leave name apply's confirm unanswered, so the chain stops at a gate a person running the tail answers on the command line"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_sync_land.py", "tests/test_label_sync.py"]
+old = '''    return ["-d", f"{NAME_GATE}={NAME_OPTION}", "name", "apply", "--root", str(folder)]'''
+new = '''    return ["name", "apply", "--root", str(folder)]'''
+
+[[rows]]
+id = "T5_land_gate_attends"
+description = "land: raise the landing's gate as a failure, so the go ends failed at the step it was built to stop at"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_sync_land.py", "tests/test_label_sync.py"]
+old = '''    if cause.reason == ACK_STOP or cause.code in gates.GATE_CODES:
+        raise Attend(LAND, argv, cause)'''
+new = '''    if cause.reason == ACK_STOP:
+        raise Attend(LAND, argv, cause)'''
+
+[[rows]]
+id = "T6_chain_namespace"
+description = "Chain.check: key every check sync.land whatever the chain, so the go's checks read as a sync pass's"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_sync_land.py", "tests/test_label_sync.py"]
+old = '''                "key": f"{self.namespace}.{step}",'''
+new = '''                "key": f"sync.land.{step}",'''
+
+[[rows]]
+id = "L9_verify_verb_by_step"
+description = "_attended: name the landing as the verb to verify whatever step stopped"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_cli_contract.py"]
+old = '''        verify_verb=tail.LAND_VERB if stop.step == tail.LAND else ctx.entry.name,'''
+new = '''        verify_verb=tail.LAND_VERB,'''
+
+[[rows]]
+id = "L10_rest_of_tail_after_a_step_gate"
+description = "_attended: name nothing after a tail step's own gate, so the rest of the tail is left unsaid"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_cli_contract.py"]
+old = '''        after = tuple(f"then: {one}" for one in _commands(folder, landing, stop.step)[1:])'''
+new = '''        after = ()'''
+
+[[rows]]
+id = "L11_done_keeps_the_go_outcome"
+description = "label_sync: end a landing that planned nothing as NO_OP, hiding the download the go made"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_cli_contract.py"]
+old = '''        outcome=envelope.outcome,'''
+new = '''        outcome=Outcome.NO_OP,'''
+
+[[rows]]
+id = "G7_resume_landed_per_job"
+description = "_resume: name the tail for a resumed job whatever its state, the review's unreachable shape"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py"]
+old = '''                lands.append(landing(staging, manifest, run_of) if _landed(store, job) else None)'''
+new = '''                lands.append(landing(staging, manifest, run_of))'''

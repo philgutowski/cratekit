@@ -206,7 +206,7 @@ def test_an_analyze_job_runs_pending_to_done_and_the_files_carry_the_result(
     head = detector()
     bind_scoring(monkeypatch, detect_=head)
 
-    code, queued = drive(["analyze", "run", str(folder)])
+    code, queued = drive(["analyze", "run", "--queue-only", str(folder)])
     assert code == int(ExitCode.OK), queued
     job = analysis_job("analyze.run")
     assert list(item_states(job.job_id)) == ["a.flac", "b.flac"], (
@@ -246,7 +246,7 @@ def test_a_prefixed_file_is_the_resume_marker_and_is_skipped_without_a_read(
     head = detector()
     bind_scoring(monkeypatch, detect_=head)
 
-    code, queued = drive(["analyze", "run", str(folder)])
+    code, queued = drive(["analyze", "run", "--queue-only", str(folder)])
     assert code == int(ExitCode.OK), queued
     job = analysis_job("analyze.run")
     code, resumed = drive(resume_argv(job.job_id))
@@ -265,7 +265,7 @@ def test_a_keyless_track_is_a_terminal_skip_with_nothing_written(
     before = path.read_bytes()
     bind_scoring(monkeypatch, detect_=lambda p: None)
 
-    drive(["analyze", "run", str(folder)])
+    drive(["analyze", "run", "--queue-only", str(folder)])
     job = analysis_job("analyze.run")
     code, resumed = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK), resumed
@@ -277,7 +277,7 @@ def test_a_keyless_track_is_a_terminal_skip_with_nothing_written(
 
 
 def test_a_folder_with_no_audio_queues_nothing_and_says_so(cfg, folder):
-    code, envelope = drive(["analyze", "run", str(folder)])
+    code, envelope = drive(["analyze", "run", "--queue-only", str(folder)])
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
     assert envelope["data"] == {"job_id": "", "state": "no-audio", "cause": None, "progress": {}}
@@ -290,7 +290,7 @@ def test_a_file_removed_between_queueing_and_drive_is_refused_by_name(
 ):
     place(folder, silence, "gone")
     bind_scoring(monkeypatch)
-    drive(["analyze", "run", str(folder)])
+    drive(["analyze", "run", "--queue-only", str(folder)])
     job = analysis_job("analyze.run")
     (folder / "gone.flac").unlink()
 
@@ -310,7 +310,7 @@ def test_the_missing_extra_refuses_the_item_rather_than_skipping_it_as_keyless(
     """
     place(folder, silence, "track")
     monkeypatch.setattr(detect, "heavy_available", lambda: False)
-    drive(["analyze", "run", str(folder)])
+    drive(["analyze", "run", "--queue-only", str(folder)])
     job = analysis_job("analyze.run")
 
     code, resumed = drive(resume_argv(job.job_id))
@@ -346,7 +346,7 @@ def test_a_failed_tag_write_fails_the_item_and_leaves_the_name_alone(
     path = place(folder, silence, "stuck")
     bind_scoring(monkeypatch)
     monkeypatch.setattr(tags, "write_tags", lambda p, fields: False)
-    drive(["analyze", "run", str(folder)])
+    drive(["analyze", "run", "--queue-only", str(folder)])
     job = analysis_job("analyze.run")
 
     code, _ = drive(resume_argv(job.job_id))
@@ -361,7 +361,7 @@ def test_a_taken_target_name_fails_the_item_and_keeps_the_written_head_in_the_ti
     path = place(folder, silence, "twin")
     place(folder, silence, "08A - 124 - twin")
     bind_scoring(monkeypatch)
-    drive(["analyze", "run", str(folder)])
+    drive(["analyze", "run", "--queue-only", str(folder)])
     job = analysis_job("analyze.run")
 
     code, _ = drive(resume_argv(job.job_id))
@@ -391,7 +391,7 @@ def test_the_frozen_folder_is_absolute_so_a_resume_from_elsewhere_finds_it(
     place(folder, silence, "a")
     bind_scoring(monkeypatch)
     monkeypatch.chdir(folder.parent)
-    code, queued = drive(["analyze", "run", folder.name])
+    code, queued = drive(["analyze", "run", "--queue-only", folder.name])
     assert code == int(ExitCode.OK), queued
     job = analysis_job("analyze.run")
     assert job.payload["folder"] == str(folder.absolute())
@@ -438,7 +438,7 @@ def test_an_item_renamed_before_its_row_moved_resumes_as_finished(
     """
     place(folder, silence, "Daft Punk - Around the World - Daft Punk")
     bind_scoring(monkeypatch)
-    drive(["analyze", "run", str(folder)])
+    drive(["analyze", "run", "--queue-only", str(folder)])
     job = analysis_job("analyze.run")
     killed = kill_after_the_rename(monkeypatch)
     with pytest.raises(_Killed):
@@ -467,7 +467,7 @@ def test_a_deleted_source_beside_an_unrelated_twin_is_refused_not_reported_analy
     place(folder, silence, "twin")
     place(folder, silence, "08A - 124 - twin")
     bind_scoring(monkeypatch)
-    drive(["analyze", "run", str(folder)])
+    drive(["analyze", "run", "--queue-only", str(folder)])
     job = analysis_job("analyze.run")
     (folder / "twin.flac").unlink()
 
@@ -502,7 +502,7 @@ def test_a_detector_shaped_like_the_batch_fakes_is_accepted(cfg, folder, silence
         monkeypatch,
         detect_=lambda p: {"path": p, "camelot": "8A", "bpm": 128, "energy": 4},
     )
-    drive(["analyze", "run", str(folder)])
+    drive(["analyze", "run", "--queue-only", str(folder)])
     job = analysis_job("analyze.run")
     code, resumed = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK), resumed
@@ -518,7 +518,7 @@ def test_a_container_the_tag_writer_does_not_know_fails_under_the_analysis_slug(
     path = folder / "odd.webm"
     path.write_bytes(b"not-audio")
     bind_scoring(monkeypatch)
-    drive(["analyze", "run", str(folder)])
+    drive(["analyze", "run", "--queue-only", str(folder)])
     job = analysis_job("analyze.run")
     code, _ = drive(resume_argv(job.job_id))
     assert code != int(ExitCode.OK)
@@ -534,7 +534,7 @@ def test_an_undecodable_file_is_its_own_terminal_and_not_a_keyless_track(
         monkeypatch,
         detect_=lambda p: {"path": p, "terminal": detect.TERMINAL_UNDECODABLE},
     )
-    drive(["analyze", "run", str(folder)])
+    drive(["analyze", "run", "--queue-only", str(folder)])
     job = analysis_job("analyze.run")
     code, resumed = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK), resumed
@@ -782,7 +782,7 @@ def test_a_run_over_an_oversize_track_reports_it_and_writes_no_vox_tag(
     place(folder, silence, "a", voxlevel=42, voxgender="F")
     bind_scoring(monkeypatch)
     monkeypatch.setattr(vocals, "VOCAL_MAX_BYTES", 1)
-    drive(["analyze", "run", str(folder)])
+    drive(["analyze", "run", "--queue-only", str(folder)])
     job = analysis_job("analyze.run")
     code, resumed = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK), resumed
@@ -868,7 +868,7 @@ def test_an_uncalibrated_library_writes_no_energy_tag_and_routes_to_the_sink(
 ):
     place(folder, silence, "a")
     bind_scoring(monkeypatch, detect_=detector(level=None, status=energy.STATUS_UNCALIBRATED))
-    drive(["analyze", "run", str(folder)])
+    drive(["analyze", "run", "--queue-only", str(folder)])
     job = analysis_job("analyze.run")
     code, _ = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK)
@@ -889,7 +889,7 @@ def test_a_calibrated_level_is_written_and_routes_to_a_band(
 ):
     place(folder, silence, "a")
     bind_scoring(monkeypatch, detect_=detector(level=9))
-    drive(["analyze", "run", str(folder)])
+    drive(["analyze", "run", "--queue-only", str(folder)])
     job = analysis_job("analyze.run")
     code, _ = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK)
@@ -1001,7 +1001,7 @@ def test_a_corrupt_calibration_reaches_the_person_as_a_remedy_not_a_defect(
     config._mkdir_private(path.parent)
     path.write_text("{not json", encoding="utf-8")
 
-    code, refused = drive(["analyze", "restamp", str(folder)])
+    code, refused = drive(["analyze", "restamp", "--queue-only", str(folder)])
     assert code == int(ExitCode.PRECONDITION), refused
     assert refused["cause"]["reason"] == "energy-calibration-unreadable"
     assert "calibrate" in refused["cause"]["message"] or refused["cause"]["remediation"]
@@ -1014,7 +1014,7 @@ def test_a_corrupt_calibration_reaches_the_person_as_a_remedy_not_a_defect(
     monkeypatch.setattr(vocals, "_VOCAL_LOADER", _FakeModel)
     monkeypatch.setattr(vocals, "_DECODER", voiced())
     monkeypatch.setattr(detect, "heavy_available", lambda: True)
-    drive(["analyze", "run", str(folder)])
+    drive(["analyze", "run", "--queue-only", str(folder)])
     job = analysis_job("analyze.run")
     path.write_text("{not json", encoding="utf-8")
     code, resumed = drive(resume_argv(job.job_id))
@@ -1055,7 +1055,7 @@ def test_a_restamp_job_runs_pending_to_done_and_records_the_previous_value(
     untagged = place(folder, silence, "untagged")
     bind_measuring(monkeypatch, {"low": 0, "high": 19, "untagged": 10})
 
-    code, queued = drive(["analyze", "restamp", str(folder)])
+    code, queued = drive(["analyze", "restamp", "--queue-only", str(folder)])
     assert code == int(ExitCode.OK), queued
     job = analysis_job("analyze.restamp")
     code, resumed = drive(resume_argv(job.job_id))
@@ -1096,7 +1096,7 @@ def test_a_file_whose_level_did_not_move_is_reported_unchanged_and_not_rewritten
     steady = place(folder, silence, "steady", energylevel=energy.LEVEL_MAX)
     before = steady.stat().st_mtime_ns
     bind_measuring(monkeypatch, {"steady": 19})
-    drive(["analyze", "restamp", str(folder)])
+    drive(["analyze", "restamp", "--queue-only", str(folder)])
     job = analysis_job("analyze.restamp")
     code, _ = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK)
@@ -1113,7 +1113,7 @@ def test_the_undo_log_keeps_the_first_previous_value_across_a_second_restamp(
     track = place(folder, silence, "track", energylevel=4)
     bind_measuring(monkeypatch, {"track": 19})
     for _ in range(2):
-        drive(["analyze", "restamp", str(folder)])
+        drive(["analyze", "restamp", "--queue-only", str(folder)])
         with jobs.open_store() as store:
             job = max(jobs.list_jobs(store), key=lambda j: j.created)
         code, _ = drive(resume_argv(job.job_id))
@@ -1125,7 +1125,7 @@ def test_the_undo_log_keeps_the_first_previous_value_across_a_second_restamp(
 
 def test_a_restamp_with_no_calibration_refuses_at_the_queue(cfg, folder, silence):
     place(folder, silence, "a")
-    code, refused = drive(["analyze", "restamp", str(folder)])
+    code, refused = drive(["analyze", "restamp", "--queue-only", str(folder)])
     assert code == int(ExitCode.PRECONDITION), refused
     assert refused["cause"]["reason"] == "energy-calibration-missing"
     with jobs.open_store() as store:
@@ -1135,7 +1135,7 @@ def test_a_restamp_with_no_calibration_refuses_at_the_queue(cfg, folder, silence
 def test_a_restamp_over_an_empty_folder_is_the_honest_zero_whatever_the_calibration(
     cfg, folder
 ):
-    code, envelope = drive(["analyze", "restamp", str(folder)])
+    code, envelope = drive(["analyze", "restamp", "--queue-only", str(folder)])
     assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["state"] == "no-audio"
 
@@ -1146,7 +1146,7 @@ def test_a_track_that_cannot_be_measured_is_reported_and_left_alone(
     energy.save_calibration(cfg, calibration_over())
     track = place(folder, silence, "odd", energylevel=5)
     monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: None)
-    drive(["analyze", "restamp", str(folder)])
+    drive(["analyze", "restamp", "--queue-only", str(folder)])
     job = analysis_job("analyze.restamp")
     code, _ = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK)
@@ -1163,7 +1163,7 @@ def test_a_restamp_worker_without_the_extra_refuses_rather_than_skipping(
     energy.save_calibration(cfg, calibration_over())
     place(folder, silence, "a")
     monkeypatch.setattr(detect, "heavy_available", lambda: False)
-    drive(["analyze", "restamp", str(folder)])
+    drive(["analyze", "restamp", "--queue-only", str(folder)])
     job = analysis_job("analyze.restamp")
     code, resumed = drive(resume_argv(job.job_id))
     assert code != int(ExitCode.OK), resumed
@@ -1547,7 +1547,7 @@ def test_a_corrupt_undo_log_refuses_by_name_rather_than_failing_every_item_as_a_
     config._mkdir_private(log.parent)
     log.write_text("[]", encoding="utf-8")
     bind_measuring(monkeypatch, {"a": 9})
-    drive(["analyze", "restamp", str(folder)])
+    drive(["analyze", "restamp", "--queue-only", str(folder)])
     job = analysis_job("analyze.restamp")
 
     code, resumed = drive(resume_argv(job.job_id))
@@ -1587,7 +1587,7 @@ def test_a_run_with_no_model_loaded_warns_on_the_envelope(cfg, folder, silence, 
         raise ImportError("panns_inference")
 
     bind_scoring(monkeypatch, loader=no_model)
-    drive(["analyze", "run", str(folder)])
+    drive(["analyze", "run", "--queue-only", str(folder)])
     job = analysis_job("analyze.run")
     code, resumed = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK), resumed
@@ -1601,7 +1601,7 @@ def test_a_run_with_no_model_loaded_warns_on_the_envelope(cfg, folder, silence, 
 def test_a_run_with_the_model_loaded_carries_no_vocal_warning(cfg, folder, silence, monkeypatch):
     place(folder, silence, "a")
     bind_scoring(monkeypatch)
-    drive(["analyze", "run", str(folder)])
+    drive(["analyze", "run", "--queue-only", str(folder)])
     job = analysis_job("analyze.run")
     code, resumed = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK), resumed
@@ -1652,7 +1652,7 @@ def test_an_unreadable_calibration_refuses_a_run_at_the_queue(cfg, folder, silen
     config._mkdir_private(path.parent)
     path.write_text("{not json", encoding="utf-8")
     bind_scoring(monkeypatch)
-    code, queued = drive(["analyze", "run", str(folder)])
+    code, queued = drive(["analyze", "run", "--queue-only", str(folder)])
     assert code == int(ExitCode.PRECONDITION), queued
     assert queued["cause"]["reason"] == "energy-calibration-unreadable"
     with jobs.open_store() as store:
@@ -1662,7 +1662,7 @@ def test_an_unreadable_calibration_refuses_a_run_at_the_queue(cfg, folder, silen
 def test_an_absent_calibration_still_queues_a_run(cfg, folder, silence, monkeypatch):
     place(folder, silence, "a")
     bind_scoring(monkeypatch)
-    code, queued = drive(["analyze", "run", str(folder)])
+    code, queued = drive(["analyze", "run", "--queue-only", str(folder)])
     assert code == int(ExitCode.OK), queued
 
 
@@ -1720,7 +1720,7 @@ def test_the_restamp_reads_the_tag_once_and_records_its_text(cfg, folder, silenc
     assert tags.write_tags(path, {"energylevel": "7/10"})
     energy.save_calibration(cfg, calibration_over())
     bind_measuring(monkeypatch, {"a": 9})
-    drive(["analyze", "restamp", str(folder)])
+    drive(["analyze", "restamp", "--queue-only", str(folder)])
     job = analysis_job("analyze.restamp")
     code, _ = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK)
@@ -1765,7 +1765,7 @@ def test_a_recursive_restamp_queues_every_nested_file_once_in_sorted_order(
     place(folder, silence, "top", energylevel=7)
     bind_measuring(monkeypatch, {"a": 0, "b": 19, "top": 10})
 
-    code, queued = drive(["analyze", "restamp", str(folder), "--recursive"])
+    code, queued = drive(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])
     assert code == int(ExitCode.OK), queued
     job = analysis_job("analyze.restamp")
     assert sorted(item_states(job.job_id)) == [
@@ -1780,7 +1780,7 @@ def test_a_recursive_restamp_freezes_the_flag_in_the_payload(cfg, folder, silenc
     energy.save_calibration(cfg, calibration_over(count=20))
     nest(folder, silence, "house/a.flac", energylevel=7)
     bind_measuring(monkeypatch, {"a": 5})
-    drive(["analyze", "restamp", str(folder), "--recursive"])
+    drive(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])
     assert analysis_job("analyze.restamp").payload["recursive"] is True
 
 
@@ -1793,7 +1793,7 @@ def test_a_restamp_without_the_flag_stays_one_level_and_says_so_in_the_payload(
     nest(folder, silence, "house/a.flac", energylevel=7)
     bind_measuring(monkeypatch, {"top": 5})
 
-    code, queued = drive(["analyze", "restamp", str(folder)])
+    code, queued = drive(["analyze", "restamp", "--queue-only", str(folder)])
     assert code == int(ExitCode.OK), queued
     job = analysis_job("analyze.restamp")
     assert sorted(item_states(job.job_id)) == ["top.flac"]
@@ -1809,7 +1809,7 @@ def test_a_recursive_restamp_runs_every_nested_item_to_done_and_writes_the_right
     high = nest(folder, silence, "techno/deep/high.flac", energylevel=7)
     bind_measuring(monkeypatch, {"low": 0, "high": 19})
 
-    drive(["analyze", "restamp", str(folder), "--recursive"])
+    drive(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])
     job = analysis_job("analyze.restamp")
     code, resumed = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK), resumed
@@ -1834,7 +1834,7 @@ def test_two_nested_folders_holding_the_same_filename_are_two_items(
     nest(folder, silence, "techno/track.flac", energylevel=7)
     monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: features(3))
 
-    code, queued = drive(["analyze", "restamp", str(folder), "--recursive"])
+    code, queued = drive(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])
     assert code == int(ExitCode.OK), queued
     job = analysis_job("analyze.restamp")
     assert sorted(item_states(job.job_id)) == ["house/track.flac", "techno/track.flac"]
@@ -1849,7 +1849,7 @@ def test_a_nested_appledouble_sidecar_and_a_dot_directory_are_not_items(
     nest(folder, silence, ".Trashes/deleted.flac")
     monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: features(3))
 
-    drive(["analyze", "restamp", str(folder), "--recursive"])
+    drive(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])
     assert sorted(item_states(analysis_job("analyze.restamp").job_id)) == ["house/track.flac"]
 
 
@@ -1861,7 +1861,7 @@ def test_a_nested_file_deleted_after_the_queue_refuses_that_item_only(
     doomed = nest(folder, silence, "techno/doomed.flac", energylevel=7)
     bind_measuring(monkeypatch, {"kept": 19, "doomed": 0})
 
-    drive(["analyze", "restamp", str(folder), "--recursive"])
+    drive(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])
     job = analysis_job("analyze.restamp")
     doomed.unlink()
     code, _ = drive(resume_argv(job.job_id))
@@ -1895,7 +1895,7 @@ def test_a_recursive_restamp_resumes_after_a_kill_and_finishes_the_rest(
         return features(19)
 
     monkeypatch.setattr(energy, "_EXTRACTOR", interrupting)
-    drive(["analyze", "restamp", str(folder), "--recursive"])
+    drive(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])
     job = analysis_job("analyze.restamp")
     drive(resume_argv(job.job_id))
     done_after_kill = [
@@ -1934,7 +1934,7 @@ def test_a_recursive_restamp_says_which_linked_folders_it_did_not_walk(
     (folder / "linked").symlink_to(elsewhere, target_is_directory=True)
     monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: features(3))
 
-    code, queued = drive(["analyze", "restamp", str(folder), "--recursive"])
+    code, queued = drive(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])
     assert code == int(ExitCode.OK), queued
     assert sorted(item_states(analysis_job("analyze.restamp").job_id)) == ["house/track.flac"]
     assert any(w["code"] == "linked-folder-skipped" for w in queued["warnings"]), queued
@@ -1950,7 +1950,7 @@ def test_a_tree_whose_only_folders_are_links_says_so_on_the_zero(
     shutil.copy2(silence, elsewhere / "other.flac")
     (folder / "linked").symlink_to(elsewhere, target_is_directory=True)
 
-    code, said = drive(["analyze", "restamp", str(folder), "--recursive"])
+    code, said = drive(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])
     assert code == int(ExitCode.OK), said
     assert said["data"]["state"] == "no-audio"
     assert any(w["code"] == "linked-folder-skipped" for w in said["warnings"]), said
@@ -1958,7 +1958,7 @@ def test_a_tree_whose_only_folders_are_links_says_so_on_the_zero(
 
 def test_analyze_run_does_not_take_the_recursive_flag(cfg, folder):
     """Its last act on a track is a rename, and its resume marker is the NAME."""
-    code, refused = drive(["analyze", "run", str(folder), "--recursive"])
+    code, refused = drive(["analyze", "run", "--queue-only", str(folder), "--recursive"])
     assert code != int(ExitCode.OK), refused
 
 
@@ -1988,7 +1988,7 @@ def test_the_resume_repeats_what_the_walk_left_out_rather_than_only_the_queue(
     (folder / "linked").symlink_to(elsewhere, target_is_directory=True)
     monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: features(3))
 
-    drive(["analyze", "restamp", str(folder), "--recursive"])
+    drive(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])
     job = analysis_job("analyze.restamp")
     assert job.payload["skipped_links"] == ["linked"]
     code, resumed = drive(resume_argv(job.job_id))
@@ -2008,7 +2008,7 @@ def test_an_unreadable_nested_folder_is_named_rather_than_quietly_contributing_n
     shut.chmod(0o000)
     monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: features(3))
     try:
-        code, queued = drive(["analyze", "restamp", str(folder), "--recursive"])
+        code, queued = drive(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])
     finally:
         shut.chmod(0o755)
 
@@ -2026,7 +2026,7 @@ def test_a_one_level_restamp_resume_says_nothing_about_a_walk_it_never_did(
     energy.save_calibration(cfg, calibration_over(count=20))
     place(folder, silence, "top", energylevel=7)
     bind_measuring(monkeypatch, {"top": 5})
-    drive(["analyze", "restamp", str(folder)])
+    drive(["analyze", "restamp", "--queue-only", str(folder)])
     code, resumed = drive(resume_argv(analysis_job("analyze.restamp").job_id))
     assert code == int(ExitCode.OK), resumed
     assert [w["code"] for w in resumed["warnings"]] == ["db-metadata-not-written"]
@@ -2048,7 +2048,7 @@ def test_the_restamp_resume_names_an_unreadable_folder_and_not_only_a_link(
     shut.chmod(0o000)
     monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: features(3))
     try:
-        drive(["analyze", "restamp", str(folder), "--recursive"])
+        drive(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])
     finally:
         shut.chmod(0o755)
 
@@ -2431,8 +2431,191 @@ def test_the_stride_sample_takes_everything_when_there_is_less_than_asked():
 
 def test_the_restamp_refusal_names_the_library_wide_calibrate(cfg, folder, silence):
     place(folder, silence, "a")
-    code, refused = drive(["analyze", "restamp", str(folder)])
+    code, refused = drive(["analyze", "restamp", "--queue-only", str(folder)])
     assert code == int(ExitCode.PRECONDITION), refused
     assert refused["cause"]["reason"] == "energy-calibration-missing"
     steps = " ".join(refused["cause"]["remediation"]["steps"])
     assert "--recursive" in steps and "representative folder" not in steps
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U192: run by hand, each verb drives the job it queues, in one command
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _attempts(job_id: str) -> int:
+    with jobs.open_store() as store:
+        return jobs.get(store, job_id).attempts
+
+
+def test_analyze_run_by_hand_queues_and_drives_its_job_to_succeeded_in_one_call(
+    cfg, folder, silence, monkeypatch
+):
+    """The brief's first scenario: one command, every item settled, the files written."""
+    place(folder, silence, "a")
+    place(folder, silence, "b")
+    head = detector()
+    bind_scoring(monkeypatch, detect_=head)
+
+    code, settled = drive(["analyze", "run", str(folder)])
+
+    assert code == int(ExitCode.OK), settled
+    job = analysis_job("analyze.run")
+    assert settled["data"]["job_id"] == job.job_id
+    assert settled["data"]["state"] == "succeeded"
+    progress = settled["data"]["progress"]
+    assert progress["settled"] == progress["total"] == 2
+    assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
+    assert head.seen == ["a.flac", "b.flac"]
+    assert sorted(path.name for path in folder.iterdir()) == [
+        "08A - 124 - a.flac",
+        "08A - 124 - b.flac",
+    ]
+    assert progress["analysis"]["by_status"] == {"analyzed": 2}, (
+        "the settled envelope is the resume's, carrying what the pass did"
+    )
+    assert _attempts(job.job_id) == 1, "the job was driven more than once"
+
+
+def test_analyze_restamp_by_hand_drives_its_job_and_says_the_database_note_once(
+    cfg, folder, silence, monkeypatch
+):
+    energy.save_calibration(cfg, calibration_over(count=20))
+    low = place(folder, silence, "low", energylevel=7)
+    high = place(folder, silence, "high", energylevel=7)
+    bind_measuring(monkeypatch, {"low": 0, "high": 19})
+
+    code, settled = drive(["analyze", "restamp", str(folder)])
+
+    assert code == int(ExitCode.OK), settled
+    job = analysis_job("analyze.restamp")
+    assert settled["data"]["state"] == "succeeded"
+    assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
+    assert tags.read_energy_from_file(low) == energy.LEVEL_MIN
+    assert tags.read_energy_from_file(high) == energy.LEVEL_MAX
+    codes = [warning["code"] for warning in settled["warnings"]]
+    assert codes.count("db-metadata-not-written") == 1, (
+        "the queue's copy of the note rode beside the resume's"
+    )
+
+
+def test_a_restamp_driven_at_its_queue_names_a_linked_folder_once(
+    cfg, folder, silence, tmp_path, monkeypatch
+):
+    """The walk's omission is read back off the frozen payload, not said twice."""
+    energy.save_calibration(cfg, calibration_over(count=20))
+    nest(folder, silence, "house/track.flac", energylevel=7)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    shutil.copy2(silence, elsewhere / "other.flac")
+    (folder / "linked").symlink_to(elsewhere, target_is_directory=True)
+    monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: features(3))
+
+    code, settled = drive(["analyze", "restamp", str(folder), "--recursive"])
+
+    assert code == int(ExitCode.OK), settled
+    queued = drive(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])[1]
+    said = [w for w in settled["warnings"] if w["code"] != "db-metadata-not-written"]
+    expected = [w for w in queued["warnings"] if w["code"] != "db-metadata-not-written"]
+    assert said, "the link the walk skipped was not named at all"
+    assert said == expected, "the settled answer and the queue answer named the walk differently"
+
+
+@pytest.mark.parametrize("verb", ["run", "restamp"])
+def test_queue_only_returns_the_job_queued_with_nothing_driven(
+    cfg, folder, silence, monkeypatch, verb
+):
+    energy.save_calibration(cfg, calibration_over(count=20))
+    place(folder, silence, "a", energylevel=7)
+    bind_scoring(monkeypatch)
+    bind_measuring(monkeypatch, {"a": 3})
+
+    code, queued = drive(["analyze", verb, "--queue-only", str(folder)])
+
+    assert code == int(ExitCode.OK), queued
+    job = analysis_job(f"analyze.{verb}")
+    assert queued["data"]["state"] == "queued"
+    assert set(item_states(job.job_id).values()) == {jobs.ItemState.PENDING}
+    assert _attempts(job.job_id) == 0, "a queue only call drove the job"
+
+
+@pytest.mark.parametrize("verb", ["run", "restamp"])
+def test_queue_only_beside_job_is_refused_before_anything_is_queued(cfg, folder, silence, verb):
+    place(folder, silence, "a", energylevel=7)
+
+    code, refused = drive(["analyze", verb, str(folder), "--job", "j-1", "--queue-only"])
+
+    assert code == 2, "argparse's own refusal, before the verb runs"
+    assert refused == {}, "the verb ran and answered with an envelope"
+    with jobs.open_store() as store:
+        assert list(jobs.list_jobs(store)) == []
+
+
+def test_an_interrupted_restamp_names_its_job_command_and_that_command_finishes_it(
+    cfg, folder, silence, monkeypatch
+):
+    """A real SIGINT through the engine's checkpoint, in the call that queued the job.
+
+    The engine records the stop as cancelled, which is closed, and a closed job's
+    ``--job`` command reports rather than drives. So the job must come back
+    queued, the refusal must name that command, and the command must finish the
+    work without measuring a settled file again.
+    """
+    import os
+    import shlex
+    import signal
+
+    energy.save_calibration(cfg, calibration_over(count=20))
+    for name in ("a", "b", "c", "d"):
+        place(folder, silence, name, energylevel=7)
+    measured: list[str] = []
+
+    def interrupting(path):
+        measured.append(Path(path).name)
+        if len(measured) == 2:
+            os.kill(os.getpid(), signal.SIGINT)
+        return features(19)
+
+    monkeypatch.setattr(energy, "_EXTRACTOR", interrupting)
+    code, stopped = drive(["analyze", "restamp", str(folder)])
+
+    assert code == int(ExitCode.INTERRUPTED), stopped
+    assert stopped["outcome"] == "cancelled"
+    job = analysis_job("analyze.restamp")
+    assert job.state is jobs.JobState.QUEUED, "the interrupted job was left closed"
+    command = shlex.join(["crate", *resume_argv(job.job_id)])
+    assert stopped["cause"]["remediation"]["steps"][0] == f"resume it with: {command}"
+    assert stopped["cause"]["remediation"]["remedy"] is None, (
+        "the detached job resume token rode ahead of the foreground command"
+    )
+    assert stopped["cause"]["detail"]["job_id"] == job.job_id
+    done = sorted(i for i, s in item_states(job.job_id).items() if s is jobs.ItemState.DONE)
+    assert done and len(done) < 4, done
+
+    code, resumed = drive(resume_argv(job.job_id))
+
+    assert code == int(ExitCode.OK), resumed
+    assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
+    assert not set(done) & set(measured[2:]), "the resume measured a settled file again"
+
+
+def test_the_shared_tail_step_queues_only_and_drives_its_job_once(
+    cfg, folder, silence, monkeypatch
+):
+    """``sync land`` and ``label sync --go`` drive each tail job themselves through
+    one shared step, so it must queue with the flag."""
+    from cratekit.cli import sync_land, tail
+
+    place(folder, silence, "a")
+    bind_scoring(monkeypatch)
+    report = sync_land._report(None)
+
+    tail.tail_step(report, "analyze", "analyze.run", ("analyze", "run"), folder, cfg)
+
+    job = analysis_job("analyze.run")
+    assert job.state is jobs.JobState.SUCCEEDED
+    assert _attempts(job.job_id) == 1, "the pass drove the tail job twice"
+    assert report.summary["commands"] == [
+        ["crate", "analyze", "run", "--queue-only", str(folder)],
+        ["crate", *resume_argv(job.job_id)],
+    ]
