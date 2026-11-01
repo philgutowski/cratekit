@@ -73,8 +73,8 @@ def test_the_shipped_default_loads(default):
     # 2 since R-797: the shipped template declares a former place, and a
     # template has to state the version that knows one. 3 since U118, for a
     # split place, the same way. 4 since U119, for a sub class derived from a
-    # playlist, the same way again.
-    assert default.schema_version == 4
+    # playlist, the same way again. 5 since U155, for a genre sub.
+    assert default.schema_version == 5
     assert default.buckets
     assert default.fallback.bucket in default.bucket_ids()
 
@@ -825,6 +825,8 @@ def test_a_version_1_template_with_no_former_place_still_loads(default_raw, seco
         for bucket in data["bucket"]:
             bucket.pop("formerly", None)
             bucket.pop("split_from", None)
+            # And the genre sub, which needs version 5 (U155).
+            bucket.pop("genre_sub", None)
         data["sub_class"] = [c for c in data["sub_class"] if c.get("signal") != "playlist"]
 
     assert build_taxonomy(mutated(default_raw, mutate)).schema_version == 1
@@ -1034,6 +1036,8 @@ def test_a_version_2_template_with_no_split_place_still_loads(default_raw):
         data["schema_version"] = 2
         del _splitter(data)["split_from"]
         data["sub_class"] = [c for c in data["sub_class"] if c.get("signal") != "playlist"]
+        for bucket in data["bucket"]:
+            bucket.pop("genre_sub", None)
 
     assert build_taxonomy(mutated(default_raw, mutate)).schema_version == 2
 
@@ -1122,7 +1126,7 @@ def test_the_shipped_default_declares_the_genre_favorites_as_a_playlist_signal(d
     assert favorites.present_in == "all_buckets"
     assert favorites.signal == "playlist"
     assert favorites.signal_playlist == "All Favorites"
-    assert default.schema_version == 4
+    assert default.schema_version >= 4
     vox = default.sub_class("with_vox")
     assert vox.signal == "vox" and vox.signal_playlist == ""
 

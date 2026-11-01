@@ -40495,3 +40495,238 @@ maintainer facing pin, after the unit's two fix rounds were spent.
 **Measured cost.** Not driven. Such a miss is named on the gate and the snapshot records it as an account track the twin lacks, so the next `sync pair` looks again with its own sources and adds it if it finds it; nothing is lost, the twin is short until then.
 
 **Closes when:** the backfill reads the sweep's intake jobs for each account playlist as a source, or the attended backfill shows no such miss. Ledger only.
+
+---
+
+## R-1134. A minute of hits at five over four with no beat under them reads as drift
+
+**Found:** at the second review of #338, U157, 2026-11-01.
+
+**The mechanism.** The drift band reaches a quarter either side of the head
+tempo, and five to four is exactly a quarter, so a window where only hits at
+five over four play, with no kick or other pulse under them, reads its peak at
+that rate and the track's spread jumps to it.
+
+**Measured cost.** Driven by the review on synthetic tracks at 100, 124 and
+128: a minute of bare five over four hits read 21.9 to 24.9 and variable, so
+the steady track would be marked `dyn` and analysed Dynamic. With the kick kept
+under the same hits every one read steady, as did sections at three to two,
+four to three, six to five and three to four. No real track with such a
+section was named.
+
+**Closes when:** the band stops short of five to four without losing the steps
+it now holds, or the attended calibration sitting finds no such track. Ledger
+only.
+
+---
+
+## R-1135. A tempo step of more than a quarter reads as the section the head named
+
+**Found:** at the review of #338, U157, 2026-11-01.
+
+**The mechanism.** Each drift window's peak is looked for within a quarter of
+the head tempo either way (`DRIFT_BAND`), so a window cannot read a related
+metrical level, four to three, three to two or two to one, as a drift. A track
+whose tempo really steps by more than that, 100 to 140 for instance, has its
+other section's windows passed over, and reads as steady.
+
+**Measured cost.** Driven by the review: a synthetic 100 to 140 step read 0.05
+and steady. How often a real track steps by more than a quarter is unmeasured;
+a step that large is also where a pulse at a related level and a new tempo
+cannot be told apart from the onsets alone.
+
+**Closes when:** a measurement that tells a real step from a level change, the
+key or the spectrum changing with it for instance, reads such a track as
+variable without reading the hats of a steady track as one; or the attended
+calibration sitting finds no such track in the library. Ledger only.
+
+---
+
+## R-1136. The drift cut ships at 1.5 without a reading of any real library
+
+**Found:** at the build of #338, U157, 2026-11-01.
+
+**The mechanism.** `analysis.drift_cut` defaults to 1.5 percent
+(`core.config.DEFAULT_DRIFT_CUT`), chosen from synthetic tracks: steady drum
+patterns read 0.0 to 0.3, a played part's timing wobble around a fixed tempo
+0.3, a wander of two beats either way 1.5, a three beat ramp over two minutes
+1.7, a step of 120 to 140 above 17. The brief asked for the cut to be
+calibrated against the 2026-10-27 batch, which holds both kinds, and the cloud
+cannot read it.
+
+**Measured cost.** Unmeasured on real audio. A cut too low sends steady tracks
+to Dynamic, which the brief's evidence shows lays a wobbling grid; a cut too
+high sends live tracks to Normal, which is what every track took before this
+unit. The default leans toward the second.
+
+**Closes when:** an attended sitting runs `crate analyze run` over copies of a
+batch holding both kinds, reads each file's `driftlevel`, and sets the default
+from where the two kinds part, recorded in `docs/cutover.md`. The attended card
+this unit files is that sitting. Ledger only.
+
+---
+
+## R-1137. Two of the drift measurement's constants kill no test
+
+**Found:** at the review of #338, U157, 2026-11-01.
+
+**The mechanism.** In `src/cratekit/analysis/detect.py` the onset gate's
+relative fraction, `DRIFT_ONSET_RELATIVE`, can be set to 0.0 or 0.25 and the
+window length, `DRIFT_WINDOW_SECONDS`, to 20, and `tests/test_analysis_drift.py`
+stays green. The band, `DRIFT_BAND`, killed nothing at 0.06 or 0.5 before the
+fix round; it is pinned on both sides since, by the stepped tracks below it and
+the section of hats at three to two above it.
+
+**Measured cost.** None of its own, driven by the review: the other gates
+(the pulse contrast and the absolute onset floor) pass over the same synthetic
+breakdowns. Whether a real breakdown passes the contrast gate and is held back
+only by the relative one is unmeasured, since the container has no real audio.
+
+**Closes when:** a fixture shows a window the relative gate alone holds back,
+a loud riser over a breakdown for instance, and one shows a drift the window
+length changes; or the attended calibration sitting finds the two do nothing
+on real tracks and they are removed. Ledger only.
+
+---
+
+## R-1138. A genre sub is filed only by the rebuild derivation, so a native landing, adoption and organize file a Rominimal track into its band alone
+
+**Found:** at the build of #336, U155, 2026-11-01.
+
+**The mechanism.** A genre sub is placed by `rebuild.derive_from_taxonomy`,
+which the tree rebuild, `route resort` and `route inbox` all call. The adoption
+plan (`adopt/plan.py`, behind `adopt apply`, the native landing of a sync pass
+and `organize --only adopt`) and the intake ledger's single placement
+(`intake/ingest.decide_placement`, behind `route pending`) route through
+`routing.energy_sub` alone, so a Rominimal track they file sits in its
+Minimal / Deep Tech band and not in `Minimal / Deep Tech / Rominimal`.
+
+**Measured cost.** Not driven past the reading of those two paths. Nothing is
+lost or misreported: their gates show the band they write, and the next
+`route resort` adds the genre sub, which `docs/GUIDE.md` and `CONCEPTS.md` say.
+A DJ who lands PULS releases through a sync pass sees them in Rominimal only
+after a resort.
+
+**Closes when:** the adoption plan carries a genre sub membership beside the
+vocal one, shown, counted and inside its digest, and the native landing's
+prediction names it, as the vocal sub's was built in R-788 and U165. Ledger
+only: the workflow finishes through `route resort`.
+
+---
+
+## R-1139. The export medium of route inbox creates no genre sub playlist, so a Rominimal track is filed into its band alone and every run warns sub-playlist not found
+
+**Found:** at the review of #336, U155, 2026-11-01.
+
+**The mechanism.** On the export medium `route inbox --export` creates a
+folder's vocal sub before it routes (`_vox_subs`), and nothing creates a genre
+sub. With no `Rominimal` playlist in the export's Minimal / Deep Tech folder
+the write skips that placement with `route-write-skipped: sub-playlist not
+found: Minimal / Deep Tech/Rominimal`, and the next fresh export plans the same
+again. Since U155's first fix round the gate shows that placement in its
+`genre` column, so the skip is said on the same run.
+
+**Measured cost.** Driven by the review on a disposable export: the track
+lands in its band only, with the warning, every run, until a person makes the
+playlist by hand. Reachability on the live library is unmeasured, since its
+tree has cut over to the database, where the rebuild engine creates the
+playlist.
+
+**Closes when:** the export sweep creates a declared genre sub the way it
+creates a vocal sub, named among the subs it created, or refuses before the
+gate. Ledger only.
+
+---
+
+## R-1140. crate taxonomy upgrade and doctor read a copy without the shipped genre sub as complete once its schema version is raised
+
+**Found:** at the review of #336, U155, 2026-11-01.
+
+**The mechanism.** `core/taxonomy_upgrade.py` compares a library's copy with
+the shipped template by whole `[[sub_class]]` and `[[bucket]]` entries, and by
+design never changes an entry the copy holds. The shipped Minimal / Deep Tech
+bucket gained the `Rominimal` alias and genre sub in U155, at schema version 5.
+A version 4 copy is read as behind only by its version: `crate taxonomy
+upgrade` raises it to 5, and doctor's `taxonomy.schema` then reads OK, "the
+copy declares every class and bucket it ships", with no word about the alias
+or the genre sub the copy still lacks.
+
+**Measured cost.** Driven by the review: after the planner's text is written,
+`load_taxonomy(after).bucket("minimal_deep_tech").genre_subs == ()`. Nothing is
+false in either sentence, and the hand edit is named in `docs/GUIDE.md` and on
+the attended card, but a DJ who trusts doctor is not told.
+
+**Closes when:** the planner names a shipped genre sub absent from a bucket of
+the copy, as a hand edit it will not make, in its gap and remedy sentences.
+Ledger only.
+
+---
+
+## R-1141. The crate-sync skill's open passes field is checked by reading the source, not by a pass that stops there
+
+**Found:** at the Fable review of #355, U174, 2026-11-01.
+
+**The mechanism.** The skill tells the session to read
+`data.summary.open_passes` when `crate sync land` stops because several earlier
+passes hold open intake jobs. `tests/test_crate_sync_skill.py` holds every
+other summary field it names to a field the verb writes, and for this one it
+reads the source of `src/cratekit/cli/sync_land.py` for the assignment, since
+no test drives `sync land` into its choice between passes and reads the field
+off the envelope.
+
+**Measured cost.** None today: the field is set in `_choose` and the skill
+names it correctly. A rename there would leave the skill naming a field the
+envelope no longer carries, and the skill test would still pass on any text
+that kept the old name.
+
+**Closes when:** a test drives `crate sync land` over two passes with open
+intake jobs and reads `data.summary.open_passes` off its envelope. Ledger only,
+a maintainer facing coverage gap.
+
+---
+
+## R-1142. A native landing writes its label filing record only when the commit added or made something, so label mark by pass could say a batch filed nothing
+
+**Found:** at the review of #362, R-1056, 2026-11-01.
+
+**The mechanism.** `label_filing.record_commit` returns before writing the
+`labels` key when `written.changed()` is false, that is when every year
+playlist the commit filed into already held every track it was asked to
+hold and no node was made. `label mark --pass` reads that key as what the
+landing filed, so a landing whose filing changed nothing would be read as
+one that filed no year, and the mark would end NO_OP with
+`label-mark-nothing-filed`. The bridge writes its tree into the intake file
+whatever it added, so the two proofs could disagree here.
+
+**Measured cost.** Not driven to a cost. The one candidate driven, a second
+native landing of the same file under another pass, is refused before it
+moves anything because the file already exists in the library, so no record
+commits. No producer was found.
+
+**Closes when:** a landing that filed into year playlists names them on its
+record whether or not it added a membership, or a producer is shown not to
+exist. Ledger only, since nothing reaches it.
+
+---
+
+## R-1143. A Bandcamp release the fetch refused for good is planned and refused again by every later sync bandcamp
+
+**Found:** at the second Fable review of #360, U179, 2026-11-01.
+
+**The mechanism.** `acquire bandcamp-fetch` records a purchase only once it is fetched (U176), so a release refused for good, a lossy only offer under the strict policy, stays `new` on every plan. Each `crate sync bandcamp` therefore queues a fetch that fails the same way, and names the release as refused again.
+
+**Measured cost.** Driven by the second review with an open fetch parked and the account then offering only MP3: two fetches in one run, one refusal named once since 75205b9, and the same refusal on every later run. A queue row and two account requests per run, and a warning a person learns to read past.
+
+**Closes when:** a refusal for good is recorded beside the fetched record and the plan shows it as refused rather than new, until the policy or the offer changes. U176's rule rather than this unit's; ledger only.
+
+---
+
+## R-1144. A sync bandcamp whose every release the fetch refused ends exit 0, no_op, where the fetch alone exits non zero
+
+**Found:** at the first Fable review of #360, U179, 2026-11-01.
+
+**The mechanism.** `crate sync bandcamp` reads a fetch that failed only by refusals for good (a lossy only release under the strict policy above all) as settled, the way `sync land` skips a lossy download, and goes on with what was staged. When nothing was staged it ends `no_op` with exit 0. `crate acquire bandcamp-fetch` alone ends the same job with its failed state's refusal.
+
+**Measured cost.** Driven by `test_a_release_refused_for_good_is_recorded_and_nothing_is_landed_over_none`: the envelope names each refused release in `fetch_refused`, in a `sync-bandcamp-fetch-refused` warning and on a `fail` check row, so nothing false is said, but a caller reading only the exit code is not told. `sync land` over an all refused download carries the same shape (U152's residual).
+
+**Closes when:** the verb ends with the fetch's own refusal when every release it attempted was refused and nothing was staged, or the record states exit 0 as the contract. Ledger only.

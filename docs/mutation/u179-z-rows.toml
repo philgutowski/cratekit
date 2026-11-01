@@ -1,0 +1,22 @@
+name = "u179-z"
+pass_kind = "light"
+
+# The two zero rows of u179.md, measured again after the tests they bought.
+
+[[rows]]
+id = "S4_to_fetch_counts_held"
+description = "_plan: count only new purchases, so a plan holding only part owned releases reads as nothing new"
+file = "src/cratekit/cli/sync_bandcamp.py"
+surface = "user"
+tests = ["tests/test_sync_bandcamp.py", "tests/test_sync_bandcamp_native.py"]
+old = '''    to_fetch = int(summary.get("new") or 0) + int(summary.get("held") or 0)'''
+new = '''    to_fetch = int(summary.get("new") or 0)'''
+
+[[rows]]
+id = "S9_refusals_need_permanence"
+description = "_fetched: read a fetch failed by a retryable item as settled too, so a transient failure lands the rest"
+file = "src/cratekit/cli/sync_bandcamp.py"
+surface = "user"
+tests = ["tests/test_sync_bandcamp.py", "tests/test_sync_bandcamp_native.py"]
+old = '''    settled_with_refusals = job.state is jobs.JobState.FAILED and len(permanent) == len(failed)'''
+new = '''    settled_with_refusals = job.state is jobs.JobState.FAILED'''

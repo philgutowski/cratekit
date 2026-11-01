@@ -598,6 +598,14 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-land-download-refused',
         'sync-land-intake-left-open',
     ],
+    # 2026-11-01, U179: the Bandcamp source of the same driver, its fetch verb's
+    # words and the closing report's three warnings.
+    'cli/sync_bandcamp.py': [
+        'bandcamp-fetch',
+        'sync-bandcamp-fetch-refused',
+        'sync-bandcamp-no-genre',
+        'sync-bandcamp-tags-unread',
+    ],
     # 2026-11-01, U190: the tail and the landing, lifted out of the sync pass
     # driver so ``label sync --go`` runs the same chain.
     'cli/tail.py': [
@@ -1307,6 +1315,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         # 2026-11-01, U149: a landing's custom playlist twin left and named.
         'custom-playlist-twins-left',
         'decision-stale',
+        # 2026-11-01, U157: a variable row the commit could not mark dyn.
+        'dyn-not-written',
         'favorites-colour-held',
         'favorites-placed',
         'favorites-placement-skipped',
@@ -1488,6 +1498,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'label-mark',
         'label-mark-changed-since-plan',
         'label-mark-nothing-built',
+        'label-mark-nothing-filed',  # 2026-11-01, R-1056: a batch that filed no built year.
         'label-playlists-not-followed',
         'not-in-batch',
         'retitled-since-built',

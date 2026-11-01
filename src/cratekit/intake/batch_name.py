@@ -35,6 +35,11 @@ and makes no folder under the music folder at all (U164). The native writer
 finds a playlist by its name under INBOX and adds to it, so a name reused
 there would merge two batches silently.
 
+A BATCH OF BANDCAMP PURCHASES IS NAMED BY ``crate sync bandcamp`` (U179),
+``2026-11-01 Bandcamp PULS`` when every file's label tag names that one label
+and ``2026-11-01 Bandcamp`` otherwise, through :func:`bandcamp`, made free the
+same way, since the files' tags, not a manifest or a pass, say what it holds.
+
 A PLAYLIST THE AUTHOR MADE ON THE ACCOUNT KEEPS ITS OWN NAME (U113). The files
 of a pass still land in the one batch folder named above, and the tracks each
 account playlist brought in go into an INBOX playlist named exactly as the
@@ -63,6 +68,9 @@ FAVORITES = "Favorites"
 SET = "Set"
 #: More than one label in one manifest.
 LABELS = "Labels"
+#: What a batch of Bandcamp purchases came from, before its label when it has
+#: one (U179): ``2026-11-01 Bandcamp PULS``.
+BANDCAMP = "Bandcamp"
 #: A landing handed nothing that says where its files came from.
 DOWNLOADS = "Downloads"
 
@@ -338,6 +346,30 @@ def readable(
     return free(cfg, f"{today().isoformat()} {words}")
 
 
+def bandcamp(cfg: config.Config, labels: Iterable[str | None]) -> str:
+    """The batch name a landing of Bandcamp purchases takes, one label tag per file (U179).
+
+    ``<date> Bandcamp <Label>`` when every file names the same label, compared
+    without case as the label filing compares, and ``<date> Bandcamp`` when
+    they name several, or any names none: a batch of two labels, or of a label
+    and a seller no label names, is not that label's. A label that leaves
+    nothing once made folder safe reads as none. Free as every batch name is,
+    `` 2`` and on.
+    """
+    named: dict[str, str] = {}
+    unnamed = False
+    for label in labels:
+        said = _folder_safe(label or "")
+        if said:
+            named.setdefault(said.casefold(), said)
+        else:
+            unnamed = True
+    words = BANDCAMP
+    if len(named) == 1 and not unnamed:
+        words = f"{BANDCAMP} {next(iter(named.values()))}"
+    return free(cfg, f"{today().isoformat()} {words}")
+
+
 #: The shape a set's permanent playlist opens with (U121, U136): naming day,
 #: who played it, what it is called, and the set's own month. The day is an
 #: argument so a backfill names the set and not the day the backfill runs
@@ -369,11 +401,13 @@ def set_playlist_form(day: date, *, dj: str, name: str, month: date) -> str:
 
 
 __all__ = [
+    "BANDCAMP",
     "DOWNLOADS",
     "FAVORITES",
     "LABELS",
     "PLAYLISTS",
     "SET",
+    "bandcamp",
     "filed_folders",
     "free",
     "inbox_names",

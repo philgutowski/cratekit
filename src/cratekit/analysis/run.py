@@ -38,6 +38,10 @@ class Result:
     voxlevel: int | None = None
     voxgender: str | None = None
     voxgenderconf: int | None = None
+    #: How far the tempo moves, a percent, and its verdict (U157). None and
+    #: None from a detector that measures no drift, a test's fake above all.
+    drift: float | None = None
+    drift_verdict: str | None = None
 
 
 def already_analyzed(path: Path) -> bool:
@@ -61,6 +65,8 @@ def _as_result(payload: dict[str, Any]) -> Result:
         voxlevel=payload.get("voxlevel"),
         voxgender=payload.get("voxgender"),
         voxgenderconf=payload.get("voxgenderconf"),
+        drift=payload.get("drift"),
+        drift_verdict=payload.get("drift_verdict"),
     )
 
 

@@ -94,10 +94,10 @@ KEY_FAR = "far"
 KEY_UNKEYED = "unkeyed"
 
 #: The My Tag value U157 writes on a row whose tempo really moves, so that row
-#: is analysed Dynamic and a variable grid on it is the right answer. Read under
-#: any category, because the category is U157's to name and has not landed;
-#: U157 should import this name rather than spell its own.
-DYN_VALUE = "dyn"
+#: is analysed Dynamic and a variable grid on it is the right answer. The
+#: landing's own constant, imported, so the two cannot disagree; read under any
+#: category, since a person may file the value under one of their own.
+DYN_VALUE = native.DYN_VALUE
 
 #: How many standard errors below the recorded key agreement a sample's rate
 #: must fall before it reads as suspect. Three, so a library whose keys agree
@@ -462,33 +462,9 @@ class Row:
         }
 
 
-def dyn_marked(db: Any) -> frozenset[str]:
-    """Every content row carrying a live My Tag value named :data:`DYN_VALUE`."""
-    marked: set[str] = set()
-    for tag in db.get_my_tag(Name=DYN_VALUE):
-        if rb_writer.soft_deleted(
-            tag,
-            message=(
-                f"the My Tag row {getattr(tag, 'ID', '?')!r} cannot say whether rekordbox "
-                f"removed it, so which rows are marked {DYN_VALUE} was not read"
-            ),
-            origin=_ORIGIN,
-            detail={"my_tag_id": str(getattr(tag, "ID", ""))},
-        ):
-            continue
-        for song in db.get_my_tag_songs(MyTagID=str(tag.ID)):
-            if rb_writer.soft_deleted(
-                song,
-                message=(
-                    f"the My Tag membership {getattr(song, 'ID', '?')!r} cannot say whether "
-                    f"rekordbox removed it, so which rows are marked {DYN_VALUE} was not read"
-                ),
-                origin=_ORIGIN,
-                detail={"song_my_tag_id": str(getattr(song, "ID", ""))},
-            ):
-                continue
-            marked.add(str(song.ContentID))
-    return frozenset(marked)
+#: The one reader of the mark, the landing's own, so the check reads as marked
+#: exactly what the landing reports it wrote (U157).
+dyn_marked = native.dyn_marked
 
 
 def read_row(

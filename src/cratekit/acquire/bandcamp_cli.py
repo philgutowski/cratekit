@@ -840,7 +840,8 @@ def forget() -> None:
     _LIBRARIES.clear()
 
 
-def _batch_name(given: str | None) -> str:
+def staging_batch(given: str | None) -> str:
+    """The batch folder a fetch stages into under download staging: ``given``, or today's."""
     name = given if given is not None else f"{BATCH_PREFIX} {date.today().isoformat()}"
     if not landing.plain_name(name):
         raise refuse(
@@ -884,7 +885,7 @@ def acquire_bandcamp_fetch(ctx) -> Envelope:
                 data=_reported(store, job), warnings=(*warnings, *_land_warnings(job))
             )
     cfg = _load()
-    batch = _batch_name(ctx.args.batch)
+    batch = staging_batch(ctx.args.batch)
     asked = _planned(cfg, ctx.args.seller, FETCH_ORIGIN)
     found, planned, library = asked.found, asked.planned, asked.library
     warnings = (
@@ -1292,6 +1293,7 @@ __all__ = [
     "register_command",
     "registry",
     "session_cookie",
+    "staging_batch",
     "track_wanted",
     "transport",
     "unregistered",

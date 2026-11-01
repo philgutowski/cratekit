@@ -1,0 +1,250 @@
+name = "u174"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_stranger_refusal"
+description = "plan_pass: drop the refusal of a named playlist that is not the pass's, so it plans nothing and says nothing"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = '''    strangers = [identity for identity in named if identity not in held]
+    if strangers:'''
+new = '''    strangers = [identity for identity in named if identity not in held]
+    if False:'''
+
+[[rows]]
+id = "M2_narrowing"
+description = "plan_pass: drop the narrowing of the decided playlists, so --playlist plans the whole pass"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = '''        decided = [entry for entry in decided if entry.identity in named]'''
+new = '''        decided = list(decided)'''
+
+[[rows]]
+id = "M3_unfinished_refusal"
+description = "plan_pass: drop the refusal of a named playlist the pass did not complete, so it is shown as a skip"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = '''    unfinished = [entry for entry in decided if entry.reason in UNFINISHED]
+    if unfinished:'''
+new = '''    unfinished = [entry for entry in decided if entry.reason in UNFINISHED]
+    if False:'''
+
+[[rows]]
+id = "M4_unfinished_rows_outstanding"
+description = "UNFINISHED: leave out rows-outstanding, so a playlist with a missing track is a skip when named"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = '''UNFINISHED = frozenset({JOB_UNFINISHED, REPORTS_UNREADABLE, ROWS_OUTSTANDING})'''
+new = '''UNFINISHED = frozenset({JOB_UNFINISHED, REPORTS_UNREADABLE})'''
+
+[[rows]]
+id = "M5_unfinished_job"
+description = "UNFINISHED: leave out job-unfinished, so a playlist whose job failed is a skip when named"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = '''UNFINISHED = frozenset({JOB_UNFINISHED, REPORTS_UNREADABLE, ROWS_OUTSTANDING})'''
+new = '''UNFINISHED = frozenset({REPORTS_UNREADABLE, ROWS_OUTSTANDING})'''
+
+[[rows]]
+id = "M6_unfinished_reports"
+description = "UNFINISHED: leave out reports-unreadable, so a playlist whose reports cannot be read is a skip when named"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = '''UNFINISHED = frozenset({JOB_UNFINISHED, REPORTS_UNREADABLE, ROWS_OUTSTANDING})'''
+new = '''UNFINISHED = frozenset({JOB_UNFINISHED, ROWS_OUTSTANDING})'''
+
+[[rows]]
+id = "M7_digest_names_the_narrowing"
+description = "_payload: leave the narrowing out of the digest, so an answer to one playlist's screen carries out the whole pass"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = '''        identity["only"] = sorted(named)'''
+new = '''        pass'''
+
+[[rows]]
+id = "M8_screen_names_the_narrowing"
+description = "_shown: drop the gate screen's line naming the playlists the plan was narrowed to"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = '''        shown[ONLY_SAID] = list(named)'''
+new = '''        pass'''
+
+[[rows]]
+id = "M9_verb_passes_the_flag"
+description = "sync_mark: hand plan_pass no playlists, so --playlist is parsed and ignored"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = '''        playlists_named=list(getattr(ctx.args, "playlist", None) or ()),'''
+new = '''        playlists_named=(),'''
+
+[[rows]]
+id = "M10_dedupe"
+description = "plan_pass: keep a playlist named twice twice in the narrowing"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "maintainer"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = '''    named = tuple(dict.fromkeys(str(one) for one in playlists_named))'''
+new = '''    named = tuple(str(one) for one in playlists_named)'''
+
+[[rows]]
+id = "P1_bridge_plans_no_native_pass"
+description = "native_passes: read native records on a tree on the bridge too, so every old record is planned as a refusal"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = '''    if not medium.native:
+        return ()
+    return native.landed_passes(cfg)'''
+new = '''    return native.landed_passes(cfg)'''
+
+[[rows]]
+id = "P2_unreachable_is_refused"
+description = "native_passes: read an unreachable root as no pass, so organize asks over a clean plan"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = '''    if medium.declared is None:
+        raise _blocked('''
+new = '''    if medium.declared is None:
+        return ()
+        raise _blocked('''
+
+[[rows]]
+id = "O6_native_refusal_is_a_step"
+description = "_mark_steps: let native_passes' refusal escape, so the whole organize refuses and the file proven passes are not planned"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py"]
+old = '''    try:
+        native_names = mark_cli.native_passes(cfg)
+    except CratekitError as exc:'''
+new = '''    try:
+        native_names = mark_cli.native_passes(cfg)
+    except ZeroDivisionError as exc:'''
+
+[[rows]]
+id = "N4_landed_passes_pass_key"
+description = "landed_passes: drop the pass key check, so a landing of no pass is listed as a pass named None"
+file = "src/cratekit/intake/native.py"
+surface = "maintainer"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_intake_land_native.py"]
+old = '''                and str(session.SourceState.COMMITTED) in record.sources.values()
+                and record.detail.get(PASS_KEY)
+            }'''
+new = '''                and str(session.SourceState.COMMITTED) in record.sources.values()
+            }'''
+
+[[rows]]
+id = "M11_stranger_before_no_jobs"
+description = "plan_pass: refuse a stranger only after the no jobs return, so a file of no pass given --playlist asks a gate"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_crate_sync_skill.py"]
+old = '''    _refuse_strangers(named, found, name)
+    if not found:'''
+new = '''    if found:
+        _refuse_strangers(named, found, name)
+    if not found:'''
+
+[[rows]]
+id = "N1_landed_passes_closed"
+description = "landed_passes: drop the closed state check, so an open landing's pass is planned"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_intake_land_native.py"]
+old = '''                and record.state is session.SessionState.CLOSED
+                and str(session.SourceState.COMMITTED) in record.sources.values()
+                and record.detail.get(PASS_KEY)
+            }'''
+new = '''                and str(session.SourceState.COMMITTED) in record.sources.values()
+                and record.detail.get(PASS_KEY)
+            }'''
+
+[[rows]]
+id = "N2_landed_passes_committed"
+description = "landed_passes: drop the committed source check, so a refused landing's pass is planned"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_intake_land_native.py"]
+old = '''                and record.state is session.SessionState.CLOSED
+                and str(session.SourceState.COMMITTED) in record.sources.values()
+                and record.detail.get(PASS_KEY)
+            }'''
+new = '''                and record.state is session.SessionState.CLOSED
+                and record.detail.get(PASS_KEY)
+            }'''
+
+[[rows]]
+id = "N3_landed_passes_workflow"
+description = "landed_passes: drop the workflow check, so any closed session naming a pass is read as a landing"
+file = "src/cratekit/intake/native.py"
+surface = "maintainer"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py", "tests/test_intake_land_native.py"]
+old = '''                if record.workflow == WORKFLOW
+                and record.state is session.SessionState.CLOSED
+                and str(session.SourceState.COMMITTED) in record.sources.values()
+                and record.detail.get(PASS_KEY)
+            }'''
+new = '''                if record.state is session.SessionState.CLOSED
+                and str(session.SourceState.COMMITTED) in record.sources.values()
+                and record.detail.get(PASS_KEY)
+            }'''
+
+[[rows]]
+id = "O1_native_loop"
+description = "_mark_steps: plan no native pass, R-915 as it was"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py"]
+old = '''    for name in native_names:'''
+new = '''    for name in ():'''
+
+[[rows]]
+id = "O2_seen_skips_a_filed_pass"
+description = "_mark_steps: plan a pass with an intake file a second time by its native record"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py"]
+old = '''        if name in seen:
+            continue'''
+new = '''        if False:
+            continue'''
+
+[[rows]]
+id = "O3_no_pass_counted"
+description = "_mark_steps: drop the fact counting native landings of no sync pass"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py"]
+old = '''        area.facts["native landings of no sync pass"] = unlanded'''
+new = '''        pass'''
+
+[[rows]]
+id = "O4_no_pass_is_no_step"
+description = "_mark_step: a pass that is no sync pass's is planned as a step with nothing to mark"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py"]
+old = '''    if not planned.of_a_pass:
+        return False'''
+new = '''    if False:
+        return False'''
+
+[[rows]]
+id = "O5_refusal_is_a_step"
+description = "_mark_step: a pass whose plan refuses is dropped rather than shown as a refused step"
+file = "src/cratekit/organize/account.py"
+surface = "user"
+tests = ["tests/test_sync_mark.py", "tests/test_organize.py"]
+old = '''        area.steps.append(refused(key, title, exc.cause))
+        return True'''
+new = '''        return True'''

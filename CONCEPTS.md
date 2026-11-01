@@ -531,6 +531,19 @@ mark` finds a bridge pass by its intake file's name and a native pass by
 `--pass`, since R-777, and the engine waits on a `marks.NativeLanding` there in
 place of the file.
 
+### Drift
+How far a track's tempo moves over its length, as a percent of its middle,
+measured by `analyze run` from the tempogram the head already takes and written
+as the `driftlevel` and `drift` file tags (U157). It is never a tempo: a drift
+of 4.4 says the tempo moves by about four percent between the track's steady
+sections, and nothing about what the tempo is. Its verdict is `steady` or
+`variable` against `analysis.drift_cut`, or `unknown` when too few windows of
+the track carry a pulse to judge. A native landing gives each variable row the
+`dyn` My Tag, which is what tells the rekordbox visit to analyse that row with
+Dynamic rather than Normal, and `crate analyze check` reads the same mark to
+accept a variable grid on it. "Unscored" is the landing's word for a file that
+carries no drift at all, never a verdict a file holds.
+
 ### The tail
 The four verbs that must run over staged files, in this order, before a landing
 is planned: `tag folder`, `analyze run`, `analyze restamp` and `name apply`.
@@ -541,7 +554,9 @@ a tail job left open over the staging folder by an earlier pass is replaced,
 never resumed, because it was frozen against the folder and the build as they
 stood then. Since U190 the tail and the landing are one chain,
 `cratekit.cli.tail`, and `crate label sync --go` runs it too, after its
-download, so the two verbs answer every step the same way.
+download, so the two verbs answer every step the same way. Since U179 `crate
+sync bandcamp` runs it after its fetch, and rehearses the landing on a copy
+between the tail and the landing.
 
 ### Shelve
 The step after the import that the landing left to a person: moving an imported
@@ -1568,7 +1583,8 @@ each filled with that year's tracks from the label's confirmed catalogue
 build reuses and what the playlists source excludes as `label-folder`, since a
 year playlist swept as intake would list the label's catalogue as missing.
 `crate label mark` prefixes the years a landed batch filed, through the mark
-record. `crate label prune` takes a held or reattributed release's tracks off
+record, read off the intake file on the bridge or, with `--pass`, off the
+native landings' own records (R-1056). `crate label prune` takes a held or reattributed release's tracks off
 the years it created (R-836), see Prune.
 
 *Avoid:* reading a year playlist as the label's releases in the library, which
@@ -1878,6 +1894,27 @@ band or former place of its holder, under the holder's own name for it.
 *Avoid:* reading it as a former place. A former place is a playlist nobody
 files into any more; a split place is one the holder still files into, and
 only the declaring bucket's tracks leave it.
+
+### Genre sub
+Since U155, a playlist under a bucket that splits by energy which holds the
+tracks whose genre is one of its sources, declared as `[[bucket.genre_sub]]`
+with an `id`, a `display` and `sources`. The first one is `Rominimal` under
+Minimal / Deep Tech, for the PULS releases. It is additive: a Rominimal track
+is filed into its band, or Unsorted with no reading, exactly as before, and
+into the genre sub beside it, the way "with vox" sits beside a band. So it is
+never a Competing sub, nothing is moved out of it, and no band loses a track
+to it. Sources match exactly and case sensitively, and each must be an exact
+alias of the bucket, so `Minimal` never reaches it. The tagger writes the
+source rather than the bucket's name. The tree rebuild and `route resort` file
+it; the native landing and `organize` do not yet, so a new track reaches it at
+the next `route resort`. It needs schema version 5, and the loader refuses one
+whose id or name is already a band, the no reading sub, a sub class or a sub of
+its folder, or that sits on a bucket that does not split by energy.
+
+*Avoid:* reading it as `sub_by_source`. A bucket that routes by source genre
+never reads energy, so declaring Rominimal that way would take the bands away
+from every track in the bucket. Also avoid reading it as a sub class, which
+sits under every bucket rather than one.
 
 ### Held elsewhere
 An adoption plan entry withheld because its track already holds a competing

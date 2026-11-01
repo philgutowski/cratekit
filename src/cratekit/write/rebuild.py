@@ -283,6 +283,13 @@ def derive_from_taxonomy(
             # an error here would crash a rebuild over a declaration that is
             # simply narrower than the library.
             out.append(DeclaredPlacement(entry.location, resolution.bucket_id, sub.id))
+        # THE GENRE SUB BESIDE THE BAND (U155), from the same genre reading the
+        # bucket came from, so it needs no signal of its own and is never a
+        # gap. This is the one derivation the tree rebuild and ``route resort``
+        # both write, which is how a genre sub's playlist comes to exist.
+        genre = routing.genre_sub(declared, resolution.bucket_id, entry.genre)
+        if genre is not None:
+            out.append(DeclaredPlacement(entry.location, resolution.bucket_id, genre.id))
         if vocal_threshold is not None and routing.routes_with_vox(
             entry.voxlevel, vocal_threshold
         ):
