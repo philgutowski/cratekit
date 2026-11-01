@@ -1,0 +1,232 @@
+name = "u182"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_days_floor"
+description = "_days: accept zero, so --stale-days 0 offers a job queued a second ago as stale"
+file = "src/cratekit/cli/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py"]
+old = '''    if value < 1:
+        raise ValueError(f"{text!r} is not a number of days")'''
+new = '''    if value < 0:
+        raise ValueError(f"{text!r} is not a number of days")'''
+
+[[rows]]
+id = "M2_running_offered"
+description = "_left_reason: drop the running row check, so a job a live driver runs reaches the lock check alone"
+file = "src/cratekit/cli/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py"]
+old = '''    if state is jobs.JobState.RUNNING:
+        return "running; a stale cancel never touches a running job"'''
+new = '''    if False:
+        return "running; a stale cancel never touches a running job"'''
+
+[[rows]]
+id = "M3_blocked_offered"
+description = "_left_reason: offer a blocked job as stale, so a parked job is cancelled"
+file = "src/cratekit/cli/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py"]
+old = '''    if state is not jobs.JobState.QUEUED:
+        return ('''
+new = '''    if state not in (jobs.JobState.QUEUED, jobs.JobState.BLOCKED):
+        return ('''
+
+[[rows]]
+id = "M4_unknown_age_stale"
+description = "_left_reason: read an unreadable queued time as stale rather than of unknown age"
+file = "src/cratekit/cli/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py"]
+old = '''    if created is None:
+        return f"its queued time {hold.job.created!r} cannot be read, so its age is unknown"'''
+new = '''    if created is None:
+        return None'''
+
+[[rows]]
+id = "M5_cutoff"
+description = "_left_reason: never leave a younger job, so every queued job is stale whatever its age"
+file = "src/cratekit/cli/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py", "tests/test_sync_land.py"]
+old = '''    if created >= cutoff:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M6_listing_lock_check"
+description = "_left_reason: drop the live driver check, so a dry run lists a held job for cancel"
+file = "src/cratekit/cli/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py"]
+old = '''        jobs.assert_free(hold.job.job_id)
+    except jobs.DriverHeld:'''
+new = '''        pass
+    except jobs.DriverHeld:'''
+
+[[rows]]
+id = "M7_frees_identity"
+description = "_frees: match the holder by the raw source again, so a typed URL and a sweep's id read as two playlists"
+file = "src/cratekit/cli/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py", "tests/test_sync_land.py"]
+old = '''            and hold.identity
+            and other.identity == hold.identity'''
+new = '''            and hold.source
+            and other.source == hold.source'''
+
+[[rows]]
+id = "M8_keeper_kept"
+description = "_cancel_stale: never keep the newest copy, so every stale copy of a track set is cancelled"
+file = "src/cratekit/cli/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py"]
+old = '''            if hold.same_tracks and keeper.job_id == hold.job.job_id:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "M9_keeper_newest"
+description = "_cancel_stale: keep the oldest copy of a track set rather than the newest"
+file = "src/cratekit/cli/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py"]
+old = '''                (by_id[other].job for other in (hold.job.job_id, *hold.same_tracks)),
+                key=_newest,'''
+new = '''                (by_id[other].job for other in (hold.job.job_id, *hold.same_tracks)),
+                key=lambda held: tuple(-ord(c) for c in held.created),'''
+
+[[rows]]
+id = "M10_dry_run_writes"
+description = "_cancel_stale: cancel in a dry run too"
+file = "src/cratekit/cli/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py"]
+old = '''            if not dry_run:
+                outcome = _cancel_queued(store, hold.job.job_id)'''
+new = '''            if True:
+                outcome = _cancel_queued(store, hold.job.job_id)'''
+
+[[rows]]
+id = "M11_cancel_recheck"
+description = "_cancel_queued: drop the queued recheck under the lock, so a row that moved since the listing is cancelled"
+file = "src/cratekit/cli/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py"]
+old = '''            if current.state is not jobs.JobState.QUEUED:
+                return f"{current.state} by the time it was reached, so it was left"'''
+new = '''            if False:
+                return f"{current.state} by the time it was reached, so it was left"'''
+
+[[rows]]
+id = "M12_empty_set_copies"
+description = "intake_holds: count two jobs with no item as copies of each other"
+file = "src/cratekit/cli/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py"]
+old = '''                    if mine and other.job_id != job.job_id and sets[other.job_id] == mine'''
+new = '''                    if other.job_id != job.job_id and sets[other.job_id] == mine'''
+
+[[rows]]
+id = "M13_identity_parse"
+description = "playlist_identity: key on the raw source instead of the pass's reading"
+file = "src/cratekit/cli/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py", "tests/test_sync_land.py"]
+old = '''    return playlists.recorded_as(job) or source'''
+new = '''    return source'''
+
+[[rows]]
+id = "M14_set_frees_none"
+description = "playlist_identity: give a set job its source as a playlist identity"
+file = "src/cratekit/cli/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py", "tests/test_sync_land.py"]
+old = '''    if job.handler_key != "intake.playlist":
+        return ""
+    if source == INTAKE_HEARTS:'''
+new = '''    if False:
+        return ""
+    if source == INTAKE_HEARTS:'''
+
+[[rows]]
+id = "M15_name_fallback"
+description = "intake_playlist: name a job queued by hand by nothing rather than by its source"
+file = "src/cratekit/cli/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py", "tests/test_render_payloads.py"]
+old = '''    return source, source
+
+
+def playlist_identity'''
+new = '''    return "", source
+
+
+def playlist_identity'''
+
+[[rows]]
+id = "M16_naive_instant"
+description = "_instant: accept a stamp with no offset, read as if it were UTC"
+file = "src/cratekit/cli/jobs.py"
+surface = "maintainer"
+tests = ["tests/test_jobs.py"]
+old = '''    return moment if moment.tzinfo is not None else None'''
+new = '''    return moment if moment.tzinfo is not None else moment.replace(tzinfo=timezone.utc)'''
+
+[[rows]]
+id = "M17_summary_playlist"
+description = "_summary: carry no playlist field, so job show and job list say nothing of it"
+file = "src/cratekit/cli/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py", "tests/test_render_payloads.py", "tests/intake/test_workers.py"]
+old = '''    named = intake_playlist(job)
+    if named is not None:'''
+new = '''    named = None
+    if named is not None:'''
+
+[[rows]]
+id = "M18_left_open_taken"
+description = "_left_behind: name the pass's own jobs on the left open row too"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py"]
+old = '''    left = [hold for hold in holds if not taken or _run_of(hold.job) != taken]'''
+new = '''    left = list(holds)'''
+
+[[rows]]
+id = "M19_left_open_identity"
+description = "_left_behind: group by the label alone, so a typed URL and a sweep's id are two playlists"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py"]
+old = '''        grouped.setdefault(hold.identity or hold.label(), []).append(hold)'''
+new = '''        grouped.setdefault(hold.label(), []).append(hold)'''
+
+[[rows]]
+id = "M20_cancelled_driven"
+description = "_intake: drive cancelled jobs with the rest, so a continued pass stops on a cancelled job"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py"]
+old = '''    live = [job for job in found if job.state is not jobs.JobState.CANCELLED]'''
+new = '''    live = list(found)'''
+
+[[rows]]
+id = "M21_all_cancelled_done"
+description = "_intake: go on when every job was cancelled, so the listing refuses a pass with nothing resolved"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py"]
+old = '''        if not live:
+            report.check('''
+new = '''        if False:
+            report.check('''
+
+[[rows]]
+id = "M22_skip_failed"
+description = "_missing: list without --skip-failed, so a pass with a cancelled copy stops at the listing"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py"]
+old = '''        argv.append("--skip-failed")'''
+new = '''        pass'''
