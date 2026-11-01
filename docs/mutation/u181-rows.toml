@@ -73,7 +73,7 @@ description = "doctor vocals_install_command: ignore a release install, so the c
 file = "src/cratekit/cli/doctor.py"
 surface = "user"
 tests = ["tests/test_doctor.py"]
-old = '''    if origin.kind == "vcs" and origin.url and origin.version:
+old = '''    if origin.kind == "vcs" and origin.url and origin.version and _is_release(origin.version):
         extras = sorted({*origin.extras, VOCALS_EXTRA})'''
 new = '''    if False:
         extras = sorted({*origin.extras, VOCALS_EXTRA})'''
