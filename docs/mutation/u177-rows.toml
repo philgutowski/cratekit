@@ -1,0 +1,333 @@
+name = "u177"
+pass_kind = "full"
+
+# Every row's subset is the new suites plus the existing suites of the module it mutates.
+
+[[rows]]
+id = "A1_account_suffix"
+description = "bandcamp_account: keep .bandcamp.com on the host, so an address is stored as a host no purchase's seller equals"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_bandcamp_account.py", "tests/test_label_registry_verbs.py", "tests/test_bandcamp_labels.py", "tests/test_label_genre.py"]
+old = '''    if host.endswith(_ACCOUNT_HOST):
+        host = host[: -len(_ACCOUNT_HOST)]
+    if not host or not _ACCOUNT.fullmatch(host):
+'''
+new = '''    if not host or not _ACCOUNT.fullmatch(host):
+'''
+
+[[rows]]
+id = "A2_account_shape"
+description = "bandcamp_account: drop the shape check, so an account with a space is stored and matches no purchase"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_bandcamp_account.py", "tests/test_label_registry_verbs.py", "tests/test_bandcamp_labels.py", "tests/test_label_genre.py"]
+old = '''    if not host or not _ACCOUNT.fullmatch(host):
+'''
+new = '''    if not host:
+'''
+
+[[rows]]
+id = "A3_account_case"
+description = "bandcamp_account: keep the case typed, so PulsRomania never equals the purchase's pulsromania"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_bandcamp_account.py", "tests/test_label_registry_verbs.py", "tests/test_bandcamp_labels.py", "tests/test_label_genre.py"]
+old = '''    text = account.strip().lower() if isinstance(account, str) else ""
+'''
+new = '''    text = account.strip() if isinstance(account, str) else ""
+'''
+
+[[rows]]
+id = "A4_claim_removed"
+description = "_claim: return at once, so a second label naming a held account is written beside the first"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_bandcamp_account.py", "tests/test_label_registry_verbs.py", "tests/test_bandcamp_labels.py", "tests/test_label_genre.py"]
+old = '''    if account is None:
+        return
+    for other in current.values():
+'''
+new = '''    if True:
+        return
+    for other in current.values():
+'''
+
+[[rows]]
+id = "A5_claim_self"
+description = "_claim: count the label itself as a claimant, so setting its own account again is refused"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_bandcamp_account.py", "tests/test_label_registry_verbs.py", "tests/test_bandcamp_labels.py", "tests/test_label_genre.py"]
+old = '''        if other.label_id != label_id and other.bandcamp == account:
+'''
+new = '''        if other.bandcamp == account:
+'''
+
+[[rows]]
+id = "A6_first_of_two"
+description = "by_bandcamp: answer the first of two claimants, so a hand edited tie stages under a guessed label"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_bandcamp_account.py", "tests/test_label_registry_verbs.py", "tests/test_bandcamp_labels.py", "tests/test_label_genre.py", "tests/test_bandcamp_labels.py", "tests/test_bandcamp_cli.py"]
+old = '''        return found[0] if len(found) == 1 else None
+'''
+new = '''        return found[0] if found else None
+'''
+
+[[rows]]
+id = "A7_stored_raw"
+description = "_stored_account: keep a stored account as written, so a hand written address matches no purchase"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_bandcamp_account.py", "tests/test_label_registry_verbs.py", "tests/test_bandcamp_labels.py", "tests/test_label_genre.py"]
+old = '''    try:
+        return bandcamp_account(value)
+    except CratekitError:
+        return None
+'''
+new = '''    return value
+'''
+
+[[rows]]
+id = "A8_edit_drops_account"
+description = "edit: keep the held account, so registry set --bandcamp reports a change it never writes"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_bandcamp_account.py", "tests/test_label_registry_verbs.py", "tests/test_bandcamp_labels.py", "tests/test_label_genre.py"]
+old = '''                else (bandcamp if bandcamp is not None else existing.bandcamp),
+'''
+new = '''                else existing.bandcamp,
+'''
+
+[[rows]]
+id = "A9_add_drops_account"
+description = "registry_cmd add: pass no account to the store, so add --bandcamp is accepted and never written"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_bandcamp_account.py", "tests/test_label_registry_verbs.py", "tests/test_bandcamp_labels.py", "tests/test_label_genre.py"]
+old = '''            genre=genre,
+            clear_genre=clear_genre,
+            bandcamp=bandcamp,
+            clear_bandcamp=clear_bandcamp,
+        )
+        held = store.load()
+        return ctx.envelope(
+            data={
+                "checks": _checks_for(held, _routed(label_id, route)),
+'''
+new = '''            genre=genre,
+            clear_genre=clear_genre,
+            bandcamp=None,
+            clear_bandcamp=clear_bandcamp,
+        )
+        held = store.load()
+        return ctx.envelope(
+            data={
+                "checks": _checks_for(held, _routed(label_id, route)),
+'''
+
+[[rows]]
+id = "A10_clear_word"
+description = "registry_cmd: drop the clear word, so --bandcamp default stores an account named default"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_bandcamp_account.py", "tests/test_label_registry_verbs.py", "tests/test_bandcamp_labels.py", "tests/test_label_genre.py"]
+old = '''    clear_bandcamp = bandcamp is not None and bandcamp.strip().lower() == labels.CLEAR_BANDCAMP
+'''
+new = '''    clear_bandcamp = False
+'''
+
+[[rows]]
+id = "A11_field_flag_guard"
+description = "registry_cmd: leave --bandcamp out of the fields given, so remove --bandcamp is silently ignored and set --bandcamp alone refused"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_bandcamp_account.py", "tests/test_label_registry_verbs.py", "tests/test_bandcamp_labels.py", "tests/test_label_genre.py"]
+old = '''    fields_given = (seeds, track_limit, ctx.args.match, offer, kind, genre, bandcamp)
+'''
+new = '''    fields_given = (seeds, track_limit, ctx.args.match, offer, kind, genre)
+'''
+
+[[rows]]
+id = "B1_seller_by_label"
+description = "_sellers: take every name as an account, so --seller PULS plans nothing of pulsromania"
+file = "src/cratekit/acquire/bandcamp_cli.py"
+surface = "user"
+tests = ["tests/test_bandcamp_labels.py", "tests/test_bandcamp_cli.py"]
+old = '''        found.add(entry.bandcamp if entry is not None and entry.bandcamp else name.casefold())
+'''
+new = '''        found.add(name.casefold())
+'''
+
+[[rows]]
+id = "B2_plan_label"
+description = "plan: never ask the registry, so no row names a label and nothing is tagged"
+file = "src/cratekit/acquire/bandcamp_cli.py"
+surface = "user"
+tests = ["tests/test_bandcamp_labels.py", "tests/test_bandcamp_cli.py"]
+old = '''        label = known.by_bandcamp(purchase.seller) if purchase.seller else None
+'''
+new = '''        label = None
+'''
+
+[[rows]]
+id = "B3_unregistered_filter"
+description = "unregistered: name sellers with nothing to fetch too, so a filtered seller is asked to register"
+file = "src/cratekit/acquire/bandcamp_cli.py"
+surface = "user"
+tests = ["tests/test_bandcamp_labels.py", "tests/test_bandcamp_cli.py"]
+old = '''            if one.disposition in TO_FETCH and one.label is None and one.purchase.seller
+'''
+new = '''            if one.label is None and one.purchase.seller
+'''
+
+[[rows]]
+id = "B4_labels_of_filter"
+description = "labels_of: name a label whose purchases are all filtered, so the check says it stages"
+file = "src/cratekit/acquire/bandcamp_cli.py"
+surface = "user"
+tests = ["tests/test_bandcamp_labels.py", "tests/test_bandcamp_cli.py"]
+old = '''        if one.disposition in TO_FETCH and one.label is not None
+    }
+'''
+new = '''        if one.label is not None
+    }
+'''
+
+[[rows]]
+id = "B5_registry_unread_empty"
+description = "registry: read an unreadable registry as empty, so every purchase stages untagged with a clean plan"
+file = "src/cratekit/acquire/bandcamp_cli.py"
+surface = "user"
+tests = ["tests/test_bandcamp_labels.py", "tests/test_bandcamp_cli.py"]
+old = '''    del origin
+    return labels.RegistryStore().load()
+'''
+new = '''    del origin
+    try:
+        return labels.RegistryStore().load()
+    except CratekitError:
+        return labels.empty()
+'''
+
+[[rows]]
+id = "B6_frozen_label"
+description = "frozen_release: freeze no label, so the worker tags nothing"
+file = "src/cratekit/acquire/bandcamp_cli.py"
+surface = "user"
+tests = ["tests/test_bandcamp_labels.py", "tests/test_bandcamp_cli.py"]
+old = '''        "label": planned.label.name if planned.label is not None else None,
+'''
+new = '''        "label": None,
+'''
+
+[[rows]]
+id = "B7_tag_not_written"
+description = "handle_fetch: skip the label write, so a registered seller's files stage untagged"
+file = "src/cratekit/acquire/bandcamp_cli.py"
+surface = "user"
+tests = ["tests/test_bandcamp_labels.py", "tests/test_bandcamp_cli.py"]
+old = '''        if label and not tags.write_tags(path, {"label": label}):
+'''
+new = '''        if False:
+'''
+
+[[rows]]
+id = "B8_write_false_ignored"
+description = "handle_fetch: ignore the writer's False, so a file that would not take the tag is reported tagged"
+file = "src/cratekit/acquire/bandcamp_cli.py"
+surface = "user"
+tests = ["tests/test_bandcamp_labels.py", "tests/test_bandcamp_cli.py"]
+old = '''        if label and not tags.write_tags(path, {"label": label}):
+            untagged.append(final.name)
+'''
+new = '''        if label:
+            tags.write_tags(path, {"label": label})
+'''
+
+[[rows]]
+id = "B9_untagged_refusal"
+description = "handle_fetch: drop the refusal naming the untagged files, so the item succeeds over them"
+file = "src/cratekit/acquire/bandcamp_cli.py"
+surface = "user"
+tests = ["tests/test_bandcamp_labels.py", "tests/test_bandcamp_cli.py"]
+old = '''    if untagged:
+        raise refuse(
+'''
+new = '''    if False:
+        raise refuse(
+'''
+
+[[rows]]
+id = "B10_land_command"
+description = "land_command: name no landing, so the fetch never says how to file the batch by label"
+file = "src/cratekit/acquire/bandcamp_cli.py"
+surface = "user"
+tests = ["tests/test_bandcamp_labels.py", "tests/test_bandcamp_cli.py"]
+old = '''    if not any(isinstance(one, Mapping) and one.get("label") for one in releases.values()):
+        return None
+'''
+new = '''    if True:
+        return None
+'''
+
+[[rows]]
+id = "C1_label_fold"
+description = "_read_label: drop the NFC fold, so one label spelled two ways makes two folders"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''    named = _folded(str(stored or "").strip())
+'''
+new = '''    named = str(stored or "").strip()
+'''
+
+[[rows]]
+id = "C2_no_label_filed"
+description = "plan_for_tags: file a file with no label tag under an empty label, not under none"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''        if not label or year is None:
+            unfiled.append(
+                Unfiled(
+                    target=str(target),
+                    reason=landing.NO_LABEL,
+                    sentence=(
+                        f"{target.name} was filed under no "
+'''
+new = '''        if label and year is None:
+            unfiled.append(
+                Unfiled(
+                    target=str(target),
+                    reason=landing.NO_LABEL,
+                    sentence=(
+                        f"{target.name} was filed under no "
+'''
+
+[[rows]]
+id = "C3_flag_beside_label"
+description = "_label_flag: drop the refusal of --label-from-tags beside --label, so one label for every file silently wins"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''    if from_tags and given is not None:
+        raise refuse(
+'''
+new = '''    if False:
+        raise refuse(
+'''
+
+[[rows]]
+id = "C4_flag_ignored"
+description = "label_plan: ignore --label-from-tags, so the batch lands filed under nothing"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py"]
+old = '''            if label_from_tags:
+                return label_filing.plan_for_tags(db, medium, files=files)
+'''
+new = '''            if False:
+                return label_filing.plan_for_tags(db, medium, files=files)
+'''
