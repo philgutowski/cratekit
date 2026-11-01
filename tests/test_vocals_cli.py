@@ -524,3 +524,193 @@ def test_a_one_level_vocals_resume_says_nothing_about_a_walk_it_never_did(
     code, resumed = drive(resume_argv(vocals_job().job_id))
     assert code == int(ExitCode.OK), resumed
     assert [w["code"] for w in resumed["warnings"]] == []
+
+
+# ---------------------------------------------------------------------------
+# U181: --unscored queues only what analyze run will never score again
+# ---------------------------------------------------------------------------
+
+
+def test_unscored_queues_a_headed_file_with_no_score_and_leaves_the_rest_alone(
+    cfg, folder, silence, monkeypatch
+):
+    """A file the run finalized with no voxlevel is scored; one already scored,
+    and one the run has not finalized, are not queued at all."""
+    finalized = place(folder, silence, "08A - 124 - finalized")
+    scored = place(folder, silence, "09A - 125 - scored", voxlevel=40)
+    fresh = place(folder, silence, "fresh")
+    bind_scoring(monkeypatch)
+
+    code, queued = drive(["analyze", "vocals", "--unscored", str(folder)])
+    assert code == int(ExitCode.OK), queued
+    job = vocals_job()
+    assert set(item_states(job.job_id)) == {finalized.name}
+    assert job.payload["unscored"] is True
+
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+    assert tags.read_vox_from_file(finalized) is not None
+    assert tags.read_vox_from_file(scored) == 40, "a file carrying a score is left alone"
+    assert tags.read_vox_from_file(fresh) is None, "a file with no head is the run's to analyse"
+
+
+def test_unscored_over_a_folder_whose_headed_files_all_carry_a_score_queues_nothing(
+    cfg, folder, silence, monkeypatch
+):
+    place(folder, silence, "08A - 124 - scored", voxlevel=12)
+    place(folder, silence, "unheaded")
+    bind_scoring(monkeypatch)
+
+    code, envelope = drive(["analyze", "vocals", "--unscored", str(folder)])
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert envelope["data"]["state"] == "none-unscored"
+    with jobs.open_store() as store:
+        assert not [
+            job
+            for job in jobs.list_jobs(store)
+            if job.handler_key == registry.entry("analyze.vocals").handler_key
+        ]
+
+
+def test_unscored_reads_the_head_by_the_rule_analyze_run_skips_by(cfg, folder, silence):
+    """One rule: the run's own resume marker, the configured lossy marker included."""
+    from cratekit.analysis import cli as analysis_cli
+
+    headed = place(folder, silence, "08A - 124 - a")
+    loose = place(folder, silence, "08A - a")
+    assert analysis_cli.carries_head(headed, cfg)
+    assert not analysis_cli.carries_head(loose, cfg)
+
+
+def _chain():
+    from cratekit.cli import tail
+
+    return tail.Chain(
+        progress=None,
+        namespace="test.chain",
+        title="test chain",
+        steps=tail.STEPS,
+        origin=("test",),
+        again="run it again",
+    )
+
+
+def test_the_tails_rescore_scores_a_headed_file_with_no_score_and_leaves_a_scored_one(
+    cfg, folder, silence, monkeypatch
+):
+    """U181's tail scenario, through the real dispatcher and the real worker:
+    a file the run finalized with no voxlevel is scored by the analyze step,
+    and one already carrying a score is not touched."""
+    from cratekit.cli import tail
+
+    finalized = place(folder, silence, "08A - 124 - finalized")
+    scored = place(folder, silence, "09A - 125 - scored", voxlevel=40)
+    bind_scoring(monkeypatch)
+    chain = _chain()
+
+    tail.rescore(chain, folder, cfg, unable=None)
+
+    assert tags.read_vox_from_file(finalized) is not None
+    assert tags.read_vox_from_file(scored) == 40
+    (row,) = [c for c in chain.checks if c["key"] == "test.chain.rescore"]
+    assert row["status"] == "ok" and "the 1 staged file(s)" in row["detail"]
+    assert chain.summary["vocal_rescore"] == 1
+    job = vocals_job()
+    assert job.state is jobs.JobState.SUCCEEDED
+    assert set(item_states(job.job_id)) == {finalized.name}
+    assert chain.summary["commands"] == [
+        ["crate", "analyze", "vocals", "--unscored", str(folder)],
+        ["crate", "analyze", "vocals", str(folder), "--job", job.job_id],
+    ]
+
+
+def test_the_tails_rescore_asks_nothing_of_a_model_that_cannot_score(cfg, folder, silence):
+    from cratekit.cli import tail
+
+    place(folder, silence, "08A - 124 - finalized")
+    chain = _chain()
+
+    tail.rescore(chain, folder, cfg, unable="the 'vocals' extra is not installed here")
+
+    assert chain.summary["commands"] == []
+    (row,) = chain.checks
+    assert row["status"] == "info" and "extra is not installed" in row["detail"]
+    assert chain.summary["vocal_rescore"] == "skipped"
+
+
+def test_the_tails_rescore_replaces_a_stale_vocals_job_over_the_folder(
+    cfg, folder, silence, monkeypatch
+):
+    """Like every tail step: a job queued over the folder earlier is cancelled."""
+    from cratekit.cli import tail
+
+    place(folder, silence, "08A - 124 - finalized")
+    bind_scoring(monkeypatch)
+    drive(["analyze", "vocals", str(folder)])
+    stale = vocals_job()
+    chain = _chain()
+
+    tail.rescore(chain, folder, cfg, unable=None)
+
+    with jobs.open_store() as store:
+        assert jobs.get(store, stale.job_id).state is jobs.JobState.CANCELLED
+    assert chain.summary["replaced"] == [{"step": "analyze", "job_id": stale.job_id}]
+
+
+def test_the_tail_spells_the_vocals_verb_and_flag_as_the_verb_declares_them():
+    from cratekit.cli import tail
+    from cratekit.vocals import cli as vocals_cli
+
+    assert registry.entry(tail.VOCALS_VERB).path == tail.VOCALS_WORDS
+    assert tail.VOCALS_UNSCORED == vocals_cli.UNSCORED
+
+
+def test_the_probe_names_a_missing_extra_as_the_extra(monkeypatch):
+    """U181. A torch that will not import is the extra, which a reinstall mends."""
+    import sys as _sys
+
+    monkeypatch.setitem(_sys.modules, "torch", None)
+    kind, said = vocals.requirement()
+    assert kind == vocals.MISSING_EXTRA
+    assert said == vocals.missing_requirement()
+    assert "'vocals' extra" in said
+
+
+def test_the_probe_names_missing_model_files_as_files(monkeypatch, tmp_path):
+    """The extra imports and the label table is absent: no reinstall places it."""
+    import sys as _sys
+    import types
+
+    monkeypatch.setitem(_sys.modules, "torch", types.ModuleType("torch"))
+    monkeypatch.setitem(_sys.modules, "panns_inference", types.ModuleType("panns_inference"))
+    monkeypatch.setattr(vocals, "LABELS", tmp_path / "absent.csv")
+    kind, said = vocals.requirement()
+    assert kind == vocals.MISSING_FILES
+    assert "label table" in said and "'vocals' extra" not in said
+
+
+def test_the_one_test_takes_a_bound_loader_as_able(monkeypatch):
+    monkeypatch.setattr(vocals, "missing_requirement", lambda: "missing")
+    assert vocals.unavailable() == "missing"
+    monkeypatch.setattr(vocals, "_VOCAL_LOADER", lambda: object())
+    assert vocals.unavailable() is None
+
+
+def test_a_rescore_job_that_does_not_succeed_ends_the_chain_at_the_analyze_step(
+    cfg, folder, silence, monkeypatch
+):
+    """A score that cannot be written fails the job, and the landing is never planned."""
+    from cratekit.cli import tail
+
+    place(folder, silence, "08A - 124 - finalized")
+    bind_scoring(monkeypatch)
+    monkeypatch.setattr(tags, "write_tags", lambda _path, _fields: False)
+    chain = _chain()
+
+    with pytest.raises(tail.Stop) as stopped:
+        tail.rescore(chain, folder, cfg, unable=None)
+
+    assert stopped.value.step == tail.ANALYZE
+    assert not [c for c in chain.checks if c["status"] == "ok"]

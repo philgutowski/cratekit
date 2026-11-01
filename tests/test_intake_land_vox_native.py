@@ -252,6 +252,42 @@ def test_a_file_with_no_score_gets_no_tag_and_is_named(calibrated, silence):
     assert "Unscored.flac" in message and "One.flac" not in message
 
 
+def test_a_batch_mostly_unscored_carries_a_warning_with_its_code_on_the_gate_screen(
+    calibrated, silence
+):
+    """U181. Sitting 51's batch: the plan said it in one clause. More than half
+    the added rows unscored is a warning with a code, naming the way on."""
+    cfg = calibrated
+    _scored(cfg, silence, "One.flac", 60)
+    _scored(cfg, silence, "Two.flac", None)
+    _scored(cfg, silence, "Three.flac", None)
+
+    code, refused = drive(_land())
+
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]
+    assert "2 file(s) carry no score" in shown["vox My Tag"], "the line stays"
+    (warned,) = shown["warnings"]
+    assert warned["code"] == land_cli.VOX_MOSTLY_UNSCORED
+    assert "2 of the 3 row(s)" in warned["message"]
+    assert "crate analyze vocals --unscored" in warned["message"]
+    assert "install.extras" in warned["message"]
+
+
+def test_half_a_batch_unscored_is_said_on_the_line_and_is_no_warning(calibrated, silence):
+    """The bound is more than half: one in two is the line's alone."""
+    cfg = calibrated
+    _scored(cfg, silence, "One.flac", 60)
+    _scored(cfg, silence, "Two.flac", None)
+
+    code, refused = drive(_land())
+
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]
+    assert "1 file(s) carry no score" in shown["vox My Tag"]
+    assert "warnings" not in shown
+
+
 def test_a_library_with_no_calibration_tags_nothing_and_says_why(native_library, silence):
     """R-276's reading: no calibration is no cut, never the default one."""
     cfg, _root = native_library
