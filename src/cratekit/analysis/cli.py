@@ -58,6 +58,7 @@ from typing import Any, Mapping, Sequence, TypeVar
 from cratekit.analysis import artifacts, detect, energy, light, vocals
 from cratekit.cli.output import Envelope
 from cratekit.core import config, discovery, jobs, naming, tags
+from cratekit.core import drift as drift_words
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.naming import MarkerRule, NameBudget, NameSpec, NameTemplate
@@ -530,6 +531,7 @@ def _bind_defaults(cfg: config.Config) -> None:
             detect.analyse_file,
             calibration=energy.load_calibration(cfg),
             tempo_window=(cfg.analysis.tempo_floor, cfg.analysis.tempo_ceiling),
+            drift_cut=cfg.analysis.drift_cut,
         )
         light.bind_detect(_BOUND_DETECT)
     if not vocals.loader_bound():
@@ -583,6 +585,11 @@ def _finalize(cfg: config.Config, job, item, path: Path, scored: Mapping[str, An
     uncalibrated library's files carry no ``energylevel``, and the routing
     pass reads that absence as the taxonomy's no-energy sink rather than as a
     level. Same for an unscored vocal pass.
+
+    THE DRIFT AND ITS VERDICT BESIDE THEM (U157), the level only when one was
+    measured and the verdict whenever the detector gave one, so a beatless
+    track carries ``unknown`` and no level, and a detector that measures no
+    drift writes neither, which a landing reads as unscored.
     """
     template = _template(cfg)
     camelot = str(scored["camelot"])
@@ -610,6 +617,8 @@ def _finalize(cfg: config.Config, job, item, path: Path, scored: Mapping[str, An
         "voxlevel": scored.get("voxlevel"),
         "voxgender": scored.get("voxgender"),
         "voxgenderconf": scored.get("voxgenderconf"),
+        "driftlevel": _drift_level(scored.get("drift")),
+        "drift": scored.get("drift_verdict"),
     }
     _write_or_refuse(path, fields, untouched="The file is untouched and was not renamed")
     target = path.with_name(rendered.filename)
@@ -636,6 +645,13 @@ def _finalize(cfg: config.Config, job, item, path: Path, scored: Mapping[str, An
             detail={"path": str(path), "target": str(target), "stage": "rename"},
         ) from exc
     return target
+
+
+def _drift_level(measured: Any) -> str | None:
+    """A measured drift as its tag spells it, or None for no measurement (U157)."""
+    if measured is None:
+        return None
+    return drift_words.shown(float(measured))
 
 
 def handle_run(job, item, cfg) -> jobs.Produced:
@@ -694,6 +710,8 @@ def handle_run(job, item, cfg) -> jobs.Produced:
             "vocal_reason": scored.get("vocal_reason"),
             "voxlevel": scored.get("voxlevel"),
             "voxgender": scored.get("voxgender"),
+            "drift": scored.get("drift"),
+            "drift_verdict": scored.get("drift_verdict"),
         },
     )
 

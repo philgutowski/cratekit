@@ -1309,7 +1309,11 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'intake/land_cli.py': [
         # 2026-10-16, U153: the held colour warning joined.
         'account-archive',
+        # 2026-11-01, U149: a landing's custom playlist twin left and named.
+        'custom-playlist-twins-left',
         'decision-stale',
+        # 2026-11-01, U157: a variable row the commit could not mark dyn.
+        'dyn-not-written',
         'favorites-colour-held',
         'favorites-placed',
         'favorites-placement-skipped',
@@ -1736,6 +1740,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-pair-nothing',
         'sync-pair-out-of-scope',
         'sync-pair-skipped',
+        'sync-pair-twin-unpaired',
         'sync-pair-unknown',
         'sync-pair-unmatched',
         'sync-pair-withheld',
@@ -1754,6 +1759,22 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-source-lookups-failed',
     ],
     'sync/run.py': ['sync-source-lookups-failed', 'utf-8'],
+    # 2026-11-01, U149: the custom playlist twins and their backfill.
+    'sync/twins.py': [
+        'custom-playlist-twins',
+        'custom-playlist-twins-landed',
+        'custom-playlist-twins-unpaired',
+        'decision-stale',
+        'session-committed-unverified',
+        'whitelist-violation',
+    ],
+    'sync/twins_cli.py': [
+        'sync-twins-left',
+        'sync-twins-listing-short',
+        'sync-twins-made',
+        'sync-twins-missing',
+        'sync-twins-nothing',
+    ],
     'sync/unmark_cli.py': [
         'already-unmarked',
         'internal-error',
@@ -2855,6 +2876,8 @@ PINNED_LITERAL_HOLDERS = {
     'sync/pair_cli.py': ['sync-pair-out-of-scope', 'sync-pair-unknown'],
     'sync/playlists.py': ['intake-list-unusable', 'label-playlist-unreadable', 'sync-source-lookups-failed'],
     'sync/run.py': ['sync-source-lookups-failed'],
+    # 2026-11-01, U149: the twins' stale plan, unverified read back and confinement.
+    'sync/twins.py': ['decision-stale', 'session-committed-unverified', 'whitelist-violation'],
     'sync/unmark_cli.py': ['internal-error', 'sync-marks-blocked'],
     'sync/watermarks.py': ['sync-watermark-unusable'],
     # 2026-10-31, U178: tag folder refuses a --label nobody registered.

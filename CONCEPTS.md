@@ -531,6 +531,19 @@ mark` finds a bridge pass by its intake file's name and a native pass by
 `--pass`, since R-777, and the engine waits on a `marks.NativeLanding` there in
 place of the file.
 
+### Drift
+How far a track's tempo moves over its length, as a percent of its middle,
+measured by `analyze run` from the tempogram the head already takes and written
+as the `driftlevel` and `drift` file tags (U157). It is never a tempo: a drift
+of 4.4 says the tempo moves by about four percent between the track's steady
+sections, and nothing about what the tempo is. Its verdict is `steady` or
+`variable` against `analysis.drift_cut`, or `unknown` when too few windows of
+the track carry a pulse to judge. A native landing gives each variable row the
+`dyn` My Tag, which is what tells the rekordbox visit to analyse that row with
+Dynamic rather than Normal, and `crate analyze check` reads the same mark to
+accept a variable grid on it. "Unscored" is the landing's word for a file that
+carries no drift at all, never a verdict a file holds.
+
 ### The tail
 The four verbs that must run over staged files, in this order, before a landing
 is planned: `tag folder`, `analyze run`, `analyze restamp` and `name apply`.
@@ -1881,6 +1894,27 @@ band or former place of its holder, under the holder's own name for it.
 files into any more; a split place is one the holder still files into, and
 only the declaring bucket's tracks leave it.
 
+### Genre sub
+Since U155, a playlist under a bucket that splits by energy which holds the
+tracks whose genre is one of its sources, declared as `[[bucket.genre_sub]]`
+with an `id`, a `display` and `sources`. The first one is `Rominimal` under
+Minimal / Deep Tech, for the PULS releases. It is additive: a Rominimal track
+is filed into its band, or Unsorted with no reading, exactly as before, and
+into the genre sub beside it, the way "with vox" sits beside a band. So it is
+never a Competing sub, nothing is moved out of it, and no band loses a track
+to it. Sources match exactly and case sensitively, and each must be an exact
+alias of the bucket, so `Minimal` never reaches it. The tagger writes the
+source rather than the bucket's name. The tree rebuild and `route resort` file
+it; the native landing and `organize` do not yet, so a new track reaches it at
+the next `route resort`. It needs schema version 5, and the loader refuses one
+whose id or name is already a band, the no reading sub, a sub class or a sub of
+its folder, or that sits on a bucket that does not split by energy.
+
+*Avoid:* reading it as `sub_by_source`. A bucket that routes by source genre
+never reads energy, so declaring Rominimal that way would take the bands away
+from every track in the bucket. Also avoid reading it as a sub class, which
+sits under every bucket rather than one.
+
 ### Held elsewhere
 An adoption plan entry withheld because its track already holds a competing
 sub in the bucket the plan routes it to, or holds the planned sub through a
@@ -2164,7 +2198,8 @@ account stays in Undated. Add only, like the quarter was.
 
 ### Custom playlist twin
 The permanent rekordbox copy of a downloaded custom playlist, planned on
-2026-10-15 (`docs/plans/2026-10-15-1330-feat-rekordbox-tidal-parity-plan.md`):
+2026-10-15 (`docs/plans/2026-10-15-1330-feat-rekordbox-tidal-parity-plan.md`)
+and built by U149 (`sync/twins.py`, `crate sync twins`):
 one playlist of the account playlist's name, less the `DOWNLOADED ` prefix,
 in the folder `Custom Playlists <year>` beside INBOX, holding the rows the
 library owns for its tracks. It is a PLAYLIST PAIR with the account's copy,
@@ -2172,6 +2207,10 @@ marked at the landing without a hand step and backfilled once for the
 playlists the account already holds, so an edit on either side reaches the
 other at the next `sync pair`. It is the one place an account edit changes
 rekordbox; the INBOX playlist the same landing writes is a different
-playlist of the same rows and rotates out, the twin does not.
+playlist of the same rows and rotates out, the twin does not. Its folder is
+not declared in the taxonomy and no registry records it, so the pair rule
+lets it pair. A name its folder already holds is left and named, never given
+a count, and a twin whose account playlist is deleted is unpaired by the next
+`crate sync pair` and left where it is.
 
 *Avoid:* reading it as the INBOX playlist, or as a mirror, which goes one way.

@@ -168,6 +168,15 @@ FIELDS: dict[str, TagSpec] = {
     # shows in its Label column is U177's to measure on a copy, and the entry
     # moves here, for reader and writer at once, if the measurement differs.
     "label": TagSpec("label", "TPUB", "----:com.apple.iTunes:LABEL"),
+    # U157. How far the track's tempo moves over its length and the verdict
+    # that reading takes, written by ``analyze run`` beside ``voxlevel`` so a
+    # landing can mark the rows rekordbox should analyse with Dynamic. The
+    # level is a percent spread and the verdict a word, so NEITHER IS A TEMPO
+    # and the table still has no tempo entry; ``core.drift`` says what each is.
+    "driftlevel": TagSpec(
+        "driftlevel", "TXXX:DriftLevel", "----:com.apple.iTunes:DriftLevel"
+    ),
+    "drift": TagSpec("drift", "TXXX:Drift", "----:com.apple.iTunes:Drift"),
 }
 
 FLAC_SUFFIXES = (".flac",)

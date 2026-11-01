@@ -78,6 +78,10 @@ class Pair:
     account: tuple[str, ...] | None = None
     rekordbox: tuple[Membership, ...] | None = None
     links: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
+    #: Whether the product made the rekordbox side as the account playlist's
+    #: custom playlist twin (U149), so a sync unpairs it, rather than leaving
+    #: it out, once the account playlist is gone.
+    twin: bool = False
 
     @property
     def first(self) -> bool:
@@ -92,6 +96,8 @@ class Pair:
             "synced": self.synced,
             "links": dict(sorted(self.links.items())),
         }
+        if self.twin:
+            record["twin"] = True
         if self.account is not None:
             record["account"] = list(self.account)
         if self.rekordbox is not None:
@@ -201,6 +207,9 @@ class PairStore:
             isinstance(k, str) and k and isinstance(v, str) and v for k, v in links.items()
         ):
             raise self._unusable(f"the pair {account_id!r} has links that are not ids")
+        twin = value.get("twin", False)
+        if not isinstance(twin, bool):
+            raise self._unusable(f"the pair {account_id!r} says twin as something not true or false")
         return Pair(
             account_id=account_id,
             rekordbox_id=rekordbox_id,
@@ -210,6 +219,7 @@ class PairStore:
             account=tuple(account) if account is not None else None,
             rekordbox=members,
             links=MappingProxyType(dict(links)),
+            twin=twin,
         )
 
     def _write(self, pairs: Mapping[str, Pair]) -> None:
@@ -230,12 +240,15 @@ class PairStore:
     def get(self, account_id: str) -> Pair | None:
         return self._load().get(str(account_id))
 
-    def mark(self, account_id: str, rekordbox_id: str, *, name: str) -> Pair:
+    def mark(
+        self, account_id: str, rekordbox_id: str, *, name: str, twin: bool = False
+    ) -> Pair:
         """Record the pair, or return it unchanged when it is already this pair.
 
         REFUSED when either identifier is paired with something else, read and
         written under one lock, so two syncs marking at once cannot each pair
-        one rekordbox playlist with a different account playlist.
+        one rekordbox playlist with a different account playlist. ``twin`` says
+        the product made the rekordbox side as a custom playlist twin (U149).
         """
         account_id = str(account_id)
         rekordbox_id = str(rekordbox_id)
@@ -254,6 +267,7 @@ class PairStore:
                 rekordbox_id=rekordbox_id,
                 name=str(name),
                 marked=timestamp(),
+                twin=bool(twin),
             )
             pairs[account_id] = pair
             self._write(pairs)
@@ -294,6 +308,24 @@ class PairStore:
             pairs[str(account_id)] = pair
             self._write(pairs)
             return pair
+
+
+    def unmark(self, account_id: str, rekordbox_id: str) -> Pair | None:
+        """Forget one pair, and answer what it was, or None when it is not this pair.
+
+        U149. Only a pair still holding ``rekordbox_id`` is forgotten, read and
+        written under one lock, so a pair marked again since the caller read it
+        is left as it is. Neither side's playlist is touched: an unpaired
+        playlist is still the list it was, in rekordbox and on the account.
+        """
+        with self._locked():
+            pairs = self._load()
+            held = pairs.get(str(account_id))
+            if held is None or held.rekordbox_id != str(rekordbox_id):
+                return None
+            del pairs[str(account_id)]
+            self._write(pairs)
+            return held
 
 
 def conflict(account_id: str, rekordbox_id: str, held: Pair) -> CratekitError:

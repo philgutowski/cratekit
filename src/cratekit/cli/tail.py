@@ -62,7 +62,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from cratekit.cli import gates, registry, render
-from cratekit.core import config, jobs
+from cratekit.core import config, drift, jobs
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.modules import foreground
@@ -120,10 +120,14 @@ ANALYZE_PLAYLIST = "INBOX / Analyze"
 #: fills (U166), which holds every row still waiting and only those, then the
 #: clear that takes the analysed out. NO RELOAD TAGS SINCE U163: a landed row
 #: carries its artist, album, genre and year from the commit that made it.
+#: TWO SELECTIONS SINCE U157, the settings ``core.drift`` names for both: the
+#: rows a landing marked ``dyn`` because their tempo moves take Dynamic, and
+#: every other row Normal.
 REKORDBOX_STEPS: tuple[str, ...] = (
     f"in rekordbox, select the {ANALYZE_PLAYLIST} playlist, which holds every "
-    f"landed row waiting for analysis, and run Analyze Tracks on it: Analysis "
-    f"Mode Normal, high precision off, BPM/Grid, Phrase and KEY on",
+    f"landed row waiting for analysis, and run Analyze Tracks on its rows "
+    f"without the dyn My Tag: {drift.NORMAL_SETTINGS}; then on its rows "
+    f"carrying the dyn My Tag, if any: {drift.DYNAMIC_SETTINGS}",
     "quit rekordbox and confirm rekordbox and rekordboxAgent are both gone "
     "before any other verb runs",
     "then take the analysed rows out of it: crate inbox analyzed",

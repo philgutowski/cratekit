@@ -57,7 +57,11 @@
 # 4 SINCE U119, the version a template states before it may declare a sub class
 # derived from a playlist, the genre Favorites below. A template with no such
 # class may stay at 3.
-schema_version = 4
+#
+# 5 SINCE U155, the version a template states before it may declare a genre
+# sub, see the Minimal / Deep Tech bucket below. A template with no genre sub
+# may stay at 4.
+schema_version = 5
 
 # KTD14 pins the tree at three levels: a child of ROOT, a folder, a sub-playlist.
 # The XML bridge's indentation constants encode exactly that, so a template
@@ -241,6 +245,7 @@ family = "house"
 bpm = { start = 126, floor = 118, ceil = 136 }
 aliases = [
   "Minimal / Deep Tech",
+  "Rominimal",
 ]
 # Tagging-only: source strings the tagger accepts that routing deliberately
 # does not. Listing them here is the point — the two tables that used to
@@ -252,6 +257,17 @@ tag_aliases = [
 # Same band boundaries, different band labels. Only the display changes,
 # which is why the override is on the label and not on the cut.
 energy = { enabled = true, band_display = { low = "Low Energy", med = "Med Energy", high = "High Energy" } }
+# A genre sub (U155): a track whose genre is exactly one of the sources files
+# into its energy band as every other track here does, AND into this playlist
+# beside the bands, the way "with vox" sits beside them. Phillip tags every
+# PULS release Rominimal. Each source must also be an exact alias of this
+# bucket, which is why Rominimal is listed above: the "minimal" keyword rule
+# would file it here too, and Minimal would then reach the sub as well.
+# Filed by the tree rebuild and by crate route resort. Needs schema_version 5.
+[[bucket.genre_sub]]
+id = "rominimal"
+display = "Rominimal"
+sources = ["Rominimal"]
 
 [[bucket]]
 id = "house_funky_disco"

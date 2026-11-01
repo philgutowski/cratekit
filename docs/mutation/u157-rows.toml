@@ -1,0 +1,241 @@
+name = "u157"
+pass_kind = "light"
+
+[[rows]]
+id = "D1_band_narrow"
+description = "DRIFT_BAND: back to the first band of 0.12, so the other section of a two tempo track falls outside it"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = '''DRIFT_BAND = 0.25'''
+new = '''DRIFT_BAND = 0.12'''
+
+[[rows]]
+id = "D2_band_wide"
+description = "DRIFT_BAND: widened to 0.5, so a window reaches a related metrical level"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = '''DRIFT_BAND = 0.25'''
+new = '''DRIFT_BAND = 0.5'''
+
+[[rows]]
+id = "D3_pulse_gate"
+description = "drift_from_tempogram: drop the pulse contrast gate, so a breakdown's window counts"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = '''(peak - float(column[around].mean())) / peak < DRIFT_PULSE_CONTRAST'''
+new = '''(peak - float(column[around].mean())) / peak < -1.0'''
+
+[[rows]]
+id = "D4_onset_floor"
+description = "drift_from_tempogram: drop the absolute onset floor, so a pad alone is judged"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = '''if strength[i] < DRIFT_ONSET_FLOOR or strength[i]'''
+new = '''if strength[i] < -1.0 or strength[i]'''
+
+[[rows]]
+id = "D5_onset_relative"
+description = "drift_from_tempogram: drop the relative onset gate"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = '''strength[i] < DRIFT_ONSET_RELATIVE * median:'''
+new = '''strength[i] < 0.0 * median:'''
+
+[[rows]]
+id = "D6_min_counted"
+description = "drift_from_tempogram: judge on a single counted window"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = '''    if len(tempos) < DRIFT_MIN_WINDOWS:'''
+new = '''    if len(tempos) < 1:'''
+
+[[rows]]
+id = "D7_min_windows"
+description = "drift_from_tempogram: drop the guard against a track with no whole window, which answers before a median of nothing"
+file = "src/cratekit/analysis/detect.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = '''    if windows == 0:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "D8_percentile"
+description = "DRIFT_PERCENTILE: the whole range instead of the tenth to ninetieth"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = '''DRIFT_PERCENTILE = 10.0'''
+new = '''DRIFT_PERCENTILE = 0.0'''
+
+[[rows]]
+id = "D9_no_interpolation"
+description = "drift_from_tempogram: the window's bin instead of its interpolated peak"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = '''        lag = _interpolated_peak(column, index)
+        if lag <= 0.0:
+            continue'''
+new = '''        lag = float(index)
+        if lag <= 0.0:
+            continue'''
+
+[[rows]]
+id = "D10_verdict_cut"
+description = "analyse_file: read the verdict against the shipped default, not the bound cut"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
+old = '''drift_words.verdict(drift, drift_cut)'''
+new = '''drift_words.verdict(drift, DEFAULT_DRIFT_CUT)'''
+
+[[rows]]
+id = "C1_at_the_cut"
+description = "verdict: at the cut reads steady"
+file = "src/cratekit/core/drift.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py", "tests/test_drift.py", "tests/test_analyze_check.py"]
+old = '''VARIABLE if drift >= cut else STEADY'''
+new = '''VARIABLE if drift > cut else STEADY'''
+
+[[rows]]
+id = "C2_verdict_tag_trusted"
+description = "reading: a verdict tag with no score is read as itself, so a stray variable lands dyn"
+file = "src/cratekit/core/drift.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py", "tests/test_drift.py", "tests/test_analyze_check.py"]
+old = '''    if (verdict_text or "").strip() == UNKNOWN:
+        return None, UNKNOWN'''
+new = '''    if (verdict_text or "").strip() in VERDICTS:
+        return None, (verdict_text or "").strip()'''
+
+[[rows]]
+id = "C3_negative_score"
+description = "parse: accept a negative drift"
+file = "src/cratekit/core/drift.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py", "tests/test_drift.py", "tests/test_analyze_check.py"]
+old = '''    if not math.isfinite(value) or value < 0.0:'''
+new = '''    if not math.isfinite(value):'''
+
+[[rows]]
+id = "F1_cut_zero"
+description = "_validate_drift_cut: accept a cut of zero, which marks every measured track"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_drift.py", "tests/test_config.py"]
+old = '''        or value <= 0
+        or value > 100'''
+new = '''        or value < 0
+        or value > 100'''
+
+[[rows]]
+id = "F2_cut_nan"
+description = "_validate_drift_cut: accept a cut that is not finite"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_drift.py", "tests/test_config.py"]
+old = '''        or not math.isfinite(value)
+        or value <= 0'''
+new = '''        or value <= 0'''
+
+[[rows]]
+id = "A1_no_level_tag"
+description = "_finalize: write no driftlevel tag"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_drift.py", "tests/test_analysis_workers.py"]
+old = '''        "driftlevel": _drift_level(scored.get("drift")),'''
+new = '''        "driftlevel": None,'''
+
+[[rows]]
+id = "A2_cut_unbound"
+description = "_bind_defaults: bind no drift cut, so the detector reads the shipped default"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_drift.py", "tests/test_analysis_workers.py", "tests/test_head_agreement.py"]
+old = '''            drift_cut=cfg.analysis.drift_cut,
+'''
+new = ''''''
+
+[[rows]]
+id = "N1_writable_unasked"
+description = "_dyn_plan: skip the writer's own question, so a library with no category to copy plans a tag the commit refuses"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py", "tests/test_drift.py", "tests/test_analyze_check.py"]
+old = '''    if not rb_writer.my_tag_writable(db):
+        return read, cut, DYN_NO_CATEGORY
+'''
+new = ''''''
+
+[[rows]]
+id = "N2_digest_rows"
+description = "identity: the dyn block names each row's answer only, not its drift or verdict"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py", "tests/test_drift.py", "tests/test_analyze_check.py"]
+old = '''[str(row.target), row.drift, row.drift_verdict, row.dyn]'''
+new = '''[str(row.target), row.dyn]'''
+
+[[rows]]
+id = "N3_no_write"
+description = "apply: the dyn tag is never written"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py", "tests/test_drift.py", "tests/test_analyze_check.py"]
+old = '''            dyn_written = _tag_dyn(db, added_ids)'''
+new = '''            dyn_written = 0'''
+
+[[rows]]
+id = "N4_trust_the_writer"
+description = "apply: report each row's dyn from the plan, not the read back"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py", "tests/test_drift.py", "tests/test_analyze_check.py"]
+old = '''                    dyn=content_id in dyned,'''
+new = '''                    dyn=row.dyn,'''
+
+[[rows]]
+id = "N5_no_record"
+description = "_record_landing_commit: record no dyn tags on the session"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py", "tests/test_drift.py", "tests/test_analyze_check.py"]
+old = '''    if dyn_written > 0:
+        session.record_commit('''
+new = '''    if False:
+        session.record_commit('''
+
+[[rows]]
+id = "L1_selection_counts"
+description = "awaiting_analysis: count no row as carrying dyn"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py", "tests/test_drift.py", "tests/test_analyze_check.py", "tests/test_intake_land_native.py", "tests/test_intake_land_vox_native.py"]
+old = '''    dyned = sum(1 for row in collection.added if row.dyn)
+    normal'''
+new = '''    dyned = 0
+    normal'''
+
+[[rows]]
+id = "L2_blocked_unnamed"
+description = "dyn_warnings: a blocked landing names none of its variable rows"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py", "tests/test_drift.py", "tests/test_analyze_check.py"]
+old = '''    if collection.dyn_blocked:
+        untagged.update(collection.dyn_variable)
+'''
+new = ''''''
+
+[[dropped]]
+id = "T1_tail_steps"
+description = "REKORDBOX_STEPS: name one selection only"
+reason = "the sync stop step is a sentence built from the same constants the landing warning reads, held by tests/test_drift.py and tests/test_rekordbox_visit_skill.py; ranked below the guards that decide what is written"
