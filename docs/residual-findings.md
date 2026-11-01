@@ -41086,3 +41086,157 @@ failure, so it is not a clean report, and nothing is lost or written.
 **Measured cost.** Two driver runs of about fifteen minutes each spent. No product cost: the tests drive stand ins, and no cause was measured. Whether U182's new read in the left open row takes part was not measured; neither test asserts on that row.
 
 **Closes when:** the failure is caught with its traceback, by running the driver's own command until it reddens, and its cause is named. Ledger only, maintainer facing.
+
+---
+
+## R-1164. The label sync go test of a tail run in order fails intermittently under the full parallel suite since U186 landed
+
+**Found:** at the battery of #410, R-1091, 2026-11-01.
+
+**The mechanism.** `test_a_go_over_two_answered_releases_runs_the_tail_in_order_and_stops_at_the_landing_gate`
+in `tests/test_label_sync_go.py` fails in some full parallel runs of the
+suite on the Linux container and passes alone, with its whole file, and with
+every `tests/test_label_*.py` file under all workers. It first appeared once
+U186 (`tests/test_gate_siblings.py` and the gate's sibling reads) was on
+`main`, in R-1103's battery and twice in R-1091's, and passed in R-1091's
+third full run on the same head. The failing assertion was not captured, since
+`cloud_battery.py compare` keeps node ids only, so which shared state it meets
+is unmeasured.
+
+**Measured cost.** Maintainer facing: a cloud lane's compare names it as
+newly failing, and each lane spends a rerun proving it is not its own. No
+user facing cost was found or driven.
+
+**Closes when:** a full parallel run captures its traceback, the shared state
+it reads under load is named, and the test or the code it drives no longer
+depends on it.
+
+---
+
+## R-1165. A full label build parked by the breaker while its kept reads cannot be written does not say the reads were lost
+
+**Found:** at the review of #410, R-1091, 2026-11-01.
+
+**The mechanism.** When the provider's breaker parks a full `crate label
+playlists LABEL` build, `_grouped` in `src/cratekit/label/playlists_cli.py`
+writes the kept reads once more and, if that write fails, adds a note to the
+park's exception. A note reaches neither the JSON envelope nor the human
+output, so the person is told the park and not that the reads made before it
+were not kept. The clean paths say it, on the build gate's screen and as the
+warning `label-playlists-reads-unkept`; the park path is the one that does
+not, because the park's cause is built by the provider gate and this module
+does not rewrite it.
+
+**Measured cost.** Driven by both review rounds: `FLUSH_EVERY` two, the
+writer refusing with a full disk, the park after three reads; the envelope's
+reason is `provider-cooldown` and the words "could not be kept" are nowhere
+in it, and removing the note kills no test. The cost is calls only: the next
+run reads those releases again, and nothing on the screen claims they were
+kept.
+
+**Closes when:** a park whose reads could not be written carries that on
+what the person is shown, for example as a warning the dispatcher keeps on a
+refusal, or the record says why a park's cause is not this module's to add to.
+
+---
+
+## R-1166. A Question for Phillip posted by a session that keeps building releases its lane, so the queue offers the card's lane to another thread
+
+**Found:** at the build of #410, R-1091, 2026-11-01.
+
+**The mechanism.** `cloud_state` in `scripts/board.py` reads a card's state
+from the session's last comment that is not a `Plan` or `Progress` note, and a
+`Question for Phillip` reads as `waiting-on-phillip`, which is not a hold. The
+project's standing rule is that a question never stops a thread: the session
+makes the conservative call and keeps building. A session that posts the
+question and keeps going has therefore given up its lane in the queue's
+reading while it still works the card, and `board.py cloud` counted four of
+five lanes held and offered the freed one to the next card.
+
+**Measured cost.** Driven on #410: the queue read `Held, 4 of 5` and #410 as
+`waiting-on-phillip` straight after the question, and `Held, 5 of 5` with the
+card `underway` again after a second `Started`. Nothing is lost while the
+coordinator fills lanes by the hour, but a sixth build can start, and a reply
+from Phillip would read the card as `answered` and offer it to a second
+thread while the first is still on it.
+
+**Closes when:** the cloud-unit skill says a session that asks and keeps
+building posts `Started` again after its question, or `cloud_state` reads a
+question followed by the same session's `Progress` as a hold.
+
+---
+
+## R-1167. A full label build's estimate counts kept reads among the releases listed, so a kept release the verifier now drops still lowers the calls it shows
+
+**Found:** at the review of #410, R-1091, 2026-11-01.
+
+**The mechanism.** `estimate` in `src/cratekit/label/playlists_cli.py`
+counts the listed releases whose kept read is fresh and takes them off the
+calls the crawl gate shows, before the verifier has confirmed anything. The
+build reads only the confirmed releases, so a release kept on one run and
+dropped by the verifier on the next is counted as a call saved that the
+build would never have made. The estimate already counts every listed
+release, confirmed or not, so it was an overestimate before R-1091 and is
+now less of one by that count.
+
+**Measured cost.** Driven at round 1 on the fixture: the verifier answering
+mismatch for one kept release on the second run, the crawl screen said six
+read by an earlier run and the build reused five. Off by the count of kept
+releases the verifier drops between runs, on a number the screen calls a
+floor; the live frequency is unmeasured.
+
+**Closes when:** the estimate counts kept reads among the releases it will
+read, or says the count is of listed releases.
+
+---
+
+## R-1168. A full label playlists build reads the label's listing again on every run, so a breaker trip inside the listing still starts it over
+
+**Found:** at the build of #410, R-1091, 2026-11-01.
+
+**The mechanism.** R-1091 keeps every release's tracks a full `crate label
+playlists LABEL` reads, in `src/cratekit/label/kept_reads.py`, and the build
+reads through them in `_grouped` in `src/cratekit/label/playlists_cli.py`. The
+brief also asked for the listing to be kept the same way, and it is not:
+`list_catalogue` still reads the roster, the discovery searches and every
+roster artist's paged listing on each run, the gate run, the apply run and
+every resume. A kept listing would hide a release the label put out after it
+was read, for as long as the read is kept, and U191's test
+`test_the_crawl_gate_is_asked_again_when_the_listing_grows` pins that a grown
+listing asks the crawl gate again. So a breaker trip inside the listing itself
+keeps nothing of it, as before R-1091.
+
+**Measured cost.** Not measured. The listing is the roster and its pages,
+nothing per release, so it is far fewer calls than the two a release that the
+kept reads now save; how many it is for a label the size of Defected (12,368
+releases listed on 2026-10-31) was never counted apart from the reads. Not
+driven live in the cloud.
+
+**Closes when:** the listing's own call count is measured on a large label
+at an attended sitting, and either it fits inside one breaker window, which
+closes this as measured, or the listing is kept per artist page with an age
+short enough that a new release is seen within a day.
+
+---
+
+## R-1169. The warning that a full label build's reads could not be kept says all of them when an earlier write kept some, and names the temporary file
+
+**Found:** at the review of #410, R-1091, 2026-11-01.
+
+**The mechanism.** `KeptReads.flush` in `src/cratekit/label/kept_reads.py`
+records the last write that failed as `unkept`, and the build gate's screen
+and the warning `label-playlists-reads-unkept` say "the reads made by this
+run could not be kept ... so a later run reads them again". The document is
+written whole, so a periodic write that succeeded before a later one failed
+has kept the reads up to it, and the sentence overstates how many the next
+run repeats. The error text is the operating system's, which names the
+temporary file beside the document rather than the document itself.
+
+**Measured cost.** Driven at round 2: `FLUSH_EVERY` two, the first write
+succeeding and the later ones refused with a full disk; the store held two
+reads, the next run reused those two and asked for the other four, while the
+screen had said none were kept. Calls only; nothing a person does differently.
+
+**Closes when:** the store counts the reads its last successful write held,
+and the sentence says how many were kept and how many were not, naming the
+document's path.
