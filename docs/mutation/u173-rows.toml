@@ -1,0 +1,236 @@
+name = "u173"
+pass_kind = "light"
+
+# The unit adds no code under src. Its guard is tests/test_rekordbox_visit_skill.py,
+# so each row turns one value the skill spells, or one value a module owns,
+# and the drift guard must die. Rows 1 to 18 mutate the skill, 19 to 25 the
+# owning modules and the contract.
+
+[[rows]]
+id = "M1_mode_dynamic"
+description = "skill table: Analysis Mode Normal to Dynamic, the setting sitting 47 ran on by mistake"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''| Analysis Mode | Normal |'''
+new = '''| Analysis Mode | Dynamic |'''
+
+[[rows]]
+id = "M2_vocal_on"
+description = "skill table: Vocal off to on, against the brief's standard"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''| Vocal | off |'''
+new = '''| Vocal | on |'''
+
+[[rows]]
+id = "M3_key_off"
+description = "skill table: KEY on to off, the other setting sitting 47 met wrong"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''| KEY | on |'''
+new = '''| KEY | off |'''
+
+[[rows]]
+id = "M4_precision_row_dropped"
+description = "skill table: the High precision row left out, so the dialog's remembered value stands"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''| High precision | off |
+'''
+new = ''''''
+
+[[rows]]
+id = "M5_wrong_playlist"
+description = "skill step 2: select a playlist named Analyse rather than the one every landing fills"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''`Analyze` directly under it.'''
+new = '''`Analyse` directly under it.'''
+
+[[rows]]
+id = "M6_agent_name"
+description = "skill step 6: wait on a process name the agent does not run under, so the agent is never seen"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''    pgrep -x rekordboxAgent
+'''
+new = '''    pgrep -x rekordbox-agent
+'''
+
+[[rows]]
+id = "M7_waiting_code"
+description = "skill step 7: waiting read as exit 30, so a 12 matches no branch"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''- **12, waiting.**'''
+new = '''- **30, waiting.**'''
+
+[[rows]]
+id = "M8_suspect_code"
+description = "skill step 7: suspect read as exit 12, so a suspect visit reads as rows still waiting"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''- **27, suspect.**'''
+new = '''- **12, suspect.**'''
+
+[[rows]]
+id = "M9_precheck_code"
+description = "skill step 1.5: the pre check goes on at exit 0, the code for nothing waiting"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''It must exit 12 with'''
+new = '''It must exit 0 with'''
+
+[[rows]]
+id = "M10_gate_abort"
+description = "skill step 7: the clear's gate answered abort, so the analysed rows are never cleared"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''inbox.analyzed.approve apply'''
+new = '''inbox.analyzed.approve abort'''
+
+[[rows]]
+id = "M11_gate_actor"
+description = "skill step 7: the decide line without --actor session, so the answer is not recorded as the session's"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''crate run decide --actor session --continue'''
+new = '''crate run decide --continue'''
+
+[[rows]]
+id = "M12_job_verb"
+description = "skill step 1.1: a verb the parser does not know, the lint's rule g"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''crate job list --state running'''
+new = '''crate jobs list --state running'''
+
+[[rows]]
+id = "M13_output_flag_after_verb"
+description = "skill step 1.5: the global --output flag after the verb, where the parser refuses it"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''       crate --output json analyze check'''
+new = '''       crate analyze check --output json'''
+
+[[rows]]
+id = "M14_scope_value"
+description = "skill step 1.5: the scope it must read named inbox, a value the check never writes"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''Read `data.summary.scope` first. It must read `analyze`'''
+new = '''Read `data.summary.scope` first. It must read `inbox`'''
+
+[[rows]]
+id = "M15_postcheck_scope_dropped"
+description = "skill step 7: the post check stops confirming its scope, so a verdict over other rows is read as the visit's"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''`data.summary.scope` must still read `analyze`.'''
+new = '''`data.summary.scope` names the rows it read.'''
+
+[[rows]]
+id = "M16_batch_counts_rows"
+description = "skill step 1.5: the batch is data.summary.rows again, which counts rows gone from the collection"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''`data.summary.analysed` plus `data.summary.not_analysed`'''
+new = '''`data.summary.rows`, which is `data.summary.analysed` and `data.summary.not_analysed`'''
+
+[[rows]]
+id = "M17_count_every_anlz"
+description = "skill step 4: count every ANLZ file, three a track, so the wait ends at a third of the batch"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''-name ANLZ0000.DAT -newer'''
+new = '''-name 'ANLZ*' -newer'''
+
+[[rows]]
+id = "M18_marker_not_handed"
+description = "skill step 4: the fill in line drops the marker again, the round one blocking finding"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''expected=<the batch>; marker="<the path step 3 printed>"'''
+new = '''expected=<the batch>'''
+
+[[rows]]
+id = "M19_dyn_value"
+description = "rekordbox_check: the dyn mark renamed, so the skill's My Tag is one the check never reads"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''DYN_VALUE = "dyn"'''
+new = '''DYN_VALUE = "dynamic"'''
+
+[[rows]]
+id = "M20_agent_process"
+description = "processes: the agent's process name spelled otherwise, so the skill's pgrep waits on the wrong name"
+file = "src/cratekit/core/processes.py"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''REKORDBOX_PROCESSES: tuple[str, ...] = ("rekordbox", "rekordboxAgent")'''
+new = '''REKORDBOX_PROCESSES: tuple[str, ...] = ("rekordbox", "rekordbox_agent")'''
+
+[[rows]]
+id = "M21_gate_name"
+description = "analyzed_cli: the clear's gate renamed, so the skill's decide line names a gate that does not exist"
+file = "src/cratekit/intake/analyzed_cli.py"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''APPROVE_GATE = "inbox.analyzed.approve"'''
+new = '''APPROVE_GATE = "inbox.analyzed.confirm"'''
+
+[[rows]]
+id = "M22_suspect_exit"
+description = "cause: analysis-suspect exits 30, so the skill's 27 branch never matches"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''        "analysis-suspect": ExitCode.LIBRARY_PREREQUISITE,'''
+new = '''        "analysis-suspect": ExitCode.PRECONDITION,'''
+
+[[rows]]
+id = "M23_sync_step_key_off"
+description = "sync_land: the printed stop turns KEY off while the skill's table keeps it on, the round one survivor"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''    f"Mode Normal, high precision off, BPM/Grid, Phrase and KEY on",'''
+new = '''    f"Mode Normal, high precision off, BPM/Grid and Phrase on, KEY off",'''
+
+[[rows]]
+id = "M24_analyze_name"
+description = "native: the queue playlist renamed, so the skill sends a session to a playlist no landing fills"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''ANALYZE = "Analyze"'''
+new = '''ANALYZE = "Analysis"'''
+
+[[rows]]
+id = "M25_contract_pointer"
+description = "CLAUDE.md: the pointer to the skill removed, so no attended session is sent to it"
+file = "CLAUDE.md"
+surface = "maintainer"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''The analysis visit after a landing follows the
+  project's `rekordbox-visit` skill step by step (U173).'''
+new = '''The analysis visit after a landing is done by hand.'''
