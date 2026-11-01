@@ -593,8 +593,9 @@ Label"` lists only that label and prints its question, says it has nothing
 new, or says its listing failed, and leaves every other label as it was. A
 label whose listing failed is a `[FAIL]` line and is never counted as having
 nothing new: the closing line names only the labels that were listed, and a
-run in which no label could be listed at all ends refused, exit 30, reason
-`label-sync-unlisted`, with every label's line still shown. A newly followed label is
+run in which no label could be read at all, each listing having failed or
+confirmed nothing, ends refused, exit 30, reason `label-sync-unlisted`, with
+every label's line still shown and a line saying what to do about each kind. A newly followed label is
 asked about its newest few releases, the `labels.offer_per_sweep` count, not its
 whole catalogue.
 

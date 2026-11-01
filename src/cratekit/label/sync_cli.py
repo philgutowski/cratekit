@@ -1185,12 +1185,15 @@ def _next(ctx, cfg: config.Config, name: str | None = None) -> Envelope:
         # run refuses through ``from_cause`` with its own checks as the data,
         # so each label's line still says why it was not asked. The single
         # label form included, since its one label skipped is the same state.
+        # THE REMEDY IS A LINE OF ITS OWN, because the human rendering shows
+        # only a refusal's summary when the run carries checks, and these
+        # checks name what failed but not what to do about it.
+        checks.append(_check("next", "info", _UNLISTED_REMEDY))
         return from_cause(
             verb=ctx.entry.name,
             run_id=ctx.run.run_id,
             started=ctx.started,
             cause=_unlisted_cause(entries),
-            schema=ctx.entry.output_schema,
             data=data,
         )
     if only is None:
@@ -1211,6 +1214,16 @@ def _next(ctx, cfg: config.Config, name: str | None = None) -> Envelope:
     )
 
 
+#: What to do about a label ``--next`` could not read, by why it could not.
+_UNLISTED_STEPS = (
+    "a catalogue that could not be listed: run crate doctor, then ask again "
+    "when the provider answers",
+    "a listing that confirmed nothing: check the label's --match needle "
+    "with: crate label registry",
+)
+_UNLISTED_REMEDY = "; ".join(_UNLISTED_STEPS)
+
+
 def _unlisted_cause(entries: Sequence[labels.LabelEntry]) -> Cause:
     """The refusal for a ``--next`` whose every label was skipped, as a cause."""
     names = ", ".join(entry.name for entry in entries)
@@ -1223,13 +1236,7 @@ def _unlisted_cause(entries: Sequence[labels.LabelEntry]) -> Cause:
     return refuse(
         "label-sync-unlisted",
         f"{which} anything new is unknown; no question was asked or saved",
-        steps=(
-            "read each label's line for why it was not asked",
-            "a catalogue that could not be listed: run crate doctor, then ask again "
-            "when the provider answers",
-            "a listing that confirmed nothing: check the label's --match needle "
-            "with: crate label registry",
-        ),
+        steps=("read each label's line for why it was not asked", *_UNLISTED_STEPS),
         retryable=True,
         origin=("label.sync",),
         detail={"labels": [entry.label_id for entry in entries]},

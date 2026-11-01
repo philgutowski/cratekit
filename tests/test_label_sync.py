@@ -1274,13 +1274,15 @@ def test_next_label_whose_listing_fails_reports_the_failure_in_one_check(
 
     # R-1114: the one label asked about could not be listed, which is not
     # nothing new, so the single label form refuses as the walk over every
-    # label does, its one line kept as the whole report.
+    # label does: its own line, then what to do, and no other label's.
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["outcome"] == "failed"
     assert envelope["cause"]["reason"] == "label-sync-unlisted"
     assert "the label asked about could not be read (Beta Works)" in envelope["cause"]["message"]
     assert envelope["data"]["summary"]["question"] is None
-    (line,) = envelope["data"]["checks"]
+    line, remedy = envelope["data"]["checks"]
+    assert remedy["key"] == "label.sync.next"
+    assert "run crate doctor" in remedy["detail"]
     assert line["key"] == "label.sync.label.beta-works"
     assert line["status"] == "fail"
     assert "Beta Works: not asked; its catalogue could not be listed" in line["detail"]
@@ -1523,6 +1525,10 @@ def test_next_over_two_labels_neither_listable_refuses_and_says_nothing_new_of_n
     assert any("crate doctor" in step for step in steps)
     assert any("--match" in step for step in steps)
     assert checks(envelope, "question") == []
+    (remedy,) = checks(envelope, "next")
+    assert remedy["status"] == "info"
+    assert "run crate doctor" in remedy["detail"]
+    assert "--match needle" in remedy["detail"]
     for slug, name in (("alpha-works", "Alpha Works"), ("beta-works", "Beta Works")):
         (line,) = checks(envelope, f"label.{slug}")
         assert line["status"] == "fail"
@@ -1540,6 +1546,8 @@ def test_next_over_two_labels_neither_listable_refuses_and_says_nothing_new_of_n
     assert "no label has anything new" not in text
     assert "none of the 2 labels asked about could be read" in text
     assert "Beta Works: not asked" in text
+    assert "run crate doctor" in text
+    assert "--match needle" in text
 
 
 def test_next_closing_line_names_only_the_label_that_was_listed(installed, monkeypatch):
