@@ -1267,3 +1267,82 @@ def test_a_resumed_download_failed_only_by_a_refusal_lands_under_the_first_gos_m
         w["code"] == go.REFUSED_WARNING and "t-r1-2" in w["message"]
         for w in envelope["warnings"]
     ), envelope["warnings"]
+
+
+@pytest.mark.parametrize(
+    "state, items, settled",
+    [
+        pytest.param(
+            jobs.JobState.FAILED,
+            ((jobs.ItemState.DONE, None), (jobs.ItemState.FAILED, "permanent")),
+            True,
+            id="failed-only-by-a-refusal",
+        ),
+        pytest.param(
+            jobs.JobState.FAILED,
+            ((jobs.ItemState.DONE, None), (jobs.ItemState.FAILED, "transient")),
+            False,
+            id="a-failure-a-retry-could-clear",
+        ),
+        pytest.param(
+            jobs.JobState.FAILED,
+            ((jobs.ItemState.DONE, None), (jobs.ItemState.FAILED, None)),
+            False,
+            id="a-failure-recording-no-cause",
+        ),
+        pytest.param(
+            jobs.JobState.FAILED,
+            ((jobs.ItemState.DONE, None), (jobs.ItemState.SKIPPED, "permanent")),
+            False,
+            id="failed-with-no-failed-track",
+        ),
+        pytest.param(
+            jobs.JobState.FAILED,
+            ((jobs.ItemState.FAILED, "permanent"), (jobs.ItemState.PENDING, None)),
+            False,
+            id="a-track-never-attempted",
+        ),
+        pytest.param(
+            jobs.JobState.SUCCEEDED,
+            ((jobs.ItemState.DONE, None), (jobs.ItemState.SKIPPED, "permanent")),
+            True,
+            id="succeeded-with-a-declined-track",
+        ),
+        pytest.param(
+            jobs.JobState.CANCELLED,
+            ((jobs.ItemState.DONE, None), (jobs.ItemState.FAILED, "permanent")),
+            False,
+            id="cancelled",
+        ),
+    ],
+)
+def test_a_download_settles_only_when_nothing_it_did_not_land_could_land_on_a_retry(
+    installed, monkeypatch, state, items, settled
+):
+    """R-1115's one reading, read at the function: a FAILED job settles only when
+    every track it did not land carries a cause no retry can clear."""
+    causes = {
+        "permanent": refuse("output-exists", "a file is already there").cause,
+        "transient": refuse("unavailable-transient", "later", retryable=True).cause,
+        None: None,
+    }
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store, handler_key=go.DOWNLOAD, payload={}, cfg=config.load(), item_ids=("a",)
+        )
+        job = dataclasses.replace(job, state=state)
+        held = [
+            jobs.Item(job_id=job.job_id, item_id=f"i{n}", ordinal=n, state=item_state,
+                      cause=causes[cause])
+            for n, (item_state, cause) in enumerate(items, start=1)
+        ]
+        monkeypatch.setattr(jobs, "items", lambda _store, _job_id: held)
+        read = acquire_cli.read_download(store, job)
+
+    assert read.settled is settled
+    assert read.done == sum(1 for one, _cause in items if one is jobs.ItemState.DONE)
+    assert read.landed is (settled and read.done > 0)
+    if settled:
+        assert [row["item_id"] for row in read.refused] == [
+            f"i{n}" for n, (_s, cause) in enumerate(items, start=1) if cause == "permanent"
+        ]

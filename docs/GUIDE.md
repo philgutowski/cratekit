@@ -616,11 +616,14 @@ the end, then plans `intake land
 and stops at the landing's own gate. The report names that gate's run and the
 two commands that answer and apply it, then the rekordbox visit. A tail step
 that fails ends the go there with its reason, plans no landing, keeps the
-download, and names the rest of the tail to run once the cause is mended. A go
-that downloaded nothing runs no tail. Every go downloads into the same staging
-folder, so land each go before the next. The size and time are estimates: the
-size from each track's duration at a FLAC rate, the time from the pacing delay
-and an assumed transfer rate.
+download, and names the rest of the tail to run once the cause is mended. A
+track the download refused for good, one the provider offers only lossy above
+all, is named in the report and skipped, and the tail runs on the tracks that
+landed, the way `crate sync land` reads the same download. A go that downloaded
+nothing, or whose every track was refused, runs no tail and names none. Every
+go downloads into the same staging folder, so land each go before the next. The
+size and time are estimates: the size from each track's duration at a FLAC rate,
+the time from the pacing delay and an assumed transfer rate.
 
 `label registry` lists who you follow. The registry records nothing about what has
 been pulled. A

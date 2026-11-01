@@ -799,6 +799,19 @@ def refused_for_good(cause: Cause) -> bool:
 DECLINED_WARNING = "acquire-refused"
 
 
+def track_name(job: jobs.Job, item_id: str) -> str:
+    """One track of a download job as its list named it, title and artist.
+
+    Falls back to whichever of the two the list gave, then to the identifier,
+    which only the provider can read.
+    """
+    tracks = (job.payload or {}).get(TRACKS) or {}
+    said = tracks.get(item_id) if isinstance(tracks, dict) else None
+    said = said if isinstance(said, dict) else {}
+    title, artist = str(said.get("title") or ""), str(said.get("artist") or "")
+    return f"{title} by {artist}" if title and artist else title or artist or item_id
+
+
 def declined_warnings(store: jobs.JobStore, job: jobs.Job) -> tuple[dict[str, str], ...]:
     """One warning per track the job declined, naming it as the list did.
 
@@ -807,25 +820,89 @@ def declined_warnings(store: jobs.JobStore, job: jobs.Job) -> tuple[dict[str, st
     track is named by the title and artist its list gave it rather than by an
     identifier only the provider can read.
     """
-    tracks = (job.payload or {}).get(TRACKS) or {}
     found: list[dict[str, str]] = []
     for item in jobs.items(store, job.job_id):
         if item.state is not jobs.ItemState.SKIPPED or item.cause is None:
             continue
-        said = tracks.get(item.item_id) if isinstance(tracks, dict) else None
-        said = said if isinstance(said, dict) else {}
-        title, artist = str(said.get("title") or ""), str(said.get("artist") or "")
-        named = f"{title} by {artist}" if title and artist else title or artist or item.item_id
         found.append(
             {
                 "code": DECLINED_WARNING,
                 "message": (
-                    f"{named} ({item.item_id}) was not acquired and is skipped, "
-                    f"refused for good ({item.cause.reason}): {item.cause.message}"
+                    f"{track_name(job, item.item_id)} ({item.item_id}) was not acquired "
+                    f"and is skipped, refused for good ({item.cause.reason}): "
+                    f"{item.cause.message}"
                 ),
             }
         )
     return tuple(found)
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class DownloadRead:
+    """A download job after its drive, as every verb that lands one reads it (R-1115).
+
+    ``done`` counts the tracks that landed. ``refused`` holds one row per track
+    refused for good, ``item_id``, ``reason`` and ``message``: a track the
+    worker declined (U169), skipped with its cause, or one that FAILED with a
+    cause no retry can clear. ``failed`` names the second kind alone, since
+    :func:`declined_warnings` already names the first. ``settled`` says the
+    download ended as one a tail may run on.
+    """
+
+    job: jobs.Job
+    done: int
+    refused: tuple[dict[str, Any], ...]
+    failed: tuple[str, ...]
+    settled: bool
+
+    @property
+    def landed(self) -> bool:
+        """Settled with at least one track downloaded, so there is something to land."""
+        return self.settled and self.done > 0
+
+
+def read_download(store: jobs.JobStore, job: jobs.Job) -> DownloadRead:
+    """Read a download job the one way ``sync land`` and ``label sync --go`` do.
+
+    SETTLED IS SUCCEEDED, OR FAILED ONLY BY TRACKS REFUSED FOR GOOD. A job that
+    succeeded settled, whatever it declined. A job that ended FAILED settled
+    only when at least one item failed, every failed item carries a cause that
+    is not retryable, and no item is still to run: a retry could clear nothing
+    there, so the tracks that landed are the download. A FAILED job with no
+    failed item, with a failure that records no cause, or with a track never
+    attempted did not settle, because nothing in it says the tracks it did not
+    land were refused. Anything else, open, parked or cancelled, did not settle
+    either, and the caller ends on the job's own refusal.
+
+    ONE READING, decided by R-1115. ``sync land`` read it this way first and
+    the go raised for every FAILED job, so the same lossy only track landed the
+    rest in one verb and nothing in the other.
+    """
+    held = jobs.items(store, job.job_id)
+    failed = [item for item in held if item.state is jobs.ItemState.FAILED]
+    for_good = {
+        item.item_id for item in failed if item.cause is not None and not item.cause.retryable
+    }
+    finished = (jobs.ItemState.DONE, jobs.ItemState.SKIPPED, jobs.ItemState.FAILED)
+    settled = job.state is jobs.JobState.SUCCEEDED or (
+        job.state is jobs.JobState.FAILED
+        and bool(failed)
+        and len(for_good) == len(failed)
+        and all(item.state in finished for item in held)
+    )
+    refused = tuple(
+        {"item_id": item.item_id, "reason": item.cause.reason, "message": item.cause.message}
+        for item in held
+        if item.cause is not None
+        and (item.item_id in for_good or item.state is jobs.ItemState.SKIPPED)
+    )
+    return DownloadRead(
+        job=job,
+        done=sum(1 for item in held if item.state is jobs.ItemState.DONE),
+        refused=refused,
+        failed=tuple(item.item_id for item in failed if item.item_id in for_good),
+        settled=settled,
+    )
 
 
 def _acquire(job, item, cfg) -> jobs.Produced:
@@ -1077,12 +1154,15 @@ __all__ = [
     "findings",
     "frozen_tracks",
     "DECLINED_WARNING",
+    "DownloadRead",
     "declined_warnings",
     "handle",
     "refused_for_good",
     "marked_name",
     "queue_list",
+    "read_download",
     "request_for",
     "staging_dir",
     "sweep_staging",
+    "track_name",
 ]

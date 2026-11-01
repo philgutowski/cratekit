@@ -72,10 +72,22 @@ dispatcher is the CLI layer's. So the report carries :data:`LAND_KEY`, the
 absolute staging folder, the manifest and the pass, and ``label.sync``'s CLI
 module (:mod:`cratekit.cli.label_sync`) hands it to the chain ``sync land``
 runs, :mod:`cratekit.cli.tail`, which ends at the landing's gate. It is set only
-when the go's one download SUCCEEDED with a track done: a go that declined,
+when the go's one download settled with a track done (R-1115, below): a go that declined,
 listed nothing, downloaded nothing or is still downloading names no tail, and
 neither does a resume over more than one earlier job, whose manifests one
 landing of one folder cannot both carry. Then the commands are printed as before.
+
+A TRACK REFUSED FOR GOOD IS NAMED AND SKIPPED, AND THE REST IS LANDED (R-1115).
+The go reads its settled download through
+:func:`cratekit.acquire.cli.read_download`, the one reading ``sync land`` uses:
+a job that succeeded, or that ended FAILED only by tracks no retry can clear,
+landed what it downloaded. ``drive_queued`` refuses for every FAILED job, so the
+go reads the job back off the queue when it does and carries on over one that
+reading calls settled; a transient failure, a park and a cancel still end the
+go on the job's own refusal. Each refused track is named on the ``downloaded``
+check and under ``refused`` in the report, a declined one by the worker's own
+warning and a failed one by :data:`REFUSED_WARNING`. A go whose every track was
+refused runs no tail and names none, since there is nothing in the folder to land.
 """
 
 from __future__ import annotations
@@ -90,7 +102,7 @@ from cratekit.acquire import cli as acquire_cli
 from cratekit.acquire import download
 from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import config, jobs, review
-from cratekit.core.cause import Outcome, refuse
+from cratekit.core.cause import CratekitError, Outcome, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.review import Verdict
 from cratekit.intake.land_cli import default_name
@@ -108,6 +120,9 @@ ORIGIN_KEY = "label_sync"
 RUN_KEY = "run_id"
 #: The report's key naming the tail the CLI layer runs after a download (U190).
 LAND_KEY = "land"
+#: The warning a go names each track its download FAILED for good under (R-1115).
+#: A track the worker declined is named by its own ``acquire-refused`` warning.
+REFUSED_WARNING = "label-sync-download-refused"
 #: What every list a go writes is named after, before the digest.
 LIST_PREFIX = "label-sync"
 #: The marker an answer carries once a go has taken it.
@@ -477,11 +492,56 @@ def landing(staging: Path, manifest: str, run_id: str) -> dict[str, str]:
     return {"folder": str(staging), "manifest": manifest, "pass": default_name(run_id)}
 
 
-def _landed(store: jobs.JobStore, job: jobs.Job) -> bool:
-    """Whether ``job`` ended SUCCEEDED with at least one track downloaded."""
-    if job.state is not jobs.JobState.SUCCEEDED:
-        return False
-    return bool(jobs.progress(store, job.job_id)["counts"][str(jobs.ItemState.DONE)])
+def _drive(
+    ctx, store: jobs.JobStore, job_id: str
+) -> tuple[jobs.Job, list[dict[str, str]], acquire_cli.DownloadRead]:
+    """Drive one go's download, and read how it settled (R-1115).
+
+    ``drive_queued`` refuses for every job that did not end clean, and the
+    engine raises inside the drive when every attempted item failed. Either
+    refusal is re-raised unchanged UNLESS the job, read back off the queue,
+    ended FAILED only by tracks refused for good, which is a download that
+    landed what it landed. Its warnings are then the declined tracks' alone,
+    read off the item rows, since the drive's own went with the refusal.
+    """
+    try:
+        job, said = acquire_cli.drive_queued(ctx, store, job_id)
+    except CratekitError:
+        job = jobs.get(store, job_id)
+        read = acquire_cli.read_download(store, job)
+        if not read.settled:
+            raise
+        said = acquire_cli.declined_warnings(store, job)
+    else:
+        read = acquire_cli.read_download(store, job)
+    warnings = [*said]
+    reasons = {str(row["item_id"]): row for row in read.refused}
+    for item_id in read.failed:
+        row = reasons[item_id]
+        warnings.append(
+            {
+                "code": REFUSED_WARNING,
+                "message": (
+                    f"{acquire_cli.track_name(job, item_id)} ({item_id}) failed for good "
+                    f"and is skipped ({row['reason']}): {row['message']}"
+                ),
+            }
+        )
+    return job, warnings, read
+
+
+def _downloaded(read: acquire_cli.DownloadRead, listed: int) -> str:
+    """How a download ended, in words: its state, its count, and each refused track."""
+    said = f"{read.job.state}, {read.done} of {listed} track(s) downloaded"
+    if read.refused:
+        said += f"; {len(read.refused)} refused for good and skipped: " + ", ".join(
+            f"{row['item_id']} ({row['reason']})" for row in read.refused
+        )
+    if read.settled and not read.done:
+        said += "; every track was refused for good, so no tail was run" if read.refused else (
+            "; nothing landed, so no tail was run"
+        )
+    return said
 
 
 def go(
@@ -657,24 +717,25 @@ def go(
 
     landed: list[str] = []
     land: dict[str, str] | None = None
+    refused: list[dict[str, Any]] = []
     if queued is not None:
         with jobs.open_store() as store:
-            queued, drifted = acquire_cli.drive_queued(ctx, store, queued.job_id)
-            done = jobs.progress(store, queued.job_id)["counts"][str(jobs.ItemState.DONE)]
-            ran = _landed(store, queued)
+            queued, drifted, read = _drive(ctx, store, queued.job_id)
         warnings.extend(drifted)
+        refused = list(read.refused)
+        nothing = read.settled and not read.done
         checks.append(
             _check(
                 "downloaded",
-                "ok",
-                f"job {queued.job_id}: {queued.state}, {done} of {listing.listed} "
-                f"track(s) downloaded",
+                "fail" if nothing and read.refused else "ok",
+                f"job {queued.job_id}: {_downloaded(read, listing.listed)}",
             )
         )
-        landed = tail(staging, str(listing.written.manifest_path), run_id)
-        if ran:
+        if read.landed:
             land = landing(staging, str(listing.written.manifest_path), run_id)
-        else:
+        if not nothing:
+            landed = tail(staging, str(listing.written.manifest_path), run_id)
+        if land is None and landed:
             checks.append(_next_check(landed))
     report["go"] = {
         **summary.to_json(),
@@ -688,6 +749,7 @@ def go(
         else None,
         "withdrawn": [one.identity for one in withdrawn],
         "carried": sorted(retry),
+        "refused": refused,
         "next": landed,
         LAND_KEY: land,
     }
@@ -727,6 +789,7 @@ def _resume(
     warnings: list[dict[str, str]] = []
     landed: list[str] = []
     resumed: list[str] = []
+    refused: list[dict[str, Any]] = []
     lands: list[dict[str, str] | None] = []
     with jobs.open_store() as store:
         for job_id, _left in summary.open_jobs:
@@ -735,18 +798,25 @@ def _resume(
                 # STOPPED BY A SIGNAL OR ENDED HALF FAILED: re-armed, with
                 # every downloaded track left done.
                 jobs.retry(store, job_id)
-            job, drifted = acquire_cli.drive_queued(ctx, store, job_id)
+            job, drifted, read = _drive(ctx, store, job_id)
             warnings.extend(drifted)
             resumed.append(job_id)
+            refused.extend(read.refused)
+            nothing = read.settled and not read.done
             checks.append(
-                _check(f"resumed.{job_id}", "ok", f"resumed the earlier download {job_id}: {job.state}")
+                _check(
+                    f"resumed.{job_id}",
+                    "fail" if nothing and read.refused else "ok",
+                    f"resumed the earlier download {job_id}: "
+                    f"{_downloaded(read, len(jobs.items(store, job_id)))}",
+                )
             )
             payload = dict(job.payload or {})
             manifest = dict(payload.get(ORIGIN_KEY) or {}).get("manifest")
-            if isinstance(manifest, str) and manifest:
+            if isinstance(manifest, str) and manifest and not nothing:
                 run_of = str(payload.get(RUN_KEY) or ctx.run.run_id)
                 landed.extend(tail(staging, manifest, run_of))
-                lands.append(landing(staging, manifest, run_of) if _landed(store, job) else None)
+                lands.append(landing(staging, manifest, run_of) if read.landed else None)
             else:
                 lands.append(None)
     # ONE EARLIER JOB, LANDED, IS RUN ON THROUGH THE TAIL. Several would need two
@@ -772,6 +842,7 @@ def _resume(
         "manifest": None,
         "withdrawn": [],
         "carried": [],
+        "refused": refused,
         "next": landed,
         LAND_KEY: land,
     }
@@ -788,6 +859,7 @@ __all__ = [
     "LAND_KEY",
     "LIST_PREFIX",
     "ORIGIN_KEY",
+    "REFUSED_WARNING",
     "RUN_KEY",
     "TRANSFER_BYTES_PER_SECOND",
     "Held",
