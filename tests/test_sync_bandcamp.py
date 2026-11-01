@@ -521,7 +521,8 @@ def test_a_release_refused_for_good_is_recorded_and_nothing_is_landed_over_none(
     (refused,) = summary["fetch_refused"]
     assert refused["reason"] == "lossy-refused"
     assert refused["release"] == "Coral Arc - Drift (otherlabel)"
-    assert _checks(envelope)["sync.bandcamp.fetch"]["status"] == "info"
+    statuses = [c["status"] for c in envelope["data"]["checks"] if c["key"] == "sync.bandcamp.fetch"]
+    assert statuses == ["fail", "info"], "the fetch that staged nothing reads fail, then the end"
     assert [w for w in envelope["warnings"] if w["code"] == sync_bandcamp.FETCH_REFUSED]
     assert chain.landing.landed == []
     assert not any(argv[:1] == ["tag"] for argv in chain.calls)
@@ -586,8 +587,46 @@ def test_two_fetches_left_open_in_the_batch_are_both_driven_on_oldest_first(
         ["acquire", "bandcamp-fetch", "--job", newest.job_id],
     ]
     assert not any(job.is_open() for job in _fetch_jobs()), "no fetch is left open behind the gate"
-    assert _summary(envelope)["fetch_jobs"] == [oldest.job_id, newest.job_id]
+    summary = _summary(envelope)
+    assert summary["fetch_jobs"] == [oldest.job_id, newest.job_id]
     assert _staged(signed_in) == [OTHER_FILE]
+    # THE ONE RELEASE BOTH HELD IS COUNTED ONCE: the newer found it recorded.
+    assert summary["fetched"] == ["Coral Arc - Drift (otherlabel)"]
+    fetch_checks = [
+        c["detail"] for c in envelope["data"]["checks"] if c["key"] == "sync.bandcamp.fetch"
+    ]
+    assert f"fetch job {newest.job_id} staged 0 release(s), 1 already staged by this run" in fetch_checks
+
+
+def test_a_release_refused_by_two_fetches_is_named_once(
+    signed_in, account, puls, chain, tmp_path, silence, monkeypatch
+):
+    """An open fetch driven on refuses a lossy only release, and the new fetch refuses it again."""
+    with jobs.open_store() as store:
+        jobs.enqueue(
+            store,
+            handler_key=registry.entry(sync_bandcamp.FETCH_VERB).handler_key,
+            payload={
+                bandcamp_cli.BATCH: BATCH,
+                bandcamp_cli.RELEASES: {
+                    "4": {"seller": "otherlabel", "label": None, "label_id": None,
+                          "artist": "Coral Arc", "title": "Drift", "item_type": "album",
+                          "tracks": [{"number": 1, "artist": "", "title": "Drift"}], "held": []},
+                },
+            },
+            cfg=config.load(),
+            item_ids=("4",),
+        )
+    bind(monkeypatch, collection(tmp_path, silence, encodings=("mp3-320",)))
+
+    code, envelope = run("--seller", "otherlabel", "--batch", BATCH)
+
+    assert code == int(ExitCode.OK), envelope
+    summary = _summary(envelope)
+    assert len(summary["fetch_jobs"]) == 2
+    assert [row["item_id"] for row in summary["fetch_refused"]] == ["4"]
+    (warned,) = [w for w in envelope["warnings"] if w["code"] == sync_bandcamp.FETCH_REFUSED]
+    assert warned["message"].startswith("1 release(s) were refused")
 
 
 def test_the_tags_are_read_from_the_files_the_name_step_renamed(

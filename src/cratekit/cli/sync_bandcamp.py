@@ -182,6 +182,7 @@ def _report(progress: Callable[[str], None] | None, again: str) -> tail.Chain:
             "held": [],
             "fetch_jobs": [],
             "fetched": [],
+            "fetched_items": [],
             "fetch_refused": [],
             "staged": [],
             "no_genre": [],
@@ -332,6 +333,17 @@ def _fetched(report: tail.Chain, job: jobs.Job) -> None:
     report.summary["fetch_jobs"].append(job.job_id)
     if job.state is not jobs.JobState.SUCCEEDED and not settled_with_refusals:
         raise tail.Stop(FETCH, tail.job_error(report, job))
+    # ONE RELEASE IS COUNTED ONCE ACROSS THE RUN'S FETCHES. Two fetches left
+    # open into one batch can hold the same purchase, and the second finds it
+    # in the record and ends its item done without staging anything, so a
+    # release an earlier fetch of this run already staged is not staged again
+    # here, and one refused before and staged now is no longer refused.
+    seen = set(report.summary["fetched_items"])
+    staged = [item for item in done if item.item_id not in seen]
+    report.summary["fetched_items"].extend(item.item_id for item in staged)
+    report.summary["fetched"].extend(named(item) for item in staged)
+    taken = set(report.summary["fetched_items"])
+    already = {row["item_id"] for row in report.summary["fetch_refused"]}
     refused = [
         {
             "item_id": item.item_id,
@@ -342,9 +354,23 @@ def _fetched(report: tail.Chain, job: jobs.Job) -> None:
         # THE FETCH NEVER SKIPS AN ITEM, unlike ``acquire download`` since U169:
         # a release it refuses fails for good, so the failed items are all.
         for item in permanent
+        if item.item_id not in taken and item.item_id not in already
     ]
-    report.summary["fetched"].extend(named(item) for item in done)
-    report.summary["fetch_refused"].extend(refused)
+    report.summary["fetch_refused"] = [
+        row for row in report.summary["fetch_refused"] if row["item_id"] not in taken
+    ] + refused
+    report.check(
+        FETCH,
+        "fail" if permanent and not done else "ok",
+        f"fetch job {job.job_id} staged {len(staged)} release(s)"
+        + (f", {len(done) - len(staged)} already staged by this run" if len(done) > len(staged) else "")
+        + (f"; {len(permanent)} refused and skipped" if permanent else ""),
+    )
+
+
+def _warn_refused(report: tail.Chain) -> None:
+    """The one warning naming every release the run's fetches refused, said once."""
+    refused = report.summary["fetch_refused"]
     if refused:
         report.warnings.append(
             {
@@ -355,12 +381,6 @@ def _fetched(report: tail.Chain, job: jobs.Job) -> None:
                 ),
             }
         )
-    report.check(
-        FETCH,
-        "fail" if refused and not done else "ok",
-        f"fetch job {job.job_id} staged {len(done)} release(s)"
-        + (f"; {len(refused)} refused and skipped" if refused else ""),
-    )
 
 
 def _drive_open(report: tail.Chain, cfg: config.Config, batch: str) -> None:
@@ -589,6 +609,7 @@ def sync_bandcamp(ctx: Context) -> Envelope:
         planned = _plan(report, sellers)
         if planned:
             _fetch(report, cfg, batch, sellers)
+        _warn_refused(report)
         files = _staged(folder)
         if not files:
             report.check(
