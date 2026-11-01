@@ -40170,3 +40170,99 @@ it is not a clean report, but its last line is false.
 found nothing, or is left out when any label was skipped, and a run whose every
 label was skipped is not `no_op`. Earns an issue: the product says something
 false on a shipped verb.
+
+---
+
+## R-1115. A label sync go with one track refused for good ends failed and runs no tail, where sync land skips the track and lands the rest
+
+**Found:** at the build of #401, U190, 2026-11-01.
+
+**The mechanism.** `label/go.py` drives its download through
+`acquire_cli.drive_queued`, which ends on `jobs.raise_for_state` and raises
+for a job that ended FAILED, however its items failed. A go whose release
+holds one track the provider offers only lossy therefore ends `lossy-refused`
+with every other track downloaded into staging, and no tail runs: U190 sets
+the go's tail only when its download SUCCEEDED. `crate sync land` reads the
+same state differently (`_download` in `cli/sync_land.py`): a job FAILED only
+by items refused for good is a download that landed, the refused tracks are
+named and skipped, and the tail runs on the rest.
+
+**Measured cost.** Driven on the branch with the fake adapter, one release of
+two tracks, the second landing lossy: the go exited 42 `lossy-refused`, the
+tail stand in recorded no call, and the refusal's only step was "the failed
+items cannot succeed on resume; inspect each item's cause". The downloaded
+track sits in staging with no command named to land it, and since the answer
+is settled a second go does not take it again. The live frequency of a lossy
+only track in a followed label's release was not measured.
+
+**Closes when:** the go reads a download FAILED only by items refused for
+good the way `sync land` does, names and skips them, and runs the tail on the
+tracks that landed, with a test driving one lossy track in a two track
+release. It earns an issue because a label landing a DJ needs cannot finish
+in the one command the product now offers, and the way on is not named.
+
+---
+
+## R-1116. A landing that plans nothing after a download and its tail ends the verb OK, with no way on named
+
+**Found:** at the review of #401, U190, 2026-11-01.
+
+**The mechanism.** `cratekit.cli.tail.land` reads a succeeded `intake land`
+as a landing with nothing to plan and raises `Done`, and both verbs that run
+the chain then end OK: `crate sync land` with NO_OP, and since U190 `crate
+label sync --go` with the go's own outcome. The only words are the check
+"intake land planned nothing to land", over a folder the download had just
+filled and the tail had just run on.
+
+**Measured cost.** Driven at the stand in: a three track go whose landing
+answered NO_OP exited 0 with no pending action and no command named. The real
+`intake land` answering NO_OP over a staging folder the tail had just run on
+was not reached, so the producer is unmeasured. The shape is U152's, moved
+here unchanged.
+
+**Closes when:** a landing that plans nothing after a download that landed
+tracks is a failing check naming the folder and what `intake land` read, or
+the producer is driven and shown not to exist. Ledger only, since the producer
+was not driven.
+
+---
+
+## R-1117. A tail step stopped at a gate other than the landing's names the answer as the literal word OPTION
+
+**Found:** at the review of #401, U190, 2026-11-01.
+
+**The mechanism.** `cratekit.cli.tail.attended` fills the option of `crate run
+decide` with `apply` only for the landing's gate, and with the placeholder
+`OPTION` for any other, so a person told to answer a tail step's own gate is
+handed a command that cannot be pasted as printed. The options are in the
+step's cause detail and are not read.
+
+**Measured cost.** Driven at the stand in: a `analyze restamp` queue command
+answering `decision-required` on its own gate produced `crate run decide
+restamp-run analyze.restamp.confirm OPTION --actor session`. No landed tail
+verb was found to raise a gate of its own at that step, so the producer is
+unmeasured. The wording is U152's, moved here unchanged.
+
+**Closes when:** the step names the gate's declared options from the cause
+detail, one command per option or the one a session takes, with a test.
+Ledger only, since the producer was not driven.
+
+---
+
+## R-1118. The go after a stopped tail asks its gate over nothing before saying nothing is to be done
+
+**Found:** at the review of #401, U190, 2026-11-01.
+
+**The mechanism.** A go whose tail stopped has already settled its answers
+and finished its download, so the next `crate label sync --go` summarises no
+answer and no job to resume, and still asks `label.sync.confirm` ("Download
+every release the saved answers took?") over a count of zero. U190's refusal
+names the rest of the tail as the way on, so a person who follows it never
+meets this, but one who runs the go again does.
+
+**Measured cost.** Driven by the review: one empty gate to answer, then
+nothing downloaded and no tail. Nothing is lost or written. The empty gate is
+the go's behaviour before U190.
+
+**Closes when:** a go with no answer and no job to resume ends NO_OP before
+the gate, saying so, with a test. Ledger only, a wording and a step.
