@@ -40106,3 +40106,39 @@ that writes an unreadable record was driven, so reachability is unmeasured.
 
 **Closes when:** the mirror's plan states the unreadable record count, as the
 rotation's step does. Ledger only.
+
+---
+
+## R-1111. A write that renumbers the root, or a name lookup that finds a namesake inside DEADCA7's folder, is refused at commit rather than kept clear of the folder
+
+**Found:** at the review of #392, U185, 2026-10-31.
+
+**The mechanism.** The U185 commit guard holds every row of DEADCA7's folder at the top of the tree whole, its position included. Two shapes of write would reach it without meaning to. Moving one of the author's own top level nodes out of the root makes the binding renumber every root sibling above it, the folder among them; and the unscoped `rb_writer.ensure_folder(db, name)` matches a folder of the name anywhere, so a folder of the same name nested inside the push's folder would be adopted and written into. Both are refused at commit with nothing written, so the folder is never damaged; the cost is that the verb stops.
+
+**Measured cost.** Driven by the review on scratch databases: both commits refused, the push's rows byte for byte. No producer in `src`: the one caller of `move_playlist_node` moves within INBOX, and the one caller of `ensure_folder` passes a parent. Whether DEADCA7 pushes nested folders is not established.
+
+**Closes when:** a writer that moves a node at the root, or calls `ensure_folder` unscoped, either keeps the foreign folder out of what it renumbers or matches, or this is read again. Ledger only: the guard holds, and no verb reaches it today.
+
+---
+
+## R-1112. doctor reads DEADCA7's last push as its newest backup entry's modification time, unmeasured against a real push
+
+**Found:** at the review of #392, U185, 2026-10-31.
+
+**The mechanism.** `deadca7.push` in `cli/doctor.py` takes the newest entry in DEADCA7's `rekordbox-backups` folder and reads its modification time as when the app last pushed into the database. If the app makes that backup by copying `master.db` with its date kept, the time read is rekordbox's last write before the push, and a push made after this product's last database backup could be reported as one that backup holds.
+
+**Measured cost.** Not driven: it needs a real DEADCA7 push. Dated directory entries, an empty folder, an unreadable entry and an unreadable fact file were driven and answer as written.
+
+**Closes when:** the attended sitting U185 owes pushes once into a disposable copy and compares the newest entry's modification time with the push's own time. If they differ, the check reads the entry's name or its creation time instead. Ledger only, since it closes at an attended sitting.
+
+---
+
+## R-1113. Four layers of the DEADCA7 guard kill no test, each covered by another layer
+
+**Found:** at the reviews of #392, U185, 2026-10-31.
+
+**The mechanism.** The guard asks two ways, and some of its layers answer only what another already answers. In `rb_writer.pending_objects`, dropping the buffer's `move` branch, or the `session.dirty` loop, leaves every U185 test green, because the other source reports the same object. In `foreign_tree`, the `delete` branch of `pending_touches` is reached only after the additive whitelist has refused the hard delete, and the changed columns branch of `differences` is reached only by a raw column change on a row below the folder, which no test makes; a raw rename of the folder itself is refused, but as every row of the folder being gone, since a renamed root is no longer a foreign root on the second reading.
+
+**Measured cost.** None to a person: every touch the two review rounds drove is refused with nothing written. Measured as zero death rows in the review rounds' own mutation passes; the refusal's wording for a raw rename names a disappearance rather than a rename.
+
+**Closes when:** a test drives a touch only one layer sees for each: a write the binding makes with its tracking off, a raw session change, and a raw column change on a pushed playlist. Ledger only.

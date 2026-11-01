@@ -458,6 +458,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     # package-wide total tuple.
     # U159, 2026-10-28: ls-remote joined, the git subcommand install.release
     # reads the published tags with.
+    # U185, 2026-10-31: rekordbox-backups joined, the folder DEADCA7 backs the
+    # database up into before a push, which deadca7.push reads.
     'cli/doctor.py': [
         'commit-msg',
         'doctor-check-failed',
@@ -474,6 +476,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'pre-push',
         'pre-rebase',
         'prepare-commit-msg',
+        'rekordbox-backups',
         'utf-8',
     ],
     'cli/exit_codes.py': [

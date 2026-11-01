@@ -117,6 +117,9 @@ def green(**overrides) -> _Probes:
             kind="vcs", version="0.1.0", url="https://github.com/philgutowski/cratekit"
         ),
         release_tags=lambda _url: ("v0.1.0",),
+        # U185. No DEADCA7 on the green machine, so no run reads this account's
+        # own support folder.
+        deadca7_home=lambda: None,
     )
     defaults.update(overrides)
     return _Probes(**defaults)
