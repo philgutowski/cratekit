@@ -40952,3 +40952,52 @@ unreadable record the same way, so they cannot disagree about one file.
 Ledger only, since it is reached only by a hand edited record so far; it
 was left out of U186 because both verbs belong to U170 and the brief names
 neither.
+
+---
+
+## R-1156. A job whose files fail for one reason names only the last of them
+
+**Found:** at the review of #411, R-1103, 2026-11-01.
+
+**The mechanism.** When several items of a job fail permanently under the same
+reason, the job's own cause takes that reason and carries only the last failed
+item's cause as its inner one, so the refusal a person reads names one file.
+The others are on their item rows. R-391 records the mixed reasons case of the
+same choice; this is the one reason case, which R-1103 made reachable from
+`crate tag retag` with `tag-retag-unwritten`, and U178's `tag-folder-unwritten`
+has the same shape (not driven there).
+
+**Measured cost.** Driven at the review: `tag retag` over three files with the
+first and the last refusing the write exits 30 under `tag-retag-unwritten`,
+the detail says two failed, and the message and the human answer name only
+the last file. Nothing said is false, the counts are right, and every item's
+cause is readable with `crate job show`; a person fixing the one file named
+and running again meets the second one then.
+
+**Closes when:** a job's cause lists every failed item's file when they share
+a reason, or names how to see them. Ledger only: nothing is lost or false, the
+counts are honest and the remedy already says to inspect each item's cause.
+
+---
+
+## R-1157. A tag retag whose every file refuses the write exits as an internal error
+
+**Found:** at the review of #411, R-1103, 2026-11-01.
+
+**The mechanism.** When every item of a job fails, the job engine leaves
+through its own `no-evidence` cause, exit 1, and carries the last item's
+cause inside it. A `crate tag retag` whose every selected file would not take
+its genre therefore reports `failed (INTERNAL)`, the class a script reads as a
+defect, over a refusal whose own class is PRECONDITION and whose cure is the
+file's. This is the engine's rule for every job verb, present on `main`
+before R-1103; R-266 records a related exit of the label jobs.
+
+**Measured cost.** Driven at the review: two files, both refusing, through the
+human answer: `tag.retag: failed (INTERNAL)` and then `caused by
+tag-retag-unwritten:` naming the file and the genre it would not take. The
+words are honest and the file is named; only the exit class is wrong for a
+caller that branches on it.
+
+**Closes when:** a job whose every item failed under one reason exits with
+that reason's class, or the record says why the engine's class is right.
+Ledger only: nothing is lost and the message is true.

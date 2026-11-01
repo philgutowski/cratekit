@@ -1958,6 +1958,14 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # file does not carry. PRECONDITION on ``tag-folder-unwritten``'s
         # argument: the cure is the file's, which is named.
         "bandcamp-label-unwritten": ExitCode.PRECONDITION,
+        # ── R-1103's one, appended for the same reason ─────────────────────────
+        #
+        # ``tag retag`` had a specific genre for a file carrying a catch-all and
+        # the file would not take it. Its item fails rather than reporting a
+        # correction the file does not carry. PRECONDITION on
+        # ``tag-folder-unwritten``'s argument: the cure is the file's, which is
+        # named, and a second run over the folder asks again.
+        "tag-retag-unwritten": ExitCode.PRECONDITION,
         # ── U169's one, appended for the same reason ───────────────────────────
         #
         # A ``--root`` names a folder that is not there. A relative one is read

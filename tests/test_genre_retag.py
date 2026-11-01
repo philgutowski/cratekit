@@ -1181,3 +1181,107 @@ def test_two_different_empty_folders_digest_differently_through_the_pure_functio
     assert retag_cli.digest_for(str(tmp_path / "EmptyOne"), []) != retag_cli.digest_for(
         str(tmp_path / "EmptyTwo"), []
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-1103. A file that will not take its answer is unwritten, never corrected
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def refusing_on(monkeypatch, *names: str) -> None:
+    """The one genre writer, answering False for the files named.
+
+    False rather than a raise, because that is what ``tags.write_genre`` answers
+    for a locked file or one on a read only volume, and it is the answer the
+    first build of this pass ignored. Patched only after the fixture files are
+    placed, since ``place`` tags them through the same writer. A read only
+    mode does not stop a suite run as root, and the immutable flag that does is
+    Linux's alone and needs privileges a Mac run lacks, so the writer is
+    patched; the review drove the real refusal once with that flag (R-1103's
+    record).
+    """
+    real = tags.write_genre
+
+    def writer(path: Path, genre: str) -> bool:
+        if path.stem in names:
+            return False
+        return real(path, genre)
+
+    monkeypatch.setattr(tags, "write_genre", writer)
+
+
+def test_a_file_that_will_not_take_its_answer_is_reported_unwritten_and_the_rest_corrected(
+    folder, silence, store, monkeypatch
+):
+    """The brief's first scenario, at the pass.
+
+    THE FILE IS READ BACK OFF DISK as well as out of the outcome. A pass that
+    reported the answer it meant to write is exactly the defect, so the outcome
+    agreeing with itself proves nothing on its own.
+    """
+    paths = {name: place(folder, silence, name, CATCH_ALL) for name in ("a", "b", "c")}
+    refusing_on(monkeypatch, "b")
+    searcher = answering({name: SPECIFIC for name in "abc"})
+
+    outcome = retag.retag_folder(folder, searcher=searcher, declared=TAXONOMY, store=store)
+
+    assert [r.path for r in outcome.written] == [paths["a"], paths["c"]]
+    unwritten = [r for r in outcome.results if r.written is None]
+    assert [(r.path, r.reason, r.proposed, r.current) for r in unwritten] == [
+        (paths["b"], retag.UNWRITTEN_REASON, SPECIFIC, CATCH_ALL)
+    ]
+    assert tags.read_genre_from_file(paths["b"]) == CATCH_ALL
+    assert tags.read_genre_from_file(paths["a"]) == SPECIFIC
+    assert tags.read_genre_from_file(paths["c"]) == SPECIFIC
+    assert outcome.asked == ()
+    assert review.count_unresolved(store, queue=str(review.Queue.GENRE)) == 0, (
+        "the answer was there, so nothing is asked of a person"
+    )
+
+
+def test_an_unwritten_file_never_reaches_the_library_plan(folder, silence, monkeypatch):
+    """``plan_library`` plans from what was written, and an unwritten file is not.
+
+    Its row keeps the genre its file still carries, so planning one would move
+    the database ahead of the file in the direction nobody checks.
+    """
+    place(folder, silence, "a", CATCH_ALL)
+    refusing_on(monkeypatch, "a")
+
+    outcome = retag.retag_folder(folder, searcher=answering({"a": SPECIFIC}), declared=TAXONOMY)
+
+    assert outcome.written == ()
+    planned = retag.plan_library(outcome, [], {}, root=folder, db=None)
+    assert planned.plan.changes == ()
+    assert planned.unmatched == ()
+
+
+def test_an_accepted_verdict_a_file_will_not_take_is_unwritten_and_kept_for_the_next_run(
+    folder, silence, store, monkeypatch
+):
+    """A person's answer is not spent on a write that did not land.
+
+    The verdict stays resolved, so the next run reads it again rather than
+    asking the searcher or the person, and writes it once the file will take it.
+    """
+    path = place(folder, silence, "track", CATCH_ALL)
+    retag.retag_folder(folder, searcher=answering({}), declared=TAXONOMY, store=store)
+    item = review.list_items(store, queue=str(review.Queue.GENRE)).items[0]
+    chosen = next(o for o in item.options if o.summary == SPECIFIC)
+    review.resolve(store, item.item_id, review.Verdict.ACCEPTED, option=chosen.option_id,
+                   actor="a-person")
+
+    with monkeypatch.context() as patched:
+        refusing_on(patched, "track")
+        searcher = answering({})
+        refused = retag.retag_folder(folder, searcher=searcher, declared=TAXONOMY, store=store)
+    assert searcher.asked == []
+    assert [(r.reason, r.proposed, r.written) for r in refused.results] == [
+        (retag.UNWRITTEN_REASON, SPECIFIC, None)
+    ]
+    assert tags.read_genre_from_file(path) == CATCH_ALL
+    assert review.get(store, item.item_id).resolved
+
+    landed = retag.retag_folder(folder, searcher=answering({}), declared=TAXONOMY, store=store)
+    assert [r.written for r in landed.results] == [SPECIFIC]
+    assert tags.read_genre_from_file(path) == SPECIFIC

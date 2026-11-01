@@ -97,6 +97,13 @@ NO_ANSWER = "no-answer"
 ANSWER_TOO_COARSE = "answer-too-coarse"
 DECLINED_IN_REVIEW = "declined-in-review"
 
+#: The file would not take the answer (R-1103). ALSO THE REFUSAL'S SLUG, so
+#: the reason a sweep reports and the cause a queued item fails with are one
+#: name. ``tags.write_genre`` answers False rather than raising for a file it
+#: could not save, locked or on a read only volume, and a pass that ignored the
+#: answer reported a genre the file does not carry.
+UNWRITTEN_REASON = "tag-retag-unwritten"
+
 
 @dataclass(frozen=True, slots=True)
 class Candidate:
@@ -407,7 +414,20 @@ def retag_one(
             declared=declared,
             handler_key=handler_key,
         )
-    tags.write_genre(candidate.path, answer)
+    if not tags.write_genre(candidate.path, answer):
+        # THE WRITER'S FALSE IS AN UNWRITTEN FILE, NEVER A CORRECTION (R-1103).
+        # ``written`` stays None, so :attr:`RetagOutcome.written` leaves the file
+        # out and :func:`plan_library` plans no row for it, and the answer it
+        # could not take rides as ``proposed`` so the report can name it. A
+        # verdict the answer came from stays as it is: the next run reads it
+        # again and tries the write again, rather than asking a person twice.
+        return RetagResult(
+            path=candidate.path,
+            current=candidate.current,
+            reason=UNWRITTEN_REASON,
+            proposed=answer,
+            item_id=item_id,
+        )
     return RetagResult(
         path=candidate.path,
         current=candidate.current,
@@ -574,6 +594,7 @@ __all__ = [
     "KIND",
     "NO_ANSWER",
     "NO_GENRE",
+    "UNWRITTEN_REASON",
     "Candidate",
     "LibraryPlan",
     "Passed",

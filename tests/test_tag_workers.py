@@ -2597,6 +2597,112 @@ def test_a_half_corrected_retag_carries_the_reload_on_its_refusal(
     assert len(steps) == len(stored.remediation.steps) + 1
 
 
+def refusing_writes_on(monkeypatch, *names: str) -> None:
+    """The one genre writer, answering False for the files named (R-1103).
+
+    What ``tags.write_genre`` answers for a locked file or one on a read only
+    volume. Patched after the fixture files are placed, which tag through the
+    same writer. A read only mode does not stop a suite run as root, and the
+    immutable flag that does is Linux's alone and needs privileges a Mac run
+    lacks, so the writer is patched; the review drove the real refusal once
+    with that flag (R-1103's record).
+    """
+    real = tags.write_genre
+
+    def writer(path: Path, genre: str) -> bool:
+        if path.stem in names:
+            return False
+        return real(path, genre)
+
+    monkeypatch.setattr(tags, "write_genre", writer)
+
+
+def test_a_retag_file_that_will_not_take_its_genre_fails_its_item_and_the_rest_are_corrected(
+    repair_on, folder, silence, monkeypatch
+):
+    """The brief's first scenario, through the verb a person types (R-1103).
+
+    The refusing file's item fails under ``tag-retag-unwritten`` with the file
+    named, its report is never committed, so ``corrected`` counts the two that
+    landed, and the files are read back off disk rather than off the report.
+    """
+    for name in ("a", "b", "c"):
+        coarse(folder, silence, name)
+    bound(monkeypatch, answering({name: hit("deep house", SPECIFIC) for name in "abc"}))
+    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+    refusing_writes_on(monkeypatch, "b")
+
+    code, refused = drive(resume_argv(job_id))
+
+    assert code == int(ExitCode.PRECONDITION), refused
+    refusing = str(folder / "b.flac")
+    assert item_causes(job_id) == {refusing: retag.UNWRITTEN_REASON}
+    states = item_states(job_id)
+    assert states[str(folder / "a.flac")] is jobs.ItemState.DONE
+    assert states[str(folder / "c.flac")] is jobs.ItemState.DONE
+    assert tags.read_genre_from_file(folder / "b.flac") == CATCH_ALL
+    assert tags.read_genre_from_file(folder / "a.flac") == SPECIFIC
+    assert tags.read_genre_from_file(folder / "c.flac") == SPECIFIC
+    assert refused["cause"]["reason"] == retag.UNWRITTEN_REASON
+    # THE FILE IS NAMED ON THE ITEM'S OWN CAUSE, which the job's carries as its
+    # inner one, beside the counts of what finished and what failed.
+    named = refused["cause"]["inner"]
+    assert named["reason"] == retag.UNWRITTEN_REASON
+    assert named["detail"]["path"] == refusing
+    assert named["detail"]["genre"] == SPECIFIC
+    assert named["detail"]["current"] == CATCH_ALL
+    assert refusing in named["message"]
+    reports = retag_reports(repair_on, job_id)
+    assert refusing not in reports, "a file that kept its old genre has no report"
+    assert sorted(r["written"] for r in reports.values()) == [SPECIFIC, SPECIFIC]
+    steps = refused["cause"]["remediation"]["steps"]
+    assert any(str(folder) in step and "reload" in step for step in steps), (
+        f"two files were corrected and their rows are stale: {steps}"
+    )
+
+
+def test_a_retag_whose_only_file_will_not_take_its_genre_names_no_reload(
+    repair_on, folder, silence, monkeypatch
+):
+    """Nothing was corrected, so no row went stale and nothing is sent to rekordbox.
+
+    Every item failed, so the job engine leaves through its own ``no-evidence``
+    and carries the item's cause inside it, which is what names the file.
+    """
+    coarse(folder, silence, "a")
+    bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
+    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+    refusing_writes_on(monkeypatch, "a")
+
+    code, refused = drive(resume_argv(job_id))
+
+    assert code != int(ExitCode.OK), refused
+    named = refused["cause"]["inner"]
+    assert named["reason"] == retag.UNWRITTEN_REASON
+    assert named["detail"]["path"] == str(folder / "a.flac")
+    assert tags.read_genre_from_file(folder / "a.flac") == CATCH_ALL
+    assert retag_reports(repair_on, job_id) == {}
+    steps = refused["cause"]["remediation"]["steps"]
+    assert not any("reload" in step for step in steps), steps
+
+
+def test_a_retag_file_that_will_not_take_its_genre_is_named_in_the_human_answer(
+    repair_on, folder, silence, monkeypatch
+):
+    """What a person reads at the terminal names the file, not only the counts."""
+    for name in ("a", "b"):
+        coarse(folder, silence, name)
+    bound(monkeypatch, answering({name: hit("deep house", SPECIFIC) for name in "ab"}))
+    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+    refusing_writes_on(monkeypatch, "b")
+
+    code, text = drive_human(resume_argv(job_id))
+
+    assert code == int(ExitCode.PRECONDITION), text
+    assert retag.UNWRITTEN_REASON in text
+    assert f"{folder / 'b.flac'} would not take the genre {SPECIFIC!r}" in text, text
+
+
 def test_a_parked_retag_keeps_both_the_block_and_the_reload(
     repair_on, folder, silence, monkeypatch
 ):
