@@ -996,7 +996,7 @@ def sync_land(ctx: Context) -> Envelope:
         listed = _missing(report, run_id, without_cancelled=without)
         _download(report, listed, cfg)
         staging = cfg.paths.download_staging.expanduser().absolute()
-        tail.run(report, staging, cfg, ["--pass", listed.land_name])
+        tail.run(report, staging, cfg, ["--pass", listed.land_name], listed.land_name)
     except _Done as done:
         report.summary["stopped_at"] = done.step
     except _Attend as stop:

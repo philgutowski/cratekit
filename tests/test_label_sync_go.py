@@ -867,9 +867,10 @@ def test_a_go_over_two_answered_releases_runs_the_tail_in_order_and_stops_at_the
         ("name", "apply"),
         ("intake", "land"),
     ]
-    # U172: the genre guess runs over the same folder, named with the go's pass.
+    # U172: the genre guess runs over the same folder, with no pass: the go's
+    # pass names its landing, and no account playlist asked for a label's tracks.
     (guessed,) = [argv for argv in tail.calls if argv[:2] == ["tag", "guess"]]
-    assert guessed == ["tag", "guess", folder, "--pass", default_name(run_id)]
+    assert guessed == ["tag", "guess", folder]
     queued = [
         argv for argv in tail.calls if "--job" not in argv and argv[:2] != ["tag", "guess"]
     ]

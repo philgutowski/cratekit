@@ -297,6 +297,26 @@ def _broken(tied: Iterable[str], artist: Mapping[str, int]) -> str:
     return sorted(tied, key=lambda word: (-artist.get(word, 0), word))[0]
 
 
+def band_of(weight: Fraction, total: Fraction) -> str:
+    """``tag suggest``'s band for a share, compared exactly. Pure.
+
+    THE SAME TWO CONDITIONS AS :func:`cratekit.tagging.suggest.band_of`, the
+    share against the bound and the total against the vote floor, each read
+    exactly. That function divides two ints and compares the float with a
+    float bound, which is exact for whole votes; a playlist's share makes the
+    votes Fractions, and both a Fraction against a float bound and a float sum
+    of Fractions put an exact eighty percent one band low (review rounds 1
+    and 2). The bound is read as the decimal it is written as.
+    """
+    if total <= 0 or weight <= 0:
+        return suggest.NONE
+    share = Fraction(weight) / Fraction(total)
+    for name, least, votes in suggest._BOUNDS:
+        if share >= Fraction(str(least)) and total >= votes:
+            return name
+    return suggest.LOW
+
+
 def off_taxonomy(declared: taxonomy.Taxonomy, word: str) -> bool:
     """Whether a word on a file is one this taxonomy has no place of its own for.
 
@@ -343,13 +363,9 @@ def plan(
                 voiced.append(playlist.name)
             for word, weight in share.items():
                 votes[word] = votes.get(word, Fraction(0)) + weight
-        # WEIGHED AS FLOATS, the votes ``tag suggest`` weighs are ints and its
-        # bounds are floats: ``Fraction(4, 5) >= 0.8`` is False where ``8 / 10 >=
-        # 0.8`` is True, so a Fraction share sat one band low on an exact bound
-        # (review round 1). Equal Fractions give equal floats, so a tie holds.
-        genre, band, tied = suggest.weigh(
-            declared, {word: float(weight) for word, weight in votes.items()}
-        )
+        genre, band, tied = suggest.weigh(declared, votes)
+        if band in suggest.BANDS:
+            band = band_of(votes[genre], sum(votes.values()))
         if band == suggest.SPLIT:
             genre = _broken(tied, artist)
         ordered = tuple(sorted(votes.items(), key=lambda entry: (-entry[1], entry[0])))
@@ -483,6 +499,7 @@ __all__ = [
     "UNWRITTEN",
     "WORKFLOW",
     "artist_key",
+    "band_of",
     "library_by_artist",
     "off_taxonomy",
     "plan",

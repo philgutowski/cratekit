@@ -590,14 +590,6 @@ def guess_argv(folder: Path, pass_name: str | None = None) -> list[str]:
     return [*GUESS_WORDS, str(folder), *([PASS_FLAG, pass_name] if pass_name else [])]
 
 
-def pass_of(landing: Sequence[str]) -> str | None:
-    """The pass a landing's arguments name, or None when they name none."""
-    words = list(landing)
-    if PASS_FLAG in words[:-1]:
-        return words[words.index(PASS_FLAG) + 1] or None
-    return None
-
-
 def guess(chain: Chain, folder: Path, pass_name: str | None = None) -> None:
     """``tag guess`` over the ABSOLUTE staging folder, right after ``tag folder`` (U172).
 
@@ -615,20 +607,23 @@ def guess(chain: Chain, folder: Path, pass_name: str | None = None) -> None:
     before = int(totals.get("before") or 0)
     after = int(totals.get("after") or 0)
     written = int(totals.get("written") or 0)
-    left = count - after
+    unread = int(totals.get("unread") or 0)
+    left = count - after - unread
     chain.summary["guess"] = {
         "files": count,
         "before": before,
         "after": after,
         "written": written,
         "left": left,
+        "unread": unread,
         "bands": totals.get("bands") or {},
     }
     chain.check(
         GUESS,
         "ok",
         f"tag guess gave {written} file(s) a genre over {folder}: {before} of {count} "
-        f"carried one before it and {after} after it, {left} still carry none",
+        f"carried one before it and {after} after it, {left} still carry none"
+        + (f" and {unread} could not be read" if unread else ""),
     )
 
 
@@ -747,15 +742,24 @@ def through_name(
     return folder
 
 
-def run(chain: Chain, folder: Path, cfg: config.Config, landing: Sequence[str]) -> None:
+def run(
+    chain: Chain,
+    folder: Path,
+    cfg: config.Config,
+    landing: Sequence[str],
+    pass_name: str | None = None,
+) -> None:
     """The tail in its order over ``folder``, then the landing planned and stopped.
 
     Never returns: it ends in :class:`Attend` at the landing's gate or the
     acknowledgment, :class:`Done` when the landing planned nothing, or
     :class:`Stop` at the first step that did not succeed. ``folder`` must be
-    absolute, and is made so here rather than trusted.
+    absolute, and is made so here rather than trusted. ``pass_name`` is the
+    sync pass whose account playlists vote in the genre guess (U172), and None
+    for a batch no account playlist asked for, a label go's above all, whose
+    landing still names a pass of its own (review round 2).
     """
-    folder = through_name(chain, folder, cfg, pass_of(landing))
+    folder = through_name(chain, folder, cfg, pass_name)
     land(chain, folder, landing)
 
 
@@ -898,7 +902,6 @@ __all__ = [
     "load_config",
     "name",
     "name_argv",
-    "pass_of",
     "rehearse",
     "replace_stale",
     "required",

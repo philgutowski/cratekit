@@ -644,8 +644,9 @@ queue instead, and a rate limit parks the download rather than retrying. A go
 that stopped part way is picked up by the next `--go`, which resumes it before
 anything new, and a track is never asked for twice. Once the download has
 landed its tracks, the same command runs the acquisition tail on the staging
-folder the way `crate sync land` does: `tag folder`, `tag guess` with the go's
-pass, `analyze run` followed by
+folder the way `crate sync land` does: `tag folder`, `tag guess` (with no
+playlist vote, since no playlist on your account asked for a label's tracks),
+`analyze run` followed by
 `analyze vocals --unscored`, `analyze restamp` and `name apply`, each driven to
 the end, then plans `intake land
 --manifest ... --pass ...`, which names the batch for the date and the label,

@@ -553,11 +553,8 @@ def test_the_tail_runs_the_guess_right_after_tag_folder():
     assert tail.GUESS_VERB == "tag.guess"
 
 
-def test_the_guess_is_named_with_the_landings_pass_and_none_without_one():
+def test_the_guess_is_named_with_a_pass_only_when_one_is_given():
     folder = Path("/staging")
-    assert tail.pass_of(["--manifest", "m.json", "--pass", "p1"]) == "p1"
-    assert tail.pass_of(["--name", "batch"]) is None
-    assert tail.pass_of(["--pass"]) is None
     assert tail.guess_argv(folder, "p1") == ["tag", "guess", "/staging", "--pass", "p1"]
     assert tail.guess_argv(folder) == ["tag", "guess", "/staging"]
 
@@ -574,7 +571,9 @@ def test_the_guess_step_records_the_share_before_and_after(monkeypatch):
     envelope = {
         "outcome": "ok",
         "warnings": [{"code": guess_cli.NO_VOTES_LEFT, "message": "one left"}],
-        "data": {"totals": {"count": 10, "before": 7, "after": 9, "written": 2, "bands": {}}},
+        "data": {
+            "totals": {"count": 10, "before": 7, "after": 9, "written": 2, "unread": 0, "bands": {}}
+        },
     }
     monkeypatch.setattr(tail, "dispatch", lambda argv: (0, envelope))
 
@@ -600,11 +599,58 @@ def test_a_guess_that_refuses_ends_the_chain(monkeypatch):
     assert stopped.value.step == tail.GUESS
 
 
-def test_a_go_stopped_at_its_tag_step_names_the_guess_next_with_its_pass():
+def test_a_go_stopped_at_its_tag_step_names_the_guess_next_with_no_pass():
     """Review round 1: the go's remaining commands from the tag step on include
-    the guess, which no go test stopping later reaches."""
+    the guess, which no go test stopping later reaches. Round 2: with no pass,
+    since a label go's pass names no account playlist."""
     commands = label_sync._commands(
         Path("/staging"), ["--manifest", "m.json", "--pass", "p1"], tail.TAG
     )
-    assert commands[:2] == ["crate tag folder /staging", "crate tag guess /staging --pass p1"]
+    assert commands[:2] == ["crate tag folder /staging", "crate tag guess /staging"]
     assert len(commands) == len(tail.STEPS)
+
+
+def test_an_unreadable_file_is_counted_apart_from_the_files_left_with_none(monkeypatch):
+    """Review round 2: a file whose genre could not be read is not one the
+    guess left untagged, and the chain's sentence says which is which."""
+    chain = tail.Chain(
+        progress=None, namespace="t", title="t", steps=tail.STEPS, origin=("test",), again="a"
+    )
+    envelope = {
+        "outcome": "ok",
+        "warnings": [],
+        "data": {"totals": {"count": 2, "before": 0, "after": 1, "written": 1, "unread": 1}},
+    }
+    monkeypatch.setattr(tail, "dispatch", lambda argv: (0, envelope))
+
+    tail.guess(chain, Path("/staging"))
+
+    assert chain.summary["guess"]["left"] == 0 and chain.summary["guess"]["unread"] == 1
+    assert "0 still carry none and 1 could not be read" in chain.checks[0]["detail"]
+
+
+def test_an_exact_bound_over_a_playlist_and_an_artist_is_banded_exactly():
+    """Review round 2: one artist track and a ten track playlist of seven to
+    three is 24/5 against 6/5, exactly eighty percent of six votes, which the
+    float sum of the two read as just under."""
+    members = [_staged(f"d{n}", artist=f"Other {n}", genre=DEEP) for n in range(7)]
+    members += [_staged(f"m{n}", artist=f"Else {n}", genre=MELODIC) for n in range(3)]
+    lone = _staged("lone", artist="Ana Vale")
+    plan = guess.plan(
+        ROOT,
+        (*members, lone),
+        guess.Signals(
+            library={"ana vale": (DEEP,)}, playlists=(_playlist("p", *members, lone),)
+        ),
+        DECLARED,
+    )
+    item = _item(plan, "lone")
+    assert dict(item.votes) == {DEEP: Fraction(24, 5), MELODIC: Fraction(6, 5)}
+    assert item.band == suggest.band_of(24, 30) == suggest.HIGH
+
+
+@pytest.mark.parametrize(
+    ("weight", "total"), [(w, t) for t in range(1, 13) for w in range(1, t + 1)]
+)
+def test_the_exact_band_agrees_with_tag_suggests_on_every_whole_vote(weight, total):
+    assert guess.band_of(Fraction(weight), Fraction(total)) == suggest.band_of(weight, total)

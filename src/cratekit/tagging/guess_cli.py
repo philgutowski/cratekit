@@ -142,10 +142,13 @@ def _playlists(
         # A PASS NO JOB CARRIES IS NOT A PASS WHOSE PLAYLISTS KNEW NOTHING
         # (review round 1). A mistyped name read as "no playlists" would report
         # every file the playlists could have tagged as one nothing voted for.
+        # Only a sync pass is named here: the tail hands a label go's and a
+        # Bandcamp batch's guess no pass, since no account playlist asked for
+        # them (review round 2).
         if not batch_name.pass_jobs(cfg, pass_name):
             return (), (
                 f"no intake job of pass {pass_name} succeeded on this library, so "
-                f"the name is not one of its passes or the pass never finished"
+                f"the name is not one of its sync passes or the pass never finished"
             )
         claims = account_playlists.split(cfg, pass_name, paths)
     except CratekitError as exc:
@@ -219,6 +222,7 @@ def _payload(found: guess.GuessPlan) -> dict[str, Any]:
             "before": found.before,
             "after": found.after,
             "written": sum(1 for item in found.items if item.written),
+            "unread": counts[guess.FILE_UNREADABLE],
             "report": found.report,
             "library_read": found.signals.library is not None,
             "pass": found.signals.pass_name or None,
