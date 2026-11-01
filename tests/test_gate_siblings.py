@@ -345,3 +345,168 @@ def test_the_run_record_carries_the_sibling_warning_nowhere(native_library):
     record = json.loads(gates.run_path(second).read_text())
 
     assert gates.SIBLING_RUN not in json.dumps(record)
+
+
+# ---------------------------------------------------------------------------
+# What the first review round drove (U186)
+# ---------------------------------------------------------------------------
+
+
+def _old_open(run_id: str, age: timedelta) -> None:
+    """An inbox clear left at its gate ``age`` ago, as sitting 51 left one."""
+    _blocked(run_id, "inbox.analyzed", GATE, age, datetime.now(timezone.utc))
+
+
+def test_a_verb_writing_no_database_says_nothing_of_its_own_siblings():
+    """``run retire`` is gated and writes no database row, so its second plan is silent."""
+    _old_open("left-plan", timedelta(days=3))
+    code, first = drive(["run", "retire", "--older-than", "1d"])
+    assert code == int(ExitCode.DECISION_REQUIRED), first
+
+    code, second = drive(["run", "retire", "--older-than", "1d"])
+
+    assert code == int(ExitCode.DECISION_REQUIRED), second
+    assert first["run_id"] not in json.dumps(second["warnings"])
+    assert _siblings(second) == []
+
+
+def test_a_refusal_before_the_gate_names_no_sibling(machine):
+    """Only a run persisted at its gate warns; a verb refused earlier is not at one."""
+    _old_open("left-plan", timedelta(hours=1))
+
+    code, refused = drive(VERB)
+
+    assert code not in (int(ExitCode.OK), int(ExitCode.DECISION_REQUIRED)), refused
+    assert _siblings(refused) == []
+
+
+def test_a_reading_that_breaks_says_so_and_leaves_the_gate_as_it_was(
+    native_library, monkeypatch
+):
+    def broken(*args, **kwargs):
+        raise RuntimeError("a probe")
+
+    monkeypatch.setattr(gates, "siblings", broken)
+
+    refused = _planned()
+
+    assert refused["exit_code"] == int(ExitCode.DECISION_REQUIRED)
+    assert refused["resumable"] is True
+    assert refused["cause"]["reason"] == "decision-required"
+    (message,) = _siblings(refused)
+    assert "could not be read (RuntimeError: a probe)" in message
+
+
+def test_an_answer_with_no_recorded_time_is_named_as_unrecorded(native_library):
+    first = _answered()
+    state = gates.load(first)
+    state.decisions = {n: gates.Decision(d.option, d.actor, "", d.digest) for n, d in state.decisions.items()}
+    gates.save(state)
+
+    (message,) = _siblings(_planned())
+
+    assert first in message and "at an unrecorded time" in message
+
+
+def test_a_record_missing_a_field_is_named_unreadable_at_the_gate_and_in_doctor(native_library):
+    gates.run_dir().mkdir(parents=True, exist_ok=True)
+    (gates.run_dir() / "half.json").write_text(json.dumps({"version": 1, "run_id": "half"}))
+
+    (message,) = _siblings(_planned())
+    finding = _open_gates(datetime.now(timezone.utc))
+
+    assert "could not be read (half)" in message
+    assert finding.status is doctor.Status.INFO
+    assert "could not be read (half)" in finding.detail
+
+
+def test_decide_repeats_over_a_sibling_that_answered_then_stopped_at_another_gate(
+    native_library,
+):
+    """An approved plan stays approved when the run stops again at the cloud sync gate."""
+    first = _answered()
+    state = gates.load(first)
+    state.open_gate = "write.cloudsync.unreadable"
+    gates.save(state)
+    second = _planned()["run_id"]
+
+    code, decided = drive(["run", "decide", second, GATE, "apply", "--actor", "a-session"])
+
+    assert code == int(ExitCode.OK), decided
+    (message,) = _siblings(decided)
+    assert first in message
+
+
+def test_decide_says_nothing_when_both_answers_are_abort(native_library):
+    _answered(option="abort")
+    second = _planned()["run_id"]
+
+    code, decided = drive(["run", "decide", second, GATE, "abort", "--actor", "a-session"])
+
+    assert code == int(ExitCode.OK), decided
+    assert _siblings(decided) == []
+
+
+def test_decide_says_nothing_when_this_run_was_offered_no_digest(native_library):
+    first = _answered()
+    held = gates.load(first)
+    held.decisions = {n: gates.Decision(d.option, d.actor, d.recorded, None) for n, d in held.decisions.items()}
+    gates.save(held)
+    second = _planned()["run_id"]
+    state = gates.load(second)
+    state.offers = {}
+    gates.save(state)
+
+    code, decided = drive(["run", "decide", second, GATE, "apply", "--actor", "a-session"])
+
+    assert code == int(ExitCode.OK), decided
+    assert _siblings(decided) == []
+
+
+def test_decide_says_nothing_when_the_sibling_answered_another_gate(native_library):
+    first = _answered()
+    held = gates.load(first)
+    held.decisions = {"another.gate": d for d in held.decisions.values()}
+    gates.save(held)
+    second = _planned()["run_id"]
+
+    code, decided = drive(["run", "decide", second, GATE, "apply", "--actor", "a-session"])
+
+    assert code == int(ExitCode.OK), decided
+    assert _siblings(decided) == []
+
+
+def test_decide_continue_says_a_sibling_once_when_the_verb_stops_at_its_gate_again(
+    native_library,
+):
+    """The answer was given over a plan the continuation no longer reads, so it stops stale.
+
+    The decide names the sibling and so does the dispatcher at the stale gate:
+    the envelope carries it once.
+    """
+    first = _answered()
+    held = gates.load(first)
+    held.decisions = {n: gates.Decision(d.option, d.actor, d.recorded, "sha256:moved") for n, d in held.decisions.items()}
+    gates.save(held)
+    second = _planned()["run_id"]
+    state = gates.load(second)
+    state.offers = {GATE: "sha256:moved"}
+    gates.save(state)
+
+    code, continued = drive(
+        ["run", "decide", second, GATE, "apply", "--actor", "a-session", "--continue"]
+    )
+
+    assert code == int(ExitCode.DECISION_STALE), continued
+    found = _siblings(continued)
+    assert len(found) == 1 and first in found[0]
+
+
+def test_doctor_leaves_a_gate_open_twenty_hours_off_the_list():
+    now = datetime.now(timezone.utc)
+    _blocked("this-morning", "inbox.analyzed", GATE, timedelta(hours=20), now)
+
+    finding = _open_gates(now)
+
+    assert "this-morning" not in finding.detail
+    assert "no run has sat at a gate for more than a day" in finding.detail

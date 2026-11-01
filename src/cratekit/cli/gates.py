@@ -873,9 +873,16 @@ class Sibling:
 
     Either its gate is open, ``gate`` names it and ``at`` is when the run was
     last touched (:func:`idle_since`, the same measure ``crate status`` ages a
-    gate by), or it answered within the window, and ``answers`` holds each of
-    those answers as ``(gate, decision)``, oldest first. Never both: a run
-    whose gate is open is waiting, and that is what a reader needs to hear.
+    gate by), or it answered within the window and ``gate`` is None. The
+    message says open when the gate is open, since a run that is waiting is
+    what a reader needs to hear first.
+
+    ``answers`` holds every answer the run gave within the window as
+    ``(gate, decision)``, oldest first, WHETHER OR NOT A LATER GATE IS OPEN.
+    A run that answered its plan and then stopped at the cloud sync gate has
+    still approved that plan, and ``run decide`` compares against exactly
+    that answer (the review of U186 drove a run left that way, and the
+    repeat went unsaid while the answers were dropped for an open gate).
     """
 
     run_id: str
@@ -899,7 +906,7 @@ class Sibling:
         gate, latest = self.answers[-1]
         return (
             f"another run of {self.verb}, {self.run_id}, answered {gate} "
-            f"{latest.option} as {latest.actor} at {latest.recorded}; a plan read "
+            f"{latest.option} as {latest.actor} at {latest.recorded or 'an unrecorded time'}; a plan read "
             f"after or during its write differs from the one it answered"
         )
 
@@ -937,34 +944,34 @@ def siblings(
     found: list[Sibling] = []
     unreadable: list[str] = []
     for path in records:
+        # BY THE FILE NAME, which ``run_path`` makes the run's identifier, so the
+        # asking run is never read at all, and never named unreadable either.
         if path.stem == exclude:
             continue
         try:
             state = load(path.stem)
-        except CratekitError:
+        except Exception:  # noqa: BLE001 - an unread record is said, never skipped
             unreadable.append(path.stem)
             continue
-        if state.verb != verb or state.run_id == exclude:
-            continue
-        if state.open_gate is not None:
-            since = idle_since(state, path).replace(microsecond=0).isoformat()
-            found.append(Sibling(run_id=state.run_id, verb=verb, gate=state.open_gate, at=since))
+        if state.verb != verb:
             continue
         recent: list[tuple[datetime, str, Decision]] = []
         for name, decision in state.decisions.items():
             when = _instant(decision.recorded)
             if when is None or moment - when <= within:
                 recent.append((when or moment, name, decision))
-        if recent:
-            recent.sort(key=lambda one: (one[0], one[1]))
+        recent.sort(key=lambda one: (one[0], one[1]))
+        answers = tuple((name, decision) for _, name, decision in recent)
+        if state.open_gate is not None:
+            since = idle_since(state, path).replace(microsecond=0).isoformat()
             found.append(
                 Sibling(
-                    run_id=state.run_id,
-                    verb=verb,
-                    gate=None,
-                    at=recent[-1][2].recorded,
-                    answers=tuple((name, decision) for _, name, decision in recent),
+                    run_id=state.run_id, verb=verb, gate=state.open_gate, at=since, answers=answers
                 )
+            )
+        elif answers:
+            found.append(
+                Sibling(run_id=state.run_id, verb=verb, gate=None, at=answers[-1][1].recorded, answers=answers)
             )
     return found, unreadable
 

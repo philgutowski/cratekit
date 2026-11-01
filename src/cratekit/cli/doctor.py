@@ -3365,7 +3365,7 @@ def _check_open_gates(inputs: _Inputs) -> Finding:
     for path in records:
         try:
             state = gates.load(path.stem)
-        except CratekitError:
+        except Exception:  # noqa: BLE001 - a note never fails; an unread record is named
             unreadable.append(path.stem)
             continue
         aged = gates.old_gate(state, path, older_than=OPEN_GATE_NOTE_AGE, now=moment)
