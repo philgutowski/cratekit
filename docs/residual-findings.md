@@ -40459,3 +40459,39 @@ maintainer facing pin, after the unit's two fix rounds were spent.
 **Measured cost.** Not driven against either verb. The same wrong impression sitting 47 paid for on the download, on two verbs with fewer tracks per job; the item causes are correct and `job show` names them.
 
 **Closes when:** each worker wraps its body the way `acquire.cli.handle` does, declining a cause `acquire.cli.refused_for_good` accepts, with the verb naming each skipped track in a warning. Ledger only: a wording of the outcome, not data at risk.
+
+---
+
+## R-1131. Six guards of the custom playlist twins kill no test, most of them behind the gate's own digest
+
+**Found:** at the review of #330, U149, 2026-11-01.
+
+**The mechanism.** The review reverted each guard of `sync/twins.py`, `sync/pair_cli.py` and the landing's twin path and ran the unit's two test files. These killed nothing: `recheck`'s gone rows check, `assert_read_back`, `recheck_landing`'s held name check, the `written_for` filter in `native.plan_rows`, the unpaired term of `pair_cli.Plan.writes` (which nothing in `src` reads), and `write_landing`'s filter of a twin whose INBOX playlist holds nothing. The fix round pinned three more that had killed nothing: the SQL confinement wired through `assert_confined`, the live filter on the mirror's links, and the folding of two account tracks of one ISRC onto one row.
+
+**Measured cost.** None driven. Both rechecks were reached by drives and refused, but the gate's digest on the replan refused first, so they are race guards between the replan and the write. The rest are dead or defensive paths whose producer was not found. The second review measured that `recheck`'s gone rows check and `assert_read_back` each kill a test once the guard in front of them is removed, so they are second layers rather than guards nothing covers.
+
+**Closes when:** a test reaches each one, or it is removed as redundant. Ledger only: a guard that kills zero is maintainer facing, and the writes it sits on are each covered by another guard that does kill.
+
+---
+
+## R-1132. A pair whose two account tracks carry one ISRC honours a rekordbox removal of their row only half
+
+**Found:** at the review of #330, U149, 2026-11-01.
+
+**The mechanism.** When two tracks of an account playlist carry one ISRC, both are linked to the one library row, by the twins' backfill and equally by `sync pair`'s own `_owned`. `plan_pair` maps a row back to one remote id only, so when that row is taken out of the rekordbox playlist, the next `sync pair` takes one of the two account tracks off and adds the row back to rekordbox, since the other account track still holds it.
+
+**Measured cost.** Driven by the review on a fake account: account `[t1, t10, t2]` with `t10` carrying `t1`'s ISRC, the row removed in rekordbox, and the sync removed `t10` from the account and put the row back. The removal a DJ made in rekordbox is undone. How often the live account lists one recording twice under two identifiers was not measured.
+
+**Closes when:** a pair links each row to at most one account track, or reads a removed row as removing every account track linked to it. The class predates U149 in `sync pair`; ledger only until a live listing shows it.
+
+---
+
+## R-1133. The twins' backfill finds no row a landed track's intake job resolved, where sync pair would
+
+**Found:** at the review of #330, U149, 2026-11-01.
+
+**The mechanism.** `twins.Library.find` looks for an account track's row by the mirror's link, the database ISRC, the mirror's recorded ISRC and the INBOX playlists landed for that account playlist. `pair_cli._owned` has one more source, the intake jobs the pair queued. A row with no ISRC in the database or its file, landed long enough ago that its INBOX playlist has rotated out, is a miss on the backfill's gate.
+
+**Measured cost.** Not driven. Such a miss is named on the gate and the snapshot records it as an account track the twin lacks, so the next `sync pair` looks again with its own sources and adds it if it finds it; nothing is lost, the twin is short until then.
+
+**Closes when:** the backfill reads the sweep's intake jobs for each account playlist as a source, or the attended backfill shows no such miss. Ledger only.
