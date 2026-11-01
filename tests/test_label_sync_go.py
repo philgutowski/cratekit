@@ -82,6 +82,23 @@ def tail(monkeypatch) -> Tail:
     return stand_in
 
 
+@pytest.fixture(autouse=True)
+def no_vocal_model(monkeypatch) -> None:
+    """The vocal model unable to score, so the tail skips its rescore every time.
+
+    PINNED, NOT INHERITED. ``vocals.unavailable`` reads a loader bound in this
+    process as able, and an analysis worker driven by an earlier test in the
+    same xdist worker leaves one bound. The tail then queues ``analyze vocals
+    --unscored`` and every exact list of the tail's verbs here fails, on some
+    distributions of the suite and not others: measured at R-1115, where the
+    mutation driver's null control killed one such test twice.
+    """
+    from cratekit.analysis import vocals
+
+    monkeypatch.setattr(vocals, "_VOCAL_LOADER", None)
+    monkeypatch.setattr(vocals, "missing_requirement", lambda: "the vocal model is not installed here")
+
+
 @pytest.fixture
 def script(monkeypatch) -> Script:
     fresh = Script()
