@@ -205,6 +205,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'tag-folder-unwritten',  # 2026-10-31, U178: a file that would not take its genre.
     'tag-remap-unwritten',
     'tag-retag-folder-unknown',
+    'tag-retag-unwritten',  # 2026-11-01, R-1103: a file that would not take its corrected genre.
     'tag-suggest-unwritten',
     'target-lufs-out-of-range',
     'trash-unavailable',
@@ -871,6 +872,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'tag-folder-unwritten',
         'tag-remap-unwritten',
         'tag-retag-folder-unknown',
+        'tag-retag-unwritten',  # 2026-11-01, R-1103
         'tag-suggest-unwritten',
         'target-lufs-out-of-range',
         'trash-unavailable',
@@ -1846,6 +1848,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'no-answer',
         'no-genre',
         'row-absent',
+        # 2026-11-01, R-1103: a file that would not take its corrected genre.
+        'tag-retag-unwritten',
     ],
     'tagging/retag_cli.py': [
         'config-unusable',
@@ -2130,6 +2134,8 @@ PINNED_NAMED_WITHOUT_OWN = {
         'source-missing',
         'source-unsupported',
     ],
+    # 2026-11-01, R-1103: a file that would not take its corrected genre.
+    'tagging/retag.py': ['tag-retag-unwritten'],
     'tagging/searchers.py': ['catalogue-parse-broken', 'catalogue-unreachable'],
     # 2026-10-31, U178: the engine refuses a file that would not take its genre.
     'tagging/tag.py': ['tag-folder-unwritten'],
@@ -2316,6 +2322,8 @@ PINNED_NAMED_WITH_OWN = {
         'label-folder',
         'set-playlist',
     ],
+    # 2026-11-01, R-1103: a file that would not take its corrected genre.
+    'tagging/retag.py': ['tag-retag-unwritten'],
     'tagging/searchers.py': ['catalogue-parse-broken', 'catalogue-unreachable', 'parse-break'],
     # 2026-10-31, U178: the engine refuses a file that would not take its genre.
     'tagging/tag.py': ['tag-folder-unwritten'],
@@ -2901,6 +2909,8 @@ PINNED_LITERAL_HOLDERS = {
     # 2026-10-31, U178: tag folder refuses a --label nobody registered.
     'tagging/cli.py': ['config-unusable', 'label-unknown', 'source-missing'],
     'tagging/remap_cli.py': ['config-unusable', 'internal-error', 'tag-remap-unwritten'],
+    # 2026-11-01, R-1103: a file that would not take its corrected genre.
+    'tagging/retag.py': ['tag-retag-unwritten'],
     'tagging/retag_cli.py': [
         'config-unusable',
         'refused-by-policy',
