@@ -1355,4 +1355,84 @@ def test_landed_passes_reads_only_closed_committed_landings(slim):
     _record_landing(slim, "kept", stamp="110000")
     _record_landing(slim, "open", state=session.SessionState.OPEN, stamp="120000")
     _record_landing(slim, "refused", source=session.SourceState.REFUSED, stamp="130000")
+    # A landing of no pass names none, and is never listed as a pass of "None".
+    nameless = _record_landing(slim, "x", stamp="140000")
+    record = session.read_record(nameless, slim)
+    record.detail = {}
+    session.write_record(record, slim)
+    # Another workflow's record that carries a pass is not a landing.
+    session.write_record(
+        session.SessionRecord(
+            session_id="20261007T150000-refill",
+            workflow="not-the-intake",
+            started="2026-10-07T15:00:00+00:00",
+            state=session.SessionState.CLOSED,
+            sources={active_taxonomy.load(slim).intake.id: str(session.SourceState.COMMITTED)},
+            ended="2026-10-07T15:00:00+00:00",
+            detail={native.PASS_KEY: "elsewhere"},
+        ),
+        slim,
+    )
     assert native.landed_passes(slim) == ("kept",)
+
+
+def test_an_unreachable_root_is_a_refused_step_and_never_no_pass(slim, monkeypatch):
+    """The landings' records live under the root, so an unmounted volume would
+    read as no pass at all and organize would ask over a clean plan."""
+    _cut_over_intake(slim)
+    _record_landing(slim, "a pass")
+    monkeypatch.setattr(
+        mark_cli.ingest,
+        "intake_medium",
+        lambda cfg: mark_cli.ingest.IntakeMedium(declared=None, registry=None),
+    )
+    with pytest.raises(CratekitError) as refused:
+        mark_cli.native_passes(slim)
+    assert "could not be reached" in refused.value.cause.message
+    (step,) = _mark_steps(slim).steps
+    assert (step.key, step.state) == ("mark:native", "refused")
+
+
+def test_an_unreadable_tree_registry_refuses_the_native_step_alone(slim, monkeypatch):
+    """The passes found by their intake files are still planned beside it."""
+    from cratekit.core import tree_registry as registry_module
+
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    _land(slim, name, "101", "102", "201")
+    _cut_over_intake(slim)
+    registry_module.path_for(slim).write_text("{not json", encoding="utf-8")
+
+    steps = {step.key: step for step in _mark_steps(slim).steps}
+
+    assert steps["mark:native"].state == "refused"
+    assert steps[f"mark:{name}"].state == "planned"
+
+
+def test_playlist_on_a_file_of_no_pass_is_refused_and_asks_no_gate(slim, monkeypatch):
+    fake, name = _swept_pass(monkeypatch, *TWO)
+    xml = _land(slim, name, "101", "102", "201")
+    stranger = xml.with_name(f"2020-01-01T000000Z-zzzz_synced{land_cli.INTAKE_SUFFIX}")
+    xml.rename(stranger)
+    listings = fake.account_listings
+
+    code, refused = _mark(stranger, "--playlist", "pl-a")
+
+    assert code != int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["detail"]["not_of_pass"] == ["pl-a"]
+    assert fake.account_listings == listings
+
+
+def test_a_named_playlist_whose_reports_cannot_be_read_is_refused_by_name(slim, monkeypatch):
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    xml = _land(slim, name, "101", "102", "201")
+    (job,) = [job for job in _playlist_jobs() if playlists.playlist_of(job) == "pl-a"]
+    with jobs.open_store() as store:
+        item = jobs.items(store, job.job_id)[0]
+    artifacts.final_path(
+        intake_cli.ARTIFACTS, jobs.frozen_config(job), job.job_id, item.ordinal
+    ).write_text("{", encoding="utf-8")
+
+    with pytest.raises(CratekitError) as refused:
+        mark_cli.plan_pass(slim, xml, playlists_named=["pl-a"])
+
+    assert refused.value.cause.detail["reasons"] == {"pl-a": mark_cli.REPORTS_UNREADABLE}

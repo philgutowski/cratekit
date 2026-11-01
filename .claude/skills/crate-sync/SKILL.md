@@ -64,9 +64,15 @@ status:
 - **It stopped at `backup-acknowledgment-missing`.** Mint the acknowledgment
   with `crate session ack`, answering its `session.ack.backup` gate as the
   session as CLAUDE.md's backup acknowledgment rule says (the session reads
-  both ages and refuses unless both are under five days), then run the pass
-  again, with `--pass-run` and the run in `data.summary.pass_run` when it
-  names one, so the jobs already done are read and not queued again:
+  both ages and refuses unless both are under five days). The ack stops at its
+  gate under a run of its own, `ACK_RUN`, which it names:
+
+      crate session ack
+      crate run decide ACK_RUN session.ack.backup acknowledged --actor session --continue
+
+  Then run the pass again, with `--pass-run` and the run in
+  `data.summary.pass_run` when it names one, so the jobs already done are read
+  and not queued again:
 
       crate --output json sync land --pass-run PASS_RUN
 

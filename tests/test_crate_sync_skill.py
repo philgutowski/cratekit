@@ -107,7 +107,7 @@ def test_it_runs_the_steps_the_brief_names_in_order(flat):
 
 def test_every_gate_it_answers_is_answered_by_its_own_name_and_option(text):
     decides = [line for line in _commands(text) if line.startswith("crate run decide")]
-    assert len(decides) == 2, decides
+    assert len(decides) == 3, decides
     for line in decides:
         words = line.split()
         gate, option = words[4], words[5]
@@ -115,6 +115,7 @@ def test_every_gate_it_answers_is_answered_by_its_own_name_and_option(text):
         assert option in spec.options and option != "abort", line
         assert "--actor session" in line and "--continue" in line, line
     assert {line.split()[4] for line in decides} == {
+        "session.ack.backup",
         tail.LAND_GATE,
         organize_cli.ACCOUNT_GATE,
     }

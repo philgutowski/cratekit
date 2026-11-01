@@ -313,12 +313,21 @@ def native_passes(cfg: config.Config) -> tuple[str, ...]:
     its native landing's record (R-915, U174). NONE ON A TREE READ AS THE
     BRIDGE, where the intake file is the proof and a pass named without it is
     refused by :func:`_native_proof`, so a record left from before a revert is
-    not planned as a refusal on every run. A root that cannot be reached is not
-    read as the bridge: its passes are returned, and each one's plan refuses
-    with that reason, rather than the step vanishing.
+    not planned as a refusal on every run.
+
+    A ROOT THAT CANNOT BE REACHED IS REFUSED, NEVER READ AS NO PASS. The
+    landings' records live under the library root, so an unmounted volume
+    would read as none and a caller would show a clean plan over passes it
+    could not see (the review of U174).
     """
     medium = ingest.intake_medium(cfg)
-    if medium.declared is not None and not medium.native:
+    if medium.declared is None:
+        raise _blocked(
+            f"the library root {cfg.library.root} could not be reached, so the passes "
+            f"its native landings committed cannot be read and none was planned",
+            "mount the library volume, then plan the marks again",
+        )
+    if not medium.native:
         return ()
     return native.landed_passes(cfg)
 
@@ -776,8 +785,9 @@ def _refuse_strangers(named: tuple[str, ...], found: list[jobs.Job], name: str) 
         raise _blocked(
             f"pass {name} holds no playlist {', '.join(strangers)}, so it cannot "
             f"mark it; nothing was marked",
-            "name only playlists of this pass, by the account identifier its plan "
-            "shows, or leave --playlist out to mark the whole pass",
+            "name only playlists of this pass, by their account identifiers, which "
+            "crate organize --report --only marks lists under each pass, or leave "
+            "--playlist out to mark the whole pass",
             not_of_pass=strangers,
             pass_name=name,
         )

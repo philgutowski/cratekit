@@ -234,7 +234,16 @@ def _mark_steps(cfg, area: Area) -> None:
             unpassed += 1
     area.facts["intake files of no sync pass"] = unpassed
     unlanded = 0
-    for name in mark_cli.native_passes(cfg):
+    try:
+        native_names = mark_cli.native_passes(cfg)
+    except CratekitError as exc:
+        # REFUSED ALONE, as any step that cannot have what it needs: the passes
+        # found by their intake files above are still planned (the review of U174).
+        area.steps.append(
+            refused("mark:native", "mark the passes native landings committed", exc.cause)
+        )
+        native_names = ()
+    for name in native_names:
         if name in seen:
             continue
         plan = partial(mark_cli.plan_pass, cfg, pass_name=name, listing=listing.get)
