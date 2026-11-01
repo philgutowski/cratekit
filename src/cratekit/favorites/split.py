@@ -785,7 +785,7 @@ def apply(
                 before = rb_writer.node_tables(db)
                 made: dict[str, tuple[str, str]] = {}
                 for name, ids in planned.months.items():
-                    row, fresh = placement.month_row(db, name, parent)
+                    row, fresh = placement.month_row(db, name, parent, source_id=home.source_id)
                     rows[name] = str(row.ID)
                     if fresh:
                         db.session.flush()

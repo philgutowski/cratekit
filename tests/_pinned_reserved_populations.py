@@ -1185,6 +1185,9 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'favorites/placement.py': ['decision-stale', 'favorites-placement'],
     # 2026-10-15, U145: the quarters split into months, engine and verb.
     'favorites/split.py': ['decision-stale', 'favorites-split', 'session-committed-unverified', 'whitelist-violation'],
+    # 2026-11-01, U180: the Favorites folder put in order, engine and verb.
+    'favorites/order.py': ['decision-stale', 'favorites-order', 'session-committed-unverified', 'whitelist-violation'],
+    'favorites/order_cli.py': ['config-unusable', 'favorites-in-order', 'favorites-ordered'],
     'favorites/split_cli.py': [
         'config-unusable',
         'favorites-no-quarter-left',
@@ -2625,6 +2628,9 @@ PINNED_LITERAL_HOLDERS = {
     'favorites/colour.py': ['favorites-pink-colour-missing'],
     'favorites/placement.py': ['decision-stale'],
     'favorites/refresh_cli.py': ['config-unusable', 'internal-error'],
+    # 2026-11-01, U180: the Favorites folder put in order, engine and verb.
+    'favorites/order.py': ['decision-stale', 'session-committed-unverified', 'whitelist-violation'],
+    'favorites/order_cli.py': ['config-unusable'],
     # 2026-10-15, U145: the quarters split into months, engine and verb.
     'favorites/split.py': ['decision-stale', 'session-committed-unverified', 'whitelist-violation'],
     'favorites/split_cli.py': ['config-unusable'],
