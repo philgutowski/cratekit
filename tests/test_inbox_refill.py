@@ -634,11 +634,11 @@ def test_bridge_names_reads_only_this_accounts_entries_of_this_pass_with_no_id()
         state: session.SessionState,
         entries: list[dict],
         *,
-        session_id: str = "",
+        ident: str = "",
         workflow: str = native.WORKFLOW,
     ) -> session.SessionRecord:
         return session.SessionRecord(
-            session_id=session_id or f"20261003T1200{tag}-landing",
+            session_id=ident or f"20261003T1200{tag}-landing",
             workflow=workflow,
             started=f"2026-10-03T12:00:{tag}+00:00",
             state=state,
@@ -654,7 +654,7 @@ def test_bridge_names_reads_only_this_accounts_entries_of_this_pass_with_no_id()
             "02",
             session.SessionState.CLOSED,
             [entry(f"{INBOX_NAME} 2", "pl-a")],
-            session_id="20261003T000000-a-landing",
+            ident="20261003T000000-a-landing",
         ),
         # A record that no longer stands, and one of another workflow, name nothing.
         record("03", session.SessionState.ABANDONED, [entry("Abandoned 2026-10-03", "pl-a")]),
