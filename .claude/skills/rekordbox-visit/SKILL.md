@@ -25,6 +25,11 @@ check.
 
 Every one of these holds, or the visit does not start.
 
+0. **The copy of Cratekit in use carries the verbs below.** `crate analyze
+   check` landed after v0.4.0 (U167). If `crate analyze check --help` refuses
+   an unknown verb, run every `crate` line here from a development checkout's
+   own `.venv/bin/crate` until a release carries it, and say so in the record.
+
 1. **No Cratekit job is running**, and no other session is driving the
    library. This lists none:
 
@@ -49,28 +54,40 @@ Every one of these holds, or the visit does not start.
 
        crate --output json analyze check
 
-   It must exit 12 with `data.summary.scope` reading `analyze` and
-   `data.summary.not_analysed` above zero. Write down three numbers from it:
-   `data.summary.rows`, the rows the playlist holds, which is the batch the
-   wait counts to; `data.summary.not_analysed`; and the count of
-   `data.summary.items` whose `dyn` is true, the rows the second run is for.
-   Exit 0 means nothing waits and there is no visit to make. Any other scope
+   Read `data.summary.scope` first. It must read `analyze`: any other scope
    means INBOX / Analyze is empty and the rows waiting are somewhere else, so
    stop and report what it named rather than analyse a playlist that holds
-   none of them.
+   none of them. Then the exit status:
+
+   - It must exit 12 with `data.summary.not_analysed` above zero for the
+     visit to go on, or 27 with a `data.summary.grids` count of `variable` or
+     unread rows, which is a run on the wrong settings that the visit's
+     Normal run analyses again.
+   - Exit 0 means nothing waits. With `data.summary.rows` above zero the rows
+     are analysed and were never cleared, so skip to the clear in step 7;
+     with none there is no visit to make.
+
+   Write down three numbers from it: the batch the wait counts to, which is
+   `data.summary.analysed` plus `data.summary.not_analysed` (a row that left
+   the collection is in `data.summary.rows` and in no count rekordbox shows);
+   `data.summary.not_analysed`; and the count of `data.summary.items` whose
+   `dyn` is true, the rows the second run is for.
 
 ## 2. Open rekordbox and select the batch
 
 1. Open rekordbox through desktop control and wait for its main window.
 2. In the tree, open Playlists, then the INBOX folder, then the playlist
-   `Analyze` directly under it. Its track count matches `data.summary.rows`
-   from step 1.5; if it does not, stop and report both numbers.
+   `Analyze` directly under it. Its track count matches the batch from step
+   1.5; if it does not, stop and report both numbers.
 3. Click one track in the list, then select all (Command A). The status line
    reads the same count.
 4. Open Analyze Tracks on the selection (right click, Analyze Track).
 
-**No Reload Tags.** Since U163 a landed row carries its artist, album, genre
-and year from the commit that made it, so the visit is Analyze Tracks alone.
+**No Reload Tags, for rows landed by v0.4.0 or later.** Since U163 a landed
+row carries its artist, album, genre and year from the commit that made it,
+so the visit is Analyze Tracks alone. Rows landed by an earlier copy carry
+none of them until rekordbox reads the file: for those, run Reload Tags on
+the same selection first, as sitting 52 did.
 
 ## 3. Set and read back every field before OK
 
@@ -96,9 +113,9 @@ release in the wrong place leaves the old value showing.
 
 Just before pressing OK, write the marker the wait counts from:
 
-    marker=$(mktemp -t rekordbox-visit)
+    marker=$(mktemp -t rekordbox-visit.XXXXXX); echo "$marker"
 
-Then press OK.
+Then press OK. The path it printed is the marker the wait in step 4 needs.
 
 **A run started on the wrong settings has no cancel that works.** Quit
 rekordbox from its application menu (step 6), confirm both processes gone,
@@ -111,10 +128,12 @@ Each track rekordbox finishes writes an `ANLZ0000.DAT` into the analysis
 store, `share/PIONEER/USBANLZ` beside the configured database
 (`library.db_path` in Cratekit's configuration). For a library on its own
 volume that is `PIONEER/Master/share/PIONEER/USBANLZ` under the volume root.
-Run this as a background job that notifies when it exits, with `store` that
-directory and `expected` the batch from step 1.5:
+Run this as a background job that notifies when it exits. A background job
+is its own shell and does not see step 3's variable, so fill in all three:
+`store` that directory, `expected` the batch from step 1.5, and `marker` the
+path step 3 printed:
 
-    store="<the analysis store>"; expected=<the batch>
+    store="<the analysis store>"; expected=<the batch>; marker="<the path step 3 printed>"
     last=-1; quiet=0
     while :; do
       n=$(find "$store" -name ANLZ0000.DAT -newer "$marker" | wc -l | tr -d ' ')
@@ -164,9 +183,12 @@ minutes, report it rather than kill it.
 
 ## 7. Check the result, then clear the analysed rows
 
-    crate analyze check
+    crate --output json analyze check
 
-Its exit status is the verdict:
+`data.summary.scope` must still read `analyze`. Any other scope means the
+playlist was emptied while rekordbox was open, by another session or a clear
+nobody here ran, so its verdict is over other rows: stop and report it.
+Otherwise the exit status is the verdict:
 
 - **0, done.** Every row analysed, every grid one tempo (or moving on a row
   marked `dyn`), the Key column filled, and the title keys agreeing with

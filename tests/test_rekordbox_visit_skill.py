@@ -97,17 +97,19 @@ def test_the_settings_are_the_brief_s_standard(text):
 
 
 def test_the_settings_agree_with_the_step_crate_sync_land_prints(text):
-    """The sync stop names a subset of the same fields; each one it names agrees."""
-    step = sync_land.REKORDBOX_STEPS[0]
-    table = {_normal(field): value for field, value in _settings(text).items()}
-    said = re.search(r"Analysis Mode (\w+)", step)
-    assert said and table[_normal("Analysis Mode")] == said.group(1)
-    assert "high precision off" in step and table[_normal("High precision")] == "off"
-    on = re.search(r"off, ([\w/ ,]+?) and (\w+) on\b", step)
-    assert on, step
-    named_on = [*on.group(1).split(","), on.group(2)]
-    for field in named_on:
-        assert table[_normal(field)] == "on", field
+    """The sync stop's settings clause is the table's, rendered the way it words it.
+
+    Rendered whole rather than read field by field, so a step that turns one
+    field the other way (KEY off against a table saying KEY on) fails here
+    whichever side moved.
+    """
+    table = _settings(text)
+    assert table["BPM / Grid"] == table["Phrase"] == table["KEY"]
+    clause = (
+        f"Analysis Mode {table['Analysis Mode']}, high precision "
+        f"{table['High precision']}, BPM/Grid, Phrase and KEY {table['KEY']}"
+    )
+    assert clause in sync_land.REKORDBOX_STEPS[0]
 
 
 def test_the_mode_list_needs_a_held_press(flat):
@@ -142,7 +144,15 @@ def test_the_doctor_checks_it_reads_exist(flat):
 def test_the_store_it_counts_is_the_analysis_store(flat):
     assert f"`{analysis_store.SHARE_DIRNAME}/PIONEER/USBANLZ` beside the configured database" in flat
     assert "-name ANLZ0000.DAT -newer \"$marker\"" in flat
-    assert "marker=$(mktemp" in flat
+    assert "marker=$(mktemp -t rekordbox-visit.XXXXXX)" in flat, "BSD and GNU both take this form"
+
+
+def test_the_background_wait_is_handed_the_marker(text):
+    """A background job is its own shell, so its fill in line names all three values."""
+    loop = next(block for block in _FENCED.findall(text) + [text] if "while :; do" in block)
+    head = loop.split("while :; do", 1)[0].strip().splitlines()[-2]
+    for name in ("store=", "expected=", "marker="):
+        assert name in head, (name, head)
 
 
 def test_the_exit_codes_it_branches_on_are_the_check_s(flat):
@@ -164,7 +174,11 @@ def test_the_json_fields_it_reads_are_the_check_s(flat):
     assert summary["scope"] == rc.SCOPE_ANALYZE
     assert summary["rows"] == 1 and summary["not_analysed"] == 1
     assert summary["items"][0]["dyn"] is True
-    assert f"`data.summary.scope` reading `{rc.SCOPE_ANALYZE}`" in flat
+    assert f"Read `data.summary.scope` first. It must read `{rc.SCOPE_ANALYZE}`" in flat
+    assert f"`data.summary.scope` must still read `{rc.SCOPE_ANALYZE}`" in flat, "the post check too"
+    assert summary["analysed"] == 0 and summary["grids"][rc.VARIABLE] == 0
+    assert f"a `data.summary.grids` count of `{rc.VARIABLE}`" in flat
+    assert "`data.summary.analysed` plus `data.summary.not_analysed`" in flat
     for name in ("rows", "not_analysed", "items"):
         assert f"`data.summary.{name}`" in flat, name
     assert "whose `dyn` is true" in flat
