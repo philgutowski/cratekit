@@ -66,6 +66,12 @@ from typing import Protocol
 #: never remembers such a miss since it is not an answer about the row (R-1031).
 UNREADABLE_CANDIDATE = "could not be read"
 
+#: The words an unmatched reason carries when several releases agree with the
+#: row and nothing told them apart (R-572), formatted into the reason by the
+#: adapter. The mirror reads it to ask such a miss again, since under
+#: ``any_agreeing`` a tie no longer misses (R-1032).
+AGREEING_RELEASES = "of them agree with this row's artist, title and version"
+
 
 class RemoteAccount(Protocol):
     """Writes against one streaming account: adds, a retitle, and one narrow remove."""
@@ -79,6 +85,7 @@ class RemoteAccount(Protocol):
         artist: str = "",
         agree: bool = False,
         album: str = "",
+        any_agreeing: bool = False,
     ) -> str | None:
         """The remote track id for this library identity, or None if unmatched.
 
@@ -97,6 +104,17 @@ class RemoteAccount(Protocol):
         ``album`` is the album tag of the row's own file. Among several releases
         that agree with the row and that the account hearts none of, the one
         whose album name is the file's is the match (R-572). Never a search.
+
+        ``any_agreeing`` TAKES ONE OF A TIE rather than refusing it, for a
+        caller that writes nothing back as the row's identity (R-1032): the
+        mirror, whose playlist is a listening copy where releases spelled alike
+        are the same thing to hear. It narrows by the account's hearts and the
+        file's album first, as without it, and then takes the lowest provider
+        identifier, so every run takes the same one. It changes nothing but a
+        tie: a release that does not agree is never taken, and a tie beside a
+        candidate that could not be read still refuses. A heart and a pair
+        never pass it, since there the chosen release becomes the row's
+        identity and R-572's refusal stands.
         """
 
     def unmatched_reason(self, identity: str) -> str:

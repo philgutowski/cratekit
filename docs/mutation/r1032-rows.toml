@@ -1,0 +1,143 @@
+name = "r1032"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_mirror_never_asks_any_agreeing"
+description = "Matcher._match: ask the provider without any_agreeing, so the mirror refuses a tie as a heart does"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_tie.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_inbox.py"]
+old = '''            any_agreeing=True,'''
+new = '''            any_agreeing=False,'''
+
+[[rows]]
+id = "M2_tie_miss_reused"
+description = "Matcher._match: reuse a remembered tie miss, so the ledger's old tie misses wait for a rematch"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_tie.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_inbox.py"]
+old = '''        if missed is not None and tuple(missed[1]) == under and TIED not in missed[0]:'''
+new = '''        if missed is not None and tuple(missed[1]) == under:'''
+
+[[rows]]
+id = "M3_every_miss_asked_again"
+description = "Matcher._match: ask every remembered miss again, not only a tie, so a refresh costs the whole ledger again"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_tie.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_inbox.py"]
+old = '''        if missed is not None and tuple(missed[1]) == under and TIED not in missed[0]:'''
+new = '''        if missed is not None and tuple(missed[1]) == under and TIED in missed[0]:'''
+
+[[rows]]
+id = "A1_adapter_ignores_any_agreeing"
+description = "match_track: drop any_agreeing on its way to _among, so the adapter refuses the tie for the mirror too"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_organize_mirror_tie.py"]
+old = '''                        any_agreeing=any_agreeing,'''
+new = '''                        any_agreeing=False,'''
+
+[[rows]]
+id = "A2_tie_always_broken"
+description = "_among: break the tie whatever the caller asked, so a heart or a pair takes a release R-572 refuses"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py", "tests/test_sync_pair.py", "tests/test_organize_mirror_tie.py"]
+old = '''        if any_agreeing and not unreadable:'''
+new = '''        if not unreadable:'''
+
+[[rows]]
+id = "A3_unreadable_tie_broken"
+description = "_among: break a tie beside a candidate that could not be read"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_organize_mirror_tie.py"]
+old = '''        if any_agreeing and not unreadable:'''
+new = '''        if any_agreeing:'''
+
+[[rows]]
+id = "A4_hearts_ignored_in_tie"
+description = "_among: break a tie over every agreeing release even when the account hearts several"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_organize_mirror_tie.py"]
+old = '''            return _lowest(_on_album(hearted or agreeing, tracks, album)), ""'''
+new = '''            return _lowest(_on_album(agreeing, tracks, album)), ""'''
+
+[[rows]]
+id = "A5_album_ignored_in_tie"
+description = "_among: break a tie without narrowing to the file's album first"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_organize_mirror_tie.py"]
+old = '''            return _lowest(_on_album(hearted or agreeing, tracks, album)), ""'''
+new = '''            return _lowest(hearted or agreeing), ""'''
+
+[[rows]]
+id = "A6_first_listed_not_lowest"
+description = "_lowest: take the first the provider lists, so the choice moves with the listing order"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_organize_mirror_tie.py"]
+old = '''    return min(remotes, key=lambda remote: (len(remote), remote))'''
+new = '''    return remotes[0]'''
+
+[[rows]]
+id = "A7_lowest_by_characters"
+description = "_lowest: order the identifiers as text, so 100 sorts before 99"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_organize_mirror_tie.py"]
+old = '''    return min(remotes, key=lambda remote: (len(remote), remote))'''
+new = '''    return min(remotes)'''
+
+[[rows]]
+id = "A8_album_narrow_drops_all"
+description = "_on_album: when the album names none, answer the named list alone, empty"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_organize_mirror_tie.py"]
+old = '''    return named or remotes'''
+new = '''    return named'''
+
+[[rows]]
+id = "A9_album_narrow_unfolded"
+description = "_on_album: compare the album unfolded, so case and spacing defeat the narrowing"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_organize_mirror_tie.py"]
+old = '''        remote for remote in remotes if wanted and match.fold(_album_name(tracks[remote])) == wanted'''
+new = '''        remote for remote in remotes if wanted and _album_name(tracks[remote]) == album'''
+
+[[rows]]
+id = "A10_reason_words_reworded"
+description = "_among: reword the tie reason away from the constant the mirror reads"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_organize_mirror_tie.py", "tests/test_outbound_workers.py"]
+old = '''            f"{named}{aside}, {len(agreeing)} {AGREEING_RELEASES} and the "'''
+new = '''            f"{named}{aside}, {len(agreeing)} of them match this row's artist, title and version and the "'''
+
+[[rows]]
+id = "A11_empty_album_narrows"
+description = "_on_album: drop the empty tag guard, so a file with no album narrows a tie to the releases the provider left unnamed"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_organize_mirror_tie.py"]
+old = '''        remote for remote in remotes if wanted and match.fold(_album_name(tracks[remote])) == wanted'''
+new = '''        remote for remote in remotes if match.fold(_album_name(tracks[remote])) == wanted'''
+
+[[rows]]
+id = "S1_protocol_default_on"
+description = "TidalAccount.match_track: default any_agreeing on, so the hearts, the pairs and the exports, which never pass it, break the tie R-572 refuses"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py", "tests/test_export_set.py", "tests/test_sync_pair.py"]
+old = '''        album: str = "",
+        any_agreeing: bool = False,
+    ) -> str | None:
+        """The one provider track this row names exactly, or ``None``.'''
+new = '''        album: str = "",
+        any_agreeing: bool = True,
+    ) -> str | None:
+        """The one provider track this row names exactly, or ``None``.'''
