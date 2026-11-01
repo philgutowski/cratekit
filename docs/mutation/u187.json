@@ -1,0 +1,163 @@
+{
+  "name": "u187",
+  "pass_kind": "light",
+  "branch": "cloud/395-the-docs-say-how-an-answer-on-th",
+  "head": "c7272c2",
+  "when": "2026-11-01 11:31 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 15467,
+  "baseline_exit": 1,
+  "pytest_runs": 7,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 167,
+  "known_source": ".cloud-battery/baseline.txt",
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to scripts/board.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "scripts/board.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "47ef6028b991eabc",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 15467,
+    "baseline_collected": 15467,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "A1_relayed_answer_never_matches",
+      "description": "_relayed_answer: never match, so the relay thread's Answer from Phillip is read as a session hold and never as his reply",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "6feb54f6c1c525cb",
+      "subset": [
+        "tests/test_board_cloud.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cloud.py::test_a_relayed_answer_alone_is_not_a_hold",
+        "tests/test_board_cloud.py::test_an_answer_relayed_from_the_decisions_page_releases_the_card"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return comment_heading(comment.get(\"body\") or \"\") == HEAD_ANSWER",
+      "new": "    return False"
+    },
+    {
+      "id": "A2_answer_counted_as_a_hold",
+      "description": "cloud_state: count a relayed answer among the session's own comments, so an answer alone holds the card",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "e500dd3bac6a2235",
+      "subset": [
+        "tests/test_board_cloud.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cloud.py::test_a_relayed_answer_alone_is_not_a_hold",
+        "tests/test_board_cloud.py::test_an_answer_relayed_from_the_decisions_page_releases_the_card"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    mine = [c for c in ordered if SESSION_MARK in (c.get(\"body\") or \"\") and not _relayed_answer(c)]",
+      "new": "    mine = [c for c in ordered if SESSION_MARK in (c.get(\"body\") or \"\")]"
+    },
+    {
+      "id": "A3_answer_not_read_as_reply",
+      "description": "cloud_state: drop the relayed answer from the replies after a question, so the card is never offered as answered",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "232012b6e1502f5c",
+      "subset": [
+        "tests/test_board_cloud.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cloud.py::test_an_answer_relayed_from_the_decisions_page_releases_the_card"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if _when(c) > since and (SESSION_MARK not in (c.get(\"body\") or \"\") or _relayed_answer(c))",
+      "new": "        if _when(c) > since and (SESSION_MARK not in (c.get(\"body\") or \"\"))"
+    },
+    {
+      "id": "A4_heading_drifts",
+      "description": "HEAD_ANSWER: a nearby heading, answer from phil, so the documented heading no longer matches",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "949be092dddde4b8",
+      "subset": [
+        "tests/test_board_cloud.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cloud.py::test_a_relayed_answer_alone_is_not_a_hold",
+        "tests/test_board_cloud.py::test_an_answer_relayed_from_the_decisions_page_releases_the_card"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "HEAD_ANSWER = \"answer from phillip\"",
+      "new": "HEAD_ANSWER = \"answer from phil\""
+    }
+  ],
+  "dropped": []
+}
