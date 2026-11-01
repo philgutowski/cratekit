@@ -317,7 +317,9 @@ def drift_from_tempogram(
         return None
     per = int(round(DRIFT_WINDOW_SECONDS * rate / hop))
     windows = min(tempogram.shape[1], envelope.size) // per
-    if windows < DRIFT_MIN_WINDOWS:
+    # NO WINDOW AT ALL is answered here, before a median of nothing; how many
+    # windows are enough is asked once, of the windows that carry a pulse.
+    if windows == 0:
         return None
     frequencies = librosa.tempo_frequencies(tempogram.shape[0], sr=rate, hop_length=hop)
     widest = 1.0 + DRIFT_BAND

@@ -57,12 +57,12 @@ new = '''    if len(tempos) < 1:'''
 
 [[rows]]
 id = "D7_min_windows"
-description = "drift_from_tempogram: drop the up front window count check"
+description = "drift_from_tempogram: drop the guard against a track with no whole window, which answers before a median of nothing"
 file = "src/cratekit/analysis/detect.py"
-surface = "user"
+surface = "maintainer"
 tests = ["tests/test_analysis_drift.py", "tests/test_analysis_tempo.py", "tests/test_drift.py"]
-old = '''    if windows < DRIFT_MIN_WINDOWS:'''
-new = '''    if windows < 1:'''
+old = '''    if windows == 0:'''
+new = '''    if False:'''
 
 [[rows]]
 id = "D8_percentile"

@@ -189,6 +189,17 @@ def test_a_beatless_or_very_short_file_scores_unknown(samples):
     assert drift.verdict(moved, CUT) == drift.UNKNOWN
 
 
+def test_a_track_with_a_pulse_in_only_two_windows_scores_unknown():
+    """A minute where the drums play for the first twenty seconds and a pad
+    holds the rest: six windows, two of them with a pulse, which is a spread of
+    two numbers and not a reading of the track."""
+    samples = _drums(lambda _at: 124.0, 60.0)
+    samples[int(20 * RATE) :] = _pad(60.0)[int(20 * RATE) :]
+    _tempo, moved = _drift(samples)
+    assert moved is None
+    assert drift.verdict(moved, CUT) == drift.UNKNOWN
+
+
 # ---------------------------------------------------------------------------
 # The detector carries it
 # ---------------------------------------------------------------------------
