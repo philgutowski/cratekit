@@ -49,10 +49,14 @@ never go near the live database.
 Four words carry most of the rest.
 
 - **Job.** Long work, such as a playlist intake, a tagging pass or a label
-  sweep, is queued and handed back to you as a job identifier. The verb returns
-  quickly. `crate job list` shows the queue, `crate job show ID` shows one job
-  and why it is in its state, and `crate job resume ID` picks it up without
-  repeating finished work.
+  sweep, is queued and handed back to you as a job identifier. Most verbs
+  return quickly. `crate job list` shows the queue, `crate job show ID` shows
+  one job and why it is in its state, and `crate job resume ID` picks it up
+  without repeating finished work. Three verbs of the acquisition tail, `tag
+  folder`, `analyze run` and `analyze restamp`, queue their job and then work
+  through it before they return, so each step is one command. Stop one with
+  Ctrl-C and its answer names the `--job` command that finishes the rest; pass
+  `--queue-only` to have it queue and return like the others.
 - **Run.** One invocation's decision state, saved on disk so a decision can be
   answered later, from another terminal, after the process has exited.
 - **Gate.** A named question a verb stops at before it writes. There is no
@@ -567,10 +571,17 @@ paced through the provider gate. Only releases an `all` or a `pick` took are
 downloaded, a track the library holds in another version goes to the match
 queue instead, and a rate limit parks the download rather than retrying. A go
 that stopped part way is picked up by the next `--go`, which resumes it before
-anything new, and a track is never asked for twice. The report ends with the
-acquisition tail that lands the batch, `tag folder` through `intake land
---manifest ... --pass ...`, which names the batch for the date and the label; land each go before the next, since every go
-downloads into the same staging folder. The size and time are estimates: the
+anything new, and a track is never asked for twice. Once the download has
+landed its tracks, the same command runs the acquisition tail on the staging
+folder the way `crate sync land` does: `tag folder`, `analyze run`, `analyze
+restamp` and `name apply`, each driven to the end, then plans `intake land
+--manifest ... --pass ...`, which names the batch for the date and the label,
+and stops at the landing's own gate. The report names that gate's run and the
+two commands that answer and apply it, then the rekordbox visit. A tail step
+that fails ends the go there with its reason, plans no landing, keeps the
+download, and names the rest of the tail to run once the cause is mended. A go
+that downloaded nothing runs no tail. Every go downloads into the same staging
+folder, so land each go before the next. The size and time are estimates: the
 size from each track's duration at a FLAC rate, the time from the pacing delay
 and an assumed transfer rate.
 
@@ -601,6 +612,29 @@ genre, without asking any catalogue, and counts those files apart in its report
 under `label-genre`. A file's label is its label tag, or `--label` for a file
 that carries none. A file that already has a genre keeps it, and a file of the
 label with no picture is still searched, for its art only.
+
+A label that sells on Bandcamp from its own account can name that account, so
+what you buy from it arrives tagged with the label and lands filed under it:
+
+```bash
+crate label registry set PULS --bandcamp pulsromania
+crate acquire bandcamp-fetch --seller PULS
+crate intake land "/path/to/staging/Bandcamp 2026-11-01" --label-from-tags
+```
+
+The account is the name in the address the label's releases are sold from,
+`pulsromania` for `pulsromania.bandcamp.com`, and the address itself is taken
+too. One account names one label, so a second label naming it is refused with
+the label that holds it, and `--bandcamp default` clears it. `acquire bandcamp`
+names each purchase's label, and names every seller you would fetch from that no
+label names, with the command that registers it. `--seller` takes a label's
+name as well as an account. The fetch writes the label's name into the label tag
+of every file it stages from that account, and leaves a seller no label names as
+it came. `--label-from-tags` then files each landed file under `Record Labels /
+<Label> / <Label> <year>` by its own label tag and its date tag's year, so one
+batch holding several sellers files each under its own label. A file with no
+label tag or no year is named on the screen and lands in INBOX filed under no
+label. This works once the intake tree is database native, as `--label` does.
 
 `sync labels` is retired. It queues nothing and names `label sync`, and `sync
 all` no longer sweeps labels either. A labels sweep queued before the guided

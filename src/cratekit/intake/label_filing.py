@@ -20,14 +20,18 @@ landing, can no longer run; :func:`plan` refuses by name on a library whose
 intake tree is still on the bridge, so no caller can append beside an intake
 file that will be imported over it.
 
-TWO SOURCES OF A LABEL AND ITS YEAR. A manifest's rows carry both, and each row
-is tied to a staged file by the bridge's own rule
+THREE SOURCES OF A LABEL AND ITS YEAR. A manifest's rows carry both, and each
+row is tied to a staged file by the bridge's own rule
 (:func:`cratekit.intake.landing.match_label_rows`) over exactly the files the
 landing planned, so a near match or a row no file answers is named and never
 filed. ``--label NAME`` names the label for every file, and each file's year is
 the leading four digits of its date tag: a file with no date tag, or one that
 names no year, is named on the gate screen and filed nowhere, never given a
-year on a guess. Either way the file still lands in its INBOX batch.
+year on a guess. ``--label-from-tags`` (U177) reads each file's own label tag
+for its label and its date tag for its year, so one batch holding several
+labels' releases, as a Bandcamp fetch from several sellers does, files each
+under its own and a file with no label tag under none, named. Either way the
+file still lands in its INBOX batch.
 
 THE NAMES ARE COMPARED THE BRIDGE'S WAY, under canonical Unicode equivalence
 and not case (R-453), and two siblings of one name refuse, as does a node of
@@ -70,6 +74,8 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 #: Where a plan's labels came from, as the gate screen and the record say it.
 MANIFEST = "manifest"
 LABEL = "label"
+#: Each file's own label tag (U177).
+TAGS = "tags"
 
 #: The session record field naming every year playlist a commit filed into,
 #: which is what a later ``label mark`` of a native batch reads (R-916).
@@ -143,7 +149,7 @@ class LabelPlan:
     tree_display: str
     #: The tree's live folder at the root, or empty when the write makes it.
     tree_folder: str
-    #: :data:`MANIFEST` or :data:`LABEL`.
+    #: :data:`MANIFEST`, :data:`LABEL` or :data:`TAGS`.
     source: str
     #: The label ``--label`` named, or empty for a manifest.
     label: str
@@ -400,6 +406,74 @@ def plan_for_label(
     )
 
 
+def _read_label(path: Path) -> tuple[str, str]:
+    """The label a file's own label tag names, NFC and stripped, or empty and why.
+
+    A TAG THAT COULD NOT BE READ IS NOT A TAG THAT IS ABSENT (pattern 1), said
+    apart as :func:`_read_year` says a date it could not read.
+    """
+    try:
+        stored = tags.read_tags_checked(path, ("label",))["label"]
+    except tags.TagReadFailed as exc:
+        return "", f"its tags could not be read ({exc})"
+    named = _folded(str(stored or "").strip())
+    if not named:
+        return "", "it carries no label tag"
+    return named, ""
+
+
+def plan_for_tags(
+    db: Any,
+    medium: ingest.IntakeMedium,
+    *,
+    files: Sequence[tuple[Path, Path]],
+) -> LabelPlan:
+    """Every file under the label its own label tag names, in its date tag's year (U177).
+
+    A FILE WITH NO LABEL TAG IS NAMED, NOT GUESSED, as a file with no year is:
+    it is filed nowhere and still lands in INBOX. That is what keeps a seller
+    no registered label names out of another label's folder when one batch
+    holds both, which one ``--label`` for the whole batch could not.
+    """
+    from cratekit.intake import landing
+
+    node = _catalog_node(medium)
+    filed: dict[str, dict[int, list[str]]] = {}
+    unfiled: list[Unfiled] = []
+    for source, target in files:
+        label, why = _read_label(source)
+        year: int | None = None
+        if label:
+            year, why = _read_year(source)
+        if not label or year is None:
+            unfiled.append(
+                Unfiled(
+                    target=str(target),
+                    reason=landing.NO_LABEL,
+                    sentence=(
+                        f"{target.name} was filed under no "
+                        + (f"{label} year playlist" if label else "label playlist")
+                        + f", because {why}; it is in the intake playlist"
+                    ),
+                )
+            )
+            continue
+        filed.setdefault(label, {}).setdefault(year, []).append(str(target))
+    tree_folder, folders, years = _resolve(db, node, filed)
+    return LabelPlan(
+        tree_id=node.id,
+        tree_display=node.display,
+        tree_folder=tree_folder,
+        source=TAGS,
+        label="",
+        manifest="",
+        manifest_digest="",
+        folders=folders,
+        years=years,
+        unfiled=tuple(unfiled),
+    )
+
+
 def plan_for_manifest(
     cfg: config.Config,
     db: Any,
@@ -562,11 +636,10 @@ def facts(plan: LabelPlan) -> dict[str, Any]:
         if plan.tree_folder
         else f"{plan.tree_display}, created at the playlist root"
     )
-    said = (
-        f"the manifest {plan.manifest}"
-        if plan.source == MANIFEST
-        else f"--label {plan.label}, each file's year from its date tag"
-    )
+    said = {
+        MANIFEST: f"the manifest {plan.manifest}",
+        TAGS: "each file's own label tag, its year from its date tag",
+    }.get(plan.source, f"--label {plan.label}, each file's year from its date tag")
     if not plan.years:
         where = "nothing, since no file has a label and year to be filed under"
     shown: dict[str, Any] = {

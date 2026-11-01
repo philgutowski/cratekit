@@ -142,6 +142,18 @@ def build_registry(parser, entry) -> None:
         ),
     )
     parser.add_argument(
+        "--bandcamp",
+        dest="bandcamp",
+        default=None,
+        metavar="ACCOUNT",
+        help=(
+            "the Bandcamp seller account this label's releases are sold from, the "
+            "name in their address (ACCOUNT.bandcamp.com) or the address itself; a "
+            "purchase from it is staged tagged with this label and filed under it. "
+            "One account names one label, and --bandcamp default clears it"
+        ),
+    )
+    parser.add_argument(
         "--accept-fallback",
         dest="accept_fallback",
         action="store_true",
@@ -221,6 +233,8 @@ def _detail(entry: labels.LabelEntry) -> str:
         parts.append(f"kind {entry.kind}")
     if entry.genre is not None:
         parts.append(f"genre {entry.genre}")
+    if entry.bandcamp is not None:
+        parts.append(f"Bandcamp {entry.bandcamp}")
     if entry.seed_artists:
         parts.append("seeds " + " | ".join(entry.seed_artists))
     return ", ".join(parts)
@@ -369,16 +383,17 @@ def registry_cmd(ctx) -> Envelope:
     offer = ctx.args.offer
     kind = ctx.args.kind
     genre = ctx.args.genre
+    bandcamp = ctx.args.bandcamp
     accept_fallback = bool(ctx.args.accept_fallback)
-    fields_given = (seeds, track_limit, ctx.args.match, offer, kind, genre)
+    fields_given = (seeds, track_limit, ctx.args.match, offer, kind, genre, bandcamp)
     if action not in ("add", "set") and (
         accept_fallback or any(given is not None for given in fields_given)
     ):
         raise refuse(
             "label-name-invalid",
             f"label registry {action} does not set --seed, --track-limit, "
-            f"--offer, --kind, --genre or --match, and ignoring them would report "
-            f"a change that was never written",
+            f"--offer, --kind, --genre, --bandcamp or --match, and ignoring them "
+            f"would report a change that was never written",
             steps=("use label registry set, or add, to change those fields",),
             origin=("label.cli",),
         )
@@ -421,6 +436,10 @@ def registry_cmd(ctx) -> Envelope:
     # reaches it, which a stored copy of today's default would not.
     clear_kind = kind == taxonomy.NO_KIND
     kind = None if clear_kind else kind
+    # ``--bandcamp default`` CLEARS IT, as the two above do, matched as typed
+    # whatever its case, so an account named that is set by its address.
+    clear_bandcamp = bandcamp is not None and bandcamp.strip().lower() == labels.CLEAR_BANDCAMP
+    bandcamp = None if clear_bandcamp else bandcamp
     if action == "add":
         label_id = store.add(
             name,
@@ -432,6 +451,8 @@ def registry_cmd(ctx) -> Envelope:
             clear_kind=clear_kind,
             genre=genre,
             clear_genre=clear_genre,
+            bandcamp=bandcamp,
+            clear_bandcamp=clear_bandcamp,
         )
         held = store.load()
         return ctx.envelope(
@@ -446,7 +467,10 @@ def registry_cmd(ctx) -> Envelope:
                 "label-name-invalid",
                 "label registry set needs a field to change, and a set that "
                 "changed nothing would report an edit that never happened",
-                steps=("pass --track-limit, --offer, --kind, --genre, --seed, or --match",),
+                steps=(
+                    "pass --track-limit, --offer, --kind, --genre, --bandcamp, --seed, "
+                    "or --match",
+                ),
                 origin=("label.cli",),
             )
         edited = store.edit(
@@ -459,6 +483,8 @@ def registry_cmd(ctx) -> Envelope:
             clear_kind=clear_kind,
             genre=genre,
             clear_genre=clear_genre,
+            bandcamp=bandcamp,
+            clear_bandcamp=clear_bandcamp,
         )
         held = store.load()
         return ctx.envelope(
