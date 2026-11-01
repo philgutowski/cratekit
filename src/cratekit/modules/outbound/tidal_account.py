@@ -68,7 +68,7 @@ from cratekit.acquire.adapter import TrackOutcome, classify_unavailable
 from cratekit.core import provider_gate
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.modules.outbound import account, kinds, ledger, pairs
-from cratekit.modules.outbound.service import UNREADABLE_CANDIDATE
+from cratekit.modules.outbound.service import AGREEING_RELEASES, UNREADABLE_CANDIDATE
 
 #: How many times a write or a single lookup is retried after its first attempt.
 WRITE_RETRIES = 1
@@ -236,6 +236,25 @@ def _album_name(track: Any) -> str:
     return str(getattr(getattr(track, "album", None), "name", "") or "")
 
 
+def _lowest(remotes: list[str]) -> str:
+    """The lowest provider identifier, numbers by value, the one a tie takes (R-1032).
+
+    Not a fact about the row and not offered as one: it is the same answer on
+    every run and every machine whatever order the provider lists them in, so
+    a refresh never swaps one release for another.
+    """
+    return min(remotes, key=lambda remote: (len(remote), remote))
+
+
+def _on_album(remotes: list[str], tracks: dict[str, Any], album: str) -> list[str]:
+    """The releases among ``remotes`` on the file's album, or all of them if none is."""
+    wanted = match.fold(album)
+    named = [
+        remote for remote in remotes if wanted and match.fold(_album_name(tracks[remote])) == wanted
+    ]
+    return named or remotes
+
+
 def _streamable(track: Any) -> bool:
     """Whether the provider will play this track, absent a statement that it will not.
 
@@ -317,6 +336,7 @@ class TidalAccount:
         artist: str = "",
         agree: bool = False,
         album: str = "",
+        any_agreeing: bool = False,
     ) -> str | None:
         """The one provider track this row names exactly, or ``None``.
 
@@ -335,6 +355,10 @@ class TidalAccount:
 
         ``album`` is the album tag of the row's own file, read beside its ISRC,
         and only :meth:`_among` reads it (R-572).
+
+        ``any_agreeing`` lets :meth:`_among` take one of a tie between agreeing
+        releases rather than refuse it, for the mirror's listening copy only
+        (R-1032).
 
         IDENTITY SECOND, and only an exact provider track reference, see
         :func:`track_reference`. Never a text search over title and artist:
@@ -358,7 +382,12 @@ class TidalAccount:
                     return next(iter(tracks))
                 if tracks:
                     chosen, reason = self._among(
-                        tracks, isrc=wanted, title=title, artist=artist, album=album
+                        tracks,
+                        isrc=wanted,
+                        title=title,
+                        artist=artist,
+                        album=album,
+                        any_agreeing=any_agreeing,
                     )
                     if chosen is None:
                         self._reasons[key] = reason
@@ -382,6 +411,7 @@ class TidalAccount:
         title: str,
         artist: str,
         album: str = "",
+        any_agreeing: bool = False,
     ) -> tuple[str | None, str]:
         """One of several tracks sharing an ISRC, or ``None`` and why not.
 
@@ -416,6 +446,15 @@ class TidalAccount:
         APART STAY UNMATCHED. The first, the earliest or the lowest numbered is
         a policy about the catalogue rather than a fact about the row, and
         R-572 refused each of them.
+
+        UNLESS ``any_agreeing`` SAYS ANY OF THEM WILL DO (R-1032), which the
+        mirror says because its playlist is a listening copy and writes nothing
+        back as the row's identity. Then a tie with no unreadable candidate is
+        broken by :func:`_lowest` over the hearted releases if the account
+        hearts several, else over every agreeing one, narrowed first to those
+        the file's album names when it names any. Only the tie is broken: the
+        refusals before it, no agreeing release, no row to judge agreement by,
+        a candidate that could not be read, are unchanged.
         """
         named = f"the ISRC {isrc} names {len(tracks)} provider tracks"
         row = _row_of(title, artist)
@@ -448,10 +487,11 @@ class TidalAccount:
         hearted = [remote for remote in agreeing if remote in hearts]
         if len(hearted) == 1:
             return hearted[0], ""
+        if any_agreeing and not unreadable:
+            return _lowest(_on_album(hearted or agreeing, tracks, album)), ""
         said = (
-            f"{named}{aside}, {len(agreeing)} of them agree with this row's "
-            f"artist, title and version and the account hearts {len(hearted)} "
-            f"of those"
+            f"{named}{aside}, {len(agreeing)} {AGREEING_RELEASES} and the "
+            f"account hearts {len(hearted)} of those"
         )
         if hearted:
             return None, f"{said}, so none was chosen"
