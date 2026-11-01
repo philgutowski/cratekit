@@ -101,6 +101,7 @@ def _commands(folder: Path, landing: Sequence[str], step: str) -> list[str]:
     a person running it by hand reads its plan first.
     """
     words = {one: ["crate", *argv, str(folder)] for one, _verb, argv in tail.TAIL}
+    words[tail.GUESS] = ["crate", *tail.guess_argv(folder, tail.pass_of(landing))]
     words[tail.NAME] = ["crate", "name", "apply", "--root", str(folder)]
     words[tail.LAND] = ["crate", "intake", "land", str(folder), *landing]
     return [shlex.join(words[one]) for one in tail.STEPS[tail.STEPS.index(step):]]

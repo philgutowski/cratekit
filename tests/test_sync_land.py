@@ -420,6 +420,7 @@ def test_the_pass_runs_every_step_in_its_order_and_the_tail_on_the_absolute_stag
         ("acquire", "download"),
         ("tag", "folder"),
         ("tag", "folder"),
+        ("tag", "guess"),
         ("analyze", "run"),
         ("analyze", "run"),
         ("analyze", "restamp"),
@@ -429,6 +430,12 @@ def test_the_pass_runs_every_step_in_its_order_and_the_tail_on_the_absolute_stag
     ]
     staging = str(_staged(cfg))
     assert Path(staging).is_absolute()
+    # U172: the genre guess runs over the same absolute folder, with the pass
+    # whose playlists vote, the name the landing is then planned with.
+    (guessed,) = [argv for argv in tail.calls if argv[:2] == ["tag", "guess"]]
+    assert guessed[2] == staging
+    assert guessed[guessed.index("--pass") + 1] == _summary(envelope)["land_name"]
+    assert _check(envelope, sync_land.GUESS)["status"] == "ok"
     (named,) = tail.named
     assert named[named.index("--root") + 1] == staging
     assert named[:2] == ["-d", f"{sync_land.NAME_GATE}={sync_land.NAME_OPTION}"]

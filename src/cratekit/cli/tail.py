@@ -20,8 +20,9 @@ worker was still running. Each job is driven through its own verb's ``--job``
 command line, the one ``job resume`` would spawn, in the foreground, and the
 chain reads the job's state off the queue once that command has returned.
 
-THE ORDER IS LOAD BEARING AND CANNOT BE SKIPPED. ``tag folder``, ``analyze
-run`` and the vocals rescore after it, ``analyze restamp``, ``name apply``,
+THE ORDER IS LOAD BEARING AND CANNOT BE SKIPPED. ``tag folder``, ``tag
+guess`` over what it left with no genre (U172), ``analyze run`` and the vocals
+rescore after it, ``analyze restamp``, ``name apply``,
 then the landing. The rescore (U181) is ``analyze vocals --unscored`` over the
 same folder, so a file an earlier run finalized with no voxlevel, which every
 later run skips by its head, is scored rather than left unscored for good; it
@@ -75,11 +76,12 @@ from cratekit.modules import foreground
 #: The tail's steps and the landing, in their one order. Each is a check key on
 #: the envelope of the verb that runs the chain, ``<namespace>.<step>``.
 TAG = "tag"
+GUESS = "guess"
 ANALYZE = "analyze"
 RESTAMP = "restamp"
 NAME = "name"
 LAND = "land"
-STEPS: tuple[str, ...] = (TAG, ANALYZE, RESTAMP, NAME, LAND)
+STEPS: tuple[str, ...] = (TAG, GUESS, ANALYZE, RESTAMP, NAME, LAND)
 
 #: The rehearsal a verb may run between the tail and the landing (U179), which
 #: ``crate sync bandcamp`` does and the two older verbs do not, and the flag of
@@ -97,6 +99,15 @@ TAIL: tuple[tuple[str, str, tuple[str, ...]], ...] = (
 
 NAME_VERB = "name.apply"
 LAND_VERB = "intake.land"
+
+#: The genre guess the chain runs right after ``tag folder`` (U172), over the
+#: files every catalogue missed, and the flag that names the pass whose
+#: playlists vote. Not queued: it reads tags and writes a genre, file by file,
+#: in the foreground. Spelled here rather than imported, for the reason the
+#: vocals verb below gives; a test holds the words to the registry's.
+GUESS_VERB = "tag.guess"
+GUESS_WORDS: tuple[str, ...] = ("tag", "guess")
+PASS_FLAG = "--pass"
 
 #: The row the vocal rescore reports under, ``<namespace>.rescore`` (U181).
 RESCORE = "rescore"
@@ -574,6 +585,53 @@ def rescore(chain: Chain, folder: Path, cfg: config.Config, *, unable: str | Non
     )
 
 
+def guess_argv(folder: Path, pass_name: str | None = None) -> list[str]:
+    """``tag guess`` over ``folder``, with the pass whose playlists vote when there is one."""
+    return [*GUESS_WORDS, str(folder), *([PASS_FLAG, pass_name] if pass_name else [])]
+
+
+def pass_of(landing: Sequence[str]) -> str | None:
+    """The pass a landing's arguments name, or None when they name none."""
+    words = list(landing)
+    if PASS_FLAG in words[:-1]:
+        return words[words.index(PASS_FLAG) + 1] or None
+    return None
+
+
+def guess(chain: Chain, folder: Path, pass_name: str | None = None) -> None:
+    """``tag guess`` over the ABSOLUTE staging folder, right after ``tag folder`` (U172).
+
+    Every file the catalogues left with no genre is given one guessed from its
+    artist's other tracks and, when ``pass_name`` names the pass, the playlist
+    it came from, so the landing places it in a tree rather than leaving it in
+    INBOX for a hand tag. The verb writes every guess and asks nothing, so a
+    refusal of its is a step that did not succeed and ends the chain, as any
+    other step's does; what it could not read it says in a warning, which the
+    chain carries.
+    """
+    envelope = required(chain, GUESS, guess_argv(folder, pass_name))
+    totals = (envelope.get("data") or {}).get("totals") or {}
+    count = int(totals.get("count") or 0)
+    before = int(totals.get("before") or 0)
+    after = int(totals.get("after") or 0)
+    written = int(totals.get("written") or 0)
+    left = count - after
+    chain.summary["guess"] = {
+        "files": count,
+        "before": before,
+        "after": after,
+        "written": written,
+        "left": left,
+        "bands": totals.get("bands") or {},
+    }
+    chain.check(
+        GUESS,
+        "ok",
+        f"tag guess gave {written} file(s) a genre over {folder}: {before} of {count} "
+        f"carried one before it and {after} after it, {left} still carry none",
+    )
+
+
 def name_argv(folder: Path) -> list[str]:
     """``name apply`` over ``folder`` with its confirm answered, the one rule both verbs use."""
     return ["-d", f"{NAME_GATE}={NAME_OPTION}", "name", "apply", "--root", str(folder)]
@@ -664,12 +722,15 @@ def rehearse(chain: Chain, folder: Path, landing: Sequence[str] = ()) -> None:
     )
 
 
-def through_name(chain: Chain, folder: Path, cfg: config.Config) -> Path:
+def through_name(
+    chain: Chain, folder: Path, cfg: config.Config, pass_name: str | None = None
+) -> Path:
     """The tail in its order over ``folder``, ending with ``name apply``; the absolute folder.
 
     Every step either succeeds or ends the chain, so a caller that goes on to
     land knows the tail ran on every file. ``folder`` must be absolute, and is
-    made so here rather than trusted.
+    made so here rather than trusted. ``pass_name`` is the pass whose playlists
+    vote in the genre guess (U172), None for a folder no pass downloaded.
     """
     folder = folder.expanduser().absolute()
     chain.summary["staging"] = str(folder)
@@ -678,6 +739,8 @@ def through_name(chain: Chain, folder: Path, cfg: config.Config) -> Path:
     unable = vocals_unavailable()
     for step, verb, words in TAIL:
         tail_step(chain, step, verb, words, folder, cfg)
+        if step == TAG:
+            guess(chain, folder, pass_name)
         if step == ANALYZE:
             rescore(chain, folder, cfg, unable=unable)
     name(chain, folder)
@@ -692,7 +755,7 @@ def run(chain: Chain, folder: Path, cfg: config.Config, landing: Sequence[str]) 
     :class:`Stop` at the first step that did not succeed. ``folder`` must be
     absolute, and is made so here rather than trusted.
     """
-    folder = through_name(chain, folder, cfg)
+    folder = through_name(chain, folder, cfg, pass_of(landing))
     land(chain, folder, landing)
 
 
@@ -793,6 +856,9 @@ __all__ = [
     "ANALYZE",
     "ANALYZE_PLAYLIST",
     "GATE_STOP",
+    "GUESS",
+    "GUESS_VERB",
+    "GUESS_WORDS",
     "LAND",
     "LAND_GATE",
     "LAND_OPTION",
@@ -801,6 +867,7 @@ __all__ = [
     "NAME_GATE",
     "NAME_OPTION",
     "NAME_VERB",
+    "PASS_FLAG",
     "REKORDBOX_STEPS",
     "REHEARSE",
     "REHEARSE_FLAG",
@@ -823,12 +890,15 @@ __all__ = [
     "attended",
     "cause_of",
     "dispatch",
+    "guess",
+    "guess_argv",
     "job_error",
     "land",
     "lift_plan_warnings",
     "load_config",
     "name",
     "name_argv",
+    "pass_of",
     "rehearse",
     "replace_stale",
     "required",

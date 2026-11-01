@@ -76,6 +76,7 @@ from cratekit.cli.tail import (
     ANALYZE,
     ANALYZE_PLAYLIST,
     GATE_STOP,
+    GUESS,
     LAND,
     LAND_GATE,
     LAND_OPTION,
@@ -100,7 +101,7 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
 _ORIGIN = ("cli.sync_land",)
 
 #: The steps, in the one order a pass runs them. Each is a check key on the
-#: envelope, ``sync.land.<step>``. The last five are the tail and the landing,
+#: envelope, ``sync.land.<step>``. The last six are the tail and the landing,
 #: :data:`cratekit.cli.tail.STEPS`, named here from that module.
 PREFLIGHT = "preflight"
 SYNC = "sync"
@@ -108,7 +109,7 @@ INTAKE = "intake"
 MISSING = "missing"
 DOWNLOAD = "download"
 STEPS: tuple[str, ...] = (
-    PREFLIGHT, SYNC, INTAKE, MISSING, DOWNLOAD, TAG, ANALYZE, RESTAMP, NAME, LAND,
+    PREFLIGHT, SYNC, INTAKE, MISSING, DOWNLOAD, TAG, GUESS, ANALYZE, RESTAMP, NAME, LAND,
 )
 
 #: The verbs the pass runs that are not the tail's.
@@ -1012,6 +1013,7 @@ __all__ = [
     "ANALYZE",
     "ANALYZE_PLAYLIST",
     "GATE_STOP",
+    "GUESS",
     "LAND",
     "LAND_GATE",
     "LAND_OPTION",

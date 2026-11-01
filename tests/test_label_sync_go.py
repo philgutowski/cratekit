@@ -859,6 +859,7 @@ def test_a_go_over_two_answered_releases_runs_the_tail_in_order_and_stops_at_the
     assert tail.verbs() == [
         ("tag", "folder"),
         ("tag", "folder"),
+        ("tag", "guess"),
         ("analyze", "run"),
         ("analyze", "run"),
         ("analyze", "restamp"),
@@ -866,7 +867,12 @@ def test_a_go_over_two_answered_releases_runs_the_tail_in_order_and_stops_at_the
         ("name", "apply"),
         ("intake", "land"),
     ]
-    queued = [argv for argv in tail.calls if "--job" not in argv]
+    # U172: the genre guess runs over the same folder, named with the go's pass.
+    (guessed,) = [argv for argv in tail.calls if argv[:2] == ["tag", "guess"]]
+    assert guessed == ["tag", "guess", folder, "--pass", default_name(run_id)]
+    queued = [
+        argv for argv in tail.calls if "--job" not in argv and argv[:2] != ["tag", "guess"]
+    ]
     assert [argv[-1] for argv in queued[:3]] == [folder] * 3, "the tail ran on another folder"
     assert tail.calls[-1] == [
         "intake", "land", folder, "--manifest", manifest, "--pass", default_name(run_id),

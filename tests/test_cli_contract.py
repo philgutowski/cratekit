@@ -2020,6 +2020,10 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # database, where no row lacks a genre on a file it can read, so the
         # plan is empty, the explicit gate still asks and the apply is a no op.
         "tag.suggest": [],
+        # U172. The configured library's root, a folder with no audio in it on
+        # this fixture, so the guess reads nothing, writes nothing and ends
+        # NO_OP. Every guess is driven in tests/test_tag_guess.py.
+        "tag.guess": [str(library)],
         # U111. No argument, and a CALLABLE because the drive needs a state the
         # fixture does not build: the rotation refuses an intake tree on the
         # xml bridge, naming ``tree cutover``, so on this fixture it would never
