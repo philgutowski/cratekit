@@ -101,7 +101,9 @@ A source that shows "no clean increment has completed" has simply never synced.
 Open gates that have sat idle for more than a week are one line rather than one
 line each: how many, the dates they span, and the command that retires them,
 `crate run retire --older-than 7d`. Newer gates are listed one by one. The week
-is `reports.open_gate_stale_days` in the configuration file.
+is `reports.open_gate_stale_days` in the configuration file. Doctor's
+`runs.open-gates` note lists each run that has sat at a gate for more than a
+day, with its verb, gate and age, and never fails the report.
 
 ## Where it stands
 
@@ -1160,7 +1162,15 @@ crate run decide RUN_ID route.inbox.apply apply --continue
 With no `--actor`, the answer is recorded as `cli` when you are at a terminal
 and as `session` when nothing is, which is how a session working for you is told
 apart; the summary says which. An explicit gate still takes no answer on the
-verb's own command line, so `--continue` is always the second command. Gates you
+verb's own command line, so `--continue` is always the second command.
+
+When a verb that writes the rekordbox database stops at its gate, it also names
+every other run of the same verb that holds its gate open or answered it in the
+last twelve hours, one `gate-sibling-run` warning per run with its identifier,
+who answered, the option and the time. `crate run decide` repeats the warning
+when another run already answered the same plan the same way. It refuses
+nothing: two runs planned over one library are told about each other, and an
+apply over a library that moved underneath it is still refused stale. Gates you
 will meet:
 
 | Gate | Go option | Verb |

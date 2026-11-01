@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from cratekit.cli import output
-from cratekit.cli.registry import Entry, GateSpec
+from cratekit.cli.registry import DB_WRITE_SURFACES, Entry, GateSpec
 from cratekit.cli.registry import entry as declared_entry
 from cratekit.core import config
 from cratekit.core.cause import Cause, CratekitError, Remediation, Scope
@@ -853,6 +853,149 @@ def old_gate(
     )
 
 
+# ---------------------------------------------------------------------------
+# Another run of the same verb at its gate (U186)
+# ---------------------------------------------------------------------------
+
+#: How long a recorded answer on another run stays worth naming (U186). An
+#: answer given this morning is the run whose write a second plan may have
+#: been read across; one given yesterday is history the plan already reflects.
+SIBLING_WINDOW = timedelta(hours=12)
+
+#: The warning code a run carries when another run of its verb holds an open
+#: gate or answered one within :data:`SIBLING_WINDOW` (U186).
+SIBLING_RUN = "gate-sibling-run"
+
+
+@dataclass(frozen=True, slots=True)
+class Sibling:
+    """Another run of the same verb that a second plan should know about (U186).
+
+    Either its gate is open, ``gate`` names it and ``at`` is when the run was
+    last touched (:func:`idle_since`, the same measure ``crate status`` ages a
+    gate by), or it answered within the window, and ``answers`` holds each of
+    those answers as ``(gate, decision)``, oldest first. Never both: a run
+    whose gate is open is waiting, and that is what a reader needs to hear.
+    """
+
+    run_id: str
+    verb: str
+    gate: str | None
+    at: str
+    answers: tuple[tuple[str, Decision], ...] = ()
+
+    @property
+    def open(self) -> bool:
+        return self.gate is not None
+
+    def message(self) -> str:
+        """The one line naming this run, its actor, its option and the time."""
+        if self.gate is not None:
+            return (
+                f"another run of {self.verb}, {self.run_id}, holds the gate {self.gate} "
+                f"open since {self.at}, unanswered; approving both would race two "
+                f"writes over one library"
+            )
+        gate, latest = self.answers[-1]
+        return (
+            f"another run of {self.verb}, {self.run_id}, answered {gate} "
+            f"{latest.option} as {latest.actor} at {latest.recorded}; a plan read "
+            f"after or during its write differs from the one it answered"
+        )
+
+    def warning(self) -> dict[str, str]:
+        return {"code": SIBLING_RUN, "message": self.message()}
+
+
+def siblings(
+    verb: str,
+    *,
+    exclude: str,
+    now: datetime | None = None,
+    within: timedelta = SIBLING_WINDOW,
+) -> tuple[list[Sibling], list[str]]:
+    """Every other run of ``verb`` with an open gate or an answer inside ``within``.
+
+    READ ONLY, and the one reader the dispatcher and ``run decide`` share
+    (U186), so the gate and the answer cannot name two sets. It takes no lock
+    and writes nothing: the warning it feeds informs, and ``decision-stale``
+    on the write handle stays the only guard.
+
+    ``exclude`` is the asking run, which is never its own sibling. The second
+    value is every record that could not be read, by its identifier: its verb is
+    unknown, so whether it is a sibling is unknown, and the caller says so
+    rather than reading the gap as no sibling (absence is not evidence).
+
+    An answer whose time cannot be read counts as inside the window, for the
+    same reason :func:`idle_since` calls an unmeasurable gate new.
+    """
+    moment = now or datetime.now(timezone.utc)
+    try:
+        records = sorted(run_dir().glob("*.json"))
+    except OSError:
+        records = []
+    found: list[Sibling] = []
+    unreadable: list[str] = []
+    for path in records:
+        if path.stem == exclude:
+            continue
+        try:
+            state = load(path.stem)
+        except CratekitError:
+            unreadable.append(path.stem)
+            continue
+        if state.verb != verb or state.run_id == exclude:
+            continue
+        if state.open_gate is not None:
+            since = idle_since(state, path).replace(microsecond=0).isoformat()
+            found.append(Sibling(run_id=state.run_id, verb=verb, gate=state.open_gate, at=since))
+            continue
+        recent: list[tuple[datetime, str, Decision]] = []
+        for name, decision in state.decisions.items():
+            when = _instant(decision.recorded)
+            if when is None or moment - when <= within:
+                recent.append((when or moment, name, decision))
+        if recent:
+            recent.sort(key=lambda one: (one[0], one[1]))
+            found.append(
+                Sibling(
+                    run_id=state.run_id,
+                    verb=verb,
+                    gate=None,
+                    at=recent[-1][2].recorded,
+                    answers=tuple((name, decision) for _, name, decision in recent),
+                )
+            )
+    return found, unreadable
+
+
+def sibling_warnings(found: list[Sibling], unreadable: list[str], verb: str) -> list[dict[str, str]]:
+    """One warning per sibling, and one more when records could not be read (U186)."""
+    said = [one.warning() for one in found]
+    if unreadable:
+        records_word = "record" if len(unreadable) == 1 else "records"
+        said.append(
+            {
+                "code": SIBLING_RUN,
+                "message": (
+                    f"{len(unreadable)} run {records_word} could not be read "
+                    f"({', '.join(unreadable)}), so a run of {verb} among them "
+                    f"would not be named here"
+                ),
+            }
+        )
+    return said
+
+
+def writes_the_database(verb: str) -> bool:
+    """Whether ``verb`` declares a database writing surface, the scope of U186's warning."""
+    try:
+        owner = declared_entry(verb)
+    except KeyError:
+        return False
+    return bool(owner.writes & DB_WRITE_SURFACES)
+
+
 #: Codes this module raises, listed so the dispatcher's mapping is checkable.
 GATE_CODES: tuple[ExitCode, ...] = (ExitCode.DECISION_REQUIRED, ExitCode.DECISION_STALE)
 
@@ -861,12 +1004,15 @@ __all__ = [
     "GATE_CODES",
     "RETIRE_OPTION",
     "RUN_SCHEMA_VERSION",
+    "SIBLING_RUN",
+    "SIBLING_WINDOW",
     "Decision",
     "DecisionRequired",
     "DecisionStale",
     "Gates",
     "OldGate",
     "RunState",
+    "Sibling",
     "UnknownOption",
     "blocked_by",
     "idle_since",
@@ -880,4 +1026,7 @@ __all__ = [
     "save",
     "shown_plan",
     "SHOWN_PLAN_KEYS",
+    "sibling_warnings",
+    "siblings",
+    "writes_the_database",
 ]

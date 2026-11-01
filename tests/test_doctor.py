@@ -227,6 +227,7 @@ def test_every_check_key_and_its_place_in_the_run_order_is_written_out():
         "backup.remote",
         "deadca7.push",
         "session.unresolved",
+        "runs.open-gates",
         "tree.registry",
         "repo.commit_hook",
         "install.release",
