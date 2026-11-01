@@ -1392,5 +1392,7 @@ def test_a_url_typed_by_hand_and_a_sweeps_id_are_one_playlist_on_the_left_open_r
 
     assert "for 1 playlist(s)" in _check(envelope, "left-open")["detail"]
     (group,) = _summary(envelope)["left_open_playlists"]
+    # HEADED BY THE ACCOUNT'S NAME, though the typed job is the newer.
+    assert group["playlist"] == f"playlist 'Warmup' ({uuid})"
     assert sorted(job["job_id"] for job in group["jobs"]) == ["swept", "typed"]
 

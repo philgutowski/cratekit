@@ -1802,3 +1802,26 @@ def test_a_dry_run_lists_a_queued_job_a_live_driver_holds_as_left(cfg, default_q
     (row,) = envelope["data"]["progress"]["left"]
     assert "a live driver holds it" in row["reason"]
 
+
+def test_a_reference_the_url_parser_cannot_read_is_kept_as_typed_not_a_crash(cfg, default_queue):
+    """Round two of the review: ``https://[::1`` raises from the URL parser itself."""
+    _intake_job(default_queue, cfg, "odd", tracks=("1",), days=60, source="https://[::1", name=None)
+
+    code, envelope = _drive_cli(["job", "cancel", "--stale-days", "30", "--dry-run"])
+
+    assert code == int(ExitCode.OK), envelope
+    (row,) = envelope["data"]["progress"]["cancel"]
+    assert row["frees"] == "frees playlist 'https://[::1', so the next pass queues it again"
+
+
+def test_a_hearts_job_names_no_playlist_and_frees_the_hearts(cfg, default_queue):
+    _intake_job(default_queue, cfg, "hearts", tracks=("1",), days=60, source="favorites", name=None)
+
+    code, shown = _drive_cli(["job", "show", "hearts"])
+    assert shown["data"]["progress"]["playlist"] == ""
+    assert shown["data"]["progress"]["source"] == "favorites"
+
+    code, envelope = _drive_cli(["job", "cancel", "--stale-days", "30", "--dry-run"])
+    (row,) = envelope["data"]["progress"]["cancel"]
+    assert row["frees"] == "frees the account's hearts, so the next pass queues it again"
+

@@ -652,7 +652,13 @@ def playlist_identity(job: jobs.Job, source: str) -> str:
         return INTAKE_HEARTS
     from cratekit.sync import playlists  # noqa: PLC0415 - the pass's reading, when asked
 
-    return playlists.recorded_as(job) or source
+    try:
+        return playlists.recorded_as(job) or source
+    except ValueError:
+        # A REFERENCE THE URL PARSER ITSELF CHOKES ON (``https://[::1``) is
+        # kept as typed, the reading ``recorded_as`` gives any reference it
+        # does not recognise, rather than ending the listing on a traceback.
+        return source
 
 
 def _instant(stamp: str) -> datetime | None:
@@ -701,6 +707,12 @@ class Hold:
         if shown and shown != self.playlist:
             return f"playlist {self.playlist!r} ({shown})"
         return f"playlist {self.playlist!r}"
+
+    @property
+    def named(self) -> bool:
+        """Whether the job froze the account's own name for its playlist."""
+        name = (self.job.payload or {}).get(INTAKE_PLAYLIST_KEY)
+        return isinstance(name, str) and bool(name.strip())
 
     def age(self) -> str:
         return "age unknown" if self.age_days is None else f"{self.age_days} day(s) old"
