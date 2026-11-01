@@ -40314,3 +40314,27 @@ the gate, saying so, with a test. Ledger only, a wording and a step.
 **Measured cost.** Driven by the review: dropping the flag from `sync_land` killed only the assertion naming it. Nothing a person sees differs today; a later rewrite of the pass could keep the name and change the behaviour.
 
 **Closes when:** the tests read what the flag decides, which call drove the job and how a failure in the queue call reaches the pass, rather than the flag's spelling. Ledger only, maintainer facing.
+
+---
+
+## R-1123. The rekordbox visit skill's drift guard leaves its release claims and its wait thresholds unpinned
+
+**Found:** at the second Fable review of #354, U173, 2026-11-01.
+
+**The mechanism.** `tests/test_rekordbox_visit_skill.py` reads every value the skill spells from the module that owns it, except four: the claim that `crate analyze check` landed after v0.4.0, the claim that rows landed by v0.4.0 or later need no Reload Tags, and the wait loop's twenty second quiet and five minute stall. A mutation of each survived the review's table. The rehearsal's own backup acknowledgment in the redirected state is also left to the solutions entry the skill cites, rather than said in the skill.
+
+**Measured cost.** None today: each claim was verified true by hand at the review (`git show v0.4.0` has `inbox.analyzed` and no `analyze.check`; U163 is in v0.4.0). The release claims go stale the day a release carries U167, when the precondition reads as a copy problem that no longer exists.
+
+**Closes when:** the release that carries `crate analyze check` rewords the precondition to name that version, or the claims are read from the tags by the test. Ledger only, a maintainer facing gap.
+
+---
+
+## R-1124. Whether the rekordbox visit runs Analyze Tracks with Vocal on or off waits on Phillip
+
+**Found:** while building #354, U173, 2026-11-01.
+
+**The mechanism.** The brief, filed at Phillip's request on 2026-10-27, lists Vocal off as his standard, and the skill's settings table follows it. Sitting 52 on 2026-10-31 ran the visit by his hand with Vocal on as well, which adds rekordbox's own vocal position marks to the waveform. Cratekit reads none of them, so the choice changes only analysis time and what rekordbox draws.
+
+**Measured cost.** Not driven; no live visit has run from the skill. The question is on the decisions page as `354-vocal-setting-1`, with Vocal off recommended.
+
+**Closes when:** Phillip answers. Off closes it as written; on is one row of the table and its pinned dict in the drift test.
