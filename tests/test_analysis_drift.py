@@ -130,6 +130,34 @@ def test_a_stepped_change_scores_variable():
     assert drift.verdict(moved, CUT) == drift.VARIABLE
 
 
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [(120.0, 140.0), (112.0, 130.0), (100.0, 125.0), (140.0, 120.0)],
+    ids=["up-a-sixth", "up-a-sixth-slower", "up-a-quarter", "down-a-seventh"],
+)
+def test_a_step_wider_than_the_heads_own_section_still_scores_variable(first, second):
+    """The head names the tempo of one section; the other section's windows
+    must still be read, or a two tempo track is tagged steady and analysed
+    Normal, which the first band of twelve percent did to every one of these."""
+    _tempo, moved = _drift(_drums(lambda at: first if at < 60.0 else second))
+    assert moved is not None and moved > 10.0, moved
+    assert drift.verdict(moved, CUT) == drift.VARIABLE
+
+
+def test_a_section_of_hats_at_three_to_two_over_a_steady_pulse_is_not_a_drift():
+    """Forty seconds where only hats play, three to every two beats, over a
+    pulse at 100 that does not move. A window searched wide enough to reach
+    the hats' own rate would read 150 there and call the track variable."""
+    samples = _drums(lambda _at: 100.0)
+    start, stop = int(40 * RATE), int(80 * RATE)
+    hats = 0.6 * _train(lambda _at: 150.0, SECONDS)
+    noise = 0.02 * np.random.default_rng(5).standard_normal(stop - start)
+    samples[start:stop] = hats[start:stop] + noise.astype(np.float32)
+    _tempo, moved = _drift(samples)
+    assert moved is not None and moved < 0.5, moved
+    assert drift.verdict(moved, CUT) == drift.STEADY
+
+
 def test_the_score_grows_with_how_far_the_tempo_moves():
     small = _drift(_drums(lambda at: 120.0 + 3.0 * at / SECONDS))[1]
     large = _drift(_drums(lambda at: 120.0 + 9.0 * at / SECONDS))[1]

@@ -222,11 +222,16 @@ def tempo_from_autocorrelation(
 #: that a six minute track gives three dozen readings.
 DRIFT_WINDOW_SECONDS = 10.0
 #: How far either side of the track's own tempo a window's peak is looked
-#: for, as a fraction of it. Held to a band so a window cannot read a related
-#: metrical level, half or double or three to two, which would be a jump in
-#: the reading and not a drift in the music. Twelve percent holds a step from
-#: 120 to 128 and a ramp of a dozen beats around the middle.
-DRIFT_BAND = 0.12
+#: for, as a factor of it: from the tempo over 1.25 to the tempo times 1.25.
+#: Held to a band so a window cannot read a related metrical level, half or
+#: double, three to two or four to three, which would be a jump in the
+#: reading and not a drift in the music: a steady 100 with a section of hats
+#: at 150 reads 48 percent at a band of 0.5 and 0.06 at this one. Wide enough
+#: that a step to either side of the head reaches the other section, 120 to
+#: 140 or 100 to 125, which the first band of 0.12 read as steady because
+#: the head named one section and the other fell outside it (the review of
+#: U157). A step past a quarter is read as the section the head named.
+DRIFT_BAND = 0.25
 #: A window counts only when it carries a pulse: its onset strength at least
 #: this fraction of the track's median window, so a breakdown is passed over
 #: rather than read as drift, and at least the absolute floor below, so a
@@ -315,7 +320,8 @@ def drift_from_tempogram(
     if windows < DRIFT_MIN_WINDOWS:
         return None
     frequencies = librosa.tempo_frequencies(tempogram.shape[0], sr=rate, hop_length=hop)
-    band = (frequencies >= tempo / (1.0 + DRIFT_BAND)) & (frequencies <= tempo * (1.0 + DRIFT_BAND))
+    widest = 1.0 + DRIFT_BAND
+    band = (frequencies >= tempo / widest) & (frequencies <= tempo * widest)
     around = (frequencies >= tempo / 1.5) & (frequencies <= tempo * 2.0)
     if not np.any(band):
         return None
