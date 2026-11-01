@@ -40586,3 +40586,76 @@ only by the relative one is unmeasured, since the container has no real audio.
 a loud riser over a breakdown for instance, and one shows a drift the window
 length changes; or the attended calibration sitting finds the two do nothing
 on real tracks and they are removed. Ledger only.
+
+---
+
+## R-1138. A genre sub is filed only by the rebuild derivation, so a native landing, adoption and organize file a Rominimal track into its band alone
+
+**Found:** at the build of #336, U155, 2026-11-01.
+
+**The mechanism.** A genre sub is placed by `rebuild.derive_from_taxonomy`,
+which the tree rebuild, `route resort` and `route inbox` all call. The adoption
+plan (`adopt/plan.py`, behind `adopt apply`, the native landing of a sync pass
+and `organize --only adopt`) and the intake ledger's single placement
+(`intake/ingest.decide_placement`, behind `route pending`) route through
+`routing.energy_sub` alone, so a Rominimal track they file sits in its
+Minimal / Deep Tech band and not in `Minimal / Deep Tech / Rominimal`.
+
+**Measured cost.** Not driven past the reading of those two paths. Nothing is
+lost or misreported: their gates show the band they write, and the next
+`route resort` adds the genre sub, which `docs/GUIDE.md` and `CONCEPTS.md` say.
+A DJ who lands PULS releases through a sync pass sees them in Rominimal only
+after a resort.
+
+**Closes when:** the adoption plan carries a genre sub membership beside the
+vocal one, shown, counted and inside its digest, and the native landing's
+prediction names it, as the vocal sub's was built in R-788 and U165. Ledger
+only: the workflow finishes through `route resort`.
+
+---
+
+## R-1139. The export medium of route inbox creates no genre sub playlist, so a Rominimal track is filed into its band alone and every run warns sub-playlist not found
+
+**Found:** at the review of #336, U155, 2026-11-01.
+
+**The mechanism.** On the export medium `route inbox --export` creates a
+folder's vocal sub before it routes (`_vox_subs`), and nothing creates a genre
+sub. With no `Rominimal` playlist in the export's Minimal / Deep Tech folder
+the write skips that placement with `route-write-skipped: sub-playlist not
+found: Minimal / Deep Tech/Rominimal`, and the next fresh export plans the same
+again. Since U155's first fix round the gate shows that placement in its
+`genre` column, so the skip is said on the same run.
+
+**Measured cost.** Driven by the review on a disposable export: the track
+lands in its band only, with the warning, every run, until a person makes the
+playlist by hand. Reachability on the live library is unmeasured, since its
+tree has cut over to the database, where the rebuild engine creates the
+playlist.
+
+**Closes when:** the export sweep creates a declared genre sub the way it
+creates a vocal sub, named among the subs it created, or refuses before the
+gate. Ledger only.
+
+---
+
+## R-1140. crate taxonomy upgrade and doctor read a copy without the shipped genre sub as complete once its schema version is raised
+
+**Found:** at the review of #336, U155, 2026-11-01.
+
+**The mechanism.** `core/taxonomy_upgrade.py` compares a library's copy with
+the shipped template by whole `[[sub_class]]` and `[[bucket]]` entries, and by
+design never changes an entry the copy holds. The shipped Minimal / Deep Tech
+bucket gained the `Rominimal` alias and genre sub in U155, at schema version 5.
+A version 4 copy is read as behind only by its version: `crate taxonomy
+upgrade` raises it to 5, and doctor's `taxonomy.schema` then reads OK, "the
+copy declares every class and bucket it ships", with no word about the alias
+or the genre sub the copy still lacks.
+
+**Measured cost.** Driven by the review: after the planner's text is written,
+`load_taxonomy(after).bucket("minimal_deep_tech").genre_subs == ()`. Nothing is
+false in either sentence, and the hand edit is named in `docs/GUIDE.md` and on
+the attended card, but a DJ who trusts doctor is not told.
+
+**Closes when:** the planner names a shipped genre sub absent from a bucket of
+the copy, as a hand edit it will not make, in its gap and remedy sentences.
+Ledger only.

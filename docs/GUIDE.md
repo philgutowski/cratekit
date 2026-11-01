@@ -533,6 +533,19 @@ your library holds is counted as owned rather than landed. `--pass` on an intake
 tree still on the xml bridge is refused and names `--xml`, since there the file
 is what proves the pass landed.
 
+To mark only some playlists of a pass, name each with `--playlist` and its
+account identifier, as `sync unmark` takes them:
+
+```bash
+crate sync mark --pass RUN_synced --playlist ID
+```
+
+The plan, the gate and the renames are only those playlists, and an answer to
+that narrowed plan is not taken for the whole pass. A playlist the pass does
+not hold is refused before the account is read, and one the pass did not
+complete, its job unfinished or a track still missing, is refused by name with
+the reason. `crate organize --only marks` marks every landed pass whole.
+
 `name apply`, `intake land` and `route inbox` each build a plan and stop at a
 gate before they write. Run once to read the plan, then answer the gate. See
 "Answering a gate". A plan is bound to the folder as it was, so if a file lands
@@ -806,7 +819,15 @@ crate converge
 `route unplaced` lists tracks no tree files, and `audit coverage` asks the same
 question from an export. `audit duplicates` never deletes. Run `route resort`
 after a genre or energy change, and `converge` to check that each tree matches
-the database. Reports and audits are read only. `repair paths` proposes a
+the database. `route resort` also fills a genre sub, a playlist beside a genre
+folder's energy bands for one genre: in the shipped taxonomy, every track
+tagged exactly `Rominimal` sits in its Minimal / Deep Tech band and in
+`Minimal / Deep Tech / Rominimal` too. A library whose taxonomy copy predates
+it gains it by hand, since `crate taxonomy upgrade` adds only whole folders
+and classes: add `"Rominimal"` to the Minimal / Deep Tech bucket's `aliases`,
+add the `[[bucket.genre_sub]]` table the shipped template carries under it, and
+set `schema_version = 5`. A track landed after that reaches the genre sub at
+the next `route resort`. Reports and audits are read only. `repair paths` proposes a
 shorter name for each audio file whose name is over the path budget or repeats
 its own title at the end, which are the names rekordbox rejects on import, and
 you accept or reject each one with `crate review resolve`. Nothing is inferred.
@@ -835,7 +856,11 @@ no match gets no playlist, and a set already in INSPIRATION is skipped, so a
 second run plans nothing. That write needs rekordbox closed. The account
 area builds a folder for every followed label that lacks one or a year, marks
 every landed sync pass, and archives every set whose download is proven into
-the root folder `Downloaded Sets <year>`, prefixed. Either of two things proves
+the root folder `Downloaded Sets <year>`, prefixed. A sync pass is found by its
+intake file, or, once your intake tree is database native and writes none, by
+the landing that committed it, so every pass that landed is planned and not
+only the latest; a native landing of no sync pass, a label's or a set's, is
+counted on the gate and planned for nothing. Either of two things proves
 a set downloaded: an intake file named for the set, or a playlist of the set's
 name under the INSPIRATION folder in rekordbox. It also files every playlist at
 the account root
