@@ -111,6 +111,35 @@ def is_filing(name: str) -> bool:
     )
 
 
+#: Where each kind of child of the folder that holds All Favorites reads,
+#: the lower the higher (U180). A month is ranked within its kind below.
+RANK_SOURCE = 0
+RANK_MONTH = 1
+RANK_UNDATED = 2
+RANK_OTHER = 3
+
+
+def folder_rank(name: str, *, source: bool, plain: bool) -> tuple[int, int]:
+    """Where a child of the folder that holds All Favorites reads, newest month first (U180).
+
+    All Favorites first, by the caller's row rather than by its name; then each
+    plain playlist named as a month, newest first; then a plain playlist named
+    :data:`UNDATED`; then everything else, a quarter, a folder, a smart list or
+    any other name, all of one rank so a stable sort keeps their relative
+    order. A folder or a smart list named as a month is not a month: a heart is
+    filed in a plain playlist and nothing else.
+    """
+    if source:
+        return (RANK_SOURCE, 0)
+    text = str(name or "")
+    if plain and MONTH_LABEL.fullmatch(text) is not None:
+        year, month = text.split("-")
+        return (RANK_MONTH, -(int(year) * 12 + int(month)))
+    if plain and text == UNDATED:
+        return (RANK_UNDATED, 0)
+    return (RANK_OTHER, 0)
+
+
 def placeholder_name(quarter: str) -> str:
     """The placeholder playlist name for a quarter label such as ``2026-Q2``."""
     return f"{PLACEHOLDER_PREFIX}{quarter}"
@@ -127,8 +156,13 @@ __all__ = [
     "PLACEHOLDER_NAME",
     "PLACEHOLDER_PREFIX",
     "QUARTER_LABEL",
+    "RANK_MONTH",
+    "RANK_OTHER",
+    "RANK_SOURCE",
+    "RANK_UNDATED",
     "UNDATED",
     "as_utc",
+    "folder_rank",
     "is_filing",
     "is_placeholder",
     "month_label",

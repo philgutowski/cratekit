@@ -789,6 +789,15 @@ existed. A track you coloured otherwise by hand keeps its colour and is named,
 never overwritten, and a library whose colour table has no Pink row places the
 hearts and says it coloured none, to be run again once Pink is restored.
 
+The Favorites folder reads newest first: All Favorites on top, then the month
+playlists from the newest down, then `Undated`, then anything else you keep
+there, in the order you left it. A landing, the backfill and the split each make
+a new month in its place, directly under All Favorites and any newer month,
+rather than at the bottom. A folder made before that reads oldest first, and
+`crate favorites order` puts it right once, with rekordbox closed: it shows each
+playlist's position now and after, asks one gate, and writes positions and
+nothing else, no membership and no name. A folder already in order asks nothing.
+
 ### Keep your custom playlists in rekordbox for good
 
 ```bash
