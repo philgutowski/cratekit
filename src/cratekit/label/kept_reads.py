@@ -24,7 +24,9 @@ and is never kept.
 WRITTEN AS IT GOES. :meth:`KeptReads.flush` writes the document whole and
 atomically, and the reader calls it every :data:`FLUSH_EVERY` new reads and on
 the way out, a breaker park included, so a stopped build loses at most the
-reads since its last flush and only when the process itself is killed.
+reads since its last flush and only when the process itself is killed. A write
+the filesystem refuses is recorded on the store as ``unkept`` and said on the
+screen and in the run's warnings, never raised in place of the plan.
 
 A STORE THAT CANNOT BE READ REFUSES, ``label-playlists-reads-unusable``, on
 the rule every state document here keeps. Read as empty it would cost nothing
@@ -193,11 +195,15 @@ class KeptReads:
         self.path = path
         self._held: dict[str, Kept] = dict(held)
         self._unwritten = 0
-        self._now = clock()
+        #: New reads since the last attempt to write, which paces the retries.
+        self._since = 0
         self.reused = 0
         self.read_now = 0
         #: When the oldest read this run reused was made, ``None`` before any.
         self.oldest: datetime | None = None
+        #: Why the last write of the document failed, ``""`` while the reads
+        #: held are written or none needs writing.
+        self.unkept = ""
 
     @classmethod
     def load(cls, label_id: str) -> KeptReads:
@@ -234,7 +240,7 @@ class KeptReads:
     def _is_fresh(self, kept: Kept) -> bool:
         # A READ FROM THE FUTURE IS NOT FRESH. A clock set back would otherwise
         # keep it for as long as the clock is wrong.
-        age = self._now - kept.read_at
+        age = clock() - kept.read_at
         return timedelta(0) <= age < KEPT_FOR
 
     def kept(self, release_ids: Iterable[str]) -> tuple[int, str]:
@@ -247,7 +253,7 @@ class KeptReads:
             for one in dict.fromkeys(release_ids)
             if (held := self._held.get(one)) is not None and self._is_fresh(held)
         ]
-        return len(found), age_text(self._now - min(found)) if found else ""
+        return len(found), age_text(clock() - min(found)) if found else ""
 
     def fresh(self, release_id: str) -> Kept | None:
         """The release's kept read when it is younger than the age, else ``None``."""
@@ -263,7 +269,8 @@ class KeptReads:
         self._held[release_id] = kept
         self.read_now += 1
         self._unwritten += 1
-        if self._unwritten >= FLUSH_EVERY:
+        self._since += 1
+        if self._since >= FLUSH_EVERY:
             self.flush()
 
     def keep(self, release_id: str, rows: Iterable[Any], year: int | None) -> None:
@@ -284,7 +291,16 @@ class KeptReads:
         self._hold(release_id, Kept(read_at=clock(), gone=True))
 
     def flush(self) -> None:
-        """Write every read held, whole and atomically, if any is unwritten."""
+        """Write every read held, whole and atomically, if any is unwritten.
+
+        A WRITE THE FILESYSTEM REFUSES IS SAID, NEVER RAISED. The store saves
+        provider calls and holds nothing else, so a full disk, a read only
+        volume or a file where the label's directory belongs costs the next run
+        its reads and must not cost this run its plan: ``unkept`` says why, the
+        screen and the run's warnings say so, and the next flush tries again
+        and clears it once the whole document is written.
+        """
+        self._since = 0
         if not self._unwritten:
             return
         document = {
@@ -292,17 +308,22 @@ class KeptReads:
             "label_id": self.label_id,
             "reads": {key: _stored(value) for key, value in sorted(self._held.items())},
         }
-        config.atomic_write_bytes(
-            (json.dumps(document, indent=1, sort_keys=True) + "\n").encode("utf-8"),
-            self.path,
-        )
+        try:
+            config.atomic_write_bytes(
+                (json.dumps(document, indent=1, sort_keys=True) + "\n").encode("utf-8"),
+                self.path,
+            )
+        except OSError as exc:
+            self.unkept = f"{type(exc).__name__}: {exc}"
+            return
         self._unwritten = 0
+        self.unkept = ""
 
     def age_said(self) -> str:
         """How old the oldest reused read is, as a person reads it."""
         if self.oldest is None:
             return ""
-        return age_text(self._now - self.oldest)
+        return age_text(clock() - self.oldest)
 
 
 def age_text(age: timedelta) -> str:

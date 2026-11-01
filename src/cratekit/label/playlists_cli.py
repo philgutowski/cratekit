@@ -242,6 +242,9 @@ def _grouped(
         # THE STOP IS WHAT THE PERSON IS TOLD, never a failure to keep the
         # reads behind it: a park read as a disk error would send somebody to
         # repair a file over a provider that only asked them to wait.
+        # A write the filesystem refuses is the store's ``unkept`` already;
+        # anything else out of the write is this build's own defect, and is
+        # still only noted on the stop.
         try:
             reads.flush()
         except Exception as lost:  # noqa: BLE001 - noted on the stop, never in its place
@@ -249,6 +252,8 @@ def _grouped(
                 f"the release reads made before this could not be kept "
                 f"({type(lost).__name__}: {lost}), so the next run reads them again"
             )
+        if reads.unkept:
+            exc.add_note(_unkept_said(reads))
         raise
     reads.flush()
     return grouped
@@ -516,9 +521,10 @@ class Estimate:
             ),
             "then": (
                 "answered crawl, the build reads the catalogue to show its plan and "
-                "keeps every read as it goes, so a build the provider stops part way "
-                "starts again where it stopped, and the run that applies an approved "
-                "plan reads none of it again"
+                f"keeps its reads, written every {kept_reads.FLUSH_EVERY} releases and "
+                "again when it stops, so a build the provider stops part way starts "
+                "again where it stopped, and the run that applies an approved plan "
+                "reads none of it again"
             ),
         }
         if self.kept:
@@ -705,15 +711,34 @@ def _reads_said(reads: kept_reads.KeptReads) -> str:
     """What the build gate says about the release reads its plan was made from."""
     kept_for = kept_reads.kept_for_said()
     if not reads.reused:
+        if reads.unkept:
+            return f"all {reads.read_now} release read(s) made by this run; {_unkept_said(reads)}"
         return (
             f"all {reads.read_now} release read(s) made by this run, and kept for "
             f"{kept_for}, so the run that applies the plan reads none of them again"
         )
-    return (
+    said = (
         f"{reads.reused} release read(s) reused from an earlier run, the oldest "
         f"{reads.age_said()} old, and {reads.read_now} read by this run; a read is "
         f"taken again once it is {kept_for} old"
     )
+    if reads.unkept:
+        said += f"; {_unkept_said(reads)}"
+    return said
+
+
+def _unkept_said(reads: kept_reads.KeptReads) -> str:
+    return (
+        f"the reads made by this run could not be kept ({reads.unkept}), so a "
+        f"later run reads them again"
+    )
+
+
+def _unkept_warnings(reads: kept_reads.KeptReads | None) -> list[dict[str, str]]:
+    """What a run whose reads could not be written says about them (R-1091)."""
+    if reads is None or not reads.unkept:
+        return []
+    return [{"code": "label-playlists-reads-unkept", "message": _unkept_said(reads)}]
 
 
 def _failed_part_way(
@@ -904,14 +929,18 @@ def label_playlists(ctx) -> Envelope:
             }
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP, warnings=[warning])
     if option != "apply" or not planned.writes:
-        return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
+        return ctx.envelope(
+            data=payload, outcome=Outcome.NO_OP, warnings=_unkept_warnings(reads)
+        )
 
     done = apply_plan(cfg, remote, planned)
     # WHAT WAS WRITTEN RIDES ON THE TOTALS, since ``plan/1`` admits no other
     # key at the top of the payload.
     totals = {**payload["totals"], "applied": applied_totals(done)}
     return ctx.envelope(
-        data={**payload, "totals": totals}, outcome=Outcome.OK, warnings=refused_warnings(done)
+        data={**payload, "totals": totals},
+        outcome=Outcome.OK,
+        warnings=[*refused_warnings(done), *_unkept_warnings(reads)],
     )
 
 

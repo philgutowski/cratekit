@@ -162,10 +162,7 @@ def test_a_park_whose_reads_cannot_be_written_is_still_told_as_the_park(
     _cfg, fake, account = followed
     _parks_after(monkeypatch, fake, 3)
 
-    def full_disk(payload, path, **kwargs):
-        raise OSError(28, "No space left on device")
-
-    monkeypatch.setattr(kept_reads.config, "atomic_write_bytes", full_disk)
+    _full_disk(monkeypatch)
     code, refused = drive(FULL)
     # THE STOP IS WHAT THE PERSON IS TOLD, never the failure to keep the reads.
     assert refused["cause"]["reason"] == "provider-cooldown", refused
@@ -323,7 +320,10 @@ def test_the_crawl_gate_counts_the_kept_reads_and_estimates_only_the_rest(
         f"the last 7 day(s), so reading the other {rest} is at least {2 * rest} "
         f"provider call(s)"
     )
-    assert shown["kept reads"].startswith("4 release read(s) kept from an earlier run")
+    assert shown["kept reads"] == (
+        "4 release read(s) kept from an earlier run, the oldest 0 minute(s) old; a "
+        "read is taken again once it is 7 day(s) old"
+    )
 
     # THE GATE'S PLAN carries the kept count, and its digest is the listing's.
     reads = kept_reads.KeptReads.load(LABEL_ID)
@@ -388,6 +388,11 @@ def test_a_resume_under_the_same_crawl_answer_is_not_stale(
             '"2026-11-01T00:00:00+00:00", "gone": "yes"}}}',
             "says gone",
         ),
+        (
+            '{"version": 1, "label_id": "kompakt", "reads": {"r1": {"read_at": '
+            '"2026-11-01T00:00:00+00:00", "year": true, "tracks": []}}}',
+            "carries the year",
+        ),
     ],
 )
 def test_a_store_that_cannot_be_read_refuses_before_any_release_is_read(
@@ -402,7 +407,9 @@ def test_a_store_that_cannot_be_read_refuses_before_any_release_is_read(
     assert code == int(ExitCode.PRECONDITION), refused
     assert refused["cause"]["reason"] == kept_reads.UNUSABLE
     assert problem in refused["cause"]["detail"]["problem"]
-    assert fake.releases_asked_for == [] and account._writes == 0
+    # BEFORE THE LISTING TOO: not a roster, a page or a release was asked for.
+    assert fake.asked_for == [] and fake.releases_asked_for == []
+    assert account._writes == 0
     # NEVER REWRITTEN: the refused document is left for the person to repair.
     assert path.read_text(encoding="utf-8") == written
 
@@ -437,3 +444,151 @@ def test_a_flush_with_nothing_new_writes_nothing(installed):
     del installed
     kept_reads.KeptReads.load(LABEL_ID).flush()
     assert not kept_reads.path_for(LABEL_ID).exists()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 7. A store that cannot be written, the review's round 1
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _full_disk(monkeypatch) -> list[str]:
+    """The kept reads' writes refused as a full disk; every other write goes through."""
+    tried: list[str] = []
+    real = kept_reads.config.atomic_write_bytes
+    store = kept_reads.path_for(LABEL_ID)
+
+    def refused(payload, path, **kwargs):
+        if path != store:
+            return real(payload, path, **kwargs)
+        tried.append(str(path))
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(kept_reads.config, "atomic_write_bytes", refused)
+    return tried
+
+
+def test_a_store_that_cannot_be_written_still_shows_the_plan_and_says_so(
+    followed, monkeypatch
+):
+    _cfg, fake, account = followed
+    tried = _full_disk(monkeypatch)
+    code, refused = drive(FULL)
+    # THE PLAN, NOT A DEFECT: the store saves calls and holds nothing else.
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["detail"]["gate"] == BUILD
+    assert tried
+    said = refused["cause"]["detail"]["shown"]["release reads"]
+    assert said == (
+        f"all {len(READ)} release read(s) made by this run; the reads made by this "
+        f"run could not be kept (OSError: [Errno 28] No space left on device), so a "
+        f"later run reads them again"
+    )
+
+    code, done = _decided(FULL, (BUILD, "apply"))
+    assert code == int(ExitCode.OK), done
+    assert [w["code"] for w in done["warnings"]] == ["label-playlists-reads-unkept"]
+    assert account._writes > 0
+    assert not kept_reads.path_for(LABEL_ID).exists()
+
+
+def test_a_periodic_write_that_fails_does_not_stop_the_read(followed, monkeypatch):
+    _cfg, fake, _account = followed
+    monkeypatch.setattr(kept_reads, "FLUSH_EVERY", 2)
+    tried = _full_disk(monkeypatch)
+    code, refused = drive(FULL)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert sorted(fake.releases_asked_for) == sorted(READ)
+    # Tried after every second read, then once more on the way out.
+    assert len(tried) == len(READ) // 2 + 1
+
+
+def test_a_file_where_the_labels_directory_belongs_still_shows_the_plan(followed):
+    _cfg, _fake, _account = followed
+    directory = kept_reads.path_for(LABEL_ID).parent
+    directory.parent.mkdir(parents=True, exist_ok=True)
+    directory.write_text("not a directory", encoding="utf-8")
+    code, refused = drive(FULL)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert "could not be kept" in refused["cause"]["detail"]["shown"]["release reads"]
+    assert directory.read_text(encoding="utf-8") == "not a directory"
+
+
+def test_a_write_that_succeeds_after_one_failed_clears_what_was_said(installed, monkeypatch):
+    del installed
+    store = kept_reads.KeptReads.load(LABEL_ID)
+    store.keep("a", [FakeTrack("t1")], 2020)
+    real = kept_reads.config.atomic_write_bytes
+    _full_disk(monkeypatch)
+    store.flush()
+    assert store.unkept.startswith("OSError")
+    monkeypatch.setattr(kept_reads.config, "atomic_write_bytes", real)
+    store.flush()
+    assert store.unkept == "" and sorted(_stored()["reads"]) == ["a"]
+
+
+def test_the_build_gate_counts_the_calls_left_after_the_kept_reads(followed, monkeypatch):
+    _cfg, fake, _account = followed
+    switch = _parks_after(monkeypatch, fake, 4)
+    assert drive(FULL)[0] != int(ExitCode.OK)
+    switch["after"] = None
+    code, refused = drive(FULL)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    rest = len(LISTED) - 4
+    assert refused["cause"]["detail"]["shown"]["provider calls"] == (
+        f"{len(LISTED)} release(s) listed, at least {2 * rest} provider call(s) to "
+        f"read the tracks of the {rest} not kept from an earlier run"
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 8. The store's numbers
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_the_store_is_written_every_fifty_reads():
+    # A hundred seconds of calls at the default pace is what a kill can lose.
+    assert kept_reads.FLUSH_EVERY == 50
+
+
+def test_a_read_exactly_the_age_old_is_read_again(installed, monkeypatch):
+    del installed
+    start = datetime(2026, 11, 1, 12, 0, tzinfo=kept_reads.timezone.utc)
+    monkeypatch.setattr(kept_reads, "clock", lambda: start)
+    store = kept_reads.KeptReads.load(LABEL_ID)
+    store.keep("a", [FakeTrack("t1")], 2020)
+    store.flush()
+    monkeypatch.setattr(kept_reads, "clock", lambda: start + kept_reads.KEPT_FOR)
+    assert kept_reads.KeptReads.load(LABEL_ID).fresh("a") is None
+    monkeypatch.setattr(
+        kept_reads, "clock", lambda: start + kept_reads.KEPT_FOR - timedelta(seconds=1)
+    )
+    assert kept_reads.KeptReads.load(LABEL_ID).fresh("a") is not None
+
+
+def test_a_year_given_as_a_bool_is_kept_as_no_year(installed):
+    del installed
+    store = kept_reads.KeptReads.load(LABEL_ID)
+    store.keep("a", [FakeTrack("t1")], True)
+    store.flush()
+    assert _stored()["reads"]["a"]["year"] is None
+
+
+def test_a_release_named_twice_is_counted_once_as_kept(installed):
+    del installed
+    store = kept_reads.KeptReads.load(LABEL_ID)
+    store.keep("a", [FakeTrack("t1")], 2020)
+    assert store.kept(["a", "a", "b"])[0] == 1
+    assert store.reused == 0
+
+
+@pytest.mark.parametrize(
+    "age, said",
+    [
+        (timedelta(minutes=59), "59 minute(s)"),
+        (timedelta(minutes=60), "1 hour(s)"),
+        (timedelta(hours=47), "47 hour(s)"),
+        (timedelta(hours=48), "2 day(s)"),
+    ],
+)
+def test_an_age_reads_in_minutes_then_hours_then_days(age, said):
+    assert kept_reads.age_text(age) == said

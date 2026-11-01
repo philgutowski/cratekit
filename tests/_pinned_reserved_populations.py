@@ -1525,6 +1525,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         # 2026-10-31, U191: the releases build's two warnings and its gate lookup.
         'label-playlists-nothing-left',
         'label-playlists-nothing-taken',
+        'label-playlists-reads-unkept',  # 2026-11-01, R-1091: reads not written.
         'label-playlists-tracks-refused',
         'refused-by-policy',
     ],
