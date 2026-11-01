@@ -40339,6 +40339,8 @@ the gate, saying so, with a test. Ledger only, a wording and a step.
 
 **Closes when:** Phillip answers. Off closes it as written; on is one row of the table and its pinned dict in the drift test.
 
+**Closed 2026-11-01, by Phillip's answer.** He answered `354-vocal-setting-1` on the decisions page with Vocal off, as the card says, and called sitting 52's Vocal on a one off. The skill's table and the drift test's pinned settings already read off, so nothing in either changes; the skill now says the setting is his confirmed standard, so a session that reads sitting 52's record does not take it as the rule.
+
 ---
 
 ## R-1125. intake land --label-from-tags files a file under any label tag it carries, so an unregistered Bandcamp seller's own tag makes a folder nobody registered
