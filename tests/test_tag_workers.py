@@ -2602,8 +2602,10 @@ def refusing_writes_on(monkeypatch, *names: str) -> None:
 
     What ``tags.write_genre`` answers for a locked file or one on a read only
     volume. Patched after the fixture files are placed, which tag through the
-    same writer; the container runs as root, which writes through a read only
-    mode, so no file here can be made to refuse for real.
+    same writer. A read only mode does not stop a suite run as root, and the
+    immutable flag that does is Linux's alone and needs privileges a Mac run
+    lacks, so the writer is patched; the review drove the real refusal once
+    with that flag (R-1103's record).
     """
     real = tags.write_genre
 

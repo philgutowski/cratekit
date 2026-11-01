@@ -1194,9 +1194,11 @@ def refusing_on(monkeypatch, *names: str) -> None:
     False rather than a raise, because that is what ``tags.write_genre`` answers
     for a locked file or one on a read only volume, and it is the answer the
     first build of this pass ignored. Patched only after the fixture files are
-    placed, since ``place`` tags them through the same writer. A test cannot
-    make a file refuse for real here: the container runs as root, which writes
-    through a read only mode.
+    placed, since ``place`` tags them through the same writer. A read only
+    mode does not stop a suite run as root, and the immutable flag that does is
+    Linux's alone and needs privileges a Mac run lacks, so the writer is
+    patched; the review drove the real refusal once with that flag (R-1103's
+    record).
     """
     real = tags.write_genre
 
