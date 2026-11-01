@@ -310,7 +310,11 @@ def _file_native(ctx, cfg: config.Config, path: Path, plan: dict, medium) -> Env
     native.assert_rows_identified(landed)
     return ctx.envelope(
         data=_native_reported(payload, landed),
-        warnings=[*land_cli.awaiting_analysis(landed), *land_cli.vox_warnings(landed)],
+        warnings=[
+            *land_cli.awaiting_analysis(landed),
+            *land_cli.vox_warnings(landed),
+            *land_cli.dyn_warnings(landed),
+        ],
     )
 
 

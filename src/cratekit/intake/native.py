@@ -96,6 +96,7 @@ from cratekit.cli.output import digest_of
 from cratekit.core import (
     config,
     convergence,
+    drift,
     locations,
     rb_writer,
     session,
@@ -201,6 +202,25 @@ VOX_UNREADABLE = (
     "a cut; run crate analyze calibrate again and then crate metadata mytags-vocals --apply"
 )
 
+#: The My Tag a landing gives every added row whose file's drift reads as
+#: variable (U157), so the person running Analyze Tracks selects those rows for
+#: Dynamic and every other for Normal. :mod:`cratekit.analysis.rekordbox_check`
+#: reads the mark under this value, by importing it, so the check and the
+#: landing cannot come to disagree. The category is the one it is made under
+#: when the library holds none of that name, found by name otherwise.
+DYN_VALUE = "dyn"
+DYN_CATEGORY = "Analysis"
+#: What the dyn tags are filed under in a session record's change summary, a
+#: stable surface name as the vocals verb's ``my-tags.vocals`` is (R19).
+DYN_CHANGE_KEY = "my-tags.analysis"
+#: Why a landing that read variable rows gives none of them the dyn My Tag,
+#: the writer's own refusal asked before the gate, as :data:`VOX_NO_CATEGORY`.
+DYN_NO_CATEGORY = (
+    "the library holds no My Tag category to copy a new one's shape from, so the "
+    "Analysis category cannot be made; make any My Tag in rekordbox and run the "
+    "rows this landing names with Analysis Mode Dynamic by hand"
+)
+
 _ORIGIN = ("intake.native",)
 
 
@@ -289,6 +309,13 @@ class RowPlan:
     voxlevel: int | None = None
     #: Whether the row is given the vox My Tag, its score clearing the cut.
     vox: bool = False
+    #: The file's drift, a percent, and the verdict it reads as against the
+    #: plan's cut (U157), read off the source for a row to be added: one of
+    #: :data:`cratekit.core.drift.VERDICTS` or ``UNSCORED``, empty on a row
+    #: that is not added. ``dyn`` is whether the row is given the dyn My Tag.
+    drift: float | None = None
+    drift_verdict: str = ""
+    dyn: bool = False
     #: The file's artist, album and genre words and the lookup row each takes
     #: (U163), read off the source for a row to be added and None for a word
     #: the file does not carry, which leaves rekordbox's empty.
@@ -559,6 +586,11 @@ class NativePlan:
     vox_cut: float | None = None
     #: Why no added row is given the vox My Tag at all, a sentence, else empty.
     vox_blocked: str = ""
+    #: The drift cut each added row's reading was judged against (U157),
+    #: ``analysis.drift_cut``. None when the plan adds no row.
+    drift_cut: float | None = None
+    #: Why no variable row is given the dyn My Tag, a sentence, else empty.
+    dyn_blocked: str = ""
     #: The live :data:`ANALYZE` playlist under the root the plan found (U166),
     #: empty when the write makes it.
     analyze_playlist_id: str = ""
@@ -589,6 +621,18 @@ class NativePlan:
             return ()
         return tuple(row for row in self.to_add() if row.voxlevel is None)
 
+    def dyn_tagged(self) -> tuple[RowPlan, ...]:
+        """The rows to be added that are given the dyn My Tag (U157)."""
+        return tuple(row for row in self.to_add() if row.dyn)
+
+    def drift_variable(self) -> tuple[RowPlan, ...]:
+        """The rows to be added whose drift reads as variable, tagged or not (U157)."""
+        return tuple(row for row in self.to_add() if row.drift_verdict == drift.VARIABLE)
+
+    def drift_unscored(self) -> tuple[RowPlan, ...]:
+        """The rows to be added whose file carries no drift reading, and so no tag (U157)."""
+        return tuple(row for row in self.to_add() if row.drift_verdict == drift.UNSCORED)
+
     def present(self) -> tuple[RowPlan, ...]:
         return tuple(row for row in self.rows if row.action == PRESENT)
 
@@ -612,6 +656,8 @@ class AddedRow:
     content_link: int | None = None
     #: Whether the row carries the vox My Tag as adoption reads it, after the commit (U127).
     vox: bool = False
+    #: Whether the row carries the dyn My Tag as ``analyze check`` reads it (U157).
+    dyn: bool = False
     #: The row's words and year as the table holds them after the commit,
     #: through active lookup rows only, and as the plan gave them (U163).
     words: dict[str, Any] = field(default_factory=dict)
@@ -656,6 +702,18 @@ class NativeLanded:
     vox_missing: tuple[Path, ...] = ()
     #: Why adoption's reader could not answer after the commit, else empty.
     vox_unread: str = ""
+    #: How many dyn My Tag associations the commit wrote (U157).
+    dyn_written: int = 0
+    #: Each added row whose file's drift read as variable, tagged or not.
+    dyn_variable: tuple[Path, ...] = ()
+    #: Each added row whose file carries no drift reading, so no tag.
+    dyn_unscored: tuple[Path, ...] = ()
+    #: Why no variable row was given the tag, else empty.
+    dyn_blocked: str = ""
+    #: Each added row the plan tagged dyn that the check's reader does not
+    #: answer after the commit, and why it could not read, else empty.
+    dyn_missing: tuple[Path, ...] = ()
+    dyn_unread: str = ""
     #: The :data:`ANALYZE` playlist the commit added the rows to (U166), and
     #: its display name, empty when no row was added.
     analyze_id: str = ""
@@ -913,6 +971,7 @@ def plan_rows(
             replace(row, content_link=link.value) if row.action == ADD else row for row in rows
         ]
     rows, vox_cut, vox_blocked = _vox_plan(cfg, db, rows)
+    rows, drift_cut, dyn_blocked = _dyn_plan(cfg, db, rows)
     rows = _words_plan(db, rows)
     kept, dropped = _supported_only(split, rows)
     if labels is not None:
@@ -946,6 +1005,8 @@ def plan_rows(
         inbox_found_by_name=inbox_found_by_name,
         vox_cut=vox_cut,
         vox_blocked=vox_blocked,
+        drift_cut=drift_cut,
+        dyn_blocked=dyn_blocked,
     )
     found = analyze_playlist(db, str(root_id))
     if found is not None:
@@ -997,6 +1058,46 @@ def _vox_plan(
         values = metadata_cli.vocal_tag_values(level, None, cut)
         scored.append(replace(row, voxlevel=level, vox=metadata_cli.VALUE_VOX in values))
     return scored, cut, ""
+
+
+#: The two file tags a drift reading is read from (U157).
+_DRIFT_TAGS = ("driftlevel", "drift")
+
+
+def _dyn_plan(
+    cfg: config.Config, db: Any, rows: list[RowPlan]
+) -> tuple[list[RowPlan], float | None, str]:
+    """Each row to be added with its file's drift, its verdict and whether it is tagged dyn (U157).
+
+    THE SCORE AGAINST THE CUT CONFIGURED NOW, ``analysis.drift_cut``, through
+    :func:`cratekit.core.drift.reading`, as the vox tag reads a score against
+    the landing's cut, so a changed cut moves the plan and its digest. A file
+    with too little pulse to judge reads unknown and is treated as steady; a
+    file analysed before U157 carries no reading, reads unscored, and gets no
+    tag; neither is a guess.
+
+    ONLY A ROW THIS LANDING ADDS, and additive, as the vox tag is planned.
+    The writer's own question is asked only when a row reads variable, since
+    a landing with no variable row writes nothing a missing category could
+    refuse. Answers the rows, the cut and the reason none is tagged.
+    """
+    if not any(row.action == ADD for row in rows):
+        return rows, None, ""
+    cut = float(cfg.analysis.drift_cut)
+    read: list[RowPlan] = []
+    for row in rows:
+        if row.action != ADD:
+            read.append(row)
+            continue
+        values = tags.read_tags(row.source, _DRIFT_TAGS)
+        score, verdict = drift.reading(values["driftlevel"], values["drift"], cut)
+        read.append(replace(row, drift=score, drift_verdict=verdict))
+    variable = [row for row in read if row.drift_verdict == drift.VARIABLE]
+    if not variable:
+        return read, cut, ""
+    if not rb_writer.my_tag_writable(db):
+        return read, cut, DYN_NO_CATEGORY
+    return [replace(row, dyn=row.drift_verdict == drift.VARIABLE) for row in read], cut, ""
 
 
 def _words_plan(db: Any, rows: list[RowPlan]) -> list[RowPlan]:
@@ -1482,6 +1583,23 @@ def identity(plan: NativePlan) -> dict[str, Any]:
         if plan.to_add()
         else {}
     )
+    # THE DYN TAG ONLY WHEN A ROW IS ADDED (U157), the cut, why none, and each
+    # added row's drift, verdict and answer, so an approval given before a file
+    # was rescored or the cut was changed is stale for the tags it would write.
+    dyn = (
+        {
+            "dyn": {
+                "cut": plan.drift_cut,
+                "blocked": plan.dyn_blocked,
+                "rows": [
+                    [str(row.target), row.drift, row.drift_verdict, row.dyn]
+                    for row in plan.to_add()
+                ],
+            }
+        }
+        if plan.to_add()
+        else {}
+    )
     # THE ANALYZE PLAYLIST ONLY WHEN A ROW IS ADDED (U166), found or made, so
     # a plan that adds none digests as it did before this unit.
     analyze = {"analyze": plan.analyze_playlist_id} if plan.to_add() else {}
@@ -1497,6 +1615,7 @@ def identity(plan: NativePlan) -> dict[str, Any]:
         **kept,
         **filed,
         **vox,
+        **dyn,
         **analyze,
         **filing,
         "kind": "land-native",
@@ -1909,6 +2028,7 @@ def apply_rows(
     present: list[RowPlan] = list(plan.present())
     memberships = 0
     vox_written = 0
+    dyn_written = 0
     analyze_id = ""
     analyze_added = 0
     with (
@@ -1965,6 +2085,9 @@ def apply_rows(
             # landing made and only those the plan tagged. Additive: the writer
             # adds an association it does not find and removes none.
             vox_written = _tag_vox(db, added_ids)
+            # THE DYN MY TAG, IN THE SAME COMMIT (U157), on the rows this
+            # landing made whose drift read as variable, the same writer.
+            dyn_written = _tag_dyn(db, added_ids)
             # In listing order: the files the plan named, in the order it named
             # them, whether the row is new or was already there.
             by_target = {str(row.target): content_id for row, content_id in added_ids}
@@ -2107,6 +2230,7 @@ def apply_rows(
                     placed=placed,
                     set_written=set_written,
                     vox_written=vox_written,
+                    dyn_written=dyn_written,
                     labels_written=labels_written,
                 )
             raise
@@ -2122,6 +2246,7 @@ def apply_rows(
             placed=placed,
             set_written=set_written,
             vox_written=vox_written,
+            dyn_written=dyn_written,
             labels_written=labels_written,
         )
         convergence.record_fingerprint(cfg, db)
@@ -2138,6 +2263,9 @@ def apply_rows(
         voxed, vox_unread = (
             _vox_read_back(db) if any(row.vox for row, _ in added_ids) else (frozenset(), "")
         )
+        dyned, dyn_unread = (
+            _dyn_read_back(db) if any(row.dyn for row, _ in added_ids) else (frozenset(), "")
+        )
         for row, content_id in added_ids:
             values, title, folder_path, file_id, link = _read_back(db, content_id)
             landed.append(
@@ -2150,6 +2278,7 @@ def apply_rows(
                     file_id=file_id,
                     content_link=link,
                     vox=content_id in voxed,
+                    dyn=content_id in dyned,
                     words=_words_back(db, content_id),
                     planned=row.words(),
                 )
@@ -2180,6 +2309,18 @@ def apply_rows(
             row.target for row, content_id in added_ids if row.vox and content_id not in voxed
         ),
         vox_unread=vox_unread,
+        dyn_written=dyn_written,
+        dyn_variable=tuple(
+            row.target for row, _content_id in added_ids if row.drift_verdict == drift.VARIABLE
+        ),
+        dyn_unscored=tuple(
+            row.target for row, _content_id in added_ids if row.drift_verdict == drift.UNSCORED
+        ),
+        dyn_blocked=plan.dyn_blocked if added_ids else "",
+        dyn_missing=tuple(
+            row.target for row, content_id in added_ids if row.dyn and content_id not in dyned
+        ),
+        dyn_unread=dyn_unread,
         analyze_id=analyze_id,
         analyze_name=f"{plan.root_name} / {ANALYZE}" if analyze_id else "",
         analyze_added=analyze_added,
@@ -2199,6 +2340,66 @@ def _tag_vox(db: Any, added: Sequence[tuple[RowPlan, str]]) -> int:
         return 0
     value = rb_writer.ensure_my_tag_value(db, metadata_cli.CATEGORY, metadata_cli.VALUE_VOX)
     return sum(1 for content_id in content_ids if rb_writer.add_my_tag(db, value, content_id))
+
+
+def _tag_dyn(db: Any, added: Sequence[tuple[RowPlan, str]]) -> int:
+    """Give each added row the plan tagged the dyn My Tag (U157). Answers how many were written.
+
+    The vocals verb's writer, as :func:`_tag_vox` uses it, under
+    :data:`DYN_CATEGORY`, found by name or made, and :data:`DYN_VALUE` inside
+    it. Pending on the landing's handle, committed or rolled back with its rows.
+    """
+    content_ids = [content_id for row, content_id in added if row.dyn]
+    if not content_ids:
+        return 0
+    value = rb_writer.ensure_my_tag_value(db, DYN_CATEGORY, DYN_VALUE)
+    return sum(1 for content_id in content_ids if rb_writer.add_my_tag(db, value, content_id))
+
+
+def dyn_marked(db: Any) -> frozenset[str]:
+    """Every content row carrying a live My Tag value named :data:`DYN_VALUE`.
+
+    THE ONE READER OF THE MARK, here beside the writer and called by
+    ``crate analyze check`` as well as by the landing's read back, so what
+    the landing reports as marked is what the check reads as marked.
+    """
+    marked: set[str] = set()
+    for tag in db.get_my_tag(Name=DYN_VALUE):
+        if rb_writer.soft_deleted(
+            tag,
+            message=(
+                f"the My Tag row {getattr(tag, 'ID', '?')!r} cannot say whether rekordbox "
+                f"removed it, so which rows are marked {DYN_VALUE} was not read"
+            ),
+            origin=_ORIGIN,
+            detail={"my_tag_id": str(getattr(tag, "ID", ""))},
+        ):
+            continue
+        for song in db.get_my_tag_songs(MyTagID=str(tag.ID)):
+            if rb_writer.soft_deleted(
+                song,
+                message=(
+                    f"the My Tag membership {getattr(song, 'ID', '?')!r} cannot say whether "
+                    f"rekordbox removed it, so which rows are marked {DYN_VALUE} was not read"
+                ),
+                origin=_ORIGIN,
+                detail={"song_my_tag_id": str(getattr(song, "ID", ""))},
+            ):
+                continue
+            marked.add(str(song.ContentID))
+    return frozenset(marked)
+
+
+def _dyn_read_back(db: Any) -> tuple[frozenset[str], str]:
+    """Every row carrying the dyn My Tag as the check reads it, after the commit (U157).
+
+    A refusal the reader raises is the answer's reason and not the landing's
+    failure, as :func:`_vox_read_back` says: the commit has landed by now.
+    """
+    try:
+        return dyn_marked(db), ""
+    except CratekitError as exc:
+        return frozenset(), exc.cause.message
 
 
 def _vox_read_back(db: Any) -> tuple[frozenset[str], str]:
@@ -2307,6 +2508,7 @@ def _record_landing_commit(
     placed: placement.Placed | None = None,
     set_written: set_playlist.Written | None = None,
     vox_written: int = 0,
+    dyn_written: int = 0,
     labels_written: label_filing.Written | None = None,
 ) -> None:
     """Record the commit on the session, once anything landed.
@@ -2411,6 +2613,14 @@ def _record_landing_commit(
             session.ChangeSummary(
                 (session.TreeChange(tree=metadata_cli.CHANGE_KEY, created=vox_written),)
             ),
+            cfg,
+        )
+    # AND THE DYN TAGS (U157), under their own key, apart from the vox tags.
+    if dyn_written > 0:
+        session.record_commit(
+            record,
+            DYN_CHANGE_KEY,
+            session.ChangeSummary((session.TreeChange(tree=DYN_CHANGE_KEY, created=dyn_written),)),
             cfg,
         )
 
@@ -2521,6 +2731,10 @@ __all__ = [
     "UNSUPPORTED",
     "WORKFLOW",
     "AddedRow",
+    "DYN_CATEGORY",
+    "DYN_CHANGE_KEY",
+    "DYN_NO_CATEGORY",
+    "DYN_VALUE",
     "ALBUM_ARTIST",
     "ALBUM_COLUMN",
     "ARTIST_COLUMN",
@@ -2545,6 +2759,7 @@ __all__ = [
     "assert_rows_identified",
     "choose_device",
     "content_ids_for",
+    "dyn_marked",
     "file_id_of",
     "file_type_of",
     "identity",
