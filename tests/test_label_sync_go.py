@@ -37,7 +37,7 @@ from tests.acquire_fakes import (
 from tests.cli_drive import drive
 from tests.test_config import valid_data
 from tests.test_label_sync import Track, answer, bind, next_question, offered, record, register
-from tests.test_sync_land import Tail
+from tests.test_sync_land import Tail, _ok, _refused
 
 GATE = "label.sync.confirm"
 
@@ -858,16 +858,90 @@ def test_the_landing_gates_run_is_named_in_the_envelope_with_the_commands_that_a
     assert "land-run" in pending["summary"]
 
 
-def test_name_apply_is_answered_by_the_same_arguments_sync_land_answers_it_by(
+def test_name_apply_has_its_confirm_answered_inline_over_the_absolute_staging_folder(
     installed, monkeypatch, script, tail
 ):
+    """The literal rule, which ``tests/test_sync_land.py`` pins for sync land's call too."""
     two_releases_answered(monkeypatch, script)
 
     approved_go()
 
     (named,) = tail.named
-    assert named == tail_chain.name_argv(Path(staged(installed)))
-    assert named[:2] == ["-d", f"{tail_chain.NAME_GATE}={tail_chain.NAME_OPTION}"]
+    assert named == [
+        "-d", "name.apply.confirm=apply", "name", "apply", "--root", staged(installed),
+    ]
+
+
+def test_a_tail_step_stopped_at_a_gate_names_its_answer_and_the_rest_of_the_tail(
+    installed, monkeypatch, script, tail
+):
+    two_releases_answered(monkeypatch, script)
+    real = tail._job
+
+    def gated(step, verb, argv):
+        if step == tail_chain.RESTAMP and "--job" not in argv:
+            return _refused(
+                Cause(
+                    reason="decision-required",
+                    message="analyze.restamp.confirm needs a recorded decision",
+                    remediation=Remediation(remedy=Remedy.ANSWER_DECISION),
+                    retryable=True,
+                    origin=("test",),
+                    detail={"gate": "analyze.restamp.confirm", "options": ["apply"],
+                            "run_id": "restamp-run"},
+                ),
+                outcome="blocked",
+            )
+        return real(step, verb, argv)
+
+    monkeypatch.setattr(tail, "_job", gated)
+
+    run_id, code, envelope = approved_go()
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    pending = envelope["pending_human_action"]
+    assert pending["verify_verb"] == "label.sync", "the go's own verb continues, not the landing"
+    folder = staged(installed)
+    manifest = envelope["data"]["summary"]["go"]["manifest"]
+    assert "crate run decide restamp-run analyze.restamp.confirm" in pending["steps"][0]
+    assert pending["steps"][2:] == [
+        f"then: crate name apply --root {folder}",
+        f"then: crate intake land {folder} --manifest {manifest} --pass {default_name(run_id)}",
+    ]
+    assert not tail.named and ("intake", "land") not in tail.verbs()
+
+
+def test_a_landing_that_planned_nothing_ends_the_go_with_its_own_outcome(
+    installed, monkeypatch, script, tail
+):
+    two_releases_answered(monkeypatch, script)
+    tail.landing = lambda _argv: _ok({"items": []}, outcome="no_op")
+
+    _run, code, envelope = approved_go()
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "ok" and envelope["pending_human_action"] is None
+    assert envelope["data"]["summary"]["tail"]["stopped_at"] == tail_chain.LAND
+    assert chain_check(envelope, tail_chain.LAND)["detail"] == "intake land planned nothing to land"
+
+
+def test_the_chain_runs_on_the_absolute_folder_whatever_it_is_handed(
+    installed, monkeypatch, tail
+):
+    monkeypatch.chdir(Path(installed.library.root))
+    chain = tail_chain.Chain(
+        progress=None, namespace="t", title="t", steps=tail_chain.STEPS,
+        origin=("test",), again="again",
+    )
+    relative = Path("staged-here")
+    relative.mkdir()
+
+    with pytest.raises(tail_chain.Stop):
+        tail_chain.run(chain, relative, installed, ["--pass", "p"])
+
+    absolute = str(Path(installed.library.root) / "staged-here")
+    assert chain.summary["staging"] == absolute
+    assert tail.calls[0] == ["tag", "folder", absolute]
 
 
 def test_a_failing_analyze_run_stops_the_go_and_plans_no_landing(
