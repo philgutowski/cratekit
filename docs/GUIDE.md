@@ -533,6 +533,19 @@ your library holds is counted as owned rather than landed. `--pass` on an intake
 tree still on the xml bridge is refused and names `--xml`, since there the file
 is what proves the pass landed.
 
+To mark only some playlists of a pass, name each with `--playlist` and its
+account identifier, as `sync unmark` takes them:
+
+```bash
+crate sync mark --pass RUN_synced --playlist ID
+```
+
+The plan, the gate and the renames are only those playlists, and an answer to
+that narrowed plan is not taken for the whole pass. A playlist the pass does
+not hold is refused before the account is read, and one the pass did not
+complete, its job unfinished or a track still missing, is refused by name with
+the reason. `crate organize --only marks` marks every landed pass whole.
+
 `name apply`, `intake land` and `route inbox` each build a plan and stop at a
 gate before they write. Run once to read the plan, then answer the gate. See
 "Answering a gate". A plan is bound to the folder as it was, so if a file lands
@@ -827,7 +840,11 @@ no match gets no playlist, and a set already in INSPIRATION is skipped, so a
 second run plans nothing. That write needs rekordbox closed. The account
 area builds a folder for every followed label that lacks one or a year, marks
 every landed sync pass, and archives every set whose download is proven into
-the root folder `Downloaded Sets <year>`, prefixed. Either of two things proves
+the root folder `Downloaded Sets <year>`, prefixed. A sync pass is found by its
+intake file, or, once your intake tree is database native and writes none, by
+the landing that committed it, so every pass that landed is planned and not
+only the latest; a native landing of no sync pass, a label's or a set's, is
+counted on the gate and planned for nothing. Either of two things proves
 a set downloaded: an intake file named for the set, or a playlist of the set's
 name under the INSPIRATION folder in rekordbox. It also files every playlist at
 the account root
