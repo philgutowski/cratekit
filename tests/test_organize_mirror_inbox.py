@@ -14,7 +14,7 @@ D1 applies. Nothing here names a real account, a real person or a real track.
 from __future__ import annotations
 
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -640,3 +640,40 @@ def test_a_row_with_no_id_makes_no_claim_on_a_file_another_row_names():
     assert label_filing._refs({"Kompakt": {2025: [(one, ["/a.flac"]), (blank, ["/a.flac"])]}}) == (
         ("/a.flac", "101"),
     )
+
+
+def test_a_passs_dated_account_playlist_is_mirrored_beside_its_batch_under_its_dated_name(
+    native_library,
+):
+    """U175: every INBOX playlist of a pass is mirrored, the account playlist under its date."""
+    cfg, root_id = native_library
+    landed = TODAY - timedelta(days=3)
+    batch = _node(cfg, "2026-10-27 Tidal playlists", under=root_id, age=3, tracks=("t1",))
+    dated = _node(cfg, "Lisa_10_27_26 2026-10-27", under=root_id, age=3, tracks=("t2", "t3"))
+    started = datetime.combine(landed, datetime.min.time().replace(hour=12)).astimezone()
+    session.write_record(
+        session.SessionRecord(
+            session_id=f"{started.strftime('%Y%m%dT%H%M%S')}-landing",
+            workflow=native.WORKFLOW,
+            started=started.isoformat(),
+            state=session.SessionState.CLOSED,
+            sources={INTAKE: str(session.SourceState.COMMITTED)},
+            ended=started.isoformat(),
+            detail={
+                native.BATCH_PLAYLIST_KEY: {"id": batch, "name": "2026-10-27 Tidal playlists"},
+                native.INBOX_PLAYLISTS_KEY: [
+                    {"id": dated, "name": "Lisa_10_27_26 2026-10-27", "account": "pl-l",
+                     "pass": "2026-10-27T101500Z-cd34_synced"},
+                ],
+            },
+        ),
+        cfg,
+    )
+
+    name, read = _inbox_folder(cfg)
+
+    assert isinstance(read, mirror.Folder)
+    assert {source.name: [one.content_id for one in source.rows] for source in read.playlists} == {
+        f"{name} 2026-10-27 Tidal playlists": ["t1"],
+        f"{name} Lisa_10_27_26 2026-10-27": ["t2", "t3"],
+    }

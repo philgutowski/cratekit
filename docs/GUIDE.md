@@ -354,7 +354,13 @@ the files came from, read from what was queued rather than typed:
 | neither | `2026-10-03 Downloads` |
 
 A second landing on the same day from the same source gets ` 2`, the next ` 3`,
-so two batches never share a playlist. The importable file is written beside the
+so two batches never share a playlist.
+
+A `--pass` that swept playlists you made on the account also gives each of them
+its own playlist under INBOX, beside the batch, named as on the account with the
+landing's date at the end: `Lisa_10_27_26 2026-10-27`. INBOX stays flat, and the
+date says which pass brought each one. A playlist landed before this rule keeps
+the name it had, and `inbox rotate` ages it out as before. The importable file is written beside the
 library as `PASS_inboxed.xml` when you pass `--pass`, `NAME_inboxed.xml` when you
 pass only `--name`, and is named for the landing's own run otherwise. That name
 is what `sync mark`, `label mark` and `export archive` read, so keep the one the

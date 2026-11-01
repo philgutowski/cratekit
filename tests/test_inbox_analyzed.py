@@ -498,15 +498,17 @@ def test_a_batch_named_analyze_is_refused_before_the_gate_and_nothing_moves(
     ]
 
 
-def test_an_account_playlist_named_analyze_lands_as_analyze_two():
+def test_an_account_playlist_named_analyze_lands_dated_and_never_as_analyze():
+    """U175: the date at the end of every account playlist's name keeps it off ``Analyze``."""
     from cratekit.intake import batch_name
 
     assert batch_name.ANALYZE == native.ANALYZE
-    assert batch_name.inbox_names(["Analyze", "Sunset"], (), batch="2026-10-28 x") == (
-        "Analyze 2",
-        "Sunset",
+    named = batch_name.inbox_names(["Analyze", "Sunset"], ("Analyze",), batch="2026-10-28 x")
+    assert named == ("Analyze 2026-10-03", "Sunset 2026-10-03")
+    assert batch_name.ANALYZE not in named
+    assert batch_name.inbox_names(["Analyze"], ("Analyze 2026-10-03",), batch="b") == (
+        "Analyze 2026-10-03 2",
     )
-    assert batch_name.inbox_names(["Analyze"], ("Analyze 2",), batch="b") == ("Analyze 3",)
 
 
 def test_an_analyze_playlist_outside_the_root_is_never_written_into(native_library, silence):

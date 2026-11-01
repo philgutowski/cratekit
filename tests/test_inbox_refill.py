@@ -47,6 +47,8 @@ from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
 
 GATE = refill_cli.APPROVE_GATE
 ACCOUNT = "Sunset Warmup"
+#: The INBOX playlist a landing on the pinned day makes for it, dated since U175.
+INBOX_NAME = "Sunset Warmup 2026-10-03"
 
 
 def _refill(pass_name: str = PASS) -> list[str]:
@@ -90,7 +92,7 @@ def _sql(cfg: config.Config, statement: str, *params) -> None:
     conn.close()
 
 
-def _emptied(cfg: config.Config, name: str = ACCOUNT) -> str:
+def _emptied(cfg: config.Config, name: str = INBOX_NAME) -> str:
     """Sitting 34: every row of the playlist removed and dropped back in under a new id.
 
     Each member's content row is marked removed with its memberships, and a new
@@ -115,6 +117,16 @@ def _emptied(cfg: config.Config, name: str = ACCOUNT) -> str:
         )
     assert _live_members(cfg, playlist_id) == []
     return playlist_id
+
+
+def _named_before_u175(cfg: config.Config, playlist_id: str) -> None:
+    """The landed playlist renamed as a landing before U175 named it, the account's name alone.
+
+    A record that names no account playlist, or names one only by its name, is
+    a landing from before U128, and every such landing named its INBOX playlist
+    undated; the refill's fallback by the account's exact name is for those.
+    """
+    _sql(cfg, "UPDATE djmdPlaylist SET Name = ? WHERE ID = ?", ACCOUNT, playlist_id)
 
 
 def _live_members(cfg: config.Config, playlist_id: str) -> list[str]:
@@ -177,7 +189,7 @@ def test_three_owned_and_two_new_refill_an_empty_playlist_as_five_in_account_ord
     (record,) = [r for r in session.records(cfg) if r.workflow == refill.WORKFLOW]
     assert record.detail[refill.RECORD_KEY] == {
         "pass": PASS,
-        "playlists": [{"id": playlist_id, "name": ACCOUNT, "added": 5}],
+        "playlists": [{"id": playlist_id, "name": INBOX_NAME, "added": 5}],
     }
 
 
@@ -197,7 +209,7 @@ def test_a_track_the_library_lost_is_named_and_left(native_library, silence, off
     assert code == int(ExitCode.OK), acted
     assert _live_members(cfg, playlist_id) == ["Held1", "New1", "Held2", "Held3"]
     (warning,) = [w for w in acted["warnings"] if w["code"] == refill_cli.LEFT_OUT]
-    assert f"{ACCOUNT} 4. Probe - New2" in warning["message"]
+    assert f"{INBOX_NAME} 4. Probe - New2" in warning["message"]
     assert set_playlist.NOT_RESOLVED in warning["message"]
 
 
@@ -233,7 +245,7 @@ def test_a_recorded_playlist_moved_outside_inbox_is_refused_by_name_before_any_r
 
     assert code not in (int(ExitCode.OK), int(ExitCode.DECISION_REQUIRED)), refused
     assert refused["cause"]["reason"] == refill.OUTSIDE_INBOX, refused
-    assert f"{ACCOUNT!r} (row {playlist_id})" in refused["cause"]["message"]
+    assert f"{INBOX_NAME!r} (row {playlist_id})" in refused["cause"]["message"]
     assert _live_members(cfg, playlist_id) == []
     assert not [r for r in session.records(cfg) if r.workflow == refill.WORKFLOW]
 
@@ -260,7 +272,8 @@ def test_a_pre_u128_record_is_matched_by_the_accounts_exact_name_so_the_twin_is_
     # The landing record rewritten as a landing before U128 wrote it, and a
     # second record of the same pass naming the twin.
     (landing,) = [r for r in session.records(cfg) if native.INBOX_PLAYLISTS_KEY in r.detail]
-    stripped = [{"id": one["id"], "name": one["name"]} for one in landing.detail[native.INBOX_PLAYLISTS_KEY]]
+    _named_before_u175(cfg, playlist_id)
+    stripped = [{"id": one["id"], "name": ACCOUNT} for one in landing.detail[native.INBOX_PLAYLISTS_KEY]]
     stripped.append({"id": twin_id, "name": f"{ACCOUNT} 2"})
     records = [
         session.SessionRecord.from_json(
@@ -284,7 +297,9 @@ def test_a_playlist_no_record_names_is_found_by_the_accounts_name_under_inbox(
     old = cutover_fixtures.add_folder(cfg, "Old")
     _sql(cfg, "UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", root_id, old)
     _sql(cfg, "UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", old, playlist_id)
-    # And no record names it: the record's account playlists are cleared.
+    # And no record names it: the record's account playlists are cleared, and
+    # the playlist carries the undated name every such landing gave it.
+    _named_before_u175(cfg, playlist_id)
     for record in session.records(cfg):
         if native.INBOX_PLAYLISTS_KEY in record.detail:
             record.detail[native.INBOX_PLAYLISTS_KEY] = []
@@ -304,6 +319,7 @@ def test_two_playlists_of_the_accounts_name_under_inbox_are_neither_filled(
 ):
     cfg, root_id = native_library
     playlist_id = _five_landed_and_emptied(cfg, silence)
+    _named_before_u175(cfg, playlist_id)
     for record in session.records(cfg):
         if native.INBOX_PLAYLISTS_KEY in record.detail:
             record.detail[native.INBOX_PLAYLISTS_KEY] = []
@@ -467,7 +483,7 @@ def test_a_same_pass_twin_recorded_since_u128_is_not_taken_for_the_mirror(
     _landed(cfg)
     _stage(cfg, silence, "Late")
     _landed(cfg)
-    twin_id = _playlist_id(cfg, f"{ACCOUNT} 2")
+    twin_id = _playlist_id(cfg, f"{INBOX_NAME} 2")
     assert _live_members(cfg, twin_id) == ["Late"]
     playlist_id = _emptied(cfg)
 
@@ -477,7 +493,7 @@ def test_a_same_pass_twin_recorded_since_u128_is_not_taken_for_the_mirror(
     assert _live_members(cfg, playlist_id) == ["Held1", "New1", "Late"]
     assert _live_members(cfg, twin_id) == ["Late"]
     assert refused["cause"]["detail"]["shown"]["playlists"] == [
-        f"{ACCOUNT} (row {playlist_id}, {refill.BY_RECORD}): 3 track(s) the library owns, "
+        f"{INBOX_NAME} (row {playlist_id}, {refill.BY_RECORD}): 3 track(s) the library owns, "
         f"3 to add, 0 left out"
     ]
 

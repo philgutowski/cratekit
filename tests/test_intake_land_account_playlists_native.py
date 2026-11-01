@@ -146,11 +146,14 @@ def test_two_swept_playlists_land_as_two_playlist_rows_under_their_exact_names(
 
     folder = _music(cfg, BATCH)
     assert sorted(p.name for p in folder.iterdir()) == ["One.flac", "Three.flac", "Two.flac"]
-    assert _inbox(cfg, root_id) == {"Sunset Warmup": ["One", "Two"], "Deep Cuts": ["Three"]}
+    assert _inbox(cfg, root_id) == {
+        "Sunset Warmup 2026-10-03": ["One", "Two"],
+        "Deep Cuts 2026-10-03": ["Three"],
+    }
     written = [item for item in acted["data"]["items"] if item["action"] == "playlist"]
     assert [(item["playlist"], item["account"], item["count"]) for item in written] == [
-        ("Sunset Warmup", "pl-a", 2),
-        ("Deep Cuts", "pl-b", 1),
+        ("Sunset Warmup 2026-10-03", "pl-a", 2),
+        ("Deep Cuts 2026-10-03", "pl-b", 1),
     ]
     assert acted["data"]["totals"]["memberships"] == 3
 
@@ -163,11 +166,14 @@ def test_a_track_both_playlists_brought_in_is_a_member_of_both(native_library, s
 
     _landed(cfg)
 
-    assert _inbox(cfg, root_id) == {"Sunset Warmup": ["One", "Shared"], "Deep Cuts": ["Shared"]}
+    assert _inbox(cfg, root_id) == {
+        "Sunset Warmup 2026-10-03": ["One", "Shared"],
+        "Deep Cuts 2026-10-03": ["Shared"],
+    }
     assert len(_query(cfg, "SELECT ID FROM djmdContent WHERE Title = 'Shared'")) == 1
 
 
-def test_a_second_landing_of_one_playlist_the_next_week_is_named_two(
+def test_a_second_landing_of_one_playlist_the_next_week_takes_its_own_date(
     native_library, silence, monkeypatch
 ):
     cfg, root_id = native_library
@@ -182,7 +188,11 @@ def test_a_second_landing_of_one_playlist_the_next_week_is_named_two(
     code, acted, _ = _two_acts(_land(missing_cli.synced_name(run)))
 
     assert code == int(ExitCode.OK), acted
-    assert _inbox(cfg, root_id) == {"Sunset Warmup": ["One"], "Sunset Warmup 2": ["Two"]}
+    # Its own landing's date tells the two passes apart, so no `` 2`` is needed (U175).
+    assert _inbox(cfg, root_id) == {
+        "Sunset Warmup 2026-10-03": ["One"],
+        "Sunset Warmup 2026-10-10": ["Two"],
+    }
 
 
 def test_a_file_no_account_playlist_claimed_stays_in_the_batch_playlist(native_library, silence):
@@ -195,7 +205,7 @@ def test_a_file_no_account_playlist_claimed_stays_in_the_batch_playlist(native_l
     acted = _landed(cfg)
 
     batch = "2026-10-03 Tidal playlists and Favorites"
-    assert _inbox(cfg, root_id) == {batch: ["Hearted"], "Sunset Warmup": ["One"]}
+    assert _inbox(cfg, root_id) == {batch: ["Hearted"], "Sunset Warmup 2026-10-03": ["One"]}
     (warning,) = [w for w in acted["warnings"] if w["code"] == "rows-await-analysis"]
     # U166: the warning names the one playlist the visit selects, every row
     # either playlist holds being in it, and neither of the two.
@@ -226,7 +236,7 @@ def test_a_name_inbox_came_to_hold_after_the_plan_is_refused_and_nothing_is_writ
     # check stands between the plan and a second playlist of one name.
     handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
     try:
-        handle.create_playlist("Sunset Warmup", parent=handle.get_playlist(ID=root_id))
+        handle.create_playlist("Sunset Warmup 2026-10-03", parent=handle.get_playlist(ID=root_id))
         handle.session.commit()
     finally:
         rb_writer.close_db(handle)
@@ -243,7 +253,7 @@ def test_a_name_inbox_came_to_hold_after_the_plan_is_refused_and_nothing_is_writ
     # Refused before the first move, so the landing can simply be run again.
     assert (Path(cfg.paths.download_staging) / "One.flac").is_file()
     assert _query(cfg, "SELECT ID FROM djmdContent WHERE Title = 'One'") == []
-    assert list(_inbox(cfg, root_id)) == ["Sunset Warmup"]
+    assert list(_inbox(cfg, root_id)) == ["Sunset Warmup 2026-10-03"]
 
 
 # ---------------------------------------------------------------------------
@@ -262,7 +272,7 @@ def test_the_record_names_each_account_playlist_by_identifier(native_library, si
     landings = [r for r in session.records(cfg) if native.INBOX_PLAYLISTS_KEY in r.detail]
     (record,) = landings
     assert record.detail[native.INBOX_PLAYLISTS_KEY] == [
-        {"id": written["id"], "name": "Sunset Warmup", "account": "pl-a", "pass": PASS}
+        {"id": written["id"], "name": "Sunset Warmup 2026-10-03", "account": "pl-a", "pass": PASS}
     ]
     # Every row went into the account playlist, so no batch playlist was written.
     assert native.BATCH_PLAYLIST_KEY not in record.detail
@@ -288,18 +298,72 @@ def test_the_rotation_ages_an_account_playlist_by_its_landing_date(native_librar
     finally:
         rb_writer.close_db(handle)
 
-    (batch,) = [b for b in planned.moves if b.name == "Sunset Warmup"]
+    (batch,) = [b for b in planned.moves if b.name == "Sunset Warmup 2026-10-03"]
     assert batch.recognised_by == rotate.BY_RECORD
     assert batch.aged_from == rotate.AGED_FROM_RECORD
     assert batch.landed == landed
     assert batch.action == rotate.MOVE
 
 
+
+def _rotation(cfg: config.Config, today: date) -> dict[str, str]:
+    """What the rotation would do on ``today``, by playlist name."""
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        planned = rotate.plan_rotation(
+            cfg, handle, declared=DECLARED, registry=tree_registry.read(cfg), today=today
+        )
+    finally:
+        rb_writer.close_db(handle)
+    return {b.name: b.action for b in (*planned.moves, *planned.removals, *planned.kept)}
+
+
+def test_a_pass_batch_and_its_dated_playlists_move_together_and_expire_together(
+    native_library, silence
+):
+    """U175, Phillip's answer 2 read flat: a pass's playlists age as one."""
+    cfg, root_id = native_library
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("One",)), "pl-b": ("Deep Cuts", ("Two",))})
+    for title in ("One", "Two", "Loose"):
+        _stage(cfg, silence, title)
+    acted = _landed(cfg)
+    written = [item for item in acted["data"]["items"] if item["action"] == "playlist"][0]
+    landed = rotate.landings(cfg).by_id[written["id"]]
+    pass_playlists = {BATCH, "Sunset Warmup 2026-10-03", "Deep Cuts 2026-10-03"}
+    stale, expired = cfg.reports.intake_stale_days, cfg.reports.intake_expired_days
+
+    # Every day from the landing to past expiry, the three are planned alike.
+    for age in range(0, expired + 2):
+        planned = _rotation(cfg, landed + timedelta(days=age))
+        assert set(planned) == pass_playlists, age
+        assert len({planned[name] for name in pass_playlists}) == 1, (age, planned)
+    assert set(_rotation(cfg, landed + timedelta(days=stale + 1)).values()) == {rotate.MOVE}
+
+    # Moved into Old together, they are removed together.
+    moving = landed + timedelta(days=stale + 1)
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        plan = rotate.plan_rotation(
+            cfg, handle, declared=DECLARED, registry=tree_registry.read(cfg), today=moving
+        )
+    finally:
+        rb_writer.close_db(handle)
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
+    try:
+        rotate.apply_rotation(
+            cfg, handle, plan, declared=DECLARED, analysis_roots=[Path(cfg.library.root)]
+        )
+    finally:
+        rb_writer.close_db(handle)
+    assert not pass_playlists & set(_inbox(cfg, root_id))
+    gone = _rotation(cfg, landed + timedelta(days=expired + 1))
+    assert {gone[name] for name in pass_playlists} == {rotate.REMOVE}
+
 def test_the_gate_screen_names_each_playlist_as_the_bridge_does(native_library, silence):
     cfg, root_id = native_library
     handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
     try:
-        handle.create_playlist("Sunset Warmup", parent=handle.get_playlist(ID=root_id))
+        handle.create_playlist("Sunset Warmup 2026-10-03", parent=handle.get_playlist(ID=root_id))
         handle.session.commit()
     finally:
         rb_writer.close_db(handle)
@@ -312,10 +376,31 @@ def test_the_gate_screen_names_each_playlist_as_the_bridge_does(native_library, 
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     shown = refused["cause"]["detail"]["shown"]
     assert shown["account playlists"] == [
-        "Sunset Warmup 2 (1 file(s)), the account's Sunset Warmup"
+        "Sunset Warmup 2026-10-03 2 (1 file(s)), the account's Sunset Warmup"
     ]
     assert shown["batch playlist holds"] == "1 file(s) no account playlist claimed"
 
+
+
+def test_an_undated_playlist_from_before_u175_is_left_as_it_is(native_library, silence):
+    """Phillip's answer 4: nothing INBOX already holds is renamed, and the landing still lands."""
+    cfg, root_id = native_library
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        before = handle.create_playlist("Sunset Warmup", parent=handle.get_playlist(ID=root_id))
+        handle.session.commit()
+        before_id = str(before.ID)
+    finally:
+        rb_writer.close_db(handle)
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
+    _stage(cfg, silence, "One")
+
+    _landed(cfg)
+
+    assert _inbox(cfg, root_id) == {"Sunset Warmup": [], "Sunset Warmup 2026-10-03": ["One"]}
+    assert _query(cfg, "SELECT Name FROM djmdPlaylist WHERE ID = ?", before_id) == [
+        ("Sunset Warmup",)
+    ]
 
 def test_a_playlist_the_rotation_removed_never_takes_a_new_landings_tracks(
     native_library, silence
@@ -323,7 +408,9 @@ def test_a_playlist_the_rotation_removed_never_takes_a_new_landings_tracks(
     cfg, root_id = native_library
     handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
     try:
-        gone = handle.create_playlist("Sunset Warmup", parent=handle.get_playlist(ID=root_id))
+        gone = handle.create_playlist(
+            "Sunset Warmup 2026-10-03", parent=handle.get_playlist(ID=root_id)
+        )
         handle.session.commit()
         gone_id = str(gone.ID)
     finally:
@@ -342,7 +429,7 @@ def test_a_playlist_the_rotation_removed_never_takes_a_new_landings_tracks(
 
     # A removed node holds no name, so the exact name is free, and the new
     # playlist is a new live row: the removed one gains nothing.
-    assert _inbox(cfg, root_id) == {"Sunset Warmup": ["One"]}
+    assert _inbox(cfg, root_id) == {"Sunset Warmup 2026-10-03": ["One"]}
     assert _members(cfg, gone_id) == []
 
 
@@ -371,7 +458,7 @@ def test_a_playlist_of_three_owned_and_two_new_lands_all_five_in_account_order(
     acted = _landed(cfg)
 
     inbox = _inbox(cfg, root_id)
-    assert inbox["Sunset Warmup"] == ["Held1", "New1", "Held2", "New2", "Held3"]
+    assert inbox["Sunset Warmup 2026-10-03"] == ["Held1", "New1", "Held2", "New2", "Held3"]
     # The owned rows are the library's own, never a second row for one file.
     assert len(_query(cfg, "SELECT ID FROM djmdContent WHERE Title = 'Held1'")) == 1
     (written,) = [
@@ -393,8 +480,8 @@ def test_an_owned_track_in_two_account_playlists_is_in_both(native_library, sile
     _landed(cfg)
 
     inbox = _inbox(cfg, root_id)
-    assert inbox["Sunset Warmup"] == ["Held1", "New1"]
-    assert inbox["Deep Cuts"] == ["New1", "Held1"]
+    assert inbox["Sunset Warmup 2026-10-03"] == ["Held1", "New1"]
+    assert inbox["Deep Cuts 2026-10-03"] == ["New1", "Held1"]
 
 
 def test_an_owned_track_whose_row_cannot_be_found_by_path_is_warned(native_library, silence):
@@ -409,9 +496,9 @@ def test_an_owned_track_whose_row_cannot_be_found_by_path_is_warned(native_libra
 
     acted = _landed(cfg)
 
-    assert _inbox(cfg, root_id) == {"Sunset Warmup": ["New1"]}
+    assert _inbox(cfg, root_id) == {"Sunset Warmup 2026-10-03": ["New1"]}
     (warning,) = [w for w in acted["warnings"] if w["code"] == account_playlists.LEFT_OUT]
-    assert "Sunset Warmup 1. Probe - Held1" in warning["message"]
+    assert "Sunset Warmup 2026-10-03 1. Probe - Held1" in warning["message"]
     assert account_playlists.NO_ROW in warning["message"]
 
 
@@ -437,8 +524,8 @@ def test_a_rerun_of_the_same_pass_adds_nothing_twice(native_library, silence, mo
     later = _landed(cfg)
 
     inbox = _inbox(cfg, root_id)
-    assert inbox["Sunset Warmup"] == ["Held1", "New1"]
-    assert inbox["Sunset Warmup 2"] == ["Late"]
+    assert inbox["Sunset Warmup 2026-10-03"] == ["Held1", "New1"]
+    assert inbox["Sunset Warmup 2026-10-03 2"] == ["Late"]
     assert not [w for w in later["warnings"] if w["code"] == account_playlists.LEFT_OUT]
 
 
@@ -456,7 +543,7 @@ def test_a_rerun_is_read_from_the_record_of_this_pass_alone(native_library, sile
     code, acted, _ = _two_acts(_land(missing_cli.synced_name(run)))
 
     assert code == int(ExitCode.OK), acted
-    assert _inbox(cfg, root_id)["Sunset Warmup 2"] == ["Held1", "New2"]
+    assert _inbox(cfg, root_id)["Sunset Warmup 2026-10-03 2"] == ["Held1", "New2"]
 
 
 def test_the_gate_screen_counts_the_owned_rows_beside_the_new(native_library, silence):
@@ -469,7 +556,9 @@ def test_the_gate_screen_counts_the_owned_rows_beside_the_new(native_library, si
 
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     shown = refused["cause"]["detail"]["shown"]
-    assert shown["account playlists"] == ["Sunset Warmup (2 file(s), 1 already in the library)"]
+    assert shown["account playlists"] == [
+        "Sunset Warmup 2026-10-03 (2 file(s), 1 already in the library), the account's Sunset Warmup"
+    ]
 
 
 def test_another_owned_row_is_another_plan():
