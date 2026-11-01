@@ -670,6 +670,29 @@ batch holding several sellers files each under its own label. A file with no
 label tag or no year is named on the screen and lands in INBOX filed under no
 label. This works once the intake tree is database native, as `--label` does.
 
+Or take all of it in one command, from your new purchases to the landing's gate:
+
+```bash
+crate sync bandcamp --seller PULS
+```
+
+It plans your purchases first, so a session that has expired stops there
+with the login step before anything downloads. It fetches what you do not
+own into `Bandcamp <today's date>` under download staging (or the folder
+`--batch` names), runs `tag folder`, `analyze run`, `analyze restamp` and
+`name apply` on it the way `crate sync land` does, rehearses the landing on a
+copy, and plans the landing itself, stopping at its gate with the commands
+that answer and apply it as the session and the rekordbox visit after. The
+batch is named `<date> Bandcamp <Label>` when every file is one label's, and
+`<date> Bandcamp` otherwise, and each file is filed under its own label tag.
+Leave out `--seller` for every seller. The report names the purchases and
+tracks held back as owned with the library file each is, what the fetch
+refused, the sellers no label names, and the files left with no genre. If a
+step stops, run the same command again with the same `--batch`: what was
+fetched is not fetched again, and whatever the folder holds is taken on
+through the tail. Nothing new to fetch and nothing staged ends with no
+landing. Like the landing it plans, it needs a database native intake tree.
+
 `sync labels` is retired. It queues nothing and names `label sync`, and `sync
 all` no longer sweeps labels either. A labels sweep queued before the guided
 sync replaced it still runs with `crate sync labels --job JOB_ID`, so a job
