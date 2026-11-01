@@ -1,0 +1,234 @@
+name = "u155"
+pass_kind = "light"
+
+[[rows]]
+id = "T1_version_guard"
+description = "_check_genre_subs: drop the schema version refusal, so a genre sub loads under version 4"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+old = '''        if version < GENRE_SUB_SCHEMA_VERSION:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "T2_band_guard"
+description = "_check_genre_subs: drop the refusal of a genre sub on a bucket that does not split by energy"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+old = '''        if not _band_names(bucket, energy):
+            problems.append(
+                f"[[bucket]] {bucket.id}: declares a genre sub and does not split by "'''
+new = '''        if False:
+            problems.append(
+                f"[[bucket]] {bucket.id}: declares a genre sub and does not split by "'''
+
+[[rows]]
+id = "T3_id_pattern"
+description = "_check_genre_subs: accept any identifier, a display name included"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+old = '''            if not _ID.match(genre.id):
+                problems.append(f"{where}: id {genre.id!r} must match {_ID.pattern}")
+            if not genre.display:'''
+new = '''            if False:
+                problems.append(f"{where}: id {genre.id!r} must match {_ID.pattern}")
+            if not genre.display:'''
+
+[[rows]]
+id = "T4_empty_display"
+description = "_check_genre_subs: accept an empty display, a playlist named the empty string"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+old = '''            if not genre.display:
+                problems.append(f"{where}: display must be a non-empty string")
+            if genre.id in seen_ids:'''
+new = '''            if False:
+                problems.append(f"{where}: display must be a non-empty string")
+            if genre.id in seen_ids:'''
+
+[[rows]]
+id = "T5_duplicate_id"
+description = "_check_genre_subs: never record a seen genre sub id, so two of one id load"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+old = '''            seen_ids.add(genre.id)'''
+new = '''            pass'''
+
+[[rows]]
+id = "T6_id_collision"
+description = "_check_genre_subs: accept an id that is already a band, a sub or a sub class"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+old = '''            elif genre.id in taken_ids:'''
+new = '''            elif False:'''
+
+[[rows]]
+id = "T7_display_collision"
+description = "_check_genre_subs: accept a display that is already a band label, the no reading sub or a sub class"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+old = '''            if genre.display in taken_displays:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "T8_empty_sources"
+description = "_check_genre_subs: accept a genre sub with no sources"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+old = '''            if not genre.sources:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "T9_source_alias"
+description = "_check_genre_subs: accept a source that is not an exact alias of the bucket"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+old = '''                if source not in aliases:'''
+new = '''                if False:'''
+
+[[rows]]
+id = "T10_source_claimed"
+description = "_check_genre_subs: accept one source in two genre subs"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+old = '''                if source in claimed:'''
+new = '''                if False:'''
+
+[[rows]]
+id = "T11_shape_check"
+description = "_build_buckets: read a genre_sub of the wrong shape as rows, not a problem"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+old = '''        if not isinstance(genre_raw, list) or not all(
+            isinstance(row, Mapping) for row in genre_raw
+        ):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "T12_sources_type"
+description = "_sources: take any value as the sources, a bare string read letter by letter"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+old = '''    if not isinstance(raw, list) or not all(isinstance(item, str) for item in raw):
+        return ()
+    return tuple(raw)'''
+new = '''    return tuple(raw or ())'''
+
+[[rows]]
+id = "T13_live_places"
+description = "live_places: leave the genre subs out of the one list of what a folder holds"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+old = '''    for genre in bucket.genre_subs:
+        ids.add(genre.id)
+        displays.add(genre.display)
+    return ids, displays'''
+new = '''    return ids, displays'''
+
+[[rows]]
+id = "T14_tagging_index"
+description = "_build_alias_indexes: leave a genre sub's source tagging as the bucket's name"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+old = '''                tagging[source.lower().strip()] = (bucket.id, genre.id)'''
+new = '''                pass'''
+
+[[rows]]
+id = "R1_exact_match"
+description = "routing.genre_sub: match a source case insensitively, so rominimal reaches the sub"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+old = '''        if value in genre.sources:'''
+new = '''        if value.lower() in {source.lower() for source in genre.sources}:'''
+
+[[rows]]
+id = "R2_tagger_branch"
+description = "suggest_tag: answer a genre sub hit with the bucket's display, as before the unit"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+old = '''        genre = _genre_sub_by_id(taxonomy.bucket(bucket_id), sub_id)
+        if genre is not None:'''
+new = '''        genre = _genre_sub_by_id(taxonomy.bucket(bucket_id), sub_id)
+        if False:'''
+
+[[rows]]
+id = "R3_tagger_spelling"
+description = "suggest_tag: always write the first source, not the one the word matched"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+old = '''            spelled = next(
+                (source for source in genre.sources if source.lower().strip() == lowered),
+                genre.sources[0],
+            )'''
+new = '''            spelled = genre.sources[0]'''
+
+[[rows]]
+id = "R4_genre_sub_named"
+description = "genre_sub_named: answer False, so a gate shows the genre sub as the energy sub"
+file = "src/cratekit/core/routing.py"
+surface = "user"
+old = '''    return _genre_sub_by_id(taxonomy.bucket(bucket_id), sub_id) is not None'''
+new = '''    return False'''
+
+[[rows]]
+id = "W1_derivation"
+description = "derive_from_taxonomy: place no genre sub, so the rebuild and resort never write it"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''        if genre is not None:
+            out.append(DeclaredPlacement(entry.location, resolution.bucket_id, genre.id))'''
+new = '''        if False:
+            out.append(DeclaredPlacement(entry.location, resolution.bucket_id, genre.id))'''
+
+[[rows]]
+id = "W2_destination"
+description = "destination: resolve no genre sub, so its playlist has no name"
+file = "src/cratekit/write/routing_pass.py"
+surface = "user"
+old = '''    for genre in bucket.genre_subs:
+        if genre.id == sub_id:
+            return bucket.display, genre.display'''
+new = ''''''
+
+[[rows]]
+id = "W3_gate_column"
+description = "_column: show a genre sub placement in the energy sub column, the round 1 defect"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''    if routing.genre_sub_named(declared, placement.bucket, placement.sub):
+        return genre'''
+new = ''''''
+
+[[rows]]
+id = "W4_gate_count"
+description = "_placed_counts: count no track as filed into a genre sub"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''        "genre sub": sum(1 for item in tracks if item.get("genre")),'''
+new = '''        "genre sub": 0,'''
+
+[[rows]]
+id = "W5_owed_once"
+description = "_owed_ratings: count a row once per placement again, two for a vocal track"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''        if placement.location in counted:
+            continue'''
+new = ''''''
+
+[[rows]]
+id = "W6_inbox_item_genre"
+description = "plan_inbox: carry an empty genre column on every item, the database gate hiding the second place"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''            "genre": genre.get(str(path), ""),'''
+new = '''            "genre": "",'''
+
+[[rows]]
+id = "W7_export_item_genre"
+description = "plan_export: carry an empty genre column on every item, the export gate hiding the second place"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''            "vocal": vocal.get(key, ""),
+            "genre": decision.genre.get(key, ""),'''
+new = '''            "vocal": vocal.get(key, ""),
+            "genre": "",'''
