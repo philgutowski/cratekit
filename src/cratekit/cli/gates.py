@@ -365,6 +365,19 @@ def load(run_id: str) -> RunState:
                 detail={"run_id": run_id, "error": str(exc)},
             )
         ) from None
+    # A RECORD IS AN OBJECT (U183). JSON that parses to anything else would
+    # raise AttributeError out of ``from_json``, past every reader that
+    # catches this module's refusals, the doctor's run scan among them.
+    if not isinstance(raw, dict):
+        raise CratekitError(
+            Cause(
+                reason="internal-error",
+                message=f"the run record for {run_id!r} is not a JSON object",
+                remediation=Remediation(remedy=Remedy.REPORT_DEFECT),
+                origin=("gates",),
+                detail={"run_id": run_id, "found": type(raw).__name__},
+            )
+        )
     return RunState.from_json(raw)
 
 

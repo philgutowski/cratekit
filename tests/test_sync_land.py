@@ -1334,6 +1334,32 @@ def test_a_land_run_that_recorded_no_pass_is_refused_and_says_why(machine, tail)
     assert tail.calls == []
 
 
+def test_a_land_run_whose_pass_no_intake_job_carries_is_refused_not_continued(machine, tail):
+    """The sitting 51 shape: a resolved id that the fourth step would refuse."""
+    stale = gates.new_run(ENTRY)
+    stale.related_runs["pass_run"] = "2026-10-30T00:00:00Z-gone"
+    gates.save(stale)
+
+    code, envelope = drive(["sync", "land", "--pass-run", stale.run_id])
+
+    assert envelope["cause"]["reason"] == "job-unknown", envelope
+    assert "2026-10-30T00:00:00Z-gone, no intake job" in envelope["cause"]["message"]
+    assert tail.calls == []
+
+
+def test_a_run_record_that_is_not_an_object_leaves_the_refusal_whole(machine, monkeypatch, tail):
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    code, first = drive(["sync", "land"])
+    assert code == int(ExitCode.PENDING_HUMAN), first
+    (gates.run_dir() / "2026-01-01T00:00:02Z-dead.json").write_text("[]\n")
+
+    code, envelope = drive(["sync", "land", "--pass-run", "2026-01-01T00:00:02Z-dead"])
+
+    assert envelope["cause"]["reason"] == "job-unknown", envelope
+    assert envelope["cause"]["detail"]["land_runs"] == {_summary(first)["pass_run"]: first["run_id"]}
+
+
 def test_a_record_with_no_related_runs_is_the_record_it_was_and_one_with_them_round_trips():
     state = gates.new_run(ENTRY)
     assert "related_runs" not in state.to_json()
