@@ -38,6 +38,8 @@ Sitting 46 (2026-10-27, the PULS Bandcamp batch) needed rekordbox opened to anal
 
 **5. Hand the lock over through `/mcp`, not by deleting the file.** The holder disables `computer-use` for its session from `/mcp`, which releases the lock cleanly. A deleted lock file lets the next session acquire, and the capture failure above followed that path. Whether a clean release avoids it is not yet measured; the next sitting that needs the lock from another session should release it cleanly and record whether `screenshot` then works.
 
+**6. Analyze Tracks opens on the last run's settings, and its Analysis Mode list needs a held press.** Found at sitting 47 (2026-10-27): the dialog came up on Dynamic, high precision on and KEY off, none of them Phillip's standard, and a click on the Analysis Mode control did nothing, so the run started on Dynamic and could be stopped only by quitting rekordbox. The list opens only while the mouse is held down on it: press, move to the item still holding, release on it, then read the control back. Read every field back from a screenshot before OK. The `rekordbox-visit` project skill carries the whole procedure and the settings table (U173).
+
 ## Why This Matters
 
 An attended sitting is the only place rekordbox is opened, and its rows in the record are what the product's native writes are proven against. A session that stops at the first screenshot failure leaves rekordbox open on the live library, every `crate` verb in every other session held, and the landed rows unanalysed. The shell capture costs one extra round trip per action and loses nothing.
