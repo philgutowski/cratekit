@@ -38,6 +38,13 @@ session, and the rekordbox visit that follows. This verb never starts a backup,
 never opens rekordbox and never writes a beat grid; it refuses before any write
 while rekordbox or a backup is running.
 
+EITHER RUN ID CONTINUES THE PASS, SINCE U183. A pass has two: the land run this
+verb prints as its own, and the ``sync all`` run its intake jobs carry, which is
+the one every step reads. The land run's record names its pass the moment that
+pass is known, so ``--pass-run`` takes either, an id that is neither is refused
+before any step runs, and every way on the verb prints ends with the one
+command that continues the pass.
+
 THE OUTBOUND HEARTS ARE NOT THIS VERB'S. ``sync all`` is run with no export, so
 the favourites write half refuses its own precondition and stays behind its own
 gate, while the hearts are listed inbound like any playlist. A provider that
@@ -53,7 +60,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
-from cratekit.cli import registry, tail
+from cratekit.cli import gates, registry, tail
 from cratekit.cli.output import Envelope, PendingHumanAction
 from cratekit.cli.tail import (
     ACK_STOP,
@@ -104,6 +111,16 @@ BACKUP_VERB = "backup.run"
 #: export is handed to it, so it refuses its own precondition (module docstring).
 OUTBOUND_UNASKED = "outbound-export-required"
 
+#: This verb's own name, which a land run's record carries.
+LAND_VERB_NAME = "sync.land"
+
+#: The role a land run's record names its pass under (U183),
+#: :attr:`cratekit.cli.gates.RunState.related_runs`.
+PASS_ROLE = "pass_run"
+
+#: How many of the library's recent passes a refused ``--pass-run`` names.
+RECENT_PASSES = 5
+
 #: The seam every step goes through, the shared chain's own, so one stand in
 #: serves both verbs that run it.
 Child = tail.Child
@@ -117,9 +134,10 @@ def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
         dest="pass_run",
         metavar="RUN_ID",
         help=(
-            "continue the pass crate sync all queued under this run, rather than "
-            "starting a new one; a job that already ended is read, not driven "
-            "again, and the tail runs again over the staging folder"
+            "continue an earlier pass rather than starting a new one, named by the "
+            "run crate sync land printed for it or the run crate sync all queued "
+            "it under; a job that already ended is read, not driven again, and "
+            "the tail runs again over the staging folder"
         ),
     )
     parser.set_defaults(_handler=sync_land)
@@ -180,8 +198,12 @@ def _summary_of(envelope: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _preflight(report: _Pass, cfg: config.Config) -> None:
-    """Refuse before any step while rekordbox, or a backup's driver, is up.
+def _preflight(report: _Pass, cfg: config.Config, given: str | None) -> str | None:
+    """Resolve a continued pass, then refuse while rekordbox, or a backup's driver, is up.
+
+    Returns the pass to continue, or None for a new one. The pass is resolved
+    first (:func:`_resolve`), so an id that names no pass is refused before
+    any step runs, and a refusal here names the command that comes back to it.
 
     Rekordbox through the guarded writer's own predicate, so this refusal and
     the landing's are one question asked twice. A backup by its job's driver
@@ -189,6 +211,17 @@ def _preflight(report: _Pass, cfg: config.Config) -> None:
     the queue whose driver died is not running and does not hold the pass.
     """
     report.say(PREFLIGHT, "rekordbox and backups")
+    taken = _resolve(report, cfg, given) if given else None
+    again = _continue_command(taken) if taken else "crate sync land"
+    try:
+        _nothing_running(cfg)
+    except CratekitError as exc:
+        raise tail.with_steps(exc, f"then run it again: {again}") from None
+    report.check(PREFLIGHT, "ok", "rekordbox is closed and no backup is running")
+    return taken
+
+
+def _nothing_running(cfg: config.Config) -> None:
     rb_writer.assert_rekordbox_closed("crate sync land")
     key = registry.entry(BACKUP_VERB).handler_key
     open_states = [state for state in jobs.JobState if state not in jobs.TERMINAL_STATES]
@@ -212,7 +245,147 @@ def _preflight(report: _Pass, cfg: config.Config) -> None:
                 detail={"job_id": job.job_id},
                 inner=exc.cause,
             ) from exc
-    report.check(PREFLIGHT, "ok", "rekordbox is closed and no backup is running")
+
+
+def _continue_command(pass_run: str) -> str:
+    """The one command that continues ``pass_run``, as every way on prints it."""
+    return f"crate sync land --pass-run {pass_run}"
+
+
+# ---------------------------------------------------------------------------
+# Which pass --pass-run names (U183)
+# ---------------------------------------------------------------------------
+
+
+def _land_record(run_id: str) -> gates.RunState | None:
+    """``run_id``'s record when it is a ``sync land`` run's, else None.
+
+    Only a bare identifier is looked up, so a value with a path in it reads
+    no file outside the run records. A record that cannot be read is no land
+    run, since the refusal that follows names the ids that do work.
+    """
+    if not run_id or run_id != Path(run_id).name or run_id.startswith("."):
+        return None
+    if not gates.run_path(run_id).is_file():
+        return None
+    try:
+        state = gates.load(run_id)
+    except (CratekitError, KeyError, TypeError, ValueError, OSError):
+        return None
+    return state if state.verb == LAND_VERB_NAME else None
+
+
+def _resolve(report: _Pass, cfg: config.Config, given: str) -> str:
+    """The pass ``--pass-run`` names: a pass run as given, a land run as the pass it recorded.
+
+    A PASS RUN IS ONE AN INTAKE JOB OF THIS LIBRARY CARRIES, which is exactly
+    what ``intake missing --run`` asks of it at the fourth step, so an id that
+    passes here is never refused there for the same reason. Anything else is
+    refused now, before a step runs or a provider is called.
+    """
+    with jobs.open_store() as store:
+        if _pass_jobs(store, given, cfg):
+            return given
+    land = _land_record(given)
+    recorded = land.related_runs.get(PASS_ROLE) if land is not None else None
+    if recorded:
+        with jobs.open_store() as store:
+            if _pass_jobs(store, recorded, cfg):
+                report.check(
+                    PREFLIGHT,
+                    "info",
+                    f"run {given} is a crate sync land run; continuing the pass it "
+                    f"recorded, run {recorded}",
+                )
+                return recorded
+    raise _unknown_pass(cfg, given, land, recorded)
+
+
+def _recent_passes(cfg: config.Config) -> list[str]:
+    """The passes this library's intake jobs carry, newest first, each once."""
+    from cratekit.intake import cli as intake_cli  # noqa: PLC0415 - one module's keys
+
+    found: list[str] = []
+    with jobs.open_store() as store:
+        for job in jobs.list_jobs(store):
+            run_id = _run_of(job)
+            if (
+                run_id
+                and run_id not in found
+                and job.handler_key in intake_cli.INTAKE_KEYS
+                and job.library_id == cfg.library.volume_id
+            ):
+                found.append(run_id)
+    return found[:RECENT_PASSES]
+
+
+def _land_runs_of(passes: Sequence[str]) -> dict[str, str]:
+    """The newest land run recorded for each of ``passes``, where one is."""
+    try:
+        paths = sorted(gates.run_dir().glob("*.json"))
+    except OSError:
+        return {}
+    found: dict[str, str] = {}
+    for path in paths:
+        land = _land_record(path.stem)
+        recorded = land.related_runs.get(PASS_ROLE) if land is not None else None
+        if land is not None and recorded in passes:
+            found[str(recorded)] = land.run_id
+    return found
+
+
+def _unknown_pass(
+    cfg: config.Config, given: str, land: gates.RunState | None, recorded: str | None
+) -> CratekitError:
+    """The refusal for an id that names no pass of this library, with the ids that do."""
+    if land is None:
+        why = "it is neither a pass run an intake job of this library carries nor a crate sync land run"
+    elif recorded:
+        why = (
+            f"it is a crate sync land run whose pass, run {recorded}, no intake job "
+            f"of this library carries"
+        )
+    else:
+        why = (
+            "it is a crate sync land run that recorded no pass: it queued nothing, "
+            "stopped before its pass was queued, or was run by a build before U183"
+        )
+    passes = _recent_passes(cfg)
+    lands = _land_runs_of(passes)
+    steps = [
+        f"continue pass {run_id}"
+        + (f" (crate sync land run {lands[run_id]})" if run_id in lands else "")
+        + f": {_continue_command(run_id)}"
+        for run_id in passes
+    ]
+    known = (
+        "; the library's recent passes are " + ", ".join(passes)
+        if passes
+        else "; this library has no pass with an intake job to continue"
+    )
+    return refuse(
+        "job-unknown",
+        f"crate sync land cannot continue run {given!r}: {why}{known}",
+        steps=(*steps, "or start a new pass: crate sync land"),
+        origin=_ORIGIN,
+        detail={"run_id": given, "recent_passes": passes, "land_runs": lands},
+    )
+
+
+def _remember(ctx: Context, report: _Pass, pass_run: str) -> None:
+    """Record the pass on this run's own record now, before any step can stop it.
+
+    The dispatcher saves the record only when the verb answers or a gate
+    refuses, so a pass that fails at a later step, or is interrupted, would
+    otherwise leave a land run whose id continues nothing.
+    """
+    ctx.run.related_runs[PASS_ROLE] = pass_run
+    gates.save(ctx.run)
+    report.say(
+        SYNC,
+        f"the pass is run {pass_run}; if it stops, continue it with: "
+        f"{_continue_command(pass_run)}",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -294,8 +467,8 @@ def _left_behind(report: _Pass, cfg: config.Config, taken: str | None) -> None:
     for job in left:
         run_id = _run_of(job)
         ways.append(
-            f"{job.job_id} ({job.state}), continue its pass with: crate sync land "
-            f"--pass-run {run_id}"
+            f"{job.job_id} ({job.state}), continue its pass with: "
+            f"{_continue_command(run_id)}"
             if run_id
             else f"{job.job_id} ({job.state}), queued by hand, drive it with: crate "
             + " ".join(tail.argv_for(job))
@@ -387,11 +560,13 @@ def _intake(report: _Pass, run_id: str, cfg: config.Config) -> None:
                 raise _Stop(INTAKE, error)
             # AN INTAKE JOB THAT ENDED is not driven again by a continued pass,
             # so the way on is the job's own retry or a new pass.
-            way_on = (
-                f"retry the job, then continue the pass: crate job resume {job.job_id}"
-                if job.cause is not None and job.cause.retryable
-                else "the job cannot succeed on resume; start a new pass with: crate sync land"
-            )
+            # A RETRYABLE ONE IS, ONCE ITS OWN RETRY HAS RUN, so its way on ends
+            # with the continuation (U183); one that cannot succeed ends with a
+            # new pass, the one command that can.
+            if job.cause is not None and job.cause.retryable:
+                retry = f"retry the job first: crate job resume {job.job_id}"
+                raise _Stop(INTAKE, tail.with_steps(error, retry))
+            way_on = "the job cannot succeed on resume; start a new pass with: crate sync land"
             raise _Stop(INTAKE, tail.with_steps(error, way_on), continues=False)
     report.check(
         INTAKE,
@@ -549,7 +724,7 @@ def _attended(ctx: Context, report: _Pass, stop: _Attend) -> Envelope:
     if stop.step == LAND:
         after = REKORDBOX_STEPS
     elif resume:
-        after = (f"then continue the pass: crate sync land --pass-run {resume}",)
+        after = (f"then continue the pass: {_continue_command(resume)}",)
     else:
         after = ("then run the pass again: crate sync land",)
     said = tail.attended(report, stop, after=after)
@@ -576,7 +751,7 @@ def _choose(ctx: Context, report: _Pass, choose: _Choose) -> Envelope:
     """The PENDING envelope a pass ends on when several earlier passes are open."""
     report.summary["stopped_at"] = SYNC
     report.summary["open_passes"] = list(choose.runs)
-    steps = tuple(f"continue one pass: crate sync land --pass-run {run}" for run in choose.runs)
+    steps = tuple(f"continue one pass: {_continue_command(run)}" for run in choose.runs)
     report.check(
         SYNC,
         "info",
@@ -620,7 +795,7 @@ def _ended(report: _Pass, stop: _Stop) -> CratekitError:
         steps = (
             *steps,
             f"every step before {stop.step} is kept; continue the pass with: "
-            f"crate sync land --pass-run {resume}",
+            f"{_continue_command(resume)}",
         )
     return rebuilt(
         stop.error,
@@ -636,14 +811,15 @@ def sync_land(ctx: Context) -> Envelope:
     """Take one sync pass to its landing gate. See the module docstring."""
     cfg = _load()
     report = _report(ctx.progress)
-    _preflight(report, cfg)
+    run_id = _preflight(report, cfg, ctx.args.pass_run)
     try:
-        run_id = ctx.args.pass_run
         if run_id:
             report.summary["pass_run"] = run_id
             report.check(SYNC, "info", f"continuing the pass queued under run {run_id}")
         else:
             run_id = _sync(report, cfg)
+        if run_id:
+            _remember(ctx, report, run_id)
         _left_behind(report, cfg, run_id)
         if run_id is None:
             raise _Done(SYNC)

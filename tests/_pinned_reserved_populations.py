@@ -594,6 +594,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     # tail and the landing moved to ``cli/tail.py``, and their five with them.
     'cli/sync_land.py': [
         'job-driver-held',
+        'job-unknown',  # 2026-11-01, U183: a --pass-run that names no pass.
         'outbound-export-required',
         'sync-land-download-refused',
         'sync-land-intake-left-open',
@@ -2336,6 +2337,7 @@ PINNED_LITERAL_HOLDERS = {
     # moved to ``cli/tail.py`` with the tail and the landing.
     'cli/sync_land.py': [
         'job-driver-held',
+        'job-unknown',  # 2026-11-01, U183: a --pass-run that names no pass.
         'outbound-export-required',
     ],
     # 2026-11-01, U190: the tail and the landing, lifted out of the sync pass driver.
