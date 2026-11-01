@@ -522,6 +522,8 @@ crate label sync --go
 crate review list --queue label-release
 crate review resolve ITEM_ID --verdict accepted --actor YOUR_NAME
 crate label approved
+crate label playlists "Some Label" --releases
+crate label playlists "Some Label"
 ```
 
 `label sync` is the guided way through your labels. It walks them one at a
@@ -591,6 +593,22 @@ you fetch the same tracks twice. A release the provider has withdrawn is reporte
 a failing line and the other releases are still listed. A track you hold in
 another version becomes a review question, and is listed on a later run once you
 answer it.
+
+`label playlists` keeps a label's folder on the streaming account: one
+`<Label>` folder holding a private `<Label> <year>` playlist per release year.
+It adds and never removes, and asks one explicit gate, `label.playlists.confirm`,
+over a plan naming every playlist and how many tracks it adds. After a `label
+sync --go`, `--releases` adds only the releases that go took for the label: it
+reads just those releases from the provider, two calls each, creates the folder
+or a year playlist if either is missing, and leaves every other year alone. A
+second run plans nothing. Without `--releases` the build reads the label's
+whole catalogue, two calls for every release it lists, which on a label of
+thousands of releases is hours of calls. So it counts the listing first, and
+when the estimate is over 500 calls it stops at its own explicit gate,
+`label.playlists.crawl`, showing the release count, the calls and the time,
+and reads nothing more until you answer `crawl`. A full build that the
+provider's rate limit stops part way keeps nothing it read, so the next run
+starts the crawl again.
 
 ### Sync from streaming
 

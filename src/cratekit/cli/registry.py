@@ -2121,6 +2121,18 @@ ENTRIES: tuple[Entry, ...] = (
                 explicit=True,
                 digest_source="plan",
             ),
+            # U191. A full build whose listing estimates more provider calls
+            # than ``playlists_cli.FULL_BUILD_CALLS`` stops here before any
+            # release is read. It writes nothing; it spends the provider's
+            # patience, which a breaker trip on a label of thousands of
+            # releases showed is worth a deliberate act of its own.
+            GateSpec(
+                name="label.playlists.crawl",
+                options=("crawl", "abort"),
+                prompt="Read this label's whole catalogue from the provider?",
+                explicit=True,
+                digest_source="plan",
+            ),
         ),
     ),
     Entry(
