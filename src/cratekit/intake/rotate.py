@@ -600,14 +600,15 @@ def live_batches(
     """Every batch directly under INBOX, by this module's one rule of what a batch is.
 
     A BATCH IS WHAT :func:`plan_rotation` CALLS ONE, read by the same
-    classifier, so the mirror and the rotation never disagree on it. A batch
-    the rotation would MOVE into Old on ``today`` is not live: ``crate
-    organize`` applies the rekordbox area before the account area, so the
-    same sitting moves it, and a mirror made for it would be removed again on
-    the next. A batch with no date to age it from, or dated after ``today``,
-    is one the rotation leaves in INBOX, so it is live. Old and everything in
-    it is not live, and neither is a folder, a smart playlist, INBOX /
-    Analyze or a playlist no rule recognises.
+    classifier, so the mirror and the rotation never disagree on it. Its age
+    decides nothing here: A BATCH IS LIVE WHILE IT SITS UNDER INBOX, stale or
+    not, since whether a rotation moves it this run is not known when the
+    mirror is planned (its gate may be declined, or the rotation not asked
+    for), and a batch with no date to age it from, or dated after ``today``,
+    is one the rotation leaves in INBOX. The cost, a stale batch mirrored by
+    the same organize run that moves it and removed at the next, is a
+    residual. Old and everything in it is not live, and neither is a folder,
+    a smart playlist, INBOX / Analyze or a playlist no rule recognises.
 
     Reads, writes nothing, needs no ``[intake_old]`` declared. Refuses as
     :func:`anchored_root` refuses, by name, on an intake tree that is not
@@ -632,8 +633,6 @@ def live_batches(
             expired_days=cfg.reports.intake_expired_days,
             named=found.by_name,
         )
-        if isinstance(classified, Batch) and classified.action == MOVE:
-            continue
         if isinstance(classified, Batch) or classified.kind == "batch":
             batches.append((classified.playlist_id, classified.name))
     return Live(

@@ -361,6 +361,15 @@ def test_an_inbox_with_no_live_batch_makes_no_empty_folder(installed, monkeypatc
     assert world.account.folders_created == []
 
 
+def test_a_genre_folder_with_no_playlist_still_makes_its_folder(installed, monkeypatch):
+    """Only the retiring folder waits for something to hold, U147's shape stands."""
+    world = _world(installed, monkeypatch, mirror.Folder(name="Techno"))
+
+    world.run()
+
+    assert world.account.folders_created == ["Techno"]
+
+
 def test_a_deleted_inbox_folder_with_only_removals_left_is_not_made_again(installed, monkeypatch):
     world = _world(installed, monkeypatch, _three())
     world.run()
@@ -549,8 +558,9 @@ def test_a_batch_with_no_date_is_still_live(native_library):
     assert [name for _id, name in _live(cfg).batches] == ["2026-10-09 Favorites"]
 
 
-def test_a_batch_the_same_sitting_rotates_into_old_is_not_live(native_library):
-    """organize applies the rekordbox area first, so a mirror made for it would go next run."""
+def test_a_stale_batch_is_live_until_it_actually_leaves_inbox(native_library):
+    """Whether this run's rotation moves it is not known when the mirror is planned:
+    its gate may be declined, or ``--only mirror`` asks for no rotation at all."""
     cfg, root_id = native_library
     stale = cfg.reports.intake_stale_days
     moving = _node(cfg, "a batch named by hand", under=root_id, age=0, tracks=("t1",))
@@ -560,9 +570,7 @@ def test_a_batch_the_same_sitting_rotates_into_old_is_not_live(native_library):
 
     live = _live(cfg)
 
-    assert live.batches == ((staying, "another named by hand"),)
-    # Still there, so a mirror of it already made is left, not removed, until it moves.
-    assert "a batch named by hand" in live.present
+    assert live.batches == ((moving, "a batch named by hand"), (staying, "another named by hand"))
 
 
 def test_two_batches_of_one_name_refuse_the_inbox_folder_by_name(native_library):
