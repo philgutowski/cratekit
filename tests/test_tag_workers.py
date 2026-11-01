@@ -709,7 +709,7 @@ def test_a_folder_of_three_tags_the_two_with_no_genre_and_leaves_the_third(
         answering({"a": hit("deep house", SPECIFIC), "b": hit("deep house", SPECIFIC)}),
     )
 
-    code, queued = drive(["tag", "folder", str(folder)])
+    code, queued = drive(["tag", "folder", "--queue-only", str(folder)])
     assert code == int(ExitCode.OK), queued
     job = tag_job()
     assert list(item_states(job.job_id)) == ["a.flac", "b.flac", "c.flac"], (
@@ -748,7 +748,7 @@ def test_a_file_in_a_subfolder_keeps_its_relative_identifier_and_is_still_tagged
     place(folder / "sub", silence, "deep")
     bound(monkeypatch, answering({"deep": hit("deep house", SPECIFIC)}))
 
-    drive(["tag", "folder", str(folder)])
+    drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
     assert list(item_states(job.job_id)) == [str(Path("sub") / "deep.flac")]
 
@@ -771,7 +771,7 @@ def test_the_skip_reason_reaches_the_report_and_not_only_the_artifact(
     place(folder, silence, "b", genre=SPECIFIC)
     bound(monkeypatch, answering({}))
 
-    drive(["tag", "folder", str(folder)])
+    drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
     _code, resumed = drive(resume_argv(job.job_id))
 
@@ -818,7 +818,7 @@ def test_the_report_names_each_unresolved_source_genre_with_its_count(
         answering({"a": hit("Techno"), "b": hit("Techno"), "c": hit("Electronic")}),
     )
 
-    drive(["tag", "folder", str(folder)])
+    drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
     _code, resumed = drive(resume_argv(job.job_id))
 
@@ -862,7 +862,7 @@ def test_the_report_names_each_off_taxonomy_genre_and_the_sweep_warns(
         ),
     )
 
-    drive(["tag", "folder", str(folder)])
+    drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
     _code, resumed = drive(resume_argv(job.job_id))
 
@@ -966,7 +966,7 @@ def test_blocked_fallbacks_reach_every_artifact_and_the_summary_and_never_read_a
     }
     bound(monkeypatch, _catalogues({"a": refused, "b": refused}))
 
-    drive(["tag", "folder", str(folder)])
+    drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
     code, resumed = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK), resumed
@@ -1034,7 +1034,7 @@ def test_a_fallback_blocked_on_every_file_it_was_asked_about_is_named_by_the_war
         ),
     )
 
-    drive(["tag", "folder", str(folder)])
+    drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
     _code, resumed = drive(resume_argv(job.job_id))
 
@@ -1078,7 +1078,7 @@ def test_one_unread_file_beside_a_parse_break_is_counted_and_the_defect_is_said(
         ),
     )
 
-    drive(["tag", "folder", str(folder)])
+    drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
     _code, resumed = drive(resume_argv(job.job_id))
 
@@ -1105,7 +1105,7 @@ def test_a_sweep_beatport_matched_whole_names_no_fallback_as_blocked(
     )
     bound(monkeypatch, _catalogues({"a": {searchers.BEATPORT: matched}}))
 
-    drive(["tag", "folder", str(folder)])
+    drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
     _code, resumed = drive(resume_argv(job.job_id))
 
@@ -1127,7 +1127,7 @@ def test_four_real_misses_are_no_hit_and_carry_no_unread_warning(
     bound(monkeypatch, _catalogues({"a": ALL_MISSED}))
     general(monkeypatch, DEEZER_UNKNOWN)
 
-    drive(["tag", "folder", str(folder)])
+    drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
     _code, resumed = drive(resume_argv(job.job_id))
 
@@ -1159,7 +1159,7 @@ def test_a_published_genre_reaches_the_file_the_artifact_and_the_summary(
     general(monkeypatch, deezer_track(), deezer_album(["Rock"]), seen)
     expected = routing.suggest_tag(TAXONOMY, "Rock").tag
 
-    drive(["tag", "folder", str(folder)])
+    drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
     code, resumed = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK), resumed
@@ -1220,7 +1220,7 @@ def test_a_general_catalogue_unread_on_every_file_is_named_in_the_summary(
     asked: list[str] = []
     general(monkeypatch, RATE_LIMITED, seen=asked)
 
-    drive(["tag", "folder", str(folder)])
+    drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
     code, resumed = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK), resumed
@@ -1268,7 +1268,7 @@ def test_a_general_catalogue_unread_on_some_files_says_how_many_of_how_many(
     )
     monkeypatch.setattr(published, "for_lookup", lambda: lookup)
 
-    drive(["tag", "folder", str(folder)])
+    drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
     _code, resumed = drive(resume_argv(job.job_id))
 
@@ -1296,7 +1296,7 @@ def test_a_block_on_a_file_a_record_shop_declined_is_still_said(
     bound(monkeypatch, _catalogues({"a": {searchers.BEATPORT: declined}}))
     general(monkeypatch, RATE_LIMITED)
 
-    drive(["tag", "folder", str(folder)])
+    drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
     _code, resumed = drive(resume_argv(job.job_id))
 
@@ -1316,7 +1316,7 @@ def test_a_parse_break_at_the_general_catalogue_says_a_rerun_will_not_move_it(
     bound(monkeypatch, _catalogues({"a": ALL_MISSED}))
     general(monkeypatch, '["a JSON answer in a shape this reader does not know"]')
 
-    drive(["tag", "folder", str(folder)])
+    drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
     _code, resumed = drive(resume_argv(job.job_id))
 
@@ -1341,7 +1341,7 @@ def test_files_with_no_isrc_are_counted_and_warned_about_whatever_their_skip_rea
         place(folder, silence, name)
     bound(monkeypatch, _catalogues({"a": REFUSED_FALLBACKS, "b": ALL_MISSED}))
 
-    drive(["tag", "folder", str(folder)])
+    drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
     code, resumed = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK), resumed
@@ -1376,7 +1376,7 @@ def test_a_published_word_with_no_folder_is_listed_as_unresolved(
     bound(monkeypatch, _catalogues({"a": ALL_MISSED}))
     general(monkeypatch, deezer_track(), deezer_album(["Films/Games"]))
 
-    drive(["tag", "folder", str(folder)])
+    drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
     _code, resumed = drive(resume_argv(job.job_id))
 
@@ -1404,7 +1404,7 @@ def test_a_sweep_with_nothing_off_taxonomy_carries_no_such_warning(
         place(folder, silence, name)
     bound(monkeypatch, answering({"a": hit("Deep House", "Deep House"), "b": hit("Techno")}))
 
-    drive(["tag", "folder", str(folder)])
+    drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
     _code, resumed = drive(resume_argv(job.job_id))
 
@@ -1430,7 +1430,7 @@ def test_the_art_repair_reaches_the_artifact_and_the_summary_counts_every_status
             plant(path, _jpeg(320, 200))
     bound(monkeypatch, answering({}))
 
-    drive(["tag", "folder", str(folder)])
+    drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
     _code, resumed = drive(resume_argv(job.job_id))
 
@@ -1509,7 +1509,7 @@ def test_new_art_reaches_the_file_the_artifact_and_the_summary(
 
     monkeypatch.setattr(searchers, "for_images", lambda: fetch_image)
 
-    drive(["tag", "folder", str(folder)])
+    drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
     code, resumed = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK), resumed
@@ -1553,7 +1553,7 @@ def test_the_counts_are_read_off_the_artifacts_rather_than_accumulated_in_memory
         place(folder, silence, name)
     bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
 
-    drive(["tag", "folder", str(folder)])
+    drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
     _code, resumed = drive(resume_argv(job.job_id))
 
@@ -1579,7 +1579,7 @@ def test_a_folder_holding_no_audio_queues_nothing_and_says_which_zero_it_is(
     """
     (folder / "cover.jpg").write_bytes(b"not audio")
 
-    code, envelope = drive(["tag", "folder", str(folder)])
+    code, envelope = drive(["tag", "folder", "--queue-only", str(folder)])
 
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
@@ -1612,7 +1612,7 @@ def test_an_empty_folder_argument_never_sweeps_the_working_directory(
     place(folder, silence, "a")
     monkeypatch.chdir(folder)
 
-    code, envelope = drive(["tag", "folder", ""])
+    code, envelope = drive(["tag", "folder", "--queue-only", ""])
 
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
@@ -1642,7 +1642,7 @@ def test_tagging_the_download_root_queues_nothing_from_the_acquisition_staging_t
     staged = folder / acquire_cli.ACQUIRE_STAGING_DIRNAME / "job-1" / "0" / "partial"
     place(staged.parent, silence, staged.name)
 
-    code, envelope = drive(["tag", "folder", str(folder)])
+    code, envelope = drive(["tag", "folder", "--queue-only", str(folder)])
 
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
@@ -1664,7 +1664,7 @@ def test_a_real_track_beside_the_staging_tree_is_still_queued(cfg, folder, silen
     staged = folder / acquire_cli.ACQUIRE_STAGING_DIRNAME / "job-1" / "0" / "partial"
     place(staged.parent, silence, staged.name)
 
-    code, envelope = drive(["tag", "folder", str(folder)])
+    code, envelope = drive(["tag", "folder", "--queue-only", str(folder)])
 
     assert code == int(ExitCode.OK), envelope
     assert list(item_states(tag_job().job_id)) == ["committed.flac"]
@@ -1677,7 +1677,7 @@ def test_a_folder_that_is_not_there_is_a_different_zero_from_an_empty_one(cfg, t
     not exist. Folding them into one warning makes a typed path look like an
     empty download directory.
     """
-    code, envelope = drive(["tag", "folder", str(tmp_path / "no-such-folder")])
+    code, envelope = drive(["tag", "folder", "--queue-only", str(tmp_path / "no-such-folder")])
 
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
@@ -1707,7 +1707,7 @@ def test_a_searcher_that_raises_part_way_fails_only_its_own_item(
     table = {name: hit("deep house", SPECIFIC) for name in ("a", "b", "c")}
     bound(monkeypatch, raising_on(answering(table), "b"))
 
-    drive(["tag", "folder", str(folder)])
+    drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
     code, resumed = drive(resume_argv(job.job_id))
 
@@ -1740,7 +1740,7 @@ def test_a_retried_job_drives_only_the_item_that_failed(
         place(folder, silence, name)
     table = {name: hit("deep house", SPECIFIC) for name in ("a", "b", "c")}
     bound(monkeypatch, raising_on(answering(table), "b"))
-    drive(["tag", "folder", str(folder)])
+    drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
     drive(resume_argv(job.job_id))
 
@@ -1774,7 +1774,7 @@ def test_a_file_removed_between_the_queueing_and_the_drive_is_refused_by_name(
         place(folder, silence, name)
     bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
 
-    drive(["tag", "folder", str(folder)])
+    drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
     (folder / "b.flac").unlink()
     code, resumed = drive(resume_argv(job.job_id))
@@ -1806,7 +1806,7 @@ def test_the_resume_argv_round_trips_the_frozen_folder_and_asks_for_no_run(
     place(folder, silence, "a")
     bound(monkeypatch, answering({}))
 
-    drive(["tag", "folder", str(folder)])
+    drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
 
     argv = resume_argv(job.job_id)
@@ -2774,7 +2774,7 @@ def test_queueing_a_folder_names_the_job_and_the_command_that_drives_it(
     """Sitting 9: ``ok`` in under a second, and the identifier nowhere a person reads."""
     place(folder, silence, "a")
 
-    code, text = drive_human(["tag", "folder", str(folder)])
+    code, text = drive_human(["tag", "folder", "--queue-only", str(folder)])
 
     assert code == int(ExitCode.OK), text
     job = tag_job()
@@ -2785,8 +2785,126 @@ def test_queueing_a_folder_names_the_job_and_the_command_that_drives_it(
 
 
 def test_a_folder_with_nothing_to_tag_names_no_job(cfg, folder):
-    code, text = drive_human(["tag", "folder", str(folder)])
+    code, text = drive_human(["tag", "folder", "--queue-only", str(folder)])
 
     assert code == int(ExitCode.OK), text
     assert text.splitlines()[0] == "tag.folder: no_op", text
     assert "  job:" not in text, text
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U192: run by hand, the verb drives the sweep it queues, in one command
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_tag_folder_by_hand_queues_and_drives_its_sweep_to_succeeded_in_one_call(
+    cfg, folder, silence, monkeypatch
+):
+    """The brief's first scenario, read back off the files rather than the report."""
+    place(folder, silence, "a")
+    place(folder, silence, "b")
+    searcher = bound(
+        monkeypatch,
+        answering({"a": hit("deep house", SPECIFIC), "b": hit("deep house", SPECIFIC)}),
+    )
+
+    code, settled = drive(["tag", "folder", str(folder)])
+
+    assert code == int(ExitCode.OK), settled
+    job = tag_job()
+    assert settled["data"]["job_id"] == job.job_id
+    assert settled["data"]["state"] == "succeeded"
+    progress = settled["data"]["progress"]
+    assert progress["settled"] == progress["total"] == 2
+    assert progress["tagging"]["tagged"] == 2, "the settled answer is the resume's summary"
+    assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
+    assert tags.read_genre_from_file(folder / "a.flac") == SPECIFIC
+    assert tags.read_genre_from_file(folder / "b.flac") == SPECIFIC
+    assert searcher.asked == [("", "a"), ("", "b")], "a file was asked about twice"
+    with jobs.open_store() as store:
+        assert jobs.get(store, job.job_id).attempts == 1
+
+
+def test_tag_folder_by_hand_prints_the_settled_job_and_no_drive_command(
+    cfg, folder, silence, monkeypatch
+):
+    place(folder, silence, "a")
+    bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
+
+    code, text = drive_human(["tag", "folder", str(folder)])
+
+    assert code == int(ExitCode.OK), text
+    job = tag_job()
+    lines = text.splitlines()
+    assert f"  job: {job.job_id}, succeeded" in lines, text
+    assert "  items: 1 of 1 settled" in lines, text
+    assert "drive it with" not in text, "a settled job was offered a second driver"
+
+
+def test_tag_folder_queue_only_returns_the_sweep_queued_with_nothing_asked(
+    cfg, folder, silence, monkeypatch
+):
+    place(folder, silence, "a")
+    searcher = bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
+
+    code, queued = drive(["tag", "folder", "--queue-only", str(folder)])
+
+    assert code == int(ExitCode.OK), queued
+    assert queued["data"]["state"] == "queued"
+    assert set(item_states(tag_job().job_id).values()) == {jobs.ItemState.PENDING}
+    assert searcher.asked == [], "a queue only call drove the sweep"
+
+
+def test_tag_folder_queue_only_beside_job_is_refused_before_anything_is_queued(
+    cfg, folder, silence
+):
+    place(folder, silence, "a")
+
+    code, refused = drive(["tag", "folder", str(folder), "--job", "j-1", "--queue-only"])
+
+    assert code == 2, "argparse's own refusal, before the verb runs"
+    assert refused == {}, "the verb ran and answered with an envelope"
+    with jobs.open_store() as store:
+        assert list(jobs.list_jobs(store)) == []
+
+
+def test_an_interrupted_sweep_names_its_job_command_and_that_command_finishes_it(
+    cfg, folder, silence, monkeypatch
+):
+    """A real SIGINT through the engine's checkpoint, in the call that queued the sweep."""
+    import signal
+
+    for name in ("a", "b", "c", "d"):
+        place(folder, silence, name)
+    answers = answering({name: hit("deep house", SPECIFIC) for name in "abcd"})
+
+    def interrupting(artist: str, title: str):
+        found = answers(artist, title)
+        if len(answers.asked) == 2:
+            os.kill(os.getpid(), signal.SIGINT)
+        return found
+
+    interrupting.asked = answers.asked  # type: ignore[attr-defined]
+    bound(monkeypatch, interrupting)
+
+    code, stopped = drive(["tag", "folder", str(folder)])
+
+    assert code == int(ExitCode.INTERRUPTED), stopped
+    assert stopped["outcome"] == "cancelled"
+    job = tag_job()
+    assert job.state is jobs.JobState.QUEUED, "the interrupted sweep was left closed"
+    command = shlex.join(["crate", *resume_argv(job.job_id)])
+    steps = stopped["cause"]["remediation"]["steps"]
+    assert steps[0] == f"resume it with: {command}"
+    done = sorted(i for i, s in item_states(job.job_id).items() if s is jobs.ItemState.DONE)
+    assert done == ["a.flac"], "the interrupted item was committed, or nothing was"
+    assert "1 of 4 items settled" in steps[1]
+
+    bound(monkeypatch, answers)
+    code, resumed = drive(resume_argv(job.job_id))
+
+    assert code == int(ExitCode.OK), resumed
+    assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
+    assert [title for _artist, title in answers.asked].count("a") == 1, (
+        "the resume asked about a file the interrupted drive had settled"
+    )

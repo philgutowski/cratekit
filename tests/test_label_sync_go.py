@@ -18,8 +18,10 @@ import pytest
 from cratekit import acquire
 from cratekit.acquire import cli as acquire_cli
 from cratekit.acquire import listdoc, match_cli
+from cratekit.cli import registry
+from cratekit.cli import tail as tail_chain
 from cratekit.core import config, jobs, review
-from cratekit.core.cause import Cause, Remediation
+from cratekit.core.cause import Cause, Remediation, Scope, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.core.jobs import Parked
 from cratekit.intake.land_cli import default_name
@@ -35,6 +37,7 @@ from tests.acquire_fakes import (
 from tests.cli_drive import drive
 from tests.test_config import valid_data
 from tests.test_label_sync import Track, answer, bind, next_question, offered, record, register
+from tests.test_sync_land import Tail, _ok, _refused
 
 GATE = "label.sync.confirm"
 
@@ -61,6 +64,21 @@ def installed(tmp_path, monkeypatch) -> config.Config:
     config.save(resolved)
     config.reset_cache()
     return resolved
+
+
+@pytest.fixture(autouse=True)
+def tail(monkeypatch) -> Tail:
+    """The tail and the landing standing in at the chain's one seam (U190).
+
+    A go that downloaded runs ``tag folder`` through ``intake land`` next, and
+    those need audio analysis, a rekordbox collection and an adopted intake
+    tree, none of which this fixture holds. ``sync land``'s own stand in queues
+    and drives a REAL job per step in the real queue, and its landing stops at
+    its gate, so a go that downloaded ends PENDING there.
+    """
+    stand_in = Tail()
+    monkeypatch.setattr(tail_chain, "dispatch", stand_in)
+    return stand_in
 
 
 @pytest.fixture
@@ -183,7 +201,7 @@ def test_two_labels_answered_all_and_one_picked_produce_one_summary_and_one_gate
     decided(run_id, "apply")
     code, done = gone(run_id)
 
-    assert code == int(ExitCode.OK), done
+    assert code == int(ExitCode.PENDING_HUMAN), done
     (job,) = our_jobs()
     assert job.state is jobs.JobState.SUCCEEDED
     assert len(item_states(job.job_id)) == 10
@@ -239,7 +257,7 @@ def test_a_job_stopped_halfway_resumes_and_downloads_only_the_rest(
     decided(resumed["run_id"], "apply")
     code, envelope = gone(resumed["run_id"])
 
-    assert code == int(ExitCode.OK), envelope
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
     assert fetched(script) == ["t-r1-3", "t-r1-4"]
     assert our_jobs()[0].job_id == job.job_id and len(our_jobs()) == 1
     assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
@@ -263,7 +281,7 @@ def test_a_track_already_held_in_another_version_goes_to_the_match_queue_and_is_
 
     _run, code, envelope = approved_go()
 
-    assert code == int(ExitCode.OK), envelope
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
     assert fetched(script) == ["t-r1-2"]
     (job,) = our_jobs()
     assert list(item_states(job.job_id)) == ["t-r1-2"]
@@ -338,7 +356,7 @@ def test_a_release_accepted_by_hand_and_answered_for_by_nobody_is_not_downloaded
 
     _run, code, envelope = approved_go()
 
-    assert code == int(ExitCode.OK), envelope
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
     assert fetched(script) == ["t-r1-1"]
 
 
@@ -355,7 +373,7 @@ def test_a_release_cleared_after_answering_is_named_and_not_downloaded(
 
     _run, code, envelope = approved_go()
 
-    assert code == int(ExitCode.OK), envelope
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
     assert fetched(script) == ["t-r2-1"]
     assert "Tide Works r1" in check(envelope, "withdrawn")["detail"]
     assert envelope["data"]["summary"]["go"]["withdrawn"] == ["r1"]
@@ -405,7 +423,7 @@ def test_a_go_killed_between_its_queue_and_its_record_never_asks_for_a_track_twi
     decided(again["run_id"], "apply")
     code, envelope = gone(again["run_id"])
 
-    assert code == int(ExitCode.OK), envelope
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
     assert sorted(fetched(script)) == ["t-r1-1", "t-r1-2"]
     assert "1 answer(s) wait for the next go" in check(envelope, "waiting")["detail"]
 
@@ -436,7 +454,7 @@ def test_a_go_with_an_earlier_download_to_resume_resumes_it_and_queues_nothing_n
 
     _run, code, envelope = approved_go()
 
-    assert code == int(ExitCode.OK), envelope
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
     assert [one.job_id for one in our_jobs()] == [first.job_id]
     assert "t-b1-1" not in fetched(script)
     (landing,) = [one for one in envelope["data"]["summary"]["go"]["next"] if "intake land" in one]
@@ -444,7 +462,7 @@ def test_a_go_with_an_earlier_download_to_resume_resumes_it_and_queues_nothing_n
 
     _run, code, envelope = approved_go()
 
-    assert code == int(ExitCode.OK), envelope
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
     assert fetched(script)[-1] == "t-b1-1"
     assert len(our_jobs()) == 2
 
@@ -475,7 +493,7 @@ def test_a_download_that_ended_half_failed_is_retried_by_the_next_go_and_only_it
     decided(resumed["run_id"], "apply")
     code, envelope = gone(resumed["run_id"])
 
-    assert code == int(ExitCode.OK), envelope
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
     assert fetched(script) == ["t-r1-2"]
     assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
 
@@ -554,7 +572,7 @@ def test_an_answer_holding_a_release_the_provider_did_not_answer_for_is_kept_for
 
     _run, code, envelope = approved_go()
 
-    assert code == int(ExitCode.OK), envelope
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
     assert fetched(script) == ["t-r2-1"]
     assert check(envelope, "carried")["status"] == "fail"
     assert all(sync_cli.SETTLED not in one for one in record(installed)["answers"])
@@ -563,7 +581,7 @@ def test_an_answer_holding_a_release_the_provider_did_not_answer_for_is_kept_for
     script.fetched.clear()
     _run, code, envelope = approved_go()
 
-    assert code == int(ExitCode.OK), envelope
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
     assert fetched(script) == ["t-r1-1"]
     assert all(one[sync_cli.SETTLED] for one in record(installed)["answers"])
 
@@ -595,7 +613,7 @@ def test_the_download_lands_as_an_intake_under_the_runs_one_batch(installed, mon
 
     run_id, code, envelope = approved_go()
 
-    assert code == int(ExitCode.OK), envelope
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
     report = envelope["data"]["summary"]["go"]
     rows = listdoc.read_manifest(Path(report["manifest"]))
     assert sorted(row.ref for row in rows) == ["t-r1-1", "t-r1-2"]
@@ -636,7 +654,7 @@ def test_the_walk_ends_at_the_gate_and_a_yes_downloads_what_it_answered(
 
     code, done = gone(envelope["run_id"])
 
-    assert code == int(ExitCode.OK), done
+    assert code == int(ExitCode.PENDING_HUMAN), done
     assert fetched(script) == ["t-r1-1"]
 
 
@@ -701,7 +719,7 @@ def test_a_download_queued_by_hand_is_not_resumed_or_held_by_a_go(
 
     _run, code, envelope = approved_go()
 
-    assert code == int(ExitCode.OK), envelope
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
     assert fetched(script) == ["t-r1-1"]
     with jobs.open_store() as store:
         assert jobs.get(store, queued["data"]["job_id"]).state is jobs.JobState.QUEUED
@@ -747,3 +765,310 @@ def test_settling_an_answer_already_settled_keeps_its_first_marker():
 
     assert settled == 0
     assert document["answers"][0][sync_cli.SETTLED] == first
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 4. U190: the go runs the tail and stops at the landing's gate
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def two_releases_answered(monkeypatch, script) -> None:
+    """Two labels answered ``all``, one release each, every track downloadable."""
+    register("Alpha Works")
+    register("Beta Works")
+    bind(monkeypatch, {"alpha-works": [("a1", "2026", 2)], "beta-works": [("b1", "2026", 1)]})
+    next_question()
+    answer("alpha-works", "all")
+    next_question()
+    answer("beta-works", "all")
+    land_every(script, ("a1", 2), ("b1", 1))
+
+
+def staged(cfg: config.Config) -> str:
+    return str(Path(cfg.paths.download_staging).expanduser().absolute())
+
+
+def chain_check(envelope: dict, step: str) -> dict:
+    """One of the chain's checks, from the envelope or from a refusal's detail."""
+    cause = envelope.get("cause") or {}
+    data = (cause.get("detail") or {}).get("label_sync") or envelope["data"]
+    (found,) = [one for one in data["checks"] if one["key"] == f"label.sync.go.{step}"]
+    return found
+
+
+def test_a_go_over_two_answered_releases_runs_the_tail_in_order_and_stops_at_the_landing_gate(
+    installed, monkeypatch, script, tail
+):
+    two_releases_answered(monkeypatch, script)
+
+    run_id, code, envelope = approved_go()
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["outcome"] == "pending"
+    assert sorted(fetched(script)) == ["t-a1-1", "t-a1-2", "t-b1-1"]
+    folder = staged(installed)
+    manifest = envelope["data"]["summary"]["go"]["manifest"]
+    assert tail.verbs() == [
+        ("tag", "folder"),
+        ("tag", "folder"),
+        ("analyze", "run"),
+        ("analyze", "run"),
+        ("analyze", "restamp"),
+        ("analyze", "restamp"),
+        ("name", "apply"),
+        ("intake", "land"),
+    ]
+    queued = [argv for argv in tail.calls if "--job" not in argv]
+    assert [argv[-1] for argv in queued[:3]] == [folder] * 3, "the tail ran on another folder"
+    assert tail.calls[-1] == [
+        "intake", "land", folder, "--manifest", manifest, "--pass", default_name(run_id),
+    ]
+    for step in (tail_chain.TAG, tail_chain.ANALYZE, tail_chain.RESTAMP, tail_chain.NAME):
+        assert chain_check(envelope, step)["status"] == "ok", step
+    assert "next" not in {one["title"] for one in envelope["data"]["checks"]}, (
+        "the go still told a person to type the tail it ran"
+    )
+
+
+def test_the_landing_gates_run_is_named_in_the_envelope_with_the_commands_that_answer_it(
+    installed, monkeypatch, script, tail
+):
+    two_releases_answered(monkeypatch, script)
+
+    run_id, code, envelope = approved_go()
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    pending = envelope["pending_human_action"]
+    assert pending["kind"] == "external_step"
+    assert pending["verify_verb"] == tail_chain.LAND_VERB
+    assert pending["id"] == f"label-sync-{run_id}"
+    steps = pending["steps"]
+    assert steps[0].endswith(
+        f"crate run decide land-run {tail_chain.LAND_GATE} {tail_chain.LAND_OPTION} "
+        f"--actor {tail_chain.SESSION_ACTOR}"
+    )
+    manifest = envelope["data"]["summary"]["go"]["manifest"]
+    assert steps[1] == (
+        f"apply it: crate --run land-run intake land {staged(installed)} --manifest "
+        f"{manifest} --pass {default_name(run_id)}"
+    )
+    assert tuple(steps[2:]) == tail_chain.REKORDBOX_STEPS
+    assert envelope["data"]["summary"]["tail"]["gate_run"] == "land-run"
+    assert envelope["data"]["summary"]["tail"]["stopped_at"] == tail_chain.LAND_GATE
+    assert "land-run" in pending["summary"]
+
+
+def test_name_apply_has_its_confirm_answered_inline_over_the_absolute_staging_folder(
+    installed, monkeypatch, script, tail
+):
+    """The literal rule, which ``tests/test_sync_land.py`` pins for sync land's call too."""
+    two_releases_answered(monkeypatch, script)
+
+    approved_go()
+
+    (named,) = tail.named
+    assert named == [
+        "-d", "name.apply.confirm=apply", "name", "apply", "--root", staged(installed),
+    ]
+
+
+def test_a_tail_step_stopped_at_a_gate_names_its_answer_and_the_rest_of_the_tail(
+    installed, monkeypatch, script, tail
+):
+    two_releases_answered(monkeypatch, script)
+    real = tail._job
+
+    def gated(step, verb, argv):
+        if step == tail_chain.RESTAMP and "--job" not in argv:
+            return _refused(
+                Cause(
+                    reason="decision-required",
+                    message="analyze.restamp.confirm needs a recorded decision",
+                    remediation=Remediation(remedy=Remedy.ANSWER_DECISION),
+                    retryable=True,
+                    origin=("test",),
+                    detail={"gate": "analyze.restamp.confirm", "options": ["apply"],
+                            "run_id": "restamp-run"},
+                ),
+                outcome="blocked",
+            )
+        return real(step, verb, argv)
+
+    monkeypatch.setattr(tail, "_job", gated)
+
+    run_id, code, envelope = approved_go()
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    pending = envelope["pending_human_action"]
+    assert pending["verify_verb"] == "label.sync", "the go's own verb continues, not the landing"
+    folder = staged(installed)
+    manifest = envelope["data"]["summary"]["go"]["manifest"]
+    assert "crate run decide restamp-run analyze.restamp.confirm" in pending["steps"][0]
+    assert pending["steps"][2:] == [
+        f"then: crate name apply --root {folder}",
+        f"then: crate intake land {folder} --manifest {manifest} --pass {default_name(run_id)}",
+    ]
+    assert not tail.named and ("intake", "land") not in tail.verbs()
+
+
+def test_a_landing_that_planned_nothing_ends_the_go_with_its_own_outcome(
+    installed, monkeypatch, script, tail
+):
+    two_releases_answered(monkeypatch, script)
+    tail.landing = lambda _argv: _ok({"items": []}, outcome="no_op")
+
+    _run, code, envelope = approved_go()
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "ok" and envelope["pending_human_action"] is None
+    assert envelope["data"]["summary"]["tail"]["stopped_at"] == tail_chain.LAND
+    assert chain_check(envelope, tail_chain.LAND)["detail"] == "intake land planned nothing to land"
+
+
+def test_the_chain_runs_on_the_absolute_folder_whatever_it_is_handed(
+    installed, monkeypatch, tail
+):
+    monkeypatch.chdir(Path(installed.library.root))
+    chain = tail_chain.Chain(
+        progress=None, namespace="t", title="t", steps=tail_chain.STEPS,
+        origin=("test",), again="again",
+    )
+    relative = Path("staged-here")
+    relative.mkdir()
+
+    with pytest.raises(tail_chain.Stop):
+        tail_chain.run(chain, relative, installed, ["--pass", "p"])
+
+    absolute = str(Path(installed.library.root) / "staged-here")
+    assert chain.summary["staging"] == absolute
+    assert tail.calls[0] == ["tag", "folder", "--queue-only", absolute]
+
+
+def test_a_failing_analyze_run_stops_the_go_and_plans_no_landing(
+    installed, monkeypatch, script, tail
+):
+    two_releases_answered(monkeypatch, script)
+
+    def broken(_job, item):
+        raise refuse(
+            "module-extras-missing",
+            f"the analysis extra is not importable for {item.item_id}",
+            scope=Scope.ITEM,
+            origin=("test",),
+        )
+
+    tail.work[tail_chain.ANALYZE] = broken
+
+    run_id, code, envelope = approved_go()
+
+    assert code == int(ExitCode.MODULE_UNAVAILABLE), envelope
+    assert envelope["cause"]["reason"] == "module-extras-missing"
+    assert "label.sync.go" in envelope["cause"]["origin"]
+    assert ("analyze", "restamp") not in tail.verbs()
+    assert not tail.named, "name apply ran after a failed analysis"
+    assert ("intake", "land") not in tail.verbs(), "a landing was planned over an unfinished tail"
+    assert chain_check(envelope, tail_chain.TAG)["status"] == "ok"
+    assert chain_check(envelope, tail_chain.ANALYZE)["status"] == "fail"
+    folder = staged(installed)
+    (way_on,) = [
+        step for step in envelope["cause"]["remediation"]["steps"] if "rest of the tail" in step
+    ]
+    assert way_on.endswith(
+        f"crate analyze run {folder}; then crate analyze restamp {folder}; then crate name "
+        f"apply --root {folder}; then crate intake land {folder} --manifest "
+        f"{envelope['cause']['detail']['label_sync']['summary']['go']['manifest']} --pass "
+        f"{default_name(run_id)}"
+    )
+    assert sorted(fetched(script)) == ["t-a1-1", "t-a1-2", "t-b1-1"], "the download was lost"
+
+
+def test_a_stale_tag_job_over_the_staging_folder_is_replaced_not_resumed(
+    installed, monkeypatch, script, tail
+):
+    two_releases_answered(monkeypatch, script)
+    folder = Path(staged(installed))
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "old.wav").write_bytes(b"")
+    key = registry.entry("tag.folder").handler_key
+    with jobs.open_store() as store:
+        stale = jobs.enqueue(
+            store,
+            handler_key=key,
+            payload={"folder": str(folder)},
+            cfg=installed,
+            item_ids=("old.wav",),
+        )
+
+    _run, code, envelope = approved_go()
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    with jobs.open_store() as store:
+        assert jobs.get(store, stale.job_id).state is jobs.JobState.CANCELLED
+        fresh = [
+            job
+            for job in jobs.list_jobs(store)
+            if job.handler_key == key and job.job_id != stale.job_id
+        ]
+    assert {"step": "tag", "job_id": stale.job_id} in envelope["data"]["summary"]["tail"][
+        "replaced"
+    ]
+    assert not any(stale.job_id in argv for argv in tail.calls), "the stale job was resumed"
+    assert len(fresh) == 1 and fresh[0].state is jobs.JobState.SUCCEEDED
+
+
+def test_a_go_with_every_track_already_owned_runs_no_tail(installed, monkeypatch, script, tail):
+    """Both tracks reach the library between the answer and the go, so none is listed."""
+    register()
+    fake = bind(monkeypatch, {"tide-works": [("r1", "2026", 2)]})
+    fake.releases["r1"] = (
+        [Track("t-r1-1", "Label Act", "Harbour Lights"), Track("t-r1-2", "Label Act", "Sun Path")],
+        2026,
+    )
+    next_question()
+    answer("tide-works", "all")
+    land_every(script, ("r1", 2))
+    music = Path(installed.library.root) / "Music"
+    (music / "Label Act - Harbour Lights.flac").write_bytes(b"")
+    (music / "Label Act - Sun Path.flac").write_bytes(b"")
+
+    _run, code, envelope = approved_go()
+
+    assert code == int(ExitCode.OK), envelope
+    assert fetched(script) == [] and our_jobs() == []
+    assert tail.calls == [], "the tail ran over a go that downloaded nothing"
+    assert envelope["data"]["summary"]["go"][go.LAND_KEY] is None
+    assert "tail" not in envelope["data"]["summary"]
+
+
+def test_a_declined_go_runs_no_tail(installed, monkeypatch, script, tail):
+    two_releases_answered(monkeypatch, script)
+    run_id = asked()["run_id"]
+    decided(run_id, "abort")
+
+    code, envelope = gone(run_id)
+
+    assert code == int(ExitCode.OK), envelope
+    assert fetched(script) == [] and tail.calls == []
+
+
+def test_a_go_resuming_an_earlier_download_lands_it_under_that_gos_manifest_and_pass(
+    installed, monkeypatch, script, tail
+):
+    register()
+    bind(monkeypatch, {"tide-works": [("r1", "2026", 2)]})
+    next_question()
+    answer("tide-works", "all")
+    land_every(script, ("r1", 2))
+    script.landings["t-r1-2"] = Landing(fetch_raises=cooldown(), fetch_raises_times=1)
+    first_run, code, _parked = approved_go()
+    assert code != int(ExitCode.PENDING_HUMAN) and tail.calls == []
+    (first,) = our_jobs()
+
+    _run, code, envelope = approved_go()
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert tail.calls[-1] == [
+        "intake", "land", staged(installed),
+        "--manifest", first.payload[go.ORIGIN_KEY]["manifest"],
+        "--pass", default_name(first_run),
+    ]

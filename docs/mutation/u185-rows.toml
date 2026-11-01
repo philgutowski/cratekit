@@ -1,0 +1,254 @@
+name = "u185"
+pass_kind = "light"
+
+# The guard is a write path, so the table spends most of its rows on the
+# commit guard and its predicate, then one row per reader the unit changed.
+
+[[rows]]
+id = "F1_root_must_be_a_folder"
+description = "is_foreign_root: drop the folder test, so a plain playlist named DEADCA7 at the top is foreign"
+file = "src/cratekit/core/foreign_tree.py"
+surface = "user"
+tests = ["tests/test_foreign_tree.py"]
+old = '''    return folder and str(name) in FOREIGN_ROOT_NAMES and parent in _root_parents()'''
+new = '''    return str(name) in FOREIGN_ROOT_NAMES and parent in _root_parents()'''
+
+[[rows]]
+id = "F2_root_must_be_at_the_top"
+description = "is_foreign_root: drop the root parent test, so a namesake folder below the top is foreign"
+file = "src/cratekit/core/foreign_tree.py"
+surface = "user"
+tests = ["tests/test_foreign_tree.py", "tests/test_favorites_placement.py"]
+old = '''    return folder and str(name) in FOREIGN_ROOT_NAMES and parent in _root_parents()'''
+new = '''    return folder and str(name) in FOREIGN_ROOT_NAMES'''
+
+[[rows]]
+id = "F3_descendants_walked"
+description = "ids_of: walk no children, so only the root row is foreign and its playlists are anyone's"
+file = "src/cratekit/core/foreign_tree.py"
+surface = "user"
+tests = ["tests/test_foreign_tree.py", "tests/test_favorites_placement.py", "tests/test_genre_favorites.py"]
+old = '''        queue.extend(children.get(node, ()))'''
+new = '''        pass'''
+
+[[rows]]
+id = "F4_create_inside"
+description = "pending_touches: admit a playlist created inside the folder"
+file = "src/cratekit/core/foreign_tree.py"
+surface = "user"
+tests = ["tests/test_foreign_tree.py"]
+old = '''            if op == "create" and parent in ids:'''
+new = '''            if op == "create" and parent in ids and False:'''
+
+[[rows]]
+id = "F5_second_root"
+description = "pending_touches: admit a second DEADCA7 folder created at the top"
+file = "src/cratekit/core/foreign_tree.py"
+surface = "user"
+tests = ["tests/test_foreign_tree.py"]
+old = '''            elif op == "create" and is_foreign_root('''
+new = '''            elif op == "create" and False and is_foreign_root('''
+
+[[rows]]
+id = "F6_delete"
+description = "pending_touches: admit a hard delete of a row in the folder"
+file = "src/cratekit/core/foreign_tree.py"
+surface = "user"
+tests = ["tests/test_foreign_tree.py"]
+old = '''            elif op == "delete" and key in ids:'''
+new = '''            elif op == "delete" and key in ids and False:'''
+
+[[rows]]
+id = "F7_modify_inside"
+description = "pending_touches: admit any change to a row of the folder"
+file = "src/cratekit/core/foreign_tree.py"
+surface = "user"
+tests = ["tests/test_foreign_tree.py"]
+old = '''            elif op == "modify" and key in ids:'''
+new = '''            elif op == "modify" and key in ids and False:'''
+
+[[rows]]
+id = "F8_moved_in"
+description = "pending_touches: admit a node of one's own moved into the folder"
+file = "src/cratekit/core/foreign_tree.py"
+surface = "user"
+tests = ["tests/test_foreign_tree.py"]
+old = '''            elif op == "modify" and parent in ids:'''
+new = '''            elif op == "modify" and parent in ids and False:'''
+
+[[rows]]
+id = "F9_membership"
+description = "pending_touches: read a membership by its owner alone, so one rewritten to another playlist passes"
+file = "src/cratekit/core/foreign_tree.py"
+surface = "user"
+tests = ["tests/test_foreign_tree.py"]
+old = '''            if owner in ids or str(getattr(obj, "ID", "")) in reading.memberships:'''
+new = '''            if owner in ids:'''
+
+[[rows]]
+id = "F10_difference_changed_row"
+description = "differences: read a changed playlist row of the folder as unchanged"
+file = "src/cratekit/core/foreign_tree.py"
+surface = "user"
+tests = ["tests/test_foreign_tree.py"]
+old = '''        changed = _changed(before.playlist_columns, old, new)
+        if changed:'''
+new = '''        changed = _changed(before.playlist_columns, old, new)
+        if changed and False:'''
+
+[[rows]]
+id = "F11_difference_memberships"
+description = "differences: compare no membership rows, so raw SQL on a pushed membership passes"
+file = "src/cratekit/core/foreign_tree.py"
+surface = "user"
+tests = ["tests/test_foreign_tree.py"]
+old = '''        if old == new:
+            continue'''
+new = '''        if True:
+            continue'''
+
+[[rows]]
+id = "F12_difference_appeared"
+description = "differences: read a row that appeared in the folder since open as nothing"
+file = "src/cratekit/core/foreign_tree.py"
+surface = "user"
+tests = ["tests/test_foreign_tree.py"]
+old = '''            found.append(f"the {_PLAYLISTS} row {key!r} appeared under {OWNER}'s folder")'''
+new = '''            pass'''
+
+[[rows]]
+id = "G1_commit_guard_called"
+description = "commit_guarded: drop the foreign folder guard from the commit"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_foreign_tree.py", "tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py"]
+old = '''            assert_created_rows_are_gridless(db)
+            assert_foreign_untouched(db)'''
+new = '''            assert_created_rows_are_gridless(db)'''
+
+[[rows]]
+id = "G2_unread_refuses"
+description = "assert_foreign_untouched: a handle with no reading at open reads the subtree now and goes on"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_foreign_tree.py"]
+old = '''    before = foreign_tree.reading_at_open(db)
+    if before is None:'''
+new = '''    before = foreign_tree.reading_at_open(db) or foreign_tree.read(db.session)
+    if before is None:'''
+
+[[rows]]
+id = "G3_pending_leg"
+description = "assert_foreign_untouched: drop the pending object leg, keep the second reading"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_foreign_tree.py"]
+old = '''    violations = foreign_tree.pending_touches(pending_objects(session, db), before)'''
+new = '''    violations = []'''
+
+[[rows]]
+id = "G4_second_reading_leg"
+description = "assert_foreign_untouched: drop the second reading from SQL, keep the pending objects"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_foreign_tree.py"]
+old = '''    violations += foreign_tree.differences(before, foreign_tree.read(session))'''
+new = '''    violations += []'''
+
+[[rows]]
+id = "G5_reading_at_open"
+description = "open_db: keep no reading of the subtree as the handle opens"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_foreign_tree.py", "tests/test_rb_writer_db.py"]
+old = '''    foreign_tree.remember(db)
+    return db'''
+new = '''    return db'''
+
+[[rows]]
+id = "R1_organize_not_yours"
+description = "organize: list the DEADCA7 folder among the author's own with a home"
+file = "src/cratekit/organize/rekordbox.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''        if name in declared_roots or str(row.ID) in foreign:'''
+new = '''        if name in declared_roots:'''
+
+[[rows]]
+id = "R2_organize_fact"
+description = "organize: name the folder nowhere, so the report is silent about it"
+file = "src/cratekit/organize/rekordbox.py"
+surface = "user"
+tests = ["tests/test_organize.py"]
+old = '''    if foreign:
+        area.facts[FOREIGN_FACT]'''
+new = '''    if foreign and False:
+        area.facts[FOREIGN_FACT]'''
+
+[[rows]]
+id = "R3_favorites_home"
+description = "resolve_home: count a playlist of the source's name inside the folder"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py"]
+old = '''    live = foreign_tree.outside(
+        _live_plain(list(db.get_playlist(Name=name))), list(db.get_playlist())
+    )'''
+new = '''    live = _live_plain(list(db.get_playlist(Name=name)))'''
+
+[[rows]]
+id = "R4_genre_source"
+description = "source_playlist: count a playlist of the source's name inside the folder"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''    live = foreign_tree.outside(live, list(db.get_playlist()))'''
+new = '''    live = list(live)'''
+
+[[rows]]
+id = "R5_taxonomy_refusal"
+description = "load_taxonomy: accept a declared tree displayed as DEADCA7"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_foreign_tree.py", "tests/test_taxonomy.py"]
+old = '''        elif node.display in FOREIGN_ROOT_NAMES:'''
+new = '''        elif node.display in FOREIGN_ROOT_NAMES and False:'''
+
+[[rows]]
+id = "D1_push_newer_warns"
+description = "deadca7.push: invert the comparison, so a push after the last backup reads as held by it"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    if completed is not None and pushed > completed:'''
+new = '''    if completed is not None and pushed < completed:'''
+
+[[rows]]
+id = "D2_hidden_entries"
+description = "deadca7.push: count hidden entries, so a .DS_Store reads as a push"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''        entry.stat().st_mtime for entry in folder.iterdir() if not entry.name.startswith(".")'''
+new = '''        entry.stat().st_mtime for entry in folder.iterdir()'''
+
+[[rows]]
+id = "D3_unread_folder"
+description = "deadca7.push: let an unreadable backup folder escape, so the check fails the report"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    except OSError as exc:
+        # Unread is not none'''
+new = '''    except ZeroDivisionError as exc:
+        # Unread is not none'''
+
+[[dropped]]
+id = "pending_objects_sources"
+description = "Drop the buffer move branch or the session dirty loop in pending_objects"
+reason = "The buffer move branch and the session dirty loop were measured at zero by the review's own pass and are filed as a residual; a row each would spend the cap restating it."
+
+[[dropped]]
+id = "remember_unread"
+description = "Keep an empty reading when the read at open fails"
+reason = "remember's failing read is pinned directly by test_a_reading_that_failed_at_open_is_kept_as_unread_and_refuses, which asserts the held value; G2 covers the refusal it feeds."

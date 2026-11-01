@@ -13,7 +13,7 @@ the download run through the real dispatcher and the real workers, with the
 catalogue and the acquisition adapter in front of their seams exactly as their
 own suites put them. The tail and the landing need audio analysis, a rekordbox
 collection and an adopted intake tree, none of which a fixture here can hold, so
-those steps stand in through the verb's one seam, ``sync_land.dispatch``: each
+those steps stand in through the verb's one seam, ``cratekit.cli.tail.dispatch``: each
 stand in queues and drives a real job in the real queue, so the driver's every
 read of a job is a read of the queue.
 """
@@ -28,6 +28,7 @@ import pytest
 from cratekit import acquire
 from cratekit.acquire import cli as acquire_cli
 from cratekit.cli import registry, sync_land
+from cratekit.cli import tail as tail_chain
 from cratekit.core import config, jobs, rb_writer
 from cratekit.core.cause import Cause, Remediation, Scope, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
@@ -115,7 +116,7 @@ class Tail:
     """
 
     def __init__(self) -> None:
-        self.real = sync_land.dispatch
+        self.real = tail_chain.dispatch
         self.calls: list[list[str]] = []
         self.work: dict[str, Callable[[jobs.Job, jobs.Item], None]] = {}
         self.landing: Callable[[list[str]], tuple[int, dict[str, Any]]] = (
@@ -177,7 +178,7 @@ class Tail:
 @pytest.fixture
 def tail(monkeypatch) -> Tail:
     stand_in = Tail()
-    monkeypatch.setattr(sync_land, "dispatch", stand_in)
+    monkeypatch.setattr(tail_chain, "dispatch", stand_in)
     return stand_in
 
 
@@ -416,6 +417,28 @@ def test_the_pass_runs_every_step_in_its_order_and_the_tail_on_the_absolute_stag
         assert job.payload["folder"] == staging
 
 
+def test_each_tail_step_queues_only_and_drives_its_job_through_one_job_command(
+    machine, monkeypatch, tail
+):
+    """U192. Run by hand the tail verbs drive what they queue, so the pass, which
+    drives each job itself, must ask for the queue alone, and then drive once."""
+    from cratekit.modules import foreground
+
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+
+    code, envelope = drive(["sync", "land"])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    for _step, verb, words in sync_land.TAIL:
+        calls = [argv for argv in tail.calls if tuple(argv[: len(words)]) == words]
+        queued = [argv for argv in calls if "--job" not in argv]
+        driven = [argv for argv in calls if "--job" in argv]
+        assert len(queued) == 1 and foreground.QUEUE_ONLY in queued[0], (verb, calls)
+        (job,) = _by_key(verb)
+        assert driven == [[*words, job.payload["folder"], "--job", job.job_id]], (verb, calls)
+
+
 def test_the_stop_at_the_landing_gate_names_the_session_commands_and_the_visit(
     machine, monkeypatch, tail
 ):
@@ -650,7 +673,7 @@ def test_the_outbound_hearts_write_stays_behind_its_own_gate(tmp_path, monkeypat
 
 
 def test_a_step_with_no_readable_envelope_is_a_defect_not_a_success(machine, monkeypatch):
-    monkeypatch.setattr(sync_land, "dispatch", lambda argv: (int(ExitCode.OK), {}))
+    monkeypatch.setattr(tail_chain, "dispatch", lambda argv: (int(ExitCode.OK), {}))
 
     code, envelope = drive(["sync", "land"])
 
@@ -938,7 +961,7 @@ def test_a_name_apply_refusal_ends_the_pass_before_the_landing(machine, monkeypa
             )
         return original(argv)
 
-    monkeypatch.setattr(sync_land, "dispatch", refusing)
+    monkeypatch.setattr(tail_chain, "dispatch", refusing)
 
     code, envelope = drive(["sync", "land"])
 

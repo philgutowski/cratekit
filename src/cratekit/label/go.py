@@ -64,6 +64,18 @@ land --manifest`` files under the Record Labels tree. The job carries the go's
 run as its intake run (R29), and the report names the acquisition tail ending in
 the landing under the batch name that run gives, so the batch playlist and the
 tree are what a label landing produces today.
+
+AND THE TAIL IS RUN, NOT ONLY NAMED, SINCE U190. The attended Defected sync of
+2026-10-31 downloaded ten tracks and was then handed five commands to type. The
+go cannot run them itself: this module is ranked a feature module and the
+dispatcher is the CLI layer's. So the report carries :data:`LAND_KEY`, the
+absolute staging folder, the manifest and the pass, and ``label.sync``'s CLI
+module (:mod:`cratekit.cli.label_sync`) hands it to the chain ``sync land``
+runs, :mod:`cratekit.cli.tail`, which ends at the landing's gate. It is set only
+when the go's one download SUCCEEDED with a track done: a go that declined,
+listed nothing, downloaded nothing or is still downloading names no tail, and
+neither does a resume over more than one earlier job, whose manifests one
+landing of one folder cannot both carry. Then the commands are printed as before.
 """
 
 from __future__ import annotations
@@ -94,6 +106,8 @@ DOWNLOAD = "acquire.download"
 ORIGIN_KEY = "label_sync"
 #: The payload key ``sync all`` already uses for a job's intake run (R29).
 RUN_KEY = "run_id"
+#: The report's key naming the tail the CLI layer runs after a download (U190).
+LAND_KEY = "land"
 #: What every list a go writes is named after, before the digest.
 LIST_PREFIX = "label-sync"
 #: The marker an answer carries once a go has taken it.
@@ -452,6 +466,22 @@ def tail(staging: Path, manifest: str, run_id: str) -> list[str]:
     ]
 
 
+def landing(staging: Path, manifest: str, run_id: str) -> dict[str, str]:
+    """What the tail and the landing run over: the folder, the manifest and the pass.
+
+    The same three the last command :func:`tail` names, as data, so the chain
+    that runs them reads no command line back.
+    """
+    return {"folder": str(staging), "manifest": manifest, "pass": default_name(run_id)}
+
+
+def _landed(store: jobs.JobStore, job: jobs.Job) -> bool:
+    """Whether ``job`` ended SUCCEEDED with at least one track downloaded."""
+    if job.state is not jobs.JobState.SUCCEEDED:
+        return False
+    return bool(jobs.progress(store, job.job_id)["counts"][str(jobs.ItemState.DONE)])
+
+
 def go(
     ctx,
     cfg: config.Config,
@@ -499,7 +529,9 @@ def go(
             outcome=Outcome.OK if wrote else Outcome.NO_OP,
         )
 
-    staging = Path(cfg.paths.download_staging)
+    # ABSOLUTE, as ``sync land`` takes it: a relative root resolves against the
+    # working directory, and the tail named over it once planned nothing (U169).
+    staging = Path(cfg.paths.download_staging).expanduser().absolute()
     if summary.open_jobs:
         return _resume(ctx, summary, staging, checks, report, wrote=wrote)
 
@@ -622,10 +654,12 @@ def go(
     )
 
     landed: list[str] = []
+    land: dict[str, str] | None = None
     if queued is not None:
         with jobs.open_store() as store:
             queued, drifted = acquire_cli.drive_queued(ctx, store, queued.job_id)
             done = jobs.progress(store, queued.job_id)["counts"][str(jobs.ItemState.DONE)]
+            ran = _landed(store, queued)
         warnings.extend(drifted)
         checks.append(
             _check(
@@ -636,7 +670,10 @@ def go(
             )
         )
         landed = tail(staging, str(listing.written.manifest_path), run_id)
-        checks.append(_next_check(landed))
+        if ran:
+            land = landing(staging, str(listing.written.manifest_path), run_id)
+        else:
+            checks.append(_next_check(landed))
     report["go"] = {
         **summary.to_json(),
         "declined": False,
@@ -650,6 +687,7 @@ def go(
         "withdrawn": [one.identity for one in withdrawn],
         "carried": sorted(retry),
         "next": landed,
+        LAND_KEY: land,
     }
     return ctx.envelope(
         data={"checks": checks, "summary": report},
@@ -687,6 +725,7 @@ def _resume(
     warnings: list[dict[str, str]] = []
     landed: list[str] = []
     resumed: list[str] = []
+    lands: list[dict[str, str] | None] = []
     with jobs.open_store() as store:
         for job_id, _left in summary.open_jobs:
             job = jobs.get(store, job_id)
@@ -703,7 +742,14 @@ def _resume(
             payload = dict(job.payload or {})
             manifest = dict(payload.get(ORIGIN_KEY) or {}).get("manifest")
             if isinstance(manifest, str) and manifest:
-                landed.extend(tail(staging, manifest, str(payload.get(RUN_KEY) or ctx.run.run_id)))
+                run_of = str(payload.get(RUN_KEY) or ctx.run.run_id)
+                landed.extend(tail(staging, manifest, run_of))
+                lands.append(landing(staging, manifest, run_of) if _landed(store, job) else None)
+            else:
+                lands.append(None)
+    # ONE EARLIER JOB, LANDED, IS RUN ON THROUGH THE TAIL. Several would need two
+    # manifests on one landing of one folder, so their commands are printed.
+    land = lands[0] if len(lands) == 1 else None
     if summary.answers:
         checks.append(
             _check(
@@ -713,7 +759,7 @@ def _resume(
                 f"download is landed: crate label sync --go",
             )
         )
-    if landed:
+    if landed and land is None:
         checks.append(_next_check(landed))
     report["go"] = {
         **summary.to_json(),
@@ -725,6 +771,7 @@ def _resume(
         "withdrawn": [],
         "carried": [],
         "next": landed,
+        LAND_KEY: land,
     }
     return ctx.envelope(
         data={"checks": checks, "summary": report},
@@ -736,6 +783,7 @@ def _resume(
 __all__ = [
     "DOWNLOAD",
     "GATE",
+    "LAND_KEY",
     "LIST_PREFIX",
     "ORIGIN_KEY",
     "RUN_KEY",
@@ -746,6 +794,7 @@ __all__ = [
     "duration_text",
     "go",
     "held_by_goes",
+    "landing",
     "pace_of",
     "resumable",
     "summarise",

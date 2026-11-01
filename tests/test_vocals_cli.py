@@ -151,7 +151,7 @@ def test_analyze_run_still_skips_a_prefixed_file(cfg, folder, silence, monkeypat
     head = detector()
     bind_run(monkeypatch, detect_=head)
 
-    drive(["analyze", "run", str(folder)])
+    drive(["analyze", "run", "--queue-only", str(folder)])
     with jobs.open_store() as store:
         held = [job for job in jobs.list_jobs(store) if job.handler_key == "analyze.run"]
     assert len(held) == 1

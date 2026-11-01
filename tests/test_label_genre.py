@@ -395,7 +395,7 @@ def test_no_seam_reads_no_label_and_tags_exactly_as_before(folder, silence):
 
 
 def sweep(*argv: str) -> tuple[jobs.Job, dict]:
-    code, queued = drive(["tag", "folder", *argv])
+    code, queued = drive(["tag", "folder", "--queue-only", *argv])
     assert code == int(ExitCode.OK), queued
     job = tag_job()
     code, resumed = drive(resume_argv(job.job_id))
@@ -440,7 +440,7 @@ def test_the_genres_are_frozen_when_the_sweep_is_queued(cfg, folder, silence, mo
     registered("--genre", GENRE)
     track(folder, silence, "a")
     bound(monkeypatch, never_searched)
-    code, queued = drive(["tag", "folder", str(folder), "--label", LABEL])
+    code, queued = drive(["tag", "folder", "--queue-only", str(folder), "--label", LABEL])
     assert code == int(ExitCode.OK), queued
     labels.RegistryStore().edit(LABEL, genre=SPECIFIC)
     job = tag_job()
@@ -467,7 +467,7 @@ def test_a_sweep_with_no_label_genres_queues_the_payload_it_always_did(cfg, fold
 
 def test_a_label_nobody_registered_is_refused_and_nothing_is_queued(cfg, folder, silence):
     track(folder, silence, "a")
-    code, envelope = drive(["tag", "folder", str(folder), "--label", "PLUS"])
+    code, envelope = drive(["tag", "folder", "--queue-only", str(folder), "--label", "PLUS"])
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "label-unknown"
     with jobs.open_store() as store:
@@ -478,7 +478,7 @@ def test_a_label_with_no_genre_is_swept_as_before_and_says_so(cfg, folder, silen
     registered()
     track(folder, silence, "a")
     searcher = bound(monkeypatch, answering({"a": SearchHit(genre=SPECIFIC, source=searchers.BEATPORT)}))
-    code, queued = drive(["tag", "folder", str(folder), "--label", LABEL])
+    code, queued = drive(["tag", "folder", "--queue-only", str(folder), "--label", LABEL])
     assert code == int(ExitCode.OK), queued
     assert tag_cli.LABEL_NO_GENRE == "tag-folder-label-no-genre"
     assert [warning["code"] for warning in queued["warnings"]] == [tag_cli.LABEL_NO_GENRE]
@@ -495,12 +495,39 @@ def test_an_unreadable_registry_warns_and_refuses_only_a_sweep_that_named_a_labe
     path = labels.RegistryStore().path
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("not json", encoding="utf-8")
-    code, envelope = drive(["tag", "folder", str(folder), "--label", LABEL])
+    code, envelope = drive(["tag", "folder", "--queue-only", str(folder), "--label", LABEL])
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "label-intent-unusable"
-    code, queued = drive(["tag", "folder", str(folder)])
+    code, queued = drive(["tag", "folder", "--queue-only", str(folder)])
     assert code == int(ExitCode.OK), queued
     assert [warning["code"] for warning in queued["warnings"]] == [tag_cli.LABEL_REGISTRY_UNREAD]
+
+
+def test_a_sweep_driven_at_its_queue_keeps_the_label_warning_and_never_calls_its_label_unapplied(
+    cfg, folder, silence, monkeypatch
+):
+    """U192. The ``--label`` typed on the queueing call is the one frozen, so the
+    settled answer carries the queue's warning once and not the resume's
+    "--label was not applied", which would tell a person their label was ignored."""
+    registered()
+    track(folder, silence, "a")
+    searcher = bound(monkeypatch, answering({"a": SearchHit(genre=SPECIFIC, source=searchers.BEATPORT)}))
+    code, settled = drive(["tag", "folder", str(folder), "--label", LABEL])
+    assert code == int(ExitCode.OK), settled
+    assert settled["data"]["state"] == "succeeded"
+    assert [warning["code"] for warning in settled["warnings"]] == [tag_cli.LABEL_NO_GENRE]
+    assert searcher.asked == [("", "a")]
+
+
+def test_a_label_typed_on_a_resume_is_still_said_to_be_unapplied(cfg, folder, silence, monkeypatch):
+    """The ``--job`` path is unchanged by U192: a label typed there is not the sweep's."""
+    registered("--genre", GENRE)
+    track(folder, silence, "a")
+    bound(monkeypatch, answering({"a": SearchHit(genre=SPECIFIC, source=searchers.BEATPORT)}))
+    drive(["tag", "folder", "--queue-only", str(folder)])
+    code, resumed = drive([*resume_argv(tag_job().job_id), "--label", LABEL])
+    assert code == int(ExitCode.OK), resumed
+    assert tag_cli.LABEL_ON_RESUME in [warning["code"] for warning in resumed["warnings"]]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -524,7 +551,7 @@ def test_a_file_that_will_not_take_its_labels_genre_fails_and_is_never_counted_t
     track(folder, silence, "a")
     bound(monkeypatch, never_searched)
     refusing_writes(monkeypatch)
-    drive(["tag", "folder", str(folder), "--label", LABEL])
+    drive(["tag", "folder", "--queue-only", str(folder), "--label", LABEL])
     job = tag_job()
     drive(resume_argv(job.job_id))
     assert item_causes(job.job_id) == {"a.flac": tag.UNWRITTEN_REASON}
@@ -604,7 +631,7 @@ def test_a_label_typed_on_a_resume_is_not_applied_and_says_so(cfg, folder, silen
     registered("--genre", GENRE)
     track(folder, silence, "a")
     searcher = bound(monkeypatch, answering({"a": SearchHit(genre=SPECIFIC, source=searchers.BEATPORT)}))
-    code, queued = drive(["tag", "folder", str(folder)])
+    code, queued = drive(["tag", "folder", "--queue-only", str(folder)])
     assert code == int(ExitCode.OK), queued
     code, resumed = drive([*resume_argv(tag_job().job_id), "--label", LABEL])
     assert code == int(ExitCode.OK), resumed
