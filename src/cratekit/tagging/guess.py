@@ -343,7 +343,13 @@ def plan(
                 voiced.append(playlist.name)
             for word, weight in share.items():
                 votes[word] = votes.get(word, Fraction(0)) + weight
-        genre, band, tied = suggest.weigh(declared, votes)
+        # WEIGHED AS FLOATS, the votes ``tag suggest`` weighs are ints and its
+        # bounds are floats: ``Fraction(4, 5) >= 0.8`` is False where ``8 / 10 >=
+        # 0.8`` is True, so a Fraction share sat one band low on an exact bound
+        # (review round 1). Equal Fractions give equal floats, so a tie holds.
+        genre, band, tied = suggest.weigh(
+            declared, {word: float(weight) for word, weight in votes.items()}
+        )
         if band == suggest.SPLIT:
             genre = _broken(tied, artist)
         ordered = tuple(sorted(votes.items(), key=lambda entry: (-entry[1], entry[0])))

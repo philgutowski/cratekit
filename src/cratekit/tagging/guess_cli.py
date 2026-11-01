@@ -52,7 +52,7 @@ NO_VOTES_LEFT = "tag-guess-no-votes"
 SPLIT_WRITTEN = "tag-guess-split"
 
 #: The files that would not take their guessed genre.
-UNWRITTEN = "tag-guess-unwritten"
+FILES_UNWRITTEN = "tag-guess-unwritten"
 
 #: The files whose genre could not be read, so none was guessed.
 FILES_NOT_READ = "tag-guess-file-not-read"
@@ -135,10 +135,18 @@ def _playlists(
     cfg: config.Config, pass_name: str, staged: tuple[guess.Staged, ...]
 ) -> tuple[tuple[guess.Playlist, ...], str]:
     """Each playlist of the pass holding a staged file, or nothing and why it was unread."""
-    from cratekit.intake import account_playlists
+    from cratekit.intake import account_playlists, batch_name
 
     paths = [one.path for one in staged if one.readable]
     try:
+        # A PASS NO JOB CARRIES IS NOT A PASS WHOSE PLAYLISTS KNEW NOTHING
+        # (review round 1). A mistyped name read as "no playlists" would report
+        # every file the playlists could have tagged as one nothing voted for.
+        if not batch_name.pass_jobs(cfg, pass_name):
+            return (), (
+                f"no intake job of pass {pass_name} succeeded on this library, so "
+                f"the name is not one of its passes or the pass never finished"
+            )
         claims = account_playlists.split(cfg, pass_name, paths)
     except CratekitError as exc:
         return (), exc.cause.message
@@ -257,7 +265,7 @@ def _advisories(found: guess.GuessPlan) -> list[dict[str, str]]:
     if unwritten:
         warnings.append(
             {
-                "code": UNWRITTEN,
+                "code": FILES_UNWRITTEN,
                 "message": (
                     f"{len(unwritten)} file(s) did not take their guessed genre and "
                     f"carry none: "
@@ -347,12 +355,12 @@ def tag_guess(ctx) -> Envelope:
 
 __all__ = [
     "FILES_NOT_READ",
+    "FILES_UNWRITTEN",
     "LIBRARY_UNREAD",
     "NO_VOTES_LEFT",
     "OFF_TAXONOMY",
     "PASS_UNREAD",
     "SPLIT_WRITTEN",
-    "UNWRITTEN",
     "build",
     "signals",
     "tag_guess",

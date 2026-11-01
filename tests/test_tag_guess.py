@@ -22,11 +22,11 @@ from pathlib import Path
 
 import pytest
 
-from cratekit.cli import registry, tail
+from cratekit.cli import label_sync, registry, tail
 from cratekit.core import config, tags, taxonomy
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import ExitCode
-from cratekit.intake import account_playlists
+from cratekit.intake import account_playlists, batch_name
 from cratekit.tagging import guess, guess_cli, suggest
 from tests import test_tag_suggest as _suggest_suite
 from tests.cli_drive import drive
@@ -211,6 +211,34 @@ def test_a_tie_no_artist_breaks_goes_to_the_first_by_name():
     assert item.band == suggest.SPLIT and item.genre == min(DEEP, MELODIC)
 
 
+def test_an_exact_eighty_percent_share_is_high_as_tag_suggest_says():
+    """Review round 1: a Fraction share compared with a float bound sat one band low."""
+    lone = _staged("lone", artist="Ana Vale")
+    library = {"ana vale": (DEEP, DEEP, DEEP, DEEP, MELODIC)}
+    plan = guess.plan(ROOT, (lone,), guess.Signals(library=library), DECLARED)
+    item = _item(plan, "lone")
+    assert dict(item.votes) == {DEEP: Fraction(8), MELODIC: Fraction(2)}
+    assert item.band == suggest.band_of(8, 10) == suggest.HIGH
+
+
+def test_a_playlist_share_on_an_exact_bound_is_banded_as_the_ints_would_be():
+    """A playlist's voice of four shared three to two is twelve fifths against
+    eight fifths, exactly the sixty percent bound, and banded as the rules band
+    the same share of whole votes."""
+    members = [_staged(f"m{n}", artist=f"Other {n}", genre=DEEP) for n in range(3)]
+    others = [_staged(f"o{n}", artist=f"Else {n}", genre=MELODIC) for n in range(2)]
+    lone = _staged("lone", artist="Nobody Known")
+    plan = guess.plan(
+        ROOT,
+        (*members, *others, lone),
+        guess.Signals(library={}, playlists=(_playlist("p", *members, *others, lone),)),
+        DECLARED,
+    )
+    item = _item(plan, "lone")
+    assert dict(item.votes) == {DEEP: Fraction(12, 5), MELODIC: Fraction(8, 5)}
+    assert item.band == suggest.band_of(12 / 5, 4) == suggest.MEDIUM
+
+
 def test_a_file_nothing_votes_for_keeps_no_genre():
     lone = _staged("lone", artist="Nobody Known")
     plan = guess.plan(ROOT, (lone,), guess.Signals(library={}), DECLARED)
@@ -385,6 +413,7 @@ def test_the_pass_names_the_playlists_that_vote(machine, silence, monkeypatch):
         return _claims(("Idris precise beats", (*members, lone), (str(owned_path),)))
 
     monkeypatch.setattr(account_playlists, "split", split)
+    monkeypatch.setattr(batch_name, "pass_jobs", lambda _cfg, _name: ["a job"])
 
     code, envelope = drive([*VERB, str(_folder(machine)), "--pass", "the-pass"])
 
@@ -408,6 +437,7 @@ def test_a_pass_that_cannot_be_read_is_said_and_the_artist_still_votes(
         raise refuse("intake-list-unusable", "a report of the pass could not be read")
 
     monkeypatch.setattr(account_playlists, "split", split)
+    monkeypatch.setattr(batch_name, "pass_jobs", lambda _cfg, _name: ["a job"])
 
     code, envelope = drive([*VERB, str(_folder(machine)), "--pass", "the-pass"])
 
@@ -415,6 +445,20 @@ def test_a_pass_that_cannot_be_read_is_said_and_the_artist_still_votes(
     assert tags.read_genre_from_file(lone) == DEEP
     message = _warned(envelope, guess_cli.PASS_UNREAD)
     assert "the-pass" in message and "could not be read" in message
+
+
+def test_a_pass_no_job_carries_is_said_and_never_read_as_no_playlists(machine, silence):
+    """Review round 1, through the real reader: a mistyped pass name is a pass
+    that could not be read, not one whose playlists knew nothing."""
+    build(machine, silence)
+    _stage(machine, silence, "lone", artist="Nobody Known", title="Lone")
+
+    code, envelope = drive([*VERB, str(_folder(machine)), "--pass", "no-such-pass"])
+
+    assert code == int(ExitCode.OK), envelope
+    message = _warned(envelope, guess_cli.PASS_UNREAD)
+    assert "no-such-pass" in message and "no intake job" in message
+    assert envelope["data"]["totals"]["playlists"] == []
 
 
 def test_no_pass_reads_no_playlist(machine, silence, monkeypatch):
@@ -474,7 +518,7 @@ def test_a_file_that_will_not_take_its_genre_is_never_reported_guessed(
     totals = envelope["data"]["totals"]
     assert totals["written"] == 0 and totals["after"] == 0
     assert totals["outcomes"]["unwritten"] == 1 and totals["outcomes"]["guessed"] == 0
-    assert "lone.flac" in _warned(envelope, guess_cli.UNWRITTEN)
+    assert "lone.flac" in _warned(envelope, guess_cli.FILES_UNWRITTEN)
 
 
 def test_a_file_that_reads_back_another_genre_is_unwritten(machine, silence, monkeypatch):
@@ -554,3 +598,13 @@ def test_a_guess_that_refuses_ends_the_chain(monkeypatch):
     with pytest.raises(tail.Stop) as stopped:
         tail.guess(chain, Path("/staging"))
     assert stopped.value.step == tail.GUESS
+
+
+def test_a_go_stopped_at_its_tag_step_names_the_guess_next_with_its_pass():
+    """Review round 1: the go's remaining commands from the tag step on include
+    the guess, which no go test stopping later reaches."""
+    commands = label_sync._commands(
+        Path("/staging"), ["--manifest", "m.json", "--pass", "p1"], tail.TAG
+    )
+    assert commands[:2] == ["crate tag folder /staging", "crate tag guess /staging --pass p1"]
+    assert len(commands) == len(tail.STEPS)
