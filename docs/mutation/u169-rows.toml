@@ -1,0 +1,240 @@
+name = "u169"
+pass_kind = "light"
+
+[[rows]]
+id = "E1_declined_accepts_retryable"
+description = "Declined: drop the refusal of a retryable cause, so a transient failure can be skipped and never retried"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py", "tests/test_acquire_workers.py"]
+old = '''        if cause.retryable:
+            raise ValueError('''
+new = '''        if False:
+            raise ValueError('''
+
+[[rows]]
+id = "E2_drive_fails_a_decline"
+description = "drive: no Declined clause, so a declined item falls to the failure boundary and fails the job"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py", "tests/test_acquire_workers.py"]
+old = '''                except Declined as exc:'''
+new = '''                except Parked as exc:'''
+
+[[rows]]
+id = "E3_decline_writes_failed"
+description = "decline_item: record the item failed rather than skipped"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py", "tests/test_acquire_workers.py"]
+old = '''            (str(ItemState.SKIPPED), json.dumps(cause.to_json()), job_id, item_id),'''
+new = '''            (str(ItemState.FAILED), json.dumps(cause.to_json()), job_id, item_id),'''
+
+[[rows]]
+id = "E4_decline_drops_cause"
+description = "decline_item: keep no cause on the skipped item, so nothing can name why"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py", "tests/test_acquire_workers.py"]
+old = '''            (str(ItemState.SKIPPED), json.dumps(cause.to_json()), job_id, item_id),'''
+new = '''            (str(ItemState.SKIPPED), None, job_id, item_id),'''
+
+[[rows]]
+id = "E5_declined_not_counted"
+description = "drive: count no decline on the result"
+file = "src/cratekit/core/jobs.py"
+surface = "maintainer"
+tests = ["tests/test_jobs.py", "tests/test_acquire_workers.py"]
+old = '''                    result.declined += 1'''
+new = '''                    result.declined += 0'''
+
+[[rows]]
+id = "E6_failed_cause_hides_declines"
+description = "partial failure cause: say nothing of the declined items beside the failures"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py", "tests/test_acquire_workers.py"]
+old = '''    if result.declined:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "A1_retryable_policy_declined"
+description = "refused_for_good: drop the retryable clause, so a retryable policy refusal is skipped"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''    return cause.code is ExitCode.REFUSED_BY_POLICY and not cause.retryable'''
+new = '''    return cause.code is ExitCode.REFUSED_BY_POLICY'''
+
+[[rows]]
+id = "A2_any_permanent_declined"
+description = "refused_for_good: drop the policy class, so any permanent failure (output-exists) is skipped"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''    return cause.code is ExitCode.REFUSED_BY_POLICY and not cause.retryable'''
+new = '''    return not cause.retryable'''
+
+[[rows]]
+id = "A3_worker_never_declines"
+description = "handle: re-raise a policy refusal instead of declining it, the base's behaviour"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''            raise jobs.Declined(exc.cause) from exc'''
+new = '''            raise'''
+
+[[rows]]
+id = "A4_no_declined_warning"
+description = "drive_queued: add no warning for the skipped tracks"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''    warnings = (*warnings, *declined_warnings(store, job))'''
+new = '''    warnings = tuple(warnings)'''
+
+[[rows]]
+id = "A5_warning_names_failed_items"
+description = "declined_warnings: name every item with a cause, failed ones included"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''        if item.state is not jobs.ItemState.SKIPPED or item.cause is None:'''
+new = '''        if item.cause is None:'''
+
+[[rows]]
+id = "A6_warning_names_identifier_only"
+description = "declined_warnings: name the track by its provider identifier only"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''        named = f"{title} by {artist}" if title and artist else title or artist or item.item_id'''
+new = '''        named = item.item_id'''
+
+[[rows]]
+id = "S1_sync_land_ignores_skips"
+description = "sync land: read only failed items as refused, so a declined track vanishes from its report"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py"]
+old = '''        if item in permanent or (item.state is jobs.ItemState.SKIPPED and item.cause is not None)'''
+new = '''        if item in permanent'''
+
+[[rows]]
+id = "R1_job_list_ungated"
+description = "render_job_list: drop the verb gate, so another verb's job_state with a jobs key reads as a listing"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py"]
+old = '''    if not envelope.schema.startswith("job_state/") or envelope.verb != _LISTING_VERB:'''
+new = '''    if not envelope.schema.startswith("job_state/"):'''
+
+[[rows]]
+id = "R2_job_list_not_rendered"
+description = "render: never call the listing case, the base's empty answer"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py"]
+old = '''    lines += render_job_list(envelope)
+'''
+new = '''
+'''
+
+[[rows]]
+id = "R3_unreadable_reads_as_none"
+description = "render_job_list: an unreadable rows list reads as an empty queue"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py"]
+old = '''    if rows and not listed:
+        return []'''
+new = '''    if False:
+        return []'''
+
+[[rows]]
+id = "R4_skipped_count_dropped"
+description = "job line: say nothing of the skipped items"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py"]
+old = '''        if _whole(skipped) and skipped:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "R5_no_worker_dropped"
+description = "job line: say nothing when no worker is bound"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py"]
+old = '''    if row.get("worker") == "none":'''
+new = '''    if False:'''
+
+[[rows]]
+id = "R6_filter_unnamed"
+description = "render_job_list: an empty filtered listing does not name its states"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_render_payloads.py"]
+old = '''        within = f" in {state}" if isinstance(state, str) and state and state != "all" else ""'''
+new = '''        within = ""'''
+
+[[rows]]
+id = "N1_relative_read_against_cwd"
+description = "root_path: take a relative root as it is, read under the working directory, the base's reading"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_root_option.py", "tests/test_naming_apply_cli.py"]
+old = '''    return named if named.is_absolute() else library / named'''
+new = '''    return named'''
+
+[[rows]]
+id = "N2_empty_root_accepted"
+description = "root_path: read an empty root as the working directory instead of refusing it"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_root_option.py", "tests/test_naming_apply_cli.py"]
+old = '''    if not given.strip():'''
+new = '''    if False:'''
+
+[[rows]]
+id = "N3_missing_folder_accepted"
+description = "root_folder: accept a folder that is not there"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_root_option.py", "tests/test_naming_apply_cli.py"]
+old = '''    if tried.is_dir():
+        return tried'''
+new = '''    if True:
+        return tried'''
+
+[[rows]]
+id = "N4_name_apply_bypasses"
+description = "name apply: read --root as the base did, bypassing the helper"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_root_option.py", "tests/test_naming_apply_cli.py"]
+old = '''    root = root_folder(ctx.args.root, cfg, verb="name apply")'''
+new = '''    root = Path(ctx.args.root) if ctx.args.root else Path(cfg.library.root)'''
+
+[[rows]]
+id = "N5_repair_scan_bypasses"
+description = "repair paths: read --root as the base did, bypassing the helper"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/test_root_option.py", "tests/intake/test_repair_apply.py"]
+old = '''    root = naming_cli.root_folder(ctx.args.root, cfg, verb="repair paths")'''
+new = '''    root = Path(ctx.args.root) if ctx.args.root else Path(cfg.library.root)'''
+
+[[rows]]
+id = "N6_repair_apply_bypasses"
+description = "repair paths --apply: take a relative root as it is"
+file = "src/cratekit/intake/repair_cli.py"
+surface = "user"
+tests = ["tests/test_root_option.py", "tests/intake/test_repair_apply.py"]
+old = '''        naming_cli.root_path(ctx.args.root, cfg, verb="repair paths --apply")'''
+new = '''        Path(ctx.args.root)'''
+
+[[dropped]]
+id = "N7_expanduser_dropped"
+description = "root_path: no tilde expansion"
+reason = "ranked below the cap: a shell expands an unquoted tilde before the verb sees it, so only a quoted one reaches here"
