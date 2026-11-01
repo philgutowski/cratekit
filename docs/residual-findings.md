@@ -40706,3 +40706,27 @@ commits. No producer was found.
 **Closes when:** a landing that filed into year playlists names them on its
 record whether or not it added a membership, or a producer is shown not to
 exist. Ledger only, since nothing reaches it.
+
+---
+
+## R-1143. A Bandcamp release the fetch refused for good is planned and refused again by every later sync bandcamp
+
+**Found:** at the second Fable review of #360, U179, 2026-11-01.
+
+**The mechanism.** `acquire bandcamp-fetch` records a purchase only once it is fetched (U176), so a release refused for good, a lossy only offer under the strict policy, stays `new` on every plan. Each `crate sync bandcamp` therefore queues a fetch that fails the same way, and names the release as refused again.
+
+**Measured cost.** Driven by the second review with an open fetch parked and the account then offering only MP3: two fetches in one run, one refusal named once since 75205b9, and the same refusal on every later run. A queue row and two account requests per run, and a warning a person learns to read past.
+
+**Closes when:** a refusal for good is recorded beside the fetched record and the plan shows it as refused rather than new, until the policy or the offer changes. U176's rule rather than this unit's; ledger only.
+
+---
+
+## R-1144. A sync bandcamp whose every release the fetch refused ends exit 0, no_op, where the fetch alone exits non zero
+
+**Found:** at the first Fable review of #360, U179, 2026-11-01.
+
+**The mechanism.** `crate sync bandcamp` reads a fetch that failed only by refusals for good (a lossy only release under the strict policy above all) as settled, the way `sync land` skips a lossy download, and goes on with what was staged. When nothing was staged it ends `no_op` with exit 0. `crate acquire bandcamp-fetch` alone ends the same job with its failed state's refusal.
+
+**Measured cost.** Driven by `test_a_release_refused_for_good_is_recorded_and_nothing_is_landed_over_none`: the envelope names each refused release in `fetch_refused`, in a `sync-bandcamp-fetch-refused` warning and on a `fail` check row, so nothing false is said, but a caller reading only the exit code is not told. `sync land` over an all refused download carries the same shape (U152's residual).
+
+**Closes when:** the verb ends with the fetch's own refusal when every release it attempted was refused and nothing was staged, or the record states exit 0 as the contract. Ledger only.
