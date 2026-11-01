@@ -1730,13 +1730,19 @@ def _check_genre_subs(
         taken_ids, taken_displays = live_places(others, energy, sub_classes)
         aliases = set(bucket.aliases)
         claimed: dict[str, str] = {}
+        seen_ids: set[str] = set()
         for genre in bucket.genre_subs:
             where = f"[[bucket]] {bucket.id} genre_sub {genre.id or genre.display!r}"
             if not _ID.match(genre.id):
                 problems.append(f"{where}: id {genre.id!r} must match {_ID.pattern}")
             if not genre.display:
                 problems.append(f"{where}: display must be a non-empty string")
-            if genre.id in taken_ids:
+            if genre.id in seen_ids:
+                problems.append(
+                    f"{where}: id {genre.id!r} is already another genre sub of this "
+                    f"bucket; one identifier names one place"
+                )
+            elif genre.id in taken_ids:
                 problems.append(
                     f"{where}: id {genre.id!r} is already a band, a sub or a sub class "
                     f"of this bucket; a genre sub is a place of its own"
@@ -1747,7 +1753,7 @@ def _check_genre_subs(
                     f"a sub or a sub class in this bucket's folder; two places of one "
                     f"name are one playlist"
                 )
-            taken_ids.add(genre.id)
+            seen_ids.add(genre.id)
             taken_displays.add(genre.display)
             if not genre.sources:
                 problems.append(

@@ -3542,7 +3542,7 @@ def test_the_export_gate_prints_the_plan_in_the_default_mode(configured, voiced,
     vox = _vox_display()
     assert (
         f"artist=Artist 11, title=Track 11, track_id=11, destination=Deep House/Low, "
-        f"vocal=Deep House/{vox}, long_track=" in screen
+        f"vocal=Deep House/{vox}, genre=, long_track=" in screen
     )
     assert "rating=" not in screen
     assert f"long_track={LONG_PLAYLIST}" in screen
@@ -3653,6 +3653,7 @@ def test_the_database_inbox_gate_shows_each_files_destination(acknowledged, nati
             "name": ARRIVED,
             "destination": FALLBACK_DESTINATION,
             "vocal": "",
+            "genre": "",
         }
     ]
     code, declined = _drive(["-d", "route.inbox.apply=abort", "route", "inbox"])
@@ -4392,3 +4393,71 @@ def test_an_intake_key_with_no_row_warns_once_and_only_as_row_absent(
     code, envelope = _apply_export(export)
     assert code == int(ExitCode.OK), envelope
     assert [w["code"] for w in _others(envelope)] == ["track-row-absent"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U155: a genre sub track is shown in both places the write files it into
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.fixture
+def rominimal(monkeypatch):
+    """The intake file reads as a Rominimal track at energy 3, with no vocal reading."""
+    from cratekit.core import tags
+
+    readings = {ARRIVED: ("Rominimal", 3)}
+    monkeypatch.setattr(
+        tags, "read_genre_from_file", lambda path: readings.get(Path(path).name, (None, None))[0]
+    )
+    monkeypatch.setattr(
+        tags, "read_energy_from_file", lambda path: readings.get(Path(path).name, (None, None))[1]
+    )
+    monkeypatch.setattr(tags, "read_vox_from_file", lambda path: None)
+
+
+def test_the_database_inbox_gate_shows_a_genre_sub_beside_the_band_and_files_both(
+    acknowledged, native, rominimal
+):
+    """The review drove a gate that showed the band alone while the apply
+    filed the track into the band and the Rominimal genre sub, and created
+    the genre sub's playlist. The gate now names both, counts the second, and
+    the digest is taken over both."""
+    del rominimal
+    shown = _blocked_inbox()
+    (item,) = shown["items"]
+    assert item["destination"] == "Minimal / Deep Tech/Low Energy"
+    assert item["genre"] == "Minimal / Deep Tech/Rominimal"
+    assert item["vocal"] == ""
+    code, applied = _drive(["-d", "route.inbox.apply=apply", "route", "inbox"])
+    assert code == int(ExitCode.OK), applied
+    assert applied["data"]["items"] == shown["items"]
+    assert _filed_under(acknowledged, native, "2") == {
+        "Minimal / Deep Tech/Low Energy",
+        "Minimal / Deep Tech/Rominimal",
+    }
+
+
+def test_the_gate_counts_tracks_filed_into_a_genre_sub():
+    from cratekit.write import routing_cli
+
+    items = [
+        {"destination": "A/Low", "vocal": "", "genre": "A/Rominimal"},
+        {"destination": "A/Med", "vocal": "A/with vox", "genre": ""},
+        {"destination": "", "vocal": "", "genre": ""},
+    ]
+    assert routing_cli._placed_counts(items) == {"routed": 2, "vocal": 1, "genre sub": 1}
+
+
+def test_a_vocal_track_unrated_is_owed_one_rating_not_one_per_place(
+    configured, voiced, tmp_path
+):
+    """A vocal track files into its band and its vocal sub, and its row is
+    rated once. Counted per placement it read as two rows owed (U155's review,
+    which drove the same with a genre sub track)."""
+    _calibrated(configured)
+    voiced["Low Track.flac"] = 6
+    export = _write_export(configured, tmp_path / "exports", ratings={"11": "0"})
+    code, envelope = _apply_export(export)
+    assert code == int(ExitCode.OK), envelope
+    (message,) = _owed(envelope)
+    assert message.startswith("1 intake row(s) are owed a star rating"), message

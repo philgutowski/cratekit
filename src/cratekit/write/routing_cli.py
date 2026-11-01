@@ -257,12 +257,13 @@ def plan_inbox(cfg: config.Config, declared: taxonomy.Taxonomy) -> InboxPlan:
             gaps.update(not_derived)
     destined: dict[str, str] = {}
     vocal: dict[str, str] = {}
+    genre: dict[str, str] = {}
     for placed in placements.values():
         for placement in placed:
             folder_name, sub = routing_pass.destination(
                 declared, placement.bucket, placement.sub
             )
-            named = vocal if placement.sub == trees.VOX_SUB_CLASS else destined
+            named = _column(declared, placement, destined=destined, vocal=vocal, genre=genre)
             named.setdefault(placement.location, f"{folder_name}/{sub}")
     items = [
         {
@@ -270,6 +271,7 @@ def plan_inbox(cfg: config.Config, declared: taxonomy.Taxonomy) -> InboxPlan:
             "name": path.name,
             "destination": destined.get(str(path), ""),
             "vocal": vocal.get(str(path), ""),
+            "genre": genre.get(str(path), ""),
         }
         for path in files
     ]
@@ -307,8 +309,32 @@ def _inbox_facts(plan: InboxPlan) -> dict[str, Any]:
     }
 
 
+def _column(
+    declared: taxonomy.Taxonomy,
+    placement: rebuild.DeclaredPlacement,
+    *,
+    destined: dict[str, str],
+    vocal: dict[str, str],
+    genre: dict[str, str],
+) -> dict[str, str]:
+    """Which column of a gate's item one placement is shown in (U155).
+
+    A track files into at most three places a person approves: its energy sub,
+    the vocal sub beside it, and a genre sub beside that. Each has a column of
+    its own, so a gate never shows one place for a track the write files into
+    two, and the digest is taken over every one of them. ONE ANSWER for both
+    media, so the database gate and the export gate split a track's
+    placements the same way.
+    """
+    if placement.sub == trees.VOX_SUB_CLASS:
+        return vocal
+    if routing.genre_sub_named(declared, placement.bucket, placement.sub):
+        return genre
+    return destined
+
+
 def _placed_counts(tracks: list[dict[str, str]]) -> dict[str, int]:
-    """How many of these track items file somewhere, and how many under a vocal sub.
+    """How many of these track items file somewhere, under a vocal sub and under a genre sub.
 
     One counter for both gates, so a change to what counts as routed lands on
     both screens or on neither.
@@ -316,6 +342,7 @@ def _placed_counts(tracks: list[dict[str, str]]) -> dict[str, int]:
     return {
         "routed": sum(1 for item in tracks if item["destination"]),
         "vocal": sum(1 for item in tracks if item["vocal"]),
+        "genre sub": sum(1 for item in tracks if item.get("genre")),
     }
 
 
@@ -926,14 +953,22 @@ def _owed_ratings(
     Only a track the pass PLACES is counted. A track with no placement is one
     the declaration has nowhere to put, and the source system rated a track as
     part of filing it.
+    ONCE PER FILE, however many places it files into. A vocal track and a
+    genre sub track carry a second placement beside their energy sub, and the
+    rating is the row's, set once; counting per placement told a person two
+    rows owed a rating for one (U155's review).
     """
     energy = {reading.location: reading.energy for reading in readings}
     owed = 0
+    counted: set[str] = set()
     for placement in placements:
+        if placement.location in counted:
+            continue
         if not routing.rates(declared, placement.bucket):
             continue
         if routing.energy_rating(declared, energy.get(placement.location)) is None:
             continue
+        counted.add(placement.location)
         owed += sum(1 for key in files[placement.location] if _unrated(by_id[key]))
     return owed
 
@@ -1061,8 +1096,8 @@ class Decision:
     """Where the routing decision puts a set of export tracks, and what it read.
 
     ``plan`` is what a bridge writer takes, keyed on ``(folder, sub)``.
-    ``destined`` and ``vocal`` name each track's energy sub and vocal sub as a
-    person is shown them. ``files`` maps each readable file to the keys that
+    ``destined``, ``vocal`` and ``genre`` name each track's energy sub, vocal
+    sub and genre sub as a person is shown them. ``files`` maps each readable file to the keys that
     name it, and ``readings`` and ``placements`` are the engine's own answers,
     kept for a caller that counts owed ratings from the same reading.
     """
@@ -1074,6 +1109,7 @@ class Decision:
     readings: list[rebuild.Truth]
     placements: tuple[rebuild.DeclaredPlacement, ...]
     gaps: tuple[str, ...]
+    genre: dict[str, str]
 
 
 def _decide(
@@ -1116,13 +1152,14 @@ def _decide(
     plan: dict[tuple[str, str], list[str]] = {}
     destined: dict[str, str] = {}
     vocal: dict[str, str] = {}
+    genre: dict[str, str] = {}
     for placement in placements:
         folder, sub = routing_pass.destination(declared, placement.bucket, placement.sub)
-        named = vocal if placement.sub == trees.VOX_SUB_CLASS else destined
+        named = _column(declared, placement, destined=destined, vocal=vocal, genre=genre)
         for key in files[placement.location]:
             plan.setdefault((folder, sub), []).append(key)
             named[key] = f"{folder}/{sub}"
-    return Decision(plan, destined, vocal, files, readings, placements, gaps)
+    return Decision(plan, destined, vocal, files, readings, placements, gaps, genre)
 
 
 class ExportPlan(NamedTuple):
@@ -1218,18 +1255,19 @@ def plan_export(
             "track_id": key,
             "destination": destined.get(key, ""),
             "vocal": vocal.get(key, ""),
+            "genre": decision.genre.get(key, ""),
             "long_track": playlist if key in lengthy else "",
         }
         for key in keys
     ]
     intake = set(keys)
     items += [
-        {"track_id": key, "destination": "", "vocal": "", "long_track": playlist}
+        {"track_id": key, "destination": "", "vocal": "", "genre": "", "long_track": playlist}
         for key in long_plan.keys
         if key not in intake
     ]
     items += [
-        {"track_id": "", "destination": created, "vocal": "", "long_track": ""}
+        {"track_id": "", "destination": created, "vocal": "", "genre": "", "long_track": ""}
         for created in vox_created
     ]
     names = {
@@ -1706,6 +1744,7 @@ def plan_unplaced_export(
             "track_id": key,
             "destination": decision.destined.get(key, ""),
             "vocal": decision.vocal.get(key, ""),
+            "genre": decision.genre.get(key, ""),
         }
         for key in keys
     ]

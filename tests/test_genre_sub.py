@@ -286,6 +286,23 @@ def test_two_genre_subs_of_one_name_are_refused(default_raw):
     assert any("display 'Rominimal' is already the name" in p for p in _problems(default_raw, twice))
 
 
+def test_two_genre_subs_of_one_identifier_are_refused_by_that_name(default_raw):
+    """Loaded, the second would resolve to the first's playlist and its
+    source's tracks would file there."""
+
+    def twice(data):
+        bucket = _bucket(data, BUCKET)
+        bucket["aliases"].append("Romanian Minimal")
+        bucket["genre_sub"].append(
+            {"id": SUB, "display": "Romanian", "sources": ["Romanian Minimal"]}
+        )
+
+    assert any(
+        "id 'rominimal' is already another genre sub of this bucket" in p
+        for p in _problems(default_raw, twice)
+    )
+
+
 def test_one_source_in_two_genre_subs_is_refused(default_raw):
     def twice(data):
         _bucket(data, BUCKET)["genre_sub"].append(

@@ -430,6 +430,15 @@ def genre_sub(taxonomy: Taxonomy, bucket_id: str, source_genre: str | None) -> S
     return None
 
 
+def genre_sub_named(taxonomy: Taxonomy, bucket_id: str, sub_id: str) -> bool:
+    """Whether a sub identifier is one of a bucket's genre subs (U155).
+
+    What a gate asks of a placement to show it in the genre sub's own column
+    rather than as the track's energy sub.
+    """
+    return _genre_sub_by_id(taxonomy.bucket(bucket_id), sub_id) is not None
+
+
 class Competing(str, Enum):
     """What kind of place a bucket's exclusive subs are.
 
