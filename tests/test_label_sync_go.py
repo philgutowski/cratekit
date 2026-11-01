@@ -1103,3 +1103,167 @@ def test_a_go_resuming_an_earlier_download_lands_it_under_that_gos_manifest_and_
         "--manifest", first.payload[go.ORIGIN_KEY]["manifest"],
         "--pass", default_name(first_run),
     ]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 5. R-1115: a track refused for good is named and skipped, and the rest lands
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def one_release_answered(monkeypatch, script, tracks: int = 2) -> None:
+    """One label answered ``all``, one release of ``tracks`` tracks, each downloadable."""
+    register()
+    bind(monkeypatch, {"tide-works": [("r1", "2026", tracks)]})
+    next_question()
+    answer("tide-works", "all")
+    land_every(script, ("r1", tracks))
+
+
+def already_staged(cfg: config.Config, *track_ids: str) -> None:
+    """A file at each track's staging name, so its download is refused ``output-exists``."""
+    folder = Path(staged(cfg))
+    folder.mkdir(parents=True, exist_ok=True)
+    for track_id in track_ids:
+        (folder / f"{track_id}.wav").write_bytes(b"kept on purpose")
+
+
+def refused_ids(envelope: dict) -> list[str]:
+    cause = envelope.get("cause") or {}
+    data = (cause.get("detail") or {}).get("label_sync") or envelope["data"]
+    return [row["item_id"] for row in data["summary"]["go"]["refused"]]
+
+
+def test_a_release_whose_second_track_lands_lossy_runs_the_tail_on_the_first_and_names_it(
+    installed, monkeypatch, script, tail
+):
+    one_release_answered(monkeypatch, script)
+    script.landings["t-r1-2"] = Landing(kind="lossy")
+
+    run_id, code, envelope = approved_go()
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["outcome"] == "pending"
+    assert tail.calls[-1] == [
+        "intake", "land", staged(installed),
+        "--manifest", envelope["data"]["summary"]["go"]["manifest"],
+        "--pass", default_name(run_id),
+    ], "the tail did not run on to the landing"
+    downloaded = check(envelope, "downloaded")
+    assert downloaded["status"] == "ok"
+    assert "1 of 2 track(s) downloaded" in downloaded["detail"]
+    assert "1 refused for good and skipped" in downloaded["detail"]
+    assert "t-r1-2 (lossy-refused)" in downloaded["detail"]
+    assert refused_ids(envelope) == ["t-r1-2"]
+    assert any(
+        "t-r1-2" in warning["message"] and "lossy-refused" in warning["message"]
+        for warning in envelope["warnings"]
+    ), envelope["warnings"]
+    assert "next" not in {one["title"] for one in envelope["data"]["checks"]}
+
+
+def test_a_go_whose_every_track_was_refused_runs_no_tail_and_says_so(
+    installed, monkeypatch, script, tail
+):
+    one_release_answered(monkeypatch, script)
+    script.landings["t-r1-1"] = Landing(kind="lossy")
+    script.landings["t-r1-2"] = Landing(kind="lossy")
+
+    _run, code, envelope = approved_go()
+
+    assert code == int(ExitCode.OK), envelope
+    assert tail.calls == [], "the tail ran over a download that landed nothing"
+    downloaded = check(envelope, "downloaded")
+    assert downloaded["status"] == "fail"
+    assert "0 of 2 track(s) downloaded" in downloaded["detail"]
+    assert "every track was refused for good, so no tail was run" in downloaded["detail"]
+    assert sorted(refused_ids(envelope)) == ["t-r1-1", "t-r1-2"]
+    go_report = envelope["data"]["summary"]["go"]
+    assert go_report[go.LAND_KEY] is None and go_report["next"] == []
+    assert "next" not in {one["title"] for one in envelope["data"]["checks"]}, (
+        "the go named a tail to type over a folder nothing landed in"
+    )
+
+
+def test_a_download_failed_only_by_a_track_refused_for_good_runs_the_tail_on_the_rest(
+    installed, monkeypatch, script, tail
+):
+    """The FAILED half of the rule ``sync land`` reads: ``output-exists`` is not
+    the policy's class, so the item fails rather than being declined, and the
+    job ends FAILED with one track done."""
+    one_release_answered(monkeypatch, script)
+    already_staged(installed, "t-r1-2")
+
+    _run, code, envelope = approved_go()
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    (job,) = our_jobs()
+    assert job.state is jobs.JobState.FAILED, job
+    assert item_states(job.job_id) == {
+        "t-r1-1": jobs.ItemState.DONE, "t-r1-2": jobs.ItemState.FAILED,
+    }
+    assert ("intake", "land") in tail.verbs()
+    assert refused_ids(envelope) == ["t-r1-2"]
+    assert "t-r1-2 (output-exists)" in check(envelope, "downloaded")["detail"]
+    (warning,) = [w for w in envelope["warnings"] if w["code"] == go.REFUSED_WARNING]
+    assert "t-r1-2" in warning["message"] and "output-exists" in warning["message"]
+
+
+def test_a_download_whose_every_track_failed_for_good_runs_no_tail_and_says_so(
+    installed, monkeypatch, script, tail
+):
+    """The engine raises inside the drive when every attempted item failed, so
+    the go reads the job back off the queue rather than the refusal."""
+    one_release_answered(monkeypatch, script, tracks=1)
+    already_staged(installed, "t-r1-1")
+
+    _run, code, envelope = approved_go()
+
+    assert code == int(ExitCode.OK), envelope
+    (job,) = our_jobs()
+    assert job.state is jobs.JobState.FAILED, job
+    assert tail.calls == []
+    assert check(envelope, "downloaded")["status"] == "fail"
+    assert refused_ids(envelope) == ["t-r1-1"]
+
+
+def test_a_transient_failure_still_ends_the_go_on_its_refusal_with_no_tail(
+    installed, monkeypatch, script, tail
+):
+    one_release_answered(monkeypatch, script)
+    script.landings["t-r1-2"] = Landing(
+        fetch_raises=RuntimeError("connection reset by peer"), fetch_raises_times=99
+    )
+
+    _run, code, envelope = approved_go()
+
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "failed"
+    assert envelope["cause"]["retryable"] is True
+    (job,) = our_jobs()
+    assert job.state is jobs.JobState.FAILED
+    assert tail.calls == [], "a retryable failure was read as refused for good"
+
+
+def test_a_resumed_download_failed_only_by_a_refusal_lands_under_the_first_gos_manifest(
+    installed, monkeypatch, script, tail
+):
+    one_release_answered(monkeypatch, script)
+    script.landings["t-r1-2"] = Landing(fetch_raises=cooldown(), fetch_raises_times=1)
+    first_run, code, _parked = approved_go()
+    assert code != int(ExitCode.PENDING_HUMAN) and tail.calls == []
+    (first,) = our_jobs()
+    already_staged(installed, "t-r1-2")
+
+    _run, code, envelope = approved_go()
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert jobs.JobState.FAILED is our_jobs()[0].state
+    assert tail.calls[-1] == [
+        "intake", "land", staged(installed),
+        "--manifest", first.payload[go.ORIGIN_KEY]["manifest"],
+        "--pass", default_name(first_run),
+    ]
+    assert any(
+        w["code"] == go.REFUSED_WARNING and "t-r1-2" in w["message"]
+        for w in envelope["warnings"]
+    ), envelope["warnings"]
