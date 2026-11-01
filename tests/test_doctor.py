@@ -225,6 +225,7 @@ def test_every_check_key_and_its_place_in_the_run_order_is_written_out():
         *(f"backup.age.{portion}" for portion in backup_facts.PORTIONS),
         "backup.full_comparison",
         "backup.remote",
+        "deadca7.push",
         "session.unresolved",
         "tree.registry",
         "repo.commit_hook",
@@ -8345,3 +8346,102 @@ def test_an_unparseable_installed_version_is_unknown_never_a_downgrade():
     assert finding.status is doctor.Status.INFO
     assert "unknown" in finding.detail
     assert "pipx install" not in finding.detail, "it told a newer copy to downgrade"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U185. DEADCA7 beside the library
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _deadca7(tmp_path, *, pushed_at: datetime | None = None, home: bool = True):
+    """DEADCA7's support folder, and one backup entry written at ``pushed_at``."""
+    support = tmp_path / "deadca7"
+    if not home:
+        return support
+    backups = support / doctor.DEADCA7_BACKUPS
+    backups.mkdir(parents=True)
+    (backups / ".DS_Store").write_bytes(b"")
+    if pushed_at is not None:
+        entry = backups / "master-20261030.db"
+        entry.write_bytes(b"a copy")
+        os.utime(entry, (pushed_at.timestamp(), pushed_at.timestamp()))
+    return support
+
+
+def _push_check(configured, support) -> doctor.Finding:
+    report = doctor.run(configured, probes=probes(deadca7_home=lambda: support))
+    finding = find(report, "deadca7.push")
+    assert finding.status is doctor.Status.INFO, finding
+    return finding
+
+
+def test_with_no_deadca7_support_folder_doctor_says_not_installed_and_does_not_fail(
+    configured, tmp_path
+):
+    finding = _push_check(configured, _deadca7(tmp_path, home=False))
+    assert "not installed" in finding.detail
+    # A machine with no home for it at all answers the same, and never fails.
+    assert "not installed" in _push_check(configured, None).detail
+
+
+def test_installed_with_no_push_says_so(configured, tmp_path):
+    finding = _push_check(configured, _deadca7(tmp_path))
+    assert "installed here and has recorded no push" in finding.detail
+
+
+def test_a_push_newer_than_the_last_database_backup_warns_and_names_the_backup(
+    configured, tmp_path
+):
+    now = doctor_machines.green().now
+    backup_facts.record(
+        configured,
+        backup_facts.Portion.DATABASE,
+        completed_at=now - timedelta(days=3),
+        destination="remote:backups",
+    )
+    finding = _push_check(configured, _deadca7(tmp_path, pushed_at=now - timedelta(days=1)))
+    assert finding.detail.startswith("warning: DEADCA7 last pushed")
+    assert "after this product's last database backup" in finding.detail
+    assert "crate backup run" in finding.detail
+
+
+def test_a_push_older_than_the_last_database_backup_is_held_by_it(configured, tmp_path):
+    now = doctor_machines.green().now
+    backup_facts.record(
+        configured,
+        backup_facts.Portion.DATABASE,
+        completed_at=now - timedelta(days=1),
+        destination="remote:backups",
+    )
+    finding = _push_check(configured, _deadca7(tmp_path, pushed_at=now - timedelta(days=3)))
+    assert "before this product's last database backup, which holds it" in finding.detail
+    assert "warning" not in finding.detail
+
+
+def test_a_push_with_no_database_backup_recorded_warns(configured, tmp_path):
+    now = doctor_machines.green().now
+    finding = _push_check(configured, _deadca7(tmp_path, pushed_at=now - timedelta(days=1)))
+    assert finding.detail.startswith("warning:")
+    assert "no database backup is recorded here" in finding.detail
+
+
+def test_a_backup_folder_that_cannot_be_read_is_said_as_unread_and_does_not_fail(
+    configured, tmp_path
+):
+    support = _deadca7(tmp_path)
+    (support / doctor.DEADCA7_BACKUPS / "gone").symlink_to(tmp_path / "nowhere")
+    finding = _push_check(configured, support)
+    assert "cannot be said: its backup folder could not be read" in finding.detail
+
+
+def test_a_push_beside_a_backup_recorded_ahead_of_now_is_not_called_held(configured, tmp_path):
+    now = doctor_machines.green().now
+    backup_facts.record(
+        configured,
+        backup_facts.Portion.DATABASE,
+        completed_at=now + timedelta(days=10),
+        destination="remote:backups",
+    )
+    finding = _push_check(configured, _deadca7(tmp_path, pushed_at=now - timedelta(days=1)))
+    assert "cannot be said, since that backup is recorded ahead of now" in finding.detail
+    assert "which holds it" not in finding.detail

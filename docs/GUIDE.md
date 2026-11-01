@@ -1055,6 +1055,30 @@ refused as `backup-acknowledgment-backup-too-old` and named; run a backup, or
 acknowledge from a terminal yourself. The acknowledgment records which rule
 minted it, `session-ages` or `terminal`, and who answered the gate.
 
+## Using DEADCA7 beside Cratekit
+
+DEADCA7 is a catalog manager and player that can push into rekordbox's
+database. Its playlists go into one folder named `DEADCA7` at the top of the
+playlist tree, along with its hot cues and its grids and waveforms. Cratekit
+shares the library with it and leaves its work alone:
+
+- Nothing Cratekit writes can move, rename, empty or fill that folder or
+  anything in it. A write that would is refused, with nothing written.
+- `crate organize` names the folder once, as another app's, and never lists it
+  among your own playlists or suggests a home for it.
+- A playlist DEADCA7 pushed that happens to share your Favorites playlist's
+  name is not mistaken for it.
+- No tree in your taxonomy may be named `DEADCA7`.
+- `crate doctor` says whether DEADCA7 is installed, when it last pushed into
+  the database, and warns when that push is newer than your last database
+  backup. Run `crate backup run` then.
+
+Both tools refuse while rekordbox is open, so they take turns. Do not push
+from DEADCA7 while a Cratekit verb is running: the verb's next commit sees the
+push and refuses, which is the safe answer, and running it again carries on.
+A folder merely named DEADCA7 somewhere below the top is your own and is
+treated like any other.
+
 ## When something refuses or stalls
 
 | Symptom | Ask |
