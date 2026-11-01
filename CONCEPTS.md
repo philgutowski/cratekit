@@ -1581,7 +1581,8 @@ each filled with that year's tracks from the label's confirmed catalogue
 build reuses and what the playlists source excludes as `label-folder`, since a
 year playlist swept as intake would list the label's catalogue as missing.
 `crate label mark` prefixes the years a landed batch filed, through the mark
-record. `crate label prune` takes a held or reattributed release's tracks off
+record, read off the intake file on the bridge or, with `--pass`, off the
+native landings' own records (R-1056). `crate label prune` takes a held or reattributed release's tracks off
 the years it created (R-836), see Prune.
 
 *Avoid:* reading a year playlist as the label's releases in the library, which

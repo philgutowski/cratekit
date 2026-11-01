@@ -708,6 +708,22 @@ and reads nothing more until you answer `crawl`. A full build that the
 provider's rate limit stops part way keeps nothing it read, so the next run
 starts the crawl again.
 
+Once a label batch has landed, `label mark` puts `DOWNLOADED ` in front of the
+year playlists that batch filed, so the account stops offering them as unheard:
+
+```bash
+crate label mark "Some Label" --xml /path/to/library/RUN_synced_inboxed.xml
+crate label mark "Some Label" --pass RUN_synced
+```
+
+Give it the intake file the landing wrote while your intake tree is on the xml
+bridge, and the pass's name once it is database native, since a native landing
+writes no file and its own record says which years it filed. Only a year the
+batch filed under that label is renamed, and only while its title is still the
+one `label playlists` built it under; every other year is listed and left, and
+a batch that filed none of them says so. Nothing is renamed until you answer
+its gate, and `crate sync unmark --pass RUN_synced` takes the marks off again.
+
 ### Sync from streaming
 
 ```bash

@@ -1487,6 +1487,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'label-mark',
         'label-mark-changed-since-plan',
         'label-mark-nothing-built',
+        'label-mark-nothing-filed',  # 2026-11-01, R-1056: a batch that filed no built year.
         'label-playlists-not-followed',
         'not-in-batch',
         'retitled-since-built',
