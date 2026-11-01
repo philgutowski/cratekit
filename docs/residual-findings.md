@@ -40006,3 +40006,103 @@ person to the wrong place for a truncated download.
 
 **Closes when:** the refusal's step also names a file that cannot be read as
 audio, or the art repair's detail rides on the refusal. Ledger only, wording.
+
+---
+
+## R-1106. Three U150 guards kill no test, each covered by another layer
+
+**Found:** at the reviews of #331, U150, 2026-11-01.
+
+**The mechanism.** Each was reverted alone by the review with the suite green.
+`label_filing.supported_only` keeps only the refs of targets the landing makes
+or finds, and `label_filing.write` maps refs through `by_target`, which holds
+only landed targets anyway. `mirror.Matcher` drops a known track that is
+empty, and `account_mirror.landed_tracks` already strips blanks while the
+match skips an empty answer. A guard covered by another guard is a guard
+nothing covers, so the record names them.
+
+**Measured cost.** None: the second layer holds in each case.
+
+**Closes when:** each has a test that drives its own layer alone, or the
+redundant layer is dropped. Ledger only.
+
+---
+
+## R-1107. An account mirror plan reads the session log twice, once for the live batches and once for the landing tracks
+
+**Found:** at the review of #331, U150, 2026-11-01.
+
+**The mechanism.** `rotate.live_batches` reads the session log through
+`rotate.landings`, and `account_mirror.landed_tracks` reads it again for each
+row's recorded provider track, so one plan parses every record twice.
+
+**Measured cost.** Not measured on the live library. One extra parse of the
+session log per organize plan, local and without a provider request.
+
+**Closes when:** one scan feeds both, or the cost is measured and found
+negligible. Ledger only.
+
+---
+
+## R-1108. Only a native label landing with a manifest records each row's provider track, so a bridge landing's or a --label landing's batch is matched by ISRC
+
+**Found:** at the build of #331, U150, 2026-11-01.
+
+**The mechanism.** `label_filing.PROVIDER_KEY` is written by the native
+landing from the manifest rows its files were tied to. A landing on the xml
+bridge writes an intake file and records nothing of the kind, and a landing
+given `--label` has no manifest to name a track. Those rows reach the INBOX
+mirror through the ordinary matcher, by ISRC, and a row whose code ties two
+agreeing releases is unmatched and named, the tie R-1032 records.
+
+**Measured cost.** Not driven on the live library. A label batch landed that
+way has its tied rows missing from its `INBOX <batch>` playlist, each named on
+the gate.
+
+**Closes when:** the tie break lands, or the downloader's own record of each
+file's provider track reaches the landing. Ledger only.
+
+---
+
+## R-1109. A stale batch is mirrored by the same organize run that rotates it into Old, and removed from the account at the next
+
+**Found:** at the review of #331, U150, 2026-11-01.
+
+**The mechanism.** `rotate.live_batches` reads a batch as live while it sits
+under INBOX, whatever its age, and `crate organize` plans both areas before it
+applies either. So a batch past `reports.intake_stale_days` that was never
+mirrored is planned into the account's INBOX folder in the run whose
+rekordbox area moves it into Old, and the next refresh removes that playlist.
+The first fix round skipped a batch the rotation would move, and the second
+review drove what that cost: under `--as-of`, under `--only mirror`, or with
+the rekordbox gate declined or refused, the batch stays in rekordbox's INBOX
+and was silently missing from the account's. That skip was reverted.
+
+**Measured cost.** Driven at the function seam by the review: one playlist
+created and filled, then removed at the next refresh, per stale batch never
+mirrored before. No track leaves the library or any other playlist.
+
+**Closes when:** the account area learns, after the rekordbox apply, which
+batches the rotation actually moved (a second account gate, or the mirror
+planned after the database area writes, the lag the U147 solution names).
+Ledger only.
+
+---
+
+## R-1110. A batch an unreadable landing record names is left out of the INBOX mirror with nothing said, when it was never mirrored before
+
+**Found:** at the second review of #331, U150, 2026-11-01.
+
+**The mechanism.** A batch recognised only by its landing record (`run record`
+or `recorded name`) is not a batch when that record cannot be read, so
+`live_batches` leaves it out. One already mirrored is left on the account and
+named, because its title is still under INBOX. One never mirrored is simply
+absent from the plan, and under `--only mirror` the rotation's own warning
+about unreadable records is not on the screen either.
+
+**Measured cost.** Driven by the review on a hand corrupted record: the batch
+is missing from the account's INBOX folder with no line saying why. No verb
+that writes an unreadable record was driven, so reachability is unmeasured.
+
+**Closes when:** the mirror's plan states the unreadable record count, as the
+rotation's step does. Ledger only.
