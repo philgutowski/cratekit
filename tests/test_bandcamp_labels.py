@@ -313,3 +313,33 @@ def test_a_file_that_would_not_take_the_label_is_staged_named_and_fails_its_item
     assert item.item_id == "1"
     assert item.cause.reason == bandcamp_cli.LABEL_UNWRITTEN
     assert refused in item.cause.message and "PULS" in item.cause.message
+
+
+def test_a_label_whose_purchases_are_all_filtered_is_not_said_to_stage(signed_in, account, puls):
+    """Only a seller something is fetched from is named as staging under its label."""
+    _code, envelope = plan("otherlabel")
+
+    summary = envelope["data"]["summary"]
+    assert summary["labels"] == {}
+    (check,) = [c for c in envelope["data"]["checks"] if c["key"] == "acquire.bandcamp.labels"]
+    assert "pulsromania" not in check["detail"]
+
+
+def test_the_landing_the_fetch_names_is_one_the_landing_verb_parses(signed_in, account, puls):
+    """The flag is a literal on both sides, so it is tied here: the named command parses."""
+    import argparse
+    import shlex
+
+    from cratekit.intake import land_cli
+
+    _code, envelope = fetch("--batch", BATCH)
+    with jobs.open_store() as store:
+        job = jobs.get(store, envelope["data"]["job_id"])
+    command = bandcamp_cli.land_command(job)
+    words = shlex.split(command)
+    assert words[:3] == ["crate", "intake", "land"]
+    parser = argparse.ArgumentParser()
+    land_cli.build_land(parser, None)
+    parsed = parser.parse_args(words[3:])
+    assert parsed.label_from_tags is True
+    assert parsed.folder == str(Path(signed_in.paths.download_staging) / BATCH)

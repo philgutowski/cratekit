@@ -606,8 +606,8 @@ def _registration_warnings(
         else:
             message = (
                 f"{seller} is the seller of purchases to fetch and no followed label "
-                f"names it, so its files are staged with no label tag and land filed "
-                f"under no label; to file them under their label, run "
+                f"names it, so its files are staged as they came, with no label tag "
+                f"written; to file them under their label, run "
                 f"{register_command(seller)}, or set --bandcamp {seller} on a label "
                 f"already followed"
             )
@@ -769,7 +769,8 @@ def land_command(job) -> str | None:
     if not any(isinstance(one, Mapping) and one.get("label") for one in releases.values()):
         return None
     folder = Path(jobs.frozen_config(job).paths.download_staging) / str(payload.get(BATCH) or "")
-    return f"crate intake land {shlex.quote(str(folder))} {LAND_FLAG}"
+    # SHELL QUOTING, not a location's encoding: the batch folder holds a space.
+    return shlex.join(["crate", "intake", "land", str(folder), LAND_FLAG])
 
 
 def _land_warnings(job) -> tuple[dict[str, str], ...]:
@@ -1211,9 +1212,6 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
             "untagged": sorted(untagged),
         },
     )
-    # A NAME REFUSED AT THE MOVE IS NOT A FILE STAGED UNTAGGED: its downloaded
-    # copy is the one kept, and the collision is the refusal that names it.
-    untagged = sorted(name for name in untagged if name not in refused)
     if refused:
         raise refuse(
             "output-exists",
