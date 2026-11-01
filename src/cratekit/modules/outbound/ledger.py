@@ -1497,6 +1497,28 @@ def reserve_mirror_playlist(
         lock.__exit__(None, None, None)
 
 
+def forget_mirror_playlist(cfg: config.Config, folder: str, name: str, remote_id: str) -> None:
+    """Drop one mirrored playlist's record once the account no longer holds it (U150).
+
+    ONLY THE RECORD OF THAT PLAYLIST, by its title and its identifier both, so
+    a playlist recorded under the title since is never dropped in its place.
+    Called after :meth:`RemoteAccount.remove_playlist` answered, so a playlist
+    still on the account is never left with no record vouching for it. A
+    record already gone is no error: a resume asks again.
+    """
+    lock = _locked(cfg)
+    try:
+        document = _load(cfg)
+        playlists = (document["mirrors"].get(folder) or {}).get("playlists") or {}
+        entry = playlists.get(name)
+        if not entry or str(entry.get("remote_id") or "") != str(remote_id):
+            return
+        del playlists[name]
+        _write(cfg, document)
+    finally:
+        lock.__exit__(None, None, None)
+
+
 def record_mirror_refused(
     cfg: config.Config, folder: str, name: str, refused: Iterable[str]
 ) -> None:

@@ -1,0 +1,264 @@
+name = "u178"
+pass_kind = "full"
+
+# Every row's subset is the new suite plus the files importing the module it mutates.
+
+[[rows]]
+id = "G1_genre_length_bound"
+description = "check_genre: the bound read one past GENRE_MAX, so a 65 character genre is stored"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''        or len(text) > GENRE_MAX
+'''
+new = '''        or len(text) > GENRE_MAX + 1
+'''
+
+[[rows]]
+id = "G2_genre_needs_a_letter"
+description = "check_genre: drop the letter or digit rule, so a punctuation only genre is stored"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''        or not any(char.isalnum() for char in text)
+'''
+new = ''''''
+
+[[rows]]
+id = "G3_genre_one_line"
+description = "check_genre: drop the control character rule, so a genre with a newline is stored"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''        or any(unicodedata.category(char).startswith("C") for char in text)
+'''
+new = ''''''
+
+[[rows]]
+id = "G4_edit_clear_genre"
+description = "edit: ignore clear_genre, so --genre default on set keeps the genre"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''                genre=None if clear_genre else (genre if genre is not None else existing.genre),'''
+new = '''                genre=genre if genre is not None else existing.genre,'''
+
+[[rows]]
+id = "G5_edit_none_keeps_genre"
+description = "edit: a genre of None drops the held genre, so an unrelated edit clears it"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''                genre=None if clear_genre else (genre if genre is not None else existing.genre),'''
+new = '''                genre=None if clear_genre else genre,'''
+
+[[rows]]
+id = "G6_fallback_refusal"
+description = "_declared_genre: never refuse a fallback genre, so Polka is stored unconfirmed"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''    if resolution.match is routing.Match.FALLBACK and not accept_fallback:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "G7_fallback_confirm_ignored"
+description = "_declared_genre: refuse a fallback genre even with --accept-fallback"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''    if resolution.match is routing.Match.FALLBACK and not accept_fallback:'''
+new = '''    if resolution.match is routing.Match.FALLBACK:'''
+
+[[rows]]
+id = "G8_clear_word_case"
+description = "_declared_genre: match the clearing word in its exact case, so --genre Default is stored as a genre"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''    if wanted.casefold() == CLEAR_GENRE:'''
+new = '''    if wanted == CLEAR_GENRE:'''
+
+[[rows]]
+id = "G9_accept_without_genre"
+description = "registry_cmd: accept --accept-fallback with no --genre, so it confirms nothing silently"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''    if accept_fallback and genre is None:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "G10_field_guard_genre"
+description = "registry_cmd: leave --genre out of the field flag guard, so remove --genre is silently ignored"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''    fields_given = (seeds, track_limit, ctx.args.match, offer, kind, genre)'''
+new = '''    fields_given = (seeds, track_limit, ctx.args.match, offer, kind)'''
+
+[[rows]]
+id = "E1_fill_if_empty"
+description = "tag_one: read the label for a file that already has a genre, so the label's word overwrites it"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        (None, "") if existing or label_genre is None else _by_label(path, label_genre, label)'''
+new = '''        (None, "") if label_genre is None else _by_label(path, label_genre, label)'''
+
+[[rows]]
+id = "E2_no_search_with_picture"
+description = "tag_one: drop the early return for a labelled file with a picture, so the catalogues are searched"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        if settled is not None:
+            return TagResult(path=path, **labelled, **repaired, **settled)
+'''
+new = ''''''
+
+[[rows]]
+id = "E3_art_refusal_tolerated"
+description = "tag_one: a refusal on a labelled file's art search fails the item"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        if needs_genre:
+            raise'''
+new = '''        if not existing:
+            raise'''
+
+[[rows]]
+id = "E4_isrc_withheld"
+description = "tag_one: offer the general catalogue the ISRC of a labelled file searched for art"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        wanted = needs_genre and not hit.genre'''
+new = '''        wanted = not existing and not hit.genre'''
+
+[[rows]]
+id = "E5_tag_outranks_label"
+description = "_by_label: the verb's --label outranks the file's own label tag"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    named = own or (label or "").strip()'''
+new = '''    named = (label or "").strip() or own'''
+
+[[rows]]
+id = "E6_label_write_checked"
+description = "tag_one: the label genre write's False is ignored, so a locked file is reported tagged"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        _written(path, by_label.genre, f"its label {by_label.label}")'''
+new = '''        tags.write_genre(path, by_label.genre)'''
+
+[[rows]]
+id = "E7_catalogue_write_checked"
+description = "tag_one: the catalogue genre write's False is ignored, as on main"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        written = _written(path, hit.genre, hit.source or "a catalogue")'''
+new = '''        tags.write_genre(path, hit.genre)
+        written = hit.genre'''
+
+[[rows]]
+id = "E8_source_is_the_label"
+description = "tag_one: a labelled file searched for art reports the catalogue as its source"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        found = {**found, **{key: labelled[key] for key in ("source", "source_genre", "label")}}'''
+new = '''        found = {**found, "label": labelled["label"]}'''
+
+[[rows]]
+id = "E9_label_tag_reset"
+description = "tag_one: keep the file's tag in label_tag on a file the label answered for"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        label_tag = ""
+        _written('''
+new = '''        _written('''
+
+[[rows]]
+id = "S1_summary_counts_labels"
+description = "_summary: never count a file per label, so label_genres stays empty"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''            if wrote == tag_engine.LABEL_GENRE:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "S2_unknown_label_refused"
+description = "_label_payload: a --label nobody registered queues the sweep with no label"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        if entry is None:
+            raise refuse(
+                "label-unknown",'''
+new = '''        if entry is None and False:
+            raise refuse(
+                "label-unknown",'''
+
+[[rows]]
+id = "S3_unreadable_registry_refuses_label"
+description = "_label_payload: an unreadable registry warns rather than refusing a sweep given --label"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    except CratekitError as exc:
+        if label is not None:
+            raise
+'''
+new = '''    except CratekitError as exc:
+'''
+
+[[rows]]
+id = "S4_genres_frozen"
+description = "_label_payload: freeze no genres, so a registered label genre never reaches the worker"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    if genres:
+        frozen["label_genres"] = genres'''
+new = '''    if False:
+        frozen["label_genres"] = genres'''
+
+[[rows]]
+id = "S5_worker_takes_label"
+description = "handle: hand the engine no --label, so a folder of untagged files is searched"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        label=str(payload.get("label") or "") or None,'''
+new = '''        label=None,'''
+
+[[rows]]
+id = "S6_outranked_needs_label"
+description = "_label_warnings: warn about outranked tags on a sweep given no --label"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    if payload.get("label") and outranked:'''
+new = '''    if outranked:'''
+
+[[dropped]]
+id = "D1_by_label_empty_name"
+description = "_by_label: drop the empty name return"
+reason = "round 2 measured it at zero: the shipped seam answers None for an empty name either way"
+
+[[dropped]]
+id = "D2_blank_label_guard"
+description = "_label_payload: resolve a blank --label"
+reason = "round 2 measured it at zero: Registry.resolve answers None for a blank name"
+
+[[dropped]]
+id = "D3_entry_from_genre"
+description = "_entry_from: keep a stored genre unstripped"
+reason = "round 1 measured it at zero; the store only ever writes a checked genre"

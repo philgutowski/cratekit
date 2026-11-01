@@ -585,6 +585,23 @@ review, then `label registry adopt` adds each accepted label the registry does
 not already hold, under any spelling of its name, and reports the rest as
 already held. Running it again adds nothing new.
 
+A label you follow for one style can carry that style as its genre, so its
+tracks are tagged with it and none waits for a hand tag:
+
+```bash
+crate label registry set PULS --genre Rominimal
+crate tag folder /path/to/staging --label PULS
+```
+
+The genre is checked against your taxonomy when you set it, and the screen says
+which folder it routes to and how. A genre that reaches only the fallback folder
+is refused unless you pass `--accept-fallback`, and `--genre default` clears it.
+`tag folder` gives the label's genre to every file of the label that has no
+genre, without asking any catalogue, and counts those files apart in its report
+under `label-genre`. A file's label is its label tag, or `--label` for a file
+that carries none. A file that already has a genre keeps it, and a file of the
+label with no picture is still searched, for its art only.
+
 `sync labels` is retired. It queues nothing and names `label sync`, and `sync
 all` no longer sweeps labels either. A labels sweep queued before the guided
 sync replaced it still runs with `crate sync labels --job JOB_ID`, so a job
@@ -727,11 +744,20 @@ name under the INSPIRATION folder in rekordbox. It also files every playlist at
 the account root
 that a sync marked downloaded into the root folder named for the year of its
 mark, creating that folder once if the account lacks it, and names every other
-playlist at the root with why it stays. Approve one area and abort the other
+playlist at the root with why it stays. It also mirrors rekordbox onto the
+account: every genre folder of BY GENRE + ENERGY, the Favorites folder and
+INBOX each become one root folder of the same name, holding one private
+playlist per rekordbox playlist, `Deep House Low` or `INBOX 2026-10-31
+Defected`, kept equal to the tracks the account carries. INBOX mirrors only its
+live batches, the playlists `inbox rotate` moves, never Old. A label batch,
+which no account playlist holds, fills from the provider track each file was
+downloaded as. Approve one area and abort the other
 and only the approved one is written. Every other playlist you made yourself,
 on either side, is listed with a suggested home where one is obvious, and is
 never moved or renamed. Nothing is deleted beyond the expired batch playlists the rotation
-removes, never a track. `--report` prints both plans and asks nothing. The
+removes, a track that left a mirrored playlist's rekordbox playlist, and the
+mirrored playlist of a batch that left INBOX, each named on the gate, and never
+a track from your library. `--report` prints both plans and asks nothing. The
 rekordbox area needs a backup acknowledged under a day old, and like every
 database write it is worth rehearsing on a copy first.
 
@@ -743,7 +769,7 @@ crate organize --only file
 ```
 
 The kinds are `adopt`, `rotate`, `record-labels` and `inspiration` on the rekordbox side,
-`labels`, `sets`, `marks` and `file` on the account, and `yours` on both. An
+`labels`, `sets`, `marks`, `file`, `root` and `mirror` on the account, and `yours` on both. An
 area with no kind named is not planned and not asked, so `--only file` files
 the playlists at the account root into their folders without reading the
 database or planning a label's catalogue, and asks only the account's

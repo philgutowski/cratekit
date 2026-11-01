@@ -1,0 +1,263 @@
+name = "u150"
+pass_kind = "full"
+
+[[rows]]
+id = "M1_retire_flag"
+description = "mirror.plan: drop the retiring folder's flag, so a playlist whose batch left INBOX is left on the account instead of removed"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        if not folder.retire:
+            left.append('''
+new = '''        if True:
+            left.append('''
+
+[[rows]]
+id = "M2_present_guard"
+description = "mirror.plan: drop the still present test, so a batch still under INBOX that only no longer reads as one is removed from the account"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        elif name in folder.present:'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "M3_retire_in_writes"
+description = "FolderPlan.writes: leave the retirements out, so a folder whose only write is a removal plans nothing and never removes"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_frozen.py"]
+old = '''            or bool(self.retire)
+        )'''
+new = '''            or False
+        )'''
+
+[[rows]]
+id = "M4_retire_in_digest"
+description = "FolderPlan.identity: leave the retirements out of the digest, so an approval given for one removal covers another"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_frozen.py"]
+old = '''            "retire": [list(one) for one in self.retire],'''
+new = '''            "retire": [],'''
+
+[[rows]]
+id = "M5_apply_removes"
+description = "mirror.apply: skip the playlist removal, so the gate names a removal the apply never performs"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_frozen.py"]
+old = '''            account.remove_playlist(remote_id)
+        except CratekitError as exc:'''
+new = '''            pass
+        except CratekitError as exc:'''
+
+[[rows]]
+id = "M6_apply_forgets"
+description = "mirror.apply: keep the ledger record of a removed playlist, so every later refresh plans the removal again"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        ledger.forget_mirror_playlist(cfg, planned.name, name, remote_id)
+        done.retired.append(name)'''
+new = '''        done.retired.append(name)'''
+
+[[rows]]
+id = "M7_refusal_scope"
+description = "mirror.apply: keep a playlist removal refused at run scope instead of raising, so a removal whose read back differs reads as kept"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_frozen.py"]
+old = '''            account.remove_playlist(remote_id)
+        except CratekitError as exc:
+            if exc.cause.reason != "outbound-remove-refused" or exc.cause.scope != Scope.SOURCE:
+                raise'''
+new = '''            account.remove_playlist(remote_id)
+        except CratekitError as exc:
+            if exc.cause.reason != "outbound-remove-refused":
+                raise'''
+
+[[rows]]
+id = "M8_refusal_kept"
+description = "mirror.apply: raise a playlist removal refused with nothing sent, so one unvouched playlist stops the folder's apply"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_frozen.py"]
+old = '''            done.kept.append((name, exc.cause.message))
+            continue
+        ledger.forget_mirror_playlist'''
+new = '''            raise
+        ledger.forget_mirror_playlist'''
+
+[[rows]]
+id = "M9_known_answers"
+description = "Matcher: ignore a row's recorded landing track, so a label batch is matched by ISRC and misses on a tie"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        own = self._known.get(row.content_id)
+        if own:'''
+new = '''        own = self._known.get(row.content_id)
+        if False:'''
+
+[[rows]]
+id = "M10_link_before_known"
+description = "Matcher: take the landing track before the ledger's link, so a linked row is switched to another track"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        linked = self._links.get(row.content_id)
+        if linked is not None and (not row.isrc or row.isrc == linked[1]):'''
+new = '''        linked = self._links.get(row.content_id)
+        if row.content_id in self._known:
+            return self._known[row.content_id], row.isrc, ""
+        if linked is not None and (not row.isrc or row.isrc == linked[1]):'''
+
+[[rows]]
+id = "L1_forget_checks_id"
+description = "ledger.forget_mirror_playlist: drop the identifier check, so a playlist recorded under the title since is forgotten in its place"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror.py"]
+old = '''        if not entry or str(entry.get("remote_id") or "") != str(remote_id):
+            return'''
+new = '''        if not entry:
+            return'''
+
+[[rows]]
+id = "A1_inbox_retires"
+description = "account_mirror._inbox: read INBOX as an ordinary folder, so no batch that left it is ever removed"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_library.py", "tests/test_organize_mirror.py"]
+old = '''        playlists=tuple(sources),
+        retire=True,'''
+new = '''        playlists=tuple(sources),
+        retire=False,'''
+
+[[rows]]
+id = "A2_present_titled"
+description = "account_mirror._inbox: hold INBOX's bare names as present instead of their account titles, so every still present title reads as gone"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_library.py", "tests/test_organize_mirror.py"]
+old = '''        present=frozenset(mirror.title(name, one) for one in live.present),'''
+new = '''        present=frozenset(live.present),'''
+
+[[rows]]
+id = "M11_unmade_folder"
+description = "mirror.plan: make the retiring folder even when nothing goes in it, so an empty INBOX root folder is created"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_frozen.py"]
+old = '''    if folder_action == CREATE and folder.retire and not folder.playlists:
+        folder_action = UNMADE'''
+new = '''    if False:
+        folder_action = UNMADE'''
+
+[[rows]]
+id = "A4_listed_step"
+description = "account_mirror.add_steps: show no listed step for an INBOX not mirrored, so the gate is silent about it"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror.py", "tests/test_organize.py"]
+old = '''    if library.inbox:
+        area.steps.append('''
+new = '''    if False:
+        area.steps.append('''
+
+[[rows]]
+id = "A5_deletes_named"
+description = "account_mirror.add_steps: name no playlist removal on the gate's deletes, so the gate says nothing is removed over one"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror.py", "tests/test_organize.py"]
+old = '''                for name, remote_id in planned.retire
+            )'''
+new = '''                for name, remote_id in ()
+            )'''
+
+[[rows]]
+id = "A6_known_read"
+description = "account_mirror.add_steps: hand the matcher no landing tracks, so a label batch is never filled from its own tracks"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        known = landed_tracks(cfg) if frozen is None else {}'''
+new = '''        known = {}'''
+
+[[rows]]
+id = "A7_landed_two_tracks"
+description = "landed_tracks: keep a row two records name two tracks for, so which track it is decides itself by record order"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_inbox.py", "tests/test_intake_land_labels_native.py"]
+old = '''    return {cid: next(iter(found)) for cid, found in named.items() if len(found) == 1}'''
+new = '''    return {cid: sorted(found)[0] for cid, found in named.items()}'''
+
+[[rows]]
+id = "A8_landed_workflow"
+description = "landed_tracks: read every workflow's record, not only a native landing's"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "maintainer"
+tests = ["tests/test_organize_mirror_inbox.py", "tests/test_intake_land_labels_native.py"]
+old = '''        if record.workflow != native.WORKFLOW:
+            continue
+        held = record.detail.get(label_filing.PROVIDER_KEY)'''
+new = '''        held = record.detail.get(label_filing.PROVIDER_KEY)'''
+
+[[rows]]
+id = "R1_live_excludes_left"
+description = "rotate.live_batches: count every node directly under INBOX as a batch, a person's playlist and Analyze included"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_inbox.py", "tests/test_inbox_rotate.py"]
+old = '''        if isinstance(classified, Batch) or classified.kind == "batch":'''
+new = '''        if True:'''
+
+[[rows]]
+id = "R2_live_undated"
+description = "rotate.live_batches: leave out a batch with no date to age it from, so a recognised batch is not mirrored"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_inbox.py", "tests/test_inbox_rotate.py"]
+old = '''        if isinstance(classified, Batch) or classified.kind == "batch":'''
+new = '''        if isinstance(classified, Batch):'''
+
+[[rows]]
+id = "F1_blank_ref_claims"
+description = "label_filing._refs: let a manifest row with no id claim a file, so a file another row names records no track"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_inbox.py", "tests/test_intake_land_labels_native.py"]
+old = '''                if not ref:
+                    continue
+                for target in targets:'''
+new = '''                for target in targets:'''
+
+[[rows]]
+id = "F2_record_provider"
+description = "native._record_commit: write no provider tracks on the landing's record"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_labels_native.py", "tests/test_organize_mirror_inbox.py"]
+old = '''        record.detail[label_filing.PROVIDER_KEY] = dict(labels_written.provider)'''
+new = '''        pass'''
+
+[[rows]]
+id = "Z1_frozen_retire"
+description = "mirror_frozen: rebuild every frozen folder as not retiring, so the apply after a gate removes nothing the gate named"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''                retire=_flag(folder["retire"]),'''
+new = '''                retire=False,'''
+
+[[rows]]
+id = "Z2_frozen_flag_checked"
+description = "mirror_frozen._flag: accept any value as a retire flag, so a damaged record retires on a string"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "maintainer"
+tests = ["tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''    if not isinstance(value, bool):'''
+new = '''    if False:'''

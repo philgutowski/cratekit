@@ -278,6 +278,41 @@ one of its words and none is the label's kind. **Not judged**: the catalogue
 published no word, could not be read, or published only words no rule knows.
 A release that is not judged is filed for review and says why.
 
+### Label genre
+The genre a followed label is registered with, written onto every file of the
+label that `crate tag folder` finds with no genre, without asking any
+catalogue (U178). It is set with `crate label registry set NAME --genre WORD`
+and cleared with `--genre default`. A file's label is its label tag, or the
+verb's `--label NAME` for a file that carries none; the tag wins when both are
+there, and a sweep given `--label` counts and names the files whose own tag
+kept them from it. A file that will not take the genre, locked or on a read
+only volume, fails its item with `tag-folder-unwritten` rather than being
+counted as tagged. The file's record names the label and its source is `label-genre`, a
+disposition of its own: not a catalogue hit, so it is counted apart from the
+record shops and the general catalogue, and not **off taxonomy**, since the
+word was checked against the taxonomy when it was set.
+
+It is checked by routing and not by tagging. A word the taxonomy routes, by
+an alias, a bucket's own name or a keyword rule, is stored and the screen says
+which bucket it reaches and how. A word that reaches only the fallback is
+refused unless `--accept-fallback` is passed, because every track of the label
+would land in the catch-all.
+
+IT FILLS AN EMPTY GENRE AND NEVER REPLACES ONE. `tag folder` is fill if empty
+by construction, and a genre already on a file is somebody's curation or a
+catalogue's specific answer; replacing it is `crate tag retag`'s job under its
+own rules. Planning found no reason to break that for a label: a label
+followed for one style still releases the odd record of another, and the
+file that already says so is the one most likely to be right.
+
+A file of the label with no picture is still searched, for its art only, and
+a refusal there is an `unavailable` picture rather than a failed item.
+
+Not the **label kind**, which decides what the label genre gate passes and
+names a kind of music rather than a word written onto files, and not the label
+genre gate itself, which judges a release in a label sweep by the general
+catalogue's words and writes nothing onto a file.
+
 ### Held release
 A label release the genre gate kept out of review at sweep time, because it
 is not the kind of music its label is followed for (R-798). It is a row in the
@@ -2035,10 +2070,15 @@ tracks the account carries. It is a MIRROR, kept by a step of `crate organize`
 on every sitting: tracks are added and removed so each playlist equals its
 rekordbox playlist, a track added by hand on the account comes off, and a
 library track the account cannot match is named in the report and never
-substituted. The product never removes a mirrored folder or playlist, and
-never adopts a playlist: one of the same title a person made in the folder is
-left alone and named. The Favorites folder's playlists are `All Favorites`
-under its own title and `Favorites 2026-10`, `Favorites Undated`.
+substituted. The product never removes a mirrored folder, and never adopts a
+playlist: one of the same title a person made in the folder is left alone and
+named. The Favorites folder's playlists are `All Favorites` under its own
+title and `Favorites 2026-10`, `Favorites Undated`. INBOX is mirrored too
+(U150), one `INBOX <batch>` playlist per live batch directly under it, and a
+batch that leaves INBOX has its mirrored playlist REMOVED at the next refresh,
+the one mirrored playlist the product removes, and only once its title is no
+longer under INBOX at all. A row a label landing recorded its provider track
+for is matched to that track with no request.
 
 *Avoid:* reading it as an export (`crate export playlist`, add only, filed in
 `Exports`) or as a pair (`crate sync pair`, merged both ways).
