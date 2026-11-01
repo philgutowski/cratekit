@@ -156,6 +156,23 @@ def test_a_build_refused_part_way_by_a_failed_read_keeps_the_reads_before_it(
     assert account._writes == 0
 
 
+def test_a_park_whose_reads_cannot_be_written_is_still_told_as_the_park(
+    followed, monkeypatch
+):
+    _cfg, fake, account = followed
+    _parks_after(monkeypatch, fake, 3)
+
+    def full_disk(payload, path, **kwargs):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(kept_reads.config, "atomic_write_bytes", full_disk)
+    code, refused = drive(FULL)
+    # THE STOP IS WHAT THE PERSON IS TOLD, never the failure to keep the reads.
+    assert refused["cause"]["reason"] == "provider-cooldown", refused
+    assert not kept_reads.path_for(LABEL_ID).exists()
+    assert account._writes == 0
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 2. The age
 # ═══════════════════════════════════════════════════════════════════════════
