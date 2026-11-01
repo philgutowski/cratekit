@@ -1398,3 +1398,29 @@ def test_the_analyze_step_rescores_after_analyze_run_and_before_the_restamp(
     assert call == ["analyze", "vocals", tail_chain.VOCALS_UNSCORED, str(_staged(cfg))]
     (row,) = [c for c in envelope["data"]["checks"] if c["key"] == "sync.land.rescore"]
     assert row["status"] == "ok", "a staging folder whose files carry no head owes no score"
+
+
+def test_a_warning_the_landing_plan_carries_rides_the_passes_own_warnings(
+    machine, monkeypatch, tail
+):
+    """A stop at the gate is a refusal with no warnings channel, so the plan's
+    warning reaches the pass's envelope only by being lifted off the screen."""
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    gate = _gate("land-run")
+    shown = {"warnings": [{"code": "vox-mostly-unscored", "message": "19 of the 19 row(s)"}]}
+    gate = Cause(
+        reason=gate.reason,
+        message=gate.message,
+        remediation=gate.remediation,
+        retryable=True,
+        origin=("test",),
+        detail={**gate.detail, "shown": shown},
+    )
+    tail.landing = lambda _argv: _refused(gate, outcome="blocked")
+
+    code, envelope = drive(["sync", "land"])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    lifted = [w for w in envelope["warnings"] if w["code"] == "vox-mostly-unscored"]
+    assert lifted == [{"code": "vox-mostly-unscored", "message": "land: 19 of the 19 row(s)"}]

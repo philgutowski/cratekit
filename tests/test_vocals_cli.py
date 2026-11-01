@@ -665,3 +665,52 @@ def test_the_tail_spells_the_vocals_verb_and_flag_as_the_verb_declares_them():
 
     assert registry.entry(tail.VOCALS_VERB).path == tail.VOCALS_WORDS
     assert tail.VOCALS_UNSCORED == vocals_cli.UNSCORED
+
+
+def test_the_probe_names_a_missing_extra_as_the_extra(monkeypatch):
+    """U181. A torch that will not import is the extra, which a reinstall mends."""
+    import sys as _sys
+
+    monkeypatch.setitem(_sys.modules, "torch", None)
+    kind, said = vocals.requirement()
+    assert kind == vocals.MISSING_EXTRA
+    assert said == vocals.missing_requirement()
+    assert "'vocals' extra" in said
+
+
+def test_the_probe_names_missing_model_files_as_files(monkeypatch, tmp_path):
+    """The extra imports and the label table is absent: no reinstall places it."""
+    import sys as _sys
+    import types
+
+    monkeypatch.setitem(_sys.modules, "torch", types.ModuleType("torch"))
+    monkeypatch.setitem(_sys.modules, "panns_inference", types.ModuleType("panns_inference"))
+    monkeypatch.setattr(vocals, "LABELS", tmp_path / "absent.csv")
+    kind, said = vocals.requirement()
+    assert kind == vocals.MISSING_FILES
+    assert "label table" in said and "'vocals' extra" not in said
+
+
+def test_the_one_test_takes_a_bound_loader_as_able(monkeypatch):
+    monkeypatch.setattr(vocals, "missing_requirement", lambda: "missing")
+    assert vocals.unavailable() == "missing"
+    monkeypatch.setattr(vocals, "_VOCAL_LOADER", lambda: object())
+    assert vocals.unavailable() is None
+
+
+def test_a_rescore_job_that_does_not_succeed_ends_the_chain_at_the_analyze_step(
+    cfg, folder, silence, monkeypatch
+):
+    """A score that cannot be written fails the job, and the landing is never planned."""
+    from cratekit.cli import tail
+
+    place(folder, silence, "08A - 124 - finalized")
+    bind_scoring(monkeypatch)
+    monkeypatch.setattr(tags, "write_tags", lambda _path, _fields: False)
+    chain = _chain()
+
+    with pytest.raises(tail.Stop) as stopped:
+        tail.rescore(chain, folder, cfg, unable=None)
+
+    assert stopped.value.step == tail.ANALYZE
+    assert not [c for c in chain.checks if c["status"] == "ok"]
