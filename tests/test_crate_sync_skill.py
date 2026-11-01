@@ -107,7 +107,9 @@ def test_it_runs_the_steps_the_brief_names_in_order(flat):
 
 def test_every_gate_it_answers_is_answered_by_its_own_name_and_option(text):
     decides = [line for line in _commands(text) if line.startswith("crate run decide")]
-    assert len(decides) == 3, decides
+    # TWO SINCE U184: the backup acknowledgment is minted in one command with no
+    # gate (``test_the_acknowledgment_is_minted_in_one_command_as_the_session``).
+    assert len(decides) == 2, decides
     for line in decides:
         words = line.split()
         gate, option = words[4], words[5]
@@ -115,11 +117,18 @@ def test_every_gate_it_answers_is_answered_by_its_own_name_and_option(text):
         assert option in spec.options and option != "abort", line
         assert "--actor session" in line and "--continue" in line, line
     assert {line.split()[4] for line in decides} == {
-        "session.ack.backup",
         tail.LAND_GATE,
         organize_cli.ACCOUNT_GATE,
     }
     assert tail.LAND_OPTION == "apply" and organize_cli.APPLY == "apply"
+
+
+def test_the_acknowledgment_is_minted_in_one_command_as_the_session(text):
+    """U184. The one command, parsed by the real parser into the session's road."""
+    acks = [line for line in _commands(text) if line.startswith("crate session ack")]
+    assert acks == ["crate session ack --as session"], acks
+    args = build_parser().parse_args(acks[0].split()[1:])
+    assert args.as_actor == runs.SESSION_ACTOR
 
 
 def test_the_actor_it_answers_as_is_the_one_the_decide_verb_reads_as_the_session():
@@ -137,9 +146,7 @@ def test_continue_is_a_flag_the_decide_verb_takes():
 def test_the_stops_it_branches_on_are_the_ones_sync_land_makes(flat):
     assert f"It stopped at `{tail.LAND_GATE}`" in flat
     assert f"It stopped at `{tail.ACK_STOP}`" in flat
-    assert "`session.ack.backup` gate as the session" in flat
-    gates = {gate.name for entry in registry.ENTRIES for gate in entry.gates}
-    assert "session.ack.backup" in gates
+    assert "`crate session ack --as session`" in flat or "crate session ack --as session" in flat
 
 
 def test_the_summary_fields_it_reads_are_the_ones_sync_land_writes(flat):

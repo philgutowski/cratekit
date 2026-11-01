@@ -201,7 +201,9 @@ lists what.
   with no controlling terminal and itself refuses unless both ages are under
   five days; until the installed copy carries U138, run it under
   `script -q /dev/null` as before. Answer as `session` either way: any other
-  actor takes the terminal rule, which checks no age.
+  actor takes the terminal rule, which checks no age. Since U184 it is one
+  command, `crate session ack --as session`, with no gate and no run left
+  waiting; until the installed copy carries U184, use the gate as before.
 - **DJ_tools is read-only for code.** It is the live system until each workflow's
   replacement is proven. Its `docs/` are the exception.
 - **Do not symlink `.venv` into a worktree.** The editable install names the
