@@ -2663,6 +2663,10 @@ def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recor
         # A32. The row probe's values written onto the rows its triples name,
         # recorded under the content probe key as rows updated.
         "write/row_link.py::apply_probes",
+        # U149. The custom playlist twins: a year folder, its playlists and
+        # their memberships made in one commit behind one capture, recorded
+        # under the twins key as rows created.
+        "sync/twins.py::write",
         # R-758. One capture before two commits, and both are recorded.
         "write/trees.py::move_tree_membership",
         "write/trees.py::write_tree_membership",
@@ -2717,6 +2721,7 @@ def test_each_commit_helper_records_the_commit():
         ("intake/refill.py", "_record_refill_commit"),
         ("favorites/backfill.py", "_record_backfill_commit"),
         ("favorites/split.py", "_record_split_commit"),
+        ("sync/twins.py", "_record_twins_commit"),
     ):
         tree = ast.parse((src / relative).read_text())
         (function,) = [
