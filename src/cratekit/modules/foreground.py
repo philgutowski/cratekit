@@ -101,10 +101,11 @@ def _resumable(
     exc: JobCancelled, job_id: str, argv: Sequence[str], origin: str
 ) -> Exception:
     """The cancelled refusal, with the job queued again and its command first."""
+    # NO STATE CHECK BEFORE ``retry``: it re-arms a cancelled job and hands an
+    # open one back untouched, and this refusal can come from nothing but a job
+    # ``raise_for_state`` read as cancelled.
     with jobs.open_store() as store:
-        job = jobs.get(store, job_id)
-        if job.state is jobs.JobState.CANCELLED:
-            job = jobs.retry(store, job_id)
+        job = jobs.retry(store, job_id)
         progress = jobs.progress(store, job_id)
     command = shlex.join(["crate", *argv])
     cause = exc.cause

@@ -2862,7 +2862,8 @@ def test_tag_folder_queue_only_beside_job_is_refused_before_anything_is_queued(
 
     code, refused = drive(["tag", "folder", str(folder), "--job", "j-1", "--queue-only"])
 
-    assert code != int(ExitCode.OK), refused
+    assert code == 2, "argparse's own refusal, before the verb runs"
+    assert refused == {}, "the verb ran and answered with an envelope"
     with jobs.open_store() as store:
         assert list(jobs.list_jobs(store)) == []
 
