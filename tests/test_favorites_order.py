@@ -542,3 +542,17 @@ def test_the_read_back_names_a_folder_that_does_not_read_in_the_planned_order(na
         order.assert_read_back(done)
     assert caught.value.cause.reason == "session-committed-unverified"
     assert said in caught.value.cause.message
+
+
+def test_the_verb_refuses_an_answer_the_read_back_does_not_hold(native_library, monkeypatch):
+    """The verb's own refusal of a disagreeing read back, driven through the gate (M25)."""
+    cfg, _root_id = native_library
+    folder_id, _source_id = _home(cfg)
+    _make(cfg, folder_id, "2026-08", "2026-10")
+    monkeypatch.setattr(order, "_read_back", lambda _db, _planned: ("the folder reads otherwise",))
+
+    code, acted, _refused = _acts()
+
+    assert code != int(ExitCode.OK), acted
+    assert acted["cause"]["reason"] == "session-committed-unverified"
+    assert "the folder reads otherwise" in acted["cause"]["message"]
