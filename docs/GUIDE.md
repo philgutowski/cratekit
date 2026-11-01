@@ -554,10 +554,17 @@ paced through the provider gate. Only releases an `all` or a `pick` took are
 downloaded, a track the library holds in another version goes to the match
 queue instead, and a rate limit parks the download rather than retrying. A go
 that stopped part way is picked up by the next `--go`, which resumes it before
-anything new, and a track is never asked for twice. The report ends with the
-acquisition tail that lands the batch, `tag folder` through `intake land
---manifest ... --pass ...`, which names the batch for the date and the label; land each go before the next, since every go
-downloads into the same staging folder. The size and time are estimates: the
+anything new, and a track is never asked for twice. Once the download has
+landed its tracks, the same command runs the acquisition tail on the staging
+folder the way `crate sync land` does: `tag folder`, `analyze run`, `analyze
+restamp` and `name apply`, each driven to the end, then plans `intake land
+--manifest ... --pass ...`, which names the batch for the date and the label,
+and stops at the landing's own gate. The report names that gate's run and the
+two commands that answer and apply it, then the rekordbox visit. A tail step
+that fails ends the go there with its reason, plans no landing, keeps the
+download, and names the rest of the tail to run once the cause is mended. A go
+that downloaded nothing runs no tail. Every go downloads into the same staging
+folder, so land each go before the next. The size and time are estimates: the
 size from each track's duration at a FLAC rate, the time from the pacing delay
 and an assumed transfer rate.
 
