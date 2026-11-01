@@ -1846,3 +1846,8 @@ def test_a_file_with_no_album_tag_never_narrows_to_releases_with_no_album_name()
         on_album(Track("202", "Sun Path", None, ("Nova Reef",)), ""),
     )
     assert any_release(adapter(client)) == "101"
+
+
+def test_the_files_album_narrows_a_tie_under_the_products_own_fold():
+    """Case and spacing on the tag do not stop it naming the album cut over the lower single."""
+    assert any_release(adapter(single_and_album_cut()), album=" tidal LINES ") == "202"
