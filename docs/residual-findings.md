@@ -40773,3 +40773,51 @@ a second change, and that was not driven.
 **Closes when:** a test reads the row's `rb_local_usn` before and after a
 seat and holds it to one increment, or the bump count is shown not to matter
 to rekordbox. Ledger only.
+
+---
+
+## R-1147. The install.extras row prints the install command twice on a copy that is not a release install
+
+**Found:** at the review of #378, U181, 2026-11-01.
+
+**The mechanism.** `crate doctor`'s `install.extras` row quotes the vocals module's sentence, which already ends with the install command, and then adds "Reinstall with:" and the command again. On a release install the second is the release form and the two differ; on any other copy they are the same text.
+
+**Measured cost.** Seen on the real doctor output of an editable copy. Noise on one row; nothing false.
+
+**Closes when:** the row quotes the reason without the command, or the probe's sentence and its command are carried apart. Ledger only.
+
+---
+
+## R-1148. A sync pass stopped at the without vocals gate carries no checks on its envelope
+
+**Found:** at the review of #378, U181, 2026-11-01.
+
+**The mechanism.** `crate sync land` stops at `sync.land.without-vocals` by letting the gate's own decision required refusal leave the verb, and the dispatcher builds that envelope from the cause, so the preflight's ok row for rekordbox and backups and the vocal model row are not on it: `data.checks` is empty. The pass's other stops for a person keep their rows, since they end PENDING through the pass's own envelope.
+
+**Measured cost.** Driven by the review on the real verb, exit 10. The gate screen carries every fact the question is asked over, so a person is told nothing false; the run record does not say the preflight passed before the stop.
+
+**Closes when:** the gate's context carries the preflight rows, or the refusal's detail carries the pass's data the way a stopped step's does. Ledger only.
+
+---
+
+## R-1149. The tail's vocal rescore row says it scored the files it queued, not the files it wrote
+
+**Found:** at the review of #378, U181, 2026-11-01.
+
+**The mechanism.** `cli/tail.py` `rescore` reports "scored the N staged file(s)" from the number of items the `analyze vocals --unscored` job held. When the model passes the probe and then fails to load (a checkpoint of the right size that will not deserialize), every item settles inactive with `vocal-model-unavailable`, the job succeeds, and the row reads ok over files that still carry no voxlevel.
+
+**Measured cost.** Driven by the review with a loader bound that raises on load, the one way a container with no torch reaches it: the row said scored 1 and the file carried no score. The child's own `vocal-model-unavailable` warning rides beside the row on the same envelope, so the report is not clean, only the row overclaims. A real failing checkpoint on a torch machine was not driven.
+
+**Closes when:** the row counts the job's reports by status, scored and unchanged against inactive, and says the inactive ones by reason. Ledger only.
+
+---
+
+## R-1150. The upgrade command adds the vocals extra only for a library with a vocal calibration recorded
+
+**Found:** at the plan of #378, U181, 2026-11-01, and confirmed at its review.
+
+**The mechanism.** The brief asks `install.release` to keep `vocals` when the library has ever scored a track, any file or row carrying a voxlevel. `crate doctor` reads that as a vocal calibration recorded for the library, `_vocals_scored`, since a calibration is fitted only from scored files or set by hand to tag them, and reading every file or row for a voxlevel is not a cost doctor may spend.
+
+**Measured cost.** A library scored and never calibrated gets an upgrade command without `vocals`, in that one state. The `install.extras` row beside it, on a copy that lacks the extra, prints the command with `vocals`, so the report carries the right command. Not driven on a real library.
+
+**Closes when:** a cheap record of a scored track exists to read, for instance the analysis job reports carrying a voxlevel, and the probe reads it. Ledger only.
