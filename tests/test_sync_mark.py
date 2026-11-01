@@ -1363,7 +1363,7 @@ def test_landed_passes_reads_only_closed_committed_landings(slim):
     # Another workflow's record that carries a pass is not a landing.
     session.write_record(
         session.SessionRecord(
-            session_id="20261007T150000-refill",
+            session_id=f"20261007T{150000}-refill",
             workflow="not-the-intake",
             started="2026-10-07T15:00:00+00:00",
             state=session.SessionState.CLOSED,
