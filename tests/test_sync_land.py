@@ -32,7 +32,7 @@ from cratekit.acquire import cli as acquire_cli
 from cratekit.cli import gates, registry, sync_land
 from cratekit.cli import tail as tail_chain
 from cratekit.core import config, jobs, rb_writer
-from cratekit.core.cause import Cause, Remediation, Scope, refuse
+from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from tests.acquire_fakes import FAKE_ADAPTER, FAKE_DECLARATION, FakeAdapter, Landing, Script
 from tests.cli_drive import drive
@@ -1372,6 +1372,18 @@ def test_a_record_with_no_related_runs_is_the_record_it_was_and_one_with_them_ro
     read = gates.RunState.from_json(json.loads(json.dumps(state.to_json())))
     assert read.related_runs == {"pass_run": "2026-10-30T00:00:00Z-beef"}
     assert read.to_json() == state.to_json()
+
+
+def test_a_run_record_that_is_not_an_object_is_the_gates_own_refusal(machine):
+    """Every reader catches the gates refusal; an AttributeError reached none of them."""
+    gates.run_dir().mkdir(parents=True, exist_ok=True)
+    gates.run_path("2026-01-01T00:00:02Z-dead").write_text("[]\n")
+
+    with pytest.raises(CratekitError) as refused:
+        gates.load("2026-01-01T00:00:02Z-dead")
+
+    assert refused.value.cause.reason == "internal-error"
+    assert "is not a JSON object" in refused.value.cause.message
 
 
 def test_a_run_interrupted_after_sync_all_continues_by_its_own_id(machine, monkeypatch, tail):
