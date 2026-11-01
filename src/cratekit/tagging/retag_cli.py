@@ -643,6 +643,28 @@ def handle(job, item, cfg) -> jobs.Produced:
                 # even if the two ever come to differ.
                 handler_key=job.handler_key,
             )
+    if result.reason == retag.UNWRITTEN_REASON:
+        # THE ITEM FAILS AND THE REST OF THE JOB GOES ON (R-1103), as a file
+        # that would not take its genre fails ``tag folder``'s item (U178). No
+        # report is committed, so ``_summary`` never counts the file corrected,
+        # and the job leaves through this cause with the reload step added when
+        # the files before it were corrected.
+        raise refuse(
+            retag.UNWRITTEN_REASON,
+            f"{path} would not take the genre {result.proposed!r}, so it still "
+            f"carries {result.current!r}; nothing else about it was changed",
+            steps=(
+                "check the file can be written, is not locked and is not on a read "
+                "only volume, then run tag retag over the folder again",
+            ),
+            origin=("tagging", "retag_cli"),
+            detail={
+                "item": item.item_id,
+                "path": str(path),
+                "genre": result.proposed,
+                "current": result.current,
+            },
+        )
     return artifacts.produced(
         cfg,
         job,
