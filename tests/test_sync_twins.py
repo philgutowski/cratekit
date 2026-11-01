@@ -405,6 +405,53 @@ def test_only_downloaded_own_playlists_in_a_year_folder_are_read(world, cfg):
     assert [one["account_id"] for one in rows if one["action"] == twins.CREATE] == [PHIL]
 
 
+def test_a_set_playlist_in_a_year_folder_gets_no_twin(world, cfg):
+    """A set's playlist is the set's own record on the account, never a custom playlist."""
+    from cratekit.modules.outbound import ledger
+
+    world.playlist(PHIL, PHIL_NAME, ["t1"])
+    world.playlist("acc-set", "DOWNLOADED A Set", ["t2"])
+    ledger.reserve_set_playlist(cfg, "A Set", "2026", lambda: "acc-set")
+    code, envelope = backfill("abort")
+    assert code == int(ExitCode.OK), envelope
+    rows = envelope["data"]["items"]
+    assert [one["account_id"] for one in rows if one["action"] == twins.CREATE] == [PHIL]
+
+
+def test_a_removed_year_folder_is_not_reused_and_a_live_one_is_made(world, cfg):
+    _phil(world)
+    removed = world.make(twins.folder_name("2026"), folder=True)
+    conn = sqlite3.connect(cfg.library.db_path)
+    with conn:
+        conn.execute("UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE ID = ?", (removed,))
+    conn.close()
+    code, envelope = backfill()
+    assert code == int(ExitCode.OK), envelope
+    (live,) = world.folder()
+    assert live != removed
+    assert world.held(world.twin("Phil 9-30-26")) == ["3", "1", "2"]
+
+
+def test_an_account_track_two_library_rows_carry_is_named_and_neither_is_guessed(world, cfg):
+    conn = sqlite3.connect(cfg.library.db_path)
+    with conn:
+        conn.execute(
+            "INSERT INTO djmdContent (ID, Title, FolderPath, ISRC, rb_local_deleted, "
+            "created_at, updated_at) VALUES ('77', 'A Second Copy', ?, ?, 0, "
+            "'2026-01-01', '2026-01-01')",
+            (f"{cfg.library.root}/Music/77.flac", isrc("1")),
+        )
+    conn.close()
+    world.playlist(PHIL, PHIL_NAME, ["t1", "t2"])
+    code, envelope = backfill("abort")
+    assert code == int(ExitCode.OK), envelope
+    rows = envelope["data"]["items"]
+    made = [one for one in rows if one["action"] == twins.CREATE]
+    assert [one["tracks"] for one in made] == [1]
+    missing = [one for one in rows if one["action"] == "missing"]
+    assert [(one["remote_id"], one["why"]) for one in missing] == [("t1", twins.AMBIGUOUS)]
+
+
 def test_a_short_listing_pairs_the_twin_with_no_snapshot(world, cfg):
     _phil(world)
     world.short.add(PHIL)
