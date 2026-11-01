@@ -1936,6 +1936,23 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # ``tag-suggest-unwritten``'s argument: the cure is the file's, which is
         # named, and a second run over the folder asks again.
         "tag-folder-unwritten": ExitCode.PRECONDITION,
+        # ── U177's one, appended for the same reason ───────────────────────────
+        #
+        # ``acquire bandcamp-fetch`` staged a registered label's purchase and a
+        # file of it would not take the label tag. The file is staged all the
+        # same and named, and its item fails rather than reporting a label the
+        # file does not carry. PRECONDITION on ``tag-folder-unwritten``'s
+        # argument: the cure is the file's, which is named.
+        "bandcamp-label-unwritten": ExitCode.PRECONDITION,
+        # ── U169's one, appended for the same reason ───────────────────────────
+        #
+        # A ``--root`` names a folder that is not there. A relative one is read
+        # against the library root, and the refusal names the path it tried,
+        # because a verb walking a missing folder plans nothing and that empty
+        # plan reads as a folder with nothing to do. PRECONDITION rather than
+        # USAGE, because the parser accepted the argument and status 2 is the
+        # parser's alone.
+        "root-folder-missing": ExitCode.PRECONDITION,
     }
 )
 

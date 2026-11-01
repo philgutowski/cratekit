@@ -36,7 +36,9 @@ another. A label row that no landed file matches is a warning that names the
 track, never a failure: the file, if there is one, is in the intake playlist.
 On a database native intake tree the same rows, or one label named with
 ``--label`` and each file's date tag, are filed under the Record Labels tree in
-the landing's own commit (U156, :mod:`cratekit.intake.label_filing`).
+the landing's own commit (U156, :mod:`cratekit.intake.label_filing`), and so,
+with ``--label-from-tags``, is each file under the label its own label tag
+names, which is how a Bandcamp batch of several sellers lands (U177).
 """
 
 from __future__ import annotations
@@ -283,6 +285,17 @@ def build_land(parser, entry) -> None:
         ),
     )
     parser.add_argument(
+        "--label-from-tags",
+        dest="label_from_tags",
+        action="store_true",
+        help=(
+            "file each landed file under the label its own label tag names, in the "
+            "year its date tag names, as crate acquire bandcamp-fetch tags a "
+            "registered label's purchases; a file with no label tag or no date tag "
+            "is named and filed nowhere (database native intake trees only)"
+        ),
+    )
+    parser.add_argument(
         "--set",
         dest="set_job",
         default=None,
@@ -326,6 +339,7 @@ def _label_flag(
     manifest: landing.LabelManifest | None,
     medium: ingest.IntakeMedium,
     cfg: config.Config,
+    from_tags: bool = False,
 ) -> str | None:
     """The label ``--label`` names, or a refusal before the gate with nothing moved (U156).
 
@@ -337,11 +351,26 @@ def _label_flag(
     LIBRARY WHOSE ROOT IS NOT THERE, said as that: the medium was not read, so
     telling the person their tree is on the bridge, and to drop the flag, would
     land the batch filed under nothing once the volume is back.
+
+    ``--label-from-tags`` (U177) is held to every one of those but the blank,
+    and is refused beside ``--label`` too, since one label for every file and
+    each file's own are two answers to one question. It returns None, and the
+    caller reads the flag itself.
     """
-    if given is None:
+    if from_tags and given is not None:
+        raise refuse(
+            "intake-list-unusable",
+            "--label and --label-from-tags both say which label each file is filed "
+            "under, one for every file and the other each file's own tag; pass one "
+            "of them, nothing was moved",
+            remedy=Remedy.FIX_COMMAND_LINE,
+            origin=_ORIGIN,
+            detail={"label": given},
+        )
+    if given is None and not from_tags:
         return None
-    flag = "--label"
-    if not given.strip():
+    flag = "--label-from-tags" if from_tags else "--label"
+    if given is not None and not given.strip():
         raise refuse(
             "intake-list-unusable",
             f"{flag} names no label, so there is nothing to file the batch under; "
@@ -378,7 +407,7 @@ def _label_flag(
             origin=_ORIGIN,
             detail={"label": given},
         )
-    return given.strip()
+    return given.strip() if given is not None else None
 
 
 def _payload(
@@ -713,7 +742,10 @@ def intake_land(ctx) -> Envelope:
         )
     if ctx.args.set_job:
         set_playlist.assert_native(medium, landing=True)
-    label = _label_flag(ctx.args.label, manifest=manifest, medium=medium, cfg=cfg)
+    label_from_tags = bool(getattr(ctx.args, "label_from_tags", False))
+    label = _label_flag(
+        ctx.args.label, manifest=manifest, medium=medium, cfg=cfg, from_tags=label_from_tags
+    )
     rehearse = bool(getattr(ctx.args, "rehearse", False))
     if rehearse and not medium.native:
         raise refuse(
@@ -742,6 +774,7 @@ def intake_land(ctx) -> Envelope:
             registry=registry,
             manifest=manifest,
             label=label,
+            label_from_tags=label_from_tags,
             medium=medium,
             claims=claims,
             hearted=hearted,
@@ -1324,6 +1357,7 @@ def _land_native(
     registry,
     manifest: landing.LabelManifest | None,
     label: str | None = None,
+    label_from_tags: bool = False,
     medium: ingest.IntakeMedium,
     claims: tuple[account_playlists.Claim, ...] = (),
     hearted: tuple[account_playlists.Hearted, ...] = (),
@@ -1460,6 +1494,8 @@ def _land_native(
                 )
             if label is not None:
                 return label_filing.plan_for_label(db, medium, label=label, files=files)
+            if label_from_tags:
+                return label_filing.plan_for_tags(db, medium, files=files)
             return None
 
         def plan(db) -> native.NativePlan:

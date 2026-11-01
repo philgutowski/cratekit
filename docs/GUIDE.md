@@ -49,10 +49,15 @@ never go near the live database.
 Four words carry most of the rest.
 
 - **Job.** Long work, such as a playlist intake, a tagging pass or a label
-  sweep, is queued and handed back to you as a job identifier. The verb returns
-  quickly. `crate job list` shows the queue, `crate job show ID` shows one job
-  and why it is in its state, and `crate job resume ID` picks it up without
-  repeating finished work.
+  sweep, is queued and handed back to you as a job identifier. Most verbs
+  return quickly. `crate job list` shows the queue, one line per job with its
+  verb, its state and how many of its items are settled, `crate job show ID` shows
+  one job and why it is in its state, and `crate job resume ID` picks it up
+  without repeating finished work. Three verbs of the acquisition tail, `tag
+  folder`, `analyze run` and `analyze restamp`, queue their job and then work
+  through it before they return, so each step is one command. Stop one with
+  Ctrl-C and its answer names the `--job` command that finishes the rest; pass
+  `--queue-only` to have it queue and return like the others.
 - **Run.** One invocation's decision state, saved on disk so a decision can be
   answered later, from another terminal, after the process has exited.
 - **Gate.** A named question a verb stops at before it writes. There is no
@@ -92,6 +97,11 @@ crate status
 ```
 
 A source that shows "no clean increment has completed" has simply never synced.
+
+Open gates that have sat idle for more than a week are one line rather than one
+line each: how many, the dates they span, and the command that retires them,
+`crate run retire --older-than 7d`. Newer gates are listed one by one. The week
+is `reports.open_gate_stale_days` in the configuration file.
 
 ## Where it stands
 
@@ -293,14 +303,21 @@ the run, and the batch itself is named for the date and the playlists.
 Downloading is its own step. `crate acquire download LIST` fetches tracks into
 the download staging folder through the configured adapter, paced so the account
 is not blocked, and `crate acquire audit` reports files that break the lossless
-policy. What arrived then needs tagging, naming, landing and filing, in this
-order. `tag folder` writes genre and album art to the files only. `name apply`
+policy. A track the policy refuses for good, such as one offered lossy only, or
+one the provider no longer has, is skipped and named in an `acquire-refused`
+warning, and a download whose only misses are those ends ok; any other failure
+still fails it. What arrived then needs tagging, naming, landing and filing, in
+this order. `tag folder` writes genre and album art to the files only. `name apply`
 rebuilds filenames from your template. `intake land` moves the staged files into
 your library and writes one importable file naming every one of them, which you
 import into rekordbox. `intake imported` reads a collection export taken after
 that import and proves it happened. `route inbox` files the intake folder into
 your taxonomy, and `route pending` files the landed tracks once a tree has cut
 over to the database.
+
+A `--root` is read against your library root when it is not a full path, so
+`--root Downloads` is the library's Downloads folder wherever your shell stands,
+and a root with no folder there is refused naming the path it tried.
 
 ```bash
 crate tag folder /path/to/staging
@@ -609,6 +626,29 @@ under `label-genre`. A file's label is its label tag, or `--label` for a file
 that carries none. A file that already has a genre keeps it, and a file of the
 label with no picture is still searched, for its art only.
 
+A label that sells on Bandcamp from its own account can name that account, so
+what you buy from it arrives tagged with the label and lands filed under it:
+
+```bash
+crate label registry set PULS --bandcamp pulsromania
+crate acquire bandcamp-fetch --seller PULS
+crate intake land "/path/to/staging/Bandcamp 2026-11-01" --label-from-tags
+```
+
+The account is the name in the address the label's releases are sold from,
+`pulsromania` for `pulsromania.bandcamp.com`, and the address itself is taken
+too. One account names one label, so a second label naming it is refused with
+the label that holds it, and `--bandcamp default` clears it. `acquire bandcamp`
+names each purchase's label, and names every seller you would fetch from that no
+label names, with the command that registers it. `--seller` takes a label's
+name as well as an account. The fetch writes the label's name into the label tag
+of every file it stages from that account, and leaves a seller no label names as
+it came. `--label-from-tags` then files each landed file under `Record Labels /
+<Label> / <Label> <year>` by its own label tag and its date tag's year, so one
+batch holding several sellers files each under its own label. A file with no
+label tag or no year is named on the screen and lands in INBOX filed under no
+label. This works once the intake tree is database native, as `--label` does.
+
 `sync labels` is retired. It queues nothing and names `label sync`, and `sync
 all` no longer sweeps labels either. A labels sweep queued before the guided
 sync replaced it still runs with `crate sync labels --job JOB_ID`, so a job
@@ -784,7 +824,10 @@ playlist per rekordbox playlist, `Deep House Low` or `INBOX 2026-10-31
 Defected`, kept equal to the tracks the account carries. INBOX mirrors only its
 live batches, the playlists `inbox rotate` moves, never Old. A label batch,
 which no account playlist holds, fills from the provider track each file was
-downloaded as. Approve one area and abort the other
+downloaded as. A track whose ISRC names several releases that all agree with
+it, a single and its album cut, goes onto the mirror as one of them and stays
+on that one; `crate sync favorites` still hearts none of them until you heart
+one yourself, since a heart is a choice of release. Approve one area and abort the other
 and only the approved one is written. Every other playlist you made yourself,
 on either side, is listed with a suggested home where one is obvious, and is
 never moved or renamed. Nothing is deleted beyond the expired batch playlists the rotation
@@ -1052,6 +1095,7 @@ will meet:
 | `organize.account.apply` | apply | `organize`, its account area; explicit, `crate run decide` only |
 | `restore.run.confirm` | restore | `restore run` |
 | `session.ack.backup` | acknowledged | `session ack` |
+| `run.retire.confirm` | apply | `run retire` |
 | `write.cloudsync.unreadable` | proceed | any verb that writes |
 
 Every gate also offers `abort`. An abort is a recorded answer and not a failure,
@@ -1059,6 +1103,25 @@ and the verb returns its plan with a no-op outcome. Read the last gate in the
 table before answering it. It fires when Cratekit cannot tell whether a
 cloud sync client is also touching the library, and proceeding is a decision about
 a second writer. Treat "could not read" as unknown, not as safe.
+
+### Retiring old gates
+
+A run that stopped at a gate nobody will answer stays open until something
+answers it. `crate run retire` answers every open gate idle for longer than the
+threshold, a week unless you give `--older-than` or set
+`reports.open_gate_stale_days`, and it answers each one `abort` as `session`,
+never the go option, explicit gates included. It shows every gate it would
+answer and asks once; nothing old means nothing to ask.
+
+```bash
+crate run retire --older-than 7d
+crate -d run.retire.confirm=apply run retire --older-than 7d
+```
+
+A gate is idle from its run's start or its last resume, whichever is later, so a
+run you picked up yesterday is not old. A gate whose options have no `abort`, or
+whose verb is gone, is kept and named, and stays in the status list. Queued jobs
+are not touched; `crate job cancel` is theirs.
 
 ### The backup acknowledgment
 

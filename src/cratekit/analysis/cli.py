@@ -1,8 +1,16 @@
-"""``crate analyze``: queue the heavy passes, never run them inline.
+"""``crate analyze``: queue the heavy passes as jobs, and drive them.
 
 Long work is a job (KTD26, R22). The shell freezes the folder and the
 item list. A killed driver resumes by trusting DONE rows and the
 Camelot-prefixed names those rows left behind.
+
+RUN BY HAND, ``analyze run`` AND ``analyze restamp`` DRIVE THE JOB THEY
+QUEUE (U192). The work is still a job, with its record and its resume, but
+the queue path runs the ``--job`` path on it in this process, through
+:func:`cratekit.modules.foreground.settle`, so one command does the
+pass.
+``--queue-only`` keeps the queue and return answer for a caller that drives
+the job itself, ``crate sync land`` above all.
 
 THE TWO WORKERS LIVE HERE (U58). ``handle_run`` analyses one file and
 finalizes it, ``handle_restamp`` rescores one file's energy against the
@@ -53,7 +61,7 @@ from cratekit.core import config, discovery, jobs, naming, tags
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.naming import MarkerRule, NameBudget, NameSpec, NameTemplate
-from cratekit.modules import extras
+from cratekit.modules import extras, foreground
 
 _ORIGIN = ("analysis", "cli")
 _T = TypeVar("_T")
@@ -230,12 +238,7 @@ def _unscored_vocals_warning(summary: Mapping[str, Any]) -> dict[str, str] | Non
 
 def build(parser, entry) -> None:
     parser.add_argument("folder", help="folder of audio to analyse")
-    parser.add_argument(
-        "--job",
-        default=None,
-        metavar="JOB_ID",
-        help="continue the analysis job already queued under this identifier",
-    )
+    foreground.add_job_options(parser, what="analysis")
     parser.set_defaults(_handler=analyze_run)
 
 
@@ -305,12 +308,7 @@ def build_restamp(parser, entry) -> None:
             "instead of only the tracks directly inside it"
         ),
     )
-    parser.add_argument(
-        "--job",
-        default=None,
-        metavar="JOB_ID",
-        help="continue the restamp job already queued under this identifier",
-    )
+    foreground.add_job_options(parser, what="restamp")
     parser.set_defaults(_handler=analyze_restamp)
 
 
@@ -355,9 +353,9 @@ def _advance(ctx, store, job):
     return job, warnings
 
 
-def _resume(ctx, cfg: config.Config) -> Envelope:
+def _resume(ctx, cfg: config.Config, job_id: str) -> Envelope:
     with jobs.open_store() as store:
-        job, warnings = _advance(ctx, store, jobs.get(store, ctx.args.job))
+        job, warnings = _advance(ctx, store, jobs.get(store, job_id))
         summary = _summary(cfg, job.job_id)
         # THE RESUME IS THE REPORT THAT SAYS THE PASS FINISHED, so what the walk
         # left out rides it too, read back off the frozen payload rather than
@@ -383,6 +381,13 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
         )
 
 
+def _settle(ctx, cfg: config.Config, job, argv: list[str]) -> Envelope:
+    """Drive the job this call just queued through the resume, in this process (U192)."""
+    return foreground.settle(
+        job.job_id, lambda: _resume(ctx, cfg, job.job_id), argv=argv, origin="analysis.cli"
+    )
+
+
 # ---------------------------------------------------------------------------
 # ``crate analyze run``
 # ---------------------------------------------------------------------------
@@ -391,7 +396,7 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
 def analyze_run(ctx) -> Envelope:
     cfg = _load()
     if ctx.args.job:
-        return _resume(ctx, cfg)
+        return _resume(ctx, cfg, ctx.args.job)
     folder = _folder_of(ctx.args.folder)
     items = _audio_in(folder)
     if not items:
@@ -409,7 +414,9 @@ def analyze_run(ctx) -> Envelope:
             cfg=cfg,
             item_ids=items,
         )
-        return ctx.envelope(data=_reported(store, job))
+        if foreground.queue_only(ctx.args):
+            return ctx.envelope(data=_reported(store, job))
+    return _settle(ctx, cfg, job, analyze_argv(job))
 
 
 def _template(cfg: config.Config) -> NameTemplate:
@@ -726,7 +733,7 @@ def _calibration_or_refuse(cfg: config.Config) -> energy.Calibration:
 def analyze_restamp(ctx) -> Envelope:
     cfg = _load()
     if ctx.args.job:
-        return _resume(ctx, cfg)
+        return _resume(ctx, cfg, ctx.args.job)
     folder = _folder_of(ctx.args.folder)
     recursive = bool(getattr(ctx.args, "recursive", False))
     scan = discovery.scan_audio(folder, recursive=recursive)
@@ -751,9 +758,13 @@ def analyze_restamp(ctx) -> Envelope:
             cfg=cfg,
             item_ids=list(scan.items),
         )
-        return ctx.envelope(
-            data=_reported(store, job), warnings=(DB_NOT_WRITTEN, *extra)
-        )
+        if foreground.queue_only(ctx.args):
+            return ctx.envelope(
+                data=_reported(store, job), warnings=(DB_NOT_WRITTEN, *extra)
+            )
+    # NOT ``extra`` AGAIN: the resume reads the walk's warnings back off the
+    # payload this queue froze, and says the database was not written itself.
+    return _settle(ctx, cfg, job, restamp_argv(job))
 
 
 def handle_restamp(job, item, cfg) -> jobs.Produced:

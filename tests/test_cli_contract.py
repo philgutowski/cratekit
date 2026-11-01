@@ -1509,6 +1509,10 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         "profile.set": ["slim"],
         "run.show": ["no-such-run"],
         "run.decide": ["no-such-run", "profile.set.apply", "apply"],
+        # U170. LAZY, since a retirement with nothing old asks nothing: one
+        # run left open at its gate for a month is the plan the confirm asks
+        # over. The rest is driven in tests/test_run_retire.py.
+        "run.retire": _run_retire_over_one_old_gate,
         # U10. The three per-job verbs are driven against an identifier that is
         # deliberately absent: every one of them must refuse with a code from the
         # vocabulary rather than with a traceback, and an empty queue is the state
@@ -2051,6 +2055,20 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
     if monkeypatch is not None and "monkeypatch" in inspect.signature(sample).parameters:
         return sample(monkeypatch)
     return sample()
+
+
+def _run_retire_over_one_old_gate() -> list[str]:
+    """One ``profile.set`` run stopped at its gate thirty days ago, for ``run retire`` to ask over."""
+    import os
+    from datetime import datetime, timedelta, timezone
+
+    then = datetime.now(timezone.utc) - timedelta(days=30)
+    state = gates.new_run(registry.entry("profile.set"))
+    state.created = output.timestamp(then)
+    state.open_gate = "profile.set.apply"
+    path = gates.save(state)
+    os.utime(path, (then.timestamp(), then.timestamp()))
+    return []
 
 
 def _intake_set_reaching_account_gate(monkeypatch) -> list[str]:

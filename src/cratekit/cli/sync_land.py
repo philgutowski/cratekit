@@ -493,13 +493,18 @@ def _download(report: _Pass, listed: _Listed, cfg: config.Config) -> int:
     settled_with_refusals = job.state is jobs.JobState.FAILED and len(permanent) == len(failed)
     if job.state is not jobs.JobState.SUCCEEDED and not settled_with_refusals:
         raise _Stop(DOWNLOAD, tail.job_error(report, job))
+    # A TRACK THE DOWNLOAD DECLINED IS REFUSED TOO (U169). Since that unit a
+    # policy refusal settles the item as skipped and the job succeeds, so the
+    # failed items above are only what an earlier build recorded; read alone
+    # they would report a clean download over a track that never landed.
     refused = [
         {
             "item_id": item.item_id,
             "reason": item.cause.reason if item.cause else None,
             "message": item.cause.message if item.cause else None,
         }
-        for item in permanent
+        for item in held
+        if item in permanent or (item.state is jobs.ItemState.SKIPPED and item.cause is not None)
     ]
     report.summary["download_job"] = job.job_id
     report.summary["download_refused"] = refused

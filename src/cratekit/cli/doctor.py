@@ -3575,14 +3575,38 @@ def build_status(parser: argparse.ArgumentParser, entry: registry.Entry) -> None
     parser.set_defaults(_handler=status)
 
 
-def _run_findings() -> list[Finding]:
-    """Runs that stopped at a gate or are waiting on a person.
+#: The key of ``crate status``'s one line for the open gates nobody will
+#: answer (U170). Not under ``run.``, since it is many runs and not one.
+OLD_GATES_KEY = "runs.old"
+
+
+def _run_findings(
+    older_than: timedelta | None = None, now: datetime | None = None
+) -> list[Finding]:
+    """Runs that stopped at a gate or are waiting on a person; :func:`_run_report`'s findings."""
+    return _run_report(older_than, now)[0]
+
+
+def _run_report(
+    older_than: timedelta | None = None, now: datetime | None = None
+) -> tuple[list[Finding], int]:
+    """Runs that stopped at a gate or are waiting on a person, and how many were folded away.
 
     Read from the run records the dispatcher already persists, so this reports
     the same state ``crate run show`` addresses rather than a second notion of
     what an open run is.
+
+    OPEN GATES IDLE PAST ``older_than`` ARE ONE LINE (U170): the count, the
+    dates they span and the command that retires them, so a run of gates
+    nobody will resume does not stand above the lines that matter. Only the
+    gates that command would retire are folded, judged by the one predicate
+    it reads, :func:`gates.old_gate`; an old gate it would keep, a record it
+    cannot read and every newer gate are listed one by one as before.
+    ``older_than`` None folds nothing.
     """
     found: list[Finding] = []
+    old: list[gates.OldGate] = []
+    moment = now or datetime.now(timezone.utc)
     try:
         records = sorted(gates.run_dir().glob("*.json"))
     except OSError:
@@ -3618,6 +3642,11 @@ def _run_findings() -> list[Finding]:
             continue
         if state.open_gate is None and state.pending is None:
             continue
+        if older_than is not None:
+            aged = gates.old_gate(state, path, older_than=older_than, now=moment)
+            if aged is not None and aged.retirable:
+                old.append(aged)
+                continue
         waiting = (
             f"open gate {state.open_gate}"
             if state.open_gate is not None
@@ -3634,7 +3663,31 @@ def _run_findings() -> list[Finding]:
                 else Remedy.COMPLETE_PENDING_ACTION,
             )
         )
-    return found
+    if old and older_than is not None:
+        found.append(_old_gates_line(old, older_than))
+    return found, len(old)
+
+
+def _old_gates_line(old: Sequence[gates.OldGate], older_than: timedelta) -> Finding:
+    """The one line every retirable old gate is folded into, with the command (U170).
+
+    The command is in ``detail`` because it carries the threshold, which a
+    remedy token cannot, and this is the layer that renders.
+    """
+    days = older_than.days
+    spans = sorted(one.idle_since[:10] for one in old)
+    gates_word = "gate" if len(old) == 1 else "gates"
+    days_word = "day" if days == 1 else "days"
+    return Finding(
+        key=OLD_GATES_KEY,
+        title="old open gates",
+        status=Status.INFO,
+        detail=(
+            f"{len(old)} open {gates_word} idle for more than {days} {days_word}, "
+            f"from {spans[0]} to {spans[-1]}; crate run retire --older-than {days}d "
+            f"answers each one abort after a confirm"
+        ),
+    )
 
 
 def _source_findings(cfg: config.Config) -> list[Finding]:
@@ -3732,11 +3785,15 @@ def _tree_findings(cfg: config.Config) -> list[Finding]:
 
 def status(ctx: "Context") -> Envelope:
     cfg = config.load()
-    findings = _run_findings() + _source_findings(cfg) + _tree_findings(cfg)
+    runs, folded = _run_report(timedelta(days=cfg.reports.open_gate_stale_days))
+    findings = runs + _source_findings(cfg) + _tree_findings(cfg)
     data = {
         "checks": [finding.to_json() for finding in findings],
         "summary": {
-            "open_runs": sum(1 for f in findings if f.key.startswith("run.")),
+            # EVERY open run, the folded ones included: folding is how they
+            # are shown, never whether they are counted.
+            "open_runs": sum(1 for f in findings if f.key.startswith("run.")) + folded,
+            "old_gates": folded,
             "sources": sum(1 for f in findings if f.key.startswith("source.")),
             "trees": sum(1 for f in findings if f.key.startswith("tree.")),
             "library": str(cfg.library.root),

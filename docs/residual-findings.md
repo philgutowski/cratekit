@@ -40266,3 +40266,196 @@ the go's behaviour before U190.
 
 **Closes when:** a go with no answer and no job to resume ends NO_OP before
 the gate, saying so, with a test. Ledger only, a wording and a step.
+
+---
+
+## R-1119. A job cancelled from another terminal under a live foreground drive ends as a defect report, or queued again
+
+**Found:** at the review of #403, U192, 2026-11-01.
+
+**The mechanism.** `crate job cancel` reconciles and cancels a job without asking whether a live driver holds it. A foreground drive of that job keeps claiming and finishing items, and at the end `jobs.drive` asks to move the job from cancelled to succeeded, which the engine refuses as `internal-error` with the remedy to report a defect. If the same drive is then stopped with Ctrl-C, `modules.foreground.settle` reads the job as cancelled and re-arms it with `jobs.retry`, so a job somebody cancelled on purpose comes back queued.
+
+**Measured cost.** Driven by the review: a handler that ran the cancel verb's two calls on item 2 left all four items done, the job recorded cancelled, and an exit 1 telling the person to report a defect over a sweep that finished. With a SIGINT in the same handler the job came back queued with 1 of 4 settled. The first shape predates U192 on every `--job` drive; U192 widens its window, since every hand run of the three tail verbs is now a live drive. The second needs a concurrent cancel and a Ctrl-C inside one item. A queued job drives nothing on its own.
+
+**Closes when:** `job cancel` refuses, or signals, a job a live driver holds (`jobs.assert_free` before `jobs.cancel`), so the two endings cannot meet. Ledger only: the producer is a concurrent act in a second terminal.
+
+---
+
+## R-1120. An interrupted tail verb prints its resume command twice, as the fix line and as the first step
+
+**Found:** at the review of #403, U192, 2026-11-01.
+
+**The mechanism.** `modules.foreground` rebuilds the cancelled refusal with no remedy token and the `--job` command as its first step. `render.remediation_line` falls back to the first step for every refusal with no token, and `render_cause` then lists every step, so the human answer reads `fix: resume it with: crate ... --job ID` and the same sentence again under it.
+
+**Measured cost.** Driven by the review with `crate tag folder` interrupted: the two lines are identical and both true. Nothing is false, only repeated.
+
+**Closes when:** `render_cause` skips the first step when the fix line already printed it, for every remedy-less refusal. Ledger only, a wording fix.
+
+---
+
+## R-1121. Ctrl-C on a foreground tail drive says nothing until the item in hand finishes
+
+**Found:** at the review of #403, U192, 2026-11-01.
+
+**The mechanism.** `jobs.interruptible` records the signal and the drive honours it only between items, by design, so nothing is half written. U192 makes the drive the default answer of `tag folder`, `analyze run` and `analyze restamp` run by hand, so a person now presses Ctrl-C at a terminal holding a drive, and the verb prints nothing until the item it is working on ends.
+
+**Measured cost.** Driven by the review: a handler that slept 1.5 seconds after the signal returned 1.51 seconds later, the job queued again and its `--job` command named. On a long analysis decode the wait is the length of one track's work, and the press reads as ignored until then. The answer that follows is true.
+
+**Closes when:** the engine's signal handler writes one line, that the run will stop after the current item, the first time it records a signal. Ledger only.
+
+---
+
+## R-1122. The sync land tail test pins its queue only call by the flag's name rather than by what the flag changes
+
+**Found:** at the review of #403, U192, 2026-11-01.
+
+**The mechanism.** `tests/test_sync_land.py::test_each_tail_step_queues_only_and_drives_its_job_through_one_job_command` and the tail step test in `tests/test_analysis_workers.py` assert that the queue call carries `--queue-only` and that the commands read queue then `--job`. Without the flag the queue call drives the job and the `--job` call re-reports a succeeded job, so the job is still driven once and only those name based assertions die.
+
+**Measured cost.** Driven by the review: dropping the flag from `sync_land` killed only the assertion naming it. Nothing a person sees differs today; a later rewrite of the pass could keep the name and change the behaviour.
+
+**Closes when:** the tests read what the flag decides, which call drove the job and how a failure in the queue call reaches the pass, rather than the flag's spelling. Ledger only, maintainer facing.
+
+---
+
+## R-1123. The rekordbox visit skill's drift guard leaves its release claims and its wait thresholds unpinned
+
+**Found:** at the second Fable review of #354, U173, 2026-11-01.
+
+**The mechanism.** `tests/test_rekordbox_visit_skill.py` reads every value the skill spells from the module that owns it, except four: the claim that `crate analyze check` landed after v0.4.0, the claim that rows landed by v0.4.0 or later need no Reload Tags, and the wait loop's twenty second quiet and five minute stall. A mutation of each survived the review's table. The rehearsal's own backup acknowledgment in the redirected state is also left to the solutions entry the skill cites, rather than said in the skill.
+
+**Measured cost.** None today: each claim was verified true by hand at the review (`git show v0.4.0` has `inbox.analyzed` and no `analyze.check`; U163 is in v0.4.0). The release claims go stale the day a release carries U167, when the precondition reads as a copy problem that no longer exists.
+
+**Closes when:** the release that carries `crate analyze check` rewords the precondition to name that version, or the claims are read from the tags by the test. Ledger only, a maintainer facing gap.
+
+---
+
+## R-1124. Whether the rekordbox visit runs Analyze Tracks with Vocal on or off waits on Phillip
+
+**Found:** while building #354, U173, 2026-11-01.
+
+**The mechanism.** The brief, filed at Phillip's request on 2026-10-27, lists Vocal off as his standard, and the skill's settings table follows it. Sitting 52 on 2026-10-31 ran the visit by his hand with Vocal on as well, which adds rekordbox's own vocal position marks to the waveform. Cratekit reads none of them, so the choice changes only analysis time and what rekordbox draws.
+
+**Measured cost.** Not driven; no live visit has run from the skill. The question is on the decisions page as `354-vocal-setting-1`, with Vocal off recommended.
+
+**Closes when:** Phillip answers. Off closes it as written; on is one row of the table and its pinned dict in the drift test.
+
+---
+
+## R-1125. intake land --label-from-tags files a file under any label tag it carries, so an unregistered Bandcamp seller's own tag makes a folder nobody registered
+
+**Found:** at the review of #359, U177, 2026-11-01.
+
+**The mechanism.** `crate acquire bandcamp-fetch` writes the label tag only on
+a registered seller's files and leaves every other file as it came, and
+`crate intake land --label-from-tags` (`intake/label_filing.py`,
+`plan_for_tags`) files each file under whatever its label tag names, without
+asking the registry. A seller no label names whose archive already carries a
+label tag is therefore filed under that tag's text, and a folder for it is
+made under `Record Labels`. The same holds for a file from any other source
+landed with the flag, and two spellings that differ only in case make two
+sibling folders, which is R-453's rule and not this unit's.
+
+**Measured cost.** Driven at the review with a fake seller serving a FLAC
+tagged `label=Somebody Else`: the plan said the seller is unregistered, the
+staged file kept its tag, the record said `label: None`, and the landing
+filed it under `Somebody Else`. The gate screen names every label folder the
+write makes before anything is written, so the person sees it. Whether a real
+Bandcamp archive carries a label tag is unmeasured: sitting 46 read none on
+55 releases of one seller.
+
+**Closes when:** a real archive with a label tag is seen, and the landing then
+either files only a label the registry holds or the fetch clears a seller's
+own tag. Ledger only: the write is shown on the gate before it happens.
+
+---
+
+## R-1126. A label renamed between a Bandcamp fetch and its landing is filed under the name its files were tagged with
+
+**Found:** at the review of #359, U177, 2026-11-01.
+
+**The mechanism.** The fetch freezes each release's label display name in
+the job and writes it into the label tag of every staged file, and
+`--label-from-tags` reads the tag, never the registry. A rename made with
+`crate label registry rename` after the fetch and before the landing files
+the batch under the old name, beside a folder of the new one if that exists.
+
+**Measured cost.** Not driven end to end. The freeze is pinned by
+`tests/test_bandcamp_labels.py`'s rename test, which is the KTD9 rule the job
+engine holds everywhere. The gate screen names each label folder the write
+makes, so a second folder for one label is shown before it is written.
+
+**Closes when:** a landing that resolves each tag through the registry, by
+name or by the label's identifier written beside the name, is built, if a
+rename between the two steps is ever seen. Ledger only.
+
+---
+
+## R-1127. acquire bandcamp --seller reads a followed label's name before an account of the same spelling, with no warning
+
+**Found:** at the second review of #359, U177, 2026-11-01.
+
+**The mechanism.** `_sellers` in `acquire/bandcamp_cli.py` resolves each
+`--seller` value through the label registry first, so a value that is both a
+followed label's name and another seller's account plans the label's account.
+A label registered as `otherlabel` selling from `pulsromania` makes
+`--seller otherlabel` plan the pulsromania purchases and mark the otherlabel
+account's own purchases filtered.
+
+**Measured cost.** Driven at the second review. No warning says the value was
+read as a label, though the summary's `sellers` names the account planned and
+each row names its seller and label. The producer, a label named exactly like
+an unrelated seller's account, was built by hand and is not known on a real
+account.
+
+**Closes when:** a value that resolves both ways is warned about by name, or
+planned as both. Ledger only.
+
+---
+
+## R-1128. The test that the ledger's old tie misses are asked again builds the stored wording from the constant it pins, so a rewording of the constant's tail would leave them unasked with a green suite
+
+**Found:** at the second review of #329, R-1032, 2026-11-01.
+
+**The mechanism.** `test_a_tie_remembered_as_a_miss_before_the_tie_was_broken_is_asked_again`
+in `tests/test_organize_mirror_tie.py` writes its remembered miss from
+`service.AGREEING_RELEASES`, and the adapter formats its reason from the
+same constant, so the test cannot see the wording the live ledger actually
+holds, which `main` at `f08defe` wrote from its own f string. The review
+reworded the constant's tail to "of them agree with this row's artist and
+title" on a copy and ran the five files that read it: 329 passed, none
+killed. A full rewording is killed by three adapter tests, so only the tail
+is unpinned.
+
+**Measured cost.** None today: the review built `main`'s stored wording from
+`f08defe`'s f string and the branch's constant is a substring of it, so the
+4,304 tie misses of sitting 42 are recognised and asked again. The cost is
+latent, a later rewording of the tail leaving every miss remembered under the
+old words unasked and reported as remembered.
+
+**Closes when:** the test stores its miss in `main`'s literal wording, the
+words `f08defe` formatted, rather than from the constant. Ledger only: a
+maintainer facing pin, after the unit's two fix rounds were spent.
+
+---
+
+## R-1129. An empty lossy marker under the permissive policy is declined as a refusal for good, though the cure is one configuration value
+
+**Found:** at the review of #350, U169, 2026-11-01.
+
+**The mechanism.** Under `allow_lossy_marked` with `naming.lossy_marker` empty, `acquire.cli.marked_name` refuses a lossy landing as `lossy-refused`, not retryable. Since U169 `acquire.cli.handle` declines every non retryable cause in the `REFUSED_BY_POLICY` class, so the item is skipped, the job succeeds, and the `acquire-refused` warning calls the track refused for good. The warning's message does name the missing marker text.
+
+**Measured cost.** Driven by the review with the fake adapter: exit 0, the item skipped, the warning naming the marker. On the base the item failed non retryable and `job resume` refused the job just the same, so no route back was lost; the cost is the words "for good" over a configuration omission.
+
+**Closes when:** the marker refusal says the configuration lacks the marker text in its own reason, outside the policy class, or the warning words a configuration cure apart from a refusal. Ledger only, a wording.
+
+---
+
+## R-1130. The Bandcamp and fallback fetch workers still fail their job over a policy refusal, where acquire download now skips it
+
+**Found:** at the build of #350, U169, 2026-11-01.
+
+**The mechanism.** U169 added `jobs.Declined`, and the `acquire download` worker raises it for a cause in the `REFUSED_BY_POLICY` class that is not retryable, so the item is skipped and a list whose only misses are policy refusals ends ok. Two more workers raise the same causes in jobs of their own and were left as they were, because the brief named the download's settle path: `acquire bandcamp-fetch` (`_encoding` in `src/cratekit/acquire/bandcamp_cli.py`, `lossy-refused` and `unavailable-permanent`) and `acquire fallback-fetch` (`src/cratekit/acquire/fallback_cli.py`, `lossy-refused` under the strict policy). A Bandcamp purchase of ten tracks with one offered only lossy still ends `failed (REFUSED_BY_POLICY)`.
+
+**Measured cost.** Not driven against either verb. The same wrong impression sitting 47 paid for on the download, on two verbs with fewer tracks per job; the item causes are correct and `job show` names them.
+
+**Closes when:** each worker wraps its body the way `acquire.cli.handle` does, declining a cause `acquire.cli.refused_for_good` accepts, with the verb naming each skipped track in a warning. Ledger only: a wording of the outcome, not data at risk.

@@ -174,7 +174,8 @@ lists what.
   and a test never launch rekordbox or its background agent. Before opening it: no
   Cratekit job is running, and `crate doctor` reads both backup ages under five
   days. After quitting it: `rekordbox` and `rekordboxAgent` are both confirmed
-  gone before any verb runs.
+  gone before any verb runs. The analysis visit after a landing follows the
+  project's `rekordbox-visit` skill step by step (U173).
 - **A backup is needed only when the library is more than five days out of
   date, or when Phillip asks for one**, decided by Phillip on 2026-10-10,
   relaxing the one day rule of 2026-09-29. Below five days a session opens
