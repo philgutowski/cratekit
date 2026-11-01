@@ -1825,3 +1825,33 @@ def test_a_hearts_job_names_no_playlist_and_frees_the_hearts(cfg, default_queue)
     (row,) = envelope["data"]["progress"]["cancel"]
     assert row["frees"] == "frees the account's hearts, so the next pass queues it again"
 
+
+def test_the_job_verbs_read_a_playlist_as_the_sweep_records_it(cfg, default_queue):
+    """``playlist_identity`` is ``recorded_as`` written again; the two must agree.
+
+    Written again because ``sync.playlists`` reaches the export writer, and the
+    match engine reaches the job verbs (``tests/test_match_states.py``). The
+    hearts are the one intended difference: the sweep's cursor records none,
+    and a pass still holds them while a hearts job is open.
+    """
+    from cratekit.cli import jobs as jobs_cli  # noqa: PLC0415
+    from cratekit.sync import playlists  # noqa: PLC0415
+
+    assert jobs_cli.INTAKE_SWEEP_ID == playlists.SOURCE_ID
+    references = (
+        (UUID, True),
+        (UUID.upper(), True),
+        ("pl-a", True),
+        (UUID, False),
+        (UUID.upper(), False),
+        (f"https://tidal.com/playlist/{UUID}", False),
+        (f"https://listen.tidal.com/playlist/{UUID}?u=share", False),
+        ("pl-a", False),
+        ("https://example.com/playlist/x", False),
+    )
+    for number, (source, swept) in enumerate(references):
+        job = _intake_job(
+            default_queue, cfg, f"j{number}", tracks=(str(number),), days=1, source=source, swept=swept
+        )
+        assert jobs_cli.playlist_identity(job, source) == playlists.recorded_as(job), source
+

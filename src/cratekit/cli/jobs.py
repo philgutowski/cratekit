@@ -608,6 +608,10 @@ INTAKE_PLAYLIST_KEY = "playlist_name"
 INTAKE_SOURCE_KEY = "source"
 #: The reserved reference the account's hearts are queued under, pinned the same way.
 INTAKE_HEARTS = "favorites"
+#: The payload key, and the value under it, that mark a job the playlists
+#: sweep queued, whose source is the listing's own id; pinned to ``sync.playlists``.
+INTAKE_SWEEP_KEY = "source_id"
+INTAKE_SWEEP_ID = "playlists"
 #: The fields ``job show`` and ``job list`` name an intake job's playlist in.
 PLAYLIST_FIELD = "playlist"
 SOURCE_FIELD = "source"
@@ -639,25 +643,31 @@ def intake_playlist(job: jobs.Job) -> tuple[str, str] | None:
 def playlist_identity(job: jobs.Job, source: str) -> str:
     """The playlist a pass reads this job as holding, or ``""`` for none.
 
-    THE SWEEP'S OWN READING, ``sync.playlists.recorded_as``, imported only when
-    asked, since only the stale cancel and the sync pass ask (KTD26): a URL a
-    person typed is parsed to the id the listing carries, so it and a sweep's
-    job for the same playlist are one playlist here as they are to the pass.
-    The hearts are held as one, while any hearts job is open. A set job holds
-    no account playlist.
+    THE SWEEP'S OWN READING, ``sync.playlists.recorded_as``, written again here
+    rather than imported: that module reaches the rekordbox export writer at
+    module scope, and the match engine, which reaches this module, is held by
+    test to reach no export reader at any depth. A test pins the two readings
+    to agree. A job the sweep queued carries the listing's own id, kept as it
+    is; a reference typed by hand is parsed to the id the listing carries, so
+    a URL and a sweep's job for the same playlist are one playlist here as
+    they are to the pass, and a reference the parser does not recognise is
+    kept as typed. The hearts are held as one while any hearts job is open. A
+    set job holds no account playlist.
     """
     if job.handler_key != "intake.playlist":
         return ""
     if source == INTAKE_HEARTS:
         return INTAKE_HEARTS
-    from cratekit.sync import playlists  # noqa: PLC0415 - the pass's reading, when asked
+    if (job.payload or {}).get(INTAKE_SWEEP_KEY) == INTAKE_SWEEP_ID:
+        return source
+    from cratekit.label import catalogue  # noqa: PLC0415 - the provider's id parser, when asked
 
     try:
-        return playlists.recorded_as(job) or source
+        return catalogue.playlist_id(source)
     except ValueError:
-        # A REFERENCE THE URL PARSER ITSELF CHOKES ON (``https://[::1``) is
-        # kept as typed, the reading ``recorded_as`` gives any reference it
-        # does not recognise, rather than ending the listing on a traceback.
+        # THE PARSER'S REFUSAL IS A ``ValueError``, and so is what the URL
+        # parser itself raises over ``https://[::1``: either reference is kept
+        # as typed, rather than ending the listing on a traceback.
         return source
 
 
@@ -773,6 +783,8 @@ __all__ = [
     "INTAKE_HEARTS",
     "INTAKE_PLAYLIST_KEY",
     "INTAKE_SOURCE_KEY",
+    "INTAKE_SWEEP_ID",
+    "INTAKE_SWEEP_KEY",
     "INTAKE_TRACKS_KEY",
     "KEPT_LIST",
     "LEFT_LIST",

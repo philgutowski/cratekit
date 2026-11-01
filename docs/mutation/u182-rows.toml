@@ -133,8 +133,17 @@ description = "playlist_identity: key on the raw source instead of the pass's re
 file = "src/cratekit/cli/jobs.py"
 surface = "user"
 tests = ["tests/test_jobs.py", "tests/test_sync_land.py"]
-old = '''    return playlists.recorded_as(job) or source'''
-new = '''    return source'''
+old = '''        return catalogue.playlist_id(source)'''
+new = '''        return source'''
+
+[[rows]]
+id = "M13b_sweep_verbatim"
+description = "playlist_identity: parse a sweep's own id as if typed, so it no longer agrees with the cursor"
+file = "src/cratekit/cli/jobs.py"
+surface = "maintainer"
+tests = ["tests/test_jobs.py"]
+old = '''    if (job.payload or {}).get(INTAKE_SWEEP_KEY) == INTAKE_SWEEP_ID:'''
+new = '''    if False:'''
 
 [[rows]]
 id = "M14_set_frees_none"
