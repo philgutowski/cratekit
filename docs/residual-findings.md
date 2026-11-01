@@ -40730,3 +40730,46 @@ exist. Ledger only, since nothing reaches it.
 **Measured cost.** Driven by `test_a_release_refused_for_good_is_recorded_and_nothing_is_landed_over_none`: the envelope names each refused release in `fetch_refused`, in a `sync-bandcamp-fetch-refused` warning and on a `fail` check row, so nothing false is said, but a caller reading only the exit code is not told. `sync land` over an all refused download carries the same shape (U152's residual).
 
 **Closes when:** the verb ends with the fetch's own refusal when every release it attempted was refused and nothing was staged, or the record states exit 0 as the contract. Ledger only.
+
+---
+
+## R-1145. A Favorites playlist with no position reads as position 0, and the order can hand 0 out as a live position
+
+**Found:** at the review of #361, U180, 2026-11-01.
+
+**The mechanism.** `placement.seq_of` reads a row's `Seq` as `int(Seq or 0)`,
+so a playlist under the Favorites folder whose `Seq` is NULL sorts first and
+contributes 0 to the slots `placement.slots` gives out. `crate favorites order`
+then writes 0 as a live row's position, which the binding's own
+`create_playlist` and `move_playlist` refuse as below 1.
+
+**Measured cost.** Driven on a disposable copy with `Seq` set to NULL by SQL:
+the verb wrote All Favorites at `Seq 0` and the folder read in the right order
+on the copy. What rekordbox shows for a position of 0 was not measured, and one
+candidate producer was driven (SQL); no verb and no known rekordbox path writes
+a NULL position.
+
+**Closes when:** the slots are floored at 1, or an attended sitting reads a
+`Seq 0` row in rekordbox and finds it shown where its neighbours say. Ledger
+only.
+
+---
+
+## R-1146. The order's write of updated_at outside the binding's tracking kills no test, so a second sequence bump per moved row would ship green
+
+**Found:** at the review of #361, U180, 2026-11-01.
+
+**The mechanism.** `placement.seat` writes a moved row's `Seq` with the
+binding's registry tracking it, one sequence bump for the move, and stamps
+`updated_at` inside `db.registry.disabled()`, as the binding's own
+`move_playlist` does. Removing the `disabled()` block leaves every test green
+(177 tests in five files, at the review), so nothing holds the write to one
+bump per move.
+
+**Measured cost.** None measured. A second bump per moved row is what a
+person would pay only if rekordbox's cloud sync read the extra increment as
+a second change, and that was not driven.
+
+**Closes when:** a test reads the row's `rb_local_usn` before and after a
+seat and holds it to one increment, or the bump count is shown not to matter
+to rekordbox. Ledger only.
