@@ -180,16 +180,21 @@ def _summary_of(envelope: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _preflight(report: _Pass, cfg: config.Config) -> None:
+def preflight(report: _Pass, cfg: config.Config) -> None:
     """Refuse before any step while rekordbox, or a backup's driver, is up.
 
     Rekordbox through the guarded writer's own predicate, so this refusal and
     the landing's are one question asked twice. A backup by its job's driver
     lock, which is the one liveness test the queue trusts: a backup job open in
     the queue whose driver died is not running and does not hold the pass.
+
+    SHARED WITH ``crate sync bandcamp`` (U179), which runs it as its own first
+    step, so the two sources of the driver refuse on one predicate. The verb
+    is named from the chain's title.
     """
+    verb = f"crate {report.title}"
     report.say(PREFLIGHT, "rekordbox and backups")
-    rb_writer.assert_rekordbox_closed("crate sync land")
+    rb_writer.assert_rekordbox_closed(verb)
     key = registry.entry(BACKUP_VERB).handler_key
     open_states = [state for state in jobs.JobState if state not in jobs.TERMINAL_STATES]
     with jobs.open_store() as store:
@@ -204,7 +209,7 @@ def _preflight(report: _Pass, cfg: config.Config) -> None:
         except jobs.DriverHeld as exc:
             raise refuse(
                 "job-driver-held",
-                f"backup job {job.job_id} is running, so crate sync land writes "
+                f"backup job {job.job_id} is running, so {verb} writes "
                 f"nothing until it has finished",
                 remedy=Remedy.WAIT_FOR_HOLDER,
                 retryable=True,
@@ -636,7 +641,7 @@ def sync_land(ctx: Context) -> Envelope:
     """Take one sync pass to its landing gate. See the module docstring."""
     cfg = _load()
     report = _report(ctx.progress)
-    _preflight(report, cfg)
+    preflight(report, cfg)
     try:
         run_id = ctx.args.pass_run
         if run_id:
@@ -682,5 +687,6 @@ __all__ = [
     "TAG",
     "TAIL",
     "build",
+    "preflight",
     "sync_land",
 ]

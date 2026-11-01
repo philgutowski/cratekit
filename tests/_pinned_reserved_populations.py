@@ -598,6 +598,14 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-land-download-refused',
         'sync-land-intake-left-open',
     ],
+    # 2026-11-01, U179: the Bandcamp source of the same driver, its fetch verb's
+    # words and the closing report's three warnings.
+    'cli/sync_bandcamp.py': [
+        'bandcamp-fetch',
+        'sync-bandcamp-fetch-refused',
+        'sync-bandcamp-no-genre',
+        'sync-bandcamp-tags-unread',
+    ],
     # 2026-11-01, U190: the tail and the landing, lifted out of the sync pass
     # driver so ``label sync --go`` runs the same chain.
     'cli/tail.py': [

@@ -1834,6 +1834,32 @@ ENTRIES: tuple[Entry, ...] = (
         doctor_checks=("library.mounted", "rekordbox.closed", "credential.provider"),
     ),
     Entry(
+        name="sync.bandcamp",
+        summary=(
+            "take new Bandcamp purchases to their landing in one verb: the plan, the "
+            "fetch tagged by label, the tail and a rehearsal, stopping at the "
+            "landing's gate"
+        ),
+        module="cratekit.cli.sync_bandcamp",
+        builder="build",
+        handler_key="sync.bandcamp",
+        feature_rows=(6,),
+        # NOT long_running, AND NO argv_builder (U179), for ``sync.land``'s
+        # reason: every job it drives is queued by its own verb under that
+        # verb's key and driven through that verb's own command, in the
+        # foreground, so it queues nothing under its own.
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
+        # THE STEPS' FILES, written by the verbs it runs: the fetch, the tags,
+        # the restamp and the renames. No database write: the rehearsal writes
+        # a copy it removes, and the landing stops at its explicit gate on its
+        # own run, so the collection is written only by that verb, after a
+        # separate recorded answer.
+        writes=frozenset({"files"}),
+        destructive=True,
+        doctor_checks=("library.mounted", "rekordbox.closed", "keychain.reachable"),
+    ),
+    Entry(
         name="sync.labels",
         # RETIRED BY REDUCTION (U109). ``label.sync`` takes label releases now,
         # and ``sync.all`` no longer composes this source. The entry stays, its

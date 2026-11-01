@@ -1655,6 +1655,10 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # with that step's own refusal. The chain is driven in
         # tests/test_sync_land.py.
         "sync.land": [],
+        # U179. The driver takes no argument: on this fixture its plan step
+        # refuses for want of a Bandcamp session, and the driver ends with that
+        # step's own refusal. The chain is driven in tests/test_sync_bandcamp.py.
+        "sync.bandcamp": [],
         # U20. Inbox, unplaced and pending take no positional argument: an empty
         # intake folder and an empty ledger are the state a fresh install is
         # genuinely in, and each verb must still emit a well-formed plan and
