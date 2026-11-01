@@ -37,10 +37,11 @@ THE STEPS, each the owning verb's plan and apply:
   and removed on a later run, each removal named on the gate and on the
   applied totals. The filing plan names the candidates, so it is planned once
   and read by both;
-* EVERY GENRE FOLDER AND THE FAVORITES FOLDER MIRRORED (U147),
+* EVERY GENRE FOLDER, THE FAVORITES FOLDER AND INBOX MIRRORED (U147, U150),
   :mod:`cratekit.organize.account_mirror`: one root folder per rekordbox folder
-  of the routing tree, and one for the Favorites folder, each playlist kept
-  equal to its rekordbox playlist's account tracks, one step per folder.
+  of the routing tree, one for the Favorites folder and one for INBOX's live
+  batches, each playlist kept equal to its rekordbox playlist's account
+  tracks, one step per folder, and a batch that left INBOX removed.
 
 A STEP THAT NEEDS THE ACCOUNT AND CANNOT HAVE IT is refused, with that
 refusal's own reason, and every other step is still planned and shown.

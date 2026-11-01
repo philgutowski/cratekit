@@ -210,6 +210,47 @@ def test_the_record_names_each_year_filed_and_counts_it_under_the_catalogue_tree
     assert record.sources[DECLARED.catalog.id] == "committed"
 
 
+def test_the_record_names_each_landed_rows_provider_track_for_the_account_mirror(
+    native_library, silence, tmp_path
+):
+    """U150. A label batch is in no account playlist, so the mirror fills its INBOX
+    playlist from the provider track each file's manifest row names."""
+    from cratekit.organize import account_mirror
+
+    cfg, _root = native_library
+    for name in ("One.flac", "Two.flac", "Loose.flac"):
+        _stage(cfg, silence, name)
+    manifest = _manifest(
+        tmp_path,
+        [("101", "Probe", "One", "Kompakt", 2025), ("102", "Probe", "Two", "Kompakt", 2024)],
+    )
+
+    code, acted, _ = _two_acts(_land("--manifest", str(manifest)))
+
+    assert code == int(ExitCode.OK), acted
+    titles = {title.rsplit(" - ", 1)[-1]: cid for cid, title in _titles(cfg).items()}
+    (record,) = session.records(cfg)
+    # The file no manifest row names records nothing, and is matched as any row is.
+    expected = {titles["One"]: "101", titles["Two"]: "102"}
+    assert record.detail[label_filing.PROVIDER_KEY] == expected
+    assert account_mirror.landed_tracks(cfg) == expected
+    ((playlist_id, _parent, _attr),) = _batch_playlist(cfg)
+    assert set(expected) < set(_members(cfg, str(playlist_id)))
+
+
+def test_a_landing_with_label_records_no_provider_track(native_library, silence):
+    """``--label`` names no track, so there is nothing to record."""
+    cfg, _root = native_library
+    _dated(cfg, silence, "One.flac", "2025-03-01")
+
+    code, acted, _ = _two_acts(_land("--label", "Kompakt"))
+
+    assert code == int(ExitCode.OK), acted
+    (record,) = session.records(cfg)
+    assert label_filing.RECORD_KEY in record.detail
+    assert label_filing.PROVIDER_KEY not in record.detail
+
+
 def test_the_digest_moves_with_the_manifests_bytes(native_library, silence, tmp_path):
     """The same path, other bytes: an answer given for one manifest is not one for another."""
     cfg, _root = native_library
