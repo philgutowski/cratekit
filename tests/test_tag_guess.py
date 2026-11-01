@@ -519,6 +519,10 @@ def test_a_file_that_will_not_take_its_genre_is_never_reported_guessed(
     assert totals["written"] == 0 and totals["after"] == 0
     assert totals["outcomes"]["unwritten"] == 1 and totals["outcomes"]["guessed"] == 0
     assert "lone.flac" in _warned(envelope, guess_cli.FILES_UNWRITTEN)
+    # THE WRITER'S OWN FALSE is what names it, not the read back behind it
+    # (mutation row A14 fell through to the read back and read zero).
+    (item,) = envelope["data"]["items"]
+    assert item["note"] == "the file would not take the genre"
 
 
 def test_a_file_that_reads_back_another_genre_is_unwritten(machine, silence, monkeypatch):
@@ -654,3 +658,34 @@ def test_an_exact_bound_over_a_playlist_and_an_artist_is_banded_exactly():
 )
 def test_the_exact_band_agrees_with_tag_suggests_on_every_whole_vote(weight, total):
     assert guess.band_of(Fraction(weight), Fraction(total)) == suggest.band_of(weight, total)
+
+
+def test_a_soft_deleted_row_is_no_neighbour(machine, silence):
+    """Mutation row A16: a tombstone in the library gives no vote."""
+    build(machine, silence, Track("11", row=DEEP, artist="Ana Vale", deleted=True))
+    lone = _stage(machine, silence, "lone", artist="Ana Vale", title="Lone")
+
+    code, envelope = drive([*VERB, str(_folder(machine))])
+
+    assert code == int(ExitCode.OK), envelope
+    assert not tags.read_genre_from_file(lone)
+    (item,) = envelope["data"]["items"]
+    assert item["outcome"] == "no-votes" and item["signals"]["artist_library"] == 0
+
+
+def test_the_files_left_are_the_files_still_without_a_genre(monkeypatch):
+    """Mutation row C3: of ten files, seven carried a genre and two were
+    guessed, so one is left, whatever the guess wrote."""
+    chain = tail.Chain(
+        progress=None, namespace="t", title="t", steps=tail.STEPS, origin=("test",), again="a"
+    )
+    envelope = {
+        "outcome": "ok",
+        "warnings": [],
+        "data": {"totals": {"count": 10, "before": 6, "after": 8, "written": 1, "unread": 0}},
+    }
+    monkeypatch.setattr(tail, "dispatch", lambda argv: (0, envelope))
+
+    tail.guess(chain, Path("/staging"))
+
+    assert chain.summary["guess"]["left"] == 2
