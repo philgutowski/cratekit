@@ -40,3 +40,10 @@ INVALID. Nothing in the unit's diff touches it.
   notes, as `docs/mutation/u166-notes.md` does.
 - A clean rerun of `cloud_battery.py baseline` may catch it passing again, so
   rerunning the baseline is not the fix.
+- Or point the driver's temporary directory at `/var/tmp`, measured by R-1032
+  on 2026-11-01: the same ext4 volume hands a file made under `/var/tmp` an
+  inode near 9,700,000, above the bound, where `/tmp`, `/root` and the
+  checkout gave 400,000 to 650,000. `TMPDIR=/var/tmp/<unit> scripts/mutate.py
+  ...` then ran a green baseline and a zero null control with no copy of the
+  baseline file at all, and the test passed alone 53 of 53 in its file there.
+  It changes where the suite writes, never what it asserts.
