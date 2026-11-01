@@ -2133,6 +2133,10 @@ never makes anybody fix it.
   playlist tree, a foreign folder is another app's: since U185 the folder named
   `DEADCA7` there and everything under it, which no commit may change at all
   (`core/foreign_tree.py`). The first is read; the second is refused.
+- "Relay" names two things. Native Relay is the retired pipeline that ran
+  units on Phillip's machine until 2026-10-27. The relay thread is the project
+  thread that carries each answer from the decisions page to its card every
+  hour, since 2026-10-31. Nothing in the cloud lane runs the first.
 - "Residual" does not mean "does not stop a merge". It answers only whether a
   finding blocks on its own merits. A residual with no cost to any person still
   stops a merge whenever the battery is red on its account, and both halves are

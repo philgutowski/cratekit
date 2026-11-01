@@ -76,13 +76,13 @@ footer marks it as yours:
 | `Progress` | a note under the hold, which also refreshes it |
 | `Brainstorm` | the card is an idea; the questions wait on Phillip |
 | `Question for Phillip` | one decision the brief leaves open that cannot be made conservatively |
-| `Answer from Phillip` | his answer from the decisions page, posted by the coordinator; read as his reply |
+| `Answer from Phillip` | his answer from the decisions page, posted by the relay thread; read as his reply |
 | `Needs the machine` | set aside, with the steps to build it locally |
 | `Withdrawn` | this session lost a race for the lane and released the card |
 | `Landed` | merged and pushed on `main` |
 
 Post with `gh api -X POST repos/<owner>/<repo>/issues/N/comments -F body=@file.md`.
-Phillip's comments, and the coordinator's `Answer from Phillip`, are read
+Phillip's comments, and the relay thread's `Answer from Phillip`, are read
 only as answers to a `Brainstorm` or a `Question for Phillip`. To stop the cloud building a card he labels it
 `attended` or closes it, and a session that finds either on its card stops.
 A hold with no comment for eight hours is read as a dead session and offered
@@ -92,11 +92,13 @@ each review round, mutation measured.
 ## Telling the coordinator
 
 The lanes are filled by the coordinator, the Claude in Phillip's Claude
-project that started this thread. It wakes hourly and whenever a thread
-reports, so tell it, with the project's tool for messaging the coordinator,
-right after the last comment this session posts (`Landed`, `Brainstorm`,
-`Needs the machine` or `Withdrawn`), so the lane it frees fills. A session
-outside a project has no coordinator and skips this.
+project that started this thread. It wakes hourly to fill any free lane,
+and whenever a thread reports; it never reads the decisions page, which is
+the relay thread's job (Asking Phillip, below). So tell it, with the
+project's tool for messaging the coordinator, right after the last comment
+this session posts (`Landed`, `Brainstorm`, `Needs the machine` or
+`Withdrawn`), so the lane it frees fills. A session outside a project has no
+coordinator and skips this.
 
 ## Asking Phillip
 
@@ -122,10 +124,30 @@ it first and marked. Give two to four options; the page adds its own
 "something else". Write the context so the question can be answered without
 opening the card. Then end the card's comment with a line linking the page,
 and if the `PushNotification` tool is available, send one short notification
-naming the card and that a decision waits on the page. The coordinator posts
-his answer back on the card under `Answer from Phillip`, which is what
-releases the card as `answered`; never mark a document answered or relayed
-yourself.
+naming the card and that a decision waits on the page. Never mark a document
+answered or relayed yourself.
+
+**How his answer reaches the card.** Phillip presses Answer on the page,
+which saves his choice in the document and sets its `status` to `answered`.
+The scheduled task "Cratekit decisions relay" wakes the project thread "Wire
+decisions page answers to cards", called the relay thread here, every hour
+at 34 minutes past. It posts each answered document on its card under
+`Answer from Phillip`, or sends it to the document's `asked_session` when it
+names no card, sets the document's `status` to `relayed` with `relayed_at`
+and `relayed_note`, and tells the coordinator, which starts a thread on the
+card. `board.py cloud` reads that heading as his reply whoever posts it, and
+offers the card as `answered`. The coordinator's own hourly wake fills free
+lanes only and never reads the page.
+
+**The fast path.** The page cannot reach a project session by itself: a
+comment on a page sent to Claude wakes only a session watching that page,
+and no project session can watch one. So while any answer is saved but not
+relayed, the page shows a "Pass on your answers" box holding a ready prompt
+that lists each one (card, question, answer, note and decision id), with a
+button that copies the prompt and opens the Cratekit project chat in a new
+window, and a button that only copies it. Phillip pastes it into the chat,
+the coordinator messages the relay thread, and the thread relays at once.
+Without the paste an answer waits for the hourly check.
 
 ## 1. Orient
 
