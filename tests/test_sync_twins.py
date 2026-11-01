@@ -428,6 +428,58 @@ def test_a_folder_made_after_the_approval_refuses_as_stale(world, cfg):
     assert pairs.PairStore(cfg).all() == {}
 
 
+def test_two_account_tracks_of_one_isrc_make_one_row_and_the_twin_reads_back(world, cfg):
+    world.codes["t10"] = isrc("1")
+    world.playlist(PHIL, PHIL_NAME, ["t1", "t10", "t2"])
+    code, envelope = backfill()
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(world.twin("Phil 9-30-26")) == ["1", "2"]
+
+
+def test_the_mirrors_link_to_a_track_wins_and_a_link_to_a_removed_row_falls_through(world, cfg):
+    from cratekit.modules.outbound import ledger
+
+    ledger.record_mirror_links(cfg, {"4": ("t1", ""), "99": ("t2", "")})
+    world.playlist(PHIL, PHIL_NAME, ["t1", "t2"])
+    code, envelope = backfill()
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(world.twin("Phil 9-30-26")) == ["4", "2"]
+
+
+def test_the_library_keeps_every_landed_account_playlists_source(world, cfg, monkeypatch):
+    """Finding 1 of the U149 review: a generator of account ids was spent by the first."""
+    monkeypatch.setattr(
+        pair_cli,
+        "landed_inbox_playlists",
+        lambda _cfg: {"A": frozenset({"pa"}), "B": frozenset({"pb"}), "C": frozenset({"pc"})},
+    )
+    monkeypatch.setattr(
+        pair_cli, "landed_isrcs", lambda _cfg, _db, ids: {"USZZZ2600099": tuple(sorted(ids))}
+    )
+    handle = world.open()
+    try:
+        found = twins.read_library(cfg, handle, (one for one in ["A", "B"]))
+    finally:
+        rb_writer.close_db(handle)
+    assert sorted(found.landed) == ["A", "B"]
+    assert found.find("B", "tx", "USZZZ2600099") == ("pb",)
+
+
+def test_the_confinement_refuses_an_unplanned_playlist_read_from_sql(world, cfg):
+    from cratekit.core.cause import CratekitError
+
+    handle = world.open()
+    try:
+        before = rb_writer.node_tables(handle)
+        handle.create_playlist("Stray")
+        with pytest.raises(CratekitError) as refused:
+            twins.assert_confined(handle, before, folders={}, playlists={})
+        assert refused.value.cause.reason == "whitelist-violation"
+    finally:
+        rb_writer.close_db(handle)
+    assert not world.sql("SELECT ID FROM djmdPlaylist WHERE Name = 'Stray'")
+
+
 def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(world, cfg):
     _phil(world)
     session.ack_path(cfg).unlink()

@@ -296,12 +296,15 @@ def read_library(cfg: config.Config, db: Any, account_ids: Iterable[str]) -> Lib
     from cratekit.modules.outbound import ledger
     from cratekit.sync import pair_cli
 
+    # MATERIALIZED ONCE: a generator read inside the comprehension below is
+    # spent by its first account, and every later one would lose its source.
+    wanted = set(account_ids)
     links = ledger.mirror_links(cfg)
     live = playlist_pair.content(db, links)
     landed = {
         account_id: pair_cli.landed_isrcs(cfg, db, playlist_ids)
         for account_id, playlist_ids in pair_cli.landed_inbox_playlists(cfg).items()
-        if account_id in set(account_ids)
+        if account_id in wanted
     }
     return Library(
         by_remote=_grouped(((remote, row) for row, (remote, _code) in links.items()), live),
@@ -316,7 +319,11 @@ def read_library(cfg: config.Config, db: Any, account_ids: Iterable[str]) -> Lib
 def matched(
     account_id: str, tracks: Mapping[str, Mapping[str, Any]], library: Library
 ) -> tuple[tuple[str, ...], tuple[tuple[str, str], ...], tuple[Miss, ...]]:
-    """The account playlist's tracks as rows in its order, the links, and the misses."""
+    """The account playlist's tracks as rows in its order, the links, and the misses.
+
+    ``tracks`` is the listing as the intake reader folds it, each track once,
+    so a miss's position counts the folded listing, a track listed twice once.
+    """
     rows: list[str] = []
     links: list[tuple[str, str]] = []
     misses: list[Miss] = []

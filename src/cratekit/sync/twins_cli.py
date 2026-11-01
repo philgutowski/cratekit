@@ -112,8 +112,9 @@ def _notes(plan: twins.Backfill) -> list[dict[str, str]]:
             {
                 "code": MISSING,
                 "message": (
-                    f"{len(missing)} account track(s) are not in their twin, and the next "
-                    f"crate sync pair queues each one the library lacks: "
+                    f"{len(missing)} account track(s) are not in their twin; the next "
+                    f"crate sync pair adds each one it finds in the library and queues "
+                    f"each one the library lacks: "
                     + "; ".join(f"{one.name}: {miss.said()}" for one, miss in missing)
                 ),
             }
