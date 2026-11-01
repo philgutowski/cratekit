@@ -325,16 +325,14 @@ def dated(account_name: str, day: date) -> str:
     return f"{account_name} {day.isoformat()}"
 
 
-def inbox_names(
-    wanted: Iterable[str], held: Iterable[str], *, batch: str, day: date | None = None
-) -> tuple[str, ...]:
+def inbox_names(wanted: Iterable[str], held: Iterable[str], *, batch: str) -> tuple[str, ...]:
     """The INBOX playlist each account playlist lands as, in order (U113, U175).
 
     THE ACCOUNT'S NAME EXACTLY, THEN THE LANDING'S DATE, ``Sunset Warmup
     2026-10-27`` for ``Sunset Warmup`` (:func:`dated`), with nothing of the
     account's name made folder safe, since a playlist name is not a path.
-    ``day`` is the landing's, :func:`today` when not given, the one the batch
-    name takes. A name already ``held`` under INBOX, the batch's own, or one an
+    The date is :func:`today`'s, the landing's, the one the batch name takes.
+    A name already ``held`` under INBOX, the batch's own, or one an
     earlier playlist of this landing took, gets `` 2``, `` 3`` and on after the
     date, so one landing never adds its tracks to another's playlist. Compared
     exactly, the way the database writer finds a playlist by its name.
@@ -344,7 +342,7 @@ def inbox_names(
     reserved ``Analyze``, and an account playlist of that name lands as
     ``Analyze 2026-10-27``.
     """
-    on = today() if day is None else day
+    on = today()
     taken = {*held, batch}
     named: list[str] = []
     for account_name in wanted:

@@ -122,9 +122,11 @@ def _emptied(cfg: config.Config, name: str = INBOX_NAME) -> str:
 def _named_before_u175(cfg: config.Config, playlist_id: str) -> None:
     """The landed playlist renamed as a landing before U175 named it, the account's name alone.
 
-    A record that names no account playlist, or names one only by its name, is
-    a landing from before U128, and every such landing named its INBOX playlist
-    undated; the refill's fallback by the account's exact name is for those.
+    A record that names no account playlist, or names one by its name with no
+    account and no pass, is a landing from before U128, and every such landing
+    named its INBOX playlist undated; the refill's fallback by the account's
+    exact name is for those. An intake file's landing since U175 records its
+    dated name with the account and the pass, and is asked by that name.
     """
     _sql(cfg, "UPDATE djmdPlaylist SET Name = ? WHERE ID = ?", ACCOUNT, playlist_id)
 
@@ -312,6 +314,33 @@ def test_a_playlist_no_record_names_is_found_by_the_accounts_name_under_inbox(
     shown = refused["cause"]["detail"]["shown"]["playlists"]
     assert shown == [f"{ACCOUNT} (row {playlist_id}, {refill.BY_NAME}): 5 track(s) "
                      f"the library owns, 5 to add, 0 left out"]
+
+
+def test_a_dated_playlist_an_intake_file_recorded_by_name_alone_is_found_by_that_name(
+    native_library, silence, offline
+):
+    """U175: an intake file names its playlist dated and records no id, so its name is asked."""
+    cfg, root_id = native_library
+    playlist_id = _five_landed_and_emptied(cfg, silence)
+    # The record rewritten to the shape an intake file's landing writes: the
+    # dated name, the batch folder, the account and the pass, and no id.
+    for record in session.records(cfg):
+        if native.INBOX_PLAYLISTS_KEY in record.detail:
+            record.detail[native.INBOX_PLAYLISTS_KEY] = [
+                {**{k: v for k, v in one.items() if k != "id"}, "batch": "2026-10-03 Tidal playlists"}
+                for one in record.detail[native.INBOX_PLAYLISTS_KEY]
+            ]
+            session.write_record(record, cfg)
+
+    code, acted, refused = _two_acts(_refill())
+
+    assert code == int(ExitCode.OK), acted
+    assert _live_members(cfg, playlist_id) == ["Held1", "New1", "Held2", "New2", "Held3"]
+    shown = refused["cause"]["detail"]["shown"]["playlists"]
+    assert shown == [
+        f"{INBOX_NAME} (row {playlist_id}, {refill.BY_NAME}): 5 track(s) "
+        f"the library owns, 5 to add, 0 left out"
+    ]
 
 
 def test_two_playlists_of_the_accounts_name_under_inbox_are_neither_filled(

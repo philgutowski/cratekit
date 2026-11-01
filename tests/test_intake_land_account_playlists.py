@@ -269,6 +269,21 @@ def test_a_job_queued_with_no_name_lands_in_the_batch_playlist_as_before(cfg, si
     assert not [i for i in envelope["data"]["items"] if i["action"] == "playlist"]
 
 
+def test_an_account_playlist_whose_dated_name_is_the_batchs_takes_two(cfg, silence, export):
+    """A batch named by hand can be the dated name; the account playlist never merges into it."""
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
+    swept(cfg, {"favorites": (None, ("Hearted",))}, source_id=intake_cli.FAVORITES_SOURCE_ID)
+    for name in ("One.flac", "Hearted.flac"):
+        _stage(cfg, silence, name)
+
+    envelope = _applied(export, "--pass", PASS, "--name", "Sunset Warmup 2026-10-03")
+
+    assert _inbox(_intake(envelope)) == {
+        "Sunset Warmup 2026-10-03": ["Hearted"],
+        "Sunset Warmup 2026-10-03 2": ["One"],
+    }
+
+
 def test_a_landing_with_no_pass_splits_nothing(cfg, silence, export):
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
     _stage(cfg, silence, "One.flac")
@@ -561,11 +576,13 @@ def test_inbox_names_keeps_a_name_exactly_and_compares_it_exactly():
     ) == ("sunset warmup 2026-10-03", "A/B: C? 2026-10-03")
 
 
-def test_inbox_names_puts_the_landing_date_at_the_end_of_the_accounts_name():
+def test_inbox_names_puts_the_landing_date_at_the_end_of_the_accounts_name(monkeypatch):
     """U175: INBOX stays flat and the date goes after the name, never before it."""
-    assert batch_name.inbox_names(["Lisa_10_27_26"], (), batch="b", day=date(2026, 10, 27)) == (
+    monkeypatch.setattr(batch_name, "today", lambda: date(2026, 10, 27))
+    assert batch_name.inbox_names(["Lisa_10_27_26"], (), batch="b") == (
         "Lisa_10_27_26 2026-10-27",
     )
+    monkeypatch.setattr(batch_name, "today", lambda: DAY)
     # An undated name INBOX holds, one landed before U175, takes nothing from a
     # dated one, and is never renamed.
     assert batch_name.inbox_names(["Sunset Warmup"], ["Sunset Warmup"], batch="b") == (
