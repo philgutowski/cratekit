@@ -49,10 +49,14 @@ never go near the live database.
 Four words carry most of the rest.
 
 - **Job.** Long work, such as a playlist intake, a tagging pass or a label
-  sweep, is queued and handed back to you as a job identifier. The verb returns
-  quickly. `crate job list` shows the queue, `crate job show ID` shows one job
-  and why it is in its state, and `crate job resume ID` picks it up without
-  repeating finished work.
+  sweep, is queued and handed back to you as a job identifier. Most verbs
+  return quickly. `crate job list` shows the queue, `crate job show ID` shows
+  one job and why it is in its state, and `crate job resume ID` picks it up
+  without repeating finished work. Three verbs of the acquisition tail, `tag
+  folder`, `analyze run` and `analyze restamp`, queue their job and then work
+  through it before they return, so each step is one command. Stop one with
+  Ctrl-C and its answer names the `--job` command that finishes the rest; pass
+  `--queue-only` to have it queue and return like the others.
 - **Run.** One invocation's decision state, saved on disk so a decision can be
   answered later, from another terminal, after the process has exited.
 - **Gate.** A named question a verb stops at before it writes. There is no

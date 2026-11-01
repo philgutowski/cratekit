@@ -70,6 +70,7 @@ from cratekit.cli.output import Envelope, PendingHumanAction
 from cratekit.core import config, jobs, rb_writer
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
+from cratekit.modules import foreground
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
     from cratekit.cli import Context
@@ -809,7 +810,10 @@ def _tail_step(
         _replace_stale(report, step, verb, folder, cfg)
     except CratekitError as exc:
         raise _Stop(step, rebuilt(exc, exc.cause.at("sync.land"))) from exc
-    envelope = _required(report, step, [*words, str(folder)])
+    # ``--queue-only`` (U192): run by hand these verbs drive what they queue,
+    # and the pass drives it itself below, through the ``--job`` command, so
+    # each step reads as two commands and no job is driven twice.
+    envelope = _required(report, step, [*words, foreground.QUEUE_ONLY, str(folder)])
     job_id = str((envelope.get("data") or {}).get("job_id") or "")
     if envelope.get("outcome") == str(Outcome.NO_OP) or not job_id:
         # NOTHING TO QUEUE over a folder the download just landed tracks into is
