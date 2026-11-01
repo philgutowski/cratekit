@@ -14,6 +14,7 @@ import unicodedata
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any
+from urllib.parse import urlsplit
 
 from cratekit.core import config
 from cratekit.core.cause import CratekitError, Scope, refuse
@@ -189,6 +190,47 @@ def check_genre(genre: str) -> str:
     return text
 
 
+#: A Bandcamp seller account as the registry keeps it: the account name in the
+#: address of its releases, ``pulsromania`` for ``pulsromania.bandcamp.com``,
+#: or the whole host of a seller on a domain of its own. Lowercase letters,
+#: digits and hyphens, dot separated, as a host name is.
+_ACCOUNT = re.compile(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*")
+
+#: The suffix of a seller account's own address, which the account name is
+#: read from before it, as ``acquire.bandcamp.seller_of`` reads a purchase's.
+_ACCOUNT_HOST = ".bandcamp.com"
+
+
+def bandcamp_account(account: str) -> str:
+    """The seller account ``account`` names, as a purchase's seller is read (U177).
+
+    THE FORM A PURCHASE IS COMPARED IN, so a label registered by its address
+    and a purchase read from its address are one account: ``PulsRomania``,
+    ``pulsromania.bandcamp.com`` and ``https://pulsromania.bandcamp.com/music``
+    are all ``pulsromania``. A seller on a domain of its own keeps the whole
+    host, which is the only name its address gives. Anything else, a blank, a
+    path with no host, or a name holding a space, is refused, since an account
+    stored that way would match no purchase and the label would stage untagged
+    with nothing saying why.
+    """
+    text = account.strip().lower() if isinstance(account, str) else ""
+    if "/" in text:
+        host = urlsplit(text if "://" in text else f"https://{text}").hostname or ""
+    else:
+        host = text
+    if host.endswith(_ACCOUNT_HOST):
+        host = host[: -len(_ACCOUNT_HOST)]
+    if not host or not _ACCOUNT.fullmatch(host):
+        raise _field_invalid(
+            f"a label's Bandcamp account is the name in the address of its "
+            f"releases, such as pulsromania for pulsromania.bandcamp.com, not "
+            f"{account!r}",
+            "pass --bandcamp with the account name, or the address of the label's page",
+            {"bandcamp": account},
+        )
+    return host
+
+
 def _checked_seeds(seed_artists: Sequence[str]) -> tuple[str, ...]:
     return tuple(check_seed(seed) for seed in seed_artists)
 
@@ -254,6 +296,11 @@ class LabelEntry:
     #: or None for a label whose files are asked of the catalogues (U178). Kept
     #: as typed, and checked against the taxonomy by the verb that sets it.
     genre: str | None = None
+    #: The Bandcamp seller account this label's releases are sold from, or None
+    #: (U177). One account per label and one label per account: a purchase
+    #: from it is staged tagged with this label and filed under it. Kept in the
+    #: form :func:`bandcamp_account` gives, so it compares with a purchase's.
+    bandcamp: str | None = None
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -265,6 +312,7 @@ class LabelEntry:
             "offer": self.offer,
             "kind": self.kind,
             "genre": self.genre,
+            "bandcamp": self.bandcamp,
         }
 
 
@@ -305,6 +353,25 @@ class Registry:
                 return entry
         return None
 
+    def claimants(self, account: str) -> tuple[LabelEntry, ...]:
+        """Every label naming ``account`` as its Bandcamp seller, in registry order.
+
+        ONE IS THE ONLY ANSWER (U177). The verbs that set an account refuse a
+        second claimant, so two can only be a file edited by hand, and then
+        which label the account's releases belong to is not something either
+        entry decides: a caller reads two as no label, and says why.
+        """
+        try:
+            wanted = bandcamp_account(account)
+        except CratekitError:
+            return ()
+        return tuple(entry for entry in self.labels.values() if entry.bandcamp == wanted)
+
+    def by_bandcamp(self, account: str) -> LabelEntry | None:
+        """The one label sold from ``account``, or None for none or for two."""
+        found = self.claimants(account)
+        return found[0] if len(found) == 1 else None
+
     def resolve(self, name_or_id: str) -> LabelEntry | None:
         found = self.by_id(name_or_id)
         if found is not None:
@@ -323,6 +390,7 @@ def _entry_from(label_id: str, raw: Mapping[str, Any]) -> LabelEntry:
     kind = raw.get("kind")
     genre = raw.get("genre")
     return LabelEntry(
+        bandcamp=_stored_account(raw.get("bandcamp")),
         label_id=str(raw.get("label_id") or label_id),
         name=name,
         match=str(match) if match else None,
@@ -332,6 +400,21 @@ def _entry_from(label_id: str, raw: Mapping[str, Any]) -> LabelEntry:
         kind=kind.strip().lower() or None if isinstance(kind, str) else None,
         genre=genre.strip() or None if isinstance(genre, str) else None,
     )
+
+
+def _stored_account(value: Any) -> str | None:
+    """A stored account in the form a purchase compares with, or None for none or a malformed one.
+
+    A MALFORMED ONE IS NO ACCOUNT rather than a crash, as ``recognize`` degrades
+    every field it cannot read: the label's other fields stay, and its releases
+    stage untagged until the account is set again.
+    """
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        return bandcamp_account(value)
+    except CratekitError:
+        return None
 
 
 def recognize(raw: Any) -> Registry:
@@ -416,6 +499,39 @@ class Adopted:
     added: bool
     held_name: str | None = None
     refused: str | None = None
+
+
+#: The ``--bandcamp`` word that clears a label's account, the word ``--kind``
+#: and ``--genre`` clear with. Matched only as typed, so an account literally
+#: named that is still set by its address, ``default.bandcamp.com``.
+CLEAR_BANDCAMP = "default"
+
+
+def _claim(current: Mapping[str, LabelEntry], label_id: str, account: str | None) -> None:
+    """Refuse ``account`` when a label other than ``label_id`` already names it (U177).
+
+    ONE LABEL PER ACCOUNT, checked INSIDE THE LOCK against the entries as they
+    stand, so two concurrent sets of one account cannot both land. Two labels
+    naming one account would leave which label its releases are staged under
+    to the order the file happens to hold them in.
+    """
+    if account is None:
+        return
+    for other in current.values():
+        if other.label_id != label_id and other.bandcamp == account:
+            raise refuse(
+                "label-name-invalid",
+                f"the Bandcamp account {account} is already the seller of the label "
+                f"{other.name} ({other.label_id}), and one account names one label, "
+                f"so nothing was changed",
+                steps=(
+                    f"clear it there first with crate label registry set "
+                    f"{other.label_id} --bandcamp {CLEAR_BANDCAMP}, or name another account",
+                ),
+                scope=Scope.ITEM,
+                origin=("label.registry",),
+                detail={"bandcamp": account, "held_by": other.label_id},
+            )
 
 
 class RegistryStore:
@@ -536,6 +652,8 @@ class RegistryStore:
         clear_kind: bool = False,
         genre: str | None = None,
         clear_genre: bool = False,
+        bandcamp: str | None = None,
+        clear_bandcamp: bool = False,
     ) -> str:
         """Add or update by identifier. Re-adding keeps the same ``label_id``.
 
@@ -552,6 +670,8 @@ class RegistryStore:
             kind = check_kind(kind)
         if genre is not None:
             genre = check_genre(genre)
+        if bandcamp is not None:
+            bandcamp = bandcamp_account(bandcamp)
         written: list[str] = []
 
         def mutate(current: dict[str, LabelEntry]) -> None:
@@ -567,6 +687,7 @@ class RegistryStore:
             )
             written.append(label_id)
             existing = current.get(label_id)
+            _claim(current, label_id, bandcamp)
             current[label_id] = LabelEntry(
                 label_id=label_id,
                 name=name,
@@ -584,6 +705,13 @@ class RegistryStore:
                 genre=None
                 if clear_genre
                 else (genre if genre is not None else (existing.genre if existing else None)),
+                bandcamp=None
+                if clear_bandcamp
+                else (
+                    bandcamp
+                    if bandcamp is not None
+                    else (existing.bandcamp if existing else None)
+                ),
             )
 
         self.update(mutate)
@@ -652,6 +780,8 @@ class RegistryStore:
         clear_kind: bool = False,
         genre: str | None = None,
         clear_genre: bool = False,
+        bandcamp: str | None = None,
+        clear_bandcamp: bool = False,
     ) -> LabelEntry:
         """Change the given fields of a held entry and keep every other one.
 
@@ -670,6 +800,8 @@ class RegistryStore:
             kind = check_kind(kind)
         if genre is not None:
             genre = check_genre(genre)
+        if bandcamp is not None:
+            bandcamp = bandcamp_account(bandcamp)
         edited: list[LabelEntry] = []
 
         def mutate(current: dict[str, LabelEntry]) -> None:
@@ -683,6 +815,7 @@ class RegistryStore:
                     origin=("label.registry",),
                     detail={"name": name_or_id},
                 )
+            _claim(current, existing.label_id, bandcamp)
             entry = replace(
                 existing,
                 match=match if match is not None else existing.match,
@@ -694,6 +827,10 @@ class RegistryStore:
                 kind=None if clear_kind else (kind if kind is not None else existing.kind),
                 # ``clear_genre`` is the way back to None, as ``clear_kind`` is.
                 genre=None if clear_genre else (genre if genre is not None else existing.genre),
+                # ``clear_bandcamp`` is the way back to None, as ``clear_kind`` is.
+                bandcamp=None
+                if clear_bandcamp
+                else (bandcamp if bandcamp is not None else existing.bandcamp),
             )
             current[existing.label_id] = entry
             edited.append(entry)

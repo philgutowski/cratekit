@@ -918,3 +918,158 @@ def test_a_manifest_with_no_label_row_asks_nothing_of_the_catalogue_tree(
     assert code == int(ExitCode.OK), acted
     assert "labels filed under" not in _shown(refused)
     assert _tree_folders(cfg) == []
+
+
+# ---------------------------------------------------------------------------
+# --label-from-tags (U177): each file under the label its own tag names
+# ---------------------------------------------------------------------------
+
+
+def _labelled(cfg: config.Config, silence: Path, name: str, label: str | None, day: str | None) -> Path:
+    """One staged file carrying ``label`` in its label tag, as a Bandcamp fetch writes it."""
+    path = _dated(cfg, silence, name, day)
+    if label is not None:
+        assert tags.write_tags(path, {"label": label})
+    return path
+
+
+def test_a_puls_batch_of_three_years_lands_as_three_year_playlists_under_its_label(
+    native_library, silence
+):
+    cfg, _root = native_library
+    for year, names in ((2019, ("A1", "A2")), (2021, ("B1",)), (2024, ("C1", "C2"))):
+        for name in names:
+            _labelled(cfg, silence, f"{name}.flac", "PULS", f"{year}-05-01")
+
+    code, acted, refused = _two_acts(_land("--label-from-tags"))
+
+    assert code == int(ExitCode.OK), acted
+    shown = _shown(refused)
+    assert shown["labels filed from"] == "each file's own label tag, its year from its date tag"
+    assert "filed under no label" not in shown
+    assert _filed(cfg) == {
+        "PULS": {
+            "PULS 2024": ["C1", "C2"],
+            "PULS 2021": ["B1"],
+            "PULS 2019": ["A1", "A2"],
+        }
+    }
+    (record,) = session.records(cfg)
+    assert label_filing.RECORD_KEY in record.detail
+    assert label_filing.PROVIDER_KEY not in record.detail
+
+
+def test_a_batch_of_two_labels_and_an_unregistered_seller_files_each_under_its_own(
+    native_library, silence
+):
+    """The case one ``--label`` for the batch would file under the wrong label."""
+    cfg, _root = native_library
+    _labelled(cfg, silence, "Puls.flac", "PULS", "2024")
+    _labelled(cfg, silence, "Kompakt.flac", "Kompakt", "2023")
+    _labelled(cfg, silence, "Other.flac", None, "2022")
+
+    code, acted, refused = _two_acts(_land("--label-from-tags"))
+
+    assert code == int(ExitCode.OK), acted
+    assert _filed(cfg) == {"Kompakt": {"Kompakt 2023": ["Kompakt"]}, "PULS": {"PULS 2024": ["Puls"]}}
+    assert _item_labels(refused) == {
+        "Puls.flac": "PULS 2024",
+        "Kompakt.flac": "Kompakt 2023",
+        "Other.flac": "none",
+    }
+    (unfiled,) = _shown(refused)["filed under no label"]
+    assert "Other.flac" in unfiled and "no label tag" in unfiled
+    assert sorted(p.name for p in _music(cfg).iterdir()) == ["Kompakt.flac", "Other.flac", "Puls.flac"]
+    (warned,) = [w for w in acted["warnings"] if w["code"] == landing.NO_LABEL]
+    assert "Other.flac" in warned["message"]
+
+
+def test_a_labelled_file_with_no_year_is_named_with_its_label_and_filed_nowhere(
+    native_library, silence
+):
+    cfg, _root = native_library
+    _labelled(cfg, silence, "Dated.flac", "PULS", "2021")
+    _labelled(cfg, silence, "Undated.flac", "PULS", None)
+
+    code, acted, refused = _two_acts(_land("--label-from-tags"))
+
+    assert code == int(ExitCode.OK), acted
+    (unfiled,) = _shown(refused)["filed under no label"]
+    assert "Undated.flac" in unfiled and "PULS year playlist" in unfiled and "no date tag" in unfiled
+    assert _filed(cfg) == {"PULS": {"PULS 2021": ["Dated"]}}
+
+
+def test_a_label_tag_spelled_decomposed_files_under_the_composed_folder(native_library, silence):
+    cfg, _root = native_library
+    _labelled(cfg, silence, "One.flac", unicodedata.normalize("NFD", "Sueño"), "2021")
+    _labelled(cfg, silence, "Two.flac", unicodedata.normalize("NFC", "Sueño"), "2021")
+
+    code, acted, _ = _two_acts(_land("--label-from-tags"))
+
+    assert code == int(ExitCode.OK), acted
+    composed = unicodedata.normalize("NFC", "Sueño")
+    assert _filed(cfg) == {composed: {f"{composed} 2021": ["One", "Two"]}}
+
+
+def test_the_digest_moves_between_one_label_and_each_files_own(native_library, silence):
+    cfg, _root = native_library
+    _labelled(cfg, silence, "One.flac", "PULS", "2021")
+
+    _code, one = drive(_land("--label", "PULS"))
+    _code, own = drive(_land("--label-from-tags"))
+
+    assert _shown(one)["label playlists"] == _shown(own)["label playlists"]
+    assert _shown(one)["digest"] != _shown(own)["digest"]
+
+
+def test_label_from_tags_on_the_bridge_is_refused_before_the_gate_naming_the_flag(
+    acknowledged, silence
+):
+    cfg = acknowledged
+    _stage(cfg, silence, "One.flac")
+    code, envelope = drive(_land("--label-from-tags"))
+    _assert_refused_before_the_gate(cfg, code, envelope, "intake-list-unusable")
+    assert "--label-from-tags" in envelope["cause"]["message"]
+
+
+@pytest.mark.parametrize("beside", ["--label", "--manifest"])
+def test_label_from_tags_beside_another_label_source_is_refused_before_the_gate(
+    native_library, silence, tmp_path, beside
+):
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    value = (
+        "PULS"
+        if beside == "--label"
+        else str(_manifest(tmp_path, [("1", "Probe", "One", "Kompakt", 2025)]))
+    )
+    code, envelope = drive(_land("--label-from-tags", beside, value))
+    _assert_refused_before_the_gate(cfg, code, envelope, "intake-list-unusable")
+    message = envelope["cause"]["message"]
+    assert "--label-from-tags" in message and beside in message
+
+
+def test_label_from_tags_on_an_unreachable_library_names_the_volume(native_library, silence):
+    cfg, _root = native_library
+    _labelled(cfg, silence, "One.flac", "PULS", "2021")
+    root = Path(cfg.library.root)
+    root.rename(root.with_name("unmounted"))
+
+    code, envelope = drive(_land("--label-from-tags"))
+
+    assert code != int(ExitCode.OK)
+    assert envelope["cause"]["reason"] == "library-root-unreachable", envelope
+    assert "--label-from-tags" in envelope["cause"]["message"]
+    assert _staged_names(cfg) == ["One.flac"]
+
+
+def test_a_label_tag_that_could_not_be_read_is_said_apart_from_one_that_is_absent(tmp_path):
+    broken = tmp_path / "Broken.flac"
+    broken.write_bytes(b"not a flac stream")
+    plain = synth_container(tmp_path, ".flac")
+
+    assert label_filing._read_label(broken)[0] == ""
+    assert "could not be read" in label_filing._read_label(broken)[1]
+    assert label_filing._read_label(plain) == ("", "it carries no label tag")
+    assert tags.write_tags(plain, {"label": "  PULS  "})
+    assert label_filing._read_label(plain) == ("PULS", "")
