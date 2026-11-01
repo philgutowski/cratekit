@@ -1,0 +1,266 @@
+name = "u186"
+pass_kind = "light"
+
+# U186 adds no write, so its table is scoped to the new guards and readings:
+# the sibling reader, the dispatcher hook, run decide's repeat and doctor's note.
+
+[[rows]]
+id = "S1_window_wider"
+description = "SIBLING_WINDOW: twelve hours widened to a day, so an answer thirteen hours old is named"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''SIBLING_WINDOW = timedelta(hours=12)'''
+new = '''SIBLING_WINDOW = timedelta(hours=24)'''
+
+[[rows]]
+id = "S2_window_narrower"
+description = "SIBLING_WINDOW: twelve hours halved, so an answer eleven hours fifty old is silent"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''SIBLING_WINDOW = timedelta(hours=12)'''
+new = '''SIBLING_WINDOW = timedelta(hours=6)'''
+
+[[rows]]
+id = "S3_exclude_self"
+description = "siblings: drop the asking run's exclusion, so a run continued to its gate names itself"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''        if path.stem == exclude:
+            continue
+        try:
+            state = load(path.stem)'''
+new = '''        try:
+            state = load(path.stem)'''
+
+[[rows]]
+id = "S4_other_verb"
+description = "siblings: drop the verb filter, so a run of another verb is named"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''        if state.verb != verb:
+            continue'''
+new = ''
+
+[[rows]]
+id = "S5_unreadable_dropped"
+description = "siblings: skip a record that cannot be read rather than counting it, so the gap reads as no sibling"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''        except Exception:  # noqa: BLE001 - an unread record is said, never skipped
+            unreadable.append(path.stem)
+            continue'''
+new = '''        except Exception:  # noqa: BLE001 - an unread record is said, never skipped
+            continue'''
+
+[[rows]]
+id = "S6_unrecorded_time_old"
+description = "siblings: an answer whose time cannot be read counts as old rather than recent"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''            if when is None or moment - when <= within:'''
+new = '''            if when is not None and moment - when <= within:'''
+
+[[rows]]
+id = "S7_open_drops_answers"
+description = "siblings: a run with an open gate keeps no answers, the shape the first review round drove"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''                    run_id=state.run_id, verb=verb, gate=state.open_gate, at=since, answers=answers'''
+new = '''                    run_id=state.run_id, verb=verb, gate=state.open_gate, at=since, answers=()'''
+
+[[rows]]
+id = "S8_open_read_as_answered"
+description = "siblings: an open gate is reported as an answered run, so the message never says open"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''        if state.open_gate is not None:
+            since = idle_since(state, path)'''
+new = '''        if False:
+            since = idle_since(state, path)'''
+
+[[rows]]
+id = "S9_unreadable_unsaid"
+description = "sibling_warnings: say nothing of the records that could not be read"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''    if unreadable:
+        records_word = "record" if len(unreadable) == 1 else "records"
+        said.append('''
+new = '''    if False:
+        records_word = "record" if len(unreadable) == 1 else "records"
+        said.append('''
+
+[[rows]]
+id = "S10_scope_every_verb"
+description = "writes_the_database: answer True for every declared verb, so a gated verb writing no database warns"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''    return bool(owner.writes & DB_WRITE_SURFACES)'''
+new = '''    return True'''
+
+[[rows]]
+id = "D1_dispatch_unhooked"
+description = "dispatcher: never call the sibling hook, so a second plan at its gate is told nothing"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''        if state is not None and resumable:
+            envelope = _with_sibling_runs(envelope, state)'''
+new = ''
+
+[[rows]]
+id = "D2_dispatch_any_refusal"
+description = "dispatcher: call the hook on every refusal, not only a run persisted at its gate"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''        if state is not None and resumable:
+            envelope = _with_sibling_runs(envelope, state)'''
+new = '''        if state is not None:
+            envelope = _with_sibling_runs(envelope, state)'''
+
+[[rows]]
+id = "D3_dispatch_scope"
+description = "_with_sibling_runs: drop the database writing scope guard"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''    if not gates.writes_the_database(state.verb):
+        return envelope
+    try:
+        found, unreadable = gates.siblings(state.verb, exclude=state.run_id)'''
+new = '''    try:
+        found, unreadable = gates.siblings(state.verb, exclude=state.run_id)'''
+
+[[rows]]
+id = "D4_dispatch_break_silent"
+description = "_with_sibling_runs: a reading that breaks says nothing rather than naming the break"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''    except Exception as exc:  # noqa: BLE001 - see the docstring, the gate stays the gate
+        said = ['''
+new = '''    except Exception as exc:  # noqa: BLE001 - see the docstring, the gate stays the gate
+        said = [] and ['''
+
+[[rows]]
+id = "R1_decide_abort"
+description = "same_plan_answered: drop the abort refusal, so two aborts over one plan warn"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''    if option == gates.RETIRE_OPTION or offered is None:'''
+new = '''    if offered is None:'''
+
+[[rows]]
+id = "R2_decide_no_digest"
+description = "same_plan_answered: drop the no digest refusal, so a run offered nothing matches a sibling that recorded none"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''    if option == gates.RETIRE_OPTION or offered is None:'''
+new = '''    if option == gates.RETIRE_OPTION:'''
+
+[[rows]]
+id = "R3_decide_any_gate"
+description = "same_plan_answered: match an answer on any gate, not the one being answered"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''            name == gate and held.option == option and held.digest == offered'''
+new = '''            held.option == option and held.digest == offered'''
+
+[[rows]]
+id = "R4_decide_any_option"
+description = "same_plan_answered: match an answer of any option, so a sibling's abort warns over an apply"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''            name == gate and held.option == option and held.digest == offered'''
+new = '''            name == gate and held.digest == offered'''
+
+[[rows]]
+id = "R5_decide_any_digest"
+description = "same_plan_answered: match an answer over any digest, so another plan's approval warns"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''            name == gate and held.option == option and held.digest == offered'''
+new = '''            name == gate and held.option == option'''
+
+[[rows]]
+id = "R6_decide_unwired"
+description = "decide: never compute the repeat, so run decide says nothing over a sibling that approved the same plan"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''    said = same_plan_answered(state, spec.name, ctx.args.option)'''
+new = '''    said = []'''
+
+[[rows]]
+id = "R7_continue_dedupe"
+description = "_continued: drop the dedupe, so a sibling named by decide and by the stale gate is said twice"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''    repeated = [one for one in said if one not in envelope.warnings]'''
+new = '''    repeated = list(said)'''
+
+[[rows]]
+id = "R8_continue_drops_repeat"
+description = "_continued: drop the repeat on a continued run's envelope"
+file = "src/cratekit/cli/verbs/runs.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''    repeated = [one for one in said if one not in envelope.warnings]'''
+new = '''    repeated = []'''
+
+[[rows]]
+id = "N1_note_age"
+description = "doctor: the note's age halved to twelve hours, so a gate open twenty hours is listed"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''OPEN_GATE_NOTE_AGE = timedelta(days=1)'''
+new = '''OPEN_GATE_NOTE_AGE = timedelta(hours=12)'''
+
+[[rows]]
+id = "N2_note_fails"
+description = "doctor: the note is a failure when it lists a run, though the brief says never"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''    return Finding(key=OPEN_GATES_CHECK, title="runs at a gate", status=Status.INFO, detail=detail)'''
+new = '''    return Finding(key=OPEN_GATES_CHECK, title="runs at a gate", status=Status.FAIL if blocked else Status.INFO, detail=detail)'''
+
+[[rows]]
+id = "N3_note_unreadable_dropped"
+description = "doctor: a record that cannot be read is skipped, so the note reads as clean over it"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''        except Exception:  # noqa: BLE001 - a note never fails; an unread record is named
+            unreadable.append(path.stem)
+            continue'''
+new = '''        except Exception:  # noqa: BLE001 - a note never fails; an unread record is named
+            continue'''
+
+[[dropped]]
+id = "S11_exclude_by_content"
+description = "a second exclusion by the record's own run_id"
+reason = "removed in the first fix round as redundant with the file name exclusion S3 measures"
+
+[[dropped]]
+id = "N4_age_words"
+description = "doctor: the hours branch of _age_words"
+reason = "ranked below the cap: a display string, maintainer facing, and the day branch is pinned by the two day test"
