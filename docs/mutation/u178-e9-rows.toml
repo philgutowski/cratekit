@@ -1,0 +1,14 @@
+name = "u178-e9"
+pass_kind = "light"
+
+# The one zero of u178, measured again after the test it bought.
+
+[[rows]]
+id = "E9_label_tag_reset"
+description = "tag_one: keep the file's tag in label_tag on a file the label answered for"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        label_tag = ""
+        _written('''
+new = '''        _written('''

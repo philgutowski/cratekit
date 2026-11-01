@@ -39898,3 +39898,111 @@ an analysis file both fail the test). Maintainer facing.
 
 **Closes when:** the test also lists the library tree before and after, or is
 left as is. Ledger only.
+
+---
+
+## R-1101. A file that will not take its genre now stops a sync land at the tag step
+
+**Found:** at the review of #358, U178, 2026-10-31.
+
+**The mechanism.** Since U178 a file `tag folder` cannot write fails its item
+with `tag-folder-unwritten`, so the tagging job ends failed, its resume exits
+with the item's cause and no tagging summary, and `crate sync land`'s tail,
+which reads the job state, stops at the tag step with the file named. Before
+U178 the same file was reported tagged and landed carrying no genre.
+
+**Measured cost.** Driven at the review as far as the job state and the
+resume's envelope; the land pass itself was not driven. A person running a
+sync pass over a staging folder holding one locked file is stopped at tagging
+rather than landing it untagged under a false report. That is the intended
+behaviour, the shape `source-missing` already has, and it is recorded so the
+stop is not read as a regression.
+
+**Closes when:** nothing to close unless a person wants a pass to land the
+rest of the batch past one unwritable file, which would be a card of its own.
+Ledger only.
+
+---
+
+## R-1102. tag folder --label with a punctuation only name is refused in the registry's words
+
+**Found:** at the review of #358, U178, 2026-10-31.
+
+**The mechanism.** `tagging/cli.py`'s `_label_payload` resolves `--label`
+through `Registry.resolve`, which derives a slug and raises
+`label-name-invalid` for a name with no letter or digit. The verb does not
+catch it, so `crate tag folder FOLDER --label=***` is refused with the
+registry's sentence about a favourite label needing a name that yields an
+identifier, rather than the verb's own `label-unknown`.
+
+**Measured cost.** Driven at the review: typed refusal, exit 30, nothing
+queued. Wording only.
+
+**Closes when:** the verb catches the slug refusal and answers `label-unknown`
+naming the folder's label. Ledger only.
+
+---
+
+## R-1103. crate tag retag reports a genre written onto a file that would not take it
+
+**Found:** at the review of #358, U178, 2026-10-31.
+
+**The mechanism.** `tagging/retag.py`, in `retag_one`, calls `tags.write_genre`
+and reports the answer as written without reading the writer's return.
+`write_genre` answers False rather than raising for a file it could not save, a
+locked file or one on a read only volume, so the retag reports the new genre
+and the file keeps the old one. U178 found the same shape in `tag folder` and
+fixed it there with `tag-folder-unwritten`; `remap.py` and `suggest.py` already
+check the return. `retag.py` is the one caller left.
+
+**Measured cost.** Read at the review, not driven. A `crate tag retag` over a
+locked file would say the file was retagged while it still carries the coarse
+genre, the clean report over a write never performed that the board bar names.
+
+**Closes when:** `retag_one` checks the writer's return and the file's item
+fails or is reported unwritten with the file named, with a test that drives a
+file refusing the write. Earns an issue: the product says something false
+about a write.
+
+---
+
+## R-1104. The label tag tag folder reads is the one Picard writes, not one measured against rekordbox
+
+**Found:** at the plan of #358, U178, 2026-10-31.
+
+**The mechanism.** U178 added `label` to `core/tags.FIELDS` on the keys
+MusicBrainz Picard writes, the Vorbis `label` comment, the ID3 `TPUB` frame
+and a freeform MP4 `LABEL` atom, because nothing in the product wrote a label
+tag yet. Which field rekordbox shows in its Label column was not measured, so
+a file another tagger labelled under `organization` or `publisher` reads as
+carrying no label tag.
+
+**Measured cost.** Not driven. A file read as carrying no label is tagged as
+before, or by `--label`, so the cost is a label genre not applied, never a
+wrong one.
+
+**Closes when:** U177, which writes the label tag, measures rekordbox's Label
+column on a copy as its brief already says, and moves the entry in the field
+table if it differs, for the reader and the writer at once. Ledger only, since
+U177's brief owns the measurement.
+
+---
+
+## R-1105. tag-folder-unwritten tells a person to check the lock on a file that is only truncated
+
+**Found:** at the review of #358, U178, 2026-10-31.
+
+**The mechanism.** `tagging/tag.py`'s `_written` refuses with
+`tag-folder-unwritten` whenever `tags.write_genre` answers False, and its step
+says to check the file can be written, is not locked and is not on a read only
+volume. A zero byte or truncated `.flac` also answers False, since mutagen
+cannot open it, and the art repair's own diagnosis of that file sits in a
+report that is not committed for a failed item.
+
+**Measured cost.** Driven at the review: a sweep over an empty `bad.flac`
+fails its item with the lock remedy. The item fails, which is correct, and on
+`main` the same file was reported tagged; the cost is a remedy that sends a
+person to the wrong place for a truncated download.
+
+**Closes when:** the refusal's step also names a file that cannot be read as
+audio, or the art repair's detail rides on the refusal. Ledger only, wording.

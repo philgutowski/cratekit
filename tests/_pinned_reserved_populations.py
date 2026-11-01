@@ -200,6 +200,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'sync-pair-unknown',
     'sync-source-lookups-failed',
     'sync-watermark-unusable',
+    'tag-folder-unwritten',  # 2026-10-31, U178: a file that would not take its genre.
     'tag-remap-unwritten',
     'tag-retag-folder-unknown',
     'tag-suggest-unwritten',
@@ -837,6 +838,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-pair-unknown',
         'sync-source-lookups-failed',
         'sync-watermark-unusable',
+        'tag-folder-unwritten',
         'tag-remap-unwritten',
         'tag-retag-folder-unknown',
         'tag-suggest-unwritten',
@@ -1739,11 +1741,17 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     'sync/watermarks.py': ['sync-watermark-unusable', 'utf-8'],
     'tagging/artifacts.py': ['tag-artifacts', 'tag-staging', 'utf-8'],
+    # 2026-10-31, U178: the --label refusal and the two label genre warnings joined.
     'tagging/cli.py': [
         'config-unusable',
+        'label-unknown',
         'no-op',
         'source-missing',
         'tag-folder-absent',
+        'tag-folder-label-no-genre',
+        'tag-folder-label-on-resume',
+        'tag-folder-label-registry-unread',
+        'tag-folder-label-tag-outranked',
         'tag-folder-no-audio',
         'tag-folder-no-isrc',
         'tag-folder-off-taxonomy',
@@ -1847,11 +1855,14 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'suggest-unmatched',
         'tag-suggest-unwritten',
     ],
+    # 2026-10-31, U178: the label genre disposition joined.
     'tagging/tag.py': [
         'has-genre',
+        'label-genre',
         'no-hit',
         'no-isrc',
         'sources-unread',
+        'tag-folder-unwritten',
         'unmapped-genre',
     ],
     'vocals/cli.py': [
@@ -2054,6 +2065,8 @@ PINNED_NAMED_WITHOUT_OWN = {
         'source-unsupported',
     ],
     'tagging/searchers.py': ['catalogue-parse-broken', 'catalogue-unreachable'],
+    # 2026-10-31, U178: the engine refuses a file that would not take its genre.
+    'tagging/tag.py': ['tag-folder-unwritten'],
     'write/genre_favorites.py': ['favorites-class-undeclared', 'favorites-source-missing'],
     'write/metadata_cli.py': ['library-paths-majority-unresolved'],
     'write/row_link.py': [
@@ -2230,6 +2243,8 @@ PINNED_NAMED_WITH_OWN = {
         'set-playlist',
     ],
     'tagging/searchers.py': ['catalogue-parse-broken', 'catalogue-unreachable', 'parse-break'],
+    # 2026-10-31, U178: the engine refuses a file that would not take its genre.
+    'tagging/tag.py': ['tag-folder-unwritten'],
     'write/genre_favorites.py': ['favorites-class-undeclared', 'favorites-source-missing'],
     'write/metadata_cli.py': ['library-paths-majority-unresolved'],
     'write/routing_pass.py': ['not-imported', 'not-ready'],
@@ -2795,7 +2810,8 @@ PINNED_LITERAL_HOLDERS = {
     'sync/run.py': ['sync-source-lookups-failed'],
     'sync/unmark_cli.py': ['internal-error', 'sync-marks-blocked'],
     'sync/watermarks.py': ['sync-watermark-unusable'],
-    'tagging/cli.py': ['config-unusable', 'source-missing'],
+    # 2026-10-31, U178: tag folder refuses a --label nobody registered.
+    'tagging/cli.py': ['config-unusable', 'label-unknown', 'source-missing'],
     'tagging/remap_cli.py': ['config-unusable', 'internal-error', 'tag-remap-unwritten'],
     'tagging/retag_cli.py': [
         'config-unusable',
@@ -2813,6 +2829,8 @@ PINNED_LITERAL_HOLDERS = {
         'review-selection-invalid',
         'tag-suggest-unwritten',
     ],
+    # 2026-10-31, U178: the engine refuses a file that would not take its genre.
+    'tagging/tag.py': ['tag-folder-unwritten'],
     'vocals/cli.py': [
         'analysis-write-failed',
         'config-unusable',

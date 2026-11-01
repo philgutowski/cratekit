@@ -1186,6 +1186,7 @@ def test_a_published_genre_reaches_the_file_the_artifact_and_the_summary(
         searchers.TRAXSOURCE: 0,
         searchers.BANDCAMP: 0,
         published.SOURCE: 1,
+        tag.LABEL_GENRE: 0,
     }
     assert tagging["answers"][published.SOURCE]["matched"] == 1
     assert set(tagging["answers"][published.SOURCE]) == set(published.ANSWERS), "zero filled"
