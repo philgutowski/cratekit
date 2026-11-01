@@ -741,6 +741,34 @@ def test_a_vocal_track_reaches_both_of_its_playlists_through_a_rebuild(
     assert len(landed) == 2
 
 
+def test_a_genre_sub_is_created_once_beside_the_band_and_a_second_rebuild_plans_nothing(
+    cfg, gates_pass, db, adopted_root, declared
+):
+    """U155, end to end. A Rominimal track at energy 3 lands in its band AND in
+    the Rominimal genre sub, a Minimal track beside it in the band alone, and
+    the genre sub's playlist is the one destination the rebuild has to create.
+    A second rebuild writes nothing and the tree reads converged.
+    """
+    truth = [
+        rebuild.Truth(location=_music(cfg, COMPOSED), genre="Rominimal", energy=3, voxlevel=None),
+        rebuild.Truth(location=_music(cfg, PLAIN), genre="Minimal", energy=3, voxlevel=None),
+    ]
+    first = _rebuild(cfg, db, adopted_root, declared, [], truth=truth)
+    second = _rebuild(cfg, db, adopted_root, declared, [], truth=truth)
+
+    nodes = {
+        (node.folder_display, node.playlist_display): node.content_ids
+        for node in rebuild.read_tree(db, str(adopted_root.ID))
+    }
+    assert nodes == {
+        ("Minimal / Deep Tech", "Low Energy"): frozenset({"1", "2"}),
+        ("Minimal / Deep Tech", "Rominimal"): frozenset({"1"}),
+    }
+    assert first.repaired == 3
+    assert second.repaired == 0
+    assert second.after.converged
+
+
 def test_a_library_with_no_vocal_calibration_reports_what_it_did_not_compare(
     cfg, gates_pass, db, adopted_root, declared
 ):

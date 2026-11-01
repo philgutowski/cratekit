@@ -800,6 +800,12 @@ def destination(declared: taxonomy.Taxonomy, bucket_id: str, sub_id: str) -> tup
     for entry in declared.sub_classes:
         if entry.id == sub_id:
             return bucket.display, entry.display
+    # A SIXTH SHAPE SINCE U155: a genre sub, beside the bands of the one bucket
+    # that declares it. The loader keeps its identifier apart from all five
+    # above, so the order here decides nothing.
+    for genre in bucket.genre_subs:
+        if genre.id == sub_id:
+            return bucket.display, genre.display
     raise KeyError(
         f"the bucket {bucket_id!r} declares no sub-playlist {sub_id!r}; the "
         f"ledger and this library's taxonomy disagree about where a track was "

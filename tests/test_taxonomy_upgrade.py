@@ -51,12 +51,26 @@ def _retag(text: str, word: str, was: str, now: str) -> str:
     return text.replace(old, f'{{ word = "{word}", tag = "{now}" }}')
 
 
+GENRE_SUB_START = "# A genre sub (U155)"
+GENRE_SUB_END = "[[bucket]]\nid = \"house_funky_disco\""
+ROMINIMAL_ALIAS = '  "Minimal / Deep Tech",\n  "Rominimal",\n'
+
+
+def before_genre_subs(text: str) -> str:
+    """``text`` as a copy made before U155 has it: no Rominimal alias and no genre sub."""
+    assert text.count(ROMINIMAL_ALIAS) == 1
+    text = text.replace(ROMINIMAL_ALIAS, '  "Minimal / Deep Tech",\n')
+    return _without(text, GENRE_SUB_START, GENRE_SUB_END)
+
+
 def behind() -> str:
     """A version 2 copy made before the genre Favorites and the Soul folder shipped.
 
     Its vocabulary tags the catalogue's soul word as R&B, as the live copy's does.
+    It predates the Rominimal genre sub as well (U155), which version 2 cannot
+    declare.
     """
-    text = _without(_shipped(), FAVORITES_START, FAVORITES_END)
+    text = _without(before_genre_subs(_shipped()), FAVORITES_START, FAVORITES_END)
     text = _without(text, SOUL_START, SOUL_END)
     return _version(_retag(text, "Soul & Funk", "Soul", "R&B"), 2)
 
@@ -91,12 +105,12 @@ def test_a_version_2_copy_gains_favorites_and_soul_and_the_shipped_version():
     copy = behind()
     assert taxonomy.load_taxonomy(copy).schema_version == 2
     found = _plan(copy)
-    assert (found.from_version, found.to_version, found.shipped_version) == (2, 4, 4)
+    assert (found.from_version, found.to_version, found.shipped_version) == (2, 5, 5)
     assert found.classes == ("favorites",)
     assert found.buckets == ("soul",)
     assert found.held == ()
     after = taxonomy.load_taxonomy(found.after)
-    assert after.schema_version == 4
+    assert after.schema_version == 5
     assert [c.id for c in after.sub_classes if c.signal == taxonomy.SIGNAL_PLAYLIST] == ["favorites"]
     shipped = taxonomy.load_taxonomy(_shipped())
     assert _bucket(found.after, "soul") == [b for b in shipped.buckets if b.id == "soul"][0]
@@ -143,7 +157,7 @@ def _subsequence(short: list[str], long: list[str]) -> bool:
 def test_every_line_and_entry_the_copy_held_is_kept_in_its_order():
     copy = behind()
     found = _plan(copy)
-    raised = copy.replace("schema_version = 2\n", "schema_version = 4\n", 1)
+    raised = copy.replace("schema_version = 2\n", "schema_version = 5\n", 1)
     assert _subsequence(raised.splitlines(), found.after.splitlines())
     before = taxonomy.load_taxonomy(copy)
     after = {b.id: b for b in taxonomy.load_taxonomy(found.after).buckets}
@@ -416,7 +430,7 @@ def test_a_version_line_the_planner_cannot_find_holds_the_raise_and_what_needs_i
     found = _plan(copy)
     assert found.to_version == 2
     kinds = {(h.kind, h.id) for h in found.held}
-    assert ("schema_version", "4") in kinds
+    assert ("schema_version", "5") in kinds
     assert ("sub_class", "favorites") in kinds
     taxonomy.load_taxonomy(found.after)
 
@@ -455,14 +469,14 @@ def test_a_cut_that_parses_to_something_else_refuses():
 def test_the_gap_names_both_versions_and_each_missing_entry():
     words = upgrade.gap(_plan(live_shaped()))
     assert "schema_version 2" in words
-    assert "states 4" in words
+    assert "states 5" in words
     assert "favorites" in words
     assert "soul" in words
 
 
 def test_the_remedy_names_the_verb_and_the_hand_edit():
     words = upgrade.remedy(_plan(live_shaped()))
-    assert "crate taxonomy upgrade raises schema_version to 4 and adds favorites" in words
+    assert "crate taxonomy upgrade raises schema_version to 5 and adds favorites" in words
     assert "soul is held" in words
     assert "run crate taxonomy upgrade again" in words
 
@@ -516,7 +530,7 @@ def test_the_verb_asks_then_writes_the_upgraded_copy_and_keeps_the_old_one(confi
     shown = refused["cause"]["detail"]["shown"]
     changes = {(i["kind"], i["id"], i["change"]) for i in shown["items"]}
     assert changes == {
-        ("schema_version", "4", "raise"),
+        ("schema_version", "5", "raise"),
         ("sub_class", "favorites", "add"),
         ("bucket", "soul", "add"),
     }

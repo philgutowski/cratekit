@@ -1892,6 +1892,27 @@ band or former place of its holder, under the holder's own name for it.
 files into any more; a split place is one the holder still files into, and
 only the declaring bucket's tracks leave it.
 
+### Genre sub
+Since U155, a playlist under a bucket that splits by energy which holds the
+tracks whose genre is one of its sources, declared as `[[bucket.genre_sub]]`
+with an `id`, a `display` and `sources`. The first one is `Rominimal` under
+Minimal / Deep Tech, for the PULS releases. It is additive: a Rominimal track
+is filed into its band, or Unsorted with no reading, exactly as before, and
+into the genre sub beside it, the way "with vox" sits beside a band. So it is
+never a Competing sub, nothing is moved out of it, and no band loses a track
+to it. Sources match exactly and case sensitively, and each must be an exact
+alias of the bucket, so `Minimal` never reaches it. The tagger writes the
+source rather than the bucket's name. The tree rebuild and `route resort` file
+it; the native landing and `organize` do not yet, so a new track reaches it at
+the next `route resort`. It needs schema version 5, and the loader refuses one
+whose id or name is already a band, the no reading sub, a sub class or a sub of
+its folder, or that sits on a bucket that does not split by energy.
+
+*Avoid:* reading it as `sub_by_source`. A bucket that routes by source genre
+never reads energy, so declaring Rominimal that way would take the bands away
+from every track in the bucket. Also avoid reading it as a sub class, which
+sits under every bucket rather than one.
+
 ### Held elsewhere
 An adoption plan entry withheld because its track already holds a competing
 sub in the bucket the plan routes it to, or holds the planned sub through a
