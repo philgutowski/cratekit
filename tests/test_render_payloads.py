@@ -535,3 +535,86 @@ def test_job_list_is_driven_end_to_end_in_the_default_output(tmp_path, monkeypat
     assert code == 0, text
     assert f"  {queued.job_id}, tag.folder, queued, 0 of 2 settled" in text.splitlines(), text
     assert "  jobs: 1 (queued 1)" in text.splitlines(), text
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U182: the playlist an intake job was made for, and the stale cancel's list
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_the_renderer_spells_the_playlist_and_stale_fields_cli_jobs_writes():
+    from cratekit.cli import jobs as cli_jobs
+
+    assert render._PLAYLIST == cli_jobs.PLAYLIST_FIELD
+    assert render._SOURCE == cli_jobs.SOURCE_FIELD
+    assert render._STALE_DAYS == cli_jobs.STALE_FIELD
+    assert render._DRY_RUN == cli_jobs.DRY_RUN_FIELD
+    assert [field for field, _done, _would in render._CANCEL_LISTS] == [
+        cli_jobs.CANCEL_LIST,
+        cli_jobs.KEPT_LIST,
+        cli_jobs.LEFT_LIST,
+    ]
+
+
+def test_job_show_and_list_print_the_playlist_and_its_source_when_it_differs():
+    shown = render.render_job_state(
+        job_state(verb="job.show", progress={"playlist": "Warmup", "source": "pl-a"})
+    )
+    assert "  playlist: Warmup (pl-a)" in shown
+    same = render.render_job_state(
+        job_state(verb="job.show", progress={"playlist": "pl-z", "source": "pl-z"})
+    )
+    assert "  playlist: pl-z" in same
+    listed = render.render_job_list(
+        job_state(
+            verb="job.list",
+            job_id="",
+            progress={"jobs": [{"job_id": "j-1", "handler": "intake.playlist", "state": "queued", "playlist": "Warmup"}]},
+        )
+    )
+    assert "  j-1, intake.playlist, queued, playlist Warmup" in listed
+
+
+def _stale_payload(dry_run: bool) -> output.Envelope:
+    row = {
+        "job_id": "j-old",
+        "label": "playlist 'Warmup' (pl-a)",
+        "age_days": 44,
+        "tracks": 144,
+        "same_tracks": ["j-new"],
+        "reason": "a copy of the tracks job j-new holds; j-new is kept",
+        "frees": "frees playlist 'Warmup' (pl-a), so the next pass queues it again",
+    }
+    kept = {**row, "job_id": "j-new", "same_tracks": ["j-old"], "reason": "kept, the newest", "frees": None}
+    return job_state(
+        verb="job.cancel",
+        job_id="",
+        state="dry_run" if dry_run else "cancelled",
+        progress={"stale_days": 30, "dry_run": dry_run, "cancel": [row], "kept": [kept], "left": []},
+    )
+
+
+def test_a_stale_cancel_prints_each_job_its_playlist_age_copies_and_what_it_frees():
+    lines = render.render_stale_cancel(_stale_payload(dry_run=False))
+    assert lines[1] == "  queued intake jobs older than 30 day(s)"
+    assert lines[2] == (
+        "  cancelled: j-old, playlist 'Warmup' (pl-a), 44 day(s) old, 144 track(s), "
+        "same tracks as j-new: a copy of the tracks job j-new holds; j-new is kept; "
+        "frees playlist 'Warmup' (pl-a), so the next pass queues it again"
+    )
+    assert lines[3].startswith("  kept: j-new,")
+    assert lines[-1] == "  a cancelled job reopens with: crate job resume JOB_ID"
+
+
+def test_a_dry_run_says_would_and_names_no_resume():
+    lines = render.render_stale_cancel(_stale_payload(dry_run=True))
+    assert lines[1].endswith(", a dry run")
+    assert lines[2].startswith("  would cancel: j-old,")
+    assert lines[3].startswith("  would keep: j-new,")
+    assert not any("job resume" in line for line in lines)
+
+
+def test_a_single_cancel_renders_no_stale_list():
+    single = job_state(verb="job.cancel", state="cancelled", progress={"total": 1, "settled": 0})
+    assert render.render_stale_cancel(single) == []
+
