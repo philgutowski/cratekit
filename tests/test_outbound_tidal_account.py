@@ -29,7 +29,7 @@ from cratekit.core import config, jobs, locations, secrets, tags
 from cratekit.core.cause import CratekitError, Scope
 from cratekit.core.exit_codes import ExitCode
 from cratekit.export import cli as export_cli
-from cratekit.modules.outbound import account, artifacts, ledger, source, tidal_account
+from cratekit.modules.outbound import account, artifacts, ledger, service, source, tidal_account
 from cratekit.modules.outbound.service import RemoteAccount
 from tests import outbound_fakes
 from tests._containers import synth_container
@@ -1749,3 +1749,91 @@ def test_a_sweep_hearts_the_release_the_files_album_tag_names(
     assert code == int(ExitCode.OK), resumed
     assert client.user.favorites.added == ["511", "512", "503"]
     assert resumed["data"]["progress"]["outbound"]["unmatched"] == []
+
+
+# ── R-1032: a listening copy takes one of several agreeing releases ────────
+
+
+def any_release(found: tidal_account.TidalAccount, album: str = "", title: str = "Sun Path"):
+    return found.match_track(
+        identity="7",
+        isrc=CODE,
+        title=title,
+        artist="Nova Reef",
+        album=album,
+        any_agreeing=True,
+    )
+
+
+def test_a_tie_with_any_agreeing_takes_the_lowest_identifier_whatever_the_listing_order():
+    for listed in (("202", "101"), ("101", "202")):
+        found = adapter(releases(*_alike(*listed, "Sun Path", "Nova Reef")))
+        assert any_release(found) == "101", listed
+        assert found.unmatched_reason("7") == ""
+    found = adapter(releases(*_alike("100", "99", "Sun Path", "Nova Reef")))
+    assert any_release(found) == "99", "numeric order, not the order of the characters"
+
+
+def test_without_any_agreeing_the_same_tie_still_refuses_in_the_words_the_mirror_reads():
+    found = adapter(releases(*_alike("202", "101", "Sun Path", "Nova Reef")))
+    assert match_row(found, "Sun Path") is None
+    assert service.AGREEING_RELEASES in found.unmatched_reason("7")
+
+
+def test_a_file_album_naming_none_of_the_tied_releases_still_takes_one():
+    found = adapter(single_and_album_cut())
+    assert any_release(found, album="Night Drives") == "101"
+
+
+def test_a_file_album_naming_two_of_three_takes_the_lower_of_those_two():
+    client = releases(
+        on_album(Track("101", "Sun Path", None, ("Nova Reef",)), "Sun Path"),
+        on_album(Track("303", "Sun Path", None, ("Nova Reef",)), "Tidal Lines"),
+        on_album(Track("202", "Sun Path", None, ("Nova Reef",)), "Tidal Lines"),
+    )
+    assert any_release(adapter(client), album="Tidal Lines") == "202"
+
+
+def test_two_hearted_releases_take_the_lower_hearted_one_never_an_unhearted_one():
+    client = releases(*_alike("101", "202", "Sun Path", "Nova Reef"), *_alike("303", "404", "Sun Path", "Nova Reef"))
+    client.user.favorites.hearts = ["404", "202"]
+    assert any_release(adapter(client)) == "202"
+
+
+def test_a_lone_heart_and_a_lone_album_choose_as_they_always_did():
+    client = single_and_album_cut()
+    client.user.favorites.hearts = ["202"]
+    assert any_release(adapter(client)) == "202"
+    assert any_release(adapter(single_and_album_cut()), album="Tidal Lines") == "202"
+
+
+def test_a_release_that_does_not_agree_is_never_taken():
+    client = releases(
+        Track("101", "Sun Path", "Radio Edit", ("Nova Reef",)),
+        Track("303", "Sun Path", None, ("Nova Reef",)),
+        Track("202", "Sun Path", None, ("Nova Reef",)),
+    )
+    assert any_release(adapter(client)) == "202"
+    client = releases(
+        Track("101", "Sun Path", "Radio Edit", ("Nova Reef",)),
+        Track("202", "Sun Path", "Extended Mix", ("Nova Reef",)),
+    )
+    found = adapter(client)
+    assert any_release(found) is None
+    assert "none of them agrees" in found.unmatched_reason("7")
+
+
+def test_an_unreadable_release_beside_the_tie_still_refuses_with_any_agreeing():
+    client = releases(
+        *_alike("101", "202", "Sun Path", "Nova Reef"), Track("303", "", None, ())
+    )
+    found = adapter(client)
+    assert any_release(found) is None
+    reason = found.unmatched_reason("7")
+    assert "1 could not be read" in reason and service.AGREEING_RELEASES in reason
+
+
+def test_a_row_with_no_title_to_judge_agreement_by_still_refuses_with_any_agreeing():
+    found = adapter(releases(*_alike("101", "202", "Sun Path", "Nova Reef")))
+    assert any_release(found, title="") is None
+    assert "no artist and title" in found.unmatched_reason("7")

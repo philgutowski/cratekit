@@ -2084,7 +2084,11 @@ title and `Favorites 2026-10`, `Favorites Undated`. INBOX is mirrored too
 batch that leaves INBOX has its mirrored playlist REMOVED at the next refresh,
 the one mirrored playlist the product removes, and only once its title is no
 longer under INBOX at all. A row a label landing recorded its provider track
-for is matched to that track with no request.
+for is matched to that track with no request. A row whose ISRC names several
+releases that all agree with it is matched as one of them, the lowest provider
+identifier after the account's hearts and the file's album have narrowed them,
+and kept on that one by every later refresh (R-1032), where a heart or a pair
+refuses the same tie, since there the release becomes the row's identity.
 
 *Avoid:* reading it as an export (`crate export playlist`, add only, filed in
 `Exports`) or as a pair (`crate sync pair`, merged both ways).
