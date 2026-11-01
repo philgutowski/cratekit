@@ -73,9 +73,9 @@ from typing import Any
 
 from cratekit.acquire import match_cli
 from cratekit.cli import prompt
-from cratekit.cli.output import Envelope, timestamp
+from cratekit.cli.output import Envelope, from_cause, timestamp
 from cratekit.core import active_taxonomy, config, review
-from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
+from cratekit.core.cause import Cause, CratekitError, Outcome, Scope, refuse
 from cratekit.core.review import Queue, Verdict
 from cratekit.core.routing import KindVerdict
 from cratekit.core.taxonomy import Taxonomy
@@ -1129,6 +1129,12 @@ def _next(ctx, cfg: config.Config, name: str | None = None) -> Envelope:
     so no other label is listed and no other saved question is rewritten, and
     the label's own line is the whole report: a closing "no label has
     anything new" would speak for labels nobody asked about.
+
+    A LABEL THAT COULD NOT BE READ IS NOT A LABEL WITH NOTHING NEW (R-1114).
+    The closing line names only the labels that were listed, and a run whose
+    every label was skipped refuses as ``label-sync-unlisted`` rather than
+    ending ``no_op``, carrying each label's line, so neither the words nor
+    the exit status read a failed listing as nothing to ask.
     """
     followed = _followed_or_refuse()
     only = _entry_or_refuse(followed, name) if name is not None else None
@@ -1138,6 +1144,7 @@ def _next(ctx, cfg: config.Config, name: str | None = None) -> Envelope:
     seen: list[dict[str, Any]] = []
     checks: list[dict[str, Any]] = []
     withheld = 0
+    nothing: list[str] = []
     with review.open_store(cfg) as store:
         for entry in entries:
             held = document["labels"].get(entry.label_id) or {}
@@ -1153,6 +1160,7 @@ def _next(ctx, cfg: config.Config, name: str | None = None) -> Envelope:
                 if listed.question is None:
                     checks.append(_nothing_check(entry, listed))
                     withheld += listed.withheld
+                    nothing.append(entry.name)
                     seen.append({"label_id": entry.label_id, "state": "nothing-new"})
                     continue
                 question = listed.question
@@ -1170,14 +1178,62 @@ def _next(ctx, cfg: config.Config, name: str | None = None) -> Envelope:
             return ctx.envelope(
                 data={"checks": checks, "summary": _summary(question=question, labels_seen=seen)}
             )
+    data = {"checks": checks, "summary": _summary(labels_seen=seen)}
+    if not nothing:
+        # EVERY LABEL ASKED ABOUT WAS SKIPPED (R-1114), so nothing here was
+        # read and nothing found: the ``no-evidence`` rule, at this verb. The
+        # run refuses through ``from_cause`` with its own checks as the data,
+        # so each label's line still says why it was not asked. The single
+        # label form included, since its one label skipped is the same state.
+        return from_cause(
+            verb=ctx.entry.name,
+            run_id=ctx.run.run_id,
+            started=ctx.started,
+            cause=_unlisted_cause(entries),
+            schema=ctx.entry.output_schema,
+            data=data,
+        )
     if only is None:
-        checks.append(_check("question", "ok", "no label has anything new to ask about"))
+        # THE CLOSING LINE SPEAKS ONLY FOR THE LABELS THAT WERE LISTED (R-1114).
+        # A skipped label has its own ``fail`` line, and "nothing new" said of
+        # it would be the clean report over a listing that never answered.
+        said = (
+            "no label has anything new to ask about"
+            if len(nothing) == len(entries)
+            else f"no label listed has anything new to ask about: {', '.join(nothing)}"
+        )
+        checks.append(_check("question", "ok", said))
     return ctx.envelope(
-        data={"checks": checks, "summary": _summary(labels_seen=seen)},
+        data=data,
         # NO_OP only when nothing was written: an open item the gate took
         # back has left review even when no question was left to ask.
         outcome=Outcome.OK if withheld else Outcome.NO_OP,
     )
+
+
+def _unlisted_cause(entries: Sequence[labels.LabelEntry]) -> Cause:
+    """The refusal for a ``--next`` whose every label was skipped, as a cause."""
+    names = ", ".join(entry.name for entry in entries)
+    which = (
+        f"the label asked about could not be read ({names}), so whether it has"
+        if len(entries) == 1
+        else f"none of the {len(entries)} labels asked about could be read ({names}), "
+        f"so whether any of them has"
+    )
+    return refuse(
+        "label-sync-unlisted",
+        f"{which} anything new is unknown; no question was asked or saved",
+        steps=(
+            "read each label's line for why it was not asked",
+            "a catalogue that could not be listed: run crate doctor, then ask again "
+            "when the provider answers",
+            "a listing that confirmed nothing: check the label's --match needle "
+            "with: crate label registry",
+        ),
+        retryable=True,
+        origin=("label.sync",),
+        detail={"labels": [entry.label_id for entry in entries]},
+    ).cause
 
 
 def _answer(ctx, cfg: config.Config) -> Envelope:

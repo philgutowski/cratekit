@@ -857,11 +857,15 @@ def test_a_catalogue_that_confirms_nothing_is_not_a_label_with_nothing_new(
 
     code, envelope = sync("--next")
 
-    assert code == int(ExitCode.OK), envelope
-    assert envelope["outcome"] == "no_op"
+    # R-1114: the one label followed could not be read, so the run is not a
+    # run with nothing to ask, and it refuses with the label's line kept.
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["outcome"] == "failed"
+    assert envelope["cause"]["reason"] == "label-sync-unlisted"
     (line,) = checks(envelope, f"label.{SLUG}")
     assert line["status"] == "fail"
     assert "could not confirm a single one" in line["detail"]
+    assert checks(envelope, "question") == []
     assert record(installed)["labels"] == {}
 
 
@@ -1268,7 +1272,13 @@ def test_next_label_whose_listing_fails_reports_the_failure_in_one_check(
 
     code, envelope = next_for("Beta Works")
 
-    assert code == int(ExitCode.OK), envelope
+    # R-1114: the one label asked about could not be listed, which is not
+    # nothing new, so the single label form refuses as the walk over every
+    # label does, its one line kept as the whole report.
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["outcome"] == "failed"
+    assert envelope["cause"]["reason"] == "label-sync-unlisted"
+    assert "the label asked about could not be read (Beta Works)" in envelope["cause"]["message"]
     assert envelope["data"]["summary"]["question"] is None
     (line,) = envelope["data"]["checks"]
     assert line["key"] == "label.sync.label.beta-works"
@@ -1484,3 +1494,102 @@ def test_a_saved_shortfall_that_withheld_nothing_reads_back_as_no_shortfall(
     assert "withheld by the provider" not in asked["detail"]
     (line,) = checks(envelope, f"release.{identity}")
     assert "withheld by the provider" not in line["detail"]
+
+
+# ---------------------------------------------------------------------------
+# R-1114: a label that could not be read is not a label with nothing new
+# ---------------------------------------------------------------------------
+
+
+def test_next_over_two_labels_neither_listable_refuses_and_says_nothing_new_of_neither(
+    installed, monkeypatch
+):
+    register("Alpha Works")
+    register("Beta Works")
+    fake = bind(monkeypatch, {})
+
+    code, envelope = sync("--next")
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["outcome"] == "failed"
+    cause = envelope["cause"]
+    assert cause["reason"] == "label-sync-unlisted"
+    assert cause["retryable"] is True
+    assert "none of the 2 labels asked about could be read (Alpha Works, Beta Works)" in (
+        cause["message"]
+    )
+    assert cause["detail"]["labels"] == ["alpha-works", "beta-works"]
+    steps = cause["remediation"]["steps"]
+    assert any("crate doctor" in step for step in steps)
+    assert any("--match" in step for step in steps)
+    assert checks(envelope, "question") == []
+    for slug, name in (("alpha-works", "Alpha Works"), ("beta-works", "Beta Works")):
+        (line,) = checks(envelope, f"label.{slug}")
+        assert line["status"] == "fail"
+        assert f"{name}: not asked; its catalogue could not be listed" in line["detail"]
+    assert envelope["data"]["summary"]["labels"] == [
+        {"label_id": "alpha-works", "state": "skipped"},
+        {"label_id": "beta-works", "state": "skipped"},
+    ]
+    assert not [one for one in envelope["data"]["checks"] if "nothing new" in one["detail"]]
+    assert fake.asked_for == ["alpha-works", "beta-works"]
+    assert record(installed)["labels"] == {}
+
+    code, text = drive_human(["label", "sync", "--next"])
+    assert code == int(ExitCode.PRECONDITION)
+    assert "no label has anything new" not in text
+    assert "none of the 2 labels asked about could be read" in text
+    assert "Beta Works: not asked" in text
+
+
+def test_next_closing_line_names_only_the_label_that_was_listed(installed, monkeypatch):
+    register("Alpha Works")
+    register("Beta Works")
+    fake = bind(monkeypatch, {"alpha-works": []})
+
+    code, envelope = sync("--next")
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert envelope["cause"] is None
+    (alpha,) = checks(envelope, "label.alpha-works")
+    assert alpha["status"] == "ok"
+    assert "Alpha Works: nothing new since it was last asked" in alpha["detail"]
+    (beta,) = checks(envelope, "label.beta-works")
+    assert beta["status"] == "fail"
+    (said,) = checks(envelope, "question")
+    assert said["status"] == "ok"
+    assert said["detail"] == "no label listed has anything new to ask about: Alpha Works"
+    assert "Beta" not in said["detail"]
+    assert "no label has anything new" not in said["detail"]
+    assert fake.asked_for == ["alpha-works", "beta-works"]
+    assert record(installed)["labels"] == {}
+
+
+def test_next_over_two_labels_both_listed_with_nothing_new_is_unchanged(installed, monkeypatch):
+    register("Alpha Works")
+    register("Beta Works")
+    bind(monkeypatch, {"alpha-works": [], "beta-works": []})
+
+    code, envelope = sync("--next")
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    (said,) = checks(envelope, "question")
+    assert said["detail"] == "no label has anything new to ask about"
+    assert [one["status"] for one in envelope["data"]["checks"]] == ["ok", "ok", "ok"]
+
+
+def test_next_with_one_label_skipped_and_the_next_asked_still_asks(installed, monkeypatch):
+    register("Alpha Works")
+    register("Beta Works")
+    bind(monkeypatch, {"beta-works": [("b-r1", "2026", 2)]})
+
+    code, envelope = sync("--next")
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "ok"
+    assert envelope["data"]["summary"]["question"]["label_id"] == "beta-works"
+    (alpha,) = checks(envelope, "label.alpha-works")
+    assert alpha["status"] == "fail"
+
