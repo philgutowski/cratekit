@@ -118,7 +118,7 @@ def _library_of(data: Mapping[str, Any]) -> Any:
                     for source in folder["playlists"]
                 ),
                 retire=_flag(folder["retire"]),
-                present=frozenset(str(one) for one in folder["present"]),
+                present=_titles(folder["present"]),
             )
             for folder in data["folders"]
         ),
@@ -126,6 +126,13 @@ def _library_of(data: Mapping[str, Any]) -> Any:
         favorites=str(data["favorites"]),
         inbox=str(data["inbox"]),
     )
+
+
+def _titles(value: Any) -> frozenset[str]:
+    """Frozen titles, refused as unreadable unless a list of text: a string is no list."""
+    if not isinstance(value, list) or not all(isinstance(one, str) for one in value):
+        raise ValueError(f"a folder's present titles are {value!r}, not a list of text")
+    return frozenset(value)
 
 
 def _flag(value: Any) -> bool:

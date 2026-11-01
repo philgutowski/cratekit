@@ -451,13 +451,14 @@ def _refs(matched: Mapping[str, Mapping[int, Sequence[tuple[Any, Sequence[str]]]
     for by_year in matched.values():
         for rows in by_year.values():
             for row, targets in rows:
+                # A ROW WITH NO ID NAMES NO TRACK, so it makes no claim on a file.
                 ref = str(getattr(row, "ref", "") or "").strip()
+                if not ref:
+                    continue
                 for target in targets:
                     named.setdefault(target, set()).add(ref)
     return tuple(
-        (target, next(iter(refs)))
-        for target, refs in sorted(named.items())
-        if len(refs) == 1 and "" not in refs
+        (target, next(iter(refs))) for target, refs in sorted(named.items()) if len(refs) == 1
     )
 
 

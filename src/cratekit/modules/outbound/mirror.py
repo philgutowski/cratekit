@@ -75,6 +75,9 @@ LEFT = "left"
 #: A playlist left alone because the one recorded is not in the folder and
 #: could not be read, which is what one deleted on the account looks like.
 UNREADABLE = "unreadable"
+#: A retiring folder the account lacks that nothing would go into (U150): not
+#: made, since an empty root folder is nothing anyone asked for.
+UNMADE = "not made"
 #: A mirrored playlist removed from the account because what it mirrors left
 #: the rekordbox folder (U150), the INBOX folder's retired batch.
 RETIRE = "remove"
@@ -485,6 +488,11 @@ def plan(
             folder_action, folder_id = ADOPT, named[0]
         else:
             folder_action, folder_id = CREATE, ""
+    # A RETIRING FOLDER IS MADE ONLY TO HOLD SOMETHING (U150): an INBOX with no
+    # live batch, or one whose folder a person deleted with only removals
+    # left, makes no empty root folder.
+    if folder_action == CREATE and folder.retire and not folder.playlists:
+        folder_action = UNMADE
     inside = account.folder_playlists(folder_id) if folder_id else {}
     made = dict(recorded.playlists) if recorded is not None else {}
 
@@ -652,13 +660,16 @@ def apply(
     off, and the refusal's own words say to check the playlist by hand.
     """
     ledger.record_mirror_links(cfg, planned.links if links is None else links)
-    folder_id, created = ledger.reserve_mirror_folder(
-        cfg,
-        planned.name,
-        lambda: account.create_folder(planned.name),
-        adopt=planned.folder_id if planned.folder_action == ADOPT else "",
-        stale=planned.stale_folder,
-    )
+    if planned.folder_action == UNMADE:
+        folder_id, created = "", False
+    else:
+        folder_id, created = ledger.reserve_mirror_folder(
+            cfg,
+            planned.name,
+            lambda: account.create_folder(planned.name),
+            adopt=planned.folder_id if planned.folder_action == ADOPT else "",
+            stale=planned.stale_folder,
+        )
     done.folder_id, done.folder_created = folder_id, created
     remote_of: dict[str, str] = {}
     for step in planned.playlists:
@@ -729,6 +740,7 @@ __all__ = [
     "REUSE",
     "Row",
     "Source",
+    "UNMADE",
     "UNREAD",
     "UNREADABLE",
     "ambiguous",

@@ -179,12 +179,15 @@ def _twice(name: str, what: str) -> Cause:
     ).cause
 
 
-def _inbox(cfg: config.Config, db: Any, declared: Any, registry: Any) -> tuple[str, mirror.Folder | Cause | str]:
+def _inbox(
+    cfg: config.Config, db: Any, declared: Any, registry: Any, today: Any = None
+) -> tuple[str, mirror.Folder | Cause | str]:
     """INBOX as a retiring mirror folder, the refusal of a title two batches take, or why not.
 
     Answers ``(name, folder or refusal)``, or ``("", why)`` when the intake
     tree cannot be read as database native, which lists INBOX and mirrors
     nothing of it, so no retirement is planned over a tree nobody read.
+    ``today`` is the day a batch's age is read for, the local day by default.
     """
     from datetime import date
 
@@ -192,7 +195,7 @@ def _inbox(cfg: config.Config, db: Any, declared: Any, registry: Any) -> tuple[s
 
     try:
         live = rotate.live_batches(
-            cfg, db, declared=declared, registry=registry, today=date.today()
+            cfg, db, declared=declared, registry=registry, today=today or date.today()
         )
     except CratekitError as exc:
         return "", f"INBOX is not mirrored: {exc.cause.message}"
@@ -374,6 +377,7 @@ def _detail(planned: mirror.FolderPlan) -> str:
         mirror.CREATE: "create the root folder",
         mirror.ADOPT: "adopt the root folder of its name",
         mirror.REUSE: "in its root folder",
+        mirror.UNMADE: "no root folder made, since nothing goes in it",
     }[planned.folder_action]
     return (
         f"{folder}, create {counts['create playlist']} playlist(s), add "
