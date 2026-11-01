@@ -1256,11 +1256,21 @@ crate --run RUN_ID session ack
 ```
 
 The gate asks whether the database and the music files are backed up, so run
-`crate doctor` first and read the two backup ages. If a verb refuses because the
-acknowledgment is missing or has expired, this is the fix.
+`crate doctor` first and read the two backup ages. The line after them,
+`backup.acknowledgment`, says whether an acknowledgment is on record and when it
+expires. If a verb refuses because the acknowledgment is missing or has expired,
+this is the fix.
 
-A session working for you may answer it as the actor `session`, with no
-terminal, but only on young backups:
+A session working for you may mint it as the actor `session`, with no
+terminal, but only on young backups, in one command:
+
+```bash
+crate session ack --as session
+```
+
+It asks no gate and leaves no run waiting. When an acknowledgment is already
+valid it says so, with its expiry, and mints nothing. `--as` takes no value
+but `session`. The older two step form still works:
 
 ```bash
 crate session ack
@@ -1270,7 +1280,7 @@ crate run decide RUN_ID session.ack.backup acknowledged --continue
 With no terminal the answer is the session's without `--actor`, and
 `--continue` mints in the same command; no `script` wrapper is needed.
 
-The verb then checks the ages itself and mints only while both portions are
+Either way the verb checks the ages itself and mints only while both portions are
 under five days old. An older portion, or one with no completion recorded, is
 refused as `backup-acknowledgment-backup-too-old` and named; run a backup, or
 acknowledge from a terminal yourself. The acknowledgment records which rule
@@ -1386,8 +1396,9 @@ describes:
 
 The right column is not a convention anybody agreed to be polite about.
 `crate session ack` refuses an acknowledgment from a session working on your
-behalf, and every writing verb refuses while rekordbox or its background agent is
-running, so neither is a thing an agent can do for you even when asked.
+behalf unless both backup ages are under five days, and every writing verb
+refuses while rekordbox or its background agent is running, so neither is a
+thing an agent can do for you over old backups or an open rekordbox.
 
 Installing to the default location instead puts the guides where an agent finds
 them for every project on the machine, which is worth avoiding if you keep other

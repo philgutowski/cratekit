@@ -2196,6 +2196,77 @@ def _check_backup_portion(key: str, inputs: _Inputs) -> Finding:
     )
 
 
+def _check_backup_acknowledgment(inputs: _Inputs) -> Finding:
+    """The backup acknowledgment's window, beside the two ages it was minted over (U184).
+
+    A person or a session deciding whether to mint one reads the two backup ages
+    and then needs the third fact a destructive verb consults, which until this
+    check only ``crate session ack`` showed, and only as context on a refusal.
+
+    INFO IN EVERY READABLE STATE. Absent, valid and expired are all ordinary:
+    nothing has to be done until a destructive verb is about to run, and that
+    verb's own gate asks. Only a record that exists and cannot be understood is
+    a FAIL, since every destructive verb refuses on it.
+
+    AND NOT READ OFF AN ABSENT VOLUME. The record lives on the library volume, so
+    with the volume not established "no file" would say "none on record" about a
+    disk nobody read, which is the absence the session check beside this one is
+    written to refuse.
+    """
+    key, title = "backup.acknowledgment", "backup acknowledgment"
+    if inputs.cfg is None:
+        return _unchecked(key, title)
+    unreadable = _library_state_unreadable(inputs, "the backup acknowledgment")
+    if unreadable is not None:
+        return Finding(key=key, title=title, status=Status.INFO, detail=unreadable)
+    try:
+        recorded = session.read_acknowledgment(inputs.cfg)
+    except CratekitError as exc:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=(
+                f"{exc.cause.message}. Every destructive verb refuses while the "
+                f"record reads this way"
+            ),
+            remedy=exc.cause.remediation.remedy,
+        )
+    if recorded is None:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                "none on record; a destructive verb asks for one, minted with "
+                "crate session ack"
+            ),
+        )
+    now = inputs.probes.now
+    expires = recorded.expires_at.replace(microsecond=0).isoformat()
+    if not recorded.valid_at(now):
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"expired at {expires}; a destructive verb asks for a new one, "
+                f"minted with crate session ack"
+            ),
+        )
+    left = recorded.expires_at - now
+    hours, minutes = divmod(int(left.total_seconds()) // 60, 60)
+    return Finding(
+        key=key,
+        title=title,
+        status=Status.INFO,
+        detail=(
+            f"valid until {expires}, {hours}h {minutes:02d}m from now, minted by "
+            f"the {recorded.rule} rule"
+        ),
+    )
+
+
 #: How old the last full comparison may be before the check says to run one.
 #: Not a failure at any age: both modes compare every file, so what ages is
 #: only the proof that the recursive listing and the folder by folder one agree.
@@ -3552,6 +3623,8 @@ CHECKS: tuple[Check, ...] = (
         _bound(f"backup.age.{portion}", _check_backup_portion)
         for portion in backup_facts.PORTIONS
     ),
+    # U184. Right after the two ages, which are what it was minted over.
+    Check("backup.acknowledgment", _check_backup_acknowledgment),
     # R-757. After the ages it qualifies and before the remote they all name.
     Check("backup.full_comparison", _check_full_comparison),
     Check("backup.remote", _check_backup_remote),

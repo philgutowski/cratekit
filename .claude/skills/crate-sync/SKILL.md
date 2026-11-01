@@ -62,13 +62,12 @@ status:
   analysed and named, and the landing waits under the run in
   `data.summary.gate_run`. Go to step 3.
 - **It stopped at `backup-acknowledgment-missing`.** Mint the acknowledgment
-  with `crate session ack`, answering its `session.ack.backup` gate as the
-  session as CLAUDE.md's backup acknowledgment rule says (the session reads
-  both ages and refuses unless both are under five days). The ack stops at its
-  gate under a run of its own, `ACK_RUN`, which it names:
+  as the session, as CLAUDE.md's backup acknowledgment rule says, in one
+  command (U184). It reads both ages itself and refuses unless both are under
+  five days, asks no gate, and reports a valid acknowledgment rather than
+  minting a second:
 
-      crate session ack
-      crate run decide ACK_RUN session.ack.backup acknowledged --actor session --continue
+      crate session ack --as session
 
   Then run the pass again, with `--pass-run` and the run in
   `data.summary.pass_run` when it names one, so the jobs already done are read

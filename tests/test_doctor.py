@@ -223,6 +223,7 @@ def test_every_check_key_and_its_place_in_the_run_order_is_written_out():
         *(f"binary.{name}" for name in doctor.BINARY_NAMES),
         "adapter.contract",
         *(f"backup.age.{portion}" for portion in backup_facts.PORTIONS),
+        "backup.acknowledgment",
         "backup.full_comparison",
         "backup.remote",
         "deadca7.push",
@@ -862,6 +863,79 @@ def test_a_recorded_backup_reports_its_age_and_its_destination(configured):
     finding = find(doctor.run(configured, probes=probes()), "backup.age.database")
     assert finding.status is doctor.Status.INFO
     assert "9 days ago" in finding.detail and "a-remote:bucket" in finding.detail
+
+
+#: U184. One clock for the acknowledgment tests, so "valid" and "expired" are
+#: measured against the instant doctor reads rather than the wall clock.
+ACK_NOW = datetime(2026, 11, 1, 12, 0, tzinfo=timezone.utc)
+
+
+def _acknowledged(cfg: config.Config, at: datetime) -> session.Acknowledgment:
+    """An acknowledgment minted at ``at`` by the session rule, over young backups."""
+    for portion in backup_facts.Portion:
+        backup_facts.record(
+            cfg, portion, completed_at=at - timedelta(days=1), destination="probe"
+        )
+    return session.record_acknowledgment(cfg, now=at, decided_by=session.SESSION_ACTOR)
+
+
+def test_doctor_shows_the_acknowledgments_expiry_beside_the_two_backup_ages(configured):
+    """U184: the third fact a destructive verb consults, after the two it was minted over."""
+    minted = _acknowledged(configured, ACK_NOW - timedelta(hours=2, minutes=30))
+
+    report = doctor.run(configured, probes=probes(now=ACK_NOW))
+
+    finding = find(report, "backup.acknowledgment")
+    assert finding.status is doctor.Status.INFO
+    expires = minted.expires_at.replace(microsecond=0).isoformat()
+    assert finding.detail == (
+        f"valid until {expires}, 9h 30m from now, minted by the session-ages rule"
+    )
+    keys = [one.key for one in report.findings]
+    ages = [keys.index(f"backup.age.{portion}") for portion in backup_facts.PORTIONS]
+    assert keys.index("backup.acknowledgment") == max(ages) + 1
+
+
+def test_doctor_names_when_an_acknowledgment_lapsed(configured):
+    minted = _acknowledged(configured, ACK_NOW - timedelta(hours=13))
+
+    finding = find(doctor.run(configured, probes=probes(now=ACK_NOW)), "backup.acknowledgment")
+
+    assert finding.status is doctor.Status.INFO
+    expires = minted.expires_at.replace(microsecond=0).isoformat()
+    assert finding.detail.startswith(f"expired at {expires};"), finding.detail
+    assert "crate session ack" in finding.detail
+
+
+def test_doctor_says_when_no_acknowledgment_is_on_record(configured):
+    finding = find(doctor.run(configured, probes=probes()), "backup.acknowledgment")
+
+    assert finding.status is doctor.Status.INFO
+    assert finding.detail.startswith("none on record"), finding.detail
+
+
+def test_an_acknowledgment_that_cannot_be_understood_is_a_failure(configured):
+    path = session.ack_path(configured)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{ not json")
+
+    finding = find(doctor.run(configured, probes=probes()), "backup.acknowledgment")
+
+    assert finding.status is doctor.Status.FAIL
+    assert "not readable as JSON" in finding.detail
+    assert finding.remedy is Remedy.REPORT_DEFECT
+
+
+def test_no_acknowledgment_is_claimed_absent_off_a_volume_nobody_read(configured, tmp_path):
+    """The record lives on the library volume, so a missing volume is not "none"."""
+    _acknowledged(configured, ACK_NOW)
+    configured.library.root.rename(tmp_path / "detached")
+
+    finding = find(doctor.run(configured, probes=probes(now=ACK_NOW)), "backup.acknowledgment")
+
+    assert finding.status is doctor.Status.INFO
+    assert "not asserted" in finding.detail
+    assert "none on record" not in finding.detail
 
 
 def test_a_remote_whose_provider_trashes_on_delete_is_reported(configured):
