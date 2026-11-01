@@ -1601,9 +1601,10 @@ HEAD_QUESTION = "question for phillip"
 HEAD_MACHINE = "needs the machine"
 HEAD_LANDED = "landed"
 HEAD_WITHDRAWN = "withdrawn"
-# Phillip answers on the decisions page, and the coordinator carries the answer
-# to the card in a comment of its own, which the harness footer marks as a
-# session's. Under this heading it is read as his reply, never as a hold.
+# Phillip answers on the decisions page, and the project's relay thread carries
+# the answer to the card hourly in a comment of its own, which the harness
+# footer marks as a session's. Under this heading it is read as his reply,
+# whoever posts it, never as a hold.
 HEAD_ANSWER = "answer from phillip"
 
 # A hold older than this with nothing landed after it is read as a session

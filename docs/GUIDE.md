@@ -607,8 +607,9 @@ queue instead, and a rate limit parks the download rather than retrying. A go
 that stopped part way is picked up by the next `--go`, which resumes it before
 anything new, and a track is never asked for twice. Once the download has
 landed its tracks, the same command runs the acquisition tail on the staging
-folder the way `crate sync land` does: `tag folder`, `analyze run`, `analyze
-restamp` and `name apply`, each driven to the end, then plans `intake land
+folder the way `crate sync land` does: `tag folder`, `analyze run` followed by
+`analyze vocals --unscored`, `analyze restamp` and `name apply`, each driven to
+the end, then plans `intake land
 --manifest ... --pass ...`, which names the batch for the date and the label,
 and stops at the landing's own gate. The report names that gate's run and the
 two commands that answer and apply it, then the rekordbox visit. A tail step
@@ -787,6 +788,15 @@ colour and the playlist agree over a library placed before the colour write
 existed. A track you coloured otherwise by hand keeps its colour and is named,
 never overwritten, and a library whose colour table has no Pink row places the
 hearts and says it coloured none, to be run again once Pink is restored.
+
+The Favorites folder reads newest first: All Favorites on top, then the month
+playlists from the newest down, then `Undated`, then anything else you keep
+there, in the order you left it. A landing, the backfill and the split each make
+a new month in its place, directly under All Favorites and any newer month,
+rather than at the bottom. A folder made before that reads oldest first, and
+`crate favorites order` puts it right once, with rekordbox closed: it shows each
+playlist's position now and after, asks one gate, and writes positions and
+nothing else, no membership and no name. A folder already in order asks nothing.
 
 ### Keep your custom playlists in rekordbox for good
 
@@ -968,6 +978,22 @@ native landing reads the level against the cut as it is when it lands, so
 changing the cut changes which rows the next landing marks `dyn`. The default
 leans toward Normal, since a steady track analysed Dynamic comes back with a
 wobbling grid, and it has not yet been calibrated against a real library.
+
+Vocal scores need the vocal model to load, and a copy installed without the
+`vocals` extra finishes every track with a key and an energy and no `voxlevel`.
+`crate doctor` says so on its `install.extras` row and prints the reinstall
+command, which keeps the extras the copy already carries. `analyze run` treats
+the Camelot head on a name as finished, so a track it finalized with no score is
+never scored by it again; `crate analyze vocals --unscored FOLDER` queues
+exactly those files, the head and no `voxlevel`, and leaves a scored one alone.
+The acquisition tail runs it after `analyze run` whenever the model can score.
+`crate sync land` asks before its pass queues anything: when the model cannot
+score here it stops at the gate `sync.land.without-vocals`, whose screen names
+what is missing and the command that mends it. Install it and run the pass
+again, or answer `crate -d sync.land.without-vocals=go sync land` to land rows
+with no vocal score, which the summary then says. A landing plan in which more
+than half the added rows carry no score carries the warning
+`vox-mostly-unscored`. A profile with the vocals module off is never asked.
 
 `analyze vocals` and `analyze restamp` take `--recursive`, which queues every
 folder under the one you name as a single resumable job, so a back catalogue

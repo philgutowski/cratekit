@@ -1,0 +1,43 @@
+name = "u187"
+pass_kind = "light"
+
+# U187 is prose only and adds no guard. These rows stand in for the table: they
+# revert the code the new prose describes, that board.py cloud reads any comment
+# headed Answer from Phillip as his reply whoever posts it, so the documents'
+# promise that the relay thread's comment releases a card is pinned by the suite.
+
+[[rows]]
+id = "A1_relayed_answer_never_matches"
+description = "_relayed_answer: never match, so the relay thread's Answer from Phillip is read as a session hold and never as his reply"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '''    return comment_heading(comment.get("body") or "") == HEAD_ANSWER'''
+new = '''    return False'''
+
+[[rows]]
+id = "A2_answer_counted_as_a_hold"
+description = "cloud_state: count a relayed answer among the session's own comments, so an answer alone holds the card"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '''    mine = [c for c in ordered if SESSION_MARK in (c.get("body") or "") and not _relayed_answer(c)]'''
+new = '''    mine = [c for c in ordered if SESSION_MARK in (c.get("body") or "")]'''
+
+[[rows]]
+id = "A3_answer_not_read_as_reply"
+description = "cloud_state: drop the relayed answer from the replies after a question, so the card is never offered as answered"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '''        if _when(c) > since and (SESSION_MARK not in (c.get("body") or "") or _relayed_answer(c))'''
+new = '''        if _when(c) > since and (SESSION_MARK not in (c.get("body") or ""))'''
+
+[[rows]]
+id = "A4_heading_drifts"
+description = "HEAD_ANSWER: a nearby heading, answer from phil, so the documented heading no longer matches"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '''HEAD_ANSWER = "answer from phillip"'''
+new = '''HEAD_ANSWER = "answer from phil"'''

@@ -40730,3 +40730,117 @@ exist. Ledger only, since nothing reaches it.
 **Measured cost.** Driven by `test_a_release_refused_for_good_is_recorded_and_nothing_is_landed_over_none`: the envelope names each refused release in `fetch_refused`, in a `sync-bandcamp-fetch-refused` warning and on a `fail` check row, so nothing false is said, but a caller reading only the exit code is not told. `sync land` over an all refused download carries the same shape (U152's residual).
 
 **Closes when:** the verb ends with the fetch's own refusal when every release it attempted was refused and nothing was staged, or the record states exit 0 as the contract. Ledger only.
+
+---
+
+## R-1145. A Favorites playlist with no position reads as position 0, and the order can hand 0 out as a live position
+
+**Found:** at the review of #361, U180, 2026-11-01.
+
+**The mechanism.** `placement.seq_of` reads a row's `Seq` as `int(Seq or 0)`,
+so a playlist under the Favorites folder whose `Seq` is NULL sorts first and
+contributes 0 to the slots `placement.slots` gives out. `crate favorites order`
+then writes 0 as a live row's position, which the binding's own
+`create_playlist` and `move_playlist` refuse as below 1.
+
+**Measured cost.** Driven on a disposable copy with `Seq` set to NULL by SQL:
+the verb wrote All Favorites at `Seq 0` and the folder read in the right order
+on the copy. What rekordbox shows for a position of 0 was not measured, and one
+candidate producer was driven (SQL); no verb and no known rekordbox path writes
+a NULL position.
+
+**Closes when:** the slots are floored at 1, or an attended sitting reads a
+`Seq 0` row in rekordbox and finds it shown where its neighbours say. Ledger
+only.
+
+---
+
+## R-1146. The order's write of updated_at outside the binding's tracking kills no test, so a second sequence bump per moved row would ship green
+
+**Found:** at the review of #361, U180, 2026-11-01.
+
+**The mechanism.** `placement.seat` writes a moved row's `Seq` with the
+binding's registry tracking it, one sequence bump for the move, and stamps
+`updated_at` inside `db.registry.disabled()`, as the binding's own
+`move_playlist` does. Removing the `disabled()` block leaves every test green
+(177 tests in five files, at the review), so nothing holds the write to one
+bump per move.
+
+**Measured cost.** None measured. A second bump per moved row is what a
+person would pay only if rekordbox's cloud sync read the extra increment as
+a second change, and that was not driven.
+
+**Closes when:** a test reads the row's `rb_local_usn` before and after a
+seat and holds it to one increment, or the bump count is shown not to matter
+to rekordbox. Ledger only.
+
+---
+
+## R-1147. The install.extras row prints the install command twice on a copy that is not a release install
+
+**Found:** at the review of #378, U181, 2026-11-01.
+
+**The mechanism.** `crate doctor`'s `install.extras` row quotes the vocals module's sentence, which already ends with the install command, and then adds "Reinstall with:" and the command again. On a release install the second is the release form and the two differ; on any other copy they are the same text.
+
+**Measured cost.** Seen on the real doctor output of an editable copy. Noise on one row; nothing false.
+
+**Closes when:** the row quotes the reason without the command, or the probe's sentence and its command are carried apart. Ledger only.
+
+---
+
+## R-1148. A sync pass stopped at the without vocals gate carries no checks on its envelope
+
+**Found:** at the review of #378, U181, 2026-11-01.
+
+**The mechanism.** `crate sync land` stops at `sync.land.without-vocals` by letting the gate's own decision required refusal leave the verb, and the dispatcher builds that envelope from the cause, so the preflight's ok row for rekordbox and backups and the vocal model row are not on it: `data.checks` is empty. The pass's other stops for a person keep their rows, since they end PENDING through the pass's own envelope.
+
+**Measured cost.** Driven by the review on the real verb, exit 10. The gate screen carries every fact the question is asked over, so a person is told nothing false; the run record does not say the preflight passed before the stop.
+
+**Closes when:** the gate's context carries the preflight rows, or the refusal's detail carries the pass's data the way a stopped step's does. Ledger only.
+
+---
+
+## R-1149. The tail's vocal rescore row says it scored the files it queued, not the files it wrote
+
+**Found:** at the review of #378, U181, 2026-11-01.
+
+**The mechanism.** `cli/tail.py` `rescore` reports "scored the N staged file(s)" from the number of items the `analyze vocals --unscored` job held. When the model passes the probe and then fails to load (a checkpoint of the right size that will not deserialize), every item settles inactive with `vocal-model-unavailable`, the job succeeds, and the row reads ok over files that still carry no voxlevel.
+
+**Measured cost.** Driven by the review with a loader bound that raises on load, the one way a container with no torch reaches it: the row said scored 1 and the file carried no score. The child's own `vocal-model-unavailable` warning rides beside the row on the same envelope, so the report is not clean, only the row overclaims. A real failing checkpoint on a torch machine was not driven.
+
+**Closes when:** the row counts the job's reports by status, scored and unchanged against inactive, and says the inactive ones by reason. Ledger only.
+
+---
+
+## R-1150. The upgrade command adds the vocals extra only for a library with a vocal calibration recorded
+
+**Found:** at the plan of #378, U181, 2026-11-01, and confirmed at its review.
+
+**The mechanism.** The brief asks `install.release` to keep `vocals` when the library has ever scored a track, any file or row carrying a voxlevel. `crate doctor` reads that as a vocal calibration recorded for the library, `_vocals_scored`, since a calibration is fitted only from scored files or set by hand to tag them, and reading every file or row for a voxlevel is not a cost doctor may spend.
+
+**Measured cost.** A library scored and never calibrated gets an upgrade command without `vocals`, in that one state. The `install.extras` row beside it, on a copy that lacks the extra, prints the command with `vocals`, so the report carries the right command. Not driven on a real library.
+
+**Closes when:** a cheap record of a scored track exists to read, for instance the analysis job reports carrying a voxlevel, and the probe reads it. Ledger only.
+
+---
+
+## R-1151. METHOD's opening still calls Native Relay live, though its own Relay section says it retired on 2026-10-27
+
+**Found:** at the review of #395, U187, 2026-11-01.
+
+**The mechanism.** `docs/METHOD.md` says in its opening paragraph that Native
+Relay "is in the loop" and points at "Relay below", and the board bar section
+still says "The Relay feeder picks up" cards and "Relay reads every card it is
+about to launch". The section those point at is headed "Relay, retired
+2026-10-27". U187 added a flagged ambiguity to `CONCEPTS.md` separating Native
+Relay from the decisions relay thread, and left these lines alone because the
+brief names only the decisions page paragraph of METHOD.
+
+**Measured cost.** None to a DJ. A session reading METHOD from the top meets
+Relay as live on its first page and retired further down; the later section
+and the cloud lane section are both right. Found by a grep for "Relay" over
+METHOD, not driven further.
+
+**Closes when:** the opening paragraph and the board bar lines say Relay is
+retired, or speak of the cloud lane instead. Ledger only: a wording fix in a
+maintainer document.

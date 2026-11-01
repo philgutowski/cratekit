@@ -1643,6 +1643,13 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # verb asks nothing and ends NO_OP; UNREACHABLE_GATES says why its gate
         # is not asked here. The split is driven in tests/test_favorites_split.py.
         "favorites.split": _a_source_playlist,
+        # U180. LAZY, for the split's reason: the engine refuses a library
+        # with no live source playlist, and one at the playlist root, before
+        # anything else. The sample makes the source in a folder of its own,
+        # alone, which is a folder already in order, so by the brief the verb
+        # asks nothing and ends NO_OP; UNREACHABLE_GATES says why its gate is
+        # not asked here. The order is driven in tests/test_favorites_order.py.
+        "favorites.order": _a_source_playlist_in_a_folder,
         # U61. The composer takes the favourites source's export, the same
         # document ``sync.favorites`` is driven with below, so its confirm gate
         # is reachable and conformance 3 can drive it. The registry on this
@@ -1653,11 +1660,13 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
             "--export",
             str(outbound_fakes.write_export(library / "outbound")),
         ],
-        # U152. The driver takes no argument: on this fixture its first step,
-        # the pass, refuses for want of a provider session, and the driver ends
-        # with that step's own refusal. The chain is driven in
-        # tests/test_sync_land.py.
-        "sync.land": [],
+        # U152. The driver takes no argument. U181. LAZY, through fakes bound
+        # with ``monkeypatch``: a vocal model that cannot score, so the pass's
+        # own gate is asked before any step on every machine, and a pass that
+        # queued nothing new, so once the gate is answered the driver ends
+        # NO_OP. Unbound, its first step refuses for want of a provider
+        # session. The chain is driven in tests/test_sync_land.py.
+        "sync.land": _a_pass_with_no_vocal_model_and_nothing_new,
         # U179. The driver takes no argument: on this fixture its plan step
         # refuses for want of a Bandcamp session, and the driver ends with that
         # step's own refusal. The chain is driven in tests/test_sync_bandcamp.py.
@@ -2182,6 +2191,30 @@ def _an_account_with_no_year_folder(monkeypatch) -> list[str]:
     return []
 
 
+def _a_pass_with_no_vocal_model_and_nothing_new(monkeypatch) -> list[str]:
+    """No vocal model, and a ``sync all`` that queued nothing, bound through ``monkeypatch``."""
+    from cratekit.analysis import vocals
+    from cratekit.cli import tail
+
+    monkeypatch.setattr(vocals, "_VOCAL_LOADER", None)
+    monkeypatch.setattr(
+        vocals, "missing_requirement", lambda: "the 'vocals' extra is not installed here"
+    )
+    real = tail.dispatch
+
+    def nothing_new(argv):
+        if list(argv[:2]) == ["sync", "all"]:
+            return int(ExitCode.OK), {
+                "outcome": "no_op",
+                "data": {"summary": {"run_id": "conformance-pass", "queued": 0}},
+                "warnings": [],
+            }
+        return real(argv)
+
+    monkeypatch.setattr(tail, "dispatch", nothing_new)
+    return []
+
+
 def _a_source_playlist() -> list[str]:
     """The playlist every favourite is in, present and empty. Answers no arguments."""
     from cratekit.core import rb_writer
@@ -2193,6 +2226,24 @@ def _a_source_playlist() -> list[str]:
         held = [row for row in handle.get_playlist(Name=source) if not rb_writer.is_folder(row)]
         if not held:
             handle.create_playlist(source)
+            handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    return []
+
+
+def _a_source_playlist_in_a_folder() -> list[str]:
+    """The playlist every favourite is in, alone in a Favorites folder. Answers no arguments."""
+    from cratekit.core import rb_writer
+
+    cfg = config.load()
+    source = taxonomy.default_taxonomy().sub_class("favorites").signal_playlist
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        held = [row for row in handle.get_playlist(Name=source) if not rb_writer.is_folder(row)]
+        if not held:
+            folder = handle.create_playlist_folder("Favorites")
+            handle.create_playlist(source, parent=folder)
             handle.session.commit()
     finally:
         rb_writer.close_db(handle)
@@ -2513,6 +2564,15 @@ UNREACHABLE_GATES: Mapping[str, str] = MappingProxyType(
             "gate, its explicit two act answer, the split and its refusals are "
             "driven in tests/test_favorites_split.py."
         ),
+        "favorites.order.approve": (
+            "asked only over a Favorites folder that is not in order, and "
+            "approving one writes the positions of its playlists, which the "
+            "conformance fixture refuses for its unpinned rekordbox, since a pin "
+            "is never adopted on a user's behalf (S2). A folder already in order "
+            "asks nothing, by U180's brief, so the sample is that folder and the "
+            "verb ends NO_OP with no gate. The gate, its explicit two act answer, "
+            "the write and its refusals are driven in tests/test_favorites_order.py."
+        ),
         "intake.file.native": (
             "asked only on a library whose intake tree is recorded database "
             "native, for the reason intake.land.native gives below: the "
@@ -2650,6 +2710,10 @@ ACKNOWLEDGED_BEFORE_THE_GATE = {
     ),
     "favorites.split": (
         "tests/test_favorites_split.py::"
+        "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
+    ),
+    "favorites.order": (
+        "tests/test_favorites_order.py::"
         "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
     ),
     "tag.suggest": (
@@ -3927,6 +3991,7 @@ EXPECTED_UNREACHABLE_GATES = frozenset(
         "intake.file.native",
         "export.set.rename",
         "favorites.split.approve",
+        "favorites.order.approve",
         "intake.shelve.native",
         "label.playlists.crawl",
         "sync.twins.approve",
@@ -3935,7 +4000,7 @@ EXPECTED_UNREACHABLE_GATES = frozenset(
 
 
 def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
-    """Eight gates are exempt. A ninth one is a decision, not a diff.
+    """Nine gates are exempt. A tenth one is a decision, not a diff.
 
     The sixth, ``intake.shelve.native``, joined with U154, decided there: the
     verb asks only over a plan that moves a batch, approving one writes a path
@@ -3965,7 +4030,12 @@ def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
     favorites.split.approve's reason: it is asked only over an account with a
     downloaded custom playlist lacking its twin, and approving one writes,
     which the unpinned fixture refuses. Its own suite, tests/test_sync_twins.py,
-    drives the gate's two acts and the write.
+    drives the gate's two acts and the write. The ninth,
+    ``favorites.order.approve``, joined with U180 on favorites.split.approve's
+    reason: it is asked only over a Favorites folder out of order, and
+    approving one writes, which the unpinned fixture refuses, while a folder
+    in order asks nothing by the brief. Its own suite,
+    tests/test_favorites_order.py, drives the gate's two acts and the write.
 
     Note what this pin does NOT prove, so nobody reads more into a green run than
     is there: the map is still a named exemption, not a drive of the unreadable
