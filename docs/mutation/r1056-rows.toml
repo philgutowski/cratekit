@@ -1,0 +1,192 @@
+name = "r1056"
+pass_kind = "light"
+
+[[rows]]
+id = "N1_no_refusal_of_an_unreadable_record"
+description = "native_years: read a record this build cannot read as one that filed nothing"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py"]
+old = '''        if filed is None:
+            raise _blocked('''
+new = '''        if filed is None:
+            filed = frozenset()
+        if False:
+            raise _blocked('''
+
+[[rows]]
+id = "N2_first_landing_only"
+description = "native_years: read only the first landing the proof names, so a pass landed twice loses the second's years"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py"]
+old = '''    for session_id in proof.landings:'''
+new = '''    for session_id in proof.landings[:1]:'''
+
+[[rows]]
+id = "N3_years_from_the_argument"
+description = "label_mark: read the native years under the name given on the command line, not the registry's name"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py"]
+old = '''native_years(cfg, native, label)'''
+new = '''native_years(cfg, native, name)'''
+
+[[rows]]
+id = "N4_no_landings_in_digest"
+description = "_payload: leave the landings out of the native digest, so a landing after the answer is not stale"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py"]
+old = '''        identity["landings"] = list(native.landings)'''
+new = '''        pass'''
+
+[[rows]]
+id = "N5_no_reread_before_rename"
+description = "label_mark: drop the reread of the native proof before the first rename"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py"]
+old = '''    if native is not None and native_proof(cfg, pass_name, verb=_VERB, named=_NAMED) != native:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "N6_no_nothing_filed_warning"
+description = "label_mark: never say a batch filed none of the built years"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py", "tests/test_label_playlists.py"]
+old = '''    if not filed & {year.year for year in built}:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "N7_nothing_filed_against_any_year"
+description = "label_mark: warn only when the batch filed no year at all, not none of the built ones"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py", "tests/test_label_playlists.py"]
+old = '''    if not filed & {year.year for year in built}:'''
+new = '''    if not filed:'''
+
+[[rows]]
+id = "N8_shown_pass_bare"
+description = "_shown: name the native pass with no word that it landed on the database native tree"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py"]
+old = '''            else f"{pass_name}, landed on the database native {native.tree_id!r} tree"'''
+new = '''            else pass_name'''
+
+[[rows]]
+id = "N9_verb_not_threaded"
+description = "label_mark: prove the pass with sync mark's own wording, so a refusal names sync mark and intake missing"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py"]
+old = '''        native = native_proof(cfg, str(ctx.args.pass_name), verb=_VERB, named=_NAMED)'''
+new = '''        native = native_proof(cfg, str(ctx.args.pass_name))'''
+
+[[rows]]
+id = "N10_pass_not_required"
+description = "build_mark: neither --xml nor --pass required, so a bare mark reaches the handler"
+file = "src/cratekit/label/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py"]
+old = '''    proof = parser.add_mutually_exclusive_group(required=True)'''
+new = '''    proof = parser.add_mutually_exclusive_group(required=False)'''
+
+[[rows]]
+id = "F1_no_fold"
+description = "years_filed: compare the label unfolded, so a decomposed spelling is another label"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py"]
+old = '''        if _folded(named) == wanted and tracks > 0:'''
+new = '''        if named == label and tracks > 0:'''
+
+[[rows]]
+id = "F2_empty_year_counts"
+description = "years_filed: count a year whose entry held no track"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py"]
+old = '''        if _folded(named) == wanted and tracks > 0:'''
+new = '''        if _folded(named) == wanted and tracks >= 0:'''
+
+[[rows]]
+id = "F3_any_label_counts"
+description = "years_filed: count a year filed under any label"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py"]
+old = '''        if _folded(named) == wanted and tracks > 0:'''
+new = '''        if tracks > 0:'''
+
+[[rows]]
+id = "F4_non_list_read_as_empty"
+description = "years_filed: read a labels value that is not a list as nothing filed"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py"]
+old = '''    if not isinstance(filed, list):
+        return None'''
+new = '''    if not isinstance(filed, list):
+        return frozenset()'''
+
+[[rows]]
+id = "F5_non_dict_entry_skipped"
+description = "years_filed: skip an entry that is not a mapping rather than refuse the record"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py"]
+old = '''        if not isinstance(entry, dict):
+            return None'''
+new = '''        if not isinstance(entry, dict):
+            continue'''
+
+[[rows]]
+id = "F6_text_year_accepted"
+description = "years_filed: accept any year value, so a text year is read rather than refused"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py"]
+old = '''            or not isinstance(year, int)
+            or isinstance(year, bool)'''
+new = '''            or year is None'''
+
+[[rows]]
+id = "F7_bool_tracks_accepted"
+description = "years_filed: accept a boolean track count"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py"]
+old = '''            or not isinstance(tracks, int)
+            or isinstance(tracks, bool)'''
+new = '''            or not isinstance(tracks, int)'''
+
+[[rows]]
+id = "F8_no_zero_pad"
+description = "years_filed: spell a year unpadded, unlike the ledger"
+file = "src/cratekit/intake/label_filing.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py"]
+old = '''            years.add(f"{year:04d}")'''
+new = '''            years.add(str(year))'''
+
+[[rows]]
+id = "S1_no_landing_step_names_intake_missing"
+description = "_native_proof: drop the named source from the no landing step, so a label batch is told intake missing"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py", "tests/test_sync_mark.py"]
+old = '''            f"land the pass with crate intake land --pass and {named}, then run {verb} "'''
+new = '''            f"land the pass with crate intake land --pass and {SYNC_PASS_NAMED}, then run {verb} "'''
+
+[[rows]]
+id = "S2_unreachable_step_names_sync"
+description = "_native_proof: name sync mark in the unreachable library step whatever verb asked"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py", "tests/test_sync_mark.py"]
+old = '''            f"mount the library volume, then run {verb} again",'''
+new = '''            "mount the library volume, then run crate sync mark again",'''
