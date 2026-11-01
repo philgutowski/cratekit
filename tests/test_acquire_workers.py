@@ -366,8 +366,9 @@ def test_the_refused_landing_left_as_evidence_survives_the_sweep(cfg, script, li
     """The deliberate half of R-291, and the reason the sweep removes only empties.
 
     A landing ``checked_landing`` refused stays where it fell because it is the
-    evidence for diagnosing the next demotion. The job FAILS, which is terminal,
-    so a sweep keyed on the job state alone would delete it. Keyed on the
+    evidence for diagnosing the next demotion. The job ends, SUCCEEDED since
+    U169 declines a policy refusal, which is terminal, so a sweep keyed on the
+    job state alone would delete it. Keyed on the
     filesystem refusing to remove a directory with something in it, it cannot.
     """
     script.landings = landings("1", kind="lossy", offer_lossless=True)
@@ -375,7 +376,7 @@ def test_the_refused_landing_left_as_evidence_survives_the_sweep(cfg, script, li
     drive(resume_argv(failed))
     evidence = staging_tree(cfg) / failed / "0" / "1.mp3"
     assert evidence.is_file(), "the fixture did not leave a refused landing"
-    assert job_of(failed).state is jobs.JobState.FAILED
+    assert job_of(failed).state in jobs.TERMINAL_STATES
 
     queued(listed(library, [("2", "B", "U")], name="second.json"))
 
@@ -732,9 +733,11 @@ def test_a_lossy_landing_under_strict_policy_is_refused_at_the_item_with_the_cod
 
     code, envelope = drive(resume_argv(job_id))
 
-    assert code != int(ExitCode.OK)
+    # U169: refused for good by the policy is SETTLED, not failed. The item is
+    # skipped with the cause it was refused under, and the verb names it.
+    assert code == int(ExitCode.OK), envelope
     item = items_of(job_id)[0]
-    assert item.state is jobs.ItemState.FAILED
+    assert item.state is jobs.ItemState.SKIPPED
     assert item.cause is not None
     assert item.cause.reason == "lossy-refused"
     assert "MP3" in item.cause.message
@@ -743,6 +746,144 @@ def test_a_lossy_landing_under_strict_policy_is_refused_at_the_item_with_the_cod
     assert not (staging / "1.mp3").exists(), "a refused landing was committed"
     evidence = staging / acquire_cli.ACQUIRE_STAGING_DIRNAME / job_id / "0" / "1.mp3"
     assert evidence.is_file(), "the refused file was not left as evidence"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U169: a list whose only failures are policy refusals ends ok
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+FOUR = [("1", "Aurora Bloom", "Sun Path"), ("2", "B", "U"), ("3", "C", "V"), ("4", "D", "W")]
+
+
+def test_three_landed_and_one_refused_by_policy_ends_ok_with_a_warning_naming_it(
+    cfg, script, library
+):
+    """Sitting 47: 116 of 117 landed, the last was lossy only, and the verb
+    said ``failed (REFUSED_BY_POLICY)``."""
+    script.landings = landings("2", "3", "4")
+    script.landings["1"] = Landing(kind="lossy", offer_lossless=False)
+    job_id = queued(listed(library, FOUR))
+
+    code, envelope = drive(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "ok"
+    assert job_of(job_id).state is jobs.JobState.SUCCEEDED
+    assert states(job_id) == {
+        "1": jobs.ItemState.SKIPPED,
+        "2": jobs.ItemState.DONE,
+        "3": jobs.ItemState.DONE,
+        "4": jobs.ItemState.DONE,
+    }
+    (warning,) = [w for w in envelope["warnings"] if w["code"] == acquire_cli.DECLINED_WARNING]
+    assert warning["message"].startswith("Sun Path by Aurora Bloom (1) was not acquired")
+    assert "lossy-refused" in warning["message"]
+
+
+def test_the_warning_is_the_same_when_the_finished_job_is_asked_about_again(
+    cfg, script, library
+):
+    script.landings = landings("2", "3", "4")
+    script.landings["1"] = Landing(kind="lossy", offer_lossless=False)
+    job_id = queued(listed(library, FOUR))
+    _code, first = drive(resume_argv(job_id))
+
+    code, again = drive(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), again
+    named = [w for w in again["warnings"] if w["code"] == acquire_cli.DECLINED_WARNING]
+    assert named == [w for w in first["warnings"] if w["code"] == acquire_cli.DECLINED_WARNING]
+    assert len(named) == 1
+
+
+def test_the_human_output_says_ok_and_names_the_refused_track(cfg, script, library):
+    script.landings = landings("2", "3", "4")
+    script.landings["1"] = Landing(kind="lossy", offer_lossless=False)
+    job_id = queued(listed(library, FOUR))
+
+    code, text = drive_human(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), text
+    assert text.splitlines()[0] == "acquire.download: ok", text
+    assert f"  job: {job_id}, succeeded" in text.splitlines(), text
+    assert any(
+        line.startswith("warning [acquire-refused]: Sun Path by Aurora Bloom") for line in text.splitlines()
+    ), text
+
+
+def test_three_landed_and_one_network_failure_still_fails(cfg, script, library):
+    script.landings = landings("1", "2", "3", "4")
+    script.landings["1"].fetch_raises = RuntimeError("connection reset by peer")
+    job_id = queued(listed(library, FOUR))
+
+    code, envelope = drive(resume_argv(job_id))
+
+    assert code != int(ExitCode.OK), envelope
+    assert job_of(job_id).state is jobs.JobState.FAILED
+    assert states(job_id)["1"] is jobs.ItemState.FAILED
+    assert not [w for w in envelope["warnings"] if w["code"] == acquire_cli.DECLINED_WARNING]
+
+
+def test_a_refusal_beside_a_network_failure_fails_and_keeps_the_refusal_skipped(
+    cfg, script, library
+):
+    script.landings = landings("2", "3", "4")
+    script.landings["1"] = Landing(kind="lossy", offer_lossless=False)
+    script.landings["2"].fetch_raises = RuntimeError("connection reset by peer")
+    job_id = queued(listed(library, FOUR))
+
+    code, envelope = drive(resume_argv(job_id))
+
+    assert code != int(ExitCode.OK), envelope
+    assert job_of(job_id).state is jobs.JobState.FAILED
+    assert states(job_id)["1"] is jobs.ItemState.SKIPPED
+    assert states(job_id)["2"] is jobs.ItemState.FAILED
+
+
+def test_a_track_the_provider_no_longer_has_is_declined_as_well(cfg, script, library):
+    """``unavailable-permanent`` is filed in the same exit code class as a
+    policy refusal, and no resume can bring a delisted track back."""
+    script.landings = landings("1", "2")
+    script.landings["1"].offer_raises = LookupError("404 not found")
+    job_id = queued(listed(library, [("1", "A", "T"), ("2", "B", "U")]))
+
+    code, envelope = drive(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), envelope
+    assert causes(job_id) == {"1": "unavailable-permanent"}
+    assert states(job_id)["1"] is jobs.ItemState.SKIPPED
+
+
+def test_the_declined_warnings_name_skipped_tracks_and_never_a_failed_one(
+    cfg, script, library
+):
+    """Read at the function, because a job holding a failed item refuses
+    before the verb returns its warnings, so no envelope can show the
+    difference; the composers that read a job's warnings themselves can."""
+    script.landings = landings("2", "3", "4")
+    script.landings["1"] = Landing(kind="lossy", offer_lossless=False)
+    script.landings["2"].fetch_raises = RuntimeError("connection reset by peer")
+    job_id = queued(listed(library, FOUR))
+    drive(resume_argv(job_id))
+
+    with jobs.open_store() as store:
+        found = acquire_cli.declined_warnings(store, jobs.get(store, job_id))
+
+    assert [w["message"].split(" (")[0] for w in found] == ["Sun Path by Aurora Bloom"], found
+    assert states(job_id)["2"] is jobs.ItemState.FAILED
+
+
+def test_only_a_permanent_cause_in_the_policy_class_is_refused_for_good():
+    from cratekit.core.cause import refuse
+
+    assert acquire_cli.refused_for_good(refuse("lossy-refused", "x").cause)
+    assert acquire_cli.refused_for_good(refuse("unavailable-permanent", "x").cause)
+    assert not acquire_cli.refused_for_good(
+        refuse("lossy-refused", "x", retryable=True).cause
+    ), "a retryable refusal must stay a failure a resume can reach"
+    assert not acquire_cli.refused_for_good(refuse("unavailable-transient", "x").cause)
+    assert not acquire_cli.refused_for_good(refuse("output-exists", "x").cause)
 
 
 def test_a_lossy_offer_under_strict_policy_is_refused_before_anything_is_fetched(
