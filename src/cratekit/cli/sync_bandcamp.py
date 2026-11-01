@@ -290,19 +290,21 @@ def _batch_of(job: jobs.Job) -> str:
     return str((job.payload or {}).get(bandcamp_cli.BATCH) or "")
 
 
-def _open_fetch(cfg: config.Config, batch: str) -> jobs.Job | None:
-    """The open fetch into ``batch`` to drive on, or None; one into another batch is raised.
+def _open_fetch(cfg: config.Config, batch: str) -> list[jobs.Job]:
+    """Every open fetch into ``batch``, oldest first; one into another batch is raised.
 
     A FETCH LEFT OPEN HOLDS ITS PURCHASES UNRECORDED, so the plan offers them
-    again and a second fetch would download them a second time. The one into
-    this batch is driven on; one into another batch is named, since which
-    batch a person continues is theirs to say.
+    again and a second fetch would download them a second time. Each one into
+    this batch is driven on, every one and not only the newest, so none is
+    left open and unnamed behind a run that reached its gate; one into
+    another batch is named, since which batch a person continues is theirs
+    to say.
     """
     held = [job for job in _fetch_jobs(cfg) if job.is_open()]
     for job in held:
         if _batch_of(job) != batch:
             raise _Elsewhere(job, _batch_of(job))
-    return held[0] if held else None
+    return list(reversed(held))
 
 
 def _fetched(report: tail.Chain, job: jobs.Job) -> None:
@@ -337,8 +339,9 @@ def _fetched(report: tail.Chain, job: jobs.Job) -> None:
             "reason": item.cause.reason if item.cause else None,
             "message": item.cause.message if item.cause else None,
         }
-        for item in held
-        if item in permanent or (item.state is jobs.ItemState.SKIPPED and item.cause is not None)
+        # THE FETCH NEVER SKIPS AN ITEM, unlike ``acquire download`` since U169:
+        # a release it refuses fails for good, so the failed items are all.
+        for item in permanent
     ]
     report.summary["fetched"].extend(named(item) for item in done)
     report.summary["fetch_refused"].extend(refused)
@@ -366,11 +369,9 @@ def _drive_open(report: tail.Chain, cfg: config.Config, batch: str) -> None:
     Before the plan, because what it fetches is recorded as it goes, and a
     plan asked first would offer those purchases again.
     """
-    held = _open_fetch(cfg, batch)
-    if held is None:
-        return
-    report.check(FETCH, "info", f"driving on the fetch {held.job_id} left open into {batch}")
-    _fetched(report, tail.settle(report, FETCH, held))
+    for held in _open_fetch(cfg, batch):
+        report.check(FETCH, "info", f"driving on the fetch {held.job_id} left open into {batch}")
+        _fetched(report, tail.settle(report, FETCH, held))
 
 
 def _fetch(report: tail.Chain, cfg: config.Config, batch: str, sellers: Sequence[str] | None) -> None:

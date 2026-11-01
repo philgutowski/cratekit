@@ -260,6 +260,8 @@ def test_an_expired_session_stops_at_the_plan_with_the_login_step_before_any_dow
     assert _fetch_jobs() == []
     assert account_.downloaded == []
     assert _summary(envelope)["stopped_at"] == "plan"
+    # NOTHING WAS FETCHED, so the refusal names no batch folder to continue.
+    assert not any("kept in its batch folder" in step for step in cause["remediation"]["steps"])
 
 
 def test_nothing_new_ends_with_no_fetch_no_tail_and_no_landing(
@@ -553,6 +555,63 @@ def test_a_fetch_parked_by_the_session_ends_blocked_and_the_next_run_drives_it_o
     assert [one.job_id for one in _fetch_jobs()] == [job.job_id], "driven on, not queued twice"
     assert chain.calls[0] == ["acquire", "bandcamp-fetch", "--job", job.job_id]
     assert _staged(signed_in) == [OTHER_FILE]
+
+
+def test_two_fetches_left_open_in_the_batch_are_both_driven_on_oldest_first(
+    signed_in, account, puls, chain
+):
+    """Two hand run fetches into one batch, both parked: a run drives every one."""
+    original = account.get
+    state = {"expired": True}
+
+    def expiring(url, *, cookie):
+        if "/download" in url and state["expired"]:
+            return type(original(url, cookie=cookie))(403, "forbidden")
+        return original(url, cookie=cookie)
+
+    account.get = expiring
+    drive(["acquire", "bandcamp-fetch", "--seller", "otherlabel", "--batch", BATCH])
+    bandcamp_cli.forget()
+    drive(["acquire", "bandcamp-fetch", "--seller", "otherlabel", "--batch", BATCH])
+    newest, oldest = _fetch_jobs()
+    assert str(oldest.state) == str(newest.state) == "blocked"
+    state["expired"] = False
+    bandcamp_cli.forget()
+
+    code, envelope = run("--seller", "otherlabel", "--batch", BATCH)
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert chain.calls[:2] == [
+        ["acquire", "bandcamp-fetch", "--job", oldest.job_id],
+        ["acquire", "bandcamp-fetch", "--job", newest.job_id],
+    ]
+    assert not any(job.is_open() for job in _fetch_jobs()), "no fetch is left open behind the gate"
+    assert _summary(envelope)["fetch_jobs"] == [oldest.job_id, newest.job_id]
+    assert _staged(signed_in) == [OTHER_FILE]
+
+
+def test_the_tags_are_read_from_the_files_the_name_step_renamed(
+    signed_in, account, puls, chain, monkeypatch
+):
+    """``name apply`` renames every staged file; the label is read off the renamed ones."""
+
+    def renaming(argv):
+        if argv[:1] == ["-d"]:
+            folder = Path(argv[-1])
+            for path in sorted(folder.iterdir()):
+                path.rename(folder / f"01A - 124 - {path.name}")
+        return chain(argv)
+
+    monkeypatch.setattr(tail_chain, "dispatch", renaming)
+
+    code, envelope = run("--seller", "PULS", "--batch", BATCH)
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    summary = _summary(envelope)
+    assert summary["staged"] == sorted(f"01A - 124 - {name}" for name in PULS_FILES)
+    assert summary["tags_unread"] == []
+    (landed,) = chain.landing.landed
+    assert landed[-3:] == ["--name", "2026-11-01 Bandcamp PULS", "--label-from-tags"]
 
 
 def test_an_open_fetch_into_another_batch_is_named_and_nothing_is_fetched(
