@@ -808,6 +808,8 @@ def _download_job(store: jobs.JobStore, listed: Path, cfg: config.Config) -> job
 
 def _download(report: _Pass, listed: _Listed, cfg: config.Config) -> int:
     """Download the list, skip what was refused for good, and return how many landed."""
+    from cratekit.acquire import cli as acquire_cli  # noqa: PLC0415 - one module's reading
+
     with jobs.open_store() as store:
         job = _download_job(store, listed.path, cfg)
         if (
@@ -826,27 +828,18 @@ def _download(report: _Pass, listed: _Listed, cfg: config.Config) -> int:
         with jobs.open_store() as store:
             job = jobs.get(store, job_id)
     job = tail.settle(report, DOWNLOAD, job)
+    # THE ONE READING OF A SETTLED DOWNLOAD (R-1115), shared with ``label sync
+    # --go``: SUCCEEDED, or FAILED only by tracks refused for good. A track the
+    # download declined is refused too (U169): since that unit a policy
+    # refusal settles the item as skipped and the job succeeds, so read alone
+    # the failed items would report a clean download over a track that never
+    # landed.
     with jobs.open_store() as store:
-        held = jobs.items(store, job.job_id)
-    done = [item for item in held if item.state is jobs.ItemState.DONE]
-    failed = [item for item in held if item.state is jobs.ItemState.FAILED]
-    permanent = [item for item in failed if item.cause is not None and not item.cause.retryable]
-    settled_with_refusals = job.state is jobs.JobState.FAILED and len(permanent) == len(failed)
-    if job.state is not jobs.JobState.SUCCEEDED and not settled_with_refusals:
+        read = acquire_cli.read_download(store, job)
+    if not read.settled:
         raise _Stop(DOWNLOAD, tail.job_error(report, job))
-    # A TRACK THE DOWNLOAD DECLINED IS REFUSED TOO (U169). Since that unit a
-    # policy refusal settles the item as skipped and the job succeeds, so the
-    # failed items above are only what an earlier build recorded; read alone
-    # they would report a clean download over a track that never landed.
-    refused = [
-        {
-            "item_id": item.item_id,
-            "reason": item.cause.reason if item.cause else None,
-            "message": item.cause.message if item.cause else None,
-        }
-        for item in held
-        if item in permanent or (item.state is jobs.ItemState.SKIPPED and item.cause is not None)
-    ]
+    done = read.done
+    refused = [dict(row) for row in read.refused]
     report.summary["download_job"] = job.job_id
     report.summary["download_refused"] = refused
     if refused:
@@ -872,10 +865,10 @@ def _download(report: _Pass, listed: _Listed, cfg: config.Config) -> int:
     report.check(
         DOWNLOAD,
         "ok",
-        f"download job {job.job_id} landed {len(done)} track(s)"
+        f"download job {job.job_id} landed {done} track(s)"
         + (f"; {len(refused)} refused and skipped" if refused else ""),
     )
-    return len(done)
+    return done
 
 
 def _attended(ctx: Context, report: _Pass, stop: _Attend) -> Envelope:

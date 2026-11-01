@@ -82,6 +82,23 @@ def tail(monkeypatch) -> Tail:
     return stand_in
 
 
+@pytest.fixture(autouse=True)
+def no_vocal_model(monkeypatch) -> None:
+    """The vocal model unable to score, so the tail skips its rescore every time.
+
+    PINNED, NOT INHERITED. ``vocals.unavailable`` reads a loader bound in this
+    process as able, and an analysis worker driven by an earlier test in the
+    same xdist worker leaves one bound. The tail then queues ``analyze vocals
+    --unscored`` and every exact list of the tail's verbs here fails, on some
+    distributions of the suite and not others: measured at R-1115, where the
+    mutation driver's null control killed one such test twice.
+    """
+    from cratekit.analysis import vocals
+
+    monkeypatch.setattr(vocals, "_VOCAL_LOADER", None)
+    monkeypatch.setattr(vocals, "missing_requirement", lambda: "the vocal model is not installed here")
+
+
 @pytest.fixture
 def script(monkeypatch) -> Script:
     fresh = Script()
@@ -1103,3 +1120,292 @@ def test_a_go_resuming_an_earlier_download_lands_it_under_that_gos_manifest_and_
         "--manifest", first.payload[go.ORIGIN_KEY]["manifest"],
         "--pass", default_name(first_run),
     ]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 5. R-1115: a track refused for good is named and skipped, and the rest lands
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def one_release_answered(monkeypatch, script, tracks: int = 2) -> None:
+    """One label answered ``all``, one release of ``tracks`` tracks, each downloadable."""
+    register()
+    bind(monkeypatch, {"tide-works": [("r1", "2026", tracks)]})
+    next_question()
+    answer("tide-works", "all")
+    land_every(script, ("r1", tracks))
+
+
+def already_staged(cfg: config.Config, *track_ids: str) -> None:
+    """A file at each track's staging name, so its download is refused ``output-exists``."""
+    folder = Path(staged(cfg))
+    folder.mkdir(parents=True, exist_ok=True)
+    for track_id in track_ids:
+        (folder / f"{track_id}.wav").write_bytes(b"kept on purpose")
+
+
+def refused_ids(envelope: dict) -> list[str]:
+    cause = envelope.get("cause") or {}
+    data = (cause.get("detail") or {}).get("label_sync") or envelope["data"]
+    return [row["item_id"] for row in data["summary"]["go"]["refused"]]
+
+
+def test_a_release_whose_second_track_lands_lossy_runs_the_tail_on_the_first_and_names_it(
+    installed, monkeypatch, script, tail
+):
+    one_release_answered(monkeypatch, script)
+    script.landings["t-r1-2"] = Landing(kind="lossy")
+
+    run_id, code, envelope = approved_go()
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert envelope["outcome"] == "pending"
+    assert tail.calls[-1] == [
+        "intake", "land", staged(installed),
+        "--manifest", envelope["data"]["summary"]["go"]["manifest"],
+        "--pass", default_name(run_id),
+    ], "the tail did not run on to the landing"
+    downloaded = check(envelope, "downloaded")
+    assert downloaded["status"] == "ok"
+    assert "1 of 2 track(s) downloaded" in downloaded["detail"]
+    assert "1 refused for good and skipped" in downloaded["detail"]
+    assert "t-r1-2 (lossy-refused)" in downloaded["detail"]
+    assert refused_ids(envelope) == ["t-r1-2"]
+    assert any(
+        "t-r1-2" in warning["message"] and "lossy-refused" in warning["message"]
+        for warning in envelope["warnings"]
+    ), envelope["warnings"]
+    assert "next" not in {one["title"] for one in envelope["data"]["checks"]}
+
+
+def test_a_go_whose_every_track_was_refused_runs_no_tail_and_says_so(
+    installed, monkeypatch, script, tail
+):
+    one_release_answered(monkeypatch, script)
+    script.landings["t-r1-1"] = Landing(kind="lossy")
+    script.landings["t-r1-2"] = Landing(kind="lossy")
+
+    _run, code, envelope = approved_go()
+
+    assert code == int(ExitCode.OK), envelope
+    assert tail.calls == [], "the tail ran over a download that landed nothing"
+    downloaded = check(envelope, "downloaded")
+    assert downloaded["status"] == "fail"
+    assert "0 of 2 track(s) downloaded" in downloaded["detail"]
+    assert "every track was refused for good, so no tail was run" in downloaded["detail"]
+    assert sorted(refused_ids(envelope)) == ["t-r1-1", "t-r1-2"]
+    go_report = envelope["data"]["summary"]["go"]
+    assert go_report[go.LAND_KEY] is None and go_report["next"] == []
+    assert "next" not in {one["title"] for one in envelope["data"]["checks"]}, (
+        "the go named a tail to type over a folder nothing landed in"
+    )
+
+
+def test_a_download_failed_only_by_a_track_refused_for_good_runs_the_tail_on_the_rest(
+    installed, monkeypatch, script, tail
+):
+    """The FAILED half of the rule ``sync land`` reads: ``output-exists`` is not
+    the policy's class, so the item fails rather than being declined, and the
+    job ends FAILED with one track done."""
+    one_release_answered(monkeypatch, script)
+    already_staged(installed, "t-r1-2")
+
+    _run, code, envelope = approved_go()
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    (job,) = our_jobs()
+    assert job.state is jobs.JobState.FAILED, job
+    assert item_states(job.job_id) == {
+        "t-r1-1": jobs.ItemState.DONE, "t-r1-2": jobs.ItemState.FAILED,
+    }
+    assert ("intake", "land") in tail.verbs()
+    assert refused_ids(envelope) == ["t-r1-2"]
+    assert "t-r1-2 (output-exists)" in check(envelope, "downloaded")["detail"]
+    (warning,) = [w for w in envelope["warnings"] if w["code"] == go.REFUSED_WARNING]
+    assert "t-r1-2" in warning["message"] and "output-exists" in warning["message"]
+
+
+def test_a_download_whose_every_track_failed_for_good_runs_no_tail_and_says_so(
+    installed, monkeypatch, script, tail
+):
+    """The engine raises inside the drive when every attempted item failed, so
+    the go reads the job back off the queue rather than the refusal."""
+    one_release_answered(monkeypatch, script, tracks=1)
+    already_staged(installed, "t-r1-1")
+
+    _run, code, envelope = approved_go()
+
+    assert code == int(ExitCode.OK), envelope
+    (job,) = our_jobs()
+    assert job.state is jobs.JobState.FAILED, job
+    assert tail.calls == []
+    assert check(envelope, "downloaded")["status"] == "fail"
+    assert refused_ids(envelope) == ["t-r1-1"]
+
+
+def test_a_transient_failure_still_ends_the_go_on_its_refusal_with_no_tail(
+    installed, monkeypatch, script, tail
+):
+    one_release_answered(monkeypatch, script)
+    script.landings["t-r1-2"] = Landing(
+        fetch_raises=RuntimeError("connection reset by peer"), fetch_raises_times=99
+    )
+
+    _run, code, envelope = approved_go()
+
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "failed"
+    assert envelope["cause"]["retryable"] is True
+    (job,) = our_jobs()
+    assert job.state is jobs.JobState.FAILED
+    assert tail.calls == [], "a retryable failure was read as refused for good"
+
+
+def test_a_resumed_download_failed_only_by_a_refusal_lands_under_the_first_gos_manifest(
+    installed, monkeypatch, script, tail
+):
+    one_release_answered(monkeypatch, script)
+    script.landings["t-r1-2"] = Landing(fetch_raises=cooldown(), fetch_raises_times=1)
+    first_run, code, _parked = approved_go()
+    assert code != int(ExitCode.PENDING_HUMAN) and tail.calls == []
+    (first,) = our_jobs()
+    already_staged(installed, "t-r1-2")
+
+    _run, code, envelope = approved_go()
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert jobs.JobState.FAILED is our_jobs()[0].state
+    assert tail.calls[-1] == [
+        "intake", "land", staged(installed),
+        "--manifest", first.payload[go.ORIGIN_KEY]["manifest"],
+        "--pass", default_name(first_run),
+    ]
+    assert any(
+        w["code"] == go.REFUSED_WARNING and "t-r1-2" in w["message"]
+        for w in envelope["warnings"]
+    ), envelope["warnings"]
+
+
+@pytest.mark.parametrize(
+    "state, items, settled",
+    [
+        pytest.param(
+            jobs.JobState.FAILED,
+            ((jobs.ItemState.DONE, None), (jobs.ItemState.FAILED, "permanent")),
+            True,
+            id="failed-only-by-a-refusal",
+        ),
+        pytest.param(
+            jobs.JobState.FAILED,
+            ((jobs.ItemState.DONE, None), (jobs.ItemState.FAILED, "transient")),
+            False,
+            id="a-failure-a-retry-could-clear",
+        ),
+        pytest.param(
+            jobs.JobState.FAILED,
+            ((jobs.ItemState.DONE, None), (jobs.ItemState.FAILED, None)),
+            False,
+            id="a-failure-recording-no-cause",
+        ),
+        pytest.param(
+            jobs.JobState.FAILED,
+            ((jobs.ItemState.DONE, None), (jobs.ItemState.SKIPPED, "permanent")),
+            False,
+            id="failed-with-no-failed-track",
+        ),
+        pytest.param(
+            jobs.JobState.FAILED,
+            ((jobs.ItemState.FAILED, "permanent"), (jobs.ItemState.PENDING, None)),
+            False,
+            id="a-track-never-attempted",
+        ),
+        pytest.param(
+            jobs.JobState.SUCCEEDED,
+            ((jobs.ItemState.DONE, None), (jobs.ItemState.SKIPPED, "permanent")),
+            True,
+            id="succeeded-with-a-declined-track",
+        ),
+        pytest.param(
+            jobs.JobState.CANCELLED,
+            ((jobs.ItemState.DONE, None), (jobs.ItemState.FAILED, "permanent")),
+            False,
+            id="cancelled",
+        ),
+    ],
+)
+def test_a_download_settles_only_when_nothing_it_did_not_land_could_land_on_a_retry(
+    installed, monkeypatch, state, items, settled
+):
+    """R-1115's one reading, read at the function: a FAILED job settles only when
+    every track it did not land carries a cause no retry can clear."""
+    causes = {
+        "permanent": refuse("output-exists", "a file is already there").cause,
+        "transient": refuse("unavailable-transient", "later", retryable=True).cause,
+        None: None,
+    }
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store, handler_key=go.DOWNLOAD, payload={}, cfg=config.load(), item_ids=("a",)
+        )
+        job = dataclasses.replace(job, state=state)
+        held = [
+            jobs.Item(job_id=job.job_id, item_id=f"i{n}", ordinal=n, state=item_state,
+                      cause=causes[cause])
+            for n, (item_state, cause) in enumerate(items, start=1)
+        ]
+        monkeypatch.setattr(jobs, "items", lambda _store, _job_id: held)
+        read = acquire_cli.read_download(store, job)
+
+    assert read.settled is settled
+    assert read.done == sum(1 for one, _cause in items if one is jobs.ItemState.DONE)
+    assert read.landed is (settled and read.done > 0)
+    if settled:
+        assert [row["item_id"] for row in read.refused] == [
+            f"i{n}" for n, (_s, cause) in enumerate(items, start=1) if cause == "permanent"
+        ]
+
+
+def test_a_resumed_download_whose_every_track_was_refused_runs_no_tail_and_says_so(
+    installed, monkeypatch, script, tail
+):
+    """The resume twin of the every track refused scenario, the review's row 1."""
+    one_release_answered(monkeypatch, script, tracks=1)
+    script.landings["t-r1-1"] = Landing(fetch_raises=cooldown(), fetch_raises_times=1)
+    _first, code, _parked = approved_go()
+    assert code != int(ExitCode.PENDING_HUMAN) and tail.calls == []
+    (first,) = our_jobs()
+    already_staged(installed, "t-r1-1")
+
+    _run, code, envelope = approved_go()
+
+    assert code == int(ExitCode.OK), envelope
+    assert tail.calls == [], "the tail ran over a resumed download that landed nothing"
+    resumed = check(envelope, f"resumed.{first.job_id}")
+    assert resumed["status"] == "fail"
+    assert "every track was refused for good, so no tail was run" in resumed["detail"]
+    go_report = envelope["data"]["summary"]["go"]
+    assert go_report[go.LAND_KEY] is None and go_report["next"] == []
+    assert refused_ids(envelope) == ["t-r1-1"]
+    assert "next" not in {one["title"] for one in envelope["data"]["checks"]}
+
+
+@pytest.mark.parametrize(
+    "state",
+    [state for state in jobs.JobState if state not in (jobs.JobState.SUCCEEDED, jobs.JobState.FAILED)],
+)
+def test_no_state_but_succeeded_or_failed_settles_a_download(installed, monkeypatch, state):
+    """Derived from the enum, so a state added later is read here the day it is added."""
+    permanent = refuse("output-exists", "a file is already there").cause
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store, handler_key=go.DOWNLOAD, payload={}, cfg=config.load(), item_ids=("a",)
+        )
+        held = [
+            jobs.Item(job_id=job.job_id, item_id="i1", ordinal=1, state=jobs.ItemState.DONE),
+            jobs.Item(job_id=job.job_id, item_id="i2", ordinal=2, state=jobs.ItemState.FAILED,
+                      cause=permanent),
+        ]
+        monkeypatch.setattr(jobs, "items", lambda _store, _job_id: held)
+        read = acquire_cli.read_download(store, dataclasses.replace(job, state=state))
+
+    assert read.settled is False and read.landed is False
