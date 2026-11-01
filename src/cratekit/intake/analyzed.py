@@ -122,8 +122,13 @@ def identity(plan: AnalyzedPlan) -> dict[str, Any]:
     }
 
 
-def _member(db: Any, content_id: str) -> Member:
-    """Read one row's answer off its collection row. A row that cannot answer stays."""
+def member(db: Any, content_id: str) -> Member:
+    """Read one row's answer off its collection row. A row that cannot answer stays.
+
+    PUBLIC SINCE U167, because ``crate analyze check`` asks the same question of
+    the same rows and must not answer it a second way: this is the one reading
+    of what analysed means, for the clear and for the check.
+    """
     row = db.get_content(ID=content_id)
     if row is None:
         return Member(content_id=content_id, title="", action=WAIT, why=NO_ROW)
@@ -166,7 +171,7 @@ def plan_clear(
             if content_id in seen:
                 continue
             seen.add(content_id)
-            members.append(_member(db, content_id))
+            members.append(member(db, content_id))
     plan = AnalyzedPlan(
         tree_id=tree_id,
         root_id=str(root_id),
@@ -328,5 +333,6 @@ __all__ = [
     "assert_read_back",
     "identity",
     "live_members",
+    "member",
     "plan_clear",
 ]
