@@ -42,8 +42,10 @@ from cratekit.core import config
 from cratekit.core.cause import Cause
 from cratekit.modules.outbound import mirror
 
-#: The frozen record's own schema version.
-VERSION = 1
+#: The frozen record's own schema version. 2 since U150, which froze the
+#: INBOX folder's retirement and the titles INBOX holds; a version 1 record
+#: is planned afresh, never read as a library with no INBOX.
+VERSION = 2
 
 #: How long a frozen plan is kept once another is written.
 KEPT_DAYS = 7
@@ -81,11 +83,14 @@ def _library_json(library: Any) -> dict[str, Any]:
                     }
                     for source in folder.playlists
                 ],
+                "retire": folder.retire,
+                "present": sorted(folder.present),
             }
             for folder in library.folders
         ],
         "refused": {name: cause.to_json() for name, cause in sorted(library.refused.items())},
         "favorites": library.favorites,
+        "inbox": library.inbox,
     }
 
 
@@ -112,12 +117,22 @@ def _library_of(data: Mapping[str, Any]) -> Any:
                     )
                     for source in folder["playlists"]
                 ),
+                retire=_flag(folder["retire"]),
+                present=frozenset(str(one) for one in folder["present"]),
             )
             for folder in data["folders"]
         ),
         refused={str(name): Cause.from_json(cause) for name, cause in data["refused"].items()},
         favorites=str(data["favorites"]),
+        inbox=str(data["inbox"]),
     )
+
+
+def _flag(value: Any) -> bool:
+    """A frozen boolean, refused as unreadable when it is anything else."""
+    if not isinstance(value, bool):
+        raise ValueError(f"a folder's retire is {value!r}, not true or false")
+    return value
 
 
 def freeze(

@@ -2035,10 +2035,15 @@ tracks the account carries. It is a MIRROR, kept by a step of `crate organize`
 on every sitting: tracks are added and removed so each playlist equals its
 rekordbox playlist, a track added by hand on the account comes off, and a
 library track the account cannot match is named in the report and never
-substituted. The product never removes a mirrored folder or playlist, and
-never adopts a playlist: one of the same title a person made in the folder is
-left alone and named. The Favorites folder's playlists are `All Favorites`
-under its own title and `Favorites 2026-10`, `Favorites Undated`.
+substituted. The product never removes a mirrored folder, and never adopts a
+playlist: one of the same title a person made in the folder is left alone and
+named. The Favorites folder's playlists are `All Favorites` under its own
+title and `Favorites 2026-10`, `Favorites Undated`. INBOX is mirrored too
+(U150), one `INBOX <batch>` playlist per live batch directly under it, and a
+batch that leaves INBOX has its mirrored playlist REMOVED at the next refresh,
+the one mirrored playlist the product removes, and only once its title is no
+longer under INBOX at all. A row a label landing recorded its provider track
+for is matched to that track with no request.
 
 *Avoid:* reading it as an export (`crate export playlist`, add only, filed in
 `Exports`) or as a pair (`crate sync pair`, merged both ways).
