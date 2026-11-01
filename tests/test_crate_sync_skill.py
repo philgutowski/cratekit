@@ -146,7 +146,7 @@ def test_continue_is_a_flag_the_decide_verb_takes():
 def test_the_stops_it_branches_on_are_the_ones_sync_land_makes(flat):
     assert f"It stopped at `{tail.LAND_GATE}`" in flat
     assert f"It stopped at `{tail.ACK_STOP}`" in flat
-    assert "`crate session ack --as session`" in flat or "crate session ack --as session" in flat
+    assert "crate session ack --as session" in flat
 
 
 def test_the_summary_fields_it_reads_are_the_ones_sync_land_writes(flat):
