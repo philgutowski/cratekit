@@ -855,6 +855,25 @@ def test_a_track_the_provider_no_longer_has_is_declined_as_well(cfg, script, lib
     assert states(job_id)["1"] is jobs.ItemState.SKIPPED
 
 
+def test_the_declined_warnings_name_skipped_tracks_and_never_a_failed_one(
+    cfg, script, library
+):
+    """Read at the function, because a job holding a failed item refuses
+    before the verb returns its warnings, so no envelope can show the
+    difference; the composers that read a job's warnings themselves can."""
+    script.landings = landings("2", "3", "4")
+    script.landings["1"] = Landing(kind="lossy", offer_lossless=False)
+    script.landings["2"].fetch_raises = RuntimeError("connection reset by peer")
+    job_id = queued(listed(library, FOUR))
+    drive(resume_argv(job_id))
+
+    with jobs.open_store() as store:
+        found = acquire_cli.declined_warnings(store, jobs.get(store, job_id))
+
+    assert [w["message"].split(" (")[0] for w in found] == ["Sun Path by Aurora Bloom"], found
+    assert states(job_id)["2"] is jobs.ItemState.FAILED
+
+
 def test_only_a_permanent_cause_in_the_policy_class_is_refused_for_good():
     from cratekit.core.cause import refuse
 

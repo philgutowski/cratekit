@@ -95,7 +95,7 @@ new = '''    warnings = tuple(warnings)'''
 
 [[rows]]
 id = "A5_warning_names_failed_items"
-description = "declined_warnings: name every item with a cause, failed ones included"
+description = "declined_warnings: name every item with a cause, failed ones included (unreachable through the verb, which refuses a failed job before its warnings; killed at the function)"
 file = "src/cratekit/acquire/cli.py"
 surface = "user"
 tests = ["tests/test_acquire_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
