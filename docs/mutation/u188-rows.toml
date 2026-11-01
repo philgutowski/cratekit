@@ -1,0 +1,194 @@
+name = "u188"
+pass_kind = "light"
+
+# U188 adds no write and no delete. Its guards decide whether a rehearsal
+# reads as the live plan, which is what the session approves a live landing
+# on, so each row is user facing. Rows target the code the unit added.
+
+[[rows]]
+id = "M1_stored_pair_dropped"
+description = "_mapped_back: leave the stored spelling pair out, so FolderPath on a renamed drive is never mapped back (the defect)"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''                (str(scratch_target), str(target)),
+                stored,
+            )'''
+new = '''                (str(scratch_target), str(target)),
+            )'''
+
+[[rows]]
+id = "M2_scratch_stored_under_the_mount"
+description = "_mapped_back: spell the area's folder with no base drive, so the scratch side of the stored pair is the mounted spelling"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''            base_drive=scratch_rows.base_drive,
+            current_drive=scratch_rows.current_drive,'''
+new = '''            base_drive=None,
+            current_drive=scratch_rows.current_drive,'''
+
+[[rows]]
+id = "M3_live_stored_under_the_mount"
+description = "_mapped_back: spell the live folder with no base drive, so the area's FolderPath maps to the mounted spelling the live rows do not carry"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''            target, base_drive=rows.base_drive, current_drive=rows.current_drive'''
+new = '''            target, base_drive=None, current_drive=rows.current_drive'''
+
+[[rows]]
+id = "M4_staging_pair_dropped"
+description = "_mapped_back: leave the staging pair out, so every from line keeps the area's staging"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''                (str(area.staging), str(planned.folder)),
+                (str(scratch_target), str(target)),'''
+new = '''                (str(scratch_target), str(target)),'''
+
+[[rows]]
+id = "M5_repeat_kept"
+description = "_mapped_back: keep a repeated pair instead of dropping it, so the refusal names the folder pair twice on a drive that never moved"
+file = "src/cratekit/intake/land_cli.py"
+surface = "maintainer"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''    return tuple(
+        dict.fromkeys(
+            (
+                (str(area.staging), str(planned.folder)),
+                (str(scratch_target), str(target)),
+                stored,
+            )
+        )
+    )'''
+new = '''    return (
+        (str(area.staging), str(planned.folder)),
+        (str(scratch_target), str(target)),
+        stored,
+    )'''
+
+[[rows]]
+id = "M6_mapped_as_lines"
+description = "_rehearse_in: map the area's plan after it is printed, so a JSON escaped accent or quote is never mapped (the review's round one)"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''        back = rehearsal.lines(
+            rehearsal.mapped(
+                plan_identity(staged, scratch_rows, target=scratch_target, archived=archived),
+                pairs,
+            )
+        )'''
+new = '''        back = rehearsal.mapped(
+            plan_lines(staged, scratch_rows, target=scratch_target, archived=archived), pairs
+        )'''
+
+[[rows]]
+id = "M7_signs_swapped"
+description = "_rehearse_in: compare live first, so a minus line is the live plan's and the refusal's legend is false"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''        differ = rehearsal.differing(back, lines)'''
+new = '''        differ = rehearsal.differing(lines, back)'''
+
+[[rows]]
+id = "M8_fields_left_out"
+description = "_rehearse_in: name no field in the refusal"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''f"{len(differ)} line(s), in {', '.join(_fields_of(differ))}, so nothing "'''
+new = '''f"{len(differ)} line(s), in the plan, so nothing "'''
+
+[[rows]]
+id = "M9_pairs_left_out"
+description = "_rehearse_in: state no pair in the refusal, so the spellings compared are not named"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''                + ", ".join(f"{scratch} to {live}" for scratch, live in pairs)'''
+new = '''                + "the area's paths"'''
+
+[[rows]]
+id = "M10_detail_mapped_dropped"
+description = "_rehearse_in: carry no mapped pairs in the refusal's detail"
+file = "src/cratekit/intake/land_cli.py"
+surface = "maintainer"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''                detail={"differs": differ, "mapped": [list(pair) for pair in pairs]},'''
+new = '''                detail={"differs": differ},'''
+
+[[rows]]
+id = "M11_fields_last_part"
+description = "_fields_of: name a field by its last part alone, so a vox row's path reads as rows"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''        names.append(path.split(".", 1)[-1])'''
+new = '''        names.append(path.rsplit(".", 1)[-1])'''
+
+[[rows]]
+id = "M12_fields_keep_indices"
+description = "_fields_of: keep the indices, so one field is named once per row"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''        path = re.sub(r"\[\d+\]", "", line[2:].split(" = ", 1)[0])'''
+new = '''        path = line[2:].split(" = ", 1)[0]'''
+
+[[rows]]
+id = "M13_fields_repeated"
+description = "_fields_of: keep every repeat, so a field ten rows differ in is named ten times"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''    return list(dict.fromkeys(names))
+
+
+def _place_owned('''
+new = '''    return names
+
+
+def _place_owned('''
+
+[[rows]]
+id = "M14_mapped_in_given_order"
+description = "rehearsal.mapped: apply the pairs in the order given, so a scratch spelling holding another's is half mapped"
+file = "src/cratekit/core/rehearsal.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''            key=lambda pair: len(pair[0]),
+            reverse=True,'''
+new = '''            key=lambda pair: 0,
+            reverse=True,'''
+
+[[rows]]
+id = "M15_mapped_shortest_first"
+description = "rehearsal.mapped: shortest scratch spelling first"
+file = "src/cratekit/core/rehearsal.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''            key=lambda pair: len(pair[0]),
+            reverse=True,'''
+new = '''            key=lambda pair: len(pair[0]),
+            reverse=False,'''
+
+[[rows]]
+id = "M16_mapped_by_live_length"
+description = "rehearsal.mapped: order by the live spelling's length rather than the scratch one's"
+file = "src/cratekit/core/rehearsal.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''            key=lambda pair: len(pair[0]),'''
+new = '''            key=lambda pair: len(pair[1]),'''
+
+[[rows]]
+id = "M17_empty_scratch_kept"
+description = "rehearsal.mapped: keep an empty scratch spelling, which inserts the live one between every character"
+file = "src/cratekit/core/rehearsal.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''            ((scratch, live) for scratch, live in replacements if scratch),'''
+new = '''            ((scratch, live) for scratch, live in replacements),'''

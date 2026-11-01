@@ -1913,6 +1913,20 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # decides. PRECONDITION on ``label-playlists-ambiguous``'s argument:
         # the remedy is a rename by hand. Nothing was written for that folder.
         "account-mirror-ambiguous": ExitCode.PRECONDITION,
+        # ── U167's two, appended for the same reason ───────────────────────────
+        #
+        # ``analyze check`` read rekordbox's result for the landed rows and it
+        # looks wrong: variable grids on rows not marked dyn, an analysed row's
+        # grid unreadable, or title keys agreeing far below the recorded rate.
+        # LIBRARY_PREREQUISITE, the library's state band, on the argument the
+        # code's remedy makes: the fix is done in rekordbox, by analysing again.
+        # Its own slug so a skill waiting on the check tells it from waiting,
+        # which is a pending action and exits 12. Nothing was written.
+        "analysis-suspect": ExitCode.LIBRARY_PREREQUISITE,
+        # ``analyze check --pass`` or ``--session`` named a landing no closed
+        # landing record carries, so there are no landed rows to read. A
+        # refusal rather than an empty scope, which would exit 0 over a typo.
+        "analysis-check-landing-unknown": ExitCode.PRECONDITION,
         # ── U178's one, appended for the same reason ───────────────────────────
         #
         # ``tag folder`` had a genre to write, a label's or a catalogue's, and the

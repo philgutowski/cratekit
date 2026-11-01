@@ -11,7 +11,7 @@ applies_when:
   - "A write sets or changes djmdContent.FolderPath and then reads rows back by path to judge the commit"
   - "The library's djmdProperty records a base drive that differs from the mounted volume, as the live library's does"
   - "A LIKE or prefix read over FolderPath is written from a path the code composed on this machine"
-tags: [djmdContent, FolderPath, base-drive, stored_folder_path, confinement, LIKE, u154, shelve]
+tags: [djmdContent, FolderPath, base-drive, stored_folder_path, confinement, LIKE, u154, shelve, rehearsal, u188]
 ---
 
 ## The trap
@@ -59,3 +59,18 @@ test_a_library_whose_drive_was_renamed_stores_and_confines_under_the_base_drive`
 monkeypatches `rb_writer.recorded_db_drives` to return a base drive other
 than the root and asserts the rows are stored under it and the commit lands.
 Any writer that reads rows back by path needs the same test.
+
+## Seen again, U188, 2026-10-31
+
+The same class, one module over, in a comparison rather than a read. The
+landing rehearsal maps its scratch area's plan back to the live plan before
+comparing them, and it mapped only the mounted spellings, so on the live
+library every `FolderPath` line differed by the area's prefix under the base
+drive and every rehearsal refused `decision-stale`. Every test passed,
+because the rehearsal fixture's drives agreed. The fix spells the stored pair
+with `stored_folder_path` and the drives the plan read, never a rule of its
+own. The review then found a second spelling in the same comparison: the
+plan lines are JSON values, which escape every character outside ASCII, so a
+mapping applied to the text could never meet an accented path. Map values,
+then print them. Any comparison of two plans over different paths needs a
+fixture whose base drive is not its mount and a path that is not ASCII.

@@ -39615,3 +39615,286 @@ screen, or a line of noise above a correct refusal.
 **Closes when:** a gated verb reaches the provider in the same process, at
 which point the outer dispatch should skip its spend line for a continued run.
 Ledger only.
+
+---
+
+## R-1089. The longest first order in rehearsal.mapped and the dropped repeat pair in _mapped_back are pinned by no rehearsal a library can produce
+
+**Found:** at the review of #399, U188, 2026-10-31.
+
+**The mechanism.** `rehearsal.mapped` applies its pairs longest scratch
+spelling first, so a pair whose scratch spelling holds another's is not half
+mapped. The review drove the real pairs `_mapped_back` makes and found the
+unsorted order still yields the live stored spelling, because the shorter
+mounted pair rewrites the stored scratch path into the base drive followed by
+the live rest, which is the stored live spelling. Only the unit test, over a
+pair shape `stored_folder_path` does not produce, kills the order's removal.
+Likewise `_mapped_back` drops a repeated pair on a drive that never moved;
+keeping it repeats one clause in a refusal's message. Its mutation row, M5,
+killed nothing in the rehearsal and landing suites, and its one full suite
+death was `tests/test_restore_cli.py::test_what_is_offered_is_what_is_pulled`,
+a test that cannot reach the mapping.
+
+**Measured cost.** None driven. Both are guards over shapes no candidate
+layout produced: one candidate was driven, an area outside the current drive
+with its target inside it, and none produces it, since the area lives under
+the library root that holds the database the drive is recorded for.
+
+**Closes when:** a layout that needs the order is found and tested end to
+end, or the guards are judged unneeded. Ledger only.
+
+---
+
+## R-1090. A rehearsal's plan lines are JSON values, so a path with an accent prints as an escape on the refusal and the gate screen
+
+**Found:** at the review of #399, U188, 2026-10-31.
+
+**The mechanism.** `rehearsal.lines` dumps every leaf with `json.dumps`, whose
+default escapes each character outside ASCII and each quote. U188 maps the
+area's plan as values before it is printed, so the comparison is right, but a
+line the refusal or the live gate's `differs from the rehearsal` list prints
+still spells `café` as `café`, and the person reading it decodes it by
+eye.
+
+**Measured cost.** Driven with a batch named `2026-09-29_café`: the comparison
+is equal and nothing is shown. Shown only when the plans really differ, as an
+escape, which is hard to read and not false. Changing the dump changes the
+recorded lines of every kept rehearsal, which compare by digest and are
+unaffected, so the fix is cheap.
+
+**Closes when:** `rehearsal.lines` dumps with `ensure_ascii=False`, with a test
+that a refusal names an accented path as written. Ledger only.
+
+---
+
+## R-1091. A full label playlists build stopped by the provider's breaker keeps nothing it read, so the next run starts the crawl over
+
+**Found:** at the build of #402, U191, 2026-10-31.
+
+**The mechanism.** `crate label playlists LABEL` without `--releases` reads the
+listing, then every listed release's tracks through
+`catalogue.ReleaseTracks`, two provider calls a release, all in memory. A
+breaker trip part way raises out of `_grouped` in
+`src/cratekit/label/playlists_cli.py` and everything read is dropped, so the
+next run lists and reads from the first release again. The same is true after
+a clean read: the explicit gate exits, and the run that carries out the answer
+reads the whole catalogue a second time. The brief's fourth requirement asked
+for a resume or for the reason there is none.
+
+**Why it is not built in U191.** A resumable read needs a store of release
+reads that outlives the run, and a store like that has to decide how long a
+read stays true: a release whose tracks the provider changed after it was
+cached would be planned from the old rows, and the gate's digest would bind an
+answer to a catalogue nobody read that day. That is a choice about what a
+person approves, not about code, and it was not this unit's to make without
+asking. U191 made the cost visible instead: over 500 estimated calls a full
+build stops at `label.playlists.crawl` before any release is read, and a label
+sync's releases reach the year playlists through `--releases` without the
+crawl.
+
+**Measured cost.** On 2026-10-31 a full build of Defected (12,368 releases
+listed) spent 3,026 provider calls, met 43 rate limited answers and was parked
+for 15 minutes before any plan was shown; the estimate now in front of that
+gate is about 24,700 calls and nearly seven hours at the default pace, so a
+full build of a label that size cannot finish inside one breaker window and
+starts over each time. Not driven live in the cloud.
+
+**Closes when:** a full build keeps its release reads per label in library
+state, with a stated age past which a read is taken again, resumes from them
+after a breaker trip or a gate, and shows on its screen how many reads were
+reused and how old the oldest is. Earns an issue: a workflow a DJ needs, the
+first full build of a large label, cannot finish (board bar c).
+
+---
+
+## R-1092. A label playlists build from a sync's releases does not ask the tombstone a full build asks, so a release deleted on purpose can reach its year playlist
+
+**Found:** at the review of #402, U191, 2026-10-31.
+
+**The mechanism.** A full `crate label playlists LABEL` confirms the listing
+through `sweep.confirm_listed`, which asks the version tombstone first and
+counts a suppressed release as "deleted on purpose". `--releases` reads the
+releases a go took straight from the label sync record in
+`src/cratekit/label/playlists_cli.py` (`read_taken`) and never asks the
+tombstone, and its screen counts no suppressed release.
+
+**Measured cost.** Driven at the review with a tombstone written to the store
+for a taken release's artist and title: the full build left that release out
+and said so, and `--releases` added its tracks to the year playlist with a
+screen saying nothing was left out. Reach is narrow and was not driven
+through `crate deletion`: the tombstone is keyed by a deleted track version's
+artist and title, so it matches a release only when the two coincide, as on a
+single, and the go itself would already have downloaded the release.
+
+**Closes when:** `read_taken` asks the same suppression reader over each taken
+release's recorded artist and title before reading it, and the screen counts
+what it suppressed. Ledger only: the reach is a single deleted on purpose and
+then taken again by a sync.
+
+---
+
+## R-1093. A taken release whose every track the provider will not play still makes its year playlist, empty, on a label playlists build
+
+**Found:** at the review of #402, U191, 2026-10-31.
+
+**The mechanism.** `_grouped` in `src/cratekit/label/playlists_cli.py` opens a
+year before it filters out the tracks the provider will not play, so a release
+whose every track is unavailable yields a year with no track. `folders.plan`
+then plans that year as a create with nothing to add, and the folder with it.
+The full build has had the same shape since R-835; `--releases` makes it the
+whole plan when the one taken release is that release.
+
+**Measured cost.** Driven at the review on the fake catalogue: the plan showed
+"Kompakt 2025: create it private, put it in the folder, add 0 of 0 track(s)",
+and the apply made the folder and an empty playlist. It is shown before the
+gate, so nothing is written unseen. Not driven against the provider: how often
+every track of a release a go just took stops playing is unmeasured.
+
+**Closes when:** a year opens only once a playable track is found, and a
+release with none is counted on the screen with the undated. Ledger only.
+
+---
+
+## R-1094. The full label playlists build's estimate leaves out the listing's own pages, read again on each of its runs
+
+**Found:** at the review of #402, U191, 2026-10-31.
+
+**The mechanism.** `Estimate.calls` in `src/cratekit/label/playlists_cli.py`
+counts two calls per listed release, the track reads. The listing itself, a
+page of 100 releases a call, is read before the crawl gate and again by the run
+that answers it and by the run that applies the plan, and none of those pages
+is in the figure.
+
+**Measured cost.** On Defected's 12,368 releases that is about 124 calls a run,
+about 370 across the three runs, beside an estimate of 24,736. The screen calls
+its figure a floor and says the apply reads again, so nothing false is said.
+Computed from the page size, not driven against the provider.
+
+**Closes when:** the estimate adds the listing's pages for each run it will
+spend them on, or the resume of the full build (the U191 residual on the
+breaker) keeps the listing too. Ledger only.
+
+---
+
+## R-1095. label playlists --releases asks for the provider credential before it reads the local sync record, so a run with nothing taken refuses instead of planning nothing
+
+**Found:** at the review of #402, U191, 2026-10-31.
+
+**The mechanism.** `label_playlists` in `src/cratekit/label/playlists_cli.py`
+resolves the catalogue, which needs the provider session, before it reads the
+label sync record. A label nobody follows is decided before any credential, by
+the module's own rule; a followed label whose record holds nothing a go took
+is not.
+
+**Measured cost.** Driven at the review with the catalogue refusing
+`credential-missing` and an empty record: the run exits on the credential
+rather than ending with `label-playlists-nothing-taken`. Nothing false is
+said, and the person who fixes the credential then gets the right answer.
+
+**Closes when:** the releases build reads the record first and resolves the
+catalogue only when there is a release to read. Ledger only.
+
+---
+
+## R-1096. analyze check calls a grid variable when any one beat differs by a hundredth
+
+**Found:** at the review of #348, U167, 2026-10-31.
+
+**The mechanism.** `rekordbox_check.read_grid` reads a grid as constant only
+when every beat carries the same tempo in hundredths. One beat at 128.01 among
+128.00 makes it variable and the visit suspect, exit 27, "the widest moving
+0.01".
+
+**Measured cost.** Unmeasured: whether rekordbox's Normal analysis ever writes
+such a grid has not been read off a real file, since the container holds none
+and pyrekordbox ships no sample. If it does, every such track reads suspect.
+
+**Closes when:** the attended visit reads real Normal grids and either
+confirms they carry one value or sets a tolerance from what they carry. Ledger
+only.
+
+---
+
+## R-1097. analyze check reads done when the Key column is empty on every analysed row
+
+**Found:** at the review of #348, U167, 2026-10-31.
+
+**The mechanism.** `rekordbox_check.Check.verdict` judges keys only by
+agreement, over rows keyed on both sides. Rows with the Key column empty are
+unkeyed, so with every analysed row unkeyed nothing is compared, the floor is
+None, and the verdict falls to done with exit 0. The brief's verdict rule names
+only variable grids and agreement far below the record, so this follows the
+brief, and the `check.key_column` check says how many rows are empty, as
+`info`.
+
+**Measured cost.** Driven by the review: five rows landed and visited with no
+key, exit 0. A skill reading only the status moves on with no key written. The
+producer, a visit with rekordbox's key analysis off, was not driven against
+rekordbox; U157's brief names KEY off as Phillip's standard setting, so whether
+an empty Key column is wrong or expected after his visit is itself open.
+
+**Closes when:** the attended visit records whether the Key column is filled
+after Phillip's standard settings, and the verdict is changed to match, or this
+is closed as expected. Ledger only: the report names the empty rows, so
+nothing false is said.
+
+---
+
+## R-1098. analyze check with no landing named waits on every never analysed row in the library
+
+**Found:** at the review of #348, U167, 2026-10-31.
+
+**The mechanism.** With no `--pass` or `--session` and INBOX / Analyze empty
+(after `crate inbox analyzed` cleared it, or on a tree not cut over), the scope
+is every live row rekordbox has not analysed, the brief's third scope. Every
+row in it is waiting by construction, so the verb can only answer waiting or
+nothing, and a library holding any old row rekordbox never analysed answers 12
+however many visits follow.
+
+**Measured cost.** Driven by the review on the fixture's two seeded rows: 12,
+and the same after a clear. A skill that ran the check after the clear would
+wait for ever; U173's skill should run it before the clear, or name the pass.
+
+**Closes when:** U173 settles the order the skill runs the check and the
+clear in, or the third scope narrows to rows a landing made. Ledger only.
+
+---
+
+## R-1099. analyze check's three sigma key floor does not flag sitting 47's 98 of 212
+
+**Found:** at the review of #348, U167, 2026-10-31.
+
+**The mechanism.** `rekordbox_check.key_floor` puts the floor at the recorded
+equal rate (158 of 299) less three standard errors of the sample. For 212
+compared keys the floor is 42.6 percent equal, and sitting 47's 98 of 212 is
+46.2 percent, so the brief's motivating key number reads as ordinary.
+
+**Measured cost.** Nothing false is said: the counts, the rate and the floor
+are all on the check. The cost is a threshold choice, three sigma, that calls
+a library agreeing at the recorded rate suspect about once in seven hundred
+checks and lets a rate several points below it through.
+
+**Closes when:** a sitting measures what agreement a good visit actually
+gives, and `KEY_AGREEMENT_SIGMAS` or the reference rate is set from it. Ledger
+only.
+
+---
+
+## R-1100. analyze check's no write test watches Python opens and the bytes, and cannot see a C level create
+
+**Found:** at the review of #348, U167, 2026-10-31.
+
+**The mechanism.** `test_no_file_under_the_library_is_opened_for_writing`
+patches `open`, `io.open` and `os.open` and compares the bytes of the database
+and every analysis file before and after. A new file created under the library
+by SQLite's own C code, which none of those patches sees, passes it. Two
+guards in the analysis file walker are also layered so that each kills nothing
+alone: the tag that overruns the file and the file whose stated length is not
+its size are both caught by the other check.
+
+**Measured cost.** None to a person: the branch makes no such write, which the
+review confirmed by mutation (an UPDATE of the live database and a rewrite of
+an analysis file both fail the test). Maintainer facing.
+
+**Closes when:** the test also lists the library tree before and after, or is
+left as is. Ledger only.

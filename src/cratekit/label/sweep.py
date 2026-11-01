@@ -1129,39 +1129,64 @@ class Confirmed:
     unread: tuple[Unread, ...]
 
 
-def confirmed_releases(
+@dataclass(frozen=True, slots=True)
+class Listed:
+    """One label's catalogue as the crawl lists it, before anything is read per release.
+
+    The first half of :func:`confirmed_releases` (U191): the roster and the
+    paged listing, and no question asked about any one release. ``releases`` is
+    everything the crawl read, in the listing's order, and ``unread`` is every
+    listing it could not read, which a caller must not present as the whole
+    label. ``claimed`` and ``verify`` are what the second half confirms with,
+    built before the crawl so a missing verifier refuses before any call.
+    """
+
+    releases: tuple[Any, ...]
+    unread: tuple[Unread, ...]
+    claimed: str
+    verify: Callable[[str, Any], Mapping[str, Any]]
+
+
+def listed_releases(
     cfg: config.Config, entry: registry.LabelEntry, found: Catalogue
-) -> Confirmed:
-    """Every release of one label the catalogue confirms, with no window and no gate.
+) -> Listed:
+    """Every release the crawl lists for one label, and nothing read per release.
 
-    THE SAME CRAWL :func:`list_for_label` READS, asked the same questions in the
-    same order: the roster through :meth:`LabelSource._artist_for`, the listing
-    through :func:`_crawl_or_refuse`, the tombstone first because it is local,
-    then the verifier, since a roster artist's releases on another label are
-    not this label's. What it leaves out is the review half: no offer window,
-    no queue, no ownership and no genre gate, because a label's folder on the
-    account mirrors its catalogue and not the library.
-
-    A listing that could not be read raises ``run.LookupFailure`` here, as it
-    does for the sweep, and a ``CratekitError`` passes through unchanged.
+    What a full build counts before it decides whether to crawl (U191). A
+    listing that could not be read raises ``run.LookupFailure``, and a
+    ``CratekitError`` passes through unchanged, as :func:`confirmed_releases`
+    says.
     """
     source = LabelSource(
         cfg, registry=registry.Registry(labels={entry.label_id: entry}), catalogue=found
     )
     artist = source._artist_for(entry)
     verify = source._verifier()
-    claimed = entry.match or entry.name
     listed, unread = _crawl_or_refuse(entry, artist)
-    listed.sort(key=_year_of, reverse=True)
+    return Listed(
+        releases=tuple(listed),
+        unread=tuple(unread),
+        claimed=entry.match or entry.name,
+        verify=verify,
+    )
+
+
+def confirm_listed(cfg: config.Config, listed: Listed) -> Confirmed:
+    """The releases of one listing the catalogue confirms, the second half (U191).
+
+    The tombstone first because it is local, then the verifier, since a roster
+    artist's releases on another label are not this label's.
+    """
+    ordered = sorted(listed.releases, key=_year_of, reverse=True)
     tombstoned = _suppression_reader(cfg)
     confirmed: list[Any] = []
     dropped: list[Dropped] = []
     suppressed = 0
-    for release in listed:
+    for release in ordered:
         if tombstoned(release):
             suppressed += 1
             continue
-        verdict = label_verify.verify_release(claimed, release, search=verify)
+        verdict = label_verify.verify_release(listed.claimed, release, search=listed.verify)
         status = str(verdict.get("verdict") or "unconfirmed")
         if status != "confirmed":
             dropped.append(
@@ -1175,11 +1200,33 @@ def confirmed_releases(
         confirmed.append(release)
     return Confirmed(
         releases=tuple(confirmed),
-        listed=len(listed),
+        listed=len(ordered),
         dropped=tuple(dropped),
         suppressed=suppressed,
-        unread=tuple(unread),
+        unread=listed.unread,
     )
+
+
+def confirmed_releases(
+    cfg: config.Config, entry: registry.LabelEntry, found: Catalogue
+) -> Confirmed:
+    """Every release of one label the catalogue confirms, with no window and no gate.
+
+    THE SAME CRAWL :func:`list_for_label` READS, asked the same questions in the
+    same order: the roster through :meth:`LabelSource._artist_for`, the listing
+    through :func:`_crawl_or_refuse`, the tombstone first because it is local,
+    then the verifier, since a roster artist's releases on another label are
+    not this label's. What it leaves out is the review half: no offer window,
+    no queue, no ownership and no genre gate, because a label's folder on the
+    account mirrors its catalogue and not the library.
+
+    Since U191 it is :func:`listed_releases` then :func:`confirm_listed`, so a
+    full build can count the listing before it reads any release.
+
+    A listing that could not be read raises ``run.LookupFailure`` here, as it
+    does for the sweep, and a ``CratekitError`` passes through unchanged.
+    """
+    return confirm_listed(cfg, listed_releases(cfg, entry, found))
 
 
 #: The year a release reads as, ``""`` when it carries none. Public for the
