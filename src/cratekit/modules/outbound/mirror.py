@@ -27,7 +27,10 @@ library row to an account track through ``match_track``, the matcher ``export
 playlist`` uses. A row matched once is linked in the ledger, so a refresh asks
 the provider only about rows it has not matched before, and a row it could not
 match is remembered with what it was asked under and not asked again until that
-changes (R-1031). What exists is reused,
+changes (R-1031). Several releases that all agree with a row are a tie the
+mirror breaks by taking one of them, since a listening copy writes nothing
+back as the row's identity, where a heart or a pair refuses it (R-1032). What
+exists is reused,
 by the ledger's record first and by exact name second, never made twice:
 
 * the folder: the one recorded, or the one root folder of the exact name, or a
@@ -62,7 +65,11 @@ from typing import Any
 from cratekit.core import config
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.modules.outbound import ledger
-from cratekit.modules.outbound.service import UNREADABLE_CANDIDATE, RemoteAccount
+from cratekit.modules.outbound.service import (
+    AGREEING_RELEASES,
+    UNREADABLE_CANDIDATE,
+    RemoteAccount,
+)
 
 _ORIGIN = ("outbound", "mirror")
 
@@ -96,6 +103,11 @@ NO_MATCH = "the account has no track this row's ISRC names"
 #: answer about the row, so the miss is never remembered (R-1031). The
 #: adapter formats its reason from the same constant.
 UNREAD = UNREADABLE_CANDIDATE
+
+#: What a miss says when it was a tie between agreeing releases, which the
+#: matcher no longer misses on (R-1032), so a miss remembered with it before
+#: the tie was broken is asked again rather than reused.
+TIED = AGREEING_RELEASES
 
 
 def title(folder: str, playlist: str) -> str:
@@ -217,6 +229,14 @@ class Matcher:
     ledger does not link, before any remembered miss and before the provider,
     since it names the very track the file was downloaded as: no request, and
     no ISRC tie between agreeing releases to miss on.
+
+    A TIE TAKES ONE RELEASE (R-1032). A mirrored playlist is a listening copy
+    and writes nothing back as the row's identity, so the provider is asked
+    with ``any_agreeing`` and a tie between releases that all agree with the
+    row is matched as one of them, linked like any match and so kept by every
+    later refresh. A miss remembered with the tie's words before that is asked
+    again rather than reused, once, since asking again no longer misses on it.
+    The hearts and the pairs keep R-572's refusal; they never pass it.
     """
 
     def __init__(
@@ -281,7 +301,7 @@ class Matcher:
             return own, row.isrc, ""
         under = self.under(row)
         missed = self._misses.get(row.content_id)
-        if missed is not None and tuple(missed[1]) == under:
+        if missed is not None and tuple(missed[1]) == under and TIED not in missed[0]:
             self.remembered += 1
             return "", "", missed[0]
         said = self._identify(row)
@@ -294,6 +314,7 @@ class Matcher:
             artist=row.artist,
             agree=said.agree,
             album=said.album,
+            any_agreeing=True,
         )
         if not remote:
             return self._missed(

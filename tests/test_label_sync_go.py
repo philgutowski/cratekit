@@ -11,6 +11,7 @@ NOTHING HERE REACHES A NETWORK. The root fixtures fail any test that does.
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import pytest
@@ -676,10 +677,11 @@ def test_the_estimated_time_is_the_pacing_and_the_transfer_of_the_size():
     assert go.duration_text(3 * 3600 + 25 * 60) == "about 3 h 25 min"
 
 
-def test_a_go_job_whose_failures_cannot_succeed_on_a_retry_is_not_resumed(
+def test_a_go_job_whose_track_was_refused_for_good_is_not_resumed(
     installed, monkeypatch, script
 ):
-    """Mutation row G14: a cause that says no retry can succeed is not retried."""
+    """A delisted track is settled, not failed, since U169, so the job that
+    holds it succeeded and a later go has nothing of it to resume."""
     register()
     bind(monkeypatch, {"tide-works": [("r1", "2026", 2)]})
     next_question()
@@ -687,17 +689,46 @@ def test_a_go_job_whose_failures_cannot_succeed_on_a_retry_is_not_resumed(
     land_every(script, ("r1", 2))
     script.landings["t-r1-2"] = Landing(offer_raises=LookupError("404 not found"))
 
-    _run, code, envelope = approved_go()
+    approved_go()
 
-    assert code != int(ExitCode.OK), envelope
     (job,) = our_jobs()
-    assert job.state is jobs.JobState.FAILED and job.cause.retryable is False
+    assert job.state is jobs.JobState.SUCCEEDED, job
+    with jobs.open_store() as store:
+        skipped = [i for i in jobs.items(store, job.job_id) if i.state is jobs.ItemState.SKIPPED]
+    assert [i.cause.reason for i in skipped if i.cause] == ["unavailable-permanent"]
     script.fetched.clear()
 
     shown = asked()["cause"]["detail"]["shown"]
 
     assert "earlier_downloads_to_resume" not in shown
     assert shown["releases"] == 0
+
+
+def test_a_go_job_whose_failures_cannot_succeed_on_a_retry_is_not_resumed(installed):
+    """Mutation row G14: a cause that says no retry can succeed is not retried.
+
+    Driven at ``resumable`` since U169, because the delisted track the driven
+    form used is now declined and its job succeeds; a failed job with a
+    permanent cause is still a state an earlier build recorded, and a refusal
+    outside the policy class (``output-exists``) still produces one.
+    """
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store, handler_key=go.DOWNLOAD, payload={}, cfg=config.load(), item_ids=("a",)
+        )
+    permanent = refuse("output-exists", "a file is already there").cause
+    transient = refuse("unavailable-transient", "later", retryable=True).cause
+
+    stopped = dataclasses.replace(job, state=jobs.JobState.FAILED, cause=permanent)
+    retryable = dataclasses.replace(job, state=jobs.JobState.FAILED, cause=transient)
+    unexplained = dataclasses.replace(job, state=jobs.JobState.FAILED, cause=None)
+    finished = dataclasses.replace(job, state=jobs.JobState.SUCCEEDED, cause=None)
+
+    assert go.resumable(stopped, 1) is False
+    assert go.resumable(retryable, 1) is True
+    assert go.resumable(unexplained, 1) is True
+    assert go.resumable(finished, 1) is False
+    assert go.resumable(job, 1) is True, "an open job is always resumed"
 
 
 def test_a_download_queued_by_hand_is_not_resumed_or_held_by_a_go(

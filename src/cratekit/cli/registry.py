@@ -567,6 +567,27 @@ ENTRIES: tuple[Entry, ...] = (
         output_schema="diagnostic/1",
     ),
     Entry(
+        name="run.retire",
+        summary="answer abort on every open gate idle past a threshold, after one confirm",
+        module="cratekit.cli.verbs.runs",
+        builder="build_retire",
+        handler_key="run.retire",
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
+        gates=(
+            GateSpec(
+                name="run.retire.confirm",
+                options=("apply", "abort"),
+                prompt="Answer abort, as session, on each of these open gates?",
+                #: ORDINARY, as ``profile.set.apply`` is (U170). What it writes
+                #: is run state, and only ever the answer no, so it is answered
+                #: on the same line; the digest binds the answer to the gates
+                #: shown.
+                digest_source="plan",
+            ),
+        ),
+    ),
+    Entry(
         name="setup",
         summary="first-run wizard: library, credentials, taxonomy, profile",
         module="cratekit.cli.setup",
@@ -3528,6 +3549,44 @@ ENTRIES: tuple[Entry, ...] = (
                 prompt="Write these additions, removals and order to the streaming "
                 "account's playlists?",
                 #: EXPLICIT, as every other write to the account is (R34).
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
+    # ── The custom playlist twins' backfill (U149) ──────────────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives.
+    Entry(
+        name="sync.twins",
+        summary="give every downloaded custom playlist on the account its permanent "
+        "twin in rekordbox's Custom Playlists <year> folder, paired to stay one list",
+        module="cratekit.sync.twins_cli",
+        builder="build",
+        handler_key="sync.twins",
+        # NO FEATURE ROW. The source system let a custom playlist's rekordbox
+        # copy rotate out and kept none.
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: The database tree and nothing else: a top level folder per year when
+        #: absent, a plain playlist per twin under it, and its memberships. No
+        #: content row, no file, nothing on the account. The pairs it marks are
+        #: this product's own state. Not ``destructive``: it removes nothing.
+        writes=frozenset({"db_tree"}),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+            "credential.provider",
+        ),
+        gates=(
+            GateSpec(
+                name="sync.twins.approve",
+                options=("approve", "abort"),
+                prompt="Make these twins and their folders in rekordbox, and pair each "
+                "with its account playlist?",
+                #: EXPLICIT, as every database membership write is (R34).
                 explicit=True,
                 digest_source="plan",
             ),

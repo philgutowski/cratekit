@@ -139,6 +139,22 @@ fact from whether that session is then served what was actually requested, and
 an adapter's own settings check confirms only the request, never the artifact
 the wrapped tool produced from it.
 
+### Declined track
+A track a download job settled without landing, because the policy the job
+was frozen under refuses it for good: offered or landed only lossy under the
+strict policy, or no longer offered at all (U169). Its item is recorded
+`skipped` with the cause that refused it, a skipped item counts as settled,
+and a download whose only misses are declined tracks succeeds, naming each
+one in an `acquire-refused` warning by its title and artist. A worker
+declines with `jobs.Declined`; any other refusal still fails the item, and a
+refusal a later attempt could clear is never declined, because `job resume`
+re-arms failed items and never skipped ones.
+
+*Avoid:* calling a declined track a failure, which is what the download said
+of a list that had done what the policy asked, or reading a succeeded job's
+`settled` count as every track landed; `crate job list` says how many were
+skipped.
+
 ### Searcher
 A boundary component that answers "what genre is this track" from a public
 music catalogue, injected into the tagging engines so the suite can prove the
@@ -312,6 +328,24 @@ Not the **label kind**, which decides what the label genre gate passes and
 names a kind of music rather than a word written onto files, and not the label
 genre gate itself, which judges a release in a label sweep by the general
 catalogue's words and writes nothing onto a file.
+
+### Seller account
+The Bandcamp account a followed label sells its releases from, the name in
+their address, `pulsromania` for `pulsromania.bandcamp.com`, or the whole host
+of a seller on a domain of its own (U177). It is set with `crate label registry
+set NAME --bandcamp ACCOUNT`, which takes the address too, and cleared with
+`--bandcamp default`. One account names one label: a second label naming it is
+refused with the label that holds it, and two found in a file edited by hand
+answer no label. A purchase from the account is that label's, so `crate acquire
+bandcamp-fetch` writes the label's display name into the label tag of every
+file it stages from it, and `crate intake land --label-from-tags` files each
+landed file under the label its own tag names. A seller no label names is
+named on the plan with the command that registers it, and its files are
+staged as they came. `--seller` takes the label's name as its account.
+
+*Avoid:* reading Bandcamp's own `label` field as the label, which was empty on
+every release sitting 46 measured, or the **label genre**, which is written by
+`tag folder` and only onto a file with no genre.
 
 ### Held release
 A label release the genre gate kept out of review at sweep time, because it
@@ -2099,7 +2133,11 @@ title and `Favorites 2026-10`, `Favorites Undated`. INBOX is mirrored too
 batch that leaves INBOX has its mirrored playlist REMOVED at the next refresh,
 the one mirrored playlist the product removes, and only once its title is no
 longer under INBOX at all. A row a label landing recorded its provider track
-for is matched to that track with no request.
+for is matched to that track with no request. A row whose ISRC names several
+releases that all agree with it is matched as one of them, the lowest provider
+identifier after the account's hearts and the file's album have narrowed them,
+and kept on that one by every later refresh (R-1032), where a heart or a pair
+refuses the same tie, since there the release becomes the row's identity.
 
 *Avoid:* reading it as an export (`crate export playlist`, add only, filed in
 `Exports`) or as a pair (`crate sync pair`, merged both ways).
@@ -2137,7 +2175,8 @@ account stays in Undated. Add only, like the quarter was.
 
 ### Custom playlist twin
 The permanent rekordbox copy of a downloaded custom playlist, planned on
-2026-10-15 (`docs/plans/2026-10-15-1330-feat-rekordbox-tidal-parity-plan.md`):
+2026-10-15 (`docs/plans/2026-10-15-1330-feat-rekordbox-tidal-parity-plan.md`)
+and built by U149 (`sync/twins.py`, `crate sync twins`):
 one playlist of the account playlist's name, less the `DOWNLOADED ` prefix,
 in the folder `Custom Playlists <year>` beside INBOX, holding the rows the
 library owns for its tracks. It is a PLAYLIST PAIR with the account's copy,
@@ -2145,6 +2184,10 @@ marked at the landing without a hand step and backfilled once for the
 playlists the account already holds, so an edit on either side reaches the
 other at the next `sync pair`. It is the one place an account edit changes
 rekordbox; the INBOX playlist the same landing writes is a different
-playlist of the same rows and rotates out, the twin does not.
+playlist of the same rows and rotates out, the twin does not. Its folder is
+not declared in the taxonomy and no registry records it, so the pair rule
+lets it pair. A name its folder already holds is left and named, never given
+a count, and a twin whose account playlist is deleted is unpaired by the next
+`crate sync pair` and left where it is.
 
 *Avoid:* reading it as the INBOX playlist, or as a mirror, which goes one way.

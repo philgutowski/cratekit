@@ -273,8 +273,13 @@ def test_one_lossy_refusal_among_eight_downloads_lands_seven_and_reports_one(
 
     assert code == int(ExitCode.PENDING_HUMAN), envelope
     (download,) = _by_key("acquire.download")
-    assert download.state is jobs.JobState.FAILED
-    assert download.cause.reason == "lossy-refused"
+    # U169: the refusal is settled, so the job succeeded and the item carries it.
+    assert download.state is jobs.JobState.SUCCEEDED
+    with jobs.open_store() as store:
+        (skipped,) = [
+            i for i in jobs.items(store, download.job_id) if i.state is jobs.ItemState.SKIPPED
+        ]
+    assert skipped.item_id == "107" and skipped.cause.reason == "lossy-refused"
     summary = _summary(envelope)
     assert [row["item_id"] for row in summary["download_refused"]] == ["107"]
     assert summary["download_refused"][0]["reason"] == "lossy-refused"

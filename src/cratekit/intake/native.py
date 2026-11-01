@@ -604,6 +604,11 @@ class NativePlan:
     #: :class:`cratekit.intake.filing.Prediction` per row, given by
     #: :func:`with_filing`. None for a landing that files nothing after it.
     filing: tuple[Any, ...] | None = None
+    #: The custom playlist twins (U149), a ``sync.twins.LandingTwin`` per
+    #: account playlist in ``playlists`` not paired yet, each written in this
+    #: same commit with its INBOX playlist's rows, under ``Custom Playlists
+    #: <year>``.
+    twins: tuple[Any, ...] = ()
 
     def to_add(self) -> tuple[RowPlan, ...]:
         return tuple(row for row in self.rows if row.action == ADD)
@@ -720,6 +725,9 @@ class NativeLanded:
     analyze_name: str = ""
     #: How many memberships of it the commit added.
     analyze_added: int = 0
+    #: The custom playlist twins the commit wrote (U149), a
+    #: ``sync.twins.LandedTwin`` each, which the caller pairs.
+    twins: tuple[Any, ...] = ()
 
     def names(self) -> tuple[str, ...]:
         """Every INBOX playlist the commit wrote, the batch's first when it wrote one."""
@@ -858,6 +866,7 @@ def plan_rows(
     inbox_leftovers: Sequence[str] = (),
     inbox_found_by_name: bool = False,
     labels: label_filing.LabelPlan | None = None,
+    twins: Sequence[Any] = (),
 ) -> NativePlan:
     """Plan one row per file and one playlist, against the open database.
 
@@ -881,7 +890,9 @@ def plan_rows(
     set's permanent playlist (U121), planned by the caller on this same handle
     over the same targets, and part of the digest the same way. So is
     ``labels``, the label filing (U156), less any file this plan leaves in
-    staging, each of which it names as filed nowhere.
+    staging, each of which it names as filed nowhere. So are ``twins``, the
+    custom playlist twins (U149) the caller planned on this handle, less any
+    whose account playlist this plan does not write.
 
     A FILE THE COLLECTION HOLDS IS PRESENT, NOT ADDED TWICE. The target is
     matched against every active row the way the membership writers match,
@@ -974,6 +985,7 @@ def plan_rows(
     rows, drift_cut, dyn_blocked = _dyn_plan(cfg, db, rows)
     rows = _words_plan(db, rows)
     kept, dropped = _supported_only(split, rows)
+    written_for = {one.account for one in kept}
     if labels is not None:
         labels = label_filing.supported_only(
             labels, {str(row.target) for row in rows if row.action != UNSUPPORTED}
@@ -1007,6 +1019,7 @@ def plan_rows(
         vox_blocked=vox_blocked,
         drift_cut=drift_cut,
         dyn_blocked=dyn_blocked,
+        twins=tuple(one for one in twins if one.account_id in written_for),
     )
     found = analyze_playlist(db, str(root_id))
     if found is not None:
@@ -1608,8 +1621,12 @@ def identity(plan: NativePlan) -> dict[str, Any]:
     filing = (
         {"filing": [one.identity() for one in plan.filing]} if plan.filing is not None else {}
     )
+    # THE TWINS ONLY WHEN THERE ARE ANY (U149), so a landing with no account
+    # playlist, or only paired ones, digests as it did before this unit.
+    twins = {"twins": [one.identity() for one in plan.twins]} if plan.twins else {}
     return {
         **split,
+        **twins,
         **unplanned,
         **favorites,
         **kept,
@@ -2060,11 +2077,16 @@ def apply_rows(
         placed: placement.Placed | None = None
         set_written: set_playlist.Written | None = None
         labels_written: label_filing.Written | None = None
+        twins_written: tuple[Any, ...] = ()
         try:
             # BEFORE THE FIRST ROW, so a refusal adds nothing. A name the plan
             # chose free that INBOX holds now would show two playlists of one
             # name, and an account playlist is created rather than found.
             assert_names_still_free(db, plan)
+            if plan.twins:
+                from cratekit.sync import twins as twin_mod
+
+                twin_mod.recheck_landing(db, plan.twins)
             to_add = plan.to_add()
             taken = _taken_since_the_plan(db, cfg, to_add)
             # THE WORDS ARE ASKED AGAIN BEFORE THE FIRST ROW (U163), as the
@@ -2161,6 +2183,15 @@ def apply_rows(
                         tracks=count,
                     )
                 )
+            # EACH ACCOUNT PLAYLIST'S TWIN, IN THE SAME COMMIT (U149): the rows
+            # its INBOX playlist was given, under Custom Playlists <year>, the
+            # copy that stays when the INBOX one rotates out.
+            if plan.twins:
+                from cratekit.sync import twins as twin_mod
+
+                twins_written = twin_mod.write_landing(
+                    db, plan.twins, {one.account: ids for one, ids in accounts}
+                )
             # EVERY ROW THIS LANDING MADE JOINS ANALYZE (U166), in the same
             # commit and in the plan's order, so the visit selects one playlist.
             # A row already held is not added: rekordbox has had it.
@@ -2232,6 +2263,7 @@ def apply_rows(
                     vox_written=vox_written,
                     dyn_written=dyn_written,
                     labels_written=labels_written,
+                    twins_written=twins_written,
                 )
             raise
 
@@ -2248,6 +2280,7 @@ def apply_rows(
             vox_written=vox_written,
             dyn_written=dyn_written,
             labels_written=labels_written,
+            twins_written=twins_written,
         )
         convergence.record_fingerprint(cfg, db)
         if set_written is not None and set_written.playlist_id:
@@ -2324,6 +2357,7 @@ def apply_rows(
         analyze_id=analyze_id,
         analyze_name=f"{plan.root_name} / {ANALYZE}" if analyze_id else "",
         analyze_added=analyze_added,
+        twins=twins_written,
     )
 
 
@@ -2510,6 +2544,7 @@ def _record_landing_commit(
     vox_written: int = 0,
     dyn_written: int = 0,
     labels_written: label_filing.Written | None = None,
+    twins_written: Sequence[Any] = (),
 ) -> None:
     """Record the commit on the session, once anything landed.
 
@@ -2604,6 +2639,28 @@ def _record_landing_commit(
     # record counts the batch's memberships and the labels' apart.
     if labels_written is not None:
         label_filing.record_commit(record, labels_written, cfg)
+    # AND THE CUSTOM PLAYLIST TWINS (U149), named on the record and counted
+    # under their own key, since the twin folder is nobody's registered tree.
+    if twins_written:
+        from cratekit.sync import twins as twin_mod
+
+        record.detail[twin_mod.RECORD_KEY] = [
+            {"id": one.playlist_id, "name": one.name, ingest.INBOX_ACCOUNT_KEY: one.account_id}
+            for one in twins_written
+        ]
+        session.record_commit(
+            record,
+            twin_mod.RECORD_KEY,
+            session.ChangeSummary(
+                (
+                    session.TreeChange(
+                        tree=twin_mod.RECORD_KEY,
+                        created=len(twins_written) + sum(one.tracks for one in twins_written),
+                    ),
+                )
+            ),
+            cfg,
+        )
     # AND THE VOX TAGS (U127), under the vocals verb's own key, so a restore
     # counts the tag associations apart from the rows they hang on.
     if vox_written > 0:

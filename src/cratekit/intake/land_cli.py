@@ -36,7 +36,9 @@ another. A label row that no landed file matches is a warning that names the
 track, never a failure: the file, if there is one, is in the intake playlist.
 On a database native intake tree the same rows, or one label named with
 ``--label`` and each file's date tag, are filed under the Record Labels tree in
-the landing's own commit (U156, :mod:`cratekit.intake.label_filing`).
+the landing's own commit (U156, :mod:`cratekit.intake.label_filing`), and so,
+with ``--label-from-tags``, is each file under the label its own label tag
+names, which is how a Bandcamp batch of several sellers lands (U177).
 """
 
 from __future__ import annotations
@@ -72,6 +74,10 @@ LANDED = "landed"
 REFUSED = "refused"
 #: The one item a native landing appends for the batch playlist it wrote.
 PLAYLIST = "playlist"
+#: The item a native landing appends for each custom playlist twin it wrote (U149).
+TWIN = "twin"
+#: A planned twin the landing could not make, named with why (U149).
+TWINS_LEFT = "custom-playlist-twins-left"
 #: The item a native write appends for each favourites playlist it placed hearts in (U120).
 FAVORITES = "favorites"
 
@@ -283,6 +289,17 @@ def build_land(parser, entry) -> None:
         ),
     )
     parser.add_argument(
+        "--label-from-tags",
+        dest="label_from_tags",
+        action="store_true",
+        help=(
+            "file each landed file under the label its own label tag names, in the "
+            "year its date tag names, as crate acquire bandcamp-fetch tags a "
+            "registered label's purchases; a file with no label tag or no date tag "
+            "is named and filed nowhere (database native intake trees only)"
+        ),
+    )
+    parser.add_argument(
         "--set",
         dest="set_job",
         default=None,
@@ -326,6 +343,7 @@ def _label_flag(
     manifest: landing.LabelManifest | None,
     medium: ingest.IntakeMedium,
     cfg: config.Config,
+    from_tags: bool = False,
 ) -> str | None:
     """The label ``--label`` names, or a refusal before the gate with nothing moved (U156).
 
@@ -337,11 +355,26 @@ def _label_flag(
     LIBRARY WHOSE ROOT IS NOT THERE, said as that: the medium was not read, so
     telling the person their tree is on the bridge, and to drop the flag, would
     land the batch filed under nothing once the volume is back.
+
+    ``--label-from-tags`` (U177) is held to every one of those but the blank,
+    and is refused beside ``--label`` too, since one label for every file and
+    each file's own are two answers to one question. It returns None, and the
+    caller reads the flag itself.
     """
-    if given is None:
+    if from_tags and given is not None:
+        raise refuse(
+            "intake-list-unusable",
+            "--label and --label-from-tags both say which label each file is filed "
+            "under, one for every file and the other each file's own tag; pass one "
+            "of them, nothing was moved",
+            remedy=Remedy.FIX_COMMAND_LINE,
+            origin=_ORIGIN,
+            detail={"label": given},
+        )
+    if given is None and not from_tags:
         return None
-    flag = "--label"
-    if not given.strip():
+    flag = "--label-from-tags" if from_tags else "--label"
+    if given is not None and not given.strip():
         raise refuse(
             "intake-list-unusable",
             f"{flag} names no label, so there is nothing to file the batch under; "
@@ -378,7 +411,7 @@ def _label_flag(
             origin=_ORIGIN,
             detail={"label": given},
         )
-    return given.strip()
+    return given.strip() if given is not None else None
 
 
 def _payload(
@@ -713,7 +746,10 @@ def intake_land(ctx) -> Envelope:
         )
     if ctx.args.set_job:
         set_playlist.assert_native(medium, landing=True)
-    label = _label_flag(ctx.args.label, manifest=manifest, medium=medium, cfg=cfg)
+    label_from_tags = bool(getattr(ctx.args, "label_from_tags", False))
+    label = _label_flag(
+        ctx.args.label, manifest=manifest, medium=medium, cfg=cfg, from_tags=label_from_tags
+    )
     rehearse = bool(getattr(ctx.args, "rehearse", False))
     if rehearse and not medium.native:
         raise refuse(
@@ -742,6 +778,7 @@ def intake_land(ctx) -> Envelope:
             registry=registry,
             manifest=manifest,
             label=label,
+            label_from_tags=label_from_tags,
             medium=medium,
             claims=claims,
             hearted=hearted,
@@ -1161,7 +1198,37 @@ def _native_shown(rows: native.NativePlan, *, folder: Path, target: Path) -> dic
         shown.update(favorites_facts(rows.favorites))
     if rows.labels is not None:
         shown.update(label_filing.facts(rows.labels))
+    if rows.twins:
+        shown["custom playlist twins"] = twin_facts(rows.twins)
     return shown
+
+
+def twin_facts(planned) -> str:
+    """The landing's custom playlist twins (U149), one line: each made, each left and why."""
+    made = [one for one in planned if not one.why]
+    left = [one for one in planned if one.why]
+    said = [f"{one.folder.name} / {one.name}" for one in made]
+    said.extend(f"{one.account_name} gets none: {one.why}" for one in left)
+    return "; ".join(said)
+
+
+def _twin_notes(cfg: config.Config, rows, collection: native.NativeLanded) -> list[dict[str, str]]:
+    """Pair each twin the commit wrote (U149), and name each planned twin it could not make."""
+    from cratekit.sync import twins
+
+    notes = twins.pair_landed(cfg, collection.twins)
+    left = [one for one in (rows.twins if rows is not None else ()) if one.why]
+    if left:
+        notes.append(
+            {
+                "code": TWINS_LEFT,
+                "message": (
+                    f"{len(left)} account playlist(s) got no custom playlist twin: "
+                    + "; ".join(f"{one.account_name}: {one.why}" for one in left)
+                ),
+            }
+        )
+    return notes
 
 
 def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
@@ -1242,6 +1309,17 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
         }
         for written in landed.collection.playlists
     )
+    items.extend(
+        {
+            "action": TWIN,
+            "playlist": f"{twin.folder} / {twin.name}",
+            "id": twin.playlist_id,
+            "account_id": twin.account_id,
+            "count": twin.tracks,
+            "session": landed.collection.session_id,
+        }
+        for twin in landed.collection.twins
+    )
     placed = landed.collection.favorites
     if placed is not None:
         totals["hearts placed"] = placed.added
@@ -1314,6 +1392,7 @@ def _land_native(
     registry,
     manifest: landing.LabelManifest | None,
     label: str | None = None,
+    label_from_tags: bool = False,
     medium: ingest.IntakeMedium,
     claims: tuple[account_playlists.Claim, ...] = (),
     hearted: tuple[account_playlists.Hearted, ...] = (),
@@ -1450,6 +1529,8 @@ def _land_native(
                 )
             if label is not None:
                 return label_filing.plan_for_label(db, medium, label=label, files=files)
+            if label_from_tags:
+                return label_filing.plan_for_tags(db, medium, files=files)
             return None
 
         def plan(db) -> native.NativePlan:
@@ -1490,6 +1571,17 @@ def _land_native(
                 batch=inbox_name,
                 target=target,
             )
+            # EACH ACCOUNT PLAYLIST'S TWIN (U149), planned on this handle for
+            # the ones not paired yet, into the landing year's twin folder.
+            from cratekit.modules.outbound import pairs
+            from cratekit.sync import twins
+
+            landing_twins = twins.plan_landing(
+                db,
+                [(one.account, one.account_name or one.name) for one in split],
+                year=batch_name.today().year,
+                paired=pairs.PairStore(cfg).all(),
+            )
             made = native.plan_rows(
                 cfg,
                 db,
@@ -1517,6 +1609,7 @@ def _land_native(
                 inbox_leftovers=leftovers,
                 inbox_found_by_name=inbox_found_by_name,
                 labels=label_plan(db, files),
+                twins=landing_twins,
             )
             made = replace(made, folder=target, batch=planned.batch)
             # WHERE EACH NEW ROW WILL BE FILED, BEFORE IT EXISTS (U165), shown
@@ -1595,6 +1688,7 @@ def _land_native(
     native.assert_rows_identified(landed.collection)
     warnings = [{"code": entry.reason, "message": entry.sentence} for entry in landed.refused]
     warnings.extend(account_playlists.left_warning(landed.collection.left))
+    warnings.extend(_twin_notes(cfg, applied[-1] if applied else None, landed.collection))
     warnings.extend(awaiting_analysis(landed.collection))
     warnings.extend(vox_warnings(landed.collection))
     warnings.extend(dyn_warnings(landed.collection))

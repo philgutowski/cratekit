@@ -114,6 +114,8 @@ class FakeAccount:
         self.matches: list[dict[str, str]] = []
         #: The identities a match was asked for with ``agree`` (R-879).
         self.agreeing: list[str] = []
+        #: The identities a match was asked for with ``any_agreeing`` (R-1032).
+        self.any_agreeing: list[str] = []
         #: What this account says about a row it does not match, by identity.
         self.reasons: dict[str, str] = {}
         #: R-835. Folders, identifier to name, which folder each playlist
@@ -153,6 +155,7 @@ class FakeAccount:
         artist: str = "",
         agree: bool = False,
         album: str = "",
+        any_agreeing: bool = False,
     ) -> str | None:
         self.matches.append(
             {
@@ -165,6 +168,8 @@ class FakeAccount:
         )
         if agree:
             self.agreeing.append(identity)
+        if any_agreeing:
+            self.any_agreeing.append(identity)
         return self.catalog.get(identity)
 
     def unmatched_reason(self, identity: str) -> str:

@@ -2849,6 +2849,16 @@ def backup_remote_disagreement(data: Mapping) -> tuple[str, str] | None:
 DEFAULT_INTAKE_STALE_DAYS = 30
 DEFAULT_INTAKE_EXPIRED_DAYS = 90
 
+#: How long an open gate may sit idle before ``crate status`` folds it into
+#: one line and ``crate run retire`` offers to answer it (U170). A week, since
+#: sitting 47 opened on seventeen gates between one and five weeks old, every
+#: one a run nobody would resume. Named here for the reason the intake ages are.
+DEFAULT_OPEN_GATE_STALE_DAYS = 7
+
+#: Ten years, the ceiling ``MAX_EXPORT_STALE_DAYS`` gives and for its reason:
+#: the count becomes a duration, and a number with no bound overflows one.
+MAX_OPEN_GATE_STALE_DAYS = 3650
+
 
 @dataclass(frozen=True, slots=True)
 class ReportsConfig:
@@ -2869,6 +2879,9 @@ class ReportsConfig:
 
     intake_stale_days: int = DEFAULT_INTAKE_STALE_DAYS
     intake_expired_days: int = DEFAULT_INTAKE_EXPIRED_DAYS
+    #: Open gates idle for longer than this many days are one line in
+    #: ``crate status`` and what ``crate run retire`` answers by default (U170).
+    open_gate_stale_days: int = DEFAULT_OPEN_GATE_STALE_DAYS
 
 
 #: How old a hand made collection export may be before the outbound verbs say so.
@@ -3368,6 +3381,7 @@ def validate(data: Mapping) -> list[str]:
 
     problems += _validate_aging_thresholds(data)
     problems += _validate_export_staleness(data)
+    problems += _validate_open_gate_staleness(data)
     problems += _validate_recognition(data)
     problems += _validate_provider(data)
     problems += _validate_labels(data)
@@ -3533,6 +3547,24 @@ def _validate_export_staleness(data: Mapping) -> list[str]:
             "calls every export old on the day it is made."
         ),
         maximum=MAX_EXPORT_STALE_DAYS,
+    )
+    return [] if problem is None else [problem]
+
+
+def _validate_open_gate_staleness(data: Mapping) -> list[str]:
+    """The age past which an open gate is folded away and offered for retirement (U170)."""
+    key = "reports.open_gate_stale_days"
+    value = _dig(data, key)
+    if value is None:
+        return []
+    problem = _day_count_problem(
+        key,
+        value,
+        consequence=(
+            "Zero or a negative threshold does not keep every gate in view, it "
+            "folds away and offers to retire a gate opened a minute ago."
+        ),
+        maximum=MAX_OPEN_GATE_STALE_DAYS,
     )
     return [] if problem is None else [problem]
 

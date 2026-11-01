@@ -1509,6 +1509,10 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         "profile.set": ["slim"],
         "run.show": ["no-such-run"],
         "run.decide": ["no-such-run", "profile.set.apply", "apply"],
+        # U170. LAZY, since a retirement with nothing old asks nothing: one
+        # run left open at its gate for a month is the plan the confirm asks
+        # over. The rest is driven in tests/test_run_retire.py.
+        "run.retire": _run_retire_over_one_old_gate,
         # U10. The three per-job verbs are driven against an identifier that is
         # deliberately absent: every one of them must refuse with a code from the
         # vocabulary rather than with a traceback, and an empty queue is the state
@@ -2036,6 +2040,13 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # acknowledgment first, see ACKNOWLEDGED_BEFORE_THE_GATE. The syncing
         # path is driven in tests/test_sync_pair.py.
         "sync.pair": [],
+        # U149. An account holding no year folder, through fakes bound with
+        # ``monkeypatch``: the backfill plans nothing, asks nothing and ends
+        # NO_OP; UNREACHABLE_GATES says why its gate is not asked here. It
+        # reads the backup acknowledgment first, see
+        # ACKNOWLEDGED_BEFORE_THE_GATE. The backfill is driven in
+        # tests/test_sync_twins.py.
+        "sync.twins": _an_account_with_no_year_folder,
     }[entry.name]
     if not callable(sample):
         return sample
@@ -2044,6 +2055,20 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
     if monkeypatch is not None and "monkeypatch" in inspect.signature(sample).parameters:
         return sample(monkeypatch)
     return sample()
+
+
+def _run_retire_over_one_old_gate() -> list[str]:
+    """One ``profile.set`` run stopped at its gate thirty days ago, for ``run retire`` to ask over."""
+    import os
+    from datetime import datetime, timedelta, timezone
+
+    then = datetime.now(timezone.utc) - timedelta(days=30)
+    state = gates.new_run(registry.entry("profile.set"))
+    state.created = output.timestamp(then)
+    state.open_gate = "profile.set.apply"
+    path = gates.save(state)
+    os.utime(path, (then.timestamp(), then.timestamp()))
+    return []
 
 
 def _intake_set_reaching_account_gate(monkeypatch) -> list[str]:
@@ -2136,6 +2161,18 @@ def test_intake_set_sample_leaves_account_and_catalogue_seams_real(configured, m
         "catalogue.resolve; later tests on this worker would miss the guard"
     )
 
+
+
+def _an_account_with_no_year_folder(monkeypatch) -> list[str]:
+    """An account with no year folder and no playlist, bound through ``monkeypatch``."""
+    from cratekit.label import catalogue
+    from tests import outbound_fakes
+    from tests.label_fakes import FakeCatalogue, catalogue_factory
+    from tests.test_outbound_workers import bind as bind_account
+
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(FakeCatalogue(account=[])))
+    bind_account(monkeypatch, outbound_fakes.FakeAccount())
+    return []
 
 
 def _a_source_playlist() -> list[str]:
@@ -2506,6 +2543,17 @@ UNREACHABLE_GATES: Mapping[str, str] = MappingProxyType(
             "two act answer, a decline and a stale answer over a grown listing "
             "are driven in tests/test_label_playlists_releases.py."
         ),
+        "sync.twins.approve": (
+            "asked only over an account holding a downloaded custom playlist in "
+            "a year folder that has no twin, and approving one writes a folder "
+            "and a playlist in rekordbox, which the conformance fixture refuses "
+            "for its unpinned rekordbox, since a pin is never adopted on a "
+            "user's behalf (S2). An account with nothing to backfill asks "
+            "nothing, by U149's brief, so the sample is that account and the "
+            "verb ends NO_OP with no gate. The gate, its explicit two act "
+            "answer, the write and its refusals are driven in "
+            "tests/test_sync_twins.py."
+        ),
         "write.cloudsync.unreadable": (
             "raised by the guarded writer only when rekordbox's Cloud Library "
             "Sync state cannot be READ, which is a property of the machine "
@@ -2613,6 +2661,10 @@ ACKNOWLEDGED_BEFORE_THE_GATE = {
     ),
     "sync.pair": (
         "tests/test_sync_pair.py::"
+        "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
+    ),
+    "sync.twins": (
+        "tests/test_sync_twins.py::"
         "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
     ),
 }
@@ -3870,12 +3922,13 @@ EXPECTED_UNREACHABLE_GATES = frozenset(
         "favorites.split.approve",
         "intake.shelve.native",
         "label.playlists.crawl",
+        "sync.twins.approve",
     }
 )
 
 
 def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
-    """Seven gates are exempt. An eighth one is a decision, not a diff.
+    """Eight gates are exempt. A ninth one is a decision, not a diff.
 
     The sixth, ``intake.shelve.native``, joined with U154, decided there: the
     verb asks only over a plan that moves a batch, approving one writes a path
@@ -3901,7 +3954,11 @@ def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
     by a full build of a followed label whose listing is over the call
     threshold, and the conformance sample follows no label. Its own suite,
     tests/test_label_playlists_releases.py, drives its two acts, a decline and
-    a stale answer.
+    a stale answer. The eighth, ``sync.twins.approve``, joined with U149 on
+    favorites.split.approve's reason: it is asked only over an account with a
+    downloaded custom playlist lacking its twin, and approving one writes,
+    which the unpinned fixture refuses. Its own suite, tests/test_sync_twins.py,
+    drives the gate's two acts and the write.
 
     Note what this pin does NOT prove, so nobody reads more into a green run than
     is there: the map is still a named exemption, not a drive of the unreadable

@@ -70,7 +70,7 @@ from cratekit.acquire.adapter import (
 from cratekit.cli.output import Envelope
 from cratekit.core import config, jobs, naming, preflight
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope, refuse
-from cratekit.core.exit_codes import Remedy
+from cratekit.core.exit_codes import ExitCode, Remedy
 
 # ---------------------------------------------------------------------------
 # What a container can tell you about loss, and what it cannot
@@ -454,6 +454,9 @@ def drive_queued(ctx, store: jobs.JobStore, job_id: str) -> tuple[jobs.Job, tupl
             )
         _, warnings = ctx.run_job(store, job)
         job = jobs.get(store, job.job_id)
+    # THE DECLINED TRACKS, OUTSIDE THE ``is_open`` BRANCH for the reason the
+    # check below is: a finished job asked about again is answered the same.
+    warnings = (*warnings, *declined_warnings(store, job))
     # THE VERB R-290 WAS FOUND ON. This worker is the one that parks, on a
     # provider block or a dead session, and the park reached the report as
     # ``ok`` with exit 0, legible only inside ``data.cause``. A list where one
@@ -761,7 +764,72 @@ def handle(job, item, cfg) -> jobs.Produced:
     still paces every request through the frozen delay, so a job of fifty items
     is fifty paced requests; what the item granularity cannot express is
     ``concurrency`` above one, and that is recorded rather than worked around.
+
+    A REFUSAL FOR GOOD BY POLICY IS DECLINED, NOT FAILED (U169). Whichever of
+    the paths above raised it, a cause in the ``REFUSED_BY_POLICY`` class that
+    is not retryable is the frozen policy's permanent answer about this track:
+    a lossy only offer or landing under the strict policy, a lossy file with no
+    marker text to carry, a track the provider no longer has. The engine
+    settles the item as skipped with that cause, so a list where every other
+    track landed ends ok, and the verb names each skipped track in a warning
+    (:func:`declined_warnings`). Everything else still fails the item.
     """
+    try:
+        return _acquire(job, item, cfg)
+    except jobs.Parked:
+        raise
+    except CratekitError as exc:
+        if refused_for_good(exc.cause):
+            raise jobs.Declined(exc.cause) from exc
+        raise
+
+
+def refused_for_good(cause: Cause) -> bool:
+    """Whether a download's item refusal is the policy's permanent answer (U169).
+
+    READ OFF THE CAUSE'S EXIT CODE, not a list of slugs, so a policy refusal a
+    later unit adds is declined without a second edit here. Not retryable as
+    well, because a skip is never re-armed and a refusal some later attempt
+    could clear must stay a failure a resume can reach.
+    """
+    return cause.code is ExitCode.REFUSED_BY_POLICY and not cause.retryable
+
+
+#: The warning ``acquire download`` names a declined track under (U169).
+DECLINED_WARNING = "acquire-refused"
+
+
+def declined_warnings(store: jobs.JobStore, job: jobs.Job) -> tuple[dict[str, str], ...]:
+    """One warning per track the job declined, naming it as the list did.
+
+    READ FROM THE ITEM ROWS, which keep the cause the worker declined with, so
+    the same job asked about again answers with the same warnings, and the
+    track is named by the title and artist its list gave it rather than by an
+    identifier only the provider can read.
+    """
+    tracks = (job.payload or {}).get(TRACKS) or {}
+    found: list[dict[str, str]] = []
+    for item in jobs.items(store, job.job_id):
+        if item.state is not jobs.ItemState.SKIPPED or item.cause is None:
+            continue
+        said = tracks.get(item.item_id) if isinstance(tracks, dict) else None
+        said = said if isinstance(said, dict) else {}
+        title, artist = str(said.get("title") or ""), str(said.get("artist") or "")
+        named = f"{title} by {artist}" if title and artist else title or artist or item.item_id
+        found.append(
+            {
+                "code": DECLINED_WARNING,
+                "message": (
+                    f"{named} ({item.item_id}) was not acquired and is skipped, "
+                    f"refused for good ({item.cause.reason}): {item.cause.message}"
+                ),
+            }
+        )
+    return tuple(found)
+
+
+def _acquire(job, item, cfg) -> jobs.Produced:
+    """The body of :func:`handle`, which says what each answer here becomes."""
     payload = dict(job.payload or {})
     settings = AdapterSettings.from_config(cfg)
     root = settings.download_staging
@@ -1008,7 +1076,10 @@ __all__ = [
     "drive_queued",
     "findings",
     "frozen_tracks",
+    "DECLINED_WARNING",
+    "declined_warnings",
     "handle",
+    "refused_for_good",
     "marked_name",
     "queue_list",
     "request_for",
