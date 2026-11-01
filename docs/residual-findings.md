@@ -40338,3 +40338,74 @@ the gate, saying so, with a test. Ledger only, a wording and a step.
 **Measured cost.** Not driven; no live visit has run from the skill. The question is on the decisions page as `354-vocal-setting-1`, with Vocal off recommended.
 
 **Closes when:** Phillip answers. Off closes it as written; on is one row of the table and its pinned dict in the drift test.
+
+---
+
+## R-1125. intake land --label-from-tags files a file under any label tag it carries, so an unregistered Bandcamp seller's own tag makes a folder nobody registered
+
+**Found:** at the review of #359, U177, 2026-11-01.
+
+**The mechanism.** `crate acquire bandcamp-fetch` writes the label tag only on
+a registered seller's files and leaves every other file as it came, and
+`crate intake land --label-from-tags` (`intake/label_filing.py`,
+`plan_for_tags`) files each file under whatever its label tag names, without
+asking the registry. A seller no label names whose archive already carries a
+label tag is therefore filed under that tag's text, and a folder for it is
+made under `Record Labels`. The same holds for a file from any other source
+landed with the flag, and two spellings that differ only in case make two
+sibling folders, which is R-453's rule and not this unit's.
+
+**Measured cost.** Driven at the review with a fake seller serving a FLAC
+tagged `label=Somebody Else`: the plan said the seller is unregistered, the
+staged file kept its tag, the record said `label: None`, and the landing
+filed it under `Somebody Else`. The gate screen names every label folder the
+write makes before anything is written, so the person sees it. Whether a real
+Bandcamp archive carries a label tag is unmeasured: sitting 46 read none on
+55 releases of one seller.
+
+**Closes when:** a real archive with a label tag is seen, and the landing then
+either files only a label the registry holds or the fetch clears a seller's
+own tag. Ledger only: the write is shown on the gate before it happens.
+
+---
+
+## R-1126. A label renamed between a Bandcamp fetch and its landing is filed under the name its files were tagged with
+
+**Found:** at the review of #359, U177, 2026-11-01.
+
+**The mechanism.** The fetch freezes each release's label display name in
+the job and writes it into the label tag of every staged file, and
+`--label-from-tags` reads the tag, never the registry. A rename made with
+`crate label registry rename` after the fetch and before the landing files
+the batch under the old name, beside a folder of the new one if that exists.
+
+**Measured cost.** Not driven end to end. The freeze is pinned by
+`tests/test_bandcamp_labels.py`'s rename test, which is the KTD9 rule the job
+engine holds everywhere. The gate screen names each label folder the write
+makes, so a second folder for one label is shown before it is written.
+
+**Closes when:** a landing that resolves each tag through the registry, by
+name or by the label's identifier written beside the name, is built, if a
+rename between the two steps is ever seen. Ledger only.
+
+---
+
+## R-1127. acquire bandcamp --seller reads a followed label's name before an account of the same spelling, with no warning
+
+**Found:** at the second review of #359, U177, 2026-11-01.
+
+**The mechanism.** `_sellers` in `acquire/bandcamp_cli.py` resolves each
+`--seller` value through the label registry first, so a value that is both a
+followed label's name and another seller's account plans the label's account.
+A label registered as `otherlabel` selling from `pulsromania` makes
+`--seller otherlabel` plan the pulsromania purchases and mark the otherlabel
+account's own purchases filtered.
+
+**Measured cost.** Driven at the second review. No warning says the value was
+read as a label, though the summary's `sellers` names the account planned and
+each row names its seller and label. The producer, a label named exactly like
+an unrelated seller's account, was built by hand and is not known on a real
+account.
+
+**Closes when:** a value that resolves both ways is warned about by name, or
+planned as both. Ledger only.
