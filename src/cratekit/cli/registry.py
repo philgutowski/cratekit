@@ -3534,6 +3534,44 @@ ENTRIES: tuple[Entry, ...] = (
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
+    # ── The custom playlist twins' backfill (U149) ──────────────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives.
+    Entry(
+        name="sync.twins",
+        summary="give every downloaded custom playlist on the account its permanent "
+        "twin in rekordbox's Custom Playlists <year> folder, paired to stay one list",
+        module="cratekit.sync.twins_cli",
+        builder="build",
+        handler_key="sync.twins",
+        # NO FEATURE ROW. The source system let a custom playlist's rekordbox
+        # copy rotate out and kept none.
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: The database tree and nothing else: a top level folder per year when
+        #: absent, a plain playlist per twin under it, and its memberships. No
+        #: content row, no file, nothing on the account. The pairs it marks are
+        #: this product's own state. Not ``destructive``: it removes nothing.
+        writes=frozenset({"db_tree"}),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+            "credential.provider",
+        ),
+        gates=(
+            GateSpec(
+                name="sync.twins.approve",
+                options=("approve", "abort"),
+                prompt="Make these twins and their folders in rekordbox, and pair each "
+                "with its account playlist?",
+                #: EXPLICIT, as every database membership write is (R34).
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
 )
 
 #: The verb names, as data. ``tests/test_layering.py`` reads this to enforce that

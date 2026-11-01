@@ -1719,6 +1719,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-pair-nothing',
         'sync-pair-out-of-scope',
         'sync-pair-skipped',
+        'sync-pair-twin-unpaired',
         'sync-pair-unknown',
         'sync-pair-unmatched',
         'sync-pair-withheld',
@@ -1737,6 +1738,20 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-source-lookups-failed',
     ],
     'sync/run.py': ['sync-source-lookups-failed', 'utf-8'],
+    # 2026-11-01, U149: the custom playlist twins and their backfill.
+    'sync/twins.py': [
+        'custom-playlist-twins',
+        'decision-stale',
+        'session-committed-unverified',
+        'whitelist-violation',
+    ],
+    'sync/twins_cli.py': [
+        'sync-twins-left',
+        'sync-twins-listing-short',
+        'sync-twins-made',
+        'sync-twins-missing',
+        'sync-twins-nothing',
+    ],
     'sync/unmark_cli.py': [
         'already-unmarked',
         'internal-error',
@@ -2828,6 +2843,8 @@ PINNED_LITERAL_HOLDERS = {
     'sync/pair_cli.py': ['sync-pair-out-of-scope', 'sync-pair-unknown'],
     'sync/playlists.py': ['intake-list-unusable', 'label-playlist-unreadable', 'sync-source-lookups-failed'],
     'sync/run.py': ['sync-source-lookups-failed'],
+    # 2026-11-01, U149: the twins' stale plan, unverified read back and confinement.
+    'sync/twins.py': ['decision-stale', 'session-committed-unverified', 'whitelist-violation'],
     'sync/unmark_cli.py': ['internal-error', 'sync-marks-blocked'],
     'sync/watermarks.py': ['sync-watermark-unusable'],
     # 2026-10-31, U178: tag folder refuses a --label nobody registered.
