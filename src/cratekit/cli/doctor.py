@@ -603,6 +603,14 @@ def _release_tags(url: str) -> tuple[str, ...] | None:
 
 
 
+def _deadca7_home() -> Path | None:
+    """DEADCA7's support folder under this account, where its app keeps state."""
+    try:
+        return Path.home() / "Library" / "Application Support" / "deadca7"
+    except RuntimeError:  # no home directory to resolve
+        return None
+
+
 @dataclass(frozen=True, slots=True)
 class Probes:
     """Every seam a check reaches the outside world through.
@@ -659,6 +667,10 @@ class Probes:
     #: The tags a repository publishes, or None when they could not be read.
     #: The one network read doctor makes, so every test replaces it.
     release_tags: Callable[[str], tuple[str, ...] | None] = _release_tags
+    #: Where DEADCA7 keeps its own state on this machine, or None for a machine
+    #: with no such place (U185). A seam so a test describes an install, a push
+    #: and its age without the app.
+    deadca7_home: Callable[[], Path | None] = _deadca7_home
 
 
 # ---------------------------------------------------------------------------
@@ -2212,6 +2224,137 @@ def _check_full_comparison(inputs: _Inputs) -> Finding:
     )
 
 
+#: The folder inside DEADCA7's support folder where it backs rekordbox's
+#: database up before every push, one entry per push (U185).
+DEADCA7_BACKUPS = "rekordbox-backups"
+
+
+def _newest_entry(folder: Path) -> datetime | None:
+    """When the newest entry in ``folder`` was written, or None for an empty one."""
+    times = [
+        entry.stat().st_mtime for entry in folder.iterdir() if not entry.name.startswith(".")
+    ]
+    if not times:
+        return None
+    return datetime.fromtimestamp(max(times), tz=timezone.utc)
+
+
+def _check_deadca7_push(inputs: _Inputs) -> Finding:
+    """Whether DEADCA7 is here, when it last pushed into the database, and against what.
+
+    DEADCA7 backs rekordbox's database up into its own folder before every push
+    into it, so the newest entry there is when it last wrote the library. INFO
+    IN EVERY CASE: an app that is not installed is nothing to fix, and a push
+    newer than this product's last database backup is a reason to run one, which
+    the detail says, rather than a broken machine, and a backup folder this
+    account cannot list is said as unread. Nothing here launches the app or
+    reads its catalog.
+
+    THE PUSH TIME IS THE NEWEST ENTRY'S MODIFICATION TIME, which is only the
+    push's own time if the app writes a fresh file rather than copying the
+    database with its date kept. Not yet measured on a real push; the attended
+    card this unit owes reads one.
+    """
+    key, title = "deadca7.push", "DEADCA7 pushes into the library"
+    if inputs.cfg is None:
+        return _unchecked(key, title)
+    home = inputs.probes.deadca7_home()
+    if home is None or not home.is_dir():
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail="DEADCA7 is not installed here, so nothing else writes the library beside rekordbox",
+        )
+    backups = home / DEADCA7_BACKUPS
+    try:
+        pushed = _newest_entry(backups) if backups.is_dir() else None
+    except OSError as exc:
+        # Unread is not none: the answer says it could not look, never that
+        # nothing was pushed.
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"DEADCA7 is installed here, and when it last pushed into rekordbox's "
+                f"database cannot be said: its backup folder could not be read "
+                f"({type(exc).__name__}: {exc})"
+            ),
+        )
+    if pushed is None:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                "DEADCA7 is installed here and has recorded no push into rekordbox's "
+                "database: its backup folder holds no entry"
+            ),
+        )
+    when = pushed.strftime("%Y-%m-%d %H:%M UTC")
+    run_one = "Run one with: crate backup run"
+    try:
+        ages = backup_facts.ages(inputs.cfg, now=inputs.probes.now)
+    except backup_facts.BackupFactsUnreadable:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"DEADCA7 last pushed into rekordbox's database at {when}; whether this "
+                f"product's last backup is newer cannot be said, since the backup record "
+                f"could not be read (see backup.age.database)"
+            ),
+        )
+    database = next(entry for entry in ages if entry.portion is backup_facts.Portion.DATABASE)
+    if database.state is backup_facts.AgeState.RECORDED_IN_THE_FUTURE:
+        # A record backup.age.database calls unusable holds nothing here either.
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"DEADCA7 last pushed into rekordbox's database at {when}; whether this "
+                f"product's last backup holds it cannot be said, since that backup is "
+                f"recorded ahead of now (see backup.age.database)"
+            ),
+        )
+    if database.state is backup_facts.AgeState.NEVER_RECORDED:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"warning: DEADCA7 last pushed into rekordbox's database at {when}, and no "
+                f"database backup is recorded here, so nothing this product holds has "
+                f"that push in it. {run_one}"
+            ),
+        )
+    completed = database.completed_at
+    if completed is not None and pushed > completed:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"warning: DEADCA7 last pushed into rekordbox's database at {when}, after "
+                f"this product's last database backup at "
+                f"{completed.strftime('%Y-%m-%d %H:%M UTC')}, so that backup does not "
+                f"hold the push. {run_one}"
+            ),
+        )
+    return Finding(
+        key=key,
+        title=title,
+        status=Status.INFO,
+        detail=(
+            f"DEADCA7 last pushed into rekordbox's database at {when}, before this "
+            f"product's last database backup, which holds it"
+        ),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class TrashPolicy:
     """What one rclone remote type does with a deleted object, as a declaration.
@@ -3226,6 +3369,9 @@ CHECKS: tuple[Check, ...] = (
     # R-757. After the ages it qualifies and before the remote they all name.
     Check("backup.full_comparison", _check_full_comparison),
     Check("backup.remote", _check_backup_remote),
+    # U185. After the backup checks, since its warning is a comparison with
+    # the database portion's age, and it names the same remedy they do.
+    Check("deadca7.push", _check_deadca7_push),
     Check("session.unresolved", _check_unresolved_session),
     # R-235. Beside the session check because both report this product's own
     # library state, and after the taxonomy check, which it lists trees from.

@@ -138,7 +138,10 @@ def build_sync(parser, entry) -> None:
         "--label",
         default=None,
         metavar="NAME",
-        help="with --answer, the favourite label the answer is for",
+        help=(
+            "with --answer, the favourite label the answer is for; with --next, "
+            "the one label to ask about"
+        ),
     )
     parser.add_argument(
         "--release",
@@ -861,7 +864,7 @@ def record_answer(
                     f"to stop following it with nothing to answer: crate label "
                     f"registry remove {entry.label_id}"
                     if answer == STOP
-                    else "ask it first with: crate label sync --next"
+                    else f"ask it first with: crate label sync --next --label {entry.label_id}"
                 ),
                 label=entry.label_id,
             )
@@ -882,7 +885,8 @@ def record_answer(
                         f"the question for {entry.name!r} offered; to take none, "
                         f"answer not-now"
                     ),
-                    "take the identifiers from: crate label sync --next",
+                    f"take the identifiers from: crate label sync --next --label "
+                    f"{entry.label_id}",
                     label=entry.label_id,
                     unknown=unknown,
                 )
@@ -1113,21 +1117,29 @@ def _entry_or_refuse(followed: labels.Registry, name: str) -> labels.LabelEntry:
 # ---------------------------------------------------------------------------
 
 
-def _next(ctx, cfg: config.Config) -> Envelope:
+def _next(ctx, cfg: config.Config, name: str | None = None) -> Envelope:
     """Print the next question, saving it, and ask nothing.
 
     A SAVED QUESTION IS PRINTED AGAIN WITHOUT A PROVIDER CALL, so an agent
     session asking twice spends nothing twice. Labels are walked in registry
     order and the first with something to ask is the answer.
+
+    ONE LABEL NAMED IS THE ONLY LABEL TOUCHED (U189). ``--next --label`` runs
+    the same loop over that one entry, resolved before any provider is built,
+    so no other label is listed and no other saved question is rewritten, and
+    the label's own line is the whole report: a closing "no label has
+    anything new" would speak for labels nobody asked about.
     """
     followed = _followed_or_refuse()
+    only = _entry_or_refuse(followed, name) if name is not None else None
+    entries = [only] if only is not None else list(followed.labels.values())
     tools = _Tools(cfg=cfg, run_id=ctx.run.run_id, followed=followed)
     document = load_record(cfg)
     seen: list[dict[str, Any]] = []
     checks: list[dict[str, Any]] = []
     withheld = 0
     with review.open_store(cfg) as store:
-        for entry in list(followed.labels.values()):
+        for entry in entries:
             held = document["labels"].get(entry.label_id) or {}
             pending = held.get("pending")
             if isinstance(pending, Mapping) and pending.get("releases"):
@@ -1158,7 +1170,8 @@ def _next(ctx, cfg: config.Config) -> Envelope:
             return ctx.envelope(
                 data={"checks": checks, "summary": _summary(question=question, labels_seen=seen)}
             )
-    checks.append(_check("question", "ok", "no label has anything new to ask about"))
+    if only is None:
+        checks.append(_check("question", "ok", "no label has anything new to ask about"))
     return ctx.envelope(
         data={"checks": checks, "summary": _summary(labels_seen=seen)},
         # NO_OP only when nothing was written: an open item the gate took
@@ -1286,8 +1299,9 @@ def _walk(ctx, cfg: config.Config, prompter: prompt.Prompter) -> Envelope:
                     f"terminal ({exc}); the {len(answered)} answer(s) given before it are "
                     f"saved and the question is waiting",
                     steps=(
-                        "run label sync from a terminal, or drive it with: crate label "
-                        "sync --next, then crate label sync --answer ANSWER --label NAME",
+                        f"run label sync from a terminal, or drive it with: crate label "
+                        f"sync --next --label {entry.label_id}, then crate label sync "
+                        f"--answer ANSWER --label {entry.label_id}",
                     ),
                     origin=("label.sync",),
                     detail={
@@ -1370,13 +1384,29 @@ def label_sync(ctx) -> Envelope:
         if args.answer == PICK and not args.releases:
             raise _selection_invalid(
                 "--answer pick needs the releases to take; to take none, answer not-now",
-                "pass --release RELEASE_ID for each release, from: crate label sync --next",
+                f"pass --release RELEASE_ID for each release, from: crate label sync "
+                f"--next --label {args.label!r}",
             )
-    elif args.label or args.releases:
+    elif args.next_question and args.label is not None and not args.label.strip():
         raise _selection_invalid(
-            "--label and --release go with --answer, and without one they would name "
-            "a label nothing is recorded for",
-            "pass --answer, or drop them to ask at the terminal",
+            "--label with --next names the one label to ask about, and an empty name "
+            "names none",
+            "pass --label with the label's name or identifier, or drop it to ask the "
+            "next label with something new",
+        )
+    elif args.next_question and args.releases:
+        raise _selection_invalid(
+            "--release goes with --answer pick, and --next would ignore the releases "
+            "it names",
+            "drop --release to print the question, then answer with: crate label sync "
+            "--answer pick --label NAME --release RELEASE_ID",
+        )
+    elif not args.next_question and (args.label is not None or args.releases):
+        raise _selection_invalid(
+            "--label and --release go with --answer, and --label with --next, and "
+            "without one they would name a label nothing is recorded for",
+            "to ask about one label: crate label sync --next --label NAME",
+            "to record an answer, pass --answer; or drop them to ask at the terminal",
         )
     cfg = label_cli._load()
     if args.go:
@@ -1384,7 +1414,7 @@ def label_sync(ctx) -> Envelope:
     if args.answer is not None:
         return _answer(ctx, cfg)
     if args.next_question:
-        return _next(ctx, cfg)
+        return _next(ctx, cfg, args.label)
     return _walk(ctx, cfg, PROMPTER())
 
 

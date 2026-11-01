@@ -2356,6 +2356,11 @@ def _record_landing_commit(
             }
             for one in written
         ]
+    # AND EACH LABEL ROW'S PROVIDER TRACK (U150), what its manifest row names,
+    # so the account mirror fills this batch's INBOX playlist from its own
+    # tracks. Persisted by whichever commit below records anything.
+    if labels_written is not None and labels_written.provider:
+        record.detail[label_filing.PROVIDER_KEY] = dict(labels_written.provider)
     # AND THE HEARTS PLACED (U120), under their own key, since the Favorites
     # folder is nobody's registered tree and a restore weighing the intake
     # tree's memberships should see these apart from them.

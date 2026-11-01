@@ -39793,3 +39793,380 @@ said, and the person who fixes the credential then gets the right answer.
 
 **Closes when:** the releases build reads the record first and resolves the
 catalogue only when there is a release to read. Ledger only.
+
+---
+
+## R-1096. analyze check calls a grid variable when any one beat differs by a hundredth
+
+**Found:** at the review of #348, U167, 2026-10-31.
+
+**The mechanism.** `rekordbox_check.read_grid` reads a grid as constant only
+when every beat carries the same tempo in hundredths. One beat at 128.01 among
+128.00 makes it variable and the visit suspect, exit 27, "the widest moving
+0.01".
+
+**Measured cost.** Unmeasured: whether rekordbox's Normal analysis ever writes
+such a grid has not been read off a real file, since the container holds none
+and pyrekordbox ships no sample. If it does, every such track reads suspect.
+
+**Closes when:** the attended visit reads real Normal grids and either
+confirms they carry one value or sets a tolerance from what they carry. Ledger
+only.
+
+---
+
+## R-1097. analyze check reads done when the Key column is empty on every analysed row
+
+**Found:** at the review of #348, U167, 2026-10-31.
+
+**The mechanism.** `rekordbox_check.Check.verdict` judges keys only by
+agreement, over rows keyed on both sides. Rows with the Key column empty are
+unkeyed, so with every analysed row unkeyed nothing is compared, the floor is
+None, and the verdict falls to done with exit 0. The brief's verdict rule names
+only variable grids and agreement far below the record, so this follows the
+brief, and the `check.key_column` check says how many rows are empty, as
+`info`.
+
+**Measured cost.** Driven by the review: five rows landed and visited with no
+key, exit 0. A skill reading only the status moves on with no key written. The
+producer, a visit with rekordbox's key analysis off, was not driven against
+rekordbox; U157's brief names KEY off as Phillip's standard setting, so whether
+an empty Key column is wrong or expected after his visit is itself open.
+
+**Closes when:** the attended visit records whether the Key column is filled
+after Phillip's standard settings, and the verdict is changed to match, or this
+is closed as expected. Ledger only: the report names the empty rows, so
+nothing false is said.
+
+---
+
+## R-1098. analyze check with no landing named waits on every never analysed row in the library
+
+**Found:** at the review of #348, U167, 2026-10-31.
+
+**The mechanism.** With no `--pass` or `--session` and INBOX / Analyze empty
+(after `crate inbox analyzed` cleared it, or on a tree not cut over), the scope
+is every live row rekordbox has not analysed, the brief's third scope. Every
+row in it is waiting by construction, so the verb can only answer waiting or
+nothing, and a library holding any old row rekordbox never analysed answers 12
+however many visits follow.
+
+**Measured cost.** Driven by the review on the fixture's two seeded rows: 12,
+and the same after a clear. A skill that ran the check after the clear would
+wait for ever; U173's skill should run it before the clear, or name the pass.
+
+**Closes when:** U173 settles the order the skill runs the check and the
+clear in, or the third scope narrows to rows a landing made. Ledger only.
+
+---
+
+## R-1099. analyze check's three sigma key floor does not flag sitting 47's 98 of 212
+
+**Found:** at the review of #348, U167, 2026-10-31.
+
+**The mechanism.** `rekordbox_check.key_floor` puts the floor at the recorded
+equal rate (158 of 299) less three standard errors of the sample. For 212
+compared keys the floor is 42.6 percent equal, and sitting 47's 98 of 212 is
+46.2 percent, so the brief's motivating key number reads as ordinary.
+
+**Measured cost.** Nothing false is said: the counts, the rate and the floor
+are all on the check. The cost is a threshold choice, three sigma, that calls
+a library agreeing at the recorded rate suspect about once in seven hundred
+checks and lets a rate several points below it through.
+
+**Closes when:** a sitting measures what agreement a good visit actually
+gives, and `KEY_AGREEMENT_SIGMAS` or the reference rate is set from it. Ledger
+only.
+
+---
+
+## R-1100. analyze check's no write test watches Python opens and the bytes, and cannot see a C level create
+
+**Found:** at the review of #348, U167, 2026-10-31.
+
+**The mechanism.** `test_no_file_under_the_library_is_opened_for_writing`
+patches `open`, `io.open` and `os.open` and compares the bytes of the database
+and every analysis file before and after. A new file created under the library
+by SQLite's own C code, which none of those patches sees, passes it. Two
+guards in the analysis file walker are also layered so that each kills nothing
+alone: the tag that overruns the file and the file whose stated length is not
+its size are both caught by the other check.
+
+**Measured cost.** None to a person: the branch makes no such write, which the
+review confirmed by mutation (an UPDATE of the live database and a rewrite of
+an analysis file both fail the test). Maintainer facing.
+
+**Closes when:** the test also lists the library tree before and after, or is
+left as is. Ledger only.
+
+---
+
+## R-1101. A file that will not take its genre now stops a sync land at the tag step
+
+**Found:** at the review of #358, U178, 2026-10-31.
+
+**The mechanism.** Since U178 a file `tag folder` cannot write fails its item
+with `tag-folder-unwritten`, so the tagging job ends failed, its resume exits
+with the item's cause and no tagging summary, and `crate sync land`'s tail,
+which reads the job state, stops at the tag step with the file named. Before
+U178 the same file was reported tagged and landed carrying no genre.
+
+**Measured cost.** Driven at the review as far as the job state and the
+resume's envelope; the land pass itself was not driven. A person running a
+sync pass over a staging folder holding one locked file is stopped at tagging
+rather than landing it untagged under a false report. That is the intended
+behaviour, the shape `source-missing` already has, and it is recorded so the
+stop is not read as a regression.
+
+**Closes when:** nothing to close unless a person wants a pass to land the
+rest of the batch past one unwritable file, which would be a card of its own.
+Ledger only.
+
+---
+
+## R-1102. tag folder --label with a punctuation only name is refused in the registry's words
+
+**Found:** at the review of #358, U178, 2026-10-31.
+
+**The mechanism.** `tagging/cli.py`'s `_label_payload` resolves `--label`
+through `Registry.resolve`, which derives a slug and raises
+`label-name-invalid` for a name with no letter or digit. The verb does not
+catch it, so `crate tag folder FOLDER --label=***` is refused with the
+registry's sentence about a favourite label needing a name that yields an
+identifier, rather than the verb's own `label-unknown`.
+
+**Measured cost.** Driven at the review: typed refusal, exit 30, nothing
+queued. Wording only.
+
+**Closes when:** the verb catches the slug refusal and answers `label-unknown`
+naming the folder's label. Ledger only.
+
+---
+
+## R-1103. crate tag retag reports a genre written onto a file that would not take it
+
+**Found:** at the review of #358, U178, 2026-10-31.
+
+**The mechanism.** `tagging/retag.py`, in `retag_one`, calls `tags.write_genre`
+and reports the answer as written without reading the writer's return.
+`write_genre` answers False rather than raising for a file it could not save, a
+locked file or one on a read only volume, so the retag reports the new genre
+and the file keeps the old one. U178 found the same shape in `tag folder` and
+fixed it there with `tag-folder-unwritten`; `remap.py` and `suggest.py` already
+check the return. `retag.py` is the one caller left.
+
+**Measured cost.** Read at the review, not driven. A `crate tag retag` over a
+locked file would say the file was retagged while it still carries the coarse
+genre, the clean report over a write never performed that the board bar names.
+
+**Closes when:** `retag_one` checks the writer's return and the file's item
+fails or is reported unwritten with the file named, with a test that drives a
+file refusing the write. Earns an issue: the product says something false
+about a write.
+
+---
+
+## R-1104. The label tag tag folder reads is the one Picard writes, not one measured against rekordbox
+
+**Found:** at the plan of #358, U178, 2026-10-31.
+
+**The mechanism.** U178 added `label` to `core/tags.FIELDS` on the keys
+MusicBrainz Picard writes, the Vorbis `label` comment, the ID3 `TPUB` frame
+and a freeform MP4 `LABEL` atom, because nothing in the product wrote a label
+tag yet. Which field rekordbox shows in its Label column was not measured, so
+a file another tagger labelled under `organization` or `publisher` reads as
+carrying no label tag.
+
+**Measured cost.** Not driven. A file read as carrying no label is tagged as
+before, or by `--label`, so the cost is a label genre not applied, never a
+wrong one.
+
+**Closes when:** U177, which writes the label tag, measures rekordbox's Label
+column on a copy as its brief already says, and moves the entry in the field
+table if it differs, for the reader and the writer at once. Ledger only, since
+U177's brief owns the measurement.
+
+---
+
+## R-1105. tag-folder-unwritten tells a person to check the lock on a file that is only truncated
+
+**Found:** at the review of #358, U178, 2026-10-31.
+
+**The mechanism.** `tagging/tag.py`'s `_written` refuses with
+`tag-folder-unwritten` whenever `tags.write_genre` answers False, and its step
+says to check the file can be written, is not locked and is not on a read only
+volume. A zero byte or truncated `.flac` also answers False, since mutagen
+cannot open it, and the art repair's own diagnosis of that file sits in a
+report that is not committed for a failed item.
+
+**Measured cost.** Driven at the review: a sweep over an empty `bad.flac`
+fails its item with the lock remedy. The item fails, which is correct, and on
+`main` the same file was reported tagged; the cost is a remedy that sends a
+person to the wrong place for a truncated download.
+
+**Closes when:** the refusal's step also names a file that cannot be read as
+audio, or the art repair's detail rides on the refusal. Ledger only, wording.
+
+---
+
+## R-1106. Three U150 guards kill no test, each covered by another layer
+
+**Found:** at the reviews of #331, U150, 2026-11-01.
+
+**The mechanism.** Each was reverted alone by the review with the suite green.
+`label_filing.supported_only` keeps only the refs of targets the landing makes
+or finds, and `label_filing.write` maps refs through `by_target`, which holds
+only landed targets anyway. `mirror.Matcher` drops a known track that is
+empty, and `account_mirror.landed_tracks` already strips blanks while the
+match skips an empty answer. A guard covered by another guard is a guard
+nothing covers, so the record names them.
+
+**Measured cost.** None: the second layer holds in each case.
+
+**Closes when:** each has a test that drives its own layer alone, or the
+redundant layer is dropped. Ledger only.
+
+---
+
+## R-1107. An account mirror plan reads the session log twice, once for the live batches and once for the landing tracks
+
+**Found:** at the review of #331, U150, 2026-11-01.
+
+**The mechanism.** `rotate.live_batches` reads the session log through
+`rotate.landings`, and `account_mirror.landed_tracks` reads it again for each
+row's recorded provider track, so one plan parses every record twice.
+
+**Measured cost.** Not measured on the live library. One extra parse of the
+session log per organize plan, local and without a provider request.
+
+**Closes when:** one scan feeds both, or the cost is measured and found
+negligible. Ledger only.
+
+---
+
+## R-1108. Only a native label landing with a manifest records each row's provider track, so a bridge landing's or a --label landing's batch is matched by ISRC
+
+**Found:** at the build of #331, U150, 2026-11-01.
+
+**The mechanism.** `label_filing.PROVIDER_KEY` is written by the native
+landing from the manifest rows its files were tied to. A landing on the xml
+bridge writes an intake file and records nothing of the kind, and a landing
+given `--label` has no manifest to name a track. Those rows reach the INBOX
+mirror through the ordinary matcher, by ISRC, and a row whose code ties two
+agreeing releases is unmatched and named, the tie R-1032 records.
+
+**Measured cost.** Not driven on the live library. A label batch landed that
+way has its tied rows missing from its `INBOX <batch>` playlist, each named on
+the gate.
+
+**Closes when:** the tie break lands, or the downloader's own record of each
+file's provider track reaches the landing. Ledger only.
+
+---
+
+## R-1109. A stale batch is mirrored by the same organize run that rotates it into Old, and removed from the account at the next
+
+**Found:** at the review of #331, U150, 2026-11-01.
+
+**The mechanism.** `rotate.live_batches` reads a batch as live while it sits
+under INBOX, whatever its age, and `crate organize` plans both areas before it
+applies either. So a batch past `reports.intake_stale_days` that was never
+mirrored is planned into the account's INBOX folder in the run whose
+rekordbox area moves it into Old, and the next refresh removes that playlist.
+The first fix round skipped a batch the rotation would move, and the second
+review drove what that cost: under `--as-of`, under `--only mirror`, or with
+the rekordbox gate declined or refused, the batch stays in rekordbox's INBOX
+and was silently missing from the account's. That skip was reverted.
+
+**Measured cost.** Driven at the function seam by the review: one playlist
+created and filled, then removed at the next refresh, per stale batch never
+mirrored before. No track leaves the library or any other playlist.
+
+**Closes when:** the account area learns, after the rekordbox apply, which
+batches the rotation actually moved (a second account gate, or the mirror
+planned after the database area writes, the lag the U147 solution names).
+Ledger only.
+
+---
+
+## R-1110. A batch an unreadable landing record names is left out of the INBOX mirror with nothing said, when it was never mirrored before
+
+**Found:** at the second review of #331, U150, 2026-11-01.
+
+**The mechanism.** A batch recognised only by its landing record (`run record`
+or `recorded name`) is not a batch when that record cannot be read, so
+`live_batches` leaves it out. One already mirrored is left on the account and
+named, because its title is still under INBOX. One never mirrored is simply
+absent from the plan, and under `--only mirror` the rotation's own warning
+about unreadable records is not on the screen either.
+
+**Measured cost.** Driven by the review on a hand corrupted record: the batch
+is missing from the account's INBOX folder with no line saying why. No verb
+that writes an unreadable record was driven, so reachability is unmeasured.
+
+**Closes when:** the mirror's plan states the unreadable record count, as the
+rotation's step does. Ledger only.
+
+---
+
+## R-1111. A write that renumbers the root, or a name lookup that finds a namesake inside DEADCA7's folder, is refused at commit rather than kept clear of the folder
+
+**Found:** at the review of #392, U185, 2026-10-31.
+
+**The mechanism.** The U185 commit guard holds every row of DEADCA7's folder at the top of the tree whole, its position included. Two shapes of write would reach it without meaning to. Moving one of the author's own top level nodes out of the root makes the binding renumber every root sibling above it, the folder among them; and the unscoped `rb_writer.ensure_folder(db, name)` matches a folder of the name anywhere, so a folder of the same name nested inside the push's folder would be adopted and written into. Both are refused at commit with nothing written, so the folder is never damaged; the cost is that the verb stops.
+
+**Measured cost.** Driven by the review on scratch databases: both commits refused, the push's rows byte for byte. No producer in `src`: the one caller of `move_playlist_node` moves within INBOX, and the one caller of `ensure_folder` passes a parent. Whether DEADCA7 pushes nested folders is not established.
+
+**Closes when:** a writer that moves a node at the root, or calls `ensure_folder` unscoped, either keeps the foreign folder out of what it renumbers or matches, or this is read again. Ledger only: the guard holds, and no verb reaches it today.
+
+---
+
+## R-1112. doctor reads DEADCA7's last push as its newest backup entry's modification time, unmeasured against a real push
+
+**Found:** at the review of #392, U185, 2026-10-31.
+
+**The mechanism.** `deadca7.push` in `cli/doctor.py` takes the newest entry in DEADCA7's `rekordbox-backups` folder and reads its modification time as when the app last pushed into the database. If the app makes that backup by copying `master.db` with its date kept, the time read is rekordbox's last write before the push, and a push made after this product's last database backup could be reported as one that backup holds.
+
+**Measured cost.** Not driven: it needs a real DEADCA7 push. Dated directory entries, an empty folder, an unreadable entry and an unreadable fact file were driven and answer as written.
+
+**Closes when:** the attended sitting U185 owes pushes once into a disposable copy and compares the newest entry's modification time with the push's own time. If they differ, the check reads the entry's name or its creation time instead. Ledger only, since it closes at an attended sitting.
+
+---
+
+## R-1113. Four layers of the DEADCA7 guard kill no test, each covered by another layer
+
+**Found:** at the reviews of #392, U185, 2026-10-31.
+
+**The mechanism.** The guard asks two ways, and some of its layers answer only what another already answers. In `rb_writer.pending_objects`, dropping the buffer's `move` branch, or the `session.dirty` loop, leaves every U185 test green, because the other source reports the same object. In `foreign_tree`, the `delete` branch of `pending_touches` is reached only after the additive whitelist has refused the hard delete, and the changed columns branch of `differences` is reached only by a raw column change on a row below the folder, which no test makes; a raw rename of the folder itself is refused, but as every row of the folder being gone, since a renamed root is no longer a foreign root on the second reading.
+
+**Measured cost.** None to a person: every touch the two review rounds drove is refused with nothing written. Measured as zero death rows in the review rounds' own mutation passes; the refusal's wording for a raw rename names a disappearance rather than a rename.
+
+**Closes when:** a test drives a touch only one layer sees for each: a write the binding makes with its tracking off, a raw session change, and a raw column change on a pushed playlist. Ledger only.
+
+---
+
+## R-1114. label sync --next ends with "no label has anything new" when a label's listing failed
+
+**Found:** at the review of #400, U189, 2026-11-01.
+
+**The mechanism.** `label/sync_cli._next` walks the followed labels and, when
+none yields a question, appends an `ok` check, "no label has anything new to
+ask about", and returns outcome `no_op` with exit 0. A label whose catalogue
+could not be listed is skipped with its own `fail` check, and the closing line
+is appended all the same, so a run in which every listing failed ends by saying
+every label has nothing new. U189's single label form, `--next --label NAME`,
+leaves the closing line out and reports the failure as its one check, but keeps
+the `no_op` outcome the walk uses, and the guide now says to read the line, not
+only the exit status.
+
+**Measured cost.** Driven at the review of U189: two labels followed, the
+provider bound for neither, `crate label sync --next` exits 0, outcome
+`no_op`, two `fail` lines and the `ok` closing line. An agent or a script that
+reads the exit status or the outcome reads a failed listing as nothing new,
+and the closing line says so in words. The `fail` lines are in the report, so
+it is not a clean report, but its last line is false.
+
+**Closes when:** the closing line names only the labels that were listed and
+found nothing, or is left out when any label was skipped, and a run whose every
+label was skipped is not `no_op`. Earns an issue: the product says something
+false on a shipped verb.

@@ -1,0 +1,178 @@
+name = "u189"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_next_label_refused_again"
+description = "label_sync: restore the old refusal of --label without --answer, so --next --label is refused and no single label can be asked"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''    elif not args.next_question and (args.label is not None or args.releases):'''
+new = '''    elif args.label is not None or args.releases:'''
+
+[[rows]]
+id = "M2_label_alone_not_refused"
+description = "label_sync: drop the refusal of --label or --release alone, so they fall through to the interactive walk and name nothing"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''    elif not args.next_question and (args.label is not None or args.releases):'''
+new = '''    elif False:'''
+
+[[rows]]
+id = "M3_next_release_not_refused"
+description = "label_sync: drop the refusal of --next with --release, so the named releases are silently ignored"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''    elif args.next_question and args.releases:'''
+new = '''    elif False:'''
+
+[[rows]]
+id = "M4_empty_name_not_refused"
+description = "label_sync: drop the refusal of --next with an empty --label, so a blank name reaches the registry as an unfollowed label"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''    elif args.next_question and args.label is not None and not args.label.strip():'''
+new = '''    elif False:'''
+
+[[rows]]
+id = "M5_alone_hint_drops_the_label"
+description = "label_sync: reword the --label alone hint to the plain --next, which walks from the top"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''            "to ask about one label: crate label sync --next --label NAME",'''
+new = '''            "to ask about one label: crate label sync --next",'''
+
+[[rows]]
+id = "M6_label_not_passed"
+description = "label_sync: call _next without the named label, so --next --label walks every label from the top"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''        return _next(ctx, cfg, args.label)'''
+new = '''        return _next(ctx, cfg)'''
+
+[[rows]]
+id = "M7_unknown_name_not_refused"
+description = "_next: resolve the name without refusing, so an unfollowed name walks every label"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''    only = _entry_or_refuse(followed, name) if name is not None else None'''
+new = '''    only = followed.resolve(name) if name is not None else None'''
+
+[[rows]]
+id = "M8_entries_ignore_the_one"
+description = "_next: walk every followed label even when one is named"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''    entries = [only] if only is not None else list(followed.labels.values())'''
+new = '''    entries = list(followed.labels.values())'''
+
+[[rows]]
+id = "M9_one_label_closing_line"
+description = "_next: append the closing no label has anything new line for a single label too, so its report is not one check"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''    if only is None:
+        checks.append(_check("question", "ok", "no label has anything new to ask about"))'''
+new = '''    if True:
+        checks.append(_check("question", "ok", "no label has anything new to ask about"))'''
+
+[[rows]]
+id = "M10_closing_line_never"
+description = "_next: never append the closing line, so a plain --next with nothing to ask says nothing of the other labels"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''    if only is None:
+        checks.append(_check("question", "ok", "no label has anything new to ask about"))'''
+new = '''    if False:
+        checks.append(_check("question", "ok", "no label has anything new to ask about"))'''
+
+[[rows]]
+id = "M11_answer_remedy_plain_next"
+description = "record_answer: the remedy of an answer with nothing waiting names the plain --next again"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''                    else f"ask it first with: crate label sync --next --label {entry.label_id}"'''
+new = '''                    else "ask it first with: crate label sync --next"'''
+
+[[rows]]
+id = "M12_pick_remedy_plain_next"
+description = "record_answer: the remedy of a pick outside the question names the plain --next again"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''                    f"take the identifiers from: crate label sync --next --label "
+                    f"{entry.label_id}",'''
+new = '''                    "take the identifiers from: crate label sync --next",'''
+
+[[rows]]
+id = "M13_walk_remedy_plain_next"
+description = "_walk: the unanswerable refusal's remedy names the plain --next and a placeholder label again"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''                        f"sync --next --label {entry.label_id}, then crate label sync "
+                        f"--answer ANSWER --label {entry.label_id}",'''
+new = '''                        f"sync --next, then crate label sync "
+                        f"--answer ANSWER --label NAME",'''
+
+[[rows]]
+id = "S1_saved_question_relisted"
+description = "_next, sample of the unit's existing guards: never reuse a saved question, so every --next lists the label again"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''            if isinstance(pending, Mapping) and pending.get("releases"):
+                question = Question.from_json(pending)
+            else:
+                listed = _question_for(tools, store, entry, asked_releases(document, entry.label_id))'''
+new = '''            if False:
+                question = Question.from_json(pending)
+            else:
+                listed = _question_for(tools, store, entry, asked_releases(document, entry.label_id))'''
+
+[[rows]]
+id = "S2_question_not_saved"
+description = "_next, sample of the unit's existing guards: print a new question without saving it, so no answer can apply to it"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''                question = listed.question
+                _save_pending(cfg, question)'''
+new = '''                question = listed.question'''
+
+[[rows]]
+id = "M14_pick_no_release_remedy_plain_next"
+description = "label_sync: the remedy of --answer pick with no --release names the plain --next again"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''                f"--next --label {args.label!r}",'''
+new = '''                f"--next",'''
+
+[[rows]]
+id = "M15_pick_remedy_unquoted"
+description = "label_sync: the pick remedy names the label unquoted, so a name with a space pastes as two words"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''                f"--next --label {args.label!r}",'''
+new = '''                f"--next --label {args.label}",'''
+
+[[rows]]
+id = "M16_empty_label_alone_walks"
+description = "label_sync: test --label for truth again, so an empty --label alone runs the whole walk"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''    elif not args.next_question and (args.label is not None or args.releases):'''
+new = '''    elif not args.next_question and (args.label or args.releases):'''

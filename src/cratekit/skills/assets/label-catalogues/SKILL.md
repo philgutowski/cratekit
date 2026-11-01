@@ -257,6 +257,7 @@ download, which then runs unattended.
 ```bash
 crate label sync
 crate label sync --next
+crate label sync --next --label "Some Label"
 crate label sync --go
 ```
 

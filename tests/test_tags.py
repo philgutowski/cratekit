@@ -84,6 +84,7 @@ ALL_FIELDS = {
     "album": "Probe Album",
     "date": "2021-03-05",
     "albumartist": "Probe Album Artist",
+    "label": "Probe Label",
 }
 
 

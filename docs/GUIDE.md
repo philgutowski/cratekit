@@ -360,7 +360,14 @@ with no artist, as rekordbox would show it. **Nothing about the audio is
 written**: no tempo, no grid, no key, no waveform, and the run says so.
 rekordbox does not analyse a row it did not make until you ask, so open it,
 select INBOX / Analyze and run Analyze Tracks; Reload Tags is not needed, and
-adoption reads each row's genre from the moment it lands. A row landed before
+adoption reads each row's genre from the moment it lands. Once rekordbox and its
+agent have quit, `crate analyze check` says whether the visit is done and done
+right: every row analysed, every grid one tempo (or moving on a row marked
+`dyn`), the Key column filled, and how often the title's key agrees with
+rekordbox's. It exits 0 when the visit is done, 12 when rows still wait for
+analysis, and 27 when what rekordbox wrote looks wrong, naming the rows; it
+reads INBOX / Analyze, or the landing you name with `--pass` or `--session`,
+and writes nothing. A row landed before
 2026-10-09 also lacks the defaults rekordbox writes on every row it makes, and
 will not load to a deck until `crate repair rows` fills them (R-923); a row
 landed since carries them from the start. There is no import, no drag and no `intake imported` on this path.
@@ -517,6 +524,7 @@ crate label registry adopt
 crate label import "Some Label"
 crate label sync
 crate label sync --next
+crate label sync --next --label "Some Label"
 crate label sync --answer pick --label "Some Label" --release RELEASE_ID
 crate label sync --go
 crate review list --queue label-release
@@ -539,7 +547,12 @@ it would hold never reaches a question, and the first run also offers, once per
 label, the releases already waiting in review from earlier sweeps. A taken
 release is an accepted review item; nothing is downloaded by the answer itself.
 Without a terminal, `--next` prints the next question and `--answer` records one
-answer for one label, and both write the same record. A newly followed label is
+answer for one label, and both write the same record. To ask about one label
+without reaching it through the labels above it, name it: `--next --label "Some
+Label"` lists only that label and prints its question, says it has nothing
+new, or says its listing failed, and leaves every other label as it was. A
+failed listing is a `[FAIL]` line on a run that still exits 0, so read the
+line, not only the exit status. A newly followed label is
 asked about its newest few releases, the `labels.offer_per_sweep` count, not its
 whole catalogue.
 
@@ -578,6 +591,23 @@ playlist for review and adds and downloads nothing. Accept the ones you want in
 review, then `label registry adopt` adds each accepted label the registry does
 not already hold, under any spelling of its name, and reports the rest as
 already held. Running it again adds nothing new.
+
+A label you follow for one style can carry that style as its genre, so its
+tracks are tagged with it and none waits for a hand tag:
+
+```bash
+crate label registry set PULS --genre Rominimal
+crate tag folder /path/to/staging --label PULS
+```
+
+The genre is checked against your taxonomy when you set it, and the screen says
+which folder it routes to and how. A genre that reaches only the fallback folder
+is refused unless you pass `--accept-fallback`, and `--genre default` clears it.
+`tag folder` gives the label's genre to every file of the label that has no
+genre, without asking any catalogue, and counts those files apart in its report
+under `label-genre`. A file's label is its label tag, or `--label` for a file
+that carries none. A file that already has a genre keeps it, and a file of the
+label with no picture is still searched, for its art only.
 
 `sync labels` is retired. It queues nothing and names `label sync`, and `sync
 all` no longer sweeps labels either. A labels sweep queued before the guided
@@ -721,11 +751,20 @@ name under the INSPIRATION folder in rekordbox. It also files every playlist at
 the account root
 that a sync marked downloaded into the root folder named for the year of its
 mark, creating that folder once if the account lacks it, and names every other
-playlist at the root with why it stays. Approve one area and abort the other
+playlist at the root with why it stays. It also mirrors rekordbox onto the
+account: every genre folder of BY GENRE + ENERGY, the Favorites folder and
+INBOX each become one root folder of the same name, holding one private
+playlist per rekordbox playlist, `Deep House Low` or `INBOX 2026-10-31
+Defected`, kept equal to the tracks the account carries. INBOX mirrors only its
+live batches, the playlists `inbox rotate` moves, never Old. A label batch,
+which no account playlist holds, fills from the provider track each file was
+downloaded as. Approve one area and abort the other
 and only the approved one is written. Every other playlist you made yourself,
 on either side, is listed with a suggested home where one is obvious, and is
 never moved or renamed. Nothing is deleted beyond the expired batch playlists the rotation
-removes, never a track. `--report` prints both plans and asks nothing. The
+removes, a track that left a mirrored playlist's rekordbox playlist, and the
+mirrored playlist of a batch that left INBOX, each named on the gate, and never
+a track from your library. `--report` prints both plans and asks nothing. The
 rekordbox area needs a backup acknowledged under a day old, and like every
 database write it is worth rehearsing on a copy first.
 
@@ -737,7 +776,7 @@ crate organize --only file
 ```
 
 The kinds are `adopt`, `rotate`, `record-labels` and `inspiration` on the rekordbox side,
-`labels`, `sets`, `marks` and `file` on the account, and `yours` on both. An
+`labels`, `sets`, `marks`, `file`, `root` and `mirror` on the account, and `yours` on both. An
 area with no kind named is not planned and not asked, so `--only file` files
 the playlists at the account root into their folders without reading the
 database or planning a label's catalogue, and asks only the account's
@@ -1028,6 +1067,30 @@ under five days old. An older portion, or one with no completion recorded, is
 refused as `backup-acknowledgment-backup-too-old` and named; run a backup, or
 acknowledge from a terminal yourself. The acknowledgment records which rule
 minted it, `session-ages` or `terminal`, and who answered the gate.
+
+## Using DEADCA7 beside Cratekit
+
+DEADCA7 is a catalog manager and player that can push into rekordbox's
+database. Its playlists go into one folder named `DEADCA7` at the top of the
+playlist tree, along with its hot cues and its grids and waveforms. Cratekit
+shares the library with it and leaves its work alone:
+
+- Nothing Cratekit writes can move, rename, empty or fill that folder or
+  anything in it. A write that would is refused, with nothing written.
+- `crate organize` names the folder once, as another app's, and never lists it
+  among your own playlists or suggests a home for it.
+- A playlist DEADCA7 pushed that happens to share your Favorites playlist's
+  name is not mistaken for it.
+- No tree in your taxonomy may be named `DEADCA7`.
+- `crate doctor` says whether DEADCA7 is installed, when it last pushed into
+  the database, and warns when that push is newer than your last database
+  backup. Run `crate backup run` then.
+
+Both tools refuse while rekordbox is open, so they take turns. Do not push
+from DEADCA7 while a Cratekit verb is running: the verb's next commit sees the
+push and refuses, which is the safe answer, and running it again carries on.
+A folder merely named DEADCA7 somewhere below the top is your own and is
+treated like any other.
 
 ## When something refuses or stalls
 

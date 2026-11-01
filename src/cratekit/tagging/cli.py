@@ -22,6 +22,12 @@ builds a filename out of one, because
 :func:`cratekit.tagging.artifacts.final_path` names a report after the item's
 ORDINAL, which is what makes an arbitrary identifier safe there.
 
+THE LABEL GENRES ARE FROZEN TOO (U178). Every registered label that carries a
+genre is written into the job's payload when it is queued, with the verb's
+``--label``, so a resume tags by what was registered when the sweep was asked
+for, as KTD9 freezes the configuration. A job queued before labels carried a
+genre has none frozen and is tagged exactly as it always was.
+
 THE FOLDER IS FROZEN ABSOLUTE. A resume is a fresh process that
 ``cratekit.cli.jobs`` spawns, and a relative folder would resolve against
 whatever directory that process happens to start in, which is a sweep of some
@@ -32,12 +38,14 @@ Layer: modules.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 
 from cratekit.cli.output import Envelope
 from cratekit.core import active_taxonomy, art, config, jobs
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
+from cratekit.label import registry as labels
 from cratekit.tagging import artifacts, published, searchers, shell
 
 # THE ENGINE IS ALIASED because this module already defines ``tag_folder`` and
@@ -83,6 +91,31 @@ PUBLISHED_UNREAD = "tag-folder-published-unread"
 NO_ISRC_FILES = "tag-folder-no-isrc"
 
 
+#: The warning a sweep queued with ``--label`` carries when that label is
+#: registered with no genre (U178). Its files are searched as they always were,
+#: which is a correct sweep, so this is a warning and not a refusal; it says so
+#: because a person who named the label expected none of them to be searched.
+LABEL_NO_GENRE = "tag-folder-label-no-genre"
+
+#: The warning a sweep carries when the label registry could not be read as it
+#: was queued (U178). The sweep goes on as it did before labels carried a
+#: genre, and says that no label's genre was applied, rather than reading an
+#: unreadable registry as one holding no genres.
+LABEL_REGISTRY_UNREAD = "tag-folder-label-registry-unread"
+
+
+#: The warning a sweep queued with ``--label`` carries when some of its files
+#: carry a label tag naming no label with a genre (U178). The file's own tag
+#: outranks ``--label``, so those files were asked of the catalogues, and a
+#: person who named the folder's label is told which tags kept it from them.
+LABEL_TAG_OUTRANKED = "tag-folder-label-tag-outranked"
+
+#: The warning a resume carries when it is given ``--label`` (U178). The label
+#: a sweep tags by is frozen when it is queued, so the one typed on a resume is
+#: not applied, and saying so is cheaper than letting a person believe it was.
+LABEL_ON_RESUME = "tag-folder-label-on-resume"
+
+
 def _load() -> config.Config:
     """Read config, turning a configuration failure into a typed cause.
 
@@ -116,6 +149,16 @@ def build(parser, entry) -> None:
         default=None,
         metavar="JOB_ID",
         help="continue the tagging job already queued under this identifier",
+    )
+    parser.add_argument(
+        "--label",
+        default=None,
+        metavar="NAME",
+        help=(
+            "the registered label of every file here that carries no label tag; a "
+            "label registered with a genre gives it to each such file with no "
+            "genre, and no catalogue is asked about it"
+        ),
     )
     parser.set_defaults(_handler=tag_folder)
 
@@ -183,12 +226,24 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
     genres the general catalogue supplied is a number in the summary rather
     than a subtraction. A file tagged by a searcher that names no source, or by
     one this build does not declare, is in ``tagged`` and in none of these.
+
+    ``label_genres`` COUNTS THE FILES EACH REGISTERED LABEL TAGGED (U178), and
+    ``tagged_by`` carries them under :data:`cratekit.tagging.tag.LABEL_GENRE`,
+    zero filled, so a label genre is counted apart from every catalogue's and
+    never as an off taxonomy word. ``label_tags`` counts the files whose own
+    label tag named no label with a genre, by the tag's text, so a spelling the
+    registry does not know is a line a person can act on. The labels are not zero filled, on the
+    unresolved strings' rule: they are names a person registered, not a set
+    this build declares.
     """
     skipped = dict.fromkeys(tag_engine.SKIP_REASONS, 0)
     answer_values = (*(answer.value for answer in searchers.Answer), searchers.NOT_ASKED)
     answers = {source: dict.fromkeys(answer_values, 0) for source in searchers.SOURCES}
     answers[published.SOURCE] = dict.fromkeys(published.ANSWERS, 0)
     tagged_by = dict.fromkeys(answers, 0)
+    tagged_by[tag_engine.LABEL_GENRE] = 0
+    label_genres: dict[str, int] = {}
+    label_tags: dict[str, int] = {}
     art_repair = dict.fromkeys(art.REPAIR_STATUSES, 0)
     art_fetch = dict.fromkeys(tag_engine.ART_FETCH_STATUSES, 0)
     unresolved: dict[str, int] = {}
@@ -204,8 +259,14 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
             wrote = str(report.get("source") or "")
             if wrote in tagged_by:
                 tagged_by[wrote] += 1
+            if wrote == tag_engine.LABEL_GENRE:
+                named = str(report.get("label") or "")
+                label_genres[named] = label_genres.get(named, 0) + 1
             if report.get("off_taxonomy") and source_genre:
                 off_taxonomy[source_genre] = off_taxonomy.get(source_genre, 0) + 1
+        own = str(report.get("label_tag") or "")
+        if own:
+            label_tags[own] = label_tags.get(own, 0) + 1
         if reason == tag_engine.UNMAPPED_GENRE and source_genre:
             unresolved[source_genre] = unresolved.get(source_genre, 0) + 1
         status = str(report.get("art_repair") or "")
@@ -224,6 +285,8 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
     return {
         "tagged": tagged,
         "tagged_by": tagged_by,
+        "label_genres": label_genres,
+        "label_tags": label_tags,
         "skipped": skipped,
         "unresolved": unresolved,
         "off_taxonomy": off_taxonomy,
@@ -499,6 +562,7 @@ def tag_folder(ctx) -> Envelope:
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP, warnings=warnings)
 
     folder = Path(named).expanduser().absolute()
+    frozen, label_warnings = _label_payload(ctx.args.label)
     files = tag_engine.audio_files(folder)
     if not files:
         payload, warnings = (
@@ -520,14 +584,165 @@ def tag_folder(ctx) -> Envelope:
         job = jobs.enqueue(
             store,
             handler_key=ctx.entry.handler_key,
-            payload={"folder": str(folder)},
+            payload={"folder": str(folder), **frozen},
             # ONE AUDIO FILE IS ONE ITEM, relative to the frozen folder. Without
             # them the queue holds a job with nothing to claim and the driver
             # reports an empty success over a sweep it never took.
             item_ids=tuple(str(path.relative_to(folder)) for path in files),
             cfg=cfg,
         )
-        return ctx.envelope(data=shell.reported(store, job))
+        return ctx.envelope(data=shell.reported(store, job), warnings=label_warnings)
+
+
+def _label_payload(label: str | None) -> tuple[dict, tuple[dict[str, str], ...]]:
+    """What a sweep freezes about labels, and what it warns about them (U178).
+
+    THE GENRES OF EVERY REGISTERED LABEL THAT CARRIES ONE, keyed by identifier,
+    and the ``--label`` resolved to its registered name. Both are left out of
+    the payload when there is nothing to freeze, so a sweep with no label
+    genres is queued exactly as it was before them.
+
+    ``--label`` NAMING NO REGISTERED LABEL IS REFUSED, before anything is
+    queued: a typo would otherwise tag the whole folder from the catalogues
+    while the person believed it was tagged by the label. One registered with
+    no genre is accepted with a warning, since its sweep is a correct one.
+
+    A REGISTRY THAT CANNOT BE READ refuses a sweep given ``--label``, which asked
+    for it by name, and warns on one that did not, which goes on as every sweep
+    did before labels carried a genre.
+    """
+    try:
+        held = labels.RegistryStore().load()
+    except CratekitError as exc:
+        if label is not None:
+            raise
+        return {}, (
+            {
+                "code": LABEL_REGISTRY_UNREAD,
+                "message": (
+                    f"the label registry could not be read ({exc.cause.message}), "
+                    f"so no label's genre was applied and every file is asked of "
+                    f"the catalogues as before"
+                ),
+            },
+        )
+    frozen: dict = {}
+    warnings: tuple[dict[str, str], ...] = ()
+    genres = {
+        entry.label_id: {"name": entry.name, "genre": entry.genre}
+        for entry in held.labels.values()
+        if entry.genre
+    }
+    if genres:
+        frozen["label_genres"] = genres
+    if label is not None:
+        entry = held.resolve(label) if label.strip() else None
+        if entry is None:
+            raise refuse(
+                "label-unknown",
+                f"no favourite label is named {label!r}, so the files of this folder "
+                f"cannot be given its genre; nothing was queued",
+                steps=(
+                    "list the registry with crate label registry and pass a name from "
+                    "it, or add the label first",
+                ),
+                origin=("tagging", "cli"),
+                detail={"label": label},
+            )
+        frozen["label"] = entry.name
+        if not entry.genre:
+            warnings = (
+                {
+                    "code": LABEL_NO_GENRE,
+                    "message": (
+                        f"{entry.name} is registered with no genre, so its files are "
+                        f"asked of the catalogues as before; give it one with crate "
+                        f"label registry set {entry.name!r} --genre WORD"
+                    ),
+                },
+            )
+    return frozen, warnings
+
+
+def _label_warnings(
+    typed: str | None, payload: Mapping, summary: dict
+) -> tuple[dict[str, str], ...]:
+    """What a resume says about labels: a ``--label`` it did not apply, and tags that outranked one.
+
+    THE TAGS ARE NAMED ONLY FOR A SWEEP QUEUED WITH ``--label``. Without one, a
+    label tag naming no registered genre is an ordinary file tagged as it always
+    was; with one, the person said what the folder is, and the files their own
+    tag kept from it are the ones they would otherwise find untagged later.
+    """
+    warnings: list[dict[str, str]] = []
+    if typed is not None:
+        warnings.append(
+            {
+                "code": LABEL_ON_RESUME,
+                "message": (
+                    f"--label {typed!r} was not applied: a sweep tags by the label it "
+                    f"was queued with, "
+                    + (
+                        f"{payload['label']}"
+                        if payload.get("label")
+                        else "none for this one"
+                    )
+                    + ", so queue a new sweep over the folder to tag by another"
+                ),
+            }
+        )
+    outranked = summary.get("label_tags") or {}
+    if payload.get("label") and outranked:
+        files = sum(outranked.values())
+        named = ", ".join(f"{tag} on {count}" for tag, count in sorted(outranked.items()))
+        warnings.append(
+            {
+                "code": LABEL_TAG_OUTRANKED,
+                "message": (
+                    f"{_files(files)} not given {payload['label']}'s genre because "
+                    f"the file's own label tag names another label, one the registry "
+                    f"holds with no genre or does not hold at all ({named}), and a "
+                    f"file's own tag outranks --label; they were asked of the "
+                    f"catalogues instead. Correct the tag, or give its label a genre "
+                    f"in the registry, and run the folder again"
+                ),
+            }
+        )
+    return tuple(warnings)
+
+
+def _label_seam(payload: Mapping) -> tag_engine.LabelGenre | None:
+    """The engine's label seam over the genres frozen into the job, or None for none.
+
+    A REGISTRY OF THE FROZEN ROWS, resolved the way the registry resolves a
+    name, by identifier, by display name in any case, then by the slug the name
+    would have. A name that could never be a label, punctuation only, is an
+    unknown label here and not a failed item, because it came off a file's tag
+    and the file is then searched as before.
+    """
+    frozen = payload.get("label_genres")
+    if not isinstance(frozen, Mapping) or not frozen:
+        return None
+    held = labels.Registry(
+        labels={
+            str(label_id): labels.LabelEntry(
+                label_id=str(label_id), name=str(row.get("name") or label_id), genre=str(row["genre"])
+            )
+            for label_id, row in frozen.items()
+            if isinstance(row, Mapping) and isinstance(row.get("genre"), str) and row["genre"]
+        }
+    )
+
+    def answer(name: str) -> tag_engine.LabelAnswer | None:
+        try:
+            entry = held.resolve(name)
+        except CratekitError:
+            return None
+        if entry is None or not entry.genre:
+            return None
+        return tag_engine.LabelAnswer(label=entry.name, genre=entry.genre)
+
+    return answer
 
 
 def _resume(ctx, cfg: config.Config) -> Envelope:
@@ -554,6 +769,7 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
         return ctx.envelope(
             data=shell.reported(store, job, {"tagging": summary}),
             warnings=tuple(warnings)
+            + _label_warnings(ctx.args.label, job.payload or {}, summary)
             + _off_taxonomy_warning(summary)
             + _unread_warnings(summary)
             + _published_warnings(summary),
@@ -596,7 +812,8 @@ def handle(job, item, cfg) -> jobs.Produced:
     recorded resume bug where a queued run re-resolved its configuration; a
     handler that loaded one is that defect wearing a new hat.
     """
-    folder = Path(str((job.payload or {}).get("folder") or ""))
+    payload = job.payload or {}
+    folder = Path(str(payload.get("folder") or ""))
     path = folder / item.item_id
     if not path.is_file():
         raise refuse(
@@ -616,6 +833,8 @@ def handle(job, item, cfg) -> jobs.Produced:
         searcher=searchers.for_taxonomy(declared),
         fetch_image=searchers.for_images(),
         published=published.for_taxonomy(declared),
+        label_genre=_label_seam(payload),
+        label=str(payload.get("label") or "") or None,
     )
     return artifacts.produced(
         cfg,
@@ -649,5 +868,9 @@ def handle(job, item, cfg) -> jobs.Produced:
             "art_repair_detail": result.art_repair_detail,
             "art_fetch": result.art_fetch,
             "art_fetch_detail": result.art_fetch_detail,
+            # THE REGISTERED LABEL WHOSE GENRE WAS WRITTEN, empty for every
+            # other file (U178).
+            "label": result.label,
+            "label_tag": result.label_tag,
         },
     )

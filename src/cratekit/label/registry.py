@@ -157,6 +157,38 @@ def check_kind(kind: str) -> str:
     return folded
 
 
+#: The longest genre a label may carry. Generous for any genre a catalogue or a
+#: person spells, and short enough that a pasted paragraph is refused rather
+#: than written onto every file of the label.
+GENRE_MAX = 64
+
+
+def check_genre(genre: str) -> str:
+    """A label's genre, stripped and composed, or a refusal for a value that could never be one.
+
+    THE SHAPE ONLY, as for a kind (U178). Where the word routes is the library's
+    taxonomy's to say, so the verb that sets a genre asks it. KEPT AS TYPED, case
+    and all, because this is the word written onto every file of the label, and
+    a folded copy would write ``rominimal`` where Phillip wrote ``Rominimal``.
+    One line with a letter or a digit in it, since a tag holding a control
+    character or only punctuation is not a genre anything could route.
+    """
+    text = unicodedata.normalize("NFC", genre.strip()) if isinstance(genre, str) else ""
+    if (
+        not text
+        or len(text) > GENRE_MAX
+        or not any(char.isalnum() for char in text)
+        or any(unicodedata.category(char).startswith("C") for char in text)
+    ):
+        raise _field_invalid(
+            f"a label's genre is one line of at most {GENRE_MAX} characters with a "
+            f"letter or a digit in it, such as Rominimal, not {genre!r}",
+            "pass --genre with the genre every track of this label should carry",
+            {"genre": genre},
+        )
+    return text
+
+
 def _checked_seeds(seed_artists: Sequence[str]) -> tuple[str, ...]:
     return tuple(check_seed(seed) for seed in seed_artists)
 
@@ -218,6 +250,10 @@ class LabelEntry:
     #: passes (R-798). Folded lowercase, and checked against the taxonomy by
     #: the verb that sets it, never here.
     kind: str | None = None
+    #: The genre every file of this label is tagged with when it carries none,
+    #: or None for a label whose files are asked of the catalogues (U178). Kept
+    #: as typed, and checked against the taxonomy by the verb that sets it.
+    genre: str | None = None
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -228,6 +264,7 @@ class LabelEntry:
             "track_limit": self.track_limit,
             "offer": self.offer,
             "kind": self.kind,
+            "genre": self.genre,
         }
 
 
@@ -284,6 +321,7 @@ def _entry_from(label_id: str, raw: Mapping[str, Any]) -> LabelEntry:
     name = str(raw.get("name") or label_id)
     match = raw.get("match")
     kind = raw.get("kind")
+    genre = raw.get("genre")
     return LabelEntry(
         label_id=str(raw.get("label_id") or label_id),
         name=name,
@@ -292,6 +330,7 @@ def _entry_from(label_id: str, raw: Mapping[str, Any]) -> LabelEntry:
         track_limit=_coerce_int(raw.get("track_limit")),
         offer=_coerce_int(raw.get("offer")),
         kind=kind.strip().lower() or None if isinstance(kind, str) else None,
+        genre=genre.strip() or None if isinstance(genre, str) else None,
     )
 
 
@@ -495,6 +534,8 @@ class RegistryStore:
         offer: int | None = None,
         kind: str | None = None,
         clear_kind: bool = False,
+        genre: str | None = None,
+        clear_genre: bool = False,
     ) -> str:
         """Add or update by identifier. Re-adding keeps the same ``label_id``.
 
@@ -509,6 +550,8 @@ class RegistryStore:
             check_offer(offer)
         if kind is not None:
             kind = check_kind(kind)
+        if genre is not None:
+            genre = check_genre(genre)
         written: list[str] = []
 
         def mutate(current: dict[str, LabelEntry]) -> None:
@@ -538,6 +581,9 @@ class RegistryStore:
                 kind=None
                 if clear_kind
                 else (kind if kind is not None else (existing.kind if existing else None)),
+                genre=None
+                if clear_genre
+                else (genre if genre is not None else (existing.genre if existing else None)),
             )
 
         self.update(mutate)
@@ -604,6 +650,8 @@ class RegistryStore:
         offer: int | None = None,
         kind: str | None = None,
         clear_kind: bool = False,
+        genre: str | None = None,
+        clear_genre: bool = False,
     ) -> LabelEntry:
         """Change the given fields of a held entry and keep every other one.
 
@@ -620,6 +668,8 @@ class RegistryStore:
             check_offer(offer)
         if kind is not None:
             kind = check_kind(kind)
+        if genre is not None:
+            genre = check_genre(genre)
         edited: list[LabelEntry] = []
 
         def mutate(current: dict[str, LabelEntry]) -> None:
@@ -642,6 +692,8 @@ class RegistryStore:
                 # ``clear_kind`` IS THE ONLY WAY BACK TO NONE. A kind of None
                 # means "keep what is held", as it does for every field here.
                 kind=None if clear_kind else (kind if kind is not None else existing.kind),
+                # ``clear_genre`` is the way back to None, as ``clear_kind`` is.
+                genre=None if clear_genre else (genre if genre is not None else existing.genre),
             )
             current[existing.label_id] = entry
             edited.append(entry)
