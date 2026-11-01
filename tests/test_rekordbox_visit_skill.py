@@ -161,6 +161,8 @@ def test_the_exit_codes_it_branches_on_are_the_check_s(flat):
     assert f"**{int(ExitCode.PENDING_HUMAN)}, {rc.WAITING}.**" in flat
     assert f"**{int(cause.REASONS['analysis-suspect'])}, {rc.SUSPECT}.**" in flat
     assert f"It must exit {int(ExitCode.PENDING_HUMAN)} with" in flat
+    suspect = int(cause.REASONS["analysis-suspect"])
+    assert f"or {suspect} with a `data.summary.grids` count above zero" in flat
 
 
 def test_the_json_fields_it_reads_are_the_check_s(flat):
@@ -177,8 +179,11 @@ def test_the_json_fields_it_reads_are_the_check_s(flat):
     assert f"Read `data.summary.scope` first. It must read `{rc.SCOPE_ANALYZE}`" in flat
     assert f"`data.summary.scope` must still read `{rc.SCOPE_ANALYZE}`" in flat, "the post check too"
     assert summary["analysed"] == 0 and summary["grids"][rc.VARIABLE] == 0
-    assert f"a `data.summary.grids` count of `{rc.VARIABLE}`" in flat
+    assert f"count above zero under `{rc.VARIABLE}`" in flat
     assert "`data.summary.analysed` plus `data.summary.not_analysed`" in flat
+    assert "gone" in summary and "`data.summary.gone`" in flat
+    for state in (rc.VARIABLE, rc.ABSENT, rc.MISSING, rc.UNREADABLE):
+        assert state in summary["grids"] and f"`{state}`" in flat, state
     for name in ("rows", "not_analysed", "items"):
         assert f"`data.summary.{name}`" in flat, name
     assert "whose `dyn` is true" in flat
@@ -209,3 +214,9 @@ def test_every_repository_file_it_cites_exists(flat):
 def test_the_contract_points_an_attended_session_at_it():
     """A procedure nothing names is a procedure nobody follows."""
     assert "`rekordbox-visit` skill" in (REPO_ROOT / "CLAUDE.md").read_text()
+
+
+def test_the_acknowledgment_it_mints_is_the_session_ack_gate(flat):
+    gates = {gate.name for entry in registry.ENTRIES for gate in entry.gates}
+    named = re.search(r"`crate session ack`, answering its `([a-z.]+)` gate", flat)
+    assert named and named.group(1) in gates

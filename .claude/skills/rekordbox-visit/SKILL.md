@@ -60,12 +60,15 @@ Every one of these holds, or the visit does not start.
    none of them. Then the exit status:
 
    - It must exit 12 with `data.summary.not_analysed` above zero for the
-     visit to go on, or 27 with a `data.summary.grids` count of `variable` or
-     unread rows, which is a run on the wrong settings that the visit's
-     Normal run analyses again.
+     visit to go on, or 27 with a `data.summary.grids` count above zero under
+     `variable`, `absent`, `missing` or `unreadable`, which is a run on the
+     wrong settings that the visit's Normal run analyses again. A 27 for key
+     agreement alone, with none of those grids, is not the visit's to fix:
+     stop and report its message.
    - Exit 0 means nothing waits. With `data.summary.rows` above zero the rows
-     are analysed and were never cleared, so skip to the clear in step 7;
-     with none there is no visit to make.
+     are analysed, or gone from the collection (`data.summary.gone`), and
+     were never cleared, so skip to the clear in step 7; with none there is
+     no visit to make.
 
    Write down three numbers from it: the batch the wait counts to, which is
    `data.summary.analysed` plus `data.summary.not_analysed` (a row that left
@@ -204,8 +207,9 @@ On done, take the analysed rows out of the playlist:
 
     crate inbox analyzed
 
-It needs the backup acknowledgment, which the session mints as CLAUDE.md's
-backup acknowledgment rule says, and it stops at its gate,
+It needs the backup acknowledgment, which the session mints with `crate
+session ack`, answering its `session.ack.backup` gate as the session as
+CLAUDE.md's backup acknowledgment rule says, and it stops at its own gate,
 `inbox.analyzed.approve`. That gate is a database write, so it is answered by
 CLAUDE.md's rehearsal rule: the same verb driven on a disposable copy with
 library state redirected, as `docs/solutions/workflow-issues/a-disposable-database-copy-does-not-make-library-state-disposable.md`
@@ -215,7 +219,8 @@ answered as the session:
     crate run decide --actor session --continue RUN_ID inbox.analyzed.approve apply
 
 It reads INBOX / Analyze back, which then holds only the rows still waiting:
-none, after a visit that ended done.
+none, after a visit that ended done. A row that left the collection stays,
+named as removed, and the record says so.
 
 ## When desktop control cannot take a screenshot
 
