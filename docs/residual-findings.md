@@ -40266,3 +40266,51 @@ the go's behaviour before U190.
 
 **Closes when:** a go with no answer and no job to resume ends NO_OP before
 the gate, saying so, with a test. Ledger only, a wording and a step.
+
+---
+
+## R-1119. A job cancelled from another terminal under a live foreground drive ends as a defect report, or queued again
+
+**Found:** at the review of #403, U192, 2026-11-01.
+
+**The mechanism.** `crate job cancel` reconciles and cancels a job without asking whether a live driver holds it. A foreground drive of that job keeps claiming and finishing items, and at the end `jobs.drive` asks to move the job from cancelled to succeeded, which the engine refuses as `internal-error` with the remedy to report a defect. If the same drive is then stopped with Ctrl-C, `modules.foreground.settle` reads the job as cancelled and re-arms it with `jobs.retry`, so a job somebody cancelled on purpose comes back queued.
+
+**Measured cost.** Driven by the review: a handler that ran the cancel verb's two calls on item 2 left all four items done, the job recorded cancelled, and an exit 1 telling the person to report a defect over a sweep that finished. With a SIGINT in the same handler the job came back queued with 1 of 4 settled. The first shape predates U192 on every `--job` drive; U192 widens its window, since every hand run of the three tail verbs is now a live drive. The second needs a concurrent cancel and a Ctrl-C inside one item. A queued job drives nothing on its own.
+
+**Closes when:** `job cancel` refuses, or signals, a job a live driver holds (`jobs.assert_free` before `jobs.cancel`), so the two endings cannot meet. Ledger only: the producer is a concurrent act in a second terminal.
+
+---
+
+## R-1120. An interrupted tail verb prints its resume command twice, as the fix line and as the first step
+
+**Found:** at the review of #403, U192, 2026-11-01.
+
+**The mechanism.** `modules.foreground` rebuilds the cancelled refusal with no remedy token and the `--job` command as its first step. `render.remediation_line` falls back to the first step for every refusal with no token, and `render_cause` then lists every step, so the human answer reads `fix: resume it with: crate ... --job ID` and the same sentence again under it.
+
+**Measured cost.** Driven by the review with `crate tag folder` interrupted: the two lines are identical and both true. Nothing is false, only repeated.
+
+**Closes when:** `render_cause` skips the first step when the fix line already printed it, for every remedy-less refusal. Ledger only, a wording fix.
+
+---
+
+## R-1121. Ctrl-C on a foreground tail drive says nothing until the item in hand finishes
+
+**Found:** at the review of #403, U192, 2026-11-01.
+
+**The mechanism.** `jobs.interruptible` records the signal and the drive honours it only between items, by design, so nothing is half written. U192 makes the drive the default answer of `tag folder`, `analyze run` and `analyze restamp` run by hand, so a person now presses Ctrl-C at a terminal holding a drive, and the verb prints nothing until the item it is working on ends.
+
+**Measured cost.** Driven by the review: a handler that slept 1.5 seconds after the signal returned 1.51 seconds later, the job queued again and its `--job` command named. On a long analysis decode the wait is the length of one track's work, and the press reads as ignored until then. The answer that follows is true.
+
+**Closes when:** the engine's signal handler writes one line, that the run will stop after the current item, the first time it records a signal. Ledger only.
+
+---
+
+## R-1122. The sync land tail test pins its queue only call by the flag's name rather than by what the flag changes
+
+**Found:** at the review of #403, U192, 2026-11-01.
+
+**The mechanism.** `tests/test_sync_land.py::test_each_tail_step_queues_only_and_drives_its_job_through_one_job_command` and the tail step test in `tests/test_analysis_workers.py` assert that the queue call carries `--queue-only` and that the commands read queue then `--job`. Without the flag the queue call drives the job and the `--job` call re-reports a succeeded job, so the job is still driven once and only those name based assertions die.
+
+**Measured cost.** Driven by the review: dropping the flag from `sync_land` killed only the assertion naming it. Nothing a person sees differs today; a later rewrite of the pass could keep the name and change the behaviour.
+
+**Closes when:** the tests read what the flag decides, which call drove the job and how a failure in the queue call reaches the pass, rather than the flag's spelling. Ledger only, maintainer facing.
