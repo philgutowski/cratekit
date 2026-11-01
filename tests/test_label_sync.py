@@ -1373,12 +1373,13 @@ def test_a_pick_outside_the_question_names_next_label_for_its_identifiers(
 
 
 @pytest.mark.parametrize(
-    "name, said", [("beta-works", "beta-works"), ("Beta Works", "'Beta Works'")]
+    "name, said",
+    [("beta-works", "'beta-works'"), ("Beta Works", "'Beta Works'"), ("Kit's Works", '"Kit\'s Works"')],
 )
 def test_a_pick_with_no_release_names_next_label_for_the_label_it_named(
     installed, monkeypatch, name, said
 ):
-    """The name is quoted for a shell, so a name with a space pastes as one word."""
+    """The name is quoted, so a name with a space or an apostrophe pastes as one word."""
     two_labels(monkeypatch)
 
     code, envelope = sync("--answer", "pick", "--label", name)

@@ -156,7 +156,7 @@ description = "label_sync: the remedy of --answer pick with no --release names t
 file = "src/cratekit/label/sync_cli.py"
 surface = "user"
 tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
-old = '''                f"--next --label {shlex.quote(args.label)}",'''
+old = '''                f"--next --label {args.label!r}",'''
 new = '''                f"--next",'''
 
 [[rows]]
@@ -165,7 +165,7 @@ description = "label_sync: the pick remedy names the label unquoted, so a name w
 file = "src/cratekit/label/sync_cli.py"
 surface = "user"
 tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
-old = '''                f"--next --label {shlex.quote(args.label)}",'''
+old = '''                f"--next --label {args.label!r}",'''
 new = '''                f"--next --label {args.label}",'''
 
 [[rows]]
