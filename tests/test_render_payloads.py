@@ -618,3 +618,30 @@ def test_a_single_cancel_renders_no_stale_list():
     single = job_state(verb="job.cancel", state="cancelled", progress={"total": 1, "settled": 0})
     assert render.render_stale_cancel(single) == []
 
+
+def test_a_set_or_hearts_job_with_no_playlist_name_is_listed_by_its_source():
+    listed = render.render_job_list(
+        job_state(
+            verb="job.list",
+            job_id="",
+            progress={"jobs": [{"job_id": "j-2", "handler": "intake.set", "state": "queued", "playlist": "", "source": "/x.txt"}]},
+        )
+    )
+    assert "  j-2, intake.set, queued, source /x.txt" in listed
+    shown = render.render_job_state(job_state(verb="job.show", progress={"playlist": "", "source": "favorites"}))
+    assert "  source: favorites" in shown
+
+
+def test_a_stale_cancel_that_found_no_open_job_says_none_open():
+    empty = job_state(
+        verb="job.cancel",
+        job_id="",
+        state="unchanged",
+        progress={"stale_days": 30, "dry_run": False, "cancel": [], "kept": [], "left": []},
+    )
+    assert render.render_stale_cancel(empty) == [
+        "",
+        "  queued intake jobs older than 30 day(s)",
+        "  none open",
+    ]
+

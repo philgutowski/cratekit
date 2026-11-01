@@ -485,6 +485,8 @@ def _job_line(row: Mapping[str, Any]) -> str:
     parts = [_one_line(row.get(key) or "?") for key in ("job_id", "handler", "state")]
     if isinstance(row.get(_PLAYLIST), str) and row[_PLAYLIST]:
         parts.append(f"playlist {_one_line(row[_PLAYLIST])}")
+    elif isinstance(row.get(_SOURCE), str) and row[_SOURCE]:
+        parts.append(f"source {_one_line(row[_SOURCE])}")
     progress = row.get("progress")
     if isinstance(progress, Mapping):
         total, settled = progress.get("total"), progress.get("settled")
@@ -575,9 +577,11 @@ _SOURCE = "source"
 def _playlist_lines(progress: Mapping[str, Any]) -> list[str]:
     """The playlist an intake job was made for, and its source when that differs."""
     named = progress.get(_PLAYLIST)
-    if not isinstance(named, str) or not named:
-        return []
     source = progress.get(_SOURCE)
+    if not isinstance(named, str) or not named:
+        if isinstance(source, str) and source:
+            return [f"  source: {_one_line(source)}"]
+        return []
     if isinstance(source, str) and source and source != named:
         return [f"  playlist: {_one_line(named)} ({_one_line(source)})"]
     return [f"  playlist: {_one_line(named)}"]

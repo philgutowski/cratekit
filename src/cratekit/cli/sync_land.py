@@ -299,9 +299,12 @@ def _left_behind(report: _Pass, cfg: config.Config, taken: str | None) -> None:
     left = [hold for hold in holds if not taken or _run_of(hold.job) != taken]
     if not left:
         return
-    by_playlist: dict[str, list[cli_jobs.Hold]] = {}
+    # ONE PLAYLIST AS THE PASS READS IT, a typed URL and a sweep's id together,
+    # named by its newest job's label.
+    grouped: dict[str, list[cli_jobs.Hold]] = {}
     for hold in left:
-        by_playlist.setdefault(hold.label(), []).append(hold)
+        grouped.setdefault(hold.identity or hold.label(), []).append(hold)
+    by_playlist = {held[0].label(): held for held in grouped.values()}
     groups = [
         f"{label}: " + "; ".join(_way_on(hold) for hold in held)
         for label, held in by_playlist.items()

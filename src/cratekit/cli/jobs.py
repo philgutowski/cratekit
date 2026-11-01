@@ -249,14 +249,15 @@ def _drift_warning(job: jobs.Job) -> tuple[dict[str, str], ...]:
 
 
 def _days(text: str) -> int:
-    """Parse ``--stale-days``, refusing a negative AT THE PARSER (status 2).
+    """Parse ``--stale-days``, refusing zero and a negative AT THE PARSER (status 2).
 
     The same kind of statement ``type=int`` makes, so it is argparse's usage
-    error and not a refusal: a cutoff in the future would offer every queued
-    job, the newest included, as stale.
+    error and not a refusal. A cutoff of now or later would offer every queued
+    job as stale, one queued a second ago included, and a job that young is
+    not stale by any reading; a day is the least the flag means.
     """
     value = int(text)
-    if value < 0:
+    if value < 1:
         raise ValueError(f"{text!r} is not a number of days")
     return value
 
@@ -313,6 +314,9 @@ def cancel(ctx: "Context") -> Envelope:
 #: The field a dry run marks its answer with, and the three lists a stale
 #: cancel answers with, each a row per job (U182).
 DRY_RUN_FIELD = "dry_run"
+#: The state word of a stale cancel that found nothing to cancel, so a reader
+#: of the field is never told ``cancelled`` over a queue nothing changed in.
+NOTHING_CANCELLED = "unchanged"
 STALE_FIELD = "stale_days"
 CANCEL_LIST = "cancel"
 KEPT_LIST = "kept"
@@ -371,8 +375,10 @@ def _frees(hold: Hold, staying: Sequence[Hold]) -> str:
     """What cancelling this job lets the next pass do, in one sentence.
 
     A pass leaves out a playlist while ANY open playlist job for it is open, so
-    a playlist is freed only when no job staying open was listed from the same
-    reference. A set job holds no account playlist out of a pass at all.
+    a playlist is freed only when no job staying open holds the same playlist,
+    read as the pass reads it (:attr:`Hold.identity`), never by the reference
+    as typed: a URL typed by hand and the id a sweep froze are one playlist.
+    A set job holds no account playlist out of a pass at all.
     """
     if hold.job.handler_key != "intake.playlist":
         return "frees no account playlist: a set job holds none out of a pass"
@@ -381,8 +387,8 @@ def _frees(hold: Hold, staying: Sequence[Hold]) -> str:
             other.job.job_id
             for other in staying
             if other.job.handler_key == "intake.playlist"
-            and hold.source
-            and other.source == hold.source
+            and hold.identity
+            and other.identity == hold.identity
         ),
         None,
     )
@@ -465,7 +471,11 @@ def _cancel_stale(ctx: "Context", days: int, *, dry_run: bool) -> Envelope:
     return ctx.envelope(
         data={
             "job_id": NO_SINGLE_JOB,
-            "state": DRY_RUN_FIELD if dry_run else str(jobs.JobState.CANCELLED),
+            "state": (
+                DRY_RUN_FIELD
+                if dry_run
+                else str(jobs.JobState.CANCELLED) if cancelled else NOTHING_CANCELLED
+            ),
             "cause": None,
             "progress": {
                 STALE_FIELD: days,
@@ -610,8 +620,9 @@ def intake_playlist(job: jobs.Job) -> tuple[str, str] | None:
     later renames the account's copy. A job queued by hand with ``intake
     playlist`` froze no name, only the reference a person typed, so that
     reference stands as its playlist rather than nothing: sitting 51 could not
-    tell 17 jobs apart for want of exactly this. Either is ``""`` when the
-    payload froze none.
+    tell 17 jobs apart for want of exactly this. A set's file and the hearts'
+    reserved reference are no playlist, so neither stands in for a name. Either
+    is ``""`` when the payload froze none.
     """
     if job.handler_key not in INTAKE_HANDLERS:
         return None
@@ -620,7 +631,28 @@ def intake_playlist(job: jobs.Job) -> tuple[str, str] | None:
     source = source.strip() if isinstance(source, str) else ""
     name = payload.get(INTAKE_PLAYLIST_KEY)
     name = name.strip() if isinstance(name, str) else ""
-    return (name or source), source
+    if name or job.handler_key != "intake.playlist" or source == INTAKE_HEARTS:
+        return name, source
+    return source, source
+
+
+def playlist_identity(job: jobs.Job, source: str) -> str:
+    """The playlist a pass reads this job as holding, or ``""`` for none.
+
+    THE SWEEP'S OWN READING, ``sync.playlists.recorded_as``, imported only when
+    asked, since only the stale cancel and the sync pass ask (KTD26): a URL a
+    person typed is parsed to the id the listing carries, so it and a sweep's
+    job for the same playlist are one playlist here as they are to the pass.
+    The hearts are held as one, while any hearts job is open. A set job holds
+    no account playlist.
+    """
+    if job.handler_key != "intake.playlist":
+        return ""
+    if source == INTAKE_HEARTS:
+        return INTAKE_HEARTS
+    from cratekit.sync import playlists  # noqa: PLC0415 - the pass's reading, when asked
+
+    return playlists.recorded_as(job) or source
 
 
 def _instant(stamp: str) -> datetime | None:
@@ -652,6 +684,7 @@ class Hold:
     job: jobs.Job
     playlist: str
     source: str
+    identity: str
     age_days: int | None
     tracks: int
     same_tracks: tuple[str, ...]
@@ -664,8 +697,9 @@ class Hold:
             return f"the set {self.playlist or self.source or self.job.job_id}"
         if not self.playlist:
             return f"an unnamed playlist (job {self.job.job_id})"
-        if self.source and self.source != self.playlist:
-            return f"playlist {self.playlist!r} ({self.source})"
+        shown = self.identity or self.source
+        if shown and shown != self.playlist:
+            return f"playlist {self.playlist!r} ({shown})"
         return f"playlist {self.playlist!r}"
 
     def age(self) -> str:
@@ -707,6 +741,7 @@ def intake_holds(store: jobs.JobStore, library_id: str, *, now: datetime) -> lis
                 job=job,
                 playlist=playlist,
                 source=source,
+                identity=playlist_identity(job, source),
                 age_days=age_days(job, now),
                 tracks=len(mine),
                 same_tracks=tuple(
@@ -729,6 +764,7 @@ __all__ = [
     "INTAKE_TRACKS_KEY",
     "KEPT_LIST",
     "LEFT_LIST",
+    "NOTHING_CANCELLED",
     "NO_SINGLE_JOB",
     "PLAYLIST_FIELD",
     "SOURCE_FIELD",
@@ -746,6 +782,7 @@ __all__ = [
     "intake_playlist",
     "list_jobs",
     "now",
+    "playlist_identity",
     "resume",
     "resume_argv",
     "show",

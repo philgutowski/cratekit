@@ -1360,3 +1360,37 @@ def test_a_continued_pass_whose_every_job_was_cancelled_names_a_new_pass_not_a_r
     assert not any(argv[:2] == ["intake", "missing"] for argv in tail.calls)
     with jobs.open_store() as store:
         assert jobs.get(store, intake.job_id).state is jobs.JobState.CANCELLED
+
+
+def test_a_url_typed_by_hand_and_a_sweeps_id_are_one_playlist_on_the_left_open_row(
+    machine, monkeypatch, tail
+):
+    """Round one of the review: grouped as the pass holds them, not as typed."""
+    cfg, script = machine
+    uuid = "0f6e2c3a-1b2d-4e5f-8a9b-0c1d2e3f4a5b"
+    key = registry.entry("intake.playlist").handler_key
+    with jobs.open_store() as store:
+        jobs.enqueue(
+            store,
+            handler_key=key,
+            payload={"source": uuid, "source_id": "playlists", "playlist_name": "Warmup", "run_id": "old-run"},
+            cfg=cfg,
+            item_ids=("101",),
+            job_id="swept",
+        )
+        jobs.enqueue(
+            store,
+            handler_key=key,
+            payload={"source": f"https://tidal.com/playlist/{uuid}"},
+            cfg=cfg,
+            item_ids=("102",),
+            job_id="typed",
+        )
+    bind_playlists(monkeypatch)
+
+    code, envelope = drive(["sync", "land", "--pass-run", "other-run"])
+
+    assert "for 1 playlist(s)" in _check(envelope, "left-open")["detail"]
+    (group,) = _summary(envelope)["left_open_playlists"]
+    assert sorted(job["job_id"] for job in group["jobs"]) == ["swept", "typed"]
+

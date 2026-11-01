@@ -1533,11 +1533,14 @@ def _intake_job(
     source: str = "pl-a",
     name: str | None = "Warmup",
     handler_key: str = "intake.playlist",
+    swept: bool = False,
 ) -> jobs.Job:
     """An intake job as a sweep queues it, ``days`` old, its tracks frozen and itemed."""
     payload: dict = {"source": source, "tracks": {t: {"artist": "A", "title": t} for t in tracks}}
     if name is not None:
         payload["playlist_name"] = name
+    if swept:
+        payload["source_id"] = "playlists"
     jobs.enqueue(
         store, handler_key=handler_key, payload=payload, cfg=cfg, item_ids=tracks, job_id=job_id
     )
@@ -1664,18 +1667,19 @@ def test_a_cancel_whose_playlist_another_open_job_holds_says_it_frees_nothing_ye
     assert row["frees"] == "frees nothing yet: job new still holds playlist 'Warmup' (pl-a) out of every pass"
 
 
-def test_a_negative_day_count_is_the_parsers_usage_error_and_cancels_nothing(cfg, default_queue):
+def test_a_zero_or_negative_day_count_is_the_parsers_usage_error_and_cancels_nothing(cfg, default_queue):
     _intake_job(default_queue, cfg, "old", tracks=("1",), days=60)
     import io  # noqa: PLC0415
 
     from cratekit import cli  # noqa: PLC0415
 
-    code = cli.run(
-        ["--output", "json", "job", "cancel", "--stale-days", "-1"],
-        stdout=io.StringIO(),
-        stderr=io.StringIO(),
-    )
-    assert code == int(ExitCode.USAGE)
+    for days in ("-1", "0"):
+        code = cli.run(
+            ["--output", "json", "job", "cancel", "--stale-days", days],
+            stdout=io.StringIO(),
+            stderr=io.StringIO(),
+        )
+        assert code == int(ExitCode.USAGE), days
     assert _state(default_queue, "old") is jobs.JobState.QUEUED
 
 
@@ -1715,3 +1719,86 @@ def test_a_cancelled_stale_job_reports_cancelled_and_resumes_by_its_own_command(
 
     assert shown["data"]["state"] == "cancelled"
     assert shown["data"]["cause"]["reason"] == "cancelled"
+
+
+UUID = "0f6e2c3a-1b2d-4e5f-8a9b-0c1d2e3f4a5b"
+
+
+def test_a_url_typed_by_hand_holds_the_same_playlist_a_sweeps_id_does(cfg, default_queue):
+    """Round one of the review: the pass reads a typed URL as the id it names."""
+    _intake_job(default_queue, cfg, "swept", tracks=("1",), days=40, source=UUID, swept=True)
+    _intake_job(
+        default_queue,
+        cfg,
+        "typed",
+        tracks=("2",),
+        days=2,
+        source=f"https://tidal.com/playlist/{UUID}",
+        name=None,
+    )
+
+    code, envelope = _drive_cli(["job", "cancel", "--stale-days", "30", "--dry-run"])
+
+    (row,) = envelope["data"]["progress"]["cancel"]
+    assert row["job_id"] == "swept"
+    assert row["frees"].startswith("frees nothing yet: job typed still holds"), row["frees"]
+
+
+def test_a_job_whose_queued_time_cannot_be_read_is_never_stale(cfg, default_queue):
+    _intake_job(default_queue, cfg, "garbled", tracks=("1",), days=90)
+    _intake_job(default_queue, cfg, "naive", tracks=("2",), days=90, source="pl-b")
+    with default_queue.immediate() as conn:
+        conn.execute("UPDATE jobs SET created = 'yesterday' WHERE job_id = 'garbled'")
+        conn.execute("UPDATE jobs SET created = '2026-01-01T00:00:00' WHERE job_id = 'naive'")
+
+    code, envelope = _drive_cli(["job", "cancel", "--stale-days", "1"])
+
+    found = _stale(envelope)
+    assert found["cancel"] == [] and sorted(found["left"]) == ["garbled", "naive"]
+    assert all("age is unknown" in row["reason"] for row in envelope["data"]["progress"]["left"])
+    assert envelope["data"]["state"] == "unchanged"
+    assert _state(default_queue, "garbled") is jobs.JobState.QUEUED
+
+
+def test_two_jobs_with_no_item_are_nobodys_copies(cfg, default_queue):
+    _intake_job(default_queue, cfg, "empty-a", tracks=(), days=60)
+    _intake_job(default_queue, cfg, "empty-b", tracks=(), days=50, source="pl-b")
+
+    code, envelope = _drive_cli(["job", "cancel", "--stale-days", "30", "--dry-run"])
+
+    assert _stale(envelope) == {"cancel": ["empty-b", "empty-a"], "kept": [], "left": []}
+    assert all(row["same_tracks"] == [] for row in envelope["data"]["progress"]["cancel"])
+
+
+def test_a_stale_set_job_says_it_frees_no_playlist_and_names_no_file_as_one(cfg, default_queue):
+    _intake_job(
+        default_queue,
+        cfg,
+        "set",
+        tracks=("1",),
+        days=60,
+        source="/mixes/a set.txt",
+        name=None,
+        handler_key="intake.set",
+    )
+
+    code, envelope = _drive_cli(["job", "cancel", "--stale-days", "30", "--dry-run"])
+    (row,) = envelope["data"]["progress"]["cancel"]
+    assert row["frees"] == "frees no account playlist: a set job holds none out of a pass"
+
+    code, shown = _drive_cli(["job", "show", "set"])
+    assert shown["data"]["progress"]["playlist"] == ""
+    assert shown["data"]["progress"]["source"] == "/mixes/a set.txt"
+
+
+def test_a_dry_run_lists_a_queued_job_a_live_driver_holds_as_left(cfg, default_queue):
+    """The listing's own lock check, which the cancel's recheck would otherwise hide."""
+    _intake_job(default_queue, cfg, "held", tracks=("1",), days=90)
+
+    with jobs.driver_lock("held"):
+        code, envelope = _drive_cli(["job", "cancel", "--stale-days", "1", "--dry-run"])
+
+    assert _stale(envelope) == {"cancel": [], "kept": [], "left": ["held"]}
+    (row,) = envelope["data"]["progress"]["left"]
+    assert "a live driver holds it" in row["reason"]
+
