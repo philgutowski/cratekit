@@ -1470,6 +1470,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'decision-stale',
         'held-by-a-go',
         'label-sync',
+        'label-sync-download-refused',  # 2026-11-01, R-1115: a track failed for good.
         'refused-by-policy',
     ],
     'label/harvest.py': ['harvested-label'],
