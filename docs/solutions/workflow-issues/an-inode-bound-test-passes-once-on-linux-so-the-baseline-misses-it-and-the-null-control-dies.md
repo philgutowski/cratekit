@@ -45,5 +45,5 @@ INVALID. Nothing in the unit's diff touches it.
   inode near 9,700,000, above the bound, where `/tmp`, `/root` and the
   checkout gave 400,000 to 650,000. `TMPDIR=/var/tmp/<unit> scripts/mutate.py
   ...` then ran a green baseline and a zero null control with no copy of the
-  baseline file at all, and the test passed alone 53 of 53 in its file there.
+  baseline file at all, and the test's file passed 53 of 53 there.
   It changes where the suite writes, never what it asserts.
