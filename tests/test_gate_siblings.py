@@ -435,6 +435,10 @@ def test_decide_repeats_over_a_sibling_that_answered_then_stopped_at_another_gat
     assert code == int(ExitCode.OK), decided
     (message,) = _siblings(decided)
     assert first in message
+    # NAMED BY THE ANSWER THAT IS WHY IT IS NAMED, and by the gate it waits at.
+    assert f"answered {GATE} apply as a-person" in message
+    assert "holds the gate write.cloudsync.unreadable open since" in message
+    assert "unanswered" not in message
 
 
 def test_decide_says_nothing_when_both_answers_are_abort(native_library):

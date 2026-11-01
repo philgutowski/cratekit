@@ -897,13 +897,23 @@ class Sibling:
 
     def message(self) -> str:
         """The one line naming this run, its actor, its option and the time."""
-        if self.gate is not None:
+        if self.gate is not None and not self.answers:
             return (
                 f"another run of {self.verb}, {self.run_id}, holds the gate {self.gate} "
                 f"open since {self.at}, unanswered; approving both would race two "
                 f"writes over one library"
             )
         gate, latest = self.answers[-1]
+        if self.gate is not None:
+            # AN APPROVED PLAN STOPPED AGAIN is named by its answer and its open
+            # gate both, never as unanswered (the second review round of U186).
+            return (
+                f"another run of {self.verb}, {self.run_id}, answered {gate} "
+                f"{latest.option} as {latest.actor} at "
+                f"{latest.recorded or 'an unrecorded time'} and holds the gate "
+                f"{self.gate} open since {self.at}; approving both would race two "
+                f"writes over one library"
+            )
         return (
             f"another run of {self.verb}, {self.run_id}, answered {gate} "
             f"{latest.option} as {latest.actor} at {latest.recorded or 'an unrecorded time'}; a plan read "
