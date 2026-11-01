@@ -61,6 +61,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
+from cratekit.cli import jobs as cli_jobs
 from cratekit.cli import registry, tail
 from cratekit.cli.output import Envelope, PendingHumanAction
 from cratekit.cli.tail import (
@@ -381,28 +382,55 @@ def _open_passes(cfg: config.Config) -> dict[str, list[str]]:
 
 
 def _left_behind(report: _Pass, cfg: config.Config, taken: str | None) -> None:
-    """Name every open intake job this pass will not drive, with the way on to each.
+    """Name every open intake job this pass will not drive, by playlist, with the way on.
 
     ``sync all`` leaves a playlist out of a new pass while an intake job for it
     is still open, whether an earlier pass queued that job or a person typed
     ``intake playlist``, and that job holds the playlist out of every later
     pass until it is driven. The pass drives only its own run's jobs, so the
     rest are said here, on a failing row, rather than nowhere.
+
+    GROUPED BY PLAYLIST, WITH AGE, SIZE AND COPIES (U182). Sitting 51 read 17
+    such jobs as ids alone, six weeks old, ten of them copies of two lists, and
+    could not judge one. Each job now says how old it is, how many tracks it
+    holds and which other open job holds exactly the same ones, and the row
+    says what a cancel buys, since cancelling is how a stale job is let go.
     """
-    left = [job for job in _open_intake(cfg) if not taken or _run_of(job) != taken]
+    with jobs.open_store() as store:
+        holds = cli_jobs.intake_holds(store, cfg.library.volume_id, now=cli_jobs.now())
+    left = [hold for hold in holds if not taken or _run_of(hold.job) != taken]
     if not left:
         return
-    ways = []
-    for job in left:
-        run_id = _run_of(job)
-        ways.append(
-            f"{job.job_id} ({job.state}), continue its pass with: crate sync land "
-            f"--pass-run {run_id}"
-            if run_id
-            else f"{job.job_id} ({job.state}), queued by hand, drive it with: crate "
-            + " ".join(tail.argv_for(job))
-        )
-    report.summary["left_open"] = [job.job_id for job in left]
+    # ONE PLAYLIST AS THE PASS READS IT, a typed URL and a sweep's id together,
+    # named by the newest job that froze the account's name, else the newest.
+    grouped: dict[str, list[cli_jobs.Hold]] = {}
+    for hold in left:
+        grouped.setdefault(hold.identity or hold.label(), []).append(hold)
+    by_playlist = {
+        next((hold for hold in held if hold.named), held[0]).label(): held
+        for held in grouped.values()
+    }
+    groups = [
+        f"{label}: " + "; ".join(_way_on(hold) for hold in held)
+        for label, held in by_playlist.items()
+    ]
+    report.summary["left_open"] = [hold.job.job_id for hold in left]
+    report.summary["left_open_playlists"] = [
+        {
+            "playlist": label,
+            "jobs": [
+                {
+                    "job_id": hold.job.job_id,
+                    "state": str(hold.job.state),
+                    "age_days": hold.age_days,
+                    "tracks": hold.tracks,
+                    "same_tracks": list(hold.same_tracks),
+                }
+                for hold in held
+            ],
+        }
+        for label, held in by_playlist.items()
+    ]
     report.checks.append(
         {
             "key": "sync.land.left-open",
@@ -410,8 +438,11 @@ def _left_behind(report: _Pass, cfg: config.Config, taken: str | None) -> None:
             "status": "fail",
             "detail": (
                 f"{len(left)} intake job(s) this pass does not drive are still open, "
-                f"and each holds its playlist out of every pass until it is: "
-                + "; ".join(ways)
+                f"for {len(by_playlist)} playlist(s), and each holds its playlist out "
+                f"of every pass until it is driven or cancelled. Cancelling a job lets "
+                f"its playlist's increment queue again on the next pass (list the "
+                f"stale ones first with: crate job cancel --stale-days DAYS --dry-run). "
+                + " | ".join(groups)
             ),
             "remedy": None,
         }
@@ -421,10 +452,25 @@ def _left_behind(report: _Pass, cfg: config.Config, taken: str | None) -> None:
             "code": "sync-land-intake-left-open",
             "message": (
                 f"{len(left)} open intake job(s) outside this pass: "
-                + ", ".join(job.job_id for job in left)
+                + ", ".join(hold.job.job_id for hold in left)
             ),
         }
     )
+
+
+def _way_on(hold: cli_jobs.Hold) -> str:
+    """One left open job: its state, age, size and copies, then the command that takes it."""
+    job = hold.job
+    facts = [str(job.state), hold.age(), f"{hold.tracks} track(s)"]
+    if hold.same_tracks:
+        facts.append("the same tracks as " + ", ".join(hold.same_tracks))
+    run_id = _run_of(job)
+    way = (
+        f"continue its pass with: crate sync land --pass-run {run_id}"
+        if run_id
+        else "queued by hand, drive it with: crate " + " ".join(tail.argv_for(job))
+    )
+    return f"{job.job_id} ({', '.join(facts)}), {way}"
 
 
 def _sync(report: _Pass, cfg: config.Config) -> str | None:
@@ -477,11 +523,36 @@ def _pass_jobs(store: jobs.JobStore, run_id: str, cfg: config.Config) -> list[jo
     ]
 
 
-def _intake(report: _Pass, run_id: str, cfg: config.Config) -> None:
-    """Drive every intake job of the pass to settled; any not succeeded ends it."""
+def _intake(report: _Pass, run_id: str, cfg: config.Config) -> bool:
+    """Drive every intake job of the pass to settled; any not succeeded ends it.
+
+    A CANCELLED JOB IS NEVER DRIVEN AGAIN (U182). A person cancels a stale job
+    to let its playlist go, often one copy of several holding the same tracks
+    in one run, so a continued pass names each cancelled job, drives the rest,
+    and lists them without it. Returns whether any job was left out that way.
+    When every job of the run was cancelled the pass has nothing to take, and
+    it says the next pass queues those playlists again, never to resume one.
+    """
     with jobs.open_store() as store:
         found = _pass_jobs(store, run_id, cfg)
-    settled = [tail.settle(report, INTAKE, job) for job in found]
+    cancelled = [job.job_id for job in found if job.state is jobs.JobState.CANCELLED]
+    live = [job for job in found if job.state is not jobs.JobState.CANCELLED]
+    if cancelled:
+        report.summary["cancelled_jobs"] = cancelled
+        said = (
+            f"{len(cancelled)} intake job(s) of run {run_id} were cancelled and are "
+            f"not driven again: {', '.join(cancelled)}"
+        )
+        if not live:
+            report.check(
+                INTAKE,
+                "info",
+                said + "; every job of the pass was cancelled, so it has nothing to "
+                "take, and the next pass queues their playlists again: crate sync land",
+            )
+            raise _Done(INTAKE)
+        report.check(INTAKE, "info", said + "; the rest of the pass goes on without them")
+    settled = [tail.settle(report, INTAKE, job) for job in live]
     for job in settled:
         if job.state is not jobs.JobState.SUCCEEDED:
             error = tail.job_error(report, job)
@@ -501,6 +572,7 @@ def _intake(report: _Pass, run_id: str, cfg: config.Config) -> None:
         f"{len(settled)} intake job(s) of run {run_id} succeeded: "
         + ", ".join(job.job_id for job in settled),
     )
+    return bool(cancelled)
 
 
 # ---------------------------------------------------------------------------
@@ -514,8 +586,14 @@ class _Listed:
     land_name: str
 
 
-def _missing(report: _Pass, run_id: str) -> _Listed:
-    envelope = tail.required(report, MISSING, ["intake", "missing", "--run", run_id])
+def _missing(report: _Pass, run_id: str, *, without_cancelled: bool = False) -> _Listed:
+    argv = ["intake", "missing", "--run", run_id]
+    if without_cancelled:
+        # THE LISTING'S OWN WORD FOR LEAVING A CLOSED JOB OUT, which it then
+        # names on a failing row of its own. Only cancelled jobs reach here: a
+        # failed one ended the pass at its intake step.
+        argv.append("--skip-failed")
+    envelope = tail.required(report, MISSING, argv)
     # THE LISTING'S OWN FAILING ROWS RIDE THROUGH, a missing track the provider
     # cannot name exactly above all: it is in no download list, and the pass
     # would otherwise say nothing of it.
@@ -750,8 +828,8 @@ def sync_land(ctx: Context) -> Envelope:
         _left_behind(report, cfg, run_id)
         if run_id is None:
             raise _Done(SYNC)
-        _intake(report, run_id, cfg)
-        listed = _missing(report, run_id)
+        without = _intake(report, run_id, cfg)
+        listed = _missing(report, run_id, without_cancelled=without)
         _download(report, listed, cfg)
         staging = cfg.paths.download_staging.expanduser().absolute()
         tail.run(report, staging, cfg, ["--pass", listed.land_name])

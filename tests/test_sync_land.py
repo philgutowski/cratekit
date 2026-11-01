@@ -20,6 +20,7 @@ read of a job is a read of the queue.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -1247,6 +1248,174 @@ def test_an_earlier_pass_that_ended_or_belongs_to_another_library_is_not_continu
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# U182: stale intake jobs, named by playlist, let go by a cancel
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _age(job_id: str, days: float) -> None:
+    stamp = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    with jobs.open_store() as store, store.immediate() as conn:
+        conn.execute("UPDATE jobs SET created = ? WHERE job_id = ?", (stamp, job_id))
+
+
+def test_the_left_open_row_names_each_playlist_its_age_size_and_copies(
+    machine, monkeypatch, tail
+):
+    """Sitting 51: 17 jobs read as ids alone, ten of them copies of two lists."""
+    cfg, script = machine
+    key = registry.entry("intake.playlist").handler_key
+    with jobs.open_store() as store:
+        for job_id, source, name in (
+            ("copy-a", "pl-a", "Warmup"),
+            ("copy-b", "pl-b", "Warmup Two"),
+        ):
+            jobs.enqueue(
+                store,
+                handler_key=key,
+                payload={"source": source, "playlist_name": name, "run_id": "old-run"},
+                cfg=cfg,
+                item_ids=("101", "102"),
+                job_id=job_id,
+            )
+    _age("copy-a", 44)
+    _age("copy-b", 43)
+    bind_playlists(monkeypatch)
+
+    code, envelope = drive(["sync", "land", "--pass-run", "other-run"])
+
+    row = _check(envelope, "left-open")
+    assert row["status"] == "fail"
+    detail = row["detail"]
+    assert "for 2 playlist(s)" in detail
+    assert "playlist 'Warmup' (pl-a): copy-a (queued, 44 day(s) old, 2 track(s), the same tracks as copy-b)" in detail
+    assert "playlist 'Warmup Two' (pl-b): copy-b (queued, 43 day(s) old" in detail
+    assert "Cancelling a job lets its playlist's increment queue again on the next pass" in detail
+    assert "crate job cancel --stale-days DAYS --dry-run" in detail
+    grouped = _summary(envelope)["left_open_playlists"]
+    # NEWEST FIRST, the order every open job is read in.
+    assert [group["playlist"] for group in grouped] == [
+        "playlist 'Warmup Two' (pl-b)",
+        "playlist 'Warmup' (pl-a)",
+    ]
+    by_job = {job["job_id"]: job for group in grouped for job in group["jobs"]}
+    assert by_job["copy-a"]["age_days"] == 44 and by_job["copy-a"]["tracks"] == 2
+    assert by_job["copy-a"]["same_tracks"] == ["copy-b"]
+
+
+def test_a_pass_after_the_stale_cancel_queues_the_freed_playlist(machine, monkeypatch, tail):
+    """The brief's last scenario: the cancel is what lets the playlist queue again."""
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    code, first = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), first
+    (stale,) = _by_key("intake.playlist")
+    _age(stale.job_id, 40)
+    code, again = drive(["sync", "all"])
+    assert again["outcome"] == "no_op", "an open job did not hold its playlist out"
+
+    code, cancelled = drive(["job", "cancel", "--stale-days", "30"])
+    assert code == int(ExitCode.OK), cancelled
+    (row,) = cancelled["data"]["progress"]["cancel"]
+    assert row["job_id"] == stale.job_id
+    assert row["frees"] == "frees playlist 'Warmup' (pl-a), so the next pass queues it again"
+
+    code, freed = drive(["sync", "all"])
+
+    assert code == int(ExitCode.OK), freed
+    queued = [job for job in _by_key("intake.playlist") if job.job_id != stale.job_id]
+    assert len(queued) == 1 and queued[0].state is jobs.JobState.QUEUED
+    assert queued[0].payload["playlist_name"] == "Warmup"
+
+
+def test_a_continued_pass_never_drives_a_cancelled_job_and_lists_the_rest(
+    machine, monkeypatch, tail
+):
+    """A cancel's copy in the same run is reported cancelled, and the kept job goes on."""
+    cfg, script = machine
+    script.landings["101"] = Landing()
+    script.landings["201"] = Landing()
+    bind_playlists(
+        monkeypatch,
+        (_playlist("pl-a", "Warmup"), _tracks("101")),
+        (_playlist("pl-b", "Peak"), _tracks("201")),
+    )
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    first, second = _by_key("intake.playlist")
+    with jobs.open_store() as store:
+        jobs.cancel(store, first.job_id)
+
+    code, envelope = drive(["sync", "land", "--pass-run", passed["run_id"]])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    with jobs.open_store() as store:
+        assert jobs.get(store, first.job_id).state is jobs.JobState.CANCELLED
+        assert jobs.get(store, second.job_id).state is jobs.JobState.SUCCEEDED
+    assert not any(first.job_id in argv for argv in tail.calls), "a cancelled job was driven"
+    notes = [c["detail"] for c in envelope["data"]["checks"] if c["key"] == "sync.land.intake"]
+    assert any(f"{first.job_id}" in note and "cancelled" in note for note in notes)
+    assert _summary(envelope)["cancelled_jobs"] == [first.job_id]
+    assert ["intake", "missing", "--run", passed["run_id"], "--skip-failed"] in tail.calls
+
+
+def test_a_continued_pass_whose_every_job_was_cancelled_names_a_new_pass_not_a_resume(
+    machine, monkeypatch, tail
+):
+    cfg, script = machine
+    _account(monkeypatch, script, "101")
+    code, passed = drive(["sync", "all"])
+    (intake,) = _by_key("intake.playlist")
+    with jobs.open_store() as store:
+        jobs.cancel(store, intake.job_id)
+
+    code, envelope = drive(["sync", "land", "--pass-run", passed["run_id"]])
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    detail = _check(envelope, sync_land.INTAKE)["detail"]
+    assert "cancelled" in detail and "crate sync land" in detail
+    assert "job resume" not in detail and "--pass-run" not in detail
+    assert _summary(envelope)["stopped_at"] == sync_land.INTAKE
+    assert not any(argv[:2] == ["intake", "missing"] for argv in tail.calls)
+    with jobs.open_store() as store:
+        assert jobs.get(store, intake.job_id).state is jobs.JobState.CANCELLED
+
+
+def test_a_url_typed_by_hand_and_a_sweeps_id_are_one_playlist_on_the_left_open_row(
+    machine, monkeypatch, tail
+):
+    """Round one of the review: grouped as the pass holds them, not as typed."""
+    cfg, script = machine
+    uuid = "0f6e2c3a-1b2d-4e5f-8a9b-0c1d2e3f4a5b"
+    key = registry.entry("intake.playlist").handler_key
+    with jobs.open_store() as store:
+        jobs.enqueue(
+            store,
+            handler_key=key,
+            payload={"source": uuid, "source_id": "playlists", "playlist_name": "Warmup", "run_id": "old-run"},
+            cfg=cfg,
+            item_ids=("101",),
+            job_id="swept",
+        )
+        jobs.enqueue(
+            store,
+            handler_key=key,
+            payload={"source": f"https://tidal.com/playlist/{uuid}"},
+            cfg=cfg,
+            item_ids=("102",),
+            job_id="typed",
+        )
+    bind_playlists(monkeypatch)
+
+    code, envelope = drive(["sync", "land", "--pass-run", "other-run"])
+
+    assert "for 1 playlist(s)" in _check(envelope, "left-open")["detail"]
+    (group,) = _summary(envelope)["left_open_playlists"]
+    # HEADED BY THE ACCOUNT'S NAME, though the typed job is the newer.
+    assert group["playlist"] == f"playlist 'Warmup' ({uuid})"
+    assert sorted(job["job_id"] for job in group["jobs"]) == ["swept", "typed"]
+
+
 # U181. A pass refuses to land rows with no vocal score, unless told to go on
 # ═══════════════════════════════════════════════════════════════════════════
 

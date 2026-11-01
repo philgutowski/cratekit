@@ -1840,6 +1840,12 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # PRECONDITION on ``label-sweep-incomplete``'s argument: what failed is
         # carried underneath, and another run reads the label again.
         "label-playlists-incomplete": ExitCode.PRECONDITION,
+        # R-1091. The release reads a full build keeps for a label could not be
+        # read: not JSON, another version, or an entry of the wrong shape.
+        # Refused before any release is asked, never read as empty, on
+        # ``label-sync-unusable``'s rule. PRECONDITION: the file is this
+        # installation's to repair, and deleting it costs only provider calls.
+        "label-playlists-reads-unusable": ExitCode.PRECONDITION,
         # The account holds two root folders named as the label, so which one is
         # the label's is not something a name decides. Its own slug rather than
         # ``export-playlist-ambiguous``, since the remedy is on the account and

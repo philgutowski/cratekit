@@ -607,6 +607,9 @@ def test_the_job_verbs_spell_the_intake_keys_the_intake_module_spells():
     """``cli.jobs`` spells these rather than importing the feature module."""
     assert cli_jobs.INTAKE_HANDLERS == intake_cli.INTAKE_KEYS
     assert cli_jobs.INTAKE_TRACKS_KEY == intake_cli.TRACKS
+    assert cli_jobs.INTAKE_PLAYLIST_KEY == intake_cli.PLAYLIST_NAME
+    assert cli_jobs.INTAKE_SOURCE_KEY == intake_cli.SOURCE
+    assert cli_jobs.INTAKE_HEARTS == intake_cli.FAVORITES
 
 
 def test_a_changed_recording_misses_the_cache_and_is_paid_for(cfg, library, recognised):
