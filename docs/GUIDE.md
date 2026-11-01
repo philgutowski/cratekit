@@ -533,6 +533,19 @@ your library holds is counted as owned rather than landed. `--pass` on an intake
 tree still on the xml bridge is refused and names `--xml`, since there the file
 is what proves the pass landed.
 
+To mark only some playlists of a pass, name each with `--playlist` and its
+account identifier, as `sync unmark` takes them:
+
+```bash
+crate sync mark --pass RUN_synced --playlist ID
+```
+
+The plan, the gate and the renames are only those playlists, and an answer to
+that narrowed plan is not taken for the whole pass. A playlist the pass does
+not hold is refused before the account is read, and one the pass did not
+complete, its job unfinished or a track still missing, is refused by name with
+the reason. `crate organize --only marks` marks every landed pass whole.
+
 `name apply`, `intake land` and `route inbox` each build a plan and stop at a
 gate before they write. Run once to read the plan, then answer the gate. See
 "Answering a gate". A plan is bound to the folder as it was, so if a file lands
@@ -658,6 +671,29 @@ batch holding several sellers files each under its own label. A file with no
 label tag or no year is named on the screen and lands in INBOX filed under no
 label. This works once the intake tree is database native, as `--label` does.
 
+Or take all of it in one command, from your new purchases to the landing's gate:
+
+```bash
+crate sync bandcamp --seller PULS
+```
+
+It plans your purchases first, so a session that has expired stops there
+with the login step before anything downloads. It fetches what you do not
+own into `Bandcamp <today's date>` under download staging (or the folder
+`--batch` names), runs `tag folder`, `analyze run`, `analyze restamp` and
+`name apply` on it the way `crate sync land` does, rehearses the landing on a
+copy, and plans the landing itself, stopping at its gate with the commands
+that answer and apply it as the session and the rekordbox visit after. The
+batch is named `<date> Bandcamp <Label>` when every file is one label's, and
+`<date> Bandcamp` otherwise, and each file is filed under its own label tag.
+Leave out `--seller` for every seller. The report names the purchases and
+tracks held back as owned with the library file each is, what the fetch
+refused, the sellers no label names, and the files left with no genre. If a
+step stops, run the same command again with the same `--batch`: what was
+fetched is not fetched again, and whatever the folder holds is taken on
+through the tail. Nothing new to fetch and nothing staged ends with no
+landing. Like the landing it plans, it needs a database native intake tree.
+
 `sync labels` is retired. It queues nothing and names `label sync`, and `sync
 all` no longer sweeps labels either. A labels sweep queued before the guided
 sync replaced it still runs with `crate sync labels --job JOB_ID`, so a job
@@ -695,6 +731,22 @@ when the estimate is over 500 calls it stops at its own explicit gate,
 and reads nothing more until you answer `crawl`. A full build that the
 provider's rate limit stops part way keeps nothing it read, so the next run
 starts the crawl again.
+
+Once a label batch has landed, `label mark` puts `DOWNLOADED ` in front of the
+year playlists that batch filed, so the account stops offering them as unheard:
+
+```bash
+crate label mark "Some Label" --xml /path/to/library/RUN_synced_inboxed.xml
+crate label mark "Some Label" --pass RUN_synced
+```
+
+Give it the intake file the landing wrote while your intake tree is on the xml
+bridge, and the pass's name once it is database native, since a native landing
+writes no file and its own record says which years it filed. Only a year the
+batch filed under that label is renamed, and only while its title is still the
+one `label playlists` built it under; every other year is listed and left, and
+a batch that filed none of them says so. Nothing is renamed until you answer
+its gate, and `crate sync unmark --pass RUN_synced` takes the marks off again.
 
 ### Sync from streaming
 
@@ -828,7 +880,11 @@ no match gets no playlist, and a set already in INSPIRATION is skipped, so a
 second run plans nothing. That write needs rekordbox closed. The account
 area builds a folder for every followed label that lacks one or a year, marks
 every landed sync pass, and archives every set whose download is proven into
-the root folder `Downloaded Sets <year>`, prefixed. Either of two things proves
+the root folder `Downloaded Sets <year>`, prefixed. A sync pass is found by its
+intake file, or, once your intake tree is database native and writes none, by
+the landing that committed it, so every pass that landed is planned and not
+only the latest; a native landing of no sync pass, a label's or a set's, is
+counted on the gate and planned for nothing. Either of two things proves
 a set downloaded: an intake file named for the set, or a playlist of the set's
 name under the INSPIRATION folder in rekordbox. It also files every playlist at
 the account root

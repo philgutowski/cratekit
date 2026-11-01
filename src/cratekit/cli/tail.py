@@ -42,6 +42,12 @@ cancels any such job and queues its own.
 explicit, so answering it on the command line is the act a person running the
 tail makes; the plan it answers is the verb's own.
 
+A VERB MAY REHEARSE BETWEEN THE TAIL AND THE LANDING (U179). ``crate sync
+bandcamp`` runs :func:`through_name`, then :func:`rehearse`, ``intake land
+--rehearse`` with the arguments the landing then takes, so the live gate names
+the rehearsal; ``sync land`` and ``label sync --go`` run :func:`run`, which
+does not.
+
 IT STOPS WHERE A PERSON MUST ACT, AND SAYS WHAT THEY DO. The landing is planned
 by ``intake land`` itself, which reads the backup acknowledgment (this chain
 never mints one) and stops at its explicit gate on its own run. The verb that
@@ -55,6 +61,7 @@ from __future__ import annotations
 import dataclasses
 import io
 import json
+import shlex
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Callable
@@ -73,6 +80,12 @@ RESTAMP = "restamp"
 NAME = "name"
 LAND = "land"
 STEPS: tuple[str, ...] = (TAG, ANALYZE, RESTAMP, NAME, LAND)
+
+#: The rehearsal a verb may run between the tail and the landing (U179), which
+#: ``crate sync bandcamp`` does and the two older verbs do not, and the flag of
+#: ``intake land`` that asks for it.
+REHEARSE = "rehearse"
+REHEARSE_FLAG = "--rehearse"
 
 #: The tail, in its order: each step's verb and the words that queue it over a
 #: folder. ``name apply`` is the fourth step and is not queued, see :func:`name`.
@@ -619,6 +632,58 @@ def lift_plan_warnings(chain: Chain, cause: Cause) -> None:
             )
 
 
+def rehearse(chain: Chain, folder: Path, landing: Sequence[str] = ()) -> None:
+    """Rehearse the landing on a copy through ``intake land --rehearse`` itself (U162, U179).
+
+    The same folder and the same arguments the landing is then planned with,
+    so the rehearsal's record is the one the live gate names, equal or not. A
+    rehearsal asks no gate and writes nothing live, but it reads the backup
+    acknowledgment the way the landing does, so a missing one stops for a
+    person here as it would there. Any other refusal ends the chain before the
+    landing is planned: a landing whose rehearsal failed is not one to ask.
+    Returns once the rehearsal applied on its copy, or by :class:`Done` when it
+    had nothing to rehearse.
+    """
+    argv = ["intake", "land", str(folder), *landing, REHEARSE_FLAG]
+    code, envelope = chain.call(REHEARSE, argv)
+    if not succeeded(code, envelope):
+        cause = cause_of(chain, REHEARSE, argv, code, envelope)
+        if cause.reason == ACK_STOP or cause.code in gates.GATE_CODES:
+            raise Attend(REHEARSE, argv, cause)
+        raise Stop.of(REHEARSE, cause)
+    data = envelope.get("data") or {}
+    digest = str(data.get("digest") or "") if isinstance(data, dict) else ""
+    if envelope.get("outcome") == str(Outcome.NO_OP):
+        chain.check(REHEARSE, "info", "intake land --rehearse found nothing to land")
+        raise Done(REHEARSE)
+    chain.summary["rehearsal"] = digest or None
+    chain.check(
+        REHEARSE,
+        "ok",
+        f"the landing was rehearsed on a copy and read back, plan digest {digest or 'unnamed'}",
+    )
+
+
+def through_name(chain: Chain, folder: Path, cfg: config.Config) -> Path:
+    """The tail in its order over ``folder``, ending with ``name apply``; the absolute folder.
+
+    Every step either succeeds or ends the chain, so a caller that goes on to
+    land knows the tail ran on every file. ``folder`` must be absolute, and is
+    made so here rather than trusted.
+    """
+    folder = folder.expanduser().absolute()
+    chain.summary["staging"] = str(folder)
+    # ASKED BEFORE THE FIRST STEP (U181): ``analyze run``'s worker binds the
+    # shipped loader in this process, and a bound loader reads as able.
+    unable = vocals_unavailable()
+    for step, verb, words in TAIL:
+        tail_step(chain, step, verb, words, folder, cfg)
+        if step == ANALYZE:
+            rescore(chain, folder, cfg, unable=unable)
+    name(chain, folder)
+    return folder
+
+
 def run(chain: Chain, folder: Path, cfg: config.Config, landing: Sequence[str]) -> None:
     """The tail in its order over ``folder``, then the landing planned and stopped.
 
@@ -627,14 +692,7 @@ def run(chain: Chain, folder: Path, cfg: config.Config, landing: Sequence[str]) 
     :class:`Stop` at the first step that did not succeed. ``folder`` must be
     absolute, and is made so here rather than trusted.
     """
-    folder = folder.expanduser().absolute()
-    chain.summary["staging"] = str(folder)
-    unable = vocals_unavailable()
-    for step, verb, words in TAIL:
-        tail_step(chain, step, verb, words, folder, cfg)
-        if step == ANALYZE:
-            rescore(chain, folder, cfg, unable=unable)
-    name(chain, folder)
+    folder = through_name(chain, folder, cfg)
     land(chain, folder, landing)
 
 
@@ -659,7 +717,11 @@ def attended(chain: Chain, stop: Attend, *, after: Sequence[str]) -> Attended:
     acknowledgment is minted by the session through its own verb. Records the
     stop on the chain's summary and its check.
     """
-    command = " ".join(stop.argv)
+    # SHELL QUOTED (U179), since a batch folder and a batch name hold spaces,
+    # ``Bandcamp 2026-11-01`` and ``2026-11-01 Bandcamp PULS``, and a command a
+    # person or the session pastes must be the argument list the step was run
+    # with. A command of plain words reads exactly as it did.
+    command = shlex.join(stop.argv)
     detail = stop.cause.detail or {}
     if stop.cause.reason == GATE_STOP:
         run_id = str(detail.get("run_id") or "")
@@ -694,10 +756,21 @@ def attended(chain: Chain, stop: Attend, *, after: Sequence[str]) -> Attended:
     else:
         remedy = stop.cause.remediation.remedy
         words = render.remedy_text(remedy) if remedy is not None else None
+        # A REHEARSAL READS THE ACKNOWLEDGMENT TOO (U162), and asks no gate, so
+        # a stop there names the rehearsal again and then the landing it is for.
+        again = (
+            (
+                f"then rehearse the landing again: crate {command}",
+                "then plan the landing: crate "
+                + shlex.join(word for word in stop.argv if word != REHEARSE_FLAG),
+            )
+            if stop.step == REHEARSE
+            else (f"then plan the landing again: crate {command}",)
+        )
         steps = (
             *stop.cause.remediation.steps,
             *((words,) if words else ()),
-            f"then plan the landing again: crate {command}",
+            *again,
             "it stops at its own gate: answer it as the session with crate run "
             "decide, then apply it with --run, as its output names",
             *after,
@@ -729,6 +802,8 @@ __all__ = [
     "NAME_OPTION",
     "NAME_VERB",
     "REKORDBOX_STEPS",
+    "REHEARSE",
+    "REHEARSE_FLAG",
     "RESCORE",
     "RESTAMP",
     "SESSION_ACTOR",
@@ -754,6 +829,7 @@ __all__ = [
     "load_config",
     "name",
     "name_argv",
+    "rehearse",
     "replace_stale",
     "required",
     "rescore",
@@ -761,6 +837,7 @@ __all__ = [
     "settle",
     "succeeded",
     "tail_step",
+    "through_name",
     "vocals_on",
     "vocals_unavailable",
     "with_steps",

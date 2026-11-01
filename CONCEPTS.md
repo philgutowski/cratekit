@@ -554,7 +554,9 @@ a tail job left open over the staging folder by an earlier pass is replaced,
 never resumed, because it was frozen against the folder and the build as they
 stood then. Since U190 the tail and the landing are one chain,
 `cratekit.cli.tail`, and `crate label sync --go` runs it too, after its
-download, so the two verbs answer every step the same way.
+download, so the two verbs answer every step the same way. Since U179 `crate
+sync bandcamp` runs it after its fetch, and rehearses the landing on a copy
+between the tail and the landing.
 
 ### Shelve
 The step after the import that the landing left to a person: moving an imported
@@ -1581,7 +1583,8 @@ each filled with that year's tracks from the label's confirmed catalogue
 build reuses and what the playlists source excludes as `label-folder`, since a
 year playlist swept as intake would list the label's catalogue as missing.
 `crate label mark` prefixes the years a landed batch filed, through the mark
-record. `crate label prune` takes a held or reattributed release's tracks off
+record, read off the intake file on the bridge or, with `--pass`, off the
+native landings' own records (R-1056). `crate label prune` takes a held or reattributed release's tracks off
 the years it created (R-836), see Prune.
 
 *Avoid:* reading a year playlist as the label's releases in the library, which

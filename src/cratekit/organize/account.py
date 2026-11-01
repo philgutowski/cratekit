@@ -62,6 +62,8 @@ Layer: modules.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -210,40 +212,76 @@ def _label_apply(cfg, step: Step, planned, remote_of: _Lazy):
 
 
 def _mark_steps(cfg, area: Area) -> None:
+    """One step per landed pass, found by its intake file and by its native landing.
+
+    A PASS LANDED ON A DATABASE NATIVE INTAKE TREE WRITES NO INTAKE FILE, so it
+    is found by its landing's record instead (R-915, U174), and every such pass
+    is planned, not only the latest: a pass marked by nobody is one a person
+    would otherwise find unmarked at the account root weeks later. A pass with
+    an intake file is planned by the file, so it is never planned twice. A
+    native landing of no sync pass, a label's or a set's, is counted beside the
+    intake files of no pass and is no step.
+    """
     unpassed = 0
     # ONE LISTING OF THE ACCOUNT FOR EVERY PASS, asked only when a file a pass
     # owns needs it, and its refusal kept for each pass that asks.
     listing = _Lazy(lambda: mark_cli.listed(cfg))
+    seen: set[str] = set()
     for xml in intake_files(cfg):
         name = mark_cli.pass_name_of(xml)
-        key = f"mark:{name}"
-        title = f"mark the playlists pass {name} finished"
-        try:
-            planned = mark_cli.plan_pass(cfg, xml, listing=listing.get)
-        except CratekitError as exc:
-            area.steps.append(refused(key, title, exc.cause))
-            continue
-        if not planned.of_a_pass:
+        seen.add(name)
+        if not _mark_step(cfg, area, name, partial(mark_cli.plan_pass, cfg, xml, listing=listing.get)):
             unpassed += 1
-            continue
-        totals = planned.payload["totals"]
-        step = Step(
-            key=key,
-            title=title,
-            state=PLANNED if planned.planned else NOTHING,
-            detail=(
-                f"prefix {totals['mark']} playlist(s) as downloaded"
-                if planned.planned
-                else f"nothing to mark: {totals['skip']} playlist(s) left alone, each with its reason"
-            ),
-            digest=planned.payload["digest"],
-            counts={"mark": totals["mark"], "skip": totals["skip"]},
-            items=list(planned.payload["items"]),
-        )
-        if planned.planned:
-            step.apply = _mark_apply(cfg, step, planned)
-        area.steps.append(step)
     area.facts["intake files of no sync pass"] = unpassed
+    unlanded = 0
+    try:
+        native_names = mark_cli.native_passes(cfg)
+    except CratekitError as exc:
+        # REFUSED ALONE, as any step that cannot have what it needs: the passes
+        # found by their intake files above are still planned (the review of U174).
+        area.steps.append(
+            refused("mark:native", "mark the passes native landings committed", exc.cause)
+        )
+        native_names = ()
+    for name in native_names:
+        if name in seen:
+            continue
+        plan = partial(mark_cli.plan_pass, cfg, pass_name=name, listing=listing.get)
+        if not _mark_step(cfg, area, name, plan):
+            unlanded += 1
+    if unlanded:
+        area.facts["native landings of no sync pass"] = unlanded
+
+
+def _mark_step(cfg, area: Area, name: str, plan: Callable[[], Any]) -> bool:
+    """Plan one pass's marks as a step. False when the pass is no sync pass's."""
+    key = f"mark:{name}"
+    title = f"mark the playlists pass {name} finished"
+    try:
+        planned = plan()
+    except CratekitError as exc:
+        area.steps.append(refused(key, title, exc.cause))
+        return True
+    if not planned.of_a_pass:
+        return False
+    totals = planned.payload["totals"]
+    step = Step(
+        key=key,
+        title=title,
+        state=PLANNED if planned.planned else NOTHING,
+        detail=(
+            f"prefix {totals['mark']} playlist(s) as downloaded"
+            if planned.planned
+            else f"nothing to mark: {totals['skip']} playlist(s) left alone, each with its reason"
+        ),
+        digest=planned.payload["digest"],
+        counts={"mark": totals["mark"], "skip": totals["skip"]},
+        items=list(planned.payload["items"]),
+    )
+    if planned.planned:
+        step.apply = _mark_apply(cfg, step, planned)
+    area.steps.append(step)
+    return True
 
 
 def _mark_apply(cfg, step: Step, planned):

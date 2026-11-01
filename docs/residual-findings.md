@@ -40659,3 +40659,74 @@ the attended card, but a DJ who trusts doctor is not told.
 **Closes when:** the planner names a shipped genre sub absent from a bucket of
 the copy, as a hand edit it will not make, in its gap and remedy sentences.
 Ledger only.
+
+---
+
+## R-1141. The crate-sync skill's open passes field is checked by reading the source, not by a pass that stops there
+
+**Found:** at the Fable review of #355, U174, 2026-11-01.
+
+**The mechanism.** The skill tells the session to read
+`data.summary.open_passes` when `crate sync land` stops because several earlier
+passes hold open intake jobs. `tests/test_crate_sync_skill.py` holds every
+other summary field it names to a field the verb writes, and for this one it
+reads the source of `src/cratekit/cli/sync_land.py` for the assignment, since
+no test drives `sync land` into its choice between passes and reads the field
+off the envelope.
+
+**Measured cost.** None today: the field is set in `_choose` and the skill
+names it correctly. A rename there would leave the skill naming a field the
+envelope no longer carries, and the skill test would still pass on any text
+that kept the old name.
+
+**Closes when:** a test drives `crate sync land` over two passes with open
+intake jobs and reads `data.summary.open_passes` off its envelope. Ledger only,
+a maintainer facing coverage gap.
+
+---
+
+## R-1142. A native landing writes its label filing record only when the commit added or made something, so label mark by pass could say a batch filed nothing
+
+**Found:** at the review of #362, R-1056, 2026-11-01.
+
+**The mechanism.** `label_filing.record_commit` returns before writing the
+`labels` key when `written.changed()` is false, that is when every year
+playlist the commit filed into already held every track it was asked to
+hold and no node was made. `label mark --pass` reads that key as what the
+landing filed, so a landing whose filing changed nothing would be read as
+one that filed no year, and the mark would end NO_OP with
+`label-mark-nothing-filed`. The bridge writes its tree into the intake file
+whatever it added, so the two proofs could disagree here.
+
+**Measured cost.** Not driven to a cost. The one candidate driven, a second
+native landing of the same file under another pass, is refused before it
+moves anything because the file already exists in the library, so no record
+commits. No producer was found.
+
+**Closes when:** a landing that filed into year playlists names them on its
+record whether or not it added a membership, or a producer is shown not to
+exist. Ledger only, since nothing reaches it.
+
+---
+
+## R-1143. A Bandcamp release the fetch refused for good is planned and refused again by every later sync bandcamp
+
+**Found:** at the second Fable review of #360, U179, 2026-11-01.
+
+**The mechanism.** `acquire bandcamp-fetch` records a purchase only once it is fetched (U176), so a release refused for good, a lossy only offer under the strict policy, stays `new` on every plan. Each `crate sync bandcamp` therefore queues a fetch that fails the same way, and names the release as refused again.
+
+**Measured cost.** Driven by the second review with an open fetch parked and the account then offering only MP3: two fetches in one run, one refusal named once since 75205b9, and the same refusal on every later run. A queue row and two account requests per run, and a warning a person learns to read past.
+
+**Closes when:** a refusal for good is recorded beside the fetched record and the plan shows it as refused rather than new, until the policy or the offer changes. U176's rule rather than this unit's; ledger only.
+
+---
+
+## R-1144. A sync bandcamp whose every release the fetch refused ends exit 0, no_op, where the fetch alone exits non zero
+
+**Found:** at the first Fable review of #360, U179, 2026-11-01.
+
+**The mechanism.** `crate sync bandcamp` reads a fetch that failed only by refusals for good (a lossy only release under the strict policy above all) as settled, the way `sync land` skips a lossy download, and goes on with what was staged. When nothing was staged it ends `no_op` with exit 0. `crate acquire bandcamp-fetch` alone ends the same job with its failed state's refusal.
+
+**Measured cost.** Driven by `test_a_release_refused_for_good_is_recorded_and_nothing_is_landed_over_none`: the envelope names each refused release in `fetch_refused`, in a `sync-bandcamp-fetch-refused` warning and on a `fail` check row, so nothing false is said, but a caller reading only the exit code is not told. `sync land` over an all refused download carries the same shape (U152's residual).
+
+**Closes when:** the verb ends with the fetch's own refusal when every release it attempted was refused and nothing was staged, or the record states exit 0 as the contract. Ledger only.
