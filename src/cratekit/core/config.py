@@ -2643,6 +2643,17 @@ class AcquisitionConfig:
 DEFAULT_TEMPO_FLOOR = 80
 DEFAULT_TEMPO_CEILING = 160
 
+#: The drift at or above which a track reads as variable and its landed row is
+#: marked ``dyn`` for rekordbox's Dynamic analysis (U157), a percent spread of
+#: the tempo over the track's length (``core.drift``). Synthetic steady tracks
+#: measured 0.0 to 0.3 and a three beat ramp over two minutes 1.7, so the
+#: default sits above every steady reading and leans toward Normal, because a
+#: steady track sent to Dynamic comes back with a wobbling grid while a live
+#: track sent to Normal keeps the grid every track had before this setting.
+#: NOT YET CALIBRATED ON A LIBRARY: the card owes a sitting that reads the
+#: drifts of a batch holding both kinds and sets this from them.
+DEFAULT_DRIFT_CUT = 1.5
+
 
 @dataclass(frozen=True, slots=True)
 class AnalysisConfig:
@@ -2655,6 +2666,8 @@ class AnalysisConfig:
     #: The head names a tempo from the floor to the ceiling, both included.
     tempo_floor: int = DEFAULT_TEMPO_FLOOR
     tempo_ceiling: int = DEFAULT_TEMPO_CEILING
+    #: A drift at or above this reads as variable and is marked ``dyn`` (U157).
+    drift_cut: float = DEFAULT_DRIFT_CUT
 
 
 @dataclass(frozen=True, slots=True)
@@ -3351,6 +3364,7 @@ def validate(data: Mapping) -> list[str]:
         )
 
     problems += _validate_tempo_window(data)
+    problems += _validate_drift_cut(data)
 
     problems += _validate_aging_thresholds(data)
     problems += _validate_export_staleness(data)
@@ -3576,6 +3590,32 @@ def _validate_tempo_window(data: Mapping) -> list[str]:
             f"and an empty window names none."
         )
     return problems
+
+
+def _validate_drift_cut(data: Mapping) -> list[str]:
+    """The drift cut is a finite percent above zero (U157).
+
+    A cut of zero or below would mark every measured track ``dyn`` and send a
+    whole batch of steady tracks to Dynamic analysis, and a NaN would mark
+    none while every row read as checked, so both are refused at load with
+    the key named, as the tempo window is.
+    """
+    key = "analysis.drift_cut"
+    value = _dig(data, key)
+    if value is None:
+        return []
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value <= 0
+        or value > 100
+    ):
+        return [
+            f"{key} must be a percent above zero and at most 100, the drift at or "
+            f"above which a track is marked dyn, found {value!r}."
+        ]
+    return []
 
 
 def _validate_recognition(data: Mapping) -> list[str]:

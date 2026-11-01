@@ -15,7 +15,8 @@ from pathlib import Path
 from typing import Any
 
 from cratekit.analysis.energy import MEASURE_RATE
-from cratekit.core.config import DEFAULT_TEMPO_CEILING, DEFAULT_TEMPO_FLOOR
+from cratekit.core import drift as drift_words
+from cratekit.core.config import DEFAULT_DRIFT_CUT, DEFAULT_TEMPO_CEILING, DEFAULT_TEMPO_FLOOR
 
 #: The terminal status for a file the decoder could not read at all.
 TERMINAL_UNDECODABLE = "skipped-undecodable"
@@ -213,6 +214,47 @@ def tempo_from_autocorrelation(
     return float(min(max(60.0 * rate / (hop * lag), float(floor)), float(ceiling)))
 
 
+#: The drift measurement (U157), every number a property of the method rather
+#: than a setting, measured on synthetic tracks whose tempo is known by
+#: construction (``tests/test_analysis_drift.py``); the setting is the cut,
+#: ``analysis.drift_cut``. A window is about ten seconds of the tempogram's
+#: frames, long enough to hold a dozen beats at the floor and short enough
+#: that a six minute track gives three dozen readings.
+DRIFT_WINDOW_SECONDS = 10.0
+#: How far either side of the track's own tempo a window's peak is looked
+#: for, as a fraction of it. Held to a band so a window cannot read a related
+#: metrical level, half or double or three to two, which would be a jump in
+#: the reading and not a drift in the music. Twelve percent holds a step from
+#: 120 to 128 and a ramp of a dozen beats around the middle.
+DRIFT_BAND = 0.12
+#: A window counts only when it carries a pulse: its onset strength at least
+#: this fraction of the track's median window, so a breakdown is passed over
+#: rather than read as drift, and at least the absolute floor below, so a
+#: track that is all pad is not judged on the noise in its envelope.
+DRIFT_ONSET_RELATIVE = 0.5
+DRIFT_ONSET_FLOOR = 0.2
+#: And a clear peak: the band's strongest lag stands at least this fraction
+#: above the mean of the lags from half to one and a half of its period. A
+#: drum pattern stands 0.1 to 0.2 above it, white noise and a beatless pad
+#: under 0.02, which is where the gate sits between.
+DRIFT_PULSE_CONTRAST = 0.05
+#: Fewer counted windows than this is too little rhythmic material to judge,
+#: and the drift is unknown rather than a spread of two numbers.
+DRIFT_MIN_WINDOWS = 3
+#: The spread is from this percentile of the counted windows' tempos to its
+#: complement, so one odd window in ten moves nothing.
+DRIFT_PERCENTILE = 10.0
+
+
+def _onset_and_tempogram(samples: Any, rate: int) -> tuple[Any, Any]:
+    """The onset envelope and the tempogram librosa's estimator computes, taken once."""
+    import librosa
+
+    envelope = librosa.onset.onset_strength(y=samples, sr=rate, hop_length=TEMPO_HOP)
+    tempogram = librosa.feature.tempogram(onset_envelope=envelope, sr=rate, hop_length=TEMPO_HOP)
+    return envelope, tempogram
+
+
 def measure_tempo(samples: Any, rate: int, *, floor: int, ceiling: int) -> float | None:
     """The tempo of decoded samples, inside the window, to a fraction of a beat.
 
@@ -221,13 +263,83 @@ def measure_tempo(samples: Any, rate: int, *, floor: int, ceiling: int) -> float
     reasons the constants above give. None when the envelope is too short to
     hold a period inside the window.
     """
-    import librosa
+    return measure_tempo_and_drift(samples, rate, floor=floor, ceiling=ceiling)[0]
 
-    envelope = librosa.onset.onset_strength(y=samples, sr=rate, hop_length=TEMPO_HOP)
-    tempogram = librosa.feature.tempogram(onset_envelope=envelope, sr=rate, hop_length=TEMPO_HOP)
-    return tempo_from_autocorrelation(
+
+def measure_tempo_and_drift(
+    samples: Any, rate: int, *, floor: int, ceiling: int
+) -> tuple[float | None, float | None]:
+    """The tempo, and how far it moves over the track, from ONE tempogram (U157).
+
+    The drift is None when the tempo is, and when the track holds too little
+    pulse to judge, :func:`drift_from_tempogram`'s answer.
+    """
+    envelope, tempogram = _onset_and_tempogram(samples, rate)
+    tempo = tempo_from_autocorrelation(
         tempogram.mean(axis=1), rate=rate, hop=TEMPO_HOP, floor=floor, ceiling=ceiling
     )
+    if tempo is None:
+        return None, None
+    return tempo, drift_from_tempogram(envelope, tempogram, tempo, rate=rate, hop=TEMPO_HOP)
+
+
+def drift_from_tempogram(
+    envelope: Any, tempogram: Any, tempo: float, *, rate: int = MEASURE_RATE, hop: int = TEMPO_HOP
+) -> float | None:
+    """How far the tempo moves over the track, a percent of its middle, or None (U157).
+
+    ``tempogram`` is librosa's, one autocorrelation column per frame, and
+    ``envelope`` the onset strength it was taken from. The frames are cut
+    into windows of :data:`DRIFT_WINDOW_SECONDS`; each window's columns are
+    averaged and its peak is found inside :data:`DRIFT_BAND` of ``tempo``
+    and interpolated as the head's is, so each window reads the track's own
+    pulse to a fraction of a beat. A window without a pulse, the gates above,
+    is passed over. The answer is the spread from the tenth to the ninetieth
+    percentile of the windows' tempos as a percent of their median, so a
+    steady track reads near zero whatever its breakdowns, and a ramp or a
+    stepped change reads the distance it moves.
+
+    NONE IS NOT STEADY. Fewer than :data:`DRIFT_MIN_WINDOWS` windows with a
+    pulse, a beatless, ambient or very short file, has no drift to read, and
+    the caller names it unknown rather than guessing either way.
+    """
+    import librosa
+    import numpy as np
+
+    envelope = np.asarray(envelope, dtype=float).reshape(-1)
+    tempogram = np.asarray(tempogram, dtype=float)
+    if tempo <= 0.0 or tempogram.ndim != 2 or tempogram.shape[0] < 3:
+        return None
+    per = int(round(DRIFT_WINDOW_SECONDS * rate / hop))
+    windows = min(tempogram.shape[1], envelope.size) // per
+    if windows < DRIFT_MIN_WINDOWS:
+        return None
+    frequencies = librosa.tempo_frequencies(tempogram.shape[0], sr=rate, hop_length=hop)
+    band = (frequencies >= tempo / (1.0 + DRIFT_BAND)) & (frequencies <= tempo * (1.0 + DRIFT_BAND))
+    around = (frequencies >= tempo / 1.5) & (frequencies <= tempo * 2.0)
+    if not np.any(band):
+        return None
+    strength = np.array([envelope[i * per : (i + 1) * per].mean() for i in range(windows)])
+    median = float(np.median(strength))
+    tempos: list[float] = []
+    for i in range(windows):
+        if strength[i] < DRIFT_ONSET_FLOOR or strength[i] < DRIFT_ONSET_RELATIVE * median:
+            continue
+        column = tempogram[:, i * per : (i + 1) * per].mean(axis=1)
+        index = int(np.argmax(np.where(band, column, -np.inf)))
+        peak = float(column[index])
+        if peak <= 0.0 or (peak - float(column[around].mean())) / peak < DRIFT_PULSE_CONTRAST:
+            continue
+        lag = _interpolated_peak(column, index)
+        if lag <= 0.0:
+            continue
+        tempos.append(60.0 * rate / (hop * lag))
+    if len(tempos) < DRIFT_MIN_WINDOWS:
+        return None
+    low, middle, high = np.percentile(
+        tempos, [DRIFT_PERCENTILE, 50.0, 100.0 - DRIFT_PERCENTILE]
+    )
+    return float(100.0 * (high - low) / middle)
 
 
 def analyse_file(
@@ -235,12 +347,15 @@ def analyse_file(
     *,
     calibration: Any = None,
     tempo_window: tuple[int, int] = (DEFAULT_TEMPO_FLOOR, DEFAULT_TEMPO_CEILING),
+    drift_cut: float = DEFAULT_DRIFT_CUT,
 ) -> dict[str, Any] | None:
-    """Return camelot, tempo and energy, or None when detection cannot run.
+    """Return camelot, tempo, drift and energy, or None when detection cannot run.
 
     ``tempo_window`` is the configured floor and ceiling; the run binds it from
     ``analysis.tempo_floor`` and ``analysis.tempo_ceiling`` beside the
     calibration, and a caller that passes nothing gets the shipped default.
+    ``drift_cut`` is ``analysis.drift_cut``, bound the same way, which the
+    drift's verdict is read against (U157).
 
     Energy is computed from the same decoded samples when ``calibration`` is a
     :class:`cratekit.analysis.energy.Calibration`, and is an honest absence
@@ -273,7 +388,7 @@ def analyse_file(
         return {"path": path, "terminal": TERMINAL_UNDECODABLE}
     try:
         floor, ceiling = tempo_window
-        tempo = measure_tempo(y, sr, floor=floor, ceiling=ceiling)
+        tempo, drift = measure_tempo_and_drift(y, sr, floor=floor, ceiling=ceiling)
         if tempo is None:
             return {"path": path, "terminal": TERMINAL_UNANALYSABLE}
         rate = int(tempo + 0.5)
@@ -307,6 +422,10 @@ def analyse_file(
         "path": path,
         "camelot": camelot,
         "rate": rate,
+        # U157: the drift and its verdict, None and unknown for a track with
+        # too little pulse to judge, which the finalize writes as it is.
+        "drift": drift,
+        "drift_verdict": drift_words.verdict(drift, drift_cut),
         "energy": level,
         "energy_status": status,
     }
