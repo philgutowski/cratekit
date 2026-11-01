@@ -718,7 +718,7 @@ def recheck(db: Any, twins: Sequence[Twin]) -> None:
         )
 
 
-def _record(record: session.SessionRecord, *, created: int, cfg: config.Config) -> None:
+def _record_twins_commit(record: session.SessionRecord, *, created: int, cfg: config.Config) -> None:
     if created <= 0:
         return
     session.record_commit(
@@ -797,9 +797,9 @@ def write(
             except BaseException:
                 trees._rollback_quietly(db)
                 if witness.landed:
-                    _record(record, created=added + len(created), cfg=cfg)
+                    _record_twins_commit(record, created=added + len(created), cfg=cfg)
                 raise
-        _record(record, created=added + len(created), cfg=cfg)
+        _record_twins_commit(record, created=added + len(created), cfg=cfg)
         convergence.record_fingerprint(cfg, db)
         session_id = record.session_id
     return Written(
