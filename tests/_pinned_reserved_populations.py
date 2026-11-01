@@ -1304,6 +1304,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         # 2026-11-01, U149: a landing's custom playlist twin left and named.
         'custom-playlist-twins-left',
         'decision-stale',
+        # 2026-11-01, U157: a variable row the commit could not mark dyn.
+        'dyn-not-written',
         'favorites-colour-held',
         'favorites-placed',
         'favorites-placement-skipped',
