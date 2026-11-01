@@ -18,6 +18,8 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'adopt-item-absent',
     'adoption-file-unidentifiable',
     'adoption-ledger-unusable',
+    'analysis-check-landing-unknown',  # 2026-10-31, U167: analyze check's unknown landing.
+    'analysis-suspect',  # 2026-10-31, U167: analyze check's suspect verdict.
     'analysis-write-failed',
     'anlz-modified',
     'app-version-pin-drift',
@@ -382,6 +384,13 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     'adopt/shell.py': ['internal-error'],
     'analysis/artifacts.py': ['analysis-artifacts', 'analysis-staging', 'utf-8'],
+    # 2026-10-31, U167: analyze check, its engine and its verb.
+    'analysis/check_cli.py': [
+        'analysis-check-nothing',
+        'analysis-check-records-unread',
+        'analysis-suspect',
+        'config-unusable',
+    ],
     'analysis/cli.py': [
         'analysis-write-failed',
         'calibration-partial-sample',
@@ -406,6 +415,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'utf-8',
     ],
     'analysis/light.py': ['skipped-no-key'],
+    'analysis/rekordbox_check.py': ['analysis-check-landing-unknown'],  # 2026-10-31, U167
     'analysis/run.py': ['skipped-prefixed'],
     'analysis/vocals.py': [
         'vocal-audio-too-large',
@@ -626,6 +636,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'adopt-item-absent',
         'adoption-file-unidentifiable',
         'adoption-ledger-unusable',
+        'analysis-check-landing-unknown',  # 2026-10-31, U167
+        'analysis-suspect',  # 2026-10-31, U167
         'analysis-write-failed',
         'anlz-modified',
         'app-version-pin-drift',
@@ -1464,7 +1476,11 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'label-playlists',
         'label-playlists-incomplete',
         'label-playlists-not-followed',
+        # 2026-10-31, U191: the releases build's two warnings and its gate lookup.
+        'label-playlists-nothing-left',
+        'label-playlists-nothing-taken',
         'label-playlists-tracks-refused',
+        'refused-by-policy',
     ],
     'label/prune_cli.py': ['label-playlists-not-followed'],
     'label/registry.py': [
@@ -2316,6 +2332,8 @@ PINNED_LITERAL_HOLDERS = {
     'adopt/revert.py': ['adoption-file-unidentifiable', 'adoption-ledger-unusable'],
     'adopt/scan_cli.py': ['adopt-item-absent', 'config-unusable'],
     'adopt/shell.py': ['internal-error'],
+    # 2026-10-31, U167: analyze check, its engine and its verb.
+    'analysis/check_cli.py': ['analysis-suspect', 'config-unusable'],
     'analysis/cli.py': [
         'analysis-write-failed',
         'config-unusable',
@@ -2328,6 +2346,7 @@ PINNED_LITERAL_HOLDERS = {
         'vocal-cut-out-of-range',
     ],
     'analysis/energy.py': ['analysis-write-failed', 'energy-calibration-unreadable'],
+    'analysis/rekordbox_check.py': ['analysis-check-landing-unknown'],  # 2026-10-31, U167
     'backup/cli.py': [
         'backup-facts-unreadable',
         'backup-nothing-ran',
@@ -2676,7 +2695,12 @@ PINNED_LITERAL_HOLDERS = {
     ],
     'label/mark_cli.py': ['internal-error', 'sync-mark-record-unusable', 'sync-marks-blocked'],
     'label/marks.py': ['label-watermark-unusable'],
-    'label/playlists_cli.py': ['internal-error', 'label-playlists-incomplete'],
+    # 2026-10-31, U191: the gate lookup refuses a missing declaration.
+    'label/playlists_cli.py': [
+        'internal-error',
+        'label-playlists-incomplete',
+        'refused-by-policy',
+    ],
     'label/registry.py': ['label-intent-unusable', 'label-name-invalid', 'label-unknown'],
     'label/sync_cli.py': [
         'label-registry-empty',
@@ -2863,6 +2887,7 @@ PINNED_LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     'adopt/revert.py',
     'analysis/cli.py',
     'analysis/energy.py',
+    'analysis/rekordbox_check.py',  # 2026-10-31, U167: the Camelot wheel's twelve.
     'cli/doctor.py',
     'cli/output.py',
     'core/config.py',
