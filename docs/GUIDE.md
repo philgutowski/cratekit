@@ -728,9 +728,15 @@ whole catalogue, two calls for every release it lists, which on a label of
 thousands of releases is hours of calls. So it counts the listing first, and
 when the estimate is over 500 calls it stops at its own explicit gate,
 `label.playlists.crawl`, showing the release count, the calls and the time,
-and reads nothing more until you answer `crawl`. A full build that the
-provider's rate limit stops part way keeps nothing it read, so the next run
-starts the crawl again.
+and reads nothing more until you answer `crawl`. A full build keeps every
+release it reads for seven days, so a build the provider's rate limit stops part
+way starts again where it stopped, and the run that applies the plan you
+approved reads none of the catalogue again. The estimate counts only the
+releases not kept, and both screens say how many reads were reused and how old
+the oldest is. The listing itself is read again every run, so a release the
+label put out since is never missed. If the kept reads cannot be read the build
+refuses with `label-playlists-reads-unusable`; deleting the file it names is
+safe and costs only provider calls.
 
 Once a label batch has landed, `label mark` puts `DOWNLOADED ` in front of the
 year playlists that batch filed, so the account stops offering them as unheard:
