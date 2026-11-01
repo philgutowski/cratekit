@@ -728,6 +728,32 @@ existed. A track you coloured otherwise by hand keeps its colour and is named,
 never overwritten, and a library whose colour table has no Pink row places the
 hearts and says it coloured none, to be run again once Pink is restored.
 
+### Keep your custom playlists in rekordbox for good
+
+```bash
+crate sync twins
+crate sync pair
+```
+
+A custom playlist you build on the account lands as an INBOX playlist, which
+rotates out of rekordbox after thirty and ninety days. Its twin is the copy that
+stays: one playlist of the same name, less `DOWNLOADED `, in the top level folder
+`Custom Playlists <year>`, holding the tracks the library owns in the account's
+order. A landing of an account playlist pass writes the twin of each custom
+playlist it lands, beside its INBOX playlist and in the same write, and pairs the
+two with no hand step. `crate sync twins` does the same once for every
+`DOWNLOADED` playlist the account already holds in a year folder, shows every
+twin and every track it will not hold on one gate, and plans nothing the second
+time. From then on `crate sync pair` keeps each twin and its account playlist
+one list: an addition on either side lands on both, a removal on either side
+comes off both, and a track the library lacks is queued once.
+
+A twin is never counted: when its folder already holds a playlist of its name,
+the twin is left and named, and you pair the one there by hand with
+`crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID`. When you delete the
+playlist on the account, the next `crate sync pair` unpairs the twin and leaves
+it in rekordbox, named.
+
 ### Publish a playlist
 
 ```bash

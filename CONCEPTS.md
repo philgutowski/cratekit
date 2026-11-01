@@ -2162,7 +2162,8 @@ account stays in Undated. Add only, like the quarter was.
 
 ### Custom playlist twin
 The permanent rekordbox copy of a downloaded custom playlist, planned on
-2026-10-15 (`docs/plans/2026-10-15-1330-feat-rekordbox-tidal-parity-plan.md`):
+2026-10-15 (`docs/plans/2026-10-15-1330-feat-rekordbox-tidal-parity-plan.md`)
+and built by U149 (`sync/twins.py`, `crate sync twins`):
 one playlist of the account playlist's name, less the `DOWNLOADED ` prefix,
 in the folder `Custom Playlists <year>` beside INBOX, holding the rows the
 library owns for its tracks. It is a PLAYLIST PAIR with the account's copy,
@@ -2170,6 +2171,10 @@ marked at the landing without a hand step and backfilled once for the
 playlists the account already holds, so an edit on either side reaches the
 other at the next `sync pair`. It is the one place an account edit changes
 rekordbox; the INBOX playlist the same landing writes is a different
-playlist of the same rows and rotates out, the twin does not.
+playlist of the same rows and rotates out, the twin does not. Its folder is
+not declared in the taxonomy and no registry records it, so the pair rule
+lets it pair. A name its folder already holds is left and named, never given
+a count, and a twin whose account playlist is deleted is unpaired by the next
+`crate sync pair` and left where it is.
 
 *Avoid:* reading it as the INBOX playlist, or as a mirror, which goes one way.

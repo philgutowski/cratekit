@@ -70,7 +70,7 @@ Layer: modules.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
@@ -124,6 +124,8 @@ SKIPPED = "sync-pair-skipped"
 NOTHING = "sync-pair-nothing"
 LEFT_OUT = "sync-pair-left-out"
 WRITTEN = "sync-pair-written"
+#: A custom playlist twin's pair forgotten because its account playlist is gone (U149).
+UNPAIRED = "sync-pair-twin-unpaired"
 
 #: The refusals that are about one pair's own playlists, which a sync of every
 #: pair names and passes over rather than stopping at.
@@ -471,23 +473,7 @@ class _Reader:
     @cached_property
     def mirrors(self) -> dict[str, frozenset[str]]:
         """Each account playlist's INBOX playlists, as the landing records name them (U128)."""
-        standing = {
-            session.SessionState.AWAITING_IMPORT,
-            session.SessionState.COMMITTED_UNVERIFIED,
-            session.SessionState.CLOSED,
-        }
-        records, _unreadable = session.scan_log(self.cfg)
-        found: dict[str, set[str]] = {}
-        for record in records:
-            if record.workflow != ingest.INTAKE_WORKFLOW or record.state not in standing:
-                continue
-            for entry in record.detail.get(ingest.INBOX_PLAYLISTS_KEY) or ():
-                if not isinstance(entry, dict) or not entry.get("id"):
-                    continue
-                account_id = str(entry.get(ingest.INBOX_ACCOUNT_KEY) or "")
-                if account_id:
-                    found.setdefault(account_id, set()).add(str(entry["id"]))
-        return {account_id: frozenset(ids) for account_id, ids in found.items()}
+        return landed_inbox_playlists(self.cfg)
 
     def jobs_for(self, account_id: str) -> tuple[jobs.Job, ...]:
         return tuple(
@@ -552,21 +538,53 @@ def _owned_by_jobs(
     }
 
 
-def _mirror_isrcs(reader: _Reader, account_id: str) -> dict[str, tuple[str, ...]]:
-    """ISRC to content ids, read from the files of the INBOX playlists landed for this account.
+def landed_inbox_playlists(cfg: config.Config) -> dict[str, frozenset[str]]:
+    """Each account playlist's INBOX playlists, as the landing records name them (U128).
+
+    PUBLIC because the custom playlist twins' backfill (U149) finds a landed
+    track's row the same way a pair does.
+    """
+    standing = {
+        session.SessionState.AWAITING_IMPORT,
+        session.SessionState.COMMITTED_UNVERIFIED,
+        session.SessionState.CLOSED,
+    }
+    records, _unreadable = session.scan_log(cfg)
+    found: dict[str, set[str]] = {}
+    for record in records:
+        if record.workflow != ingest.INTAKE_WORKFLOW or record.state not in standing:
+            continue
+        for entry in record.detail.get(ingest.INBOX_PLAYLISTS_KEY) or ():
+            if not isinstance(entry, dict) or not entry.get("id"):
+                continue
+            account_id = str(entry.get(ingest.INBOX_ACCOUNT_KEY) or "")
+            if account_id:
+                found.setdefault(account_id, set()).add(str(entry["id"]))
+    return {account_id: frozenset(ids) for account_id, ids in found.items()}
+
+
+def landed_isrcs(
+    cfg: config.Config, db: Any, playlist_ids: Iterable[str]
+) -> dict[str, tuple[str, ...]]:
+    """ISRC to content ids, read from the files of the INBOX playlists named.
 
     U128 records each INBOX playlist a landing made for an account playlist
-    with the account playlist's identifier. A track this pair queued and
-    a landing brought sits there, and its row may carry no ISRC of its own,
-    since a landed row's code is in its file. Only those rows' files are read.
+    with the account playlist's identifier. A track a pair queued and a landing
+    brought sits there, and its row may carry no ISRC of its own, since a
+    landed row's code is in its file. Only those rows' files are read.
     """
     found: dict[str, list[str]] = {}
-    for mirror in sorted(reader.mirrors.get(account_id, ())):
-        for row in playlist_pair.members(reader.db, mirror):
-            code = match.isrc_token(row.isrc) or file_identity(reader.cfg, row.path)[0]
+    for mirror in sorted(playlist_ids):
+        for row in playlist_pair.members(db, mirror):
+            code = match.isrc_token(row.isrc) or file_identity(cfg, row.path)[0]
             if code and row.content_id not in found.setdefault(code, []):
                 found[code].append(row.content_id)
     return {code: tuple(ids) for code, ids in found.items()}
+
+
+def _mirror_isrcs(reader: _Reader, account_id: str) -> dict[str, tuple[str, ...]]:
+    """ISRC to content ids, from the INBOX playlists landed for this account playlist."""
+    return landed_isrcs(reader.cfg, reader.db, reader.mirrors.get(account_id, ()))
 
 
 def plan_pair(reader: _Reader, target: Target, held) -> PairPlan:
@@ -869,6 +887,24 @@ def _queued(reader: _Reader, account_id: str) -> frozenset[str]:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class Unpaired:
+    """A custom playlist twin's pair whose account playlist the account no longer lists (U149).
+
+    Its pair is forgotten and its rekordbox playlist is left where it is,
+    named, never removed: the account side is gone, and the twin is still the
+    list it was.
+    """
+
+    account_id: str
+    rekordbox_id: str
+    name: str
+    rekordbox_name: str
+
+    def identity(self) -> dict[str, str]:
+        return {"account_id": self.account_id, "rekordbox_id": self.rekordbox_id}
+
+
 @dataclass
 class Plan:
     """Every pair this invocation syncs, decided, and the marked pairs it could not."""
@@ -876,14 +912,23 @@ class Plan:
     pairs: tuple[PairPlan, ...] = ()
     #: A marked pair a sync of every pair could not plan, account id to why.
     left_out: dict[str, str] = field(default_factory=dict)
+    #: Twin pairs whose account playlist is gone, forgotten when a gate is applied.
+    unpaired: tuple[Unpaired, ...] = ()
 
     @property
     def digest(self) -> str:
-        return digest_of({"kind": "sync.pair", "pairs": [one.identity() for one in self.pairs]})
+        # THE UNPAIRED ONLY WHEN THERE ARE ANY, so a plan with none digests
+        # as it did before U149.
+        extra = (
+            {"unpaired": [one.identity() for one in self.unpaired]} if self.unpaired else {}
+        )
+        return digest_of(
+            {"kind": "sync.pair", "pairs": [one.identity() for one in self.pairs], **extra}
+        )
 
     @property
     def writes(self) -> bool:
-        return any(
+        return bool(self.unpaired) or any(
             one.rekordbox_writes or one.account_writes or one.acquire or not one.target.marked
             for one in self.pairs
         )
@@ -927,7 +972,23 @@ def plan(
         )
         planned: list[PairPlan] = []
         left_out: dict[str, str] = {}
+        unpaired: list[Unpaired] = []
         for target in wanted:
+            # A TWIN WHOSE ACCOUNT PLAYLIST IS GONE IS UNPAIRED (U149), never
+            # refused and never removed: its rekordbox playlist is left and
+            # named. A pair the person made is refused or left out as before.
+            pair = held.get(target.account_id)
+            if pair is not None and pair.twin and target.account_id not in listed:
+                twin = playlist_pair.read_playlist(db, pair.rekordbox_id)
+                unpaired.append(
+                    Unpaired(
+                        account_id=target.account_id,
+                        rekordbox_id=pair.rekordbox_id,
+                        name=pair.name,
+                        rekordbox_name=twin.name if twin is not None else "",
+                    )
+                )
+                continue
             try:
                 planned.append(plan_pair(reader, target, held.get(target.account_id)))
             except CratekitError as exc:
@@ -938,7 +999,7 @@ def plan(
                 if not every or exc.cause.reason not in PER_PAIR_REASONS:
                     raise
                 left_out[target.account_id] = exc.cause.message
-        return Plan(tuple(planned), left_out)
+        return Plan(tuple(planned), left_out, tuple(unpaired))
     finally:
         rb_writer.close_db(db)
 
@@ -995,6 +1056,17 @@ def _reordered(one: PairPlan) -> bool:
 def payload(planned: Plan) -> dict[str, Any]:
     """The plan as both gates show it: one item per change, both sides named."""
     items = [item for one in planned.pairs for item in _items(one)]
+    items.extend(
+        {
+            "pair": one.account_id,
+            "side": "pairs",
+            "action": "unpair",
+            "name": one.name,
+            "rekordbox_id": one.rekordbox_id,
+            "rekordbox_name": one.rekordbox_name,
+        }
+        for one in planned.unpaired
+    )
 
     def count(side: str, action: str) -> int:
         return sum(1 for item in items if item["side"] == side and item["action"] == action)
@@ -1014,6 +1086,7 @@ def payload(planned: Plan) -> dict[str, Any]:
             "awaiting": count("library", "awaiting"),
             "unmatched": count("account", "unmatched"),
             "ambiguous": count("rekordbox", "ambiguous"),
+            "unpaired": count("pairs", "unpair"),
         },
         "chunk": None,
     }
@@ -1041,6 +1114,11 @@ def facts(planned: Plan) -> dict[str, Any]:
                 if one.withheld
                 else ""
             )
+        )
+    for gone in planned.unpaired:
+        shown[f"pair {gone.account_id}"] = (
+            f"{gone.name!r} is gone from the account, so its twin "
+            f"{gone.rekordbox_name or gone.rekordbox_id!r} is unpaired and left in rekordbox"
         )
     return shown
 
@@ -1267,7 +1345,7 @@ def sync_pair(ctx) -> Envelope:
             ctx.gate.require(gates[REKORDBOX_GATE], plan=data, context=shown) == APPLY
         )
         on_account = ctx.gate.require(gates[ACCOUNT_GATE], plan=data, context=shown) == APPLY
-        if not planned.pairs:
+        if not planned.pairs and not planned.unpaired:
             return ctx.envelope(
                 data=data,
                 outcome=Outcome.NO_OP,
@@ -1295,6 +1373,26 @@ def sync_pair(ctx) -> Envelope:
             apply_pair(cfg, one, rekordbox=on_rekordbox, account=on_account, store=store)
             for one in planned.pairs
         ]
+    forgotten = [
+        one
+        for one in planned.unpaired
+        if store_of_pairs.unmark(one.account_id, one.rekordbox_id) is not None
+    ]
+    if forgotten:
+        warnings.append(
+            {
+                "code": UNPAIRED,
+                "message": (
+                    f"{len(forgotten)} custom playlist twin(s) lost their account "
+                    f"playlist and were unpaired; each is left in rekordbox as it was: "
+                    + "; ".join(
+                        f"{one.rekordbox_name or one.rekordbox_id} (was paired with "
+                        f"{one.name or one.account_id})"
+                        for one in forgotten
+                    )
+                ),
+            }
+        )
     totals = {
         **data["totals"],
         "rekordbox_added": sum(d.rekordbox.added for d in done if d.rekordbox),
@@ -1303,6 +1401,7 @@ def sync_pair(ctx) -> Envelope:
         "account_removed": sum(d.account_removed for d in done),
         "queued_jobs": [d.queued for d in done if d.queued],
         "marked": sum(1 for d in done if d.marked),
+        "unpaired": len(forgotten),
     }
     answered = {"rekordbox": on_rekordbox, "the account": on_account}
     sides = [side for side, on in answered.items() if on]
@@ -1316,7 +1415,7 @@ def sync_pair(ctx) -> Envelope:
         f"collection or the account"
         + (f"; {' and '.join(skipped)} skipped, its snapshot unchanged" if skipped else "")
     )
-    wrote = any(d.wrote for d in done)
+    wrote = any(d.wrote for d in done) or bool(forgotten)
     return ctx.envelope(
         data={**data, "totals": totals},
         outcome=Outcome.OK if wrote else Outcome.NO_OP,
@@ -1333,11 +1432,14 @@ __all__ = [
     "PairPlan",
     "Plan",
     "Target",
+    "Unpaired",
     "apply_pair",
     "build",
     "facts",
     "file_identity",
     "generated_tops",
+    "landed_inbox_playlists",
+    "landed_isrcs",
     "payload",
     "plan",
     "plan_pair",
