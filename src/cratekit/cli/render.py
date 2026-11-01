@@ -441,7 +441,8 @@ def render_job_list(envelope: Envelope) -> list[str]:
     listing verb, because another verb's ``job_state`` is about one job.
 
     Each line is the job's id, its verb, its state, how many of its items are
-    settled, the cause's reason when it ended on one, and ``no worker`` when
+    settled and how many of those were skipped, the cause's reason when it
+    ended on one, and ``no worker`` when
     nothing is bound to run the verb, which is the job that sits queued for
     ever. A listing that holds no job says so, naming the states it was
     filtered to; a progress this build cannot read prints nothing rather than
@@ -484,6 +485,13 @@ def _job_line(row: Mapping[str, Any]) -> str:
         total, settled = progress.get("total"), progress.get("settled")
         if _whole(total) and _whole(settled):
             parts.append(f"{settled} of {total} settled")
+        # A SKIPPED ITEM IS SETTLED BUT NOT DONE (U169), so a succeeded job that
+        # skipped a track refused for good says how many, rather than reading
+        # as every track landed.
+        counts = progress.get("counts")
+        skipped = counts.get("skipped") if isinstance(counts, Mapping) else None
+        if _whole(skipped) and skipped:
+            parts.append(f"{skipped} skipped")
     cause = row.get("cause")
     if isinstance(cause, Mapping) and cause.get("reason"):
         parts.append(_one_line(cause["reason"]))

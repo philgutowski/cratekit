@@ -460,6 +460,24 @@ def test_job_list_prints_one_line_per_job_with_its_verb_state_progress_and_cause
     assert lines[-1] == "  each job in full: crate job show JOB_ID", lines
 
 
+def test_job_list_says_how_many_tracks_a_succeeded_job_skipped():
+    """Review round one: a skipped track is settled, not landed, and the line
+    said only ``3 of 3 settled`` over it."""
+    progress = {"total": 3, "settled": 3, "counts": {"done": 2, "skipped": 1, "failed": 0}}
+    rows = [_listed("acquire.download", "succeeded", progress=progress)]
+    lines = render.render_job_list(_job_list(rows, succeeded=1))
+
+    assert (
+        "  acquire.download-succeeded, acquire.download, succeeded, 3 of 3 settled, 1 skipped"
+        in lines
+    ), lines
+    none_skipped = {"total": 2, "settled": 2, "counts": {"done": 2, "skipped": 0}}
+    quiet = render.render_job_list(
+        _job_list([_listed("tag.folder", "succeeded", progress=none_skipped)], succeeded=1)
+    )
+    assert not any("skipped" in line for line in quiet), quiet
+
+
 def test_job_list_says_when_a_verb_has_no_worker_to_run_its_job():
     rows = [_listed("label.sweep", "queued", total=2, worker="none")]
     lines = render.render_job_list(_job_list(rows, queued=1))
