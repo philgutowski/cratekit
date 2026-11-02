@@ -1407,6 +1407,7 @@ treated like any other.
 | "Decision required" | `crate run show RUN_ID` names the gate and its options. |
 | A job that never moves | `crate job show JOB_ID`. Queued work needs `crate job resume`. |
 | A blocked job | `job show` carries the cause, usually a review decision or a credential. |
+| "provider-call-ceiling" | The command made as many calls to the streaming provider as one command may, 500 unless `[provider] calls_per_command` says otherwise, and stopped with what it did kept. The refusal prints the exact command that continues, with `--calls N` raising the ceiling for that one run; a job continues with `crate --calls N job resume JOB_ID`. The next run is back at the configured ceiling. |
 | A resume that refuses the same way each time | Cancel it with `crate job cancel` and queue a fresh one. |
 | `sync land` says intake jobs are left open | Its left open row lists them by playlist with their age. Old ones: `crate job cancel --stale-days DAYS --dry-run`, then without `--dry-run`; the next pass queues each freed playlist again. |
 | A verb the parser has never heard of | `crate profile show`. A module the profile leaves out has no verbs at all. |

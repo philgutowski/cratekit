@@ -437,6 +437,14 @@ window after a trip, written to the gate's state file with the time it lifts,
 during which every opener refuses before it logs in, from any shell, naming
 that time. Neither is a warning; both are refusals.
 
+The **call ceiling** is the most calls one command may make to the provider,
+`[provider] calls_per_command`, 500 by default, raised for one run with
+`--calls N` (U193). A command is one invocation of `crate`; a job's detached
+child counts as its own, and the next run starts fresh. The gate asks it before
+each send, so a command at its ceiling stops before the call that would pass
+it, parked like a trip, with what it did kept and the exact command that
+continues in the refusal. It is a line per command and never per day.
+
 ### Active taxonomy
 The copy of a taxonomy template that setup puts beside the database, under
 `.cratekit/coupled/taxonomy.toml` on the library volume, and the one declaration

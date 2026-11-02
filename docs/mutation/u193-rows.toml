@@ -1,0 +1,253 @@
+name = "u193"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_ceiling_check_removed"
+description = "Gate.call: never ask the ceiling, so a command spends past it"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_label_playlists_releases.py", "tests/test_label_playlists_kept.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''                    if scope.spent() >= line:'''
+new = '''                    if False:'''
+
+[[rows]]
+id = "M2_ceiling_off_by_one"
+description = "Gate.call: stop only past the ceiling, so one call more than the line is sent"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_label_playlists_releases.py", "tests/test_label_playlists_kept.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''                    if scope.spent() >= line:'''
+new = '''                    if scope.spent() > line:'''
+
+[[rows]]
+id = "M3_spent_from_process_start"
+description = "Command.spent: count from process start, so a command is charged for calls before it"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_label_playlists_releases.py", "tests/test_label_playlists_kept.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''        return max(0, _PROCESS_CALLS - self.started)'''
+new = '''        return max(0, _PROCESS_CALLS)'''
+
+[[rows]]
+id = "M4_nested_scope_resets"
+description = "command: a nested scope opens fresh, so run decide continue spends the ceiling twice"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_label_playlists_releases.py", "tests/test_label_playlists_kept.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''    if _COMMAND is not None:
+        yield _COMMAND
+        return'''
+new = '''    if False:
+        yield _COMMAND
+        return'''
+
+[[rows]]
+id = "M5_env_not_written"
+description = "command: a raised ceiling is not passed to children, so a resumed job's child is back at the default"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_label_playlists_releases.py", "tests/test_label_playlists_kept.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''    if calls is not None:
+        os.environ[CALLS_ENV] = str(calls)
+    scope = Command('''
+new = '''    scope = Command('''
+
+[[rows]]
+id = "M6_env_not_restored"
+description = "command: the raised ceiling outlives its run in the environment"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_label_playlists_releases.py", "tests/test_label_playlists_kept.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''            if previous is None:
+                os.environ.pop(CALLS_ENV, None)'''
+new = '''            if previous is None:
+                pass'''
+
+[[rows]]
+id = "M7_env_parse_accepts_zero"
+description = "_raised_from_env: accept zero, so a hand written 0 sets a ceiling of nothing"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_label_playlists_releases.py", "tests/test_label_playlists_kept.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''    return value if value > 0 else None'''
+new = '''    return value'''
+
+[[rows]]
+id = "M8_raised_ignored"
+description = "ceiling: ignore the raised ceiling, so --calls never lifts the line"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_label_playlists_releases.py", "tests/test_label_playlists_kept.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''    if scope is not None and scope.raised is not None:
+        return scope.raised'''
+new = '''    if False:
+        return scope.raised'''
+
+[[rows]]
+id = "M9_stop_not_remembered"
+description = "Gate.call: do not record the stop on the scope, so a swallowed stop goes unsaid"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_label_playlists_releases.py", "tests/test_label_playlists_kept.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''                        scope.stopped = cause'''
+new = '''                        pass'''
+
+[[rows]]
+id = "M10_config_not_read"
+description = "GateSettings.from_config: drop the configured ceiling, so the default always holds"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_label_playlists_releases.py", "tests/test_label_playlists_kept.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''            calls_per_command=int(provider.calls_per_command),'''
+new = ''''''
+
+[[rows]]
+id = "M11_validation_floor"
+description = "_validate_provider: accept zero as a ceiling"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_label_playlists_releases.py", "tests/test_label_playlists_kept.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''        not isinstance(ceiling, int) or isinstance(ceiling, bool) or ceiling < 1'''
+new = '''        not isinstance(ceiling, int) or isinstance(ceiling, bool) or ceiling < 0'''
+
+[[rows]]
+id = "M12_validation_bool"
+description = "_validate_provider: accept true as a ceiling of one"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_label_playlists_releases.py", "tests/test_label_playlists_kept.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''        not isinstance(ceiling, int) or isinstance(ceiling, bool) or ceiling < 1'''
+new = '''        not isinstance(ceiling, int) or ceiling < 1'''
+
+[[rows]]
+id = "M13_default_coefficient"
+description = "config: halve the default ceiling"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_label_playlists_releases.py", "tests/test_label_playlists_kept.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''DEFAULT_PROVIDER_CALLS_PER_COMMAND = 500'''
+new = '''DEFAULT_PROVIDER_CALLS_PER_COMMAND = 250'''
+
+[[rows]]
+id = "M14_park_job_id_dropped"
+description = "jobs._parked_cause: do not name the job, so the continue command cannot resume it"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_label_playlists_releases.py", "tests/test_label_playlists_kept.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''    if "job_id" in (cause.detail or {}):
+        return cause'''
+new = '''    if True:
+        return cause'''
+
+[[rows]]
+id = "M15_park_job_id_overwrites"
+description = "jobs._parked_cause: overwrite a job id the cause already carries"
+file = "src/cratekit/core/jobs.py"
+surface = "maintainer"
+tests = ["tests/test_provider_gate.py", "tests/test_label_playlists_releases.py", "tests/test_label_playlists_kept.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''    if "job_id" in (cause.detail or {}):
+        return cause'''
+new = '''    if False:
+        return cause'''
+
+[[rows]]
+id = "M16_continue_job_branch"
+description = "continue_command: never resume the job, so a rerun queues a second job"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_label_playlists_releases.py", "tests/test_label_playlists_kept.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''    if job_id:
+        return shlex.join'''
+new = '''    if False:
+        return shlex.join'''
+
+[[rows]]
+id = "M17_continue_keeps_old_calls"
+description = "_without_calls: keep a --calls already given, so the command carries two"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_label_playlists_releases.py", "tests/test_label_playlists_kept.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''        if token == "--calls":
+            skip = True
+            continue'''
+new = '''        if token == "--never":
+            skip = True
+            continue'''
+
+[[rows]]
+id = "M18_continue_equals_form"
+description = "_without_calls: keep a --calls=N already given"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_label_playlists_releases.py", "tests/test_label_playlists_kept.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''        if token.startswith("--calls="):
+            continue'''
+new = '''        if token.startswith("--never="):
+            continue'''
+
+[[rows]]
+id = "M19_parked_outcome"
+description = "_dispatched_in_scope: a ceiling stop out of a plain verb reads failed, not blocked"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_label_playlists_releases.py", "tests/test_label_playlists_kept.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''        parked = isinstance(exc, JobBlocked) or ceiling_stop'''
+new = '''        parked = isinstance(exc, JobBlocked)'''
+
+[[rows]]
+id = "M20_continue_step_not_written"
+description = "_dispatched_in_scope: leave the gate's generic step, so the exact command is never printed"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_label_playlists_releases.py", "tests/test_label_playlists_kept.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''        if ceiling_stop:
+            cause = _with_continue(cause, argv, entry)'''
+new = '''        if False:
+            cause = _with_continue(cause, argv, entry)'''
+
+[[rows]]
+id = "M21_swallowed_warning_dropped"
+description = "_dispatched: say nothing when a verb swallowed the stop"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_label_playlists_releases.py", "tests/test_label_playlists_kept.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''    if stopped is not None and not reported:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M22_warning_said_twice"
+description = "_dispatched: warn even over a blocked ceiling refusal, so the stop is said twice"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_label_playlists_releases.py", "tests/test_label_playlists_kept.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''    if stopped is not None and not reported:'''
+new = '''    if stopped is not None:'''
+
+[[rows]]
+id = "M23_calls_floor"
+description = "_positive_calls: accept zero on the command line"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_label_playlists_releases.py", "tests/test_label_playlists_kept.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''    if value < 1:
+        raise argparse.ArgumentTypeError'''
+new = '''    if value < 0:
+        raise argparse.ArgumentTypeError'''
+
+[[rows]]
+id = "M24_crawl_over_ceiling_dropped"
+description = "Estimate.over: the crawl gate no longer asks when only the ceiling is passed"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_label_playlists_releases.py", "tests/test_label_playlists_kept.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''        return self.calls > FULL_BUILD_CALLS or self.over_ceiling'''
+new = '''        return self.calls > FULL_BUILD_CALLS'''
+
+[[rows]]
+id = "M25_crawl_spent_ignored"
+description = "Estimate.over_ceiling: ignore the calls the listing already spent"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_label_playlists_releases.py", "tests/test_label_playlists_kept.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''        return self.spent + self.calls > self.ceiling'''
+new = '''        return self.calls > self.ceiling'''
