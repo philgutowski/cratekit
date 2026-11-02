@@ -533,3 +533,58 @@ def test_the_digest_takes_no_folder_so_a_rehearsal_on_a_copy_matches(tmp_path, s
         assert tags.write_genre(path, WORD)
         digests.append(word_cli._alias_payload(edit, word_cli.carrying(root, WORD, AFRO))["digest"])
     assert digests[0] == digests[1]
+
+
+def test_a_file_whose_genre_cannot_be_read_is_named_and_never_called_clean(configured, silence):
+    write_active(configured, _shipped())
+    latin = _track(configured, silence, "latin.flac", WORD)
+    broken = Path(configured.library.root) / "broken.aac"
+    broken.write_bytes(b"not audio at all")
+    run_id, refused = _asked(ALIAS, word_cli.ALIAS_GATE)
+    items = refused["cause"]["detail"]["shown"]["items"]
+    assert {"kind": "file", "path": "broken.aac", "change": "unread", "current": ""} in items
+    _decided(run_id, word_cli.ALIAS_GATE, "approve")
+    code, acted = drive(["--run", run_id, *ALIAS])
+    assert code == int(ExitCode.OK), acted
+    assert _codes(acted) == [word_cli.FILES_NOT_READ, word_cli.ALIAS_SAVED, word_cli.FILES_RETAGGED]
+    assert "broken.aac" in acted["warnings"][0]["message"]
+    assert acted["data"]["totals"]["unread"] == 1
+    assert _genres(latin) == (AFRO,)
+
+
+def test_a_folder_that_is_not_there_is_refused_with_nothing_written(configured, tmp_path):
+    copy = write_active(configured, _shipped())
+    code, refused = drive([*ALIAS, "--folder", str(tmp_path / "gone")])
+    assert code == int(ExitCode.PRECONDITION), refused
+    assert refused["cause"]["reason"] == "source-missing"
+    assert copy.read_text(encoding="utf-8") == _shipped() and _backups(copy) == []
+
+
+def test_a_file_changed_after_the_second_plan_is_left_and_named(configured, silence, monkeypatch):
+    """The second plan saw the word; the write reads the file again and finds another genre."""
+    write_active(configured, _shipped())
+    latin = _track(configured, silence, "latin.flac", WORD)
+    seen = word_cli.carrying(Path(configured.library.root), WORD, AFRO)
+    run_id, _ = _asked(ALIAS, word_cli.ALIAS_GATE)
+    _decided(run_id, word_cli.ALIAS_GATE, "approve")
+    assert tags.write_genre(latin, "Deep House")
+    monkeypatch.setattr(word_cli, "carrying", lambda root, word, display: seen)
+    code, acted = drive(["--run", run_id, *ALIAS])
+    assert code == int(ExitCode.PRECONDITION), acted
+    assert acted["cause"]["reason"] == "taxonomy-word-unwritten"
+    assert acted["cause"]["detail"]["moved"] == ["latin.flac"]
+    assert _genres(latin) == ("Deep House",)
+
+
+def test_a_write_that_does_not_read_back_is_named_apart_from_one_never_made(configured, silence, monkeypatch):
+    write_active(configured, _shipped())
+    latin = _track(configured, silence, "latin.flac", WORD)
+    run_id, _ = _asked(ALIAS, word_cli.ALIAS_GATE)
+    _decided(run_id, word_cli.ALIAS_GATE, "approve")
+    monkeypatch.setattr(tags, "write_genre", lambda path, genre: True)
+    code, acted = drive(["--run", run_id, *ALIAS])
+    assert code == int(ExitCode.PRECONDITION), acted
+    assert acted["cause"]["detail"]["wrong"] == ["latin.flac"]
+    assert acted["cause"]["detail"]["failed"] == []
+    assert "do not read back" in acted["cause"]["message"]
+    assert _genres(latin) == (WORD,)
