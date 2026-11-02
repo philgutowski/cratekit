@@ -1988,6 +1988,24 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # USAGE, because the parser accepted the argument and status 2 is the
         # parser's alone.
         "root-folder-missing": ExitCode.PRECONDITION,
+        # ── U194's three, appended for the same reason ─────────────────────────
+        #
+        # A genre word was offered to ``taxonomy alias`` or ``taxonomy folder``
+        # and cannot be answered that way: tagging refuses it as too coarse or
+        # files it in the fallback on purpose, or already tags it as a genre.
+        # Refused before the gate with nothing written. PRECONDITION rather
+        # than USAGE: the parser accepted the word, and the cure is another.
+        "taxonomy-word-refused": ExitCode.PRECONDITION,
+        # The genre an alias names is not a genre folder the library's taxonomy
+        # declares. Refused before the gate, naming the ones it does, for
+        # ``taxonomy-word-refused``'s reason.
+        "taxonomy-genre-unknown": ExitCode.PRECONDITION,
+        # The alias was approved and a file did not take the genre: it carried
+        # something else by the time the write reached it, the write failed, or
+        # it does not read back. PRECONDITION on ``tag-remap-unwritten``'s
+        # argument: the cure is the file's, which is named, and a second run
+        # plans only what still carries the word.
+        "taxonomy-word-unwritten": ExitCode.PRECONDITION,
     }
 )
 

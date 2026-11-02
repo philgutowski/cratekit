@@ -362,6 +362,27 @@ crate tag guess /path/to/staging --pass PASS
 crate tag guess /path/to/staging --report
 ```
 
+Each word `tag folder` or `tag guess` names that your taxonomy has no folder for
+is answered in one command, either way. `crate taxonomy alias` saves the word as
+an alias of one of your genre folders, so a catalogue that gives it again is
+tagged as that genre, and retags every audio file under your library root whose
+one genre is the word, in any case; `--folder` retags only the files under one
+folder. A file carrying the word beside another genre is left and named. Then
+`crate tag rows` brings the rows into line and `crate route resort` files the
+tracks. `crate taxonomy folder` makes the word a genre folder of its own under
+BY GENRE + ENERGY, with energy bands, so the files already carrying it file
+there at the next `crate route resort` and nothing is retagged. It takes the
+family, tempo window and rating of the folder the word's tracks are filed in
+now, or of the one `--like` names. Both edit your taxonomy copy behind an
+explicit gate, keep the copy as it was beside it under a dated name, and refuse
+a word the taxonomy treats as too coarse to be a genre, such as `Electronic`, a
+word it already files, and a genre it does not declare, writing nothing.
+
+```bash
+crate taxonomy alias "Latin Electronic" "Afro House"
+crate taxonomy folder "Latin Electronic" --like "Afro House"
+```
+
 `intake land` reads download staging unless you name another folder. The files go
 to a new folder under your music folder, and the batch playlist under INBOX takes
 the same name. Unless you pass `--name`, that name is the landing's date and what

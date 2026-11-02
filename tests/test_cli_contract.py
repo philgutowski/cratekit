@@ -2013,6 +2013,14 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # without its genre Favorites class is written as the copy, so the
         # plan adds it, the explicit gate asks, and the apply writes.
         "taxonomy.upgrade": lambda: _taxonomy_behind(),
+        # U194. CALLABLES, for the upgrade's reason: the fixture's library holds
+        # no taxonomy copy, so the shipped template is written as the copy and
+        # a word it passes through is answered. No audio file carries it on
+        # this fixture, so the alias plans the copy's one edit, the folder its
+        # one bucket, the explicit gate asks, and the apply writes the copy.
+        # The files are driven in tests/test_taxonomy_word.py.
+        "taxonomy.alias": lambda: _shipped_copy(["Latin Electronic", "Afro House"]),
+        "taxonomy.folder": lambda: _shipped_copy(["Latin Electronic"]),
         # R-799. No argument: it reads every tagging record this installation
         # committed, which on the fixture's machine is none.
         "tag.remap": [],
@@ -2465,6 +2473,18 @@ def _taxonomy_behind() -> list[str]:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(head + "[" + rest, encoding="utf-8")
     return []
+
+
+def _shipped_copy(argv: list[str]) -> list[str]:
+    """The library's taxonomy copy written as the shipped template, and ``argv``."""
+    from cratekit.core import taxonomy
+
+    path = config.state_path("taxonomy_active", config.load())
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME), encoding="utf-8"
+    )
+    return argv
 
 
 def _already_cut_over() -> list[str]:

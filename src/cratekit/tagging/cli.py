@@ -48,7 +48,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from cratekit.cli.output import Envelope
-from cratekit.core import active_taxonomy, art, config, jobs
+from cratekit.core import active_taxonomy, art, config, jobs, taxonomy_word
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.label import registry as labels
@@ -504,8 +504,10 @@ def _off_taxonomy_warning(summary: dict) -> tuple[dict[str, str], ...]:
                 f"given a genre your taxonomy has no place of its own for, from "
                 f"these catalogue answers: {words}. Each word was written onto "
                 f"its file exactly as the catalogue said it, so the tags on disk "
-                f"are no longer only the ones your template declares; add an "
-                f"alias for any you want the taxonomy to own"
+                f"are no longer only the ones your template declares. Save any "
+                f"you want the taxonomy to own as an alias of one of your genres, "
+                f"with {taxonomy_word.ALIAS_VERB} WORD GENRE, or make it a genre "
+                f"folder of its own, with {taxonomy_word.FOLDER_VERB} WORD"
             ),
         },
     )

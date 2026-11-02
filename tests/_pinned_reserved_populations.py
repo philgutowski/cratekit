@@ -212,6 +212,10 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'tag-retag-unwritten',  # 2026-11-01, R-1103: a file that would not take its corrected genre.
     'tag-suggest-unwritten',
     'target-lufs-out-of-range',
+    # 2026-11-02, U194: the answers to an off taxonomy word joined.
+    'taxonomy-genre-unknown',
+    'taxonomy-word-refused',
+    'taxonomy-word-unwritten',
     'trash-unavailable',
     'tree-convergence-unusable',
     'tree-registry-unusable',
@@ -644,6 +648,23 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'taxonomy-upgraded',
         'utf-8',
     ],
+    # 2026-11-02, U194: a new module, crate taxonomy alias and crate taxonomy
+    # folder. Its notes, its three causes and the kind of a left file.
+    'cli/verbs/taxonomy_word.py': [
+        'config-unusable',
+        'several-genres',
+        'source-missing',
+        'taxonomy-alias-file-not-read',
+        'taxonomy-alias-left-alone',
+        'taxonomy-alias-nothing-to-do',
+        'taxonomy-alias-retagged',
+        'taxonomy-alias-saved',
+        'taxonomy-folder-already-declared',
+        'taxonomy-folder-made',
+        'taxonomy-genre-unknown',
+        'taxonomy-word-refused',
+        'taxonomy-word-unwritten',
+    ],
     'core/active_taxonomy.py': ['config-unusable', 'library-volume-unmounted', 'utf-8'],
     'core/artifacts.py': ['utf-8'],
     'core/backup_facts.py': [
@@ -883,6 +904,9 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'tag-retag-unwritten',  # 2026-11-01, R-1103
         'tag-suggest-unwritten',
         'target-lufs-out-of-range',
+        'taxonomy-genre-unknown',  # 2026-11-02, U194
+        'taxonomy-word-refused',
+        'taxonomy-word-unwritten',
         'trash-unavailable',
         'tree-convergence-unusable',
         'tree-registry-unusable',
@@ -1102,6 +1126,17 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     # a new module, the taxonomy upgrade planner (U132), holding two causes
     # already declared. Measured on the merged tree.
     'core/taxonomy_upgrade.py': ['config-unusable', 'internal-error'],
+    # 2026-11-02, U194: a new module, the off taxonomy word's planner. Its
+    # kinds of refusal, read by the verb and carried in a refusal's detail.
+    'core/taxonomy_word.py': [
+        'already-filed',
+        'bare-folder',
+        'no-such-genre',
+        'no-word',
+        'not-editable',
+        'too-coarse',
+        'would-not-load',
+    ],
     'core/tombstone.py': ['removed-file', 'review-selection-invalid', 'version-uncredited'],
     'core/tree_registry.py': [
         'catalogue-crawl',
@@ -2546,6 +2581,14 @@ PINNED_LITERAL_HOLDERS = {
     # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
     # a new module, crate taxonomy upgrade (U132). Measured on the merged tree.
     'cli/verbs/taxonomy.py': ['config-unusable', 'internal-error'],
+    # 2026-11-02, U194: a new module, crate taxonomy alias and folder.
+    'cli/verbs/taxonomy_word.py': [
+        'config-unusable',
+        'source-missing',
+        'taxonomy-genre-unknown',
+        'taxonomy-word-refused',
+        'taxonomy-word-unwritten',
+    ],
     'core/active_taxonomy.py': ['config-unusable', 'library-volume-unmounted'],
     'core/backup_facts.py': ['grant-path-access', 'repair-backup-facts', 'upgrade-cratekit'],
     'core/binaries.py': [

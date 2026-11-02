@@ -518,6 +518,18 @@ not recognise, a sub's display or a display in another case, lands in the
 fallback. The one string the last tier does not flag is a BUCKET's own display,
 which routing recognises exactly and places where the template says.
 
+Since U194 an off taxonomy word is ANSWERED in one command, either way the
+warning offers. `crate taxonomy alias` adds it to one bucket's `tag_aliases`
+in the library's copy and retags the files carrying it alone to that bucket's
+display; `crate taxonomy folder` adds a `[[bucket]]` named the word, whose
+routing alias is the word, so its files route there unchanged. Only an off
+taxonomy word is answered: a word tagging declines, or files in the fallback on
+purpose, is too coarse to be a genre, and a word it tags already has a place.
+
+*Avoid:* answering it with a sub. A genre an alias names is a bucket, because a
+file wearing a sub's display lands where that word's alias or the fallback
+sends it, never in the sub.
+
 ### Art fetch
 What `crate tag folder` did about a picture for one file, reported beside the
 genre outcome and independent of it. A file carrying any picture at all is
