@@ -1075,7 +1075,7 @@ def test_the_shipped_adapter_is_constructed_through_build_and_refuses_with_a_nam
     the session scope refuses before there is a source, and the item's row says
     to re-authorise and where else to go. The fake is registered only so the
     registry is in its per test shape; the configuration names the real one."""
-    _configure(library, adapter="tidal_dl_ng")
+    _configure(library, adapter="vendored")
     job_id = queued(listed(library, [("1", "A", "T")]))
 
     drive(resume_argv(job_id))

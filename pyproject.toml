@@ -20,7 +20,7 @@ license = "MIT"
 # where a licence audit looks. tests/test_vendor_import.py asserts the two copies
 # stay byte-identical, which turns the duplication into a checked invariant
 # instead of two files that drift.
-license-files = ["LICENSE", "vendor/LICENSE.tidal-dl-ng"]
+license-files = ["LICENSE", "vendor/LICENSE.downloader"]
 authors = [{ name = "Cratekit contributors" }]
 
 # ---------------------------------------------------------------------------
@@ -146,7 +146,7 @@ cratekit = ["templates/*.toml"]
 # Anything relying on license-files alone would put it in distribution metadata
 # only, where an unpacked or relocated tree loses it; KTD19 wants the licence
 # travelling with the code it covers.
-"cratekit._vendor.tidal_dl_ng" = ["LICENSE"]
+"cratekit._vendor.downloader" = ["LICENSE"]
 
 [tool.ruff]
 line-length = 100

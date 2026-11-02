@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from tidalapi.media import Quality
 
-from cratekit._vendor.tidal_dl_ng.constants import QualityVideo
+from cratekit._vendor.downloader.constants import QualityVideo
 
 try:
     from PySide6 import QtCore

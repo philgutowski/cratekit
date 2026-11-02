@@ -66,11 +66,11 @@ class VendoredComponent(NamedTuple):
     """Why this is vendored rather than depended on."""
 
 
-TIDAL_DL_NG = VendoredComponent(
+DOWNLOADER = VendoredComponent(
     project="tidal-dl-ng",
     version="0.33.0",
     license_id="AGPL-3.0-only",
-    license_path="tidal_dl_ng/LICENSE",
+    license_path="downloader/LICENSE",
     repository="https://github.com/exislow/tidal-dl-ng",
     vendored_on="2026-08-01",
     reason=(
@@ -80,7 +80,7 @@ TIDAL_DL_NG = VendoredComponent(
     ),
 )
 
-VENDORED: tuple[VendoredComponent, ...] = (TIDAL_DL_NG,)
+VENDORED: tuple[VendoredComponent, ...] = (DOWNLOADER,)
 
 
 def license_text(component: VendoredComponent) -> str:

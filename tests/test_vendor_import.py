@@ -40,7 +40,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VENDOR_ROOT = REPO_ROOT / "src" / "cratekit" / "_vendor"
-VENDORED_PACKAGE = VENDOR_ROOT / "tidal_dl_ng"
+VENDORED_PACKAGE = VENDOR_ROOT / "downloader"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 
 # The upstream distribution name in every spelling a specifier could use. PEP 503
@@ -76,21 +76,21 @@ def test_the_vendored_package_imports_from_inside_cratekit_vendor():
     definitions, and the only outbound call in the package sits behind a function
     nothing here invokes.
     """
-    module = importlib.import_module("cratekit._vendor.tidal_dl_ng")
+    module = importlib.import_module("cratekit._vendor.downloader")
     assert module.__version__, "the vendored package reports no version"
 
 
 @pytest.mark.parametrize(
     "name",
     [
-        "cratekit._vendor.tidal_dl_ng.cli",
-        "cratekit._vendor.tidal_dl_ng.config",
-        "cratekit._vendor.tidal_dl_ng.download",
-        "cratekit._vendor.tidal_dl_ng.metadata",
-        "cratekit._vendor.tidal_dl_ng.helper.path",
-        "cratekit._vendor.tidal_dl_ng.helper.tidal",
-        "cratekit._vendor.tidal_dl_ng.helper.decryption",
-        "cratekit._vendor.tidal_dl_ng.model.cfg",
+        "cratekit._vendor.downloader.cli",
+        "cratekit._vendor.downloader.config",
+        "cratekit._vendor.downloader.download",
+        "cratekit._vendor.downloader.metadata",
+        "cratekit._vendor.downloader.helper.path",
+        "cratekit._vendor.downloader.helper.tidal",
+        "cratekit._vendor.downloader.helper.decryption",
+        "cratekit._vendor.downloader.model.cfg",
     ],
 )
 def test_every_module_on_the_download_path_imports(name):
@@ -217,9 +217,9 @@ def test_the_vendored_licence_is_present_and_non_empty():
     placeholder licence file is the shape this fails in: something copies the
     path and forgets the contents, and nothing at runtime ever notices.
     """
-    from cratekit._vendor import TIDAL_DL_NG, license_text
+    from cratekit._vendor import DOWNLOADER, license_text
 
-    text = license_text(TIDAL_DL_NG)
+    text = license_text(DOWNLOADER)
     assert "GNU AFFERO GENERAL PUBLIC LICENSE" in text
     assert len(text) > 10_000, "the AGPL text is far shorter than the real licence"
 
@@ -230,10 +230,10 @@ def test_the_declared_licence_matches_the_text_that_ships():
     It is also the exact thing a downstream audit checks first, so getting it
     wrong is worse than not declaring one.
     """
-    from cratekit._vendor import TIDAL_DL_NG, license_text
+    from cratekit._vendor import DOWNLOADER, license_text
 
-    assert TIDAL_DL_NG.license_id == "AGPL-3.0-only"
-    assert "Version 3, 19 November 2007" in license_text(TIDAL_DL_NG)
+    assert DOWNLOADER.license_id == "AGPL-3.0-only"
+    assert "Version 3, 19 November 2007" in license_text(DOWNLOADER)
 
 
 def test_the_two_licence_copies_cannot_drift():
@@ -244,7 +244,7 @@ def test_the_two_licence_copies_cannot_drift():
     how one gets updated and the other does not.
     """
     inside = (VENDORED_PACKAGE / "LICENSE").read_bytes()
-    at_root = (REPO_ROOT / "vendor" / "LICENSE.tidal-dl-ng").read_bytes()
+    at_root = (REPO_ROOT / "vendor" / "LICENSE.downloader").read_bytes()
     assert inside == at_root, (
         "the two copies of the vendored licence differ; "
         "re-run scripts/revendor_downloader.py rather than editing either by hand"
@@ -258,7 +258,7 @@ def test_the_licence_ships_as_package_data(pyproject):
     installs, which is precisely the population the licence is for.
     """
     package_data = pyproject["tool"]["setuptools"]["package-data"]
-    assert "LICENSE" in package_data["cratekit._vendor.tidal_dl_ng"]
+    assert "LICENSE" in package_data["cratekit._vendor.downloader"]
 
 
 def test_the_recorded_version_matches_the_code_on_disk():
@@ -268,10 +268,10 @@ def test_the_recorded_version_matches_the_code_on_disk():
     recorded one is the only answer to "which copy do you have". It has to be
     the truth at the moment it is read, not at the moment somebody typed it.
     """
-    from cratekit._vendor import TIDAL_DL_NG
+    from cratekit._vendor import DOWNLOADER
 
-    module = importlib.import_module("cratekit._vendor.tidal_dl_ng")
-    assert module.__version__ == TIDAL_DL_NG.version
+    module = importlib.import_module("cratekit._vendor.downloader")
+    assert module.__version__ == DOWNLOADER.version
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -287,7 +287,7 @@ def test_the_atmos_client_credentials_are_empty():
     for getting past a scanner. Asserting the DECODED values are empty is what
     makes re-encoding them under a new name fail this test too.
     """
-    constants = importlib.import_module("cratekit._vendor.tidal_dl_ng.constants")
+    constants = importlib.import_module("cratekit._vendor.downloader.constants")
     assert constants.ATMOS_CLIENT_ID == ""
     assert constants.ATMOS_CLIENT_SECRET == ""
 
@@ -512,7 +512,7 @@ def test_the_persisted_token_records_which_client_minted_it():
     Upstream persists four keys and drops ``is_pkce``, so a PKCE token reloads as
     a device-flow one and refreshes against the client the provider serves lossy.
     """
-    from cratekit._vendor.tidal_dl_ng.model.cfg import Token
+    from cratekit._vendor.downloader.model.cfg import Token
 
     assert "is_pkce" in Token.__dataclass_fields__, (
         "the token model dropped is_pkce; re-run scripts/revendor_downloader.py"
@@ -566,9 +566,126 @@ def test_the_state_directory_name_is_pinned():
     derivation yields the internal import path plus a "-dev" suffix, so the tool
     would write its state to a directory named after ``cratekit._vendor``.
     """
-    module = importlib.import_module("cratekit._vendor.tidal_dl_ng")
-    assert module.__name_display__ == "tidal-dl-ng"
-    assert "cratekit" not in module.__name_display__
+    module = importlib.import_module("cratekit._vendor.downloader")
+    # A neutral name since U197, and still not the import path: the derivation
+    # this pin replaces would have produced a dotted name under ``_vendor`` with
+    # a "-dev" suffix, so those are what is refused.
+    assert module.__name_display__ == "cratekit-downloader"
+    assert "_vendor" not in module.__name_display__
+    assert "." not in module.__name_display__
+    assert not module.__name_display__.endswith("-dev")
+
+
+# ── the state directory an installation made before U197 is adopted ────────
+
+
+def _revendor_script():
+    """The revendor script as a module, so its declared patch text can be read."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "revendor_downloader", REPO_ROOT / "scripts" / "revendor_downloader.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_tree_carries_the_adoption_patch_the_script_declares():
+    """The adoption is a patch, so a re-vendor that dropped it would strand tokens.
+
+    The tree and the script are compared by the patch's own text, which is the
+    only shape in which a hand edit to one of them cannot pass for the other.
+    """
+    script = _revendor_script()
+    path_module = (VENDORED_PACKAGE / "helper" / "path.py").read_text(encoding="utf-8")
+    assert script.PATCH_STATE_DIRECTORY_ADOPTION.new in path_module
+    assert script.PATCH_STATE_DIRECTORY_ADOPTION in _applied_patches(script)
+    module = importlib.import_module("cratekit._vendor.downloader")
+    assert module.__name_display__ == script.STATE_DIRECTORY_NAME
+
+
+def _applied_patches(script) -> list:
+    """Every patch object ``main`` applies, read off its source rather than run."""
+    source = (REPO_ROOT / "scripts" / "revendor_downloader.py").read_text(encoding="utf-8")
+    body = source[source.index("def main(") :]
+    names = re.findall(r"^\s+(PATCH_[A-Z0-9_]+),$", body, flags=re.MULTILINE)
+    return [getattr(script, name) for name in names]
+
+
+def _state_directories(tmp_path, monkeypatch) -> tuple[Path, Path]:
+    """The new and the old state directory under a configuration home of the test's own."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    return tmp_path / "cratekit-downloader", tmp_path / "tidal-dl-ng"
+
+
+def test_the_old_state_directory_is_moved_into_place_with_its_token(tmp_path, monkeypatch):
+    from cratekit._vendor.downloader.helper import path as tool_path
+
+    new, old = _state_directories(tmp_path, monkeypatch)
+    old.mkdir()
+    (old / "token.json").write_text('{"is_pkce": true}', encoding="utf-8")
+    (old / "settings.json").write_text("{}", encoding="utf-8")
+
+    assert tool_path.path_config_base() == str(new)
+    assert not old.exists(), "a copy would leave a second plaintext token behind"
+    assert (new / "token.json").read_text(encoding="utf-8") == '{"is_pkce": true}'
+    assert (new / "settings.json").is_file()
+    assert tool_path.path_file_token() == str(new / "token.json")
+
+
+def test_the_new_state_directory_wins_and_the_old_one_is_left_alone(tmp_path, monkeypatch):
+    from cratekit._vendor.downloader.helper import path as tool_path
+
+    new, old = _state_directories(tmp_path, monkeypatch)
+    new.mkdir()
+    (new / "token.json").write_text("new", encoding="utf-8")
+    old.mkdir()
+    (old / "token.json").write_text("old", encoding="utf-8")
+
+    assert tool_path.path_config_base() == str(new)
+    assert (new / "token.json").read_text(encoding="utf-8") == "new"
+    assert (old / "token.json").read_text(encoding="utf-8") == "old"
+
+
+def test_no_old_state_directory_resolves_the_new_one_and_makes_nothing(tmp_path, monkeypatch):
+    from cratekit._vendor.downloader.helper import path as tool_path
+
+    new, old = _state_directories(tmp_path, monkeypatch)
+    assert tool_path.path_config_base() == str(new)
+    assert not new.exists() and not old.exists()
+
+
+def test_a_failed_move_keeps_the_old_state_directory_in_use(tmp_path, monkeypatch):
+    from cratekit._vendor.downloader.helper import path as tool_path
+
+    new, old = _state_directories(tmp_path, monkeypatch)
+    old.mkdir()
+    (old / "token.json").write_text("kept", encoding="utf-8")
+
+    def refuse(source, destination):
+        raise PermissionError(13, "refused", source)
+
+    monkeypatch.setattr(tool_path.os, "rename", refuse)
+    assert tool_path.path_config_base() == str(old)
+    assert tool_path.path_file_token() == str(old / "token.json")
+    assert (old / "token.json").read_text(encoding="utf-8") == "kept"
+
+
+def test_a_move_lost_to_another_process_resolves_the_new_directory(tmp_path, monkeypatch):
+    """Two runs adopting at once: the one whose rename fails finds the other's result."""
+    from cratekit._vendor.downloader.helper import path as tool_path
+
+    new, old = _state_directories(tmp_path, monkeypatch)
+    old.mkdir()
+    real_rename = tool_path.os.rename
+
+    def raced(source, destination):
+        real_rename(source, destination)
+        raise FileNotFoundError(2, "gone", source)
+
+    monkeypatch.setattr(tool_path.os, "rename", raced)
+    assert tool_path.path_config_base() == str(new)
 
 
 def test_version_detection_does_not_read_a_nearby_pyproject():
@@ -576,8 +693,8 @@ def test_version_detection_does_not_read_a_nearby_pyproject():
 
     Upstream walks up to three parent directories from its own ``__file__``
     looking for a ``pyproject.toml`` and reads another project's version out of
-    whichever it finds. Under ``src/cratekit/_vendor/tidal_dl_ng/`` those parents
-    are ``tidal_dl_ng``, ``_vendor``, and ``cratekit``; Cratekit's own file sits
+    whichever it finds. Under ``src/cratekit/_vendor/downloader/`` those parents
+    are ``downloader``, ``_vendor``, and ``cratekit``; Cratekit's own file sits
     one level beyond, so today the walk misses it by a single directory. Were it
     ever reached, the repository-URL lookup would raise KeyError outside
     upstream's try block and ``import`` itself would fail.
@@ -613,5 +730,5 @@ def test_version_detection_does_not_read_a_nearby_pyproject():
 
     with PYPROJECT.open("rb") as handle:
         host_version = tomllib.load(handle)["project"]["version"]
-    module = importlib.import_module("cratekit._vendor.tidal_dl_ng")
+    module = importlib.import_module("cratekit._vendor.downloader")
     assert module.__version__ != host_version

@@ -12,15 +12,15 @@ from pathvalidate.error import ValidationError
 from tidalapi import Album, Mix, Playlist, Track, UserPlaylist, Video
 from tidalapi.media import AudioExtensions
 
-from cratekit._vendor.tidal_dl_ng import __name_display__
-from cratekit._vendor.tidal_dl_ng.constants import (
+from cratekit._vendor.downloader import __name_display__
+from cratekit._vendor.downloader.constants import (
     FILENAME_LENGTH_MAX,
     FILENAME_SANITIZE_PLACEHOLDER,
     FORMAT_TEMPLATE_EXPLICIT,
     UNIQUIFY_THRESHOLD,
     MediaType,
 )
-from cratekit._vendor.tidal_dl_ng.helper.tidal import name_builder_album_artist, name_builder_artist, name_builder_title
+from cratekit._vendor.downloader.helper.tidal import name_builder_album_artist, name_builder_artist, name_builder_title
 
 
 def path_home() -> str:
@@ -50,6 +50,18 @@ def path_config_base() -> str:
     path_user_custom: str = os.environ.get("XDG_CONFIG_HOME", "")
     path_config: str = ".config" if not path_user_custom else ""
     path_base: str = os.path.join(path_home(), path_config, __name_display__)
+
+    # Cratekit patch (U197): adopt the state directory an installation made
+    # before the rename, so a token left in it is not stranded. A move, never a
+    # copy, so no second plaintext token is made. The new directory wins when
+    # both exist, and a move that fails keeps the old one in use.
+    path_before: str = os.path.join(path_home(), path_config, "tidal-dl-ng")
+    if not os.path.lexists(path_base) and os.path.isdir(path_before):
+        try:
+            os.rename(path_before, path_base)
+        except OSError:
+            if not os.path.isdir(path_base):
+                return path_before
 
     return path_base
 

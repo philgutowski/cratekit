@@ -387,7 +387,7 @@ def _archive_findings(findings: list[str]) -> list[str]:
 @pytest.mark.parametrize(
     "name",
     [
-        "vendor/tidal_dl_ng-0.33.0.tar.gz",
+        "vendor/downloader-0.33.0.tar.gz",
         "vendor/pkg.tgz",
         "vendor/pkg.zip",
         "vendor/pkg-1.0-py3-none-any.whl",
@@ -425,10 +425,10 @@ def test_an_archive_carrying_a_session_file_is_caught(tmp_path):
     import tarfile
 
     payload = f'{{"refresh_token": "{_A_TOKEN}"}}\n'.encode()
-    archive = tmp_path / "vendor" / "tidal_dl_ng-0.33.0.tar.gz"
+    archive = tmp_path / "vendor" / "downloader-0.33.0.tar.gz"
     archive.parent.mkdir(parents=True)
     with tarfile.open(archive, "w:gz") as bundle:
-        member = tarfile.TarInfo("tidal_dl_ng/tidal_session.json")
+        member = tarfile.TarInfo("downloader/tidal_session.json")
         member.size = len(payload)
         bundle.addfile(member, io.BytesIO(payload))
     findings = scan.scan_tree(tmp_path, check_identity=False)

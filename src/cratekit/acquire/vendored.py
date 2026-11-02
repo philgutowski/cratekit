@@ -332,7 +332,7 @@ class _VendoredSource:
             return
 
         try:
-            from cratekit._vendor.tidal_dl_ng.config import Settings, Tidal  # noqa: PLC0415
+            from cratekit._vendor.downloader.config import Settings, Tidal  # noqa: PLC0415
         except ImportError as exc:  # pragma: no cover - needs the core deps absent
             raise AdapterBroken(
                 f"the vendored downloader could not be imported ({exc}); its "
@@ -406,7 +406,7 @@ class _VendoredSource:
         return Offer(lossless="LOSSLESS" in quality.upper(), detail=quality)
 
     def fetch(self, request: TrackRequest, destination: Path) -> Path:
-        from cratekit._vendor.tidal_dl_ng.constants import MediaType  # noqa: PLC0415
+        from cratekit._vendor.downloader.constants import MediaType  # noqa: PLC0415
 
         event_abort, event_run = download_events()
         progress, progress_overall = disabled_progress()
@@ -465,7 +465,7 @@ class _VendoredSource:
 
 def _vendored_downloader() -> Any:  # pragma: no cover - needs the vendored tree's deps
     """The wrapped tool's downloader class, imported at CALL time (KTD7)."""
-    from cratekit._vendor.tidal_dl_ng.download import Download  # noqa: PLC0415
+    from cratekit._vendor.downloader.download import Download  # noqa: PLC0415
 
     return Download
 
@@ -834,7 +834,7 @@ def _render(args: tuple[object, ...]) -> str:
 class VendoredAdapter(BaseAdapter):
     """The default adapter: the vendored downloader behind the declared contract."""
 
-    name = "tidal_dl_ng"
+    name = "vendored"
 
     def _session_scope(self) -> AbstractContextManager[object]:
         return provider_session.materialised_session(filename=TOKEN_FILENAME)
