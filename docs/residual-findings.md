@@ -41547,3 +41547,39 @@ anything false and nothing is lost.
 **Closes when:** the continue command is built from the parsed options rather
 than from the typed words, or the root parser sets `allow_abbrev=False`. Ledger
 only.
+
+---
+
+## R-1187. A tagging alias written by hand that gives a folder's own name to another folder is no longer honoured by the alias verb
+
+**Found:** at the review of #473, R-1184, 2026-11-02.
+
+**The mechanism.** A copy edited by hand to declare `nonelectronic` a tagging alias of Tech House: on `main`, `crate taxonomy alias nonelectronic "Tech House"` planned a no text retag of the files carrying it; since R-1184 the own name check runs first and refuses it, with the step to retag each file by hand.
+
+**Measured cost.** Driven at the planner by the review on such a copy, not through the verb. The refusal is the safer answer, since the files the verb retags are matched in any case and would include those carrying `NonElectronic` exactly, which would be rewritten as Tech House. The producer is a hand edit, and `suggest_tag` tags the word through that alias, so the warnings never name it.
+
+**Closes when:** a decision says whether a hand alias of a folder's own name should retag only the files carrying that exact spelling. Ledger only.
+
+---
+
+## R-1188. The own name sentence's fallback and routing alias wordings are reached by no shipped word, and it reads oddly for the fallback's own name
+
+**Found:** at the review of #473, R-1184, 2026-11-02.
+
+**The mechanism.** `_filed_now` in `core/taxonomy_word.py` says where a word is filed now, by a keyword rule, as the fallback, or by a routing alias. Every shipped folder's name in another case, 63 words swept by the review, files by a keyword rule, so the other two wordings are reached by no shipped word and a rewording of either passes the suite. And `electronica / other`, the fallback's own name lowered, gets "filed in Electronica / Other by the keyword rule 'electronic' until it is retagged 'Electronica / Other'; ... neither answer takes the word", true but odd, since retagging moves nothing.
+
+**Measured cost.** None to a DJ through the warnings: `suggest_tag` tags `electronica / other` through a tagging alias, so neither warning names it; only a person typing it meets the sentence. The two unreached wordings are reachable only on a custom copy, unmeasured.
+
+**Closes when:** a test drives a custom copy where a folder's lowered name files by the fallback and one where a routing alias declares it, and the fallback's own name is answered with its own sentence. Ledger only.
+
+---
+
+## R-1189. The own name refusal's step names the alias over the whole library root when --folder narrowed the run
+
+**Found:** at the review of #473, R-1184, 2026-11-02.
+
+**The mechanism.** `crate taxonomy alias WORD OTHER --folder F`, where WORD is a genre folder's own name in another case, is refused with a step built in `core/taxonomy_word.py` (`own_name_answer`), which knows nothing of `--folder`. The step names `crate taxonomy alias WORD <its own folder>` with no `--folder`, so following it retags every file under the library root carrying the word rather than only those under F.
+
+**Measured cost.** Driven by the review on a disposable library: the refusal's step omits `--folder`. Every file the wider run retags is retagged to the exact name of the folder its word already names, so no file is given a wrong genre; the cost is the scope of a correct retag, behind the verb's explicit gate, which lists every file first.
+
+**Closes when:** the verb carries `--folder` into the step it offers, or the step says the command takes it. Ledger only: no file is damaged and the gate shows the files.
