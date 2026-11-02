@@ -94,11 +94,11 @@ the brief.
 ## Relay, retired 2026-10-27
 
 Native Relay, the feeder, the watcher, the fable builder and `/board-up` ran
-this file's pipeline on Phillip's machine from 2026-09-07 to 2026-10-27. They
-are abandoned, decided by Phillip on 2026-10-27, and the cloud lane below
+METHOD's pipeline on Phillip's machine from 2026-09-07 to 2026-10-27. They
+are abandoned, decided by Phillip on 2026-10-27, and METHOD's cloud lane
 replaces them. Their manifests and run state live outside this repository and
-are not read. What they taught stays in `docs/solutions/` and in the driver
-rules above, and `docs/history/` has how they ran.
+are not read. What they taught stays in `docs/solutions/` and in METHOD's driver
+rules, and `docs/history/` has how they ran.
 
 ## Releases, decided by U159 on 2026-10-28
 

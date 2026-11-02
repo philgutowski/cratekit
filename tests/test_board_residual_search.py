@@ -1,7 +1,7 @@
 """`board.py residuals --search` finds a finding without printing the ledger (U196).
 
-Filing a card checked for a duplicate by printing every `## R-` heading, 1,178
-of them by 2026-11-02. The search runs for real on a ledger the test writes.
+Filing a card checked for a duplicate by printing every `## R-` heading, over a
+thousand of them by 2026-11-02. The search runs for real on a ledger the test writes.
 """
 
 from __future__ import annotations

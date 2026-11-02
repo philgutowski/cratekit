@@ -116,10 +116,77 @@ def test_main_exits_by_verdict(wait_ci, monkeypatch, capsys):
     assert wait_ci.main(["abc123", "--repo", "owner/name"]) == 0
 
 
-def test_a_failed_read_is_no_run_rather_than_a_crash(wait_ci, monkeypatch):
-    class Refused:
-        returncode = 1
-        stdout = ""
+class _Answer:
+    def __init__(self, returncode=0, stdout="", stderr=""):
+        self.returncode, self.stdout, self.stderr = returncode, stdout, stderr
 
-    monkeypatch.setattr(wait_ci.subprocess, "run", lambda *a, **k: Refused())
-    assert wait_ci.pull_request_runs("owner/name", "abc123") == []
+
+@pytest.mark.parametrize(
+    "answer, reason",
+    [
+        (_Answer(1, stderr="gh: HTTP 403 Forbidden\n"), "HTTP 403"),
+        (_Answer(1), "gh exited 1"),
+        (_Answer(0, stdout="<html>proxy</html>"), "not JSON"),
+        (_Answer(0, stdout='{"message": "Not Found"}'), "no workflow_runs"),
+    ],
+)
+def test_a_failed_read_is_a_reason_never_an_empty_list(wait_ci, monkeypatch, answer, reason):
+    monkeypatch.setattr(wait_ci.subprocess, "run", lambda *a, **k: answer)
+    with pytest.raises(wait_ci.ReadFailed, match=reason):
+        wait_ci.pull_request_runs("owner/name", "abc123")
+
+
+def test_a_good_read_returns_the_runs(wait_ci, monkeypatch):
+    answer = _Answer(0, stdout='{"total_count": 1, "workflow_runs": [{"name": "ci"}]}')
+    monkeypatch.setattr(wait_ci.subprocess, "run", lambda *a, **k: answer)
+    assert wait_ci.pull_request_runs("owner/name", "abc123") == [{"name": "ci"}]
+
+
+def test_reads_that_keep_failing_end_unread_long_before_the_timeout(wait_ci):
+    clock = _Clock()
+
+    def read():
+        raise wait_ci.ReadFailed("gh: HTTP 403 Forbidden")
+
+    state, line = wait_ci.wait(read, timeout=3600, every=60, sleep=clock.sleep, clock=clock)
+    assert state == wait_ci.UNREAD
+    assert "HTTP 403" in line and "no pull request run" not in line
+    assert clock.sleeps == wait_ci.READ_FAILURES - 1
+
+
+def test_one_failed_read_is_waited_past(wait_ci):
+    clock = _Clock()
+    answers = iter(["fail", [_run("ci")]])
+
+    def read():
+        answer = next(answers)
+        if answer == "fail":
+            raise wait_ci.ReadFailed("gh: HTTP 502")
+        return answer
+
+    state, _ = wait_ci.wait(read, timeout=600, every=60, sleep=clock.sleep, clock=clock)
+    assert state == wait_ci.PASSED
+
+
+def test_failures_count_in_a_row_only(wait_ci):
+    clock = _Clock()
+    script = ["fail", "fail", [], "fail", "fail", [_run("ci")]]
+    answers = iter(script)
+
+    def read():
+        answer = next(answers)
+        if answer == "fail":
+            raise wait_ci.ReadFailed("gh: HTTP 502")
+        return answer
+
+    state, _ = wait_ci.wait(read, timeout=3600, every=60, sleep=clock.sleep, clock=clock)
+    assert state == wait_ci.PASSED
+
+
+def test_main_exits_3_when_the_runs_cannot_be_read(wait_ci, monkeypatch, capsys):
+    def refused(repo, sha):
+        raise wait_ci.ReadFailed("gh: HTTP 403 Forbidden")
+
+    monkeypatch.setattr(wait_ci, "pull_request_runs", refused)
+    assert wait_ci.main(["abc123", "--repo", "owner/name", "--every", "0"]) == 3
+    assert capsys.readouterr().out.startswith("unread: ")

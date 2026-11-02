@@ -17,7 +17,10 @@ waits until at least one such run exists and every one of them is completed.
 Exit 0 when every pull request run on the head ended `success`, `neutral` or
 `skipped`; 1 when any ended otherwise; 2 when the wait ran out with a run
 still pending or none started, which is also what a pull request that
-conflicts with `main` looks like, since GitHub starts no run for it.
+conflicts with `main` looks like, since GitHub starts no run for it; 3 when
+the runs could not be read three times in a row (a refused token, a
+repository the session cannot reach), with the reason. A single failed read
+is waited past, never read as no run.
 """
 
 from __future__ import annotations
@@ -32,8 +35,16 @@ import time
 GREEN = ("success", "neutral", "skipped")
 
 #: The three answers `verdict` gives. Pending covers both a run still going
-#: and no run at all yet, since either one means the session waits.
-PENDING, PASSED, FAILED = "pending", "green", "red"
+#: and no run at all yet, since either one means the session waits. Unread is
+#: `wait`'s alone: the runs could not be read, which is not the same as none.
+PENDING, PASSED, FAILED, UNREAD = "pending", "green", "red", "unread"
+
+#: Failed reads in a row before the wait stops and says it could not read.
+READ_FAILURES = 3
+
+
+class ReadFailed(Exception):
+    """The runs could not be read: the reason, never an empty list."""
 
 
 def verdict(runs: list[dict]) -> tuple[str, str]:
@@ -69,7 +80,7 @@ def origin_repo() -> str:
 
 
 def pull_request_runs(repo: str, sha: str) -> list[dict]:
-    """The pull request runs on one head, or an empty list when the read fails."""
+    """The pull request runs on one head; `ReadFailed` when they cannot be read."""
     result = subprocess.run(
         [
             "gh",
@@ -80,23 +91,40 @@ def pull_request_runs(repo: str, sha: str) -> list[dict]:
         text=True,
     )
     if result.returncode != 0:
-        return []
+        reason = (result.stderr or result.stdout or "").strip().splitlines()
+        raise ReadFailed(reason[-1] if reason else f"gh exited {result.returncode}")
     try:
-        return json.loads(result.stdout).get("workflow_runs", [])
+        answer = json.loads(result.stdout)
     except json.JSONDecodeError:
-        return []
+        raise ReadFailed("the answer was not JSON") from None
+    if not isinstance(answer, dict) or not isinstance(answer.get("workflow_runs"), list):
+        raise ReadFailed("the answer carried no workflow_runs list")
+    return answer["workflow_runs"]
 
 
 def wait(read, *, timeout: float, every: float, sleep=time.sleep, clock=time.monotonic):
-    """Read until the verdict is not pending or the time runs out.
+    """Read until the verdict is not pending, the reads keep failing, or time runs out.
 
-    `read` returns the runs; `sleep` and `clock` are the test's to replace.
+    `read` returns the runs or raises `ReadFailed`; `sleep` and `clock` are the
+    test's to replace. A failed read is waited past, and `READ_FAILURES` of them
+    in a row end the wait as unread with the last reason, so a refused token
+    costs minutes rather than the whole timeout and is never told as no run.
     """
     deadline = clock() + timeout
+    failures = 0
     while True:
-        state, line = verdict(read())
-        if state != PENDING:
-            return state, line
+        try:
+            runs = read()
+        except ReadFailed as exc:
+            failures += 1
+            if failures >= READ_FAILURES:
+                return UNREAD, f"could not read the runs {failures} times in a row: {exc}"
+            state, line = PENDING, f"could not read the runs: {exc}"
+        else:
+            failures = 0
+            state, line = verdict(runs)
+            if state != PENDING:
+                return state, line
         if clock() + every > deadline:
             return PENDING, f"timed out: {line}"
         sleep(every)
@@ -114,7 +142,7 @@ def main(argv: list[str]) -> int:
         lambda: pull_request_runs(repo, args.sha), timeout=args.timeout, every=args.every
     )
     print(f"{state}: {line}")
-    return {PASSED: 0, FAILED: 1}.get(state, 2)
+    return {PASSED: 0, FAILED: 1, UNREAD: 3}.get(state, 2)
 
 
 if __name__ == "__main__":

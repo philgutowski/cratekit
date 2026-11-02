@@ -1126,7 +1126,7 @@ def search_residuals(
     """The ledger headings that carry every word, newest first, and how many more.
 
     Filing a card used to print every heading to check a finding was not
-    already there, 1,178 of them by 2026-11-02, about 28k tokens each time
+    already there, over a thousand of them by 2026-11-02, about 28k tokens each time
     (U196). Every word must appear in the heading, case insensitive, so a
     search narrows as it gains words. A search with no word is refused by the
     caller rather than read as a match for everything.
