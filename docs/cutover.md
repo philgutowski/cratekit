@@ -1490,8 +1490,8 @@ session's, on the live library.
 | Missing files, rekordbox's own list | File, Display All Missing Files, closed with OK, nothing relocated or deleted | **8 tracks**, every one a rekordbox demo track (`House 1` to `House 4`, `Breaks 1` to `Breaks 3`, `Techno 1`, artist `rekordbox`, album `GROOVE CIRCUIT`) under the rekordbox folder of another user account's home on this machine. Nothing under `Processed_Tracks`, so none of the 150 shelved today and none of sitting 44's 447 rows is missing to rekordbox. Doctor's 167 rows resolving to no file are a different count: 153 are rows under no prefix rule, the streamed tracks and tombstones of R-675, and how the remaining 14 relate to these 8 was not read. | read |
 
 The two run identifier batches are now known: `09_23_26 Downloads` is
-sitting 8's 54 Tidal favourites, run `4773`, and `09_23_26 Downloads 2` is
-the 7 tracks acquired for the Tidal playlist of job `673e`, run `d66b`. No
+sitting 8's 54 account favourites, run `4773`, and `09_23_26 Downloads 2` is
+the 7 tracks acquired for the account playlist of job `673e`, run `d66b`. No
 verb renames a filed folder and a rename in Finder breaks 61 rows, so they
 keep their names until a unit gives shelve a rename.
 

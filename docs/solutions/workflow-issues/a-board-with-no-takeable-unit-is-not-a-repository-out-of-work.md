@@ -122,15 +122,15 @@ because the parity table measures verbs.
 
 **R-195, R-196 and R-197, the vendored downloader has never fetched a file.**
 `_VendoredSource.fetch` at `src/cratekit/acquire/vendored.py:246` builds
-`Download(tidal_obj, path_base, fn_logger)` at line 254. The vendored CLI at
-`src/cratekit/_vendor/tidal_dl_ng/cli.py:250` builds the same object with five
+`Download` from the session, `path_base` and `fn_logger` at line 254. The vendored CLI, at
+line 250 of its `cli.py` under `src/cratekit/_vendor/`, builds the same object with five
 further keywords, `skip_existing`, `progress`, `progress_overall`, `event_abort`
 and `event_run`. Four of those are load bearing by R-197's own measurement, since
 `Download.item()` dies on its first line at `self.event_abort.is_set()` against
 `None`, and with the events but without the progress pair it returns a false flag
 and logs nothing. Separately, `tool_settings` at `vendored.py:74` returns exactly
 three settings and none of them is `path_binary_ffmpeg`, while
-`Download.__init__`, which begins at `src/cratekit/_vendor/tidal_dl_ng/download.py:122`,
+`Download.__init__`, which begins at the vendored `download.py:122`,
 turns `extract_flac` off outright when that setting is empty, at lines 162 to 166. The tool does not read
 PATH, so lossless extraction silently switches itself off while `crate doctor`
 reports ffmpeg present. R-196 adds that the device flow client is served lossy
@@ -333,10 +333,10 @@ mentions in `src` are two cause strings, an `__all__` entry, and two docstrings 
 `src/cratekit/backup/cli.py`, one of which states the absence outright at line
 423. `src/cratekit/acquire/vendored.py:74`
 returns three settings without `path_binary_ffmpeg` while
-`src/cratekit/_vendor/tidal_dl_ng/download.py:162` to `:166` disables
+the vendored `download.py:162` to `:166` disables
 `extract_flac` and `video_convert_mp4` together when that setting is empty. `src/cratekit/acquire/vendored.py:254` constructs
 `Download` with three keywords where
-`src/cratekit/_vendor/tidal_dl_ng/cli.py:250` passes eight.
+the vendored `cli.py:250` passes eight.
 `src/cratekit/core/session.py:1048` writes
 `remedy=Remedy.REPAIR_BACKUP_FACTS` unconditionally. Each claim was read at the
 line rather than taken from the entry, and the one discrepancy found was R-201's

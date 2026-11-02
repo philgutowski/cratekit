@@ -128,8 +128,8 @@ U13. If an archive must ship, the scan needs an archive-aware tier.
 
 **Closed 2026-09-10 on `relay/40`, and closed by refusal rather than by
 reading.** The closing condition was already met on the tree: U13 landed on
-2026-08-02, the downloader is committed unpacked at
-`src/cratekit/_vendor/tidal_dl_ng/` with its provenance in `vendor/README.md`,
+2026-08-02, the downloader is committed unpacked under
+`src/cratekit/_vendor/` with its provenance in `vendor/README.md`,
 and `git ls-files` lists no archive and no binary of any kind. What held it was
 nothing. `_read_text` returned `None` for a compressed file and `scan_tree` moved
 on, so an archive committed later would have scanned clean over bytes nobody
@@ -11264,7 +11264,7 @@ parked whose only outcome is ffmpeg rejecting its filter.
 first track still landed as a 320k AAC `.m4a`. The vendored tool does not look at
 `PATH`. It consults only its own `path_binary_ffmpeg` setting, whose factory
 default is the empty string, and when that is empty `Download.__init__`
-(`src/cratekit/_vendor/tidal_dl_ng/download.py:162`) flips `extract_flac` and
+(the vendored `download.py:162`) flips `extract_flac` and
 `video_convert_mp4` off and logs one warning through a logger the adapter
 discards. `tool_settings()` in `src/cratekit/acquire/vendored.py:74` pushes
 `quality_audio`, `download_base_path` and `format_track`, and nothing else, so a
@@ -11304,7 +11304,7 @@ With `path_binary_ffmpeg` set, the same track still came down as AAC. The
 account is PREMIUM with `highestSoundQuality: HI_RES`. The session asked for
 `LOSSLESS` through `config.quality`, and `playbackinfopostpaywall` answered
 `HIGH` every time, for `LOSSLESS` and for `HI_RES_LOSSLESS` alike. The live
-DJ_tools token, issued 2026-08-01 against the same `tidalapi` 0.8.11 and the same
+DJ_tools token, issued 2026-08-01 against the same client library 0.8.11 and the same
 client id, got `HIGH` for the same track in the same minute. The newest FLAC the
 live pipeline ever produced is dated 2026-07-09.
 
@@ -11312,11 +11312,11 @@ A PKCE login on the same account, same track, same minute, was served
 `LOSSLESS` as a 16 bit 44.1 kHz FLAC over a DASH manifest, and the vendored
 `Download` class landed it. So the cause is the client, not the account, the
 settings, or the patches: the provider now gates lossless behind the PKCE client
-that `tidalapi` documents as the route to hi-res, and the device-linking client
+that the client library documents as the route to hi-res, and the device-linking client
 both tools use has been quietly demoted to lossy at some point after July 9.
 
 Three facts make this a code problem rather than a login problem. The vendored
-CLI has no PKCE path; `Tidal.login()` in `config.py` calls `login_oauth_simple`
+CLI has no PKCE path; its `login()` in `config.py` calls `login_oauth_simple`
 and carries the PKCE call as a comment. `token_persist()` writes four keys and
 drops `is_pkce`, so a PKCE token written by that code would be reloaded as a
 device-flow one and refreshed against the wrong client. And the adapter calls
@@ -11341,8 +11341,8 @@ a lossless policy. The DJ_tools note is separate and is owed to that repository.
 PKCE is the product's only login path, decided by Phillip and not litigated in
 the unit. Three vendored patches, all declared in `scripts/revendor_downloader.py`
 and applied through it: the `Token` model gains `is_pkce`, `token_persist` writes
-it, and `Tidal.login` mints through `login_pkce`. No PKCE handshake was added to
-the vendored tree; `tidalapi` already ships one and upstream already carried the
+it, and the vendored `login` mints through `login_pkce`. No PKCE handshake was added to
+the vendored tree; the client library already ships one and upstream already carried the
 call as a comment beside the one it used. The adapter calls
 `login_token(do_pkce=True)` and refuses a stored non-PKCE session outright rather
 than downloading lossy audio with it. The post-landing codec check is in
@@ -11352,7 +11352,7 @@ Two things the unit found that this entry does not say. `token_persist` cannot
 write the flag through `set_option`: that method calls `.lower()` on the incoming
 value whenever the existing one is a bool, and `is_pkce` is the token model's
 only bool field, so the obvious edit raises `AttributeError`. And the source must
-be the SESSION's flag, not the `Tidal` object's, because `login()` calls
+be the SESSION's flag, not the vendored login wrapper's, because `login()` calls
 `login_token()` first and that assigns `self.is_pkce` from its own defaulted
 argument before any PKCE handshake runs, so reading it there would record every
 fresh PKCE session as a device flow one.
@@ -11368,7 +11368,7 @@ procedure behind it is worse than the lossy download it replaces.
 **Found by** A1, 2026-08-28, while driving `Download` directly to land the FLAC.
 
 `_VendoredSource.fetch()` at `src/cratekit/acquire/vendored.py:254` builds
-`Download(tidal_obj, path_base, fn_logger)`. The vendored CLI builds it with
+`Download` from the session, `path_base` and `fn_logger`. The vendored CLI builds it with
 `event_abort`, `event_run`, `progress` and `progress_overall` as well
 (`cli.py:250`). Without the events, `Download.item()` dies on its first line,
 `self.event_abort.is_set()` on `None`. With the events and without the progress
@@ -12165,11 +12165,11 @@ command hop into the keychain, was accepted by `login_mode`, and refreshed
 through `login_token(do_pkce=True)`. The first real download died inside the
 tool, because the adapter handed it a function where it calls a logger (#82,
 fixed and merged the same sitting). After the fix `acquire download` landed
-Tidal track 341726337, Mood II Swing, Chicago Blues, as a 38 MB FLAC, 16 bit,
+provider track 341726337, Mood II Swing, Chicago Blues, as a 38 MB FLAC, 16 bit,
 44.1 kHz, with title, artist, album, ISRC, date and embedded art, and no tempo
 or BPM tag in any block. The control ran in the same minute against the same
 account and the same track: a device-flow session minted through
-`tidalapi.Session.login_oauth` and never persisted was served `HIGH`, codec
+the client library's `Session.login_oauth` and never persisted was served `HIGH`, codec
 `MP4A`, through a BTS manifest, where the PKCE session was served `LOSSLESS`,
 codec `FLAC`, through DASH. The gate is the client, not the token's age, and
 R-196's decision stands on observation now. The probe script and both answers
@@ -12228,7 +12228,7 @@ login provider-session --from-file`; erase the original.
 
 Step three is documented and nothing enforces it. `crate login --from-file`
 copies the file, it does not consume it, so a user who stops after step two has a
-live refresh token sitting in `~/.config/tidal-dl-ng/token.json` indefinitely.
+live refresh token sitting in the tool's own `token.json` indefinitely.
 `provider_session.py` argues in its own docstring that a `0600` file inside a
 directory nobody checked is not protected, and promises that between invocations
 there is no provider token on disk. During this hop that promise is false.
@@ -12243,7 +12243,7 @@ found on disk outside a live invocation.
 
 
 **Measured again, 2026-10-09, sitting 33.** The author minted a PKCE session
-at 10:20Z, recorded it and erased `~/.config/tidal-dl-ng/token.json` as
+at 10:20Z, recorded it and erased the tool's own `token.json` as
 `docs/adapters.md` says. A download driver started 22 seconds later wrote
 the file back, 125 bytes, access and refresh token in plain text, from the
 session it had read out of the keychain. The erase is undone by the next
@@ -12306,11 +12306,11 @@ vendored classes are constructed, so the refusal's wiring is proven only by the
 pure function plus an AST assertion that `do_pkce=True` appears in the source.
 
 **Why it was left.** Reaching that line offline means letting `authenticate`
-construct the vendored `Tidal`, and `Tidal.__init__` reads `path_file_token()`,
-the real user's `~/.config/tidal-dl-ng/token.json`, before the adapter overrides
+construct the vendored login wrapper, and its `__init__` reads `path_file_token()`,
+the real user's own `token.json` for the tool, before the adapter overrides
 `file_path`. `conftest.py` redirects Cratekit's own state roots and not that one,
 so a test driving this path would read, and on a bad day rewrite, a real
-credential file. `Tidal` is also a `SingletonMeta`, so the first construction in
+credential file. That class is also a `SingletonMeta`, so the first construction in
 a process wins. Writing the test without first isolating the vendored tool's
 config directory would trade a coverage gap for a test that touches a live token.
 
@@ -18985,7 +18985,7 @@ folder of audio with genre and album art". That is the same shape as R-144's
 colour write, a declared half with no implementation behind it.
 
 **It is worse than absent, because the shipped downloader emits the defect the
-source system repaired.** `_vendor/tidal_dl_ng/metadata.py:102-109` sets the
+source system repaired.** The vendored `metadata.py:102-109` sets the
 picture mime type and never sets width, height or depth, which is the zeroed
 PICTURE block Pioneer players render blank. The source system carried a repair
 pass for exactly this. Cratekit ships the producer and not the repair.
@@ -28858,7 +28858,7 @@ downloader reported no file`, on tracks the provider reports available,
 streamable and lossless. The cause was found only by repeating the
 downloader's own lookup, `session.track(id, with_album=True)`, outside it: the
 album read answered `TooManyRequests`. `_validate_and_prepare_media` in the
-vendored `tidal_dl_ng/download.py` catches every exception and returns
+vendored `download.py` catches every exception and returns
 `None` without logging it, `item` turns that into `(False, "")`, and
 `landed_file` in `acquire/vendored.py` can only say no file came back. The
 adapter also hands the tool `_discard_tool_logging`, so even the causes the
@@ -29066,7 +29066,7 @@ write is held.
 every call to the provider's API, the login and the model objects' own reads
 included. The vendored downloader fetches the audio itself, the segment list
 and the segments, through a second `requests` session of its own against the
-content delivery host, `_vendor/tidal_dl_ng/download.py` around line 464 and
+content delivery host, the vendored `download.py` around line 464 and
 the bare `requests.get` calls beside it, with urllib3's own five retries. Those
 fetches are not paced, not counted and not watched for a rate limit answer.
 
@@ -29250,7 +29250,7 @@ METHOD's mutation section, which makes this entry the answer.
 **Found:** on `relay/215`, 2026-09-24, closing R-703. R-703 carries the
 error the tool swallows in its media lookup and in `_get_stream_info`, which
 logs from inside its except. The fetch half after those, `_download` in
-`_vendor/tidal_dl_ng/download.py`, swallows three more without logging:
+the vendored `download.py`, swallows three more without logging:
 `_get_media_urls`, `_setup_progress`, and each segment request inside the
 worker pool, which only sets its result False. None of those calls is made on
 the downloader's `session`, so the observed session cannot see them either.
@@ -38985,7 +38985,7 @@ order. Ledger only.
 **The mechanism.** `intake land --label` files each file under the year its
 date tag names. The vendored downloader writes that tag from the album's
 `available_release_date` when the provider gives one, and its `release_date`
-only otherwise (`_vendor/tidal_dl_ng/download.py`, the metadata step). A
+only otherwise (the vendored `download.py`, the metadata step). A
 catalogue reissued or added to a service years after its release would then
 be filed under the year it arrived, not the year it came out. A Bandcamp
 purchase, the case the unit was cut for, is tagged by its own download and
