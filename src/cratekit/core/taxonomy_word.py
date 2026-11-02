@@ -574,6 +574,7 @@ __all__ = [
     "NOT_EDITABLE",
     "NO_SUCH_GENRE",
     "NO_WORD",
+    "OWN_NAME",
     "TOO_COARSE",
     "WOULD_NOT_LOAD",
     "Edit",
@@ -582,5 +583,9 @@ __all__ = [
     "bucket_id_for",
     "folder",
     "genre",
+    "files_by_name",
     "off_taxonomy",
+    "own_folder",
+    "own_name_answer",
+    "own_names",
 ]
