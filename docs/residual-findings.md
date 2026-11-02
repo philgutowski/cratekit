@@ -41454,3 +41454,51 @@ should. Sampled by U175 as an existing guard; it predates the unit.
 
 **Closes when:** a rotation test lands one set twice on two days and asserts
 the batch is aged from the first.
+
+---
+
+## R-1180. A compilation artist such as Various Artists votes as one artist in tag guess, so unrelated compilations give a track their genre
+
+**Found:** at the review of #353, U172, 2026-11-01.
+
+**The mechanism.** `tagging.guess` keys the artist signal on the casefolded artist tag, the key `tag suggest` uses. A staged file tagged `Various Artists` therefore takes votes from every library row tagged the same, which are unrelated compilations, and by Phillip's answer of 2026-11-01 every guess is written.
+
+**Measured cost.** Driven pure in round 1: three library rows of `Various Artists` in Deep House give a staged `Various Artists` file Deep House at high band. Not driven against a real library's distribution, so how often a pass meets it is unmeasured. The guess is named in the report with its votes, and a wrong genre is put right by hand.
+
+**Closes when:** a short list of compilation artist names gives no artist vote in both `tag guess` and `tag suggest`, or the measured share of such files in a real pass shows it is not worth one. Ledger only.
+
+---
+
+## R-1181. tag guess reads an unreadable library as a warning only when the error is Cratekit's own, so a bare database error would end the pass at its guess step
+
+**Found:** at the review of #353, U172, 2026-11-01.
+
+**The mechanism.** `tagging.guess_cli._library` opens the database to read and walks its rows inside a `try` that catches `CratekitError` only. A locked or half written database that raised a bare sqlite or SQLAlchemy error while the rows are walked would escape as `internal-error`, and the tail ends the pass at the guess step rather than guessing from the folder and the playlists.
+
+**Measured cost.** One candidate was driven, a database file of junk bytes, and it refused as a `CratekitError`, was warned, and the guess went on. A bare error was not produced. `name apply` opens the same database the same way later in the same tail, so a pass already depended on this read before U172.
+
+**Closes when:** a drive produces a bare database error on the read, or the read is wrapped the way `name apply`'s is if that one is wrapped first. Ledger only, reachability unmeasured.
+
+---
+
+## R-1182. A file whose first genre value is empty reads as carrying none, so a guess replaces the genre it holds second
+
+**Found:** at the review of #353, U172, 2026-11-01.
+
+**The mechanism.** `tagging.rows._file_word` answers the first non empty value of the joined text on ID3 but the first value as it came on a FLAC whose genre list is `["", "Deep House"]`, so `tag guess` reads the file as blank, makes it a candidate, and `tags.write_genre` replaces the whole list with the guessed word. `tag folder` reads the same way through `read_genre_from_file`, so the behaviour is inherited from it and not new.
+
+**Measured cost.** Driven by the round 1 review with a list written by mutagen directly: the second value is lost. The producer is unmeasured: zero candidates in this repository were driven that write an empty first genre value, and nothing in Cratekit does.
+
+**Closes when:** the readers take the first non empty value on every container, or a file whose genre list holds a word anywhere is read as carrying one. Ledger only: no shipped verb produces the input.
+
+---
+
+## R-1183. tag guess reads a playlist's owned tracks by the paths their reports recorded, without the prefix map, so on a moved volume they give no vote and nothing says so
+
+**Found:** at the review of #353, U172, 2026-11-01.
+
+**The mechanism.** `tagging.guess_cli._playlists` reads each owned member's genre from the library file its intake report named, as recorded. `account_playlists.resolve_owned` applies `cfg.resolved_prefix_map()` to the same paths before it looks a row up. A path that needs the map reads as an unreadable file, which `guess.read_member` drops, so the playlist's share is taken over its staged members alone.
+
+**Measured cost.** Read, not driven on a library whose paths need the map; `read_member` on a missing path returning None was driven. On Phillip's machine the reports and the volume name the same paths, so the cost is a weaker playlist vote on another DJ's moved library, unsaid.
+
+**Closes when:** the owned paths go through the prefix map before they are read, or a dropped owned member is counted in the report. Ledger only.
