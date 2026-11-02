@@ -580,15 +580,23 @@ def test_nothing_outside_the_tree_reaches_the_package_by_its_old_path():
     """U197 renamed the package. A straggler that still names the old import path
     or the old licence copy imports nothing, or ships nothing, and is invisible
     until the line that holds it runs. The tree's own self imports are swept by
-    the test above; this sweeps the code, the tests, the scripts, the packaging
-    and CI around it. This file is left out because it spells the old names to
-    look for them."""
+    ``test_no_module_still_imports_itself_by_its_upstream_name``; this sweeps the
+    code, the tests, the scripts, the packaging and CI around it, in each shape
+    the old path was written in before the rename: dotted, slashed, joined with
+    ``/`` on a ``Path``, and relative to ``_vendor``. This file is left out
+    because it spells the old names to look for them."""
     old_names = re.compile(
-        r"_vendor[./]tidal_dl_ng|TIDAL_DL_NG|LICENSE\.tidal-dl-ng"
+        r"_vendor[./]tidal_dl_ng"
+        r"""|["']_vendor["']\s*/\s*["']tidal_dl_ng["']"""
+        r"""|["']tidal_dl_ng/"""
+        r"|TIDAL_DL_NG|LICENSE\.tidal-dl-ng"
     )
     roots = [REPO_ROOT / "src", REPO_ROOT / "tests", REPO_ROOT / "scripts"]
-    files = [path for root in roots for path in root.rglob("*.py")]
-    files += [PYPROJECT, *sorted((REPO_ROOT / ".github").rglob("*.yml"))]
+    files = [path for root in roots for suffix in ("*.py", "*.sh") for path in root.rglob(suffix)]
+    files += [PYPROJECT]
+    files += sorted(
+        path for suffix in ("*.yml", "*.yaml") for path in (REPO_ROOT / ".github").rglob(suffix)
+    )
     this_file = Path(__file__).resolve()
     stragglers = [
         f"{path.relative_to(REPO_ROOT)}:{number}"

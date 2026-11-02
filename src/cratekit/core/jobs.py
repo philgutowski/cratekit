@@ -1105,9 +1105,11 @@ def drift(job: Job, current: config.Config) -> tuple[str, ...]:
     # and the loader folds that key to the current one, so read the frozen
     # copy the way the loader would. Otherwise every job open at the upgrade
     # reports the adapter as moved when nobody touched it (U197).
-    if "acquisition.adapter" in before:
+    # Only a string is folded, as the loader folds only a name; anything else is
+    # compared as it was written.
+    if isinstance(before.get("acquisition.adapter"), str):
         before["acquisition.adapter"] = config.current_adapter_name(
-            str(before["acquisition.adapter"])
+            before["acquisition.adapter"]
         )
     after = _flatten(current.to_toml_dict())
     return tuple(

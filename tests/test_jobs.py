@@ -166,6 +166,31 @@ def test_a_job_frozen_under_the_retired_adapter_key_reports_no_drift(queue, cfg)
     assert jobs.drift(before_rename, switched) == ("acquisition.adapter",)
 
 
+def test_the_retired_key_fold_leaves_a_value_that_is_not_a_name_as_written(queue, tmp_path):
+    """Only a name is folded, as the loader folds only a name. A hand edited value
+    of another type is compared as it was written, so a run that changed some
+    other key names that key alone."""
+    root = tmp_path / "library"
+    (root / "Music").mkdir(parents=True)
+    document = {
+        "schema_version": config.CURRENT_SCHEMA_VERSION,
+        "library": {
+            "root": str(root),
+            "volume_id": "F1E2-D3C4",
+            "db_path": str(root / "db" / "master.db"),
+        },
+        "paths": {"download_staging": str(tmp_path / "staging")},
+        "profile": {"name": "slim"},
+        "acquisition": {"adapter": 5},
+    }
+    store, _ = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=config.from_dict(document))
+    moved = config.from_dict(
+        {**document, "paths": {"download_staging": str(tmp_path / "elsewhere")}}
+    )
+    assert jobs.drift(job, moved) == ("paths.download_staging",)
+
+
 def test_transitions_are_forward_only(queue, cfg):
     store, _ = queue
     job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg)
