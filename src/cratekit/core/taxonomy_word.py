@@ -189,10 +189,6 @@ def _filed_now(declared: taxonomy.Taxonomy, word: str) -> str:
     return f"in {where} by a routing alias"
 
 
-def _quoted(value: str) -> str:
-    return shlex.quote(value)
-
-
 def own_name_answer(declared: taxonomy.Taxonomy, word: str, bucket: taxonomy.Bucket) -> tuple[str, str]:
     """The sentence and the one step for a word that is ``bucket``'s name in another case.
 
@@ -206,7 +202,7 @@ def own_name_answer(declared: taxonomy.Taxonomy, word: str, bucket: taxonomy.Buc
         f"filed {_filed_now(declared, word)} until it is retagged {bucket.display!r}"
     )
     if files_by_name(declared, bucket):
-        command = f"{ALIAS_VERB} {_quoted(word)} {_quoted(bucket.display)}"
+        command = f"{ALIAS_VERB} {shlex.join((word, bucket.display))}"
         return (
             f"{said}; {command} retags its files to the exact name and saves nothing",
             f"run {command}, which retags the files carrying the word to the folder's exact name",
@@ -446,7 +442,7 @@ def alias(text: str, word: str, name: str) -> Edit:
             f"{FOLDER_VERB}",
             step=(
                 f"name the genre folder the word means, or make the word a genre "
-                f"folder of its own with {FOLDER_VERB} {_quoted(spelled)}"
+                f"folder of its own with {FOLDER_VERB} {shlex.join((spelled,))}"
             ),
         )
     if declared.tagging_alias(spelled.lower()) == (target.id, None):
