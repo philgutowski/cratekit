@@ -47,7 +47,7 @@ import subprocess
 import sys
 import tomllib
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
@@ -1458,6 +1458,20 @@ def _partial_failure_cause(
     )
 
 
+def _parked_cause(cause: Cause, job_id: str) -> Cause:
+    """A park's cause as the job records it, naming the job it parked (U193).
+
+    The job id is added to the detail when the cause does not carry one, so a
+    refusal that tells a person how to continue, the call ceiling's above all,
+    can name the job to resume rather than a placeholder. A detail that already
+    names a job keeps its own.
+    """
+    cause = cause.at("jobs.drive")
+    if "job_id" in (cause.detail or {}):
+        return cause
+    return replace(cause, detail={**dict(cause.detail or {}), "job_id": job_id})
+
+
 class Parked(CratekitError):
     """A handler's answer that the RUN must stop, not that the item failed.
 
@@ -1607,7 +1621,7 @@ def drive(
                     # layer exists to never make. The item goes back to pending
                     # and the job records why it stopped.
                     release_claims(store, job_id, driver=driver)
-                    result.job = block(store, job_id, exc.cause.at("jobs.drive"))
+                    result.job = block(store, job_id, _parked_cause(exc.cause, job_id))
                     return result
                 except Declined as exc:
                     # SETTLED, NOT FAILED (U169). Kept apart from the failure

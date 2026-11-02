@@ -2973,6 +2973,14 @@ DEFAULT_PROVIDER_MIN_INTERVAL_S = 1.0
 #: shorter than the clearing time is a second trip.
 DEFAULT_PROVIDER_COOLDOWN_S = 900
 
+#: The most calls to the streaming provider one command may make before it
+#: stops, keeping what it did, and names the command that continues (U193).
+#: Five hundred, Phillip's answer on the decisions page: a full label build of
+#: Defected spent 3,026 calls before the breaker parked it, against an estimate
+#: near 24,700. A person raises it for one run with ``--calls`` or for every run
+#: here. Named here as well as on the field for the reason the intake ages give.
+DEFAULT_PROVIDER_CALLS_PER_COMMAND = 500
+
 
 @dataclass(frozen=True, slots=True)
 class ProviderConfig:
@@ -2987,10 +2995,16 @@ class ProviderConfig:
     Both live in the user's file rather than as constants in the module, on the
     rule ``ReportsConfig`` states, and both are frozen with a queued job like
     everything else the job reads. There is no value that switches either off.
+
+    ``calls_per_command`` is the call ceiling (U193): the most calls one
+    command may make before the gate stops it the way a trip does. It is a
+    line per command and never per day, Phillip's answer, so the next run
+    starts fresh. There is no value that switches it off either.
     """
 
     min_interval_s: float = DEFAULT_PROVIDER_MIN_INTERVAL_S
     cooldown_s: int = DEFAULT_PROVIDER_COOLDOWN_S
+    calls_per_command: int = DEFAULT_PROVIDER_CALLS_PER_COMMAND
 
 
 #: How many releases one sweep of one favourite label may offer for review,
@@ -3420,7 +3434,7 @@ def _validate_labels(data: Mapping) -> list[str]:
 
 
 def _validate_provider(data: Mapping) -> list[str]:
-    """The pacing interval and the breaker's cooldown (R-705).
+    """The pacing interval, the breaker's cooldown (R-705) and the call ceiling (U193).
 
     Checked here for the reason the recognition bound is: a wrong value in a
     file is a problem with a key name attached, and a wrong interval reaching
@@ -3450,6 +3464,16 @@ def _validate_provider(data: Mapping) -> list[str]:
             f"{key} must be a positive whole number of seconds the breaker holds "
             f"after the provider rate limits a run, found {cooldown!r}. There is "
             f"no value that switches the cooldown off."
+        )
+    key = "provider.calls_per_command"
+    ceiling = _dig(data, key)
+    if ceiling is not None and (
+        not isinstance(ceiling, int) or isinstance(ceiling, bool) or ceiling < 1
+    ):
+        problems.append(
+            f"{key} must be a positive whole number of calls one command may make to "
+            f"the streaming provider before it stops, found {ceiling!r}. There is no "
+            f"value that switches the ceiling off; raise it for one run with --calls."
         )
     return problems
 

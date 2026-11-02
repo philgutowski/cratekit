@@ -146,6 +146,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'path-permission-denied',
     'path-read-only',
     'provider-blocked',
+    'provider-call-ceiling',  # 2026-11-02, U193: the call ceiling's stop joined.
     'provider-cooldown',
     'provider-gate-held',
     'pyrekordbox-pin-drift',
@@ -805,6 +806,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'path-permission-denied',
         'path-read-only',
         'provider-blocked',
+         'provider-call-ceiling',  # 2026-11-02, U193
         'provider-cooldown',
         'provider-gate-held',
         'pyrekordbox-pin-drift',
@@ -982,7 +984,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     'core/naming.py': ['utf-8'],
     'core/preflight.py': ['if-root-can-be-created', 'if-root-exists'],
-    'core/provider_gate.py': ['provider-cooldown', 'provider-gate-held', 'utf-8'],
+    # 2026-11-02, U193: the call ceiling's stop joined.
+    'core/provider_gate.py': ['provider-call-ceiling', 'provider-cooldown', 'provider-gate-held', 'utf-8'],
     'core/rb_writer.py': [
         'app-version-pin-drift',
         'app-version-pin-unrecorded',
@@ -2124,7 +2127,8 @@ PINNED_NAMED_WITHOUT_OWN = {
     ],
     'core/config.py': ['upgrade-cratekit'],
     'core/jobs.py': ['cancelled'],
-    'core/provider_gate.py': ['provider-cooldown', 'provider-gate-held'],
+    # 2026-11-02, U193: the call ceiling's stop joined.
+    'core/provider_gate.py': ['provider-call-ceiling', 'provider-cooldown', 'provider-gate-held'],
     'core/session.py': ['awaiting-import'],
     # 2026-10-13, U140: the set rename's refusal, held in a named constant.
     'export/set_cli.py': ['export-set-rename-unresolved'],
@@ -2279,7 +2283,8 @@ PINNED_NAMED_WITH_OWN = {
     ],
     'core/jobs.py': ['cancelled'],
     'core/preflight.py': ['if-root-can-be-created', 'if-root-exists'],
-    'core/provider_gate.py': ['provider-cooldown', 'provider-gate-held'],
+    # 2026-11-02, U193: the call ceiling's stop joined.
+    'core/provider_gate.py': ['provider-call-ceiling', 'provider-cooldown', 'provider-gate-held'],
     'core/reconcile.py': ['in-flight-restore', 'unconverged-tree'],
     'core/restore.py': [
         'bare-metal-recovery',
@@ -2573,7 +2578,8 @@ PINNED_LITERAL_HOLDERS = {
         'no-evidence',
         'unavailable-transient',
     ],
-    'core/provider_gate.py': ['provider-cooldown', 'provider-gate-held'],
+    # 2026-11-02, U193: the call ceiling's stop joined.
+    'core/provider_gate.py': ['provider-call-ceiling', 'provider-cooldown', 'provider-gate-held'],
     'core/rb_writer.py': [
         'app-version-pin-drift',
         'app-version-pin-unrecorded',

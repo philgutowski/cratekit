@@ -60,10 +60,12 @@ from __future__ import annotations
 
 import shlex
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from cratekit.cli.output import Envelope, digest_of
+from cratekit.core import config as core_config
+from cratekit.core import provider_gate
 from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.label import catalogue, dated, kept_reads, sweep, sync_cli
@@ -449,6 +451,13 @@ class Estimate:
     kept: int = 0
     #: How old the oldest of those kept reads is, as a person reads it.
     kept_age: str = ""
+    #: The call ceiling this command runs under, and what it has already spent
+    #: on the roster and the listing, so a crawl the ceiling would stop part
+    #: way is said at the gate before any release is read (U193).
+    ceiling: int = field(
+        default_factory=lambda: int(core_config.DEFAULT_PROVIDER_CALLS_PER_COMMAND)
+    )
+    spent: int = 0
 
     @property
     def calls(self) -> int:
@@ -459,8 +468,21 @@ class Estimate:
         return round(self.calls * self.pace_s)
 
     @property
+    def over_ceiling(self) -> bool:
+        """The crawl would reach this command's call ceiling before it ends."""
+        return self.spent + self.calls > self.ceiling
+
+    @property
+    def one_run(self) -> int:
+        """A ``--calls`` that reads the whole crawl in one run, a hundred or more spare."""
+        return ((self.spent + self.calls) // 100 + 2) * 100
+
+    @property
     def over(self) -> bool:
-        return self.calls > FULL_BUILD_CALLS
+        # OVER THE CEILING ASKS TOO, even under the build's own line, so a
+        # ceiling set lower than that line is said here rather than met part
+        # way through the crawl.
+        return self.calls > FULL_BUILD_CALLS or self.over_ceiling
 
     def said(self) -> str:
         from cratekit.label import go
@@ -529,6 +551,13 @@ class Estimate:
         }
         if self.kept:
             shown["kept reads"] = _kept_said(self.kept, self.kept_age)
+        if self.over_ceiling:
+            shown["call ceiling"] = (
+                f"this is more than the {self.ceiling} provider calls one command may "
+                f"make, {self.spent} of them spent on the listing already, so a crawl "
+                f"stops at the ceiling and keeps what it read; to read it in one run, "
+                f"answer crawl with --calls {self.one_run} before the command"
+            )
         return shown
 
 
@@ -557,6 +586,8 @@ def estimate(
         pace_s=float(cfg.provider.min_interval_s),
         kept=kept,
         kept_age=oldest,
+        ceiling=provider_gate.ceiling(provider_gate.GateSettings.from_config(cfg)),
+        spent=provider_gate.command_spent(),
     )
 
 

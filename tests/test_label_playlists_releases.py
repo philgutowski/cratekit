@@ -19,6 +19,7 @@ from types import SimpleNamespace
 import pytest
 
 from cratekit.cli.output import digest_of, timestamp
+from cratekit.core import config
 from cratekit.core.exit_codes import ExitCode
 from cratekit.label import playlists_cli, sync_cli
 from cratekit.modules.outbound import folders, ledger
@@ -258,6 +259,41 @@ def test_the_estimate_is_two_calls_a_release_at_the_configured_pace():
     assert playlists_cli.FULL_BUILD_CALLS == 500
 
 
+def test_an_estimate_over_the_call_ceiling_asks_even_under_the_builds_own_line():
+    """U193. A ceiling below the build's line would stop the crawl part way, so
+    the gate says so before any release is read, with the one run figure."""
+    under_line = playlists_cli.Estimate("x", "X", releases=100, pace_s=1.0, ceiling=150, spent=3)
+    assert under_line.calls == 200 < playlists_cli.FULL_BUILD_CALLS
+    assert under_line.over_ceiling and under_line.over
+    assert under_line.one_run == 400
+    said = under_line.shown()["call ceiling"]
+    assert "more than the 150 provider calls one command may make" in said
+    assert "3 of them spent on the listing already" in said
+    assert "--calls 400" in said
+
+    roomy = playlists_cli.Estimate("x", "X", releases=251, pace_s=1.0, ceiling=5000)
+    assert roomy.over and not roomy.over_ceiling
+    assert "call ceiling" not in roomy.shown()
+
+    at_default = playlists_cli.Estimate("x", "X", releases=250, pace_s=1.0)
+    assert at_default.ceiling == config.DEFAULT_PROVIDER_CALLS_PER_COMMAND
+    assert not at_default.over, "exactly the ceiling is a crawl that finishes"
+
+
+def test_a_ceiling_raised_low_for_the_run_is_said_at_the_crawl_gate(followed, monkeypatch):
+    """Driven: no threshold patched, the seven release catalogue is fourteen
+    calls, and ``--calls 5`` puts that over this run's ceiling."""
+    _cfg, fake, account = followed
+    verified = _verifier_calls(monkeypatch, fake)
+    code, refused = drive(["--calls", "5", "label", "playlists", LABEL])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["detail"]["gate"] == CRAWL
+    shown = refused["cause"]["detail"]["shown"]
+    assert "more than the 5 provider calls one command may make" in shown["call ceiling"]
+    assert fake.releases_asked_for == [] and verified == []
+    assert account._writes == 0
+
+
 @pytest.fixture
 def small_threshold(monkeypatch):
     """A threshold the seven release fake catalogue is over, at fourteen calls."""
@@ -405,7 +441,7 @@ def test_a_full_builds_digest_is_the_plan_identity_alone(followed):
 def test_the_estimate_reads_the_configured_pace(followed):
     cfg, fake, _account = followed
     listed = playlists_cli.list_catalogue(cfg, _entry(), fake)
-    paced = SimpleNamespace(provider=SimpleNamespace(min_interval_s=3.0))
+    paced = SimpleNamespace(provider=config.ProviderConfig(min_interval_s=3.0))
     counted = playlists_cli.estimate(paced, _entry(), listed)
     assert (counted.releases, counted.pace_s, counted.seconds) == (len(LISTED), 3.0, 42)
 
