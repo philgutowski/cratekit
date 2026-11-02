@@ -50,7 +50,10 @@ calls for, so a build thread plans and builds itself; a thread that finds its
 card a different size from the one it was started for says so in the plan and
 carries on. A session on any other model hands the plan and the build to the
 `opus-builder` agent and does the rest itself. The review is always the
-`fable-reviewer` agent, whatever the session's own model.
+`fable-reviewer` agent, whatever the session's own model. A project thread's harness may
+not load the repository's agents by name; then run a general purpose agent
+on the `fable` model at high effort and tell it to read the reviewer
+definition's body first and follow it, which is the same review.
 
 ## Writes you never make
 
