@@ -23,7 +23,9 @@ residual card that is ready, so no label sends a card there.
    is not present, file what is known and add the `idea` label: the cloud
    session posts the brainstorm on the card and waits for his answer.
 3. Check it is not already a card or a residual: search the open issues'
-   titles, and `grep -n "^## R-" docs/residual-findings.md` for the finding.
+   titles, and the ledger with `.venv/bin/python scripts/board.py residuals
+   --search <two or three words>`, which prints only the headings carrying
+   every word. Never print every heading: there are over a thousand.
 
 ## The card
 

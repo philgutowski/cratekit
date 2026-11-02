@@ -1,0 +1,339 @@
+{
+  "name": "u196",
+  "pass_kind": "light",
+  "branch": "cloud/478-a-cloud-card-costs-fewer-tokens",
+  "head": "5920a86",
+  "when": "2026-11-02 20:09 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 15921,
+  "baseline_exit": 1,
+  "pytest_runs": 14,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 167,
+  "known_source": ".cloud-battery/baseline.txt",
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to scripts/wait_ci.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "scripts/wait_ci.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "d9cca81cc7fec166",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 15921,
+    "baseline_collected": 15921,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C1_no_run_is_green",
+      "description": "verdict: read no pull request run yet as green, so a session merges before CI has started",
+      "file": "scripts/wait_ci.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "46a3f26784943008",
+      "subset": [
+        "tests/test_wait_ci.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 25,
+      "baseline_collected": 25,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_wait_ci.py::test_main_exits_by_verdict",
+        "tests/test_wait_ci.py::test_no_run_yet_is_pending_never_green",
+        "tests/test_wait_ci.py::test_wait_returns_once_the_runs_finish",
+        "tests/test_wait_ci.py::test_wait_times_out_as_pending_and_says_so"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not runs:\n        return PENDING, \"no pull request run on this head yet\"",
+      "new": "    if not runs:\n        return PASSED, \"no pull request run on this head yet\""
+    },
+    {
+      "id": "C2_unfinished_ignored",
+      "description": "verdict: drop the unfinished check, so a run still going reads as its null conclusion",
+      "file": "scripts/wait_ci.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "651288268b48baac",
+      "subset": [
+        "tests/test_wait_ci.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 25,
+      "baseline_collected": 25,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_wait_ci.py::test_a_run_still_going_is_pending_and_named",
+        "tests/test_wait_ci.py::test_wait_returns_once_the_runs_finish"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if unfinished:\n        names",
+      "new": "    if False:\n        names"
+    },
+    {
+      "id": "C3_neutral_red",
+      "description": "GREEN: drop neutral, so a neutral run makes a green head red",
+      "file": "scripts/wait_ci.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "ca390e1e14e32f33",
+      "subset": [
+        "tests/test_wait_ci.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 25,
+      "baseline_collected": 25,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_wait_ci.py::test_every_run_completed_green_is_green[neutral]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "GREEN = (\"success\", \"neutral\", \"skipped\")",
+      "new": "GREEN = (\"success\", \"skipped\")"
+    },
+    {
+      "id": "C4_deadline_overrun",
+      "description": "wait: sleep past the deadline before giving up",
+      "file": "scripts/wait_ci.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "f50c9a13a7eae585",
+      "subset": [
+        "tests/test_wait_ci.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 25,
+      "baseline_collected": 25,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_wait_ci.py::test_wait_times_out_as_pending_and_says_so"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if clock() + every > deadline:",
+      "new": "        if clock() > deadline:"
+    },
+    {
+      "id": "C5_unread_exits_pending",
+      "description": "main: drop the unread exit, so a wait that could not read the runs exits 2 as if it timed out",
+      "file": "scripts/wait_ci.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "5033c9cecb0a7619",
+      "subset": [
+        "tests/test_wait_ci.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 25,
+      "baseline_collected": 25,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_wait_ci.py::test_main_exits_3_when_the_runs_cannot_be_read"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return {PASSED: 0, FAILED: 1, UNREAD: 3}.get(state, 2)",
+      "new": "    return {PASSED: 0, FAILED: 1}.get(state, 2)"
+    },
+    {
+      "id": "S1_any_word",
+      "description": "search_residuals: match a heading carrying any word rather than every word",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "92df1a209aefd9b2",
+      "subset": [
+        "tests/test_board_residual_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 6,
+      "baseline_collected": 6,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_residual_search.py::test_every_word_must_appear_in_any_case"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if all(word in title.casefold() for word in wanted)",
+      "new": "        if any(word in title.casefold() for word in wanted)"
+    },
+    {
+      "id": "S2_case_sensitive",
+      "description": "search_residuals: compare without folding case, so a heading in capitals is missed",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "5748b801d68671e6",
+      "subset": [
+        "tests/test_board_residual_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 6,
+      "baseline_collected": 6,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_residual_search.py::test_every_word_must_appear_in_any_case",
+        "tests/test_board_residual_search.py::test_one_word_finds_every_heading_carrying_it_newest_first"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if all(word in title.casefold() for word in wanted)",
+      "new": "        if all(word in title for word in wanted)"
+    },
+    {
+      "id": "S3_empty_search",
+      "description": "cmd_residuals: drop the refusal of an empty search, which matches every heading",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "bf6d1624f53bf3a1",
+      "subset": [
+        "tests/test_board_residual_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 6,
+      "baseline_collected": 6,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_residual_search.py::test_the_command_prints_hits_and_refuses_an_empty_search"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if args.land or not words:",
+      "new": "        if args.land:"
+    },
+    {
+      "id": "C6_failures_never_reset",
+      "description": "wait: never reset the failure count after a good read, so failures that are not in a row end the wait as unread",
+      "file": "scripts/wait_ci.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "d4a859af2e05725b",
+      "subset": [
+        "tests/test_wait_ci.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 25,
+      "baseline_collected": 25,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_wait_ci.py::test_failures_count_in_a_row_only"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            failures = 0\n            state, line = verdict(runs)",
+      "new": "            state, line = verdict(runs)"
+    },
+    {
+      "id": "S4_missing_ledger_no_match",
+      "description": "search_residuals: drop the refusal of a missing ledger, so a search over a file never read says no match",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "5e942b760e2630db",
+      "subset": [
+        "tests/test_board_residual_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 6,
+      "baseline_collected": 6,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_residual_search.py::test_a_missing_ledger_is_refused_never_read_as_no_match"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not source.is_file():\n        # A missing",
+      "new": "    if False:\n        # A missing"
+    }
+  ],
+  "dropped": []
+}

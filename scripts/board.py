@@ -22,7 +22,7 @@ Subcommands:
     closing         refuse a `Closes #n` trailer while a register still owes Un,
                     and a residual file the landing could not read
     residuals       the residual files waiting for a number; `--land` numbers
-                    them on main
+                    them on main; `--search WORDS` finds a finding in the ledger
     local           the attended cards, the work only Phillip's Mac can do
     cloud           the cloud lane's queue: every open unit or residual card, by
                     the state its comments give it, and the one to take
@@ -1116,6 +1116,36 @@ def residual_titles(ledger: Path | None = None) -> dict[int, str]:
     return found
 
 
+#: How many headings a ledger search prints before it counts the rest.
+SEARCH_CAP = 25
+
+
+def search_residuals(
+    words: list[str], ledger: Path | None = None, cap: int = SEARCH_CAP
+) -> tuple[list[tuple[int, str]], int]:
+    """The ledger headings that carry every word, newest first, and how many more.
+
+    Filing a card used to print every heading to check a finding was not
+    already there, over a thousand of them by 2026-11-02, about 28k tokens each time
+    (U196). Every word must appear in the heading, case insensitive, so a
+    search narrows as it gains words. A search with no word is refused by the
+    caller rather than read as a match for everything.
+    """
+    source = LEDGER if ledger is None else ledger
+    if not source.is_file():
+        # A missing ledger is not an empty one: "nothing matches" over a file
+        # never read is how a duplicate card gets filed.
+        raise FileNotFoundError(f"no residual ledger at {source}")
+    wanted = [word.casefold() for word in words]
+    hits = [
+        (number, title)
+        for number, title in residual_titles(source).items()
+        if all(word in title.casefold() for word in wanted)
+    ]
+    hits.sort(reverse=True)
+    return hits[:cap], max(0, len(hits) - cap)
+
+
 def residual_files(folder: Path | None = None) -> list[Path]:
     """The residuals waiting for a number, in the order they will take one.
 
@@ -1512,7 +1542,24 @@ def cmd_audit(args) -> int:
 
 
 def cmd_residuals(args) -> int:
-    """List the residuals waiting for a number, or number them on main."""
+    """List the residuals waiting for a number, number them on main, or search."""
+    words = getattr(args, "search", None)
+    if words is not None:
+        if args.land or not words:
+            print("board: --search takes one word or more, and not with --land", file=sys.stderr)
+            return 2
+        try:
+            hits, more = search_residuals(words)
+        except FileNotFoundError as exc:
+            print(f"board: cannot search, {exc}", file=sys.stderr)
+            return 2
+        for number, title in hits:
+            print(f"R-{number}. {title}")
+        if more:
+            print(f"... and {more} more; add a word to narrow it")
+        if not hits:
+            print(f"No ledger heading carries every one of: {' '.join(words)}")
+        return 0
     malformed = residual_file_problems()
     if malformed:
         print("A RESIDUAL FILE CANNOT LAND as it stands:")
@@ -1851,6 +1898,12 @@ def main() -> int:
         "--land",
         action="store_true",
         help="on main, give each file the next R number and append it to the ledger",
+    )
+    residuals.add_argument(
+        "--search",
+        nargs="+",
+        metavar="WORD",
+        help="print the ledger headings carrying every word, case insensitive, newest first",
     )
     residuals.set_defaults(func=cmd_residuals)
     cloud = sub.add_parser(
