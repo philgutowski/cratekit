@@ -1,0 +1,21 @@
+name = "u197-m6"
+pass_kind = "light"
+
+[[rows]]
+id = "M6_config_default"
+description = "AcquisitionConfig: default to the retired key, so a fresh configuration names it. Measured again with the temp directory where the inode test's file lands above the bound, since in u197 its one kill was that test"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_adapter_contract.py", "tests/test_doctor.py"]
+old = '''    adapter: str = "vendored"'''
+new = '''    adapter: str = "tidal_dl_ng"'''
+
+[[rows]]
+id = "M6_composite"
+description = "What the default does hold: default to the alternative, a name the fold leaves alone, so a fresh configuration selects streamrip"
+file = "src/cratekit/core/config.py"
+pairs_with = "M6_config_default"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_adapter_contract.py", "tests/test_doctor.py"]
+old = '''    adapter: str = "vendored"'''
+new = '''    adapter: str = "streamrip"'''
